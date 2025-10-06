@@ -75,3 +75,7 @@ rust-project.json
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,visualstudiocode,rust,rust-analyzer
+
+# Reference repositories (not part of the project)
+django/
+django-rest-framework/
