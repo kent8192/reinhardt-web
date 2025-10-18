@@ -1,0 +1,31 @@
+[package]
+name = "reinhardt-graphql"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# GraphQL
+async-graphql = "7.0.17"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Async utilities
+async-stream = "0.3"
+futures-util = "0.3"
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
