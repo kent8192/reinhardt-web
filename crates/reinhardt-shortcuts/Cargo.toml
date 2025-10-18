@@ -1,0 +1,23 @@
+[package]
+name = "reinhardt-shortcuts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Convenient shortcut functions for common Reinhardt operations"
+
+[dependencies]
+reinhardt-http = { workspace = true }
+reinhardt-views = { workspace = true }
+reinhardt-template = { workspace = true, optional = true }
+reinhardt-db = { workspace = true, optional = true }
+
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = ["templates"]
+templates = ["reinhardt-template"]
+database = ["reinhardt-db"]
