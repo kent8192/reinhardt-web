@@ -1,0 +1,18 @@
+[package]
+name = "reinhardt-templates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Template engine for Reinhardt framework (optional feature)"
+
+[dependencies]
+askama = "0.14.0"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+reinhardt-i18n = { workspace = true }
+reinhardt-exception = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.0"
