@@ -1,0 +1,6 @@
+Hello {{ name }}!
+
+This is a test email.
+
+Best regards,
+The Team

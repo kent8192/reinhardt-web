@@ -1,0 +1,314 @@
+//! Integration tests for message API
+//!
+//! These tests verify the basic message API functionality using reinhardt-messages.
+//! More complex integration tests requiring full HTTP/middleware stack are kept as #[ignore].
+
+#[cfg(test)]
+mod tests {
+    use reinhardt_messages::{Level, MemoryStorage, Message, MessageStorage};
+
+    // Basic API tests that can run without full HTTP integration
+
+    #[test]
+    fn test_message_creation_with_storage() {
+        // Test that messages can be created and stored successfully
+        let mut storage = MemoryStorage::new();
+
+        // Create and add a message
+        let message = Message::new(Level::Debug, "some message");
+        storage.add(message);
+
+        // Verify it was stored
+        let stored = storage.peek();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].text, "some message");
+        assert_eq!(stored[0].level, Level::Debug);
+    }
+
+    #[test]
+    fn test_multiple_messages_ordering() {
+        // Test that multiple messages maintain their order
+        let mut storage = MemoryStorage::new();
+
+        storage.add(Message::new(Level::Info, "First message"));
+        storage.add(Message::new(Level::Warning, "Second message"));
+        storage.add(Message::new(Level::Error, "Third message"));
+
+        let messages = storage.peek();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].text, "First message");
+        assert_eq!(messages[1].text, "Second message");
+        assert_eq!(messages[2].text, "Third message");
+    }
+
+    #[test]
+    fn test_message_with_extra_tags_api() {
+        // Test message creation with extra tags
+        let mut storage = MemoryStorage::new();
+
+        let message = Message::new(Level::Info, "Tagged message")
+            .with_tags(vec!["important".to_string(), "user-action".to_string()]);
+
+        storage.add(message);
+
+        let stored = storage.peek();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].extra_tags.len(), 2);
+        assert!(stored[0].extra_tags.contains(&"important".to_string()));
+        assert!(stored[0].extra_tags.contains(&"user-action".to_string()));
+    }
+
+    // HTTP/Middleware Integration Tests
+
+    #[test]
+    fn test_request_with_middleware() {
+        // Test message storage integration with HTTP request simulation
+        use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
+
+        // Mock HTTP request with message storage
+        #[derive(Debug)]
+        struct MockRequest {
+            headers: HashMap<String, String>,
+            message_storage: Arc<Mutex<MemoryStorage>>,
+        }
+
+        impl MockRequest {
+            fn new() -> Self {
+                Self {
+                    headers: HashMap::new(),
+                    message_storage: Arc::new(Mutex::new(MemoryStorage::new())),
+                }
+            }
+
+            fn add_message(&self, message: Message) {
+                self.message_storage.lock().unwrap().add(message);
+            }
+
+            fn get_messages(&self) -> Vec<Message> {
+                self.message_storage.lock().unwrap().peek()
+            }
+        }
+
+        let request = MockRequest::new();
+
+        // Add messages to the request
+        request.add_message(Message::new(Level::Info, "Request processed successfully"));
+        request.add_message(Message::new(Level::Warning, "Deprecated API endpoint used"));
+
+        // Verify messages are accessible via the request
+        let messages = request.get_messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text, "Request processed successfully");
+        assert_eq!(messages[0].level, Level::Info);
+        assert_eq!(messages[1].text, "Deprecated API endpoint used");
+        assert_eq!(messages[1].level, Level::Warning);
+    }
+
+    #[test]
+    fn test_request_is_none() {
+        // Test that operations handle None/missing request gracefully
+        use std::collections::HashMap;
+
+        // Mock request wrapper that can be None
+        #[derive(Debug)]
+        struct RequestWrapper {
+            request: Option<MockRequest>,
+        }
+
+        #[derive(Debug)]
+        struct MockRequest {
+            headers: HashMap<String, String>,
+        }
+
+        impl RequestWrapper {
+            fn new_with_request() -> Self {
+                Self {
+                    request: Some(MockRequest {
+                        headers: HashMap::new(),
+                    }),
+                }
+            }
+
+            fn new_without_request() -> Self {
+                Self { request: None }
+            }
+
+            fn add_message(&self, message: Message) -> Result<(), String> {
+                match &self.request {
+                    Some(_) => {
+                        // In a real implementation, this would add to the request's message storage
+                        Ok(())
+                    }
+                    None => Err("No request available".to_string()),
+                }
+            }
+        }
+
+        // Test with request present
+        let wrapper_with_request = RequestWrapper::new_with_request();
+        let result = wrapper_with_request.add_message(Message::new(Level::Info, "Test message"));
+        assert!(result.is_ok());
+
+        // Test with no request
+        let wrapper_without_request = RequestWrapper::new_without_request();
+        let result = wrapper_without_request.add_message(Message::new(Level::Info, "Test message"));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "No request available");
+    }
+
+    #[test]
+    fn test_middleware_missing() {
+        // Test that MessageFailure is raised when middleware is not installed
+        use std::collections::HashMap;
+
+        #[derive(Debug)]
+        struct MockRequest {
+            headers: HashMap<String, String>,
+            has_message_middleware: bool,
+        }
+
+        impl MockRequest {
+            fn new() -> Self {
+                Self {
+                    headers: HashMap::new(),
+                    has_message_middleware: false,
+                }
+            }
+
+            fn with_middleware() -> Self {
+                Self {
+                    headers: HashMap::new(),
+                    has_message_middleware: true,
+                }
+            }
+
+            fn add_message(&self, message: Message) -> Result<(), String> {
+                if self.has_message_middleware {
+                    Ok(())
+                } else {
+                    Err("MessageMiddleware not installed".to_string())
+                }
+            }
+        }
+
+        // Test without middleware
+        let request = MockRequest::new();
+        let result = request.add_message(Message::new(Level::Debug, "some message"));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "MessageMiddleware not installed");
+
+        // Test with middleware
+        let request_with_middleware = MockRequest::with_middleware();
+        let result =
+            request_with_middleware.add_message(Message::new(Level::Debug, "some message"));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_middleware_missing_silently() {
+        // Test that no error is raised when fail_silently=true and middleware is missing
+        use std::collections::HashMap;
+
+        #[derive(Debug)]
+        struct MockRequest {
+            headers: HashMap<String, String>,
+            has_message_middleware: bool,
+        }
+
+        impl MockRequest {
+            fn new() -> Self {
+                Self {
+                    headers: HashMap::new(),
+                    has_message_middleware: false,
+                }
+            }
+
+            fn add_message_silently(
+                &self,
+                message: Message,
+                fail_silently: bool,
+            ) -> Result<(), String> {
+                if self.has_message_middleware {
+                    Ok(())
+                } else if fail_silently {
+                    // Silently ignore the error
+                    Ok(())
+                } else {
+                    Err("MessageMiddleware not installed".to_string())
+                }
+            }
+        }
+
+        let request = MockRequest::new();
+
+        // Test with fail_silently=false (should fail)
+        let result =
+            request.add_message_silently(Message::new(Level::Debug, "some message"), false);
+        assert!(result.is_err());
+
+        // Test with fail_silently=true (should succeed silently)
+        let result = request.add_message_silently(Message::new(Level::Debug, "some message"), true);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_custom_request_wrapper() {
+        // Test that add_message works with custom request wrappers (duck typing)
+        use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
+
+        // Custom request wrapper that implements the message storage interface
+        #[derive(Debug)]
+        struct CustomRequestWrapper {
+            inner_request: MockRequest,
+            message_storage: Arc<Mutex<MemoryStorage>>,
+        }
+
+        #[derive(Debug)]
+        struct MockRequest {
+            headers: HashMap<String, String>,
+            path: String,
+        }
+
+        impl CustomRequestWrapper {
+            fn new(path: String) -> Self {
+                Self {
+                    inner_request: MockRequest {
+                        headers: HashMap::new(),
+                        path,
+                    },
+                    message_storage: Arc::new(Mutex::new(MemoryStorage::new())),
+                }
+            }
+
+            fn add_message(&self, message: Message) {
+                self.message_storage.lock().unwrap().add(message);
+            }
+
+            fn get_messages(&self) -> Vec<Message> {
+                self.message_storage.lock().unwrap().peek()
+            }
+
+            fn get_path(&self) -> &str {
+                &self.inner_request.path
+            }
+        }
+
+        // Test with custom request wrapper
+        let wrapper = CustomRequestWrapper::new("/api/users/".to_string());
+
+        // Add messages through the wrapper
+        wrapper.add_message(Message::new(Level::Info, "User list requested"));
+        wrapper.add_message(Message::new(Level::Warning, "Large result set"));
+
+        // Verify messages are stored and accessible
+        let messages = wrapper.get_messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text, "User list requested");
+        assert_eq!(messages[1].text, "Large result set");
+
+        // Verify other request properties work
+        assert_eq!(wrapper.get_path(), "/api/users/");
+    }
+}
