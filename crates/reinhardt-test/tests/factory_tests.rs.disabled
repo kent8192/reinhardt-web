@@ -1,0 +1,258 @@
+//! Tests for APIRequestFactory and RequestBuilder
+//!
+//! These tests verify request factory functionality including:
+//! - Request creation for different HTTP methods
+//! - Header management
+//! - Data serialization
+//! - Request building
+//!
+//! Based on Django REST Framework's APIRequestFactory
+
+use bytes::Bytes;
+use http::Method;
+use reinhardt_test::{APIRequestFactory, RequestBuilder};
+use serde_json::json;
+
+#[test]
+fn test_factory_creation() {
+    // Test: Create a new APIRequestFactory
+    let factory = APIRequestFactory::new();
+
+    // Factory should be successfully created
+    // Verify by creating a request
+    let request = factory.get("/api/test");
+    assert_eq!(request.method(), Method::GET);
+}
+
+#[test]
+fn test_factory_with_default_format() {
+    // Test: Create factory with custom default format
+    let factory = APIRequestFactory::new().with_format("json");
+
+    let request = factory.post("/api/create");
+    assert_eq!(request.method(), Method::POST);
+}
+
+#[test]
+fn test_factory_with_header() {
+    // Test: Add default headers to factory
+    let factory = APIRequestFactory::new()
+        .with_header("X-Custom-Header", "test-value")
+        .unwrap();
+
+    let request = factory.get("/api/test");
+    // Headers should be included in the request
+    assert_eq!(request.method(), Method::GET);
+}
+
+#[test]
+fn test_factory_get_request() {
+    // Test: Create a GET request using factory
+    let factory = APIRequestFactory::new();
+    let request = factory.get("/api/users");
+
+    assert_eq!(request.method(), Method::GET);
+    assert_eq!(request.path(), "/api/users");
+}
+
+#[test]
+fn test_factory_post_request() {
+    // Test: Create a POST request using factory
+    let factory = APIRequestFactory::new();
+    let request = factory.post("/api/users");
+
+    assert_eq!(request.method(), Method::POST);
+    assert_eq!(request.path(), "/api/users");
+}
+
+#[test]
+fn test_factory_put_request() {
+    // Test: Create a PUT request using factory
+    let factory = APIRequestFactory::new();
+    let request = factory.put("/api/users/123");
+
+    assert_eq!(request.method(), Method::PUT);
+    assert_eq!(request.path(), "/api/users/123");
+}
+
+#[test]
+fn test_factory_patch_request() {
+    // Test: Create a PATCH request using factory
+    let factory = APIRequestFactory::new();
+    let request = factory.patch("/api/users/123");
+
+    assert_eq!(request.method(), Method::PATCH);
+    assert_eq!(request.path(), "/api/users/123");
+}
+
+#[test]
+fn test_factory_delete_request() {
+    // Test: Create a DELETE request using factory
+    let factory = APIRequestFactory::new();
+    let request = factory.delete("/api/users/123");
+
+    assert_eq!(request.method(), Method::DELETE);
+    assert_eq!(request.path(), "/api/users/123");
+}
+
+#[test]
+fn test_factory_head_request() {
+    // Test: Create a HEAD request using factory
+    let factory = APIRequestFactory::new();
+    let request = factory.head("/api/users");
+
+    assert_eq!(request.method(), Method::HEAD);
+    assert_eq!(request.path(), "/api/users");
+}
+
+#[test]
+fn test_factory_options_request() {
+    // Test: Create an OPTIONS request using factory
+    let factory = APIRequestFactory::new();
+    let request = factory.options("/api/users");
+
+    assert_eq!(request.method(), Method::OPTIONS);
+    assert_eq!(request.path(), "/api/users");
+}
+
+#[test]
+fn test_factory_generic_request() {
+    // Test: Create a request with custom method
+    let factory = APIRequestFactory::new();
+    let request = factory.request(Method::TRACE, "/api/trace");
+
+    assert_eq!(request.method(), Method::TRACE);
+    assert_eq!(request.path(), "/api/trace");
+}
+
+#[test]
+fn test_request_builder_basic() {
+    // Test: Use RequestBuilder directly
+    let builder = RequestBuilder::new(Method::GET, "/test", &http::HeaderMap::new());
+
+    assert_eq!(builder.method(), Method::GET);
+    assert_eq!(builder.path(), "/test");
+}
+
+#[test]
+fn test_request_builder_with_header() {
+    // Test: Add header to RequestBuilder
+    let mut builder = RequestBuilder::new(Method::GET, "/test", &http::HeaderMap::new());
+
+    builder = builder.header("Authorization", "Bearer token");
+    assert_eq!(builder.method(), Method::GET);
+}
+
+#[test]
+fn test_request_builder_with_json() {
+    // Test: Add JSON data to request
+    let data = json!({"name": "test", "value": 42});
+
+    let mut builder = RequestBuilder::new(Method::POST, "/api/data", &http::HeaderMap::new());
+    builder = builder.json(&data).unwrap();
+
+    assert_eq!(builder.method(), Method::POST);
+}
+
+#[test]
+fn test_request_builder_with_form() {
+    // Test: Add form data to request
+    let data = json!({"field1": "value1", "field2": "value2"});
+
+    let mut builder = RequestBuilder::new(Method::POST, "/api/form", &http::HeaderMap::new());
+    builder = builder.form(&data).unwrap();
+
+    assert_eq!(builder.method(), Method::POST);
+}
+
+#[test]
+fn test_request_builder_with_query_params() {
+    // Test: Add query parameters
+    let mut builder = RequestBuilder::new(Method::GET, "/api/search", &http::HeaderMap::new());
+
+    builder = builder.query_param("q", "test");
+    builder = builder.query_param("page", "1");
+
+    assert_eq!(builder.method(), Method::GET);
+}
+
+#[test]
+fn test_request_builder_build() {
+    // Test: Build a complete HTTP request
+    let builder = RequestBuilder::new(Method::GET, "/api/test", &http::HeaderMap::new());
+
+    let result = builder.build();
+    assert!(result.is_ok());
+
+    let request = result.unwrap();
+    assert_eq!(request.method(), Method::GET);
+}
+
+#[test]
+fn test_factory_multiple_requests() {
+    // Test: Create multiple requests from the same factory
+    let factory = APIRequestFactory::new();
+
+    let req1 = factory.get("/api/users");
+    let req2 = factory.post("/api/users");
+    let req3 = factory.put("/api/users/1");
+
+    assert_eq!(req1.method(), Method::GET);
+    assert_eq!(req2.method(), Method::POST);
+    assert_eq!(req3.method(), Method::PUT);
+}
+
+#[test]
+fn test_factory_default_trait() {
+    // Test: Factory implements Default trait
+    let factory = APIRequestFactory::default();
+
+    let request = factory.get("/test");
+    assert_eq!(request.method(), Method::GET);
+}
+
+#[test]
+fn test_request_builder_chain() {
+    // Test: Chain multiple builder methods
+    let builder = RequestBuilder::new(Method::POST, "/api/test", &http::HeaderMap::new())
+        .header("Content-Type", "application/json")
+        .query_param("test", "value");
+
+    assert_eq!(builder.method(), Method::POST);
+}
+
+#[test]
+fn test_factory_with_multiple_headers() {
+    // Test: Add multiple default headers
+    let factory = APIRequestFactory::new()
+        .with_header("X-Header-1", "value1")
+        .unwrap()
+        .with_header("X-Header-2", "value2")
+        .unwrap();
+
+    let request = factory.get("/api/test");
+    assert_eq!(request.method(), Method::GET);
+}
+
+#[test]
+fn test_request_builder_with_body() {
+    // Test: Set raw body data
+    let body = Bytes::from("raw body data");
+
+    let builder =
+        RequestBuilder::new(Method::POST, "/api/raw", &http::HeaderMap::new()).body(body.clone());
+
+    assert_eq!(builder.method(), Method::POST);
+}
+
+#[test]
+fn test_factory_reusable() {
+    // Test: Factory can be reused for multiple requests
+    let factory = APIRequestFactory::new();
+
+    // Create multiple requests
+    for i in 0..10 {
+        let request = factory.get(&format!("/api/test/{}", i));
+        assert_eq!(request.method(), Method::GET);
+    }
+}

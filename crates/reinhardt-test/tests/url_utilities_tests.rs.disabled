@@ -1,0 +1,167 @@
+//! Tests for URL utility functions
+//!
+//! These tests verify URL handling utilities including:
+//! - URL path parsing
+//! - Query string handling
+//! - URL building
+//! - Path parameter extraction
+//!
+//! Based on Django REST Framework's URL utilities
+
+use std::collections::HashMap;
+
+/// Simple URL parser for testing
+struct TestUrl {
+    path: String,
+    query_params: HashMap<String, String>,
+}
+
+impl TestUrl {
+    fn parse(url: &str) -> Self {
+        let parts: Vec<&str> = url.splitn(2, '?').collect();
+        let path = parts[0].to_string();
+        let mut query_params = HashMap::new();
+
+        if parts.len() > 1 {
+            for param in parts[1].split('&') {
+                let kv: Vec<&str> = param.splitn(2, '=').collect();
+                if kv.len() == 2 {
+                    query_params.insert(kv[0].to_string(), kv[1].to_string());
+                }
+            }
+        }
+
+        Self { path, query_params }
+    }
+
+    fn path(&self) -> &str {
+        &self.path
+    }
+
+    fn query(&self, key: &str) -> Option<&String> {
+        self.query_params.get(key)
+    }
+}
+
+#[test]
+fn test_url_parse_simple() {
+    // Test: Parse simple URL path
+    let url = TestUrl::parse("/api/users");
+
+    assert_eq!(url.path(), "/api/users");
+    assert!(url.query_params.is_empty());
+}
+
+#[test]
+fn test_url_parse_with_query() {
+    // Test: Parse URL with query parameters
+    let url = TestUrl::parse("/api/users?page=1&limit=10");
+
+    assert_eq!(url.path(), "/api/users");
+    assert_eq!(url.query("page"), Some(&"1".to_string()));
+    assert_eq!(url.query("limit"), Some(&"10".to_string()));
+}
+
+#[test]
+fn test_url_parse_multiple_params() {
+    // Test: Parse URL with multiple query parameters
+    let url = TestUrl::parse("/search?q=test&category=books&sort=relevance");
+
+    assert_eq!(url.path(), "/search");
+    assert_eq!(url.query("q"), Some(&"test".to_string()));
+    assert_eq!(url.query("category"), Some(&"books".to_string()));
+    assert_eq!(url.query("sort"), Some(&"relevance".to_string()));
+}
+
+#[test]
+fn test_url_path_segments() {
+    // Test: Extract path segments
+    let url = TestUrl::parse("/api/v1/users/123/posts");
+    let segments: Vec<&str> = url.path().split('/').filter(|s| !s.is_empty()).collect();
+
+    assert_eq!(segments.len(), 5);
+    assert_eq!(segments[0], "api");
+    assert_eq!(segments[1], "v1");
+    assert_eq!(segments[2], "users");
+    assert_eq!(segments[3], "123");
+    assert_eq!(segments[4], "posts");
+}
+
+#[test]
+fn test_url_trailing_slash() {
+    // Test: Handle URLs with and without trailing slash
+    let url_with_slash = TestUrl::parse("/api/users/");
+    let url_without_slash = TestUrl::parse("/api/users");
+
+    assert!(url_with_slash.path().ends_with('/'));
+    assert!(!url_without_slash.path().ends_with('/'));
+}
+
+#[test]
+fn test_url_root_path() {
+    // Test: Parse root path
+    let url = TestUrl::parse("/");
+
+    assert_eq!(url.path(), "/");
+}
+
+#[test]
+fn test_url_query_missing_param() {
+    // Test: Query non-existent parameter
+    let url = TestUrl::parse("/api/users?page=1");
+
+    assert_eq!(url.query("page"), Some(&"1".to_string()));
+    assert_eq!(url.query("limit"), None);
+}
+
+#[test]
+fn test_url_empty_query_value() {
+    // Test: Handle empty query values
+    let url = TestUrl::parse("/api/search?q=");
+
+    assert_eq!(url.query("q"), Some(&"".to_string()));
+}
+
+#[test]
+fn test_url_special_characters_in_path() {
+    // Test: Handle special characters in path
+    let url = TestUrl::parse("/api/users/john-doe_123");
+
+    assert!(url.path().contains("john-doe_123"));
+}
+
+#[test]
+fn test_url_numeric_query_params() {
+    // Test: Handle numeric query parameters
+    let url = TestUrl::parse("/api/items?id=42&page=5");
+
+    assert_eq!(url.query("id"), Some(&"42".to_string()));
+    assert_eq!(url.query("page"), Some(&"5".to_string()));
+}
+
+#[test]
+fn test_url_path_normalization() {
+    // Test: Path normalization (remove double slashes)
+    let path = "/api//users///123";
+    let normalized: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let result = format!("/{}", normalized.join("/"));
+
+    assert_eq!(result, "/api/users/123");
+}
+
+#[test]
+fn test_url_build_from_parts() {
+    // Test: Build URL from parts
+    let path = "/api/users";
+    let params = vec![("page", "1"), ("limit", "10")];
+
+    let query_string = params
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    let url = format!("{}?{}", path, query_string);
+
+    assert_eq!(url, "/api/users?page=1&limit=10");
+}

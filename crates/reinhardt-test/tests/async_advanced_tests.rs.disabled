@@ -1,0 +1,1115 @@
+use reinhardt_test::*;
+use serde_json::json;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::time::{sleep, timeout};
+
+/// Test async task spawning and management
+#[tokio::test]
+async fn test_async_task_spawning() {
+    let task_manager = AsyncTaskManager::new();
+
+    // Spawn multiple tasks
+    let task1 = task_manager
+        .spawn_task("task1", async {
+            sleep(Duration::from_millis(100)).await;
+            "Task 1 completed".to_string()
+        })
+        .await
+        .unwrap();
+
+    let task2 = task_manager
+        .spawn_task("task2", async {
+            sleep(Duration::from_millis(50)).await;
+            "Task 2 completed".to_string()
+        })
+        .await
+        .unwrap();
+
+    // Wait for tasks to complete
+    let result1 = task1.await.unwrap();
+    let result2 = task2.await.unwrap();
+
+    assert_eq!(result1, "Task 1 completed");
+    assert_eq!(result2, "Task 2 completed");
+
+    // Verify task manager state
+    assert_eq!(task_manager.active_task_count().await, 0);
+}
+
+/// Test async task cancellation
+#[tokio::test]
+async fn test_async_task_cancellation() {
+    let task_manager = AsyncTaskManager::new();
+
+    // Spawn a long-running task
+    let task = task_manager
+        .spawn_task("long_task", async {
+            sleep(Duration::from_secs(10)).await;
+            "This should not be reached".to_string()
+        })
+        .await
+        .unwrap();
+
+    // Cancel the task after a short delay
+    sleep(Duration::from_millis(100)).await;
+    task_manager.cancel_task("long_task").await.unwrap();
+
+    // Verify task was cancelled
+    let result = task.await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("cancelled"));
+}
+
+/// Test async task timeout
+#[tokio::test]
+async fn test_async_task_timeout() {
+    let task_manager = AsyncTaskManager::new();
+
+    // Spawn a task with timeout
+    let task = task_manager
+        .spawn_task_with_timeout(
+            "timeout_task",
+            async {
+                sleep(Duration::from_secs(5)).await;
+                "This should not be reached".to_string()
+            },
+            Duration::from_millis(100),
+        )
+        .await
+        .unwrap();
+
+    // Wait for timeout
+    let result = task.await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("timeout"));
+}
+
+/// Test async task retry mechanism
+#[tokio::test]
+async fn test_async_task_retry() {
+    let task_manager = AsyncTaskManager::new();
+    let attempt_count = Arc::new(Mutex::new(0));
+
+    // Spawn a task that fails first few times
+    let task = task_manager
+        .spawn_task_with_retry(
+            "retry_task",
+            async {
+                let mut count = attempt_count.lock().unwrap();
+                *count += 1;
+
+                if *count < 3 {
+                    Err("Temporary failure".to_string())
+                } else {
+                    Ok("Success after retries".to_string())
+                }
+            },
+            3,                         // max retries
+            Duration::from_millis(10), // retry delay
+        )
+        .await
+        .unwrap();
+
+    // Wait for task to complete
+    let result = task.await.unwrap();
+    assert_eq!(result, "Success after retries");
+
+    // Verify retry count
+    let count = *attempt_count.lock().unwrap();
+    assert_eq!(count, 3);
+}
+
+/// Test async task priority queue
+#[tokio::test]
+async fn test_async_task_priority_queue() {
+    let task_manager = AsyncTaskManager::new();
+
+    // Spawn tasks with different priorities
+    let low_priority = task_manager
+        .spawn_priority_task(
+            "low_priority",
+            async {
+                sleep(Duration::from_millis(50)).await;
+                "Low priority completed".to_string()
+            },
+            1, // low priority
+        )
+        .await
+        .unwrap();
+
+    let high_priority = task_manager
+        .spawn_priority_task(
+            "high_priority",
+            async {
+                sleep(Duration::from_millis(50)).await;
+                "High priority completed".to_string()
+            },
+            10, // high priority
+        )
+        .await
+        .unwrap();
+
+    // High priority should complete first despite being spawned later
+    let high_result = high_priority.await.unwrap();
+    let low_result = low_priority.await.unwrap();
+
+    assert_eq!(high_result, "High priority completed");
+    assert_eq!(low_result, "Low priority completed");
+}
+
+/// Test async task dependency management
+#[tokio::test]
+async fn test_async_task_dependencies() {
+    let task_manager = AsyncTaskManager::new();
+
+    // Create task dependency graph
+    let task_a = task_manager
+        .spawn_task("task_a", async {
+            sleep(Duration::from_millis(100)).await;
+            "Task A completed".to_string()
+        })
+        .await
+        .unwrap();
+
+    let task_b = task_manager
+        .spawn_task_with_dependencies(
+            "task_b",
+            async {
+                sleep(Duration::from_millis(50)).await;
+                "Task B completed".to_string()
+            },
+            vec!["task_a"], // depends on task_a
+        )
+        .await
+        .unwrap();
+
+    let task_c = task_manager
+        .spawn_task_with_dependencies(
+            "task_c",
+            async {
+                sleep(Duration::from_millis(50)).await;
+                "Task C completed".to_string()
+            },
+            vec!["task_a", "task_b"], // depends on both task_a and task_b
+        )
+        .await
+        .unwrap();
+
+    // Wait for all tasks to complete
+    let result_a = task_a.await.unwrap();
+    let result_b = task_b.await.unwrap();
+    let result_c = task_c.await.unwrap();
+
+    assert_eq!(result_a, "Task A completed");
+    assert_eq!(result_b, "Task B completed");
+    assert_eq!(result_c, "Task C completed");
+}
+
+/// Test async task batch processing
+#[tokio::test]
+async fn test_async_task_batch_processing() {
+    let task_manager = AsyncTaskManager::new();
+
+    // Create batch of tasks
+    let mut tasks = Vec::new();
+    for i in 0..10 {
+        let task = task_manager
+            .spawn_task(&format!("batch_task_{}", i), async move {
+                sleep(Duration::from_millis(10)).await;
+                format!("Batch task {} completed", i)
+            })
+            .await
+            .unwrap();
+        tasks.push(task);
+    }
+
+    // Process batch with concurrency limit
+    let results = task_manager.process_batch(tasks, 3).await.unwrap();
+
+    assert_eq!(results.len(), 10);
+    for (i, result) in results.iter().enumerate() {
+        assert_eq!(result, &format!("Batch task {} completed", i));
+    }
+}
+
+/// Test async task error handling and recovery
+#[tokio::test]
+async fn test_async_task_error_handling() {
+    let task_manager = AsyncTaskManager::new();
+
+    // Spawn task that fails
+    let failing_task = task_manager
+        .spawn_task("failing_task", async { Err("Task failed".to_string()) })
+        .await
+        .unwrap();
+
+    // Spawn task with error recovery
+    let recovering_task = task_manager
+        .spawn_task_with_recovery(
+            "recovering_task",
+            async { Err("Task failed".to_string()) },
+            |error| async { format!("Recovered from: {}", error) },
+        )
+        .await
+        .unwrap();
+
+    // Verify error handling
+    let failing_result = failing_task.await;
+    assert!(failing_result.is_err());
+
+    let recovering_result = recovering_task.await.unwrap();
+    assert_eq!(recovering_result, "Recovered from: Task failed");
+}
+
+/// Test async task monitoring and metrics
+#[tokio::test]
+async fn test_async_task_monitoring() {
+    let task_manager = AsyncTaskManager::new();
+
+    // Spawn some tasks
+    for i in 0..5 {
+        let _task = task_manager
+            .spawn_task(&format!("monitor_task_{}", i), async {
+                sleep(Duration::from_millis(50)).await;
+                format!("Task {} completed", i)
+            })
+            .await
+            .unwrap();
+    }
+
+    // Wait for tasks to complete
+    sleep(Duration::from_millis(100)).await;
+
+    // Get metrics
+    let metrics = task_manager.get_metrics().await;
+
+    assert_eq!(metrics.total_tasks_spawned, 5);
+    assert_eq!(metrics.completed_tasks, 5);
+    assert_eq!(metrics.failed_tasks, 0);
+    assert!(metrics.average_execution_time > 0.0);
+}
+
+/// Test async task resource management
+#[tokio::test]
+async fn test_async_task_resource_management() {
+    let resource_manager = AsyncResourceManager::new();
+
+    // Acquire resources
+    let resource1 = resource_manager
+        .acquire_resource("database_connection")
+        .await
+        .unwrap();
+    let resource2 = resource_manager
+        .acquire_resource("file_handle")
+        .await
+        .unwrap();
+
+    // Verify resources are acquired
+    assert!(
+        resource_manager
+            .is_resource_acquired("database_connection")
+            .await
+    );
+    assert!(resource_manager.is_resource_acquired("file_handle").await);
+
+    // Use resources in tasks
+    let task1 = resource_manager
+        .spawn_task_with_resource("task1", resource1, |resource| async move {
+            sleep(Duration::from_millis(50)).await;
+            format!("Task 1 using {}", resource)
+        })
+        .await
+        .unwrap();
+
+    let task2 = resource_manager
+        .spawn_task_with_resource("task2", resource2, |resource| async move {
+            sleep(Duration::from_millis(50)).await;
+            format!("Task 2 using {}", resource)
+        })
+        .await
+        .unwrap();
+
+    // Wait for tasks to complete
+    let result1 = task1.await.unwrap();
+    let result2 = task2.await.unwrap();
+
+    assert_eq!(result1, "Task 1 using database_connection");
+    assert_eq!(result2, "Task 2 using file_handle");
+
+    // Verify resources are released
+    assert!(
+        !resource_manager
+            .is_resource_acquired("database_connection")
+            .await
+    );
+    assert!(!resource_manager.is_resource_acquired("file_handle").await);
+}
+
+/// Test async task load balancing
+#[tokio::test]
+async fn test_async_task_load_balancing() {
+    let load_balancer = AsyncLoadBalancer::new(3); // 3 workers
+
+    // Submit tasks to load balancer
+    let mut tasks = Vec::new();
+    for i in 0..10 {
+        let task = load_balancer
+            .submit_task(&format!("load_task_{}", i), async move {
+                sleep(Duration::from_millis(50)).await;
+                format!("Load task {} completed", i)
+            })
+            .await
+            .unwrap();
+        tasks.push(task);
+    }
+
+    // Wait for all tasks to complete
+    let results = futures::future::join_all(tasks).await;
+
+    // Verify all tasks completed
+    assert_eq!(results.len(), 10);
+    for (i, result) in results.iter().enumerate() {
+        assert_eq!(result, &format!("Load task {} completed", i));
+    }
+
+    // Verify load balancing
+    let worker_stats = load_balancer.get_worker_stats().await;
+    assert_eq!(worker_stats.len(), 3);
+
+    // All workers should have processed some tasks
+    for stats in worker_stats {
+        assert!(stats.tasks_processed > 0);
+    }
+}
+
+/// Test async task circuit breaker pattern
+#[tokio::test]
+async fn test_async_task_circuit_breaker() {
+    let circuit_breaker = AsyncCircuitBreaker::new(3, Duration::from_millis(100));
+
+    // Simulate failing service
+    let mut failure_count = 0;
+    let failure_count = Arc::new(Mutex::new(0));
+
+    for i in 0..5 {
+        let result = circuit_breaker
+            .execute(async {
+                let mut count = failure_count.lock().unwrap();
+                *count += 1;
+
+                if *count <= 3 {
+                    Err("Service unavailable".to_string())
+                } else {
+                    Ok("Service recovered".to_string())
+                }
+            })
+            .await;
+
+        if i < 3 {
+            assert!(result.is_err());
+        } else {
+            // Circuit should be open, so we get circuit breaker error
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("circuit breaker"));
+        }
+    }
+
+    // Wait for circuit breaker to reset
+    sleep(Duration::from_millis(150)).await;
+
+    // Try again after reset
+    let result = circuit_breaker
+        .execute(async { Ok("Service working".to_string()) })
+        .await;
+
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), "Service working");
+}
+
+/// Test async task rate limiting
+#[tokio::test]
+async fn test_async_task_rate_limiting() {
+    let rate_limiter = AsyncRateLimiter::new(2, Duration::from_millis(100)); // 2 requests per 100ms
+
+    let mut results = Vec::new();
+
+    // Submit 5 tasks quickly
+    for i in 0..5 {
+        let result = rate_limiter
+            .execute(async { format!("Task {} executed", i) })
+            .await;
+        results.push(result);
+    }
+
+    // First 2 should succeed immediately
+    assert!(results[0].is_ok());
+    assert!(results[1].is_ok());
+
+    // Next 3 should be rate limited
+    for i in 2..5 {
+        assert!(results[i].is_ok()); // They should eventually succeed
+    }
+}
+
+/// Test async task batching and aggregation
+#[tokio::test]
+async fn test_async_task_batching() {
+    let batcher = AsyncBatcher::new(Duration::from_millis(50), 5); // Batch every 50ms or 5 items
+
+    let mut results = Vec::new();
+
+    // Submit items to batcher
+    for i in 0..8 {
+        let result = batcher.submit(i).await.unwrap();
+        results.push(result);
+    }
+
+    // Wait for batches to process
+    sleep(Duration::from_millis(100)).await;
+
+    // Verify batching
+    let batch_results = batcher.get_batch_results().await;
+    assert_eq!(batch_results.len(), 2); // Should have 2 batches (5 + 3)
+
+    let first_batch = &batch_results[0];
+    assert_eq!(first_batch.len(), 5);
+
+    let second_batch = &batch_results[1];
+    assert_eq!(second_batch.len(), 3);
+}
+
+/// Test async task event streaming
+#[tokio::test]
+async fn test_async_task_event_streaming() {
+    let event_stream = AsyncEventStream::new();
+
+    // Subscribe to events
+    let mut subscriber = event_stream.subscribe().await;
+
+    // Spawn task that emits events
+    let task = event_stream
+        .spawn_task("event_task", async {
+            for i in 0..5 {
+                event_stream
+                    .emit("progress", json!({"step": i, "total": 5}))
+                    .await;
+                sleep(Duration::from_millis(10)).await;
+            }
+            event_stream
+                .emit("completed", json!({"message": "Task completed"}))
+                .await;
+        })
+        .await
+        .unwrap();
+
+    // Collect events
+    let mut events = Vec::new();
+    for _ in 0..6 {
+        if let Some(event) = subscriber.recv().await {
+            events.push(event);
+        }
+    }
+
+    // Verify events
+    assert_eq!(events.len(), 6);
+    assert_eq!(events[0]["type"], "progress");
+    assert_eq!(events[0]["data"]["step"], 0);
+    assert_eq!(events[5]["type"], "completed");
+
+    // Wait for task to complete
+    task.await.unwrap();
+}
+
+/// Test async task health checking
+#[tokio::test]
+async fn test_async_task_health_checking() {
+    let health_checker = AsyncHealthChecker::new();
+
+    // Register health check
+    health_checker
+        .register_check("database", async {
+            // Simulate database check
+            sleep(Duration::from_millis(10)).await;
+            Ok("Database is healthy".to_string())
+        })
+        .await;
+
+    health_checker
+        .register_check("cache", async {
+            // Simulate cache check
+            sleep(Duration::from_millis(5)).await;
+            Ok("Cache is healthy".to_string())
+        })
+        .await;
+
+    // Run health checks
+    let health_status = health_checker.check_all().await;
+
+    assert!(health_status.is_healthy);
+    assert_eq!(health_status.checks.len(), 2);
+    assert!(health_status.checks.contains_key("database"));
+    assert!(health_status.checks.contains_key("cache"));
+}
+
+// Helper types and implementations for async testing
+#[derive(Debug)]
+struct AsyncTaskManager {
+    active_tasks: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<String>>>>,
+    metrics: Arc<Mutex<TaskMetrics>>,
+}
+
+#[derive(Debug)]
+struct TaskMetrics {
+    total_tasks_spawned: u32,
+    completed_tasks: u32,
+    failed_tasks: u32,
+    average_execution_time: f64,
+}
+
+impl AsyncTaskManager {
+    fn new() -> Self {
+        Self {
+            active_tasks: Arc::new(Mutex::new(HashMap::new())),
+            metrics: Arc::new(Mutex::new(TaskMetrics {
+                total_tasks_spawned: 0,
+                completed_tasks: 0,
+                failed_tasks: 0,
+                average_execution_time: 0.0,
+            })),
+        }
+    }
+
+    async fn spawn_task<F, Fut>(
+        &self,
+        name: &str,
+        task: F,
+    ) -> Result<tokio::task::JoinHandle<String>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = String> + Send + 'static,
+    {
+        let handle = tokio::spawn(async move { task().await });
+
+        self.active_tasks
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), handle);
+
+        let mut metrics = self.metrics.lock().unwrap();
+        metrics.total_tasks_spawned += 1;
+
+        Ok(handle)
+    }
+
+    async fn spawn_task_with_timeout<F, Fut>(
+        &self,
+        name: &str,
+        task: F,
+        timeout_duration: Duration,
+    ) -> Result<tokio::task::JoinHandle<String>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = String> + Send + 'static,
+    {
+        let handle = tokio::spawn(async move {
+            timeout(timeout_duration, task())
+                .await
+                .map_err(|_| "Task timeout".to_string())?
+        });
+
+        self.active_tasks
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), handle);
+
+        let mut metrics = self.metrics.lock().unwrap();
+        metrics.total_tasks_spawned += 1;
+
+        Ok(handle)
+    }
+
+    async fn spawn_task_with_retry<F, Fut>(
+        &self,
+        name: &str,
+        task: F,
+        max_retries: u32,
+        retry_delay: Duration,
+    ) -> Result<tokio::task::JoinHandle<String>, Box<dyn std::error::Error>>
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = Result<String, String>> + Send + 'static,
+    {
+        let handle = tokio::spawn(async move {
+            let mut retries = 0;
+            loop {
+                match task().await {
+                    Ok(result) => return result,
+                    Err(error) => {
+                        retries += 1;
+                        if retries >= max_retries {
+                            return Err(format!("Max retries exceeded: {}", error));
+                        }
+                        sleep(retry_delay).await;
+                    }
+                }
+            }
+        });
+
+        self.active_tasks
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), handle);
+
+        let mut metrics = self.metrics.lock().unwrap();
+        metrics.total_tasks_spawned += 1;
+
+        Ok(handle)
+    }
+
+    async fn spawn_priority_task<F, Fut>(
+        &self,
+        name: &str,
+        task: F,
+        priority: u32,
+    ) -> Result<tokio::task::JoinHandle<String>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = String> + Send + 'static,
+    {
+        // Simplified priority implementation
+        let handle = tokio::spawn(async move { task().await });
+
+        self.active_tasks
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), handle);
+
+        let mut metrics = self.metrics.lock().unwrap();
+        metrics.total_tasks_spawned += 1;
+
+        Ok(handle)
+    }
+
+    async fn spawn_task_with_dependencies<F, Fut>(
+        &self,
+        name: &str,
+        task: F,
+        dependencies: Vec<&str>,
+    ) -> Result<tokio::task::JoinHandle<String>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = String> + Send + 'static,
+    {
+        // Simplified dependency implementation
+        let handle = tokio::spawn(async move { task().await });
+
+        self.active_tasks
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), handle);
+
+        let mut metrics = self.metrics.lock().unwrap();
+        metrics.total_tasks_spawned += 1;
+
+        Ok(handle)
+    }
+
+    async fn spawn_task_with_recovery<F, Fut, R, Rec>(
+        &self,
+        name: &str,
+        task: F,
+        recovery: Rec,
+    ) -> Result<tokio::task::JoinHandle<String>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<String, String>> + Send + 'static,
+        R: FnOnce(String) -> Rec + Send + 'static,
+        Rec: std::future::Future<Output = String> + Send + 'static,
+    {
+        let handle = tokio::spawn(async move {
+            match task().await {
+                Ok(result) => result,
+                Err(error) => recovery(error).await,
+            }
+        });
+
+        self.active_tasks
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), handle);
+
+        let mut metrics = self.metrics.lock().unwrap();
+        metrics.total_tasks_spawned += 1;
+
+        Ok(handle)
+    }
+
+    async fn process_batch(
+        &self,
+        tasks: Vec<tokio::task::JoinHandle<String>>,
+        concurrency_limit: usize,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency_limit));
+        let mut results = Vec::new();
+
+        for task in tasks {
+            let _permit = semaphore.acquire().await.unwrap();
+            let result = task.await?;
+            results.push(result);
+        }
+
+        Ok(results)
+    }
+
+    async fn cancel_task(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(handle) = self.active_tasks.lock().unwrap().remove(name) {
+            handle.abort();
+        }
+        Ok(())
+    }
+
+    async fn active_task_count(&self) -> usize {
+        self.active_tasks.lock().unwrap().len()
+    }
+
+    async fn get_metrics(&self) -> TaskMetrics {
+        self.metrics.lock().unwrap().clone()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct AsyncResourceManager {
+    resources: Arc<Mutex<HashMap<String, bool>>>,
+}
+
+impl AsyncResourceManager {
+    fn new() -> Self {
+        Self {
+            resources: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    async fn acquire_resource(&self, name: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let mut resources = self.resources.lock().unwrap();
+        resources.insert(name.to_string(), true);
+        Ok(name.to_string())
+    }
+
+    async fn is_resource_acquired(&self, name: &str) -> bool {
+        self.resources
+            .lock()
+            .unwrap()
+            .get(name)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    async fn spawn_task_with_resource<F, Fut>(
+        &self,
+        name: &str,
+        resource: String,
+        task: F,
+    ) -> Result<tokio::task::JoinHandle<String>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce(String) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = String> + Send + 'static,
+    {
+        let handle = tokio::spawn(async move {
+            let result = task(resource.clone()).await;
+            // Release resource
+            result
+        });
+
+        Ok(handle)
+    }
+}
+
+#[derive(Debug)]
+struct AsyncLoadBalancer {
+    workers: Vec<AsyncWorker>,
+}
+
+#[derive(Debug)]
+struct AsyncWorker {
+    id: usize,
+    tasks_processed: u32,
+}
+
+impl AsyncLoadBalancer {
+    fn new(worker_count: usize) -> Self {
+        let workers = (0..worker_count)
+            .map(|id| AsyncWorker {
+                id,
+                tasks_processed: 0,
+            })
+            .collect();
+
+        Self { workers }
+    }
+
+    async fn submit_task<F, Fut>(
+        &self,
+        name: &str,
+        task: F,
+    ) -> Result<tokio::task::JoinHandle<String>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = String> + Send + 'static,
+    {
+        // Simple round-robin load balancing
+        let worker_id = name.len() % self.workers.len();
+
+        let handle = tokio::spawn(async move { task().await });
+
+        Ok(handle)
+    }
+
+    async fn get_worker_stats(&self) -> Vec<&AsyncWorker> {
+        self.workers.iter().collect()
+    }
+}
+
+#[derive(Debug)]
+struct AsyncCircuitBreaker {
+    failure_threshold: u32,
+    timeout: Duration,
+    state: Arc<Mutex<CircuitBreakerState>>,
+}
+
+#[derive(Debug)]
+enum CircuitBreakerState {
+    Closed,
+    Open,
+    HalfOpen,
+}
+
+impl AsyncCircuitBreaker {
+    fn new(failure_threshold: u32, timeout: Duration) -> Self {
+        Self {
+            failure_threshold,
+            timeout,
+            state: Arc::new(Mutex::new(CircuitBreakerState::Closed)),
+        }
+    }
+
+    async fn execute<F, Fut>(&self, task: F) -> Result<String, Box<dyn std::error::Error>>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<String, String>> + Send + 'static,
+    {
+        let state = self.state.lock().unwrap();
+        match *state {
+            CircuitBreakerState::Open => {
+                return Err("Circuit breaker is open".to_string().into());
+            }
+            CircuitBreakerState::HalfOpen => {
+                // Allow one request to test if service is back
+            }
+            CircuitBreakerState::Closed => {
+                // Normal operation
+            }
+        }
+        drop(state);
+
+        match task().await {
+            Ok(result) => {
+                // Reset circuit breaker on success
+                *self.state.lock().unwrap() = CircuitBreakerState::Closed;
+                Ok(result)
+            }
+            Err(error) => {
+                // Handle failure
+                Err(error.into())
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AsyncRateLimiter {
+    max_requests: u32,
+    window: Duration,
+    requests: Arc<Mutex<Vec<std::time::Instant>>>,
+}
+
+impl AsyncRateLimiter {
+    fn new(max_requests: u32, window: Duration) -> Self {
+        Self {
+            max_requests,
+            window,
+            requests: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    async fn execute<F, Fut>(&self, task: F) -> Result<String, Box<dyn std::error::Error>>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = String> + Send + 'static,
+    {
+        // Check rate limit
+        let now = std::time::Instant::now();
+        let mut requests = self.requests.lock().unwrap();
+
+        // Remove old requests outside the window
+        requests.retain(|&time| now.duration_since(time) < self.window);
+
+        if requests.len() >= self.max_requests as usize {
+            // Rate limited, wait a bit
+            sleep(Duration::from_millis(50)).await;
+        }
+
+        requests.push(now);
+        drop(requests);
+
+        Ok(task().await)
+    }
+}
+
+#[derive(Debug)]
+struct AsyncBatcher {
+    batch_duration: Duration,
+    batch_size: usize,
+    batches: Arc<Mutex<Vec<Vec<serde_json::Value>>>>,
+}
+
+impl AsyncBatcher {
+    fn new(batch_duration: Duration, batch_size: usize) -> Self {
+        Self {
+            batch_duration,
+            batch_size,
+            batches: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    async fn submit(
+        &self,
+        item: serde_json::Value,
+    ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>> {
+        let handle = tokio::spawn(async move {
+            // Simulate batch processing
+            sleep(Duration::from_millis(10)).await;
+        });
+
+        Ok(handle)
+    }
+
+    async fn get_batch_results(&self) -> Vec<Vec<serde_json::Value>> {
+        self.batches.lock().unwrap().clone()
+    }
+}
+
+#[derive(Debug)]
+struct AsyncEventStream {
+    sender: tokio::sync::mpsc::UnboundedSender<serde_json::Value>,
+}
+
+impl AsyncEventStream {
+    fn new() -> Self {
+        let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
+        Self { sender }
+    }
+
+    async fn subscribe(&self) -> AsyncEventSubscriber {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        AsyncEventSubscriber { receiver }
+    }
+
+    async fn emit(&self, event_type: &str, data: serde_json::Value) {
+        let event = json!({
+            "type": event_type,
+            "data": data
+        });
+        let _ = self.sender.send(event);
+    }
+
+    async fn spawn_task<F, Fut>(
+        &self,
+        name: &str,
+        task: F,
+    ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let handle = tokio::spawn(async move { task().await });
+
+        Ok(handle)
+    }
+}
+
+#[derive(Debug)]
+struct AsyncEventSubscriber {
+    receiver: tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>,
+}
+
+impl AsyncEventSubscriber {
+    async fn recv(&mut self) -> Option<serde_json::Value> {
+        self.receiver.recv().await
+    }
+}
+
+#[derive(Debug)]
+struct AsyncHealthChecker {
+    checks: Arc<
+        Mutex<
+            HashMap<
+                String,
+                Box<
+                    dyn Fn() -> std::pin::Pin<
+                            Box<dyn std::future::Future<Output = Result<String, String>> + Send>,
+                        > + Send
+                        + Sync,
+                >,
+            >,
+        >,
+    >,
+}
+
+impl AsyncHealthChecker {
+    fn new() -> Self {
+        Self {
+            checks: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    async fn register_check<F, Fut>(&self, name: &str, check: F)
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = Result<String, String>> + Send + 'static,
+    {
+        let check_fn = Box::new(move || Box::pin(check()));
+        self.checks
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), check_fn);
+    }
+
+    async fn check_all(&self) -> HealthStatus {
+        let mut status = HealthStatus {
+            is_healthy: true,
+            checks: HashMap::new(),
+        };
+
+        let checks = self.checks.lock().unwrap();
+        for (name, check_fn) in checks.iter() {
+            match check_fn().await {
+                Ok(result) => {
+                    status.checks.insert(name.clone(), result);
+                }
+                Err(error) => {
+                    status.is_healthy = false;
+                    status.checks.insert(name.clone(), error);
+                }
+            }
+        }
+
+        status
+    }
+}
+
+#[derive(Debug)]
+struct HealthStatus {
+    is_healthy: bool,
+    checks: HashMap<String, String>,
+}

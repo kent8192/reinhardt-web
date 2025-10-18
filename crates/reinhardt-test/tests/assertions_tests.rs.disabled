@@ -1,0 +1,342 @@
+//! Tests for assertion helpers
+//!
+//! These tests verify the behavior of various assertion functions including:
+//! - JSON field assertions
+//! - JSON array assertions
+//! - JSON pattern matching
+//! - Status code assertions
+//!
+//! Based on Django's test_utils/tests.py assertion tests
+
+use reinhardt_test::*;
+use serde_json::json;
+
+#[test]
+fn test_assert_json_field_eq() {
+    // Test: assert_json_field_eq successfully matches field values
+    let data = json!({
+        "name": "test",
+        "value": 42,
+        "active": true
+    });
+
+    assert_json_field_eq(&data, "name", &json!("test"));
+    assert_json_field_eq(&data, "value", &json!(42));
+    assert_json_field_eq(&data, "active", &json!(true));
+}
+
+#[test]
+#[should_panic(expected = "Expected field 'name' to equal")]
+fn test_assert_json_field_eq_fails() {
+    // Test: assert_json_field_eq panics on mismatch
+    let data = json!({"name": "test"});
+    assert_json_field_eq(&data, "name", &json!("wrong"));
+}
+
+#[test]
+fn test_assert_json_has_field() {
+    // Test: assert_json_has_field verifies field existence
+    let data = json!({
+        "field1": "value1",
+        "field2": null,
+        "field3": {}
+    });
+
+    assert_json_has_field(&data, "field1");
+    assert_json_has_field(&data, "field2"); // null is still a field
+    assert_json_has_field(&data, "field3");
+}
+
+#[test]
+#[should_panic(expected = "Expected JSON to have field 'missing'")]
+fn test_assert_json_has_field_fails() {
+    // Test: assert_json_has_field panics when field is missing
+    let data = json!({"exists": "value"});
+    assert_json_has_field(&data, "missing");
+}
+
+#[test]
+fn test_assert_json_missing_field() {
+    // Test: assert_json_missing_field verifies field absence
+    let data = json!({"field1": "value"});
+
+    assert_json_missing_field(&data, "field2");
+    assert_json_missing_field(&data, "nonexistent");
+}
+
+#[test]
+#[should_panic(expected = "Expected JSON to not have field 'exists'")]
+fn test_assert_json_missing_field_fails() {
+    // Test: assert_json_missing_field panics when field exists
+    let data = json!({"exists": "value"});
+    assert_json_missing_field(&data, "exists");
+}
+
+#[test]
+fn test_assert_json_array_len() {
+    // Test: assert_json_array_len verifies array length
+    let empty = json!([]);
+    let single = json!([1]);
+    let multiple = json!([1, 2, 3, 4, 5]);
+
+    assert_json_array_len(&empty, 0);
+    assert_json_array_len(&single, 1);
+    assert_json_array_len(&multiple, 5);
+}
+
+#[test]
+#[should_panic(expected = "Expected array length 3, got 5")]
+fn test_assert_json_array_len_fails() {
+    // Test: assert_json_array_len panics on length mismatch
+    let data = json!([1, 2, 3, 4, 5]);
+    assert_json_array_len(&data, 3);
+}
+
+#[test]
+#[should_panic(expected = "Expected JSON array")]
+fn test_assert_json_array_len_fails_not_array() {
+    // Test: assert_json_array_len panics when not an array
+    let data = json!({"not": "array"});
+    assert_json_array_len(&data, 0);
+}
+
+#[test]
+fn test_assert_json_array_empty() {
+    // Test: assert_json_array_empty verifies empty arrays
+    let empty = json!([]);
+    assert_json_array_empty(&empty);
+}
+
+#[test]
+#[should_panic(expected = "Expected array length 0, got 3")]
+fn test_assert_json_array_empty_fails() {
+    // Test: assert_json_array_empty panics on non-empty array
+    let data = json!([1, 2, 3]);
+    assert_json_array_empty(&data);
+}
+
+#[test]
+fn test_assert_json_array_not_empty() {
+    // Test: assert_json_array_not_empty verifies non-empty arrays
+    let data = json!([1]);
+    assert_json_array_not_empty(&data);
+
+    let multiple = json!([1, 2, 3]);
+    assert_json_array_not_empty(&multiple);
+}
+
+#[test]
+#[should_panic(expected = "Expected non-empty array")]
+fn test_assert_json_array_not_empty_fails() {
+    // Test: assert_json_array_not_empty panics on empty array
+    let empty = json!([]);
+    assert_json_array_not_empty(&empty);
+}
+
+#[test]
+fn test_assert_json_array_contains() {
+    // Test: assert_json_array_contains finds values in arrays
+    let numbers = json!([1, 2, 3, 4, 5]);
+    assert_json_array_contains(&numbers, &json!(1));
+    assert_json_array_contains(&numbers, &json!(3));
+    assert_json_array_contains(&numbers, &json!(5));
+
+    let strings = json!(["apple", "banana", "cherry"]);
+    assert_json_array_contains(&strings, &json!("banana"));
+
+    let objects = json!([
+        {"id": 1, "name": "first"},
+        {"id": 2, "name": "second"}
+    ]);
+    assert_json_array_contains(&objects, &json!({"id": 1, "name": "first"}));
+}
+
+#[test]
+#[should_panic(expected = "Expected array to contain")]
+fn test_assert_json_array_contains_fails() {
+    // Test: assert_json_array_contains panics when value not found
+    let data = json!([1, 2, 3]);
+    assert_json_array_contains(&data, &json!(99));
+}
+
+#[test]
+fn test_assert_json_matches_simple() {
+    // Test: assert_json_matches with simple pattern matching
+    let data = json!({
+        "name": "test",
+        "value": 42,
+        "extra": "ignored"
+    });
+
+    // Pattern only needs subset of fields
+    let pattern = json!({"name": "test"});
+    assert_json_matches(&data, &pattern);
+
+    let pattern2 = json!({"value": 42});
+    assert_json_matches(&data, &pattern2);
+}
+
+#[test]
+fn test_assert_json_matches_nested() {
+    // Test: assert_json_matches with nested objects
+    let data = json!({
+        "user": {
+            "id": 123,
+            "name": "Alice",
+            "email": "alice@example.com"
+        },
+        "status": "active"
+    });
+
+    let pattern = json!({
+        "user": {
+            "id": 123,
+            "name": "Alice"
+        }
+    });
+
+    assert_json_matches(&data, &pattern);
+}
+
+#[test]
+fn test_assert_json_matches_arrays() {
+    // Test: assert_json_matches with arrays
+    let data = json!([1, 2, 3]);
+    let pattern = json!([1, 2, 3]);
+
+    assert_json_matches(&data, &pattern);
+}
+
+#[test]
+#[should_panic(expected = "Expected field 'missing'")]
+fn test_assert_json_matches_fails() {
+    // Test: assert_json_matches panics when pattern doesn't match
+    let data = json!({"exists": "value"});
+    let pattern = json!({"missing": "value"});
+
+    assert_json_matches(&data, &pattern);
+}
+
+#[test]
+fn test_assert_status_success() {
+    // Test: assert_status_success for 2xx status codes
+    use http::StatusCode;
+
+    assert_status_success(StatusCode::OK);
+    assert_status_success(StatusCode::CREATED);
+    assert_status_success(StatusCode::ACCEPTED);
+    assert_status_success(StatusCode::NO_CONTENT);
+}
+
+#[test]
+#[should_panic(expected = "Expected success status")]
+fn test_assert_status_success_fails() {
+    // Test: assert_status_success panics on non-2xx codes
+    use http::StatusCode;
+
+    assert_status_success(StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn test_assert_status_error() {
+    // Test: assert_status_error for error status codes
+    use http::StatusCode;
+
+    assert_status_error(StatusCode::BAD_REQUEST);
+    assert_status_error(StatusCode::UNAUTHORIZED);
+    assert_status_error(StatusCode::FORBIDDEN);
+    assert_status_error(StatusCode::NOT_FOUND);
+    assert_status_error(StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[test]
+#[should_panic(expected = "Expected error status")]
+fn test_assert_status_error_fails() {
+    // Test: assert_status_error panics on success codes
+    use http::StatusCode;
+
+    assert_status_error(StatusCode::OK);
+}
+
+#[test]
+fn test_assert_status_redirect() {
+    // Test: assert_status_redirect for 3xx status codes
+    use http::StatusCode;
+
+    assert_status_redirect(StatusCode::MOVED_PERMANENTLY);
+    assert_status_redirect(StatusCode::FOUND);
+    assert_status_redirect(StatusCode::SEE_OTHER);
+    assert_status_redirect(StatusCode::TEMPORARY_REDIRECT);
+}
+
+#[test]
+#[should_panic(expected = "Expected redirect status")]
+fn test_assert_status_redirect_fails() {
+    // Test: assert_status_redirect panics on non-3xx codes
+    use http::StatusCode;
+
+    assert_status_redirect(StatusCode::OK);
+}
+
+#[test]
+fn test_complex_json_matching() {
+    // Test: Complex real-world JSON matching scenario
+    let response_data = json!({
+        "data": {
+            "users": [
+                {"id": 1, "name": "Alice", "role": "admin"},
+                {"id": 2, "name": "Bob", "role": "user"}
+            ],
+            "pagination": {
+                "page": 1,
+                "per_page": 10,
+                "total": 2
+            }
+        },
+        "metadata": {
+            "timestamp": "2025-10-12T00:00:00Z",
+            "version": "1.0"
+        }
+    });
+
+    // Assert various fields
+    assert_json_has_field(&response_data, "data");
+    assert_json_has_field(&response_data, "metadata");
+
+    // Check nested structure
+    let data = response_data.get("data").unwrap();
+    assert_json_has_field(data, "users");
+    assert_json_has_field(data, "pagination");
+
+    // Check array
+    let users = data.get("users").unwrap();
+    assert_json_array_len(users, 2);
+    assert_json_array_not_empty(users);
+
+    // Check pagination
+    let pagination = data.get("pagination").unwrap();
+    assert_json_field_eq(pagination, "page", &json!(1));
+    assert_json_field_eq(pagination, "total", &json!(2));
+}
+
+#[test]
+fn test_multiple_assertions_chain() {
+    // Test: Chaining multiple assertions together
+    let data = json!({
+        "items": [
+            {"id": 1, "status": "active"},
+            {"id": 2, "status": "pending"},
+            {"id": 3, "status": "active"}
+        ],
+        "count": 3
+    });
+
+    // Chain multiple assertions
+    assert_json_has_field(&data, "items");
+    assert_json_has_field(&data, "count");
+    assert_json_field_eq(&data, "count", &json!(3));
+
+    let items = data.get("items").unwrap();
+    assert_json_array_len(items, 3);
+    assert_json_array_not_empty(items);
+}

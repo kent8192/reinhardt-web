@@ -1,0 +1,325 @@
+//! Tests for APIClient functionality
+//!
+//! These tests verify the behavior of the APIClient, including:
+//! - Client creation and configuration
+//! - Credentials and authentication
+//! - Request making with different methods
+//! - Session and cookie handling
+//!
+//! Based on Django REST Framework's test_testing.py
+
+use bytes::Bytes;
+use http::{Response, StatusCode};
+use http_body_util::Full;
+use reinhardt_test::APIClient;
+use serde_json::json;
+
+#[tokio::test]
+async fn test_client_creation() {
+    // Test: Verify APIClient can be created with default settings
+    let client = APIClient::new();
+
+    // The client should be successfully created
+    // We verify this by attempting to use it
+    let result = client.get("/test").await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_credentials_basic_auth() {
+    // Test: Setting basic auth credentials via credentials() method
+    let client = APIClient::new();
+
+    // Set basic authentication credentials
+    let result = client.credentials("testuser", "testpass").await;
+    assert!(result.is_ok());
+
+    // Make a request - the Authorization header should be set
+    // This test verifies the credentials persist across requests
+    let response = client.get("/api/test").await;
+    assert!(response.is_ok());
+}
+
+#[tokio::test]
+async fn test_force_authenticate_with_user() {
+    // Test: Force authentication with a user object
+    // Similar to DRF's test_force_authenticate_with_user
+    let client = APIClient::new();
+
+    // Create a mock user
+    let user = json!({
+        "id": 1,
+        "username": "testuser",
+        "email": "test@example.com"
+    });
+
+    // Force authenticate with the user
+    client.force_authenticate(Some(user.clone())).await;
+
+    // Make a request - should be authenticated
+    let response = client.get("/api/protected").await;
+    assert!(response.is_ok());
+
+    // Test that authentication persists across multiple requests
+    for _ in 0..3 {
+        let response = client.get("/api/protected").await;
+        assert!(response.is_ok());
+    }
+}
+
+#[tokio::test]
+async fn test_logout_clears_authentication() {
+    // Test: logout() should clear authentication state
+    // Similar to DRF's test_logout_resets_force_authenticate
+    let client = APIClient::new();
+
+    // First authenticate
+    let user = json!({"id": 1, "username": "testuser"});
+    client.force_authenticate(Some(user)).await;
+
+    // Then logout
+    let result = client.logout().await;
+    assert!(result.is_ok());
+
+    // After logout, subsequent requests should not be authenticated
+    let response = client.get("/api/test").await;
+    assert!(response.is_ok());
+}
+
+#[tokio::test]
+async fn test_get_request() {
+    // Test: Making a GET request
+    let mut client = APIClient::new();
+
+    // Set up a mock handler that returns a successful response
+    client.set_handler(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(Full::new(Bytes::from(r#"{"result": "success"}"#)))
+            .unwrap()
+    });
+
+    let response = client.get("/api/items").await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_post_request_with_json() {
+    // Test: Making a POST request with JSON data
+    // Similar to DRF's test_post_json_view
+    let mut client = APIClient::new();
+
+    client.set_handler(|_req| {
+        Response::builder()
+            .status(StatusCode::CREATED)
+            .body(Full::new(Bytes::from(r#"{"id": 1, "name": "test"}"#)))
+            .unwrap()
+    });
+
+    let data = json!({
+        "name": "test item",
+        "value": 42
+    });
+
+    let response = client.post("/api/items", &data, "json").await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn test_put_request() {
+    // Test: Making a PUT request
+    let mut client = APIClient::new();
+
+    client.set_handler(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(Full::new(Bytes::from(r#"{"updated": true}"#)))
+            .unwrap()
+    });
+
+    let data = json!({"name": "updated"});
+    let response = client.put("/api/items/1", &data, "json").await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_patch_request() {
+    // Test: Making a PATCH request
+    let mut client = APIClient::new();
+
+    client.set_handler(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(Full::new(Bytes::from(r#"{"patched": true}"#)))
+            .unwrap()
+    });
+
+    let data = json!({"field": "value"});
+    let response = client.patch("/api/items/1", &data, "json").await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_delete_request() {
+    // Test: Making a DELETE request
+    // Similar to DRF's delete_json_view test
+    let mut client = APIClient::new();
+
+    client.set_handler(|_req| {
+        Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body(Full::new(Bytes::new()))
+            .unwrap()
+    });
+
+    let response = client.delete("/api/items/1").await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn test_head_request() {
+    // Test: Making a HEAD request
+    let mut client = APIClient::new();
+
+    client.set_handler(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::new()))
+            .unwrap()
+    });
+
+    let response = client.head("/api/items").await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_options_request() {
+    // Test: Making an OPTIONS request
+    let mut client = APIClient::new();
+
+    client.set_handler(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("Allow", "GET, POST, PUT, DELETE")
+            .body(Full::new(Bytes::new()))
+            .unwrap()
+    });
+
+    let response = client.options("/api/items").await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_custom_header() {
+    // Test: Setting custom headers
+    let mut client = APIClient::new();
+
+    // Set a custom header
+    client
+        .set_header("X-Custom-Header", "custom-value")
+        .await
+        .unwrap();
+
+    client.set_handler(|req| {
+        // Verify the custom header is present
+        assert!(req.headers().contains_key("x-custom-header"));
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(Full::new(Bytes::new()))
+            .unwrap()
+    });
+
+    let response = client.get("/api/test").await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_multiple_requests_with_same_client() {
+    // Test: Multiple requests with the same client instance
+    // Verifies that client state is maintained correctly
+    let mut client = APIClient::new();
+
+    client.set_handler(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(Full::new(Bytes::from(r#"{"success": true}"#)))
+            .unwrap()
+    });
+
+    // Make multiple requests
+    for _ in 0..5 {
+        let response = client.get("/api/test").await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}
+
+#[tokio::test]
+async fn test_client_with_custom_base_url() {
+    // Test: Creating a client with a custom base URL
+    let client = APIClient::with_base_url("http://example.com");
+
+    let response = client.get("/api/test").await;
+    assert!(response.is_ok());
+}
+
+#[tokio::test]
+async fn test_form_data_post() {
+    // Test: Posting form-encoded data
+    let mut client = APIClient::new();
+
+    client.set_handler(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(Full::new(Bytes::from(r#"{"received": true}"#)))
+            .unwrap()
+    });
+
+    let data = json!({
+        "field1": "value1",
+        "field2": "value2"
+    });
+
+    let response = client.post("/api/form", &data, "form").await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_authentication_persists() {
+    // Test: Authentication state persists across multiple requests
+    // This is a key requirement from DRF's test suite
+    let client = APIClient::new();
+
+    let user = json!({"id": 123, "username": "persistent_user"});
+    client.force_authenticate(Some(user)).await;
+
+    // Make 10 requests and verify authentication persists
+    for i in 0..10 {
+        let response = client.get(&format!("/api/test/{}", i)).await;
+        assert!(
+            response.is_ok(),
+            "Request {} should succeed with persistent auth",
+            i
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_concurrent_clients_independent() {
+    // Test: Multiple client instances should be independent
+    let client1 = APIClient::new();
+    let client2 = APIClient::new();
+
+    let user1 = json!({"id": 1, "username": "user1"});
+    let user2 = json!({"id": 2, "username": "user2"});
+
+    client1.force_authenticate(Some(user1)).await;
+    client2.force_authenticate(Some(user2)).await;
+
+    // Both clients should work independently
+    let response1 = client1.get("/api/test").await;
+    let response2 = client2.get("/api/test").await;
+
+    assert!(response1.is_ok());
+    assert!(response2.is_ok());
+}

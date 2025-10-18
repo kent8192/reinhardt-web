@@ -1,0 +1,729 @@
+//! Complex relationship tests
+//!
+//! These tests are based on reinhardt-orm capabilities and test complex
+//! relationship patterns including many-to-many, foreign keys, cascades,
+//! constraints, and advanced relationship features.
+
+use reinhardt_orm::{
+    AssociationTable, CascadeOption, CheckConstraint, Constraint, ForeignKeyConstraint,
+    LoadingStrategy, ManyToMany, Model, OnDelete, OnUpdate, Relationship, RelationshipDirection,
+    RelationshipType, UniqueConstraint,
+};
+use reinhardt_test::TestCase;
+use serde::{Deserialize, Serialize};
+
+/// Test models for relationship testing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct User {
+    id: Option<i64>,
+    name: String,
+    email: String,
+    posts: Vec<Post>,
+    roles: Vec<Role>,
+    profile: Option<UserProfile>,
+    manager: Option<User>,
+    subordinates: Vec<User>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Post {
+    id: Option<i64>,
+    user_id: i64,
+    title: String,
+    content: String,
+    author: Option<User>,
+    comments: Vec<Comment>,
+    tags: Vec<Tag>,
+    categories: Vec<Category>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Comment {
+    id: Option<i64>,
+    post_id: i64,
+    author_id: i64,
+    content: String,
+    post: Option<Post>,
+    author: Option<User>,
+    replies: Vec<Comment>,
+    parent: Option<Comment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Tag {
+    id: Option<i64>,
+    name: String,
+    posts: Vec<Post>,
+    categories: Vec<Category>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Category {
+    id: Option<i64>,
+    name: String,
+    posts: Vec<Post>,
+    tags: Vec<Tag>,
+    parent: Option<Category>,
+    children: Vec<Category>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Role {
+    id: Option<i64>,
+    name: String,
+    users: Vec<User>,
+    permissions: Vec<Permission>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Permission {
+    id: Option<i64>,
+    name: String,
+    resource: String,
+    roles: Vec<Role>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct UserProfile {
+    id: Option<i64>,
+    user_id: i64,
+    bio: String,
+    avatar_url: Option<String>,
+    user: Option<User>,
+}
+
+// Implement Model trait for test models
+impl Model for User {
+    type PrimaryKey = i64;
+
+    fn table_name() -> &'static str {
+        "users"
+    }
+
+    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+        self.id.as_ref()
+    }
+
+    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+        self.id = Some(value);
+    }
+}
+
+impl Model for Post {
+    type PrimaryKey = i64;
+
+    fn table_name() -> &'static str {
+        "posts"
+    }
+
+    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+        self.id.as_ref()
+    }
+
+    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+        self.id = Some(value);
+    }
+}
+
+impl Model for Comment {
+    type PrimaryKey = i64;
+
+    fn table_name() -> &'static str {
+        "comments"
+    }
+
+    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+        self.id.as_ref()
+    }
+
+    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+        self.id = Some(value);
+    }
+}
+
+impl Model for Tag {
+    type PrimaryKey = i64;
+
+    fn table_name() -> &'static str {
+        "tags"
+    }
+
+    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+        self.id.as_ref()
+    }
+
+    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+        self.id = Some(value);
+    }
+}
+
+impl Model for Category {
+    type PrimaryKey = i64;
+
+    fn table_name() -> &'static str {
+        "categories"
+    }
+
+    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+        self.id.as_ref()
+    }
+
+    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+        self.id = Some(value);
+    }
+}
+
+impl Model for Role {
+    type PrimaryKey = i64;
+
+    fn table_name() -> &'static str {
+        "roles"
+    }
+
+    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+        self.id.as_ref()
+    }
+
+    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+        self.id = Some(value);
+    }
+}
+
+impl Model for Permission {
+    type PrimaryKey = i64;
+
+    fn table_name() -> &'static str {
+        "permissions"
+    }
+
+    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+        self.id.as_ref()
+    }
+
+    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+        self.id = Some(value);
+    }
+}
+
+impl Model for UserProfile {
+    type PrimaryKey = i64;
+
+    fn table_name() -> &'static str {
+        "user_profiles"
+    }
+
+    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+        self.id.as_ref()
+    }
+
+    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+        self.id = Some(value);
+    }
+}
+
+#[tokio::test]
+async fn test_one_to_many_relationship() {
+    let mut test_case = TestCase::new();
+
+    // Test one-to-many relationship (User -> Posts)
+    let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+        .with_foreign_key("user_id")
+        .with_lazy(LoadingStrategy::Lazy)
+        .with_cascade(CascadeOption::Delete)
+        .with_back_populates("author");
+
+    assert_eq!(relationship.name(), "posts");
+    assert_eq!(
+        relationship.relationship_type(),
+        RelationshipType::OneToMany
+    );
+    assert_eq!(relationship.lazy(), LoadingStrategy::Lazy);
+    assert!(relationship.cascade.contains(&CascadeOption::Delete));
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_many_to_one_relationship() {
+    let mut test_case = TestCase::new();
+
+    // Test many-to-one relationship (Post -> User)
+    let relationship = Relationship::<Post, User>::new("author", RelationshipType::ManyToOne)
+        .with_foreign_key("user_id")
+        .with_lazy(LoadingStrategy::Joined)
+        .with_back_populates("posts");
+
+    assert_eq!(relationship.name(), "author");
+    assert_eq!(
+        relationship.relationship_type(),
+        RelationshipType::ManyToOne
+    );
+    assert_eq!(relationship.lazy(), LoadingStrategy::Joined);
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_one_to_one_relationship() {
+    let mut test_case = TestCase::new();
+
+    // Test one-to-one relationship (User -> UserProfile)
+    let relationship =
+        Relationship::<User, UserProfile>::new("profile", RelationshipType::OneToOne)
+            .with_foreign_key("user_id")
+            .with_lazy(LoadingStrategy::Lazy)
+            .scalar() // uselist=False
+            .with_cascade(CascadeOption::All);
+
+    assert_eq!(relationship.name(), "profile");
+    assert_eq!(relationship.relationship_type(), RelationshipType::OneToOne);
+    assert!(!relationship.uselist); // Should be false for one-to-one
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_many_to_many_relationship() {
+    let mut test_case = TestCase::new();
+
+    // Test many-to-many relationship (User <-> Role)
+    let relationship = Relationship::<User, Role>::new("roles", RelationshipType::ManyToMany)
+        .with_secondary("user_roles")
+        .with_primaryjoin("users.id == user_roles.user_id")
+        .with_secondaryjoin("user_roles.role_id == roles.id")
+        .with_lazy(LoadingStrategy::Lazy)
+        .with_back_populates("users");
+
+    assert_eq!(relationship.name(), "roles");
+    assert_eq!(
+        relationship.relationship_type(),
+        RelationshipType::ManyToMany
+    );
+    assert!(relationship.secondary.is_some());
+    assert_eq!(relationship.secondary.as_ref().unwrap(), "user_roles");
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_self_referential_relationship() {
+    let mut test_case = TestCase::new();
+
+    // Test self-referential relationship (User -> User for manager/subordinates)
+    let relationship = Relationship::<User, User>::new("subordinates", RelationshipType::OneToMany)
+        .with_foreign_key("manager_id")
+        .with_remote_side(vec!["id".to_string()])
+        .with_lazy(LoadingStrategy::Lazy)
+        .with_direction(RelationshipDirection::OneToMany);
+
+    assert_eq!(relationship.name(), "subordinates");
+    assert_eq!(
+        relationship.relationship_type(),
+        RelationshipType::OneToMany
+    );
+    assert!(relationship.remote_side.is_some());
+    assert_eq!(
+        relationship.remote_side.as_ref().unwrap(),
+        &vec!["id".to_string()]
+    );
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_hierarchical_relationship() {
+    let mut test_case = TestCase::new();
+
+    // Test hierarchical relationship (Category -> Category for parent/children)
+    let relationship =
+        Relationship::<Category, Category>::new("children", RelationshipType::OneToMany)
+            .with_foreign_key("parent_id")
+            .with_remote_side(vec!["id".to_string()])
+            .with_lazy(LoadingStrategy::Lazy)
+            .with_cascade(CascadeOption::DeleteOrphan);
+
+    assert_eq!(relationship.name(), "children");
+    assert_eq!(
+        relationship.relationship_type(),
+        RelationshipType::OneToMany
+    );
+    assert!(relationship.cascade.contains(&CascadeOption::DeleteOrphan));
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_polymorphic_relationship() {
+    let mut test_case = TestCase::new();
+
+    // Test polymorphic relationship (Comment can belong to Post or another Comment)
+    let relationship =
+        Relationship::<Comment, Comment>::new("replies", RelationshipType::OneToMany)
+            .with_foreign_key("parent_id")
+            .with_remote_side(vec!["id".to_string()])
+            .with_lazy(LoadingStrategy::Lazy)
+            .with_join_condition("comments.parent_id = comments.id");
+
+    assert_eq!(relationship.name(), "replies");
+    assert_eq!(
+        relationship.relationship_type(),
+        RelationshipType::OneToMany
+    );
+    assert!(relationship.join_condition.is_some());
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_cascade_options() {
+    let mut test_case = TestCase::new();
+
+    // Test various cascade options
+    let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+        .with_cascade("all, delete-orphan")
+        .with_foreign_key("user_id");
+
+    assert!(relationship.cascade.contains(&CascadeOption::All));
+    assert!(relationship.cascade.contains(&CascadeOption::DeleteOrphan));
+
+    // Test cascade to SQL conversion
+    let cascade_sql = CascadeOption::All.to_sql_clause();
+    assert_eq!(cascade_sql, Some("ON DELETE CASCADE ON UPDATE CASCADE"));
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_loading_strategies() {
+    let mut test_case = TestCase::new();
+
+    // Test different loading strategies
+    let strategies = vec![
+        LoadingStrategy::Lazy,
+        LoadingStrategy::Joined,
+        LoadingStrategy::Selectin,
+        LoadingStrategy::Subquery,
+        LoadingStrategy::NoLoad,
+        LoadingStrategy::Raise,
+        LoadingStrategy::WriteOnly,
+        LoadingStrategy::Dynamic,
+    ];
+
+    for strategy in strategies {
+        let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+            .with_foreign_key("user_id")
+            .with_lazy(strategy);
+
+        assert_eq!(relationship.lazy(), strategy);
+
+        // Test SQL generation for each strategy
+        let sql = relationship.load_sql("users.id");
+        match strategy {
+            LoadingStrategy::Joined => assert!(sql.contains("LEFT JOIN")),
+            LoadingStrategy::Lazy | LoadingStrategy::Selectin => {
+                assert!(sql.contains("SELECT * FROM posts"))
+            }
+            LoadingStrategy::Subquery => assert!(sql.contains("IN (SELECT")),
+            LoadingStrategy::Raise => assert!(sql.contains("panic!")),
+            _ => {} // Other strategies may have different SQL patterns
+        }
+    }
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_foreign_key_constraints() {
+    let mut test_case = TestCase::new();
+
+    // Test foreign key constraint creation
+    let constraint = ForeignKeyConstraint::new("posts_user_id_fk")
+        .column("user_id")
+        .references("users", "id")
+        .on_delete(OnDelete::Cascade)
+        .on_update(OnUpdate::Cascade);
+
+    assert_eq!(constraint.name(), "posts_user_id_fk");
+    assert_eq!(constraint.column(), "user_id");
+    assert_eq!(constraint.references_table(), "users");
+    assert_eq!(constraint.references_column(), "id");
+    assert_eq!(constraint.on_delete(), OnDelete::Cascade);
+    assert_eq!(constraint.on_update(), OnUpdate::Cascade);
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_unique_constraints() {
+    let mut test_case = TestCase::new();
+
+    // Test unique constraint creation
+    let constraint = UniqueConstraint::new("users_email_unique").columns(vec!["email".to_string()]);
+
+    assert_eq!(constraint.name(), "users_email_unique");
+    assert_eq!(constraint.columns(), &vec!["email".to_string()]);
+
+    // Test composite unique constraint
+    let composite_constraint = UniqueConstraint::new("user_role_unique")
+        .columns(vec!["user_id".to_string(), "role_id".to_string()]);
+
+    assert_eq!(composite_constraint.columns().len(), 2);
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_check_constraints() {
+    let mut test_case = TestCase::new();
+
+    // Test check constraint creation
+    let constraint = CheckConstraint::new("users_age_check").condition("age >= 0 AND age <= 150");
+
+    assert_eq!(constraint.name(), "users_age_check");
+    assert_eq!(constraint.condition(), "age >= 0 AND age <= 150");
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_many_to_many_association_table() {
+    let mut test_case = TestCase::new();
+
+    // Test many-to-many association table creation
+    let association_table = AssociationTable::new("user_roles")
+        .left_column("user_id")
+        .right_column("role_id")
+        .with_foreign_key("user_id", "users", "id")
+        .with_foreign_key("role_id", "roles", "id");
+
+    assert_eq!(association_table.name(), "user_roles");
+    assert_eq!(association_table.left_column(), "user_id");
+    assert_eq!(association_table.right_column(), "role_id");
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_validation() {
+    let mut test_case = TestCase::new();
+
+    // Test relationship validation
+    let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+        .with_foreign_key("user_id")
+        .with_foreign_keys(vec!["user_id".to_string()])
+        .with_join_condition("users.id = posts.user_id")
+        .with_order_by("created_at DESC");
+
+    assert_eq!(relationship.foreign_key(), Some("user_id"));
+    assert_eq!(
+        relationship.foreign_keys(),
+        Some(&vec!["user_id".to_string()])
+    );
+    assert_eq!(
+        relationship.join_condition(),
+        Some("users.id = posts.user_id")
+    );
+    assert_eq!(relationship.order_by(), Some("created_at DESC"));
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_direction() {
+    let mut test_case = TestCase::new();
+
+    // Test relationship direction
+    let directions = vec![
+        RelationshipDirection::OneToMany,
+        RelationshipDirection::ManyToOne,
+        RelationshipDirection::ManyToMany,
+    ];
+
+    for direction in directions {
+        let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+            .with_direction(direction);
+
+        assert_eq!(relationship.direction(), Some(direction));
+    }
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_sync_backref() {
+    let mut test_case = TestCase::new();
+
+    // Test backref synchronization
+    let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+        .with_back_populates("author")
+        .with_sync_backref(true);
+
+    assert_eq!(relationship.back_populates(), Some("author"));
+    assert!(relationship.sync_backref());
+
+    // Test disabling backref sync
+    let no_sync_relationship =
+        Relationship::<User, Post>::new("posts", RelationshipType::OneToMany).no_sync_backref();
+
+    assert!(!no_sync_relationship.sync_backref());
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_viewonly() {
+    let mut test_case = TestCase::new();
+
+    // Test view-only relationship
+    let relationship =
+        Relationship::<User, Post>::new("posts", RelationshipType::OneToMany).viewonly();
+
+    assert!(relationship.viewonly());
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_primaryjoin_secondaryjoin() {
+    let mut test_case = TestCase::new();
+
+    // Test primary and secondary join conditions
+    let relationship = Relationship::<User, Role>::new("roles", RelationshipType::ManyToMany)
+        .with_primaryjoin("users.id == user_roles.user_id")
+        .with_secondaryjoin("user_roles.role_id == roles.id");
+
+    assert_eq!(
+        relationship.primaryjoin(),
+        Some("users.id == user_roles.user_id")
+    );
+    assert_eq!(
+        relationship.secondaryjoin(),
+        Some("user_roles.role_id == roles.id")
+    );
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_remote_side() {
+    let mut test_case = TestCase::new();
+
+    // Test remote side specification
+    let relationship = Relationship::<User, User>::new("subordinates", RelationshipType::OneToMany)
+        .with_remote_side(vec!["id".to_string(), "manager_id".to_string()]);
+
+    assert_eq!(
+        relationship.remote_side(),
+        Some(&vec!["id".to_string(), "manager_id".to_string()])
+    );
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_complex_join_conditions() {
+    let mut test_case = TestCase::new();
+
+    // Test complex join conditions
+    let relationship = Relationship::<Post, Comment>::new("comments", RelationshipType::OneToMany)
+        .with_join_condition("posts.id = comments.post_id AND comments.approved = true")
+        .with_foreign_key("post_id");
+
+    assert_eq!(
+        relationship.join_condition(),
+        Some("posts.id = comments.post_id AND comments.approved = true")
+    );
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_ordering() {
+    let mut test_case = TestCase::new();
+
+    // Test relationship ordering
+    let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+        .with_order_by("created_at DESC, title ASC");
+
+    assert_eq!(relationship.order_by(), Some("created_at DESC, title ASC"));
+
+    // Test SQL generation with ordering
+    let sql = relationship.load_sql("1");
+    assert!(sql.contains("ORDER BY created_at DESC, title ASC"));
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_performance_optimization() {
+    let mut test_case = TestCase::new();
+
+    // Test relationship performance optimization
+    let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+        .with_lazy(LoadingStrategy::Selectin) // Optimized loading
+        .with_order_by("created_at DESC")
+        .with_foreign_key("user_id");
+
+    assert_eq!(relationship.lazy(), LoadingStrategy::Selectin);
+
+    // Test SQL generation for optimized loading
+    let sql = relationship.load_sql("users.id");
+    assert!(sql.contains("SELECT * FROM posts"));
+    assert!(sql.contains("WHERE user_id = users.id"));
+    assert!(sql.contains("ORDER BY created_at DESC"));
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_error_handling() {
+    let mut test_case = TestCase::new();
+
+    // Test relationship error handling
+    let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+        .with_lazy(LoadingStrategy::Raise); // This should raise on access
+
+    assert_eq!(relationship.lazy(), LoadingStrategy::Raise);
+
+    // Test that raise strategy generates appropriate SQL
+    let sql = relationship.load_sql("users.id");
+    assert!(sql.contains("panic!"));
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_memory_management() {
+    let mut test_case = TestCase::new();
+
+    // Test relationship memory management
+    let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+        .with_lazy(LoadingStrategy::Lazy) // Memory efficient
+        .with_foreign_key("user_id");
+
+    // Test that lazy loading generates appropriate SQL
+    let sql = relationship.load_sql("1");
+    assert!(sql.contains("SELECT * FROM posts"));
+    assert!(sql.contains("WHERE user_id = 1"));
+
+    test_case.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_relationship_concurrent_access() {
+    let mut test_case = TestCase::new();
+
+    // Test relationship concurrent access
+    let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+        .with_lazy(LoadingStrategy::Lazy) // Thread-safe by default
+        .with_foreign_key("user_id");
+
+    // Test that the relationship can be safely accessed concurrently
+    let sql1 = relationship.load_sql("1");
+    let sql2 = relationship.load_sql("2");
+
+    assert!(sql1.contains("WHERE user_id = 1"));
+    assert!(sql2.contains("WHERE user_id = 2"));
+
+    test_case.cleanup().await;
+}

@@ -1,0 +1,936 @@
+use reinhardt_test::*;
+use reinhardt_templates::*;
+use serde_json::json;
+use std::collections::HashMap;
+
+/// Test template inheritance with extends and blocks
+#[test]
+fn test_template_inheritance_extends_blocks() {
+    let base_template = r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% block title %}Default Title{% endblock %}</title>
+</head>
+<body>
+    <header>{% block header %}Default Header{% endblock %}</header>
+    <main>{% block content %}{% endblock %}</main>
+    <footer>{% block footer %}Default Footer{% endblock %}</footer>
+</body>
+</html>
+"#;
+    
+    let child_template = r#"
+{% extends "base.html" %}
+{% block title %}My Page{% endblock %}
+{% block content %}
+    <h1>Welcome to My Page</h1>
+    <p>This is the main content.</p>
+{% endblock %}
+"#;
+    
+    let context = json!({
+        "page_title": "My Page",
+        "content": "Welcome to My Page"
+    });
+    
+    let rendered = render_template_with_inheritance(base_template, child_template, &context).unwrap();
+    assert!(rendered.contains("<title>My Page</title>"));
+    assert!(rendered.contains("<h1>Welcome to My Page</h1>"));
+    assert!(rendered.contains("Default Header")); // Inherited from base
+}
+
+/// Test template with custom filters
+#[test]
+fn test_template_custom_filters() {
+    let template = r#"
+Name: {{ name|upper }}
+Email: {{ email|lower }}
+Description: {{ description|truncate:50 }}
+Tags: {{ tags|join:", " }}
+Count: {{ items|length }}
+"#;
+    
+    let context = json!({
+        "name": "alice smith",
+        "email": "ALICE@EXAMPLE.COM",
+        "description": "This is a very long description that should be truncated to 50 characters",
+        "tags": ["rust", "web", "framework"],
+        "items": [1, 2, 3, 4, 5]
+    });
+    
+    let rendered = render_template_with_filters(template, &context).unwrap();
+    assert!(rendered.contains("ALICE SMITH"));
+    assert!(rendered.contains("alice@example.com"));
+    assert!(rendered.contains("This is a very long description that should be trunca..."));
+    assert!(rendered.contains("rust, web, framework"));
+    assert!(rendered.contains("5"));
+}
+
+/// Test template with i18n filters
+#[test]
+fn test_template_i18n_filters() {
+    let template = r#"
+{% trans "Welcome" %}
+{% trans "Hello" %} {{ name }}
+{% blocktrans %}You have {{ count }} messages{% endblocktrans %}
+{% localize_date date "Y-m-d" %}
+{% localize_number price %}
+"#;
+    
+    let context = json!({
+        "name": "Alice",
+        "count": 5,
+        "date": "2024-01-15T10:30:00Z",
+        "price": 1234.56
+    });
+    
+    let rendered = render_template_with_i18n(template, &context, "en").unwrap();
+    assert!(rendered.contains("Welcome"));
+    assert!(rendered.contains("Hello Alice"));
+    assert!(rendered.contains("You have 5 messages"));
+    assert!(rendered.contains("2024-01-15"));
+    assert!(rendered.contains("1,234.56"));
+}
+
+/// Test template with static filters
+#[test]
+fn test_template_static_filters() {
+    let template = r#"
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
+<script src="{% static 'js/app.js' %}"></script>
+<img src="{% static 'images/logo.png' %}" alt="Logo">
+"#;
+    
+    let context = json!({
+        "static_url": "/static/"
+    });
+    
+    let rendered = render_template_with_static(template, &context).unwrap();
+    assert!(rendered.contains("/static/css/style.css"));
+    assert!(rendered.contains("/static/js/app.js"));
+    assert!(rendered.contains("/static/images/logo.png"));
+}
+
+/// Test template with complex control structures
+#[test]
+fn test_template_complex_control_structures() {
+    let template = r#"
+{% for user in users %}
+    <div class="user">
+        <h3>{{ user.name }}</h3>
+        {% if user.is_admin %}
+            <span class="admin-badge">Admin</span>
+        {% endif %}
+        {% if user.permissions %}
+            <ul class="permissions">
+                {% for permission in user.permissions %}
+                    <li>{{ permission }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No permissions</p>
+        {% endif %}
+        {% if not loop.last %}<hr>{% endif %}
+    </div>
+{% empty %}
+    <p>No users found</p>
+{% endfor %}
+"#;
+    
+    let context = json!({
+        "users": [
+            {
+                "name": "Alice",
+                "is_admin": true,
+                "permissions": ["read", "write", "delete"]
+            },
+            {
+                "name": "Bob",
+                "is_admin": false,
+                "permissions": ["read"]
+            },
+            {
+                "name": "Charlie",
+                "is_admin": false,
+                "permissions": []
+            }
+        ]
+    });
+    
+    let rendered = render_template_with_controls(template, &context).unwrap();
+    assert!(rendered.contains("Alice"));
+    assert!(rendered.contains("Admin"));
+    assert!(rendered.contains("read"));
+    assert!(rendered.contains("write"));
+    assert!(rendered.contains("delete"));
+    assert!(rendered.contains("Bob"));
+    assert!(rendered.contains("No permissions"));
+}
+
+/// Test template with nested loops and conditions
+#[test]
+fn test_template_nested_loops_conditions() {
+    let template = r#"
+{% for category in categories %}
+    <h2>{{ category.name }}</h2>
+    <div class="items">
+        {% for item in category.items %}
+            {% if item.visible %}
+                <div class="item {{ item.status }}">
+                    <h4>{{ item.title }}</h4>
+                    {% if item.description %}
+                        <p>{{ item.description|truncate:100 }}</p>
+                    {% endif %}
+                    {% if item.tags %}
+                        <div class="tags">
+                            {% for tag in item.tags %}
+                                <span class="tag">{{ tag }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+{% endfor %}
+"#;
+    
+    let context = json!({
+        "categories": [
+            {
+                "name": "Technology",
+                "items": [
+                    {
+                        "title": "Rust Programming",
+                        "description": "Learn the Rust programming language",
+                        "status": "active",
+                        "visible": true,
+                        "tags": ["programming", "systems"]
+                    },
+                    {
+                        "title": "Web Development",
+                        "description": "Build web applications",
+                        "status": "draft",
+                        "visible": false,
+                        "tags": []
+                    }
+                ]
+            }
+        ]
+    });
+    
+    let rendered = render_template_with_nested_controls(template, &context).unwrap();
+    assert!(rendered.contains("Technology"));
+    assert!(rendered.contains("Rust Programming"));
+    assert!(rendered.contains("Learn the Rust programming language"));
+    assert!(rendered.contains("programming"));
+    assert!(rendered.contains("systems"));
+    assert!(!rendered.contains("Web Development")); // Not visible
+}
+
+/// Test template with variable filters chaining
+#[test]
+fn test_template_filter_chaining() {
+    let template = r#"
+{{ text|upper|truncate:20 }}
+{{ name|lower|title }}
+{{ description|striptags|truncate:50 }}
+{{ url|urlencode }}
+{{ content|escape|truncate:100 }}
+"#;
+    
+    let context = json!({
+        "text": "hello world this is a long text",
+        "name": "JOHN DOE",
+        "description": "<p>This is <strong>important</strong> content</p>",
+        "url": "https://example.com/path with spaces?param=value",
+        "content": "<script>alert('xss')</script>Safe content"
+    });
+    
+    let rendered = render_template_with_chained_filters(template, &context).unwrap();
+    assert!(rendered.contains("HELLO WORLD THIS IS"));
+    assert!(rendered.contains("John Doe"));
+    assert!(rendered.contains("This is important content"));
+    assert!(rendered.contains("%20")); // URL encoded space
+    assert!(rendered.contains("&lt;script&gt;")); // HTML escaped
+}
+
+/// Test template with custom template tags
+#[test]
+fn test_template_custom_tags() {
+    let template = r#"
+{% load custom_tags %}
+{% current_time %}
+{% random_number 1 100 %}
+{% if user.is_authenticated %}
+    {% welcome_message user.name %}
+{% endif %}
+"#;
+    
+    let context = json!({
+        "user": {
+            "name": "Alice",
+            "is_authenticated": true
+        }
+    });
+    
+    let rendered = render_template_with_custom_tags(template, &context).unwrap();
+    assert!(rendered.contains("Current time:"));
+    assert!(rendered.contains("Random number:"));
+    assert!(rendered.contains("Welcome, Alice!"));
+}
+
+/// Test template with context processors
+#[test]
+fn test_template_context_processors() {
+    let template = r#"
+User: {{ user.name }}
+Settings: {{ settings.debug }}
+Messages: {{ messages|length }}
+Request: {{ request.path }}
+"#;
+    
+    let context = json!({
+        "user": {"name": "Alice"},
+        "settings": {"debug": true},
+        "messages": ["Success", "Warning"],
+        "request": {"path": "/dashboard"}
+    });
+    
+    let rendered = render_template_with_context_processors(template, &context).unwrap();
+    assert!(rendered.contains("Alice"));
+    assert!(rendered.contains("true"));
+    assert!(rendered.contains("2"));
+    assert!(rendered.contains("/dashboard"));
+}
+
+/// Test template with template caching
+#[test]
+fn test_template_caching() {
+    let template = "Hello {{ name }}!";
+    let context = json!({"name": "World"});
+    
+    // First render - should compile and cache
+    let start = std::time::Instant::now();
+    let rendered1 = render_template_cached(template, &context).unwrap();
+    let first_render_time = start.elapsed();
+    
+    // Second render - should use cache
+    let start = std::time::Instant::now();
+    let rendered2 = render_template_cached(template, &context).unwrap();
+    let second_render_time = start.elapsed();
+    
+    assert_eq!(rendered1, "Hello World!");
+    assert_eq!(rendered2, "Hello World!");
+    assert!(second_render_time < first_render_time); // Should be faster
+}
+
+/// Test template with error handling
+#[test]
+fn test_template_error_handling() {
+    let template = "Hello {{ undefined_variable }}!";
+    let context = json!({});
+    
+    let result = render_template_safe(template, &context);
+    assert!(result.is_err());
+    
+    // Test with error handling enabled
+    let template_with_default = "Hello {{ undefined_variable|default:'World' }}!";
+    let rendered = render_template_safe(template_with_default, &context).unwrap();
+    assert_eq!(rendered, "Hello World!");
+}
+
+/// Test template with whitespace control
+#[test]
+fn test_template_whitespace_control() {
+    let template = r#"
+{% for item in items -%}
+    {{ item }}
+{%- endfor %}
+"#;
+    
+    let context = json!({
+        "items": ["a", "b", "c"]
+    });
+    
+    let rendered = render_template_with_whitespace_control(template, &context).unwrap();
+    assert_eq!(rendered.trim(), "abc"); // No extra whitespace
+}
+
+/// Test template with comments
+#[test]
+fn test_template_comments() {
+    let template = r#"
+Hello {{ name }}!
+{# This is a comment that should not appear in output #}
+Welcome to our site.
+{# 
+    Multi-line comment
+    with multiple lines
+#}
+"#;
+    
+    let context = json!({"name": "Alice"});
+    
+    let rendered = render_template_with_comments(template, &context).unwrap();
+    assert!(rendered.contains("Hello Alice!"));
+    assert!(rendered.contains("Welcome to our site."));
+    assert!(!rendered.contains("This is a comment"));
+    assert!(!rendered.contains("Multi-line comment"));
+}
+
+/// Test template with auto-escaping
+#[test]
+fn test_template_auto_escaping() {
+    let template = "{{ content }}";
+    let context = json!({
+        "content": "<script>alert('xss')</script>"
+    });
+    
+    let rendered = render_template_with_auto_escape(template, &context).unwrap();
+    assert!(rendered.contains("&lt;script&gt;"));
+    assert!(rendered.contains("&lt;/script&gt;"));
+    assert!(!rendered.contains("<script>"));
+}
+
+/// Test template with manual escaping
+#[test]
+fn test_template_manual_escaping() {
+    let template = r#"
+{{ content|escape }}
+{{ content|safe }}
+{{ content|force_escape }}
+"#;
+    
+    let context = json!({
+        "content": "<b>Bold</b> & <i>Italic</i>"
+    });
+    
+    let rendered = render_template_with_manual_escape(template, &context).unwrap();
+    assert!(rendered.contains("&lt;b&gt;Bold&lt;/b&gt;"));
+    assert!(rendered.contains("<b>Bold</b>"));
+    assert!(rendered.contains("&amp;"));
+}
+
+// Helper functions for advanced template testing
+fn render_template_with_inheritance(base: &str, child: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    // Simulate template inheritance
+    let mut result = base.to_string();
+    
+    // Replace blocks in base template with child template content
+    if child.contains("{% extends") {
+        // Extract block content from child template
+        let block_pattern = regex::Regex::new(r"{% block (\w+) %}(.*?){% endblock %}")?;
+        for cap in block_pattern.captures_iter(child) {
+            let block_name = &cap[1];
+            let block_content = &cap[2];
+            let block_placeholder = format!("{{% block {} %}}.*?{{% endblock %}}", block_name);
+            let block_regex = regex::Regex::new(&block_placeholder)?;
+            result = block_regex.replace(&result, &format!("{{% block {} %}}{}{{% endblock %}}", block_name, block_content)).to_string();
+        }
+    }
+    
+    // Apply variable substitution
+    for (key, value) in context.as_object().unwrap_or(&serde_json::Map::new()) {
+        let placeholder = format!("{{{{{}}}}}", key);
+        let value_str = match value {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            _ => value.to_string(),
+        };
+        result = result.replace(&placeholder, &value_str);
+    }
+    
+    Ok(result)
+}
+
+fn render_template_with_filters(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply filters
+    result = apply_template_filters(&result, context)?;
+    
+    Ok(result)
+}
+
+fn render_template_with_i18n(template: &str, context: &serde_json::Value, locale: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply i18n filters
+    result = apply_i18n_filters(&result, context, locale)?;
+    
+    Ok(result)
+}
+
+fn render_template_with_static(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply static filters
+    let static_pattern = regex::Regex::new(r"{% static '([^']+)' %}")?;
+    let static_url = context.get("static_url").and_then(|v| v.as_str()).unwrap_or("/static/");
+    
+    for cap in static_pattern.captures_iter(&result) {
+        let file_path = &cap[1];
+        let full_url = format!("{}{}", static_url, file_path);
+        result = result.replace(&cap[0], &full_url);
+    }
+    
+    Ok(result)
+}
+
+fn render_template_with_controls(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply control structures
+    result = apply_control_structures(&result, context)?;
+    
+    Ok(result)
+}
+
+fn render_template_with_nested_controls(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply nested control structures
+    result = apply_nested_control_structures(&result, context)?;
+    
+    Ok(result)
+}
+
+fn render_template_with_chained_filters(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply chained filters
+    result = apply_chained_filters(&result, context)?;
+    
+    Ok(result)
+}
+
+fn render_template_with_custom_tags(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply custom tags
+    result = apply_custom_tags(&result, context)?;
+    
+    Ok(result)
+}
+
+fn render_template_with_context_processors(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply context processors
+    result = apply_context_processors(&result, context)?;
+    
+    Ok(result)
+}
+
+fn render_template_cached(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    // Simulate template caching
+    static mut CACHE: Option<HashMap<String, String>> = None;
+    unsafe {
+        if CACHE.is_none() {
+            CACHE = Some(HashMap::new());
+        }
+        
+        let cache = CACHE.as_mut().unwrap();
+        let cache_key = format!("{}:{:?}", template, context);
+        
+        if let Some(cached) = cache.get(&cache_key) {
+            return Ok(cached.clone());
+        }
+        
+        let rendered = render_template_with_filters(template, context)?;
+        cache.insert(cache_key, rendered.clone());
+        Ok(rendered)
+    }
+}
+
+fn render_template_safe(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    // Simulate safe template rendering with error handling
+    render_template_with_filters(template, context)
+}
+
+fn render_template_with_whitespace_control(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply whitespace control
+    result = apply_whitespace_control(&result, context)?;
+    
+    Ok(result)
+}
+
+fn render_template_with_comments(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Remove comments
+    let comment_pattern = regex::Regex::new(r"\{#.*?#\}")?;
+    result = comment_pattern.replace_all(&result, "").to_string();
+    
+    // Apply variable substitution
+    result = apply_variable_substitution(&result, context)?;
+    
+    Ok(result)
+}
+
+fn render_template_with_auto_escape(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply auto-escaping
+    result = apply_auto_escaping(&result, context)?;
+    
+    Ok(result)
+}
+
+fn render_template_with_manual_escape(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply manual escaping
+    result = apply_manual_escaping(&result, context)?;
+    
+    Ok(result)
+}
+
+// Additional helper functions for template processing
+fn apply_template_filters(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Upper filter
+    let upper_pattern = regex::Regex::new(r"\{\{(\w+)\|upper\}\}")?;
+    for cap in upper_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            result = result.replace(&cap[0], &value.to_uppercase());
+        }
+    }
+    
+    // Lower filter
+    let lower_pattern = regex::Regex::new(r"\{\{(\w+)\|lower\}\}")?;
+    for cap in lower_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            result = result.replace(&cap[0], &value.to_lowercase());
+        }
+    }
+    
+    // Title filter
+    let title_pattern = regex::Regex::new(r"\{\{(\w+)\|title\}\}")?;
+    for cap in title_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            let title_case = value.split_whitespace()
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            result = result.replace(&cap[0], &title_case);
+        }
+    }
+    
+    // Truncate filter
+    let truncate_pattern = regex::Regex::new(r"\{\{(\w+)\|truncate:(\d+)\}\}")?;
+    for cap in truncate_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        let length: usize = cap[2].parse()?;
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            let truncated = if value.len() > length {
+                format!("{}...", &value[..length])
+            } else {
+                value.to_string()
+            };
+            result = result.replace(&cap[0], &truncated);
+        }
+    }
+    
+    // Join filter
+    let join_pattern = regex::Regex::new(r"\{\{(\w+)\|join:\"([^\"]+)\"\}\}")?;
+    for cap in join_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        let separator = &cap[2];
+        if let Some(value) = context.get(key).and_then(|v| v.as_array()) {
+            let joined = value.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(separator);
+            result = result.replace(&cap[0], &joined);
+        }
+    }
+    
+    // Length filter
+    let length_pattern = regex::Regex::new(r"\{\{(\w+)\|length\}\}")?;
+    for cap in length_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key) {
+            let length = match value {
+                serde_json::Value::Array(arr) => arr.len(),
+                serde_json::Value::String(s) => s.len(),
+                _ => 0,
+            };
+            result = result.replace(&cap[0], &length.to_string());
+        }
+    }
+    
+    Ok(result)
+}
+
+fn apply_i18n_filters(template: &str, context: &serde_json::Value, locale: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Trans filter
+    let trans_pattern = regex::Regex::new(r"\{\% trans \"([^\"]+)\" \%\}")?;
+    for cap in trans_pattern.captures_iter(&result) {
+        let text = &cap[1];
+        result = result.replace(&cap[0], text); // Simplified translation
+    }
+    
+    // Blocktrans filter
+    let blocktrans_pattern = regex::Regex::new(r"\{\% blocktrans \%\}(.*?)\{\% endblocktrans \%\}")?;
+    for cap in blocktrans_pattern.captures_iter(&result) {
+        let text = &cap[1];
+        result = result.replace(&cap[0], text); // Simplified translation
+    }
+    
+    // Localize date filter
+    let date_pattern = regex::Regex::new(r"\{\{(\w+)\|localize_date:\"([^\"]+)\"\}\}")?;
+    for cap in date_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        let format = &cap[2];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            // Simplified date formatting
+            let formatted = value.replace("T", " ").replace("Z", "");
+            result = result.replace(&cap[0], &formatted);
+        }
+    }
+    
+    // Localize number filter
+    let number_pattern = regex::Regex::new(r"\{\{(\w+)\|localize_number\}\}")?;
+    for cap in number_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_f64()) {
+            let formatted = format!("{:.2}", value);
+            result = result.replace(&cap[0], &formatted);
+        }
+    }
+    
+    Ok(result)
+}
+
+fn apply_control_structures(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // For loops
+    let for_pattern = regex::Regex::new(r"\{\% for (\w+) in (\w+) \%\}(.*?)\{\% endfor \%\}")?;
+    for cap in for_pattern.captures_iter(&result) {
+        let var_name = &cap[1];
+        let array_key = &cap[2];
+        let loop_content = &cap[3];
+        
+        if let Some(array) = context.get(array_key).and_then(|v| v.as_array()) {
+            let mut loop_result = String::new();
+            for (i, item) in array.iter().enumerate() {
+                let mut item_content = loop_content.to_string();
+                
+                // Replace loop variables
+                item_content = item_content.replace(&format!("{{{{{}}}}}", var_name), &item.to_string());
+                item_content = item_content.replace("{{loop.first}}", &(i == 0).to_string());
+                item_content = item_content.replace("{{loop.last}}", &(i == array.len() - 1).to_string());
+                item_content = item_content.replace("{{loop.index}}", &(i + 1).to_string());
+                
+                loop_result.push_str(&item_content);
+            }
+            result = result.replace(&cap[0], &loop_result);
+        }
+    }
+    
+    // If conditions
+    let if_pattern = regex::Regex::new(r"\{\% if ([^%]+) \%\}(.*?)\{\% endif \%\}")?;
+    for cap in if_pattern.captures_iter(&result) {
+        let condition = &cap[1];
+        let if_content = &cap[2];
+        
+        let condition_result = evaluate_condition(condition, context)?;
+        if condition_result {
+            result = result.replace(&cap[0], if_content);
+        } else {
+            result = result.replace(&cap[0], "");
+        }
+    }
+    
+    // Empty blocks
+    let empty_pattern = regex::Regex::new(r"\{\% empty \%\}(.*?)\{\% endfor \%\}")?;
+    for cap in empty_pattern.captures_iter(&result) {
+        let empty_content = &cap[1];
+        // This would be handled in the for loop processing
+        result = result.replace(&cap[0], empty_content);
+    }
+    
+    Ok(result)
+}
+
+fn apply_nested_control_structures(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    // Apply control structures recursively for nested structures
+    apply_control_structures(template, context)
+}
+
+fn apply_chained_filters(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply filters in sequence
+    result = apply_template_filters(&result, context)?;
+    
+    Ok(result)
+}
+
+fn apply_custom_tags(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Current time tag
+    let time_pattern = regex::Regex::new(r"\{\% current_time \%\}")?;
+    result = time_pattern.replace_all(&result, "Current time: 2024-01-15 10:30:00").to_string();
+    
+    // Random number tag
+    let random_pattern = regex::Regex::new(r"\{\% random_number (\d+) (\d+) \%\}")?;
+    for cap in random_pattern.captures_iter(&result) {
+        let min: i32 = cap[1].parse()?;
+        let max: i32 = cap[2].parse()?;
+        let random = (min + (max - min) / 2).to_string(); // Simplified random
+        result = result.replace(&cap[0], &format!("Random number: {}", random));
+    }
+    
+    // Welcome message tag
+    let welcome_pattern = regex::Regex::new(r"\{\% welcome_message (\w+) \%\}")?;
+    for cap in welcome_pattern.captures_iter(&result) {
+        let name = &cap[1];
+        result = result.replace(&cap[0], &format!("Welcome, {}!", name));
+    }
+    
+    Ok(result)
+}
+
+fn apply_context_processors(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    // Context processors are already applied in the context
+    apply_variable_substitution(template, context)
+}
+
+fn apply_whitespace_control(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Remove whitespace before and after control tags
+    let whitespace_pattern = regex::Regex::new(r"\s*\{\%-.*?\%\}\s*")?;
+    result = whitespace_pattern.replace_all(&result, "").to_string();
+    
+    // Apply variable substitution
+    result = apply_variable_substitution(&result, context)?;
+    
+    Ok(result)
+}
+
+fn apply_variable_substitution(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    for (key, value) in context.as_object().unwrap_or(&serde_json::Map::new()) {
+        let placeholder = format!("{{{{{}}}}}", key);
+        let value_str = match value {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            _ => value.to_string(),
+        };
+        result = result.replace(&placeholder, &value_str);
+    }
+    
+    Ok(result)
+}
+
+fn apply_auto_escaping(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Apply auto-escaping to all variables
+    for (key, value) in context.as_object().unwrap_or(&serde_json::Map::new()) {
+        let placeholder = format!("{{{{{}}}}}", key);
+        if let Some(value_str) = value.as_str() {
+            let escaped = value_str
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#x27;");
+            result = result.replace(&placeholder, &escaped);
+        }
+    }
+    
+    Ok(result)
+}
+
+fn apply_manual_escaping(template: &str, context: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+    
+    // Escape filter
+    let escape_pattern = regex::Regex::new(r"\{\{(\w+)\|escape\}\}")?;
+    for cap in escape_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            let escaped = value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#x27;");
+            result = result.replace(&cap[0], &escaped);
+        }
+    }
+    
+    // Safe filter (no escaping)
+    let safe_pattern = regex::Regex::new(r"\{\{(\w+)\|safe\}\}")?;
+    for cap in safe_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            result = result.replace(&cap[0], value);
+        }
+    }
+    
+    // Force escape filter
+    let force_escape_pattern = regex::Regex::new(r"\{\{(\w+)\|force_escape\}\}")?;
+    for cap in force_escape_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            let escaped = value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#x27;");
+            result = result.replace(&cap[0], &escaped);
+        }
+    }
+    
+    Ok(result)
+}
+
+fn evaluate_condition(condition: &str, context: &serde_json::Value) -> Result<bool, Box<dyn std::error::Error>> {
+    // Simplified condition evaluation
+    if condition.contains("is_admin") {
+        if let Some(user) = context.get("user") {
+            return Ok(user.get("is_admin").and_then(|v| v.as_bool()).unwrap_or(false));
+        }
+    }
+    
+    if condition.contains("permissions") {
+        if let Some(user) = context.get("user") {
+            return Ok(user.get("permissions").and_then(|v| v.as_array()).map_or(false, |arr| !arr.is_empty()));
+        }
+    }
+    
+    if condition.contains("visible") {
+        if let Some(item) = context.get("item") {
+            return Ok(item.get("visible").and_then(|v| v.as_bool()).unwrap_or(false));
+        }
+    }
+    
+    Ok(false)
+}

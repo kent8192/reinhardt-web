@@ -1,0 +1,631 @@
+use reinhardt_test::*;
+use serde_json::json;
+use std::collections::HashMap;
+
+/// Test form validation with valid data
+#[test]
+fn test_form_validation_valid_data() {
+    let form_data = json!({
+        "name": "Alice",
+        "email": "alice@example.com",
+        "age": 30
+    });
+
+    let rules = json!({
+        "name": {"required": true, "min_length": 2},
+        "email": {"required": true, "format": "email"},
+        "age": {"required": true, "min": 18, "max": 100}
+    });
+
+    let result = validate_form_data(&form_data, &rules).unwrap();
+    assert!(result.is_valid);
+    assert!(result.errors.is_empty());
+}
+
+/// Test form validation with missing required fields
+#[test]
+fn test_form_validation_missing_required() {
+    let form_data = json!({
+        "name": "Alice"
+        // email and age are missing
+    });
+
+    let rules = json!({
+        "name": {"required": true},
+        "email": {"required": true},
+        "age": {"required": true}
+    });
+
+    let result = validate_form_data(&form_data, &rules).unwrap();
+    assert!(!result.is_valid);
+    assert!(result.errors.contains_key("email"));
+    assert!(result.errors.contains_key("age"));
+    assert!(!result.errors.contains_key("name"));
+}
+
+/// Test form validation with invalid email format
+#[test]
+fn test_form_validation_invalid_email() {
+    let form_data = json!({
+        "email": "invalid-email"
+    });
+
+    let rules = json!({
+        "email": {"required": true, "format": "email"}
+    });
+
+    let result = validate_form_data(&form_data, &rules).unwrap();
+    assert!(!result.is_valid);
+    assert!(result.errors["email"].contains("invalid format"));
+}
+
+/// Test form validation with length constraints
+#[test]
+fn test_form_validation_length_constraints() {
+    let form_data = json!({
+        "name": "A",  // too short
+        "description": "This is a very long description that exceeds the maximum length limit"  // too long
+    });
+
+    let rules = json!({
+        "name": {"required": true, "min_length": 2, "max_length": 50},
+        "description": {"max_length": 20}
+    });
+
+    let result = validate_form_data(&form_data, &rules).unwrap();
+    assert!(!result.is_valid);
+    assert!(result.errors["name"].contains("too short"));
+    assert!(result.errors["description"].contains("too long"));
+}
+
+/// Test form validation with numeric constraints
+#[test]
+fn test_form_validation_numeric_constraints() {
+    let form_data = json!({
+        "age": 15,  // too young
+        "score": 150  // too high
+    });
+
+    let rules = json!({
+        "age": {"required": true, "min": 18, "max": 100},
+        "score": {"max": 100}
+    });
+
+    let result = validate_form_data(&form_data, &rules).unwrap();
+    assert!(!result.is_valid);
+    assert!(result.errors["age"].contains("too small"));
+    assert!(result.errors["score"].contains("too large"));
+}
+
+/// Test form validation with custom validation rules
+#[test]
+fn test_form_validation_custom_rules() {
+    let form_data = json!({
+        "username": "admin"  // reserved username
+    });
+
+    let rules = json!({
+        "username": {
+            "required": true,
+            "custom": "not_reserved"
+        }
+    });
+
+    let result = validate_form_data(&form_data, &rules).unwrap();
+    assert!(!result.is_valid);
+    assert!(result.errors["username"].contains("reserved"));
+}
+
+/// Test form validation with nested objects
+#[test]
+fn test_form_validation_nested_objects() {
+    let form_data = json!({
+        "user": {
+            "profile": {
+                "name": "Alice",
+                "email": "alice@example.com"
+            }
+        }
+    });
+
+    let rules = json!({
+        "user.profile.name": {"required": true, "min_length": 2},
+        "user.profile.email": {"required": true, "format": "email"}
+    });
+
+    let result = validate_form_data(&form_data, &rules).unwrap();
+    assert!(result.is_valid);
+}
+
+/// Test form validation with array fields
+#[test]
+fn test_form_validation_array_fields() {
+    let form_data = json!({
+        "tags": ["tag1", "tag2", "tag3"],
+        "scores": [85, 92, 78]
+    });
+
+    let rules = json!({
+        "tags": {"required": true, "min_items": 1, "max_items": 5},
+        "scores": {"required": true, "min_items": 3, "max_items": 3}
+    });
+
+    let result = validate_form_data(&form_data, &rules).unwrap();
+    assert!(result.is_valid);
+}
+
+/// Test form assertion for valid form
+#[test]
+fn test_assert_form_valid() {
+    let form_data = json!({
+        "name": "Alice",
+        "email": "alice@example.com"
+    });
+
+    let rules = json!({
+        "name": {"required": true},
+        "email": {"required": true, "format": "email"}
+    });
+
+    assert_form_valid(&form_data, &rules);
+}
+
+/// Test form assertion for invalid form
+#[test]
+fn test_assert_form_invalid() {
+    let form_data = json!({
+        "name": "Alice"
+        // email is missing
+    });
+
+    let rules = json!({
+        "name": {"required": true},
+        "email": {"required": true}
+    });
+
+    assert_form_invalid(&form_data, &rules);
+}
+
+/// Test form assertion for specific field errors
+#[test]
+fn test_assert_form_has_field_error() {
+    let form_data = json!({
+        "email": "invalid-email"
+    });
+
+    let rules = json!({
+        "email": {"required": true, "format": "email"}
+    });
+
+    assert_form_has_field_error(&form_data, &rules, "email");
+}
+
+/// Test form assertion for no field errors
+#[test]
+fn test_assert_form_no_field_error() {
+    let form_data = json!({
+        "name": "Alice",
+        "email": "alice@example.com"
+    });
+
+    let rules = json!({
+        "name": {"required": true},
+        "email": {"required": true, "format": "email"}
+    });
+
+    assert_form_no_field_error(&form_data, &rules, "name");
+    assert_form_no_field_error(&form_data, &rules, "email");
+}
+
+/// Test form assertion for error message content
+#[test]
+fn test_assert_form_error_message_contains() {
+    let form_data = json!({
+        "age": 15
+    });
+
+    let rules = json!({
+        "age": {"required": true, "min": 18}
+    });
+
+    assert_form_error_message_contains(&form_data, &rules, "age", "too small");
+}
+
+/// Test form assertion for error count
+#[test]
+fn test_assert_form_error_count() {
+    let form_data = json!({
+        "name": "A",  // too short
+        "email": "invalid",  // invalid format
+        "age": 15  // too young
+    });
+
+    let rules = json!({
+        "name": {"required": true, "min_length": 2},
+        "email": {"required": true, "format": "email"},
+        "age": {"required": true, "min": 18}
+    });
+
+    assert_form_error_count(&form_data, &rules, 3);
+}
+
+/// Test form assertion for field value
+#[test]
+fn test_assert_form_field_value() {
+    let form_data = json!({
+        "name": "Alice",
+        "email": "alice@example.com",
+        "age": 30
+    });
+
+    assert_form_field_value(&form_data, "name", "Alice");
+    assert_form_field_value(&form_data, "age", 30);
+}
+
+/// Test form assertion for field exists
+#[test]
+fn test_assert_form_field_exists() {
+    let form_data = json!({
+        "name": "Alice",
+        "email": "alice@example.com"
+    });
+
+    assert_form_field_exists(&form_data, "name");
+    assert_form_field_exists(&form_data, "email");
+}
+
+/// Test form assertion for field not exists
+#[test]
+fn test_assert_form_field_not_exists() {
+    let form_data = json!({
+        "name": "Alice"
+    });
+
+    assert_form_field_not_exists(&form_data, "email");
+    assert_form_field_not_exists(&form_data, "age");
+}
+
+/// Test form assertion for field type
+#[test]
+fn test_assert_form_field_type() {
+    let form_data = json!({
+        "name": "Alice",
+        "age": 30,
+        "active": true,
+        "scores": [85, 92, 78]
+    });
+
+    assert_form_field_type(&form_data, "name", "string");
+    assert_form_field_type(&form_data, "age", "number");
+    assert_form_field_type(&form_data, "active", "boolean");
+    assert_form_field_type(&form_data, "scores", "array");
+}
+
+/// Test form assertion for nested field
+#[test]
+fn test_assert_form_nested_field() {
+    let form_data = json!({
+        "user": {
+            "profile": {
+                "name": "Alice",
+                "email": "alice@example.com"
+            }
+        }
+    });
+
+    assert_form_field_value(&form_data, "user.profile.name", "Alice");
+    assert_form_field_value(&form_data, "user.profile.email", "alice@example.com");
+}
+
+/// Test form assertion for array field item
+#[test]
+fn test_assert_form_array_field_item() {
+    let form_data = json!({
+        "tags": ["tag1", "tag2", "tag3"],
+        "users": [
+            {"name": "Alice", "age": 30},
+            {"name": "Bob", "age": 25}
+        ]
+    });
+
+    assert_form_array_item(&form_data, "tags", 0, "tag1");
+    assert_form_array_item(&form_data, "users", 0, json!({"name": "Alice", "age": 30}));
+}
+
+/// Test form assertion for array field length
+#[test]
+fn test_assert_form_array_length() {
+    let form_data = json!({
+        "tags": ["tag1", "tag2", "tag3"],
+        "scores": [85, 92, 78, 88]
+    });
+
+    assert_form_array_length(&form_data, "tags", 3);
+    assert_form_array_length(&form_data, "scores", 4);
+}
+
+// Helper functions for form testing
+#[derive(Debug)]
+struct ValidationResult {
+    is_valid: bool,
+    errors: HashMap<String, String>,
+}
+
+fn validate_form_data(
+    data: &serde_json::Value,
+    rules: &serde_json::Value,
+) -> Result<ValidationResult, Box<dyn std::error::Error>> {
+    let mut errors = HashMap::new();
+
+    if let Some(rules_obj) = rules.as_object() {
+        for (field, rule) in rules_obj {
+            if let Some(rule_obj) = rule.as_object() {
+                if let Some(error) = validate_field(data, field, rule_obj) {
+                    errors.insert(field.clone(), error);
+                }
+            }
+        }
+    }
+
+    Ok(ValidationResult {
+        is_valid: errors.is_empty(),
+        errors,
+    })
+}
+
+fn validate_field(
+    data: &serde_json::Value,
+    field: &str,
+    rules: &serde_json::Map<String, serde_json::Value>,
+) -> Option<String> {
+    let value = get_nested_value(data, field);
+
+    // Check required
+    if rules
+        .get("required")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        if value.is_none() {
+            return Some(format!("{} is required", field));
+        }
+    }
+
+    if let Some(value) = value {
+        // Check min_length
+        if let Some(min_len) = rules.get("min_length").and_then(|v| v.as_u64()) {
+            if let Some(s) = value.as_str() {
+                if s.len() < min_len as usize {
+                    return Some(format!("{} is too short", field));
+                }
+            }
+        }
+
+        // Check max_length
+        if let Some(max_len) = rules.get("max_length").and_then(|v| v.as_u64()) {
+            if let Some(s) = value.as_str() {
+                if s.len() > max_len as usize {
+                    return Some(format!("{} is too long", field));
+                }
+            }
+        }
+
+        // Check min
+        if let Some(min_val) = rules.get("min").and_then(|v| v.as_f64()) {
+            if let Some(n) = value.as_f64() {
+                if n < min_val {
+                    return Some(format!("{} is too small", field));
+                }
+            }
+        }
+
+        // Check max
+        if let Some(max_val) = rules.get("max").and_then(|v| v.as_f64()) {
+            if let Some(n) = value.as_f64() {
+                if n > max_val {
+                    return Some(format!("{} is too large", field));
+                }
+            }
+        }
+
+        // Check format
+        if let Some(format) = rules.get("format").and_then(|v| v.as_str()) {
+            if let Some(s) = value.as_str() {
+                match format {
+                    "email" => {
+                        if !s.contains("@") || !s.contains(".") {
+                            return Some(format!("{} has invalid format", field));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Check custom validation
+        if let Some(custom) = rules.get("custom").and_then(|v| v.as_str()) {
+            match custom {
+                "not_reserved" => {
+                    if let Some(s) = value.as_str() {
+                        if s == "admin" || s == "root" || s == "system" {
+                            return Some(format!("{} is reserved", field));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    None
+}
+
+fn get_nested_value(data: &serde_json::Value, field: &str) -> Option<&serde_json::Value> {
+    if field.contains(".") {
+        let parts: Vec<&str> = field.split(".").collect();
+        let mut current = data;
+        for part in parts {
+            if let Some(obj) = current.as_object() {
+                current = obj.get(part)?;
+            } else {
+                return None;
+            }
+        }
+        Some(current)
+    } else {
+        data.get(field)
+    }
+}
+
+fn assert_form_valid(data: &serde_json::Value, rules: &serde_json::Value) {
+    let result = validate_form_data(data, rules).unwrap();
+    assert!(
+        result.is_valid,
+        "Form should be valid but has errors: {:?}",
+        result.errors
+    );
+}
+
+fn assert_form_invalid(data: &serde_json::Value, rules: &serde_json::Value) {
+    let result = validate_form_data(data, rules).unwrap();
+    assert!(!result.is_valid, "Form should be invalid but is valid");
+}
+
+fn assert_form_has_field_error(data: &serde_json::Value, rules: &serde_json::Value, field: &str) {
+    let result = validate_form_data(data, rules).unwrap();
+    assert!(
+        result.errors.contains_key(field),
+        "Form should have error for field '{}'",
+        field
+    );
+}
+
+fn assert_form_no_field_error(data: &serde_json::Value, rules: &serde_json::Value, field: &str) {
+    let result = validate_form_data(data, rules).unwrap();
+    assert!(
+        !result.errors.contains_key(field),
+        "Form should not have error for field '{}'",
+        field
+    );
+}
+
+fn assert_form_error_message_contains(
+    data: &serde_json::Value,
+    rules: &serde_json::Value,
+    field: &str,
+    message: &str,
+) {
+    let result = validate_form_data(data, rules).unwrap();
+    if let Some(error) = result.errors.get(field) {
+        assert!(
+            error.contains(message),
+            "Error message '{}' should contain '{}'",
+            error,
+            message
+        );
+    } else {
+        panic!("No error found for field '{}'", field);
+    }
+}
+
+fn assert_form_error_count(
+    data: &serde_json::Value,
+    rules: &serde_json::Value,
+    expected_count: usize,
+) {
+    let result = validate_form_data(data, rules).unwrap();
+    assert_eq!(
+        result.errors.len(),
+        expected_count,
+        "Expected {} errors, got {}",
+        expected_count,
+        result.errors.len()
+    );
+}
+
+fn assert_form_field_value<T: PartialEq + serde::Serialize>(
+    data: &serde_json::Value,
+    field: &str,
+    expected: T,
+) {
+    let value = get_nested_value(data, field);
+    assert!(value.is_some(), "Field '{}' not found", field);
+
+    let expected_json = serde_json::to_value(expected).unwrap();
+    assert_eq!(
+        value.unwrap(),
+        &expected_json,
+        "Field '{}' value mismatch",
+        field
+    );
+}
+
+fn assert_form_field_exists(data: &serde_json::Value, field: &str) {
+    let value = get_nested_value(data, field);
+    assert!(value.is_some(), "Field '{}' should exist", field);
+}
+
+fn assert_form_field_not_exists(data: &serde_json::Value, field: &str) {
+    let value = get_nested_value(data, field);
+    assert!(value.is_none(), "Field '{}' should not exist", field);
+}
+
+fn assert_form_field_type(data: &serde_json::Value, field: &str, expected_type: &str) {
+    let value = get_nested_value(data, field);
+    assert!(value.is_some(), "Field '{}' not found", field);
+
+    let actual_type = match value.unwrap() {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    };
+
+    assert_eq!(
+        actual_type, expected_type,
+        "Field '{}' type mismatch: expected '{}', got '{}'",
+        field, expected_type, actual_type
+    );
+}
+
+fn assert_form_array_item<T: PartialEq + serde::Serialize>(
+    data: &serde_json::Value,
+    field: &str,
+    index: usize,
+    expected: T,
+) {
+    let value = get_nested_value(data, field);
+    assert!(value.is_some(), "Field '{}' not found", field);
+
+    let array = value.unwrap().as_array().expect("Field should be an array");
+    assert!(
+        index < array.len(),
+        "Array index {} out of bounds for field '{}'",
+        index,
+        field
+    );
+
+    let expected_json = serde_json::to_value(expected).unwrap();
+    assert_eq!(
+        &array[index], &expected_json,
+        "Array item at index {} for field '{}' mismatch",
+        index, field
+    );
+}
+
+fn assert_form_array_length(data: &serde_json::Value, field: &str, expected_length: usize) {
+    let value = get_nested_value(data, field);
+    assert!(value.is_some(), "Field '{}' not found", field);
+
+    let array = value.unwrap().as_array().expect("Field should be an array");
+    assert_eq!(
+        array.len(),
+        expected_length,
+        "Array length mismatch for field '{}': expected {}, got {}",
+        field,
+        expected_length,
+        array.len()
+    );
+}

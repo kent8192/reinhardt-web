@@ -1,0 +1,571 @@
+use reinhardt_test::*;
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+use tempfile::TempDir;
+
+/// Test fixture loading from JSON files
+#[test]
+fn test_load_fixture_from_json() {
+    let temp_dir = TempDir::new().unwrap();
+    let fixture_path = temp_dir.path().join("test_fixture.json");
+    let fixture_data = json!({
+        "users": [
+            {"id": 1, "name": "Alice", "email": "alice@example.com"},
+            {"id": 2, "name": "Bob", "email": "bob@example.com"}
+        ],
+        "settings": {
+            "debug": true,
+            "version": "1.0.0"
+        }
+    });
+
+    fs::write(
+        &fixture_path,
+        serde_json::to_string_pretty(&fixture_data).unwrap(),
+    )
+    .unwrap();
+
+    let loaded = load_fixture(&fixture_path).unwrap();
+    assert_eq!(loaded["users"][0]["name"], "Alice");
+    assert_eq!(loaded["settings"]["debug"], true);
+}
+
+/// Test fixture loading from YAML files
+#[test]
+fn test_load_fixture_from_yaml() {
+    let temp_dir = TempDir::new().unwrap();
+    let fixture_path = temp_dir.path().join("test_fixture.yaml");
+    let yaml_content = r#"
+users:
+  - id: 1
+    name: Alice
+    email: alice@example.com
+  - id: 2
+    name: Bob
+    email: bob@example.com
+settings:
+  debug: true
+  version: "1.0.0"
+"#;
+
+    fs::write(&fixture_path, yaml_content).unwrap();
+
+    let loaded = load_fixture(&fixture_path).unwrap();
+    assert_eq!(loaded["users"][0]["name"], "Alice");
+    assert_eq!(loaded["settings"]["debug"], true);
+}
+
+/// Test fixture loading with invalid file path
+#[test]
+fn test_load_fixture_invalid_path() {
+    let result = load_fixture(Path::new("/nonexistent/path.json"));
+    assert!(result.is_err());
+}
+
+/// Test fixture loading with invalid JSON
+#[test]
+fn test_load_fixture_invalid_json() {
+    let temp_dir = TempDir::new().unwrap();
+    let fixture_path = temp_dir.path().join("invalid.json");
+    fs::write(&fixture_path, "invalid json content").unwrap();
+
+    let result = load_fixture(&fixture_path);
+    assert!(result.is_err());
+}
+
+/// Test fixture data generation for users
+#[test]
+fn test_generate_fixture_data_users() {
+    let users = generate_fixture_data("users", 3).unwrap();
+    assert_eq!(users.as_array().unwrap().len(), 3);
+
+    for (i, user) in users.as_array().unwrap().iter().enumerate() {
+        assert_eq!(user["id"], i + 1);
+        assert!(user["name"].is_string());
+        assert!(user["email"].is_string());
+        assert!(user["email"].as_str().unwrap().contains("@"));
+    }
+}
+
+/// Test fixture data generation for posts
+#[test]
+fn test_generate_fixture_data_posts() {
+    let posts = generate_fixture_data("posts", 2).unwrap();
+    assert_eq!(posts.as_array().unwrap().len(), 2);
+
+    for post in posts.as_array().unwrap() {
+        assert!(post["id"].is_number());
+        assert!(post["title"].is_string());
+        assert!(post["content"].is_string());
+        assert!(post["created_at"].is_string());
+    }
+}
+
+/// Test fixture data generation with custom template
+#[test]
+fn test_generate_fixture_data_custom_template() {
+    let template = json!({
+        "id": "{{id}}",
+        "custom_field": "{{custom_value}}",
+        "timestamp": "{{timestamp}}"
+    });
+
+    let data = generate_fixture_data_with_template(template, 2).unwrap();
+    assert_eq!(data.as_array().unwrap().len(), 2);
+
+    for item in data.as_array().unwrap() {
+        assert!(item["id"].is_number());
+        assert!(item["custom_field"].is_string());
+        assert!(item["timestamp"].is_string());
+    }
+}
+
+/// Test fixture data generation with invalid template
+#[test]
+fn test_generate_fixture_data_invalid_template() {
+    let template = json!({
+        "id": "{{invalid_placeholder}}",
+        "missing_required": "{{required_field}}"
+    });
+
+    let result = generate_fixture_data_with_template(template, 1);
+    assert!(result.is_err());
+}
+
+/// Test fixture cleanup after test
+#[test]
+fn test_fixture_cleanup() {
+    let temp_dir = TempDir::new().unwrap();
+    let fixture_path = temp_dir.path().join("cleanup_test.json");
+    let fixture_data = json!({"test": "data"});
+
+    fs::write(&fixture_path, serde_json::to_string(&fixture_data).unwrap()).unwrap();
+
+    // Verify file exists
+    assert!(fixture_path.exists());
+
+    // Cleanup
+    cleanup_fixture(&fixture_path).unwrap();
+
+    // Verify file is removed
+    assert!(!fixture_path.exists());
+}
+
+/// Test fixture cleanup with non-existent file
+#[test]
+fn test_fixture_cleanup_nonexistent() {
+    let result = cleanup_fixture(Path::new("/nonexistent/file.json"));
+    assert!(result.is_err());
+}
+
+/// Test fixture data validation
+#[test]
+fn test_validate_fixture_data() {
+    let valid_data = json!({
+        "users": [
+            {"id": 1, "name": "Alice", "email": "alice@example.com"}
+        ]
+    });
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "users": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "number"},
+                        "name": {"type": "string"},
+                        "email": {"type": "string"}
+                    },
+                    "required": ["id", "name", "email"]
+                }
+            }
+        }
+    });
+
+    assert!(validate_fixture_data(&valid_data, &schema).unwrap());
+}
+
+/// Test fixture data validation with invalid data
+#[test]
+fn test_validate_fixture_data_invalid() {
+    let invalid_data = json!({
+        "users": [
+            {"id": "not_a_number", "name": "Alice"}
+        ]
+    });
+
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "users": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "number"},
+                        "name": {"type": "string"}
+                    },
+                    "required": ["id", "name"]
+                }
+            }
+        }
+    });
+
+    assert!(!validate_fixture_data(&invalid_data, &schema).unwrap());
+}
+
+/// Test fixture data merging
+#[test]
+fn test_merge_fixture_data() {
+    let base_data = json!({
+        "users": [{"id": 1, "name": "Alice"}],
+        "settings": {"debug": true}
+    });
+
+    let additional_data = json!({
+        "users": [{"id": 2, "name": "Bob"}],
+        "posts": [{"id": 1, "title": "Test Post"}]
+    });
+
+    let merged = merge_fixture_data(&base_data, &additional_data).unwrap();
+
+    assert_eq!(merged["users"].as_array().unwrap().len(), 2);
+    assert_eq!(merged["settings"]["debug"], true);
+    assert_eq!(merged["posts"].as_array().unwrap().len(), 1);
+}
+
+/// Test fixture data filtering
+#[test]
+fn test_filter_fixture_data() {
+    let data = json!({
+        "users": [
+            {"id": 1, "name": "Alice", "active": true},
+            {"id": 2, "name": "Bob", "active": false},
+            {"id": 3, "name": "Charlie", "active": true}
+        ]
+    });
+
+    let filtered = filter_fixture_data(&data, "users", |user| {
+        user["active"].as_bool().unwrap_or(false)
+    })
+    .unwrap();
+
+    assert_eq!(filtered.as_array().unwrap().len(), 2);
+    assert_eq!(filtered[0]["name"], "Alice");
+    assert_eq!(filtered[1]["name"], "Charlie");
+}
+
+/// Test fixture data transformation
+#[test]
+fn test_transform_fixture_data() {
+    let data = json!({
+        "users": [
+            {"id": 1, "name": "alice", "email": "ALICE@EXAMPLE.COM"}
+        ]
+    });
+
+    let transformed = transform_fixture_data(&data, |mut item| {
+        if let Some(name) = item.get_mut("name") {
+            if let Some(name_str) = name.as_str() {
+                *name = json!(name_str.to_uppercase());
+            }
+        }
+        if let Some(email) = item.get_mut("email") {
+            if let Some(email_str) = email.as_str() {
+                *email = json!(email_str.to_lowercase());
+            }
+        }
+        item
+    })
+    .unwrap();
+
+    assert_eq!(transformed["users"][0]["name"], "ALICE");
+    assert_eq!(transformed["users"][0]["email"], "alice@example.com");
+}
+
+/// Test fixture data serialization
+#[test]
+fn test_serialize_fixture_data() {
+    let data = json!({
+        "users": [{"id": 1, "name": "Alice"}],
+        "settings": {"debug": true}
+    });
+
+    let serialized = serialize_fixture_data(&data, "json").unwrap();
+    let deserialized: Value = serde_json::from_str(&serialized).unwrap();
+
+    assert_eq!(deserialized, data);
+}
+
+/// Test fixture data serialization to YAML
+#[test]
+fn test_serialize_fixture_data_yaml() {
+    let data = json!({
+        "users": [{"id": 1, "name": "Alice"}],
+        "settings": {"debug": true}
+    });
+
+    let serialized = serialize_fixture_data(&data, "yaml").unwrap();
+    assert!(serialized.contains("users:"));
+    assert!(serialized.contains("name: Alice"));
+}
+
+/// Test fixture data with nested objects
+#[test]
+fn test_fixture_data_nested_objects() {
+    let nested_data = json!({
+        "user": {
+            "profile": {
+                "personal": {
+                    "name": "Alice",
+                    "age": 30
+                },
+                "preferences": {
+                    "theme": "dark",
+                    "notifications": true
+                }
+            }
+        }
+    });
+
+    let temp_dir = TempDir::new().unwrap();
+    let fixture_path = temp_dir.path().join("nested.json");
+    fs::write(
+        &fixture_path,
+        serde_json::to_string_pretty(&nested_data).unwrap(),
+    )
+    .unwrap();
+
+    let loaded = load_fixture(&fixture_path).unwrap();
+    assert_eq!(loaded["user"]["profile"]["personal"]["name"], "Alice");
+    assert_eq!(loaded["user"]["profile"]["preferences"]["theme"], "dark");
+}
+
+/// Test fixture data with arrays of objects
+#[test]
+fn test_fixture_data_arrays_of_objects() {
+    let array_data = json!({
+        "products": [
+            {
+                "id": 1,
+                "name": "Product A",
+                "categories": ["electronics", "gadgets"],
+                "specs": {
+                    "weight": "100g",
+                    "color": "black"
+                }
+            },
+            {
+                "id": 2,
+                "name": "Product B",
+                "categories": ["clothing", "accessories"],
+                "specs": {
+                    "size": "M",
+                    "material": "cotton"
+                }
+            }
+        ]
+    });
+
+    let temp_dir = TempDir::new().unwrap();
+    let fixture_path = temp_dir.path().join("arrays.json");
+    fs::write(
+        &fixture_path,
+        serde_json::to_string_pretty(&array_data).unwrap(),
+    )
+    .unwrap();
+
+    let loaded = load_fixture(&fixture_path).unwrap();
+    assert_eq!(loaded["products"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        loaded["products"][0]["categories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(loaded["products"][1]["specs"]["size"], "M");
+}
+
+// Helper functions for fixture utilities testing
+fn load_fixture(path: &Path) -> Result<Value, Box<dyn std::error::Error>> {
+    let content = fs::read_to_string(path)?;
+    if path.extension().and_then(|s| s.to_str()) == Some("yaml")
+        || path.extension().and_then(|s| s.to_str()) == Some("yml")
+    {
+        let yaml: Value = serde_yaml::from_str(&content)?;
+        Ok(yaml)
+    } else {
+        let json: Value = serde_json::from_str(&content)?;
+        Ok(json)
+    }
+}
+
+fn generate_fixture_data(
+    template_name: &str,
+    count: usize,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    match template_name {
+        "users" => {
+            let mut users = Vec::new();
+            for i in 1..=count {
+                users.push(json!({
+                    "id": i,
+                    "name": format!("User{}", i),
+                    "email": format!("user{}@example.com", i),
+                    "created_at": "2024-01-01T00:00:00Z"
+                }));
+            }
+            Ok(json!({ "users": users }))
+        }
+        "posts" => {
+            let mut posts = Vec::new();
+            for i in 1..=count {
+                posts.push(json!({
+                    "id": i,
+                    "title": format!("Post {}", i),
+                    "content": format!("Content for post {}", i),
+                    "created_at": "2024-01-01T00:00:00Z"
+                }));
+            }
+            Ok(json!({ "posts": posts }))
+        }
+        _ => Err("Unknown template".into()),
+    }
+}
+
+fn generate_fixture_data_with_template(
+    template: Value,
+    count: usize,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let mut items = Vec::new();
+    for i in 1..=count {
+        let mut item = template.clone();
+        if let Some(obj) = item.as_object_mut() {
+            for (key, value) in obj.iter_mut() {
+                if let Some(val_str) = value.as_str() {
+                    let replaced = val_str
+                        .replace("{{id}}", &i.to_string())
+                        .replace("{{custom_value}}", &format!("custom_{}", i))
+                        .replace("{{timestamp}}", "2024-01-01T00:00:00Z");
+                    *value = json!(replaced);
+                }
+            }
+        }
+        items.push(item);
+    }
+    Ok(json!(items))
+}
+
+fn cleanup_fixture(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+fn validate_fixture_data(data: &Value, schema: &Value) -> Result<bool, Box<dyn std::error::Error>> {
+    // Simple validation - in real implementation would use jsonschema
+    if let Some(users) = data.get("users") {
+        if let Some(users_array) = users.as_array() {
+            for user in users_array {
+                if !user.is_object() {
+                    return Ok(false);
+                }
+                if let Some(obj) = user.as_object() {
+                    if !obj.contains_key("id") || !obj.contains_key("name") {
+                        return Ok(false);
+                    }
+                }
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn merge_fixture_data(
+    base: &Value,
+    additional: &Value,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let mut result = base.clone();
+
+    if let (Some(result_obj), Some(additional_obj)) =
+        (result.as_object_mut(), additional.as_object())
+    {
+        for (key, value) in additional_obj {
+            if key == "users" && result_obj.contains_key("users") {
+                // Merge arrays
+                if let (Some(result_array), Some(additional_array)) = (
+                    result_obj.get_mut("users").and_then(|v| v.as_array_mut()),
+                    value.as_array(),
+                ) {
+                    result_array.extend(additional_array.clone());
+                }
+            } else {
+                result_obj.insert(key.clone(), value.clone());
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+fn filter_fixture_data<F>(
+    data: &Value,
+    key: &str,
+    predicate: F,
+) -> Result<Value, Box<dyn std::error::Error>>
+where
+    F: Fn(&Value) -> bool,
+{
+    if let Some(array) = data.get(key).and_then(|v| v.as_array()) {
+        let filtered: Vec<Value> = array
+            .iter()
+            .filter(|item| predicate(item))
+            .cloned()
+            .collect();
+        Ok(json!(filtered))
+    } else {
+        Err("Key not found or not an array".into())
+    }
+}
+
+fn transform_fixture_data<F>(
+    data: &Value,
+    transformer: F,
+) -> Result<Value, Box<dyn std::error::Error>>
+where
+    F: Fn(Value) -> Value,
+{
+    if let Some(users) = data.get("users") {
+        if let Some(users_array) = users.as_array() {
+            let transformed: Vec<Value> = users_array
+                .iter()
+                .map(|user| transformer(user.clone()))
+                .collect();
+            let mut result = data.clone();
+            if let Some(result_obj) = result.as_object_mut() {
+                result_obj.insert("users".to_string(), json!(transformed));
+            }
+            return Ok(result);
+        }
+    }
+    Ok(data.clone())
+}
+
+fn serialize_fixture_data(
+    data: &Value,
+    format: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    match format {
+        "json" => Ok(serde_json::to_string_pretty(data)?),
+        "yaml" => Ok(serde_yaml::to_string(data)?),
+        _ => Err("Unsupported format".into()),
+    }
+}

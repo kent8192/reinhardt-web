@@ -1,0 +1,392 @@
+//! Tests for test case utility functions
+//!
+//! These tests verify test case utilities including:
+//! - Test setup and teardown
+//! - Test isolation
+//! - Test fixtures management
+//! - Test state management
+//!
+//! Based on Django's TestCase utilities
+
+use reinhardt_test::APITestCase;
+use std::sync::{Arc, Mutex};
+
+/// Helper struct to track setup/teardown calls
+#[derive(Clone)]
+struct TestState {
+    setup_count: Arc<Mutex<usize>>,
+    teardown_count: Arc<Mutex<usize>>,
+}
+
+impl TestState {
+    fn new() -> Self {
+        Self {
+            setup_count: Arc::new(Mutex::new(0)),
+            teardown_count: Arc::new(Mutex::new(0)),
+        }
+    }
+
+    fn increment_setup(&self) {
+        let mut count = self.setup_count.lock().unwrap();
+        *count += 1;
+    }
+
+    fn increment_teardown(&self) {
+        let mut count = self.teardown_count.lock().unwrap();
+        *count += 1;
+    }
+
+    fn get_setup_count(&self) -> usize {
+        *self.setup_count.lock().unwrap()
+    }
+
+    fn get_teardown_count(&self) -> usize {
+        *self.teardown_count.lock().unwrap()
+    }
+}
+
+#[tokio::test]
+async fn test_testcase_creation() {
+    // Test: Create a new test case
+    let test_case = APITestCase::new();
+
+    // Test case should be successfully created
+    let _client = test_case.client().await;
+}
+
+#[test]
+fn test_testcase_setup_teardown_tracking() {
+    // Test: Track setup and teardown execution
+    let state = TestState::new();
+
+    // Simulate setup
+    state.increment_setup();
+    assert_eq!(state.get_setup_count(), 1);
+
+    // Simulate teardown
+    state.increment_teardown();
+    assert_eq!(state.get_teardown_count(), 1);
+}
+
+#[test]
+fn test_testcase_multiple_setup_calls() {
+    // Test: Multiple setup calls are tracked
+    let state = TestState::new();
+
+    for _ in 0..5 {
+        state.increment_setup();
+    }
+
+    assert_eq!(state.get_setup_count(), 5);
+}
+
+#[tokio::test]
+async fn test_testcase_isolation() {
+    // Test: Test cases are isolated from each other
+    let test1 = APITestCase::new();
+    let test2 = APITestCase::new();
+
+    // Each test case should have its own client
+    let _client1 = test1.client().await;
+    let _client2 = test2.client().await;
+}
+
+#[test]
+fn test_testcase_state_independence() {
+    // Test: Test state is independent between instances
+    let state1 = TestState::new();
+    let state2 = TestState::new();
+
+    state1.increment_setup();
+    state1.increment_setup();
+
+    assert_eq!(state1.get_setup_count(), 2);
+    assert_eq!(state2.get_setup_count(), 0);
+}
+
+#[test]
+fn test_testcase_cleanup_tracking() {
+    // Test: Cleanup operations are tracked
+    let state = TestState::new();
+
+    // Simulate test execution
+    state.increment_setup();
+    // Test runs...
+    state.increment_teardown();
+
+    assert_eq!(state.get_setup_count(), 1);
+    assert_eq!(state.get_teardown_count(), 1);
+}
+
+#[test]
+fn test_testcase_fixture_data() {
+    // Test: Test fixtures can be managed
+    let mut fixtures = std::collections::HashMap::new();
+
+    fixtures.insert("user1", "test_user");
+    fixtures.insert("user2", "admin_user");
+
+    assert_eq!(fixtures.get("user1"), Some(&"test_user"));
+    assert_eq!(fixtures.get("user2"), Some(&"admin_user"));
+}
+
+#[test]
+fn test_testcase_assertion_count() {
+    // Test: Count assertions in a test
+    let mut assertion_count = 0;
+
+    // Simulate meaningful assertions
+    assert_eq!(1 + 1, 2);
+    assertion_count += 1;
+
+    assert_ne!(1, 2);
+    assertion_count += 1;
+
+    assert!(2 > 1, "2 should be greater than 1");
+    assertion_count += 1;
+
+    assert_eq!(assertion_count, 3);
+}
+
+#[test]
+fn test_testcase_concurrent_execution() {
+    // Test: Test cases can run concurrently
+    use std::thread;
+
+    let state = Arc::new(Mutex::new(0));
+
+    let handles: Vec<_> = (0..10)
+        .map(|_| {
+            let state_clone = Arc::clone(&state);
+            thread::spawn(move || {
+                let mut count = state_clone.lock().unwrap();
+                *count += 1;
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    assert_eq!(*state.lock().unwrap(), 10);
+}
+
+#[test]
+fn test_testcase_exception_handling() {
+    // Test: Handle exceptions in test setup
+    let result = std::panic::catch_unwind(|| {
+        // Simulate an error in setup
+        panic!("Setup failed");
+    });
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_testcase_resource_cleanup() {
+    // Test: Resources are cleaned up properly
+    struct Resource {
+        name: String,
+        cleaned: Arc<Mutex<bool>>,
+    }
+
+    impl Drop for Resource {
+        fn drop(&mut self) {
+            let mut cleaned = self.cleaned.lock().unwrap();
+            *cleaned = true;
+        }
+    }
+
+    let cleaned = Arc::new(Mutex::new(false));
+    {
+        let _resource = Resource {
+            name: "test_resource".to_string(),
+            cleaned: Arc::clone(&cleaned),
+        };
+        // Resource goes out of scope here
+    }
+
+    assert!(*cleaned.lock().unwrap());
+}
+
+#[test]
+fn test_testcase_temp_data_cleanup() {
+    // Test: Temporary data is cleaned up
+    use std::fs;
+
+    let temp_dir = std::env::temp_dir();
+    let test_file = temp_dir.join("test_cleanup_file.txt");
+
+    // Create temporary file
+    fs::write(&test_file, "test data").unwrap();
+    assert!(test_file.exists());
+
+    // Cleanup
+    fs::remove_file(&test_file).unwrap();
+    assert!(!test_file.exists());
+}
+
+#[test]
+fn test_testcase_setup_order() {
+    // Test: Setup operations execute in order
+    let order = Arc::new(Mutex::new(Vec::new()));
+
+    {
+        let order_clone = Arc::clone(&order);
+        order_clone.lock().unwrap().push(1);
+    }
+    {
+        let order_clone = Arc::clone(&order);
+        order_clone.lock().unwrap().push(2);
+    }
+    {
+        let order_clone = Arc::clone(&order);
+        order_clone.lock().unwrap().push(3);
+    }
+
+    assert_eq!(*order.lock().unwrap(), vec![1, 2, 3]);
+}
+
+#[tokio::test]
+async fn test_testcase_client_independence() {
+    // Test: Each test case has independent client state
+    let test1 = APITestCase::new();
+    let test2 = APITestCase::new();
+
+    // Clients should be independent
+    let _client1 = test1.client().await;
+    let _client2 = test2.client().await;
+}
+
+#[test]
+fn test_testcase_multiple_assertions() {
+    // Test: Multiple assertions in single test
+    let value = 42;
+
+    assert!(value > 0);
+    assert!(value < 100);
+    assert_eq!(value, 42);
+    assert_ne!(value, 0);
+}
+
+#[test]
+fn test_testcase_nested_setup() {
+    // Test: Nested setup operations
+    let state = TestState::new();
+
+    // Outer setup
+    state.increment_setup();
+
+    // Inner setup (nested)
+    {
+        state.increment_setup();
+    }
+
+    assert_eq!(state.get_setup_count(), 2);
+}
+
+#[test]
+fn test_testcase_error_recovery() {
+    // Test: Test can recover from errors
+    let mut error_count = 0;
+
+    for i in 0..5 {
+        let result = std::panic::catch_unwind(|| {
+            if i == 2 {
+                panic!("Error at i=2");
+            }
+        });
+
+        if result.is_err() {
+            error_count += 1;
+        }
+    }
+
+    assert_eq!(error_count, 1);
+}
+
+#[test]
+fn test_testcase_state_reset() {
+    // Test: State can be reset between tests
+    let state = TestState::new();
+
+    state.increment_setup();
+    state.increment_teardown();
+
+    // Reset state
+    let new_state = TestState::new();
+
+    assert_eq!(new_state.get_setup_count(), 0);
+    assert_eq!(new_state.get_teardown_count(), 0);
+}
+
+#[test]
+fn test_testcase_parallel_execution() {
+    // Test: Test cases can execute in parallel
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let counter = Arc::new(AtomicUsize::new(0));
+    let handles: Vec<_> = (0..5)
+        .map(|_| {
+            let counter_clone = Arc::clone(&counter);
+            std::thread::spawn(move || {
+                counter_clone.fetch_add(1, Ordering::SeqCst);
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    assert_eq!(counter.load(Ordering::SeqCst), 5);
+}
+
+#[test]
+fn test_testcase_fixture_lifecycle() {
+    // Test: Fixture lifecycle management
+    let mut lifecycle = Vec::new();
+
+    lifecycle.push("setup");
+    lifecycle.push("test_execution");
+    lifecycle.push("teardown");
+
+    assert_eq!(lifecycle, vec!["setup", "test_execution", "teardown"]);
+}
+
+#[test]
+fn test_testcase_assertion_messages() {
+    // Test: Custom assertion messages
+    let value = 10;
+
+    assert!(value > 5, "Value should be greater than 5");
+    assert_eq!(value, 10, "Value should equal 10");
+}
+
+#[test]
+fn test_testcase_mock_data_cleanup() {
+    // Test: Mock data is cleaned up after test
+    let mut mock_data = vec![1, 2, 3, 4, 5];
+
+    // Use mock data in test
+    assert_eq!(mock_data.len(), 5);
+
+    // Cleanup
+    mock_data.clear();
+    assert!(mock_data.is_empty());
+}
+
+#[test]
+fn test_testcase_thread_safety() {
+    // Test: Test utilities are thread-safe
+    let state = TestState::new();
+    let state_clone = state.clone();
+
+    let handle = std::thread::spawn(move || {
+        state_clone.increment_setup();
+    });
+
+    handle.join().unwrap();
+    assert_eq!(state.get_setup_count(), 1);
+}

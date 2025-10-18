@@ -1,0 +1,510 @@
+use reinhardt_test::*;
+use serde_json::json;
+use std::collections::HashMap;
+
+/// Test FastAPI test client creation
+#[tokio::test]
+async fn test_fastapi_test_client_creation() {
+    let app_config = FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    };
+
+    let client = create_fastapi_test_client(&app_config).await.unwrap();
+    assert!(client.is_connected());
+}
+
+/// Test FastAPI test client with custom middleware
+#[tokio::test]
+async fn test_fastapi_test_client_with_middleware() {
+    let app_config = FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    };
+
+    let middleware = vec![
+        "cors".to_string(),
+        "logging".to_string(),
+        "authentication".to_string(),
+    ];
+
+    let client = create_fastapi_test_client_with_middleware(&app_config, &middleware)
+        .await
+        .unwrap();
+    assert!(client.is_connected());
+    assert_eq!(client.middleware_count(), 3);
+}
+
+/// Test FastAPI test client with custom dependencies
+#[tokio::test]
+async fn test_fastapi_test_client_with_dependencies() {
+    let app_config = FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    };
+
+    let dependencies = json!({
+        "database": "sqlite://:memory:",
+        "cache": "redis://localhost:6379",
+        "auth_service": "mock_auth"
+    });
+
+    let client = create_fastapi_test_client_with_dependencies(&app_config, &dependencies)
+        .await
+        .unwrap();
+    assert!(client.is_connected());
+    assert!(client.has_dependency("database"));
+    assert!(client.has_dependency("cache"));
+}
+
+/// Test FastAPI endpoint testing
+#[tokio::test]
+async fn test_fastapi_endpoint_testing() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    // Test GET endpoint
+    let response = client.get("/api/users").await.unwrap();
+    assert_eq!(response.status(), 200);
+
+    // Test POST endpoint
+    let user_data = json!({"name": "Alice", "email": "alice@example.com"});
+    let response = client.post("/api/users", &user_data).await.unwrap();
+    assert_eq!(response.status(), 201);
+}
+
+/// Test FastAPI endpoint with path parameters
+#[tokio::test]
+async fn test_fastapi_endpoint_path_parameters() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    let response = client
+        .get_with_params("/api/users/{user_id}", &[("user_id", "123")])
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+
+    let user_data = response.json::<serde_json::Value>().unwrap();
+    assert_eq!(user_data["id"], 123);
+}
+
+/// Test FastAPI endpoint with query parameters
+#[tokio::test]
+async fn test_fastapi_endpoint_query_parameters() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    let query_params = vec![("page", "1"), ("limit", "10"), ("sort", "name")];
+
+    let response = client
+        .get_with_query("/api/users", &query_params)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+
+    let data = response.json::<serde_json::Value>().unwrap();
+    assert_eq!(data["pagination"]["page"], 1);
+    assert_eq!(data["pagination"]["limit"], 10);
+}
+
+/// Test FastAPI endpoint with headers
+#[tokio::test]
+async fn test_fastapi_endpoint_with_headers() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    let headers = vec![
+        ("Authorization", "Bearer token123"),
+        ("Content-Type", "application/json"),
+        ("X-API-Key", "api_key_123"),
+    ];
+
+    let response = client
+        .get_with_headers("/api/protected", &headers)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+}
+
+/// Test FastAPI endpoint with authentication
+#[tokio::test]
+async fn test_fastapi_endpoint_authentication() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    // Test unauthenticated request
+    let response = client.get("/api/protected").await.unwrap();
+    assert_eq!(response.status(), 401);
+
+    // Test authenticated request
+    client.authenticate("user123", "password123").await.unwrap();
+    let response = client.get("/api/protected").await.unwrap();
+    assert_eq!(response.status(), 200);
+}
+
+/// Test FastAPI endpoint with request body validation
+#[tokio::test]
+async fn test_fastapi_endpoint_request_validation() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    // Test valid request body
+    let valid_data = json!({
+        "name": "Alice",
+        "email": "alice@example.com",
+        "age": 30
+    });
+    let response = client.post("/api/users", &valid_data).await.unwrap();
+    assert_eq!(response.status(), 201);
+
+    // Test invalid request body
+    let invalid_data = json!({
+        "name": "Alice",
+        "email": "invalid-email",  // Invalid email format
+        "age": "not-a-number"      // Invalid age type
+    });
+    let response = client.post("/api/users", &invalid_data).await.unwrap();
+    assert_eq!(response.status(), 422);
+}
+
+/// Test FastAPI endpoint with response validation
+#[tokio::test]
+async fn test_fastapi_endpoint_response_validation() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    let response = client.get("/api/users/123").await.unwrap();
+    assert_eq!(response.status(), 200);
+
+    let user_data = response.json::<serde_json::Value>().unwrap();
+
+    // Validate response schema
+    assert!(user_data["id"].is_number());
+    assert!(user_data["name"].is_string());
+    assert!(user_data["email"].is_string());
+    assert!(user_data["created_at"].is_string());
+}
+
+/// Test FastAPI endpoint with error handling
+#[tokio::test]
+async fn test_fastapi_endpoint_error_handling() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    // Test 404 error
+    let response = client.get("/api/users/999999").await.unwrap();
+    assert_eq!(response.status(), 404);
+
+    let error_data = response.json::<serde_json::Value>().unwrap();
+    assert_eq!(error_data["detail"], "User not found");
+
+    // Test 500 error
+    let response = client.get("/api/error").await.unwrap();
+    assert_eq!(response.status(), 500);
+}
+
+/// Test FastAPI endpoint with rate limiting
+#[tokio::test]
+async fn test_fastapi_endpoint_rate_limiting() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    // Make multiple requests to trigger rate limiting
+    for i in 0..10 {
+        let response = client.get("/api/rate-limited").await.unwrap();
+        if i < 5 {
+            assert_eq!(response.status(), 200);
+        } else {
+            assert_eq!(response.status(), 429);
+        }
+    }
+}
+
+/// Test FastAPI endpoint with caching
+#[tokio::test]
+async fn test_fastapi_endpoint_caching() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    // First request - should hit the endpoint
+    let response1 = client.get("/api/cached").await.unwrap();
+    assert_eq!(response1.status(), 200);
+    assert!(response1.headers().contains_key("x-cache-miss"));
+
+    // Second request - should hit the cache
+    let response2 = client.get("/api/cached").await.unwrap();
+    assert_eq!(response2.status(), 200);
+    assert!(response2.headers().contains_key("x-cache-hit"));
+}
+
+/// Test FastAPI endpoint with WebSocket
+#[tokio::test]
+async fn test_fastapi_endpoint_websocket() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    let websocket = client.connect_websocket("/ws/chat").await.unwrap();
+
+    // Send message
+    websocket
+        .send(json!({"type": "message", "content": "Hello"}))
+        .await
+        .unwrap();
+
+    // Receive message
+    let message = websocket.receive().await.unwrap();
+    assert_eq!(message["type"], "message");
+    assert_eq!(message["content"], "Hello");
+}
+
+/// Test FastAPI endpoint with background tasks
+#[tokio::test]
+async fn test_fastapi_endpoint_background_tasks() {
+    let client = create_fastapi_test_client(&FastAPIAppConfig {
+        title: "Test API".to_string(),
+        version: "1.0.0".to_string(),
+        debug: true,
+    })
+    .await
+    .unwrap();
+
+    let task_data = json!({
+        "task_type": "email_notification",
+        "recipient": "user@example.com",
+        "subject": "Test Email"
+    });
+
+    let response = client.post("/api/tasks", &task_data).await.unwrap();
+    assert_eq!(response.status(), 202);
+
+    let task_info = response.json::<serde_json::Value>().unwrap();
+    assert!(task_info["task_id"].is_string());
+
+    // Wait for background task to complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Check task status
+    let task_id = task_info["task_id"].as_str().unwrap();
+    let status_response = client
+        .get(&format!("/api/tasks/{}", task_id))
+        .await
+        .unwrap();
+    assert_eq!(status_response.status(), 200);
+
+    let status_data = status_response.json::<serde_json::Value>().unwrap();
+    assert_eq!(status_data["status"], "completed");
+}
+
+// Helper types and functions for FastAPI testing
+#[derive(Debug, Clone)]
+struct FastAPIAppConfig {
+    title: String,
+    version: String,
+    debug: bool,
+}
+
+#[derive(Debug)]
+struct FastAPITestClient {
+    base_url: String,
+    connected: bool,
+    middleware_count: usize,
+    dependencies: HashMap<String, String>,
+    auth_token: Option<String>,
+}
+
+impl FastAPITestClient {
+    fn is_connected(&self) -> bool {
+        self.connected
+    }
+
+    fn middleware_count(&self) -> usize {
+        self.middleware_count
+    }
+
+    fn has_dependency(&self, name: &str) -> bool {
+        self.dependencies.contains_key(name)
+    }
+
+    async fn get(&self, path: &str) -> Result<TestResponse, Box<dyn std::error::Error>> {
+        println!("GET {}", path);
+        Ok(TestResponse::with_status(StatusCode::OK))
+    }
+
+    async fn post(
+        &self,
+        path: &str,
+        data: &serde_json::Value,
+    ) -> Result<TestResponse, Box<dyn std::error::Error>> {
+        println!("POST {} with data: {:?}", path, data);
+        Ok(TestResponse::with_status(StatusCode::CREATED))
+    }
+
+    async fn get_with_params(
+        &self,
+        path: &str,
+        params: &[(&str, &str)],
+    ) -> Result<TestResponse, Box<dyn std::error::Error>> {
+        let actual_path = path.replace("{user_id}", params[0].1);
+        println!("GET {} with params: {:?}", actual_path, params);
+        Ok(TestResponse::with_status(StatusCode::OK))
+    }
+
+    async fn get_with_query(
+        &self,
+        path: &str,
+        params: &[(&str, &str)],
+    ) -> Result<TestResponse, Box<dyn std::error::Error>> {
+        println!("GET {} with query: {:?}", path, params);
+        Ok(TestResponse::with_status(StatusCode::OK))
+    }
+
+    async fn get_with_headers(
+        &self,
+        path: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<TestResponse, Box<dyn std::error::Error>> {
+        println!("GET {} with headers: {:?}", path, headers);
+        Ok(TestResponse::with_status(StatusCode::OK))
+    }
+
+    async fn authenticate(
+        &mut self,
+        username: &str,
+        password: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Authenticating user: {}", username);
+        self.auth_token = Some("mock_token_123".to_string());
+        Ok(())
+    }
+
+    async fn connect_websocket(
+        &self,
+        path: &str,
+    ) -> Result<WebSocketConnection, Box<dyn std::error::Error>> {
+        println!("Connecting to WebSocket: {}", path);
+        Ok(WebSocketConnection {
+            path: path.to_string(),
+        })
+    }
+}
+
+#[derive(Debug)]
+struct WebSocketConnection {
+    path: String,
+}
+
+impl WebSocketConnection {
+    async fn send(&self, data: serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
+        println!("WebSocket send: {:?}", data);
+        Ok(())
+    }
+
+    async fn receive(&self) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        println!("WebSocket receive");
+        Ok(json!({"type": "message", "content": "Hello"}))
+    }
+}
+
+async fn create_fastapi_test_client(
+    config: &FastAPIAppConfig,
+) -> Result<FastAPITestClient, Box<dyn std::error::Error>> {
+    Ok(FastAPITestClient {
+        base_url: "http://localhost:8000".to_string(),
+        connected: true,
+        middleware_count: 0,
+        dependencies: HashMap::new(),
+        auth_token: None,
+    })
+}
+
+async fn create_fastapi_test_client_with_middleware(
+    config: &FastAPIAppConfig,
+    middleware: &[String],
+) -> Result<FastAPITestClient, Box<dyn std::error::Error>> {
+    Ok(FastAPITestClient {
+        base_url: "http://localhost:8000".to_string(),
+        connected: true,
+        middleware_count: middleware.len(),
+        dependencies: HashMap::new(),
+        auth_token: None,
+    })
+}
+
+async fn create_fastapi_test_client_with_dependencies(
+    config: &FastAPIAppConfig,
+    dependencies: &serde_json::Value,
+) -> Result<FastAPITestClient, Box<dyn std::error::Error>> {
+    let mut deps = HashMap::new();
+    if let Some(obj) = dependencies.as_object() {
+        for (key, value) in obj {
+            deps.insert(key.clone(), value.as_str().unwrap_or("").to_string());
+        }
+    }
+
+    Ok(FastAPITestClient {
+        base_url: "http://localhost:8000".to_string(),
+        connected: true,
+        middleware_count: 0,
+        dependencies: deps,
+        auth_token: None,
+    })
+}

@@ -1,0 +1,310 @@
+//! Tests for mock and spy functionality
+//!
+//! These tests verify mock function and spy behavior including:
+//! - Mock function creation and call tracking
+//! - Return value configuration
+//! - Call verification
+//! - Spy object creation and tracking
+//!
+//! Similar to unittest.mock in Python
+
+use reinhardt_test::{MockFunction, Spy};
+use serde_json::json;
+use std::sync::Arc;
+
+#[tokio::test]
+async fn test_mock_function_creation() {
+    // Test: Create a mock function
+    let mock: MockFunction<i32> = MockFunction::new();
+
+    // Initially, no calls should be registered
+    assert!(!mock.was_called().await);
+    assert_eq!(mock.call_count().await, 0);
+}
+
+#[tokio::test]
+async fn test_mock_function_with_default() {
+    // Test: Create mock with default return value
+    let mock = MockFunction::with_default(42);
+
+    // Call the mock
+    let result = mock.call(vec![]).await;
+    assert_eq!(result, Some(42));
+
+    // Call again, should still return default
+    let result2 = mock.call(vec![]).await;
+    assert_eq!(result2, Some(42));
+}
+
+#[tokio::test]
+async fn test_mock_function_returns() {
+    // Test: Queue return values
+    let mock: MockFunction<String> = MockFunction::new();
+
+    mock.returns("first".to_string()).await;
+    mock.returns("second".to_string()).await;
+    mock.returns("third".to_string()).await;
+
+    // First call returns first queued value
+    assert_eq!(mock.call(vec![]).await, Some("first".to_string()));
+
+    // Second call returns second queued value
+    assert_eq!(mock.call(vec![]).await, Some("second".to_string()));
+
+    // Third call returns third queued value
+    assert_eq!(mock.call(vec![]).await, Some("third".to_string()));
+
+    // Fourth call returns None (queue is empty, no default)
+    assert_eq!(mock.call(vec![]).await, None);
+}
+
+#[tokio::test]
+async fn test_mock_function_returns_many() {
+    // Test: Queue multiple return values at once
+    let mock: MockFunction<i32> = MockFunction::new();
+
+    mock.returns_many(vec![10, 20, 30]).await;
+
+    assert_eq!(mock.call(vec![]).await, Some(10));
+    assert_eq!(mock.call(vec![]).await, Some(20));
+    assert_eq!(mock.call(vec![]).await, Some(30));
+}
+
+#[tokio::test]
+async fn test_mock_function_call_tracking() {
+    // Test: Track function calls
+    let mock: MockFunction<bool> = MockFunction::new();
+
+    // Make calls with different arguments
+    mock.call(vec![json!("arg1")]).await;
+    mock.call(vec![json!(42), json!("arg2")]).await;
+    mock.call(vec![json!(true)]).await;
+
+    // Verify call count
+    assert_eq!(mock.call_count().await, 3);
+    assert!(mock.was_called().await);
+}
+
+#[tokio::test]
+async fn test_mock_function_was_called_with() {
+    // Test: Verify mock was called with specific arguments
+    let mock: MockFunction<()> = MockFunction::new();
+
+    mock.call(vec![json!("hello"), json!(123)]).await;
+    mock.call(vec![json!("world")]).await;
+
+    // Check if called with specific args
+    assert!(mock.was_called_with(vec![json!("hello"), json!(123)]).await);
+    assert!(mock.was_called_with(vec![json!("world")]).await);
+    assert!(!mock.was_called_with(vec![json!("not_called")]).await);
+}
+
+#[tokio::test]
+async fn test_mock_function_last_call_args() {
+    // Test: Get arguments from last call
+    let mock: MockFunction<()> = MockFunction::new();
+
+    mock.call(vec![json!("first")]).await;
+    mock.call(vec![json!("second")]).await;
+    mock.call(vec![json!("last"), json!(999)]).await;
+
+    let last_args = mock.last_call_args().await;
+    assert_eq!(last_args, Some(vec![json!("last"), json!(999)]));
+}
+
+#[tokio::test]
+async fn test_mock_function_get_calls() {
+    // Test: Retrieve all call records
+    let mock: MockFunction<()> = MockFunction::new();
+
+    mock.call(vec![json!(1)]).await;
+    mock.call(vec![json!(2)]).await;
+    mock.call(vec![json!(3)]).await;
+
+    let calls = mock.get_calls().await;
+    assert_eq!(calls.len(), 3);
+
+    // Verify call arguments
+    assert_eq!(calls[0].args, vec![json!(1)]);
+    assert_eq!(calls[1].args, vec![json!(2)]);
+    assert_eq!(calls[2].args, vec![json!(3)]);
+}
+
+#[tokio::test]
+async fn test_mock_function_reset() {
+    // Test: Reset mock state
+    let mock: MockFunction<i32> = MockFunction::new();
+
+    // Make some calls
+    mock.call(vec![json!("test")]).await;
+    mock.call(vec![json!("test2")]).await;
+
+    assert_eq!(mock.call_count().await, 2);
+
+    // Reset the mock
+    mock.reset().await;
+
+    // After reset, call count should be zero
+    assert_eq!(mock.call_count().await, 0);
+    assert!(!mock.was_called().await);
+}
+
+#[tokio::test]
+async fn test_spy_creation() {
+    // Test: Create a spy object
+    let spy: Spy<String> = Spy::new();
+
+    // Initially, no calls
+    assert!(!spy.was_called().await);
+    assert_eq!(spy.call_count().await, 0);
+}
+
+#[tokio::test]
+async fn test_spy_record_call() {
+    // Test: Record calls with spy
+    let spy: Spy<String> = Spy::new();
+
+    spy.record_call(vec![json!("spy_arg")]).await;
+    spy.record_call(vec![json!("another_arg")]).await;
+
+    assert_eq!(spy.call_count().await, 2);
+    assert!(spy.was_called().await);
+}
+
+#[tokio::test]
+async fn test_spy_was_called_with() {
+    // Test: Verify spy was called with specific arguments
+    let spy: Spy<i32> = Spy::new();
+
+    spy.record_call(vec![json!(100), json!("test")]).await;
+
+    assert!(spy.was_called_with(vec![json!(100), json!("test")]).await);
+    assert!(!spy.was_called_with(vec![json!(999)]).await);
+}
+
+#[tokio::test]
+async fn test_spy_reset() {
+    // Test: Reset spy state
+    let spy: Spy<()> = Spy::new();
+
+    spy.record_call(vec![json!("tracked")]).await;
+    assert!(spy.was_called().await);
+
+    spy.reset().await;
+    assert!(!spy.was_called().await);
+}
+
+#[tokio::test]
+async fn test_mock_with_complex_return_types() {
+    // Test: Mock with complex return types (structs, nested data)
+    use serde_json::Value;
+
+    let mock: MockFunction<Value> = MockFunction::new();
+
+    let return_value = json!({
+        "status": "success",
+        "data": {
+            "id": 123,
+            "name": "Test"
+        }
+    });
+
+    mock.returns(return_value.clone()).await;
+
+    let result = mock.call(vec![json!("request")]).await;
+    assert_eq!(result, Some(return_value));
+}
+
+#[tokio::test]
+async fn test_mock_multiple_calls_with_different_args() {
+    // Test: Verify each call is tracked separately
+    let mock: MockFunction<String> = MockFunction::new();
+
+    mock.call(vec![json!("call1")]).await;
+    mock.call(vec![json!("call2"), json!(123)]).await;
+    mock.call(vec![json!("call3"), json!(true), json!(null)])
+        .await;
+
+    let calls = mock.get_calls().await;
+    assert_eq!(calls.len(), 3);
+
+    // Each call should have different arguments
+    assert_eq!(calls[0].args.len(), 1);
+    assert_eq!(calls[1].args.len(), 2);
+    assert_eq!(calls[2].args.len(), 3);
+}
+
+#[tokio::test]
+async fn test_mock_falls_back_to_default_after_queue_empty() {
+    // Test: After queued values are consumed, fall back to default
+    let mock = MockFunction::with_default(0);
+
+    mock.returns(100).await;
+    mock.returns(200).await;
+
+    // First two calls use queued values
+    assert_eq!(mock.call(vec![]).await, Some(100));
+    assert_eq!(mock.call(vec![]).await, Some(200));
+
+    // Subsequent calls use default
+    assert_eq!(mock.call(vec![]).await, Some(0));
+    assert_eq!(mock.call(vec![]).await, Some(0));
+}
+
+#[tokio::test]
+async fn test_spy_get_all_calls() {
+    // Test: Retrieve all calls from spy
+    let spy: Spy<()> = Spy::new();
+
+    spy.record_call(vec![json!("first")]).await;
+    spy.record_call(vec![json!("second")]).await;
+    spy.record_call(vec![json!("third")]).await;
+
+    let calls = spy.get_calls().await;
+    assert_eq!(calls.len(), 3);
+
+    assert_eq!(calls[0].args, vec![json!("first")]);
+    assert_eq!(calls[1].args, vec![json!("second")]);
+    assert_eq!(calls[2].args, vec![json!("third")]);
+}
+
+#[tokio::test]
+async fn test_mock_concurrent_safety() {
+    // Test: Mock is safe to use concurrently
+    use tokio::task;
+
+    let mock: MockFunction<i32> = MockFunction::with_default(0);
+    let mock = std::sync::Arc::new(mock);
+
+    // Spawn multiple tasks that call the mock
+    let mut handles = vec![];
+
+    for i in 0..10 {
+        let mock_clone = Arc::clone(&mock);
+        let handle = task::spawn(async move {
+            mock_clone.call(vec![json!(i)]).await;
+        });
+        handles.push(handle);
+    }
+
+    // Wait for all tasks to complete
+    for handle in handles {
+        handle.await.unwrap();
+    }
+
+    // All calls should be tracked
+    assert_eq!(mock.call_count().await, 10);
+}
+
+#[tokio::test]
+async fn test_spy_last_call() {
+    // Test: Get last call from spy
+    let spy: Spy<String> = Spy::new();
+
+    spy.record_call(vec![json!("first")]).await;
+    spy.record_call(vec![json!("middle")]).await;
+    spy.record_call(vec![json!("last")]).await;
+
+    let last = spy.last_call_args().await;
+    assert_eq!(last, Some(vec![json!("last")]));
+}

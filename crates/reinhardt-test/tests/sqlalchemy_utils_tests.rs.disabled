@@ -1,0 +1,1660 @@
+use reinhardt_test::*;
+use serde_json::json;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+/// Test SQLAlchemy engine creation
+#[tokio::test]
+async fn test_sqlalchemy_engine_creation() {
+    let config = SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    };
+
+    let engine = create_sqlalchemy_engine(&config).await.unwrap();
+    assert!(engine.is_connected());
+}
+
+/// Test SQLAlchemy engine with invalid URL
+#[tokio::test]
+async fn test_sqlalchemy_engine_invalid_url() {
+    let config = SQLAlchemyConfig {
+        url: "invalid://url".to_string(),
+        echo: false,
+        pool_size: 5,
+    };
+
+    let result = create_sqlalchemy_engine(&config).await;
+    assert!(result.is_err());
+}
+
+/// Test SQLAlchemy session creation
+#[tokio::test]
+async fn test_sqlalchemy_session_creation() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+    assert!(session.is_active());
+}
+
+/// Test SQLAlchemy session with context manager
+#[tokio::test]
+async fn test_sqlalchemy_session_context_manager() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let result = engine
+        .with_session(|session| async {
+            assert!(session.is_active());
+            Ok(42)
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result, 42);
+}
+
+/// Test SQLAlchemy model definition
+#[test]
+fn test_sqlalchemy_model_definition() {
+    let model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "email": {"type": "String", "unique": true},
+            "created_at": {"type": "DateTime", "default": "CURRENT_TIMESTAMP"}
+        }),
+    );
+
+    assert_eq!(model.name, "User");
+    assert_eq!(model.columns.len(), 4);
+    assert!(model.has_column("id"));
+    assert!(model.has_column("name"));
+    assert!(model.has_column("email"));
+    assert!(model.has_column("created_at"));
+}
+
+/// Test SQLAlchemy model with relationships
+#[test]
+fn test_sqlalchemy_model_relationships() {
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false}
+        }),
+    );
+
+    let post_model = define_sqlalchemy_model(
+        "Post",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "title": {"type": "String", "nullable": false},
+            "user_id": {"type": "Integer", "foreign_key": "User.id"}
+        }),
+    );
+
+    let relationship = define_relationship(&user_model, &post_model, "posts", "one-to-many");
+    assert_eq!(relationship.from_model, "User");
+    assert_eq!(relationship.to_model, "Post");
+    assert_eq!(relationship.relationship_type, "one-to-many");
+}
+
+/// Test SQLAlchemy query execution
+#[tokio::test]
+async fn test_sqlalchemy_query_execution() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    // Create table
+    session
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)")
+        .await
+        .unwrap();
+
+    // Insert data
+    session
+        .execute("INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com')")
+        .await
+        .unwrap();
+    session
+        .execute("INSERT INTO users (id, name, email) VALUES (2, 'Bob', 'bob@example.com')")
+        .await
+        .unwrap();
+
+    // Query data
+    let results = session
+        .query("SELECT * FROM users ORDER BY id")
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0]["name"], "Alice");
+    assert_eq!(results[1]["name"], "Bob");
+}
+
+/// Test SQLAlchemy query with parameters
+#[tokio::test]
+async fn test_sqlalchemy_query_with_parameters() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    // Create table and insert data
+    session
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)")
+        .await
+        .unwrap();
+    session
+        .execute("INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com')")
+        .await
+        .unwrap();
+    session
+        .execute("INSERT INTO users (id, name, email) VALUES (2, 'Bob', 'bob@example.com')")
+        .await
+        .unwrap();
+
+    // Query with parameters
+    let results = session
+        .query_with_params("SELECT * FROM users WHERE name = ?", &[json!("Alice")])
+        .await
+        .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["name"], "Alice");
+}
+
+/// Test SQLAlchemy ORM query
+#[tokio::test]
+async fn test_sqlalchemy_orm_query() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    // Create model
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "email": {"type": "String", "unique": true}
+        }),
+    );
+
+    // Insert data using ORM
+    let user1 = user_model
+        .create(
+            &session,
+            &json!({
+                "name": "Alice",
+                "email": "alice@example.com"
+            }),
+        )
+        .await
+        .unwrap();
+
+    let user2 = user_model
+        .create(
+            &session,
+            &json!({
+                "name": "Bob",
+                "email": "bob@example.com"
+            }),
+        )
+        .await
+        .unwrap();
+
+    // Query using ORM
+    let users = user_model.query_all(&session).await.unwrap();
+    assert_eq!(users.len(), 2);
+
+    let alice = user_model
+        .query_by_id(&session, user1["id"].as_u64().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(alice["name"], "Alice");
+}
+
+/// Test SQLAlchemy ORM filtering
+#[tokio::test]
+async fn test_sqlalchemy_orm_filtering() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "age": {"type": "Integer", "nullable": true}
+        }),
+    );
+
+    // Insert test data
+    user_model
+        .create(&session, &json!({"name": "Alice", "age": 30}))
+        .await
+        .unwrap();
+    user_model
+        .create(&session, &json!({"name": "Bob", "age": 25}))
+        .await
+        .unwrap();
+    user_model
+        .create(&session, &json!({"name": "Charlie", "age": 35}))
+        .await
+        .unwrap();
+
+    // Filter by age
+    let adults = user_model
+        .filter(&session, "age >= ?", &[json!(30)])
+        .await
+        .unwrap();
+    assert_eq!(adults.len(), 2);
+
+    // Filter by name
+    let alice = user_model
+        .filter(&session, "name = ?", &[json!("Alice")])
+        .await
+        .unwrap();
+    assert_eq!(alice.len(), 1);
+    assert_eq!(alice[0]["name"], "Alice");
+}
+
+/// Test SQLAlchemy ORM ordering
+#[tokio::test]
+async fn test_sqlalchemy_orm_ordering() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "age": {"type": "Integer", "nullable": true}
+        }),
+    );
+
+    // Insert test data
+    user_model
+        .create(&session, &json!({"name": "Charlie", "age": 35}))
+        .await
+        .unwrap();
+    user_model
+        .create(&session, &json!({"name": "Alice", "age": 30}))
+        .await
+        .unwrap();
+    user_model
+        .create(&session, &json!({"name": "Bob", "age": 25}))
+        .await
+        .unwrap();
+
+    // Order by name
+    let users_by_name = user_model.order_by(&session, "name ASC").await.unwrap();
+    assert_eq!(users_by_name[0]["name"], "Alice");
+    assert_eq!(users_by_name[1]["name"], "Bob");
+    assert_eq!(users_by_name[2]["name"], "Charlie");
+
+    // Order by age
+    let users_by_age = user_model.order_by(&session, "age DESC").await.unwrap();
+    assert_eq!(users_by_age[0]["age"], 35);
+    assert_eq!(users_by_age[1]["age"], 30);
+    assert_eq!(users_by_age[2]["age"], 25);
+}
+
+/// Test SQLAlchemy ORM pagination
+#[tokio::test]
+async fn test_sqlalchemy_orm_pagination() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false}
+        }),
+    );
+
+    // Insert test data
+    for i in 1..=10 {
+        user_model
+            .create(&session, &json!({ "name": format!("User{}", i) }))
+            .await
+            .unwrap();
+    }
+
+    // Test pagination
+    let page1 = user_model.paginate(&session, 1, 3).await.unwrap();
+    assert_eq!(page1.len(), 3);
+    assert_eq!(page1[0]["name"], "User1");
+    assert_eq!(page1[1]["name"], "User2");
+    assert_eq!(page1[2]["name"], "User3");
+
+    let page2 = user_model.paginate(&session, 2, 3).await.unwrap();
+    assert_eq!(page2.len(), 3);
+    assert_eq!(page2[0]["name"], "User4");
+    assert_eq!(page2[1]["name"], "User5");
+    assert_eq!(page2[2]["name"], "User6");
+}
+
+/// Test SQLAlchemy ORM joins
+#[tokio::test]
+async fn test_sqlalchemy_orm_joins() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false}
+        }),
+    );
+
+    let post_model = define_sqlalchemy_model(
+        "Post",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "title": {"type": "String", "nullable": false},
+            "user_id": {"type": "Integer", "foreign_key": "User.id"}
+        }),
+    );
+
+    // Insert test data
+    let user = user_model
+        .create(&session, &json!({"name": "Alice"}))
+        .await
+        .unwrap();
+    let user_id = user["id"].as_u64().unwrap();
+
+    post_model
+        .create(
+            &session,
+            &json!({
+                "title": "First Post",
+                "user_id": user_id
+            }),
+        )
+        .await
+        .unwrap();
+
+    post_model
+        .create(
+            &session,
+            &json!({
+                "title": "Second Post",
+                "user_id": user_id
+            }),
+        )
+        .await
+        .unwrap();
+
+    // Join query
+    let results = user_model
+        .join(&session, &post_model, "id", "user_id")
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0]["name"], "Alice");
+    assert_eq!(results[0]["title"], "First Post");
+    assert_eq!(results[1]["name"], "Alice");
+    assert_eq!(results[1]["title"], "Second Post");
+}
+
+/// Test SQLAlchemy ORM aggregation
+#[tokio::test]
+async fn test_sqlalchemy_orm_aggregation() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "age": {"type": "Integer", "nullable": true}
+        }),
+    );
+
+    // Insert test data
+    user_model
+        .create(&session, &json!({"name": "Alice", "age": 30}))
+        .await
+        .unwrap();
+    user_model
+        .create(&session, &json!({"name": "Bob", "age": 25}))
+        .await
+        .unwrap();
+    user_model
+        .create(&session, &json!({"name": "Charlie", "age": 35}))
+        .await
+        .unwrap();
+
+    // Count
+    let count = user_model.count(&session).await.unwrap();
+    assert_eq!(count, 3);
+
+    // Average age
+    let avg_age = user_model.aggregate(&session, "AVG(age)").await.unwrap();
+    assert_eq!(avg_age, 30.0);
+
+    // Max age
+    let max_age = user_model.aggregate(&session, "MAX(age)").await.unwrap();
+    assert_eq!(max_age, 35);
+
+    // Min age
+    let min_age = user_model.aggregate(&session, "MIN(age)").await.unwrap();
+    assert_eq!(min_age, 25);
+}
+
+/// Test SQLAlchemy ORM grouping
+#[tokio::test]
+async fn test_sqlalchemy_orm_grouping() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "department": {"type": "String", "nullable": true}
+        }),
+    );
+
+    // Insert test data
+    user_model
+        .create(
+            &session,
+            &json!({"name": "Alice", "department": "Engineering"}),
+        )
+        .await
+        .unwrap();
+    user_model
+        .create(
+            &session,
+            &json!({"name": "Bob", "department": "Engineering"}),
+        )
+        .await
+        .unwrap();
+    user_model
+        .create(
+            &session,
+            &json!({"name": "Charlie", "department": "Marketing"}),
+        )
+        .await
+        .unwrap();
+    user_model
+        .create(
+            &session,
+            &json!({"name": "David", "department": "Marketing"}),
+        )
+        .await
+        .unwrap();
+
+    // Group by department
+    let groups = user_model
+        .group_by(&session, "department", "COUNT(*)")
+        .await
+        .unwrap();
+    assert_eq!(groups.len(), 2);
+
+    let eng_count = groups
+        .iter()
+        .find(|g| g["department"] == "Engineering")
+        .unwrap();
+    assert_eq!(eng_count["count"], 2);
+
+    let mkt_count = groups
+        .iter()
+        .find(|g| g["department"] == "Marketing")
+        .unwrap();
+    assert_eq!(mkt_count["count"], 2);
+}
+
+/// Test SQLAlchemy ORM transactions
+#[tokio::test]
+async fn test_sqlalchemy_orm_transactions() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "balance": {"type": "Float", "nullable": true}
+        }),
+    );
+
+    // Test successful transaction
+    let result = session
+        .transaction(|tx| async {
+            user_model
+                .create(tx, &json!({"name": "Alice", "balance": 100.0}))
+                .await?;
+            user_model
+                .create(tx, &json!({"name": "Bob", "balance": 200.0}))
+                .await?;
+            Ok(42)
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result, 42);
+
+    let count = user_model.count(&session).await.unwrap();
+    assert_eq!(count, 2);
+
+    // Test failed transaction (rollback)
+    let result = session
+        .transaction(|tx| async {
+            user_model
+                .create(tx, &json!({"name": "Charlie", "balance": 300.0}))
+                .await?;
+            user_model
+                .create(tx, &json!({"name": "David", "balance": 400.0}))
+                .await?;
+            Err("Simulated error".into())
+        })
+        .await;
+
+    assert!(result.is_err());
+
+    let count = user_model.count(&session).await.unwrap();
+    assert_eq!(count, 2); // Should still be 2, not 4
+}
+
+/// Test SQLAlchemy ORM bulk operations
+#[tokio::test]
+async fn test_sqlalchemy_orm_bulk_operations() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "email": {"type": "String", "unique": true}
+        }),
+    );
+
+    // Bulk insert
+    let users_data = vec![
+        json!({"name": "Alice", "email": "alice@example.com"}),
+        json!({"name": "Bob", "email": "bob@example.com"}),
+        json!({"name": "Charlie", "email": "charlie@example.com"}),
+    ];
+
+    user_model.bulk_create(&session, &users_data).await.unwrap();
+
+    let count = user_model.count(&session).await.unwrap();
+    assert_eq!(count, 3);
+
+    // Bulk update
+    user_model
+        .bulk_update(&session, "name", "Updated Name", "id > ?", &[json!(0)])
+        .await
+        .unwrap();
+
+    let users = user_model.query_all(&session).await.unwrap();
+    for user in users {
+        assert_eq!(user["name"], "Updated Name");
+    }
+
+    // Bulk delete
+    user_model
+        .bulk_delete(&session, "id > ?", &[json!(1)])
+        .await
+        .unwrap();
+
+    let count = user_model.count(&session).await.unwrap();
+    assert_eq!(count, 1);
+}
+
+/// Test SQLAlchemy ORM lazy loading
+#[tokio::test]
+async fn test_sqlalchemy_orm_lazy_loading() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false}
+        }),
+    );
+
+    let post_model = define_sqlalchemy_model(
+        "Post",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "title": {"type": "String", "nullable": false},
+            "user_id": {"type": "Integer", "foreign_key": "User.id"}
+        }),
+    );
+
+    // Create relationship
+    define_relationship(&user_model, &post_model, "posts", "one-to-many");
+
+    // Insert test data
+    let user = user_model
+        .create(&session, &json!({"name": "Alice"}))
+        .await
+        .unwrap();
+    let user_id = user["id"].as_u64().unwrap();
+
+    post_model
+        .create(
+            &session,
+            &json!({
+                "title": "First Post",
+                "user_id": user_id
+            }),
+        )
+        .await
+        .unwrap();
+
+    post_model
+        .create(
+            &session,
+            &json!({
+                "title": "Second Post",
+                "user_id": user_id
+            }),
+        )
+        .await
+        .unwrap();
+
+    // Test lazy loading
+    let user = user_model.query_by_id(&session, user_id).await.unwrap();
+    let posts = user_model
+        .load_relationship(&session, &user, "posts")
+        .await
+        .unwrap();
+
+    assert_eq!(posts.len(), 2);
+    assert_eq!(posts[0]["title"], "First Post");
+    assert_eq!(posts[1]["title"], "Second Post");
+}
+
+/// Test SQLAlchemy ORM eager loading
+#[tokio::test]
+async fn test_sqlalchemy_orm_eager_loading() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false}
+        }),
+    );
+
+    let post_model = define_sqlalchemy_model(
+        "Post",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "title": {"type": "String", "nullable": false},
+            "user_id": {"type": "Integer", "foreign_key": "User.id"}
+        }),
+    );
+
+    // Create relationship
+    define_relationship(&user_model, &post_model, "posts", "one-to-many");
+
+    // Insert test data
+    let user = user_model
+        .create(&session, &json!({"name": "Alice"}))
+        .await
+        .unwrap();
+    let user_id = user["id"].as_u64().unwrap();
+
+    post_model
+        .create(
+            &session,
+            &json!({
+                "title": "First Post",
+                "user_id": user_id
+            }),
+        )
+        .await
+        .unwrap();
+
+    post_model
+        .create(
+            &session,
+            &json!({
+                "title": "Second Post",
+                "user_id": user_id
+            }),
+        )
+        .await
+        .unwrap();
+
+    // Test eager loading
+    let users_with_posts = user_model
+        .query_with_relationships(&session, &["posts"])
+        .await
+        .unwrap();
+    assert_eq!(users_with_posts.len(), 1);
+
+    let user = &users_with_posts[0];
+    assert_eq!(user["name"], "Alice");
+    assert!(user.contains_key("posts"));
+    assert_eq!(user["posts"].as_array().unwrap().len(), 2);
+}
+
+/// Test SQLAlchemy ORM caching
+#[tokio::test]
+async fn test_sqlalchemy_orm_caching() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false}
+        }),
+    );
+
+    // Insert test data
+    user_model
+        .create(&session, &json!({"name": "Alice"}))
+        .await
+        .unwrap();
+
+    // First query - should hit database
+    let user1 = user_model.query_by_id(&session, 1).await.unwrap();
+    assert_eq!(user1["name"], "Alice");
+
+    // Second query - should hit cache
+    let user2 = user_model.query_by_id(&session, 1).await.unwrap();
+    assert_eq!(user2["name"], "Alice");
+
+    // Verify cache hit
+    assert!(session.cache_hit_count() > 0);
+}
+
+/// Test SQLAlchemy ORM connection pooling
+#[tokio::test]
+async fn test_sqlalchemy_orm_connection_pooling() {
+    let config = SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 3,
+    };
+
+    let engine = create_sqlalchemy_engine(&config).await.unwrap();
+
+    // Create multiple sessions
+    let mut sessions = Vec::new();
+    for _ in 0..5 {
+        let session = engine.create_session().await.unwrap();
+        sessions.push(session);
+    }
+
+    // All sessions should be active
+    for session in &sessions {
+        assert!(session.is_active());
+    }
+
+    // Pool should be at capacity
+    assert_eq!(engine.pool_size(), 3);
+    assert_eq!(engine.active_connections(), 3);
+}
+
+/// Test SQLAlchemy ORM connection timeout
+#[tokio::test]
+async fn test_sqlalchemy_orm_connection_timeout() {
+    let config = SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 1,
+        connection_timeout: Some(std::time::Duration::from_millis(100)),
+    };
+
+    let engine = create_sqlalchemy_engine(&config).await.unwrap();
+
+    // Create first session
+    let session1 = engine.create_session().await.unwrap();
+    assert!(session1.is_active());
+
+    // Try to create second session - should timeout
+    let result = engine.create_session().await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("timeout"));
+}
+
+/// Test SQLAlchemy ORM query optimization
+#[tokio::test]
+async fn test_sqlalchemy_orm_query_optimization() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: true, // Enable query logging
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "email": {"type": "String", "unique": true}
+        }),
+    );
+
+    // Insert test data
+    for i in 1..=100 {
+        user_model
+            .create(
+                &session,
+                &json!({
+                    "name": format!("User{}", i),
+                    "email": format!("user{}@example.com", i)
+                }),
+            )
+            .await
+            .unwrap();
+    }
+
+    // Query with index hint
+    let users = user_model
+        .query_with_hint(
+            &session,
+            "USE INDEX (idx_email)",
+            "email = ?",
+            &[json!("user50@example.com")],
+        )
+        .await
+        .unwrap();
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0]["name"], "User50");
+}
+
+/// Test SQLAlchemy ORM query profiling
+#[tokio::test]
+async fn test_sqlalchemy_orm_query_profiling() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false}
+        }),
+    );
+
+    // Insert test data
+    for i in 1..=1000 {
+        user_model
+            .create(&session, &json!({ "name": format!("User{}", i) }))
+            .await
+            .unwrap();
+    }
+
+    // Profile query
+    let profile = session
+        .profile_query("SELECT * FROM users WHERE name LIKE ?", &[json!("User1%")])
+        .await
+        .unwrap();
+
+    assert!(profile.execution_time > 0.0);
+    assert!(profile.rows_affected > 0);
+    assert!(profile.memory_used > 0);
+}
+
+/// Test SQLAlchemy ORM migration
+#[tokio::test]
+async fn test_sqlalchemy_orm_migration() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    // Create initial migration
+    let migration1 = SQLAlchemyMigration {
+        version: "001",
+        name: "create_users_table",
+        up: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)",
+        down: "DROP TABLE users",
+    };
+
+    apply_sqlalchemy_migration(&session, &migration1)
+        .await
+        .unwrap();
+
+    // Verify table exists
+    let tables = session
+        .query("SELECT name FROM sqlite_master WHERE type='table'")
+        .await
+        .unwrap();
+    assert!(tables.iter().any(|row| row["name"] == "users"));
+
+    // Create second migration
+    let migration2 = SQLAlchemyMigration {
+        version: "002",
+        name: "add_age_column",
+        up: "ALTER TABLE users ADD COLUMN age INTEGER",
+        down: "ALTER TABLE users DROP COLUMN age",
+    };
+
+    apply_sqlalchemy_migration(&session, &migration2)
+        .await
+        .unwrap();
+
+    // Verify column exists
+    let columns = session.query("PRAGMA table_info(users)").await.unwrap();
+    assert!(columns.iter().any(|row| row["name"] == "age"));
+}
+
+/// Test SQLAlchemy ORM rollback migration
+#[tokio::test]
+async fn test_sqlalchemy_orm_rollback_migration() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    // Create and apply migration
+    let migration = SQLAlchemyMigration {
+        version: "001",
+        name: "create_users_table",
+        up: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)",
+        down: "DROP TABLE users",
+    };
+
+    apply_sqlalchemy_migration(&session, &migration)
+        .await
+        .unwrap();
+
+    // Verify table exists
+    let tables = session
+        .query("SELECT name FROM sqlite_master WHERE type='table'")
+        .await
+        .unwrap();
+    assert!(tables.iter().any(|row| row["name"] == "users"));
+
+    // Rollback migration
+    rollback_sqlalchemy_migration(&session, &migration)
+        .await
+        .unwrap();
+
+    // Verify table is removed
+    let tables = session
+        .query("SELECT name FROM sqlite_master WHERE type='table'")
+        .await
+        .unwrap();
+    assert!(!tables.iter().any(|row| row["name"] == "users"));
+}
+
+/// Test SQLAlchemy ORM fixture loading
+#[tokio::test]
+async fn test_sqlalchemy_orm_fixture_loading() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "email": {"type": "String", "unique": true}
+        }),
+    );
+
+    // Load fixture data
+    let fixture_data = json!({
+        "users": [
+            {"id": 1, "name": "Alice", "email": "alice@example.com"},
+            {"id": 2, "name": "Bob", "email": "bob@example.com"}
+        ]
+    });
+
+    load_sqlalchemy_fixture(&session, &user_model, &fixture_data)
+        .await
+        .unwrap();
+
+    // Verify data is loaded
+    let users = user_model.query_all(&session).await.unwrap();
+    assert_eq!(users.len(), 2);
+    assert_eq!(users[0]["name"], "Alice");
+    assert_eq!(users[1]["name"], "Bob");
+}
+
+/// Test SQLAlchemy ORM fixture cleanup
+#[tokio::test]
+async fn test_sqlalchemy_orm_fixture_cleanup() {
+    let engine = create_sqlalchemy_engine(&SQLAlchemyConfig {
+        url: "sqlite:///:memory:".to_string(),
+        echo: false,
+        pool_size: 5,
+    })
+    .await
+    .unwrap();
+
+    let session = engine.create_session().await.unwrap();
+
+    let user_model = define_sqlalchemy_model(
+        "User",
+        &json!({
+            "id": {"type": "Integer", "primary_key": true},
+            "name": {"type": "String", "nullable": false},
+            "email": {"type": "String", "unique": true}
+        }),
+    );
+
+    // Insert test data
+    user_model
+        .create(
+            &session,
+            &json!({"name": "Alice", "email": "alice@example.com"}),
+        )
+        .await
+        .unwrap();
+    user_model
+        .create(
+            &session,
+            &json!({"name": "Bob", "email": "bob@example.com"}),
+        )
+        .await
+        .unwrap();
+
+    // Verify data exists
+    let count = user_model.count(&session).await.unwrap();
+    assert_eq!(count, 2);
+
+    // Cleanup fixture data
+    cleanup_sqlalchemy_fixture(&session, &user_model)
+        .await
+        .unwrap();
+
+    // Verify data is cleaned up
+    let count = user_model.count(&session).await.unwrap();
+    assert_eq!(count, 0);
+}
+
+// Helper types and functions for SQLAlchemy testing
+#[derive(Debug, Clone)]
+struct SQLAlchemyConfig {
+    url: String,
+    echo: bool,
+    pool_size: u32,
+    connection_timeout: Option<std::time::Duration>,
+}
+
+#[derive(Debug)]
+struct SQLAlchemyEngine {
+    config: SQLAlchemyConfig,
+    connected: bool,
+    pool_size: u32,
+    active_connections: Arc<Mutex<u32>>,
+}
+
+impl SQLAlchemyEngine {
+    fn is_connected(&self) -> bool {
+        self.connected
+    }
+
+    fn pool_size(&self) -> u32 {
+        self.pool_size
+    }
+
+    fn active_connections(&self) -> u32 {
+        *self.active_connections.lock().unwrap()
+    }
+
+    async fn create_session(&self) -> Result<SQLAlchemySession, Box<dyn std::error::Error>> {
+        if self.config.url.starts_with("invalid://") {
+            return Err("Invalid database URL".into());
+        }
+
+        if self.config.pool_size <= *self.active_connections.lock().unwrap() {
+            return Err("Connection pool exhausted".into());
+        }
+
+        *self.active_connections.lock().unwrap() += 1;
+
+        Ok(SQLAlchemySession {
+            engine: self.clone(),
+            active: true,
+            cache_hits: Arc::new(Mutex::new(0)),
+        })
+    }
+
+    async fn with_session<F, R>(&self, f: F) -> Result<R, Box<dyn std::error::Error>>
+    where
+        F: FnOnce(
+            &SQLAlchemySession,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<R, Box<dyn std::error::Error>>>>,
+        >,
+    {
+        let session = self.create_session().await?;
+        let result = f(&session).await?;
+        Ok(result)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SQLAlchemySession {
+    engine: SQLAlchemyEngine,
+    active: bool,
+    cache_hits: Arc<Mutex<u32>>,
+}
+
+impl SQLAlchemySession {
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn cache_hit_count(&self) -> u32 {
+        *self.cache_hits.lock().unwrap()
+    }
+
+    async fn execute(&self, sql: &str) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Executing: {}", sql);
+        Ok(())
+    }
+
+    async fn query(&self, sql: &str) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!("Querying: {}", sql);
+        Ok(vec![])
+    }
+
+    async fn query_with_params(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!("Querying with params: {} {:?}", sql, params);
+        Ok(vec![])
+    }
+
+    async fn transaction<F, R>(&self, f: F) -> Result<R, Box<dyn std::error::Error>>
+    where
+        F: FnOnce(
+            &SQLAlchemySession,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<R, Box<dyn std::error::Error>>>>,
+        >,
+    {
+        println!("Starting transaction");
+        let result = f(self).await?;
+        println!("Committing transaction");
+        Ok(result)
+    }
+
+    async fn profile_query(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<QueryProfile, Box<dyn std::error::Error>> {
+        println!("Profiling query: {} {:?}", sql, params);
+        Ok(QueryProfile {
+            execution_time: 0.001,
+            rows_affected: 100,
+            memory_used: 1024,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct QueryProfile {
+    execution_time: f64,
+    rows_affected: u32,
+    memory_used: u64,
+}
+
+#[derive(Debug)]
+struct SQLAlchemyModel {
+    name: String,
+    columns: Vec<ColumnDefinition>,
+}
+
+impl SQLAlchemyModel {
+    fn has_column(&self, name: &str) -> bool {
+        self.columns.iter().any(|col| col.name == name)
+    }
+
+    async fn create(
+        &self,
+        session: &SQLAlchemySession,
+        data: &serde_json::Value,
+    ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        println!("Creating {} with data: {:?}", self.name, data);
+        Ok(data.clone())
+    }
+
+    async fn query_all(
+        &self,
+        session: &SQLAlchemySession,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!("Querying all {}", self.name);
+        Ok(vec![])
+    }
+
+    async fn query_by_id(
+        &self,
+        session: &SQLAlchemySession,
+        id: u64,
+    ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        println!("Querying {} by id: {}", self.name, id);
+        Ok(json!({"id": id, "name": "Test User"}))
+    }
+
+    async fn filter(
+        &self,
+        session: &SQLAlchemySession,
+        condition: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!(
+            "Filtering {} with condition: {} {:?}",
+            self.name, condition, params
+        );
+        Ok(vec![])
+    }
+
+    async fn order_by(
+        &self,
+        session: &SQLAlchemySession,
+        order: &str,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!("Ordering {} by: {}", self.name, order);
+        Ok(vec![])
+    }
+
+    async fn paginate(
+        &self,
+        session: &SQLAlchemySession,
+        page: u32,
+        per_page: u32,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!(
+            "Paginating {} page {} per_page {}",
+            self.name, page, per_page
+        );
+        Ok(vec![])
+    }
+
+    async fn join(
+        &self,
+        session: &SQLAlchemySession,
+        other: &SQLAlchemyModel,
+        from_col: &str,
+        to_col: &str,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!(
+            "Joining {} with {} on {}.{} = {}.{}",
+            self.name, other.name, self.name, from_col, other.name, to_col
+        );
+        Ok(vec![])
+    }
+
+    async fn count(&self, session: &SQLAlchemySession) -> Result<u32, Box<dyn std::error::Error>> {
+        println!("Counting {}", self.name);
+        Ok(0)
+    }
+
+    async fn aggregate(
+        &self,
+        session: &SQLAlchemySession,
+        function: &str,
+    ) -> Result<f64, Box<dyn std::error::Error>> {
+        println!("Aggregating {} with {}", self.name, function);
+        Ok(0.0)
+    }
+
+    async fn group_by(
+        &self,
+        session: &SQLAlchemySession,
+        column: &str,
+        aggregate: &str,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!("Grouping {} by {} with {}", self.name, column, aggregate);
+        Ok(vec![])
+    }
+
+    async fn bulk_create(
+        &self,
+        session: &SQLAlchemySession,
+        data: &[serde_json::Value],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Bulk creating {} records for {}", data.len(), self.name);
+        Ok(())
+    }
+
+    async fn bulk_update(
+        &self,
+        session: &SQLAlchemySession,
+        column: &str,
+        value: &str,
+        condition: &str,
+        params: &[serde_json::Value],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        println!(
+            "Bulk updating {} set {} = {} where {}",
+            self.name, column, value, condition
+        );
+        Ok(())
+    }
+
+    async fn bulk_delete(
+        &self,
+        session: &SQLAlchemySession,
+        condition: &str,
+        params: &[serde_json::Value],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Bulk deleting {} where {}", self.name, condition);
+        Ok(())
+    }
+
+    async fn load_relationship(
+        &self,
+        session: &SQLAlchemySession,
+        instance: &serde_json::Value,
+        relationship: &str,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!("Loading relationship {} for {}", relationship, self.name);
+        Ok(vec![])
+    }
+
+    async fn query_with_relationships(
+        &self,
+        session: &SQLAlchemySession,
+        relationships: &[&str],
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!(
+            "Querying {} with relationships: {:?}",
+            self.name, relationships
+        );
+        Ok(vec![])
+    }
+
+    async fn query_with_hint(
+        &self,
+        session: &SQLAlchemySession,
+        hint: &str,
+        condition: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        println!(
+            "Querying {} with hint {} where {}",
+            self.name, hint, condition
+        );
+        Ok(vec![])
+    }
+}
+
+#[derive(Debug)]
+struct ColumnDefinition {
+    name: String,
+    data_type: String,
+    nullable: bool,
+    primary_key: bool,
+    unique: bool,
+    foreign_key: Option<String>,
+}
+
+#[derive(Debug)]
+struct Relationship {
+    from_model: String,
+    to_model: String,
+    relationship_type: String,
+}
+
+#[derive(Debug)]
+struct SQLAlchemyMigration {
+    version: String,
+    name: String,
+    up: String,
+    down: String,
+}
+
+async fn create_sqlalchemy_engine(
+    config: &SQLAlchemyConfig,
+) -> Result<SQLAlchemyEngine, Box<dyn std::error::Error>> {
+    if config.url.starts_with("invalid://") {
+        return Err("Invalid database URL".into());
+    }
+
+    Ok(SQLAlchemyEngine {
+        config: config.clone(),
+        connected: true,
+        pool_size: config.pool_size,
+        active_connections: Arc::new(Mutex::new(0)),
+    })
+}
+
+fn define_sqlalchemy_model(name: &str, schema: &serde_json::Value) -> SQLAlchemyModel {
+    let mut columns = Vec::new();
+
+    if let Some(obj) = schema.as_object() {
+        for (col_name, col_def) in obj {
+            let data_type = col_def["type"].as_str().unwrap_or("String");
+            let nullable = col_def["nullable"].as_bool().unwrap_or(true);
+            let primary_key = col_def["primary_key"].as_bool().unwrap_or(false);
+            let unique = col_def["unique"].as_bool().unwrap_or(false);
+            let foreign_key = col_def["foreign_key"].as_str().map(|s| s.to_string());
+
+            columns.push(ColumnDefinition {
+                name: col_name.clone(),
+                data_type: data_type.to_string(),
+                nullable,
+                primary_key,
+                unique,
+                foreign_key,
+            });
+        }
+    }
+
+    SQLAlchemyModel {
+        name: name.to_string(),
+        columns,
+    }
+}
+
+fn define_relationship(
+    from: &SQLAlchemyModel,
+    to: &SQLAlchemyModel,
+    name: &str,
+    relationship_type: &str,
+) -> Relationship {
+    Relationship {
+        from_model: from.name.clone(),
+        to_model: to.name.clone(),
+        relationship_type: relationship_type.to_string(),
+    }
+}
+
+async fn apply_sqlalchemy_migration(
+    session: &SQLAlchemySession,
+    migration: &SQLAlchemyMigration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!(
+        "Applying migration: {} - {}",
+        migration.version, migration.name
+    );
+    session.execute(&migration.up).await?;
+    Ok(())
+}
+
+async fn rollback_sqlalchemy_migration(
+    session: &SQLAlchemySession,
+    migration: &SQLAlchemyMigration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!(
+        "Rolling back migration: {} - {}",
+        migration.version, migration.name
+    );
+    session.execute(&migration.down).await?;
+    Ok(())
+}
+
+async fn load_sqlalchemy_fixture(
+    session: &SQLAlchemySession,
+    model: &SQLAlchemyModel,
+    data: &serde_json::Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(records) = data
+        .get(&model.name.to_lowercase())
+        .and_then(|v| v.as_array())
+    {
+        for record in records {
+            model.create(session, record).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn cleanup_sqlalchemy_fixture(
+    session: &SQLAlchemySession,
+    model: &SQLAlchemyModel,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let sql = format!("DELETE FROM {}", model.name.to_lowercase());
+    session.execute(&sql).await?;
+    Ok(())
+}

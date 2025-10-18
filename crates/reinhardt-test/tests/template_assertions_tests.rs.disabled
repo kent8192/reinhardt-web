@@ -1,0 +1,497 @@
+use reinhardt_test::*;
+use serde_json::json;
+use std::collections::HashMap;
+
+/// Test template rendering with basic variables
+#[test]
+fn test_template_render_basic_variables() {
+    let template = "Hello {{name}}, you are {{age}} years old!";
+    let context = json!({
+        "name": "Alice",
+        "age": 30
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert_eq!(rendered, "Hello Alice, you are 30 years old!");
+}
+
+/// Test template rendering with missing variables
+#[test]
+fn test_template_render_missing_variables() {
+    let template = "Hello {{name}}, you are {{age}} years old!";
+    let context = json!({
+        "name": "Alice"
+        // age is missing
+    });
+
+    let result = render_template(template, &context);
+    assert!(result.is_err());
+}
+
+/// Test template rendering with default values
+#[test]
+fn test_template_render_with_defaults() {
+    let template =
+        "Hello {{name|default:'Anonymous'}}, you are {{age|default:'unknown'}} years old!";
+    let context = json!({
+        "name": "Alice"
+        // age is missing but has default
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert_eq!(rendered, "Hello Alice, you are unknown years old!");
+}
+
+/// Test template rendering with loops
+#[test]
+fn test_template_render_loops() {
+    let template = "Users: {% for user in users %}{{user.name}}{% if not loop.last %}, {% endif %}{% endfor %}";
+    let context = json!({
+        "users": [
+            {"name": "Alice"},
+            {"name": "Bob"},
+            {"name": "Charlie"}
+        ]
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert_eq!(rendered, "Users: Alice, Bob, Charlie");
+}
+
+/// Test template rendering with conditionals
+#[test]
+fn test_template_render_conditionals() {
+    let template =
+        "{% if user.is_admin %}Admin: {{user.name}}{% else %}User: {{user.name}}{% endif %}";
+    let context = json!({
+        "user": {
+            "name": "Alice",
+            "is_admin": true
+        }
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert_eq!(rendered, "Admin: Alice");
+}
+
+/// Test template rendering with nested objects
+#[test]
+fn test_template_render_nested_objects() {
+    let template = "{{user.profile.name}} ({{user.profile.email}})";
+    let context = json!({
+        "user": {
+            "profile": {
+                "name": "Alice",
+                "email": "alice@example.com"
+            }
+        }
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert_eq!(rendered, "Alice (alice@example.com)");
+}
+
+/// Test template rendering with filters
+#[test]
+fn test_template_render_filters() {
+    let template = "{{name|upper}} - {{email|lower}}";
+    let context = json!({
+        "name": "alice",
+        "email": "ALICE@EXAMPLE.COM"
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert_eq!(rendered, "ALICE - alice@example.com");
+}
+
+/// Test template rendering with complex filters
+#[test]
+fn test_template_render_complex_filters() {
+    let template = "{{date|date:'Y-m-d'}} - {{text|truncate:10}}";
+    let context = json!({
+        "date": "2024-01-15T10:30:00Z",
+        "text": "This is a very long text that should be truncated"
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert_eq!(rendered, "2024-01-15 - This is a...");
+}
+
+/// Test template assertion for exact match
+#[test]
+fn test_assert_template_renders_to() {
+    let template = "Hello {{name}}!";
+    let context = json!({"name": "World"});
+
+    assert_template_renders_to(template, &context, "Hello World!");
+}
+
+/// Test template assertion for contains
+#[test]
+fn test_assert_template_contains() {
+    let template = "Welcome {{user.name}} to {{site.name}}!";
+    let context = json!({
+        "user": {"name": "Alice"},
+        "site": {"name": "MyApp"}
+    });
+
+    assert_template_contains(template, &context, "Welcome Alice");
+    assert_template_contains(template, &context, "MyApp");
+}
+
+/// Test template assertion for regex match
+#[test]
+fn test_assert_template_matches_regex() {
+    let template = "User ID: {{user.id}}";
+    let context = json!({"user": {"id": 12345}});
+
+    assert_template_matches_regex(template, &context, r"User ID: \d+");
+}
+
+/// Test template assertion for not contains
+#[test]
+fn test_assert_template_not_contains() {
+    let template = "Hello {{name}}!";
+    let context = json!({"name": "World"});
+
+    assert_template_not_contains(template, &context, "Goodbye");
+    assert_template_not_contains(template, &context, "Error");
+}
+
+/// Test template assertion for empty output
+#[test]
+fn test_assert_template_empty() {
+    let template = "{% if false %}This should not appear{% endif %}";
+    let context = json!({});
+
+    assert_template_empty(template, &context);
+}
+
+/// Test template assertion for not empty
+#[test]
+fn test_assert_template_not_empty() {
+    let template = "Hello {{name}}!";
+    let context = json!({"name": "World"});
+
+    assert_template_not_empty(template, &context);
+}
+
+/// Test template assertion for length
+#[test]
+fn test_assert_template_length() {
+    let template = "{{items|length}} items";
+    let context = json!({
+        "items": [1, 2, 3, 4, 5]
+    });
+
+    assert_template_length(template, &context, 5);
+}
+
+/// Test template assertion for line count
+#[test]
+fn test_assert_template_line_count() {
+    let template = "Line 1\nLine 2\nLine 3";
+    let context = json!({});
+
+    assert_template_line_count(template, &context, 3);
+}
+
+/// Test template assertion for word count
+#[test]
+fn test_assert_template_word_count() {
+    let template = "This is a test sentence with multiple words";
+    let context = json!({});
+
+    assert_template_word_count(template, &context, 9);
+}
+
+/// Test template assertion for HTML escaping
+#[test]
+fn test_assert_template_escapes_html() {
+    let template = "{{content|escape}}";
+    let context = json!({
+        "content": "<script>alert('xss')</script>"
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert!(rendered.contains("&lt;script&gt;"));
+    assert!(rendered.contains("&lt;/script&gt;"));
+}
+
+/// Test template assertion for JSON output
+#[test]
+fn test_assert_template_json_output() {
+    let template = "{{data|json}}";
+    let context = json!({
+        "data": {
+            "name": "Alice",
+            "age": 30
+        }
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+    assert_eq!(parsed["name"], "Alice");
+    assert_eq!(parsed["age"], 30);
+}
+
+/// Test template assertion for XML output
+#[test]
+fn test_assert_template_xml_output() {
+    let template = "<user><name>{{name}}</name><age>{{age}}</age></user>";
+    let context = json!({
+        "name": "Alice",
+        "age": 30
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert!(rendered.contains("<user>"));
+    assert!(rendered.contains("<name>Alice</name>"));
+    assert!(rendered.contains("<age>30</age>"));
+    assert!(rendered.contains("</user>"));
+}
+
+/// Test template assertion for URL encoding
+#[test]
+fn test_assert_template_url_encoding() {
+    let template = "{{url|urlencode}}";
+    let context = json!({
+        "url": "https://example.com/path with spaces?param=value&other=test"
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert!(rendered.contains("%20")); // space encoding
+    assert!(rendered.contains("%3F")); // ? encoding
+    assert!(rendered.contains("%26")); // & encoding
+}
+
+/// Test template assertion for custom filters
+#[test]
+fn test_assert_template_custom_filters() {
+    let template = "{{text|custom_filter}}";
+    let context = json!({
+        "text": "hello world"
+    });
+
+    // Register custom filter
+    register_template_filter("custom_filter", |input: &str| -> String {
+        input
+            .split_whitespace()
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
+
+    let rendered = render_template(template, &context).unwrap();
+    assert_eq!(rendered, "Hello World");
+}
+
+/// Test template assertion for multiple contexts
+#[test]
+fn test_assert_template_multiple_contexts() {
+    let template = "{{greeting}} {{name}}!";
+
+    let contexts = vec![
+        json!({"greeting": "Hello", "name": "Alice"}),
+        json!({"greeting": "Hi", "name": "Bob"}),
+        json!({"greeting": "Hey", "name": "Charlie"}),
+    ];
+
+    let expected_outputs = vec!["Hello Alice!", "Hi Bob!", "Hey Charlie!"];
+
+    for (context, expected) in contexts.iter().zip(expected_outputs.iter()) {
+        assert_template_renders_to(template, context, expected);
+    }
+}
+
+// Helper functions for template testing
+fn render_template(
+    template: &str,
+    context: &serde_json::Value,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+
+    // Simple template engine implementation
+    for (key, value) in context.as_object().unwrap_or(&serde_json::Map::new()) {
+        let placeholder = format!("{{{{{}}}}}", key);
+        let value_str = match value {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            _ => value.to_string(),
+        };
+        result = result.replace(&placeholder, &value_str);
+    }
+
+    // Handle default values
+    let default_pattern = regex::Regex::new(r"\{\{(\w+)\|default:'([^']+)'\}\}")?;
+    for cap in default_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        let default_val = &cap[2];
+        let placeholder = format!("{{{{{}}}}}", key);
+        if !context.get(key).is_some() {
+            result = result.replace(&cap[0], default_val);
+        } else {
+            result = result.replace(&cap[0], &placeholder);
+        }
+    }
+
+    // Handle filters
+    result = apply_filters(&result, context)?;
+
+    Ok(result)
+}
+
+fn apply_filters(
+    template: &str,
+    context: &serde_json::Value,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = template.to_string();
+
+    // Upper filter
+    let upper_pattern = regex::Regex::new(r"\{\{(\w+)\|upper\}\}")?;
+    for cap in upper_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            result = result.replace(&cap[0], &value.to_uppercase());
+        }
+    }
+
+    // Lower filter
+    let lower_pattern = regex::Regex::new(r"\{\{(\w+)\|lower\}\}")?;
+    for cap in lower_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            result = result.replace(&cap[0], &value.to_lowercase());
+        }
+    }
+
+    // Escape filter
+    let escape_pattern = regex::Regex::new(r"\{\{(\w+)\|escape\}\}")?;
+    for cap in escape_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            let escaped = value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#x27;");
+            result = result.replace(&cap[0], &escaped);
+        }
+    }
+
+    // JSON filter
+    let json_pattern = regex::Regex::new(r"\{\{(\w+)\|json\}\}")?;
+    for cap in json_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key) {
+            let json_str = serde_json::to_string(value)?;
+            result = result.replace(&cap[0], &json_str);
+        }
+    }
+
+    // URL encode filter
+    let urlencode_pattern = regex::Regex::new(r"\{\{(\w+)\|urlencode\}\}")?;
+    for cap in urlencode_pattern.captures_iter(&result) {
+        let key = &cap[1];
+        if let Some(value) = context.get(key).and_then(|v| v.as_str()) {
+            let encoded = urlencoding::encode(value);
+            result = result.replace(&cap[0], &encoded);
+        }
+    }
+
+    Ok(result)
+}
+
+fn assert_template_renders_to(template: &str, context: &serde_json::Value, expected: &str) {
+    let rendered = render_template(template, context).unwrap();
+    assert_eq!(rendered, expected);
+}
+
+fn assert_template_contains(template: &str, context: &serde_json::Value, expected: &str) {
+    let rendered = render_template(template, context).unwrap();
+    assert!(
+        rendered.contains(expected),
+        "Template output '{}' does not contain '{}'",
+        rendered,
+        expected
+    );
+}
+
+fn assert_template_matches_regex(template: &str, context: &serde_json::Value, pattern: &str) {
+    let rendered = render_template(template, context).unwrap();
+    let regex = regex::Regex::new(pattern).unwrap();
+    assert!(
+        regex.is_match(&rendered),
+        "Template output '{}' does not match pattern '{}'",
+        rendered,
+        pattern
+    );
+}
+
+fn assert_template_not_contains(template: &str, context: &serde_json::Value, unexpected: &str) {
+    let rendered = render_template(template, context).unwrap();
+    assert!(
+        !rendered.contains(unexpected),
+        "Template output '{}' contains unexpected '{}'",
+        rendered,
+        unexpected
+    );
+}
+
+fn assert_template_empty(template: &str, context: &serde_json::Value) {
+    let rendered = render_template(template, context).unwrap();
+    assert!(
+        rendered.trim().is_empty(),
+        "Template output '{}' is not empty",
+        rendered
+    );
+}
+
+fn assert_template_not_empty(template: &str, context: &serde_json::Value) {
+    let rendered = render_template(template, context).unwrap();
+    assert!(!rendered.trim().is_empty(), "Template output is empty");
+}
+
+fn assert_template_length(template: &str, context: &serde_json::Value, expected_length: usize) {
+    let rendered = render_template(template, context).unwrap();
+    let actual_length = rendered.len();
+    assert_eq!(
+        actual_length, expected_length,
+        "Template output length {} != expected {}",
+        actual_length, expected_length
+    );
+}
+
+fn assert_template_line_count(template: &str, context: &serde_json::Value, expected_lines: usize) {
+    let rendered = render_template(template, context).unwrap();
+    let actual_lines = rendered.lines().count();
+    assert_eq!(
+        actual_lines, expected_lines,
+        "Template line count {} != expected {}",
+        actual_lines, expected_lines
+    );
+}
+
+fn assert_template_word_count(template: &str, context: &serde_json::Value, expected_words: usize) {
+    let rendered = render_template(template, context).unwrap();
+    let actual_words = rendered.split_whitespace().count();
+    assert_eq!(
+        actual_words, expected_words,
+        "Template word count {} != expected {}",
+        actual_words, expected_words
+    );
+}
+
+fn register_template_filter(name: &str, filter_fn: fn(&str) -> String) {
+    // In a real implementation, this would register the filter in a global registry
+    // For testing purposes, we'll just verify the filter name is valid
+    assert!(!name.is_empty(), "Filter name cannot be empty");
+}

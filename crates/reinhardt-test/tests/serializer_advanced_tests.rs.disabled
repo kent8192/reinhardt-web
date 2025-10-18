@@ -1,0 +1,703 @@
+use reinhardt_serializers::*;
+use reinhardt_test::*;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::collections::HashMap;
+
+/// Test nested serializer with complex relationships
+#[test]
+fn test_nested_serializer_complex_relationships() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct User {
+        id: u64,
+        username: String,
+        email: String,
+        profile: UserProfile,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct UserProfile {
+        first_name: String,
+        last_name: String,
+        bio: Option<String>,
+        avatar_url: Option<String>,
+    }
+
+    let user = User {
+        id: 1,
+        username: "alice".to_string(),
+        email: "alice@example.com".to_string(),
+        profile: UserProfile {
+            first_name: "Alice".to_string(),
+            last_name: "Smith".to_string(),
+            bio: Some("Software developer".to_string()),
+            avatar_url: Some("https://example.com/avatar.jpg".to_string()),
+        },
+    };
+
+    let serializer = NestedSerializer::<User>::new();
+    let serialized = serializer.serialize(&user).unwrap();
+    let deserialized: User = serializer.deserialize(&serialized).unwrap();
+
+    assert_eq!(user, deserialized);
+    assert!(serialized.contains("alice"));
+    assert!(serialized.contains("Alice"));
+    assert!(serialized.contains("Software developer"));
+}
+
+/// Test writable nested serializer with validation
+#[test]
+fn test_writable_nested_serializer_validation() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct Post {
+        id: Option<u64>,
+        title: String,
+        content: String,
+        author: Author,
+        tags: Vec<String>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct Author {
+        id: u64,
+        name: String,
+        email: String,
+    }
+
+    let post_data = json!({
+        "title": "Test Post",
+        "content": "This is a test post content",
+        "author": {
+            "id": 1,
+            "name": "Alice",
+            "email": "alice@example.com"
+        },
+        "tags": ["rust", "web", "testing"]
+    });
+
+    let serializer = WritableNestedSerializer::<Post>::new();
+    let validated_data = serializer.validate(&post_data).unwrap();
+    let post: Post = serializer.deserialize(&validated_data).unwrap();
+
+    assert_eq!(post.title, "Test Post");
+    assert_eq!(post.author.name, "Alice");
+    assert_eq!(post.tags.len(), 3);
+    assert!(post.tags.contains(&"rust".to_string()));
+}
+
+/// Test list serializer with bulk operations
+#[test]
+fn test_list_serializer_bulk_operations() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct Product {
+        id: u64,
+        name: String,
+        price: f64,
+        category: String,
+    }
+
+    let products = vec![
+        Product {
+            id: 1,
+            name: "Laptop".to_string(),
+            price: 999.99,
+            category: "Electronics".to_string(),
+        },
+        Product {
+            id: 2,
+            name: "Mouse".to_string(),
+            price: 29.99,
+            category: "Electronics".to_string(),
+        },
+        Product {
+            id: 3,
+            name: "Keyboard".to_string(),
+            price: 79.99,
+            category: "Electronics".to_string(),
+        },
+    ];
+
+    let list_serializer = ListSerializer::<Product>::new();
+    let serialized = list_serializer.serialize(&products).unwrap();
+    let deserialized: Vec<Product> = list_serializer.deserialize(&serialized).unwrap();
+
+    assert_eq!(products.len(), deserialized.len());
+    assert_eq!(products, deserialized);
+
+    // Test bulk validation
+    let product_data = json!([
+        {"id": 1, "name": "Laptop", "price": 999.99, "category": "Electronics"},
+        {"id": 2, "name": "Mouse", "price": 29.99, "category": "Electronics"},
+        {"id": 3, "name": "Keyboard", "price": 79.99, "category": "Electronics"}
+    ]);
+
+    let validation_result = list_serializer.validate_bulk(&product_data).unwrap();
+    assert!(validation_result.is_valid);
+    assert_eq!(validation_result.valid_count, 3);
+    assert_eq!(validation_result.error_count, 0);
+}
+
+/// Test hyperlinked model serializer
+#[test]
+fn test_hyperlinked_model_serializer() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct User {
+        id: u64,
+        username: String,
+        email: String,
+        url: String,
+    }
+
+    let user = User {
+        id: 1,
+        username: "alice".to_string(),
+        email: "alice@example.com".to_string(),
+        url: "/api/users/1/".to_string(),
+    };
+
+    let serializer = HyperlinkedModelSerializer::<User>::new("http://localhost:8000");
+    let serialized = serializer.serialize(&user).unwrap();
+    let deserialized: User = serializer.deserialize(&serialized).unwrap();
+
+    assert_eq!(user, deserialized);
+    assert!(serialized.contains("http://localhost:8000/api/users/1/"));
+}
+
+/// Test serializer method field
+#[test]
+fn test_serializer_method_field() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct User {
+        id: u64,
+        first_name: String,
+        last_name: String,
+        full_name: String, // This will be populated by method field
+    }
+
+    let user = User {
+        id: 1,
+        first_name: "Alice".to_string(),
+        last_name: "Smith".to_string(),
+        full_name: "Alice Smith".to_string(),
+    };
+
+    let method_field =
+        SerializerMethodField::new(|user: &User| format!("{} {}", user.first_name, user.last_name));
+
+    let full_name = method_field.call(&user).unwrap();
+    assert_eq!(full_name, "Alice Smith");
+}
+
+/// Test primary key related field
+#[test]
+fn test_primary_key_related_field() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct Post {
+        id: u64,
+        title: String,
+        author_id: u64,
+    }
+
+    let post = Post {
+        id: 1,
+        title: "Test Post".to_string(),
+        author_id: 123,
+    };
+
+    let related_field = PrimaryKeyRelatedField::<Post>::new();
+    let author_id = related_field.get_related_id(&post, "author_id").unwrap();
+    assert_eq!(author_id, 123);
+}
+
+/// Test slug related field
+#[test]
+fn test_slug_related_field() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct Category {
+        id: u64,
+        name: String,
+        slug: String,
+    }
+
+    let category = Category {
+        id: 1,
+        name: "Technology".to_string(),
+        slug: "technology".to_string(),
+    };
+
+    let related_field = SlugRelatedField::<Category>::new("slug");
+    let slug = related_field.get_related_slug(&category).unwrap();
+    assert_eq!(slug, "technology");
+}
+
+/// Test string related field
+#[test]
+fn test_string_related_field() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct Tag {
+        id: u64,
+        name: String,
+    }
+
+    let tag = Tag {
+        id: 1,
+        name: "Rust".to_string(),
+    };
+
+    let related_field = StringRelatedField::<Tag>::new();
+    let name = related_field.get_related_string(&tag).unwrap();
+    assert_eq!(name, "Rust");
+}
+
+/// Test hyperlinked related field
+#[test]
+fn test_hyperlinked_related_field() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct User {
+        id: u64,
+        username: String,
+        url: String,
+    }
+
+    let user = User {
+        id: 1,
+        username: "alice".to_string(),
+        url: "/api/users/1/".to_string(),
+    };
+
+    let related_field = HyperlinkedRelatedField::<User>::new("http://localhost:8000");
+    let hyperlink = related_field.get_related_url(&user).unwrap();
+    assert_eq!(hyperlink, "http://localhost:8000/api/users/1/");
+}
+
+/// Test content negotiation
+#[test]
+fn test_content_negotiation() {
+    let content_negotiator = ContentNegotiator::new();
+
+    // Test JSON negotiation
+    let json_renderer = content_negotiator.negotiate("application/json").unwrap();
+    assert!(matches!(json_renderer, Renderer::Json(_)));
+
+    // Test XML negotiation
+    let xml_renderer = content_negotiator.negotiate("application/xml").unwrap();
+    assert!(matches!(xml_renderer, Renderer::Xml(_)));
+
+    // Test HTML negotiation
+    let html_renderer = content_negotiator.negotiate("text/html").unwrap();
+    assert!(matches!(html_renderer, Renderer::Html(_)));
+
+    // Test default negotiation
+    let default_renderer = content_negotiator.negotiate("text/plain").unwrap();
+    assert!(matches!(default_renderer, Renderer::Json(_)));
+}
+
+/// Test JSON parser
+#[test]
+fn test_json_parser() {
+    let parser = JSONParser::new();
+    let json_data = r#"{"name": "Alice", "age": 30, "active": true}"#;
+
+    let parsed = parser.parse(json_data.as_bytes()).unwrap();
+    assert_eq!(parsed["name"], "Alice");
+    assert_eq!(parsed["age"], 30);
+    assert_eq!(parsed["active"], true);
+}
+
+/// Test form parser
+#[test]
+fn test_form_parser() {
+    let parser = FormParser::new();
+    let form_data = "name=Alice&age=30&active=true";
+
+    let parsed = parser.parse(form_data.as_bytes()).unwrap();
+    assert_eq!(parsed["name"], "Alice");
+    assert_eq!(parsed["age"], "30");
+    assert_eq!(parsed["active"], "true");
+}
+
+/// Test multipart parser
+#[test]
+fn test_multipart_parser() {
+    let parser = MultiPartParser::new();
+    let multipart_data = b"------WebKitFormBoundary7MA4YWxkTrZu0gW\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nAlice\r\n------WebKitFormBoundary7MA4YWxkTrZu0gW\r\nContent-Disposition: form-data; name=\"file\"; filename=\"test.txt\"\r\nContent-Type: text/plain\r\n\r\nHello World\r\n------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n";
+
+    let parsed = parser.parse(multipart_data).unwrap();
+    assert_eq!(parsed.fields["name"], "Alice");
+    assert!(parsed.files.contains_key("file"));
+}
+
+/// Test file upload parser
+#[test]
+fn test_file_upload_parser() {
+    let parser = FileUploadParser::new();
+    let file_data = b"Hello, World! This is a test file.";
+
+    let parsed = parser.parse(file_data).unwrap();
+    assert_eq!(parsed.content, file_data);
+    assert_eq!(parsed.size, file_data.len());
+}
+
+/// Test unique validator
+#[test]
+fn test_unique_validator() {
+    let validator = UniqueValidator::new("username");
+    let existing_values = vec![
+        "alice".to_string(),
+        "bob".to_string(),
+        "charlie".to_string(),
+    ];
+
+    // Test unique value
+    let result = validator
+        .validate(&"david".to_string(), &existing_values)
+        .unwrap();
+    assert!(result.is_valid);
+
+    // Test duplicate value
+    let result = validator
+        .validate(&"alice".to_string(), &existing_values)
+        .unwrap();
+    assert!(!result.is_valid);
+    assert!(result.errors.contains_key("username"));
+}
+
+/// Test unique together validator
+#[test]
+fn test_unique_together_validator() {
+    let validator = UniqueTogetherValidator::new(vec!["email".to_string(), "domain".to_string()]);
+
+    let existing_records = vec![
+        json!({"email": "alice@example.com", "domain": "example.com"}),
+        json!({"email": "bob@test.com", "domain": "test.com"}),
+    ];
+
+    // Test unique combination
+    let new_record = json!({"email": "charlie@example.com", "domain": "example.com"});
+    let result = validator.validate(&new_record, &existing_records).unwrap();
+    assert!(result.is_valid);
+
+    // Test duplicate combination
+    let duplicate_record = json!({"email": "alice@example.com", "domain": "example.com"});
+    let result = validator
+        .validate(&duplicate_record, &existing_records)
+        .unwrap();
+    assert!(!result.is_valid);
+}
+
+/// Test field validation with custom validators
+#[test]
+fn test_field_validation_custom_validators() {
+    // Test email field with custom validation
+    let email_field = EmailField::new().custom_validator(|email: &String| {
+        if email.ends_with("@example.com") {
+            Ok(())
+        } else {
+            Err("Email must be from example.com domain".to_string())
+        }
+    });
+
+    let valid_email = "test@example.com".to_string();
+    let result = email_field.validate(&valid_email).unwrap();
+    assert!(result.is_ok());
+
+    let invalid_email = "test@other.com".to_string();
+    let result = email_field.validate(&invalid_email).unwrap();
+    assert!(result.is_err());
+
+    // Test char field with custom validation
+    let char_field = CharField::new()
+        .min_length(3)
+        .max_length(20)
+        .custom_validator(|value: &String| {
+            if value.chars().all(|c| c.is_alphanumeric()) {
+                Ok(())
+            } else {
+                Err("Value must contain only alphanumeric characters".to_string())
+            }
+        });
+
+    let valid_value = "username123".to_string();
+    let result = char_field.validate(&valid_value).unwrap();
+    assert!(result.is_ok());
+
+    let invalid_value = "user-name".to_string();
+    let result = char_field.validate(&invalid_value).unwrap();
+    assert!(result.is_err());
+}
+
+/// Test model serializer with relationships
+#[test]
+fn test_model_serializer_relationships() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct Author {
+        id: u64,
+        name: String,
+        email: String,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct Post {
+        id: u64,
+        title: String,
+        content: String,
+        author: Author,
+        tags: Vec<String>,
+    }
+
+    let post = Post {
+        id: 1,
+        title: "Test Post".to_string(),
+        content: "This is a test post".to_string(),
+        author: Author {
+            id: 1,
+            name: "Alice".to_string(),
+            email: "alice@example.com".to_string(),
+        },
+        tags: vec!["rust".to_string(), "web".to_string()],
+    };
+
+    let config = ModelSerializerConfig {
+        include_relationships: true,
+        include_related_objects: true,
+        max_depth: 2,
+    };
+
+    let serializer = ModelSerializer::<Post>::new_with_config(config);
+    let serialized = serializer.serialize(&post).unwrap();
+    let deserialized: Post = serializer.deserialize(&serialized).unwrap();
+
+    assert_eq!(post, deserialized);
+    assert!(serialized.contains("author"));
+    assert!(serialized.contains("tags"));
+}
+
+/// Test serializer with different relationship strategies
+#[test]
+fn test_serializer_relationship_strategies() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct User {
+        id: u64,
+        name: String,
+        posts: Vec<u64>, // Post IDs
+    }
+
+    let user = User {
+        id: 1,
+        name: "Alice".to_string(),
+        posts: vec![1, 2, 3],
+    };
+
+    // Test primary key strategy
+    let pk_config = ModelSerializerConfig {
+        relationship_strategy: RelationshipStrategy::PrimaryKey,
+        ..Default::default()
+    };
+
+    let pk_serializer = ModelSerializer::<User>::new_with_config(pk_config);
+    let pk_serialized = pk_serializer.serialize(&user).unwrap();
+    assert!(pk_serialized.contains("\"posts\":[1,2,3]"));
+
+    // Test hyperlinked strategy
+    let hyperlinked_config = ModelSerializerConfig {
+        relationship_strategy: RelationshipStrategy::Hyperlinked,
+        base_url: Some("http://localhost:8000".to_string()),
+        ..Default::default()
+    };
+
+    let hyperlinked_serializer = ModelSerializer::<User>::new_with_config(hyperlinked_config);
+    let hyperlinked_serialized = hyperlinked_serializer.serialize(&user).unwrap();
+    assert!(hyperlinked_serialized.contains("http://localhost:8000/api/posts/"));
+}
+
+/// Test serializer error handling
+#[test]
+fn test_serializer_error_handling() {
+    let serializer = JsonSerializer::<serde_json::Value>::new();
+
+    // Test invalid JSON
+    let invalid_json = "{invalid json}";
+    let result = serializer.deserialize(invalid_json.as_bytes());
+    assert!(result.is_err());
+
+    // Test serialization error
+    let circular_data = json!({ "self": null });
+    // Note: This would cause a stack overflow in real circular data
+    // For testing, we'll just verify the serializer handles errors gracefully
+    let result = serializer.serialize(&circular_data);
+    assert!(result.is_ok());
+}
+
+/// Test serializer with custom field serialization
+#[test]
+fn test_serializer_custom_field_serialization() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct CustomData {
+        id: u64,
+        name: String,
+        #[serde(serialize_with = "serialize_custom_field")]
+        custom_field: String,
+    }
+
+    fn serialize_custom_field<S>(value: &String, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let custom_value = format!("CUSTOM:{}", value);
+        serializer.serialize_str(&custom_value)
+    }
+
+    let data = CustomData {
+        id: 1,
+        name: "Test".to_string(),
+        custom_field: "value".to_string(),
+    };
+
+    let serializer = JsonSerializer::<CustomData>::new();
+    let serialized = serializer.serialize(&data).unwrap();
+    let json_str = String::from_utf8(serialized).unwrap();
+
+    assert!(json_str.contains("CUSTOM:value"));
+}
+
+/// Test serializer with validation errors
+#[test]
+fn test_serializer_validation_errors() {
+    let validator = |data: &serde_json::Value| {
+        let mut errors = Vec::new();
+
+        if let Some(name) = data.get("name") {
+            if let Some(name_str) = name.as_str() {
+                if name_str.is_empty() {
+                    errors.push(ValidationError::new("name", "Name cannot be empty"));
+                }
+            } else {
+                errors.push(ValidationError::new("name", "Name must be a string"));
+            }
+        } else {
+            errors.push(ValidationError::new("name", "Name is required"));
+        }
+
+        if let Some(age) = data.get("age") {
+            if let Some(age_num) = age.as_u64() {
+                if age_num < 18 {
+                    errors.push(ValidationError::new("age", "Age must be at least 18"));
+                }
+            } else {
+                errors.push(ValidationError::new("age", "Age must be a number"));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    };
+
+    // Test valid data
+    let valid_data = json!({
+        "name": "Alice",
+        "age": 25
+    });
+
+    let result = validator(&valid_data);
+    assert!(result.is_ok());
+
+    // Test invalid data
+    let invalid_data = json!({
+        "name": "",
+        "age": 16
+    });
+
+    let result = validator(&invalid_data);
+    assert!(result.is_err());
+
+    if let Err(errors) = result {
+        assert_eq!(errors.len(), 2);
+        assert!(errors.iter().any(|e| e.field == "name"));
+        assert!(errors.iter().any(|e| e.field == "age"));
+    }
+}
+
+/// Test serializer with nested validation
+#[test]
+fn test_serializer_nested_validation() {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct Address {
+        street: String,
+        city: String,
+        postal_code: String,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    struct User {
+        name: String,
+        email: String,
+        address: Address,
+    }
+
+    let validator = |user: &User| {
+        let mut errors = Vec::new();
+
+        if user.name.is_empty() {
+            errors.push(ValidationError::new("name", "Name cannot be empty"));
+        }
+
+        if !user.email.contains("@") {
+            errors.push(ValidationError::new("email", "Email must be valid"));
+        }
+
+        if user.address.street.is_empty() {
+            errors.push(ValidationError::new(
+                "address.street",
+                "Street cannot be empty",
+            ));
+        }
+
+        if user.address.city.is_empty() {
+            errors.push(ValidationError::new("address.city", "City cannot be empty"));
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    };
+
+    // Test valid user
+    let valid_user = User {
+        name: "Alice".to_string(),
+        email: "alice@example.com".to_string(),
+        address: Address {
+            street: "123 Main St".to_string(),
+            city: "Anytown".to_string(),
+            postal_code: "12345".to_string(),
+        },
+    };
+
+    let result = validator(&valid_user);
+    assert!(result.is_ok());
+
+    // Test invalid user
+    let invalid_user = User {
+        name: "".to_string(),
+        email: "invalid-email".to_string(),
+        address: Address {
+            street: "".to_string(),
+            city: "Anytown".to_string(),
+            postal_code: "12345".to_string(),
+        },
+    };
+
+    let result = validator(&invalid_user);
+    assert!(result.is_err());
+
+    if let Err(errors) = result {
+        assert_eq!(errors.len(), 3);
+        assert!(errors.iter().any(|e| e.field == "name"));
+        assert!(errors.iter().any(|e| e.field == "email"));
+        assert!(errors.iter().any(|e| e.field == "address.street"));
+    }
+}
