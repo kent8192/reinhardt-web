@@ -1,0 +1,18 @@
+[package]
+name = "reinhardt-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "HTTP server implementation for Reinhardt framework"
+
+[dependencies]
+# Internal crates (optional)
+server = { path = "crates/server", version = "0.1.0", optional = true }
+
+[features]
+default = ["server"]
+server = ["dep:server"]
+graphql = ["server", "server/graphql"]
+websocket = ["server", "server/websocket"]
