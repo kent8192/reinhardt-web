@@ -1,0 +1,123 @@
+//! Validation error types
+
+use thiserror::Error;
+
+#[derive(Error, Debug, Clone)]
+pub enum ValidationError {
+    #[error("Invalid email: {0}")]
+    InvalidEmail(String),
+
+    #[error("Invalid URL: {0}")]
+    InvalidUrl(String),
+
+    #[error("Value too small: {value} (minimum: {min})")]
+    TooSmall { value: String, min: String },
+
+    #[error("Value too large: {value} (maximum: {max})")]
+    TooLarge { value: String, max: String },
+
+    #[error("Length too short: {length} (minimum: {min})")]
+    TooShort { length: usize, min: usize },
+
+    #[error("Length too long: {length} (maximum: {max})")]
+    TooLong { length: usize, max: usize },
+
+    #[error("Pattern mismatch: {0}")]
+    PatternMismatch(String),
+
+    #[error("Custom validation error: {0}")]
+    Custom(String),
+}
+
+pub type ValidationResult<T> = Result<T, ValidationError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// // Tests based on Django validators/tests.py - test_single_message, test_message_list, test_message_dict
+    #[test]
+    fn test_validation_error_display() {
+        let error = ValidationError::Custom("Not Valid".to_string());
+        assert_eq!(error.to_string(), "Custom validation error: Not Valid");
+    }
+
+    #[test]
+    fn test_invalid_email_error() {
+        let error = ValidationError::InvalidEmail("test@".to_string());
+        assert_eq!(error.to_string(), "Invalid email: test@");
+    }
+
+    #[test]
+    fn test_invalid_url_error() {
+        let error = ValidationError::InvalidUrl("invalid-url".to_string());
+        assert_eq!(error.to_string(), "Invalid URL: invalid-url");
+    }
+
+    #[test]
+    fn test_too_small_error() {
+        let error = ValidationError::TooSmall {
+            value: "5".to_string(),
+            min: "10".to_string(),
+        };
+        assert_eq!(error.to_string(), "Value too small: 5 (minimum: 10)");
+    }
+
+    #[test]
+    fn test_too_large_error() {
+        let error = ValidationError::TooLarge {
+            value: "100".to_string(),
+            max: "50".to_string(),
+        };
+        assert_eq!(error.to_string(), "Value too large: 100 (maximum: 50)");
+    }
+
+    #[test]
+    fn test_too_short_error() {
+        let error = ValidationError::TooShort { length: 3, min: 5 };
+        assert_eq!(error.to_string(), "Length too short: 3 (minimum: 5)");
+    }
+
+    #[test]
+    fn test_too_long_error() {
+        let error = ValidationError::TooLong {
+            length: 20,
+            max: 10,
+        };
+        assert_eq!(error.to_string(), "Length too long: 20 (maximum: 10)");
+    }
+
+    #[test]
+    fn test_pattern_mismatch_error() {
+        let error = ValidationError::PatternMismatch("Value must be numeric".to_string());
+        assert_eq!(error.to_string(), "Pattern mismatch: Value must be numeric");
+    }
+
+    #[test]
+    fn test_error_debug_format() {
+        let error = ValidationError::Custom("Test error".to_string());
+        let debug_str = format!("{:?}", error);
+        assert!(debug_str.contains("Custom"));
+        assert!(debug_str.contains("Test error"));
+    }
+
+    #[test]
+    fn test_error_clone() {
+        let error = ValidationError::InvalidEmail("test@invalid".to_string());
+        let cloned = error.clone();
+        assert_eq!(error.to_string(), cloned.to_string());
+    }
+
+    #[test]
+    fn test_validation_result_ok() {
+        let result: ValidationResult<i32> = Ok(42);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[test]
+    fn test_validation_result_err() {
+        let result: ValidationResult<i32> = Err(ValidationError::Custom("error".to_string()));
+        assert!(result.is_err());
+    }
+}

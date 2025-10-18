@@ -1,0 +1,10 @@
+[package]
+name = "reinhardt-validators"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+regex = "1.11"
+thiserror = "2.0"
+serde_json = "1.0"
