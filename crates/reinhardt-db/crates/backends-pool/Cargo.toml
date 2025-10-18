@@ -1,0 +1,18 @@
+[package]
+name = "backends-pool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true }
+
+[features]
+default = []
+reinhardt-di = []
