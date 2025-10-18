@@ -1,0 +1,31 @@
+[package]
+name = "openapi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+reinhardt-apps = { workspace = true }
+reinhardt-serializers = { workspace = true, optional = true }
+reinhardt-viewsets = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+thiserror = { workspace = true }
+indexmap = { version = "2.0", features = ["serde"] }
+http = "1.0"
+chrono = { workspace = true }
+uuid = { workspace = true }
+utoipa = "^5.4.0"
+utoipa-swagger-ui = { version = "^9.0.2", default-features = false }
+askama = "0.12"
+hyper = { workspace = true }
+
+[features]
+default = []
+serializers = ["reinhardt-serializers"]
+
+[dev-dependencies]
+tokio = { workspace = true }
