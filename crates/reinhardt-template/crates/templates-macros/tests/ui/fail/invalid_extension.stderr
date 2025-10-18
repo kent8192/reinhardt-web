@@ -1,0 +1,7 @@
+error: Invalid file extension '.py'
+       Valid extensions: .html, .htm, .txt, .md, .xml, .json, .css, .js, .svg, .rst
+       Example: template!("welcome.html") instead of template!("script.py")
+ --> tests/ui/fail/invalid_extension.rs:4:23
+  |
+4 |     let _ = template!("script.py");
+  |                       ^^^^^^^^^^^

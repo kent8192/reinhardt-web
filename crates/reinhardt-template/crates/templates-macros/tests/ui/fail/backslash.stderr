@@ -1,0 +1,7 @@
+error: Template path must use forward slashes (/) as path separators
+       Backslashes (\) are not allowed for cross-platform compatibility.
+       Example: template!("emails/welcome.html") instead of template!("emails\\welcome.html")
+ --> tests/ui/fail/backslash.rs:4:23
+  |
+4 |     let _ = template!("emails\\welcome.html");
+  |                       ^^^^^^^^^^^^^^^^^^^^^^
