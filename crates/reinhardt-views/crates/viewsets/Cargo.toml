@@ -1,0 +1,23 @@
+[package]
+name = "reinhardt-viewsets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reinhardt-apps = { workspace = true }
+reinhardt-di = { workspace = true }
+reinhardt-orm = { workspace = true }
+reinhardt-serializers = { workspace = true }
+reinhardt-macros = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+hyper = { workspace = true }
+inventory = "0.3"
+lazy_static = "1.4"
+
+[dev-dependencies]
+tokio = { workspace = true }
+bytes = { workspace = true }
+async-trait = { workspace = true }
