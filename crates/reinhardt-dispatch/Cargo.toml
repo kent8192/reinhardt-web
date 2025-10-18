@@ -1,0 +1,28 @@
+[package]
+name = "reinhardt-dispatch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "URL dispatcher and request routing for Reinhardt framework"
+
+[dependencies]
+# Core dependencies
+reinhardt-urls = { workspace = true }
+reinhardt-http = { workspace = true }
+reinhardt-views = { workspace = true }
+
+# HTTP
+hyper = { workspace = true }
+http = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Utilities
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
