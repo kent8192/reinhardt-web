@@ -1,0 +1,89 @@
+[package]
+name = "reinhardt-settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Django-inspired settings management for Rust with secrets, encryption, and audit logging"
+keywords = ["settings", "configuration", "secrets", "django", "vault"]
+categories = ["config", "web-programming", "authentication"]
+readme = "README.md"
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = "0.9.8"
+reinhardt-exception = { workspace = true }
+reinhardt-validators = { workspace = true }
+
+# 環境変数とURL処理
+dotenv = "0.15"
+url = "2.5"
+
+# セキュリティと型安全性
+secrecy = "0.10.3"
+zeroize = { version = "1.7", features = ["derive"] }
+subtle = "2.5"
+parking_lot = "0.12"
+indexmap = "2.0"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3.8"
+
+# 非同期サポート（オプショナル）
+async-trait = { version = "0.1", optional = true }
+
+# バックエンド（オプショナル）
+redis = { version = "0.32.7", features = [
+  "tokio-comp",
+  "connection-manager",
+], optional = true }
+sqlx = { workspace = true, optional = true }
+
+# シークレット管理（オプショナル）
+reqwest = { version = "0.12", features = ["json"], optional = true }
+rand = { version = "0.8", optional = true }
+
+# AWS Secrets Manager（オプショナル）
+aws-config = { version = "1.5", optional = true }
+aws-sdk-secretsmanager = { version = "1.52", optional = true }
+
+# Azure Key Vault（オプショナル）
+azure_core = { version = "0.21", optional = true }
+azure_identity = { version = "0.21", optional = true }
+azure_security_keyvault = { version = "0.21", optional = true }
+
+# 暗号化（オプショナル）
+aes-gcm = { version = "0.10", optional = true }
+base64 = { version = "0.22", optional = true }
+pbkdf2 = { version = "0.12", features = ["simple"], optional = true }
+sha2 = { version = "0.10", optional = true }
+
+# その他
+uuid = { version = "1.6", features = ["v4"] }
+
+[features]
+default = []
+async = ["async-trait"]
+dynamic-redis = ["redis", "async"]
+dynamic-database = ["sqlx", "async"]
+vault = ["reqwest", "async"]
+aws-secrets = ["aws-config", "aws-sdk-secretsmanager", "async"]
+azure-keyvault = [
+  "azure_core",
+  "azure_identity",
+  "azure_security_keyvault",
+  "async",
+]
+secret-rotation = ["rand", "async"]
+encryption = ["aes-gcm", "base64", "pbkdf2", "sha2", "rand"]
+
+[dev-dependencies]
+tempfile = "3.8"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+testcontainers = "0.25.0"
+env_logger = "0.11"
+anyhow = { workspace = true }
+hex = "0.4"
+colored = "2.0"
