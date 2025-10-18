@@ -1,0 +1,20 @@
+[package]
+name = "reinhardt-routers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reinhardt-apps = { workspace = true }
+reinhardt-exception = { workspace = true }
+reinhardt-viewsets = { workspace = true }
+reinhardt-routers-macros = { path = "../routers-macros", version = "0.1.0" }
+regex = { workspace = true }
+nom = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+bytes = { workspace = true }
+hyper = { workspace = true }
