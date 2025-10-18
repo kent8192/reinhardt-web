@@ -1,0 +1,16 @@
+--- a/crates/reinhardt-signals/src/lib.rs
++++ b/crates/reinhardt-signals/src/lib.rs
+@@ -636,11 +636,12 @@ impl<T: Send + Sync + 'static> Signal<T> {
+         U: Send + Sync + 'static,
+         F: Fn(Arc<T>) -> U + Send + Sync + 'static,
+     {
+         let mapped = Signal::new(format!("{}_mapped", self.name));
+         let transform = Arc::new(transform);
++        let mapped_clone = mapped.clone();
+
+         self.connect(move |instance| {
+-            let mapped = mapped.clone();
++            let mapped = mapped_clone.clone();
+             let transform = transform.clone();
+             async move {
+                 let transformed = transform(instance);
