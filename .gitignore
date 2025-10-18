@@ -79,3 +79,11 @@ rust-project.json
 # Reference repositories (not part of the project)
 django/
 django-rest-framework/
+sqlalchemy/
+fastapi/
+
+# Jekyll build files
+docs/_site/
+docs/.jekyll-cache/
+docs/.sass-cache/
+docs/Gemfile.lock
