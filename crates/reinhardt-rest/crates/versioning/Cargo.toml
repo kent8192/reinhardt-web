@@ -1,0 +1,21 @@
+[package]
+name = "reinhardt-versioning"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "API versioning strategies for Reinhardt framework"
+
+[dependencies]
+reinhardt-apps = { workspace = true }
+reinhardt-routers = { workspace = true }
+async-trait = "0.1"
+bytes = "1.9"
+regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+hyper = "1.5"
+bytes = "1.9"
