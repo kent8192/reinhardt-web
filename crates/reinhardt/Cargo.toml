@@ -1,0 +1,151 @@
+[package]
+name = "reinhardt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A full-stack API framework for Rust, inspired by Django and Django REST Framework"
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["standard"]
+
+# Minimal feature set - for microservices and simple APIs
+minimal = ["reinhardt-views", "reinhardt-params", "reinhardt-di"]
+
+# Standard feature set - balanced for most projects
+standard = [
+  "minimal",
+  "reinhardt-orm",
+  "reinhardt-serializers",
+  "reinhardt-viewsets",
+  "reinhardt-auth",
+  "reinhardt-middleware",
+  "reinhardt-pagination",
+  "reinhardt-filters",
+  "reinhardt-throttling",
+  "reinhardt-signals",
+  "reinhardt-parsers",
+  "reinhardt-renderers",
+  "reinhardt-versioning",
+  "reinhardt-metadata",
+  "reinhardt-negotiation",
+  "reinhardt-rest",
+]
+
+# Individual feature flags for fine-grained control
+database = [
+  "reinhardt-orm",
+  "reinhardt-migrations",
+  "reinhardt-contenttypes",
+  "reinhardt-db",
+]
+api = ["reinhardt-serializers", "reinhardt-viewsets"]
+auth = ["reinhardt-auth"]
+# admin = ["reinhardt-admin", "reinhardt-forms", "reinhardt-templates"]  # reinhardt-admin not yet created
+admin = ["reinhardt-forms", "reinhardt-templates"]
+forms = ["reinhardt-forms"]
+graphql = ["reinhardt-graphql"]
+templates = ["reinhardt-templates", "reinhardt-template"]
+websockets = ["reinhardt-websockets"]
+cache = ["reinhardt-cache"]
+i18n = ["reinhardt-i18n"]
+mail = ["reinhardt-mail"]
+sessions = ["reinhardt-sessions"]
+static-files = ["reinhardt-static"]
+storage = ["reinhardt-storage"]
+contrib = ["reinhardt-contrib"]
+
+# Parent crate features (new module structure)
+conf = ["reinhardt-conf"]
+core = ["reinhardt-core"]
+rest = ["reinhardt-rest"]
+di = ["reinhardt-di"]
+test = ["reinhardt-test"]
+
+# Meta features
+full = [
+  "standard",
+  "database",
+  "auth",
+  "admin",
+  "graphql",
+  "websockets",
+  "cache",
+  "i18n",
+  "mail",
+  "sessions",
+  "static-files",
+  "storage",
+  "contrib",
+]
+
+[dependencies]
+# Core dependencies (always included)
+reinhardt-apps = { workspace = true }
+reinhardt-settings = { workspace = true }
+reinhardt-routers = { workspace = true }
+reinhardt-urls = { workspace = true }
+reinhardt-utils = { workspace = true }
+reinhardt-views = { workspace = true }
+bytes = { workspace = true }
+hyper = { workspace = true }
+
+# Parent crate dependencies (new module structure)
+reinhardt-conf = { workspace = true, optional = true }
+reinhardt-core = { workspace = true, optional = true }
+reinhardt-db = { workspace = true, optional = true }
+reinhardt-template = { workspace = true, optional = true }
+reinhardt-test = { workspace = true, optional = true }
+
+# Minimal feature dependencies
+reinhardt-params = { workspace = true, optional = true }
+reinhardt-di = { workspace = true, optional = true }
+
+# Standard feature dependencies
+reinhardt-orm = { workspace = true, optional = true }
+reinhardt-serializers = { workspace = true, optional = true }
+reinhardt-viewsets = { workspace = true, optional = true }
+reinhardt-auth = { workspace = true, optional = true }
+reinhardt-middleware = { workspace = true, optional = true }
+reinhardt-pagination = { workspace = true, optional = true }
+reinhardt-filters = { workspace = true, optional = true }
+reinhardt-throttling = { workspace = true, optional = true }
+reinhardt-signals = { workspace = true, optional = true }
+
+# REST API related (standard feature)
+reinhardt-parsers = { workspace = true, optional = true }
+reinhardt-renderers = { workspace = true, optional = true }
+reinhardt-versioning = { workspace = true, optional = true }
+reinhardt-metadata = { workspace = true, optional = true }
+reinhardt-negotiation = { workspace = true, optional = true }
+reinhardt-rest = { workspace = true, optional = true }
+
+# Database related (database feature)
+reinhardt-migrations = { workspace = true, optional = true }
+reinhardt-contenttypes = { workspace = true, optional = true }
+
+# Cache and sessions (individual features)
+reinhardt-cache = { workspace = true, optional = true }
+reinhardt-sessions = { workspace = true, optional = true }
+
+# Additional optional dependencies
+# reinhardt-admin = { workspace = true, optional = true }  # Not yet created
+reinhardt-forms = { workspace = true, optional = true }
+reinhardt-graphql = { workspace = true, optional = true }
+reinhardt-templates = { workspace = true, optional = true }
+reinhardt-websockets = { workspace = true, optional = true }
+reinhardt-i18n = { workspace = true, optional = true }
+reinhardt-mail = { workspace = true, optional = true }
+reinhardt-static = { workspace = true, optional = true }
+reinhardt-storage = { workspace = true, optional = true }
+reinhardt-contrib = { workspace = true, optional = true }
+reinhardt-shortcuts = { workspace = true, optional = true }
+
+# Re-export commonly used dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+toml = "0.8"
