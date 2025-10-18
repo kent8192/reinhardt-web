@@ -1,0 +1,17 @@
+[package]
+name = "reinhardt-integration-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+# openapi = { path = "../crates/reinhardt-rest/crates/openapi", default-features = false } # Temporarily disabled
+reinhardt-viewsets = { workspace = true }
+reinhardt-apps = { workspace = true }
+reinhardt-serializers = { workspace = true }
+reinhardt-orm = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+hyper = { workspace = true }
