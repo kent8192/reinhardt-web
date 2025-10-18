@@ -1,0 +1,9 @@
+error: Invalid parameter name 'userId' at position 7
+       Parameter names must be valid snake_case identifiers:
+       - Start with lowercase letter or underscore
+       - Contain only lowercase letters, digits, and underscores
+       Example: {user_id} instead of {userId} or {user-id}
+ --> tests/ui/fail/invalid_param_name_uppercase.rs:4:19
+  |
+4 |     let _ = path!("/users/{userId}/");
+  |                   ^^^^^^^^^^^^^^^^^^

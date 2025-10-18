@@ -1,0 +1,6 @@
+error: Unmatched '{' at position 7
+       All parameter markers must be properly closed with '}'
+ --> tests/ui/fail/unmatched_open_brace.rs:4:19
+  |
+4 |     let _ = path!("/users/{id/");
+  |                   ^^^^^^^^^^^^^
