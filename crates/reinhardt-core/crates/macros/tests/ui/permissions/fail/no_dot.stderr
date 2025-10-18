@@ -1,0 +1,5 @@
+error: Invalid permission string: Permission string must be in 'app.permission' format (e.g., 'auth.view_user')
+ --> tests/ui/permissions/fail/no_dot.rs:3:23
+  |
+3 | #[permission_required("authviewuser")]
+  |                       ^^^^^^^^^^^^^^

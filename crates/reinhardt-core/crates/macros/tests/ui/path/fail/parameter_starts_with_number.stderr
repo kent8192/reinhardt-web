@@ -1,0 +1,5 @@
+error: Invalid parameter syntax at position 6. Perhaps you meant to close a previous parameter?
+ --> tests/ui/path/fail/parameter_starts_with_number.rs:6:25
+  |
+6 |     let pattern = path!("polls/{1id}/");
+  |                         ^^^^^^^^^^^^^^

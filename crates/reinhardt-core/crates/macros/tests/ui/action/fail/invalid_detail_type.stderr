@@ -1,0 +1,5 @@
+error: detail parameter must be a boolean literal (true or false)
+ --> tests/ui/action/fail/invalid_detail_type.rs:6:41
+  |
+6 |     #[action(methods = "POST", detail = "not_bool")]
+  |                                         ^^^^^^^^^^

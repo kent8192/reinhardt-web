@@ -1,0 +1,56 @@
+error[E0428]: the name `auth` is defined multiple times
+  --> tests/ui/fail/duplicate_labels.rs:10:9
+   |
+ 9 |         auth: "reinhardt.contrib.auth",
+   |         ---- previous definition of the type `auth` here
+10 |         auth: "reinhardt.contrib.sessions",
+   |         ^^^^ `auth` redefined here
+   |
+   = note: `auth` must be defined only once in the type namespace of this enum
+
+error[E0004]: non-exhaustive patterns: `&InstalledApp::auth` not covered
+  --> tests/ui/fail/duplicate_labels.rs:8:5
+   |
+ 8 | /     installed_apps! {
+ 9 | |         auth: "reinhardt.contrib.auth",
+10 | |         auth: "reinhardt.contrib.sessions",
+11 | |     }
+   | |_____^ pattern `&InstalledApp::auth` not covered
+   |
+note: `InstalledApp` defined here
+  --> tests/ui/fail/duplicate_labels.rs:8:5
+   |
+ 8 | /     installed_apps! {
+ 9 | |         auth: "reinhardt.contrib.auth",
+10 | |         auth: "reinhardt.contrib.sessions",
+   | |         ---- not covered
+11 | |     }
+   | |_____^
+   = note: the matched value is of type `&InstalledApp`
+   = note: this error originates in the derive macro `Debug` which comes from the expansion of the macro `installed_apps` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0004]: non-exhaustive patterns: `&InstalledApp::auth` not covered
+  --> tests/ui/fail/duplicate_labels.rs:8:5
+   |
+ 8 | /     installed_apps! {
+ 9 | |         auth: "reinhardt.contrib.auth",
+10 | |         auth: "reinhardt.contrib.sessions",
+11 | |     }
+   | |_____^ pattern `&InstalledApp::auth` not covered
+   |
+note: `InstalledApp` defined here
+  --> tests/ui/fail/duplicate_labels.rs:8:5
+   |
+ 8 | /     installed_apps! {
+ 9 | |         auth: "reinhardt.contrib.auth",
+10 | |         auth: "reinhardt.contrib.sessions",
+   | |         ---- not covered
+11 | |     }
+   | |_____^
+   = note: the matched value is of type `&InstalledApp`
+   = note: this error originates in the macro `installed_apps` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
+   |
+11 ~     },
+12 +     &InstalledApp::auth => todo!()
+   |

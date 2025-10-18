@@ -1,0 +1,5 @@
+error: url_path cannot contain spaces
+ --> tests/ui/action/fail/invalid_url_path.rs:6:58
+  |
+6 |     #[action(methods = "POST", detail = true, url_path = "invalid path")]
+  |                                                          ^^^^^^^^^^^^^^

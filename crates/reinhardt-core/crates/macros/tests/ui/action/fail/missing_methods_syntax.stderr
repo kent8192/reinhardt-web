@@ -1,0 +1,7 @@
+error: action macro requires 'methods' parameter
+ --> tests/ui/action/fail/missing_methods_syntax.rs:6:5
+  |
+6 |     #[action(detail = true)]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `action` (in Nightly builds, run with -Z macro-backtrace for more info)

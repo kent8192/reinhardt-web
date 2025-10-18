@@ -1,0 +1,5 @@
+error: Unexpected closing brace. No matching opening brace found.
+ --> tests/ui/path/fail/unmatched_closing_brace.rs:6:25
+  |
+6 |     let pattern = path!("polls/id}/");
+  |                         ^^^^^^^^^^^^

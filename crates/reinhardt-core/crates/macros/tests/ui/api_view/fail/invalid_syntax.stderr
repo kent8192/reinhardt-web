@@ -1,0 +1,5 @@
+error: methods parameter requires a value: methods = "GET,POST"
+ --> tests/ui/api_view/fail/invalid_syntax.rs:3:12
+  |
+3 | #[api_view(methods)]
+  |            ^^^^^^^

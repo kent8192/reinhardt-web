@@ -1,0 +1,5 @@
+error: Invalid permission string: Permission string cannot contain spaces
+ --> tests/ui/permissions/fail/with_space.rs:3:23
+  |
+3 | #[permission_required("auth.view user")]
+  |                       ^^^^^^^^^^^^^^^^

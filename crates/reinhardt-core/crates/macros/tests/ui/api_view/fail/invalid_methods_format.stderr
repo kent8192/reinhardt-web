@@ -1,0 +1,5 @@
+error: methods parameter must be a string literal
+ --> tests/ui/api_view/fail/invalid_methods_format.rs:3:22
+  |
+3 | #[api_view(methods = 123)]
+  |                      ^^^

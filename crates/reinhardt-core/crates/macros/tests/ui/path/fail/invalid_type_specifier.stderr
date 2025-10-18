@@ -1,0 +1,5 @@
+error: Invalid type specifier 'invalid'. Valid types are: int, str, uuid, slug, path
+ --> tests/ui/path/fail/invalid_type_specifier.rs:6:25
+  |
+6 |     let pattern = path!("polls/{<invalid:id>}/");
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^

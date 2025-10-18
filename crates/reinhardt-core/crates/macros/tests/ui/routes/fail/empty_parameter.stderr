@@ -1,0 +1,5 @@
+error: Invalid route path: Empty parameter name. Parameters must have a name like {id} or {<int:id>}
+ --> tests/ui/routes/fail/empty_parameter.rs:3:8
+  |
+3 | #[post("/users/{}/posts")]
+  |        ^^^^^^^^^^^^^^^^^

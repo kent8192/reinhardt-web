@@ -1,0 +1,5 @@
+error: Invalid permission string: Permission string must contain exactly one dot, found 2
+ --> tests/ui/permissions/fail/multiple_dots.rs:3:23
+  |
+3 | #[permission_required("auth.contrib.view_user")]
+  |                       ^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,7 @@
+error: action macro requires 'methods' parameter
+ --> tests/ui/validation_edge_cases/action_missing_both.rs:6:5
+  |
+6 |     #[action]
+  |     ^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `action` (in Nightly builds, run with -Z macro-backtrace for more info)

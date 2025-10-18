@@ -1,0 +1,5 @@
+error: Invalid route path: Unclosed brace in URL pattern. Opening brace at position 7 has no matching closing brace
+ --> tests/ui/routes/fail/unclosed_brace.rs:3:7
+  |
+3 | #[get("/users/{id")]
+  |       ^^^^^^^^^^^^

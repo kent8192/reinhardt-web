@@ -1,0 +1,5 @@
+error: expected `,`
+ --> tests/ui/api_view/fail/missing_equals.rs:6:20
+  |
+6 | #[api_view(methods "GET")]
+  |                    ^^^^^

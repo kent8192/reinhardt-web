@@ -1,0 +1,5 @@
+error: url_path must start with '/'
+ --> tests/ui/validation_edge_cases/action_url_path_no_slash.rs:6:57
+  |
+6 |     #[action(methods = "GET", detail = true, url_path = "no-slash")]
+  |                                                         ^^^^^^^^^^

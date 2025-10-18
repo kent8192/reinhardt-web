@@ -1,0 +1,5 @@
+error: Invalid permission string: App label cannot be empty. Use format 'app.permission'
+ --> tests/ui/permissions/fail/empty_app.rs:3:23
+  |
+3 | #[permission_required(".view_user")]
+  |                       ^^^^^^^^^^^^

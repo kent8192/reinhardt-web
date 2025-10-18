@@ -1,0 +1,5 @@
+error: Empty parameter name. Parameters must have a name like {id} or {<int:id>}
+ --> tests/ui/path/fail/empty_parameter.rs:6:25
+  |
+6 |     let pattern = path!("polls/{}/");
+  |                         ^^^^^^^^^^^

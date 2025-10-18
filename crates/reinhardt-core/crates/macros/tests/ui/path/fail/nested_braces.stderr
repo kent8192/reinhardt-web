@@ -1,0 +1,5 @@
+error: Nested braces are not allowed in URL patterns. Use single braces like {id}, not {{id}}
+ --> tests/ui/path/fail/nested_braces.rs:6:25
+  |
+6 |     let pattern = path!("polls/{{id}}/");
+  |                         ^^^^^^^^^^^^^^^

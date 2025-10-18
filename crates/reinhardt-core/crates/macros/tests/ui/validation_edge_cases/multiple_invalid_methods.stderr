@@ -1,0 +1,5 @@
+error: Invalid HTTP method 'INVALID1'. Valid methods are: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+ --> tests/ui/validation_edge_cases/multiple_invalid_methods.rs:3:22
+  |
+3 | #[api_view(methods = "GET,INVALID1,POST,INVALID2")]
+  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
