@@ -1,0 +1,9 @@
+{
+  "trunk.autoInit": false,
+  "trunk.addToolsToPath": true,
+  "editor.formatOnSaveMode": "modificationsIfAvailable",
+  "rust-analyzer.checkOnSave": false,
+  "rust-analyzer.showSyntaxTree": false,
+  "rust-analyzer.testExplorer": true,
+  "rust-analyzer.cargo.buildScripts.rebuildOnSave": false
+}
