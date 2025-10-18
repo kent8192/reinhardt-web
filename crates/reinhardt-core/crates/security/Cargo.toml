@@ -1,0 +1,23 @@
+[package]
+name = "reinhardt-security"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+http = "1.0"
+
+# CSRF protection
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.9"
+url = "2.5"
+
+[dev-dependencies]
+tokio = { workspace = true }
