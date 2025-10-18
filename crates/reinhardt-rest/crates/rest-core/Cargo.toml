@@ -1,0 +1,13 @@
+[package]
+name = "rest-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reinhardt-routers = { workspace = true }
+reinhardt-auth = { workspace = true }
+reinhardt-pagination = { workspace = true }
