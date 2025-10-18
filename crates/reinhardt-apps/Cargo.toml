@@ -1,0 +1,29 @@
+[package]
+name = "reinhardt-apps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reinhardt-types = { workspace = true }
+reinhardt-http = { path = "../reinhardt-http" }
+reinhardt-settings = { workspace = true }
+reinhardt-exception = { workspace = true }
+reinhardt-server = { path = "../reinhardt-server" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+sha2 = "0.10"
+flate2 = { workspace = true }
+brotli = { workspace = true }
+reqwest = { version = "0.12", features = ["json"] }
+futures = "0.3.31"
+pin-project = "1.1"
