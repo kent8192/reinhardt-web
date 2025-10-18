@@ -1,0 +1,21 @@
+[package]
+name = "reinhardt-template"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Template system for Reinhardt framework (includes templates, renderers, and macros)"
+
+[dependencies]
+# Internal crates (re-exported by this parent crate)
+reinhardt-templates = { path = "crates/templates", version = "0.1.0", optional = true }
+reinhardt-templates-macros = { path = "crates/templates-macros", version = "0.1.0", optional = true }
+reinhardt-renderers = { path = "crates/renderers", version = "0.1.0", optional = true }
+
+[features]
+default = ["templates", "renderers", "templates-macros"]
+templates = ["dep:reinhardt-templates"]
+templates-macros = ["dep:reinhardt-templates-macros"]
+renderers = ["dep:reinhardt-renderers"]
+full = ["templates", "templates-macros", "renderers"]
