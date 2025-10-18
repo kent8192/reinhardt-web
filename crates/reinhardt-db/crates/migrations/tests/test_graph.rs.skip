@@ -1,0 +1,828 @@
+// Translated from Django's tests/migrations/test_graph.py
+
+use reinhardt_migrations::graph::{DummyNode, MigrationGraph, Node, NodeKey};
+use reinhardt_migrations::MigrationError;
+
+fn node_key(app: &str, name: &str) -> NodeKey {
+    (app.to_string(), name.to_string())
+}
+
+#[test]
+fn test_simple_graph() {
+    /*
+    Tests a basic dependency graph:
+
+    app_a:  0001 <-- 0002 <--- 0003 <-- 0004
+                             /
+    app_b:  0001 <-- 0002 <-/
+    */
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("app_a", "0001"), None);
+    graph.add_node(node_key("app_a", "0002"), None);
+    graph.add_node(node_key("app_a", "0003"), None);
+    graph.add_node(node_key("app_a", "0004"), None);
+    graph.add_node(node_key("app_b", "0001"), None);
+    graph.add_node(node_key("app_b", "0002"), None);
+
+    graph
+        .add_dependency(
+            "app_a.0004",
+            node_key("app_a", "0004"),
+            node_key("app_a", "0003"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0003",
+            node_key("app_a", "0003"),
+            node_key("app_a", "0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0002",
+            node_key("app_a", "0002"),
+            node_key("app_a", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0003",
+            node_key("app_a", "0003"),
+            node_key("app_b", "0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_b.0002",
+            node_key("app_b", "0002"),
+            node_key("app_b", "0001"),
+            false,
+        )
+        .unwrap();
+
+    // Test root migration case
+    assert_eq!(
+        graph.forwards_plan(node_key("app_a", "0001")).unwrap(),
+        vec![node_key("app_a", "0001")]
+    );
+
+    // Test branch B only
+    assert_eq!(
+        graph.forwards_plan(node_key("app_b", "0002")).unwrap(),
+        vec![node_key("app_b", "0001"), node_key("app_b", "0002")]
+    );
+
+    // Test whole graph
+    assert_eq!(
+        graph.forwards_plan(node_key("app_a", "0004")).unwrap(),
+        vec![
+            node_key("app_b", "0001"),
+            node_key("app_b", "0002"),
+            node_key("app_a", "0001"),
+            node_key("app_a", "0002"),
+            node_key("app_a", "0003"),
+            node_key("app_a", "0004"),
+        ]
+    );
+
+    // Test reverse to b:0002
+    assert_eq!(
+        graph.backwards_plan(node_key("app_b", "0002")).unwrap(),
+        vec![
+            node_key("app_a", "0004"),
+            node_key("app_a", "0003"),
+            node_key("app_b", "0002")
+        ]
+    );
+
+    // Test roots and leaves
+    assert_eq!(
+        graph.root_nodes(None),
+        vec![node_key("app_a", "0001"), node_key("app_b", "0001")]
+    );
+    assert_eq!(
+        graph.leaf_nodes(None),
+        vec![node_key("app_a", "0004"), node_key("app_b", "0002")]
+    );
+}
+
+#[test]
+fn test_complex_graph() {
+    /*
+    Tests a complex dependency graph:
+
+    app_a:  0001 <-- 0002 <--- 0003 <-- 0004
+                  \        \ /         /
+    app_b:  0001 <-\ 0002 <-X         /
+                  \          \       /
+    app_c:         \ 0001 <-- 0002 <-
+    */
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("app_a", "0001"), None);
+    graph.add_node(node_key("app_a", "0002"), None);
+    graph.add_node(node_key("app_a", "0003"), None);
+    graph.add_node(node_key("app_a", "0004"), None);
+    graph.add_node(node_key("app_b", "0001"), None);
+    graph.add_node(node_key("app_b", "0002"), None);
+    graph.add_node(node_key("app_c", "0001"), None);
+    graph.add_node(node_key("app_c", "0002"), None);
+
+    graph
+        .add_dependency(
+            "app_a.0004",
+            node_key("app_a", "0004"),
+            node_key("app_a", "0003"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0003",
+            node_key("app_a", "0003"),
+            node_key("app_a", "0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0002",
+            node_key("app_a", "0002"),
+            node_key("app_a", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0003",
+            node_key("app_a", "0003"),
+            node_key("app_b", "0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_b.0002",
+            node_key("app_b", "0002"),
+            node_key("app_b", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0004",
+            node_key("app_a", "0004"),
+            node_key("app_c", "0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_c.0002",
+            node_key("app_c", "0002"),
+            node_key("app_c", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_c.0001",
+            node_key("app_c", "0001"),
+            node_key("app_b", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_c.0002",
+            node_key("app_c", "0002"),
+            node_key("app_a", "0002"),
+            false,
+        )
+        .unwrap();
+
+    // Test branch C only
+    assert_eq!(
+        graph.forwards_plan(node_key("app_c", "0002")).unwrap(),
+        vec![
+            node_key("app_b", "0001"),
+            node_key("app_c", "0001"),
+            node_key("app_a", "0001"),
+            node_key("app_a", "0002"),
+            node_key("app_c", "0002"),
+        ]
+    );
+
+    // Test whole graph
+    assert_eq!(
+        graph.forwards_plan(node_key("app_a", "0004")).unwrap(),
+        vec![
+            node_key("app_b", "0001"),
+            node_key("app_c", "0001"),
+            node_key("app_a", "0001"),
+            node_key("app_a", "0002"),
+            node_key("app_c", "0002"),
+            node_key("app_b", "0002"),
+            node_key("app_a", "0003"),
+            node_key("app_a", "0004"),
+        ]
+    );
+
+    // Test reverse to b:0001
+    assert_eq!(
+        graph.backwards_plan(node_key("app_b", "0001")).unwrap(),
+        vec![
+            node_key("app_a", "0004"),
+            node_key("app_c", "0002"),
+            node_key("app_c", "0001"),
+            node_key("app_a", "0003"),
+            node_key("app_b", "0002"),
+            node_key("app_b", "0001"),
+        ]
+    );
+
+    // Test roots and leaves
+    assert_eq!(
+        graph.root_nodes(None),
+        vec![
+            node_key("app_a", "0001"),
+            node_key("app_b", "0001"),
+            node_key("app_c", "0001")
+        ]
+    );
+    assert_eq!(
+        graph.leaf_nodes(None),
+        vec![
+            node_key("app_a", "0004"),
+            node_key("app_b", "0002"),
+            node_key("app_c", "0002")
+        ]
+    );
+}
+
+#[test]
+fn test_circular_graph() {
+    // Tests a circular dependency graph
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("app_a", "0001"), None);
+    graph.add_node(node_key("app_a", "0002"), None);
+    graph.add_node(node_key("app_a", "0003"), None);
+    graph.add_node(node_key("app_b", "0001"), None);
+    graph.add_node(node_key("app_b", "0002"), None);
+
+    graph
+        .add_dependency(
+            "app_a.0003",
+            node_key("app_a", "0003"),
+            node_key("app_a", "0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0002",
+            node_key("app_a", "0002"),
+            node_key("app_a", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0001",
+            node_key("app_a", "0001"),
+            node_key("app_b", "0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_b.0002",
+            node_key("app_b", "0002"),
+            node_key("app_b", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_b.0001",
+            node_key("app_b", "0001"),
+            node_key("app_a", "0003"),
+            false,
+        )
+        .unwrap();
+
+    // Test whole graph
+    let result = graph.ensure_not_cyclic();
+    assert!(matches!(
+        result,
+        Err(MigrationError::CircularDependency { .. })
+    ));
+}
+
+#[test]
+fn test_circular_graph_2() {
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("A", "0001"), None);
+    graph.add_node(node_key("C", "0001"), None);
+    graph.add_node(node_key("B", "0001"), None);
+
+    graph
+        .add_dependency(
+            "A.0001",
+            node_key("A", "0001"),
+            node_key("B", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "B.0001",
+            node_key("B", "0001"),
+            node_key("A", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "C.0001",
+            node_key("C", "0001"),
+            node_key("B", "0001"),
+            false,
+        )
+        .unwrap();
+
+    let result = graph.ensure_not_cyclic();
+    assert!(matches!(
+        result,
+        Err(MigrationError::CircularDependency { .. })
+    ));
+}
+
+#[test]
+fn test_iterative_dfs() {
+    let mut graph = MigrationGraph::new();
+    let root = node_key("app_a", "1");
+    graph.add_node(root.clone(), None);
+    let mut expected = vec![root.clone()];
+
+    for i in 2..750 {
+        let parent = node_key("app_a", &(i - 1).to_string());
+        let child = node_key("app_a", &i.to_string());
+        graph.add_node(child.clone(), None);
+        graph
+            .add_dependency(&i.to_string(), child.clone(), parent, false)
+            .unwrap();
+        expected.push(child);
+    }
+
+    let leaf = expected.last().unwrap().clone();
+
+    let forwards_plan = graph.forwards_plan(leaf).unwrap();
+    assert_eq!(expected, forwards_plan);
+
+    let mut expected_backwards = expected.clone();
+    expected_backwards.reverse();
+    let backwards_plan = graph.backwards_plan(root).unwrap();
+    assert_eq!(expected_backwards, backwards_plan);
+}
+
+#[test]
+fn test_iterative_dfs_complexity() {
+    /*
+    In a graph with merge migrations, iterative_dfs() traverses each node
+    only once even if there are multiple paths leading to it.
+    */
+    let n = 50;
+    let mut graph = MigrationGraph::new();
+
+    for i in 1..=n {
+        graph.add_node(node_key("app_a", &i.to_string()), None);
+        graph.add_node(node_key("app_b", &i.to_string()), None);
+        graph.add_node(node_key("app_c", &i.to_string()), None);
+    }
+
+    for i in 1..n {
+        graph
+            .add_dependency(
+                "",
+                node_key("app_b", &i.to_string()),
+                node_key("app_a", &i.to_string()),
+                false,
+            )
+            .unwrap();
+        graph
+            .add_dependency(
+                "",
+                node_key("app_c", &i.to_string()),
+                node_key("app_a", &i.to_string()),
+                false,
+            )
+            .unwrap();
+        graph
+            .add_dependency(
+                "",
+                node_key("app_a", &(i + 1).to_string()),
+                node_key("app_b", &i.to_string()),
+                false,
+            )
+            .unwrap();
+        graph
+            .add_dependency(
+                "",
+                node_key("app_a", &(i + 1).to_string()),
+                node_key("app_c", &i.to_string()),
+                false,
+            )
+            .unwrap();
+    }
+
+    let plan = graph
+        .forwards_plan(node_key("app_a", &n.to_string()))
+        .unwrap();
+
+    let mut expected = Vec::new();
+    for i in 1..n {
+        expected.push(node_key("app_a", &i.to_string()));
+        expected.push(node_key("app_c", &i.to_string()));
+        expected.push(node_key("app_b", &i.to_string()));
+    }
+    expected.push(node_key("app_a", &n.to_string()));
+
+    assert_eq!(plan, expected);
+}
+
+#[test]
+fn test_plan_invalid_node() {
+    // Tests for forwards/backwards_plan of nonexistent node
+    let graph = MigrationGraph::new();
+
+    let result = graph.forwards_plan(node_key("app_b", "0001"));
+    assert!(matches!(result, Err(MigrationError::NodeNotFound { .. })));
+
+    let result = graph.backwards_plan(node_key("app_b", "0001"));
+    assert!(matches!(result, Err(MigrationError::NodeNotFound { .. })));
+}
+
+#[test]
+fn test_missing_parent_nodes() {
+    // Tests for missing parent nodes
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("app_a", "0001"), None);
+    graph.add_node(node_key("app_a", "0002"), None);
+    graph.add_node(node_key("app_a", "0003"), None);
+    graph.add_node(node_key("app_b", "0001"), None);
+
+    graph
+        .add_dependency(
+            "app_a.0003",
+            node_key("app_a", "0003"),
+            node_key("app_a", "0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0002",
+            node_key("app_a", "0002"),
+            node_key("app_a", "0001"),
+            false,
+        )
+        .unwrap();
+
+    let result = graph.add_dependency(
+        "app_a.0001",
+        node_key("app_a", "0001"),
+        node_key("app_b", "0002"),
+        false,
+    );
+
+    assert!(matches!(result, Err(MigrationError::NodeNotFound { .. })));
+}
+
+#[test]
+fn test_missing_child_nodes() {
+    // Tests for missing child nodes
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("app_a", "0001"), None);
+
+    let result = graph.add_dependency(
+        "app_a.0002",
+        node_key("app_a", "0002"),
+        node_key("app_a", "0001"),
+        false,
+    );
+
+    assert!(matches!(result, Err(MigrationError::NodeNotFound { .. })));
+}
+
+#[test]
+fn test_validate_consistency_missing_parent() {
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("app_a", "0001"), None);
+    graph
+        .add_dependency(
+            "app_a.0001",
+            node_key("app_a", "0001"),
+            node_key("app_b", "0002"),
+            true,
+        )
+        .unwrap();
+
+    let result = graph.validate_consistency();
+    assert!(matches!(result, Err(MigrationError::NodeNotFound { .. })));
+}
+
+#[test]
+fn test_validate_consistency_missing_child() {
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("app_b", "0002"), None);
+    graph
+        .add_dependency(
+            "app_b.0002",
+            node_key("app_a", "0001"),
+            node_key("app_b", "0002"),
+            true,
+        )
+        .unwrap();
+
+    let result = graph.validate_consistency();
+    assert!(matches!(result, Err(MigrationError::NodeNotFound { .. })));
+}
+
+#[test]
+fn test_validate_consistency_no_error() {
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("app_a", "0001"), None);
+    graph.add_node(node_key("app_b", "0002"), None);
+    graph
+        .add_dependency(
+            "app_a.0001",
+            node_key("app_a", "0001"),
+            node_key("app_b", "0002"),
+            true,
+        )
+        .unwrap();
+
+    let result = graph.validate_consistency();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_validate_consistency_dummy() {
+    /*
+    validate_consistency() raises an error if there's an isolated dummy
+    node.
+    */
+    let mut graph = MigrationGraph::new();
+    graph.add_dummy_node(
+        node_key("app_a", "0001"),
+        "app_b.0002".to_string(),
+        "app_a.0001 (req'd by app_b.0002) is missing!".to_string(),
+    );
+
+    let result = graph.validate_consistency();
+    assert!(matches!(result, Err(MigrationError::NodeNotFound { .. })));
+}
+
+#[test]
+fn test_remove_replaced_nodes() {
+    /*
+    Replaced nodes are properly removed and dependencies remapped.
+    */
+    let mut graph = MigrationGraph::new();
+    graph.add_dummy_node(
+        node_key("app_a", "0001"),
+        "app_a.0002".to_string(),
+        "BAD!".to_string(),
+    );
+    graph.add_dummy_node(
+        node_key("app_a", "0002"),
+        "app_b.0001".to_string(),
+        "BAD!".to_string(),
+    );
+    graph
+        .add_dependency(
+            "app_a.0002",
+            node_key("app_a", "0002"),
+            node_key("app_a", "0001"),
+            true,
+        )
+        .unwrap();
+
+    // Add some normal parent and child nodes
+    graph.add_node(node_key("app_c", "0001"), None);
+    graph.add_node(node_key("app_b", "0001"), None);
+    graph
+        .add_dependency(
+            "app_a.0001",
+            node_key("app_a", "0001"),
+            node_key("app_c", "0001"),
+            true,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_b.0001",
+            node_key("app_b", "0001"),
+            node_key("app_a", "0002"),
+            true,
+        )
+        .unwrap();
+
+    // Try replacing before replacement node exists
+    let result = graph.remove_replaced_nodes(
+        node_key("app_a", "0001_squashed_0002"),
+        vec![node_key("app_a", "0001"), node_key("app_a", "0002")],
+    );
+    assert!(matches!(result, Err(MigrationError::NodeNotFound { .. })));
+
+    graph.add_node(node_key("app_a", "0001_squashed_0002"), None);
+
+    // Ensure validate_consistency() still raises an error
+    assert!(graph.validate_consistency().is_err());
+
+    // Remove the dummy nodes
+    graph
+        .remove_replaced_nodes(
+            node_key("app_a", "0001_squashed_0002"),
+            vec![node_key("app_a", "0001"), node_key("app_a", "0002")],
+        )
+        .unwrap();
+
+    // Ensure graph is now consistent
+    assert!(graph.validate_consistency().is_ok());
+}
+
+#[test]
+fn test_remove_replacement_node() {
+    /*
+    A replacement node is properly removed and child dependencies remapped.
+    */
+    let mut graph = MigrationGraph::new();
+    graph.add_node(node_key("app_a", "0001"), None);
+    graph.add_node(node_key("app_a", "0002"), None);
+    graph
+        .add_dependency(
+            "app_a.0002",
+            node_key("app_a", "0002"),
+            node_key("app_a", "0001"),
+            false,
+        )
+        .unwrap();
+
+    // Try removing replacement node before it exists
+    let result = graph.remove_replacement_node(
+        node_key("app_a", "0001_squashed_0002"),
+        vec![node_key("app_a", "0001"), node_key("app_a", "0002")],
+    );
+    assert!(matches!(result, Err(MigrationError::NodeNotFound { .. })));
+
+    graph.add_node(node_key("app_a", "0001_squashed_0002"), None);
+
+    // Add a child node
+    graph.add_node(node_key("app_b", "0001"), None);
+    graph
+        .add_dependency(
+            "app_b.0001",
+            node_key("app_b", "0001"),
+            node_key("app_a", "0001_squashed_0002"),
+            false,
+        )
+        .unwrap();
+
+    // Remove the replacement node
+    graph
+        .remove_replacement_node(
+            node_key("app_a", "0001_squashed_0002"),
+            vec![node_key("app_a", "0001"), node_key("app_a", "0002")],
+        )
+        .unwrap();
+
+    // Ensure graph is consistent
+    assert!(graph.validate_consistency().is_ok());
+}
+
+#[test]
+fn test_infinite_loop() {
+    /*
+    Tests a complex dependency graph:
+
+    app_a:        0001 <-
+                         \
+    app_b:        0001 <- x 0002 <-
+                   /               \
+    app_c:   0001<-  <------------- x 0002
+
+    And apply squashing on app_c.
+    */
+    let mut graph = MigrationGraph::new();
+
+    graph.add_node(node_key("app_a", "0001"), None);
+    graph.add_node(node_key("app_b", "0001"), None);
+    graph.add_node(node_key("app_b", "0002"), None);
+    graph.add_node(node_key("app_c", "0001_squashed_0002"), None);
+
+    graph
+        .add_dependency(
+            "app_b.0001",
+            node_key("app_b", "0001"),
+            node_key("app_c", "0001_squashed_0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_b.0002",
+            node_key("app_b", "0002"),
+            node_key("app_a", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_b.0002",
+            node_key("app_b", "0002"),
+            node_key("app_b", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_c.0001_squashed_0002",
+            node_key("app_c", "0001_squashed_0002"),
+            node_key("app_b", "0002"),
+            false,
+        )
+        .unwrap();
+
+    let result = graph.ensure_not_cyclic();
+    assert!(matches!(
+        result,
+        Err(MigrationError::CircularDependency { .. })
+    ));
+}
+
+#[test]
+fn test_stringify() {
+    let mut graph = MigrationGraph::new();
+    assert_eq!(graph.to_string(), "Graph: 0 nodes, 0 edges");
+
+    graph.add_node(node_key("app_a", "0001"), None);
+    graph.add_node(node_key("app_a", "0002"), None);
+    graph.add_node(node_key("app_a", "0003"), None);
+    graph.add_node(node_key("app_b", "0001"), None);
+    graph.add_node(node_key("app_b", "0002"), None);
+
+    graph
+        .add_dependency(
+            "app_a.0002",
+            node_key("app_a", "0002"),
+            node_key("app_a", "0001"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0003",
+            node_key("app_a", "0003"),
+            node_key("app_a", "0002"),
+            false,
+        )
+        .unwrap();
+    graph
+        .add_dependency(
+            "app_a.0003",
+            node_key("app_a", "0003"),
+            node_key("app_b", "0002"),
+            false,
+        )
+        .unwrap();
+
+    assert_eq!(graph.to_string(), "Graph: 5 nodes, 3 edges");
+}
+
+#[test]
+fn test_node_repr() {
+    let node = Node::new(node_key("app_a", "0001"));
+    assert_eq!(node.key, node_key("app_a", "0001"));
+}
+
+#[test]
+fn test_node_str() {
+    let node = Node::new(node_key("app_a", "0001"));
+    assert_eq!(node.to_string(), "(\"app_a\", \"0001\")");
+}
+
+#[test]
+fn test_dummynode_repr() {
+    let node = DummyNode::new(
+        node_key("app_a", "0001"),
+        "app_a.0001".to_string(),
+        "x is missing".to_string(),
+    );
+    assert_eq!(node.key, node_key("app_a", "0001"));
+}
