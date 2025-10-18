@@ -1,0 +1,23 @@
+[package]
+name = "reinhardt-urls"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/kent8192/reinhardt"
+authors = ["kent8192 <51869472+kent8192@users.noreply.github.com>"]
+description = "URL routing and proxy utilities for Reinhardt framework"
+
+[dependencies]
+# Re-export internal crates
+reinhardt-routers = { path = "crates/routers", version = "0.1.0", optional = true }
+reinhardt-routers-macros = { path = "crates/routers-macros", version = "0.1.0", optional = true }
+reinhardt-proxy = { path = "crates/proxy", version = "0.1.0", optional = true }
+
+[features]
+default = ["routers", "routers-macros", "proxy"]
+routers = ["dep:reinhardt-routers"]
+routers-macros = ["dep:reinhardt-routers-macros"]
+proxy = ["dep:reinhardt-proxy"]
+
+[dev-dependencies]
+tokio = { version = "1.41", features = ["full"] }
