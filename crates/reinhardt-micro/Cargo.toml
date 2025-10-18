@@ -1,0 +1,45 @@
+[package]
+name = "reinhardt-micro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A lightweight microservice framework for Rust - minimal subset of Reinhardt"
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = [
+  "routing",
+  "params",
+  "di",
+] # "schema" temporarily disabled - utoipa API compatibility
+routing = ["reinhardt-routers"]
+params = ["reinhardt-params"]
+di = ["reinhardt-di"]
+# schema = ["reinhardt-openapi"]  # Temporarily disabled - utoipa API compatibility
+database = ["reinhardt-orm"]
+
+[dependencies]
+# Core framework
+reinhardt-apps = { workspace = true }
+reinhardt-params = { workspace = true, optional = true }
+reinhardt-di = { workspace = true, optional = true }
+reinhardt-routers = { workspace = true, optional = true }
+# reinhardt-openapi = { workspace = true, optional = true }  # Temporarily disabled
+reinhardt-orm = { workspace = true, optional = true }
+reinhardt-server = { workspace = true }
+reinhardt-types = { workspace = true }
+
+# Web framework essentials
+tokio = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
