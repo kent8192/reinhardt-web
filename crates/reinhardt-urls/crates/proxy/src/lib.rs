@@ -38,6 +38,8 @@
 pub mod builder;
 pub mod collection;
 pub mod joins;
+pub mod loading;
+pub mod orm_integration;
 pub mod proxy;
 pub mod query;
 pub mod reflection;
@@ -49,6 +51,10 @@ pub use joins::{
     extract_through_path, filter_through_path, traverse_and_extract, traverse_relationships,
     JoinConfig, LoadingStrategy, NestedProxy, RelationshipPath,
 };
+pub use loading::{
+    EagerLoadConfig, EagerLoadable, LazyLoadable, LazyLoaded, LoadStrategy, RelationshipCache,
+};
+pub use orm_integration::OrmReflectable;
 pub use proxy::{AssociationProxy, ProxyAccessor, ProxyTarget, ScalarValue};
 pub use query::{FilterCondition, FilterOp, QueryFilter};
 pub use reflection::{

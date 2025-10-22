@@ -13,7 +13,7 @@ use crate::ProxyResult;
 /// ## Example
 ///
 /// ```rust,ignore
-/// // User has one profile, access profile.bio directly
+// User has one profile, access profile.bio directly
 /// let bio_proxy = ScalarProxy::new("profile", "bio");
 /// let bio: Option<String> = bio_proxy.get_value(&user).await?;
 /// ```
@@ -53,8 +53,8 @@ impl ScalarProxy {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = ScalarProxy::new("profile", "bio");
-    /// // Assuming `user` implements Reflectable
-    /// // let bio = proxy.get_value(&user).await?;
+    // Assuming `user` implements Reflectable
+    // let bio = proxy.get_value(&user).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -88,8 +88,8 @@ impl ScalarProxy {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = ScalarProxy::new("profile", "bio");
     /// let value = ScalarValue::String("New bio".to_string());
-    /// // Assuming `user` implements Reflectable
-    /// // proxy.set_value(&mut user, value).await?;
+    // Assuming `user` implements Reflectable
+    // proxy.set_value(&mut user, value).await?;
     /// # Ok(())
     /// # }
     /// ```

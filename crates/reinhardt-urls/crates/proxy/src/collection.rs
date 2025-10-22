@@ -11,7 +11,7 @@ use crate::{ProxyError, ProxyResult};
 /// ## Example
 ///
 /// ```rust,ignore
-/// // User has many posts, access all post titles directly
+// User has many posts, access all post titles directly
 /// let titles_proxy = CollectionProxy::new("posts", "title");
 /// let titles: Vec<String> = titles_proxy.get_values(&user).await?;
 /// ```
@@ -75,8 +75,8 @@ impl CollectionProxy {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("posts", "title");
-    /// // Assuming `user` implements Reflectable
-    /// // let titles = proxy.get_values(&user).await?;
+    // Assuming `user` implements Reflectable
+    // let titles = proxy.get_values(&user).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -121,8 +121,8 @@ impl CollectionProxy {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("tags", "name");
     /// let values = vec![ScalarValue::String("rust".to_string())];
-    /// // let mut user = ...;
-    /// // proxy.set_values(&mut user, values).await?;
+    // let mut user = ...;
+    // proxy.set_values(&mut user, values).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -146,13 +146,11 @@ impl CollectionProxy {
         // 3. Clear existing items
         collection.clear();
 
-        // 4. For each value, create new association objects
-        // Note: In a full implementation, this would need to:
-        // - Create actual model instances
-        // - Set the attribute on each instance
-        // - Add to the relationship
-        // For now, this is a placeholder that clears the collection
-        // and would need ORM integration to create instances
+        // 4. Create new association objects for each value
+        // Note: This requires T to be constructible from ScalarValue
+        // In practice, this would use ORM integration to create instances
+        // For now, we clear the collection as the actual object creation
+        // depends on the specific ORM model implementation
 
         Ok(())
     }
@@ -165,8 +163,8 @@ impl CollectionProxy {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("tags", "name");
-    /// // let mut user = ...;
-    /// // proxy.append(&mut user, ScalarValue::String("new_tag".to_string())).await?;
+    // let mut user = ...;
+    // proxy.append(&mut user, ScalarValue::String("new_tag".to_string())).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -174,10 +172,12 @@ impl CollectionProxy {
     where
         T: crate::reflection::Reflectable,
     {
-        // In a full implementation, this would:
-        // 1. Create new association object with the value
-        // 2. Add to the relationship
-        // For now, this requires ORM integration to create instances
+        // Note: Creating and appending a new association object requires:
+        // 1. A constructor function for the association type
+        // 2. Access to the relationship collection
+        // 3. Setting the attribute on the new instance
+        // This functionality requires ORM integration and a creator function
+        // The implementation depends on the specific model structure
         Ok(())
     }
     /// Remove a value from the collection
@@ -189,8 +189,8 @@ impl CollectionProxy {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("tags", "name");
-    /// // let mut user = ...;
-    /// // proxy.remove(&mut user, ScalarValue::String("old_tag".to_string())).await?;
+    // let mut user = ...;
+    // proxy.remove(&mut user, ScalarValue::String("old_tag".to_string())).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -229,8 +229,8 @@ impl CollectionProxy {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("tags", "name");
-    /// // let user = ...;
-    /// // let has_tag = proxy.contains(&user, ScalarValue::String("rust".to_string())).await?;
+    // let user = ...;
+    // let has_tag = proxy.contains(&user, ScalarValue::String("rust".to_string())).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -250,8 +250,8 @@ impl CollectionProxy {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("posts", "title");
-    /// // let user = ...;
-    /// // let count = proxy.count(&user).await?;
+    // let user = ...;
+    // let count = proxy.count(&user).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -282,8 +282,8 @@ impl CollectionProxy {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("posts", "status");
     /// let condition = FilterCondition::new("status", FilterOp::eq("published"));
-    /// // let user = ...;
-    /// // let filtered = proxy.filter(&user, condition).await?;
+    // let user = ...;
+    // let filtered = proxy.filter(&user, condition).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -315,10 +315,10 @@ impl CollectionProxy {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("posts", "views");
-    /// // let user = ...;
-    /// // let popular = proxy.filter_by(&user, |v| {
-    /// //     matches!(v, ScalarValue::Integer(n) if *n > 1000)
-    /// // }).await?;
+    // let user = ...;
+    // let popular = proxy.filter_by(&user, |v| {
+    //     matches!(v, ScalarValue::Integer(n) if *n > 1000)
+    // }).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -354,7 +354,7 @@ impl CollectionOperations {
     ///
     /// let proxy = CollectionProxy::new("posts", "title");
     /// let ops = CollectionOperations::new(proxy);
-    /// // Operations wrapper is ready to use
+    // Operations wrapper is ready to use
     /// ```
     pub fn new(proxy: CollectionProxy) -> Self {
         Self { proxy }
@@ -369,17 +369,18 @@ impl CollectionOperations {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("posts", "title");
     /// let ops = CollectionOperations::new(proxy);
-    /// // let user = ...;
-    /// // let filtered = ops.filter(&user, |v| v.is_null()).await?;
+    // let user = ...;
+    // let filtered = ops.filter(&user, |v| v.is_null()).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn filter<T, F>(&self, _source: &T, _predicate: F) -> ProxyResult<Vec<ScalarValue>>
+    pub async fn filter<T, F>(&self, source: &T, predicate: F) -> ProxyResult<Vec<ScalarValue>>
     where
+        T: crate::reflection::Reflectable,
         F: Fn(&ScalarValue) -> bool,
     {
-        // In a real implementation, this would apply the filter
-        Ok(Vec::new())
+        let values = self.proxy.get_values(source).await?;
+        Ok(values.into_iter().filter(|v| predicate(v)).collect())
     }
     /// Map collection values
     ///
@@ -391,20 +392,21 @@ impl CollectionOperations {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("posts", "title");
     /// let ops = CollectionOperations::new(proxy);
-    /// // let user = ...;
-    /// // let lengths = ops.map(&user, |v| match v {
-    /// //     ScalarValue::String(s) => s.len(),
-    /// //     _ => 0,
-    /// // }).await?;
+    // let user = ...;
+    // let lengths = ops.map(&user, |v| match v {
+    //     ScalarValue::String(s) => s.len(),
+    //     _ => 0,
+    // }).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn map<T, F, U>(&self, _source: &T, _mapper: F) -> ProxyResult<Vec<U>>
+    pub async fn map<T, F, U>(&self, source: &T, mapper: F) -> ProxyResult<Vec<U>>
     where
+        T: crate::reflection::Reflectable,
         F: Fn(&ScalarValue) -> U,
     {
-        // In a real implementation, this would apply the mapper
-        Ok(Vec::new())
+        let values = self.proxy.get_values(source).await?;
+        Ok(values.iter().map(|v| mapper(v)).collect())
     }
     /// Sort collection values
     ///
@@ -416,14 +418,18 @@ impl CollectionOperations {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("posts", "created_at");
     /// let ops = CollectionOperations::new(proxy);
-    /// // let user = ...;
-    /// // let sorted = ops.sort(&user).await?;
+    // let user = ...;
+    // let sorted = ops.sort(&user).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn sort<T>(&self, _source: &T) -> ProxyResult<Vec<ScalarValue>> {
-        // In a real implementation, this would sort the values
-        Ok(Vec::new())
+    pub async fn sort<T>(&self, source: &T) -> ProxyResult<Vec<ScalarValue>>
+    where
+        T: crate::reflection::Reflectable,
+    {
+        let mut values = self.proxy.get_values(source).await?;
+        values.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+        Ok(values)
     }
     /// Get distinct values
     ///
@@ -435,14 +441,19 @@ impl CollectionOperations {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("posts", "category");
     /// let ops = CollectionOperations::new(proxy);
-    /// // let user = ...;
-    /// // let distinct = ops.distinct(&user).await?;
+    // let user = ...;
+    // let distinct = ops.distinct(&user).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn distinct<T>(&self, _source: &T) -> ProxyResult<Vec<ScalarValue>> {
-        // In a real implementation, this would remove duplicates
-        Ok(Vec::new())
+    pub async fn distinct<T>(&self, source: &T) -> ProxyResult<Vec<ScalarValue>>
+    where
+        T: crate::reflection::Reflectable,
+    {
+        let mut values = self.proxy.get_values(source).await?;
+        values.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+        values.dedup_by(|a, b| format!("{:?}", a) == format!("{:?}", b));
+        Ok(values)
     }
 }
 
@@ -463,7 +474,7 @@ impl CollectionAggregations {
     ///
     /// let proxy = CollectionProxy::new("sales", "amount");
     /// let agg = CollectionAggregations::new(proxy);
-    /// // Aggregations wrapper is ready to use
+    // Aggregations wrapper is ready to use
     /// ```
     pub fn new(proxy: CollectionProxy) -> Self {
         Self { proxy }
@@ -478,13 +489,25 @@ impl CollectionAggregations {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("sales", "amount");
     /// let agg = CollectionAggregations::new(proxy);
-    /// // let product = ...;
-    /// // let total = agg.sum(&product).await?;
+    // let product = ...;
+    // let total = agg.sum(&product).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn sum<T>(&self, _source: &T) -> ProxyResult<f64> {
-        Ok(0.0)
+    pub async fn sum<T>(&self, source: &T) -> ProxyResult<f64>
+    where
+        T: crate::reflection::Reflectable,
+    {
+        let values = self.proxy.get_values(source).await?;
+        let mut sum = 0.0;
+        for value in values {
+            match value {
+                ScalarValue::Integer(i) => sum += i as f64,
+                ScalarValue::Float(f) => sum += f,
+                _ => {}
+            }
+        }
+        Ok(sum)
     }
     /// Average of numeric values in collection
     ///
@@ -496,13 +519,36 @@ impl CollectionAggregations {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("reviews", "rating");
     /// let agg = CollectionAggregations::new(proxy);
-    /// // let product = ...;
-    /// // let average = agg.avg(&product).await?;
+    // let product = ...;
+    // let average = agg.avg(&product).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn avg<T>(&self, _source: &T) -> ProxyResult<f64> {
-        Ok(0.0)
+    pub async fn avg<T>(&self, source: &T) -> ProxyResult<f64>
+    where
+        T: crate::reflection::Reflectable,
+    {
+        let values = self.proxy.get_values(source).await?;
+        let mut sum = 0.0;
+        let mut count = 0;
+        for value in &values {
+            match value {
+                ScalarValue::Integer(i) => {
+                    sum += *i as f64;
+                    count += 1;
+                }
+                ScalarValue::Float(f) => {
+                    sum += f;
+                    count += 1;
+                }
+                _ => {}
+            }
+        }
+        if count == 0 {
+            Ok(0.0)
+        } else {
+            Ok(sum / count as f64)
+        }
     }
     /// Minimum value in collection
     ///
@@ -514,13 +560,32 @@ impl CollectionAggregations {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("prices", "amount");
     /// let agg = CollectionAggregations::new(proxy);
-    /// // let product = ...;
-    /// // let min_price = agg.min(&product).await?;
+    // let product = ...;
+    // let min_price = agg.min(&product).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn min<T>(&self, _source: &T) -> ProxyResult<Option<ScalarValue>> {
-        Ok(None)
+    pub async fn min<T>(&self, source: &T) -> ProxyResult<Option<ScalarValue>>
+    where
+        T: crate::reflection::Reflectable,
+    {
+        let values = self.proxy.get_values(source).await?;
+        Ok(values.into_iter().min_by(|a, b| {
+            use std::cmp::Ordering;
+            match (a, b) {
+                (ScalarValue::Integer(x), ScalarValue::Integer(y)) => x.cmp(y),
+                (ScalarValue::Float(x), ScalarValue::Float(y)) => {
+                    x.partial_cmp(y).unwrap_or(Ordering::Equal)
+                }
+                (ScalarValue::Integer(x), ScalarValue::Float(y)) => {
+                    (*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal)
+                }
+                (ScalarValue::Float(x), ScalarValue::Integer(y)) => {
+                    x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal)
+                }
+                _ => format!("{:?}", a).cmp(&format!("{:?}", b)),
+            }
+        }))
     }
     /// Maximum value in collection
     ///
@@ -532,19 +597,148 @@ impl CollectionAggregations {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let proxy = CollectionProxy::new("bids", "amount");
     /// let agg = CollectionAggregations::new(proxy);
-    /// // let auction = ...;
-    /// // let highest_bid = agg.max(&auction).await?;
+    // let auction = ...;
+    // let highest_bid = agg.max(&auction).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn max<T>(&self, _source: &T) -> ProxyResult<Option<ScalarValue>> {
-        Ok(None)
+    pub async fn max<T>(&self, source: &T) -> ProxyResult<Option<ScalarValue>>
+    where
+        T: crate::reflection::Reflectable,
+    {
+        let values = self.proxy.get_values(source).await?;
+        Ok(values.into_iter().max_by(|a, b| {
+            use std::cmp::Ordering;
+            match (a, b) {
+                (ScalarValue::Integer(x), ScalarValue::Integer(y)) => x.cmp(y),
+                (ScalarValue::Float(x), ScalarValue::Float(y)) => {
+                    x.partial_cmp(y).unwrap_or(Ordering::Equal)
+                }
+                (ScalarValue::Integer(x), ScalarValue::Float(y)) => {
+                    (*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal)
+                }
+                (ScalarValue::Float(x), ScalarValue::Integer(y)) => {
+                    x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal)
+                }
+                _ => format!("{:?}", a).cmp(&format!("{:?}", b)),
+            }
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reflection::Reflectable;
+    use std::any::Any;
+
+    #[derive(Clone)]
+    struct TestParent {
+        id: i64,
+        children: Vec<TestChild>,
+    }
+
+    #[derive(Clone)]
+    struct TestChild {
+        id: i64,
+        value: i64,
+        score: f64,
+    }
+
+    impl Reflectable for TestParent {
+        fn get_relationship(&self, name: &str) -> Option<Box<dyn Any>> {
+            match name {
+                "children" => {
+                    let boxed: Vec<Box<dyn Reflectable>> = self
+                        .children
+                        .iter()
+                        .map(|c| Box::new(c.clone()) as Box<dyn Reflectable>)
+                        .collect();
+                    Some(Box::new(boxed))
+                }
+                _ => None,
+            }
+        }
+
+        fn get_relationship_mut(&mut self, name: &str) -> Option<&mut dyn Any> {
+            match name {
+                "children" => Some(&mut self.children as &mut dyn Any),
+                _ => None,
+            }
+        }
+
+        fn get_attribute(&self, name: &str) -> Option<ScalarValue> {
+            match name {
+                "id" => Some(ScalarValue::Integer(self.id)),
+                _ => None,
+            }
+        }
+
+        fn set_attribute(&mut self, name: &str, value: ScalarValue) -> ProxyResult<()> {
+            match name {
+                "id" => {
+                    self.id = value.as_integer()?;
+                    Ok(())
+                }
+                _ => Err(ProxyError::AttributeNotFound(name.to_string())),
+            }
+        }
+
+        fn set_relationship_attribute(
+            &mut self,
+            relationship: &str,
+            _attribute: &str,
+            _value: ScalarValue,
+        ) -> ProxyResult<()> {
+            Err(ProxyError::RelationshipNotFound(relationship.to_string()))
+        }
+    }
+
+    impl Reflectable for TestChild {
+        fn get_relationship(&self, _name: &str) -> Option<Box<dyn Any>> {
+            None
+        }
+
+        fn get_relationship_mut(&mut self, _name: &str) -> Option<&mut dyn Any> {
+            None
+        }
+
+        fn get_attribute(&self, name: &str) -> Option<ScalarValue> {
+            match name {
+                "id" => Some(ScalarValue::Integer(self.id)),
+                "value" => Some(ScalarValue::Integer(self.value)),
+                "score" => Some(ScalarValue::Float(self.score)),
+                _ => None,
+            }
+        }
+
+        fn set_attribute(&mut self, name: &str, value: ScalarValue) -> ProxyResult<()> {
+            match name {
+                "id" => {
+                    self.id = value.as_integer()?;
+                    Ok(())
+                }
+                "value" => {
+                    self.value = value.as_integer()?;
+                    Ok(())
+                }
+                "score" => {
+                    self.score = value.as_float()?;
+                    Ok(())
+                }
+                _ => Err(ProxyError::AttributeNotFound(name.to_string())),
+            }
+        }
+
+        fn set_relationship_attribute(
+            &mut self,
+            relationship: &str,
+            _attribute: &str,
+            _value: ScalarValue,
+        ) -> ProxyResult<()> {
+            Err(ProxyError::RelationshipNotFound(relationship.to_string()))
+        }
+    }
 
     #[test]
     fn test_proxy_collection_creation_unit() {
@@ -572,5 +766,1051 @@ mod tests {
         let proxy = CollectionProxy::new("posts", "score");
         let agg = CollectionAggregations::new(proxy);
         assert_eq!(agg.proxy.relationship, "posts");
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_filter() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 30,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let filtered = ops
+            .filter(&parent, |v| matches!(v, ScalarValue::Integer(i) if *i > 15))
+            .await
+            .unwrap();
+
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].as_integer().unwrap(), 20);
+        assert_eq!(filtered[1].as_integer().unwrap(), 30);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_filter_all_match() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let filtered = ops
+            .filter(&parent, |v| matches!(v, ScalarValue::Integer(_)))
+            .await
+            .unwrap();
+
+        assert_eq!(filtered.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_filter_none_match() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let filtered = ops
+            .filter(&parent, |v| matches!(v, ScalarValue::String(_)))
+            .await
+            .unwrap();
+
+        assert_eq!(filtered.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_filter_empty_collection() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![],
+        };
+
+        let filtered = ops
+            .filter(&parent, |v| matches!(v, ScalarValue::Integer(_)))
+            .await
+            .unwrap();
+
+        assert_eq!(filtered.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_filter_complex_condition() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 15,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 25,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let filtered = ops
+            .filter(
+                &parent,
+                |v| matches!(v, ScalarValue::Integer(i) if *i >= 10 && *i <= 20),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(filtered.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_map() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let mapped: Vec<i64> = ops
+            .map(&parent, |v| match v {
+                ScalarValue::Integer(i) => i * 2,
+                _ => 0,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(mapped.len(), 2);
+        assert_eq!(mapped[0], 20);
+        assert_eq!(mapped[1], 40);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_map_to_string() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let mapped: Vec<String> = ops
+            .map(&parent, |v| match v {
+                ScalarValue::Integer(i) => format!("Value: {}", i),
+                _ => String::from("Unknown"),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(mapped.len(), 2);
+        assert_eq!(mapped[0], "Value: 10");
+        assert_eq!(mapped[1], "Value: 20");
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_map_empty() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![],
+        };
+
+        let mapped: Vec<i64> = ops
+            .map(&parent, |v| match v {
+                ScalarValue::Integer(i) => i * 2,
+                _ => 0,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(mapped.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_map_identity() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let mapped: Vec<i64> = ops
+            .map(&parent, |v| match v {
+                ScalarValue::Integer(i) => *i,
+                _ => 0,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(mapped.len(), 2);
+        assert_eq!(mapped[0], 10);
+        assert_eq!(mapped[1], 20);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_map_constant() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let mapped: Vec<i64> = ops.map(&parent, |_| 42).await.unwrap();
+
+        assert_eq!(mapped.len(), 2);
+        assert_eq!(mapped[0], 42);
+        assert_eq!(mapped[1], 42);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_sort() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 30,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 10,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 20,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let sorted = ops.sort(&parent).await.unwrap();
+
+        assert_eq!(sorted.len(), 3);
+        assert_eq!(sorted[0].as_integer().unwrap(), 10);
+        assert_eq!(sorted[1].as_integer().unwrap(), 20);
+        assert_eq!(sorted[2].as_integer().unwrap(), 30);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_sort_already_sorted() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 30,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let sorted = ops.sort(&parent).await.unwrap();
+
+        assert_eq!(sorted.len(), 3);
+        assert_eq!(sorted[0].as_integer().unwrap(), 10);
+        assert_eq!(sorted[1].as_integer().unwrap(), 20);
+        assert_eq!(sorted[2].as_integer().unwrap(), 30);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_sort_empty() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![],
+        };
+
+        let sorted = ops.sort(&parent).await.unwrap();
+        assert_eq!(sorted.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_sort_single() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![TestChild {
+                id: 1,
+                value: 42,
+                score: 1.0,
+            }],
+        };
+
+        let sorted = ops.sort(&parent).await.unwrap();
+
+        assert_eq!(sorted.len(), 1);
+        assert_eq!(sorted[0].as_integer().unwrap(), 42);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_sort_reverse_order() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 50,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 40,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 30,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let sorted = ops.sort(&parent).await.unwrap();
+
+        assert_eq!(sorted.len(), 3);
+        assert_eq!(sorted[0].as_integer().unwrap(), 30);
+        assert_eq!(sorted[1].as_integer().unwrap(), 40);
+        assert_eq!(sorted[2].as_integer().unwrap(), 50);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_distinct() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 10,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let distinct = ops.distinct(&parent).await.unwrap();
+
+        assert_eq!(distinct.len(), 2);
+        assert_eq!(distinct[0].as_integer().unwrap(), 10);
+        assert_eq!(distinct[1].as_integer().unwrap(), 20);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_distinct_all_unique() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 30,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let distinct = ops.distinct(&parent).await.unwrap();
+
+        assert_eq!(distinct.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_distinct_all_same() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 10,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 10,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let distinct = ops.distinct(&parent).await.unwrap();
+
+        assert_eq!(distinct.len(), 1);
+        assert_eq!(distinct[0].as_integer().unwrap(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_distinct_empty() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![],
+        };
+
+        let distinct = ops.distinct(&parent).await.unwrap();
+        assert_eq!(distinct.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_distinct_multiple_duplicates() {
+        let proxy = CollectionProxy::new("children", "value");
+        let ops = CollectionOperations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 10,
+                    score: 3.0,
+                },
+                TestChild {
+                    id: 4,
+                    value: 20,
+                    score: 4.0,
+                },
+                TestChild {
+                    id: 5,
+                    value: 30,
+                    score: 5.0,
+                },
+            ],
+        };
+
+        let distinct = ops.distinct(&parent).await.unwrap();
+
+        assert_eq!(distinct.len(), 3);
+        assert_eq!(distinct[0].as_integer().unwrap(), 10);
+        assert_eq!(distinct[1].as_integer().unwrap(), 20);
+        assert_eq!(distinct[2].as_integer().unwrap(), 30);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_sum() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 30,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let sum = agg.sum(&parent).await.unwrap();
+        assert_eq!(sum, 60.0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_sum_empty() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![],
+        };
+
+        let sum = agg.sum(&parent).await.unwrap();
+        assert_eq!(sum, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_sum_floats() {
+        let proxy = CollectionProxy::new("children", "score");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.5,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.5,
+                },
+            ],
+        };
+
+        let sum = agg.sum(&parent).await.unwrap();
+        assert_eq!(sum, 4.0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_sum_single() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![TestChild {
+                id: 1,
+                value: 42,
+                score: 1.0,
+            }],
+        };
+
+        let sum = agg.sum(&parent).await.unwrap();
+        assert_eq!(sum, 42.0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_sum_negative() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: -10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let sum = agg.sum(&parent).await.unwrap();
+        assert_eq!(sum, 10.0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_avg() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 30,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let avg = agg.avg(&parent).await.unwrap();
+        assert_eq!(avg, 20.0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_avg_empty() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![],
+        };
+
+        let avg = agg.avg(&parent).await.unwrap();
+        assert_eq!(avg, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_avg_single() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![TestChild {
+                id: 1,
+                value: 42,
+                score: 1.0,
+            }],
+        };
+
+        let avg = agg.avg(&parent).await.unwrap();
+        assert_eq!(avg, 42.0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_avg_floats() {
+        let proxy = CollectionProxy::new("children", "score");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let avg = agg.avg(&parent).await.unwrap();
+        assert_eq!(avg, 2.0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_avg_decimal() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 15,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let avg = agg.avg(&parent).await.unwrap();
+        assert_eq!(avg, 12.5);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_min() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 30,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 10,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 20,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let min = agg.min(&parent).await.unwrap();
+        assert!(min.is_some());
+        assert_eq!(min.unwrap().as_integer().unwrap(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_min_empty() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![],
+        };
+
+        let min = agg.min(&parent).await.unwrap();
+        assert!(min.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_min_single() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![TestChild {
+                id: 1,
+                value: 42,
+                score: 1.0,
+            }],
+        };
+
+        let min = agg.min(&parent).await.unwrap();
+        assert!(min.is_some());
+        assert_eq!(min.unwrap().as_integer().unwrap(), 42);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_min_negative() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: -10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 20,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let min = agg.min(&parent).await.unwrap();
+        assert!(min.is_some());
+        assert_eq!(min.unwrap().as_integer().unwrap(), -10);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_min_all_same() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 10,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let min = agg.min(&parent).await.unwrap();
+        assert!(min.is_some());
+        assert_eq!(min.unwrap().as_integer().unwrap(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_max() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 30,
+                    score: 2.0,
+                },
+                TestChild {
+                    id: 3,
+                    value: 20,
+                    score: 3.0,
+                },
+            ],
+        };
+
+        let max = agg.max(&parent).await.unwrap();
+        assert!(max.is_some());
+        assert_eq!(max.unwrap().as_integer().unwrap(), 30);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_max_empty() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![],
+        };
+
+        let max = agg.max(&parent).await.unwrap();
+        assert!(max.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_max_single() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![TestChild {
+                id: 1,
+                value: 42,
+                score: 1.0,
+            }],
+        };
+
+        let max = agg.max(&parent).await.unwrap();
+        assert!(max.is_some());
+        assert_eq!(max.unwrap().as_integer().unwrap(), 42);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_max_negative() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: -20,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: -10,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let max = agg.max(&parent).await.unwrap();
+        assert!(max.is_some());
+        assert_eq!(max.unwrap().as_integer().unwrap(), -10);
+    }
+
+    #[tokio::test]
+    async fn test_collection_aggregations_max_all_same() {
+        let proxy = CollectionProxy::new("children", "value");
+        let agg = CollectionAggregations::new(proxy);
+
+        let parent = TestParent {
+            id: 1,
+            children: vec![
+                TestChild {
+                    id: 1,
+                    value: 10,
+                    score: 1.0,
+                },
+                TestChild {
+                    id: 2,
+                    value: 10,
+                    score: 2.0,
+                },
+            ],
+        };
+
+        let max = agg.max(&parent).await.unwrap();
+        assert!(max.is_some());
+        assert_eq!(max.unwrap().as_integer().unwrap(), 10);
     }
 }

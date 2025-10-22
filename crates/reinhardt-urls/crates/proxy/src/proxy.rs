@@ -11,7 +11,7 @@ use crate::{ProxyError, ProxyResult};
 /// ## Example
 ///
 /// ```rust,ignore
-/// // Access keyword names through user_keywords relationship
+// Access keyword names through user_keywords relationship
 /// let proxy = AssociationProxy::new("user_keywords", "keyword");
 /// let names = proxy.get_collection(&user).await?;
 /// ```

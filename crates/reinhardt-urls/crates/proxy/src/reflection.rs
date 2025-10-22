@@ -42,7 +42,7 @@ pub trait Reflectable {
     ///
     /// Returns the relationship collection/object as a boxed Any trait object.
     /// The caller is responsible for downcasting to the appropriate type.
-    fn get_relationship(&self, name: &str) -> Option<Box<dyn Any>>;
+    fn get_relationship(&self, name: &str) -> Option<Box<dyn Any + 'static>>;
 
     /// Get a mutable reference to a relationship by name
     fn get_relationship_mut(&mut self, name: &str) -> Option<&mut dyn Any>;
@@ -204,7 +204,7 @@ mod tests {
     }
 
     impl Reflectable for TestModel {
-        fn get_relationship(&self, _name: &str) -> Option<Box<dyn Any>> {
+        fn get_relationship(&self, _name: &str) -> Option<Box<dyn Any + 'static>> {
             None
         }
 

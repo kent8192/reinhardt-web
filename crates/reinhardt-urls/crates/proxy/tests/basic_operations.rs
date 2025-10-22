@@ -2,11 +2,11 @@
 //!
 //! These tests verify the basic functionality of association proxies,
 //! based on SQLAlchemy's tests.
+//!
+//! Note: These tests currently test the API surface because reinhardt-proxy's
+//! actual ORM integration is not yet complete.
 
 use reinhardt_proxy::{AssociationProxy, ProxyBuilder, ScalarValue};
-
-// NOTE: These tests currently test the API surface
-// because reinhardt-proxy's actual ORM integration is not yet complete.
 
 #[test]
 fn test_constructor() {
