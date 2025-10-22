@@ -33,17 +33,28 @@ tempfile = "3.8"
 
 # 非同期サポート（オプショナル）
 async-trait = { version = "0.1", optional = true }
+tokio = { workspace = true, features = ["sync"], optional = true }
 
 # バックエンド（オプショナル）
 redis = { version = "0.32.7", features = [
   "tokio-comp",
   "connection-manager",
 ], optional = true }
-sqlx = { workspace = true, optional = true }
+sqlx = { workspace = true, features = ["any"], optional = true }
+sea-query = { version = "1.0.0-rc.1", features = [
+  "backend-postgres",
+  "backend-mysql",
+  "backend-sqlite",
+], optional = true }
+sea-query-binder = { version = "0.7", features = [
+  "sqlx-postgres",
+  "sqlx-mysql",
+  "sqlx-sqlite",
+], optional = true }
 
 # シークレット管理（オプショナル）
 reqwest = { version = "0.12", features = ["json"], optional = true }
-rand = { version = "0.8", optional = true }
+rand = { version = "0.9.2", optional = true }
 
 # AWS Secrets Manager（オプショナル）
 aws-config = { version = "1.5", optional = true }
@@ -53,12 +64,19 @@ aws-sdk-secretsmanager = { version = "1.52", optional = true }
 azure_core = { version = "0.21", optional = true }
 azure_identity = { version = "0.21", optional = true }
 azure_security_keyvault = { version = "0.21", optional = true }
+futures = { workspace = true, optional = true }
 
 # 暗号化（オプショナル）
 aes-gcm = { version = "0.10", optional = true }
 base64 = { version = "0.22", optional = true }
 pbkdf2 = { version = "0.12", features = ["simple"], optional = true }
 sha2 = { version = "0.10", optional = true }
+
+# Hot Reload（オプショナル）
+notify = { version = "7.0", optional = true }
+
+# キャッシング（オプショナル）
+moka = { version = "0.12", features = ["future"], optional = true }
 
 # その他
 uuid = { version = "1.6", features = ["v4"] }
@@ -67,17 +85,20 @@ uuid = { version = "1.6", features = ["v4"] }
 default = []
 async = ["async-trait"]
 dynamic-redis = ["redis", "async"]
-dynamic-database = ["sqlx", "async"]
+dynamic-database = ["sqlx", "sea-query", "sea-query-binder", "async"]
 vault = ["reqwest", "async"]
 aws-secrets = ["aws-config", "aws-sdk-secretsmanager", "async"]
 azure-keyvault = [
   "azure_core",
   "azure_identity",
   "azure_security_keyvault",
+  "futures",
   "async",
 ]
 secret-rotation = ["rand", "async"]
 encryption = ["aes-gcm", "base64", "pbkdf2", "sha2", "rand"]
+hot-reload = ["notify", "tokio", "async"]
+caching = ["moka", "async"]
 
 [dev-dependencies]
 tempfile = "3.8"
@@ -86,4 +107,6 @@ testcontainers = "0.25.0"
 env_logger = "0.11"
 anyhow = { workspace = true }
 hex = "0.4"
-colored = "2.0"
+colored = "3.0.0"
+mockito = "1.5"
+mockall = "0.13"

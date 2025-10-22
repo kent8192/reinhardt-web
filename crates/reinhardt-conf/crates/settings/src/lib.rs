@@ -29,6 +29,9 @@ pub mod encryption;
 #[cfg(feature = "async")]
 pub mod audit;
 
+#[cfg(feature = "hot-reload")]
+pub mod hot_reload;
+
 pub mod config;
 pub mod docs;
 pub mod testing;
