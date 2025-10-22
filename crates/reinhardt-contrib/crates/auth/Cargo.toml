@@ -6,7 +6,7 @@ license.workspace = true
 
 [features]
 default = []
-database = ["sqlx"]
+database = ["sqlx", "sea-query", "sea-query-binder"]
 redis-sessions = ["redis"]
 
 [dependencies]
@@ -32,6 +32,16 @@ base64 = "0.22"
 sha2 = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
 sqlx = { workspace = true, optional = true }
+sea-query = { version = "1.0.0-rc.1", features = [
+  "backend-postgres",
+  "backend-mysql",
+  "backend-sqlite",
+], optional = true }
+sea-query-binder = { version = "0.7", features = [
+  "sqlx-postgres",
+  "sqlx-mysql",
+  "sqlx-sqlite",
+], optional = true }
 redis = { workspace = true, optional = true }
 
 [dev-dependencies]
