@@ -31,10 +31,14 @@
 
 pub mod di_support;
 pub mod middleware;
+
+#[cfg(feature = "redis-backend")]
 pub mod redis_backend;
 
 // Re-export middleware and Redis backend
 pub use middleware::{CacheMiddleware, CacheMiddlewareConfig};
+
+#[cfg(feature = "redis-backend")]
 pub use redis_backend::RedisCache;
 
 // Re-export DI support
@@ -49,8 +53,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
-
-// NOTE: エラーは`reinhardt_exception::Error`へ統一
 
 /// Cache entry with expiration
 #[derive(Debug, Clone)]
@@ -159,7 +161,7 @@ impl InMemoryCache {
     /// use reinhardt_cache::InMemoryCache;
     ///
     /// let cache = InMemoryCache::new();
-    /// // Cache is ready to use with no default TTL
+    // Cache is ready to use with no default TTL
     /// ```
     pub fn new() -> Self {
         Self {
@@ -179,13 +181,13 @@ impl InMemoryCache {
     /// let cache = InMemoryCache::new()
     ///     .with_default_ttl(Duration::from_secs(1));
     ///
-    /// // Set a value without explicit TTL
+    // Set a value without explicit TTL
     /// cache.set("key", &"value", None).await.unwrap();
     ///
-    /// // Wait for default TTL to expire
+    // Wait for default TTL to expire
     /// tokio::time::sleep(Duration::from_millis(1100)).await;
     ///
-    /// // Value should be expired
+    // Value should be expired
     /// let value: Option<String> = cache.get("key").await.unwrap();
     /// assert_eq!(value, None);
     /// # }
@@ -205,16 +207,16 @@ impl InMemoryCache {
     /// # async fn example() {
     /// let cache = InMemoryCache::new();
     ///
-    /// // Set a value with short TTL
+    // Set a value with short TTL
     /// cache.set("key1", &"value", Some(Duration::from_millis(10))).await.unwrap();
     ///
-    /// // Wait for expiration
+    // Wait for expiration
     /// tokio::time::sleep(Duration::from_millis(20)).await;
     ///
-    /// // Clean up expired entries
+    // Clean up expired entries
     /// cache.cleanup_expired().await;
     ///
-    /// // Verify the key is gone
+    // Verify the key is gone
     /// assert!(!cache.has_key("key1").await.unwrap());
     /// # }
     /// ```

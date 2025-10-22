@@ -2,10 +2,15 @@
 //!
 //! Provides a Redis-backed cache implementation.
 
+#![cfg(feature = "redis-backend")]
+
 use crate::Cache;
 use async_trait::async_trait;
+use redis::aio::ConnectionManager;
+use redis::{AsyncCommands, Client};
 use reinhardt_exception::{Error, Result};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Redis cache backend
@@ -13,8 +18,7 @@ use std::time::Duration;
 /// Stores cached values in Redis for distributed caching.
 #[derive(Clone)]
 pub struct RedisCache {
-    #[allow(dead_code)]
-    connection_url: String,
+    connection_manager: Arc<ConnectionManager>,
     default_ttl: Option<Duration>,
     key_prefix: String,
 }
@@ -24,45 +28,64 @@ impl RedisCache {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use reinhardt_cache::RedisCache;
     ///
-    /// let cache = RedisCache::new("redis://localhost:6379");
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let cache = RedisCache::new("redis://localhost:6379").await?;
     /// // Redis cache is now configured and ready to use
+    /// # Ok(())
+    /// # }
     /// ```
-    pub fn new(connection_url: impl Into<String>) -> Self {
-        Self {
-            connection_url: connection_url.into(),
+    pub async fn new(connection_url: impl Into<String>) -> Result<Self> {
+        let url = connection_url.into();
+        let client = Client::open(url.as_str())
+            .map_err(|e| Error::Http(format!("Failed to create Redis client: {}", e)))?;
+        let connection_manager = ConnectionManager::new(client)
+            .await
+            .map_err(|e| Error::Http(format!("Failed to connect to Redis: {}", e)))?;
+
+        Ok(Self {
+            connection_manager: Arc::new(connection_manager),
             default_ttl: None,
             key_prefix: String::new(),
-        }
+        })
     }
     /// Set default TTL for all cache entries
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use reinhardt_cache::RedisCache;
     /// use std::time::Duration;
     ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let cache = RedisCache::new("redis://localhost:6379")
+    ///     .await?
     ///     .with_default_ttl(Duration::from_secs(300));
     /// // All cache entries will expire after 300 seconds by default
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn with_default_ttl(mut self, ttl: Duration) -> Self {
         self.default_ttl = Some(ttl);
         self
     }
+
     /// Set key prefix for namespacing cache entries
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use reinhardt_cache::RedisCache;
     ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let cache = RedisCache::new("redis://localhost:6379")
+    ///     .await?
     ///     .with_key_prefix("myapp");
     /// // All keys will be prefixed with "myapp:"
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn with_key_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.key_prefix = prefix.into();
@@ -85,47 +108,197 @@ impl Cache for RedisCache {
     where
         T: for<'de> Deserialize<'de> + Send,
     {
-        // This is a placeholder implementation
-        // In a real implementation, you would:
-        // 1. Connect to Redis
-        // 2. Get the value
-        // 3. Deserialize it
-        // For now, we return None to indicate cache miss
-        let _ = self.build_key(key);
-        Ok(None)
+        let full_key = self.build_key(key);
+        let mut conn = (*self.connection_manager).clone();
+
+        let value: Option<Vec<u8>> = conn
+            .get(&full_key)
+            .await
+            .map_err(|e| Error::Http(format!("Failed to get value from Redis: {}", e)))?;
+
+        match value {
+            Some(bytes) => {
+                let deserialized = serde_json::from_slice(&bytes)
+                    .map_err(|e| Error::Serialization(e.to_string()))?;
+                Ok(Some(deserialized))
+            }
+            None => Ok(None),
+        }
     }
 
     async fn set<T>(&self, key: &str, value: &T, ttl: Option<Duration>) -> Result<()>
     where
         T: Serialize + Send + Sync,
     {
-        // Placeholder implementation
-        // In a real implementation, you would:
-        // 1. Connect to Redis
-        // 2. Serialize the value
-        // 3. Set it with TTL if provided
-        let _ = self.build_key(key);
-        let _ = serde_json::to_vec(value).map_err(|e| Error::Serialization(e.to_string()))?;
-        let _ = ttl.or(self.default_ttl);
+        let full_key = self.build_key(key);
+        let serialized =
+            serde_json::to_vec(value).map_err(|e| Error::Serialization(e.to_string()))?;
+        let mut conn = (*self.connection_manager).clone();
+
+        let effective_ttl = ttl.or(self.default_ttl);
+
+        if let Some(ttl_duration) = effective_ttl {
+            let seconds = ttl_duration.as_secs();
+            let _: () = conn
+                .set_ex(&full_key, serialized, seconds)
+                .await
+                .map_err(|e| Error::Http(format!("Failed to set value in Redis: {}", e)))?;
+        } else {
+            let _: () = conn
+                .set(&full_key, serialized)
+                .await
+                .map_err(|e| Error::Http(format!("Failed to set value in Redis: {}", e)))?;
+        }
+
         Ok(())
     }
 
     async fn delete(&self, key: &str) -> Result<()> {
-        // Placeholder implementation
-        let _ = self.build_key(key);
+        let full_key = self.build_key(key);
+        let mut conn = (*self.connection_manager).clone();
+
+        let _: () = conn
+            .del(&full_key)
+            .await
+            .map_err(|e| Error::Http(format!("Failed to delete value from Redis: {}", e)))?;
+
         Ok(())
     }
 
     async fn has_key(&self, key: &str) -> Result<bool> {
-        // Placeholder implementation
-        let _ = self.build_key(key);
-        Ok(false)
+        let full_key = self.build_key(key);
+        let mut conn = (*self.connection_manager).clone();
+
+        let exists: bool = conn
+            .exists(&full_key)
+            .await
+            .map_err(|e| Error::Http(format!("Failed to check key existence in Redis: {}", e)))?;
+
+        Ok(exists)
     }
 
     async fn clear(&self) -> Result<()> {
-        // Placeholder implementation
-        // In a real implementation, you would delete all keys with the prefix
+        let mut conn = (*self.connection_manager).clone();
+
+        if self.key_prefix.is_empty() {
+            // Clear all keys if no prefix
+            let _: () = redis::cmd("FLUSHDB")
+                .query_async(&mut conn)
+                .await
+                .map_err(|e| Error::Http(format!("Failed to clear Redis cache: {}", e)))?;
+        } else {
+            // Delete all keys with the prefix
+            let pattern = format!("{}:*", self.key_prefix);
+            let keys: Vec<String> = redis::cmd("KEYS")
+                .arg(&pattern)
+                .query_async(&mut conn)
+                .await
+                .map_err(|e| Error::Http(format!("Failed to get keys matching pattern: {}", e)))?;
+
+            if !keys.is_empty() {
+                let _: () = conn
+                    .del(keys)
+                    .await
+                    .map_err(|e| Error::Http(format!("Failed to delete keys: {}", e)))?;
+            }
+        }
+
         Ok(())
+    }
+
+    async fn get_many<T>(&self, keys: &[&str]) -> Result<std::collections::HashMap<String, T>>
+    where
+        T: for<'de> Deserialize<'de> + Send,
+    {
+        let full_keys: Vec<String> = keys.iter().map(|k| self.build_key(k)).collect();
+        let mut conn = (*self.connection_manager).clone();
+
+        let values: Vec<Option<Vec<u8>>> = conn
+            .get(&full_keys)
+            .await
+            .map_err(|e| Error::Http(format!("Failed to get multiple values from Redis: {}", e)))?;
+
+        let mut results = std::collections::HashMap::new();
+        for (i, value_opt) in values.into_iter().enumerate() {
+            if let Some(bytes) = value_opt {
+                let deserialized: T = serde_json::from_slice(&bytes)
+                    .map_err(|e| Error::Serialization(e.to_string()))?;
+                results.insert(keys[i].to_string(), deserialized);
+            }
+        }
+
+        Ok(results)
+    }
+
+    async fn set_many<T>(
+        &self,
+        values: std::collections::HashMap<String, T>,
+        ttl: Option<Duration>,
+    ) -> Result<()>
+    where
+        T: Serialize + Send + Sync,
+    {
+        let mut conn = (*self.connection_manager).clone();
+        let effective_ttl = ttl.or(self.default_ttl);
+
+        for (key, value) in values.iter() {
+            let full_key = self.build_key(key);
+            let serialized =
+                serde_json::to_vec(value).map_err(|e| Error::Serialization(e.to_string()))?;
+
+            if let Some(ttl_duration) = effective_ttl {
+                let seconds = ttl_duration.as_secs();
+                let _: () = conn
+                    .set_ex(&full_key, serialized, seconds)
+                    .await
+                    .map_err(|e| Error::Http(format!("Failed to set value in Redis: {}", e)))?;
+            } else {
+                let _: () = conn
+                    .set(&full_key, serialized)
+                    .await
+                    .map_err(|e| Error::Http(format!("Failed to set value in Redis: {}", e)))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn delete_many(&self, keys: &[&str]) -> Result<()> {
+        let full_keys: Vec<String> = keys.iter().map(|k| self.build_key(k)).collect();
+        let mut conn = (*self.connection_manager).clone();
+
+        let _: () = conn.del(full_keys).await.map_err(|e| {
+            Error::Http(format!(
+                "Failed to delete multiple values from Redis: {}",
+                e
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    async fn incr(&self, key: &str, delta: i64) -> Result<i64> {
+        let full_key = self.build_key(key);
+        let mut conn = (*self.connection_manager).clone();
+
+        let result: i64 = conn
+            .incr(&full_key, delta)
+            .await
+            .map_err(|e| Error::Http(format!("Failed to increment value in Redis: {}", e)))?;
+
+        Ok(result)
+    }
+
+    async fn decr(&self, key: &str, delta: i64) -> Result<i64> {
+        let full_key = self.build_key(key);
+        let mut conn = (*self.connection_manager).clone();
+
+        let result: i64 = conn
+            .decr(&full_key, delta)
+            .await
+            .map_err(|e| Error::Http(format!("Failed to decrement value in Redis: {}", e)))?;
+
+        Ok(result)
     }
 }
 
@@ -133,27 +306,168 @@ impl Cache for RedisCache {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_redis_cache_creation() {
-        let cache = RedisCache::new("redis://localhost:6379")
+    // Note: These tests require a running Redis instance
+    // They will be skipped in CI unless REDIS_URL is set
+
+    fn get_redis_url() -> String {
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string())
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires Redis to be running
+    async fn test_redis_cache_creation() {
+        let cache = RedisCache::new(get_redis_url())
+            .await
+            .unwrap()
             .with_default_ttl(Duration::from_secs(300))
             .with_key_prefix("myapp");
 
-        assert_eq!(cache.connection_url, "redis://localhost:6379");
         assert_eq!(cache.key_prefix, "myapp");
         assert!(cache.default_ttl.is_some());
     }
 
-    #[test]
-    fn test_build_key_with_prefix() {
-        let cache = RedisCache::new("redis://localhost:6379").with_key_prefix("app");
+    #[tokio::test]
+    #[ignore] // Requires Redis to be running
+    async fn test_build_key_with_prefix() {
+        let cache = RedisCache::new(get_redis_url())
+            .await
+            .unwrap()
+            .with_key_prefix("app");
 
         assert_eq!(cache.build_key("user:123"), "app:user:123");
     }
 
-    #[test]
-    fn test_build_key_without_prefix() {
-        let cache = RedisCache::new("redis://localhost:6379");
+    #[tokio::test]
+    #[ignore] // Requires Redis to be running
+    async fn test_build_key_without_prefix() {
+        let cache = RedisCache::new(get_redis_url()).await.unwrap();
         assert_eq!(cache.build_key("user:123"), "user:123");
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires Redis to be running
+    async fn test_redis_cache_basic_operations() {
+        let cache = RedisCache::new(get_redis_url()).await.unwrap();
+
+        // Clear any existing data
+        cache.clear().await.unwrap();
+
+        // Set and get
+        cache.set("test:key1", &"value1", None).await.unwrap();
+        let value: Option<String> = cache.get("test:key1").await.unwrap();
+        assert_eq!(value, Some("value1".to_string()));
+
+        // Has key
+        assert!(cache.has_key("test:key1").await.unwrap());
+        assert!(!cache.has_key("test:nonexistent").await.unwrap());
+
+        // Delete
+        cache.delete("test:key1").await.unwrap();
+        let value: Option<String> = cache.get("test:key1").await.unwrap();
+        assert_eq!(value, None);
+
+        // Cleanup
+        cache.clear().await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires Redis to be running
+    async fn test_redis_cache_ttl() {
+        let cache = RedisCache::new(get_redis_url()).await.unwrap();
+        cache.clear().await.unwrap();
+
+        // Set with short TTL
+        cache
+            .set("test:ttl", &"value", Some(Duration::from_secs(1)))
+            .await
+            .unwrap();
+
+        // Should exist immediately
+        let value: Option<String> = cache.get("test:ttl").await.unwrap();
+        assert_eq!(value, Some("value".to_string()));
+
+        // Wait for expiration
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Should be expired
+        let value: Option<String> = cache.get("test:ttl").await.unwrap();
+        assert_eq!(value, None);
+
+        cache.clear().await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires Redis to be running
+    async fn test_redis_cache_batch_operations() {
+        let cache = RedisCache::new(get_redis_url()).await.unwrap();
+        cache.clear().await.unwrap();
+
+        // Set many
+        let mut values = std::collections::HashMap::new();
+        values.insert("test:key1".to_string(), "value1".to_string());
+        values.insert("test:key2".to_string(), "value2".to_string());
+        cache.set_many(values, None).await.unwrap();
+
+        // Get many
+        let results: std::collections::HashMap<String, String> = cache
+            .get_many(&["test:key1", "test:key2", "test:key3"])
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results.get("test:key1"), Some(&"value1".to_string()));
+        assert_eq!(results.get("test:key2"), Some(&"value2".to_string()));
+
+        // Delete many
+        cache
+            .delete_many(&["test:key1", "test:key2"])
+            .await
+            .unwrap();
+        assert!(!cache.has_key("test:key1").await.unwrap());
+        assert!(!cache.has_key("test:key2").await.unwrap());
+
+        cache.clear().await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires Redis to be running
+    async fn test_redis_cache_atomic_operations() {
+        let cache = RedisCache::new(get_redis_url()).await.unwrap();
+        cache.clear().await.unwrap();
+
+        // Increment from zero
+        let value = cache.incr("test:counter", 5).await.unwrap();
+        assert_eq!(value, 5);
+
+        // Increment again
+        let value = cache.incr("test:counter", 3).await.unwrap();
+        assert_eq!(value, 8);
+
+        // Decrement
+        let value = cache.decr("test:counter", 2).await.unwrap();
+        assert_eq!(value, 6);
+
+        cache.clear().await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires Redis to be running
+    async fn test_redis_cache_prefix() {
+        let cache = RedisCache::new(get_redis_url())
+            .await
+            .unwrap()
+            .with_key_prefix("myapp");
+
+        cache.clear().await.unwrap();
+
+        cache.set("user:123", &"data", None).await.unwrap();
+
+        // Verify the key is stored with prefix
+        let value: Option<String> = cache.get("user:123").await.unwrap();
+        assert_eq!(value, Some("data".to_string()));
+
+        // Clear should only clear prefixed keys
+        cache.clear().await.unwrap();
+        let value: Option<String> = cache.get("user:123").await.unwrap();
+        assert_eq!(value, None);
     }
 }

@@ -110,10 +110,51 @@ impl Logger {
         self.log(LogLevel::Warning, message).await;
     }
 
+    /// Synchronous version of warning log
+    ///
+    /// This method provides a synchronous interface for logging warnings.
+    /// Note that if handlers perform async operations, they will be blocked.
+    /// Prefer using the async `warning` method when possible.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use reinhardt_logging::Logger;
+    ///
+    /// let logger = Logger::new("my_logger".to_string());
+    /// logger.warning_sync("This is a synchronous warning");
+    /// ```
     pub fn warning_sync(&self, message: &str) {
-        // Synchronous version for compatibility
-        let _ = message;
-        todo!("Implement synchronous warning")
+        self.log_sync(LogLevel::Warning, message.to_string());
+    }
+
+    fn log_sync(&self, level: LogLevel, message: String) {
+        let current_level = *self.level.lock().unwrap();
+        if level < current_level {
+            return;
+        }
+
+        let record = LogRecord::new(level, self.name.clone(), message);
+
+        // Synchronously process handlers using tokio runtime
+        let handlers_guard = self.handlers.lock().unwrap();
+        let rt = tokio::runtime::Handle::try_current().ok().or_else(|| {
+            // If no runtime exists, create a temporary one
+            tokio::runtime::Runtime::new()
+                .ok()
+                .map(|rt| rt.handle().clone())
+        });
+
+        if let Some(handle) = rt {
+            for handler in handlers_guard.iter() {
+                // Block on async handler using tokio runtime
+                handle.block_on(handler.handle(&record));
+            }
+        } else {
+            // Fallback: skip async operations if no runtime available
+            // This should rarely happen in practice
+            eprintln!("Warning: No tokio runtime available for synchronous logging");
+        }
     }
 
     pub async fn error(&self, message: String) {

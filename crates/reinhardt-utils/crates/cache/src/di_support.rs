@@ -128,10 +128,10 @@ impl CacheService {
     /// let key_builder = CacheKeyBuilder::new("app");
     /// let service = CacheService::new(cache, key_builder);
     ///
-    /// // Set a value first
+    // Set a value first
     /// service.set("user", &"john", None).await.unwrap();
     ///
-    /// // Get the value
+    // Get the value
     /// let value: Option<String> = service.get("user").await.unwrap();
     /// assert_eq!(value, Some("john".to_string()));
     /// # }
@@ -156,10 +156,10 @@ impl CacheService {
     /// let key_builder = CacheKeyBuilder::new("app");
     /// let service = CacheService::new(cache, key_builder);
     ///
-    /// // Set a value with TTL
+    // Set a value with TTL
     /// service.set("session", &"token123", Some(Duration::from_secs(3600))).await.unwrap();
     ///
-    /// // Verify it was set
+    // Verify it was set
     /// let value: Option<String> = service.get("session").await.unwrap();
     /// assert_eq!(value, Some("token123".to_string()));
     /// # }
@@ -183,13 +183,13 @@ impl CacheService {
     /// let key_builder = CacheKeyBuilder::new("app");
     /// let service = CacheService::new(cache, key_builder);
     ///
-    /// // Set a value
+    // Set a value
     /// service.set("temp", &"data", None).await.unwrap();
     ///
-    /// // Delete it
+    // Delete it
     /// service.delete("temp").await.unwrap();
     ///
-    /// // Verify it's gone
+    // Verify it's gone
     /// let value: Option<String> = service.get("temp").await.unwrap();
     /// assert_eq!(value, None);
     /// # }
@@ -210,7 +210,7 @@ impl CacheService {
     /// let key_builder = CacheKeyBuilder::new("app");
     /// let service = CacheService::new(cache, key_builder);
     ///
-    /// // Access the underlying cache directly
+    // Access the underlying cache directly
     /// let underlying_cache = service.cache();
     /// underlying_cache.set("direct_key", &42, None).await.unwrap();
     /// # }
@@ -229,7 +229,7 @@ impl CacheService {
     /// let key_builder = CacheKeyBuilder::new("myapp").with_version(2);
     /// let service = CacheService::new(cache, key_builder);
     ///
-    /// // Access the key builder
+    // Access the key builder
     /// let builder = service.key_builder();
     /// assert_eq!(builder.build("test"), "myapp:2:test");
     /// ```

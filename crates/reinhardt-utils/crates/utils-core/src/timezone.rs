@@ -5,12 +5,13 @@
 use std::borrow::Cow;
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
+use chrono_tz::Tz;
 /// Get the current time in UTC
 ///
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::now;
+/// use utils_core::timezone::now;
 ///
 /// let dt = now();
 /// assert_eq!(dt.timezone(), chrono::Utc);
@@ -23,11 +24,11 @@ pub fn now() -> DateTime<Utc> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::localtime;
+/// use utils_core::timezone::localtime;
 /// use chrono::{DateTime, Local};
 ///
 /// let local_dt = localtime();
-/// // Verify it returns a DateTime<Local>
+// Verify it returns a DateTime<Local>
 /// let _: DateTime<Local> = local_dt;
 /// ```
 pub fn localtime() -> DateTime<Local> {
@@ -38,11 +39,11 @@ pub fn localtime() -> DateTime<Local> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::{now, to_local};
+/// use utils_core::timezone::{now, to_local};
 ///
 /// let utc_now = now();
 /// let local = to_local(utc_now);
-/// // Should be the same instant in time
+// Should be the same instant in time
 /// assert_eq!(utc_now.timestamp(), local.timestamp());
 /// ```
 pub fn to_local(dt: DateTime<Utc>) -> DateTime<Local> {
@@ -53,12 +54,12 @@ pub fn to_local(dt: DateTime<Utc>) -> DateTime<Local> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::{localtime, to_utc, to_local};
+/// use utils_core::timezone::{localtime, to_utc, to_local};
 ///
 /// let local = localtime();
 /// let utc = to_utc(local);
 /// let back_to_local = to_local(utc);
-/// // Should represent the same instant
+// Should represent the same instant
 /// assert_eq!(local.timestamp(), back_to_local.timestamp());
 /// ```
 pub fn to_utc(dt: DateTime<Local>) -> DateTime<Utc> {
@@ -69,7 +70,7 @@ pub fn to_utc(dt: DateTime<Local>) -> DateTime<Utc> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::{now, is_aware};
+/// use utils_core::timezone::{now, is_aware};
 ///
 /// let utc_dt = now();
 /// assert!(is_aware(&utc_dt));
@@ -82,7 +83,7 @@ pub fn is_aware<Tz: TimeZone>(_dt: &DateTime<Tz>) -> bool {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::{make_aware_utc, is_aware};
+/// use utils_core::timezone::{make_aware_utc, is_aware};
 /// use chrono::NaiveDateTime;
 /// use std::str::FromStr;
 ///
@@ -98,7 +99,7 @@ pub fn make_aware_utc(dt: NaiveDateTime) -> DateTime<Utc> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::make_aware_local;
+/// use utils_core::timezone::make_aware_local;
 /// use chrono::{NaiveDateTime, DateTime, Local};
 /// use std::str::FromStr;
 ///
@@ -115,33 +116,47 @@ pub fn make_aware_local(dt: NaiveDateTime) -> DateTime<Local> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::{now, to_timezone};
+/// use utils_core::timezone::{now, to_timezone};
 ///
 /// let dt = now();
 /// let result = to_timezone(dt, "UTC");
 /// assert!(result.is_ok());
 /// assert_eq!(result.unwrap(), dt);
 ///
-/// let result_unsupported = to_timezone(dt, "America/New_York");
-/// assert!(result_unsupported.is_err());
+/// // Convert to America/New_York timezone
+/// let ny_result = to_timezone(dt, "America/New_York");
+/// assert!(ny_result.is_ok());
+/// // The timestamp should remain the same (same instant in time)
+/// assert_eq!(ny_result.unwrap().timestamp(), dt.timestamp());
+///
+/// // Convert to Asia/Tokyo timezone
+/// let tokyo_result = to_timezone(dt, "Asia/Tokyo");
+/// assert!(tokyo_result.is_ok());
+/// assert_eq!(tokyo_result.unwrap().timestamp(), dt.timestamp());
+///
+/// // Invalid timezone name should return error
+/// let invalid_result = to_timezone(dt, "Invalid/Timezone");
+/// assert!(invalid_result.is_err());
 /// ```
 pub fn to_timezone(dt: DateTime<Utc>, tz_name: &str) -> Result<DateTime<Utc>, String> {
-    // Note: Full IANA timezone support would require chrono-tz crate
-    // For now, we'll support UTC and Local only
-    match tz_name {
-        "UTC" => Ok(dt),
-        _ => Err(format!(
-            "Timezone {} not supported in basic implementation. Add chrono-tz for full support.",
-            tz_name
-        )),
+    use std::str::FromStr;
+
+    if tz_name == "UTC" {
+        return Ok(dt);
     }
+
+    let tz = Tz::from_str(tz_name).map_err(|e| format!("Invalid timezone '{}': {}", tz_name, e))?;
+
+    // Convert to the target timezone and then back to UTC
+    // This preserves the instant in time while allowing timezone-aware operations
+    Ok(dt.with_timezone(&tz).with_timezone(&Utc))
 }
 /// Get timezone name from UTC DateTime
 ///
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::{now, get_timezone_name_utc};
+/// use utils_core::timezone::{now, get_timezone_name_utc};
 ///
 /// let dt = now();
 /// let tz_name = get_timezone_name_utc(&dt);
@@ -155,15 +170,15 @@ pub fn get_timezone_name_utc(_dt: &DateTime<Utc>) -> &'static str {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::{localtime, get_timezone_name_local};
+/// use utils_core::timezone::{localtime, get_timezone_name_local};
 ///
 /// let dt = localtime();
 /// let tz_name = get_timezone_name_local(&dt);
-/// // The timezone name will vary by system, but should not be empty
+// The timezone name will vary by system, but should not be empty
 /// assert!(!tz_name.is_empty());
 /// ```
 pub fn get_timezone_name_local(_dt: &DateTime<Local>) -> Cow<'static, str> {
-    /// // Try to get timezone from environment variable
+    // Try to get timezone from environment variable
     #[cfg(target_os = "windows")]
     {
         std::env::var("TZ")
@@ -183,7 +198,7 @@ pub fn get_timezone_name_local(_dt: &DateTime<Local>) -> Cow<'static, str> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::parse_datetime;
+/// use utils_core::timezone::parse_datetime;
 /// use chrono::Datelike;
 ///
 /// let dt_str = "2025-01-01T12:00:00Z";
@@ -203,7 +218,7 @@ pub fn parse_datetime(s: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::timezone::{parse_datetime, format_datetime};
+/// use utils_core::timezone::{parse_datetime, format_datetime};
 ///
 /// let dt_str = "2025-01-01T12:00:00Z";
 /// let dt = parse_datetime(dt_str).unwrap();
@@ -293,14 +308,34 @@ mod tests {
     }
 
     #[test]
-    fn test_to_timezone_unsupported() {
+    fn test_to_timezone_america_new_york() {
         let dt = now();
         let result = to_timezone(dt, "America/New_York");
 
+        assert!(result.is_ok());
+        let ny_dt = result.unwrap();
+        // Should represent the same instant in time
+        assert_eq!(dt.timestamp(), ny_dt.timestamp());
+    }
+
+    #[test]
+    fn test_to_timezone_asia_tokyo() {
+        let dt = now();
+        let result = to_timezone(dt, "Asia/Tokyo");
+
+        assert!(result.is_ok());
+        let tokyo_dt = result.unwrap();
+        // Should represent the same instant in time
+        assert_eq!(dt.timestamp(), tokyo_dt.timestamp());
+    }
+
+    #[test]
+    fn test_to_timezone_invalid() {
+        let dt = now();
+        let result = to_timezone(dt, "Invalid/Timezone");
+
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("not supported in basic implementation"));
+        assert!(result.unwrap_err().contains("Invalid timezone"));
     }
 
     #[test]

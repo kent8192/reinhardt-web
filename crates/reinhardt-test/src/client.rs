@@ -195,8 +195,8 @@ impl APIClient {
     ///
     /// # tokio_test::block_on(async {
     /// let client = APIClient::new();
-    /// // Note: login() requires a working handler
-    /// // let response = client.login("username", "password").await;
+    // Note: login() requires a working handler
+    // let response = client.login("username", "password").await;
     /// # });
     /// ```
     pub async fn login(&self, username: &str, password: &str) -> ClientResult<TestResponse> {
@@ -233,8 +233,8 @@ impl APIClient {
     ///
     /// # tokio_test::block_on(async {
     /// let client = APIClient::new();
-    /// // Note: get() requires a working handler
-    /// // let response = client.get("/api/users/").await;
+    // Note: get() requires a working handler
+    // let response = client.get("/api/users/").await;
     /// # });
     /// ```
     pub async fn get(&self, path: &str) -> ClientResult<TestResponse> {
@@ -251,8 +251,8 @@ impl APIClient {
     /// # tokio_test::block_on(async {
     /// let client = APIClient::new();
     /// let data = json!({"name": "test"});
-    /// // Note: post() requires a working handler
-    /// // let response = client.post("/api/users/", &data, "json").await;
+    // Note: post() requires a working handler
+    // let response = client.post("/api/users/", &data, "json").await;
     /// # });
     /// ```
     pub async fn post<T: Serialize>(
@@ -277,8 +277,8 @@ impl APIClient {
     /// # tokio_test::block_on(async {
     /// let client = APIClient::new();
     /// let data = json!({"name": "updated"});
-    /// // Note: put() requires a working handler
-    /// // let response = client.put("/api/users/1/", &data, "json").await;
+    // Note: put() requires a working handler
+    // let response = client.put("/api/users/1/", &data, "json").await;
     /// # });
     /// ```
     pub async fn put<T: Serialize>(
@@ -303,8 +303,8 @@ impl APIClient {
     /// # tokio_test::block_on(async {
     /// let client = APIClient::new();
     /// let data = json!({"name": "partial_update"});
-    /// // Note: patch() requires a working handler
-    /// // let response = client.patch("/api/users/1/", &data, "json").await;
+    // Note: patch() requires a working handler
+    // let response = client.patch("/api/users/1/", &data, "json").await;
     /// # });
     /// ```
     pub async fn patch<T: Serialize>(
@@ -327,8 +327,8 @@ impl APIClient {
     ///
     /// # tokio_test::block_on(async {
     /// let client = APIClient::new();
-    /// // Note: delete() requires a working handler
-    /// // let response = client.delete("/api/users/1/").await;
+    // Note: delete() requires a working handler
+    // let response = client.delete("/api/users/1/").await;
     /// # });
     /// ```
     pub async fn delete(&self, path: &str) -> ClientResult<TestResponse> {
@@ -343,8 +343,8 @@ impl APIClient {
     ///
     /// # tokio_test::block_on(async {
     /// let client = APIClient::new();
-    /// // Note: head() requires a working handler
-    /// // let response = client.head("/api/users/").await;
+    // Note: head() requires a working handler
+    // let response = client.head("/api/users/").await;
     /// # });
     /// ```
     pub async fn head(&self, path: &str) -> ClientResult<TestResponse> {
@@ -359,8 +359,8 @@ impl APIClient {
     ///
     /// # tokio_test::block_on(async {
     /// let client = APIClient::new();
-    /// // Note: options() requires a working handler
-    /// // let response = client.options("/api/users/").await;
+    // Note: options() requires a working handler
+    // let response = client.options("/api/users/").await;
     /// # });
     /// ```
     pub async fn options(&self, path: &str) -> ClientResult<TestResponse> {

@@ -32,11 +32,13 @@ Flexible caching framework with support for multiple backends including memory, 
   - JSON serialization via serde for type safety
 
 - **RedisCache**: Redis-backed distributed cache (requires `redis-backend` feature)
-  - Connection pooling support
+  - Connection pooling with `ConnectionManager` for efficient connection reuse
   - `with_default_ttl()`: Default TTL configuration
   - `with_key_prefix()`: Namespace support for multi-tenant scenarios
   - Automatic key prefixing for organized cache entries
-  - Note: Core Redis operations are currently placeholder implementations
+  - Full Redis integration with all core operations implemented
+  - Batch operations (`get_many`, `set_many`, `delete_many`) for improved performance
+  - Atomic operations (`incr`, `decr`) using Redis native commands
 
 ### Cache Key Management - Implemented ✓
 
@@ -211,7 +213,8 @@ let session: Option<SessionData> = service.get("session").await?;
 ### Redis Cache (Feature-Gated)
 
 ```rust
-use reinhardt_cache::{RedisCache, RedisConfig};
+use reinhardt_cache::{Cache, RedisCache, RedisConfig};
+use std::time::Duration;
 
 // Via DI
 let config = RedisConfig::new("redis://localhost:6379");
@@ -219,8 +222,23 @@ ctx.set_singleton(config);
 
 // Direct instantiation
 let cache = RedisCache::new("redis://localhost:6379")
+    .await?
     .with_default_ttl(Duration::from_secs(300))
     .with_key_prefix("myapp");
+
+// Use the cache
+cache.set("user:123", &user_data, Some(Duration::from_secs(3600))).await?;
+let user: Option<UserData> = cache.get("user:123").await?;
+
+// Batch operations
+let mut values = HashMap::new();
+values.insert("key1".to_string(), "value1".to_string());
+values.insert("key2".to_string(), "value2".to_string());
+cache.set_many(values, None).await?;
+
+// Atomic operations
+cache.incr("counter", 1).await?;
+cache.decr("counter", 1).await?;
 ```
 
 ## Architecture

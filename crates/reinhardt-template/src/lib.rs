@@ -36,4 +36,4 @@ pub use reinhardt_renderers as renderers;
 pub use reinhardt_templates::{Template, TemplateError};
 
 #[cfg(feature = "renderers")]
-pub use reinhardt_renderers::{BrowsableAPIRenderer, JSONRenderer};
+pub use reinhardt_renderers::{BrowsableAPIRenderer, JSONRenderer, TemplateHTMLRenderer};

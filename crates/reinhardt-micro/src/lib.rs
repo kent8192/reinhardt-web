@@ -68,10 +68,6 @@ pub use reinhardt_params::{Cookie, Form, Header, Json, Path, Query};
 #[cfg(feature = "di")]
 pub use reinhardt_di::Depends;
 
-// Temporarily disabled - utoipa API compatibility
-// #[cfg(feature = "schema")]
-// pub use reinhardt_openapi::Schema;
-
 #[cfg(feature = "database")]
 pub use reinhardt_orm as orm;
 
@@ -84,10 +80,6 @@ pub mod prelude {
 
     #[cfg(feature = "di")]
     pub use reinhardt_di::Depends;
-
-    // Temporarily disabled - utoipa API compatibility
-    // #[cfg(feature = "schema")]
-    // pub use reinhardt_openapi::Schema;
 
     pub use async_trait::async_trait;
     pub use serde::{Deserialize, Serialize};
@@ -113,7 +105,7 @@ impl App {
     /// use reinhardt_micro::App;
     ///
     /// let app = App::new();
-    /// // App is now ready to have routes added
+    // App is now ready to have routes added
     /// ```
     pub fn new() -> Self {
         Self {
@@ -134,7 +126,7 @@ impl App {
     /// let app = App::new()
     ///     .route("/", handler)
     ///     .route("/api/users", handler);
-    /// // Routes are now registered with the app
+    // Routes are now registered with the app
     /// ```
     pub fn route_handler(mut self, path: &str, handler: Arc<dyn Handler>) -> Self {
         self.router.add_route(route_path(path, handler));
@@ -155,8 +147,8 @@ impl App {
     /// # async fn example() -> reinhardt_micro::Result<()> {
     /// let app = App::new();
     ///
-    /// // This would start the server on the specified address
-    /// // Marked as no_run because it would block indefinitely
+    // This would start the server on the specified address
+    // Marked as no_run because it would block indefinitely
     /// app.serve("127.0.0.1:8000").await?;
     /// # Ok(())
     /// # }

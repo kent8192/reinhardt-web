@@ -316,11 +316,11 @@ pub mod prelude {
         XMLRenderer,
     };
 
-    /// // Cache (if enabled)
+    // Cache (if enabled)
     #[cfg(feature = "cache")]
     pub use crate::{Cache, InMemoryCache};
 
-    /// // Sessions (if enabled)
+    // Sessions (if enabled)
     #[cfg(feature = "sessions")]
     pub use crate::{InMemorySessionBackend, Session};
 

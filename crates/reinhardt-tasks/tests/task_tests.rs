@@ -99,7 +99,6 @@ async fn test_using_correct_backend() {
     let backend = Arc::new(DummyBackend::new());
     let backends = TaskBackends::new();
 
-    // Note: TaskBackends implementation is incomplete in current code
     // This test verifies the backend type matches
     assert_eq!(backend.backend_name(), "dummy");
 }

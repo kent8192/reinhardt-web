@@ -140,7 +140,7 @@ impl<C: Cache> CacheMiddleware<C> {
     ///
     /// let cache = Arc::new(InMemoryCache::new());
     /// let middleware = CacheMiddleware::new(cache);
-    /// // Middleware is now ready to cache HTTP responses
+    // Middleware is now ready to cache HTTP responses
     /// ```
     pub fn new(cache: Arc<C>) -> Self {
         Self {
@@ -163,7 +163,7 @@ impl<C: Cache> CacheMiddleware<C> {
     ///     .with_default_timeout(Duration::from_secs(600))
     ///     .with_key_prefix("api");
     /// let middleware = CacheMiddleware::with_config(cache, config);
-    /// // Middleware now uses custom configuration
+    // Middleware now uses custom configuration
     /// ```
     pub fn with_config(cache: Arc<C>, config: CacheMiddlewareConfig) -> Self {
         let key_builder = CacheKeyBuilder::new(&config.key_prefix);
