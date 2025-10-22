@@ -3,5 +3,5 @@
 pub mod file;
 pub mod memory;
 
-#[cfg(feature = "async")]
-pub mod database;
+pub use file::FileSecretAuditBackend;
+pub use memory::MemorySecretAuditBackend;

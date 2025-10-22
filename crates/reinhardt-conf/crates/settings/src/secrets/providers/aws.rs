@@ -2,16 +2,15 @@
 //!
 //! This module provides integration with AWS Secrets Manager for retrieving secrets.
 
-use crate::secrets::{Secret, SecretError, SecretMetadata, SecretProvider, SecretResult};
+use crate::secrets::{SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString};
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::Value;
-use std::collections::HashMap;
 
 #[cfg(feature = "aws-secrets")]
 use aws_config::BehaviorVersion;
 #[cfg(feature = "aws-secrets")]
-use aws_sdk_secretsmanager::{Client, Error as AwsError};
+use aws_sdk_secretsmanager::Client;
 
 /// AWS Secrets Manager provider
 ///
@@ -49,10 +48,10 @@ impl AwsSecretsProvider {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// use reinhardt_settings::secrets::providers::AwsSecretsProvider;
     ///
-    /// // Without prefix
+    // Without prefix
     /// let provider = AwsSecretsProvider::new(None).await?;
     ///
-    /// // With prefix
+    // With prefix
     /// let provider = AwsSecretsProvider::new(Some("myapp/".to_string())).await?;
     /// # Ok(())
     /// # }
@@ -119,7 +118,56 @@ impl AwsSecretsProvider {
 #[async_trait]
 impl SecretProvider for AwsSecretsProvider {
     #[cfg(feature = "aws-secrets")]
-    async fn get_secret(&self, key: &str) -> SecretResult<Option<Secret>> {
+    async fn get_secret(&self, key: &str) -> SecretResult<SecretString> {
+        let full_name = self.get_full_name(key);
+
+        let result = self
+            .client
+            .get_secret_value()
+            .secret_id(&full_name)
+            .send()
+            .await;
+
+        match result {
+            Ok(output) => {
+                if let Some(secret_string) = output.secret_string() {
+                    let value = self.parse_secret_value(secret_string)?;
+                    Ok(SecretString::new(value))
+                } else {
+                    Err(SecretError::NotFound(format!(
+                        "Secret '{}' has no value",
+                        key
+                    )))
+                }
+            }
+            Err(err) => {
+                if err.to_string().contains("ResourceNotFoundException") {
+                    Err(SecretError::NotFound(format!(
+                        "Secret '{}' not found in AWS Secrets Manager",
+                        key
+                    )))
+                } else {
+                    Err(SecretError::Provider(format!(
+                        "AWS Secrets Manager error: {}",
+                        err
+                    )))
+                }
+            }
+        }
+    }
+
+    #[cfg(not(feature = "aws-secrets"))]
+    async fn get_secret(&self, _key: &str) -> SecretResult<SecretString> {
+        Err(SecretError::Provider(
+            "AWS Secrets Manager support not enabled".to_string(),
+        ))
+    }
+
+    #[cfg(feature = "aws-secrets")]
+    async fn get_secret_with_metadata(
+        &self,
+        key: &str,
+    ) -> SecretResult<(SecretString, SecretMetadata)> {
         let full_name = self.get_full_name(key);
 
         let result = self
@@ -135,31 +183,27 @@ impl SecretProvider for AwsSecretsProvider {
                     let value = self.parse_secret_value(secret_string)?;
 
                     let metadata = SecretMetadata {
-                        created_at: output
-                            .created_date()
-                            .map(|dt| {
-                                chrono::DateTime::from_timestamp(dt.secs(), dt.subsec_nanos())
-                                    .unwrap_or_else(|| Utc::now())
-                            })
-                            .unwrap_or_else(|| Utc::now()),
-                        updated_at: Utc::now(),
-                        version: output
-                            .version_id()
-                            .map(|v| v.to_string())
-                            .unwrap_or_else(|| "1".to_string())
-                            .parse()
-                            .unwrap_or(1),
+                        created_at: output.created_date().map(|dt| {
+                            chrono::DateTime::from_timestamp(dt.secs(), dt.subsec_nanos())
+                                .unwrap_or_else(|| Utc::now())
+                        }),
+                        updated_at: Some(Utc::now()),
                     };
 
-                    Ok(Some(Secret::new(value, metadata)))
+                    Ok((SecretString::new(value), metadata))
                 } else {
-                    Ok(None)
+                    Err(SecretError::NotFound(format!(
+                        "Secret '{}' has no value",
+                        key
+                    )))
                 }
             }
             Err(err) => {
-                // Check if it's a ResourceNotFoundException
                 if err.to_string().contains("ResourceNotFoundException") {
-                    Ok(None)
+                    Err(SecretError::NotFound(format!(
+                        "Secret '{}' not found in AWS Secrets Manager",
+                        key
+                    )))
                 } else {
                     Err(SecretError::Provider(format!(
                         "AWS Secrets Manager error: {}",
@@ -171,14 +215,17 @@ impl SecretProvider for AwsSecretsProvider {
     }
 
     #[cfg(not(feature = "aws-secrets"))]
-    async fn get_secret(&self, _key: &str) -> SecretResult<Option<Secret>> {
+    async fn get_secret_with_metadata(
+        &self,
+        _key: &str,
+    ) -> SecretResult<(SecretString, SecretMetadata)> {
         Err(SecretError::Provider(
             "AWS Secrets Manager support not enabled".to_string(),
         ))
     }
 
     #[cfg(feature = "aws-secrets")]
-    async fn set_secret(&mut self, key: &str, value: &str) -> SecretResult<()> {
+    async fn set_secret(&self, key: &str, value: SecretString) -> SecretResult<()> {
         let full_name = self.get_full_name(key);
 
         // Try to update existing secret first
@@ -186,7 +233,7 @@ impl SecretProvider for AwsSecretsProvider {
             .client
             .update_secret()
             .secret_id(&full_name)
-            .secret_string(value)
+            .secret_string(value.expose_secret())
             .send()
             .await;
 
@@ -198,7 +245,7 @@ impl SecretProvider for AwsSecretsProvider {
                     self.client
                         .create_secret()
                         .name(&full_name)
-                        .secret_string(value)
+                        .secret_string(value.expose_secret())
                         .send()
                         .await
                         .map_err(|e| {
@@ -216,14 +263,14 @@ impl SecretProvider for AwsSecretsProvider {
     }
 
     #[cfg(not(feature = "aws-secrets"))]
-    async fn set_secret(&mut self, _key: &str, _value: &str) -> SecretResult<()> {
+    async fn set_secret(&self, _key: &str, _value: SecretString) -> SecretResult<()> {
         Err(SecretError::Provider(
             "AWS Secrets Manager support not enabled".to_string(),
         ))
     }
 
     #[cfg(feature = "aws-secrets")]
-    async fn delete_secret(&mut self, key: &str) -> SecretResult<()> {
+    async fn delete_secret(&self, key: &str) -> SecretResult<()> {
         let full_name = self.get_full_name(key);
 
         self.client
@@ -238,7 +285,7 @@ impl SecretProvider for AwsSecretsProvider {
     }
 
     #[cfg(not(feature = "aws-secrets"))]
-    async fn delete_secret(&mut self, _key: &str) -> SecretResult<()> {
+    async fn delete_secret(&self, _key: &str) -> SecretResult<()> {
         Err(SecretError::Provider(
             "AWS Secrets Manager support not enabled".to_string(),
         ))
@@ -261,22 +308,20 @@ impl SecretProvider for AwsSecretsProvider {
                 .await
                 .map_err(|e| SecretError::Provider(format!("Failed to list secrets: {}", e)))?;
 
-            if let Some(secret_list) = response.secret_list() {
-                for secret in secret_list {
-                    if let Some(name) = secret.name() {
-                        // Remove prefix if present
-                        let key = if let Some(prefix) = &self.prefix {
-                            if let Some(stripped) = name.strip_prefix(prefix) {
-                                stripped.to_string()
-                            } else {
-                                continue; // Skip secrets that don't match our prefix
-                            }
+            for secret in response.secret_list() {
+                if let Some(name) = secret.name() {
+                    // Remove prefix if present
+                    let key = if let Some(prefix) = &self.prefix {
+                        if let Some(stripped) = name.strip_prefix(prefix) {
+                            stripped.to_string()
                         } else {
-                            name.to_string()
-                        };
+                            continue; // Skip secrets that don't match our prefix
+                        }
+                    } else {
+                        name.to_string()
+                    };
 
-                        secrets.push(key);
-                    }
+                    secrets.push(key);
                 }
             }
 
@@ -296,14 +341,24 @@ impl SecretProvider for AwsSecretsProvider {
             "AWS Secrets Manager support not enabled".to_string(),
         ))
     }
+
+    fn exists(&self, _key: &str) -> bool {
+        // Cannot make async calls in sync method
+        // Consumers should use get_secret() and check for NotFound error
+        false
+    }
+
+    fn name(&self) -> &str {
+        "aws-secrets-manager"
+    }
 }
 
 #[cfg(all(test, feature = "aws-secrets"))]
 mod tests {
     use super::*;
 
-    /// // Note: These tests require AWS credentials and won't run in CI
-    /// // They are here for local testing purposes
+    // Note: These tests require AWS credentials and won't run in CI
+    // They are here for local testing purposes
 
     #[tokio::test]
     #[ignore] // Ignore by default as it requires AWS credentials
@@ -319,11 +374,14 @@ mod tests {
             .await
             .unwrap();
 
-        let result = provider
-            .get_secret("nonexistent-secret-12345")
-            .await
-            .unwrap();
-        assert!(result.is_none());
+        let result = provider.get_secret("nonexistent-secret-12345").await;
+
+        assert!(result.is_err());
+        if let Err(SecretError::NotFound(_)) = result {
+            // Expected
+        } else {
+            panic!("Expected NotFound error");
+        }
     }
 }
 

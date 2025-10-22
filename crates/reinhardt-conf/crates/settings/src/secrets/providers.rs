@@ -16,5 +16,4 @@ pub mod hashicorp;
 #[cfg(feature = "aws-secrets")]
 pub mod aws;
 
-#[cfg(feature = "azure-keyvault")]
 pub mod azure;

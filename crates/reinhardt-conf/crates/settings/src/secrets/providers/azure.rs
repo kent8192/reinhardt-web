@@ -2,18 +2,13 @@
 //!
 //! This module provides integration with Azure Key Vault for retrieving secrets.
 
-use crate::secrets::{Secret, SecretError, SecretMetadata, SecretProvider, SecretResult};
+use crate::secrets::{SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString};
 use async_trait::async_trait;
-use chrono::Utc;
 
 #[cfg(feature = "azure-keyvault")]
-use azure_core::auth::TokenCredential;
-#[cfg(feature = "azure-keyvault")]
-use azure_identity::DefaultAzureCredential;
+use azure_identity::create_default_credential;
 #[cfg(feature = "azure-keyvault")]
 use azure_security_keyvault::KeyvaultClient;
-#[cfg(feature = "azure-keyvault")]
-use std::sync::Arc;
 
 /// Azure Key Vault provider
 ///
@@ -37,8 +32,6 @@ pub struct AzureKeyVaultProvider {
     client: KeyvaultClient,
     #[cfg(not(feature = "azure-keyvault"))]
     _phantom: std::marker::PhantomData<()>,
-    #[cfg(feature = "azure-keyvault")]
-    vault_url: String,
 }
 
 impl AzureKeyVaultProvider {
@@ -64,11 +57,13 @@ impl AzureKeyVaultProvider {
     /// Documentation for `new`
     pub async fn new(vault_url: impl Into<String>) -> SecretResult<Self> {
         let vault_url = vault_url.into();
-        let credential = Arc::new(DefaultAzureCredential::default());
+        let credential = create_default_credential().map_err(|e| {
+            SecretError::Provider(format!("Failed to create default credential: {}", e))
+        })?;
         let client = KeyvaultClient::new(&vault_url, credential)
             .map_err(|e| SecretError::Provider(format!("Failed to create Azure client: {}", e)))?;
 
-        Ok(Self { client, vault_url })
+        Ok(Self { client })
     }
 
     #[cfg(not(feature = "azure-keyvault"))]
@@ -78,64 +73,22 @@ impl AzureKeyVaultProvider {
             "Azure Key Vault support not enabled. Enable the 'azure-keyvault' feature.".to_string(),
         ))
     }
-
-    /// Create a provider with custom credentials
-    #[cfg(feature = "azure-keyvault")]
-    /// Documentation for `with_credential`
-    pub async fn with_credential(
-        vault_url: impl Into<String>,
-        credential: Arc<dyn TokenCredential>,
-    ) -> SecretResult<Self> {
-        let vault_url = vault_url.into();
-        let client = KeyvaultClient::new(&vault_url, credential)
-            .map_err(|e| SecretError::Provider(format!("Failed to create Azure client: {}", e)))?;
-
-        Ok(Self { client, vault_url })
-    }
 }
 
 #[async_trait]
 impl SecretProvider for AzureKeyVaultProvider {
     #[cfg(feature = "azure-keyvault")]
-    async fn get_secret(&self, key: &str) -> SecretResult<Option<Secret>> {
-        use azure_security_keyvault::prelude::*;
-
-        let result = self.client.secret_client().get(key).await;
+    async fn get_secret(&self, name: &str) -> SecretResult<SecretString> {
+        let result = self.client.secret_client().get(name).await;
 
         match result {
-            Ok(secret_bundle) => {
-                let value = secret_bundle
-                    .value()
-                    .ok_or_else(|| SecretError::Provider("Secret has no value".to_string()))?
-                    .to_string();
-
-                let metadata = SecretMetadata {
-                    created_at: secret_bundle
-                        .attributes()
-                        .and_then(|attr| attr.created())
-                        .map(|ts| {
-                            chrono::DateTime::from_timestamp(ts, 0).unwrap_or_else(|| Utc::now())
-                        })
-                        .unwrap_or_else(|| Utc::now()),
-                    updated_at: secret_bundle
-                        .attributes()
-                        .and_then(|attr| attr.updated())
-                        .map(|ts| {
-                            chrono::DateTime::from_timestamp(ts, 0).unwrap_or_else(|| Utc::now())
-                        })
-                        .unwrap_or_else(|| Utc::now()),
-                    version: 1, // Azure uses version IDs, not numbers
-                };
-
-                Ok(Some(Secret::new(value, metadata)))
-            }
+            Ok(secret_response) => Ok(SecretString::new(secret_response.value)),
             Err(err) => {
-                // Check if it's a 404 Not Found error
-                if err.to_string().contains("404")
-                    || err.to_string().contains("NotFound")
-                    || err.to_string().contains("SecretNotFound")
-                {
-                    Ok(None)
+                if err.to_string().contains("404") {
+                    Err(SecretError::NotFound(format!(
+                        "Secret '{}' not found",
+                        name
+                    )))
                 } else {
                     Err(SecretError::Provider(format!(
                         "Azure Key Vault error: {}",
@@ -147,19 +100,69 @@ impl SecretProvider for AzureKeyVaultProvider {
     }
 
     #[cfg(not(feature = "azure-keyvault"))]
-    async fn get_secret(&self, _key: &str) -> SecretResult<Option<Secret>> {
+    async fn get_secret(&self, _name: &str) -> SecretResult<SecretString> {
         Err(SecretError::Provider(
             "Azure Key Vault support not enabled".to_string(),
         ))
     }
 
     #[cfg(feature = "azure-keyvault")]
-    async fn set_secret(&mut self, key: &str, value: &str) -> SecretResult<()> {
-        use azure_security_keyvault::prelude::*;
+    async fn get_secret_with_metadata(
+        &self,
+        name: &str,
+    ) -> SecretResult<(SecretString, SecretMetadata)> {
+        let result = self.client.secret_client().get(name).await;
 
+        match result {
+            Ok(secret_response) => {
+                let created_at = {
+                    let unix_timestamp = secret_response.attributes.created_on.unix_timestamp();
+                    chrono::DateTime::from_timestamp(unix_timestamp, 0)
+                };
+
+                let updated_at = {
+                    let unix_timestamp = secret_response.attributes.updated_on.unix_timestamp();
+                    chrono::DateTime::from_timestamp(unix_timestamp, 0)
+                };
+
+                let metadata = SecretMetadata {
+                    created_at,
+                    updated_at,
+                };
+
+                Ok((SecretString::new(secret_response.value), metadata))
+            }
+            Err(err) => {
+                if err.to_string().contains("404") {
+                    Err(SecretError::NotFound(format!(
+                        "Secret '{}' not found",
+                        name
+                    )))
+                } else {
+                    Err(SecretError::Provider(format!(
+                        "Azure Key Vault error: {}",
+                        err
+                    )))
+                }
+            }
+        }
+    }
+
+    #[cfg(not(feature = "azure-keyvault"))]
+    async fn get_secret_with_metadata(
+        &self,
+        _name: &str,
+    ) -> SecretResult<(SecretString, SecretMetadata)> {
+        Err(SecretError::Provider(
+            "Azure Key Vault support not enabled".to_string(),
+        ))
+    }
+
+    #[cfg(feature = "azure-keyvault")]
+    async fn set_secret(&self, name: &str, value: SecretString) -> SecretResult<()> {
         self.client
             .secret_client()
-            .set(key, value)
+            .set(name, value.expose_secret())
             .await
             .map_err(|e| SecretError::Provider(format!("Failed to set secret: {}", e)))?;
 
@@ -167,32 +170,25 @@ impl SecretProvider for AzureKeyVaultProvider {
     }
 
     #[cfg(not(feature = "azure-keyvault"))]
-    async fn set_secret(&mut self, _key: &str, _value: &str) -> SecretResult<()> {
+    async fn set_secret(&self, _name: &str, _value: SecretString) -> SecretResult<()> {
         Err(SecretError::Provider(
             "Azure Key Vault support not enabled".to_string(),
         ))
     }
 
     #[cfg(feature = "azure-keyvault")]
-    async fn delete_secret(&mut self, key: &str) -> SecretResult<()> {
-        use azure_security_keyvault::prelude::*;
-
-        // Delete the secret
+    async fn delete_secret(&self, name: &str) -> SecretResult<()> {
         self.client
             .secret_client()
-            .delete(key)
+            .delete(name)
             .await
             .map_err(|e| SecretError::Provider(format!("Failed to delete secret: {}", e)))?;
-
-        // Purge the deleted secret (optional, but recommended for testing)
-        // Note: This requires the "purge" permission in Key Vault access policies
-        let _ = self.client.secret_client().purge_deleted(key).await;
 
         Ok(())
     }
 
     #[cfg(not(feature = "azure-keyvault"))]
-    async fn delete_secret(&mut self, _key: &str) -> SecretResult<()> {
+    async fn delete_secret(&self, _name: &str) -> SecretResult<()> {
         Err(SecretError::Provider(
             "Azure Key Vault support not enabled".to_string(),
         ))
@@ -200,8 +196,7 @@ impl SecretProvider for AzureKeyVaultProvider {
 
     #[cfg(feature = "azure-keyvault")]
     async fn list_secrets(&self) -> SecretResult<Vec<String>> {
-        use azure_core::Pageable;
-        use azure_security_keyvault::prelude::*;
+        use futures::stream::StreamExt;
 
         let mut secrets = Vec::new();
         let mut pageable = self.client.secret_client().list_secrets().into_stream();
@@ -210,12 +205,9 @@ impl SecretProvider for AzureKeyVaultProvider {
             match result {
                 Ok(response) => {
                     for item in response.value {
-                        if let Some(id) = item.id() {
-                            // Extract secret name from ID
-                            // ID format: https://{vault}.vault.azure.net/secrets/{name}/{version}
-                            if let Some(name) = id.split('/').nth_back(1) {
-                                secrets.push(name.to_string());
-                            }
+                        let name = item.id.split('/').last().unwrap_or("");
+                        if !name.is_empty() {
+                            secrets.push(name.to_string());
                         }
                     }
                 }
@@ -237,14 +229,24 @@ impl SecretProvider for AzureKeyVaultProvider {
             "Azure Key Vault support not enabled".to_string(),
         ))
     }
+
+    fn exists(&self, _name: &str) -> bool {
+        // Cannot make async calls in sync method
+        // Consumers should use get_secret() and check for NotFound error
+        false
+    }
+
+    fn name(&self) -> &str {
+        "azure-keyvault"
+    }
 }
 
 #[cfg(all(test, feature = "azure-keyvault"))]
 mod tests {
     use super::*;
 
-    /// // Note: These tests require Azure credentials and a Key Vault, won't run in CI
-    /// // They are here for local testing purposes
+    // Note: These tests require Azure credentials and a Key Vault, won't run in CI
+    // They are here for local testing purposes
 
     #[tokio::test]
     #[ignore] // Ignore by default as it requires Azure credentials
@@ -266,8 +268,13 @@ mod tests {
         let provider = AzureKeyVaultProvider::new(vault_url).await.unwrap();
 
         let result = provider.get_secret("nonexistent-secret-12345").await;
-        // Should either return None or error due to credentials
-        assert!(result.is_ok() || result.is_err());
+
+        assert!(result.is_err());
+        if let Err(SecretError::NotFound(_)) = result {
+            // Expected
+        } else {
+            panic!("Expected NotFound error");
+        }
     }
 }
 
