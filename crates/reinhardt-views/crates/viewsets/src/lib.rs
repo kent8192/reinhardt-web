@@ -12,7 +12,7 @@ pub mod viewset;
 pub use actions::{Action, ActionType};
 pub use builder::ViewSetBuilder;
 pub use di_support::{DatabaseConnection, DiViewSet, ViewSetFactory};
-pub use handler::ViewSetHandler;
+pub use handler::{ModelViewSetHandler, ViewError, ViewSetHandler};
 pub use metadata::{ActionHandler, ActionMetadata, ActionRegistryEntry, FunctionActionHandler};
 pub use middleware::{
     AuthenticationMiddleware, CompositeMiddleware, PermissionMiddleware, ViewSetMiddleware,

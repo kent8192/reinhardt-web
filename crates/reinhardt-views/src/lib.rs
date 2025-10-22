@@ -67,22 +67,6 @@ pub use reinhardt_views_core::generic;
 #[cfg(feature = "viewsets")]
 pub use reinhardt_viewsets;
 
-// Test utilities
-// #[cfg(test)]
-// pub mod test_utils;
-
-// Test modules
-#[cfg(test)]
-mod tests {
-    // All view tests disabled: complex dependencies on unimplemented features
-    // pub mod admin_change_view_tests;
-    // pub mod api_view_tests;
-    // pub mod basic_view_tests;
-    // pub mod detail_view_tests;
-    // pub mod list_view_tests;
-    // pub mod viewset_tests;
-}
-
 use async_trait::async_trait;
 use reinhardt_apps::{Request, Response};
 use reinhardt_exception::{Error, Result};
@@ -95,7 +79,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-// NOTE: 以前はcrate内に`ViewError`を定義していたが、統一のため`reinhardt_exception::Error`を利用する
+// Note: 以前はcrate内に`ViewError`を定義していたが、統一のため`reinhardt_exception::Error`を利用する
 
 /// Base trait for all generic views
 #[async_trait]

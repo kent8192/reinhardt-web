@@ -14,6 +14,12 @@ pub trait ViewSet: Send + Sync {
     /// Get the basename for URL routing
     fn get_basename(&self) -> &str;
 
+    /// Get the lookup field for detail routes
+    /// Defaults to "id" if not overridden
+    fn get_lookup_field(&self) -> &str {
+        "id"
+    }
+
     /// Dispatch request to appropriate action
     async fn dispatch(&self, request: Request, action: Action) -> Result<Response>;
 
@@ -133,6 +139,7 @@ impl<T: Send + Sync> ViewSet for GenericViewSet<T> {
 /// Similar to Django REST Framework's ModelViewSet but using composition
 pub struct ModelViewSet<M, S> {
     basename: String,
+    lookup_field: String,
     _model: std::marker::PhantomData<M>,
     _serializer: std::marker::PhantomData<S>,
 }
@@ -166,9 +173,41 @@ impl<M: 'static, S: 'static> ModelViewSet<M, S> {
     pub fn new(basename: impl Into<String>) -> Self {
         Self {
             basename: basename.into(),
+            lookup_field: "id".to_string(),
             _model: std::marker::PhantomData,
             _serializer: std::marker::PhantomData,
         }
+    }
+
+    /// Set custom lookup field for this ViewSet
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_viewsets::{ModelViewSet, ViewSet};
+    /// use reinhardt_orm::Model;
+    /// use serde::{Serialize, Deserialize};
+    ///
+    /// #[derive(Debug, Clone, Serialize, Deserialize)]
+    /// struct User {
+    ///     id: Option<i64>,
+    ///     username: String,
+    /// }
+    ///
+    /// impl Model for User {
+    ///     type PrimaryKey = i64;
+    ///     fn table_name() -> &'static str { "users" }
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+    /// }
+    ///
+    /// let viewset = ModelViewSet::<User, ()>::new("users")
+    ///     .with_lookup_field("username");
+    /// assert_eq!(viewset.get_lookup_field(), "username");
+    /// ```
+    pub fn with_lookup_field(mut self, field: impl Into<String>) -> Self {
+        self.lookup_field = field.into();
+        self
     }
 
     /// Convert ViewSet to Handler with action mapping
@@ -190,6 +229,10 @@ where
 {
     fn get_basename(&self) -> &str {
         &self.basename
+    }
+
+    fn get_lookup_field(&self) -> &str {
+        &self.lookup_field
     }
 
     async fn dispatch(&self, request: Request, action: Action) -> Result<Response> {
@@ -265,6 +308,7 @@ where
 /// Demonstrates selective composition of mixins
 pub struct ReadOnlyModelViewSet<M, S> {
     basename: String,
+    lookup_field: String,
     _model: std::marker::PhantomData<M>,
     _serializer: std::marker::PhantomData<S>,
 }
@@ -298,9 +342,16 @@ impl<M: 'static, S: 'static> ReadOnlyModelViewSet<M, S> {
     pub fn new(basename: impl Into<String>) -> Self {
         Self {
             basename: basename.into(),
+            lookup_field: "id".to_string(),
             _model: std::marker::PhantomData,
             _serializer: std::marker::PhantomData,
         }
+    }
+
+    /// Set custom lookup field for this ViewSet
+    pub fn with_lookup_field(mut self, field: impl Into<String>) -> Self {
+        self.lookup_field = field.into();
+        self
     }
 
     /// Convert ViewSet to Handler with action mapping
@@ -322,6 +373,10 @@ where
 {
     fn get_basename(&self) -> &str {
         &self.basename
+    }
+
+    fn get_lookup_field(&self) -> &str {
+        &self.lookup_field
     }
 
     async fn dispatch(&self, request: Request, action: Action) -> Result<Response> {

@@ -163,13 +163,14 @@ impl DefaultRouter {
     /// let mut router = DefaultRouter::new();
     /// router.register_viewset("users", viewset);
     ///
-    /// // This creates two routes:
-    /// // - /users/ for list action
-    /// // - /users/{id}/ for detail actions
+    // This creates two routes:
+    // - /users/ for list action
+    // - /users/{id}/ for detail actions
     /// assert_eq!(router.get_routes().len(), 2);
     /// ```
     pub fn register_viewset<V: ViewSet + 'static>(&mut self, prefix: &str, viewset: Arc<V>) {
         let basename = viewset.get_basename();
+        let lookup_field = viewset.get_lookup_field();
 
         // List/Create endpoint: /prefix/
         let list_path = format!("/{}/", prefix.trim_matches('/'));
@@ -179,8 +180,8 @@ impl DefaultRouter {
                 .with_name(format!("{}-list", basename)),
         );
 
-        // Detail endpoint: /prefix/{id}/
-        let detail_path = format!("/{}/{{id}}/", prefix.trim_matches('/'));
+        // Detail endpoint: /prefix/{lookup_field}/
+        let detail_path = format!("/{}/{{{}}}/", prefix.trim_matches('/'), lookup_field);
         let detail_handler = ViewSetDetailHandler::new(viewset.clone());
         self.add_route(
             Route::new(detail_path, Arc::new(detail_handler))
@@ -197,8 +198,13 @@ impl DefaultRouter {
             };
 
             let action_path = if action.detail {
-                // Detail action: /prefix/{id}/action_name/
-                format!("/{}/{{id}}/{}/", prefix.trim_matches('/'), action_url_path)
+                // Detail action: /prefix/{lookup_field}/action_name/
+                format!(
+                    "/{}/{{{}}}/{}/",
+                    prefix.trim_matches('/'),
+                    lookup_field,
+                    action_url_path
+                )
             } else {
                 // List action: /prefix/action_name/
                 format!("/{}/{}/", prefix.trim_matches('/'), action_url_path)
@@ -243,7 +249,7 @@ impl DefaultRouter {
     /// router.register_viewset("test", viewset.clone());
     ///
     /// let url_map = router.get_action_url_map(viewset.as_ref(), "http://testserver");
-    /// // The ViewSet has no extra actions, so the map will be empty
+    // The ViewSet has no extra actions, so the map will be empty
     /// assert!(url_map.is_empty());
     /// ```
     pub fn get_action_url_map<V: ViewSet>(
@@ -252,6 +258,7 @@ impl DefaultRouter {
         base_url: &str,
     ) -> HashMap<String, String> {
         let basename = viewset.get_basename();
+        let lookup_field = viewset.get_lookup_field();
         let mut url_map = HashMap::new();
 
         // Get extra actions
@@ -264,10 +271,10 @@ impl DefaultRouter {
                 format!("{}-{}", basename, action.name)
             };
 
-            // For detail actions, we need to provide an 'id' parameter
+            // For detail actions, we need to provide a lookup_field parameter
             let mut params = HashMap::new();
             if action.detail {
-                params.insert("id".to_string(), "1".to_string());
+                params.insert(lookup_field.to_string(), "1".to_string());
             }
 
             // Try to reverse the URL
@@ -475,7 +482,7 @@ impl Router for DefaultRouter {
     /// let mut router = DefaultRouter::new();
     /// router.include("/users", users_routes, Some("users".to_string()));
     ///
-    /// // Routes are prefixed: /users/ and /users/{id}/
+    // Routes are prefixed: /users/ and /users/{id}/
     /// assert_eq!(router.get_routes().len(), 2);
     /// ```
     fn include(&mut self, prefix: &str, routes: Vec<Route>, namespace: Option<String>) {

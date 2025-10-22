@@ -9,7 +9,6 @@ use reinhardt_exception::{Error, Result};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-// NOTE: エラーは`reinhardt_exception::Error`に統一
 pub type ReverseError = Error;
 pub type ReverseResult<T> = Result<T>;
 
@@ -361,7 +360,7 @@ mod tests {
     use reinhardt_apps::{Handler, Request, Response, Result as CoreResult};
     use std::sync::Arc;
 
-    /// // Simple test handler
+    // Simple test handler
     struct TestHandler;
 
     #[async_trait]
@@ -467,7 +466,7 @@ mod tests {
         assert!(!reverser.has_route("nonexistent"));
     }
 
-    /// // Type-safe URL reversal tests
+    // Type-safe URL reversal tests
     struct HomeUrl;
     impl UrlPattern for HomeUrl {
         const NAME: &'static str = "home";

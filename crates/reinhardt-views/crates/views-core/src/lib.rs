@@ -5,8 +5,6 @@ pub mod browsable_api;
 pub mod generic;
 pub mod openapi;
 pub mod test_utils;
-// Templates are embedded resources, not a Rust module
-// pub mod templates;
 
 pub use admin::*;
 pub use browsable_api::*;

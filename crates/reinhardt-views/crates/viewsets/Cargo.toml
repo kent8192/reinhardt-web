@@ -10,6 +10,9 @@ reinhardt-di = { workspace = true }
 reinhardt-orm = { workspace = true }
 reinhardt-serializers = { workspace = true }
 reinhardt-macros = { workspace = true }
+reinhardt-auth = { workspace = true }
+reinhardt-filters = { workspace = true }
+reinhardt-pagination = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

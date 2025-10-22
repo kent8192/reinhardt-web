@@ -46,8 +46,8 @@ impl Action {
     /// # Examples
     ///
     /// ```
-    /// // Update messages
-    /// // let result = storage.update(&request).await?;
+    // Update messages
+    // let result = storage.update(&request).await?;
     /// ```
     pub fn update() -> Self {
         Self {

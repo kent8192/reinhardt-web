@@ -24,7 +24,7 @@ impl Route {
     /// use reinhardt_apps::Handler;
     /// use std::sync::Arc;
     ///
-    /// // Create a simple route (using a dummy handler for demonstration)
+    // Create a simple route (using a dummy handler for demonstration)
     /// # use async_trait::async_trait;
     /// # use reinhardt_apps::{Request, Response, Result};
     /// # struct DummyHandler;
@@ -121,18 +121,18 @@ impl Route {
     /// # }
     /// let handler = Arc::new(DummyHandler);
     ///
-    /// // With namespace and name
+    // With namespace and name
     /// let route = Route::new("/users/", handler.clone())
     ///     .with_namespace("api")
     ///     .with_name("list");
     /// assert_eq!(route.full_name(), Some("api:list".to_string()));
     ///
-    /// // With only name
+    // With only name
     /// let route = Route::new("/users/", handler.clone())
     ///     .with_name("list");
     /// assert_eq!(route.full_name(), Some("list".to_string()));
     ///
-    /// // Without name
+    // Without name
     /// let route = Route::new("/users/", handler);
     /// assert_eq!(route.full_name(), None);
     /// ```

@@ -76,11 +76,9 @@ impl AuthenticationMiddleware {
 
     /// Check if the user is authenticated
     ///
-    /// This is a placeholder implementation. In a real application,
-    /// this would check session data, JWT tokens, or other authentication mechanisms.
+    /// This is a simplified implementation for demonstration purposes.
+    /// In production, integrate with reinhardt-auth for full authentication support.
     fn is_authenticated(&self, request: &Request) -> bool {
-        // Check for authentication in headers or cookies
-        // This is a simplified implementation
         request.headers.get("authorization").is_some()
             || request.get_language_from_cookie("sessionid").is_some()
     }
@@ -137,12 +135,10 @@ impl PermissionMiddleware {
 
     /// Check if the user has the required permissions
     ///
-    /// This is a placeholder implementation. In a real application,
-    /// this would check user permissions against the required permissions.
+    /// This is a simplified implementation for demonstration purposes.
+    /// Returns `false` to demonstrate permission denial behavior.
+    /// In production, integrate with reinhardt-auth for full permission checking.
     fn has_permissions(&self, _request: &Request) -> bool {
-        // This is a simplified implementation for testing
-        // In a real app, this would check user permissions from the database
-        // For testing purposes, we'll return false to simulate missing permissions
         false
     }
 }

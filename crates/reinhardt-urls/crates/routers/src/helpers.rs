@@ -31,12 +31,12 @@ use std::sync::Arc;
 /// #         Ok(Response::ok())
 /// #     }
 /// # }
-/// // Simple path without parameters
+// Simple path without parameters
 /// let my_handler = Arc::new(DummyHandler);
 /// let route = path("/users/", my_handler.clone());
 /// assert_eq!(route.path, "/users/");
 ///
-/// // Path with parameters
+// Path with parameters
 /// let route = path("/users/{id}/", my_handler)
 ///     .with_name("user-detail");
 /// assert_eq!(route.name, Some("user-detail".to_string()));
@@ -67,7 +67,7 @@ pub fn path(pattern: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
 /// #         Ok(Response::ok())
 /// #     }
 /// # }
-/// // Regex with named groups
+// Regex with named groups
 /// let handler = Arc::new(DummyHandler);
 /// let route = re_path(r"^users/(?P<id>\d+)/$", handler)
 ///     .with_name("user-detail");
@@ -77,7 +77,7 @@ pub fn path(pattern: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
 pub fn re_path(regex: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
     let regex_str = regex.into();
 
-    /// // Convert Django-style regex to our path pattern format
+    // Convert Django-style regex to our path pattern format
     let pattern = convert_regex_to_pattern(&regex_str);
 
     Route::new(pattern, handler)
@@ -119,7 +119,7 @@ fn parse_named_group(input: &str) -> IResult<&str, String> {
     let (input, name) = take_while1(|c: char| c.is_alphanumeric() || c == '_')(input)?;
     let (input, _) = char('>')(input)?;
 
-    /// // Parse the group content, handling nested parentheses
+    // Parse the group content, handling nested parentheses
     let (input, _) = parse_group_content(input)?;
 
     Ok((input, name.to_string()))
@@ -178,7 +178,7 @@ fn parse_escaped_char(input: &str) -> IResult<&str, String> {
 
 /// Parse any character that's not part of a named group or escape sequence
 fn parse_non_group_char(input: &str) -> IResult<&str, char> {
-    /// // Match any character that doesn't start a named group or escape
+    // Match any character that doesn't start a named group or escape
     let (input, c) = anychar(input)?;
 
     if c == '(' {
