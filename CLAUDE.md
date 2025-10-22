@@ -61,6 +61,19 @@ For details about the Reinhardt project, please refer to README.md.
 - Follow Rust naming conventions (snake_case for functions, PascalCase for types)
 - Maintain clear separation of concerns
 
+### CS-3 (SHOULD): String Conversion Optimization
+
+- **MINIMIZE** the use of `.to_string()` calls
+- Prefer borrowing and string slices where possible
+- Use `String::from()`, `format!()`, or other alternatives when appropriate
+- Consider using `Cow<str>` for conditional ownership
+
+### CS-4 (MUST): Code Cleanup
+
+- **IMMEDIATELY** delete obsolete code once it is no longer needed
+- Do not leave commented-out code or unused functions
+- Remove deprecated functionality promptly
+
 ---
 
 ## Testing Best Practices
@@ -104,11 +117,17 @@ For details about the Reinhardt project, please refer to README.md.
 - If tests cannot be fully implemented, leave a `// TODO:` comment explaining why
 - **DELETE** the TODO comment when the test is implemented
 
-#### TI-2 (SHOULD): Note Comments
+#### TI-2 (MUST): Comment Usage Guidelines
 
-- Leave a `// NOTE:` comment for incomplete implementations
-- Explain what is missing and why
-- **DELETE** the NOTE comment when fully implemented
+- **TODO Comments**: Use `// TODO:` or `todo!()` macro for unimplemented features
+  - Explain what needs to be implemented and why it's pending
+  - **DELETE** when the functionality is implemented
+- **NOTE Comments**: Use `// NOTE:` for informational comments to users ONLY
+  - **DO NOT** use NOTE comments for unimplemented features
+  - Use TODO comments or `todo!()` macro instead for incomplete implementations
+- **User-Facing Placeholders**:
+  - **NEVER** use TODO or NOTE comments in user-facing code
+  - Provide actual implementations or use `todo!()` macro for compile-time errors
 
 #### TI-3 (MUST): Test Cleanup
 
@@ -149,6 +168,16 @@ For details about the Reinhardt project, please refer to README.md.
 
 ---
 
+## Database Operations
+
+### DB-1 (MUST): Layer Selection
+
+- **Basic CRUD Operations**: Use `reinhardt-orm` for table-level data operations (Create, Read, Update, Delete)
+- **Low-Level Operations**: Use `reinhardt-database` for schema management, raw queries, and database-specific operations
+- Choose the appropriate abstraction level based on the task requirements
+
+---
+
 ## Workflow
 
 ### W-1 (SHOULD): Iterative Development
@@ -162,6 +191,28 @@ For details about the Reinhardt project, please refer to README.md.
 - Consider writing tests before implementation when appropriate
 - This helps clarify requirements and edge cases
 
+### W-3 (MUST): Git Commit Policy
+
+- **NEVER** create commits without explicit user instruction
+- **NEVER** push commits without explicit user instruction
+- Always wait for user confirmation before committing changes
+- Prepare changes and inform the user, but let them decide when to commit
+
+### W-4 (MUST): Batch Script Safety
+
+- When using `sed` or bash scripts for bulk replacements:
+  1. **ALWAYS** create a dry-run script first to preview changes
+  2. Execute the dry-run and verify the scope of changes
+  3. **ONLY** proceed with actual replacement after confirming appropriateness
+- Never perform bulk changes without verification
+
+### W-5 (SHOULD): Parallel Task Execution
+
+- When tasks involve editing independent files:
+  - **USE multiple agents in parallel** to implement changes concurrently
+  - This improves efficiency and reduces overall completion time
+- Ensure tasks are truly independent before parallelizing
+
 ---
 
 ## Additional Instructions
@@ -174,11 +225,32 @@ For details about the Reinhardt project, please refer to README.md.
 
 **Critical Rules Summary:**
 
+### Code & Module System
 - ❌ NO `mod.rs` files
-- ❌ NO skeleton tests (tests must have real assertions)
-- ❌ NO saving files to project directory (use `/tmp`)
-- ❌ NO cross-crate dependencies for testing in functional crates
+- ❌ NO TODO/NOTE comments in user-facing placeholders
+- ❌ NO keeping obsolete code
+- ❌ NO excessive `.to_string()` calls
 - ✅ USE 2024 edition module system
+- ✅ DELETE old code immediately
+- ✅ USE TODO for unimplemented features or incomplete implementations, NOTE for user information only
+
+### Testing
+- ❌ NO skeleton tests (tests must have real assertions)
+- ❌ NO cross-crate dependencies for testing in functional crates
 - ✅ CLEAN UP all test artifacts
 - ✅ PLACE integration tests in `tests` crate only
 - ✅ USE TestContainers for infrastructure tests
+
+### File Management
+- ❌ NO saving files to project directory (use `/tmp`)
+- ✅ DELETE `/tmp` files when done
+
+### Workflow
+- ❌ NO commits without explicit user instruction
+- ❌ NO bulk replacements without dry-run verification
+- ✅ CREATE dry-run scripts for batch operations
+- ✅ USE parallel agents for independent file edits
+
+### Database
+- ✅ USE `reinhardt-orm` for CRUD operations
+- ✅ USE `reinhardt-database` for low-level operations
