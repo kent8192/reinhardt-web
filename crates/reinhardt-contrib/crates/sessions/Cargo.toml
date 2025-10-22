@@ -21,6 +21,16 @@ chrono = { workspace = true }
 reinhardt-orm = { workspace = true, optional = true }
 reinhardt-db = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
+sea-query = { version = "1.0.0-rc.1", features = [
+  "backend-postgres",
+  "backend-mysql",
+  "backend-sqlite",
+], optional = true }
+sea-query-binder = { version = "0.7", features = [
+  "sqlx-postgres",
+  "sqlx-mysql",
+  "sqlx-sqlite",
+], optional = true }
 tokio = { workspace = true, optional = true, features = ["fs"] }
 fs2 = { version = "0.4", optional = true }
 base64 = { version = "0.22", optional = true }
@@ -36,7 +46,13 @@ reinhardt-exception = { workspace = true, optional = true }
 
 [features]
 default = []
-database = ["reinhardt-orm", "reinhardt-db", "sqlx"]
+database = [
+  "reinhardt-orm",
+  "reinhardt-db",
+  "sqlx",
+  "sea-query",
+  "sea-query-binder",
+]
 file = ["tokio", "fs2"]
 cookie = ["base64", "aes-gcm", "rand", "hmac", "sha2"]
 middleware = ["reinhardt-http", "reinhardt-types", "reinhardt-exception"]

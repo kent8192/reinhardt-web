@@ -41,10 +41,13 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Any, AnyPool, Row};
+use sqlx::{AnyPool, Row};
 use std::sync::Arc;
 
 use super::cache::{SessionBackend, SessionError};
+
+#[cfg(feature = "database")]
+use sea_query::{Alias, ColumnDef, Expr, ExprTrait, Index, Query, SqliteQueryBuilder, Table};
 
 /// Database session model
 ///
@@ -97,17 +100,17 @@ pub struct SessionModel {
 /// use serde_json::json;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// // Initialize backend with database URL
+// Initialize backend with database URL
 /// let backend = DatabaseSessionBackend::new("sqlite::memory:").await?;
 ///
-/// // Create the sessions table
+// Create the sessions table
 /// backend.create_table().await?;
 ///
-/// // Store session with 1 hour TTL
+// Store session with 1 hour TTL
 /// let data = json!({"cart_total": 99.99});
 /// backend.save("cart_xyz", &data, Some(3600)).await?;
 ///
-/// // Check if session exists
+// Check if session exists
 /// let exists = backend.exists("cart_xyz").await?;
 /// assert!(exists);
 /// # Ok(())
@@ -129,13 +132,13 @@ impl DatabaseSessionBackend {
     /// use reinhardt_sessions::backends::DatabaseSessionBackend;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// // PostgreSQL
+    // PostgreSQL
     /// let backend = DatabaseSessionBackend::new("postgres://localhost/mydb").await?;
     ///
-    /// // MySQL
+    // MySQL
     /// let backend = DatabaseSessionBackend::new("mysql://localhost/mydb").await?;
     ///
-    /// // SQLite
+    // SQLite
     /// let backend = DatabaseSessionBackend::new("sqlite::memory:").await?;
     /// # Ok(())
     /// # }
@@ -185,26 +188,39 @@ impl DatabaseSessionBackend {
     /// # }
     /// ```
     pub async fn create_table(&self) -> Result<(), SessionError> {
-        let sql = r#"
-            CREATE TABLE IF NOT EXISTS sessions (
-                session_key VARCHAR(255) PRIMARY KEY,
-                session_data TEXT NOT NULL,
-                expire_date TIMESTAMP NOT NULL
+        let stmt = Table::create()
+            .table(Alias::new("sessions"))
+            .if_not_exists()
+            .col(
+                ColumnDef::new(Alias::new("session_key"))
+                    .string_len(255)
+                    .not_null()
+                    .primary_key(),
             )
-        "#;
+            .col(ColumnDef::new(Alias::new("session_data")).text().not_null())
+            .col(
+                ColumnDef::new(Alias::new("expire_date"))
+                    .timestamp()
+                    .not_null(),
+            )
+            .to_owned();
+        let sql = stmt.to_string(SqliteQueryBuilder);
 
-        sqlx::query(sql)
+        sqlx::query(&sql)
             .execute(&*self.pool)
             .await
             .map_err(|e| SessionError::CacheError(format!("Failed to create table: {}", e)))?;
 
         // Create index on expire_date for efficient cleanup
-        let index_sql = r#"
-            CREATE INDEX IF NOT EXISTS idx_sessions_expire_date
-            ON sessions(expire_date)
-        "#;
+        let idx = Index::create()
+            .if_not_exists()
+            .name("idx_sessions_expire_date")
+            .table(Alias::new("sessions"))
+            .col(Alias::new("expire_date"))
+            .to_owned();
+        let sql = idx.to_string(SqliteQueryBuilder);
 
-        sqlx::query(index_sql)
+        sqlx::query(&sql)
             .execute(&*self.pool)
             .await
             .map_err(|e| SessionError::CacheError(format!("Failed to create index: {}", e)))?;
@@ -226,18 +242,21 @@ impl DatabaseSessionBackend {
     /// let backend = DatabaseSessionBackend::new("sqlite::memory:").await?;
     /// backend.create_table().await?;
     ///
-    /// // Clean up expired sessions
+    // Clean up expired sessions
     /// let deleted_count = backend.cleanup_expired().await?;
     /// println!("Deleted {} expired sessions", deleted_count);
     /// # Ok(())
     /// # }
     /// ```
     pub async fn cleanup_expired(&self) -> Result<u64, SessionError> {
-        let sql = "DELETE FROM sessions WHERE expire_date < ?";
         let now = Utc::now();
+        let stmt = Query::delete()
+            .from_table(Alias::new("sessions"))
+            .and_where(Expr::col(Alias::new("expire_date")).lt(now.to_rfc3339()))
+            .to_owned();
+        let sql = stmt.to_string(SqliteQueryBuilder);
 
-        let result = sqlx::query(sql)
-            .bind(now)
+        let result = sqlx::query(&sql)
             .execute(&*self.pool)
             .await
             .map_err(|e| SessionError::CacheError(format!("Failed to cleanup sessions: {}", e)))?;
@@ -252,10 +271,14 @@ impl SessionBackend for DatabaseSessionBackend {
     where
         T: for<'de> Deserialize<'de> + Send,
     {
-        let sql = "SELECT session_data, expire_date FROM sessions WHERE session_key = ?";
+        let stmt = Query::select()
+            .columns([Alias::new("session_data"), Alias::new("expire_date")])
+            .from(Alias::new("sessions"))
+            .and_where(Expr::col(Alias::new("session_key")).eq(session_key))
+            .to_owned();
+        let sql = stmt.to_string(SqliteQueryBuilder);
 
-        let row = sqlx::query(sql)
-            .bind(session_key)
+        let row = sqlx::query(&sql)
             .fetch_optional(&*self.pool)
             .await
             .map_err(|e| SessionError::CacheError(format!("Failed to load session: {}", e)))?;
@@ -263,9 +286,13 @@ impl SessionBackend for DatabaseSessionBackend {
         match row {
             Some(row) => {
                 // Check if session has expired
-                let expire_date: DateTime<Utc> = row
+                let expire_date_str: String = row
                     .try_get("expire_date")
                     .map_err(|e| SessionError::CacheError(format!("Invalid expire_date: {}", e)))?;
+
+                let expire_date = DateTime::parse_from_rfc3339(&expire_date_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now());
 
                 if expire_date < Utc::now() {
                     // Session expired, delete it
@@ -308,12 +335,27 @@ impl SessionBackend for DatabaseSessionBackend {
         // For simplicity, we'll delete then insert
         let _ = self.delete(session_key).await;
 
-        let sql = "INSERT INTO sessions (session_key, session_data, expire_date) VALUES (?, ?, ?)";
+        let stmt = Query::insert()
+            .into_table(Alias::new("sessions"))
+            .columns([
+                Alias::new("session_key"),
+                Alias::new("session_data"),
+                Alias::new("expire_date"),
+            ])
+            .values(
+                [
+                    Expr::val(session_key),
+                    Expr::val(session_data),
+                    Expr::val(expire_date.to_rfc3339()),
+                ]
+                .into_iter()
+                .collect::<Vec<Expr>>(),
+            )
+            .unwrap()
+            .to_owned();
+        let sql = stmt.to_string(SqliteQueryBuilder);
 
-        sqlx::query(sql)
-            .bind(session_key)
-            .bind(session_data)
-            .bind(expire_date)
+        sqlx::query(&sql)
             .execute(&*self.pool)
             .await
             .map_err(|e| SessionError::CacheError(format!("Failed to save session: {}", e)))?;
@@ -322,10 +364,13 @@ impl SessionBackend for DatabaseSessionBackend {
     }
 
     async fn delete(&self, session_key: &str) -> Result<(), SessionError> {
-        let sql = "DELETE FROM sessions WHERE session_key = ?";
+        let stmt = Query::delete()
+            .from_table(Alias::new("sessions"))
+            .and_where(Expr::col(Alias::new("session_key")).eq(session_key))
+            .to_owned();
+        let sql = stmt.to_string(SqliteQueryBuilder);
 
-        sqlx::query(sql)
-            .bind(session_key)
+        sqlx::query(&sql)
             .execute(&*self.pool)
             .await
             .map_err(|e| SessionError::CacheError(format!("Failed to delete session: {}", e)))?;
@@ -334,12 +379,16 @@ impl SessionBackend for DatabaseSessionBackend {
     }
 
     async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
-        let sql = "SELECT 1 FROM sessions WHERE session_key = ? AND expire_date > ?";
         let now = Utc::now();
+        let stmt = Query::select()
+            .expr(Expr::value(1))
+            .from(Alias::new("sessions"))
+            .and_where(Expr::col(Alias::new("session_key")).eq(session_key))
+            .and_where(Expr::col(Alias::new("expire_date")).gt(now.to_rfc3339()))
+            .to_owned();
+        let sql = stmt.to_string(SqliteQueryBuilder);
 
-        let row = sqlx::query(sql)
-            .bind(session_key)
-            .bind(now)
+        let row = sqlx::query(&sql)
             .fetch_optional(&*self.pool)
             .await
             .map_err(|e| {
