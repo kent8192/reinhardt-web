@@ -31,14 +31,14 @@ use serde::{Deserialize, Serialize};
 /// ```rust
 /// use reinhardt_migrations::operations::special::RunSQL;
 ///
-/// // Simple SQL execution
+// Simple SQL execution
 /// let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)");
 ///
-/// // With reverse SQL for rollback
+// With reverse SQL for rollback
 /// let sql_reversible = RunSQL::new("CREATE INDEX idx_email ON users(email)")
 ///     .with_reverse_sql("DROP INDEX idx_email");
 ///
-/// // Multiple statements
+// Multiple statements
 /// let multi_sql = RunSQL::new_multi(vec![
 ///     "INSERT INTO roles (name) VALUES ('admin')".to_string(),
 ///     "INSERT INTO roles (name) VALUES ('user')".to_string(),
@@ -210,7 +210,7 @@ impl StateOperation {
 /// ```rust
 /// use reinhardt_migrations::operations::special::RunCode;
 ///
-/// // Create a code operation with description
+// Create a code operation with description
 /// let code = RunCode::new("Update user emails", |_| {
 ///     // In a real implementation, this would receive database access
 ///     println!("Updating emails...");

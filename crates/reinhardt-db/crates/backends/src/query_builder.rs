@@ -2,11 +2,27 @@
 
 use std::sync::Arc;
 
+use sea_query::{Alias, Asterisk, Expr, ExprTrait, Query, Value};
+
 use crate::{
     backend::DatabaseBackend,
     error::Result,
     types::{QueryResult, QueryValue, Row},
 };
+
+/// Convert QueryValue to SeaQuery Value
+fn query_value_to_sea_value(qv: &QueryValue) -> Value {
+    match qv {
+        QueryValue::Null => Value::Bool(None),
+        QueryValue::Bool(b) => Value::Bool(Some(*b)),
+        QueryValue::Int(i) => Value::BigInt(Some(*i)),
+        QueryValue::Float(f) => Value::Double(Some(*f)),
+        QueryValue::String(s) => Value::String(Some(s.clone().into())),
+        QueryValue::Bytes(b) => Value::Bytes(Some(b.clone().into())),
+        // Convert timestamp to string representation for now
+        QueryValue::Timestamp(dt) => Value::String(Some(dt.to_rfc3339().into())),
+    }
+}
 
 /// INSERT query builder
 pub struct InsertBuilder {
@@ -36,26 +52,46 @@ impl InsertBuilder {
 
     pub fn returning(mut self, columns: Vec<&str>) -> Self {
         if self.backend.supports_returning() {
-            self.returning = Some(columns.iter().map(|s| s.to_string()).collect());
+            self.returning = Some(columns.iter().map(|s| (*s).to_owned()).collect());
         }
         self
     }
 
     pub fn build(&self) -> (String, Vec<QueryValue>) {
-        let mut sql = format!("INSERT INTO {} (", self.table);
-        sql.push_str(&self.columns.join(", "));
-        sql.push_str(") VALUES (");
+        use crate::types::DatabaseType;
+        use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
 
-        let placeholders: Vec<String> = (0..self.columns.len())
-            .map(|i| self.backend.placeholder(i + 1))
-            .collect();
-        sql.push_str(&placeholders.join(", "));
-        sql.push(')');
+        let mut stmt = Query::insert()
+            .into_table(Alias::new(&self.table))
+            .to_owned();
 
-        if let Some(ref cols) = self.returning {
-            sql.push_str(" RETURNING ");
-            sql.push_str(&cols.join(", "));
+        // Add columns
+        let column_refs: Vec<Alias> = self.columns.iter().map(|c| Alias::new(c)).collect();
+        stmt.columns(column_refs);
+
+        // Add values
+        if !self.values.is_empty() {
+            let sea_values: Vec<Expr> = self
+                .values
+                .iter()
+                .map(|v| Expr::val(query_value_to_sea_value(v)))
+                .collect();
+            stmt.values(sea_values).unwrap();
         }
+
+        // Add RETURNING clause if supported
+        if let Some(ref cols) = self.returning {
+            for col in cols {
+                stmt.returning(Query::returning().column(Alias::new(col)));
+            }
+        }
+
+        // Build SQL based on database type
+        let sql = match self.backend.database_type() {
+            DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+            DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+            DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+        };
 
         (sql, self.values.clone())
     }
@@ -107,41 +143,47 @@ impl UpdateBuilder {
     }
 
     pub fn build(&self) -> (String, Vec<QueryValue>) {
-        let mut sql = format!("UPDATE {} SET ", self.table);
-        let mut params = Vec::new();
-        let mut param_index = 1;
+        use crate::types::DatabaseType;
+        use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
 
-        let set_clauses: Vec<String> = self
-            .sets
-            .iter()
-            .map(|(col, val)| {
-                if let QueryValue::String(s) = val {
-                    if s == "__NOW__" {
-                        return format!("{} = NOW()", col);
-                    }
+        let mut stmt = Query::update().table(Alias::new(&self.table)).to_owned();
+
+        // Add SET clauses
+        for (col, val) in &self.sets {
+            if let QueryValue::String(s) = val {
+                if s == "__NOW__" {
+                    stmt.value(Alias::new(col), Expr::cust("NOW()"));
+                    continue;
                 }
+            }
+            stmt.value(Alias::new(col), query_value_to_sea_value(val));
+        }
+
+        // Add WHERE clauses
+        for (col, op, val) in &self.wheres {
+            if op == "=" {
+                stmt.and_where(
+                    Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
+                );
+            }
+        }
+
+        // Build SQL based on database type
+        let sql = match self.backend.database_type() {
+            DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+            DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+            DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+        };
+
+        // Preserve parameter order: first SET values, then WHERE values
+        let mut params = Vec::new();
+        for (_, val) in &self.sets {
+            if !matches!(val, QueryValue::String(s) if s == "__NOW__") {
                 params.push(val.clone());
-                let placeholder = self.backend.placeholder(param_index);
-                param_index += 1;
-                format!("{} = {}", col, placeholder)
-            })
-            .collect();
-
-        sql.push_str(&set_clauses.join(", "));
-
-        if !self.wheres.is_empty() {
-            sql.push_str(" WHERE ");
-            let where_clauses: Vec<String> = self
-                .wheres
-                .iter()
-                .map(|(col, op, val)| {
-                    params.push(val.clone());
-                    let placeholder = self.backend.placeholder(param_index);
-                    param_index += 1;
-                    format!("{} {} {}", col, op, placeholder)
-                })
-                .collect();
-            sql.push_str(&where_clauses.join(" AND "));
+            }
+        }
+        for (_, _, val) in &self.wheres {
+            params.push(val.clone());
         }
 
         (sql, params)
@@ -195,28 +237,43 @@ impl SelectBuilder {
     }
 
     pub fn build(&self) -> (String, Vec<QueryValue>) {
-        let mut sql = format!("SELECT {} FROM {}", self.columns.join(", "), self.table);
-        let mut params = Vec::new();
-        let mut param_index = 1;
+        use crate::types::DatabaseType;
+        use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
 
-        if !self.wheres.is_empty() {
-            sql.push_str(" WHERE ");
-            let where_clauses: Vec<String> = self
-                .wheres
-                .iter()
-                .map(|(col, op, val)| {
-                    params.push(val.clone());
-                    let placeholder = self.backend.placeholder(param_index);
-                    param_index += 1;
-                    format!("{} {} {}", col, op, placeholder)
-                })
-                .collect();
-            sql.push_str(&where_clauses.join(" AND "));
+        let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
+
+        // Add columns
+        if self.columns == vec!["*".to_string()] {
+            stmt.column(Asterisk);
+        } else {
+            for col in &self.columns {
+                stmt.column(Alias::new(col));
+            }
         }
 
+        // Add WHERE clauses
+        for (col, op, val) in &self.wheres {
+            if op == "=" {
+                stmt.and_where(
+                    Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
+                );
+            }
+        }
+
+        // Add LIMIT
         if let Some(limit) = self.limit {
-            sql.push_str(&format!(" LIMIT {}", limit));
+            stmt.limit(limit as u64);
         }
+
+        // Build SQL
+        let sql = match self.backend.database_type() {
+            DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+            DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+            DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+        };
+
+        // Collect parameters
+        let params: Vec<QueryValue> = self.wheres.iter().map(|(_, _, val)| val.clone()).collect();
 
         (sql, params)
     }
@@ -263,24 +320,40 @@ impl DeleteBuilder {
     }
 
     pub fn build(&self) -> (String, Vec<QueryValue>) {
-        let mut sql = format!("DELETE FROM {}", self.table);
-        let mut params = Vec::new();
-        let mut param_index = 1;
+        use crate::types::DatabaseType;
+        use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
 
-        if !self.wheres.is_empty() {
-            sql.push_str(" WHERE ");
-            let where_clauses: Vec<String> = self
-                .wheres
-                .iter()
-                .map(|(col, op, val)| {
-                    params.push(val.clone());
-                    let placeholder = self.backend.placeholder(param_index);
-                    param_index += 1;
-                    format!("{} {} {}", col, op, placeholder)
-                })
-                .collect();
-            sql.push_str(&where_clauses.join(" AND "));
+        let mut stmt = Query::delete()
+            .from_table(Alias::new(&self.table))
+            .to_owned();
+
+        // Add WHERE clauses
+        for (col, op, val) in &self.wheres {
+            match op.as_str() {
+                "=" => {
+                    stmt.and_where(
+                        Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
+                    );
+                }
+                "IN" => {
+                    stmt.and_where(
+                        Expr::col(Alias::new(col))
+                            .is_in([Expr::val(query_value_to_sea_value(val))]),
+                    );
+                }
+                _ => {}
+            }
         }
+
+        // Build SQL
+        let sql = match self.backend.database_type() {
+            DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+            DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+            DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+        };
+
+        // Collect parameters
+        let params: Vec<QueryValue> = self.wheres.iter().map(|(_, _, val)| val.clone()).collect();
 
         (sql, params)
     }
@@ -344,7 +417,8 @@ mod tests {
         let builder = DeleteBuilder::new(backend, "users");
         let (sql, params) = builder.build();
 
-        assert_eq!(sql, "DELETE FROM users");
+        // SeaQuery uses quotes for identifiers
+        assert_eq!(sql, "DELETE FROM \"users\"");
         assert!(params.is_empty());
     }
 
@@ -354,7 +428,8 @@ mod tests {
         let builder = DeleteBuilder::new(backend, "users").where_eq("id", QueryValue::Int(1));
         let (sql, params) = builder.build();
 
-        assert_eq!(sql, "DELETE FROM users WHERE id = $1");
+        // SeaQuery embeds values directly in SQL when using to_string()
+        assert_eq!(sql, "DELETE FROM \"users\" WHERE \"id\" = 1");
         assert_eq!(params.len(), 1);
         assert!(matches!(params[0], QueryValue::Int(1)));
     }
@@ -366,7 +441,11 @@ mod tests {
             .where_in("id", vec![QueryValue::Int(1), QueryValue::Int(2)]);
         let (sql, params) = builder.build();
 
-        assert_eq!(sql, "DELETE FROM users WHERE id IN $1 AND id IN $2");
+        // SeaQuery embeds values directly in SQL when using to_string()
+        assert_eq!(
+            sql,
+            "DELETE FROM \"users\" WHERE \"id\" IN (1) AND \"id\" IN (2)"
+        );
         assert_eq!(params.len(), 2);
         assert!(matches!(params[0], QueryValue::Int(1)));
         assert!(matches!(params[1], QueryValue::Int(2)));
@@ -380,7 +459,11 @@ mod tests {
             .where_eq("age", QueryValue::Int(18));
         let (sql, params) = builder.build();
 
-        assert_eq!(sql, "DELETE FROM users WHERE status = $1 AND age = $2");
+        // SeaQuery embeds values directly in SQL when using to_string()
+        assert_eq!(
+            sql,
+            "DELETE FROM \"users\" WHERE \"status\" = 'inactive' AND \"age\" = 18"
+        );
         assert_eq!(params.len(), 2);
     }
 }

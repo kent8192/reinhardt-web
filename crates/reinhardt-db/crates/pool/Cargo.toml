@@ -7,7 +7,8 @@ license.workspace = true
 [dependencies]
 reinhardt-di = { workspace = true }
 sqlx = { version = "0.8", features = [
-  "runtime-tokio-rustls",
+  "runtime-tokio",
+  "chrono",
   "postgres",
   "mysql",
   "sqlite",

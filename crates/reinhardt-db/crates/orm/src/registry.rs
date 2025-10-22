@@ -354,7 +354,7 @@ impl MapperRegistry {
 mod typed_tests {
     use super::*;
 
-    /// // Test entity types
+    // Test entity types
     struct User;
     impl EntityType for User {
         const NAME: &'static str = "User";

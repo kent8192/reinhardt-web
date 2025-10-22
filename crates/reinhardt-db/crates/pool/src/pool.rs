@@ -159,7 +159,7 @@ where
     ///     .await
     ///     .unwrap();
     ///
-    /// // Acquire a connection
+    // Acquire a connection
     /// let conn = pool.acquire().await;
     /// assert!(conn.is_ok());
     /// # }
@@ -235,7 +235,7 @@ impl ConnectionPool<Postgres> {
     ///     .await
     ///     .unwrap();
     ///
-    /// // Recreate the pool
+    // Recreate the pool
     /// let result = pool.recreate().await;
     /// assert!(result.is_ok());
     /// # }
@@ -276,7 +276,7 @@ impl ConnectionPool<MySql> {
     ///     .await
     ///     .unwrap();
     ///
-    /// // Recreate the pool
+    // Recreate the pool
     /// let result = pool.recreate().await;
     /// assert!(result.is_ok());
     /// # }
@@ -317,7 +317,7 @@ impl ConnectionPool<Sqlite> {
     ///     .await
     ///     .unwrap();
     ///
-    /// // Recreate the pool
+    // Recreate the pool
     /// let result = pool.recreate().await;
     /// assert!(result.is_ok());
     /// # }

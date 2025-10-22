@@ -34,15 +34,6 @@ impl DatabaseUrl {
     }
 }
 
-/// MySQL connection pool (placeholder)
-pub struct MySqlPool;
-
-/// PostgreSQL connection pool (placeholder)
-pub struct PostgresPool;
-
-/// SQLite connection pool (placeholder)
-pub struct SqlitePool;
-
 /// MySQL pool manager
 pub struct MySqlManager {
     _config: PoolConfig,

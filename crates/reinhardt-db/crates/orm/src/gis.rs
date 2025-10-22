@@ -365,7 +365,7 @@ impl CoordinateTransform {
     /// let transform = CoordinateTransform::new(4326, 3857);
     /// assert_eq!(transform.from_srid, 4326); // WGS 84
     /// assert_eq!(transform.to_srid, 3857);   // Web Mercator
-    /// // Converts GPS coordinates to map projection
+    // Converts GPS coordinates to map projection
     /// ```
     pub fn new(from_srid: i32, to_srid: i32) -> Self {
         Self { from_srid, to_srid }
@@ -418,7 +418,7 @@ fn wgs84_to_web_mercator(point: &Point) -> Point {
     let lon = point.x;
     let lat = point.y;
 
-    /// // Clamp latitude to avoid infinity
+    // Clamp latitude to avoid infinity
     let lat = lat.clamp(-85.0511, 85.0511);
 
     let x = lon.to_radians() * EARTH_RADIUS;
@@ -460,7 +460,7 @@ impl GiSTIndex {
     ///
     /// let index = GiSTIndex::new("location");
     /// assert_eq!(index.column, "location");
-    /// // GiST indexes enable fast spatial queries
+    // GiST indexes enable fast spatial queries
     /// ```
     pub fn new(column: impl Into<String>) -> Self {
         Self {
@@ -501,7 +501,7 @@ impl Distance {
     /// use reinhardt_orm::gis::{Distance, DistanceUnit};
     ///
     /// let distance = Distance::new(1500.0, DistanceUnit::Meters);
-    /// // Represents 1.5 kilometers
+    // Represents 1.5 kilometers
     /// ```
     pub fn new(value: f64, unit: DistanceUnit) -> Self {
         Self { value, unit }
@@ -616,7 +616,7 @@ mod tests {
         assert!(sql.contains("POINT(10 20)"));
     }
 
-    /// // Additional comprehensive GIS tests
+    // Additional comprehensive GIS tests
     #[test]
     fn test_point_with_custom_srid() {
         let point = Point::with_srid(10.0, 20.0, 3857);

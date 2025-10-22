@@ -81,7 +81,7 @@ impl When {
     ///     Q::new().filter("status", "active"),
     ///     AnnotationValue::Value(Value::Int(1))
     /// );
-    /// // WHEN status = 'active' THEN 1
+    // WHEN status = 'active' THEN 1
     /// ```
     pub fn new(condition: Q, then: AnnotationValue) -> Self {
         Self { condition, then }
@@ -285,7 +285,7 @@ mod annotation_extended_tests {
     use crate::expressions::{F, Q};
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_aggregate_alias() {
         // Django: Author.objects.alias(other_age=F("age")).aggregate(Sum("other_age"))
         // Note: This tests error handling - cannot aggregate over alias
@@ -306,7 +306,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_aggregate_alias_1() {
         // Test aggregate with different alias
         use crate::aggregation::Aggregate;
@@ -326,7 +326,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_aggregate_over_annotation() {
         // Django: Author.objects.annotate(other_age=F("age")).aggregate(Sum("other_age"))
         // Test aggregating over an annotated field
@@ -350,7 +350,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_aggregate_over_annotation_1() {
         // Test aggregate over annotated field with different aggregate function
         use crate::aggregation::Aggregate;
@@ -370,7 +370,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_aggregate_over_full_expression_annotation() {
         // Test aggregate over complex expression annotation
         use crate::aggregation::Aggregate;
@@ -390,7 +390,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_aggregate_over_full_expression_annotation_1() {
         // Test aggregate over full expression with MIN
         use crate::aggregation::Aggregate;
@@ -410,7 +410,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_after_values() {
         // Test using alias after values() call
         use crate::expressions::F;
@@ -429,7 +429,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_after_values_1() {
         // Test alias after values_list()
         use crate::expressions::F;
@@ -448,7 +448,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_annotate_with_aggregation() {
         // Django: Book.objects.alias(rating_count_alias=Count("rating"))
         //                    .annotate(rating_count=F("rating_count_alias"))
@@ -469,7 +469,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_annotate_with_aggregation_1() {
         // Test alias with different aggregation function
         use crate::aggregation::Aggregate;
@@ -489,7 +489,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_annotation_expression() {
         // Test alias with expression annotation
         use crate::expressions::F;
@@ -506,7 +506,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_annotation_expression_1() {
         // Test alias with complex expression
         use crate::expressions::F;
@@ -523,7 +523,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_default_alias_expression() {
         // Test default alias behavior
         use crate::expressions::F;
@@ -540,7 +540,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_default_alias_expression_1() {
         // Test multiple default aliases
         use crate::expressions::F;
@@ -562,7 +562,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_filtered_relation_sql_injection() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -570,7 +570,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_filtered_relation_sql_injection_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -578,7 +578,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_filtered_relation_sql_injection_2() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -586,7 +586,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_alias_filtered_relation_sql_injection_3() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -594,7 +594,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotate_exists() {
         // Test annotate with EXISTS subquery
         use crate::expressions::{Exists, Subquery};
@@ -619,7 +619,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotate_exists_1() {
         // Test annotate with different EXISTS condition
         use crate::query::QuerySet;
@@ -643,7 +643,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotate_with_aggregation() {
         // Test annotate combined with aggregation
         use crate::aggregation::Aggregate;
@@ -663,7 +663,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotate_with_aggregation_1() {
         // Test annotate with COUNT aggregation
         use crate::aggregation::Aggregate;
@@ -681,7 +681,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_aggregate_with_m2o() {
         // Test annotation with many-to-one aggregate
         use crate::aggregation::Aggregate;
@@ -698,7 +698,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_aggregate_with_m2o_1() {
         // Test annotation with different many-to-one aggregate
         use crate::aggregation::Aggregate;
@@ -715,7 +715,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_and_alias_filter_in_subquery() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -723,7 +723,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_and_alias_filter_in_subquery_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -731,7 +731,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_and_alias_filter_related_in_subquery() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -739,7 +739,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_and_alias_filter_related_in_subquery_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -747,7 +747,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_exists_aggregate_values_chaining() {
         // Django: Book.objects.values("publisher")
         //                     .annotate(has_authors=Exists(...), max_pubdate=Max("pubdate"))
@@ -769,7 +769,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_exists_aggregate_values_chaining_1() {
         // Test EXISTS with aggregate chaining
         use crate::aggregation::Aggregate;
@@ -800,7 +800,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_filter_with_subquery() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -808,7 +808,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_filter_with_subquery_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -816,7 +816,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_in_f_grouped_by_annotation() {
         // Test F expression referencing annotation in GROUP BY
         use crate::aggregation::Aggregate;
@@ -840,7 +840,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_in_f_grouped_by_annotation_1() {
         // Test F expression with different grouping
         use crate::aggregation::Aggregate;
@@ -864,7 +864,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_subquery_and_aggregate_values_chaining() {
         // Django: Book.objects.annotate(pub_year=ExtractYear("pubdate"))
         //                     .values("pub_year")
@@ -885,7 +885,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_annotation_subquery_and_aggregate_values_chaining_1() {
         // Test subquery with aggregate in values chain
         use crate::aggregation::Aggregate;
@@ -916,7 +916,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_arguments_must_be_expressions() {
         // Test that annotation arguments are expressions
         use crate::expressions::F;
@@ -933,7 +933,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_arguments_must_be_expressions_1() {
         // Test multiple expression arguments
         use crate::expressions::F;
@@ -955,7 +955,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_boolean_value_annotation() {
         // Test annotation with boolean value
         use crate::expressions::F;
@@ -972,7 +972,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_boolean_value_annotation_1() {
         // Test boolean annotation with filter
         use crate::expressions::F;
@@ -995,7 +995,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_chaining_annotation_filter_with_m2m() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1003,7 +1003,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_chaining_annotation_filter_with_m2m_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1011,7 +1011,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_column_field_ordering() {
         // Test column field ordering in SELECT clause
         use crate::expressions::F;
@@ -1034,7 +1034,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_column_field_ordering_1() {
         // Test different column ordering
         use crate::expressions::F;
@@ -1053,7 +1053,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_column_field_ordering_with_deferred() {
         // Test column ordering with deferred fields
         use crate::expressions::F;
@@ -1072,7 +1072,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_column_field_ordering_with_deferred_1() {
         // Test deferred fields with multiple annotations
         use crate::expressions::F;
@@ -1091,7 +1091,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_combined_expression_annotation_with_aggregation() {
         // Django: Book.objects.annotate(
         //             combined=ExpressionWrapper(Value(3) * Value(4), ...),
@@ -1117,7 +1117,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_combined_expression_annotation_with_aggregation_1() {
         // Test combined expression with different aggregation
         use crate::aggregation::Aggregate;
@@ -1140,7 +1140,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_combined_f_expression_annotation_with_aggregation() {
         // Django: Book.objects.annotate(
         //             combined=ExpressionWrapper(F("price") * F("pages"), ...),
@@ -1166,7 +1166,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_combined_f_expression_annotation_with_aggregation_1() {
         // Test F expression with MAX aggregation
         use crate::aggregation::Aggregate;
@@ -1189,7 +1189,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_distinct_on_alias() {
         // Django: Book.objects.alias(rating_alias=F("rating") - 1).distinct("rating_alias")
         // Note: This tests error handling - alias cannot be used in distinct()
@@ -1209,7 +1209,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_distinct_on_alias_1() {
         // Test distinct with different alias
         use crate::expressions::F;
@@ -1228,7 +1228,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_distinct_on_with_annotation() {
         // Django: Employee.objects.annotate(name_lower=Lower("last_name"))
         //                         .distinct("name_lower")
@@ -1250,7 +1250,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_distinct_on_with_annotation_1() {
         // Test distinct with multiple annotated fields
         use crate::expressions::F;
@@ -1273,7 +1273,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_empty_expression_annotation() {
         // Test annotation with empty/simple expression
         use crate::expressions::F;
@@ -1290,7 +1290,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_empty_expression_annotation_1() {
         // Test annotation with minimal expression
         use crate::expressions::F;
@@ -1307,7 +1307,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_agg_with_double_f() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1315,7 +1315,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_agg_with_double_f_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1323,7 +1323,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_alias_agg_with_double_f() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1331,7 +1331,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_alias_agg_with_double_f_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1339,7 +1339,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_alias_with_double_f() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1347,7 +1347,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_alias_with_double_f_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1355,7 +1355,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_alias_with_f() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1363,7 +1363,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_alias_with_f_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1371,7 +1371,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_annotation() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1379,7 +1379,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_annotation_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1387,7 +1387,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_annotation_with_double_f() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1395,7 +1395,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_annotation_with_double_f_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1403,7 +1403,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_annotation_with_f() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1411,7 +1411,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_annotation_with_f_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1419,7 +1419,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_decimal_annotation() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1427,7 +1427,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_decimal_annotation_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1435,7 +1435,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_wrong_annotation() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1443,7 +1443,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_filter_wrong_annotation_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1451,7 +1451,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_full_expression_annotation() {
         // Test full expression as annotation
         use crate::expressions::F;
@@ -1468,7 +1468,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_full_expression_annotation_1() {
         // Test complex full expression
         use crate::expressions::F;
@@ -1491,7 +1491,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_full_expression_annotation_with_aggregation() {
         // Test full expression annotation combined with aggregation
         use crate::aggregation::Aggregate;
@@ -1514,7 +1514,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_full_expression_annotation_with_aggregation_1() {
         // Test full expression with COUNT aggregation
         use crate::aggregation::Aggregate;
@@ -1537,7 +1537,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_full_expression_wrapped_annotation() {
         // Test wrapped expression annotation
         use crate::expressions::F;
@@ -1554,7 +1554,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_full_expression_wrapped_annotation_1() {
         // Test complex wrapped expression
         use crate::expressions::F;
@@ -1571,7 +1571,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_grouping_by_q_expression_annotation() {
         // Test grouping by Q expression annotation
         use crate::aggregation::Aggregate;
@@ -1595,7 +1595,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_grouping_by_q_expression_annotation_1() {
         // Test different Q expression grouping
         use crate::aggregation::Aggregate;
@@ -1619,7 +1619,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_joined_alias_annotation() {
         // Test annotation with joined relation
         use crate::expressions::F;
@@ -1636,7 +1636,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_joined_alias_annotation_1() {
         // Test different joined annotation
         use crate::expressions::F;
@@ -1653,7 +1653,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_joined_annotation() {
         // Test simple joined annotation
         use crate::expressions::F;
@@ -1670,7 +1670,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_joined_annotation_1() {
         // Test joined annotation with different relation
         use crate::expressions::F;
@@ -1687,7 +1687,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_joined_transformed_annotation() {
         // Test joined annotation with transformation
         use crate::expressions::F;
@@ -1704,7 +1704,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_joined_transformed_annotation_1() {
         // Test different joined transformation
         use crate::expressions::F;
@@ -1721,7 +1721,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_order_by_aggregate() {
         // Test ordering by aggregate
         use crate::aggregation::Aggregate;
@@ -1741,7 +1741,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_order_by_aggregate_1() {
         // Test ordering by different aggregate
         use crate::aggregation::Aggregate;
@@ -1761,7 +1761,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_order_by_alias() {
         // Django: Author.objects.alias(other_age=F("age")).order_by("other_age")
         use crate::expressions::F;
@@ -1780,7 +1780,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_order_by_alias_1() {
         // Test order by different alias
         use crate::expressions::F;
@@ -1799,7 +1799,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_order_by_alias_aggregate() {
         // Django: Author.objects.values("age")
         //                       .alias(age_count=Count("age"))
@@ -1821,7 +1821,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_order_by_alias_aggregate_1() {
         // Test order by aggregate with different ordering
         use crate::aggregation::Aggregate;
@@ -1840,7 +1840,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_order_by_annotation() {
         // Django: Author.objects.annotate(other_age=F("age")).order_by("other_age")
         use crate::expressions::F;
@@ -1859,7 +1859,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_order_by_annotation_1() {
         // Test order by multiple annotations
         use crate::expressions::F;
@@ -1882,7 +1882,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_q_expression_annotation_with_aggregation() {
         // Test Q expression annotation with aggregation
         use crate::aggregation::Aggregate;
@@ -1904,7 +1904,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_q_expression_annotation_with_aggregation_1() {
         // Test Q expression with different aggregation
         use crate::aggregation::Aggregate;
@@ -1926,7 +1926,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_raw_sql_with_inherited_field() {
         // Test raw SQL annotation with inherited field
         use crate::expressions::F;
@@ -1942,7 +1942,7 @@ mod annotation_extended_tests {
     }
 
     #[test]
-    /// // From: Django/annotations
+    // From: Django/annotations
     fn test_raw_sql_with_inherited_field_1() {
         // Test raw SQL with different inherited field
         use crate::expressions::F;

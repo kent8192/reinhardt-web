@@ -10,6 +10,16 @@ description = "Database abstraction layer for Reinhardt framework"
 [dependencies]
 async-trait = "0.1"
 chrono = { workspace = true }
+sea-query = { version = "1.0.0-rc.1", features = [
+  "backend-postgres",
+  "backend-mysql",
+  "backend-sqlite",
+] }
+sea-query-binder = { version = "0.7", features = [
+  "sqlx-postgres",
+  "sqlx-mysql",
+  "sqlx-sqlite",
+] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sqlx = { version = "0.8", features = ["runtime-tokio", "chrono"] }

@@ -253,6 +253,8 @@ A powerful Object-Relational Mapping system inspired by Django's ORM and SQLAlch
 ## Planned
 
 ### Migration System
+
+Migration functionality is provided by the separate `reinhardt-migrations` crate, which includes:
 - Migration generation from model changes
 - Migration dependency resolution
 - Forward and backward migration execution

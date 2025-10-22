@@ -203,7 +203,7 @@ impl MigrationLoader {
     /// loader.load_disk().unwrap();
     ///
     /// let migrations = loader.get_app_migrations("myapp");
-    /// // Returns all migrations for the app
+    // Returns all migrations for the app
     /// ```
     pub fn get_app_migrations(&self, app_label: &str) -> Vec<&Migration> {
         self.disk_migrations
@@ -225,7 +225,7 @@ impl MigrationLoader {
     /// loader.load_disk().unwrap();
     ///
     /// let all_migrations = loader.get_all_migrations();
-    /// // Returns vector of all loaded migrations
+    // Returns vector of all loaded migrations
     /// ```
     pub fn get_all_migrations(&self) -> Vec<&Migration> {
         self.disk_migrations.values().collect()
@@ -245,7 +245,7 @@ impl MigrationLoader {
     /// loader.load_disk().unwrap();
     ///
     /// let state = loader.build_project_state().unwrap();
-    /// // State now contains all model definitions from applied migrations
+    // State now contains all model definitions from applied migrations
     /// ```
     pub fn build_project_state(&self) -> Result<ProjectState> {
         let mut state = ProjectState::new();
@@ -309,7 +309,7 @@ impl MigrationLoader {
     /// loader.load_disk().unwrap();
     ///
     /// let migrations = loader.get_migrations_by_prefix("myapp", "0001");
-    /// // Returns migrations like "0001_initial", "0001_add_field", etc.
+    // Returns migrations like "0001_initial", "0001_add_field", etc.
     /// ```
     pub fn get_migrations_by_prefix(&self, app_label: &str, prefix: &str) -> Vec<&Migration> {
         self.disk_migrations
@@ -331,7 +331,7 @@ impl MigrationLoader {
     /// loader.load_disk().unwrap();
     ///
     /// let has_migs = loader.has_migrations("myapp");
-    /// // Returns true if app has migrations, false otherwise
+    // Returns true if app has migrations, false otherwise
     /// ```
     pub fn has_migrations(&self, app_label: &str) -> bool {
         self.migrated_apps.contains(app_label)
@@ -349,7 +349,7 @@ impl MigrationLoader {
     /// loader.load_disk().unwrap();
     ///
     /// let migrated_apps = loader.get_migrated_apps();
-    /// // Returns set of app labels that have migrations
+    // Returns set of app labels that have migrations
     /// ```
     pub fn get_migrated_apps(&self) -> &HashSet<String> {
         &self.migrated_apps
@@ -367,7 +367,7 @@ impl MigrationLoader {
     /// loader.load_disk().unwrap();
     ///
     /// let unmigrated_apps = loader.get_unmigrated_apps();
-    /// // Returns set of app labels that don't have migrations
+    // Returns set of app labels that don't have migrations
     /// ```
     pub fn get_unmigrated_apps(&self) -> &HashSet<String> {
         &self.unmigrated_apps

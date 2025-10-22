@@ -507,8 +507,8 @@ mod tests {
         assert_eq!(rel.name(), "posts");
     }
 
-    /// // Auto-generated relationship tests
-    /// // Total: 30 tests
+    // Auto-generated relationship tests
+    // Total: 30 tests
 
     #[test]
     fn test_search_with_exact_lookup_relationship_field() {

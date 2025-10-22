@@ -328,7 +328,7 @@ impl ProjectState {
     /// use reinhardt_migrations::ProjectState;
     ///
     /// let state = ProjectState::from_global_registry();
-    /// // state will contain all models registered in the global registry
+    // state will contain all models registered in the global registry
     /// ```
     pub fn from_global_registry() -> Self {
         use crate::model_registry::global_registry;
@@ -361,7 +361,7 @@ impl ProjectState {
 /// let mut from_state = ProjectState::new();
 /// let mut to_state = ProjectState::new();
 ///
-/// // Add a new model to to_state
+// Add a new model to to_state
 /// let mut model = ModelState::new("myapp", "User");
 /// model.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
 /// to_state.add_model(model);
@@ -369,7 +369,7 @@ impl ProjectState {
 /// let detector = MigrationAutodetector::new(from_state, to_state);
 /// let changes = detector.detect_changes();
 ///
-/// // Should detect the new model creation
+// Should detect the new model creation
 /// assert_eq!(changes.created_models.len(), 1);
 /// ```
 pub struct MigrationAutodetector {
@@ -436,7 +436,7 @@ impl MigrationAutodetector {
     /// let from_state = ProjectState::new();
     /// let mut to_state = ProjectState::new();
     ///
-    /// // Add a new model
+    // Add a new model
     /// let model = ModelState::new("myapp", "User");
     /// to_state.add_model(model);
     ///
@@ -627,7 +627,7 @@ impl MigrationAutodetector {
     /// let detector = MigrationAutodetector::new(from_state, to_state);
     /// let changes = detector.detect_changes();
     ///
-    /// // With high field similarity, should detect as rename
+    // With high field similarity, should detect as rename
     /// assert!(changes.renamed_models.len() <= 1);
     /// ```
     fn detect_renamed_models(&self, changes: &mut DetectedChanges) {
@@ -711,7 +711,7 @@ impl MigrationAutodetector {
     /// let detector = MigrationAutodetector::new(from_state, to_state);
     /// let changes = detector.detect_changes();
     ///
-    /// // With matching type, might detect as rename
+    // With matching type, might detect as rename
     /// assert!(changes.renamed_fields.len() <= 1);
     /// ```
     fn detect_renamed_fields(&self, changes: &mut DetectedChanges) {
@@ -921,7 +921,7 @@ impl MigrationAutodetector {
     /// let mut from_state = ProjectState::new();
     /// let mut to_state = ProjectState::new();
     ///
-    /// // Add a new model to the target state
+    // Add a new model to the target state
     /// let mut model = ModelState::new("myapp", "User");
     /// model.add_field(FieldState::new("id".to_string(), "IntegerField".to_string(), false));
     /// to_state.add_model(model);
@@ -1036,7 +1036,7 @@ impl MigrationAutodetector {
     /// let mut from_state = ProjectState::new();
     /// let mut to_state = ProjectState::new();
     ///
-    /// // Add a new model
+    // Add a new model
     /// let mut model = ModelState::new("blog", "Post");
     /// model.add_field(FieldState::new("title".to_string(), "CharField".to_string(), false));
     /// to_state.add_model(model);

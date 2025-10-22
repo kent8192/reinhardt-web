@@ -214,7 +214,7 @@ impl CreateModel {
     ///     ],
     /// );
     ///
-    /// // Convert to SQL - actual DB operations would use schema editor
+    // Convert to SQL - actual DB operations would use schema editor
     /// let columns: Vec<(&str, String)> = create.fields
     ///     .iter()
     ///     .map(|f| (f.name.as_str(), f.to_sql_definition()))
@@ -225,15 +225,15 @@ impl CreateModel {
     /// assert!(columns[0].1.contains("PRIMARY KEY"));
     /// ```
     pub fn database_forwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+        // Convert field definitions to column specifications for schema editor
+        let column_defs: Vec<String> = self.fields.iter().map(|f| f.to_sql_definition()).collect();
+
+        // Build column pairs: (name, type_definition)
         let columns: Vec<(&str, &str)> = self
             .fields
             .iter()
-            .map(|f| {
-                let def = f.to_sql_definition();
-                // Note: This would need to be stored or we need a different API
-                // For now, we'll just generate the basic SQL
-                (f.name.as_str(), "")
-            })
+            .zip(column_defs.iter())
+            .map(|(f, def)| (f.name.as_str(), def.as_str()))
             .collect();
 
         vec![schema_editor.create_table_sql(&self.name, &columns)]
@@ -251,7 +251,7 @@ impl CreateModel {
 ///
 /// let mut state = ProjectState::new();
 ///
-/// // First create a model
+// First create a model
 /// let create = CreateModel::new(
 ///     "User",
 ///     vec![FieldDefinition::new("id", "INTEGER", true, false, None)],
@@ -259,7 +259,7 @@ impl CreateModel {
 /// create.state_forwards("myapp", &mut state);
 /// assert!(state.get_model("myapp", "User").is_some());
 ///
-/// // Then delete it
+// Then delete it
 /// let delete = DeleteModel::new("User");
 /// delete.state_forwards("myapp", &mut state);
 /// assert!(state.get_model("myapp", "User").is_none());
@@ -313,14 +313,14 @@ impl DeleteModel {
 ///
 /// let mut state = ProjectState::new();
 ///
-/// // Create a model
+// Create a model
 /// let create = CreateModel::new(
 ///     "User",
 ///     vec![FieldDefinition::new("id", "INTEGER", true, false, None)],
 /// );
 /// create.state_forwards("myapp", &mut state);
 ///
-/// // Rename it
+// Rename it
 /// let rename = RenameModel::new("User", "Customer");
 /// rename.state_forwards("myapp", &mut state);
 ///
@@ -494,5 +494,158 @@ mod tests {
         assert!(sql[0].contains("ALTER TABLE"));
         assert!(sql[0].contains("\"users\""));
         assert!(sql[0].contains("\"customers\""));
+    }
+
+    #[test]
+    fn test_field_definition_nullable() {
+        let field = FieldDefinition::new("email", "VARCHAR(255)", false, false, None::<String>)
+            .nullable(true);
+
+        assert!(field.null);
+        let sql = field.to_sql_definition();
+        assert!(!sql.contains("NOT NULL"));
+    }
+
+    #[test]
+    fn test_create_model_with_options() {
+        let mut options = HashMap::new();
+        options.insert("db_table".to_string(), "custom_users".to_string());
+
+        let create = CreateModel::new(
+            "User",
+            vec![FieldDefinition::new(
+                "id",
+                "INTEGER",
+                true,
+                false,
+                None::<String>,
+            )],
+        )
+        .with_options(options.clone());
+
+        assert_eq!(create.options, options);
+        assert_eq!(
+            create.options.get("db_table"),
+            Some(&"custom_users".to_string())
+        );
+    }
+
+    #[test]
+    fn test_create_model_with_bases() {
+        let bases = vec!["BaseModel".to_string(), "Timestamped".to_string()];
+
+        let create = CreateModel::new(
+            "User",
+            vec![FieldDefinition::new(
+                "id",
+                "INTEGER",
+                true,
+                false,
+                None::<String>,
+            )],
+        )
+        .with_bases(bases.clone());
+
+        assert_eq!(create.bases, bases);
+        assert_eq!(create.bases.len(), 2);
+    }
+
+    #[test]
+    fn test_create_model_multiple_fields() {
+        let mut state = ProjectState::new();
+
+        let create = CreateModel::new(
+            "User",
+            vec![
+                FieldDefinition::new("id", "INTEGER", true, false, None::<String>),
+                FieldDefinition::new("username", "VARCHAR(50)", false, true, None::<String>),
+                FieldDefinition::new("email", "VARCHAR(255)", false, true, None::<String>),
+                FieldDefinition::new("is_active", "BOOLEAN", false, false, Some("true")),
+            ],
+        );
+
+        create.state_forwards("myapp", &mut state);
+
+        let model = state.get_model("myapp", "User").unwrap();
+        assert_eq!(model.fields.len(), 4);
+        assert!(model.fields.contains_key("id"));
+        assert!(model.fields.contains_key("username"));
+        assert!(model.fields.contains_key("email"));
+        assert!(model.fields.contains_key("is_active"));
+    }
+
+    #[test]
+    fn test_field_definition_with_default() {
+        let field = FieldDefinition::new("status", "VARCHAR(20)", false, false, Some("'pending'"));
+
+        assert_eq!(field.default, Some("'pending'".to_string()));
+
+        let sql = field.to_sql_definition();
+        assert!(sql.contains("DEFAULT 'pending'"));
+    }
+
+    #[test]
+    fn test_delete_model_removes_from_state() {
+        let mut state = ProjectState::new();
+
+        // Create multiple models
+        let create1 = CreateModel::new(
+            "User",
+            vec![FieldDefinition::new(
+                "id",
+                "INTEGER",
+                true,
+                false,
+                None::<String>,
+            )],
+        );
+        let create2 = CreateModel::new(
+            "Post",
+            vec![FieldDefinition::new(
+                "id",
+                "INTEGER",
+                true,
+                false,
+                None::<String>,
+            )],
+        );
+
+        create1.state_forwards("myapp", &mut state);
+        create2.state_forwards("myapp", &mut state);
+
+        assert!(state.get_model("myapp", "User").is_some());
+        assert!(state.get_model("myapp", "Post").is_some());
+
+        // Delete only User
+        let delete = DeleteModel::new("User");
+        delete.state_forwards("myapp", &mut state);
+
+        assert!(state.get_model("myapp", "User").is_none());
+        assert!(state.get_model("myapp", "Post").is_some());
+    }
+
+    #[test]
+    fn test_rename_model_preserves_fields() {
+        let mut state = ProjectState::new();
+
+        // Create a model with multiple fields
+        let create = CreateModel::new(
+            "User",
+            vec![
+                FieldDefinition::new("id", "INTEGER", true, false, None::<String>),
+                FieldDefinition::new("name", "VARCHAR(100)", false, false, None::<String>),
+            ],
+        );
+        create.state_forwards("myapp", &mut state);
+
+        // Rename it
+        let rename = RenameModel::new("User", "Account");
+        rename.state_forwards("myapp", &mut state);
+
+        // Check that fields are preserved
+        let model = state.get_model("myapp", "Account").unwrap();
+        assert_eq!(model.fields.len(), 2);
+        assert!(model.fields.contains_key("id"));
+        assert!(model.fields.contains_key("name"));
     }
 }

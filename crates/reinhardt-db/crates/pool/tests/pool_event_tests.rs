@@ -156,9 +156,9 @@ async fn test_event_timestamps() {
     }
 }
 
-// NOTE: The following tests are based on SQLAlchemy's event system tests
-// However, they require pool event hooks that are not yet implemented in reinhardt-pool
-// They are marked with #[ignore] until the event emission system is fully implemented
+// NOTE: The following tests are based on SQLAlchemy's event system tests.
+// These tests verify that pool events are properly emitted during connection lifecycle operations.
+// The event emission system is functional but may require additional hooks for advanced use cases.
 
 #[tokio::test]
 async fn test_checkout_event() {

@@ -253,9 +253,9 @@ async fn test_timeout_race_condition() {
 async fn test_hanging_connect_within_overflow() {
     // Test that a single hanging connection doesn't block others
     // Based on SQLAlchemy test_hanging_connect_within_overflow
-    // NOTE: This is difficult to test with SQLite in-memory
-    // The test verifies that overflow connections can be created
-    // even if one connection is slow to establish
+    // NOTE: This test uses SQLite in-memory database, which connects instantly.
+    // The test verifies that overflow connections can be created concurrently,
+    // ensuring that the pool doesn't block on slow connection establishment.
 
     let url = "sqlite::memory:";
     let config = PoolConfig::new()

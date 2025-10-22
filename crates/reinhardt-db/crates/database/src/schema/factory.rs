@@ -26,7 +26,7 @@
 /// let factory = SchemaEditorFactory::new();
 /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 ///
-/// // Use the editor for DDL operations
+// Use the editor for DDL operations
 /// let sql = editor.create_table_sql("users", &[
 ///     ("id", "SERIAL PRIMARY KEY"),
 ///     ("name", "VARCHAR(100)"),
@@ -117,7 +117,7 @@ impl DatabaseType {
 ///
 /// let factory = SchemaEditorFactory::new();
 ///
-/// // Create a PostgreSQL schema editor
+// Create a PostgreSQL schema editor
 /// let pg_editor = factory.create_for_database(DatabaseType::PostgreSQL);
 /// let sql = pg_editor.create_table_sql("users", &[("id", "SERIAL PRIMARY KEY")]);
 /// assert!(sql.contains("CREATE TABLE"));
@@ -216,7 +216,7 @@ impl SchemaEditorFactory {
     /// let factory = SchemaEditorFactory::new();
     /// let editor = factory.create_shared(DatabaseType::PostgreSQL);
     ///
-    /// // Can be cloned and shared across threads
+    // Can be cloned and shared across threads
     /// let editor_clone = Arc::clone(&editor);
     /// ```
     pub fn create_shared(

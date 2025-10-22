@@ -11,7 +11,7 @@ pub mod manager;
 pub mod pool;
 
 pub use config::{PoolConfig, PoolOptions};
-pub use di_support::{DatabaseService, DatabaseUrl, MySqlPool, PostgresPool, SqlitePool};
+pub use di_support::{DatabaseService, DatabaseUrl};
 pub use errors::{PoolError, PoolResult};
 pub use events::{PoolEvent, PoolEventListener};
 pub use manager::PoolManager;

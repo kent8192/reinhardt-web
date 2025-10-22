@@ -21,7 +21,7 @@ reinhardt-associations = { path = "crates/associations", version = "0.1.0", opti
 # DI support for connection pooling
 reinhardt-di = { path = "../reinhardt-di", version = "0.1.0", optional = true }
 
-# Database drivers
+# Database drivers and query builders
 sqlx = { version = "0.8", features = [
   "runtime-tokio",
   "chrono",
@@ -30,6 +30,16 @@ sqlx = { version = "0.8", features = [
   "mysql",
   "macros",
   "migrate",
+] }
+sea-query = { version = "1.0.0-rc.1", features = [
+  "backend-postgres",
+  "backend-mysql",
+  "backend-sqlite",
+] }
+sea-query-binder = { version = "0.7", features = [
+  "sqlx-postgres",
+  "sqlx-mysql",
+  "sqlx-sqlite",
 ] }
 
 # Async runtime

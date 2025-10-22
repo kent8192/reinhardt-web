@@ -16,11 +16,11 @@ impl F {
     /// ```
     /// use reinhardt_orm::expressions::F;
     ///
-    /// // Reference a field for comparisons or updates
+    // Reference a field for comparisons or updates
     /// let price_ref = F::new("price");
     /// assert_eq!(price_ref.to_sql(), "price");
     ///
-    /// // Can be used in queries like: WHERE price > F("cost") + 10
+    // Can be used in queries like: WHERE price > F("cost") + 10
     /// ```
     pub fn new(field: impl Into<String>) -> Self {
         Self {
@@ -62,14 +62,14 @@ impl OuterRef {
     /// ```
     /// use reinhardt_orm::expressions::OuterRef;
     ///
-    /// // Reference parent query field in subquery
+    // Reference parent query field in subquery
     /// let parent_id = OuterRef::new("parent_id");
     /// assert_eq!(parent_id.to_sql(), "parent_id");
     ///
-    /// // Useful in correlated subqueries like:
-    /// // SELECT * FROM items WHERE id IN (
-    /// //   SELECT item_id FROM tags WHERE user_id = OuterRef("user_id")
-    /// // )
+    // Useful in correlated subqueries like:
+    // SELECT * FROM items WHERE id IN (
+    //   SELECT item_id FROM tags WHERE user_id = OuterRef("user_id")
+    // )
     /// ```
     pub fn new(field: impl Into<String>) -> Self {
         Self {
@@ -107,7 +107,7 @@ impl Subquery {
     /// ```
     /// use reinhardt_orm::expressions::Subquery;
     ///
-    /// // Create a subquery for filtering
+    // Create a subquery for filtering
     /// let sq = Subquery::new("SELECT id FROM users WHERE active = 1");
     /// let sql = sq.to_sql();
     /// assert!(sql.contains("SELECT id FROM users"));
@@ -163,7 +163,7 @@ impl Exists {
     /// ```
     /// use reinhardt_orm::expressions::Exists;
     ///
-    /// // Check if related records exist
+    // Check if related records exist
     /// let exists = Exists::new("SELECT 1 FROM orders WHERE user_id = 123");
     /// let sql = exists.to_sql();
     /// assert!(sql.starts_with("EXISTS("));
@@ -399,11 +399,11 @@ impl Q {
     /// ```
     /// use reinhardt_orm::expressions::Q;
     ///
-    /// // Create a simple condition
+    // Create a simple condition
     /// let q = Q::new("age", ">=", "18");
     /// assert_eq!(q.to_sql(), "age >= 18");
     ///
-    /// // Combine conditions
+    // Combine conditions
     /// let q1 = Q::new("status", "=", "active");
     /// let q2 = Q::new("verified", "=", "true");
     /// let combined = q1.and(q2);
@@ -689,7 +689,7 @@ mod expressions_extended_tests {
     use crate::expressions::{F, Q};
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_values_expression_group_by() {
         // Test that Value expressions can be used in group by contexts
         let val = crate::annotation::Value::String("test_group".to_string());
@@ -697,7 +697,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_values_expression_group_by_1() {
         // Test that Value expressions can be used in group by contexts
         let val = crate::annotation::Value::Int(42);
@@ -705,7 +705,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_aggregate_rawsql_annotation() {
         // Test aggregate with annotation
         let agg = Aggregate::sum("amount").with_alias("total_amount");
@@ -713,7 +713,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_aggregate_rawsql_annotation_1() {
         // Test aggregate with annotation
         let agg = Aggregate::max("price").with_alias("max_price");
@@ -721,7 +721,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_aggregate_subquery_annotation() {
         // Test subquery with aggregate
         let subquery = Subquery::new("SELECT COUNT(*) FROM orders WHERE status = 'completed'");
@@ -730,7 +730,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_aggregate_subquery_annotation_1() {
         // Test subquery with aggregate
         let subquery = Subquery::new("SELECT AVG(price) FROM products");
@@ -739,7 +739,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_aggregates() {
         // Test basic aggregates
         let agg = Aggregate::avg("score");
@@ -747,7 +747,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_aggregates_1() {
         // Test basic aggregates
         let agg = Aggregate::min("age");
@@ -755,7 +755,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotate_by_empty_custom_exists() {
         // Test EXISTS with empty subquery
         let exists = Exists::new("");
@@ -764,7 +764,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotate_by_empty_custom_exists_1() {
         // Test EXISTS with subquery
         let exists = Exists::new("SELECT 1");
@@ -773,7 +773,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotate_values_aggregate() {
         // Test aggregates with values
         let agg = Aggregate::count_all().with_alias("total");
@@ -781,7 +781,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotate_values_aggregate_1() {
         // Test aggregates with values
         let agg = Aggregate::sum("quantity").with_alias("total_qty");
@@ -789,21 +789,21 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotate_values_count() {
         let agg = Aggregate::count(Some("id")).with_alias("total");
         assert_eq!(agg.to_sql(), "COUNT(id) AS total");
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotate_values_count_1() {
         let agg = Aggregate::count(Some("id")).with_alias("total");
         assert_eq!(agg.to_sql(), "COUNT(id) AS total");
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotate_values_filter() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -811,7 +811,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotate_values_filter_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -819,7 +819,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotation_with_deeply_nested_outerref() {
         // Test deeply nested OuterRef
         let outer_ref = OuterRef::new("parent.grandparent.id");
@@ -827,7 +827,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotation_with_deeply_nested_outerref_1() {
         // Test deeply nested OuterRef
         let outer_ref = OuterRef::new("root.level1.level2.field");
@@ -835,7 +835,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotation_with_nested_outerref() {
         // Test nested OuterRef
         let outer_ref = OuterRef::new("parent.user_id");
@@ -843,7 +843,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotation_with_nested_outerref_1() {
         // Test nested OuterRef
         let outer_ref = OuterRef::new("outer.category_id");
@@ -851,7 +851,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotation_with_outerref() {
         // Test OuterRef in annotation
         let outer_ref = OuterRef::new("user_id");
@@ -859,7 +859,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotation_with_outerref_1() {
         // Test OuterRef in annotation
         let outer_ref = OuterRef::new("category_id");
@@ -867,7 +867,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotation_with_outerref_and_output_field() {
         // Test OuterRef with output field
         let outer_ref = OuterRef::new("price");
@@ -877,7 +877,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotation_with_outerref_and_output_field_1() {
         // Test OuterRef with output field
         let outer_ref = OuterRef::new("amount");
@@ -885,7 +885,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotations_within_subquery() {
         // Test annotations in subquery
         let subquery = Subquery::new("SELECT id, COUNT(*) as total FROM items GROUP BY id");
@@ -893,7 +893,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_annotations_within_subquery_1() {
         // Test annotations in subquery
         let subquery =
@@ -902,7 +902,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_case_in_filter_if_boolean_output_field() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -910,7 +910,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_case_in_filter_if_boolean_output_field_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -918,7 +918,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_date_subquery_subtraction() {
         // Test date subtraction in subquery
         let subquery = Subquery::new("SELECT date1 - date2 FROM events");
@@ -926,7 +926,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_date_subquery_subtraction_1() {
         // Test date subtraction in subquery
         let subquery = Subquery::new("SELECT end_date - start_date FROM projects");
@@ -934,7 +934,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_datetime_and_duration_field_addition_with_annotate_and_no_output_field() {
         // Test datetime and duration addition
         let f = F::new("created_at + INTERVAL 7 DAY");
@@ -942,7 +942,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_datetime_and_duration_field_addition_with_annotate_and_no_output_field_1() {
         // Test datetime and duration addition
         let f = F::new("start_time + duration");
@@ -950,7 +950,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_datetime_and_durationfield_addition_with_filter() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -958,7 +958,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_datetime_and_durationfield_addition_with_filter_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -966,7 +966,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_datetime_subquery_subtraction() {
         // Test datetime subtraction in subquery
         let subquery = Subquery::new("SELECT updated_at - created_at FROM records");
@@ -974,7 +974,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_datetime_subquery_subtraction_1() {
         // Test datetime subtraction in subquery
         let subquery = Subquery::new("SELECT NOW() - last_login FROM users");
@@ -982,7 +982,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_datetime_subtraction_with_annotate_and_no_output_field() {
         // Test datetime subtraction
         let f = F::new("end_time - start_time");
@@ -990,7 +990,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_datetime_subtraction_with_annotate_and_no_output_field_1() {
         // Test datetime subtraction
         let f = F::new("checkout_time - checkin_time");
@@ -998,7 +998,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_distinct_aggregates() {
         // Test DISTINCT aggregates
         let agg = Aggregate::count_distinct("user_id");
@@ -1006,7 +1006,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_distinct_aggregates_1() {
         // Test DISTINCT aggregates
         let agg = Aggregate::count_distinct("email");
@@ -1014,7 +1014,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_empty_group_by() {
         // Test empty group by - aggregate over all rows
         let agg = Aggregate::count_all();
@@ -1022,7 +1022,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_empty_group_by_1() {
         // Test empty group by - aggregate over all rows
         let agg = Aggregate::sum("total");
@@ -1030,7 +1030,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_exists_in_filter() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1038,7 +1038,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_exists_in_filter_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1046,7 +1046,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_expressions_range_lookups_join_choice() {
         // Test range lookups with expressions
         let q1 = Q::new("price", ">=", "10");
@@ -1058,7 +1058,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_expressions_range_lookups_join_choice_1() {
         // Test range lookups with expressions
         let q1 = Q::new("age", ">", "18");
@@ -1070,7 +1070,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1078,7 +1078,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1086,7 +1086,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_by_empty_exists() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1094,7 +1094,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_by_empty_exists_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1102,7 +1102,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_decimal_expression() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1110,7 +1110,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_decimal_expression_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1118,7 +1118,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_inter_attribute() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1126,7 +1126,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_inter_attribute_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1134,7 +1134,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_not_equals_other_field() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1142,7 +1142,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_not_equals_other_field_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1150,7 +1150,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_with_join() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1158,7 +1158,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filter_with_join_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1166,7 +1166,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filtered_aggregates() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1174,7 +1174,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filtered_aggregates_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1182,7 +1182,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filtering_on_annotate_that_uses_q() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1190,7 +1190,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filtering_on_annotate_that_uses_q_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1198,7 +1198,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filtering_on_q_that_is_boolean() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1206,7 +1206,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filtering_on_q_that_is_boolean_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1214,7 +1214,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filtering_on_rawsql_that_is_boolean() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1222,7 +1222,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_filtering_on_rawsql_that_is_boolean_1() {
         let q = Q::new("status", "=", "active");
         assert!(q.to_sql().contains("status"));
@@ -1230,7 +1230,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_in_lookup_allows_f_expressions_and_expressions_for_integers() {
         // Test IN lookup with F expressions
         let f = F::new("category_id");
@@ -1238,7 +1238,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_in_lookup_allows_f_expressions_and_expressions_for_integers_1() {
         // Test IN lookup with integer expressions
         let q = Q::new("id", "IN", "1,2,3,4,5");
@@ -1246,7 +1246,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_in_subquery() {
         // Test IN with subquery
         let subquery = Subquery::new("SELECT id FROM active_users");
@@ -1254,7 +1254,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_in_subquery_1() {
         // Test IN with subquery
         let subquery = Subquery::new("SELECT category_id FROM featured_categories");
@@ -1264,7 +1264,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_incorrect_field_in_f_expression() {
         // Test F expression with any field name (no validation at this level)
         let f = F::new("nonexistent_field");
@@ -1272,7 +1272,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_incorrect_field_in_f_expression_1() {
         // Test F expression with any field name (no validation at this level)
         let f = F::new("invalid__field__name");
@@ -1280,7 +1280,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_incorrect_joined_field_in_f_expression() {
         // Test F expression with joined field reference
         let f = F::new("related__invalid_field");
@@ -1288,7 +1288,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_incorrect_joined_field_in_f_expression_1() {
         // Test F expression with joined field reference
         let f = F::new("user__profile__missing");
@@ -1296,7 +1296,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_lookups_subquery() {
         // Test lookups with subquery
         let subquery = Subquery::new("SELECT MAX(price) FROM products WHERE available = 1");
@@ -1304,7 +1304,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_lookups_subquery_1() {
         // Test lookups with subquery
         let subquery = Subquery::new("SELECT MIN(created_at) FROM events");
@@ -1312,7 +1312,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_mixed_char_date_with_annotate() {
         // Test mixed character and date fields
         let f1 = F::new("name");
@@ -1322,7 +1322,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_mixed_char_date_with_annotate_1() {
         // Test mixed character and date fields
         let val_str = crate::annotation::Value::String("test".to_string());
@@ -1332,7 +1332,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_negated_empty_exists() {
         // Test negated EXISTS
         let exists = Exists::new("");
@@ -1341,7 +1341,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_negated_empty_exists_1() {
         // Test negated EXISTS query
         let q = Q::new("id", "NOT IN", "SELECT id FROM deleted");
@@ -1349,7 +1349,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_nested_subquery() {
         // Test nested subquery
         let inner = Subquery::new("SELECT id FROM users WHERE active = 1");
@@ -1361,7 +1361,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_nested_subquery_1() {
         // Test nested subquery
         let subquery = Subquery::new(
@@ -1371,7 +1371,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_nested_subquery_join_outer_ref() {
         // Test nested subquery with OuterRef
         let outer_ref = OuterRef::new("parent.id");
@@ -1383,7 +1383,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_nested_subquery_join_outer_ref_1() {
         // Test nested subquery with OuterRef
         let outer_ref = OuterRef::new("order.user_id");
@@ -1391,7 +1391,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_nested_subquery_outer_ref_2() {
         // Test OuterRef in nested subquery
         let outer_ref = OuterRef::new("main.category_id");
@@ -1399,7 +1399,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_nested_subquery_outer_ref_2_1() {
         // Test OuterRef in nested subquery
         let outer_ref = OuterRef::new("outer_table.field");
@@ -1407,7 +1407,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_nested_subquery_outer_ref_with_autofield() {
         // Test OuterRef with autofield (id)
         let outer_ref = OuterRef::new("id");
@@ -1415,7 +1415,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_nested_subquery_outer_ref_with_autofield_1() {
         // Test OuterRef with pk field
         let outer_ref = OuterRef::new("pk");
@@ -1423,7 +1423,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_non_empty_group_by() {
         // Test group by with field
         let f = F::new("category");
@@ -1433,7 +1433,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_non_empty_group_by_1() {
         // Test group by with multiple fields
         let f1 = F::new("year");
@@ -1443,7 +1443,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_object_create_with_aggregate() {
         // Test creating object with aggregate value
         let agg = Aggregate::max("score");
@@ -1451,7 +1451,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_object_create_with_aggregate_1() {
         // Test creating object with aggregate value
         let agg = Aggregate::avg("rating");
@@ -1459,7 +1459,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_object_create_with_f_expression_in_subquery() {
         // Test F expression in subquery
         let f = F::new("price");
@@ -1468,7 +1468,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_object_create_with_f_expression_in_subquery_1() {
         // Test F expression in subquery
         let f = F::new("quantity");
@@ -1476,7 +1476,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_order_by_exists() {
         // Test ordering by EXISTS clause
         let exists = Exists::new("SELECT 1 FROM related WHERE related.parent_id = main.id");
@@ -1484,7 +1484,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_order_by_exists_1() {
         // Test ordering by EXISTS clause
         let exists = Exists::new("SELECT 1 FROM tags WHERE tags.item_id = items.id");
@@ -1492,7 +1492,7 @@ mod expressions_extended_tests {
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_order_by_multiline_sql() {
         // Test multiline SQL expression
         let subquery = Subquery::new(
@@ -1504,7 +1504,7 @@ WHERE active = 1",
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_order_by_multiline_sql_1() {
         // Test multiline SQL expression
         let subquery = Subquery::new(
@@ -1516,7 +1516,7 @@ GROUP BY user_id",
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_order_of_operations() {
         // Test order of operations in Q expressions
         let q1 = Q::new("a", "=", "1");
@@ -1530,7 +1530,7 @@ GROUP BY user_id",
     }
 
     #[test]
-    /// // From: Django/expressions
+    // From: Django/expressions
     fn test_order_of_operations_1() {
         // Test order of operations with NOT
         let q1 = Q::new("x", "=", "1");

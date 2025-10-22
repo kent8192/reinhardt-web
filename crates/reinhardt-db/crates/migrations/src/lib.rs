@@ -21,6 +21,7 @@ pub use autodetector::{
 pub use commands::{MakeMigrationsCommand, MakeMigrationsOptions, MigrateCommand, MigrateOptions};
 pub use di_support::{MigrationConfig, MigrationService};
 pub use executor::{ExecutionResult, MigrationExecutor};
+pub use graph::{MigrationGraph, MigrationKey, MigrationNode};
 pub use loader::MigrationLoader;
 pub use migration::{Migration, MigrationPlan};
 pub use model_registry::{global_registry, FieldMetadata, ModelMetadata, ModelRegistry};

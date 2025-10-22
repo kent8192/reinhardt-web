@@ -66,6 +66,11 @@ impl DatabaseConnection {
         self.backend.clone()
     }
 
+    /// Get the database type
+    pub fn database_type(&self) -> crate::types::DatabaseType {
+        self.backend.database_type()
+    }
+
     pub fn insert(&self, table: impl Into<String>) -> InsertBuilder {
         InsertBuilder::new(self.backend.clone(), table)
     }

@@ -3,7 +3,7 @@
 
 use reinhardt_migrations::{MakeMigrationsOptions, MigrateOptions};
 
-// NOTE: Command tests simplified to match actual implementation
+// Note: Command tests simplified to match actual implementation
 
 #[test]
 fn test_makemigrations_options_default() {

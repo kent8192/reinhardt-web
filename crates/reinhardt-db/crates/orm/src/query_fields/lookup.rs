@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 /// Lookup type - defines how to compare the field value
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LookupType {
-    /// // Equality
-    Exact, // =
+    // Equality
+    Exact,  // =
     IExact, // ILIKE (case-insensitive)
     Ne,     // !=
 
-    /// // Pattern matching
-    Contains, // LIKE '%x%'
+    // Pattern matching
+    Contains,    // LIKE '%x%'
     IContains,   // ILIKE '%x%'
     StartsWith,  // LIKE 'x%'
     IStartsWith, // ILIKE 'x%'
@@ -21,19 +21,19 @@ pub enum LookupType {
     Regex,       // ~ (PostgreSQL)
     IRegex,      // ~* (PostgreSQL)
 
-    /// // Comparison
-    Gt, // >
+    // Comparison
+    Gt,    // >
     Gte,   // >=
     Lt,    // <
     Lte,   // <=
     Range, // BETWEEN
 
-    /// // Set operations
-    In, // IN
+    // Set operations
+    In,    // IN
     NotIn, // NOT IN
 
-    /// // NULL checks
-    IsNull, // IS NULL
+    // NULL checks
+    IsNull,    // IS NULL
     IsNotNull, // IS NOT NULL
 }
 
@@ -140,7 +140,7 @@ impl<M: Model> Lookup<M> {
     ///     LookupType::Exact,
     ///     LookupValue::String("Alice".to_string())
     /// );
-    /// // Represents: WHERE name = 'Alice'
+    // Represents: WHERE name = 'Alice'
     /// ```
     pub fn new(field_path: Vec<&'static str>, lookup_type: LookupType, value: LookupValue) -> Self {
         Self {

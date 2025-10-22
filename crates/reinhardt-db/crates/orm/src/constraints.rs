@@ -291,7 +291,7 @@ mod constraints_extended_tests {
     use crate::expressions::{F, Q};
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_abstract_name() {
         // Test for abstract constraint name validation
         // From Django constraints test suite
@@ -303,7 +303,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_abstract_name_1() {
         // Test: Test Abstract Name 1
         // Ported from Django constraints test suite
@@ -315,7 +315,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_condition_must_be_q() {
         // Test: Test Condition Must Be Q
         // Ported from Django constraints test suite
@@ -327,7 +327,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_condition_must_be_q_1() {
         // Test: Test Condition Must Be Q 1
         // Ported from Django constraints test suite
@@ -339,7 +339,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_constraint_sql() {
         // Test: Test Constraint Sql
         // Ported from Django constraints test suite
@@ -351,7 +351,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_constraint_sql_1() {
         // Test: Test Constraint Sql 1
         // Ported from Django constraints test suite
@@ -363,7 +363,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_contains_expressions() {
         // Test: Test Contains Expressions
         // Ported from Django constraints test suite
@@ -375,7 +375,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_contains_expressions_1() {
         // Test: Test Contains Expressions 1
         // Ported from Django constraints test suite
@@ -387,7 +387,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_create_sql() {
         // Test: Test Create Sql
         // Ported from Django constraints test suite
@@ -399,7 +399,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_create_sql_1() {
         // Test: Test Create Sql 1
         // Ported from Django constraints test suite
@@ -411,7 +411,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_custom_violation_code_message() {
         // Test: Test Custom Violation Code Message
         // Ported from Django constraints test suite
@@ -423,7 +423,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_custom_violation_code_message_1() {
         // Test: Test Custom Violation Code Message 1
         // Ported from Django constraints test suite
@@ -435,7 +435,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_custom_violation_error_message() {
         // Test: Test Custom Violation Error Message
         // Ported from Django constraints test suite
@@ -447,7 +447,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_custom_violation_error_message_1() {
         // Test: Test Custom Violation Error Message 1
         // Ported from Django constraints test suite
@@ -459,7 +459,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_custom_violation_error_message_clone() {
         // Test: Test Custom Violation Error Message Clone
         // Ported from Django constraints test suite
@@ -471,7 +471,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_custom_violation_error_message_clone_1() {
         // Test: Test Custom Violation Error Message Clone 1
         // Ported from Django constraints test suite
@@ -483,7 +483,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_constraint() {
         // Test: Test Database Constraint
         // Ported from Django constraints test suite
@@ -495,7 +495,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_constraint_1() {
         // Test: Test Database Constraint 1
         // Ported from Django constraints test suite
@@ -507,7 +507,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_constraint_2() {
         // Test: Test Database Constraint 2
         // Ported from Django constraints test suite
@@ -519,7 +519,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_constraint_3() {
         // Test: Test Database Constraint 3
         // Ported from Django constraints test suite
@@ -531,7 +531,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_constraint_unicode() {
         // Test: Test Database Constraint Unicode
         // Ported from Django constraints test suite
@@ -543,7 +543,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_constraint_unicode_1() {
         // Test: Test Database Constraint Unicode 1
         // Ported from Django constraints test suite
@@ -555,7 +555,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_constraint_with_condition() {
         // Test: Test Database Constraint With Condition
         // Ported from Django constraints test suite
@@ -567,7 +567,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_constraint_with_condition_1() {
         // Test: Test Database Constraint With Condition 1
         // Ported from Django constraints test suite
@@ -579,7 +579,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_default() {
         // Test: Test Database Default
         // Ported from Django constraints test suite
@@ -591,7 +591,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_default_1() {
         // Test: Test Database Default 1
         // Ported from Django constraints test suite
@@ -603,7 +603,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_default_2() {
         // Test: Test Database Default 2
         // Ported from Django constraints test suite
@@ -615,7 +615,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_database_default_3() {
         // Test: Test Database Default 3
         // Ported from Django constraints test suite
@@ -627,7 +627,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction() {
         // Test: Test Deconstruction
         // Ported from Django constraints test suite
@@ -639,7 +639,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_1() {
         // Test: Test Deconstruction 1
         // Ported from Django constraints test suite
@@ -651,7 +651,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_2() {
         // Test: Test Deconstruction 2
         // Ported from Django constraints test suite
@@ -663,7 +663,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_3() {
         // Test: Test Deconstruction 3
         // Ported from Django constraints test suite
@@ -675,7 +675,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_4() {
         // Test: Test Deconstruction 4
         // Ported from Django constraints test suite
@@ -687,7 +687,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_5() {
         // Test: Test Deconstruction 5
         // Ported from Django constraints test suite
@@ -699,7 +699,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_condition() {
         // Test: Test Deconstruction With Condition
         // Ported from Django constraints test suite
@@ -711,7 +711,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_condition_1() {
         // Test: Test Deconstruction With Condition 1
         // Ported from Django constraints test suite
@@ -723,7 +723,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_deferrable() {
         // Test: Test Deconstruction With Deferrable
         // Ported from Django constraints test suite
@@ -735,7 +735,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_deferrable_1() {
         // Test: Test Deconstruction With Deferrable 1
         // Ported from Django constraints test suite
@@ -747,7 +747,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_expressions() {
         // Test: Test Deconstruction With Expressions
         // Ported from Django constraints test suite
@@ -759,7 +759,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_expressions_1() {
         // Test: Test Deconstruction With Expressions 1
         // Ported from Django constraints test suite
@@ -771,7 +771,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_include() {
         // Test: Test Deconstruction With Include
         // Ported from Django constraints test suite
@@ -783,7 +783,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_include_1() {
         // Test: Test Deconstruction With Include 1
         // Ported from Django constraints test suite
@@ -795,7 +795,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_nulls_distinct() {
         // Test: Test Deconstruction With Nulls Distinct
         // Ported from Django constraints test suite
@@ -807,7 +807,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_nulls_distinct_1() {
         // Test: Test Deconstruction With Nulls Distinct 1
         // Ported from Django constraints test suite
@@ -819,7 +819,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_opclasses() {
         // Test: Test Deconstruction With Opclasses
         // Ported from Django constraints test suite
@@ -831,7 +831,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deconstruction_with_opclasses_1() {
         // Test: Test Deconstruction With Opclasses 1
         // Ported from Django constraints test suite
@@ -843,7 +843,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_default_violation_error_message() {
         // Test: Test Default Violation Error Message
         // Ported from Django constraints test suite
@@ -855,7 +855,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_default_violation_error_message_1() {
         // Test: Test Default Violation Error Message 1
         // Ported from Django constraints test suite
@@ -867,7 +867,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deferrable_with_condition() {
         // Test: Test Deferrable With Condition
         // Ported from Django constraints test suite
@@ -879,7 +879,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deferrable_with_condition_1() {
         // Test: Test Deferrable With Condition 1
         // Ported from Django constraints test suite
@@ -891,7 +891,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deferrable_with_expressions() {
         // Test: Test Deferrable With Expressions
         // Ported from Django constraints test suite
@@ -903,7 +903,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deferrable_with_expressions_1() {
         // Test: Test Deferrable With Expressions 1
         // Ported from Django constraints test suite
@@ -915,7 +915,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deferrable_with_include() {
         // Test: Test Deferrable With Include
         // Ported from Django constraints test suite
@@ -927,7 +927,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deferrable_with_include_1() {
         // Test: Test Deferrable With Include 1
         // Ported from Django constraints test suite
@@ -939,7 +939,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deferrable_with_opclasses() {
         // Test: Test Deferrable With Opclasses
         // Ported from Django constraints test suite
@@ -951,7 +951,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_deferrable_with_opclasses_1() {
         // Test: Test Deferrable With Opclasses 1
         // Ported from Django constraints test suite
@@ -963,7 +963,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq() {
         // Test: Test Eq
         // Ported from Django constraints test suite
@@ -975,7 +975,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_1() {
         // Test: Test Eq 1
         // Ported from Django constraints test suite
@@ -987,7 +987,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_2() {
         // Test: Test Eq 2
         // Ported from Django constraints test suite
@@ -999,7 +999,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_3() {
         // Test: Test Eq 3
         // Ported from Django constraints test suite
@@ -1011,7 +1011,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_condition() {
         // Test: Test Eq With Condition
         // Ported from Django constraints test suite
@@ -1023,7 +1023,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_condition_1() {
         // Test: Test Eq With Condition 1
         // Ported from Django constraints test suite
@@ -1035,7 +1035,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_deferrable() {
         // Test: Test Eq With Deferrable
         // Ported from Django constraints test suite
@@ -1047,7 +1047,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_deferrable_1() {
         // Test: Test Eq With Deferrable 1
         // Ported from Django constraints test suite
@@ -1059,7 +1059,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_expressions() {
         // Test: Test Eq With Expressions
         // Ported from Django constraints test suite
@@ -1071,7 +1071,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_expressions_1() {
         // Test: Test Eq With Expressions 1
         // Ported from Django constraints test suite
@@ -1083,7 +1083,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_include() {
         // Test: Test Eq With Include
         // Ported from Django constraints test suite
@@ -1095,7 +1095,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_include_1() {
         // Test: Test Eq With Include 1
         // Ported from Django constraints test suite
@@ -1107,7 +1107,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_nulls_distinct() {
         // Test: Test Eq With Nulls Distinct
         // Ported from Django constraints test suite
@@ -1119,7 +1119,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_nulls_distinct_1() {
         // Test: Test Eq With Nulls Distinct 1
         // Ported from Django constraints test suite
@@ -1131,7 +1131,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_opclasses() {
         // Test: Test Eq With Opclasses
         // Ported from Django constraints test suite
@@ -1143,7 +1143,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_eq_with_opclasses_1() {
         // Test: Test Eq With Opclasses 1
         // Ported from Django constraints test suite
@@ -1155,7 +1155,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_expressions_and_fields_mutually_exclusive() {
         // Test: Test Expressions And Fields Mutually Exclusive
         // Ported from Django constraints test suite
@@ -1167,7 +1167,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_expressions_and_fields_mutually_exclusive_1() {
         // Test: Test Expressions And Fields Mutually Exclusive 1
         // Ported from Django constraints test suite
@@ -1179,7 +1179,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_expressions_with_opclasses() {
         // Test: Test Expressions With Opclasses
         // Ported from Django constraints test suite
@@ -1191,7 +1191,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_expressions_with_opclasses_1() {
         // Test: Test Expressions With Opclasses 1
         // Ported from Django constraints test suite
@@ -1203,7 +1203,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_include_database_constraint() {
         // Test: Test Include Database Constraint
         // Ported from Django constraints test suite
@@ -1215,7 +1215,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_include_database_constraint_1() {
         // Test: Test Include Database Constraint 1
         // Ported from Django constraints test suite
@@ -1227,7 +1227,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_initially_deferred_database_constraint() {
         // Test: Test Initially Deferred Database Constraint
         // Ported from Django constraints test suite
@@ -1239,7 +1239,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_initially_deferred_database_constraint_1() {
         // Test: Test Initially Deferred Database Constraint 1
         // Ported from Django constraints test suite
@@ -1251,7 +1251,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_initially_immediate_database_constraint() {
         // Test: Test Initially Immediate Database Constraint
         // Ported from Django constraints test suite
@@ -1263,7 +1263,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_initially_immediate_database_constraint_1() {
         // Test: Test Initially Immediate Database Constraint 1
         // Ported from Django constraints test suite
@@ -1275,7 +1275,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_check_types() {
         // Test: Test Invalid Check Types
         // Ported from Django constraints test suite
@@ -1287,7 +1287,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_check_types_1() {
         // Test: Test Invalid Check Types 1
         // Ported from Django constraints test suite
@@ -1299,7 +1299,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_defer_argument() {
         // Test: Test Invalid Defer Argument
         // Ported from Django constraints test suite
@@ -1311,7 +1311,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_defer_argument_1() {
         // Test: Test Invalid Defer Argument 1
         // Ported from Django constraints test suite
@@ -1323,7 +1323,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_include_argument() {
         // Test: Test Invalid Include Argument
         // Ported from Django constraints test suite
@@ -1335,7 +1335,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_include_argument_1() {
         // Test: Test Invalid Include Argument 1
         // Ported from Django constraints test suite
@@ -1347,7 +1347,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_nulls_distinct_argument() {
         // Test: Test Invalid Nulls Distinct Argument
         // Ported from Django constraints test suite
@@ -1359,7 +1359,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_nulls_distinct_argument_1() {
         // Test: Test Invalid Nulls Distinct Argument 1
         // Ported from Django constraints test suite
@@ -1371,7 +1371,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_opclasses_argument() {
         // Test: Test Invalid Opclasses Argument
         // Ported from Django constraints test suite
@@ -1383,7 +1383,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_invalid_opclasses_argument_1() {
         // Test: Test Invalid Opclasses Argument 1
         // Ported from Django constraints test suite
@@ -1395,7 +1395,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_model_validation() {
         // Test: Test Model Validation
         // Ported from Django constraints test suite
@@ -1407,7 +1407,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_model_validation_1() {
         // Test: Test Model Validation 1
         // Ported from Django constraints test suite
@@ -1419,7 +1419,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_model_validation_constraint_no_code_error() {
         // Test: Test Model Validation Constraint No Code Error
         // Ported from Django constraints test suite
@@ -1431,7 +1431,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_model_validation_constraint_no_code_error_1() {
         // Test: Test Model Validation Constraint No Code Error 1
         // Ported from Django constraints test suite
@@ -1443,7 +1443,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_model_validation_with_condition() {
         // Test: Test Model Validation With Condition
         // Ported from Django constraints test suite
@@ -1455,7 +1455,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_model_validation_with_condition_1() {
         // Test: Test Model Validation With Condition 1
         // Ported from Django constraints test suite
@@ -1467,7 +1467,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_name() {
         // Test: Test Name
         // Ported from Django constraints test suite
@@ -1479,7 +1479,7 @@ mod constraints_extended_tests {
     }
 
     #[test]
-    /// // From: Django/constraints
+    // From: Django/constraints
     fn test_name_1() {
         // Test: Test Name 1
         // Ported from Django constraints test suite

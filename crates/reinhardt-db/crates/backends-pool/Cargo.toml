@@ -6,12 +6,12 @@ license.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
-sqlx = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 uuid = { workspace = true }
+sqlx = { workspace = true }
 
 [features]
 default = []

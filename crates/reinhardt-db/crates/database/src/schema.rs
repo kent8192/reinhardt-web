@@ -8,7 +8,7 @@
 /// ```rust
 /// use reinhardt_database::schema::{BaseDatabaseSchemaEditor, DDLStatement};
 ///
-/// // Example of using schema editor to generate DDL
+// Example of using schema editor to generate DDL
 /// let create_table = DDLStatement::CreateTable {
 ///     table: "users".to_string(),
 ///     columns: vec![

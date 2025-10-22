@@ -46,7 +46,6 @@ pub mod execution;
 pub mod instrumentation;
 pub mod loading;
 pub mod many_to_many;
-pub mod migrations;
 pub mod polymorphic;
 pub mod query_execution;
 pub mod query_options;
@@ -103,55 +102,37 @@ pub use postgres_fields::{
     IntegerRangeField, JSONBField,
 };
 
-// SQLAlchemy-style API (default, recommended)
-// pub use database_routing::{
-//     db_manager, DatabaseConfig, DatabaseManager, DatabaseOperation, DatabaseRouter, ModelRouter,
-//     ReadWriteRouter,
-// };
-// pub use declarative::{
-//     column_types, declarative_base, declarative_base_with_metadata, Column, ColumnDef,
-//     DeclarativeBase, MetaData, Table, TableDef,
-// };
+// PostgreSQL-specific advanced features
+pub use postgres_features::{ArrayAgg, ArrayOverlap, FullTextSearch, JsonbBuildObject};
+
+// File field types
+pub use file_fields::{FileField, FileFieldError, ImageField};
+
+pub use database_routing::DatabaseRouter;
 pub use events::{
     event_registry, AttributeEvents, EventListener, EventRegistry, EventResult, InstanceEvents,
     MapperEvents, SessionEvents,
 };
 pub use execution::{ExecutionResult, QueryExecution, SelectExecution};
 // Re-export from reinhardt-hybrid
-pub use reinhardt_hybrid::{
-    Comparator as HybridComparator, HybridMethod, HybridProperty, UpperCaseComparator,
-};
-// pub use instrumentation::{
-//     instrumentation_registry, AttributeHistory, AttributeState, InstanceInstrumentation,
-//     InstrumentationRegistry, Instrumented,
-// };
 pub use loading::{
     joinedload, lazyload, noload, raiseload, selectinload, subqueryload, LoadContext, LoadOption,
     LoadOptionBuilder, LoadingStrategy,
 };
-// pub use polymorphic::{
-//     polymorphic_registry, InheritanceType, PolymorphicConfig, PolymorphicIdentity,
-//     PolymorphicQuery, PolymorphicRegistry,
-// };
-// pub use postgres::{
-//     ArrayField, DateRange, DateTimeRange, HStoreField, IntRange, JSONField, RangeBounds,
-//     SearchConfig, SearchQuery, SearchRank, SearchType, SearchVector,
-// };
+pub use polymorphic::{
+    polymorphic_registry, InheritanceType, PolymorphicConfig, PolymorphicIdentity,
+    PolymorphicQuery, PolymorphicRegistry, PolymorphicRelation,
+};
 pub use query_options::{
     CompiledCacheOption, ExecutionOptions, ForUpdateMode, IsolationLevel as QueryIsolationLevel,
     QueryOptions, QueryOptionsBuilder,
 };
-// pub use reflection::{
-//     CheckConstraint as ReflectedCheckConstraint, ConstraintType,
-//     ForeignKeyConstraint as ReflectedForeignKey, IndexInfo, Inspector,
-//     // MetadataReflector,
-//     ReflectedTable,
-// };
 pub use registry::{registry, ColumnInfo, Mapper, MapperRegistry, TableInfo};
+pub use reinhardt_hybrid::{
+    Comparator as HybridComparator, HybridMethod, HybridProperty, UpperCaseComparator,
+};
 pub use relationship::{CascadeOption, Relationship, RelationshipDirection, RelationshipType};
-// pub use session::{
-//     scoped_session, sessionmaker, IdentityKey, ObjectState, ScopedSession, Session, SessionMaker,
-// };
+pub use session::{Session, SessionError};
 pub use sqlalchemy_query::{column, select, Column as SqlColumn, JoinType, SelectQuery};
 pub use typed_join::TypedJoin;
 pub use types::{
@@ -163,7 +144,6 @@ pub use types::{
 pub use async_query::{AsyncQuery, AsyncSession};
 pub use engine::{create_engine, create_engine_with_config, Engine, EngineConfig};
 pub use many_to_many::{association_table, AssociationTable, ManyToMany};
-// pub use migrations::{ColumnDefinition, MigrationDefinition, MigrationManager, MigrationOperation};
 pub use query_execution::{ExecutableQuery, QueryCompiler};
 
 // Django ORM compatibility layer (optional)

@@ -369,9 +369,6 @@ mod tests {
         assert!(array_sql.is_none());
     }
 
-    // NOTE: Async test requires tokio runtime, skipping for now
-    // Will be enabled once tokio is added to dev-dependencies
-
     #[test]
     fn test_quote_name() {
         let editor = PostgreSQLSchemaEditor::new();

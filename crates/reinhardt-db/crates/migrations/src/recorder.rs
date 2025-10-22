@@ -103,17 +103,44 @@ impl DatabaseMigrationRecorder {
     /// Creates the `reinhardt_migrations` table if it doesn't exist.
     /// This follows Django's migration table schema.
     pub async fn ensure_schema_table(&self) -> crate::Result<()> {
-        let sql = r#"
-            CREATE TABLE IF NOT EXISTS reinhardt_migrations (
-                id SERIAL PRIMARY KEY,
-                app VARCHAR(255) NOT NULL,
-                name VARCHAR(255) NOT NULL,
-                applied TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        use backends::types::DatabaseType;
+        use sea_query::{
+            Alias, ColumnDef, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder, Table,
+        };
+
+        let stmt = Table::create()
+            .table(Alias::new("reinhardt_migrations"))
+            .if_not_exists()
+            .col(
+                ColumnDef::new(Alias::new("id"))
+                    .integer()
+                    .not_null()
+                    .auto_increment()
+                    .primary_key(),
             )
-        "#;
+            .col(ColumnDef::new(Alias::new("app")).string_len(255).not_null())
+            .col(
+                ColumnDef::new(Alias::new("name"))
+                    .string_len(255)
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(Alias::new("applied"))
+                    .timestamp()
+                    .not_null()
+                    .default("CURRENT_TIMESTAMP"),
+            )
+            .to_owned();
+
+        // Build SQL using appropriate query builder based on database type
+        let sql = match self.connection.database_type() {
+            DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+            DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+            DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+        };
 
         self.connection
-            .execute(sql, vec![])
+            .execute(&sql, vec![])
             .await
             .map_err(|e| crate::MigrationError::DatabaseError(e))?;
 
@@ -265,5 +292,136 @@ impl DatabaseMigrationRecorder {
             .map_err(|e| crate::MigrationError::DatabaseError(e))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn test_migration_recorder_creation() {
+        let recorder = MigrationRecorder::new();
+        assert_eq!(recorder.get_applied_migrations().len(), 0);
+    }
+
+    #[test]
+    fn test_record_applied() {
+        let mut recorder = MigrationRecorder::new();
+        recorder.record_applied("auth".to_string(), "0001_initial".to_string());
+
+        assert_eq!(recorder.get_applied_migrations().len(), 1);
+        assert!(recorder.is_applied("auth", "0001_initial"));
+    }
+
+    #[test]
+    fn test_is_applied() {
+        let mut recorder = MigrationRecorder::new();
+
+        assert!(!recorder.is_applied("auth", "0001_initial"));
+
+        recorder.record_applied("auth".to_string(), "0001_initial".to_string());
+
+        assert!(recorder.is_applied("auth", "0001_initial"));
+        assert!(!recorder.is_applied("auth", "0002_add_field"));
+    }
+
+    #[test]
+    fn test_get_applied_migrations() {
+        let mut recorder = MigrationRecorder::new();
+
+        recorder.record_applied("auth".to_string(), "0001_initial".to_string());
+        recorder.record_applied("users".to_string(), "0001_initial".to_string());
+        recorder.record_applied("auth".to_string(), "0002_add_field".to_string());
+
+        let migrations = recorder.get_applied_migrations();
+        assert_eq!(migrations.len(), 3);
+
+        // Verify all migrations were recorded
+        assert!(migrations
+            .iter()
+            .any(|m| m.app == "auth" && m.name == "0001_initial"));
+        assert!(migrations
+            .iter()
+            .any(|m| m.app == "users" && m.name == "0001_initial"));
+        assert!(migrations
+            .iter()
+            .any(|m| m.app == "auth" && m.name == "0002_add_field"));
+    }
+
+    #[test]
+    fn test_migration_record_contains_timestamp() {
+        let mut recorder = MigrationRecorder::new();
+        let before = Utc::now();
+
+        recorder.record_applied("auth".to_string(), "0001_initial".to_string());
+
+        let after = Utc::now();
+        let migrations = recorder.get_applied_migrations();
+
+        assert_eq!(migrations.len(), 1);
+        let record = &migrations[0];
+
+        // Check timestamp is within expected range
+        assert!(record.applied >= before);
+        assert!(record.applied <= after);
+    }
+
+    #[test]
+    fn test_multiple_apps_migrations() {
+        let mut recorder = MigrationRecorder::new();
+
+        recorder.record_applied("auth".to_string(), "0001_initial".to_string());
+        recorder.record_applied("auth".to_string(), "0002_add_field".to_string());
+        recorder.record_applied("users".to_string(), "0001_initial".to_string());
+        recorder.record_applied("posts".to_string(), "0001_initial".to_string());
+
+        assert!(recorder.is_applied("auth", "0001_initial"));
+        assert!(recorder.is_applied("auth", "0002_add_field"));
+        assert!(recorder.is_applied("users", "0001_initial"));
+        assert!(recorder.is_applied("posts", "0001_initial"));
+
+        assert!(!recorder.is_applied("comments", "0001_initial"));
+    }
+
+    #[tokio::test]
+    async fn test_async_record_applied() {
+        let mut recorder = MigrationRecorder::new();
+
+        recorder
+            .record_applied_async(&(), "auth".to_string(), "0001_initial".to_string())
+            .await
+            .unwrap();
+
+        assert!(recorder.is_applied("auth", "0001_initial"));
+    }
+
+    #[tokio::test]
+    async fn test_async_is_applied() {
+        let mut recorder = MigrationRecorder::new();
+
+        recorder.record_applied("auth".to_string(), "0001_initial".to_string());
+
+        let result = recorder
+            .is_applied_async(&(), "auth", "0001_initial")
+            .await
+            .unwrap();
+
+        assert!(result);
+
+        let result_not_applied = recorder
+            .is_applied_async(&(), "auth", "0002_add_field")
+            .await
+            .unwrap();
+
+        assert!(!result_not_applied);
+    }
+
+    #[tokio::test]
+    async fn test_ensure_schema_table_async() {
+        let recorder = MigrationRecorder::new();
+        let result = recorder.ensure_schema_table_async(&()).await;
+        assert!(result.is_ok());
     }
 }

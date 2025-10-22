@@ -16,7 +16,7 @@ use crate::schema::{BaseDatabaseSchemaEditor, SchemaEditorError, SchemaEditorRes
 ///
 /// let editor = MySQLSchemaEditor::new();
 ///
-/// // Create a table
+// Create a table
 /// let sql = editor.create_table_sql("users", &[
 ///     ("id", "INT PRIMARY KEY AUTO_INCREMENT"),
 ///     ("name", "VARCHAR(100)"),

@@ -25,7 +25,7 @@ use crate::schema::{BaseDatabaseSchemaEditor, SchemaEditorError, SchemaEditorRes
 ///
 /// let editor = SQLiteSchemaEditor::new();
 ///
-/// // Create a table
+// Create a table
 /// let sql = editor.create_table_sql("users", &[
 ///     ("id", "INTEGER PRIMARY KEY"),
 ///     ("name", "TEXT"),

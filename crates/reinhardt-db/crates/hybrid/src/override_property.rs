@@ -173,7 +173,7 @@ mod tests {
         employee_id: String,
     }
 
-    /// // Base implementation
+    // Base implementation
     struct PersonNameProperty;
 
     impl HybridPropertyOverride<Person, String> for PersonNameProperty {
@@ -194,7 +194,7 @@ mod tests {
         }
     }
 
-    /// // Override implementation for Employee
+    // Override implementation for Employee
     struct EmployeeNameProperty;
 
     impl HybridPropertyOverride<Employee, String> for EmployeeNameProperty {

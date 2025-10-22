@@ -1,8 +1,9 @@
 /// Advanced connection pool types
 /// Based on SQLAlchemy's pool implementations
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tokio::sync::{Mutex as TokioMutex, Semaphore};
 
 pub trait ConnectionPool: Send + Sync {
     fn get_connection(&self) -> Result<PooledConnection, PoolError>;
@@ -312,10 +313,9 @@ impl ConnectionPool for SingletonThreadPool {
 /// Async-compatible queue pool
 pub struct AsyncAdaptedQueuePool {
     pub max_connections: usize,
-    // Note: In a real implementation, this would include:
-    // - tokio::sync::Semaphore for async connection limiting
-    // - Arc<Mutex<VecDeque<PooledConnection>>> for async-safe queue
-    // - async get_connection and return_connection methods
+    semaphore: Arc<Semaphore>,
+    queue: Arc<TokioMutex<VecDeque<PooledConnection>>>,
+    next_id: Arc<TokioMutex<usize>>,
 }
 
 impl AsyncAdaptedQueuePool {
@@ -330,16 +330,185 @@ impl AsyncAdaptedQueuePool {
     /// assert_eq!(pool.max_connections, 20);
     /// ```
     pub fn new(max_connections: usize) -> Self {
-        Self { max_connections }
+        Self {
+            max_connections,
+            semaphore: Arc::new(Semaphore::new(max_connections)),
+            queue: Arc::new(TokioMutex::new(VecDeque::new())),
+            next_id: Arc::new(TokioMutex::new(1)),
+        }
+    }
+
+    /// Asynchronously get a connection from the pool
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_orm::pool_types::AsyncAdaptedQueuePool;
+    ///
+    /// # tokio_test::block_on(async {
+    /// let pool = AsyncAdaptedQueuePool::new(5);
+    /// let conn = pool.get_connection().await.unwrap();
+    /// assert!(conn.id > 0);
+    /// pool.return_connection(conn).await;
+    /// # });
+    /// ```
+    pub async fn get_connection(&self) -> Result<PooledConnection, PoolError> {
+        let _permit = self.semaphore.acquire().await.map_err(|e| {
+            PoolError::ConnectionFailed(format!("Failed to acquire semaphore: {}", e))
+        })?;
+
+        let mut queue = self.queue.lock().await;
+
+        // Try to reuse existing connection
+        if let Some(mut conn) = queue.pop_front() {
+            conn.last_used = Instant::now();
+            std::mem::forget(_permit); // Keep permit alive
+            return Ok(conn);
+        }
+
+        // Create new connection
+        let mut next_id = self.next_id.lock().await;
+        let id = *next_id;
+        *next_id += 1;
+
+        std::mem::forget(_permit); // Keep permit alive
+
+        Ok(PooledConnection {
+            id,
+            created_at: Instant::now(),
+            last_used: Instant::now(),
+        })
+    }
+
+    /// Asynchronously return a connection to the pool
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_orm::pool_types::AsyncAdaptedQueuePool;
+    ///
+    /// # tokio_test::block_on(async {
+    /// let pool = AsyncAdaptedQueuePool::new(5);
+    /// let conn = pool.get_connection().await.unwrap();
+    /// pool.return_connection(conn).await;
+    /// # });
+    /// ```
+    pub async fn return_connection(&self, conn: PooledConnection) {
+        let mut queue = self.queue.lock().await;
+        queue.push_back(conn);
+        self.semaphore.add_permits(1);
     }
 }
 
 /// Assertion pool for testing (detects connection leaks)
 pub struct AssertionPool {
-    // Note: In a real implementation, this would include:
-    // - HashSet<ConnectionId> for tracking active connections
-    // - Panic on drop if connections not returned
-    // - Debug logging for connection lifecycle
+    active_connections: Arc<Mutex<HashSet<usize>>>,
+    connection_counter: Arc<Mutex<usize>>,
+}
+
+impl AssertionPool {
+    /// Create a new AssertionPool for testing connection management
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_orm::pool_types::AssertionPool;
+    ///
+    /// let pool = AssertionPool::new();
+    /// let conn_id = pool.get_connection();
+    /// assert_eq!(conn_id, 0);
+    /// pool.return_connection(conn_id);
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            active_connections: Arc::new(Mutex::new(HashSet::new())),
+            connection_counter: Arc::new(Mutex::new(0)),
+        }
+    }
+
+    /// Get a connection ID and track it as active
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_orm::pool_types::AssertionPool;
+    ///
+    /// let pool = AssertionPool::new();
+    /// let conn_id = pool.get_connection();
+    /// assert_eq!(conn_id, 0);
+    ///
+    /// let conn_id2 = pool.get_connection();
+    /// assert_eq!(conn_id2, 1);
+    ///
+    /// pool.return_connection(conn_id);
+    /// pool.return_connection(conn_id2);
+    /// ```
+    pub fn get_connection(&self) -> usize {
+        let mut counter = self.connection_counter.lock().unwrap();
+        let id = *counter;
+        *counter += 1;
+
+        let mut active = self.active_connections.lock().unwrap();
+        active.insert(id);
+
+        eprintln!("[AssertionPool] Connection {} acquired", id);
+        id
+    }
+
+    /// Return a connection ID and remove it from active tracking
+    ///
+    /// # Panics
+    ///
+    /// Panics if the connection ID was not active
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_orm::pool_types::AssertionPool;
+    ///
+    /// let pool = AssertionPool::new();
+    /// let conn_id = pool.get_connection();
+    /// pool.return_connection(conn_id); // OK
+    /// ```
+    ///
+    /// ```should_panic
+    /// use reinhardt_orm::pool_types::AssertionPool;
+    ///
+    /// let pool = AssertionPool::new();
+    /// pool.return_connection(999); // Panics - connection not active
+    /// ```
+    pub fn return_connection(&self, id: usize) {
+        let mut active = self.active_connections.lock().unwrap();
+        if !active.remove(&id) {
+            panic!("Attempted to return connection {} that was not active", id);
+        }
+        eprintln!("[AssertionPool] Connection {} returned", id);
+    }
+
+    /// Get the number of currently active connections
+    pub fn active_count(&self) -> usize {
+        let active = self.active_connections.lock().unwrap();
+        active.len()
+    }
+}
+
+impl Default for AssertionPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for AssertionPool {
+    fn drop(&mut self) {
+        let active = self.active_connections.lock().unwrap();
+        if !active.is_empty() {
+            panic!(
+                "AssertionPool dropped with {} active connections: {:?}",
+                active.len(),
+                active
+            );
+        }
+    }
 }
 
 // Advanced pool features (future implementation):

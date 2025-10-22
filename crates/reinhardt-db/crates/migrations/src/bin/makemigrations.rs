@@ -79,17 +79,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn load_project_state() -> ProjectState {
     let mut state = ProjectState::new();
 
-    /// // Check if running in demo mode
+    // Check if running in demo mode
     if std::env::var("REINHARDT_DEMO").is_ok() {
         populate_demo_models(&mut state);
     }
 
-    /// // In a production implementation, this function would:
-    /// // 1. Use procedural macros to collect all models defined with #[derive(Model)]
-    /// // 2. Introspect each model's fields and metadata
-    /// // 3. Build a complete ProjectState representation
+    // In a production implementation, this function would:
+    // 1. Use procedural macros to collect all models defined with #[derive(Model)]
+    // 2. Introspect each model's fields and metadata
+    // 3. Build a complete ProjectState representation
     //
-    /// // The demo mode shows how the system would work with actual models.
+    // The demo mode shows how the system would work with actual models.
     state
 }
 

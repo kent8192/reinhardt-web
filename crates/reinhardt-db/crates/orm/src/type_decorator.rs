@@ -156,7 +156,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JsonType<T> {
     /// }
     ///
     /// let json_type = JsonType::<Config>::new();
-    /// // JSON type will serialize Config to/from JSON in database
+    // JSON type will serialize Config to/from JSON in database
     /// ```
     pub fn new() -> Self {
         Self {
@@ -202,7 +202,7 @@ impl PhoneNumberType {
     ///
     /// let us_phone = PhoneNumberType::new("US");
     /// let jp_phone = PhoneNumberType::new("JP");
-    /// // Validates and formats phone numbers for specific countries
+    // Validates and formats phone numbers for specific countries
     /// ```
     pub fn new(country_code: impl Into<String>) -> Self {
         let code = country_code.into();
@@ -276,7 +276,7 @@ impl EmailType {
     /// use reinhardt_orm::type_decorator::EmailType;
     ///
     /// let email_type = EmailType::new();
-    /// // Validates email format and normalizes to lowercase
+    // Validates email format and normalizes to lowercase
     /// ```
     pub fn new() -> Self {
         Self
@@ -333,7 +333,7 @@ impl UrlType {
     /// use reinhardt_orm::type_decorator::UrlType;
     ///
     /// let url_type = UrlType::new();
-    /// // Validates URLs must start with http:// or https://
+    // Validates URLs must start with http:// or https://
     /// ```
     pub fn new() -> Self {
         Self
@@ -387,7 +387,7 @@ impl CompressedTextType {
     /// use reinhardt_orm::type_decorator::CompressedTextType;
     ///
     /// let compressed = CompressedTextType::new();
-    /// // Uses default gzip compression for text fields
+    // Uses default gzip compression for text fields
     /// ```
     pub fn new() -> Self {
         Self {
@@ -403,7 +403,7 @@ impl CompressedTextType {
     /// use reinhardt_orm::type_decorator::CompressedTextType;
     ///
     /// let compressed = CompressedTextType::with_level(9);
-    /// // Maximum compression (level 9)
+    // Maximum compression (level 9)
     /// ```
     pub fn with_level(level: u32) -> Self {
         Self {
@@ -479,7 +479,7 @@ impl<T: Clone + PartialEq> EnumType<T> {
     ///     (Status::Active, "active".to_string()),
     ///     (Status::Inactive, "inactive".to_string()),
     /// ]);
-    /// // Maps enum variants to database strings
+    // Maps enum variants to database strings
     /// ```
     pub fn new(variants: Vec<(T, String)>) -> Self {
         Self { variants }

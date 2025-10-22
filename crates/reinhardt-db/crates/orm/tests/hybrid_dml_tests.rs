@@ -192,7 +192,7 @@ fn test_update_with_where_clause() {
     assert_eq!(params, vec!["Jane"]);
 }
 
-// NOTE: The following tests require actual database execution
+// Note: The following tests require actual database execution
 // and are marked as integration tests
 
 #[cfg(feature = "integration-tests")]

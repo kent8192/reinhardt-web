@@ -16,10 +16,10 @@ use std::marker::PhantomData;
 /// # Example
 ///
 /// ```rust,ignore
-/// // This compiles: both fields are i64
+// This compiles: both fields are i64
 /// TypedJoin::on(User::id(), Post::user_id())
 ///
-/// // This fails: i64 vs String type mismatch
+// This fails: i64 vs String type mismatch
 /// TypedJoin::on(User::id(), Post::title())
 /// ```
 pub struct TypedJoin<L: Model, R: Model> {

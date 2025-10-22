@@ -1,3 +1,4 @@
+use backends::DatabaseConnection;
 use reinhardt_migrations::{ColumnDefinition, Migration, MigrationExecutor, Operation};
 use sqlx::{Row, SqlitePool};
 
@@ -251,7 +252,6 @@ async fn test_executor_with_dependencies() {
 
 #[tokio::test]
 async fn test_executor_migration_recording() {
-    use reinhardt_db::backends::DatabaseConnection;
     use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
 
     // Test that DatabaseMigrationRecorder properly records migrations to the database

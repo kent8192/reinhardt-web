@@ -172,7 +172,7 @@ impl MigrationPlan {
     ///
     /// plan.sort().unwrap();
     ///
-    /// // After sorting, 0001 should come before 0002
+    // After sorting, 0001 should come before 0002
     /// assert_eq!(plan.migrations[0].name, "0001_initial");
     /// assert_eq!(plan.migrations[1].name, "0002_add_field");
     /// ```
@@ -225,7 +225,7 @@ impl Default for MigrationPlan {
 #[cfg(test)]
 mod migrations_extended_tests {
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_alter_order_with_respect_to() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -275,7 +275,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_alter_order_with_respect_to_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -317,7 +317,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_auto_field_does_not_request_default() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -346,7 +346,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_auto_field_does_not_request_default_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -370,7 +370,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_blank_textfield_and_charfield() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -403,7 +403,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_blank_textfield_and_charfield_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -431,7 +431,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_composite_pk() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -456,7 +456,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_composite_pk_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -477,7 +477,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_constraints() {
         use crate::operations::*;
 
@@ -493,7 +493,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_constraints_1() {
         use crate::operations::*;
 
@@ -509,7 +509,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_constraints_with_dict_keys() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -536,7 +536,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_constraints_with_dict_keys_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -557,7 +557,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_constraints_with_new_model() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -581,7 +581,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_constraints_with_new_model_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -602,7 +602,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_custom_fk_with_hardcoded_to() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -636,7 +636,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_custom_fk_with_hardcoded_to_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -664,7 +664,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_date_fields_with_auto_now_add_asking_for_default() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -693,7 +693,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_date_fields_with_auto_now_add_asking_for_default_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -717,7 +717,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_date_fields_with_auto_now_add_not_asking_for_null_addition() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -749,7 +749,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_date_fields_with_auto_now_add_not_asking_for_null_addition_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -776,7 +776,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_date_fields_with_auto_now_not_asking_for_default() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -806,7 +806,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_date_fields_with_auto_now_not_asking_for_default_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -830,7 +830,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_field() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -857,7 +857,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_field_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -885,7 +885,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_field_and_unique_together() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -922,7 +922,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_field_and_unique_together_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -959,7 +959,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_field_before_generated_field() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1002,7 +1002,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_field_before_generated_field_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1045,7 +1045,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_field_with_default() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1072,7 +1072,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_field_with_default_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1100,7 +1100,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_fk_before_generated_field() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1153,7 +1153,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_fk_before_generated_field_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1198,7 +1198,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_index_with_new_model() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1229,7 +1229,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_index_with_new_model_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1258,7 +1258,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_indexes() {
         use crate::operations::*;
 
@@ -1276,7 +1276,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_indexes_1() {
         use crate::operations::*;
 
@@ -1294,7 +1294,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_many_to_many() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1338,7 +1338,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_many_to_many_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1380,7 +1380,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_order_with_respect_to() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1414,7 +1414,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_order_with_respect_to_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1436,7 +1436,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_order_with_respect_to_constraint() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1458,7 +1458,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_order_with_respect_to_constraint_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1480,7 +1480,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_order_with_respect_to_index() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1509,7 +1509,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_order_with_respect_to_index_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1531,7 +1531,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_order_with_respect_to_unique_together() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1559,7 +1559,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_order_with_respect_to_unique_together_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1587,7 +1587,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_with_field_removed_from_base_model() {
         // Tests joined table inheritance where child model has its own table
         // linked to parent table via foreign key
@@ -1632,7 +1632,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_model_with_field_removed_from_base_model_1() {
         // Tests single table inheritance where parent and children share one table
         // using a discriminator column to distinguish types
@@ -1679,7 +1679,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_non_blank_textfield_and_charfield() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1712,7 +1712,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_non_blank_textfield_and_charfield_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1740,7 +1740,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_not_null_field_with_db_default() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1769,7 +1769,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_not_null_field_with_db_default_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1797,7 +1797,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_unique_together() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1825,7 +1825,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_add_unique_together_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1857,7 +1857,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_constraint() {
         use crate::operations::*;
 
@@ -1880,7 +1880,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_constraint_1() {
         use crate::operations::*;
 
@@ -1903,7 +1903,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_add() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1929,7 +1929,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_add_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1953,7 +1953,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_change() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -1980,7 +1980,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_change_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2004,7 +2004,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_comment_add() {
         use crate::operations::*;
 
@@ -2019,7 +2019,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_comment_add_1() {
         use crate::operations::*;
 
@@ -2034,7 +2034,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_comment_change() {
         use crate::operations::*;
 
@@ -2049,7 +2049,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_comment_change_1() {
         use crate::operations::*;
 
@@ -2063,7 +2063,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_comment_no_changes() {
         use crate::operations::*;
 
@@ -2078,7 +2078,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_comment_no_changes_1() {
         use crate::operations::*;
 
@@ -2092,7 +2092,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_comment_remove() {
         use crate::operations::*;
 
@@ -2106,7 +2106,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_comment_remove_1() {
         use crate::operations::*;
 
@@ -2120,7 +2120,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_no_changes() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2147,7 +2147,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_no_changes_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2172,7 +2172,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_remove() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2197,7 +2197,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_remove_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2221,7 +2221,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_with_model_change() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2256,7 +2256,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_db_table_with_model_change_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2280,7 +2280,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2311,7 +2311,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2343,7 +2343,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_and_unique_together() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2378,7 +2378,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_and_unique_together_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2413,7 +2413,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_fk_dependency_other_app() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2455,7 +2455,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_fk_dependency_other_app_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2490,7 +2490,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_not_null_oneoff_default() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2526,7 +2526,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_not_null_oneoff_default_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2558,7 +2558,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_not_null_with_db_default() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2591,7 +2591,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_not_null_with_db_default_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2623,7 +2623,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_not_null_with_default() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2659,7 +2659,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_not_null_with_default_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2691,7 +2691,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_not_null_without_default() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2724,7 +2724,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_field_to_not_null_without_default_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2756,7 +2756,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_fk_before_model_deletion() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2806,7 +2806,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_fk_before_model_deletion_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -2842,7 +2842,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_many_to_many() {
         // Tests altering a many-to-many association table by adding extra fields
         use crate::operations::*;
@@ -2905,7 +2905,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_many_to_many_1() {
         // Tests altering a many-to-many by changing field types in association table
         use crate::operations::*;
@@ -2971,7 +2971,7 @@ mod migrations_extended_tests {
 
     #[test]
     #[should_panic(expected = "runtime-only")]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_model_managers() {
         // Model managers are application-level constructs that don't affect database schema.
         // They define custom query methods and default querysets for models.
@@ -2989,7 +2989,7 @@ mod migrations_extended_tests {
 
     #[test]
     #[should_panic(expected = "runtime-only")]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_model_managers_1() {
         // See test_alter_model_managers for details
         // Use reinhardt-migrations types
@@ -3001,7 +3001,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_model_options() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -3034,7 +3034,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_model_options_1() {
         use crate::operations::*;
         use crate::ProjectState;
@@ -3068,7 +3068,7 @@ mod migrations_extended_tests {
 
     #[test]
     #[should_panic(expected = "don't affect database schema")]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_model_options_proxy() {
         // Proxy models in Django are models that don't have their own database table.
         // They inherit from a concrete model and can have different behavior/methods.
@@ -3087,7 +3087,7 @@ mod migrations_extended_tests {
 
     #[test]
     #[should_panic(expected = "don't affect database schema")]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_model_options_proxy_1() {
         // See test_alter_model_options_proxy for details
         // Use reinhardt-migrations ColumnDefinition type
@@ -3099,7 +3099,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_regex_string_to_compiled_regex() {
         // Regex validators are application-level validation, not database schema.
         // They validate input before it reaches the database.
@@ -3116,7 +3116,7 @@ mod migrations_extended_tests {
     }
 
     #[test]
-    /// // From: Django/migrations
+    // From: Django/migrations
     fn test_alter_regex_string_to_compiled_regex_1() {
         // Validators (including regex) are runtime-only and don't affect schema
         use crate::ProjectState;
