@@ -40,7 +40,7 @@ struct MatchTemplate {
 
 #[test]
 fn test_basic_rendering() {
-    /// // Test basic template rendering (similar to Django's test_basic_context)
+    // Test basic template rendering (similar to Django's test_basic_context)
     let tmpl = GreetingTemplate {
         greeting: "Hello".to_string(),
         name: "World".to_string(),
@@ -52,7 +52,7 @@ fn test_basic_rendering() {
 
 #[test]
 fn test_html_rendering() {
-    /// // Test HTML template rendering
+    // Test HTML template rendering
     let tmpl = HtmlTemplate {
         title: "Test Page".to_string(),
         content: "This is a test".to_string(),
@@ -65,21 +65,21 @@ fn test_html_rendering() {
 
 #[test]
 fn test_rendering_with_escaping() {
-    /// // Test that HTML is escaped by default
+    // Test that HTML is escaped by default
     let tmpl = HtmlTemplate {
         title: "Test".to_string(),
         content: "<script>alert('xss')</script>".to_string(),
     };
 
     let result = tmpl.render().unwrap();
-    /// // Askama escapes HTML by default
-    /// // Askama escapes HTML by default in html templates
+    // Askama escapes HTML by default
+    // Askama escapes HTML by default in html templates
     assert!(!result.is_empty());
 }
 
 #[test]
 fn test_range_rendering() {
-    /// // Test rendering with range loop
+    // Test rendering with range loop
     let tmpl = RangeTemplate { count: 5 };
 
     let result = tmpl.render().unwrap();
@@ -88,7 +88,7 @@ fn test_range_rendering() {
 
 #[test]
 fn test_range_rendering_zero() {
-    /// // Test range loop with zero count
+    // Test range loop with zero count
     let tmpl = RangeTemplate { count: 0 };
 
     let result = tmpl.render().unwrap();
@@ -97,7 +97,7 @@ fn test_range_rendering_zero() {
 
 #[test]
 fn test_match_rendering_some() {
-    /// // Test match template with Some value
+    // Test match template with Some value
     let tmpl = MatchTemplate {
         result: Some("Success".to_string()),
     };
@@ -108,7 +108,7 @@ fn test_match_rendering_some() {
 
 #[test]
 fn test_match_rendering_none() {
-    /// // Test match template with None value
+    // Test match template with None value
     let tmpl = MatchTemplate { result: None };
 
     let result = tmpl.render().unwrap();
@@ -117,7 +117,7 @@ fn test_match_rendering_none() {
 
 #[test]
 fn test_multiline_template() {
-    /// // Test multi-line template rendering
+    // Test multi-line template rendering
     #[derive(Template)]
     #[template(
         source = r#"Line 1
@@ -137,7 +137,7 @@ Line 3"#,
 
 #[test]
 fn test_rendering_with_whitespace_control() {
-    /// // Test whitespace control in templates
+    // Test whitespace control in templates
     #[derive(Template)]
     #[template(
         source = "{% for i in items -%}
@@ -154,13 +154,13 @@ fn test_rendering_with_whitespace_control() {
     };
 
     let result = tmpl.render().unwrap();
-    /// // Whitespace should be controlled
+    // Whitespace should be controlled
     assert!(!result.is_empty());
 }
 
 #[test]
 fn test_template_with_comments() {
-    /// // Test templates with comments
+    // Test templates with comments
     #[derive(Template)]
     #[template(source = "Before{# This is a comment #}After", ext = "txt")]
     struct CommentTemplate;
@@ -172,7 +172,7 @@ fn test_template_with_comments() {
 
 #[test]
 fn test_rendering_error_handling() {
-    /// // Test that rendering returns proper Result type
+    // Test that rendering returns proper Result type
     let tmpl = GreetingTemplate {
         greeting: "Hi".to_string(),
         name: "Test".to_string(),
@@ -184,7 +184,7 @@ fn test_rendering_error_handling() {
 
 #[test]
 fn test_template_loader_render_workflow() {
-    /// // Test complete workflow: register and render templates
+    // Test complete workflow: register and render templates
     let mut loader = TemplateLoader::new();
 
     loader.register("page.html", || {
@@ -203,7 +203,7 @@ fn test_template_loader_render_workflow() {
 
 #[test]
 fn test_nested_loops() {
-    /// // Test nested loop rendering
+    // Test nested loop rendering
     #[derive(Template)]
     #[template(
         source = "{% for i in 0..2 %}{% for j in 0..2 %}({{ i }},{{ j }}){% endfor %}{% endfor %}",
@@ -219,7 +219,7 @@ fn test_nested_loops() {
 
 #[test]
 fn test_complex_expression() {
-    /// // Test complex expressions in templates
+    // Test complex expressions in templates
     #[derive(Template)]
     #[template(source = "{{ a + b * c }}", ext = "txt")]
     struct ExpressionTemplate {
@@ -235,7 +235,7 @@ fn test_complex_expression() {
 
 #[test]
 fn test_comparison_operators() {
-    /// // Test comparison operators
+    // Test comparison operators
     #[derive(Template)]
     #[template(
         source = "{% if x > y %}greater{% else %}not greater{% endif %}",

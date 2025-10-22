@@ -21,8 +21,24 @@ pub fn trans_with_context(context: &str, message: &str) -> Result<String> {
 }
 
 /// Block translation
+///
+/// Translates a block of text using the active translation catalog.
+/// If no translation is found, returns the original message.
+///
+/// # Example
+/// ```
+/// use reinhardt_templates::blocktrans;
+/// use reinhardt_i18n::{activate_with_catalog, MessageCatalog};
+///
+/// let mut catalog = MessageCatalog::new("fr");
+/// catalog.add_translation("Welcome!", "Bienvenue!");
+/// activate_with_catalog("fr", catalog);
+///
+/// let result = blocktrans("Welcome!").unwrap();
+/// assert_eq!(result, "Bienvenue!");
+/// ```
 pub fn blocktrans(message: &str) -> Result<String> {
-    Ok(message.to_string())
+    Ok(reinhardt_i18n::gettext(message))
 }
 
 /// Block translation with plural

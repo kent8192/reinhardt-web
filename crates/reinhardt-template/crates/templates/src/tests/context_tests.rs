@@ -38,7 +38,7 @@ struct ConditionalTemplate {
 
 #[test]
 fn test_simple_context() {
-    /// // Test basic context rendering (similar to Django's test_context)
+    // Test basic context rendering (similar to Django's test_context)
     let tmpl = SimpleTemplate {
         value: "Test".to_string(),
     };
@@ -49,7 +49,7 @@ fn test_simple_context() {
 
 #[test]
 fn test_multi_value_context() {
-    /// // Test context with multiple values
+    // Test context with multiple values
     let tmpl = MultiValueTemplate {
         key1: "Hello".to_string(),
         key2: "World".to_string(),
@@ -61,7 +61,7 @@ fn test_multi_value_context() {
 
 #[test]
 fn test_context_with_empty_string() {
-    /// // Test context with empty string value
+    // Test context with empty string value
     let tmpl = SimpleTemplate {
         value: String::new(),
     };
@@ -72,20 +72,20 @@ fn test_context_with_empty_string() {
 
 #[test]
 fn test_context_with_special_characters() {
-    /// // Test context with special characters
+    // Test context with special characters
     let tmpl = SimpleTemplate {
         value: "Special: <>&\"'".to_string(),
     };
 
     let result = tmpl.render();
     assert!(result.is_ok());
-    /// // Askama automatically escapes HTML by default
+    // Askama automatically escapes HTML by default
     assert!(result.unwrap().contains("Special"));
 }
 
 #[test]
 fn test_loop_context() {
-    /// // Test context with loop (similar to Django's context iteration)
+    // Test context with loop (similar to Django's context iteration)
     let tmpl = LoopTemplate {
         items: vec![
             "first".to_string(),
@@ -100,7 +100,7 @@ fn test_loop_context() {
 
 #[test]
 fn test_loop_context_empty() {
-    /// // Test loop with empty list
+    // Test loop with empty list
     let tmpl = LoopTemplate { items: vec![] };
 
     let result = tmpl.render().unwrap();
@@ -109,7 +109,7 @@ fn test_loop_context_empty() {
 
 #[test]
 fn test_loop_context_single_item() {
-    /// // Test loop with single item
+    // Test loop with single item
     let tmpl = LoopTemplate {
         items: vec!["only".to_string()],
     };
@@ -120,7 +120,7 @@ fn test_loop_context_single_item() {
 
 #[test]
 fn test_conditional_context_true() {
-    /// // Test conditional rendering when condition is true
+    // Test conditional rendering when condition is true
     let tmpl = ConditionalTemplate {
         show: true,
         content: "Visible".to_string(),
@@ -132,7 +132,7 @@ fn test_conditional_context_true() {
 
 #[test]
 fn test_conditional_context_false() {
-    /// // Test conditional rendering when condition is false
+    // Test conditional rendering when condition is false
     let tmpl = ConditionalTemplate {
         show: false,
         content: "Should not appear".to_string(),
@@ -144,7 +144,7 @@ fn test_conditional_context_false() {
 
 #[test]
 fn test_context_comparable() {
-    /// // Test that we can compare context values (similar to Django's test_context_comparable)
+    // Test that we can compare context values (similar to Django's test_context_comparable)
     let tmpl1 = SimpleTemplate {
         value: "Same".to_string(),
     };

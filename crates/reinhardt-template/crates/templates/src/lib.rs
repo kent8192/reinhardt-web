@@ -48,8 +48,6 @@ pub use static_filters::{init_static_config, static_filter, static_path_join, St
 use reinhardt_exception::{Error, Result};
 use std::collections::HashMap;
 
-// NOTE: Askama の詳細エラーは内部で処理し、外部には統一 `reinhardt_exception::Error` を返す方針に変更
-
 /// Template loader for managing multiple templates
 pub struct TemplateLoader {
     templates: HashMap<String, Box<dyn Fn() -> String + Send + Sync>>,
@@ -64,7 +62,7 @@ impl TemplateLoader {
     /// use reinhardt_templates::TemplateLoader;
     ///
     /// let loader = TemplateLoader::new();
-    /// // Loader is ready to register templates
+    // Loader is ready to register templates
     /// ```
     pub fn new() -> Self {
         Self {
@@ -105,7 +103,7 @@ impl TemplateLoader {
     /// let result = loader.render("greeting").unwrap();
     /// assert_eq!(result, "Hello, {{ name }}!");
     ///
-    /// // Template not found
+    // Template not found
     /// let error = loader.render("nonexistent").unwrap_err();
     /// assert!(matches!(error, reinhardt_templates::TemplateError::TemplateNotFound(_)));
     /// ```
@@ -253,7 +251,7 @@ mod basic_tests {
         assert_eq!(loader.render("hello").unwrap(), "Hello World!");
     }
 
-    /// // Type-safe template tests
+    // Type-safe template tests
     struct HomeTemplateId;
     impl TemplateId for HomeTemplateId {
         const NAME: &'static str = "home.html";

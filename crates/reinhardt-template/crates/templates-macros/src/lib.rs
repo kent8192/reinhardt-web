@@ -66,21 +66,21 @@ use validation::{validate_template_path, TemplateValidationError};
 /// ```compile_fail
 /// use reinhardt_templates_macros::template;
 ///
-/// // Error: parent directory reference
+// Error: parent directory reference
 /// let invalid = template!("../etc/passwd");
 /// ```
 ///
 /// ```compile_fail
 /// use reinhardt_templates_macros::template;
 ///
-/// // Error: backslash separator
+// Error: backslash separator
 /// let invalid = template!("emails\\welcome.html");
 /// ```
 ///
 /// ```compile_fail
 /// use reinhardt_templates_macros::template;
 ///
-/// // Error: absolute path
+// Error: absolute path
 /// let invalid = template!("/etc/passwd");
 /// ```
 #[proc_macro]

@@ -29,7 +29,7 @@ impl TemplateId for AboutTemplateId {
 
 #[test]
 fn test_template_loader_get_template() {
-    /// // Test basic template loading similar to Django's test_get_template
+    // Test basic template loading similar to Django's test_get_template
     let mut loader = TemplateLoader::new();
     loader.register("test.html", || {
         let tmpl = TestTemplate {
@@ -45,7 +45,7 @@ fn test_template_loader_get_template() {
 
 #[test]
 fn test_template_loader_missing() {
-    /// // Test missing template handling similar to Django's test_file_does_not_exist
+    // Test missing template handling similar to Django's test_file_does_not_exist
     let loader = TemplateLoader::new();
 
     let result = loader.render("nonexistent.html");
@@ -66,7 +66,7 @@ fn test_template_loader_missing() {
 
 #[test]
 fn test_template_loader_multiple_templates() {
-    /// // Test loading multiple templates
+    // Test loading multiple templates
     let mut loader = TemplateLoader::new();
 
     loader.register("template1.html", || {
@@ -95,7 +95,7 @@ fn test_template_loader_multiple_templates() {
 
 #[test]
 fn test_typed_template_loading() {
-    /// // Test type-safe template loading
+    // Test type-safe template loading
     let mut loader = TemplateLoader::new();
 
     loader.register_typed::<HomeTemplateId, _>(|| {
@@ -112,7 +112,7 @@ fn test_typed_template_loading() {
 
 #[test]
 fn test_typed_template_not_found() {
-    /// // Test type-safe template not found error
+    // Test type-safe template not found error
     let loader = TemplateLoader::new();
 
     let result = loader.render_typed::<AboutTemplateId>();
@@ -125,14 +125,14 @@ fn test_typed_template_not_found() {
 
 #[test]
 fn test_template_loader_override() {
-    /// // Test overriding a template (similar to Django's caching tests)
+    // Test overriding a template (similar to Django's caching tests)
     let mut loader = TemplateLoader::new();
 
     loader.register("override.html", || "First version".to_string());
 
     assert_eq!(loader.render("override.html").unwrap(), "First version");
 
-    /// // Override with new version
+    // Override with new version
     loader.register("override.html", || "Second version".to_string());
 
     assert_eq!(loader.render("override.html").unwrap(), "Second version");
@@ -140,7 +140,7 @@ fn test_template_loader_override() {
 
 #[test]
 fn test_template_name_with_special_characters() {
-    /// // Test template names with special characters
+    // Test template names with special characters
     let mut loader = TemplateLoader::new();
 
     loader.register("template-with-dash.html", || "Dash template".to_string());
@@ -165,7 +165,7 @@ fn test_template_name_with_special_characters() {
 
 #[test]
 fn test_template_loader_empty_name() {
-    /// // Test loading template with empty name
+    // Test loading template with empty name
     let loader = TemplateLoader::new();
 
     let result = loader.render("");
@@ -178,7 +178,7 @@ fn test_template_loader_empty_name() {
 
 #[test]
 fn test_template_loader_mixed_registration() {
-    /// // Test mixing typed and untyped registration
+    // Test mixing typed and untyped registration
     let mut loader = TemplateLoader::new();
 
     loader.register_typed::<HomeTemplateId, _>(|| "Home".to_string());
