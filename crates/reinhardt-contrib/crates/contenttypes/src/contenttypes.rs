@@ -427,7 +427,7 @@ impl GenericForeignKey {
 mod typed_tests {
     use super::*;
 
-    /// // Test model types
+    // Test model types
     struct UserModel;
     impl ModelType for UserModel {
         const APP_LABEL: &'static str = "auth";
@@ -530,7 +530,7 @@ mod typed_tests {
 // Comprehensive tests inspired by Django's contenttypes tests
 // ============================================================================
 //
-// NOTE: These tests are inspired by Django's contenttypes test suite.
+// These tests are inspired by Django's contenttypes test suite.
 // The following Django test categories are NOT yet implemented due to
 // architectural differences or missing features:
 //
@@ -540,12 +540,12 @@ mod typed_tests {
 // - Management command tests
 // - Field validation/check framework tests
 //
-// NOTE: Future test additions when DB layer is implemented:
+// Future test additions when DB layer is implemented:
 // - ContentType persistence to database
 // - Multi-database support
 // - Migration operations for ContentType renaming
 //
-// NOTE: Future test additions when view layer is implemented:
+// Future test additions when view layer is implemented:
 // - Shortcut view functionality
 // - URL resolution for generic objects
 
@@ -553,15 +553,15 @@ mod typed_tests {
 mod inspired_tests {
     use super::*;
 
-    /// // Test helper: Setup function that clears registry before each test
-    /// // Note: Each test creates its own registry instance to ensure isolation
+    // Test helper: Setup function that clears registry before each test
+    // Note: Each test creates its own registry instance to ensure isolation
     fn setup_registry() -> ContentTypeRegistry {
         let registry = ContentTypeRegistry::new();
         registry.clear();
         registry
     }
 
-    /// // ========== ContentType Model Tests ==========
+    // ========== ContentType Model Tests ==========
 
     /// Test: ContentType string representation
     #[test]
@@ -587,7 +587,7 @@ mod inspired_tests {
         assert_eq!(ct.qualified_name(), "contenttypes_tests.unknown");
     }
 
-    /// // ========== Registry Cache Tests ==========
+    // ========== Registry Cache Tests ==========
 
     /// Test: get_or_create with same params returns same instance
     /// Inspired by: test_get_for_models_creation
@@ -708,7 +708,7 @@ mod inspired_tests {
         assert_eq!(ct_author.model, "Author");
     }
 
-    /// // ========== GenericForeignKey Tests ==========
+    // ========== GenericForeignKey Tests ==========
 
     /// Test: GenericForeignKey respects deleted objects
     /// Inspired by: test_get_object_cache_respects_deleted_objects
@@ -753,7 +753,7 @@ mod inspired_tests {
     /// Test: GenericForeignKey get content type
     /// Inspired by: test_get_content_type_no_arguments
 
-    /// // ========== ContentType Operations Tests ==========
+    // ========== ContentType Operations Tests ==========
 
     /// Test: ContentType ID uniqueness
     #[test]
@@ -789,7 +789,7 @@ mod inspired_tests {
         assert_eq!(ct.model, "My_Model");
     }
 
-    /// // ========== GenericRelationQuery Tests ==========
+    // ========== GenericRelationQuery Tests ==========
 
     /// Test: Generic relation query SQL generation
     #[test]
@@ -831,7 +831,7 @@ mod inspired_tests {
         assert!(sql.contains("object_id IN (42)"));
     }
 
-    /// // ========== Edge Cases and Error Conditions ==========
+    // ========== Edge Cases and Error Conditions ==========
 
     /// Test: Registry clear removes all content types
     #[test]

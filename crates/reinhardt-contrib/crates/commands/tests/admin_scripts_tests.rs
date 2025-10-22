@@ -87,25 +87,6 @@ async fn test_startproject_with_custom_directory() {
 }
 
 #[tokio::test]
-async fn test_startproject_invalid_name() {
-    let env = TestEnvironment::new();
-    std::env::set_current_dir(env.path()).expect("Failed to change directory");
-
-    // Test with invalid project names
-    let invalid_names = vec!["123project", "my-project", "my.project", "test"];
-
-    for invalid_name in invalid_names {
-        let ctx = CommandContext::new(vec![invalid_name.to_string()]);
-        let cmd = StartProjectCommand;
-
-        // Note: Current implementation may not validate names, this is a placeholder test
-        let result = cmd.execute(&ctx).await;
-        // Depending on implementation, this may succeed or fail
-        // Adjust assertion based on actual validation logic
-    }
-}
-
-#[tokio::test]
 async fn test_startproject_missing_name() {
     let ctx = CommandContext::new(vec![]);
     let cmd = StartProjectCommand;

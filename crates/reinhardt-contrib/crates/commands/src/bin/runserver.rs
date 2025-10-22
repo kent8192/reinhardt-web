@@ -60,7 +60,7 @@ struct Args {
 }
 
 async fn handle_request(_req: Request<Incoming>) -> Result<Response<String>, Infallible> {
-    /// // Render the welcome page template
+    // Render the welcome page template
     let template = WelcomeTemplate {
         version: env!("CARGO_PKG_VERSION"),
     };
@@ -83,17 +83,17 @@ fn load_tls_config(
     cert_path: &PathBuf,
     key_path: &PathBuf,
 ) -> Result<ServerConfig, Box<dyn std::error::Error>> {
-    /// // Load certificate chain
+    // Load certificate chain
     let cert_file = File::open(cert_path)?;
     let mut cert_reader = BufReader::new(cert_file);
     let cert_chain: Vec<_> = certs(&mut cert_reader).collect::<Result<_, _>>()?;
 
-    /// // Load private key
+    // Load private key
     let key_file = File::open(key_path)?;
     let mut key_reader = BufReader::new(key_file);
     let private_key = private_key(&mut key_reader)?.ok_or("No private key found in key file")?;
 
-    /// // Build TLS configuration
+    // Build TLS configuration
     let config = ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(cert_chain, private_key)?;
@@ -131,7 +131,7 @@ fn generate_self_signed_cert() -> Result<
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    /// // Validate TLS arguments
+    // Validate TLS arguments
     if args.cert.is_some() && args.key.is_none() {
         return Err("--key is required when --cert is specified".into());
     }
@@ -142,13 +142,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Cannot use both --cert/--key and --self-signed".into());
     }
 
-    /// // Parse the address
+    // Parse the address
     let addr: SocketAddr = args
         .address
         .parse()
         .map_err(|_| format!("Invalid address: {}", args.address))?;
 
-    /// // Determine if HTTPS is enabled
+    // Determine if HTTPS is enabled
     let use_https = args.cert.is_some() || args.self_signed;
     let scheme = if use_https { "https" } else { "http" };
 
@@ -170,7 +170,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    /// // Load or generate TLS configuration if needed
+    // Load or generate TLS configuration if needed
     let tls_acceptor = if use_https {
         let tls_config = if args.self_signed {
             println!(
@@ -204,12 +204,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "Quit the server with CTRL-C".dimmed());
     println!();
 
-    /// // Create TCP listener
+    // Create TCP listener
     let listener = TcpListener::bind(addr).await?;
 
     println!("{}", format!("Listening on {}", addr).green().bold());
 
-    /// // Accept connections in a loop
+    // Accept connections in a loop
     loop {
         let (stream, _) = listener.accept().await?;
 

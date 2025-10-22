@@ -128,7 +128,7 @@ impl Default for Level {
 mod tests {
     use super::*;
 
-    /// // Tests from Django messages_tests/base.py - BaseTests
+    // Tests from Django messages_tests/base.py - BaseTests
     #[test]
     fn test_default_level() {
         let default_level = Level::default();

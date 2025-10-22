@@ -20,7 +20,7 @@ impl MemoryStorage {
     /// use reinhardt_messages::storage::MemoryStorage;
     ///
     /// let storage = MemoryStorage::new();
-    /// // Creates a new storage instance with defaults
+    // Creates a new storage instance with defaults
     /// ```
     pub fn new() -> Self {
         Self {
@@ -74,7 +74,7 @@ mod tests {
         assert_eq!(storage.peek().len(), 0);
     }
 
-    /// // Tests from Django messages_tests/base.py - BaseTests
+    // Tests from Django messages_tests/base.py - BaseTests
     #[test]
     fn test_add_messages() {
         let mut storage = MemoryStorage::new();

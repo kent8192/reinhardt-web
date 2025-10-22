@@ -149,20 +149,6 @@ async fn test_manage_multiple_custom_command_with_environment() {
 // ============================================================================
 
 #[tokio::test]
-async fn test_manage_check_nonexistent_app() {
-    let env = TestEnvironment::new();
-    std::env::set_current_dir(env.path()).expect("Failed to change directory");
-
-    env.create_file(
-        "Cargo.toml",
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"",
-    );
-
-    // When check command is implemented, it should report nonexistent app
-    // For now, this is a placeholder that sets up the environment
-}
-
-#[tokio::test]
 async fn test_manage_check_broken_app() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");

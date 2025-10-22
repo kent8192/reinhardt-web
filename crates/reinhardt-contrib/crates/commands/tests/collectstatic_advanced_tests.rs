@@ -13,6 +13,7 @@ fn create_test_config(source_dir: &Path, dest_dir: &Path) -> StaticFilesConfig {
         static_root: dest_dir.to_path_buf(),
         static_url: "/static/".to_string(),
         staticfiles_dirs: vec![source_dir.to_path_buf()],
+        media_url: None,
     }
 }
 
@@ -63,6 +64,7 @@ fn test_multiple_source_directories() {
             source_dir1.path().to_path_buf(),
             source_dir2.path().to_path_buf(),
         ],
+        media_url: None,
     };
 
     let options = CollectStaticOptions {
@@ -96,6 +98,7 @@ fn test_file_overwrite_from_later_source() {
             source_dir1.path().to_path_buf(),
             source_dir2.path().to_path_buf(),
         ],
+        media_url: None,
     };
 
     let options = CollectStaticOptions {
@@ -168,6 +171,7 @@ fn test_nonexistent_source_directory() {
         static_root: dest_dir.path().to_path_buf(),
         static_url: "/static/".to_string(),
         staticfiles_dirs: vec![nonexistent],
+        media_url: None,
     };
 
     let options = CollectStaticOptions {

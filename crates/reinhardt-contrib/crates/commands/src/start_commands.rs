@@ -274,7 +274,7 @@ impl BaseCommand for StartAppCommand {
 
 /// Get the path to the built-in project template directory
 fn get_project_template_dir(template_type: &str) -> CommandResult<PathBuf> {
-    /// // template_type: "mvc" or "restful"
+    // template_type: "mvc" or "restful"
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let template_dir = PathBuf::from(manifest_dir)
         .join("templates")
@@ -292,7 +292,7 @@ fn get_project_template_dir(template_type: &str) -> CommandResult<PathBuf> {
 
 /// Get the path to the built-in app template directory
 fn get_app_template_dir(template_type: &str) -> CommandResult<PathBuf> {
-    /// // template_type: "mvc" or "restful"
+    // template_type: "mvc" or "restful"
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let template_dir = PathBuf::from(manifest_dir)
         .join("templates")
@@ -315,7 +315,7 @@ async fn create_workspace_app(
     is_mtv: bool,
     ctx: &CommandContext,
 ) -> CommandResult<()> {
-    /// // Create apps directory if it doesn't exist
+    // Create apps directory if it doesn't exist
     let apps_dir = PathBuf::from("apps");
     if !apps_dir.exists() {
         std::fs::create_dir_all(&apps_dir).map_err(|e| {
@@ -324,32 +324,32 @@ async fn create_workspace_app(
         ctx.verbose("Created apps/ directory");
     }
 
-    /// // Set target to apps/{app_name} if no custom target is specified
+    // Set target to apps/{app_name} if no custom target is specified
     let app_target = if let Some(t) = target {
         t.to_path_buf()
     } else {
         apps_dir.join(app_name)
     };
 
-    /// // Prepare template context
+    // Prepare template context
     let mut context = TemplateContext::new();
     context.insert("app_name", app_name);
     context.insert("camel_case_app_name", &to_camel_case(app_name));
     context.insert("is_mtv", if is_mtv { "true" } else { "false" });
     context.insert("is_restful", if !is_mtv { "true" } else { "false" });
 
-    /// // Determine template directory for workspace apps
+    // Determine template directory for workspace apps
     let template_dir = if is_mtv {
         get_app_workspace_template_dir("mtv")?
     } else {
         get_app_workspace_template_dir("restful")?
     };
 
-    /// // Create app using TemplateCommand
+    // Create app using TemplateCommand
     let template_cmd = TemplateCommand::new();
     template_cmd.handle(app_name, Some(&app_target), &template_dir, context, ctx)?;
 
-    /// // Update workspace Cargo.toml
+    // Update workspace Cargo.toml
     update_workspace_members(app_name)?;
 
     Ok(())
@@ -357,7 +357,7 @@ async fn create_workspace_app(
 
 /// Get the path to the built-in workspace app template directory
 fn get_app_workspace_template_dir(template_type: &str) -> CommandResult<PathBuf> {
-    /// // template_type: "mvc" or "restful"
+    // template_type: "mvc" or "restful"
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let template_dir = PathBuf::from(manifest_dir)
         .join("templates")
@@ -392,7 +392,7 @@ fn update_workspace_members(app_name: &str) -> CommandResult<()> {
     let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
     let member_line = format!("    \"apps/{}\",", app_name);
 
-    /// // Find [workspace] section and members array
+    // Find [workspace] section and members array
     let mut in_workspace_section = false;
     let mut in_members_array = false;
     let mut insert_index = None;

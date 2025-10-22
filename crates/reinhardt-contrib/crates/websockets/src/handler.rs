@@ -1,13 +1,14 @@
 //! WebSocket handler and room management
 
 use crate::connection::{Message, WebSocketConnection, WebSocketResult};
+use crate::room::{Room, RoomError};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Manages WebSocket rooms and client connections
+/// Manages WebSocket rooms and client connections with backward compatibility
 pub struct RoomManager {
-    rooms: Arc<RwLock<HashMap<String, Vec<Arc<WebSocketConnection>>>>>,
+    rooms: Arc<RwLock<HashMap<String, Arc<Room>>>>,
 }
 
 impl RoomManager {
@@ -20,20 +21,17 @@ impl RoomManager {
 
     /// Add a connection to a room
     pub async fn join_room(&self, room_name: String, connection: Arc<WebSocketConnection>) {
-        let mut rooms = self.rooms.write().await;
-        rooms
-            .entry(room_name)
-            .or_insert_with(Vec::new)
-            .push(connection);
+        let room = self.get_or_create_room(&room_name).await;
+        let client_id = connection.id().to_string();
+        let _ = room.join(client_id, connection).await;
     }
 
     /// Remove a connection from a room
     pub async fn leave_room(&self, room_name: &str, client_id: &str) {
-        let mut rooms = self.rooms.write().await;
-        if let Some(room) = rooms.get_mut(room_name) {
-            room.retain(|conn| conn.id() != client_id);
-            if room.is_empty() {
-                rooms.remove(room_name);
+        if let Some(room) = self.get_room(room_name).await {
+            let _ = room.leave(client_id).await;
+            if room.is_empty().await {
+                let _ = self.delete_room(room_name).await;
             }
         }
     }
@@ -44,11 +42,11 @@ impl RoomManager {
         room_name: &str,
         message: Message,
     ) -> WebSocketResult<()> {
-        let rooms = self.rooms.read().await;
-        if let Some(room) = rooms.get(room_name) {
-            for connection in room {
-                connection.send(message.clone()).await?;
-            }
+        if let Some(room) = self.get_room(room_name).await {
+            room.broadcast(message).await.map_err(|e| match e {
+                RoomError::WebSocket(ws_err) => ws_err,
+                _ => crate::connection::WebSocketError::Send(e.to_string()),
+            })?;
         }
         Ok(())
     }
@@ -57,23 +55,51 @@ impl RoomManager {
     pub async fn broadcast_to_all(&self, message: Message) -> WebSocketResult<()> {
         let rooms = self.rooms.read().await;
         for room in rooms.values() {
-            for connection in room {
-                connection.send(message.clone()).await?;
-            }
+            room.broadcast(message.clone()).await.map_err(|e| match e {
+                RoomError::WebSocket(ws_err) => ws_err,
+                _ => crate::connection::WebSocketError::Send(e.to_string()),
+            })?;
         }
         Ok(())
     }
 
     /// Get the number of connections in a room
     pub async fn get_room_size(&self, room_name: &str) -> usize {
-        let rooms = self.rooms.read().await;
-        rooms.get(room_name).map(|r| r.len()).unwrap_or(0)
+        if let Some(room) = self.get_room(room_name).await {
+            room.client_count().await
+        } else {
+            0
+        }
     }
 
     /// Get all room names
     pub async fn get_all_rooms(&self) -> Vec<String> {
         let rooms = self.rooms.read().await;
         rooms.keys().cloned().collect()
+    }
+
+    async fn get_room(&self, id: &str) -> Option<Arc<Room>> {
+        let rooms = self.rooms.read().await;
+        rooms.get(id).cloned()
+    }
+
+    async fn get_or_create_room(&self, id: &str) -> Arc<Room> {
+        if let Some(room) = self.get_room(id).await {
+            return room;
+        }
+
+        let mut rooms = self.rooms.write().await;
+        let room = Arc::new(Room::new(id.to_string()));
+        rooms.insert(id.to_string(), room.clone());
+        room
+    }
+
+    async fn delete_room(&self, id: &str) -> Result<(), RoomError> {
+        let mut rooms = self.rooms.write().await;
+        rooms
+            .remove(id)
+            .ok_or_else(|| RoomError::RoomNotFound(id.to_string()))?;
+        Ok(())
     }
 }
 

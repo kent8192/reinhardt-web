@@ -10,7 +10,7 @@ use std::collections::HashMap;
 ///
 /// let mut catalog = MessageCatalog::new("fr");
 /// catalog.add_translation("Hello", "Bonjour");
-/// catalog.add_plural("item", "items", vec!["article", "articles"]);
+/// catalog.add_plural_str("item", "items", vec!["article", "articles"]);
 ///
 /// assert_eq!(catalog.get("Hello"), Some(&"Bonjour".to_string()));
 /// assert_eq!(catalog.get_plural("item", 1), Some(&"article".to_string()));
@@ -137,8 +137,15 @@ impl MessageCatalog {
     /// Determine the plural form index for a given count
     /// Uses language-specific plural rules based on locale
     fn plural_form(&self, count: usize) -> usize {
+        // Japanese, Chinese, Korean: no plural forms (always index 0)
+        if self.locale.starts_with("ja")
+            || self.locale.starts_with("zh")
+            || self.locale.starts_with("ko")
+        {
+            0
+        }
         // French and similar languages: 0 and 1 are singular (index 0), 2+ are plural (index 1)
-        if self.locale.starts_with("fr") {
+        else if self.locale.starts_with("fr") {
             if count == 0 || count == 1 {
                 0
             } else {

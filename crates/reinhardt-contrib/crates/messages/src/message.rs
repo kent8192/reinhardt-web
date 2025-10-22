@@ -246,7 +246,7 @@ mod tests {
         assert!(tags.contains(&"custom".to_string()));
     }
 
-    /// // Tests from Django messages_tests/tests.py - MessageTests
+    // Tests from Django messages_tests/tests.py - MessageTests
     #[test]
     fn test_eq() {
         let msg_1 = Message::new(Level::Info, "Test message 1");
@@ -287,7 +287,7 @@ mod tests {
         }
     }
 
-    /// // Tests from Django messages_tests/base.py - BaseTests
+    // Tests from Django messages_tests/base.py - BaseTests
     #[test]
     fn test_add() {
         let msg1 = Message::new(Level::Info, "Test message 1");

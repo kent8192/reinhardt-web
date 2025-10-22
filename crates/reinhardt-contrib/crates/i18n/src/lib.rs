@@ -55,6 +55,7 @@ pub use locale::get_locale as get_language;
 
 /// Catalog loader for loading message catalogs from files or other sources
 pub struct CatalogLoader {
+    #[allow(dead_code)]
     base_path: std::path::PathBuf,
 }
 
@@ -137,10 +138,12 @@ impl TranslationState {
         self.catalogs.insert(locale, catalog);
     }
 
+    #[allow(dead_code)]
     fn remove_catalog(&mut self, locale: &str) {
         self.catalogs.remove(locale);
     }
 
+    #[allow(dead_code)]
     fn has_catalog(&self, locale: &str) -> bool {
         self.catalogs.contains_key(locale)
     }

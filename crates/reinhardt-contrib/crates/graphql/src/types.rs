@@ -53,7 +53,7 @@ mod tests {
         assert_eq!(test_field.name, "test_field");
     }
 
-    /// // Test that multiple types can implement the markers
+    // Test that multiple types can implement the markers
     struct AnotherType;
     impl GraphQLType for AnotherType {}
 

@@ -181,7 +181,7 @@ async fn test_websocket_no_credentials() {
     let (tx, _rx) = mpsc::unbounded_channel();
     let conn = Arc::new(WebSocketConnection::new("no_auth".to_string(), tx));
 
-    /// // Close immediately to simulate rejection
+    // Close immediately to simulate rejection
     let result = conn.close().await;
     assert!(result.is_ok());
     assert!(conn.is_closed().await);
@@ -193,11 +193,11 @@ async fn test_websocket_invalid_data() {
     let (tx, _rx) = mpsc::unbounded_channel();
     let conn = Arc::new(WebSocketConnection::new("invalid_data".to_string(), tx));
 
-    /// // Simulate invalid data scenario by closing connection
+    // Simulate invalid data scenario by closing connection
     conn.close().await.unwrap();
     assert!(conn.is_closed().await);
 
-    /// // Subsequent operations should fail
+    // Subsequent operations should fail
     let result = conn.send_text("This should fail".to_string()).await;
     assert!(result.is_err());
 }
@@ -213,17 +213,17 @@ async fn test_websocket_multiple_clients_with_room() {
     let conn1 = Arc::new(WebSocketConnection::new("1234".to_string(), tx1));
     let conn2 = Arc::new(WebSocketConnection::new("5678".to_string(), tx2));
 
-    /// // Join room
+    // Join room
     manager.join_room("chat".to_string(), conn1.clone()).await;
     manager.join_room("chat".to_string(), conn2.clone()).await;
 
-    /// // Client 1 sends message
+    // Client 1 sends message
     conn1
         .send_text("Hello from 1234".to_string())
         .await
         .unwrap();
 
-    /// // Broadcast to room
+    // Broadcast to room
     manager
         .broadcast_to_room(
             "chat",
@@ -232,7 +232,7 @@ async fn test_websocket_multiple_clients_with_room() {
         .await
         .unwrap();
 
-    /// // Verify broadcast received by all clients
+    // Verify broadcast received by all clients
     let result = timeout(Duration::from_millis(100), async {
         // Both clients should receive the broadcast
         let msg1 = rx1.try_recv().ok();
@@ -255,18 +255,18 @@ async fn test_websocket_handle_disconnection() {
     let conn1 = Arc::new(WebSocketConnection::new("1234".to_string(), tx1));
     let conn2 = Arc::new(WebSocketConnection::new("5678".to_string(), tx2));
 
-    /// // Join room
+    // Join room
     manager.join_room("chat".to_string(), conn1.clone()).await;
     manager.join_room("chat".to_string(), conn2.clone()).await;
 
-    /// // Verify room size
+    // Verify room size
     assert_eq!(manager.get_room_size("chat").await, 2);
 
-    /// // Client 2 disconnects
+    // Client 2 disconnects
     conn2.close().await.unwrap();
     manager.leave_room("chat", "5678").await;
 
-    /// // Broadcast disconnect message
+    // Broadcast disconnect message
     manager
         .broadcast_to_room(
             "chat",
@@ -275,14 +275,14 @@ async fn test_websocket_handle_disconnection() {
         .await
         .unwrap();
 
-    /// // Verify disconnect message received
+    // Verify disconnect message received
     let msg = rx1.try_recv().unwrap();
     match msg {
         Message::Text { data } => assert_eq!(data, "Client #5678 left the chat"),
         _ => panic!("Expected text message"),
     }
 
-    /// // Verify room size decreased
+    // Verify room size decreased
     assert_eq!(manager.get_room_size("chat").await, 1);
 }
 
@@ -375,7 +375,7 @@ async fn test_broadcast_to_all_rooms() {
     let broadcast_msg = Message::text("Global announcement".to_string());
     manager.broadcast_to_all(broadcast_msg).await.unwrap();
 
-    /// // Both rooms should receive the message
+    // Both rooms should receive the message
     let msg1 = rx1.try_recv().unwrap();
     let msg2 = rx2.try_recv().unwrap();
 

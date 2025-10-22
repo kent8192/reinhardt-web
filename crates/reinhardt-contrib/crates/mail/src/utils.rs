@@ -42,9 +42,12 @@ pub async fn send_mail(
         email = email.html(html);
     }
 
-    let _email = email.build();
-    // TODO: Implement default backend and send the email
-    Ok(())
+    let email = email.build();
+
+    // Use console backend as the default for now
+    // In production, this should use backend_from_settings()
+    let backend = crate::backends::ConsoleBackend;
+    email.send_with_backend(&backend)
 }
 /// Send a simple email with a specific backend
 ///
