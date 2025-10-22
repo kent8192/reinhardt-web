@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Convenient shortcut functions for common Reinhardt operations"
+description = "Django-style shortcut functions for redirects, rendering, and 404 error handling"
 
 [dependencies]
 reinhardt-http = { workspace = true }
@@ -13,11 +13,18 @@ reinhardt-views = { workspace = true }
 reinhardt-template = { workspace = true, optional = true }
 reinhardt-db = { workspace = true, optional = true }
 
+bytes = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tera = { version = "1.20", optional = true }
+hyper = { workspace = true }
+lru = { version = "0.12", optional = true }
 
 [features]
 default = ["templates"]
-templates = ["reinhardt-template"]
+templates = ["reinhardt-template", "lru", "tera"]
 database = ["reinhardt-db"]
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -1,4 +1,3 @@
-//! # Reinhardt Shortcuts
 //!
 //! Convenient shortcut functions for common Reinhardt operations.
 //!
@@ -7,25 +6,49 @@
 //! ## Examples
 //!
 //! ```rust,ignore
-//! use reinhardt_shortcuts::{render, redirect, get_object_or_404};
+//! use reinhardt_shortcuts::{render_template, redirect, get_object_or_404};
 //!
 //! // Render a template with context
-//! let response = render(request, "template.html", context)?;
+//! let response = render_template(&request, "template.html", context)?;
 //!
 //! // Redirect to a URL
 //! let response = redirect("/users/")?;
 //!
-//! // Get object or return 404
-//! let user = get_object_or_404(User::objects(), id)?;
+//! // Get object or return 404 (requires "database" feature)
+//! let user = get_object_or_404::<User>(id).await?;
 //! ```
 
-// TODO: Implement shortcut modules
-// pub mod render;
-// pub mod redirect;
-// pub mod get_or_404;
+pub mod get_or_404;
+pub mod redirect;
+pub mod render;
 
-// pub use render::render;
-// pub use redirect::{redirect, redirect_to};
+// ORM integration (feature-gated)
+#[cfg(feature = "database")]
+pub mod orm;
 
-// #[cfg(feature = "database")]
-// pub use get_or_404::{get_object_or_404, get_list_or_404};
+// Template integration (feature-gated)
+#[cfg(feature = "templates")]
+pub mod template;
+
+// Template caching for performance (feature-gated)
+#[cfg(feature = "templates")]
+pub mod template_cache;
+
+// Template inheritance support with Tera (feature-gated)
+#[cfg(feature = "templates")]
+pub mod template_inheritance;
+
+// Re-export core functions
+pub use get_or_404::{
+    exists_or_404_response, get_list_or_404_response, get_or_404_response, GetError,
+};
+pub use redirect::{redirect, redirect_permanent};
+pub use render::{render_html, render_json, render_json_pretty, render_text};
+
+// Re-export ORM functions (feature-gated)
+#[cfg(feature = "database")]
+pub use orm::{get_list_or_404, get_object_or_404};
+
+// Re-export template functions (feature-gated)
+#[cfg(feature = "templates")]
+pub use template::{render_template, render_to_response};

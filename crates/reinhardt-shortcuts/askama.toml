@@ -1,0 +1,16 @@
+[general]
+# Template directories - relative to the crate root
+dirs = ["templates"]
+
+# Template file extension
+ext = "html"
+
+# Escape mode for HTML templates
+escapers = [
+  { extensions = [
+    "html",
+  ], path = "askama::Html" },
+  { extensions = [
+    "txt",
+  ], path = "askama::Text" },
+]
