@@ -152,9 +152,9 @@ async fn test_view_authenticated_flatpage() {
     assert!(retrieved_user.is_some());
     assert_eq!(retrieved_user.unwrap().username, "testuser");
 
-    // NOTE: Full integration test with Router would verify:
-    // - Anonymous request → 302 redirect to /accounts/login/?next=/sekrit/
-    // - Authenticated request → 200 OK with flatpage content
+    // Note: Full integration test with Router would verify anonymous request redirects to
+    // /accounts/login/?next=/sekrit/ (302), and authenticated request returns flatpage
+    // content (200 OK). This requires complete middleware integration.
 
     cleanup_test_tables(&pool).await;
 }
@@ -287,6 +287,5 @@ async fn test_flatpages_http_integration_nested() {
     cleanup_test_tables(&pool).await;
 }
 
-// NOTE: APPEND_SLASH tests would require implementing redirect middleware
-// These are currently tested at the FlatpageFallbackMiddleware level
-// in reinhardt-flatpages/tests/test_middleware.rs
+// Note: APPEND_SLASH tests require redirect middleware implementation. These are currently
+// tested at the FlatpageFallbackMiddleware level in reinhardt-flatpages/tests/test_middleware.rs

@@ -174,11 +174,11 @@ async fn test_imagefield_constructor() {
 
 #[tokio::test]
 async fn test_imagefield_dimensions() {
-    // Test getting image dimensions (placeholder - actual implementation would parse image)
+    // Tests storage operations for image files
+    // NOTE: Uses fake image data; real implementation would parse actual image format
     let (storage, _temp_dir) = create_test_storage().await;
 
     let path = "images/photo.jpg";
-    // In real implementation, this would be actual image data
     storage.save(path, b"fake image data").await.unwrap();
 
     let metadata = storage.metadata(path).await.unwrap();
@@ -203,13 +203,13 @@ async fn test_imagefield_field_save_file() {
 
 #[tokio::test]
 async fn test_imagefield_update_dimension_fields() {
-    // Test updating image dimension fields (placeholder)
+    // Tests storage operations for resized images
+    // NOTE: Uses fake image data; real implementation would extract actual dimensions
     let (storage, _temp_dir) = create_test_storage().await;
 
     let path = "images/resized.jpg";
     storage.save(path, b"resized image").await.unwrap();
 
-    // In real implementation, would extract and store dimensions
     let metadata = storage.metadata(path).await.unwrap();
     assert!(metadata.size > 0);
 

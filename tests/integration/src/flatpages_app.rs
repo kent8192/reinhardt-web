@@ -1,11 +1,16 @@
 //! Flatpages application builder for integration tests
 
 use async_trait::async_trait;
-use reinhardt_apps::{Handler, Request, Response, Result};
+use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_auth::session::{InMemorySessionStore, Session, SessionStore, SESSION_KEY_USER_ID};
+use reinhardt_auth::{AnonymousUser, SimpleUser, User};
+use reinhardt_middleware::csrf::{get_token, CsrfMiddleware, CsrfMiddlewareConfig};
+use reinhardt_middleware::AuthenticationMiddleware;
 use reinhardt_routers::{path, DefaultRouter, Router};
 use reinhardt_security::csrf::{check_token, get_secret, CsrfMeta};
 use sqlx::{Pool, Postgres};
 use std::sync::{Arc, Mutex};
+use uuid::Uuid;
 
 /// Shared application state
 #[derive(Clone)]
@@ -263,8 +268,64 @@ pub fn get_csrf_token_for_testing(state: &AppState) -> Option<String> {
     })
 }
 
-/// Build flatpages app with authentication (authenticated user)
+/// Authentication backend for integration tests
+struct TestAuthBackend {
+    authenticated: bool,
+    test_user: Option<SimpleUser>,
+}
+
+impl reinhardt_auth::AuthenticationBackend for TestAuthBackend {
+    fn authenticate(
+        &self,
+        _request: &Request,
+    ) -> std::result::Result<Option<Box<dyn User>>, reinhardt_auth::AuthenticationError> {
+        if self.authenticated {
+            if let Some(user) = &self.test_user {
+                Ok(Some(Box::new(user.clone())))
+            } else {
+                Ok(Some(Box::new(SimpleUser {
+                    id: Uuid::new_v4(),
+                    username: "testuser".to_string(),
+                    email: "test@example.com".to_string(),
+                    is_active: true,
+                    is_admin: false,
+                })))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn get_user(
+        &self,
+        _user_id: &str,
+    ) -> std::result::Result<Option<Box<dyn User>>, reinhardt_auth::AuthenticationError> {
+        if self.authenticated {
+            if let Some(user) = &self.test_user {
+                Ok(Some(Box::new(user.clone())))
+            } else {
+                Ok(Some(Box::new(SimpleUser {
+                    id: Uuid::new_v4(),
+                    username: "testuser".to_string(),
+                    email: "test@example.com".to_string(),
+                    is_active: true,
+                    is_admin: false,
+                })))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+/// Build flatpages app with authentication middleware (authenticated user)
 pub fn build_flatpages_app_with_auth(pool: Pool<Postgres>) -> Arc<dyn Handler> {
+    let session_store = Arc::new(InMemorySessionStore::new());
+    let auth_backend = Arc::new(TestAuthBackend {
+        authenticated: true,
+        test_user: None,
+    });
+
     let flatpage_handler = Arc::new(FlatpageHandler {
         pool: pool.clone(),
         authenticated: true,
@@ -279,11 +340,21 @@ pub fn build_flatpages_app_with_auth(pool: Pool<Postgres>) -> Arc<dyn Handler> {
     router.add_route(path("/flatpage_root/{path:.*}", flatpage_handler));
     router.add_route(path("/{path:.*}", fallback_handler));
 
-    Arc::new(router)
+    let auth_middleware = AuthenticationMiddleware::new(session_store, auth_backend);
+    let chain = reinhardt_types::MiddlewareChain::new(Arc::new(router))
+        .with_middleware(Arc::new(auth_middleware));
+
+    Arc::new(chain)
 }
 
 /// Build flatpages app without authentication (anonymous user)
 pub fn build_flatpages_app_without_auth(pool: Pool<Postgres>) -> Arc<dyn Handler> {
+    let session_store = Arc::new(InMemorySessionStore::new());
+    let auth_backend = Arc::new(TestAuthBackend {
+        authenticated: false,
+        test_user: None,
+    });
+
     let flatpage_handler = Arc::new(FlatpageHandler {
         pool: pool.clone(),
         authenticated: false,
@@ -298,5 +369,9 @@ pub fn build_flatpages_app_without_auth(pool: Pool<Postgres>) -> Arc<dyn Handler
     router.add_route(path("/flatpage_root/{path:.*}", flatpage_handler));
     router.add_route(path("/{path:.*}", fallback_handler));
 
-    Arc::new(router)
+    let auth_middleware = AuthenticationMiddleware::new(session_store, auth_backend);
+    let chain = reinhardt_types::MiddlewareChain::new(Arc::new(router))
+        .with_middleware(Arc::new(auth_middleware));
+
+    Arc::new(chain)
 }

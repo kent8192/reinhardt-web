@@ -616,6 +616,8 @@ mod browsable_api_renderer_tests {
                     required: true,
                     help_text: Some("Enter your username".to_string()),
                     initial_value: None,
+                    options: None,
+                    initial_label: None,
                 },
                 FormField {
                     name: "email".to_string(),
@@ -624,6 +626,8 @@ mod browsable_api_renderer_tests {
                     required: true,
                     help_text: Some("Enter a valid email".to_string()),
                     initial_value: None,
+                    options: None,
+                    initial_label: None,
                 },
                 FormField {
                     name: "bio".to_string(),
@@ -632,6 +636,8 @@ mod browsable_api_renderer_tests {
                     required: false,
                     help_text: None,
                     initial_value: Some(json!("Default bio text")),
+                    options: None,
+                    initial_label: None,
                 },
             ],
             submit_url: "/api/users/create/".to_string(),
@@ -679,6 +685,8 @@ mod browsable_api_renderer_tests {
                 required: true,
                 help_text: Some("Enter JSON data".to_string()),
                 initial_value: Some(json!(r#"{"key": "value"}"#)),
+                options: None,
+                initial_label: None,
             }],
             submit_url: "/api/raw/".to_string(),
             submit_method: "POST".to_string(),
@@ -865,6 +873,8 @@ mod html_form_renderer_tests {
                     required: true,
                     help_text: None,
                     initial_value: Some(json!("abc123xyz")),
+                    options: None,
+                    initial_label: None,
                 },
                 FormField {
                     name: "username".to_string(),
@@ -873,6 +883,8 @@ mod html_form_renderer_tests {
                     required: true,
                     help_text: None,
                     initial_value: None,
+                    options: None,
+                    initial_label: None,
                 },
             ],
             submit_url: "/api/submit/".to_string(),
@@ -916,6 +928,8 @@ mod html_form_renderer_tests {
                     required: true,
                     help_text: None,
                     initial_value: None,
+                    options: None,
+                    initial_label: None,
                 },
                 FormField {
                     name: "password".to_string(),
@@ -924,6 +938,8 @@ mod html_form_renderer_tests {
                     required: true,
                     help_text: None,
                     initial_value: None,
+                    options: None,
+                    initial_label: None,
                 },
             ],
             submit_url: "/api/login/".to_string(),
@@ -970,6 +986,8 @@ mod html_form_renderer_tests {
                     required: true,
                     help_text: Some("Enter a descriptive title (max 100 chars)".to_string()),
                     initial_value: Some(json!("My First Post")),
+                    options: None,
+                    initial_label: None,
                 },
                 FormField {
                     name: "content".to_string(),
@@ -978,6 +996,8 @@ mod html_form_renderer_tests {
                     required: false,
                     help_text: Some("Markdown supported".to_string()),
                     initial_value: Some(json!("# Hello World")),
+                    options: None,
+                    initial_label: None,
                 },
             ],
             submit_url: "/api/posts/".to_string(),
@@ -1007,9 +1027,10 @@ mod html_form_renderer_tests {
 
     #[test]
     fn test_render_initial_option() {
-        // Test: Choice field initial option rendering
-        // Expected: Initial/placeholder option in select field
-        // Note: Using text field with initial value as select not yet implemented
+        // Test: Choice field initial option rendering with initial_label
+        // Expected: Initial/placeholder option automatically added via initial_label
+
+        use reinhardt_browsable_api::SelectOption;
 
         let renderer = BrowsableApiRenderer::new();
 
@@ -1017,10 +1038,25 @@ mod html_form_renderer_tests {
             fields: vec![FormField {
                 name: "category".to_string(),
                 label: "Category".to_string(),
-                field_type: "text".to_string(), // Using text as proxy for select
+                field_type: "select".to_string(),
                 required: false,
                 help_text: Some("Select a category".to_string()),
-                initial_value: Some(json!("")), // Empty initial value
+                initial_value: None,
+                options: Some(vec![
+                    SelectOption {
+                        value: "tech".to_string(),
+                        label: "Technology".to_string(),
+                    },
+                    SelectOption {
+                        value: "science".to_string(),
+                        label: "Science".to_string(),
+                    },
+                    SelectOption {
+                        value: "art".to_string(),
+                        label: "Art".to_string(),
+                    },
+                ]),
+                initial_label: Some("-- Please select a category --".to_string()),
             }],
             submit_url: "/api/items/".to_string(),
             submit_method: "POST".to_string(),
@@ -1040,9 +1076,32 @@ mod html_form_renderer_tests {
 
         let html = renderer.render(&context).unwrap();
 
-        // Verify field is rendered with placeholder concept
+        // Verify select field is rendered
+        assert!(html.contains("<select"));
         assert!(html.contains("category"));
-        assert!(html.contains("Select a category"));
+        assert!(html.contains("Select a category")); // help text
+
+        // Verify initial option is rendered with empty value and selected attribute
+        assert!(html.contains("-- Please select a category --"));
+        assert!(
+            html.contains(r#"<option value="" selected>-- Please select a category --</option>"#)
+        );
+
+        // Verify regular options are rendered
+        assert!(html.contains("Technology"));
+        assert!(html.contains("Science"));
+        assert!(html.contains("Art"));
+        assert!(html.contains(r#"value="tech""#));
+        assert!(html.contains(r#"value="science""#));
+        assert!(html.contains(r#"value="art""#));
+
+        // Verify initial option appears before regular options
+        let tech_pos = html.find("Technology").unwrap();
+        let initial_pos = html.find("-- Please select a category --").unwrap();
+        assert!(
+            initial_pos < tech_pos,
+            "Initial option should appear before regular options"
+        );
     }
 
     #[test]
@@ -1059,7 +1118,9 @@ mod html_form_renderer_tests {
                 field_type: "text".to_string(),
                 required: true,
                 help_text: None,
-                initial_value: Some(json!("active")), // Pre-selected value
+                initial_value: Some(json!("active")),
+                options: None,
+                initial_label: None,
             }],
             submit_url: "/api/update/".to_string(),
             submit_method: "PUT".to_string(),
@@ -1114,6 +1175,8 @@ mod html_form_renderer_tests {
                 required: false,
                 help_text: Some("Enter comma-separated tags".to_string()),
                 initial_value: Some(json!("rust,web,api")),
+                options: None,
+                initial_label: None,
             }],
             submit_url: "/api/items/".to_string(),
             submit_method: "POST".to_string(),
@@ -1165,6 +1228,8 @@ mod html_form_renderer_tests {
                 required: true,
                 help_text: Some("1=Low, 2=Medium, 3=High".to_string()),
                 initial_value: Some(json!(2)),
+                options: None,
+                initial_label: None,
             }],
             submit_url: "/api/tasks/".to_string(),
             submit_method: "POST".to_string(),
@@ -1191,6 +1256,3 @@ mod html_form_renderer_tests {
         assert!(html.contains("Low") && html.contains("Medium") && html.contains("High"));
     }
 }
-
-#[cfg(test)]
-mod placeholder_test {}

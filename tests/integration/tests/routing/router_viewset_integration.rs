@@ -220,17 +220,21 @@ async fn test_nested_viewset_routes() {
 // Test: ViewSet with custom lookup field
 #[tokio::test]
 async fn test_viewset_custom_lookup_field() {
-    // Note: This would require ViewSet to support custom lookup fields
-    // For now, testing that default 'id' parameter works
     let mut router = DefaultRouter::new();
     let viewset: Arc<ModelViewSet<TestModel, TestSerializer>> =
-        Arc::new(ModelViewSet::new("users"));
+        Arc::new(ModelViewSet::new("users").with_lookup_field("username"));
 
     router.register_viewset("users", viewset);
 
+    // Verify that the route uses 'username' instead of 'id'
+    let routes = router.get_routes();
+    assert_eq!(routes.len(), 2);
+    assert_eq!(routes[1].path, "/users/{username}/");
+
+    // Test that the lookup field parameter is correctly used
     let request = Request::new(
         Method::GET,
-        "/users/uuid-123-456/".parse::<Uri>().unwrap(),
+        "/users/alice/".parse::<Uri>().unwrap(),
         Version::HTTP_11,
         HeaderMap::new(),
         Bytes::new(),
@@ -238,6 +242,7 @@ async fn test_viewset_custom_lookup_field() {
 
     let response = router.route(request).await;
     assert!(response.is_ok());
+    assert_eq!(response.unwrap().status, StatusCode::OK);
 }
 
 // Test: Multiple HTTP methods on same ViewSet route

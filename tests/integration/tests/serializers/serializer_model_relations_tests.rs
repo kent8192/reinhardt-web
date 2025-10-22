@@ -924,3 +924,152 @@ fn test_relationship_with_composite_data() {
         ReinhardtDeserializer::deserialize(&serializer, &serialized).unwrap();
     assert_eq!(article, deserialized);
 }
+
+// NestedSerializer Tests
+
+#[test]
+fn test_nested_serializer_with_loaded_relationship() {
+    use reinhardt_serializers::NestedSerializer;
+
+    // Create book with pre-loaded author (simulating ORM eager loading)
+    let author = Author {
+        id: Some(1),
+        name: "John Doe".to_string(),
+        email: "john@example.com".to_string(),
+    };
+
+    let book = BookWithAuthor {
+        id: Some(1),
+        title: "Rust Programming".to_string(),
+        author: Some(author.clone()),
+        isbn: "978-1234567890".to_string(),
+    };
+
+    // Serialize with NestedSerializer
+    let serializer = NestedSerializer::<BookWithAuthor, Author>::new("author").depth(1);
+    let json = Serializer::serialize(&serializer, &book).unwrap();
+
+    // Verify that author data is included
+    assert!(json.contains("John Doe"));
+    assert!(json.contains("john@example.com"));
+    assert!(json.contains("Rust Programming"));
+}
+
+#[test]
+fn test_nested_serializer_without_loaded_relationship() {
+    use reinhardt_serializers::NestedSerializer;
+
+    // Create book WITHOUT pre-loaded author
+    let book = BookWithAuthor {
+        id: Some(1),
+        title: "Rust Programming".to_string(),
+        author: None, // Relationship not loaded
+        isbn: "978-1234567890".to_string(),
+    };
+
+    // Serialize with NestedSerializer
+    let serializer = NestedSerializer::<BookWithAuthor, Author>::new("author").depth(1);
+    let json = Serializer::serialize(&serializer, &book).unwrap();
+
+    // Verify that author field is null
+    assert!(json.contains("\"author\":null"));
+    assert!(json.contains("Rust Programming"));
+}
+
+#[test]
+fn test_nested_serializer_depth_0() {
+    use reinhardt_serializers::NestedSerializer;
+
+    let author = Author {
+        id: Some(1),
+        name: "John Doe".to_string(),
+        email: "john@example.com".to_string(),
+    };
+
+    let book = BookWithAuthor {
+        id: Some(1),
+        title: "Rust Programming".to_string(),
+        author: Some(author),
+        isbn: "978-1234567890".to_string(),
+    };
+
+    // With depth=0, should still serialize the already-loaded data
+    let serializer = NestedSerializer::<BookWithAuthor, Author>::new("author");
+    let json = Serializer::serialize(&serializer, &book).unwrap();
+
+    // Data should still be present (depth only affects recursive loading)
+    assert!(json.contains("Rust Programming"));
+}
+
+#[test]
+fn test_writable_nested_serializer_permission_validation() {
+    use reinhardt_serializers::WritableNestedSerializer;
+
+    // Test create permission validation
+    let serializer = WritableNestedSerializer::<BookWithAuthor, Author>::new("author");
+
+    let json_with_create = r#"{
+        "id": 1,
+        "title": "New Book",
+        "author": {
+            "id": null,
+            "name": "New Author",
+            "email": "new@example.com"
+        },
+        "isbn": "978-1111111111"
+    }"#;
+
+    // Should reject create when not allowed
+    let result = ReinhardtDeserializer::deserialize(&serializer, &json_with_create.to_string());
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .message
+        .contains("Creating nested instances is not allowed"));
+}
+
+#[test]
+fn test_writable_nested_serializer_allow_create() {
+    use reinhardt_serializers::WritableNestedSerializer;
+
+    let serializer =
+        WritableNestedSerializer::<BookWithAuthor, Author>::new("author").allow_create(true);
+
+    let json_with_create = r#"{
+        "id": 1,
+        "title": "New Book",
+        "author": {
+            "id": null,
+            "name": "New Author",
+            "email": "new@example.com"
+        },
+        "isbn": "978-1111111111"
+    }"#;
+
+    // Should allow create when enabled
+    let result = ReinhardtDeserializer::deserialize(&serializer, &json_with_create.to_string());
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_writable_nested_serializer_allow_update() {
+    use reinhardt_serializers::WritableNestedSerializer;
+
+    let serializer =
+        WritableNestedSerializer::<BookWithAuthor, Author>::new("author").allow_update(true);
+
+    let json_with_update = r#"{
+        "id": 1,
+        "title": "Updated Book",
+        "author": {
+            "id": 42,
+            "name": "Updated Author",
+            "email": "updated@example.com"
+        },
+        "isbn": "978-2222222222"
+    }"#;
+
+    // Should allow update when enabled
+    let result = ReinhardtDeserializer::deserialize(&serializer, &json_with_update.to_string());
+    assert!(result.is_ok());
+}

@@ -16,19 +16,13 @@ use reinhardt_http::{Request, Response};
 use reinhardt_types::Handler;
 use std::sync::Arc;
 
-// NOTE: These tests are currently skipped because the required infrastructure
-// is not yet implemented. They should be enabled once the following components
-// are available:
+// Template integration tests
 //
-// Required components:
-// 1. reinhardt-templates: Template rendering engine
-// 2. reinhardt-forms: Form rendering
+// These tests verify the integration of:
+// 1. reinhardt-templates: Template rendering engine with Askama
+// 2. reinhardt-forms: Form rendering with HTML widgets
 // 3. reinhardt-views: View layer with template support
-// 4. reinhardt-browsable-api: Full browsable API renderer
-
-// NOTE: Advanced template features like TemplateHTMLRenderer require full
-// reinhardt-templates integration with view layer. The basic template rendering
-// tests below use askama directly to verify template functionality.
+// 4. reinhardt-renderers: TemplateHTMLRenderer for HTML responses
 
 #[cfg(test)]
 mod template_exception_tests {

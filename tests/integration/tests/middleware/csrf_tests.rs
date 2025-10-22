@@ -159,12 +159,3 @@ async fn test_post_with_valid_csrf_token() {
 
     cleanup_test_tables(&pool).await;
 }
-
-// NOTE: Full CSRF integration requires:
-// 1. reinhardt-security CSRF middleware adapted for tower/axum
-// 2. Token generation and validation
-// 3. Cookie/session management
-// 4. Form/header token extraction
-//
-// These tests demonstrate the expected behavior and serve as
-// integration targets for when CSRF middleware is HTTP-framework ready.

@@ -159,15 +159,19 @@ pub async fn create_test_flatpage(
     registration_required: bool,
     site_id: i64,
 ) -> FlatPage {
+    use reinhardt_database::DatabaseConnection;
+
     let mut flatpage = FlatPage::new(url.to_string(), title.to_string(), content.to_string());
     flatpage.registration_required = registration_required;
     flatpage.save(pool).await.expect("Failed to save flatpage");
 
-    // Associate with site
-    sqlx::query("INSERT INTO flatpage_sites (flatpage_id, site_id) VALUES ($1, $2)")
-        .bind(flatpage.id)
-        .bind(site_id)
-        .execute(pool)
+    let db = DatabaseConnection::from_postgres_pool(pool.clone());
+
+    // Associate with site using reinhardt-database
+    db.insert("flatpage_sites")
+        .value("flatpage_id", flatpage.id)
+        .value("site_id", site_id)
+        .execute()
         .await
         .expect("Failed to associate flatpage with site");
 
@@ -176,12 +180,17 @@ pub async fn create_test_flatpage(
 
 /// Clear all flatpages from database
 pub async fn clear_flatpages(pool: &Pool<Postgres>) {
-    sqlx::query("DELETE FROM flatpage_sites")
-        .execute(pool)
+    use reinhardt_database::DatabaseConnection;
+
+    let db = DatabaseConnection::from_postgres_pool(pool.clone());
+
+    db.delete("flatpage_sites")
+        .execute()
         .await
         .expect("Failed to clear flatpage_sites");
-    sqlx::query("DELETE FROM flatpages")
-        .execute(pool)
+
+    db.delete("flatpages")
+        .execute()
         .await
         .expect("Failed to clear flatpages");
 }

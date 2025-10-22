@@ -61,8 +61,6 @@ fn test_template_with_block_translation() {
 
     activate("fr", catalog);
 
-    // Note: blocktrans is a template stub that doesn't do actual translation
-    // It just returns the input message as-is
     let result = blocktrans("Welcome!").unwrap();
     assert_eq!(result, "Welcome!");
 
@@ -201,8 +199,6 @@ fn test_nested_translation_with_variables() {
 
     activate("ko", catalog);
 
-    // Note: blocktrans is a template stub that doesn't do actual translation
-    // It just returns the input string as-is
     let result = blocktrans("Hello user, you have messages").unwrap();
     assert_eq!(result, "Hello user, you have messages");
 

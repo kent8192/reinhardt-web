@@ -17,8 +17,10 @@
 
 use reinhardt_integration_tests::validator_test_common::*;
 use reinhardt_validators::{
-    EmailValidator, MaxLengthValidator, MinLengthValidator, ValidationError, Validator,
+    EmailValidator, MaxLengthValidator, MinLengthValidator, UniqueValidator, ValidationError,
+    Validator,
 };
+use std::sync::Arc;
 
 #[cfg(test)]
 mod uniqueness_validation_tests {
@@ -83,21 +85,73 @@ mod uniqueness_validation_tests {
         db.setup_tables().await.expect("Failed to setup tables");
 
         // Insert existing user
-        let _user_id = db
+        let user_id = db
             .insert_user("testuser", "test@example.com")
             .await
             .expect("Failed to insert user");
 
-        // When updating the same instance, uniqueness check should exclude current instance
-        // This is the expected behavior: updating a record with its own values should succeed
-        let username_exists = db.username_exists("testuser").await.unwrap();
-        assert!(username_exists);
+        // Create a uniqueness validator
+        let db_arc = Arc::new(db);
+        let db_clone = db_arc.clone();
+        let username_validator = UniqueValidator::new(
+            "username",
+            Box::new(move |value, exclude_id| {
+                let db = db_clone.clone();
+                Box::pin(async move {
+                    db.username_exists_excluding(&value, exclude_id)
+                        .await
+                        .unwrap_or(false)
+                })
+            }),
+        );
 
-        // NOTE: In a real implementation, the validator would need to know about the instance ID
-        // to exclude it from uniqueness checks during updates
+        // When updating the same instance with the same username, validation should succeed
+        // (current instance is excluded from uniqueness check)
+        let result = username_validator
+            .validate_async("testuser", Some(user_id))
+            .await;
+        assert!(
+            result.is_ok(),
+            "Updating instance with same value should succeed when instance is excluded"
+        );
+
+        // Insert another user
+        let other_user_id = db_arc
+            .insert_user("otheruser", "other@example.com")
+            .await
+            .expect("Failed to insert second user");
+
+        // When updating to a username that belongs to another instance, validation should fail
+        let result = username_validator
+            .validate_async("otheruser", Some(user_id))
+            .await;
+        assert!(
+            result.is_err(),
+            "Updating to another instance's value should fail"
+        );
+        if let Err(ValidationError::NotUnique { field, value }) = result {
+            assert_eq!(field, "username");
+            assert_eq!(value, "otheruser");
+        } else {
+            panic!("Expected NotUnique error");
+        }
+
+        // When creating a new user with an existing username, validation should fail
+        let result = username_validator.validate_async("testuser", None).await;
+        assert!(
+            result.is_err(),
+            "Creating new instance with existing value should fail"
+        );
+
+        // When creating a new user with a unique username, validation should succeed
+        let result = username_validator.validate_async("newuser", None).await;
+        assert!(
+            result.is_ok(),
+            "Creating new instance with unique value should succeed"
+        );
 
         // Cleanup
-        db.cleanup().await.expect("Failed to cleanup");
+        db_arc.cleanup().await.expect("Failed to cleanup");
     }
 }
 

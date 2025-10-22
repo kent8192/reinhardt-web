@@ -354,13 +354,13 @@ mod flatpage_template_tag_tests {
         cleanup_test_tables(&pool).await;
     }
 
-    // NOTE: test_get_flatpages_with_variable_prefix and test_get_flatpages_parsing_errors
+    // Note: test_get_flatpages_with_variable_prefix and test_get_flatpages_parsing_errors
     // are template syntax tests that require a full template engine implementation.
     // The underlying functionality (get_flatpages_with_prefix) is already tested above.
 }
 
-// NOTE: CSRF and authentication integration tests have been moved to
-// tests/integration/ directory for HTTP-level testing with Axum framework
+// NOTE: CSRF and authentication integration tests have been moved to tests/integration/
+// directory for HTTP-level testing with Tower/Hyper framework
 
 #[cfg(test)]
 mod flatpage_multi_site_tests {

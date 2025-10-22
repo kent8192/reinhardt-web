@@ -404,6 +404,60 @@ fn test_router_url_patterns() {
     // Actual route registration would happen in ViewSet integration
 }
 
-// NOTE: Tests for HyperlinkedModelSerializer, ViewSet integration,
-// content negotiation, and OpenAPI schema generation should be added
-// when those features are implemented.
+// Test: HyperlinkedModelSerializer basic usage
+#[test]
+fn test_hyperlinked_model_serializer() {
+    use reinhardt_serializers::{HyperlinkedModelSerializer, Serializer};
+
+    let article = Article {
+        id: Some(1),
+        title: "Hyperlinked Article".to_string(),
+        content: "Content with URL".to_string(),
+        author_id: 1,
+        published: true,
+    };
+
+    let serializer = HyperlinkedModelSerializer::<Article>::new("article-detail");
+    let serialized = Serializer::serialize(&serializer, &article).unwrap();
+
+    assert!(serialized.contains("\"url\""));
+    assert!(serialized.contains("article-detail"));
+    assert!(serialized.contains("Hyperlinked Article"));
+}
+
+// Test: HyperlinkedModelSerializer with custom URL field name
+#[test]
+fn test_hyperlinked_serializer_custom_url_field() {
+    use reinhardt_serializers::{HyperlinkedModelSerializer, Serializer};
+
+    let article = Article {
+        id: Some(2),
+        title: "Custom URL Field".to_string(),
+        content: "Test content".to_string(),
+        author_id: 1,
+        published: true,
+    };
+
+    let serializer =
+        HyperlinkedModelSerializer::<Article>::new("article-detail").url_field_name("self_link");
+    let serialized = Serializer::serialize(&serializer, &article).unwrap();
+
+    assert!(serialized.contains("\"self_link\""));
+    assert!(!serialized.contains("\"url\""));
+}
+
+// Test: HyperlinkedModelSerializer deserialization
+#[test]
+fn test_hyperlinked_serializer_deserialization() {
+    use reinhardt_serializers::{
+        Deserializer as ReinhardtDeserializer, HyperlinkedModelSerializer,
+    };
+
+    let json = r#"{"id":3,"title":"Test","content":"Content","author_id":1,"published":true,"url":"/articles/article-detail/3"}"#;
+    let serializer = HyperlinkedModelSerializer::<Article>::new("article-detail");
+
+    let deserialized: Article =
+        ReinhardtDeserializer::deserialize(&serializer, &json.to_string()).unwrap();
+    assert_eq!(deserialized.id, Some(3));
+    assert_eq!(deserialized.title, "Test");
+}

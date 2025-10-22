@@ -66,7 +66,7 @@ async fn test_basic_get_request() {
     let handler = Arc::new(TestHandler::new("Hello, World!"));
     let _addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 
-    // NOTE: Full integration test requires spawning server and making HTTP requests
+    // Note: Full integration test requires spawning server and making HTTP requests
     // This would require additional dependencies like reqwest
     // For now, we test the handler directly
 

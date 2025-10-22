@@ -1,13 +1,20 @@
 # Reinhardt - Integration Tests
 
+> **Important**: This is the official location for all new integration tests. The legacy `/tests/integration/` directory is being phased out and should not be used for new tests.
+
 This directory contains comprehensive integration tests for multiple Reinhardt crates that require interaction between different components.
+
+## Directory Structure
+
+- `/tests/tests/integration/` - **Official integration test directory** (this directory)
+- `/tests/integration/` - Legacy directory (deprecated, being phased out)
 
 ## Overview
 
 These integration tests verify that multiple Reinhardt crates work correctly when integrated with:
 
-- **Axum**: Web framework for routing and handlers
-- **Tower**: Middleware layer
+- **Tower**: Middleware and service layer
+- **Hyper**: HTTP implementation for routing and handlers
 - **SQLx**: Database operations
 - **PostgreSQL**: Database backend
 
@@ -589,6 +596,6 @@ When adding new integration tests:
 - [Django Test Suite](https://github.com/django/django/tree/main/tests)
 - [Django REST Framework Tests](https://github.com/encode/django-rest-framework/tree/master/tests)
 - [FastAPI Tests](https://github.com/tiangolo/fastapi/tree/master/tests)
-- [Axum Documentation](https://docs.rs/axum/)
-- [Tower Middleware](https://docs.rs/tower/)
+- [Tower Documentation](https://docs.rs/tower/)
+- [Hyper Documentation](https://docs.rs/hyper/)
 - [SQLx Documentation](https://docs.rs/sqlx/)

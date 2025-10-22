@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[workspace]
+
 [dependencies]
 # Reinhardt crates
 reinhardt-contrib = { path = "../../crates/reinhardt-contrib", features = [
@@ -12,57 +14,62 @@ reinhardt-contrib = { path = "../../crates/reinhardt-contrib", features = [
   "sitemaps-i18n",
   "sitemaps-orm",
 ] }
-reinhardt-auth = { path = "../../crates/reinhardt-auth" }
-reinhardt-security = { path = "../../crates/reinhardt-security" }
+reinhardt-auth = { path = "../../crates/reinhardt-contrib/crates/auth" }
+reinhardt-security = { path = "../../crates/reinhardt-core/crates/security" }
 reinhardt-middleware = { path = "../../crates/reinhardt-middleware" }
-reinhardt-templates = { path = "../../crates/reinhardt-templates" }
+reinhardt-templates = { path = "../../crates/reinhardt-template/crates/templates" }
 reinhardt-apps = { path = "../../crates/reinhardt-apps" }
-reinhardt-routers = { path = "../../crates/reinhardt-routers" }
-reinhardt-viewsets = { path = "../../crates/reinhardt-viewsets" }
-reinhardt-openapi = { path = "../../crates/reinhardt-openapi" }
-reinhardt-graphql = { path = "../../crates/reinhardt-graphql" }
-reinhardt-orm = { path = "../../crates/reinhardt-orm", features = [
+reinhardt-routers = { path = "../../crates/reinhardt-urls/crates/routers" }
+reinhardt-viewsets = { path = "../../crates/reinhardt-views/crates/viewsets" }
+reinhardt-openapi = { path = "../../crates/reinhardt-rest/crates/openapi" }
+reinhardt-graphql = { path = "../../crates/reinhardt-contrib/crates/graphql" }
+reinhardt-orm = { path = "../../crates/reinhardt-db/crates/orm", features = [
   "django-compat",
 ] }
-reinhardt-migrations = { path = "../../crates/reinhardt-migrations" }
-reinhardt-database = { path = "../../crates/reinhardt-database", features = [
+reinhardt-migrations = { path = "../../crates/reinhardt-db/crates/migrations" }
+reinhardt-database = { path = "../../crates/reinhardt-db/crates/database", features = [
   "postgres",
   "sqlite",
 ] }
-reinhardt-metadata = { path = "../../crates/reinhardt-metadata" }
-reinhardt-versioning = { path = "../../crates/reinhardt-versioning" }
-reinhardt-messages = { path = "../../crates/reinhardt-messages" }
-reinhardt-parsers = { path = "../../crates/reinhardt-parsers" }
-reinhardt-exception = { path = "../../crates/reinhardt-exception" }
-reinhardt-types = { path = "../../crates/reinhardt-types" }
-reinhardt-signals = { path = "../../crates/reinhardt-signals" }
-reinhardt-websockets = { path = "../../crates/reinhardt-websockets" }
+reinhardt-metadata = { path = "../../crates/reinhardt-rest/crates/metadata" }
+reinhardt-versioning = { path = "../../crates/reinhardt-rest/crates/versioning" }
+reinhardt-messages = { path = "../../crates/reinhardt-contrib/crates/messages" }
+reinhardt-parsers = { path = "../../crates/reinhardt-rest/crates/parsers" }
+reinhardt-exception = { path = "../../crates/reinhardt-core/crates/exception" }
+reinhardt-types = { path = "../../crates/reinhardt-core/crates/types" }
+reinhardt-signals = { path = "../../crates/reinhardt-core/crates/signals" }
+reinhardt-websockets = { path = "../../crates/reinhardt-contrib/crates/websockets" }
 reinhardt-http = { path = "../../crates/reinhardt-http" }
 reinhardt-server = { path = "../../crates/reinhardt-server" }
-reinhardt-logging = { path = "../../crates/reinhardt-logging" }
-reinhardt-mail = { path = "../../crates/reinhardt-mail" }
+reinhardt-logging = { path = "../../crates/reinhardt-utils/crates/logging" }
+reinhardt-mail = { path = "../../crates/reinhardt-contrib/crates/mail" }
 reinhardt-di = { path = "../../crates/reinhardt-di" }
-reinhardt-macros = { path = "../../crates/reinhardt-macros" }
-reinhardt-static = { path = "../../crates/reinhardt-static" }
-reinhardt-cache = { path = "../../crates/reinhardt-cache" }
-reinhardt-views = { path = "../../crates/reinhardt-views" }
-reinhardt-negotiation = { path = "../../crates/reinhardt-negotiation" }
-reinhardt-renderers = { path = "../../crates/reinhardt-renderers" }
-reinhardt-validators = { path = "../../crates/reinhardt-validators" }
-reinhardt-serializers = { path = "../../crates/reinhardt-serializers" }
-reinhardt-settings = { path = "../../crates/reinhardt-settings" }
-reinhardt-browsable-api = { path = "../../crates/reinhardt-browsable-api" }
-reinhardt-i18n = { path = "../../crates/reinhardt-i18n" }
+reinhardt-macros = { path = "../../crates/reinhardt-core/crates/macros" }
+reinhardt-static = { path = "../../crates/reinhardt-contrib/crates/static" }
+reinhardt-cache = { path = "../../crates/reinhardt-utils/crates/cache" }
+reinhardt-views-core = { path = "../../crates/reinhardt-views/crates/views-core" }
+reinhardt-negotiation = { path = "../../crates/reinhardt-rest/crates/negotiation" }
+reinhardt-renderers = { path = "../../crates/reinhardt-template/crates/renderers" }
+reinhardt-validators = { path = "../../crates/reinhardt-core/crates/validators" }
+reinhardt-serializers = { path = "../../crates/reinhardt-rest/crates/serializers" }
+reinhardt-settings = { path = "../../crates/reinhardt-conf/crates/settings", features = [
+  "dynamic-database",
+  "dynamic-redis",
+  "hot-reload",
+  "caching",
+] }
+reinhardt-browsable-api = { path = "../../crates/reinhardt-rest/crates/browsable-api" }
+reinhardt-i18n = { path = "../../crates/reinhardt-contrib/crates/i18n" }
 reinhardt-tasks = { path = "../../crates/reinhardt-tasks" }
 reinhardt-rest = { path = "../../crates/reinhardt-rest" }
-reinhardt-pagination = { path = "../../crates/reinhardt-pagination" }
-reinhardt-filters = { path = "../../crates/reinhardt-filters" }
+reinhardt-pagination = { path = "../../crates/reinhardt-rest/crates/pagination" }
+reinhardt-filters = { path = "../../crates/reinhardt-rest/crates/filters" }
 reinhardt-forms = { path = "../../crates/reinhardt-forms" }
-reinhardt-throttling = { path = "../../crates/reinhardt-throttling" }
+reinhardt-throttling = { path = "../../crates/reinhardt-rest/crates/throttling" }
 reinhardt-utils = { path = "../../crates/reinhardt-utils" }
-reinhardt-storage = { path = "../../crates/reinhardt-storage" }
+reinhardt-storage = { path = "../../crates/reinhardt-utils/crates/storage" }
 reinhardt-test = { path = "../../crates/reinhardt-test" }
-reinhardt-sessions = { path = "../../crates/reinhardt-sessions", features = [
+reinhardt-sessions = { path = "../../crates/reinhardt-contrib/crates/sessions", features = [
   "database",
 ] }
 
@@ -103,10 +110,11 @@ once_cell = "1.20"
 serial_test = "3.2"
 
 # Templates
-askama = "0.12"
+askama = "0.14.0"
 
 # Testing utilities
 tempfile = "3.14"
+testcontainers = "0.25.0"
 
 [features]
 testcontainers = []
@@ -114,76 +122,70 @@ testcontainers = []
 [dev-dependencies]
 # Test utilities
 tokio-test = "0.4"
-testcontainers = { workspace = true }
-testcontainers-modules = { workspace = true }
 
 [[test]]
 name = "parser_integration"
-path = "tests/parser_integration.rs"
+path = "tests/api/parser_integration.rs"
 
 [[test]]
 name = "router_viewset_integration"
-path = "tests/router_viewset_integration.rs"
+path = "tests/routing/router_viewset_integration.rs"
 
 [[test]]
 name = "router_schema_integration"
-path = "tests/router_schema_integration.rs"
+path = "tests/routing/router_schema_integration.rs"
 
 [[test]]
 name = "router_auth_integration"
-path = "tests/router_auth_integration.rs"
+path = "tests/auth/router_auth_integration.rs"
 
 [[test]]
 name = "router_template_integration"
-path = "tests/router_template_integration.rs"
+path = "tests/routing/router_template_integration.rs"
 
 [[test]]
 name = "security_middleware_integration"
-path = "tests/security_middleware_integration.rs"
+path = "tests/middleware/security_middleware_integration.rs"
 
 [[test]]
 name = "csrf_middleware_integration"
-path = "tests/csrf_middleware_integration.rs"
+path = "tests/middleware/csrf_middleware_integration.rs"
 
 [[test]]
 name = "https_redirect_integration"
-path = "tests/https_redirect_integration.rs"
+path = "tests/middleware/https_redirect_integration.rs"
 
 [[test]]
 name = "auth_security_integration"
-path = "tests/auth_security_integration.rs"
+path = "tests/auth/auth_security_integration.rs"
 
 [[test]]
 name = "session_security_integration"
-path = "tests/session_security_integration.rs"
+path = "tests/sessions/session_security_integration.rs"
 
 [[test]]
 name = "csp_integration"
-path = "tests/csp_integration.rs"
+path = "tests/middleware/csp_integration.rs"
 
 [[test]]
 name = "router_lifecycle_integration"
-path = "tests/router_lifecycle_integration.rs"
-
-[[test]]
-name = "router_websocket_integration"
-path = "tests/router_websocket_integration.rs"
+path = "tests/routing/router_lifecycle_integration.rs"
 
 [[test]]
 name = "server_integration_tests"
-path = "tests/server_integration_tests.rs"
+path = "tests/server/server_integration_tests.rs"
 
 [[test]]
 name = "logging_email_integration"
-path = "tests/logging_email_integration_tests.rs"
+path = "tests/utils/logging_email_integration_tests.rs"
 
 [[test]]
 name = "openapi_schema_integration"
-path = "tests/openapi_schema_integration.rs"
+path = "tests/api/openapi_schema_integration.rs"
 
 [[test]]
 name = "sitemap_http_integration"
-path = "tests/sitemap_http_tests.rs"
+path = "tests/sitemaps/sitemap_http_tests.rs"
 
 # Migrated integration tests from individual crates
 # Temporarily disabled due to reinhardt-contrib View import error
@@ -198,23 +200,23 @@ path = "tests/sitemap_http_tests.rs"
 # TODO: Fix macro injection test code - compilation errors with #[use_injection] macro usage
 [[test]]
 name = "macros_di_integration_tests"
-path = "tests/macros_di_integration_tests.rs"
+path = "tests/di/macros_di_integration_tests.rs"
 
 [[test]]
 name = "logging_template_integration_tests"
-path = "tests/logging_template_integration_tests.rs"
+path = "tests/utils/logging_template_integration_tests.rs"
 
 [[test]]
 name = "logging_orm_integration_tests"
-path = "tests/logging_orm_integration_tests.rs"
+path = "tests/utils/logging_orm_integration_tests.rs"
 
 [[test]]
 name = "mail_integration_tests"
-path = "tests/mail_integration_tests.rs"
+path = "tests/contrib/mail_integration_tests.rs"
 
 [[test]]
 name = "renderers_http_integration_tests"
-path = "tests/renderers_http_integration_tests.rs"
+path = "tests/rendering/renderers_http_integration_tests.rs"
 
 # Requires PostgreSQL database - testcontainers available but startup takes 3+ minutes
 # Recommended manual setup for faster testing:
@@ -227,236 +229,350 @@ path = "tests/renderers_http_integration_tests.rs"
 
 [[test]]
 name = "server_middleware_integration_tests"
-path = "tests/server_middleware_integration_tests.rs"
+path = "tests/server/server_middleware_integration_tests.rs"
 
 [[test]]
 name = "renderer_template_integration"
-path = "tests/renderer_template_integration.rs"
+path = "tests/rendering/renderer_template_integration.rs"
 
 [[test]]
 name = "sitemap_advanced_tests"
-path = "tests/sitemap_advanced_tests.rs"
+path = "tests/sitemaps/sitemap_advanced_tests.rs"
 
 [[test]]
 name = "sitemap_advanced_real_tests"
-path = "tests/sitemap_advanced_real_tests.rs"
+path = "tests/sitemaps/sitemap_advanced_real_tests.rs"
 
 [[test]]
 name = "sitemap_i18n_mocks"
-path = "tests/sitemap_i18n_mocks.rs"
+path = "tests/sitemaps/sitemap_i18n_mocks.rs"
 
 [[test]]
-name = "sitemap_orm_cache_mocks"
-path = "tests/sitemap_orm_cache_mocks.rs"
-
-[[test]]
-name = "sitemap_orm_basic_tests"
-path = "tests/sitemap_orm_basic_tests.rs"
+name = "sitemap_orm_integration_tests"
+path = "tests/sitemaps/sitemap_orm_integration_tests.rs"
 
 [[test]]
 name = "sitemap_cache_real_tests"
-path = "tests/sitemap_cache_real_tests.rs"
+path = "tests/sitemaps/sitemap_cache_real_tests.rs"
 
 [[test]]
 name = "sitemap_http_real_tests"
-path = "tests/sitemap_http_real_tests.rs"
+path = "tests/sitemaps/sitemap_http_real_tests.rs"
 
 [[test]]
 name = "sitemap_i18n_real_tests"
-path = "tests/sitemap_i18n_real_tests.rs"
-
-[[test]]
-name = "sitemap_orm_full_tests"
-path = "tests/sitemap_orm_full_tests.rs"
+path = "tests/sitemaps/sitemap_i18n_real_tests.rs"
 
 [[test]]
 name = "param_validation_integration"
-path = "tests/param_validation_integration.rs"
+path = "tests/validation/param_validation_integration.rs"
 
 [[test]]
 name = "param_openapi_integration"
-path = "tests/param_openapi_integration.rs"
+path = "tests/validation/param_openapi_integration.rs"
 
 [[test]]
 name = "serializer_basic_integration"
-path = "tests/serializer_basic_integration.rs"
+path = "tests/serializers/serializer_basic_integration.rs"
 
 [[test]]
 name = "renderer_integration"
-path = "tests/renderer_integration.rs"
+path = "tests/rendering/renderer_integration.rs"
 
 [[test]]
 name = "query_encoding_integration"
-path = "tests/query_encoding_integration.rs"
+path = "tests/utils/query_encoding_integration.rs"
 
 [[test]]
 name = "messages_framework_integration"
-path = "tests/messages_framework_integration.rs"
+path = "tests/contrib/messages_framework_integration.rs"
 
 [[test]]
 name = "settings_system_integration"
-path = "tests/settings_system_integration.rs"
+path = "tests/settings/settings_system_integration.rs"
 
 [[test]]
 name = "browsable_api_integration"
-path = "tests/browsable_api_integration.rs"
+path = "tests/api/browsable_api_integration.rs"
 
 [[test]]
 name = "parser_advanced_integration"
-path = "tests/parser_advanced_integration.rs"
+path = "tests/api/parser_advanced_integration.rs"
 
 [[test]]
 name = "orm_model_serializer_integration"
-path = "tests/orm_model_serializer_integration.rs"
+path = "tests/database/orm_model_serializer_integration.rs"
 
 [[test]]
 name = "i18n_framework_integration"
-path = "tests/i18n_framework_integration.rs"
+path = "tests/utils/i18n_framework_integration.rs"
 
 [[test]]
 name = "server_advanced_integration"
-path = "tests/server_advanced_integration.rs"
+path = "tests/server/server_advanced_integration.rs"
 
 [[test]]
 name = "renderer_advanced_integration"
-path = "tests/renderer_advanced_integration.rs"
+path = "tests/rendering/renderer_advanced_integration.rs"
 
 [[test]]
 name = "syndication_integration_tests"
-path = "tests/syndication_integration_tests.rs"
+path = "tests/contrib/syndication_integration_tests.rs"
 
 [[test]]
 name = "background_tasks_integration"
-path = "tests/background_tasks_integration.rs"
+path = "tests/utils/background_tasks_integration.rs"
 
 # Migrated from reinhardt-serializers (integration tests using multiple crates)
 [[test]]
 name = "serializer_model_basic_tests"
-path = "tests/serializer_model_basic_tests.rs"
+path = "tests/serializers/serializer_model_basic_tests.rs"
 
 [[test]]
 name = "serializer_model_crud_tests"
-path = "tests/serializer_model_crud_tests.rs"
+path = "tests/serializers/serializer_model_crud_tests.rs"
 
 [[test]]
 name = "serializer_model_meta_tests"
-path = "tests/serializer_model_meta_tests.rs"
+path = "tests/serializers/serializer_model_meta_tests.rs"
 
 [[test]]
 name = "serializer_model_relations_tests"
-path = "tests/serializer_model_relations_tests.rs"
+path = "tests/serializers/serializer_model_relations_tests.rs"
 
 [[test]]
 name = "serializer_database_integration_tests"
-path = "tests/serializer_database_integration_tests.rs"
+path = "tests/serializers/serializer_database_integration_tests.rs"
 
 [[test]]
 name = "serializer_forms_integration_tests"
-path = "tests/serializer_forms_integration_tests.rs"
+path = "tests/serializers/serializer_forms_integration_tests.rs"
 
 [[test]]
 name = "serializer_rest_integration_tests"
-path = "tests/serializer_rest_integration_tests.rs"
+path = "tests/serializers/serializer_rest_integration_tests.rs"
 
 # Migrated from reinhardt-server (integration tests using multiple crates)
 [[test]]
 name = "server_e2e_http_tests"
-path = "tests/server_e2e_http_tests.rs"
+path = "tests/server/server_e2e_http_tests.rs"
 
 [[test]]
 name = "server_async_tests"
-path = "tests/server_async_tests.rs"
+path = "tests/server/server_async_tests.rs"
 
 [[test]]
 name = "server_basic_tests"
-path = "tests/server_basic_tests.rs"
+path = "tests/server/server_basic_tests.rs"
 
 [[test]]
 name = "server_protocol_tests"
-path = "tests/server_protocol_tests.rs"
+path = "tests/server/server_protocol_tests.rs"
 
 [[test]]
 name = "viewset_router_tests"
-path = "viewset_router_tests.rs"
+path = "tests/routing/viewset_router_tests.rs"
 
 [[test]]
 name = "utils_comprehensive_integration"
-path = "tests/utils_comprehensive_integration.rs"
+path = "tests/utils/utils_comprehensive_integration.rs"
 
 [[test]]
 name = "storage_forms_integration_tests"
-path = "tests/storage_forms_integration_tests.rs"
+path = "tests/storage/storage_forms_integration_tests.rs"
 
 [[test]]
 name = "storage_orm_integration_tests"
-path = "tests/storage_orm_integration_tests.rs"
+path = "tests/storage/storage_orm_integration_tests.rs"
 
 [[test]]
 name = "storage_settings_integration_tests"
-path = "tests/storage_settings_integration_tests.rs"
+path = "tests/storage/storage_settings_integration_tests.rs"
 
 [[test]]
 name = "storage_advanced_tests"
-path = "tests/storage_advanced_tests.rs"
+path = "tests/storage/storage_advanced_tests.rs"
 
 [[test]]
 name = "versioning_integration_tests"
-path = "tests/versioning_integration_tests.rs"
+path = "tests/api/versioning_integration_tests.rs"
 
 # Template integration tests
 [[test]]
 name = "template_renderer_advanced_integration"
-path = "tests/template_renderer_advanced_integration.rs"
+path = "tests/rendering/template_renderer_advanced_integration.rs"
 
 [[test]]
 name = "template_pagination_integration"
-path = "tests/template_pagination_integration.rs"
+path = "tests/rendering/template_pagination_integration.rs"
 
 [[test]]
 name = "template_i18n_integration"
-path = "tests/template_i18n_integration.rs"
+path = "tests/rendering/template_i18n_integration.rs"
 
 [[test]]
 name = "template_static_integration"
-path = "tests/template_static_integration.rs"
+path = "tests/rendering/template_static_integration.rs"
 
 # Messages integration tests
 [[test]]
 name = "messages_integration"
-path = "tests/messages_integration.rs"
+path = "tests/contrib/messages_integration.rs"
 
 # Pagination integration tests
 [[test]]
 name = "pagination_orm_integration"
-path = "tests/pagination/integration_orm_tests.rs"
+path = "tests/pagination/orm.rs"
 
 [[test]]
 name = "pagination_rest_integration"
-path = "tests/pagination/integration_rest_tests.rs"
+path = "tests/pagination/rest.rs"
 
 # Database abstraction integration tests
 [[test]]
 name = "database_integration_tests"
-path = "tests/database_integration_tests.rs"
+path = "tests/database/database_integration_tests.rs"
 
 [[test]]
 name = "renderer_specialized_integration"
-path = "tests/renderer_specialized_integration.rs"
+path = "tests/rendering/renderer_specialized_integration.rs"
 
 [[test]]
 name = "serializer_integration_tests"
-path = "tests/serializer_integration_tests.rs"
+path = "tests/serializers/serializer_integration_tests.rs"
 
 # Validator integration tests
 [[test]]
 name = "validator_orm_integration_tests"
-path = "tests/validator_orm_integration_tests.rs"
+path = "tests/validation/validator_orm_integration_tests.rs"
 
 [[test]]
 name = "validator_serializer_integration_tests"
-path = "tests/validator_serializer_integration_tests.rs"
+path = "tests/validation/validator_serializer_integration_tests.rs"
 
 # Session integration tests
 [[test]]
 name = "session_database_tests"
-path = "tests/session_database_tests.rs"
+path = "tests/sessions/session_database_tests.rs"
+
+# Settings backend integration tests
+[[test]]
+name = "settings_database_backend_tests"
+path = "tests/settings/settings_database_backend_tests.rs"
+
+[[test]]
+name = "settings_redis_backend_tests"
+path = "tests/settings/settings_redis_backend_tests.rs"
+
+[[test]]
+name = "database_advanced_tests"
+path = "tests/database/database_advanced_tests.rs"
+
+[[test]]
+name = "orm_core_integration_tests"
+path = "tests/database/orm_core_integration_tests.rs"
+
+[[test]]
+name = "di_core_integration_tests"
+path = "tests/di/di_core_integration_tests.rs"
+
+[[test]]
+name = "renderers_core_integration_tests"
+path = "tests/rendering/renderers_core_integration_tests.rs"
+
+[[test]]
+name = "viewset_inspector_tests"
+path = "tests/routing/viewset_inspector_tests.rs"
+
+[[test]]
+name = "settings_encryption_tests"
+path = "tests/settings/settings_encryption_tests.rs"
+
+[[test]]
+name = "sitemap_basic_generation_tests"
+path = "tests/sitemaps/sitemap_basic_generation_tests.rs"
+
+[[test]]
+name = "sitemap_template_tests"
+path = "tests/sitemaps/sitemap_template_tests.rs"
+
+[[test]]
+name = "static_handler_integration_tests"
+path = "tests/storage/static_handler_integration_tests.rs"
+
+[[test]]
+name = "csrf_tests"
+path = "tests/middleware/csrf_tests.rs"
+
+[[test]]
+name = "redirects_integration"
+path = "tests/middleware/redirects_integration.rs"
+
+[[test]]
+name = "flatpages_http"
+path = "tests/contrib/flatpages_http.rs"
+
+[[test]]
+name = "graphql_integration"
+path = "tests/contrib/graphql_integration.rs"
+
+[[test]]
+name = "websocket_integration_tests"
+path = "tests/contrib/websocket_integration_tests.rs"
+
+[[test]]
+name = "metadata_tests"
+path = "tests/api/metadata_tests.rs"
+
+[[test]]
+name = "throttling_integration_tests"
+path = "tests/api/throttling_integration_tests.rs"
+
+[[test]]
+name = "pagination_basic_tests"
+path = "tests/utils/pagination_basic_tests.rs"
+
+[[test]]
+name = "query_string_encoding_integration"
+path = "tests/utils/query_string_encoding_integration.rs"
+
+[[test]]
+name = "views_api_integration_tests"
+path = "tests/views/views_api_integration_tests.rs"
+
+[[test]]
+name = "views_core_integration_tests"
+path = "tests/views/views_core_integration_tests.rs"
+
+[[test]]
+name = "views_integration_tests"
+path = "tests/views/views_integration_tests.rs"
+
+[[test]]
+name = "proxy_advanced_features_tests"
+path = "tests/proxy/proxy_advanced_features_tests.rs"
+
+[[test]]
+name = "proxy_orm_integration_tests"
+path = "tests/proxy/proxy_orm_integration_tests.rs"
+
+[[test]]
+name = "server_tests"
+path = "tests/server/server_tests.rs"
+
+[[test]]
+name = "server_test_helpers"
+path = "tests/server/server_test_helpers.rs"
+
+[[test]]
+name = "serializer_model_validator_integration_tests"
+path = "tests/serializers/serializer_model_validator_integration_tests.rs"
+
+# Settings dynamic and hot reload integration tests
+[[test]]
+name = "dynamic_settings_memory"
+path = "tests/settings/dynamic_settings_memory.rs"
+
+[[test]]
+name = "hot_reload_integration"
+path = "tests/settings/hot_reload_integration.rs"
