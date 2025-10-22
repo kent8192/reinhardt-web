@@ -11,5 +11,11 @@ pub mod static_html_renderer;
 pub mod xml;
 pub mod yaml_renderer;
 
+// Re-export main types
+pub use csv_renderer::CSVRenderer;
+pub use openapi::OpenAPIRenderer;
+pub use renderer::{RenderResult, Renderer, RendererContext};
+pub use yaml_renderer::YAMLRenderer;
+
 #[cfg(test)]
 mod tests;

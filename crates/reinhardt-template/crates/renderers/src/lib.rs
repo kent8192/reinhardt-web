@@ -32,6 +32,7 @@ pub mod openapi;
 pub mod renderer;
 pub mod schemajs_renderer;
 pub mod static_html_renderer;
+pub mod template_html_renderer;
 pub mod xml;
 pub mod yaml_renderer;
 
@@ -39,15 +40,16 @@ pub mod yaml_renderer;
 mod tests;
 
 pub use admin_renderer::AdminRenderer;
-// pub use csv_renderer::CSVRenderer;
+pub use csv_renderer::CSVRenderer;
 pub use documentation_renderer::DocumentationRenderer;
 pub use json::JSONRenderer;
-// pub use openapi::OpenAPIRenderer;
+pub use openapi::OpenAPIRenderer;
 pub use renderer::{RenderResult, Renderer, RendererContext, RendererRegistry};
 pub use schemajs_renderer::SchemaJSRenderer;
 pub use static_html_renderer::StaticHTMLRenderer;
+pub use template_html_renderer::TemplateHTMLRenderer;
 pub use xml::XMLRenderer;
-// pub use yaml_renderer::YAMLRenderer;
+pub use yaml_renderer::YAMLRenderer;
 
 // Re-export from specialized crates
 pub use reinhardt_browsable_api::BrowsableApiRenderer as BrowsableAPIRenderer;

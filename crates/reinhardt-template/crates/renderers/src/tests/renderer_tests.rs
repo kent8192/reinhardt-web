@@ -27,7 +27,10 @@ mod basic_renderer_tests {
     #[tokio::test]
     async fn test_json_media_type() {
         let renderer = JSONRenderer::new();
-        assert_eq!(renderer.media_types(), vec!["application/json"]);
+        assert_eq!(
+            renderer.media_types(),
+            vec!["application/json", "application/json; charset=utf-8"]
+        );
     }
 
     #[tokio::test]
@@ -112,9 +115,9 @@ mod json_renderer_tests {
         let renderer = JSONRenderer::new();
         let media_types = renderer.media_types();
 
-        assert_eq!(media_types.len(), 1);
+        assert_eq!(media_types.len(), 2);
         assert_eq!(media_types[0], "application/json");
-        assert!(!media_types[0].contains("charset"));
+        assert_eq!(media_types[1], "application/json; charset=utf-8");
     }
 
     #[tokio::test]
@@ -196,7 +199,7 @@ mod renderer_context_tests {
     async fn test_renderer_with_context_unit() {
         let renderer = JSONRenderer::new();
         let data = json!({"test": "data"});
-        let context = RendererContext;
+        let context = RendererContext::new();
 
         let result = renderer.render(&data, Some(&context)).await.unwrap();
 

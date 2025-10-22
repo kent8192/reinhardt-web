@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Response renderers for Reinhardt framework (Django REST Framework inspired)"
+description = "Response renderers (JSON, XML, CSV, YAML, OpenAPI) for Reinhardt framework"
 keywords = ["web", "framework", "renderer", "rest", "api"]
 categories = ["web-programming"]
 
@@ -13,6 +13,7 @@ categories = ["web-programming"]
 reinhardt-apps = { workspace = true }
 reinhardt-browsable-api = { workspace = true }
 reinhardt-exception = { workspace = true }
+reinhardt-negotiation = { workspace = true }
 async-trait = "0.1"
 bytes = "1.0"
 serde = { version = "1.0", features = ["derive"] }

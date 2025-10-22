@@ -11,6 +11,8 @@ thiserror = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 serde_json = { workspace = true }
+csv = "1.3"
+serde_yaml = "0.9"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

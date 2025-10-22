@@ -17,7 +17,7 @@ use serde_json::Value;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_renderers::AdminRenderer;
+/// use reinhardt_renderers::{AdminRenderer, Renderer};
 /// use serde_json::json;
 ///
 /// let renderer = AdminRenderer::new();

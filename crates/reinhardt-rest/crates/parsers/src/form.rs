@@ -110,7 +110,7 @@ mod tests {
         assert!(media_types.contains(&"application/x-www-form-urlencoded".to_string()));
     }
 
-    /// // Tests from Django REST Framework
+    // Tests from Django REST Framework
 
     #[tokio::test]
     async fn test_form_parse_drf() {

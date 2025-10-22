@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use reinhardt_exception::{Error, Result};
+use reinhardt_exception::Error;
 use serde_json::Value;
 
 use crate::renderer::{RenderResult, Renderer, RendererContext};
@@ -70,8 +70,15 @@ impl JSONRenderer {
 
 #[async_trait]
 impl Renderer for JSONRenderer {
+    fn media_type(&self) -> String {
+        "application/json; charset=utf-8".to_string()
+    }
+
     fn media_types(&self) -> Vec<String> {
-        vec!["application/json".to_string()]
+        vec![
+            "application/json".to_string(),
+            "application/json; charset=utf-8".to_string(),
+        ]
     }
 
     fn format(&self) -> Option<&str> {

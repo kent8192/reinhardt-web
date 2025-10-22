@@ -139,6 +139,86 @@ let renderer = SchemaJSRenderer::new();
 let js_output = renderer.render(&openapi_schema, None).await?;
 ```
 
+#### CSVRenderer
+
+Renders tabular data as CSV format with customizable options.
+
+**Features:**
+
+- Array of objects to CSV conversion
+- Customizable delimiter (default: `,`)
+- Optional header row control
+- Automatic type handling (String, Number, Bool, Null)
+- Proper CSV escaping and quoting
+
+**Example:**
+
+```rust
+use reinhardt_renderers::CSVRenderer;
+use serde_json::json;
+
+let renderer = CSVRenderer::new()
+    .delimiter(b';')
+    .include_header(true);
+
+let data = json!([
+    {"name": "Alice", "age": 30},
+    {"name": "Bob", "age": 25}
+]);
+
+let result = renderer.render(&data, None).await?;
+```
+
+#### YAMLRenderer
+
+Renders data as YAML format.
+
+**Features:**
+
+- JSON to YAML conversion
+- Clean, human-readable output
+- Proper YAML syntax
+- Support for complex nested structures
+
+**Example:**
+
+```rust
+use reinhardt_renderers::YAMLRenderer;
+use serde_json::json;
+
+let renderer = YAMLRenderer::new();
+let data = json!({"key": "value", "nested": {"foo": "bar"}});
+let result = renderer.render(&data, None).await?;
+```
+
+#### OpenAPIRenderer
+
+Renders OpenAPI 3.0 specifications in JSON or YAML format.
+
+**Features:**
+
+- JSON format output (default)
+- YAML format output via `.format("yaml")`
+- Pretty printing support via `.pretty(true)`
+- Full OpenAPI 3.0 schema support
+
+**Example:**
+
+```rust
+use reinhardt_renderers::OpenAPIRenderer;
+
+// JSON format (default)
+let json_renderer = OpenAPIRenderer::new()
+    .pretty(true);
+
+// YAML format
+let yaml_renderer = OpenAPIRenderer::new()
+    .format("yaml");
+
+let openapi_spec = json!({"openapi": "3.0.0", ...});
+let result = json_renderer.render(&openapi_spec, None).await?;
+```
+
 ### Core Traits
 
 #### Renderer Trait
@@ -155,9 +235,6 @@ Context information passed to renderers during rendering.
 ## Planned
 
 ### Additional Renderers
-- **CSVRenderer** - CSV format output for tabular data (partially implemented, not exported)
-- **YAMLRenderer** - YAML format output (partially implemented, not exported)
-- **OpenAPIRenderer** - Generate OpenAPI 3.0 specifications (module exists, not exported)
 - **TemplateRenderer** - Template-based HTML rendering with template engine integration
 
 ### Content Negotiation

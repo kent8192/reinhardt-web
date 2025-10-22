@@ -26,7 +26,7 @@ impl FileUploadParser {
     /// let filename = parser.get_filename(Some(disposition)).unwrap();
     /// assert_eq!(filename, "document.txt");
     ///
-    /// // RFC2231 encoded filename
+    // RFC2231 encoded filename
     /// let disposition_encoded = "inline; filename*=utf-8''%C3%A0.txt";
     /// let filename_encoded = parser.get_filename(Some(disposition_encoded)).unwrap();
     /// assert_eq!(filename_encoded, "à.txt");
@@ -233,7 +233,7 @@ mod tests {
         assert!(media_types.contains(&"*/*".to_string()));
     }
 
-    /// // Tests from Django REST Framework
+    // Tests from Django REST Framework
 
     #[tokio::test]
     async fn test_file_parse_drf() {

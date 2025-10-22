@@ -4,7 +4,6 @@ use reinhardt_exception::{Error, Result};
 use serde_json::Value;
 use std::collections::HashMap;
 
-// NOTE: エラーは`reinhardt_exception::Error`に統一
 pub type ParseError = Error;
 pub type ParseResult<T> = Result<T>;
 

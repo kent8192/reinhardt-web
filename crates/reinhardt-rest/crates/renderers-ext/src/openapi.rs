@@ -1,5 +1,26 @@
-//! Placeholder module for openapi
-//!
-//! This module is currently unimplemented.
+/// OpenAPI renderer stub
+///
+/// Note: Full OpenAPI rendering is implemented in reinhardt-openapi
+#[derive(Debug, Clone)]
+pub struct OpenAPIRenderer;
 
-// TODO: Implement openapi functionality
+impl OpenAPIRenderer {
+    /// Creates a new OpenAPI renderer
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use renderers_ext::OpenAPIRenderer;
+    ///
+    /// let renderer = OpenAPIRenderer::new();
+    /// ```
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for OpenAPIRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}

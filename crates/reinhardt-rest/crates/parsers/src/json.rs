@@ -185,7 +185,7 @@ mod tests {
         assert!(media_types.contains(&"application/*+json".to_string()));
     }
 
-    /// // Tests from Django REST Framework
+    // Tests from Django REST Framework
 
     #[tokio::test]
     async fn test_json_float_strictness() {

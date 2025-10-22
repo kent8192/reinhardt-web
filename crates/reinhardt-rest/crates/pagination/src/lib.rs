@@ -312,10 +312,10 @@ impl<T: Clone> Page<T> {
     /// ```
     /// use reinhardt_pagination::Page;
     ///
-    /// // For a large page range, ellipsis (None) are added
+    // For a large page range, ellipsis (None) are added
     /// let page = Page::new(vec![1], 10, 20, 200, 10);
     /// let elided = page.get_elided_page_range(2, 2);
-    /// // Result like: [Some(1), Some(2), None, Some(8), Some(9), Some(10), Some(11), Some(12), None, Some(19), Some(20)]
+    // Result like: [Some(1), Some(2), None, Some(8), Some(9), Some(10), Some(11), Some(12), None, Some(19), Some(20)]
     /// assert!(elided.contains(&None)); // Contains ellipsis
     /// assert!(elided.contains(&Some(10))); // Contains current page
     /// ```
@@ -664,16 +664,16 @@ impl PageNumberPagination {
     /// let paginator = PageNumberPagination::new().page_size(5);
     /// let items: Vec<i32> = (1..=20).collect();
     ///
-    /// // Get page 2
+    // Get page 2
     /// let page = paginator.get_page(&items, Some("2"));
     /// assert_eq!(page.number, 2);
     /// assert_eq!(page.len(), 5);
     ///
-    /// // Invalid page number defaults to page 1
+    // Invalid page number defaults to page 1
     /// let page = paginator.get_page(&items, Some("invalid"));
     /// assert_eq!(page.number, 1);
     ///
-    /// // Out of range page number returns last page
+    // Out of range page number returns last page
     /// let page = paginator.get_page(&items, Some("100"));
     /// assert_eq!(page.number, 4);
     /// ```
@@ -1498,9 +1498,9 @@ impl AsyncPaginator for CursorPagination {
 mod tests {
     use super::*;
 
-    /// // ========================================
-    /// // PageNumberPagination Tests
-    /// // ========================================
+    // ========================================
+    // PageNumberPagination Tests
+    // ========================================
 
     #[test]
     fn test_page_number_pagination_first_page() {
@@ -1660,9 +1660,9 @@ mod tests {
         assert!(page2.next.is_none());
     }
 
-    /// // ========================================
-    /// // LimitOffsetPagination Tests
-    /// // ========================================
+    // ========================================
+    // LimitOffsetPagination Tests
+    // ========================================
 
     #[test]
     fn test_limit_offset_pagination_no_params() {
@@ -1779,9 +1779,9 @@ mod tests {
         assert_eq!(page.results.len(), 15);
     }
 
-    /// // ========================================
-    /// // CursorPagination Tests
-    /// // ========================================
+    // ========================================
+    // CursorPagination Tests
+    // ========================================
 
     #[test]
     fn test_cursor_pagination_first_page() {
@@ -1853,9 +1853,9 @@ mod tests {
         assert!(page.previous.is_none());
     }
 
-    /// // ========================================
-    /// // Schema and Configuration Tests
-    /// // ========================================
+    // ========================================
+    // Schema and Configuration Tests
+    // ========================================
 
     #[test]
     fn test_page_number_pagination_schema_parameters() {
@@ -1887,9 +1887,9 @@ mod tests {
         assert_eq!(params[1].name, "page_size");
     }
 
-    /// // ========================================
-    /// // Additional Edge Cases
-    /// // ========================================
+    // ========================================
+    // Additional Edge Cases
+    // ========================================
 
     #[test]
     fn test_paginated_response_new() {
@@ -2008,9 +2008,9 @@ mod tests {
         assert_eq!(params[1].schema_type, "integer");
     }
 
-    /// // ========================================
-    /// // Page Structure Tests
-    /// // ========================================
+    // ========================================
+    // Page Structure Tests
+    // ========================================
 
     #[test]
     fn test_page_indexes() {
@@ -2110,9 +2110,9 @@ mod tests {
         assert_eq!(non_empty_page.len(), 1);
     }
 
-    /// // ========================================
-    /// // Orphans and allow_empty_first_page Tests
-    /// // ========================================
+    // ========================================
+    // Orphans and allow_empty_first_page Tests
+    // ========================================
 
     #[test]
     fn test_orphans_merge_last_page() {
@@ -2553,9 +2553,9 @@ mod tests {
         );
     }
 
-    /// // ========================================
-    /// // Async Tests - PageNumberPagination
-    /// // ========================================
+    // ========================================
+    // Async Tests - PageNumberPagination
+    // ========================================
 
     #[tokio::test]
     async fn test_page_number_pagination_apaginate() {
@@ -2695,9 +2695,9 @@ mod tests {
         assert_eq!(page.results, (11..=20).collect::<Vec<i32>>());
     }
 
-    /// // ========================================
-    /// // Async Tests - LimitOffsetPagination
-    /// // ========================================
+    // ========================================
+    // Async Tests - LimitOffsetPagination
+    // ========================================
 
     #[tokio::test]
     async fn test_limit_offset_pagination_apaginate() {
@@ -2781,9 +2781,9 @@ mod tests {
         assert!(page.next.is_none());
     }
 
-    /// // ========================================
-    /// // Async Tests - CursorPagination
-    /// // ========================================
+    // ========================================
+    // Async Tests - CursorPagination
+    // ========================================
 
     #[tokio::test]
     async fn test_cursor_pagination_apaginate() {
@@ -2884,5 +2884,88 @@ mod tests {
 
         assert_eq!(page.results.len(), 10);
         assert!(page.next.is_none()); // No more items
+    }
+}
+
+// ============================================================================
+// Enum Wrapper for dyn Paginator Compatibility
+// ============================================================================
+
+/// Enum wrapper for Paginator implementations to enable dyn compatibility
+///
+/// This wrapper allows using different pagination strategies through a single
+/// type, solving the issue that `Paginator` trait with generic methods cannot
+/// be used as `dyn Paginator`.
+#[derive(Debug, Clone)]
+pub enum PaginatorImpl {
+    /// Page number based pagination
+    PageNumber(PageNumberPagination),
+    /// Limit/offset based pagination
+    LimitOffset(LimitOffsetPagination),
+    /// Cursor based pagination
+    Cursor(CursorPagination),
+}
+
+impl Paginator for PaginatorImpl {
+    fn paginate<T: Clone + Send + Sync>(
+        &self,
+        items: &[T],
+        page_param: Option<&str>,
+        base_url: &str,
+    ) -> Result<PaginatedResponse<T>> {
+        match self {
+            Self::PageNumber(p) => p.paginate(items, page_param, base_url),
+            Self::LimitOffset(p) => p.paginate(items, page_param, base_url),
+            Self::Cursor(p) => p.paginate(items, page_param, base_url),
+        }
+    }
+
+    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
+        match self {
+            Self::PageNumber(p) => Paginator::get_schema_parameters(p),
+            Self::LimitOffset(p) => Paginator::get_schema_parameters(p),
+            Self::Cursor(p) => Paginator::get_schema_parameters(p),
+        }
+    }
+}
+
+#[async_trait]
+impl AsyncPaginator for PaginatorImpl {
+    async fn apaginate<T: Clone + Send + Sync>(
+        &self,
+        items: &[T],
+        page_param: Option<&str>,
+        base_url: &str,
+    ) -> Result<PaginatedResponse<T>> {
+        match self {
+            Self::PageNumber(p) => p.apaginate(items, page_param, base_url).await,
+            Self::LimitOffset(p) => p.apaginate(items, page_param, base_url).await,
+            Self::Cursor(p) => p.apaginate(items, page_param, base_url).await,
+        }
+    }
+
+    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
+        match self {
+            Self::PageNumber(p) => AsyncPaginator::get_schema_parameters(p),
+            Self::LimitOffset(p) => AsyncPaginator::get_schema_parameters(p),
+            Self::Cursor(p) => AsyncPaginator::get_schema_parameters(p),
+        }
+    }
+}
+
+impl PaginatorImpl {
+    /// Create a page number pagination instance
+    pub fn page_number(pagination: PageNumberPagination) -> Self {
+        Self::PageNumber(pagination)
+    }
+
+    /// Create a limit/offset pagination instance
+    pub fn limit_offset(pagination: LimitOffsetPagination) -> Self {
+        Self::LimitOffset(pagination)
+    }
+
+    /// Create a cursor pagination instance
+    pub fn cursor(pagination: CursorPagination) -> Self {
+        Self::Cursor(pagination)
     }
 }

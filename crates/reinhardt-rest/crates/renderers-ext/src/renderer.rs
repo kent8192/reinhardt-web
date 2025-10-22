@@ -1,5 +1,2 @@
-//! Placeholder module for renderer
-//!
-//! This module is currently unimplemented.
-
-// TODO: Implement renderer functionality
+// Re-export from reinhardt-renderers
+pub use reinhardt_renderers::{RenderResult, Renderer, RendererContext};

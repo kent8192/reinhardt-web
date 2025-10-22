@@ -3,8 +3,6 @@ use bytes::Bytes;
 use reinhardt_exception::{Error, Result};
 use serde_json::Value;
 
-// use crate::renderer::{RenderResult, Renderer, RendererContext};
-
 pub type RenderResult<T> = Result<T>;
 
 #[derive(Debug, Clone, Default)]

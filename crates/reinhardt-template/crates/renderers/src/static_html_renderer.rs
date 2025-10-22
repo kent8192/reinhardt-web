@@ -17,7 +17,7 @@ use serde_json::Value;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_renderers::StaticHTMLRenderer;
+/// use reinhardt_renderers::{StaticHTMLRenderer, Renderer};
 ///
 /// let content = "<html><body><h1>Hello</h1></body></html>";
 /// let renderer = StaticHTMLRenderer::new(content);

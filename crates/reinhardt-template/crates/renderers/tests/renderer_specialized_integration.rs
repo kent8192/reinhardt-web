@@ -12,7 +12,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use reinhardt_renderers::{RenderError, RenderResult, Renderer, RendererContext};
+use reinhardt_renderers::{RenderResult, Renderer, RendererContext};
 use serde_json::Value;
 
 // ============================================================================
@@ -37,10 +37,6 @@ impl StaticHTMLRenderer {
 impl Renderer for StaticHTMLRenderer {
     fn media_types(&self) -> Vec<String> {
         vec!["text/html".to_string()]
-    }
-
-    fn content_type(&self) -> String {
-        "text/html; charset=utf-8".to_string()
     }
 
     async fn render(
@@ -111,10 +107,6 @@ impl Renderer for DocumentationRenderer {
         vec!["text/html".to_string()]
     }
 
-    fn content_type(&self) -> String {
-        "text/html; charset=utf-8".to_string()
-    }
-
     async fn render(
         &self,
         data: &Value,
@@ -158,10 +150,6 @@ impl SchemaJSRenderer {
 impl Renderer for SchemaJSRenderer {
     fn media_types(&self) -> Vec<String> {
         vec!["application/javascript".to_string()]
-    }
-
-    fn content_type(&self) -> String {
-        "application/javascript; charset=utf-8".to_string()
     }
 
     async fn render(
@@ -242,10 +230,6 @@ impl Renderer for HTMLFormRenderer {
         vec!["text/html".to_string()]
     }
 
-    fn content_type(&self) -> String {
-        "text/html; charset=utf-8".to_string()
-    }
-
     async fn render(
         &self,
         data: &Value,
@@ -293,12 +277,6 @@ mod specialized_renderer_tests {
 
         assert_eq!(html, content);
         assert!(!html.contains("some"));
-    }
-
-    #[tokio::test]
-    async fn test_static_html_renderer_content_type() {
-        let renderer = StaticHTMLRenderer::new("test");
-        assert_eq!(renderer.content_type(), "text/html; charset=utf-8");
     }
 
     // Documentation Renderer Tests
@@ -364,15 +342,6 @@ mod specialized_renderer_tests {
         assert!(js.contains("const schema = "));
         assert!(js.contains("User"));
         assert!(js.contains("module.exports"));
-    }
-
-    #[tokio::test]
-    async fn test_schema_js_renderer_content_type() {
-        let renderer = SchemaJSRenderer::new();
-        assert_eq!(
-            renderer.content_type(),
-            "application/javascript; charset=utf-8"
-        );
     }
 
     #[tokio::test]
@@ -493,6 +462,8 @@ mod specialized_renderer_tests {
                 required: true,
                 help_text: None,
                 initial_value: None,
+                options: None,
+                initial_label: None,
             }],
             submit_url: "/submit".to_string(),
             submit_method: "POST".to_string(),
@@ -543,15 +514,21 @@ mod specialized_renderer_tests {
         let schema_renderer = SchemaJSRenderer::new();
         let form_renderer = HTMLFormRenderer::new();
 
-        // HTML renderers should have text/html
-        assert!(static_renderer.content_type().contains("text/html"));
-        assert!(doc_renderer.content_type().contains("text/html"));
-        assert!(form_renderer.content_type().contains("text/html"));
+        // HTML renderers should have text/html in media_types
+        assert!(static_renderer
+            .media_types()
+            .contains(&"text/html".to_string()));
+        assert!(doc_renderer
+            .media_types()
+            .contains(&"text/html".to_string()));
+        assert!(form_renderer
+            .media_types()
+            .contains(&"text/html".to_string()));
 
-        // JS renderer should have application/javascript
+        // JS renderer should have application/javascript in media_types
         assert!(schema_renderer
-            .content_type()
-            .contains("application/javascript"));
+            .media_types()
+            .contains(&"application/javascript".to_string()));
     }
 
     #[tokio::test]
