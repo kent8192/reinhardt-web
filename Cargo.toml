@@ -2,8 +2,8 @@
 resolver = "3"
 members = [
   # Core framework (always included)
-  # "crates/reinhardt",  # Temporarily disabled due to template dependency issue
-  # "crates/reinhardt-micro",  # Temporarily disabled due to router dependency issue
+  "crates/reinhardt",
+  "crates/reinhardt-micro",
   "crates/reinhardt-apps",
   "crates/reinhardt-http",
   "crates/reinhardt-conf",
@@ -16,6 +16,7 @@ members = [
   "crates/reinhardt-core/crates/macros",
   "crates/reinhardt-core/crates/security",
   "crates/reinhardt-core/crates/validators",
+  "crates/reinhardt-core/crates/backends",
   "crates/reinhardt-server",
   "crates/reinhardt-server/crates/server",
   "crates/reinhardt-views",
@@ -42,12 +43,9 @@ members = [
   "crates/reinhardt-rest/crates/versioning",
   "crates/reinhardt-rest/crates/metadata",
   "crates/reinhardt-rest/crates/negotiation",
-  # "crates/reinhardt-rest/crates/openapi", # Temporarily disabled due to utoipa API changes
+  "crates/reinhardt-rest/crates/openapi",
   "crates/reinhardt-rest/crates/browsable-api",
   "crates/reinhardt-rest/crates/rest-core",
-  "crates/reinhardt-rest/crates/serializers-ext",
-  "crates/reinhardt-rest/crates/parsers-ext",
-  "crates/reinhardt-rest/crates/renderers-ext",
   "crates/reinhardt-contrib",
   "crates/reinhardt-contrib/crates/auth",
   "crates/reinhardt-contrib/crates/contenttypes",
@@ -57,8 +55,11 @@ members = [
   "crates/reinhardt-contrib/crates/mail",
   "crates/reinhardt-contrib/crates/graphql",
   "crates/reinhardt-contrib/crates/websockets",
+  "crates/reinhardt-grpc",
+  "crates/reinhardt-graphql-macros",
   "crates/reinhardt-contrib/crates/i18n",
-  "crates/reinhardt-contrib/crates/commands",
+  "crates/reinhardt-commands",
+  "crates/reinhardt-admin",
   "crates/reinhardt-db",
   "crates/reinhardt-db/crates/database",
   "crates/reinhardt-db/crates/orm",
@@ -87,7 +88,7 @@ members = [
 exclude = []
 
 default-members = [
-  # "crates/reinhardt",  # Temporarily disabled due to template dependency issue
+  "crates/reinhardt",
   "crates/reinhardt-db/crates/orm",
   "crates/reinhardt-views",
   "crates/reinhardt-views/crates/viewsets",
@@ -146,7 +147,8 @@ reinhardt-throttling = { path = "crates/reinhardt-rest/crates/throttling", versi
 reinhardt-parsers = { path = "crates/reinhardt-rest/crates/parsers", version = "0.1.0" }
 reinhardt-renderers = { path = "crates/reinhardt-template/crates/renderers", version = "0.1.0" }
 reinhardt-migrations = { path = "crates/reinhardt-db/crates/migrations", version = "0.1.0" }
-reinhardt-templates = { path = "crates/reinhardt-template", version = "0.1.0" }
+reinhardt-template = { path = "crates/reinhardt-template", version = "0.1.0" }
+reinhardt-templates = { path = "crates/reinhardt-template/crates/templates", version = "0.1.0" }
 reinhardt-templates-macros = { path = "crates/reinhardt-template/crates/templates-macros", version = "0.1.0" }
 reinhardt-versioning = { path = "crates/reinhardt-rest/crates/versioning", version = "0.1.0" }
 reinhardt-metadata = { path = "crates/reinhardt-rest/crates/metadata", version = "0.1.0" }
@@ -166,17 +168,20 @@ reinhardt-static = { path = "crates/reinhardt-contrib/crates/static", version = 
 reinhardt-mail = { path = "crates/reinhardt-contrib/crates/mail", version = "0.1.0" }
 reinhardt-graphql = { path = "crates/reinhardt-contrib/crates/graphql", version = "0.1.0" }
 reinhardt-websockets = { path = "crates/reinhardt-contrib/crates/websockets", version = "0.1.0" }
+reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.1.0" }
+reinhardt-graphql-macros = { path = "crates/reinhardt-graphql-macros", version = "0.1.0" }
 reinhardt-i18n = { path = "crates/reinhardt-contrib/crates/i18n", version = "0.1.0" }
-reinhardt-commands = { path = "crates/reinhardt-contrib/crates/commands", version = "0.1.0" }
+reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0" }
+reinhardt-admin = { path = "crates/reinhardt-admin", version = "0.1.0" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0" }
 reinhardt-database = { path = "crates/reinhardt-db/crates/database", version = "0.1.0" }
 reinhardt-pool = { path = "crates/reinhardt-db/crates/pool", version = "0.1.0" }
-reinhardt-template = { path = "crates/reinhardt-template", version = "0.1.0" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0" }
 reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0" }
 reinhardt-hybrid = { path = "crates/reinhardt-db/crates/hybrid", version = "0.1.0" }
 reinhardt-associations = { path = "crates/reinhardt-db/crates/associations", version = "0.1.0" }
 reinhardt-storage = { path = "crates/reinhardt-utils/crates/storage", version = "0.1.0" }
+reinhardt-utils-core = { path = "crates/reinhardt-utils/crates/utils-core", version = "0.1.0" }
 reinhardt-negotiation = { path = "crates/reinhardt-rest/crates/negotiation", version = "0.1.0" }
 reinhardt-logging = { path = "crates/reinhardt-utils/crates/logging", version = "0.1.0" }
 reinhardt-params = { path = "crates/reinhardt-di/crates/params", version = "0.1.0" }
@@ -187,6 +192,7 @@ reinhardt-browsable-api = { path = "crates/reinhardt-rest/crates/browsable-api",
 
 # Web framework
 tokio = { version = "1.41", features = ["full"] }
+tokio-stream = "0.1"
 futures = "0.3"
 hyper = { version = "1.5", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
@@ -203,6 +209,7 @@ sqlx = { version = "0.8", features = [
   "sqlite",
   "postgres",
   "mysql",
+  "any",
   "macros",
   "migrate",
 ] }
@@ -232,7 +239,7 @@ once_cell = "1.19"
 tracing = "0.1"
 
 # Cryptography & Security
-aes-gcm = "0.10"
+aes-gcm = "0.10.3"
 sha2 = "0.10"
 
 # Image Processing
