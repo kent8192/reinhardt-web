@@ -581,6 +581,97 @@ impl Request {
     pub fn body(&self) -> &Bytes {
         &self.body
     }
+
+    /// Set a path parameter (used by routers for path variable extraction)
+    ///
+    /// This method is typically called by routers when extracting path parameters
+    /// from URL patterns like `/users/{id}/`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_http::Request;
+    /// use hyper::{Method, Uri, Version, HeaderMap};
+    /// use bytes::Bytes;
+    ///
+    /// let mut request = Request::new(
+    ///     Method::GET,
+    ///     "/users/123".parse::<Uri>().unwrap(),
+    ///     Version::HTTP_11,
+    ///     HeaderMap::new(),
+    ///     Bytes::new()
+    /// );
+    ///
+    /// request.set_path_param("id", "123");
+    /// assert_eq!(request.path_params.get("id"), Some(&"123".to_string()));
+    /// ```
+    pub fn set_path_param(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        self.path_params.insert(key.into(), value.into());
+    }
+
+    /// Set the DI context for this request (used by routers with dependency injection)
+    ///
+    /// This method stores the DI context in the request's extensions,
+    /// allowing handlers to access dependency injection services.
+    ///
+    /// The DI context type is generic to avoid circular dependencies.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use reinhardt_http::Request;
+    /// use hyper::{Method, Uri, Version, HeaderMap};
+    /// use bytes::Bytes;
+    /// use std::sync::Arc;
+    ///
+    /// # struct DummyDiContext;
+    /// let mut request = Request::new(
+    ///     Method::GET,
+    ///     "/".parse::<Uri>().unwrap(),
+    ///     Version::HTTP_11,
+    ///     HeaderMap::new(),
+    ///     Bytes::new()
+    /// );
+    ///
+    /// let di_ctx = Arc::new(DummyDiContext);
+    /// request.set_di_context(di_ctx);
+    /// ```
+    pub fn set_di_context<T: Send + Sync + 'static>(&mut self, ctx: Arc<T>) {
+        self.extensions.insert(ctx);
+    }
+
+    /// Get the DI context from this request
+    ///
+    /// Returns `None` if no DI context was set.
+    ///
+    /// The DI context type is generic to avoid circular dependencies.
+    /// Returns a cloned Arc for the DI context (cheap operation).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use reinhardt_http::Request;
+    /// use hyper::{Method, Uri, Version, HeaderMap};
+    /// use bytes::Bytes;
+    /// use std::sync::Arc;
+    ///
+    /// # struct DummyDiContext;
+    /// let mut request = Request::new(
+    ///     Method::GET,
+    ///     "/".parse::<Uri>().unwrap(),
+    ///     Version::HTTP_11,
+    ///     HeaderMap::new(),
+    ///     Bytes::new()
+    /// );
+    ///
+    /// let di_ctx = Arc::new(DummyDiContext);
+    /// request.set_di_context(di_ctx);
+    ///
+    /// assert!(request.get_di_context::<DummyDiContext>().is_some());
+    /// ```
+    pub fn get_di_context<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+        self.extensions.get::<Arc<T>>()
+    }
     /// Read and consume the request body
     /// This marks the body as consumed and subsequent parse attempts will fail
     ///
