@@ -320,8 +320,14 @@ impl BaseCommand for RunServerCommand {
         ));
 
         if !noreload {
-            ctx.verbose("Auto-reload enabled");
-            ctx.info("Note: Auto-reload requires 'notify' crate integration");
+            #[cfg(feature = "autoreload")]
+            {
+                ctx.verbose("Auto-reload enabled");
+            }
+            #[cfg(not(feature = "autoreload"))]
+            {
+                ctx.warning("Auto-reload disabled: Enable 'autoreload' feature to use this functionality");
+            }
         }
 
         if insecure {
@@ -332,29 +338,156 @@ impl BaseCommand for RunServerCommand {
         ctx.info("Quit the server with CTRL-C");
         ctx.info("");
 
-        // TODO: Implement full development server
-        // Full server implementation requires:
-        // 1. HTTP server from reinhardt-server crate
-        // 2. Application router integration
-        // 3. File watcher for auto-reload (notify crate)
-        // 4. Graceful shutdown handling
-        //
-        // For now, we provide a stub that explains the requirements
-        // Users should implement this in their project's manage.rs using:
-        //   - reinhardt_server::serve()
-        //   - DefaultRouter with registered routes
-        //   - Tokio signal handling for CTRL-C
+        // Server implementation with conditional features
+        #[cfg(feature = "server")]
+        {
+            Self::run_server(ctx, address, noreload, insecure).await
+        }
 
-        ctx.warning("Server implementation not available in command");
-        ctx.info("To run a development server, use the reinhardt-server crate directly:");
-        ctx.info("  use reinhardt_server::serve;");
-        ctx.info("  use reinhardt_routers::DefaultRouter;");
-        ctx.info("");
-        ctx.info("  let mut router = DefaultRouter::new();");
-        ctx.info("  // Register your routes");
-        ctx.info(&format!("  serve(\"{}\", router).await?;", address));
+        #[cfg(not(feature = "server"))]
+        {
+            ctx.warning("Server feature not enabled");
+            ctx.info("To use runserver, enable the 'server' feature in Cargo.toml:");
+            ctx.info("  reinhardt-commands = { version = \"*\", features = [\"server\"] }");
+            ctx.info("");
+            ctx.info("Alternatively, implement your own server using:");
+            ctx.info("  use reinhardt_server::HttpServer;");
+            ctx.info("  use reinhardt_routers::DefaultRouter;");
+            ctx.info("");
+            ctx.info("  let router = DefaultRouter::new();");
+            ctx.info("  // Register your routes");
+            ctx.info("  let server = HttpServer::new(Arc::new(router));");
+            ctx.info(&format!("  server.listen(\"{}\".parse()?).await?;", address));
 
-        Ok(())
+            Ok(())
+        }
+    }
+
+    /// Run the development server
+    #[cfg(feature = "server")]
+    async fn run_server(
+        ctx: &CommandContext,
+        address: &str,
+        noreload: bool,
+        _insecure: bool,
+    ) -> CommandResult<()> {
+        use reinhardt_server::{HttpServer, ShutdownCoordinator};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        // Get registered router
+        if !reinhardt_routers::is_router_registered() {
+            return Err(crate::CommandError::ExecutionError(
+                "No router registered. Call reinhardt_routers::register_router() before running the server.".to_string()
+            ));
+        }
+
+        let router = reinhardt_routers::get_router()
+            .ok_or_else(|| crate::CommandError::ExecutionError(
+                "Failed to get registered router".to_string()
+            ))?;
+
+        // Parse socket address
+        let addr: std::net::SocketAddr = address.parse().map_err(|e| {
+            crate::CommandError::ExecutionError(format!("Invalid address '{}': {}", address, e))
+        })?;
+
+        // Create shutdown coordinator with 30s graceful shutdown timeout
+        let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
+
+        // Spawn CTRL-C signal handler
+        let shutdown_tx = coordinator.clone();
+        tokio::spawn(async move {
+            if let Err(e) = tokio::signal::ctrl_c().await {
+                eprintln!("Failed to listen for CTRL-C: {}", e);
+                return;
+            }
+            println!("\nReceived CTRL-C, shutting down gracefully...");
+            shutdown_tx.shutdown();
+        });
+
+        // Create HTTP server
+        let server = HttpServer::new(router);
+
+        // Run with or without auto-reload
+        if !noreload {
+            #[cfg(feature = "autoreload")]
+            {
+                Self::run_with_autoreload(ctx, server, addr, coordinator).await
+            }
+            #[cfg(not(feature = "autoreload"))]
+            {
+                server.listen_with_shutdown(addr, coordinator).await
+                    .map_err(|e| crate::CommandError::ExecutionError(e.to_string()))
+            }
+        } else {
+            server.listen_with_shutdown(addr, coordinator).await
+                .map_err(|e| crate::CommandError::ExecutionError(e.to_string()))
+        }
+    }
+
+    /// Run server with file watching and auto-reload
+    #[cfg(all(feature = "server", feature = "autoreload"))]
+    async fn run_with_autoreload(
+        ctx: &CommandContext,
+        server: reinhardt_server::HttpServer,
+        addr: std::net::SocketAddr,
+        coordinator: reinhardt_server::ShutdownCoordinator,
+    ) -> CommandResult<()> {
+        use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+        use std::path::Path;
+        use std::sync::mpsc::channel;
+
+        ctx.verbose("Setting up file watcher for auto-reload...");
+
+        // Create file watcher
+        let (tx, rx) = channel();
+        let mut watcher: RecommendedWatcher = Watcher::new(tx, Config::default())
+            .map_err(|e| crate::CommandError::ExecutionError(format!("Failed to create file watcher: {}", e)))?;
+
+        // Watch current directory for changes
+        let watch_path = Path::new(".");
+        watcher.watch(watch_path, RecursiveMode::Recursive)
+            .map_err(|e| crate::CommandError::ExecutionError(format!("Failed to watch directory: {}", e)))?;
+
+        ctx.success(&format!("Watching for file changes in {}", watch_path.display()));
+
+        // Spawn file watcher task
+        let shutdown_for_reload = coordinator.clone();
+        tokio::task::spawn_blocking(move || {
+            for res in rx {
+                match res {
+                    Ok(Event { kind, paths, .. }) => {
+                        // Only reload on modify or create events
+                        if matches!(kind, notify::EventKind::Modify(_) | notify::EventKind::Create(_)) {
+                            // Filter out temporary files and build artifacts
+                            let should_reload = paths.iter().any(|p| {
+                                let path_str = p.to_string_lossy();
+                                !path_str.contains("/target/") &&
+                                !path_str.contains("/.git/") &&
+                                !path_str.ends_with('~') &&
+                                !path_str.ends_with(".swp") &&
+                                (path_str.ends_with(".rs") || path_str.ends_with(".toml"))
+                            });
+
+                            if should_reload {
+                                println!("\n📝 File changed, triggering reload...");
+                                shutdown_for_reload.shutdown();
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("Watch error: {:?}", e),
+                }
+            }
+        });
+
+        // Run server
+        let result = server.listen_with_shutdown(addr, coordinator).await
+            .map_err(|e| crate::CommandError::ExecutionError(e.to_string()));
+
+        ctx.info("Auto-reload detected code change. Please restart the server.");
+        result
     }
 }
 

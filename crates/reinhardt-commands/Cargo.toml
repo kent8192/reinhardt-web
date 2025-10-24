@@ -15,6 +15,7 @@ reinhardt-static = { workspace = true }
 reinhardt-utils-core = { workspace = true }
 reinhardt-routers = { workspace = true, optional = true }
 reinhardt-migrations = { workspace = true, optional = true }
+reinhardt-server = { workspace = true, optional = true }
 clap = { version = "4.5", features = ["derive", "cargo"] }
 tokio = { workspace = true }
 async-trait = { workspace = true }
@@ -30,6 +31,7 @@ rand = { workspace = true }
 regex = { workspace = true }
 rust-embed = "8.5"
 glob = "0.3"
+notify = { version = "6.0", optional = true }
 
 # TLS/HTTPS support
 rustls = "0.23"
@@ -49,3 +51,5 @@ serial_test = { workspace = true }
 default = []
 migrations = ["dep:reinhardt-migrations"]
 routers = ["dep:reinhardt-routers"]
+server = ["dep:reinhardt-server", "routers"]
+autoreload = ["dep:notify", "server"]
