@@ -349,8 +349,17 @@ impl<T: Model + Serialize + for<'de> Deserialize<'de> + Clone> ModelAdmin<T> {
                 if let Some(json) = obj_json {
                     filters.iter().all(|(field, value)| {
                         json.get(field)
-                            .and_then(|v| v.as_str())
-                            .map(|s| s == value)
+                            .map(|v| {
+                                // Handle different value types
+                                match v {
+                                    serde_json::Value::String(s) => s == value,
+                                    serde_json::Value::Bool(b) => {
+                                        value.to_lowercase() == b.to_string()
+                                    }
+                                    serde_json::Value::Number(n) => n.to_string() == *value,
+                                    _ => v.to_string() == *value,
+                                }
+                            })
                             .unwrap_or(false)
                     })
                 } else {

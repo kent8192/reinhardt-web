@@ -22,10 +22,10 @@ lazy_static = "1.4"
 rust-embed = "8.0"
 
 # Sub-crate dependencies
-reinhardt-views-core = { path = "crates/views-core" }
+reinhardt-views-core = { version = "0.1.0", path = "crates/views-core" }
 
 # Optional dependencies for features
-reinhardt-viewsets = { path = "crates/viewsets", optional = true }
+reinhardt-viewsets = { version = "0.1.0", path = "crates/viewsets", optional = true }
 
 [features]
 default = []

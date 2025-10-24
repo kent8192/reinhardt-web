@@ -6,13 +6,13 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-/// カスタムアクションのハンドラートレイト
+/// Custom action handler trait
 #[async_trait]
 pub trait ActionHandler: Send + Sync {
     async fn handle(&self, request: Request) -> Result<Response>;
 }
 
-/// 関数ポインタベースのActionHandler実装
+/// Function pointer-based ActionHandler implementation
 pub struct FunctionActionHandler {
     handler: Arc<
         dyn Fn(Request) -> Pin<Box<dyn Future<Output = Result<Response>> + Send>> + Send + Sync,
@@ -40,35 +40,35 @@ impl ActionHandler for FunctionActionHandler {
     }
 }
 
-/// アクションのメタデータ
+/// Action metadata
 pub struct ActionMetadata {
-    /// 関数名（デフォルトの識別子）
+    /// Function name (default identifier)
     pub name: String,
 
-    /// 詳細アクション（単一オブジェクト）かリストアクションか
+    /// Whether this is a detail action (single object) or list action
     pub detail: bool,
 
-    /// カスタム表示名
+    /// Custom display name
     pub custom_name: Option<String>,
 
-    /// カスタムサフィックス
+    /// Custom suffix
     pub suffix: Option<String>,
 
-    /// カスタムURLパス
+    /// Custom URL path
     pub url_path: Option<String>,
 
-    /// カスタムURL名（リバースルーティング用）
+    /// Custom URL name (for reverse routing)
     pub url_name: Option<String>,
 
-    /// 許可するHTTPメソッド
+    /// Allowed HTTP methods
     pub methods: Vec<Method>,
 
-    /// 実際のハンドラー関数
+    /// Actual handler function
     pub handler: Arc<dyn ActionHandler>,
 }
 
 impl ActionMetadata {
-    /// 新しいActionMetadataを作成
+    /// Create a new ActionMetadata
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -84,49 +84,49 @@ impl ActionMetadata {
         }
     }
 
-    /// 詳細アクションとして設定
+    /// Set as detail action
     pub fn with_detail(mut self, detail: bool) -> Self {
         self.detail = detail;
         self
     }
 
-    /// カスタム名を設定
+    /// Set custom name
     pub fn with_custom_name(mut self, name: impl Into<String>) -> Self {
         self.custom_name = Some(name.into());
         self
     }
 
-    /// サフィックスを設定
+    /// Set suffix
     pub fn with_suffix(mut self, suffix: impl Into<String>) -> Self {
         self.suffix = Some(suffix.into());
         self
     }
 
-    /// URLパスを設定
+    /// Set URL path
     pub fn with_url_path(mut self, path: impl Into<String>) -> Self {
         self.url_path = Some(path.into());
         self
     }
 
-    /// URL名を設定
+    /// Set URL name
     pub fn with_url_name(mut self, name: impl Into<String>) -> Self {
         self.url_name = Some(name.into());
         self
     }
 
-    /// HTTPメソッドを設定
+    /// Set HTTP methods
     pub fn with_methods(mut self, methods: Vec<Method>) -> Self {
         self.methods = methods;
         self
     }
 
-    /// ハンドラーを設定
+    /// Set handler
     pub fn with_handler<H: ActionHandler + 'static>(mut self, handler: H) -> Self {
         self.handler = Arc::new(handler);
         self
     }
 
-    /// 表示名を取得（custom_name > name + suffix > name）
+    /// Get display name (priority: custom_name > name + suffix > name)
     pub fn display_name(&self) -> String {
         if let Some(ref custom_name) = self.custom_name {
             custom_name.clone()
@@ -137,21 +137,21 @@ impl ActionMetadata {
         }
     }
 
-    /// URL名を取得（url_name > name）
+    /// Get URL name (priority: url_name > name)
     pub fn get_url_name(&self) -> String {
         self.url_name
             .clone()
             .unwrap_or_else(|| self.name.replace('_', "-"))
     }
 
-    /// URLパスを取得（url_path > デフォルト生成）
+    /// Get URL path (priority: url_path > default generation)
     pub fn get_url_path(&self) -> String {
         self.url_path
             .clone()
             .unwrap_or_else(|| self.name.replace('_', "-"))
     }
 
-    /// snake_case を Title Case に変換
+    /// Convert snake_case to Title Case
     fn format_name(&self, name: &str) -> String {
         name.split('_')
             .map(|word| {
@@ -195,7 +195,7 @@ impl fmt::Debug for ActionMetadata {
     }
 }
 
-/// アクションレジストリエントリ（inventoryで収集）
+/// Action registry entry (collected by inventory)
 pub struct ActionRegistryEntry {
     pub viewset_type: &'static str,
     pub action_name: &'static str,
@@ -218,7 +218,7 @@ impl ActionRegistryEntry {
 
 inventory::collect!(ActionRegistryEntry);
 
-/// ViewSet型に関連するアクションを取得
+/// Get actions associated with a ViewSet type
 pub fn get_actions_for_viewset(viewset_type: &str) -> Vec<ActionMetadata> {
     inventory::iter::<ActionRegistryEntry>()
         .filter(|entry| entry.viewset_type == viewset_type)

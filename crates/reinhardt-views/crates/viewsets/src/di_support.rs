@@ -121,7 +121,8 @@ pub trait ViewSetFactory: Send + Sync {
 /// Example: Database connection as an injectable dependency
 #[derive(Clone)]
 pub struct DatabaseConnection {
-    pub pool: Arc<String>, // Placeholder for actual DB pool
+    // TODO: Replace with actual DB pool type (e.g., deadpool::Pool)
+    pub pool: Arc<String>,
 }
 
 #[async_trait]
@@ -136,9 +137,7 @@ impl Injectable for DatabaseConnection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Action, GenericViewSet};
-    use bytes::Bytes;
-    use hyper::{HeaderMap, Method, Uri, Version};
+    use crate::GenericViewSet;
     use reinhardt_apps::{Request, Response};
     use reinhardt_di::SingletonScope;
 
@@ -156,6 +155,7 @@ mod tests {
     }
 
     impl TestHandler {
+        #[allow(dead_code)]
         async fn handle(&self, _request: Request) -> Result<Response> {
             Ok(Response::ok().with_json(&serde_json::json!({
                 "db": *self.db.pool

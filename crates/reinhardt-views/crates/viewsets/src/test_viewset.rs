@@ -110,7 +110,6 @@ impl ViewSet for SimpleViewSet {
 mod tests {
     use super::*;
     use hyper::{HeaderMap, Method, Uri, Version};
-    use std::collections::HashMap;
 
     fn create_test_request() -> Request {
         Request::new(

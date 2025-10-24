@@ -1,13 +1,13 @@
-use crate::middleware::ViewSetMiddleware;
+// use crate::middleware::ViewSetMiddleware;
 /// ViewSetHandler - wraps a ViewSet as a Handler
 use crate::{Action, ViewSet};
 use async_trait::async_trait;
 use hyper::Method;
 use reinhardt_apps::{Handler, Request, Response, Result};
 use reinhardt_auth::permissions::{Permission, PermissionContext};
-use reinhardt_filters::{FilterBackend, FilterResult};
+use reinhardt_filters::FilterBackend;
 use reinhardt_orm::Model;
-use reinhardt_pagination::{PaginatedResponse, Paginator};
+// use reinhardt_pagination::{PaginatedResponse, Paginator};
 use reinhardt_serializers::{ModelSerializer, Serializer};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -23,6 +23,7 @@ pub struct ViewSetHandler<V: ViewSet> {
     name: Option<String>,
     #[allow(dead_code)]
     suffix: Option<String>,
+    injection_context: Option<Arc<reinhardt_di::InjectionContext>>,
 
     // Attributes set after as_view() is called
     // These mirror Django REST Framework's behavior
@@ -43,10 +44,33 @@ impl<V: ViewSet> ViewSetHandler<V> {
             action_map,
             name,
             suffix,
+            injection_context: None,
             args: RwLock::new(None),
             kwargs: RwLock::new(None),
             has_handled_request: RwLock::new(false),
         }
+    }
+
+    /// Set the dependency injection context for this handler
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_viewsets::ViewSetHandler;
+    /// use reinhardt_di::{InjectionContext, SingletonScope};
+    /// use std::sync::Arc;
+    ///
+    /// # fn example() {
+    /// let singleton = Arc::new(SingletonScope::new());
+    /// let ctx = Arc::new(InjectionContext::new(singleton));
+    ///
+    /// // let handler = ViewSetHandler::new(...)
+    /// //     .with_di_context(ctx);
+    /// # }
+    /// ```
+    pub fn with_di_context(mut self, ctx: Arc<reinhardt_di::InjectionContext>) -> Self {
+        self.injection_context = Some(ctx);
+        self
     }
 
     /// Check if args attribute is set (for testing)
@@ -96,8 +120,22 @@ impl<V: ViewSet + 'static> Handler for ViewSetHandler<V> {
         // Create Action from name
         let action = Action::from_name(action_name);
 
-        // Dispatch to ViewSet
-        let response = self.viewset.dispatch(request, action).await?;
+        // Dispatch to ViewSet (with DI support if available)
+        let response = if self.viewset.supports_di() {
+            // ViewSet supports DI - use dispatch_with_context
+            if let Some(ctx) = &self.injection_context {
+                self.viewset
+                    .dispatch_with_context(request, action, ctx)
+                    .await?
+            } else {
+                return Err(reinhardt_apps::Error::Internal(
+                    "ViewSet requires DI context but none was provided. Use .with_di_context() to configure.".to_string()
+                ));
+            }
+        } else {
+            // Standard dispatch without DI
+            self.viewset.dispatch(request, action).await?
+        };
 
         // Process middleware after ViewSet
         Ok(response)
@@ -478,23 +516,21 @@ where
         let queryset = self.get_queryset();
         let serializer = self.get_serializer();
 
-        // Find object by primary key (simplified - assumes integer PK)
-        let pk_i64 = pk
-            .as_i64()
-            .ok_or_else(|| ViewError::BadRequest("Invalid primary key".to_string()))?;
-
+        // Find object by primary key
         let item = queryset
             .iter()
             .find(|item| {
-                if let Some(_item_pk) = item.primary_key() {
-                    // Simplified comparison - assumes integer PK matching
-                    // In a real implementation, would use proper type conversion
-                    true // For now, return first item (simplified for testing)
+                if let Some(item_pk) = item.primary_key() {
+                    // Compare primary keys by converting both to strings using Display
+                    let item_pk_str = item_pk.to_string();
+                    let pk_str = pk.to_string();
+
+                    item_pk_str == pk_str
                 } else {
                     false
                 }
             })
-            .ok_or_else(|| ViewError::NotFound(format!("Object with pk={} not found", pk_i64)))?;
+            .ok_or_else(|| ViewError::NotFound(format!("Object with pk={} not found", pk)))?;
 
         let json = serializer
             .serialize(item)
@@ -833,7 +869,9 @@ mod tests {
         let pk = serde_json::json!(999);
         let result = handler.retrieve(&request, pk).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ViewError::NotFound(_)));
+        if let Err(e) = result {
+            assert!(matches!(e, ViewError::NotFound(_)));
+        }
     }
 
     #[tokio::test]
@@ -967,7 +1005,9 @@ mod tests {
 
         let result = handler.list(&request).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ViewError::Permission(_)));
+        if let Err(e) = result {
+            assert!(matches!(e, ViewError::Permission(_)));
+        }
     }
 
     #[tokio::test]

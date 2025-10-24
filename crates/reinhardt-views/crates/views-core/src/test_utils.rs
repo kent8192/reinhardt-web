@@ -6,7 +6,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
 use reinhardt_apps::{Error, Request, Response, Result};
 use reinhardt_orm::Model;
-use reinhardt_serializers::{JsonSerializer, Serializer};
+// use reinhardt_serializers::{JsonSerializer, Serializer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -239,7 +239,7 @@ pub fn create_large_test_objects(count: usize) -> Vec<TestModel> {
 }
 
 /// Assert that a result is an error with the expected error type
-pub fn assert_error<T>(result: Result<T>, expected_error: fn(String) -> Error) {
+pub fn assert_error<T>(result: Result<T>, _expected_error: fn(String) -> Error) {
     match result {
         Ok(_) => panic!("Expected error, got Ok"),
         Err(error) => {

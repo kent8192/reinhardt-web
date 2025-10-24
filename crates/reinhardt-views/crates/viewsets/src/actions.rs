@@ -42,13 +42,6 @@ impl Action {
         }
     }
     /// Documentation for `update`
-    ///
-    /// # Examples
-    ///
-    /// ```
-    // Update messages
-    // let result = storage.update(&request).await?;
-    /// ```
     pub fn update() -> Self {
         Self {
             action_type: ActionType::Update,

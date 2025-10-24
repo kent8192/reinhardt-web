@@ -1,15 +1,22 @@
 pub mod actions;
+pub mod batch_operations;
 pub mod builder;
 pub mod di_support;
 pub mod handler;
 pub mod metadata;
 pub mod middleware;
 pub mod mixins;
+pub mod nested_resources;
 pub mod registry;
+pub mod schema_metadata;
 pub mod test_viewset;
 pub mod viewset;
 
 pub use actions::{Action, ActionType};
+pub use batch_operations::{
+    BatchOperation, BatchOperationResult, BatchProcessor, BatchRequest, BatchResponse,
+    BatchStatistics,
+};
 pub use builder::ViewSetBuilder;
 pub use di_support::{DatabaseConnection, DiViewSet, ViewSetFactory};
 pub use handler::{ModelViewSetHandler, ViewError, ViewSetHandler};
@@ -18,7 +25,11 @@ pub use middleware::{
     AuthenticationMiddleware, CompositeMiddleware, PermissionMiddleware, ViewSetMiddleware,
 };
 pub use mixins::{CreateMixin, DestroyMixin, ListMixin, RetrieveMixin, UpdateMixin};
+pub use nested_resources::{
+    nested_detail_url, nested_url, NestedResource, NestedResourcePath, NestedViewSet,
+};
 pub use registry::{action, get_registered_actions, register_action};
+pub use schema_metadata::{FieldSchema, ModelSchema, RequestSchema, ResponseSchema, ViewSetSchema};
 pub use test_viewset::{SimpleViewSet, TestViewSet};
 pub use viewset::{GenericViewSet, ModelViewSet, ReadOnlyModelViewSet, ViewSet};
 

@@ -79,7 +79,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-// Note: 以前はcrate内に`ViewError`を定義していたが、統一のため`reinhardt_exception::Error`を利用する
+// Note: Previously we defined `ViewError` within the crate, but now we use `reinhardt_exception::Error` for consistency
 
 /// Base trait for all generic views
 #[async_trait]

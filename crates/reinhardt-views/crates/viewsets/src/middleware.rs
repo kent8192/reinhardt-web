@@ -241,7 +241,6 @@ mod tests {
     use super::*;
     use hyper::{HeaderMap, Method, Uri, Version};
     use reinhardt_apps::Request;
-    use std::collections::HashMap;
 
     fn create_test_request() -> Request {
         Request::new(

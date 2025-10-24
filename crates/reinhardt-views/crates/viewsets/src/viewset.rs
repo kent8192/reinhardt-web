@@ -23,6 +23,30 @@ pub trait ViewSet: Send + Sync {
     /// Dispatch request to appropriate action
     async fn dispatch(&self, request: Request, action: Action) -> Result<Response>;
 
+    /// Dispatch request with dependency injection context
+    ///
+    /// This is the DI-aware version of `dispatch`. ViewSets that use dependency injection
+    /// should override this method instead of `dispatch`.
+    ///
+    /// Default implementation calls the regular `dispatch` method for backward compatibility.
+    async fn dispatch_with_context(
+        &self,
+        request: Request,
+        action: Action,
+        _ctx: &reinhardt_di::InjectionContext,
+    ) -> Result<Response> {
+        // Default: delegate to non-DI dispatch
+        self.dispatch(request, action).await
+    }
+
+    /// Check if this ViewSet supports dependency injection
+    ///
+    /// Returns `true` if the ViewSet overrides `dispatch_with_context` to use DI.
+    /// Default is `false` for backward compatibility.
+    fn supports_di(&self) -> bool {
+        false
+    }
+
     /// Get extra actions defined on this ViewSet
     /// Returns custom actions decorated with #[action] or manually registered
     fn get_extra_actions(&self) -> Vec<ActionMetadata> {
