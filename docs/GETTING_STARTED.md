@@ -208,6 +208,63 @@ curl -X POST http://127.0.0.1:8000/todos \
 curl http://127.0.0.1:8000/todos
 ```
 
+## Project Management Commands
+
+Reinhardt provides Django-style management commands for common development tasks.
+
+### Setting Up Management Commands
+
+First, install the commands crate:
+
+```toml
+[dependencies]
+reinhardt-commands = "0.1.0"
+```
+
+Create `src/bin/manage.rs` for project-specific commands:
+
+```bash
+# Use reinhardt-admin to create a new project with manage.rs included
+cargo install reinhardt-commands
+reinhardt-admin startproject myproject
+```
+
+Or manually create `src/bin/manage.rs` - see the [reinhardt-commands documentation](../crates/reinhardt-commands/README.md) for a complete example.
+
+### Common Commands
+
+```bash
+# Database migrations
+cargo run --bin manage makemigrations
+cargo run --bin manage migrate
+
+# Development server
+cargo run --bin manage runserver
+
+# Check project for issues
+cargo run --bin manage check
+
+# Collect static files
+cargo run --bin manage collectstatic
+
+# Interactive shell
+cargo run --bin manage shell
+```
+
+### Global CLI Tool
+
+Install `reinhardt-admin` globally for project scaffolding:
+
+```bash
+cargo install reinhardt-commands
+
+# Create new projects
+reinhardt-admin startproject myproject --template-type restful
+reinhardt-admin startapp myapp --template-type restful
+```
+
+For more details, see the [reinhardt-commands documentation](../crates/reinhardt-commands/README.md).
+
 ## Next Steps
 
 Congratulations! You've built your first Reinhardt API. Here's what to explore next:
@@ -224,6 +281,7 @@ Congratulations! You've built your first Reinhardt API. Here's what to explore n
 - [Dependency Injection](tutorials/en/07-dependency-injection.md) - FastAPI-style DI
 - [Feature Flags Guide](FEATURE_FLAGS.md) - Optimize your build
 - [Database Integration](#database-integration) - Connect to PostgreSQL/MySQL
+- [Management Commands](../crates/reinhardt-commands/README.md) - Django-style CLI
 
 ### 🔌 Database Integration
 

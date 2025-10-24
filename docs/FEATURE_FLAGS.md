@@ -32,41 +32,41 @@ reinhardt = { version = "0.1.0", features = ["full"] }
 
 ## Feature Set Comparison
 
-| Feature Category | Minimal | Standard | Full |
-|-----------------|---------|----------|------|
-| **Binary Size** | ~5-10 MB | ~20-30 MB | ~50+ MB |
-| **Compile Time** | Fast | Medium | Slower |
-| **Core Features** |
-| Routing & Views | ✅ | ✅ | ✅ |
-| Parameters (`Path`, `Query`, etc.) | ✅ | ✅ | ✅ |
-| Dependency Injection | ✅ | ✅ | ✅ |
-| **Database** |
-| ORM | ❌ | ✅ | ✅ |
-| Migrations | ❌ | ❌ | ✅ |
-| Content Types | ❌ | ❌ | ✅ |
-| **REST API** |
-| Serializers | ❌ | ✅ | ✅ |
-| ViewSets | ❌ | ✅ | ✅ |
-| Parsers | ❌ | ✅ | ✅ |
-| Renderers | ❌ | ✅ | ✅ |
-| Pagination | ❌ | ✅ | ✅ |
-| Filtering | ❌ | ✅ | ✅ |
-| Throttling | ❌ | ✅ | ✅ |
-| Versioning | ❌ | ✅ | ✅ |
-| **Security** |
-| Authentication | ❌ | ✅ | ✅ |
-| Permissions | ❌ | ✅ | ✅ |
-| **Advanced** |
-| Admin Panel | ❌ | ❌ | ✅ |
-| Forms | ❌ | ❌ | ✅ |
-| Templates | ❌ | ❌ | ✅ |
-| GraphQL | ❌ | ❌ | ✅ |
-| WebSockets | ❌ | ❌ | ✅ |
-| Internationalization | ❌ | ❌ | ✅ |
-| Mail | ❌ | ❌ | ✅ |
-| Sessions | ❌ | ❌ | ✅ |
-| Static Files | ❌ | ❌ | ✅ |
-| Storage | ❌ | ❌ | ✅ |
+| Feature Category                   | Minimal  | Standard  | Full    |
+| ---------------------------------- | -------- | --------- | ------- |
+| **Binary Size**                    | ~5-10 MB | ~20-30 MB | ~50+ MB |
+| **Compile Time**                   | Fast     | Medium    | Slower  |
+| **Core Features**                  |
+| Routing & Views                    | ✅       | ✅        | ✅      |
+| Parameters (`Path`, `Query`, etc.) | ✅       | ✅        | ✅      |
+| Dependency Injection               | ✅       | ✅        | ✅      |
+| **Database**                       |
+| ORM                                | ❌       | ✅        | ✅      |
+| Migrations                         | ❌       | ❌        | ✅      |
+| Content Types                      | ❌       | ❌        | ✅      |
+| **REST API**                       |
+| Serializers                        | ❌       | ✅        | ✅      |
+| ViewSets                           | ❌       | ✅        | ✅      |
+| Parsers                            | ❌       | ✅        | ✅      |
+| Renderers                          | ❌       | ✅        | ✅      |
+| Pagination                         | ❌       | ✅        | ✅      |
+| Filtering                          | ❌       | ✅        | ✅      |
+| Throttling                         | ❌       | ✅        | ✅      |
+| Versioning                         | ❌       | ✅        | ✅      |
+| **Security**                       |
+| Authentication                     | ❌       | ✅        | ✅      |
+| Permissions                        | ❌       | ✅        | ✅      |
+| **Advanced**                       |
+| Admin Panel                        | ❌       | ❌        | ✅      |
+| Forms                              | ❌       | ❌        | ✅      |
+| Templates                          | ❌       | ❌        | ✅      |
+| GraphQL                            | ❌       | ❌        | ✅      |
+| WebSockets                         | ❌       | ❌        | ✅      |
+| Internationalization               | ❌       | ❌        | ✅      |
+| Mail                               | ❌       | ❌        | ✅      |
+| Sessions                           | ❌       | ❌        | ✅      |
+| Static Files                       | ❌       | ❌        | ✅      |
+| Storage                            | ❌       | ❌        | ✅      |
 
 ## Individual Feature Flags
 
@@ -82,6 +82,7 @@ reinhardt = { version = "0.1.0", default-features = false, features = [
 ```
 
 **Included in `minimal`:**
+
 - `reinhardt-views` - View functions and classes
 - `reinhardt-params` - Path, Query, Header, Cookie, Json, Form extractors
 - `reinhardt-di` - Dependency injection system
@@ -97,6 +98,7 @@ reinhardt = { version = "0.1.0", features = [
 ```
 
 **`database` includes:**
+
 - `reinhardt-orm` - ORM and QuerySet API
 - `reinhardt-migrations` - Database migration system
 - `reinhardt-contenttypes` - Generic foreign keys
@@ -113,6 +115,7 @@ reinhardt = { version = "0.1.0", features = [
 ```
 
 **`api` includes:**
+
 - `reinhardt-serializers` - Data serialization and validation
 - `reinhardt-viewsets` - CRUD views for models
 
@@ -127,6 +130,7 @@ reinhardt = { version = "0.1.0", features = [
 ```
 
 **`auth` includes:**
+
 - `reinhardt-auth` - Authentication backends and permissions
 
 ### Additional Features
@@ -139,6 +143,7 @@ reinhardt = { version = "0.1.0", features = ["admin"] }
 ```
 
 **Includes:**
+
 - `reinhardt-forms` - Form handling and validation
 - `reinhardt-templates` - Template rendering
 - (Note: `reinhardt-admin` is planned for future release)
@@ -151,6 +156,7 @@ reinhardt = { version = "0.1.0", features = ["forms"] }
 ```
 
 **Includes:**
+
 - `reinhardt-forms` - Standalone form handling
 
 #### GraphQL
@@ -161,6 +167,7 @@ reinhardt = { version = "0.1.0", features = ["graphql"] }
 ```
 
 **Includes:**
+
 - `reinhardt-graphql` - GraphQL schema and resolvers
 
 #### Templates
@@ -171,6 +178,7 @@ reinhardt = { version = "0.1.0", features = ["templates"] }
 ```
 
 **Includes:**
+
 - `reinhardt-templates` - Template engine
 - `reinhardt-template` - Template utilities
 
@@ -182,6 +190,7 @@ reinhardt = { version = "0.1.0", features = ["websockets"] }
 ```
 
 **Includes:**
+
 - `reinhardt-websockets` - WebSocket support
 
 #### Caching
@@ -192,6 +201,7 @@ reinhardt = { version = "0.1.0", features = ["cache"] }
 ```
 
 **Includes:**
+
 - `reinhardt-cache` - Caching backends (Redis, in-memory)
 
 #### Internationalization (i18n)
@@ -202,6 +212,7 @@ reinhardt = { version = "0.1.0", features = ["i18n"] }
 ```
 
 **Includes:**
+
 - `reinhardt-i18n` - Translation and localization
 
 #### Email
@@ -212,6 +223,7 @@ reinhardt = { version = "0.1.0", features = ["mail"] }
 ```
 
 **Includes:**
+
 - `reinhardt-mail` - Email sending utilities
 
 #### Sessions
@@ -222,6 +234,7 @@ reinhardt = { version = "0.1.0", features = ["sessions"] }
 ```
 
 **Includes:**
+
 - `reinhardt-sessions` - Session management
 
 #### Static Files
@@ -232,6 +245,7 @@ reinhardt = { version = "0.1.0", features = ["static-files"] }
 ```
 
 **Includes:**
+
 - `reinhardt-static` - Static file serving
 
 #### Storage
@@ -242,6 +256,7 @@ reinhardt = { version = "0.1.0", features = ["storage"] }
 ```
 
 **Includes:**
+
 - `reinhardt-storage` - File storage backends (S3, local)
 
 #### Contrib (All contrib apps)
@@ -252,6 +267,7 @@ reinhardt = { version = "0.1.0", features = ["contrib"] }
 ```
 
 **Includes:**
+
 - `reinhardt-contrib` - All contrib applications
 
 ### Parent Crate Features
@@ -370,31 +386,31 @@ cargo tree --features minimal
 
 ### Complete List
 
-| Flag | Description |
-|------|-------------|
-| `minimal` | Core routing, params, and DI |
-| `standard` | Balanced setup (default) |
-| `full` | All features |
-| `database` | ORM, migrations, content types |
-| `api` | Serializers and ViewSets |
-| `auth` | Authentication and permissions |
-| `admin` | Admin panel (forms + templates) |
-| `forms` | Form handling |
-| `graphql` | GraphQL support |
-| `templates` | Template engine |
-| `websockets` | WebSocket support |
-| `cache` | Caching backends |
-| `i18n` | Internationalization |
-| `mail` | Email utilities |
-| `sessions` | Session management |
-| `static-files` | Static file serving |
-| `storage` | File storage backends |
-| `contrib` | All contrib apps |
-| `conf` | Configuration system |
-| `core` | Core utilities |
-| `rest` | REST framework |
-| `di` | Dependency injection |
-| `test` | Testing utilities |
+| Flag           | Description                     |
+| -------------- | ------------------------------- |
+| `minimal`      | Core routing, params, and DI    |
+| `standard`     | Balanced setup (default)        |
+| `full`         | All features                    |
+| `database`     | ORM, migrations, content types  |
+| `api`          | Serializers and ViewSets        |
+| `auth`         | Authentication and permissions  |
+| `admin`        | Admin panel (forms + templates) |
+| `forms`        | Form handling                   |
+| `graphql`      | GraphQL support                 |
+| `templates`    | Template engine                 |
+| `websockets`   | WebSocket support               |
+| `cache`        | Caching backends                |
+| `i18n`         | Internationalization            |
+| `mail`         | Email utilities                 |
+| `sessions`     | Session management              |
+| `static-files` | Static file serving             |
+| `storage`      | File storage backends           |
+| `contrib`      | All contrib apps                |
+| `conf`         | Configuration system            |
+| `core`         | Core utilities                  |
+| `rest`         | REST framework                  |
+| `di`           | Dependency injection            |
+| `test`         | Testing utilities               |
 
 ## Troubleshooting
 
