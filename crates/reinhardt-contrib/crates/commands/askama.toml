@@ -1,5 +1,0 @@
-[general]
-dirs = ["templates"]
-
-[escapers]
-"tpl" = "txt"
