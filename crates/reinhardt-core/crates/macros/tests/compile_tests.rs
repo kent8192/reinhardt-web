@@ -99,3 +99,15 @@ fn test_validation_edge_cases_pass() {
     t.pass("tests/ui/validation_edge_cases/case_sensitive_method.rs");
     t.pass("tests/ui/validation_edge_cases/empty_methods.rs");
 }
+
+#[test]
+fn test_model_derive_pass() {
+    let t = trybuild::TestCases::new();
+    t.pass("tests/ui/model/pass/*.rs");
+}
+
+#[test]
+fn test_model_derive_fail() {
+    let t = trybuild::TestCases::new();
+    t.compile_fail("tests/ui/model/fail/*.rs");
+}

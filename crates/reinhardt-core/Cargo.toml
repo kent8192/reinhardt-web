@@ -9,18 +9,29 @@ description = "Core components for Reinhardt framework"
 
 [dependencies]
 # Re-export all internal crates
-reinhardt-types = { path = "crates/types", optional = true }
-reinhardt-exception = { path = "crates/exception", optional = true }
-reinhardt-signals = { path = "crates/signals", optional = true }
-reinhardt-macros = { path = "crates/macros", optional = true }
-reinhardt-security = { path = "crates/security", optional = true }
-reinhardt-validators = { path = "crates/validators", optional = true }
+reinhardt-types = { version = "0.1.0", path = "crates/types", optional = true }
+reinhardt-exception = { version = "0.1.0", path = "crates/exception", optional = true }
+reinhardt-signals = { version = "0.1.0", path = "crates/signals", optional = true }
+reinhardt-macros = { version = "0.1.0", path = "crates/macros", optional = true }
+reinhardt-security = { version = "0.1.0", path = "crates/security", optional = true }
+reinhardt-validators = { version = "0.1.0", path = "crates/validators", optional = true }
+reinhardt-backends = { version = "0.1.0", path = "crates/backends", optional = true }
 
 [features]
-default = ["types", "exception", "signals", "macros", "security", "validators"]
+default = [
+  "types",
+  "exception",
+  "signals",
+  "macros",
+  "security",
+  "validators",
+  "backends",
+]
 types = ["dep:reinhardt-types"]
 exception = ["dep:reinhardt-exception"]
 signals = ["dep:reinhardt-signals"]
 macros = ["dep:reinhardt-macros"]
 security = ["dep:reinhardt-security"]
 validators = ["dep:reinhardt-validators"]
+backends = ["dep:reinhardt-backends"]
+redis-backend = ["backends", "reinhardt-backends/redis-backend"]

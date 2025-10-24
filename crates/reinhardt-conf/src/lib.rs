@@ -18,7 +18,7 @@
 //! ## Quick Start
 //!
 //! ```rust
-//! # // このドキュメントテストは実際のファイルシステムを使用しないため、スキップします
+//! # // This documentation test is skipped because it does not use the actual filesystem
 //! # fn main() {}
 //! ```
 //!

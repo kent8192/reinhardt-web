@@ -1,7 +1,7 @@
 //! # Reinhardt Security
 //!
 //! Security features for Reinhardt framework including CSRF protection,
-//! XSS防止、セキュリティヘッダー管理。
+//! XSS prevention, and security header management.
 //!
 //! ## Features
 //!

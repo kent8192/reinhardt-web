@@ -13,6 +13,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
 ### Implemented ✓
 
 #### Application Registry System
+
 - **AppConfig**: Application configuration with validation
   - Name and label management
   - Verbose name support
@@ -31,6 +32,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
   - `init_apps_checked()`: Initialize with compile-time validated list
 
 #### Type-Safe Application Registry
+
 - **AppLabel Trait**: Compile-time application identity
   - Const label definition
   - Type-safe application references
@@ -40,6 +42,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
 - **Benefits**: Compile-time verification of application names
 
 #### HTTP Request/Response
+
 - **Request**: Comprehensive HTTP request handling
   - Query parameter parsing and access
   - Path parameter storage
@@ -63,6 +66,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
   - Server Error (5xx)
 
 #### Internationalization (i18n) Support
+
 - **Accept-Language Header Parsing**:
   - Quality value (q-value) parsing
   - Multiple language support
@@ -80,6 +84,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
   - `get_language_from_cookie()`: Extract language from cookies
 
 #### Settings Management
+
 - **Settings Struct**: Complete Django-like configuration
   - Base directory and secret key
   - Debug mode
@@ -115,6 +120,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
   - `add_middleware()`: Add single middleware
 
 #### Error Handling
+
 - **Error Types**:
   - Http (400)
   - Database (500)
@@ -133,16 +139,46 @@ This crate serves as a high-level integration point, bringing together HTTP hand
 - **Result Type**: Framework-wide `Result<T>` alias
 
 #### Re-exports
+
 - **HTTP**: `Request`, `Response`, `StreamBody`, `StreamingResponse` (from reinhardt-http)
 - **Settings**: `Settings`, `DatabaseConfig`, `MiddlewareConfig`, `TemplateConfig` (from reinhardt-settings)
 - **Errors**: `Error`, `Result` (from reinhardt-exception)
 - **Server**: `serve`, `HttpServer` (from reinhardt-server)
 - **Types**: `Handler`, `Middleware`, `MiddlewareChain` (from reinhardt-types)
 - **Apps**: `AppConfig`, `AppError`, `AppResult`, `Apps`, `get_apps`, `init_apps`, `init_apps_checked`
+- **Builder**: `Application`, `ApplicationBuilder`, `ApplicationDatabaseConfig`, `BuildError`, `BuildResult`, `RouteConfig`
+
+#### Application Builder System
+
+- **ApplicationBuilder**: Fluent builder pattern for application configuration
+  - Add applications with `add_app()` and `add_apps()`
+  - Add middleware with `add_middleware()` and `add_middlewares()`
+  - Add URL patterns with `add_url_pattern()` and `add_url_patterns()`
+  - Database configuration support
+  - Custom settings management
+  - Configuration validation (duplicate checks)
+  - Method chaining support
+- **RouteConfig**: Route definition with metadata
+  - Path and handler name configuration
+  - Optional route naming
+  - Optional namespace support
+  - Full name generation (namespace:name)
+- **ApplicationDatabaseConfig**: Database configuration
+  - URL-based configuration
+  - Connection pool size settings
+  - Maximum overflow connections
+  - Connection timeout settings
+- **Application**: Built application with full configuration access
+  - Access to registered apps, middleware, URL patterns
+  - Database configuration retrieval
+  - Custom settings access
+  - Apps registry integration
+  - Readiness state verification
 
 ### Planned
 
 #### Application Registry Enhancements
+
 - Model discovery and registration
 - Reverse relation building
 - Ready hooks (AppConfig.ready())
@@ -150,6 +186,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
 - Migration detection
 
 #### Advanced Settings Features
+
 - Environment variable integration
 - Settings validation
 - Settings inheritance (base settings + environment-specific)
@@ -157,6 +194,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
 - Settings freezing (immutable after initialization)
 
 #### Enhanced Error Handling
+
 - Error code system
 - Localized error messages
 - Error details and context
@@ -164,6 +202,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
 - Error aggregation
 
 #### Request Enhancements
+
 - Form data parsing
 - Multipart file upload support
 - URL decoding for query parameters
@@ -173,6 +212,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
 - CSRF token handling
 
 #### Response Enhancements
+
 - Response compression (gzip, brotli)
 - Streaming response helpers
 - Redirect helpers (permanent, temporary)
@@ -181,6 +221,7 @@ This crate serves as a high-level integration point, bringing together HTTP hand
 - Cache control headers
 
 #### Testing Utilities
+
 - Test client
 - Mock request/response builders
 - Application registry fixtures
@@ -353,9 +394,63 @@ let response: Response = handle_request()
     .unwrap_or_else(|err| err.into());
 ```
 
+### Application Builder
+
+```rust
+use reinhardt_apps::{
+    ApplicationBuilder, ApplicationDatabaseConfig, AppConfig, RouteConfig
+};
+
+// Build a complete application
+let app = ApplicationBuilder::new()
+    // Add applications
+    .add_app(AppConfig::new("myapp", "myapp").with_verbose_name("My Application"))
+    .add_app(AppConfig::new("auth", "auth"))
+
+    // Add middleware stack
+    .add_middleware("CorsMiddleware")
+    .add_middleware("AuthMiddleware")
+
+    // Configure routes
+    .add_url_pattern(
+        RouteConfig::new("/api/users/", "UserListHandler")
+            .with_namespace("api")
+            .with_name("user-list")
+    )
+    .add_url_pattern(
+        RouteConfig::new("/api/posts/", "PostListHandler")
+            .with_namespace("api")
+            .with_name("post-list")
+    )
+
+    // Configure database
+    .database(
+        ApplicationDatabaseConfig::new("postgresql://localhost/mydb")
+            .with_pool_size(10)
+            .with_max_overflow(5)
+            .with_timeout(30)
+    )
+
+    // Add custom settings
+    .add_setting("DEBUG", "true")
+    .add_setting("SECRET_KEY", "super-secret")
+
+    // Build the application
+    .build()
+    .expect("Failed to build application");
+
+// Access configuration
+assert!(app.apps_registry().is_installed("myapp"));
+assert_eq!(app.middleware().len(), 2);
+assert_eq!(app.url_patterns().len(), 2);
+assert!(app.database_config().is_some());
+assert_eq!(app.settings().get("DEBUG"), Some(&"true".to_string()));
+```
+
 ## Integration with Other Crates
 
 This crate integrates the following Reinhardt components:
+
 - `reinhardt-http`: HTTP request/response abstractions
 - `reinhardt-settings`: Configuration management
 - `reinhardt-exception`: Error types and handling
@@ -365,6 +460,7 @@ This crate integrates the following Reinhardt components:
 ## Testing
 
 The crate includes comprehensive test coverage:
+
 - Unit tests in `src/apps.rs` (application registry)
 - Integration tests in `tests/` directory:
   - `installed_apps_integration.rs`: Registry integration

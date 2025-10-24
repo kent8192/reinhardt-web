@@ -5,8 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-reinhardt-http = { path = "../../../reinhardt-http" }
-reinhardt-exception = { path = "../exception" }
+reinhardt-http = { version = "0.1.0", path = "../../../reinhardt-http" }
+reinhardt-exception = { version = "0.1.0", path = "../exception" }
 async-trait = { workspace = true }
 
 [dev-dependencies]

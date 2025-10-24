@@ -4171,7 +4171,7 @@ mod tests {
         use crate::*;
         use std::sync::{Arc, Mutex};
 
-        // Model signals - 実際にconnect/sendが動作することを検証
+        // Model signals - Verify that connect/send actually work
         let pre_save_signal = pre_save::<TestModel>();
         let receiver_called = Arc::new(Mutex::new(false));
         let receiver_called_clone = receiver_called.clone();
@@ -4194,7 +4194,7 @@ mod tests {
             "pre_save signal receiver was not called"
         );
 
-        // 他のシグナルも生成可能であることを確認
+        // Confirm that other signals can also be generated
         let _ = post_save::<TestModel>();
         let _ = pre_delete::<TestModel>();
         let _ = post_delete::<TestModel>();

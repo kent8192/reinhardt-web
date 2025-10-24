@@ -1,17 +1,17 @@
 use reinhardt_exception::Result;
 
-/// 共通設定トレイト
+/// Common configuration trait
 ///
-/// 各種 `*Config` 構造体はこのトレイトを実装することで、
-/// バリデーションとマージの共通インターフェースを提供します。
+/// Various `*Config` structures implement this trait to provide
+/// a common interface for validation and merging.
 pub trait Config: Clone + Send + Sync + 'static {
-    /// 設定値の検証。問題があれば `Error::Validation` を返すこと。
+    /// Validates configuration values. Returns `Error::Validation` if there are problems.
     fn validate(&self) -> Result<()> {
         Ok(())
     }
 
-    /// もう一方の設定を上書きルールでマージする。
-    /// デフォルト実装は後勝ち（`other` を優先）。
+    /// Merges another configuration with override rules.
+    /// Default implementation uses last-wins semantics (`other` takes precedence).
     fn merge(self, other: Self) -> Self {
         other
     }

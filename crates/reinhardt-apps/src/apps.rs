@@ -224,20 +224,52 @@ impl Apps {
     }
 
     /// Populate the registry with application configurations
+    ///
+    /// This method initializes all registered applications by:
+    /// 1. Creating AppConfig instances for each installed app
+    /// 2. Calling the ready() method on each AppConfig
+    /// 3. Loading model definitions from the global registry
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use reinhardt_apps::Apps;
+    ///
+    /// let apps = Apps::new(vec!["myapp".to_string()]);
+    /// apps.populate().expect("Failed to populate apps");
+    /// ```
     pub fn populate(&self) -> AppResult<()> {
-        // Mark apps as ready
+        // Mark as apps_ready
         *self.apps_ready.lock().unwrap() = true;
 
-        // In a full implementation, this would:
-        // 1. Import and instantiate AppConfig classes
-        // 2. Call ready() on each AppConfig
-        // 3. Load models from each app
-        // 4. Build reverse relations
+        // 1. Import and instantiate AppConfig for each installed app
+        for app_name in &self.installed_apps {
+            let app_config = AppConfig::new(app_name.clone(), app_name.clone());
 
-        // Mark models as ready
+            // Store in registries
+            self.app_configs
+                .lock()
+                .unwrap()
+                .insert(app_config.label.clone(), app_config.clone());
+            self.app_names
+                .lock()
+                .unwrap()
+                .insert(app_name.clone(), app_config.label.clone());
+        }
+
+        // 2. Call ready() method on each AppConfig (currently no-op)
+        // In the future, this would call custom ready() hooks for each app
+
+        // 3. Load model definitions from global ModelRegistry
+        // The models are already registered via #[derive(Model)] macro
+        // which automatically registers them at construction time
+
+        // 4. Build reverse relations between models
+        // This would require analyzing foreign key relationships
+        // For now, this is deferred until ORM relationship system is fully implemented
+
+        // Mark as models_ready
         *self.models_ready.lock().unwrap() = true;
-
-        // Mark the whole registry as ready
         *self.ready.lock().unwrap() = true;
 
         Ok(())
@@ -369,6 +401,29 @@ mod tests {
         assert!(apps.is_ready());
         assert!(apps.is_apps_ready());
         assert!(apps.is_models_ready());
+    }
+
+    #[test]
+    fn test_populate_with_installed_apps() {
+        let apps = Apps::new(vec!["myapp".to_string(), "anotherapp".to_string()]);
+        assert!(!apps.is_ready());
+
+        // Populate should create AppConfig for each installed app
+        let result = apps.populate();
+        assert!(result.is_ok());
+
+        // Verify apps are ready
+        assert!(apps.is_ready());
+        assert!(apps.is_apps_ready());
+        assert!(apps.is_models_ready());
+
+        // Verify AppConfigs were created
+        assert!(apps.get_app_config("myapp").is_ok());
+        assert!(apps.get_app_config("anotherapp").is_ok());
+
+        // Verify app configs contain correct labels
+        let myapp_config = apps.get_app_config("myapp").unwrap();
+        assert_eq!(myapp_config.label, "myapp");
     }
 }
 

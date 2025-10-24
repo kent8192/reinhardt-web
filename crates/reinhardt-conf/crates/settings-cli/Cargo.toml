@@ -13,7 +13,7 @@ name = "reinhardt-settings"
 path = "src/main.rs"
 
 [dependencies]
-reinhardt-settings = { path = "../settings", features = [
+reinhardt-settings = { version = "0.1.0", path = "../settings", features = [
   "async",
   "encryption",
 ] }
