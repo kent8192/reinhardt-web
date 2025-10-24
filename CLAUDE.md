@@ -166,6 +166,33 @@ For details about the Reinhardt project, please refer to README.md.
 - **User-Facing Placeholders**:
   - **NEVER** use TODO or NOTE comments in user-facing code
   - Provide actual implementations or use `todo!()`/`unimplemented!()` macro for compile-time errors
+- **Placeholder/Stub/Mock Implementation Rules**:
+  - **ALL** placeholder implementations (excluding tests and documentation) **MUST** be marked with `todo!()` macro or `// TODO:` comment
+  - This includes:
+    - Empty function bodies that return default values (e.g., `Vec::new()`, `String::new()`, `Ok(())`)
+    - Stub implementations with minimal logic that don't provide real functionality
+    - Mock implementations intended to be replaced later
+    - Temporary workarounds marked for future improvement
+  - **Exception**: Tests and documentation examples may use simplified implementations without `todo!()` markers
+  - ❌ Bad: Unmarked placeholder implementation
+    ```rust
+    pub fn get_cache_config() -> CacheConfig {
+        CacheConfig::default()  // No marker - looks like production code
+    }
+    ```
+  - ✅ Good: Marked placeholder implementation
+    ```rust
+    pub fn get_cache_config() -> CacheConfig {
+        todo!("Implement cache configuration loading from settings")
+    }
+    ```
+  - ✅ Good: Alternative with TODO comment
+    ```rust
+    pub fn get_cache_config() -> CacheConfig {
+        // TODO: Load from settings file instead of using default
+        CacheConfig::default()
+    }
+    ```
 - **Examples**:
   ```rust
   // ✅ Good: Clear TODO comment (planning)
@@ -190,6 +217,18 @@ For details about the Reinhardt project, please refer to README.md.
       Ok(())
   }
 
+  // ✅ Good: Marked stub returning default value
+  fn get_database_pool() -> Pool {
+      todo!("Initialize actual database connection pool")
+  }
+
+  // ✅ Good: Marked mock with minimal logic
+  fn send_email(recipient: &str, body: &str) -> Result<()> {
+      // TODO: Integrate with actual email service provider
+      println!("Would send email to {}: {}", recipient, body);
+      Ok(())
+  }
+
   // ❌ Bad: Custom notation
   // Implementation Note: This needs to be completed
 
@@ -199,6 +238,11 @@ For details about the Reinhardt project, please refer to README.md.
   // ❌ Bad: Using unimplemented!() for future work
   fn upcoming_feature() -> String {
       unimplemented!("Will implement next week")  // Use todo!() instead!
+  }
+
+  // ❌ Bad: Unmarked placeholder that looks production-ready
+  fn calculate_metrics() -> Metrics {
+      Metrics::default()  // No indication this is temporary!
   }
   ```
 
@@ -355,12 +399,14 @@ For detailed commit guidelines including message format, granularity, and execut
 
 - ❌ NO `mod.rs` files
 - ❌ NO TODO/NOTE comments in user-facing placeholders
+- ❌ NO unmarked placeholder/stub/mock implementations
 - ❌ NO keeping obsolete code
 - ❌ NO excessive `.to_string()` calls
 - ❌ NO comments documenting deleted code/tests
 - ❌ NO alternative notations like `Implementation Note:`, `FIXME:`, etc.
 - ❌ NO using `unimplemented!()` for future work (use `todo!()` instead)
 - ✅ USE 2024 edition module system
+- ✅ MARK ALL placeholders/stubs/mocks with `todo!()` or `// TODO:` comment
 - ✅ DELETE old code immediately
 - ✅ USE `// TODO:` comments for planning
 - ✅ USE `todo!()` for features that WILL be implemented
