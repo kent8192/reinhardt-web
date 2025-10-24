@@ -298,6 +298,119 @@ impl<T> Deref for ValidationConstraints<T> {
 }
 
 // ============================================================================
+// WithValidation Trait (feature-gated)
+// ============================================================================
+
+/// Trait for adding validation constraints to parameters
+///
+/// This trait is enabled with the `validation` feature flag.
+#[cfg(feature = "validation")]
+pub trait WithValidation: Sized {
+    /// Add minimum length constraint
+    fn min_length(self, min: usize) -> ValidationConstraints<Self> {
+        ValidationConstraints {
+            inner: self,
+            min_length: Some(min),
+            max_length: None,
+            min_value: None,
+            max_value: None,
+            regex: None,
+            email: false,
+            url: false,
+        }
+    }
+
+    /// Add maximum length constraint
+    fn max_length(self, max: usize) -> ValidationConstraints<Self> {
+        ValidationConstraints {
+            inner: self,
+            min_length: None,
+            max_length: Some(max),
+            min_value: None,
+            max_value: None,
+            regex: None,
+            email: false,
+            url: false,
+        }
+    }
+
+    /// Add minimum value constraint
+    fn min_value<V: ToString>(self, min: V) -> ValidationConstraints<Self> {
+        ValidationConstraints {
+            inner: self,
+            min_length: None,
+            max_length: None,
+            min_value: Some(min.to_string()),
+            max_value: None,
+            regex: None,
+            email: false,
+            url: false,
+        }
+    }
+
+    /// Add maximum value constraint
+    fn max_value<V: ToString>(self, max: V) -> ValidationConstraints<Self> {
+        ValidationConstraints {
+            inner: self,
+            min_length: None,
+            max_length: None,
+            min_value: None,
+            max_value: Some(max.to_string()),
+            regex: None,
+            email: false,
+            url: false,
+        }
+    }
+
+    /// Add regex pattern constraint
+    fn regex(self, pattern: impl Into<String>) -> ValidationConstraints<Self> {
+        ValidationConstraints {
+            inner: self,
+            min_length: None,
+            max_length: None,
+            min_value: None,
+            max_value: None,
+            regex: Some(pattern.into()),
+            email: false,
+            url: false,
+        }
+    }
+
+    /// Add email validation
+    fn email(self) -> ValidationConstraints<Self> {
+        ValidationConstraints {
+            inner: self,
+            min_length: None,
+            max_length: None,
+            min_value: None,
+            max_value: None,
+            regex: None,
+            email: true,
+            url: false,
+        }
+    }
+
+    /// Add URL validation
+    fn url(self) -> ValidationConstraints<Self> {
+        ValidationConstraints {
+            inner: self,
+            min_length: None,
+            max_length: None,
+            min_value: None,
+            max_value: None,
+            regex: None,
+            email: false,
+            url: true,
+        }
+    }
+}
+
+// WithValidation implementations are provided in their respective modules:
+// - Path<T>: path.rs
+// - Query<T>: query.rs
+// - Form<T>: form.rs
+
+// ============================================================================
 // Type Aliases for Validated Parameters
 // ============================================================================
 
