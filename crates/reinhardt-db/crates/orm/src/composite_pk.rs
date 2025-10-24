@@ -75,6 +75,85 @@ impl PkValue {
     }
 }
 
+// Conversion implementations for common types
+impl From<String> for PkValue {
+    fn from(value: String) -> Self {
+        PkValue::String(value)
+    }
+}
+
+impl From<&str> for PkValue {
+    fn from(value: &str) -> Self {
+        PkValue::String(value.to_string())
+    }
+}
+
+impl From<i32> for PkValue {
+    fn from(value: i32) -> Self {
+        PkValue::Int(value as i64)
+    }
+}
+
+impl From<i64> for PkValue {
+    fn from(value: i64) -> Self {
+        PkValue::Int(value)
+    }
+}
+
+impl From<u32> for PkValue {
+    fn from(value: u32) -> Self {
+        PkValue::Uint(value as u64)
+    }
+}
+
+impl From<u64> for PkValue {
+    fn from(value: u64) -> Self {
+        PkValue::Uint(value)
+    }
+}
+
+impl From<bool> for PkValue {
+    fn from(value: bool) -> Self {
+        PkValue::Bool(value)
+    }
+}
+
+impl From<&i32> for PkValue {
+    fn from(value: &i32) -> Self {
+        PkValue::Int(*value as i64)
+    }
+}
+
+impl From<&i64> for PkValue {
+    fn from(value: &i64) -> Self {
+        PkValue::Int(*value)
+    }
+}
+
+impl From<&u32> for PkValue {
+    fn from(value: &u32) -> Self {
+        PkValue::Uint(*value as u64)
+    }
+}
+
+impl From<&u64> for PkValue {
+    fn from(value: &u64) -> Self {
+        PkValue::Uint(*value)
+    }
+}
+
+impl From<&bool> for PkValue {
+    fn from(value: &bool) -> Self {
+        PkValue::Bool(*value)
+    }
+}
+
+impl From<&String> for PkValue {
+    fn from(value: &String) -> Self {
+        PkValue::String(value.clone())
+    }
+}
+
 /// Composite primary key definition consisting of multiple fields
 ///
 /// A composite primary key is a primary key that spans multiple columns in a database table.

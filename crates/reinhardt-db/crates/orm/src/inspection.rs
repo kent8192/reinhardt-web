@@ -496,11 +496,46 @@ impl<M: Model> ModelInspector<M> {
 
     /// Get all field information from the model
     ///
-    /// # Panics
+    /// Returns field metadata provided by the Model implementation.
+    /// By default, returns an empty vector unless the model provides
+    /// field metadata through the `field_metadata()` method.
     ///
-    /// This method is not yet implemented.
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_orm::inspection::ModelInspector;
+    /// use reinhardt_orm::Model;
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct User {
+    ///     id: i32,
+    ///     name: String,
+    /// }
+    ///
+    /// impl Model for User {
+    ///     type PrimaryKey = i32;
+    ///
+    ///     fn table_name() -> &'static str {
+    ///         "users"
+    ///     }
+    ///
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+    ///         Some(&self.id)
+    ///     }
+    ///
+    ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+    ///         self.id = value;
+    ///     }
+    /// }
+    ///
+    /// let inspector = ModelInspector::<User>::new();
+    /// let fields = inspector.get_fields();
+    /// // Returns empty by default, override field_metadata() to provide fields
+    /// assert_eq!(fields.len(), 0);
+    /// ```
     pub fn get_fields(&self) -> Vec<FieldInfo> {
-        todo!("Field enumeration requires reflection or procedural macro support")
+        M::field_metadata()
     }
 
     /// Get information about a specific field by name
@@ -545,29 +580,131 @@ impl<M: Model> ModelInspector<M> {
 
     /// Get all relationship information from the model
     ///
-    /// # Panics
+    /// Returns relationship metadata provided by the Model implementation.
+    /// By default, returns an empty vector unless the model provides
+    /// relationship metadata through the `relationship_metadata()` method.
     ///
-    /// This method is not yet implemented.
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_orm::inspection::ModelInspector;
+    /// use reinhardt_orm::Model;
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct User {
+    ///     id: i32,
+    /// }
+    ///
+    /// impl Model for User {
+    ///     type PrimaryKey = i32;
+    ///
+    ///     fn table_name() -> &'static str {
+    ///         "users"
+    ///     }
+    ///
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+    ///         Some(&self.id)
+    ///     }
+    ///
+    ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+    ///         self.id = value;
+    ///     }
+    /// }
+    ///
+    /// let inspector = ModelInspector::<User>::new();
+    /// let relations = inspector.get_relations();
+    /// // Returns empty by default, override relationship_metadata() to provide relations
+    /// assert_eq!(relations.len(), 0);
+    /// ```
     pub fn get_relations(&self) -> Vec<RelationInfo> {
-        todo!("Relationship enumeration requires reflection or procedural macro support")
+        M::relationship_metadata()
     }
 
     /// Get all index information from the model
     ///
-    /// # Panics
+    /// Returns index metadata provided by the Model implementation.
+    /// By default, returns an empty vector unless the model provides
+    /// index metadata through the `index_metadata()` method.
     ///
-    /// This method is not yet implemented.
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_orm::inspection::ModelInspector;
+    /// use reinhardt_orm::Model;
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct User {
+    ///     id: i32,
+    /// }
+    ///
+    /// impl Model for User {
+    ///     type PrimaryKey = i32;
+    ///
+    ///     fn table_name() -> &'static str {
+    ///         "users"
+    ///     }
+    ///
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+    ///         Some(&self.id)
+    ///     }
+    ///
+    ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+    ///         self.id = value;
+    ///     }
+    /// }
+    ///
+    /// let inspector = ModelInspector::<User>::new();
+    /// let indexes = inspector.get_indexes();
+    /// // Returns empty by default, override index_metadata() to provide indexes
+    /// assert_eq!(indexes.len(), 0);
+    /// ```
     pub fn get_indexes(&self) -> Vec<IndexInfo> {
-        todo!("Index enumeration requires reflection or procedural macro support")
+        M::index_metadata()
     }
 
     /// Get all constraint information from the model
     ///
-    /// # Panics
+    /// Returns constraint metadata provided by the Model implementation.
+    /// By default, returns an empty vector unless the model provides
+    /// constraint metadata through the `constraint_metadata()` method.
     ///
-    /// This method is not yet implemented.
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_orm::inspection::ModelInspector;
+    /// use reinhardt_orm::Model;
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct User {
+    ///     id: i32,
+    /// }
+    ///
+    /// impl Model for User {
+    ///     type PrimaryKey = i32;
+    ///
+    ///     fn table_name() -> &'static str {
+    ///         "users"
+    ///     }
+    ///
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+    ///         Some(&self.id)
+    ///     }
+    ///
+    ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+    ///         self.id = value;
+    ///     }
+    /// }
+    ///
+    /// let inspector = ModelInspector::<User>::new();
+    /// let constraints = inspector.get_constraints();
+    /// // Returns empty by default, override constraint_metadata() to provide constraints
+    /// assert_eq!(constraints.len(), 0);
+    /// ```
     pub fn get_constraints(&self) -> Vec<ConstraintInfo> {
-        todo!("Constraint enumeration requires reflection or procedural macro support")
+        M::constraint_metadata()
     }
 }
 
