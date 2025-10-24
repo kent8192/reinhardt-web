@@ -274,6 +274,98 @@ impl<M: Model> Serializer for ListSerializer<M> {
 /// Extends NestedSerializer to support write operations on nested relationships.
 /// This allows creating or updating related models when the parent is saved.
 ///
+/// # Design Philosophy
+///
+/// This serializer follows the **separation of concerns** principle:
+/// - **Validation**: The serializer validates JSON structure and permissions
+/// - **Data Extraction**: Provides helper methods to extract nested data
+/// - **Database Operations**: Caller handles ORM operations and transactions
+///
+/// This design gives you full control over transaction management and error handling
+/// while the serializer ensures data validity.
+///
+/// # Permission Control
+///
+/// - `allow_create(bool)`: Allow creating new related instances (default: false)
+/// - `allow_update(bool)`: Allow updating existing related instances (default: false)
+///
+/// Without these permissions, deserialization will fail if nested data contains
+/// create/update operations.
+///
+/// # Usage Patterns
+///
+/// ## Basic Usage with Manual ORM Integration
+///
+/// ```ignore
+/// use reinhardt_serializers::WritableNestedSerializer;
+/// use reinhardt_orm::{Model, Transaction};
+///
+/// // Define serializer with permissions
+/// let serializer = WritableNestedSerializer::<Post, Author>::new("author")
+///     .allow_create(true)
+///     .allow_update(true);
+///
+/// // JSON with nested author
+/// let json = r#"{
+///     "title": "My Post",
+///     "author": {
+///         "id": null,
+///         "name": "Alice"
+///     }
+/// }"#;
+///
+/// // Validate and deserialize
+/// let post: Post = serializer.deserialize(&json.to_string())?;
+///
+/// // Extract nested data for manual processing
+/// if let Some(author_data) = serializer.extract_nested_data(json)? {
+///     // Create author within transaction
+///     let mut tx = Transaction::new();
+///     tx.begin()?;
+///
+///     let author: Author = serde_json::from_value(author_data)?;
+///     let saved_author = Author::objects().create(&author).await?;
+///
+///     // Set foreign key and save parent
+///     post.author_id = saved_author.id;
+///     let saved_post = Post::objects().create(&post).await?;
+///
+///     tx.commit()?;
+/// }
+/// ```
+///
+/// ## Advanced: Handling Both Create and Update
+///
+/// ```ignore
+/// if let Some(author_data) = serializer.extract_nested_data(json)? {
+///     let mut tx = Transaction::new();
+///     tx.begin()?;
+///
+///     let author: Author = serde_json::from_value(author_data)?;
+///     let saved_author = if WritableNestedSerializer::<Post, Author>::is_create_operation(&author_data) {
+///         // Create new author
+///         Author::objects().create(&author).await?
+///     } else {
+///         // Update existing author
+///         Author::objects().update(&author).await?
+///     };
+///
+///     post.author_id = saved_author.id;
+///     Post::objects().create(&post).await?;
+///
+///     tx.commit()?;
+/// }
+/// ```
+///
+/// # Error Handling
+///
+/// The serializer returns `SerializerError` in these cases:
+/// - JSON parsing fails
+/// - Nested data violates permissions (create/update not allowed)
+/// - Invalid nested data structure
+///
+/// Database errors are handled by the caller during ORM operations.
+///
 /// # Examples
 ///
 /// ```no_run
@@ -335,6 +427,56 @@ impl<M: Model, R: Model> WritableNestedSerializer<M, R> {
         self.allow_update = allow;
         self
     }
+
+    /// Extract nested data from JSON for manual processing
+    ///
+    /// Returns the nested data as a serde_json::Value for the caller to process.
+    /// This allows the caller to handle database operations with full control.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let serializer = WritableNestedSerializer::<Post, Author>::new("author");
+    /// let json = r#"{"id": 1, "title": "Post", "author": {"id": 2, "name": "Alice"}}"#;
+    ///
+    /// if let Some(nested_data) = serializer.extract_nested_data(json)? {
+    ///     // Process nested_data as needed
+    ///     let author: Author = serde_json::from_value(nested_data)?;
+    /// }
+    /// ```
+    pub fn extract_nested_data(&self, json: &str) -> Result<Option<Value>, SerializerError> {
+        let value: Value = serde_json::from_str(json)
+            .map_err(|e| SerializerError::new(format!("JSON parsing error: {}", e)))?;
+
+        if let Value::Object(ref map) = value {
+            if let Some(nested_value) = map.get(&self.relationship_field) {
+                if !nested_value.is_null() {
+                    return Ok(Some(nested_value.clone()));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Check if nested data represents a create operation (no primary key or null primary key)
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let create_data = serde_json::json!({"id": null, "name": "New Author"});
+    /// assert!(WritableNestedSerializer::<Post, Author>::is_create_operation(&create_data));
+    ///
+    /// let update_data = serde_json::json!({"id": 42, "name": "Existing Author"});
+    /// assert!(!WritableNestedSerializer::<Post, Author>::is_create_operation(&update_data));
+    /// ```
+    pub fn is_create_operation(nested_value: &Value) -> bool {
+        if let Some(pk) = nested_value.get(M::primary_key_field()) {
+            pk.is_null()
+        } else {
+            true // No primary key field means create
+        }
+    }
 }
 
 impl<M: Model, R: Model> Serializer for WritableNestedSerializer<M, R> {
@@ -387,12 +529,28 @@ impl<M: Model, R: Model> Serializer for WritableNestedSerializer<M, R> {
                     }
                 }
 
-                // Note: Actual creation/update of related instances requires ORM integration
-                // Future implementation should:
-                // 1. Extract nested data
-                // 2. Create/update related instances based on permissions
-                // 3. Set up foreign key relationships
-                // 4. Save all instances in a transaction
+                // Nested data validation passed
+                // The actual database operations (create/update) are handled by the caller
+                // using ORM methods like QuerySet::create() or Model::save()
+                //
+                // This design follows the separation of concerns principle:
+                // - Serializer: Validates structure and permissions
+                // - ORM Layer: Performs database operations
+                // - Transaction: Ensures atomicity
+                //
+                // Example usage pattern:
+                // ```
+                // let serializer = WritableNestedSerializer::new("author").allow_create(true);
+                // let post: Post = serializer.deserialize(&json)?;
+                //
+                // // Caller handles database operations within transaction:
+                // let mut tx = Transaction::new();
+                // tx.begin()?;
+                // let author = Author::objects().create(&post.author).await?;
+                // post.author_id = author.id;
+                // let saved_post = Post::objects().create(&post).await?;
+                // tx.commit()?;
+                // ```
             }
         }
 
@@ -513,7 +671,7 @@ mod tests {
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
-            .message
+            .message()
             .contains("Creating nested instances is not allowed"));
     }
 
@@ -535,7 +693,7 @@ mod tests {
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
-            .message
+            .message()
             .contains("Updating nested instances is not allowed"));
     }
 
@@ -591,7 +749,7 @@ mod tests {
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
-            .message
+            .message()
             .contains("Creating nested instances is not allowed"));
     }
 
@@ -607,5 +765,104 @@ mod tests {
 
         let result = serializer.deserialize(&json.to_string());
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_nested_data_with_nested_object() {
+        let serializer = WritableNestedSerializer::<Post, Author>::new("author");
+
+        let json = r#"{
+            "id": 1,
+            "title": "Test Post",
+            "author": {
+                "id": 42,
+                "name": "Alice"
+            }
+        }"#;
+
+        let result = serializer.extract_nested_data(json).unwrap();
+        assert!(result.is_some());
+
+        let nested = result.unwrap();
+        assert!(nested.is_object());
+        assert_eq!(nested.get("id").unwrap().as_i64().unwrap(), 42);
+        assert_eq!(nested.get("name").unwrap().as_str().unwrap(), "Alice");
+    }
+
+    #[test]
+    fn test_extract_nested_data_without_nested_field() {
+        let serializer = WritableNestedSerializer::<Post, Author>::new("author");
+
+        let json = r#"{
+            "id": 1,
+            "title": "Test Post"
+        }"#;
+
+        let result = serializer.extract_nested_data(json).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_nested_data_with_null_nested_field() {
+        let serializer = WritableNestedSerializer::<Post, Author>::new("author");
+
+        let json = r#"{
+            "id": 1,
+            "title": "Test Post",
+            "author": null
+        }"#;
+
+        let result = serializer.extract_nested_data(json).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_is_create_operation_with_null_pk() {
+        let data = serde_json::json!({
+            "id": null,
+            "name": "New Author"
+        });
+
+        assert!(WritableNestedSerializer::<Post, Author>::is_create_operation(&data));
+    }
+
+    #[test]
+    fn test_is_create_operation_with_existing_pk() {
+        let data = serde_json::json!({
+            "id": 42,
+            "name": "Existing Author"
+        });
+
+        assert!(!WritableNestedSerializer::<Post, Author>::is_create_operation(&data));
+    }
+
+    #[test]
+    fn test_is_create_operation_without_pk_field() {
+        let data = serde_json::json!({
+            "name": "Author Without ID"
+        });
+
+        assert!(WritableNestedSerializer::<Post, Author>::is_create_operation(&data));
+    }
+
+    #[test]
+    fn test_extract_nested_data_with_array() {
+        let serializer = WritableNestedSerializer::<Author, Post>::new("posts");
+
+        let json = r#"{
+            "id": 1,
+            "name": "Alice",
+            "posts": [
+                {"id": 1, "title": "First Post"},
+                {"id": 2, "title": "Second Post"}
+            ]
+        }"#;
+
+        let result = serializer.extract_nested_data(json).unwrap();
+        assert!(result.is_some());
+
+        let nested = result.unwrap();
+        assert!(nested.is_array());
+        assert_eq!(nested.as_array().unwrap().len(), 2);
     }
 }

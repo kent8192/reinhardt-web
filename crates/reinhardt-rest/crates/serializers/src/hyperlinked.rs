@@ -6,7 +6,42 @@
 use crate::{Serializer, SerializerError};
 use reinhardt_orm::Model;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::sync::Arc;
+
+/// Trait for URL reversal functionality
+///
+/// Implement this trait to provide URL reversal for HyperlinkedModelSerializer.
+/// This abstraction allows integration with reinhardt-routers without creating
+/// circular dependencies.
+///
+/// # Example
+///
+/// ```ignore
+/// use std::collections::HashMap;
+/// use reinhardt_serializers::UrlReverser;
+/// use reinhardt_routers::UrlReverser as RouterUrlReverser;
+///
+/// impl UrlReverser for RouterUrlReverser {
+///     fn reverse(&self, name: &str, params: &HashMap<String, String>) -> Result<String, String> {
+///         self.reverse(name, params).map_err(|e| e.to_string())
+///     }
+/// }
+/// ```
+pub trait UrlReverser: Send + Sync {
+    /// Reverse a URL name to a path with parameters
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The route name
+    /// * `params` - Map of parameter names to values
+    ///
+    /// # Returns
+    ///
+    /// The resolved URL path or an error message
+    fn reverse(&self, name: &str, params: &HashMap<String, String>) -> Result<String, String>;
+}
 
 /// HyperlinkedModelSerializer provides automatic URL generation for ORM models
 ///
@@ -17,15 +52,17 @@ use std::marker::PhantomData;
 /// # Examples
 ///
 /// ```no_run
-/// # use reinhardt_serializers::HyperlinkedModelSerializer;
+/// # use reinhardt_serializers::{HyperlinkedModelSerializer, UrlReverser};
 /// # use reinhardt_orm::Model;
 /// # use serde::{Serialize, Deserialize};
+/// # use std::sync::Arc;
+/// # use std::collections::HashMap;
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
 /// # struct User {
 /// #     id: Option<i64>,
 /// #     username: String,
-/// #     email: String,
+/// #     email: String;
 /// # }
 /// #
 /// # impl Model for User {
@@ -35,8 +72,16 @@ use std::marker::PhantomData;
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 /// # }
 /// #
+/// # struct MyUrlReverser;
+/// # impl UrlReverser for MyUrlReverser {
+/// #     fn reverse(&self, name: &str, params: &HashMap<String, String>) -> Result<String, String> {
+/// #         Ok(format!("/users/{}/", params.get("id").unwrap()))
+/// #     }
+/// # }
+/// #
 /// # fn example() {
-/// let serializer = HyperlinkedModelSerializer::<User>::new("user-detail");
+/// let reverser: Arc<dyn UrlReverser> = Arc::new(MyUrlReverser);
+/// let serializer = HyperlinkedModelSerializer::<User>::new("user-detail", Some(reverser));
 ///
 /// let user = User {
 ///     id: Some(1),
@@ -46,12 +91,13 @@ use std::marker::PhantomData;
 ///
 /// // The serialized JSON will include a "url" field
 /// let json = serializer.serialize(&user).unwrap();
-/// // Output: {"id":1,"username":"alice","email":"alice@example.com","url":"/users/user-detail/1"}
+/// // Output: {"id":1,"username":"alice","email":"alice@example.com","url":"/users/1/"}
 /// # }
 /// ```
 pub struct HyperlinkedModelSerializer<M: Model> {
     view_name: String,
     url_field_name: String,
+    url_reverser: Option<Arc<dyn UrlReverser>>,
     _phantom: PhantomData<M>,
 }
 
@@ -61,13 +107,17 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
     /// # Arguments
     ///
     /// * `view_name` - The name of the detail view for URL generation
+    /// * `url_reverser` - Optional URL reverser for proper URL resolution. If None,
+    ///   falls back to simple path-based URL generation.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use reinhardt_serializers::HyperlinkedModelSerializer;
+    /// # use reinhardt_serializers::{HyperlinkedModelSerializer, UrlReverser};
     /// # use reinhardt_orm::Model;
     /// # use serde::{Serialize, Deserialize};
+    /// # use std::sync::Arc;
+    /// # use std::collections::HashMap;
     /// #
     /// # #[derive(Debug, Clone, Serialize, Deserialize)]
     /// # struct User {
@@ -81,12 +131,21 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
     /// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
     /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
     /// # }
-    /// let serializer = HyperlinkedModelSerializer::<User>::new("user-detail");
+    /// #
+    /// # struct MyUrlReverser;
+    /// # impl UrlReverser for MyUrlReverser {
+    /// #     fn reverse(&self, name: &str, _params: &HashMap<String, String>) -> Result<String, String> {
+    /// #         Ok(format!("/users/{}/", name))
+    /// #     }
+    /// # }
+    /// let reverser: Arc<dyn UrlReverser> = Arc::new(MyUrlReverser);
+    /// let serializer = HyperlinkedModelSerializer::<User>::new("user-detail", Some(reverser));
     /// ```
-    pub fn new(view_name: impl Into<String>) -> Self {
+    pub fn new(view_name: impl Into<String>, url_reverser: Option<Arc<dyn UrlReverser>>) -> Self {
         Self {
             view_name: view_name.into(),
             url_field_name: String::from("url"),
+            url_reverser,
             _phantom: PhantomData,
         }
     }
@@ -122,27 +181,40 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
 
     /// Generate URL for a model instance
     ///
-    /// Currently generates a simple path-based URL. In production, this should
-    /// integrate with reinhardt-routers for proper URL resolution.
+    /// Uses reinhardt_routers::reverse() for proper URL resolution if a reverser
+    /// is provided, otherwise falls back to simple path-based URL generation.
     fn get_url(&self, instance: &M) -> Result<String, SerializerError>
     where
         M::PrimaryKey: serde::Serialize,
     {
         if let Some(pk) = instance.primary_key() {
-            // NOTE: In production, use reinhardt_routers::reverse() for proper URL resolution
-            // This is a simplified implementation for demonstration
             let pk_str = serde_json::to_string(pk)
                 .map_err(|e| {
                     SerializerError::new(format!("Primary key serialization error: {}", e))
                 })?
                 .trim_matches('"')
                 .to_string();
-            Ok(format!(
-                "/{}/{}/{}",
-                M::table_name(),
-                self.view_name,
-                pk_str
-            ))
+
+            // Use URL reverser if available for proper URL resolution
+            if let Some(reverser) = &self.url_reverser {
+                let mut params = HashMap::new();
+                params.insert(M::primary_key_field().to_string(), pk_str);
+
+                reverser.reverse(&self.view_name, &params).map_err(|e| {
+                    SerializerError::new(format!(
+                        "URL reversal error for view '{}': {}",
+                        self.view_name, e
+                    ))
+                })
+            } else {
+                // Fallback to simple path-based URL generation
+                Ok(format!(
+                    "/{}/{}/{}",
+                    M::table_name(),
+                    self.view_name,
+                    pk_str
+                ))
+            }
         } else {
             Err(SerializerError::new(String::from(
                 "Instance has no primary key",
@@ -211,21 +283,22 @@ mod tests {
 
     #[test]
     fn test_hyperlinked_serializer_creation() {
-        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail");
+        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None);
         assert_eq!(serializer.url_field_name, "url");
         assert_eq!(serializer.view_name, "detail");
     }
 
     #[test]
     fn test_custom_url_field_name() {
-        let serializer =
-            HyperlinkedModelSerializer::<TestModel>::new("detail").url_field_name("self_link");
+        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None)
+            .url_field_name("self_link");
         assert_eq!(serializer.url_field_name, "self_link");
     }
 
     #[test]
-    fn test_serialize_with_url() {
-        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail");
+    fn test_serialize_with_url_fallback() {
+        // Test fallback path-based URL generation (no reverser)
+        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None);
         let model = TestModel {
             id: Some(42),
             name: String::from("test"),
@@ -240,8 +313,41 @@ mod tests {
     }
 
     #[test]
+    fn test_serialize_with_url_reverser() {
+        // Test proper URL reversal using custom UrlReverser implementation
+        struct TestUrlReverser;
+
+        impl crate::hyperlinked::UrlReverser for TestUrlReverser {
+            fn reverse(
+                &self,
+                _name: &str,
+                params: &HashMap<String, String>,
+            ) -> Result<String, String> {
+                let id = params
+                    .get("id")
+                    .ok_or_else(|| "Missing id parameter".to_string())?;
+                Ok(format!("/models/{}/", id))
+            }
+        }
+
+        let reverser: Arc<dyn crate::hyperlinked::UrlReverser> = Arc::new(TestUrlReverser);
+        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", Some(reverser));
+        let model = TestModel {
+            id: Some(42),
+            name: String::from("test"),
+        };
+
+        let result = serializer.serialize(&model).unwrap();
+        let value: Value = serde_json::from_str(&result).unwrap();
+
+        assert_eq!(value["id"], 42);
+        assert_eq!(value["name"], "test");
+        assert_eq!(value["url"], "/models/42/");
+    }
+
+    #[test]
     fn test_serialize_without_pk_fails() {
-        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail");
+        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None);
         let model = TestModel {
             id: None,
             name: String::from("test"),
@@ -249,12 +355,12 @@ mod tests {
 
         let result = serializer.serialize(&model);
         assert!(result.is_err());
-        assert!(result.unwrap_err().message.contains("no primary key"));
+        assert!(result.unwrap_err().message().contains("no primary key"));
     }
 
     #[test]
     fn test_deserialize() {
-        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail");
+        let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None);
         let json = r#"{"id":42,"name":"test","url":"/test_models/detail/42"}"#;
 
         let result = serializer.deserialize(&json.to_string()).unwrap();

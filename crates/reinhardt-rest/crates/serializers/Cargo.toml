@@ -4,11 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+django-compat = ["reinhardt-orm/django-compat"]
+
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-parsers = { path = "../parsers" }
+reinhardt-parsers = { version = "0.1.0", path = "../parsers" }
 reinhardt-renderers = { workspace = true }
-reinhardt-negotiation = { path = "../negotiation" }
+reinhardt-negotiation = { version = "0.1.0", path = "../negotiation" }
 reinhardt-orm = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

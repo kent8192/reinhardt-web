@@ -3,7 +3,7 @@
 //! This module provides Django REST Framework-inspired field types for data validation
 //! and transformation in serializers.
 
-use serde::{Deserialize, Serialize};
+// use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Errors that can occur during field validation

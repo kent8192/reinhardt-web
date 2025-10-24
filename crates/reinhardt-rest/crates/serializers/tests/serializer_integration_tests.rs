@@ -3,9 +3,8 @@
 //! Tests the integration between SerializerMethodField and field/object validation
 
 use reinhardt_serializers::{
-    validate_fields, FieldValidator, MethodFieldProvider, MethodFieldRegistry,
-    ObjectLevelValidation, ObjectValidator, SerializerMethodField, ValidationError,
-    ValidationResult,
+    validate_fields, FieldValidator, MethodFieldProvider, MethodFieldRegistry, ObjectValidator,
+    SerializerMethodField, ValidationError, ValidationResult,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
