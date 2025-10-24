@@ -13,6 +13,7 @@ Useful for building flexible systems like comments, tags, or activity streams th
 ### Implemented ✓
 
 #### Core Content Type System
+
 - **ContentType Model** - Represents a model type with app label and model name
   - `ContentType::new()` - Create a new content type
   - `ContentType::with_id()` - Set content type ID
@@ -21,6 +22,7 @@ Useful for building flexible systems like comments, tags, or activity streams th
   - Implements `Serialize`, `Deserialize`, `PartialEq`, `Eq`, `Hash`, `Clone`
 
 #### Content Type Registry (Runtime)
+
 - **ContentTypeRegistry** - Runtime content type management with thread-safe caching
   - `register()` - Register a new content type with automatic ID assignment
   - `get()` - Get content type by app label and model name
@@ -32,11 +34,13 @@ Useful for building flexible systems like comments, tags, or activity streams th
   - Automatic ID generation for registered types
 
 #### Global Content Type Registry
+
 - **CONTENT_TYPE_REGISTRY** - Global singleton registry instance
   - Available via `once_cell::Lazy` for initialization
   - Shared across the application for consistent content type management
 
 #### Generic Foreign Keys
+
 - **GenericForeignKey** - Field for referencing any model type
   - `new()` - Create empty generic foreign key
   - `set()` - Set content type and object ID
@@ -46,6 +50,7 @@ Useful for building flexible systems like comments, tags, or activity streams th
   - Implements `Default`, `Serialize`, `Deserialize`, `Clone`
 
 #### Type-Safe API (Compile-Time)
+
 - **ModelType Trait** - Compile-time type-safe content type definitions
   - `APP_LABEL` - Associated constant for app label
   - `MODEL_NAME` - Associated constant for model name
@@ -57,6 +62,7 @@ Useful for building flexible systems like comments, tags, or activity streams th
     - `set_typed<M: ModelType>()` - Type-safe set with model type
 
 #### Generic Relation Queries
+
 - **GenericRelatable Trait** - Trait for models that can be targets of generic relations
   - `get_content_type()` - Get content type for the model
   - `get_object_id()` - Get object ID for the instance
@@ -69,6 +75,7 @@ Useful for building flexible systems like comments, tags, or activity streams th
 ### Planned
 
 #### Database Integration
+
 - Automatic ContentType table creation and migration
 - Persistence of ContentType instances to database
 - Database-backed content type lookups
@@ -76,6 +83,7 @@ Useful for building flexible systems like comments, tags, or activity streams th
 - Foreign key constraints for GenericForeignKey fields
 
 #### ORM Integration
+
 - Generic relation fields for models (`GenericRelation`)
 - Reverse generic relation queries
 - Prefetch support for generic relations
@@ -83,11 +91,13 @@ Useful for building flexible systems like comments, tags, or activity streams th
 - Generic relation filtering and ordering
 
 #### Permission System Integration
+
 - Associate permissions with content types
 - Permission checking utilities
 - Content type-based authorization
 
 #### Advanced Features
+
 - Content type shortcuts (URL resolution for generic objects)
 - Content type view mixins
 - Admin interface integration for generic relations
@@ -95,7 +105,7 @@ Useful for building flexible systems like comments, tags, or activity streams th
 - Content type renaming and migration support
 
 #### Management Commands
+
 - `dumpdata`/`loaddata` support for content types
 - Content type synchronization commands
 - Content type inspection utilities
-

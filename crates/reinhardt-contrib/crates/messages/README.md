@@ -11,6 +11,7 @@ Django-inspired messaging framework for displaying one-time notification message
 ### Implemented ✓
 
 #### Core Message System
+
 - **Message Levels**: 5 predefined levels (Debug, Info, Success, Warning, Error) with numeric priority values (10, 20, 25, 30, 40)
 - **Custom Levels**: Support for user-defined message levels with custom numeric values
 - **Message Tags**: Level-based tags and extra custom tags for styling and filtering
@@ -18,6 +19,7 @@ Django-inspired messaging framework for displaying one-time notification message
 - **Message Configuration**: `MessageConfig` for customizing level tags globally
 
 #### Storage Backends
+
 - **MemoryStorage**: In-memory storage using thread-safe `Arc<Mutex<VecDeque>>` for testing and temporary messages
 - **SessionStorage**: Session-based persistent storage with JSON serialization
   - Customizable session key (default: `"_messages"`)
@@ -34,6 +36,7 @@ Django-inspired messaging framework for displaying one-time notification message
   - Supports flushing messages from both backends
 
 #### Utilities
+
 - **Binary Search Algorithms**: Efficient size-limited message management
   - `bisect_keep_left()`: Keep maximum messages from the beginning within size limit
   - `bisect_keep_right()`: Keep maximum messages from the end within size limit
@@ -42,6 +45,7 @@ Django-inspired messaging framework for displaying one-time notification message
   - Serializable with serde support
 
 #### Storage Trait
+
 - **MessageStorage Trait**: Unified interface for all storage backends
   - `add()`: Add a message to storage
   - `get_all()`: Retrieve and clear all messages
@@ -51,11 +55,13 @@ Django-inspired messaging framework for displaying one-time notification message
 ### Planned
 
 #### Middleware Integration
+
 - Request/response middleware for automatic message handling
 - Automatic message retrieval and storage during request lifecycle
 - Context processor for template integration
 
 #### Advanced Features
+
 - Message filtering by level
 - Message persistence control (sticky messages)
 - Message expiry and TTL support
@@ -65,6 +71,7 @@ Django-inspired messaging framework for displaying one-time notification message
 - Rate limiting for message creation
 
 #### Template Integration
+
 - Template tags for message rendering
 - Default message templates with Bootstrap/Tailwind CSS styling
 - JavaScript integration for client-side message display
@@ -72,6 +79,7 @@ Django-inspired messaging framework for displaying one-time notification message
 - Message dismissal tracking
 
 #### Testing Utilities
+
 - Mock storage backends for testing
 - Message assertion helpers
 - Test fixtures for common scenarios
@@ -160,17 +168,20 @@ let html_string = safe_html.into_string();
 ## Architecture
 
 ### Message Levels
+
 - Numeric priority system allows custom levels between standard ones
 - Level ordering: Debug (10) < Info (20) < Success (25) < Warning (30) < Error (40)
 - Custom levels can have any i32 value for fine-grained control
 
 ### Storage Strategy
+
 - All storage backends implement `MessageStorage` trait for consistency
 - Cookie storage uses binary search to efficiently fit maximum messages within size limits
 - Fallback storage intelligently routes messages based on size constraints
 - Session storage validates middleware availability before operations
 
 ### Size Management
+
 - Binary search algorithms (`bisect_keep_left`/`bisect_keep_right`) optimize message truncation
 - Efficient serialization size calculation without full re-serialization
 - Automatic oldest-first removal when size limits are exceeded
@@ -178,6 +189,7 @@ let html_string = safe_html.into_string();
 ## Testing
 
 Comprehensive test coverage based on Django's message framework tests:
+
 - Message creation and manipulation
 - Level comparison and ordering
 - All storage backend operations
@@ -188,6 +200,7 @@ Comprehensive test coverage based on Django's message framework tests:
 ## License
 
 Licensed under either of:
+
 - Apache License, Version 2.0
 - MIT license
 

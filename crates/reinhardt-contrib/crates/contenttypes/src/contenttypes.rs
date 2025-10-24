@@ -530,24 +530,7 @@ mod typed_tests {
 // Comprehensive tests inspired by Django's contenttypes tests
 // ============================================================================
 //
-// These tests are inspired by Django's contenttypes test suite.
-// The following Django test categories are NOT yet implemented due to
-// architectural differences or missing features:
-//
-// - Database-specific tests (MultiDB, migrations, operations)
-// - View/HTTP-related tests (shortcut views, URL routing)
-// - Admin interface tests
-// - Management command tests
-// - Field validation/check framework tests
-//
-// Future test additions when DB layer is implemented:
-// - ContentType persistence to database
-// - Multi-database support
-// - Migration operations for ContentType renaming
-//
-// Future test additions when view layer is implemented:
-// - Shortcut view functionality
-// - URL resolution for generic objects
+// See docs/IMPLEMENTATION_NOTES.md for unimplemented test categories and future additions
 
 #[cfg(test)]
 mod inspired_tests {

@@ -11,6 +11,7 @@ WebSocket protocol support for real-time bidirectional communication. Includes c
 ### Implemented ✓
 
 #### Connection Management
+
 - `WebSocketConnection`: Manages individual WebSocket connections
   - Connection ID tracking
   - Send text, binary, and JSON messages
@@ -22,6 +23,7 @@ WebSocket protocol support for real-time bidirectional communication. Includes c
   - Protocol errors
 
 #### Message Types
+
 - `Message` enum: Multiple message types support
   - Text messages
   - Binary messages
@@ -34,6 +36,7 @@ WebSocket protocol support for real-time bidirectional communication. Includes c
   - Optional timestamp support
 
 #### Room Management
+
 - `RoomManager`: Multi-client room management
   - Join/leave room operations
   - Broadcast messages to specific rooms
@@ -43,6 +46,7 @@ WebSocket protocol support for real-time bidirectional communication. Includes c
   - Thread-safe with async/await support
 
 #### Handler Traits
+
 - `WebSocketHandler`: Trait for implementing custom WebSocket handlers
   - `on_message`: Handle incoming messages
   - `on_connect`: Handle new connections
@@ -59,4 +63,3 @@ WebSocket protocol support for real-time bidirectional communication. Includes c
 - Channel layers for distributed systems
 - Consumer classes for advanced patterns
 - Integration with Reinhardt middleware system
-

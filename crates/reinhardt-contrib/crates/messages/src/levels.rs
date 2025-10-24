@@ -11,7 +11,7 @@ pub enum Level {
     Success = 25,
     Warning = 30,
     Error = 40,
-    Custom(i32), // カスタムレベルのサポート
+    Custom(i32), // Support for custom levels
 }
 
 impl Level {

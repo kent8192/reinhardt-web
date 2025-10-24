@@ -11,11 +11,13 @@ Session framework for maintaining state across HTTP requests. This crate provide
 ### Implemented ✓
 
 #### Core Session Backend
+
 - **SessionBackend Trait** - Async trait defining session storage operations (load, save, delete, exists)
 - **SessionError** - Error types for session operations (cache errors, serialization errors)
 - **Generic Session Storage** - Type-safe session data storage with `serde` support
 
 #### Cache-Based Backends
+
 - **InMemorySessionBackend** - In-memory session storage using `InMemoryCache`
   - Fast, volatile storage (sessions lost on restart)
   - TTL (Time-To-Live) support for automatic expiration
@@ -27,10 +29,12 @@ Session framework for maintaining state across HTTP requests. This crate provide
   - Horizontal scalability for distributed systems
 
 #### Dependency Injection Support
+
 - Integration with `reinhardt-di` for dependency injection
 - Session backend registration and resolution
 
 #### High-Level Session API
+
 - **Session<B>** struct - Django-style session object with dictionary-like interface
   - Type-safe with generic backend parameter `B: SessionBackend`
   - Dictionary-like methods: `get()`, `set()`, `delete()`, `contains_key()`
@@ -44,6 +48,7 @@ Session framework for maintaining state across HTTP requests. This crate provide
   - Comprehensive doctests and unit tests (36 total tests)
 
 #### Storage Backends
+
 - **DatabaseSessionBackend** (feature: `database`) - Persistent session storage in database
   - Session model with expiration timestamps
   - Automatic session cleanup with `cleanup_expired()`
@@ -65,6 +70,7 @@ Session framework for maintaining state across HTTP requests. This crate provide
   - 11 comprehensive tests
 
 #### HTTP Middleware
+
 - **SessionMiddleware** (feature: `middleware`) - HTTP middleware for session management
   - Automatic session loading from cookies
   - Automatic session saving on response
@@ -77,6 +83,7 @@ Session framework for maintaining state across HTTP requests. This crate provide
 ### Planned
 
 #### Session Management Features
+
 - Session expiration and cleanup
 - Session key rotation
 - Cross-site request forgery (CSRF) protection integration
@@ -84,6 +91,7 @@ Session framework for maintaining state across HTTP requests. This crate provide
 - Session storage migration tools
 
 #### Advanced Features
+
 - Session replication for high availability
 - Session analytics and monitoring
 - Custom session serializers
@@ -252,20 +260,20 @@ All session backends use Rust's type system to ensure type-safe serialization an
 
 This crate is inspired by Django's session framework:
 
-| Feature | Django | Reinhardt Sessions |
-|---------|--------|-------------------|
-| Session Backends | ✓ | ✓ |
-| Session Object | ✓ | ✓ |
-| In-Memory Backend | ✓ | ✓ |
-| Database Backend | ✓ | ✓ (SQLite, PostgreSQL, MySQL) |
-| File Backend | ✓ | ✓ (with file locking) |
-| Cookie Backend | ✓ | ✓ (AES-GCM encrypted) |
-| Session Middleware | ✓ | ✓ |
-| TTL/Expiration | ✓ | ✓ |
-| Session Iteration | ✓ | ✓ (keys, values, items) |
-| Manual Modification Control | ✓ | ✓ (mark_modified, mark_unmodified) |
-| Type Safety | - | ✓ (Rust types) |
-| Async Operations | - | ✓ |
+| Feature                     | Django | Reinhardt Sessions                 |
+| --------------------------- | ------ | ---------------------------------- |
+| Session Backends            | ✓      | ✓                                  |
+| Session Object              | ✓      | ✓                                  |
+| In-Memory Backend           | ✓      | ✓                                  |
+| Database Backend            | ✓      | ✓ (SQLite, PostgreSQL, MySQL)      |
+| File Backend                | ✓      | ✓ (with file locking)              |
+| Cookie Backend              | ✓      | ✓ (AES-GCM encrypted)              |
+| Session Middleware          | ✓      | ✓                                  |
+| TTL/Expiration              | ✓      | ✓                                  |
+| Session Iteration           | ✓      | ✓ (keys, values, items)            |
+| Manual Modification Control | ✓      | ✓ (mark_modified, mark_unmodified) |
+| Type Safety                 | -      | ✓ (Rust types)                     |
+| Async Operations            | -      | ✓                                  |
 
 ## License
 
