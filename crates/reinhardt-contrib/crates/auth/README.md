@@ -11,6 +11,7 @@ Comprehensive authentication and authorization system inspired by Django and Dja
 ### Core Authentication
 
 #### JWT (JSON Web Token) Authentication
+
 - **Claims Management**: `Claims` struct with user identification, expiration, and issue times
 - **Token Generation**: Automatic 24-hour expiration by default
 - **Token Verification**: Built-in expiration checking and signature validation
@@ -26,6 +27,7 @@ let claims = jwt_auth.verify_token(&token).unwrap();
 ```
 
 #### HTTP Basic Authentication
+
 - **BasicAuthentication**: HTTP Basic auth backend with user management
 - **Base64 Encoding/Decoding**: Standard HTTP Basic auth header parsing
 - **User Registration**: Add users with username/password pairs
@@ -44,12 +46,14 @@ let result = auth.authenticate(&request).unwrap();
 ### User Management
 
 #### User Trait
+
 - **Core User Interface**: Unified trait for authenticated and anonymous users
 - **User Identification**: `id()`, `username()`, `get_username()` methods
 - **Authentication Status**: `is_authenticated()`, `is_active()`, `is_admin()` checks
 - **Django Compatibility**: Methods compatible with Django's user interface
 
 #### User Implementations
+
 - **SimpleUser**: Fully-featured user with UUID, username, email, active/admin flags
 - **AnonymousUser**: Zero-sized type representing unauthenticated visitors
 - **Serialization Support**: Serde integration for SimpleUser
@@ -73,6 +77,7 @@ assert!(!user.is_admin());
 ### Password Security
 
 #### Password Hashing
+
 - **PasswordHasher Trait**: Composable password hashing interface
 - **Argon2Hasher**: Production-ready Argon2id implementation (recommended)
 - **Hash Generation**: Secure salt generation using OS random number generator
@@ -89,12 +94,14 @@ assert!(hasher.verify("my_password", &hash).unwrap());
 ### Authentication Backends
 
 #### AuthBackend Trait
+
 - **Composable Architecture**: Support for multiple authentication strategies
 - **Async Support**: Full async/await integration with `async_trait`
 - **User Authentication**: `authenticate(username, password)` method
 - **User Lookup**: `get_user(user_id)` for session restoration
 
 #### Composite Authentication
+
 - **CompositeAuthBackend**: Chain multiple authentication backends
 - **Fallback Support**: Try backends in order until one succeeds
 - **Flexible Configuration**: Add backends dynamically at runtime
@@ -113,11 +120,13 @@ let user = composite.authenticate("alice", "password").await;
 ### Permission System
 
 #### Permission Trait
+
 - **Permission Interface**: Async `has_permission()` method with context
 - **PermissionContext**: Request-aware context with authentication flags
 - **Composable Permissions**: Build complex permission logic
 
 #### Built-in Permission Classes
+
 - **AllowAny**: Allow all requests without authentication
 - **IsAuthenticated**: Require authenticated user
 - **IsAdminUser**: Require authenticated admin user
@@ -141,6 +150,7 @@ assert!(permission.has_permission(&context).await);
 ### Error Handling
 
 #### AuthenticationError
+
 - **InvalidCredentials**: Wrong username or password
 - **UserNotFound**: User does not exist
 - **SessionExpired**: Session has expired
@@ -148,25 +158,175 @@ assert!(permission.has_permission(&context).await);
 - **Unknown**: Generic error with custom message
 
 #### AuthenticationBackend Trait
+
 - **Unified Error Handling**: All backends use `AuthenticationError`
 - **Standard Error Trait**: Implements `std::error::Error`
 - **Display Implementation**: User-friendly error messages
+
+### Session-Based Authentication
+
+#### SessionAuthentication
+
+- **Session Management**: `Session` struct with HashMap-based data storage
+- **SessionStore Trait**: Async interface for session persistence
+  - `load()`: Retrieve session by ID
+  - `save()`: Persist session data
+  - `delete()`: Remove session
+- **InMemorySessionStore**: Built-in in-memory session storage
+- **SessionId**: Type-safe session identifier wrapper
+- **Cookie Integration**: Secure session cookie handling
+
+```rust
+use reinhardt_auth::{SessionAuthentication, Session, InMemorySessionStore};
+
+let store = InMemorySessionStore::new();
+let auth = SessionAuthentication::new(store);
+
+// Create session
+let session_id = auth.create_session(user).await?;
+
+// Verify session
+let user = auth.authenticate_session(&session_id).await?;
+```
+
+### Multi-Factor Authentication (MFA)
+
+#### TOTP-Based MFA
+
+- **MFAAuthentication**: Time-based one-time password (TOTP) authentication
+- **Secret Management**: Secure per-user secret storage
+- **QR Code Generation**: Generate TOTP URLs for authenticator apps (Google Authenticator, Authy)
+- **Code Verification**: Verify TOTP codes with configurable time window
+- **Registration Flow**: User enrollment with secret generation
+- **Time Window**: Configurable tolerance for time skew (default: 1 time step)
+
+```rust
+use reinhardt_auth::MFAAuthentication;
+
+let mfa = MFAAuthentication::new("MyApp");
+
+// Register user for MFA
+let totp_url = mfa.register_user("alice").await?;
+// User scans QR code generated from totp_url
+
+// Verify code during login
+let code = "123456"; // from user's authenticator app
+assert!(mfa.verify_code("alice", code).await?);
+```
+
+### OAuth2 Support
+
+#### OAuth2 Authentication
+
+- **OAuth2Authentication**: Full OAuth2 provider implementation
+- **Grant Types**: Authorization Code, Client Credentials, Refresh Token, Implicit
+- **Application Management**: `OAuth2Application` with client credentials
+- **Token Management**: `OAuth2Token` with access and refresh tokens
+- **Authorization Flow**:
+  - Authorization code generation and validation
+  - Token exchange (code → access token)
+  - Token refresh with refresh tokens
+- **OAuth2TokenStore Trait**: Persistent token storage interface
+- **InMemoryTokenStore**: Built-in in-memory token storage
+
+```rust
+use reinhardt_auth::{OAuth2Authentication, GrantType, InMemoryTokenStore};
+
+let store = InMemoryTokenStore::new();
+let oauth2 = OAuth2Authentication::new(store);
+
+// Register OAuth2 application
+oauth2.register_application(
+    "client123",
+    "secret456",
+    "https://example.com/callback",
+    vec![GrantType::AuthorizationCode]
+).await?;
+
+// Authorization code flow
+let code = oauth2.generate_authorization_code("client123", "user123", vec!["read", "write"]).await?;
+let token = oauth2.exchange_code(&code, "client123").await?;
+
+// Use access token
+let claims = oauth2.verify_token(&token.access_token).await?;
+```
+
+### Token Blacklist & Rotation
+
+#### Token Blacklist
+
+- **TokenBlacklist Trait**: Interface for token invalidation
+- **BlacklistReason**: Categorized revocation reasons
+  - `Logout`: User-initiated logout
+  - `Compromised`: Security incident
+  - `ManualRevoke`: Admin revocation
+  - `Rotated`: Automatic token rotation
+- **InMemoryBlacklist**: Built-in in-memory blacklist storage
+- **Cleanup**: Automatic removal of expired blacklist entries
+- **Statistics**: Usage tracking and monitoring
+
+#### Token Rotation
+
+- **TokenRotationManager**: Automatic refresh token rotation
+- **RefreshTokenStore Trait**: Persistent refresh token storage
+- **Rotation Flow**: Invalidate old token when issuing new one
+- **Security**: Prevents refresh token reuse attacks
+- **InMemoryRefreshStore**: Built-in in-memory refresh token storage
+
+```rust
+use reinhardt_auth::{
+    TokenBlacklist, InMemoryBlacklist, BlacklistReason,
+    TokenRotationManager, InMemoryRefreshStore
+};
+
+// Token blacklist
+let blacklist = InMemoryBlacklist::new();
+blacklist.blacklist("old_token", BlacklistReason::Logout).await?;
+assert!(blacklist.is_blacklisted("old_token").await?);
+
+// Token rotation
+let refresh_store = InMemoryRefreshStore::new();
+let rotation_manager = TokenRotationManager::new(blacklist, refresh_store);
+
+let new_token = rotation_manager.rotate_token("old_refresh_token", "user123").await?;
+```
+
+### Remote User Authentication
+
+#### Header-Based Authentication
+
+- **RemoteUserAuthentication**: Authenticate via trusted HTTP headers
+- **Reverse Proxy Integration**: Support for authentication proxies (nginx, Apache, etc.)
+- **Header Configuration**: Configurable header name (default: `REMOTE_USER`)
+- **Header Validation**: Verify header presence and format
+- **Automatic Logout**: Optional force logout when header is missing
+- **SSO Support**: Single sign-on integration
+
+```rust
+use reinhardt_auth::RemoteUserAuthentication;
+
+// Standard configuration
+let auth = RemoteUserAuthentication::new("REMOTE_USER");
+
+// With force logout
+let auth = RemoteUserAuthentication::new("REMOTE_USER").force_logout_if_no_header(true);
+
+// Authenticate from request
+let user = auth.authenticate(&request).await?;
+```
 
 ## Planned
 
 The following features are planned for future releases:
 
-### Session-Based Authentication
-- **SessionAuthentication**: Traditional session-based auth
-- **SessionStore**: Session data persistence
-- **Cookie Management**: Secure cookie handling
-
 ### Token-Based Authentication
+
 - **TokenAuthentication**: API token authentication
 - **Token Storage**: Token persistence and lookup
 - **Token Rotation**: Automatic token rotation for security
 
 ### Advanced Permissions
+
 - **RateLimitPermission**: Request rate limiting by IP or user
 - **TimeBasedPermission**: Time-of-day access control
 - **IpWhitelistPermission**: IP-based access control
@@ -174,46 +334,20 @@ The following features are planned for future releases:
 - **Permission Operators**: AND, OR, NOT combinators for complex logic
 
 ### Model Permissions
+
 - **DjangoModelPermissions**: Django-style model permissions
 - **DjangoModelPermissionsOrAnonReadOnly**: Anonymous read access
 - **ModelPermission**: CRUD permissions per model
 - **Permission Checking**: Object-level permission support
 
-### Multi-Factor Authentication (MFA)
-- **TotpDevice**: Time-based one-time passwords (Google Authenticator, Authy)
-- **BackupCode**: Emergency backup codes
-- **MfaManager**: MFA device management
-- **MfaMethod**: Support for multiple MFA methods
-- **MfaDeviceStore**: Persistent storage for MFA devices
-
-### OAuth2 Support
-- **OAuth2Authentication**: OAuth2 provider integration
-- **OAuth2Application**: Client application management
-- **OAuth2Token**: Access and refresh tokens
-- **AccessToken**: OAuth2 access token handling
-- **AuthorizationCode**: Authorization code flow
-- **GrantType**: Support for multiple grant types
-- **OAuth2TokenStore**: Token persistence
-
-### Token Blacklist
-- **TokenBlacklist**: Invalidate tokens before expiration
-- **RefreshToken**: Refresh token management
-- **TokenRotationManager**: Automatic token rotation
-- **BlacklistedToken**: Track invalidated tokens
-- **BlacklistReason**: Categorize token blacklist reasons
-- **BlacklistStats**: Usage statistics and monitoring
-
-### Remote User Authentication
-- **RemoteUserAuthentication**: Authenticate via trusted headers
-- **PersistentRemoteUserAuthentication**: SSO integration support
-- **Header-based Auth**: Reverse proxy authentication
-
 ### Django REST Framework Compatibility
+
 - **DRF Authentication Classes**: Compatible authentication interfaces
 - **DRF Permission Classes**: Compatible permission interfaces
 - **Browsable API Support**: Integration with DRF-style browsable API
 
 ### Admin & Management
+
 - **User Management**: CRUD operations for users
 - **Group Management**: User groups and permissions
 - **Permission Assignment**: Assign permissions to users/groups
