@@ -785,23 +785,35 @@ where
         // Build SQL with parameter binding
         let sql = query.to_string(PostgresQueryBuilder);
 
-        // Execute query through the manager
-        match &self.manager {
-            Some(_manager) => {
-                // TODO: Execute the query using the manager's database connection
-                // For now, return a placeholder error
-                Err(reinhardt_apps::Error::Database(format!(
-                    "Query execution not yet implemented: {}",
-                    sql
-                )))
-            }
-            None => {
-                // Fallback: create a new manager instance if none exists
-                Err(reinhardt_apps::Error::Database(
-                    "No manager available for query execution".to_string(),
-                ))
-            }
+        // Execute query using database connection
+        let conn = crate::manager::get_connection().await?;
+
+        // Execute the SELECT query
+        let rows = conn.query(&sql).await?;
+
+        // Composite PK queries should return exactly one row
+        if rows.is_empty() {
+            return Err(reinhardt_apps::Error::Database(
+                "No record found matching the composite primary key".to_string(),
+            ));
         }
+
+        if rows.len() > 1 {
+            return Err(reinhardt_apps::Error::Database(format!(
+                "Multiple records found ({}) for composite primary key, expected exactly one",
+                rows.len()
+            )));
+        }
+
+        // Deserialize the single row into the model
+        let row = &rows[0];
+        let value = serde_json::to_value(&row.data).map_err(|e| {
+            reinhardt_apps::Error::Database(format!("Serialization error: {}", e))
+        })?;
+
+        serde_json::from_value(value).map_err(|e| {
+            reinhardt_apps::Error::Database(format!("Deserialization error: {}", e))
+        })
     }
 }
 
