@@ -14,7 +14,9 @@ syn = { version = "2.0", features = ["full", "extra-traits"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 nom = "8"
+ctor = "0.6.0"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 trybuild = "1.0"
+serde = { version = "1.0", features = ["derive"] }

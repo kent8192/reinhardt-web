@@ -1,0 +1,676 @@
+//! Model derive macro for automatic ORM model registration
+//!
+//! Provides automatic `Model` trait implementation and registration to the global ModelRegistry.
+
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::{Data, DeriveInput, Fields, Result, Type};
+
+/// Model configuration from #[model(...)] attribute
+#[derive(Debug, Clone)]
+struct ModelConfig {
+    app_label: String,
+    table_name: String,
+}
+
+impl ModelConfig {
+    /// Parse #[model(...)] attribute
+    fn from_attrs(attrs: &[syn::Attribute], struct_name: &syn::Ident) -> Result<Self> {
+        let mut app_label = None;
+        let mut table_name = None;
+
+        for attr in attrs {
+            if !attr.path().is_ident("model") {
+                continue;
+            }
+
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("app_label") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    app_label = Some(value.value());
+                    Ok(())
+                } else if meta.path.is_ident("table_name") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    table_name = Some(value.value());
+                    Ok(())
+                } else {
+                    Err(meta.error("unsupported model attribute"))
+                }
+            })?;
+        }
+
+        let table_name = table_name.ok_or_else(|| {
+            syn::Error::new_spanned(
+                struct_name,
+                "table_name attribute is required in #[model(...)]",
+            )
+        })?;
+
+        Ok(Self {
+            app_label: app_label.unwrap_or_else(|| "default".to_string()),
+            table_name,
+        })
+    }
+}
+
+/// Field configuration from #[field(...)] attribute
+#[derive(Debug, Clone, Default)]
+struct FieldConfig {
+    primary_key: bool,
+    max_length: Option<u64>,
+    null: Option<bool>,
+    blank: Option<bool>,
+    unique: Option<bool>,
+    default: Option<String>,
+    db_column: Option<String>,
+    editable: Option<bool>,
+    index: Option<bool>,
+    check: Option<String>,
+    // Validator flags
+    email: Option<bool>,
+    url: Option<bool>,
+    min_length: Option<u64>,
+    min_value: Option<i64>,
+    max_value: Option<i64>,
+}
+
+impl FieldConfig {
+    /// Parse #[field(...)] attribute
+    fn from_attrs(attrs: &[syn::Attribute]) -> Result<Self> {
+        let mut config = Self::default();
+
+        for attr in attrs {
+            if !attr.path().is_ident("field") {
+                continue;
+            }
+
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("primary_key") {
+                    let value: syn::LitBool = meta.value()?.parse()?;
+                    config.primary_key = value.value;
+                    Ok(())
+                } else if meta.path.is_ident("max_length") {
+                    let value: syn::LitInt = meta.value()?.parse()?;
+                    config.max_length = Some(value.base10_parse()?);
+                    Ok(())
+                } else if meta.path.is_ident("null") {
+                    let value: syn::LitBool = meta.value()?.parse()?;
+                    config.null = Some(value.value);
+                    Ok(())
+                } else if meta.path.is_ident("blank") {
+                    let value: syn::LitBool = meta.value()?.parse()?;
+                    config.blank = Some(value.value);
+                    Ok(())
+                } else if meta.path.is_ident("unique") {
+                    let value: syn::LitBool = meta.value()?.parse()?;
+                    config.unique = Some(value.value);
+                    Ok(())
+                } else if meta.path.is_ident("default") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    config.default = Some(value.value());
+                    Ok(())
+                } else if meta.path.is_ident("db_column") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    config.db_column = Some(value.value());
+                    Ok(())
+                } else if meta.path.is_ident("editable") {
+                    let value: syn::LitBool = meta.value()?.parse()?;
+                    config.editable = Some(value.value);
+                    Ok(())
+                } else if meta.path.is_ident("index") {
+                    let value: syn::LitBool = meta.value()?.parse()?;
+                    config.index = Some(value.value);
+                    Ok(())
+                } else if meta.path.is_ident("check") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    config.check = Some(value.value());
+                    Ok(())
+                } else if meta.path.is_ident("email") {
+                    let value: syn::LitBool = meta.value()?.parse()?;
+                    config.email = Some(value.value);
+                    Ok(())
+                } else if meta.path.is_ident("url") {
+                    let value: syn::LitBool = meta.value()?.parse()?;
+                    config.url = Some(value.value);
+                    Ok(())
+                } else if meta.path.is_ident("min_length") {
+                    let value: syn::LitInt = meta.value()?.parse()?;
+                    config.min_length = Some(value.base10_parse()?);
+                    Ok(())
+                } else if meta.path.is_ident("min_value") {
+                    let value: syn::LitInt = meta.value()?.parse()?;
+                    config.min_value = Some(value.base10_parse()?);
+                    Ok(())
+                } else if meta.path.is_ident("max_value") {
+                    let value: syn::LitInt = meta.value()?.parse()?;
+                    config.max_value = Some(value.base10_parse()?);
+                    Ok(())
+                } else {
+                    Err(meta.error("unsupported field attribute"))
+                }
+            })?;
+        }
+
+        Ok(config)
+    }
+}
+
+/// Field information for processing
+#[derive(Debug, Clone)]
+struct FieldInfo {
+    name: syn::Ident,
+    ty: Type,
+    config: FieldConfig,
+}
+
+/// Map Rust type to ORM field type
+fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<String> {
+    // Extract the inner type if it's Option<T>
+    let (_is_option, inner_ty) = extract_option_type(ty);
+
+    let field_type = match inner_ty {
+        Type::Path(type_path) => {
+            let last_segment = type_path
+                .path
+                .segments
+                .last()
+                .ok_or_else(|| syn::Error::new_spanned(ty, "Invalid type path"))?;
+
+            match last_segment.ident.to_string().as_str() {
+                "i32" => "IntegerField",
+                "i64" => "BigIntegerField",
+                "String" => {
+                    if config.max_length.is_none() {
+                        return Err(syn::Error::new_spanned(
+                            ty,
+                            "String fields require max_length attribute",
+                        ));
+                    }
+                    "CharField"
+                }
+                "bool" => "BooleanField",
+                "DateTime" => "DateTimeField",
+                "Date" => "DateField",
+                "Time" => "TimeField",
+                "f32" | "f64" => "FloatField",
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        ty,
+                        format!("Unsupported field type: {}", last_segment.ident),
+                    ));
+                }
+            }
+        }
+        _ => {
+            return Err(syn::Error::new_spanned(ty, "Unsupported field type"));
+        }
+    };
+
+    Ok(field_type.to_string())
+}
+
+/// Extract Option<T> and return (is_option, inner_type)
+fn extract_option_type(ty: &Type) -> (bool, &Type) {
+    if let Type::Path(type_path) = ty {
+        if let Some(last_segment) = type_path.path.segments.last() {
+            if last_segment.ident == "Option" {
+                if let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                    if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
+                        return (true, inner_ty);
+                    }
+                }
+            }
+        }
+    }
+    (false, ty)
+}
+
+/// Implementation of the `Model` derive macro
+pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
+    let struct_name = &input.ident;
+    let generics = &input.generics;
+    let where_clause = &generics.where_clause;
+
+    // Parse model configuration
+    let model_config = ModelConfig::from_attrs(&input.attrs, struct_name)?;
+    let app_label = &model_config.app_label;
+    let table_name = &model_config.table_name;
+
+    // Only support structs
+    let fields = match &input.data {
+        Data::Struct(data_struct) => match &data_struct.fields {
+            Fields::Named(fields) => &fields.named,
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    struct_name,
+                    "Model can only be derived for structs with named fields",
+                ))
+            }
+        },
+        _ => {
+            return Err(syn::Error::new_spanned(
+                struct_name,
+                "Model can only be derived for structs",
+            ))
+        }
+    };
+
+    // Process all fields
+    let mut field_infos = Vec::new();
+    for field in fields {
+        let name = field
+            .ident
+            .clone()
+            .ok_or_else(|| syn::Error::new_spanned(field, "Field must have a name"))?;
+        let ty = field.ty.clone();
+        let config = FieldConfig::from_attrs(&field.attrs)?;
+
+        field_infos.push(FieldInfo { name, ty, config });
+    }
+
+    // Find all primary key fields
+    let pk_fields: Vec<_> = field_infos
+        .iter()
+        .filter(|f| f.config.primary_key)
+        .collect();
+
+    if pk_fields.is_empty() {
+        return Err(syn::Error::new_spanned(
+            struct_name,
+            "Model must have at least one primary key field",
+        ));
+    }
+
+    // Determine if this is a composite primary key
+    let is_composite_pk = pk_fields.len() > 1;
+
+    // Find all indexed fields
+    let indexed_fields: Vec<_> = field_infos
+        .iter()
+        .filter(|f| f.config.index.unwrap_or(false))
+        .map(|f| f.name.to_string())
+        .collect();
+
+    // Find all check constraint fields
+    let check_constraints: Vec<(String, String)> = field_infos
+        .iter()
+        .filter_map(|f| {
+            f.config
+                .check
+                .as_ref()
+                .map(|expr| (f.name.to_string(), expr.clone()))
+        })
+        .collect();
+
+    // Extract constraint names and expressions for code generation
+    let constraint_names: Vec<String> = check_constraints
+        .iter()
+        .map(|(field_name, _)| format!("{}_check", field_name))
+        .collect();
+    let constraint_expressions: Vec<String> = check_constraints
+        .iter()
+        .map(|(_, expr)| expr.clone())
+        .collect();
+
+    // For single PK, extract field info
+    let (pk_name, _pk_ty, pk_is_option, pk_type) = if !is_composite_pk {
+        let pk_field = pk_fields[0];
+        let pk_name = &pk_field.name;
+        let pk_ty = &pk_field.ty;
+        let (pk_is_option, pk_inner_ty) = extract_option_type(pk_ty);
+        let pk_type = if pk_is_option { pk_inner_ty } else { pk_ty };
+        (pk_name, pk_ty, pk_is_option, pk_type)
+    } else {
+        // For composite PK, we use a dummy type that will be replaced
+        // The actual implementation will be different
+        let dummy_ident = &pk_fields[0].name;
+        let dummy_ty = &pk_fields[0].ty;
+        (dummy_ident, dummy_ty, false, dummy_ty)
+    };
+
+    // Generate field_metadata implementation
+    let field_metadata_items = generate_field_metadata(&field_infos)?;
+
+    // Generate auto-registration code
+    let registration_code =
+        generate_registration_code(struct_name, app_label, table_name, &field_infos)?;
+
+    // Generate primary_key() and set_primary_key() implementations
+    let (pk_impl, set_pk_impl, composite_pk_impl) = if is_composite_pk {
+        // Composite primary key implementation
+        let composite_impl = generate_composite_pk_impl(&pk_fields);
+
+        // For composite PK, primary_key() and set_primary_key() return/accept dummy values
+        // The actual values are accessed via get_composite_pk_values()
+        let first_pk_name = &pk_fields[0].name;
+        let first_pk_ty = &pk_fields[0].ty;
+        let (first_is_option, first_inner_ty) = extract_option_type(first_pk_ty);
+        let _first_pk_type = if first_is_option {
+            first_inner_ty
+        } else {
+            first_pk_ty
+        };
+
+        let pk_getter = if first_is_option {
+            quote! {
+                fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+                    self.#first_pk_name.as_ref()
+                }
+            }
+        } else {
+            quote! {
+                fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+                    Some(&self.#first_pk_name)
+                }
+            }
+        };
+
+        let pk_setter = if first_is_option {
+            quote! {
+                fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+                    self.#first_pk_name = Some(value);
+                }
+            }
+        } else {
+            quote! {
+                fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+                    self.#first_pk_name = value;
+                }
+            }
+        };
+
+        (pk_getter, pk_setter, composite_impl)
+    } else {
+        // Single primary key implementation
+        let (pk_getter, pk_setter) = if pk_is_option {
+            // If primary key is Option<T>, extract the inner value
+            (
+                quote! {
+                    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+                        self.#pk_name.as_ref()
+                    }
+                },
+                quote! {
+                    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+                        self.#pk_name = Some(value);
+                    }
+                },
+            )
+        } else {
+            // If primary key is not Option, wrap in Some
+            (
+                quote! {
+                    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+                        Some(&self.#pk_name)
+                    }
+                },
+                quote! {
+                    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+                        self.#pk_name = value;
+                    }
+                },
+            )
+        };
+
+        (pk_getter, pk_setter, quote! {})
+    };
+
+    // Generate the Model implementation
+    let expanded = quote! {
+        impl #generics ::reinhardt_orm::Model for #struct_name #generics #where_clause {
+            type PrimaryKey = #pk_type;
+
+            fn table_name() -> &'static str {
+                #table_name
+            }
+
+            fn app_label() -> &'static str {
+                #app_label
+            }
+
+            fn primary_key_field() -> &'static str {
+                stringify!(#pk_name)
+            }
+
+            #pk_impl
+
+            #set_pk_impl
+
+            #composite_pk_impl
+
+            fn field_metadata() -> Vec<::reinhardt_orm::inspection::FieldInfo> {
+                vec![
+                    #(#field_metadata_items),*
+                ]
+            }
+
+            fn index_metadata() -> Vec<::reinhardt_orm::inspection::IndexInfo> {
+                vec![
+                    #(
+                        ::reinhardt_orm::inspection::IndexInfo {
+                            fields: vec![#indexed_fields.to_string()],
+                            unique: false,
+                            name: None,
+                        }
+                    ),*
+                ]
+            }
+
+            fn constraint_metadata() -> Vec<::reinhardt_orm::inspection::ConstraintInfo> {
+                vec![
+                    #(
+                        ::reinhardt_orm::inspection::ConstraintInfo {
+                            name: #constraint_names.to_string(),
+                            constraint_type: ::reinhardt_orm::inspection::ConstraintType::Check,
+                            definition: #constraint_expressions.to_string(),
+                        }
+                    ),*
+                ]
+            }
+        }
+
+        #registration_code
+    };
+
+    Ok(expanded)
+}
+
+/// Generate FieldInfo construction for field_metadata()
+fn generate_field_metadata(field_infos: &[FieldInfo]) -> Result<Vec<TokenStream>> {
+    let mut items = Vec::new();
+
+    for field_info in field_infos {
+        let name = field_info.name.to_string();
+        let field_type = map_type_to_field_type(&field_info.ty, &field_info.config)?;
+        let field_type_path = format!("reinhardt.orm.models.{}", field_type);
+        let config = &field_info.config;
+
+        let (is_option, _) = extract_option_type(&field_info.ty);
+        let nullable = config.null.unwrap_or(is_option);
+        let primary_key = config.primary_key;
+        let unique = config.unique.unwrap_or(false);
+        let blank = config.blank.unwrap_or(false);
+        let editable = config.editable.unwrap_or(true);
+
+        // Build attributes map
+        let mut attrs = Vec::new();
+        if let Some(max_length) = config.max_length {
+            attrs.push(quote! {
+                attributes.insert(
+                    "max_length".to_string(),
+                    ::reinhardt_orm::fields::FieldKwarg::Uint(#max_length)
+                );
+            });
+        }
+
+        // Add validator attributes
+        if let Some(email) = config.email {
+            if email {
+                attrs.push(quote! {
+                    attributes.insert(
+                        "email".to_string(),
+                        ::reinhardt_orm::fields::FieldKwarg::Bool(true)
+                    );
+                });
+            }
+        }
+        if let Some(url) = config.url {
+            if url {
+                attrs.push(quote! {
+                    attributes.insert(
+                        "url".to_string(),
+                        ::reinhardt_orm::fields::FieldKwarg::Bool(true)
+                    );
+                });
+            }
+        }
+        if let Some(min_length) = config.min_length {
+            attrs.push(quote! {
+                attributes.insert(
+                    "min_length".to_string(),
+                    ::reinhardt_orm::fields::FieldKwarg::Uint(#min_length)
+                );
+            });
+        }
+        if let Some(min_value) = config.min_value {
+            attrs.push(quote! {
+                attributes.insert(
+                    "min_value".to_string(),
+                    ::reinhardt_orm::fields::FieldKwarg::Int(#min_value)
+                );
+            });
+        }
+        if let Some(max_value) = config.max_value {
+            attrs.push(quote! {
+                attributes.insert(
+                    "max_value".to_string(),
+                    ::reinhardt_orm::fields::FieldKwarg::Int(#max_value)
+                );
+            });
+        }
+
+        let item = quote! {
+            {
+                let mut attributes = ::std::collections::HashMap::new();
+                #(#attrs)*
+
+                ::reinhardt_orm::inspection::FieldInfo {
+                    name: #name.to_string(),
+                    field_type: #field_type_path.to_string(),
+                    nullable: #nullable,
+                    primary_key: #primary_key,
+                    unique: #unique,
+                    blank: #blank,
+                    editable: #editable,
+                    default: None,
+                    db_default: None,
+                    db_column: None,
+                    choices: None,
+                    attributes,
+                }
+            }
+        };
+
+        items.push(item);
+    }
+
+    Ok(items)
+}
+
+/// Generate automatic registration code using ctor
+fn generate_registration_code(
+    struct_name: &syn::Ident,
+    app_label: &str,
+    table_name: &str,
+    field_infos: &[FieldInfo],
+) -> Result<TokenStream> {
+    let model_name = struct_name.to_string();
+    let register_fn_name = syn::Ident::new(
+        &format!(
+            "__register_{}_model",
+            struct_name.to_string().to_lowercase()
+        ),
+        struct_name.span(),
+    );
+
+    // Generate field registration code
+    let mut field_registrations = Vec::new();
+    for field_info in field_infos {
+        let field_name = field_info.name.to_string();
+        let field_type = map_type_to_field_type(&field_info.ty, &field_info.config)?;
+        let config = &field_info.config;
+
+        let mut params = Vec::new();
+        if config.primary_key {
+            params.push(quote! { .with_param("primary_key", "true") });
+        }
+        if let Some(max_length) = config.max_length {
+            let ml_str = max_length.to_string();
+            params.push(quote! { .with_param("max_length", #ml_str) });
+        }
+        if let Some(null) = config.null {
+            let null_str = null.to_string();
+            params.push(quote! { .with_param("null", #null_str) });
+        }
+        if let Some(unique) = config.unique {
+            if unique {
+                params.push(quote! { .with_param("unique", "true") });
+            }
+        }
+
+        field_registrations.push(quote! {
+            metadata.add_field(
+                #field_name.to_string(),
+                ::reinhardt_migrations::model_registry::FieldMetadata::new(#field_type)
+                    #(#params)*
+            );
+        });
+    }
+
+    let code = quote! {
+        #[::ctor::ctor]
+        fn #register_fn_name() {
+            use ::reinhardt_migrations::model_registry::*;
+
+            let mut metadata = ModelMetadata::new(
+                #app_label,
+                #model_name,
+                #table_name,
+            );
+
+            #(#field_registrations)*
+
+            global_registry().register_model(metadata);
+        }
+    };
+
+    Ok(code)
+}
+
+/// Generate composite primary key implementation
+fn generate_composite_pk_impl(pk_fields: &[&FieldInfo]) -> TokenStream {
+    let field_names: Vec<_> = pk_fields.iter().map(|f| &f.name).collect();
+    let field_name_strings: Vec<String> = pk_fields.iter().map(|f| f.name.to_string()).collect();
+
+    quote! {
+        fn composite_primary_key() -> Option<::reinhardt_orm::composite_pk::CompositePrimaryKey> {
+            Some(
+                ::reinhardt_orm::composite_pk::CompositePrimaryKey::new(
+                    vec![#(#field_name_strings.to_string()),*]
+                )
+                .expect("Invalid composite primary key")
+            )
+        }
+
+        fn get_composite_pk_values(&self) -> ::std::collections::HashMap<String, ::reinhardt_orm::composite_pk::PkValue> {
+            let mut values = ::std::collections::HashMap::new();
+            #(
+                values.insert(
+                    stringify!(#field_names).to_string(),
+                    ::reinhardt_orm::composite_pk::PkValue::from(&self.#field_names)
+                );
+            )*
+            values
+        }
+    }
+}

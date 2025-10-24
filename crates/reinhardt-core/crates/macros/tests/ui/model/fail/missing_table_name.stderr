@@ -1,0 +1,5 @@
+error: table_name attribute is required in #[model(...)]
+ --> tests/ui/model/fail/missing_table_name.rs:8:8
+  |
+8 | struct User {
+  |        ^^^^

@@ -1,0 +1,5 @@
+error: Model must have at least one primary key field
+ --> tests/ui/model/fail/no_primary_key_at_all.rs:8:8
+  |
+8 | struct InvalidModel {
+  |        ^^^^^^^^^^^^

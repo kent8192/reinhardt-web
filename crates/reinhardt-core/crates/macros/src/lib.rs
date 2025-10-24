@@ -26,7 +26,9 @@ use syn::{parse_macro_input, ItemFn};
 mod action;
 mod api_view;
 mod endpoint;
+mod injectable_derive;
 mod installed_apps;
+mod model_derive;
 mod path_macro;
 mod permission_macro;
 mod permissions;
@@ -38,7 +40,9 @@ mod schema;
 use action::action_impl;
 use api_view::api_view_impl;
 use endpoint::endpoint_impl;
+use injectable_derive::injectable_derive_impl;
 use installed_apps::installed_apps_impl;
+use model_derive::model_derive_impl;
 use path_macro::path_impl;
 use permissions::permission_required_impl;
 use query_fields::derive_query_fields_impl;
@@ -466,6 +470,149 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
 
     derive_schema_impl(input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+/// Derive macro for automatic Injectable implementation with field injection
+///
+/// Automatically implements the `Injectable` trait for structs, injecting dependencies
+/// for fields marked with `#[inject]`. Non-injected fields use `Default::default()`.
+///
+/// # Example
+///
+/// ```ignore
+/// use reinhardt_macros::Injectable;
+/// use reinhardt_di::{Injectable, InjectionContext};
+///
+/// #[derive(Clone, Default)]
+/// struct Database {
+///     connection_string: String,
+/// }
+///
+/// #[derive(Clone, Default)]
+/// struct RedisCache {
+///     host: String,
+/// }
+///
+/// #[derive(Clone, Injectable)]
+/// struct UserViewSet {
+///     #[inject]
+///     db: Database,
+///     #[inject]
+///     cache: RedisCache,
+///     name: String,  // Uses Default::default()
+/// }
+///
+/// // Automatically generated:
+/// // impl Injectable for UserViewSet {
+/// //     async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+/// //         let db = Depends::<Database>::resolve(ctx, true).await?;
+/// //         let cache = Depends::<RedisCache>::resolve(ctx, true).await?;
+/// //         Ok(Self {
+/// //             db,
+/// //             cache,
+/// //             name: Default::default(),
+/// //         })
+/// //     }
+/// // }
+/// ```
+///
+/// # Cache Control
+///
+/// You can disable caching for specific dependencies:
+///
+/// ```ignore
+/// #[derive(Clone, Injectable)]
+/// struct MyService {
+///     #[inject]
+///     db: Database,              // Cached (default)
+///     #[inject(cache = false)]
+///     fresh_data: FreshData,     // Not cached
+/// }
+/// ```
+///
+/// # Requirements
+///
+/// - Struct must have named fields
+/// - Non-injected fields must implement `Default`
+/// - Struct must be `Clone` (required by `Injectable` trait)
+/// - All `#[inject]` field types must implement `Injectable`
+///
+#[proc_macro_derive(Injectable, attributes(inject))]
+pub fn derive_injectable(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as syn::DeriveInput);
+
+    injectable_derive_impl(input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+/// Derive macro for automatic Model implementation and migration registration
+///
+/// Automatically implements the `Model` trait and registers the model with the global
+/// ModelRegistry for automatic migration generation.
+///
+/// # Example
+///
+/// ```ignore
+/// use reinhardt_macros::Model;
+/// use serde::{Serialize, Deserialize};
+///
+/// #[derive(Model, Serialize, Deserialize)]
+/// #[model(app_label = "blog", table_name = "posts")]
+/// struct Post {
+///     #[field(primary_key = true)]
+///     id: i64,
+///
+///     #[field(max_length = 200)]
+///     title: String,
+///
+///     #[field(null = true)]
+///     content: Option<String>,
+/// }
+/// ```
+///
+/// # Model Attributes
+///
+/// - `app_label`: Application label (default: "default")
+/// - `table_name`: Database table name (default: struct name in snake_case)
+///
+/// # Field Attributes
+///
+/// - `primary_key`: Mark field as primary key (required for exactly one field)
+/// - `max_length`: Maximum length for String fields (required for String)
+/// - `null`: Allow NULL values (default: inferred from Option<T>)
+/// - `blank`: Allow blank values in forms
+/// - `unique`: Enforce uniqueness constraint
+/// - `default`: Default value
+/// - `db_column`: Custom database column name
+/// - `editable`: Whether field is editable (default: true)
+///
+/// # Supported Types
+///
+/// - `i32` → IntegerField
+/// - `i64` → BigIntegerField
+/// - `String` → CharField (requires max_length)
+/// - `bool` → BooleanField
+/// - `DateTime<Utc>` → DateTimeField
+/// - `Date` → DateField
+/// - `Time` → TimeField
+/// - `f32`, `f64` → FloatField
+/// - `Option<T>` → Sets null=true automatically
+///
+/// # Requirements
+///
+/// - Struct must have named fields
+/// - Struct must implement `Serialize` and `Deserialize`
+/// - Exactly one field must be marked with `primary_key = true`
+/// - String fields must specify `max_length`
+///
+#[proc_macro_derive(Model, attributes(model, field))]
+pub fn derive_model(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as syn::DeriveInput);
+
+    model_derive_impl(input)
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
 }

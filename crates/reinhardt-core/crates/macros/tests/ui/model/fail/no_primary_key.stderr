@@ -1,0 +1,5 @@
+error: expected attribute arguments in parentheses: #[field(...)]
+ --> tests/ui/model/fail/no_primary_key.rs:9:7
+  |
+9 |     #[field]
+  |       ^^^^^

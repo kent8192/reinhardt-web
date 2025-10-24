@@ -1,0 +1,5 @@
+error: expected attribute arguments in parentheses: #[field(...)]
+  --> tests/ui/model/fail/missing_app_label.rs:12:7
+   |
+12 |     #[field]
+   |       ^^^^^
