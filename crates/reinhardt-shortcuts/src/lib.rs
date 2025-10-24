@@ -38,6 +38,10 @@ pub mod template_cache;
 #[cfg(feature = "templates")]
 pub mod template_inheritance;
 
+// Custom error pages (feature-gated)
+#[cfg(feature = "templates")]
+pub mod error_pages;
+
 // Re-export core functions
 pub use get_or_404::{
     exists_or_404_response, get_list_or_404_response, get_or_404_response, GetError,
@@ -52,3 +56,9 @@ pub use orm::{get_list_or_404, get_object_or_404};
 // Re-export template functions (feature-gated)
 #[cfg(feature = "templates")]
 pub use template::{render_template, render_to_response};
+
+// Re-export error page functions (feature-gated)
+#[cfg(feature = "templates")]
+pub use error_pages::{
+    bad_request, page_not_found, permission_denied, render_error_page, server_error,
+};

@@ -23,7 +23,8 @@ static TERA_ENGINE: OnceLock<Arc<Tera>> = OnceLock::new();
 /// Get or initialize the global Tera template engine
 ///
 /// The template directory is determined by the `REINHARDT_TEMPLATE_DIR`
-/// environment variable. If not set, defaults to `./templates`.
+/// environment variable. If not set, defaults to the `templates` directory
+/// relative to the crate root (determined at compile time).
 ///
 /// # Examples
 ///
@@ -37,14 +38,28 @@ pub fn get_tera_engine() -> &'static Arc<Tera> {
     TERA_ENGINE.get_or_init(|| {
         let template_dir = env::var("REINHARDT_TEMPLATE_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("templates"));
+            .unwrap_or_else(|_| {
+                // Use CARGO_MANIFEST_DIR to get the crate directory at compile time
+                let manifest_dir = env!("CARGO_MANIFEST_DIR");
+                PathBuf::from(manifest_dir).join("templates")
+            });
 
         let glob_pattern = format!("{}/**/*", template_dir.display());
 
         match Tera::new(&glob_pattern) {
-            Ok(tera) => Arc::new(tera),
+            Ok(tera) => {
+                eprintln!("Tera initialized successfully");
+                eprintln!("Template directory: {}", template_dir.display());
+                eprintln!("Registered templates:");
+                for name in tera.get_template_names() {
+                    eprintln!("  - {}", name);
+                }
+                Arc::new(tera)
+            }
             Err(e) => {
                 eprintln!("Warning: Failed to initialize Tera: {}", e);
+                eprintln!("Template directory: {}", template_dir.display());
+                eprintln!("Glob pattern: {}", glob_pattern);
                 // Return empty Tera instance as fallback
                 Arc::new(Tera::default())
             }
