@@ -207,7 +207,7 @@ impl AutoField {
 
 impl Field for AutoField {
     fn deconstruct(&self) -> FieldDeconstruction {
-        let mut kwargs = self.base.get_kwargs();
+        let kwargs = self.base.get_kwargs();
 
         FieldDeconstruction {
             name: self.base.name.clone(),
@@ -470,9 +470,9 @@ impl IntegerField {
     // The callable name would be used to dynamically generate choices at runtime
     /// assert!(field.base.choices.is_none()); // Callable choices are handled separately
     /// ```
-    pub fn with_callable_choices(callable_name: &str) -> Self {
+    pub fn with_callable_choices(_callable_name: &str) -> Self {
         // Store callable as a special marker in base
-        let mut field = Self::new();
+        let field = Self::new();
         // We'll handle callable differently in deconstruct
         field
     }

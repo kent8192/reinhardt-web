@@ -114,7 +114,7 @@ impl OrderedModel {
     /// ```
     pub async fn get_next_order(
         &self,
-        filters: HashMap<String, OrderValue>,
+        _filters: HashMap<String, OrderValue>,
     ) -> Result<i32, OrderError> {
         // In a real implementation, this would query the database
         // For now, we simulate by returning 0 (first position)
@@ -161,7 +161,7 @@ impl OrderedModel {
     /// ```
     pub async fn move_to_position(
         &self,
-        current_order: i32,
+        _current_order: i32,
         max_order: i32,
         new_position: i32,
     ) -> Result<i32, OrderError> {

@@ -1,5 +1,5 @@
-use reinhardt_validators::{FieldName, TableName};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Core trait for database models
 /// Uses composition instead of inheritance - models can implement multiple traits
@@ -9,6 +9,14 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync {
 
     /// Get the table name
     fn table_name() -> &'static str;
+
+    /// Get the app label for this model
+    ///
+    /// This is used by the migration system to organize models by application.
+    /// Defaults to "default" if not specified.
+    fn app_label() -> &'static str {
+        "default"
+    }
 
     /// Get the primary key field name
     fn primary_key_field() -> &'static str {
@@ -20,6 +28,78 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync {
 
     /// Set the primary key value
     fn set_primary_key(&mut self, value: Self::PrimaryKey);
+
+    /// Get composite primary key definition if this model uses composite PK
+    ///
+    /// Returns None for single primary key models, Some(CompositePrimaryKey) for composite PK models.
+    fn composite_primary_key() -> Option<crate::composite_pk::CompositePrimaryKey> {
+        None
+    }
+
+    /// Get composite primary key values for this instance
+    ///
+    /// Only meaningful for models with composite primary keys.
+    /// Returns empty HashMap for single primary key models.
+    fn get_composite_pk_values(&self) -> HashMap<String, crate::composite_pk::PkValue> {
+        HashMap::new()
+    }
+
+    /// Get field metadata for inspection
+    ///
+    /// This method should be implemented to provide introspection capabilities.
+    /// By default, returns an empty vector. Override this in derive macros or
+    /// manual implementations to provide actual field metadata.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use reinhardt_orm::Model;
+    ///
+    /// struct User {
+    ///     id: i32,
+    ///     name: String,
+    /// }
+    ///
+    /// impl Model for User {
+    ///     // ... other required methods ...
+    ///
+    ///     fn field_metadata() -> Vec<crate::inspection::FieldInfo> {
+    ///         vec![
+    ///             // Field metadata would be generated here
+    ///         ]
+    ///     }
+    /// }
+    /// ```
+    fn field_metadata() -> Vec<crate::inspection::FieldInfo> {
+        Vec::new()
+    }
+
+    /// Get relationship metadata for inspection
+    ///
+    /// This method should be implemented to provide relationship introspection.
+    /// By default, returns an empty vector. Override this in derive macros or
+    /// manual implementations to provide actual relationship metadata.
+    fn relationship_metadata() -> Vec<crate::inspection::RelationInfo> {
+        Vec::new()
+    }
+
+    /// Get index metadata for inspection
+    ///
+    /// This method should be implemented to provide index introspection.
+    /// By default, returns an empty vector. Override this in derive macros or
+    /// manual implementations to provide actual index metadata.
+    fn index_metadata() -> Vec<crate::inspection::IndexInfo> {
+        Vec::new()
+    }
+
+    /// Get constraint metadata for inspection
+    ///
+    /// This method should be implemented to provide constraint introspection.
+    /// By default, returns an empty vector. Override this in derive macros or
+    /// manual implementations to provide actual constraint metadata.
+    fn constraint_metadata() -> Vec<crate::inspection::ConstraintInfo> {
+        Vec::new()
+    }
 }
 
 /// Trait for models with timestamps - compose this with Model

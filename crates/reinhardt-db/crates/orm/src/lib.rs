@@ -86,7 +86,10 @@ pub use query_fields::{
     QueryFieldCompiler, StringType,
 };
 pub use set_operations::{CombinedQuery, SetOperation, SetOperationBuilder};
-pub use transaction::{Atomic, IsolationLevel, Savepoint, Transaction, TransactionState};
+pub use transaction::{
+    atomic, atomic_with_isolation, Atomic, IsolationLevel, Savepoint, Transaction,
+    TransactionScope, TransactionState,
+};
 pub use validators::{
     EmailValidator, FieldValidators, MaxLengthValidator, MinLengthValidator, ModelValidators,
     RangeValidator, RegexValidator, RequiredValidator, URLValidator, ValidationError, Validator,

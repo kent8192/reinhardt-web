@@ -1,7 +1,7 @@
 //! Type-safe field representation with transformation support
 
-use super::lookup::{Lookup, LookupType, LookupValue};
-use super::traits::{Comparable, Date, DateTime, DateTimeType, NumericType, StringType};
+use super::lookup::{Lookup, LookupType};
+use super::traits::{Comparable, Date, DateTime, NumericType};
 use crate::Model;
 use std::marker::PhantomData;
 

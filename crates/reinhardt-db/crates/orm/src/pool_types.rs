@@ -511,13 +511,6 @@ impl Drop for AssertionPool {
     }
 }
 
-// Advanced pool features (future implementation):
-// - Pre-ping functionality: Check connection validity before returning from pool
-// - Connection recycling: Reset connection state after return to pool
-// - Pool overflow handling: Create temporary connections beyond max_connections
-// - Connection timeout: Remove stale connections after idle timeout
-// - Pool statistics: Track get/return counts, wait times, active connections
-
 pub struct PoolStatistics {
     pub total_connections: usize,
     pub active_connections: usize,

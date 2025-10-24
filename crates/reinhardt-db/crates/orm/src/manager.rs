@@ -238,12 +238,16 @@ impl<M: Model> Manager<M> {
     }
 
     /// Generate UPDATE query for QuerySet
-    pub fn update_queryset(&self, queryset: &QuerySet<M>, updates: &[(&str, &str)]) -> String {
+    pub fn update_queryset(
+        &self,
+        queryset: &QuerySet<M>,
+        updates: &[(&str, &str)],
+    ) -> (String, Vec<String>) {
         queryset.update_sql(updates)
     }
 
     /// Generate DELETE query for QuerySet
-    pub fn delete_queryset(&self, queryset: &QuerySet<M>) -> String {
+    pub fn delete_queryset(&self, queryset: &QuerySet<M>) -> (String, Vec<String>) {
         queryset.delete_sql()
     }
 

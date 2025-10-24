@@ -48,9 +48,9 @@
 //! ```
 
 use crate::model::Model;
-use crate::registry::{registry, ColumnMapping, EntityMapper};
+use crate::registry::registry;
 use serde::{Deserialize, Serialize};
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -284,6 +284,7 @@ pub struct ModelReflector {
     /// Table name
     table_name: String,
     /// Type ID for runtime type checking
+    #[allow(dead_code)]
     type_id: TypeId,
 }
 
@@ -518,6 +519,7 @@ mod tests {
     use super::*;
     use crate::model::Model;
     use crate::registry::{registry, ColumnMapping, EntityMapper};
+    use serial_test::serial;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     struct TestUser {
@@ -562,6 +564,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_model_reflector_new() {
         setup_test_registry();
         let reflector = ModelReflector::new("TestUser").unwrap();
@@ -570,6 +573,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_model_reflector_new_not_found() {
         registry().clear();
         let result = ModelReflector::new("NonExistent");
@@ -581,6 +585,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_model_reflector_field_names() {
         setup_test_registry();
         let reflector = ModelReflector::new("TestUser").unwrap();
@@ -593,6 +598,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_model_reflector_fields() {
         setup_test_registry();
         let reflector = ModelReflector::new("TestUser").unwrap();
@@ -606,6 +612,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_model_reflector_field_info() {
         setup_test_registry();
         let reflector = ModelReflector::new("TestUser").unwrap();

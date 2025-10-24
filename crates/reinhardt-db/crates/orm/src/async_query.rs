@@ -10,7 +10,6 @@ use crate::engine::Engine;
 use crate::expressions::Q;
 use crate::query_execution::QueryCompiler;
 use crate::Model;
-use serde::de::DeserializeOwned;
 use std::marker::PhantomData;
 
 /// Async query builder

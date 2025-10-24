@@ -7,12 +7,11 @@
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
 use backends::{connection::DatabaseConnection, DatabaseError, DatabaseType, Row as DbRow};
-use std::sync::Arc;
 
 #[cfg(feature = "pooling")]
 use deadpool_sqlx::{Pool, Runtime};
 
-use sqlx::{Any, AnyPool, Database, Executor, Row};
+use sqlx::{Any, AnyPool};
 
 /// Database engine configuration
 #[derive(Debug, Clone)]

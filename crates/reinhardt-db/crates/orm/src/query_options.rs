@@ -259,13 +259,6 @@ impl QueryOptionsBuilder {
         }
     }
     /// Add load option
-    ///
-    /// # Examples
-    ///
-    /// ```
-    // Load messages
-    // let result = storage.load(&request).await?;
-    /// ```
     pub fn load(mut self, option: LoadOption) -> Self {
         self.options.load_options.push(option);
         self

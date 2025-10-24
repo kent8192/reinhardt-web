@@ -685,7 +685,8 @@ mod tests {
 mod expressions_extended_tests {
     use super::*;
     use crate::aggregation::*;
-    use crate::annotation::*;
+    // Tests use annotation types directly
+    // use crate::annotation::*;
     use crate::expressions::{F, Q};
 
     #[test]

@@ -1,9 +1,11 @@
+#[allow(deprecated)]
 use aes_gcm::{
     aead::{generic_array::GenericArray, Aead, KeyInit},
     Aes256Gcm,
 };
 use rand::RngCore;
 
+#[allow(deprecated)]
 type Nonce = GenericArray<u8, aes_gcm::aead::consts::U12>;
 /// TypeDecorator - Custom type wrapper for database columns
 /// Based on SQLAlchemy's TypeDecorator

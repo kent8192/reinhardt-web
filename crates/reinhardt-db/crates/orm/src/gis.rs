@@ -538,15 +538,7 @@ impl Distance {
     }
 }
 
-// Advanced GIS features (future implementation):
-// - GDAL integration: For reading/writing various geospatial data formats
-// - GEOS integration: For advanced geometry operations (buffer, simplify, etc.)
-// - Raster support: PostGIS raster type support for gridded data
-// - 3D geometries: PointZ, LineStringZ, PolygonZ with elevation data
-// - Geography type: Spherical/spheroidal calculations for earth surface
-// - Spatial aggregates: ST_Union, ST_Collect, ST_Extent for combining geometries
-
-// Spatial aggregates implementation stubs
+// Spatial aggregates implementation
 pub struct SpatialAggregate;
 
 impl SpatialAggregate {

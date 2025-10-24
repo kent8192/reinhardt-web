@@ -305,12 +305,6 @@ impl Default for CacheStatistics {
     }
 }
 
-// Advanced features (future implementation):
-// - Time-based cache invalidation (TTL)
-// - Size-based cache eviction (LRU)
-// - Per-query cache statistics
-// - Cache warming strategies
-
 #[cfg(test)]
 mod tests {
     use super::*;

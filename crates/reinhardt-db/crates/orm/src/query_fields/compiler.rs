@@ -347,7 +347,7 @@ impl QueryFieldCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query_fields::{Field, Lookup};
+    use crate::query_fields::Field;
     use crate::Model;
     use reinhardt_validators::TableName;
 

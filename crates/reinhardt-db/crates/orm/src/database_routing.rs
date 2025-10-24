@@ -833,10 +833,10 @@ mod tests {
 
         let handles: Vec<_> = (0..10)
             .map(|i| {
-                let router = Arc::clone(&router);
+                let router_clone = Arc::clone(&router);
                 thread::spawn(move || {
                     let model = if i % 2 == 0 { "User" } else { "Product" };
-                    let db = router.db_for_read(model);
+                    let db = router_clone.db_for_read(model);
                     assert!(!db.is_empty());
                 })
             })
@@ -856,7 +856,7 @@ mod tests {
 
         let handles: Vec<_> = (0..10)
             .map(|i| {
-                let router = Arc::clone(&router);
+                let _router = Arc::clone(&router);
                 thread::spawn(move || {
                     let model_name = format!("Model{}", i);
                     let db_name = format!("db{}", i);

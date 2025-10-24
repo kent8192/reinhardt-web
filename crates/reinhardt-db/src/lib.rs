@@ -125,6 +125,7 @@ pub use reinhardt_associations as associations;
 /// Prelude module for convenient imports
 ///
 /// Imports commonly used types from all modules.
+#[allow(ambiguous_glob_reexports)]
 pub mod prelude {
     #[cfg(feature = "backends")]
     pub use crate::backends::*;
