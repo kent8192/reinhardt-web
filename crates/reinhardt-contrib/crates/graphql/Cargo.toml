@@ -6,6 +6,25 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+default = []
+# GraphQL facade over gRPC for Query/Mutation
+graphql-grpc = [
+  "dep:reinhardt-grpc",
+  "dep:reinhardt-graphql-macros",
+  "dep:tonic",
+  "dep:tokio-stream",
+]
+# gRPC-based Subscriptions (Rust 2024 compatible)
+subscription = [
+  "dep:reinhardt-grpc",
+  "dep:reinhardt-graphql-macros",
+  "dep:tonic",
+  "dep:tokio-stream",
+]
+# All features enabled
+full = ["graphql-grpc", "subscription"]
+
 [dependencies]
 # Async runtime
 tokio = { workspace = true }
@@ -26,6 +45,18 @@ anyhow = { workspace = true }
 async-stream = "0.3"
 futures-util = "0.3"
 uuid = { workspace = true }
+chrono = { workspace = true }
+
+# gRPC integration (optional)
+reinhardt-grpc = { workspace = true, optional = true }
+reinhardt-graphql-macros = { workspace = true, optional = true }
+tonic = { version = "0.12", optional = true }
+tokio-stream = { workspace = true, optional = true, features = ["sync"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
+criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
+
+[[bench]]
+name = "graphql_performance"
+harness = false
