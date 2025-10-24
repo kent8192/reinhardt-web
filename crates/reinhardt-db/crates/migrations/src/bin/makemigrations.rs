@@ -5,8 +5,7 @@
 use clap::Parser;
 use console::style;
 use reinhardt_migrations::{
-    autodetector::{FieldState, ModelState, ProjectState},
-    MakeMigrationsCommand, MakeMigrationsOptions,
+    autodetector::ProjectState, MakeMigrationsCommand, MakeMigrationsOptions,
 };
 use std::path::PathBuf;
 
@@ -51,10 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cmd = MakeMigrationsCommand::new(options);
 
-    cmd.execute();
-
-    // Placeholder return since execute() returns ()
-    let files: Vec<String> = vec![];
+    let files = cmd.execute();
     {
         let files = &files;
         if files.is_empty() {
@@ -79,49 +75,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn load_project_state() -> ProjectState {
     let mut state = ProjectState::new();
 
-    // Check if running in demo mode
-    if std::env::var("REINHARDT_DEMO").is_ok() {
-        populate_demo_models(&mut state);
+    // Load models from the global registry
+    // Models are automatically registered via #[derive(Model)] macro using ctor
+    use reinhardt_migrations::model_registry::global_registry;
+
+    for model_metadata in global_registry().get_models() {
+        let model_state = model_metadata.to_model_state();
+        state.add_model(model_state);
     }
 
-    // In a production implementation, this function would:
-    // 1. Use procedural macros to collect all models defined with #[derive(Model)]
-    // 2. Introspect each model's fields and metadata
-    // 3. Build a complete ProjectState representation
-    //
-    // The demo mode shows how the system would work with actual models.
     state
-}
-
-/// Populate demo models for demonstration purposes
-fn populate_demo_models(state: &mut ProjectState) {
-    let mut user_model = ModelState::new("auth", "User");
-
-    let mut id_field = FieldState::new("id".to_string(), "INTEGER".to_string(), false);
-    id_field
-        .params
-        .insert("primary_key".to_string(), "true".to_string());
-    user_model.add_field(id_field);
-
-    let mut username_field =
-        FieldState::new("username".to_string(), "VARCHAR(150)".to_string(), false);
-    username_field
-        .params
-        .insert("null".to_string(), "false".to_string());
-    user_model.add_field(username_field);
-
-    let mut email_field = FieldState::new("email".to_string(), "VARCHAR(255)".to_string(), false);
-    email_field
-        .params
-        .insert("null".to_string(), "false".to_string());
-    user_model.add_field(email_field);
-
-    let mut created_at_field =
-        FieldState::new("created_at".to_string(), "TIMESTAMP".to_string(), false);
-    created_at_field
-        .params
-        .insert("default".to_string(), "CURRENT_TIMESTAMP".to_string());
-    user_model.add_field(created_at_field);
-
-    state.add_model(user_model);
 }

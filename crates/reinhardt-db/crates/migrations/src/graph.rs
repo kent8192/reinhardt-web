@@ -291,7 +291,7 @@ impl MigrationGraph {
 
         for node in self.nodes.values() {
             for dep in &node.dependencies {
-                *in_degree.entry(dep.clone()).or_insert(0);
+                in_degree.entry(dep.clone()).or_insert(0);
                 *in_degree.entry(node.key.clone()).or_insert(0) += 1;
             }
         }
