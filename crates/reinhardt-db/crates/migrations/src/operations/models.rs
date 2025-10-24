@@ -157,6 +157,8 @@ pub struct CreateModel {
     pub fields: Vec<FieldDefinition>,
     pub options: HashMap<String, String>,
     pub bases: Vec<String>,
+    /// Composite primary key fields (field names)
+    pub composite_primary_key: Option<Vec<String>>,
 }
 
 impl CreateModel {
@@ -167,6 +169,7 @@ impl CreateModel {
             fields,
             options: HashMap::new(),
             bases: vec![],
+            composite_primary_key: None,
         }
     }
 
@@ -179,6 +182,30 @@ impl CreateModel {
     /// Add base classes for inheritance
     pub fn with_bases(mut self, bases: Vec<String>) -> Self {
         self.bases = bases;
+        self
+    }
+
+    /// Set composite primary key
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::models::CreateModel;
+    /// use reinhardt_migrations::operations::FieldDefinition;
+    ///
+    /// let create = CreateModel::new(
+    ///     "post_tags",
+    ///     vec![
+    ///         FieldDefinition::new("post_id", "INTEGER", false, false, None),
+    ///         FieldDefinition::new("tag_id", "INTEGER", false, false, None),
+    ///     ],
+    /// )
+    /// .with_composite_primary_key(vec!["post_id".to_string(), "tag_id".to_string()]);
+    ///
+    /// assert!(create.composite_primary_key.is_some());
+    /// ```
+    pub fn with_composite_primary_key(mut self, fields: Vec<String>) -> Self {
+        self.composite_primary_key = Some(fields);
         self
     }
 
@@ -225,8 +252,34 @@ impl CreateModel {
     /// assert!(columns[0].1.contains("PRIMARY KEY"));
     /// ```
     pub fn database_forwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+        let mut sql_statements = Vec::new();
+
+        // If composite primary key is defined, don't mark individual fields as primary keys
+        let has_composite_pk = self.composite_primary_key.is_some();
+
         // Convert field definitions to column specifications for schema editor
-        let column_defs: Vec<String> = self.fields.iter().map(|f| f.to_sql_definition()).collect();
+        let column_defs: Vec<String> = self
+            .fields
+            .iter()
+            .map(|f| {
+                // For composite PKs, don't add PRIMARY KEY to individual field definitions
+                if has_composite_pk && f.primary_key {
+                    let mut parts = vec![f.field_type.clone()];
+                    if f.unique {
+                        parts.push("UNIQUE".to_string());
+                    }
+                    if !f.null {
+                        parts.push("NOT NULL".to_string());
+                    }
+                    if let Some(ref default) = f.default {
+                        parts.push(format!("DEFAULT {}", default));
+                    }
+                    parts.join(" ")
+                } else {
+                    f.to_sql_definition()
+                }
+            })
+            .collect();
 
         // Build column pairs: (name, type_definition)
         let columns: Vec<(&str, &str)> = self
@@ -236,7 +289,26 @@ impl CreateModel {
             .map(|(f, def)| (f.name.as_str(), def.as_str()))
             .collect();
 
-        vec![schema_editor.create_table_sql(&self.name, &columns)]
+        // Generate CREATE TABLE SQL
+        let mut create_sql = schema_editor.create_table_sql(&self.name, &columns);
+
+        // Add composite primary key constraint if defined
+        if let Some(ref pk_fields) = self.composite_primary_key {
+            // Remove the closing parenthesis from create_sql
+            if create_sql.ends_with(");") {
+                create_sql = create_sql.trim_end_matches(");").to_string();
+            } else if create_sql.ends_with(')') {
+                create_sql = create_sql.trim_end_matches(')').to_string();
+            }
+
+            // Add composite primary key constraint
+            let pk_constraint = format!(", PRIMARY KEY ({})", pk_fields.join(", "));
+            create_sql.push_str(&pk_constraint);
+            create_sql.push_str(");");
+        }
+
+        sql_statements.push(create_sql);
+        sql_statements
     }
 }
 
