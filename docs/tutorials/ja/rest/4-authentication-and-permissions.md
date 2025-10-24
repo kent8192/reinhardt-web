@@ -86,18 +86,31 @@ async fn protected_handler(request: Request) -> Result<Response> {
 ```rust
 use reinhardt_auth::permissions::{AndPermission, OrPermission, NotPermission};
 
-// 全てのパーミッションが必要
-let and_perm = AndPermission::new()
-    .add(Box::new(IsAuthenticated))
-    .add(Box::new(IsActiveUser));
+// 従来の方法: 明示的なコンストラクタ
+let and_perm = AndPermission::new(IsAuthenticated, IsActiveUser);
+let or_perm = OrPermission::new(IsAdminUser, IsOwner);
+let not_perm = NotPermission::new(IsAuthenticated);
+```
 
-// いずれかのパーミッションが必要
-let or_perm = OrPermission::new()
-    .add(Box::new(IsAdminUser))
-    .add(Box::new(IsOwner));
+### 演算子を使用した簡潔な記法
 
-// パーミッションを反転
-let not_perm = NotPermission::new(Box::new(IsAuthenticated));
+Reinhardtは演算子を使用したパーミッション合成もサポートしています:
+
+```rust
+use reinhardt_auth::permissions::{IsAuthenticated, IsActiveUser, IsAdminUser};
+
+// & 演算子: 全てのパーミッションが必要（AND）
+let and_perm = IsAuthenticated & IsActiveUser;
+
+// | 演算子: いずれかのパーミッションが必要（OR）
+let or_perm = IsAdminUser | IsOwner;
+
+// ! 演算子: パーミッションを反転（NOT）
+let not_perm = !IsAuthenticated;
+
+// 複雑な組み合わせ
+// 意味: (認証済み かつ アクティブ) または 管理者
+let complex_perm = (IsAuthenticated & IsActiveUser) | IsAdminUser;
 ```
 
 ## カスタムパーミッションの実装

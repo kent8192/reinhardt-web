@@ -28,6 +28,7 @@ chrono = { version = "0.4", features = ["serde"] }
 ```
 
 > **機能フラグについて:**
+>
 > - `standard`: ORM、シリアライザ、ViewSet、認証、ページネーションを含む標準的な機能セット
 > - `minimal`: 基本的なルーティングとパラメータ抽出のみ（マイクロサービス向け）
 > - `api`: REST API機能を含む
@@ -158,9 +159,13 @@ impl SnippetSerializer {
 }
 ```
 
-## バリデーション付きシリアライザ
+## シリアライゼーションとバリデーション
 
-カスタムバリデーションが必要な場合、`Serializer`トレイトを実装します:
+`Serializer`トレイトを実装することで、以下の3つの機能を統合できます:
+
+- **シリアライゼーション**: データをバイト列に変換（`serialize`メソッド）
+- **デシリアライゼーション**: バイト列からデータに変換（`deserialize`メソッド）
+- **バリデーション**: データの妥当性検証（`validate`メソッド）
 
 ```rust
 use reinhardt_serializers::{Serializer, ValidationError, ValidationResult};

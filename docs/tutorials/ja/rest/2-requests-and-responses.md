@@ -43,6 +43,36 @@ async fn create_snippet(request: Request) -> Result<Response> {
 }
 ```
 
+### より簡単な方法: Json<T>エクストラクタ
+
+`reinhardt-params`クレートの`Json<T>`エクストラクタを使用すると、より簡潔に書けます:
+
+```rust
+use reinhardt_params::Json;
+use reinhardt_core::{Response, Result};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CreateSnippet {
+    code: String,
+    language: Option<String>,
+}
+
+async fn create_snippet(data: Json<CreateSnippet>) -> Result<Response> {
+    // Json<T>は自動的にリクエストボディをデシリアライズ
+    println!("Received code: {}", data.code);
+
+    // Derefで内部の値にアクセス可能
+    Response::ok().with_json(&*data)
+}
+```
+
+`Json<T>`エクストラクタの利点:
+
+- 手動で`body_bytes()`や`serde_json::from_slice()`を呼ぶ必要がない
+- エラーハンドリングが自動化される
+- コードが簡潔で読みやすい
+
 ## Responseオブジェクト
 
 `Response`オブジェクトは、HTTPレスポンスを構築するための便利なビルダーパターンを提供します。

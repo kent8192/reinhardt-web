@@ -9,19 +9,25 @@ Reinhardtは名前付きルートからURLを生成する機能を提供しま�
 ### reverseの使用
 
 ```rust
-use reinhardt_routers::{DefaultRouter, Router, Route};
+use reinhardt_routers::{DefaultRouter, Router, path};
+use reinhardt_apps::Handler;
+use std::sync::Arc;
 use std::collections::HashMap;
 
 let mut router = DefaultRouter::new();
 
 // 名前付きルートを登録
-// ... (ルートの設定)
+router.add_route(
+    path("/snippets/{id}/", handler)
+        .with_name("detail")
+        .with_namespace("snippet")
+);
 
 // URLを逆引き
 let mut params = HashMap::new();
 params.insert("id".to_string(), "123".to_string());
 
-let url = router.reverse("snippet-detail", &params)?;
+let url = router.reverse("snippet:detail", &params)?;
 // 結果: "/snippets/123/"
 ```
 
