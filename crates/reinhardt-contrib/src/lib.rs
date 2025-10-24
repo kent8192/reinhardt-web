@@ -63,9 +63,6 @@ pub use reinhardt_websockets as websockets;
 #[cfg(feature = "i18n")]
 pub use reinhardt_i18n as i18n;
 
-#[cfg(feature = "commands")]
-pub use reinhardt_commands as commands;
-
 /// Humanize utilities (from reinhardt-utils)
 pub mod humanize {
     use chrono::{DateTime, Duration, Utc};

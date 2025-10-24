@@ -10,16 +10,15 @@ clap = { version = "4.5", features = ["derive"], optional = true }
 tokio = { workspace = true, optional = true }
 
 # Re-export internal crates as optional dependencies
-reinhardt-auth = { path = "crates/auth", optional = true }
-reinhardt-contenttypes = { path = "crates/contenttypes", optional = true }
-reinhardt-sessions = { path = "crates/sessions", optional = true }
-reinhardt-messages = { path = "crates/messages", optional = true }
-reinhardt-static = { path = "crates/static", optional = true }
-reinhardt-mail = { path = "crates/mail", optional = true }
-reinhardt-graphql = { path = "crates/graphql", optional = true }
-reinhardt-websockets = { path = "crates/websockets", optional = true }
-reinhardt-i18n = { path = "crates/i18n", optional = true }
-reinhardt-commands = { path = "crates/commands", optional = true }
+reinhardt-auth = { version = "0.1.0", path = "crates/auth", optional = true }
+reinhardt-contenttypes = { version = "0.1.0", path = "crates/contenttypes", optional = true }
+reinhardt-sessions = { version = "0.1.0", path = "crates/sessions", optional = true }
+reinhardt-messages = { version = "0.1.0", path = "crates/messages", optional = true }
+reinhardt-static = { version = "0.1.0", path = "crates/static", optional = true }
+reinhardt-mail = { version = "0.1.0", path = "crates/mail", optional = true }
+reinhardt-graphql = { version = "0.1.0", path = "crates/graphql", optional = true }
+reinhardt-websockets = { version = "0.1.0", path = "crates/websockets", optional = true }
+reinhardt-i18n = { version = "0.1.0", path = "crates/i18n", optional = true }
 reinhardt-utils = { workspace = true }
 chrono = { workspace = true }
 
@@ -27,7 +26,7 @@ chrono = { workspace = true }
 default = []
 
 # CLI feature for reinhardt-admin binary
-cli = ["dep:clap", "dep:tokio", "commands"]
+cli = ["dep:clap", "dep:tokio"]
 
 # Individual feature flags for each contrib module
 auth = ["dep:reinhardt-auth"]
@@ -39,7 +38,6 @@ mail = ["dep:reinhardt-mail"]
 graphql = ["dep:reinhardt-graphql"]
 websockets = ["dep:reinhardt-websockets"]
 i18n = ["dep:reinhardt-i18n"]
-commands = ["dep:reinhardt-commands"]
 
 # Convenience feature to enable all contrib modules
 full = [
@@ -52,7 +50,6 @@ full = [
   "graphql",
   "websockets",
   "i18n",
-  "commands",
 ]
 
 [[bin]]
