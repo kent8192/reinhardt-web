@@ -483,6 +483,134 @@ impl ImageField {
 
         Ok(())
     }
+
+    /// Resize image to specified dimensions
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use reinhardt_orm::file_fields::ImageField;
+    ///
+    /// let field = ImageField::new("uploads/images");
+    /// let content = std::fs::read("photo.jpg").unwrap();
+    /// let resized = field.resize(&content, 800, 600).unwrap();
+    /// ```
+    pub fn resize(
+        &self,
+        content: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>, FileFieldError> {
+        let img = image::load_from_memory(content)
+            .map_err(|e| FileFieldError::InvalidImage(format!("Failed to load image: {}", e)))?;
+
+        let resized = img.resize(width, height, image::imageops::FilterType::Lanczos3);
+
+        let mut buffer = Vec::new();
+        resized
+            .write_to(
+                &mut std::io::Cursor::new(&mut buffer),
+                image::ImageFormat::Png,
+            )
+            .map_err(|e| FileFieldError::InvalidImage(format!("Failed to encode image: {}", e)))?;
+
+        Ok(buffer)
+    }
+
+    /// Crop image to specified dimensions
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use reinhardt_orm::file_fields::ImageField;
+    ///
+    /// let field = ImageField::new("uploads/images");
+    /// let content = std::fs::read("photo.jpg").unwrap();
+    /// let cropped = field.crop(&content, 100, 100, 400, 300).unwrap();
+    /// ```
+    pub fn crop(
+        &self,
+        content: &[u8],
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>, FileFieldError> {
+        let img = image::load_from_memory(content)
+            .map_err(|e| FileFieldError::InvalidImage(format!("Failed to load image: {}", e)))?;
+
+        let cropped = img.crop_imm(x, y, width, height);
+
+        let mut buffer = Vec::new();
+        cropped
+            .write_to(
+                &mut std::io::Cursor::new(&mut buffer),
+                image::ImageFormat::Png,
+            )
+            .map_err(|e| FileFieldError::InvalidImage(format!("Failed to encode image: {}", e)))?;
+
+        Ok(buffer)
+    }
+
+    /// Convert image to specified format
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use reinhardt_orm::file_fields::ImageField;
+    /// use image::ImageFormat;
+    ///
+    /// let field = ImageField::new("uploads/images");
+    /// let content = std::fs::read("photo.png").unwrap();
+    /// let jpeg = field.convert_format(&content, ImageFormat::Jpeg).unwrap();
+    /// ```
+    pub fn convert_format(
+        &self,
+        content: &[u8],
+        format: image::ImageFormat,
+    ) -> Result<Vec<u8>, FileFieldError> {
+        let img = image::load_from_memory(content)
+            .map_err(|e| FileFieldError::InvalidImage(format!("Failed to load image: {}", e)))?;
+
+        let mut buffer = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut buffer), format)
+            .map_err(|e| FileFieldError::InvalidImage(format!("Failed to encode image: {}", e)))?;
+
+        Ok(buffer)
+    }
+
+    /// Create thumbnail of specified maximum dimensions (maintains aspect ratio)
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use reinhardt_orm::file_fields::ImageField;
+    ///
+    /// let field = ImageField::new("uploads/images");
+    /// let content = std::fs::read("photo.jpg").unwrap();
+    /// let thumbnail = field.thumbnail(&content, 150, 150).unwrap();
+    /// ```
+    pub fn thumbnail(
+        &self,
+        content: &[u8],
+        max_width: u32,
+        max_height: u32,
+    ) -> Result<Vec<u8>, FileFieldError> {
+        let img = image::load_from_memory(content)
+            .map_err(|e| FileFieldError::InvalidImage(format!("Failed to load image: {}", e)))?;
+
+        let thumbnail = img.thumbnail(max_width, max_height);
+
+        let mut buffer = Vec::new();
+        thumbnail
+            .write_to(
+                &mut std::io::Cursor::new(&mut buffer),
+                image::ImageFormat::Png,
+            )
+            .map_err(|e| FileFieldError::InvalidImage(format!("Failed to encode image: {}", e)))?;
+
+        Ok(buffer)
+    }
 }
 
 impl Field for ImageField {
@@ -731,6 +859,129 @@ mod tests {
         let field = ImageField::new("uploads/images");
         let invalid_content = b"Not an image";
         let result = field.validate_image(invalid_content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_image_field_resize() {
+        use image::{ImageBuffer, Rgb};
+
+        let field = ImageField::new("uploads/images");
+
+        // Create a simple 100x100 red image
+        let img = ImageBuffer::from_fn(100, 100, |_, _| Rgb([255u8, 0u8, 0u8]));
+        let mut original = Vec::new();
+        img.write_to(
+            &mut std::io::Cursor::new(&mut original),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+
+        // Resize to 50x50
+        let resized_content = field.resize(&original, 50, 50).unwrap();
+
+        // Verify the resized image dimensions
+        let resized_img = image::load_from_memory(&resized_content).unwrap();
+        assert_eq!(resized_img.width(), 50);
+        assert_eq!(resized_img.height(), 50);
+    }
+
+    #[test]
+    fn test_image_field_crop() {
+        use image::{ImageBuffer, Rgb};
+
+        let field = ImageField::new("uploads/images");
+
+        // Create a simple 100x100 image
+        let img = ImageBuffer::from_fn(100, 100, |x, y| {
+            if x < 50 && y < 50 {
+                Rgb([255u8, 0u8, 0u8]) // Red top-left
+            } else {
+                Rgb([0u8, 0u8, 255u8]) // Blue elsewhere
+            }
+        });
+        let mut original = Vec::new();
+        img.write_to(
+            &mut std::io::Cursor::new(&mut original),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+
+        // Crop 50x50 from top-left
+        let cropped_content = field.crop(&original, 0, 0, 50, 50).unwrap();
+
+        // Verify dimensions
+        let cropped_img = image::load_from_memory(&cropped_content).unwrap();
+        assert_eq!(cropped_img.width(), 50);
+        assert_eq!(cropped_img.height(), 50);
+    }
+
+    #[test]
+    fn test_image_field_convert_format() {
+        use image::{ImageBuffer, ImageFormat, Rgb};
+
+        let field = ImageField::new("uploads/images");
+
+        // Create a simple image in PNG format
+        let img = ImageBuffer::from_fn(50, 50, |_, _| Rgb([255u8, 0u8, 0u8]));
+        let mut original = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut original), ImageFormat::Png)
+            .unwrap();
+
+        // Convert to JPEG
+        let jpeg_content = field.convert_format(&original, ImageFormat::Jpeg).unwrap();
+
+        // Verify it can be loaded
+        let jpeg_img = image::load_from_memory(&jpeg_content).unwrap();
+        assert_eq!(jpeg_img.width(), 50);
+        assert_eq!(jpeg_img.height(), 50);
+    }
+
+    #[test]
+    fn test_image_field_thumbnail() {
+        use image::{ImageBuffer, Rgb};
+
+        let field = ImageField::new("uploads/images");
+
+        // Create a 200x100 image
+        let img = ImageBuffer::from_fn(200, 100, |_, _| Rgb([255u8, 0u8, 0u8]));
+        let mut original = Vec::new();
+        img.write_to(
+            &mut std::io::Cursor::new(&mut original),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+
+        // Create thumbnail with max 80x80 (should maintain aspect ratio: 80x40)
+        let thumbnail_content = field.thumbnail(&original, 80, 80).unwrap();
+
+        // Verify dimensions (aspect ratio maintained)
+        let thumbnail_img = image::load_from_memory(&thumbnail_content).unwrap();
+        assert_eq!(thumbnail_img.width(), 80);
+        assert_eq!(thumbnail_img.height(), 40);
+    }
+
+    #[test]
+    fn test_image_field_resize_invalid_content() {
+        let field = ImageField::new("uploads/images");
+        let invalid_content = b"Not an image";
+        let result = field.resize(invalid_content, 100, 100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_image_field_crop_invalid_content() {
+        let field = ImageField::new("uploads/images");
+        let invalid_content = b"Not an image";
+        let result = field.crop(invalid_content, 0, 0, 50, 50);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_image_field_convert_format_invalid_content() {
+        let field = ImageField::new("uploads/images");
+        let invalid_content = b"Not an image";
+        let result = field.convert_format(invalid_content, image::ImageFormat::Jpeg);
         assert!(result.is_err());
     }
 }
