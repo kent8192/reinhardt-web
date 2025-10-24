@@ -8,6 +8,19 @@ pub mod renderer;
 pub mod response;
 pub mod template;
 
+/// Error type for browsable API operations
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Render error: {0}")]
+    Render(String),
+    #[error("Serialization error: {0}")]
+    Serialization(String),
+    #[error("{0}")]
+    Other(String),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
 pub use middleware::{BrowsableApiConfig, BrowsableApiMiddleware};
 pub use renderer::{ApiContext, BrowsableApiRenderer, FormContext, FormField, SelectOption};
 pub use response::BrowsableResponse;

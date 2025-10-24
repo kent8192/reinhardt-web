@@ -4,8 +4,11 @@
 //! when accessed from a web browser, similar to Django REST Framework.
 
 use async_trait::async_trait;
+use hyper::{Method, Uri};
 use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
+
+use crate::renderer::{ApiContext, BrowsableApiRenderer};
 
 /// Middleware configuration for Browsable API
 #[derive(Debug, Clone)]
@@ -34,6 +37,7 @@ impl Default for BrowsableApiConfig {
 /// when the request is from a web browser (based on Accept header).
 pub struct BrowsableApiMiddleware {
     config: BrowsableApiConfig,
+    renderer: BrowsableApiRenderer,
 }
 
 impl BrowsableApiMiddleware {
@@ -49,6 +53,7 @@ impl BrowsableApiMiddleware {
     pub fn new() -> Self {
         Self {
             config: BrowsableApiConfig::default(),
+            renderer: BrowsableApiRenderer::new(),
         }
     }
 
@@ -72,7 +77,10 @@ impl BrowsableApiMiddleware {
     /// let middleware = BrowsableApiMiddleware::with_config(config);
     /// ```
     pub fn with_config(config: BrowsableApiConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            renderer: BrowsableApiRenderer::new(),
+        }
     }
 
     /// Check if the request prefers HTML response
@@ -84,6 +92,64 @@ impl BrowsableApiMiddleware {
             }
         }
         false
+    }
+
+    /// Check if the response is JSON
+    fn is_json_response(response: &Response) -> bool {
+        if let Some(content_type) = response.headers.get("content-type") {
+            if let Ok(content_type_str) = content_type.to_str() {
+                return content_type_str.contains("application/json");
+            }
+        }
+        false
+    }
+
+    /// Convert JSON response to HTML with request info
+    fn convert_to_html_with_info(
+        &self,
+        request_uri: &Uri,
+        request_method: &Method,
+        response: Response,
+    ) -> reinhardt_apps::Result<Response> {
+        // Parse JSON response
+        let json_body: serde_json::Value = serde_json::from_slice(&response.body).map_err(|e| {
+            reinhardt_apps::Error::Other(anyhow::anyhow!("Failed to parse JSON: {}", e))
+        })?;
+
+        // Extract headers for display
+        let headers: Vec<(String, String)> = response
+            .headers
+            .iter()
+            .map(|(name, value)| {
+                (
+                    name.to_string(),
+                    value.to_str().unwrap_or("<binary>").to_string(),
+                )
+            })
+            .collect();
+
+        // Build ApiContext
+        let context = ApiContext {
+            title: String::from("API Response"),
+            description: None,
+            endpoint: request_uri.path().to_string(),
+            method: request_method.to_string().to_uppercase(),
+            response_data: json_body,
+            response_status: response.status.as_u16(),
+            allowed_methods: vec!["GET".to_string()], // Default, should be extracted from response
+            request_form: None,                       // Could be populated from OPTIONS response
+            headers,
+        };
+
+        // Render HTML
+        let html = self.renderer.render(&context).map_err(|e| {
+            reinhardt_apps::Error::Other(anyhow::anyhow!("Failed to render HTML: {}", e))
+        })?;
+
+        // Create new response with HTML body
+        Ok(Response::new(response.status)
+            .with_body(html)
+            .with_header("content-type", "text/html; charset=utf-8"))
     }
 }
 
@@ -103,22 +169,16 @@ impl Middleware for BrowsableApiMiddleware {
 
         let prefers_html = Self::prefers_html(&request);
 
+        // Extract request info before moving request
+        let request_uri = request.uri.clone();
+        let request_method = request.method.clone();
+
         // Get response from handler
         let response = handler.handle(request).await?;
 
         // If client prefers HTML and response is JSON, convert to browsable HTML
-        // NOTE: Actual HTML rendering would require integration with BrowsableApiRenderer
-        // and would need to parse the JSON response. This is a basic implementation
-        // that adds a header to indicate browsable API support.
-        if prefers_html {
-            let mut response = response;
-            response.headers.insert(
-                "X-Browsable-API",
-                "enabled"
-                    .parse()
-                    .expect("Failed to parse browsable API header"),
-            );
-            Ok(response)
+        if prefers_html && Self::is_json_response(&response) {
+            self.convert_to_html_with_info(&request_uri, &request_method, response)
         } else {
             Ok(response)
         }
@@ -136,7 +196,9 @@ mod tests {
     #[async_trait]
     impl Handler for TestHandler {
         async fn handle(&self, _request: Request) -> Result<Response> {
-            Ok(Response::new(StatusCode::OK).with_body(Bytes::from(r#"{"data":"test"}"#)))
+            Ok(Response::new(StatusCode::OK)
+                .with_body(Bytes::from(r#"{"data":"test"}"#))
+                .with_header("content-type", "application/json"))
         }
     }
 
@@ -157,8 +219,20 @@ mod tests {
         );
 
         let response = middleware.process(request, handler).await.unwrap();
-        assert!(response.headers.contains_key("X-Browsable-API"));
-        assert_eq!(response.headers.get("X-Browsable-API").unwrap(), "enabled");
+
+        // Check that response was converted to HTML
+        assert_eq!(
+            response.headers.get("content-type").unwrap(),
+            "text/html; charset=utf-8"
+        );
+
+        let body = String::from_utf8(response.body.to_vec()).unwrap();
+        assert!(body.contains("<!DOCTYPE html>"), "Missing DOCTYPE");
+        assert!(body.contains("API Response"), "Missing 'API Response'");
+        assert!(body.contains("/api/test"), "Missing '/api/test'");
+        // The response data is rendered in pre-formatted JSON
+        assert!(body.contains("data"), "Missing 'data' in body: {}", body);
+        assert!(body.contains("test"), "Missing 'test' in body");
     }
 
     #[tokio::test]
@@ -178,7 +252,13 @@ mod tests {
         );
 
         let response = middleware.process(request, handler).await.unwrap();
-        assert!(!response.headers.contains_key("X-Browsable-API"));
+        // When requesting JSON, should return JSON unchanged
+        assert_eq!(
+            response.headers.get("content-type").unwrap(),
+            "application/json"
+        );
+        let body = String::from_utf8(response.body.to_vec()).unwrap();
+        assert_eq!(body, r#"{"data":"test"}"#);
     }
 
     #[tokio::test]
@@ -203,7 +283,13 @@ mod tests {
         );
 
         let response = middleware.process(request, handler).await.unwrap();
-        assert!(!response.headers.contains_key("X-Browsable-API"));
+        // When disabled, should return JSON unchanged
+        assert_eq!(
+            response.headers.get("content-type").unwrap(),
+            "application/json"
+        );
+        let body = String::from_utf8(response.body.to_vec()).unwrap();
+        assert_eq!(body, r#"{"data":"test"}"#);
     }
 
     #[tokio::test]

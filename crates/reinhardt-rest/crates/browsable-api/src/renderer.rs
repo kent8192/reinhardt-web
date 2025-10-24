@@ -74,10 +74,20 @@ impl BrowsableApiRenderer {
     pub fn new() -> Self {
         let mut handlebars = Handlebars::new();
 
-        // Register default template
+        // Register template from external file
+        let template_path = concat!(env!("CARGO_MANIFEST_DIR"), "/templates/api.html");
         handlebars
-            .register_template_string("api", Self::default_template())
-            .expect("Failed to register default template");
+            .register_template_file("api", template_path)
+            .unwrap_or_else(|e| {
+                // Fallback to default template if file cannot be read
+                eprintln!(
+                    "Warning: Failed to load template file: {}. Using default template.",
+                    e
+                );
+                handlebars
+                    .register_template_string("api", Self::default_template())
+                    .expect("Failed to register default template");
+            });
 
         Self {
             handlebars: Arc::new(handlebars),
