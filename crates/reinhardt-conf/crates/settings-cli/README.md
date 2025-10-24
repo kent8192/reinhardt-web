@@ -11,6 +11,7 @@ Command-line interface for managing Reinhardt configuration files. Provides comm
 ### Implemented ✓
 
 #### Configuration Management
+
 - **Validate**: Configuration file validation with syntax checking
   - TOML, JSON, and .env file format support
   - Profile-specific validation (development, staging, production)
@@ -38,6 +39,7 @@ Command-line interface for managing Reinhardt configuration files. Provides comm
   - Summary statistics (total differences, additions, deletions)
 
 #### Security Features
+
 - **Encrypt**: AES-256-GCM encryption for configuration files
   - 32-byte (256-bit) key support in hex format
   - Custom output path or automatic `.enc` extension
@@ -51,6 +53,7 @@ Command-line interface for managing Reinhardt configuration files. Provides comm
   - Hex key format validation
 
 #### Output Utilities
+
 - **Colorized Terminal Output**: Rich terminal experience
   - Success messages (green checkmark)
   - Error messages (red cross)

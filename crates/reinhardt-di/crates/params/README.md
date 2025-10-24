@@ -7,12 +7,14 @@ FastAPI-inspired parameter extraction system for Reinhardt.
 ### Implemented ✓
 
 #### Core Extraction System
+
 - **`FromRequest` trait**: 非同期パラメータ抽出のコア抽象化
 - **`ParamContext`**: パスパラメータとヘッダー/クッキー名の管理
 - **型安全なパラメータ抽出**: コンパイル時の型チェック付きリクエストからの抽出
 - **エラーハンドリング**: `ParamError`を用いた詳細なエラーメッセージ
 
 #### Path Parameters (`path.rs`)
+
 - **`Path<T>`**: URLパスから単一の値を抽出
   - 全てのプリミティブ型のサポート: `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`, `u128`, `f32`, `f64`, `bool`, `String`
   - `Deref`による透過的なアクセス: `*path` または `path.0`
@@ -22,6 +24,7 @@ FastAPI-inspired parameter extraction system for Reinhardt.
   - URL-encodedフォーマットを用いた自動型変換 (`"42"` → `42`)
 
 #### Query Parameters (`query.rs`)
+
 - **`Query<T>`**: URLクエリ文字列からパラメータを抽出
   - `serde`を用いた柔軟な逆シリアル化
   - オプショナルフィールド (`Option<T>`) のサポート
@@ -31,6 +34,7 @@ FastAPI-inspired parameter extraction system for Reinhardt.
   - JSON値ベースのデシリアライゼーション
 
 #### Headers (`header.rs`, `header_named.rs`)
+
 - **`Header<T>`**: リクエストヘッダーから値を抽出
   - `String`と`Option<String>`のサポート
   - `ParamContext`を用いた実行時ヘッダー名指定
@@ -43,6 +47,7 @@ FastAPI-inspired parameter extraction system for Reinhardt.
   - `HeaderName` trait によるカスタムヘッダー名の定義
 
 #### Cookies (`cookie.rs`, `cookie_named.rs`)
+
 - **`Cookie<T>`**: クッキーから値を抽出
   - `String`と`Option<String>`のサポート
   - `ParamContext`を用いた実行時クッキー名指定
@@ -55,6 +60,7 @@ FastAPI-inspired parameter extraction system for Reinhardt.
   - `CookieName` trait によるカスタムクッキー名の定義
 
 #### Body Extraction (`body.rs`, `json.rs`, `form.rs`)
+
 - **`Body`**: 生のリクエストボディをバイト列として抽出
 - **`Json<T>`**: JSONボディのデシリアライゼーション
   - `serde_json`を用いた型安全なデシリアライゼーション
@@ -64,12 +70,14 @@ FastAPI-inspired parameter extraction system for Reinhardt.
   - `serde_urlencoded`を用いたデシリアライゼーション
 
 #### Multipart Support (`multipart.rs`, requires `multipart` feature)
+
 - **`Multipart`**: multipart/form-dataのサポート
   - `multer`クレートを用いたストリーミング解析
   - ファイルアップロード対応
   - `next_field()`による反復処理
 
 #### Validation Support (`validation.rs`, requires `validation` feature)
+
 - **`Validated<T, V>`**: 検証済みパラメータラッパー
 - **`WithValidation` trait**: 検証制約の流暢なAPI
   - **長さ制約**: `min_length()`, `max_length()`

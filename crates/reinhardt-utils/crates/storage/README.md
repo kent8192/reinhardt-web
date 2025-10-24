@@ -11,6 +11,7 @@ Abstraction layer for file storage with support for local filesystem, cloud stor
 ### Implemented ✓
 
 #### Core Storage Abstraction
+
 - **Storage Trait**: Async trait defining standard storage operations
   - File save, read, delete operations
   - File existence checking and metadata retrieval
@@ -19,6 +20,7 @@ Abstraction layer for file storage with support for local filesystem, cloud stor
   - File timestamp operations (accessed, created, modified times)
 
 #### File and Metadata Handling
+
 - **FileMetadata**: Comprehensive file metadata structure
   - Path, size, content type tracking
   - Creation and modification timestamps
@@ -27,6 +29,7 @@ Abstraction layer for file storage with support for local filesystem, cloud stor
 - **StoredFile**: File representation with metadata and content
 
 #### Error Handling
+
 - **StorageError**: Comprehensive error types
   - File not found errors
   - I/O error propagation
@@ -36,6 +39,7 @@ Abstraction layer for file storage with support for local filesystem, cloud stor
   - File already exists errors
 
 #### Local Filesystem Storage
+
 - **LocalStorage**: Production-ready local filesystem backend
   - Automatic directory creation
   - Path traversal attack prevention
@@ -45,6 +49,7 @@ Abstraction layer for file storage with support for local filesystem, cloud stor
   - Comprehensive directory listing
 
 #### In-Memory Storage
+
 - **InMemoryStorage**: Testing and development storage backend
   - Thread-safe in-memory file storage using Arc<RwLock>
   - Timestamp tracking (accessed, created, modified)
@@ -54,9 +59,9 @@ Abstraction layer for file storage with support for local filesystem, cloud stor
   - Clone support for easy testing
 
 #### Prelude Module
+
 - Re-exports of commonly used types for convenient importing
 
 ### Planned
 
 Currently all planned features are implemented.
-

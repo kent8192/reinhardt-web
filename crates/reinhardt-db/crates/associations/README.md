@@ -11,6 +11,7 @@ Provides SQLAlchemy-style association proxies for simplifying access to related 
 ### Implemented ✓
 
 #### Association Proxy (`AssociationProxy<S, A, T>`)
+
 - **Single object attribute access**: Access attributes of related objects through foreign key and one-to-one relationships
 - **Type-safe proxies**: Compile-time type checking for association chains
 - **Generic implementation**: Works with any source type, associated type, and target attribute type
@@ -19,6 +20,7 @@ Provides SQLAlchemy-style association proxies for simplifying access to related 
   - `get()`: Retrieve the target attribute through the association
 
 #### Association Collection (`AssociationCollection<S, C, T>`)
+
 - **Collection attribute access**: Access attributes of items in collections through one-to-many and many-to-many relationships
 - **Batch operations**: Retrieve all target attributes from a collection at once
 - **Collection utilities**: Count and check emptiness of collections
@@ -29,6 +31,7 @@ Provides SQLAlchemy-style association proxies for simplifying access to related 
   - `is_empty()`: Check if the collection is empty
 
 #### Prelude Module
+
 - Re-exports commonly used types for convenient importing
 
 ### Planned

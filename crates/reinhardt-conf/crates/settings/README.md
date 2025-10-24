@@ -93,16 +93,13 @@ Django-inspired settings management for Rust with advanced features like secrets
   - ✓ Secret management CLI (`encrypt`, `decrypt` commands)
   - See [reinhardt-settings-cli](../settings-cli/README.md) for details
 
-### Planned Features
-
-<!-- TODO: The following features are not yet implemented -->
-
 ## Installation
 
 Add to your `Cargo.toml`:
 
 ```toml
-[dependencies]reinhardt-settings = "0.1.0"
+[dependencies]
+reinhardt-settings = "0.1.0"
 
 # With all features
 reinhardt-settings = { version = "0.1.0", features = ["full"] }

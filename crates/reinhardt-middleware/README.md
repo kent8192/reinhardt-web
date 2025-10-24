@@ -9,10 +9,12 @@ Middleware system for processing requests and responses. Provides comprehensive 
 ## Implemented Features ✓
 
 ### Core Middleware System
+
 - **Middleware Pipeline** - Request/response processing chain with handler composition
 - **Custom Middleware Support** - Easy integration of user-defined middleware
 
 ### Security Middleware
+
 - **CORS (Cross-Origin Resource Sharing)** - Configurable CORS headers with preflight support
   - Custom origin, method, and header configuration
   - Credentials support
@@ -41,11 +43,18 @@ Middleware system for processing requests and responses. Provides comprehensive 
   - Custom status codes (301/302)
 
 ### Performance Middleware
+
 - **GZip Compression** - Response compression for bandwidth optimization
   - Configurable compression level (0-9)
   - Minimum size threshold
   - Content-type filtering
   - Automatic Accept-Encoding detection
+- **Brotli Compression** - Advanced compression with better ratios
+  - Configurable quality levels (Fast, Balanced, Best)
+  - Window size configuration (10-24)
+  - Content-type filtering
+  - Automatic Accept-Encoding: br detection
+  - Intelligent compression (only when beneficial)
 - **Conditional GET** - HTTP caching with ETags and Last-Modified
   - Automatic ETag generation (SHA-256 based)
   - If-None-Match support
@@ -54,6 +63,7 @@ Middleware system for processing requests and responses. Provides comprehensive 
   - 304 Not Modified responses
 
 ### Authentication & Request Processing
+
 - **Authentication** - JWT-based authentication middleware
   - Bearer token extraction
   - Token validation via `reinhardt-auth`
@@ -63,18 +73,74 @@ Middleware system for processing requests and responses. Provides comprehensive 
   - Request duration tracking
 
 ### Dependency Injection Support
+
 - **DI Middleware** - Integration with `reinhardt-di`
   - Middleware factory pattern
   - Injectable middleware components
   - Automatic dependency resolution
 
-### Placeholder Middleware (Configuration Only)
-The following middleware have configuration structures but no complete implementation:
-- **Broken Link Detection** - Configuration for broken link email notifications
-- **Common Middleware** - URL normalization (append_slash, prepend_www)
-- **Locale Middleware** - Locale detection configuration
-- **Message Framework** - Flash message storage (Session/Cookie)
-- **Redirect Fallback** - Fallback URL configuration
+### Request Processing & Utilities
+
+- **Common Middleware** - URL normalization
+  - Automatic trailing slash appending (append_slash)
+  - WWW subdomain prepending (prepend_www)
+  - Smart file extension detection
+  - Query parameter preservation
+- **Locale Middleware** - Multi-source locale detection
+  - Accept-Language header parsing with quality scores
+  - Cookie-based locale storage
+  - URL path prefix detection
+  - Configurable fallback locale
+- **Message Framework** - Django-style flash messages
+  - Session-based and Cookie-based storage
+  - Multiple message levels (Debug, Info, Success, Warning, Error)
+  - One-time message delivery
+  - Thread-safe storage implementation
+- **Redirect Fallback** - Smart 404 error handling
+  - Configurable fallback URL
+  - Pattern-based path matching (regex)
+  - Custom redirect status codes
+  - Redirect loop prevention
+- **Broken Link Detection** - Internal link monitoring
+  - Automatic 404 detection for internal referrers
+  - Domain normalization (www. handling)
+  - Configurable ignored paths and user agents
+  - Email notification support
+  - Logging integration
+- **Site Middleware** - Multi-site support
+  - Domain-based site detection
+  - Default site fallback mechanism
+  - www subdomain normalization
+  - Site ID header injection
+  - Thread-safe site registry
+- **Flatpages Middleware** - Static page fallback
+  - 404 interception and content substitution
+  - URL normalization (trailing slash handling)
+  - In-memory flatpage storage
+  - Template rendering support
+  - Registration-based access control
+
+### Observability & Monitoring
+
+- **Request ID Middleware** - Request tracing and correlation
+  - UUID generation for unique request identification
+  - Automatic propagation through request chain
+  - Custom header name support
+  - X-Request-ID and X-Correlation-ID compatibility
+- **Metrics Middleware** - Prometheus-compatible metrics collection
+  - Request count tracking by method and path
+  - Response time histograms with percentiles (p50, p95, p99)
+  - Status code distribution
+  - Custom metrics support
+  - /metrics endpoint with Prometheus text format
+  - Configurable exclusion paths
+- **Tracing Middleware** - Distributed tracing support
+  - OpenTelemetry-compatible span tracking
+  - Trace ID and Span ID propagation
+  - Automatic span lifecycle management
+  - Request metadata tagging (method, path, status)
+  - Configurable sampling rates
+  - Error status tracking
 
 ## Related Crates
 
@@ -84,24 +150,22 @@ The following middleware are implemented in separate crates:
   - See [reinhardt-sessions](../contrib/crates/sessions/README.md) for session management and persistence
 - **Cache Middleware** - Implemented in `reinhardt-cache`
   - See [reinhardt-cache](../utils/crates/cache/README.md) for response caching layer
-
-## Planned Features
-
-<!-- TODO: The following features are not yet implemented -->
-
-### Django-Inspired Middleware
-- **Site Middleware** - Multi-site support
-- **Flatpages Middleware** - Static page fallback
-
-### Additional Security
-- **Permissions** - Permission-based access control
-- **Rate Limiting** - Request throttling and rate limits
-
-### Advanced Features
-- **Request ID** - Request tracing and correlation
-- **Metrics** - Request/response metrics collection
-- **Tracing** - Distributed tracing support
-
+- **Permissions Middleware** - Implemented in `reinhardt-auth`
+  - ✓ Permission-based access control
+  - ✓ DRF-style permissions (IsAuthenticated, IsAdminUser, IsAuthenticatedOrReadOnly)
+  - ✓ Model-level permissions (object permissions)
+  - ✓ Permission operators (AND, OR, NOT)
+  - ✓ Advanced permissions (dynamic, conditional, composite)
+  - See [reinhardt-auth](../contrib/crates/auth/README.md) for details
+- **Rate Limiting** - Implemented in `reinhardt-rest/throttling`
+  - ✓ Request throttling and rate limits
+  - ✓ AnonRateThrottle for anonymous users
+  - ✓ UserRateThrottle for authenticated users
+  - ✓ ScopedRateThrottle for API scopes
+  - ✓ BurstRateThrottle for burst protection
+  - ✓ TieredRateThrottle for tiered limits
+  - ✓ Memory and Redis backends
+  - See [reinhardt-rest/throttling](../../reinhardt-rest/crates/throttling/README.md) for details
 
 ## CSRF Middleware Usage
 
@@ -143,13 +207,13 @@ CSRF tokens can be sent via:
 
 ```javascript
 // Send token via header from JavaScript
-fetch('/api/endpoint', {
-    method: 'POST',
-    headers: {
-        'X-CSRFToken': getCookie('csrftoken'),
-        'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data)
+fetch("/api/endpoint", {
+  method: "POST",
+  headers: {
+    "X-CSRFToken": getCookie("csrftoken"),
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(data),
 });
 ```
 
@@ -161,4 +225,3 @@ fetch('/api/endpoint', {
    - Checks Referer header (if configured)
    - Validates token format and value
 3. **Validation failure**: Returns 403 Forbidden
-

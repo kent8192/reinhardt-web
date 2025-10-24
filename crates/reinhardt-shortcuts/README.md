@@ -229,6 +229,7 @@ directory is specified by the `REINHARDT_TEMPLATE_DIR` environment variable (def
 Templates are rendered dynamically at runtime with simple placeholder replacement.
 
 **Planned Enhancements**:
+
 - Full Askama template syntax: control structures (`{% if %}`, `{% for %}`)
 - Template inheritance (`{% extends %}`, `{% block %}`)
 - Custom filters and tags

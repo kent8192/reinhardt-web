@@ -13,6 +13,7 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
 ### Implemented ✓
 
 #### HTML Utilities (`html` module)
+
 - **HTML Escaping/Unescaping**
   - `escape()`: HTML特殊文字のエスケープ (`<`, `>`, `&`, `"`, `'`)
   - `unescape()`: HTMLエンティティのアンエスケープ
@@ -27,6 +28,7 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
   - `SafeString`: 自動エスケープをバイパスするための安全文字列型
 
 #### Encoding Utilities (`encoding` module)
+
 - **URL Encoding**
   - `urlencode()`: URLエンコード（スペースは`+`に変換）
   - `urldecode()`: URLデコード
@@ -45,6 +47,7 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
   - `linebreaksbr()`: 改行を`<br>`タグに変換（単純版）
 
 #### Date/Time Formatting (`dateformat` module)
+
 - **Django/PHP式フォーマット**
   - `format()`: フォーマット文字列による日時フォーマット
   - 対応フォーマットコード：
@@ -65,6 +68,7 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
   - `time_12()`: 12時間形式時刻（AM/PM付き）
 
 #### Text Manipulation (`text` module)
+
 - **大文字小文字変換**
   - `capfirst()`: 各単語の先頭を大文字化
   - `title()`: タイトルケース変換（全単語の先頭大文字、残り小文字）
@@ -82,6 +86,7 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
   - `phone_format()`: 10桁/11桁の電話番号を`(XXX) XXX-XXXX`形式に変換
 
 #### Timezone Utilities (`timezone` module)
+
 - **基本的な日時取得**
   - `now()`: 現在のUTC時刻
   - `localtime()`: 現在のローカル時刻
@@ -103,4 +108,3 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
 ### Planned
 
 Currently all planned features are implemented.
-

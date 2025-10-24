@@ -11,6 +11,7 @@ Hybrid properties that work both as instance attributes and class-level query ex
 ### Implemented ✓
 
 #### HybridProperty
+
 - **Instance-level getters**: Define getters that work on struct instances
   - `HybridProperty::new()` - Create a property with instance-level behavior
   - `get()` - Get the value for an instance
@@ -20,6 +21,7 @@ Hybrid properties that work both as instance attributes and class-level query ex
 - **Type-safe**: Full type safety with generics `HybridProperty<T, R>`
 
 #### HybridMethod
+
 - **Instance-level methods**: Define methods that accept parameters
   - `HybridMethod::new()` - Create a method with instance-level behavior
   - `call()` - Call the method for an instance with arguments
@@ -29,6 +31,7 @@ Hybrid properties that work both as instance attributes and class-level query ex
 - **Type-safe**: Full type safety with generics `HybridMethod<T, A, R>`
 
 #### SQL Expression Builders
+
 - **SqlExpression struct**: Serializable SQL expression container
   - `new()` - Create a SQL expression from a string
   - `concat()` - Generate CONCAT expressions
@@ -40,6 +43,7 @@ Hybrid properties that work both as instance attributes and class-level query ex
   - `to_sql()` - Convert to SQL string representation
 
 #### Comparator System
+
 - **Comparator trait**: Customize SQL comparison operations
   - `new()` - Create a comparator with an expression
   - `eq()`, `ne()` - Equality and inequality comparisons
@@ -48,6 +52,7 @@ Hybrid properties that work both as instance attributes and class-level query ex
   - Automatically applies UPPER() to both sides of comparisons
 
 #### Property Override Support
+
 - **HybridPropertyOverride trait**: Define overridable property behavior
   - `get_instance()` - Get instance-level value
   - `get_expression()` - Get SQL expression (optional)
@@ -59,9 +64,9 @@ Hybrid properties that work both as instance attributes and class-level query ex
   - Enables polymorphic behavior without traditional inheritance
 
 #### Macro Support
+
 - **hybrid_property! macro**: Convenience macro for defining hybrid properties
 
 ### Planned
 
 Currently all planned features are implemented.
-

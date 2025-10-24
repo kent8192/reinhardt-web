@@ -85,34 +85,106 @@ FastAPI-styleの依存性注入システムを提供します。リクエスト�
 - ✓ **WebSocket Support**: WebSocket接続への依存性注入
   - WebSocketハンドラーでの`Depends<T>`使用
 
+### Advanced Dependency Patterns ✓
+
+#### Generator-based Dependencies (yieldパターン)
+
+- **Lifecycle Management**: セットアップ/ティアダウンパターン
+- **Context Manager**: 自動リソースクリーンアップ
+- **Error Handling**: エラー時でもクリーンアップ実行
+- **Streaming Support**: ストリーミングレスポンス対応
+- **WebSocket Support**: WebSocketハンドラーとの統合
+
+```rust
+use reinhardt_di::{Injectable, InjectionContext};
+
+#[derive(Clone)]
+struct DatabaseConnection {
+    // Setup
+}
+
+impl DatabaseConnection {
+    async fn setup() -> Self {
+        // Initialize connection
+        DatabaseConnection { }
+    }
+
+    async fn cleanup(self) {
+        // Close connection
+    }
+}
+```
+
+#### Dependency Classes（クラスベース依存性）
+
+- **Callable Dependencies**: callメソッドを持つ構造体ベースの依存性
+- **Async Callables**: 非同期依存性メソッドのサポート
+- **Stateful Dependencies**: 内部状態を持つ依存性
+- **Method-based Injection**: 柔軟な依存性構築
+
+```rust
+#[derive(Clone)]
+struct CallableDependency {
+    prefix: String,
+}
+
+impl CallableDependency {
+    fn call(&self, value: String) -> String {
+        format!("{}{}", self.prefix, value)
+    }
+}
+```
+
+#### Parametrized Dependencies（パラメータ化依存性）
+
+- **Path Parameter Integration**: 依存性からパスパラメータへのアクセス
+- **Shared Parameters**: エンドポイントと依存性でパスパラメータを共有
+- **Type-safe Extraction**: コンパイル時に検証されたパラメータ渡し
+
+```rust
+// Path parameter accessible in dependency
+#[async_trait::async_trait]
+impl Injectable for UserValidator {
+    async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+        let user_id = UserId::inject(ctx).await?;
+        Ok(UserValidator { user_id: user_id.0 })
+    }
+}
+```
+
+#### Schema Generation（スキーマ生成）
+
+- **Dependency Deduplication**: 共有依存性はスキーマに1度だけ出現
+- **Transitive Dependencies**: ネストされた依存性の自動キャッシング
+- **Schema Optimization**: 効率的な依存性グラフ表現
+
+#### Security Overrides（セキュリティオーバーライド）
+
+- **Security Dependencies**: OAuth2、JWT、その他の認証スキーム
+- **Security Scopes**: スコープベースのアクセス制御
+- **Override Support**: テストフレンドリーなセキュリティ依存性の置き換え
+
+```rust
+// Security dependency with scopes
+#[async_trait::async_trait]
+impl Injectable for UserData {
+    async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+        let scopes = ctx.get_request::<SecurityScopes>()?;
+        Ok(UserData { scopes: scopes.scopes })
+    }
+}
+```
+
 ## Planned Features
 
-### Lifecycle Management
+現在、すべての主要な依存性注入機能が実装済みです。以下は将来的な拡張の可能性があります：
 
-- ⏳ **Generator-based Dependencies** (`yield`パターン)
-  - セットアップ/ティアダウンロジックのサポート
-  - コンテキストマネージャーパターン
-  - リソースの自動クリーンアップ
+### Future Enhancements
 
-### Advanced Patterns
-
-- ⏳ **Dependency Classes**: クラスベースの依存性
-  - より複雑な依存性の定義
-  - 状態を持つ依存性のサポート
-
-- ⏳ **Parametrized Dependencies**: パラメーター化された依存性
-  - パスパラメーター、クエリパラメーターとの統合
-  - 動的な依存性の生成
-
-- ⏳ **Schema Generation**: 依存性のスキーマ自動生成
-  - OpenAPI仕様への統合
-  - 依存性の重複検出と最適化
-
-### Security
-
-- ⏳ **Security Overrides**: セキュリティ関連の依存性オーバーライド
-  - 認証/認可の依存性
-  - セキュリティスキームの統合
+- **Async Generator Syntax**: Rust の async generator が安定版になった際の統合
+- **Dependency Visualization**: 依存性グラフの可視化ツール
+- **Performance Profiling**: 依存性注入のパフォーマンス分析ツール
+- **Advanced Caching Strategies**: より高度なキャッシング戦略
 
 ## Usage Examples
 
@@ -289,17 +361,17 @@ RequestScope (リクエスト内キャッシュ)
 
 ## Comparison with FastAPI
 
-| Feature | FastAPI (Python) | reinhardt-di (Rust) |
-|---------|-----------------|---------------------|
-| 基本的なDI | ✓ | ✓ |
-| リクエストスコープ | ✓ | ✓ |
-| シングルトンスコープ | ✓ | ✓ |
-| 依存性キャッシング | ✓ | ✓ |
-| ネストされた依存性 | ✓ | ✓ |
-| 依存性オーバーライド | ✓ | ✓ |
-| `yield`パターン | ✓ | ⏳ Planned |
-| 型安全性 | Runtime | **Compile-time** |
-| パフォーマンス | 動的 | **静的・高速** |
+| Feature              | FastAPI (Python) | reinhardt-di (Rust) |
+| -------------------- | ---------------- | ------------------- |
+| 基本的なDI           | ✓                | ✓                   |
+| リクエストスコープ   | ✓                | ✓                   |
+| シングルトンスコープ | ✓                | ✓                   |
+| 依存性キャッシング   | ✓                | ✓                   |
+| ネストされた依存性   | ✓                | ✓                   |
+| 依存性オーバーライド | ✓                | ✓                   |
+| `yield`パターン      | ✓                | ⏳ Planned          |
+| 型安全性             | Runtime          | **Compile-time**    |
+| パフォーマンス       | 動的             | **静的・高速**      |
 
 ## License
 

@@ -11,6 +11,7 @@ A comprehensive collection of reusable validators following Django's validator p
 ### Implemented ✓
 
 #### Core Validation Framework
+
 - **Validator Trait**: Generic validation interface `Validator<T>` for implementing custom validators
 - **OrmValidator Trait**: Extension trait for ORM validators with custom error messages
 - **SettingsValidator Trait**: Extension trait for validating configuration settings
@@ -19,6 +20,7 @@ A comprehensive collection of reusable validators following Django's validator p
 - **Prelude Module**: Convenient re-exports of all validators and error types
 
 #### String Validators
+
 - **MinLengthValidator**: Validates minimum string length
   - Works with both `String` and `&str` types
   - Provides detailed error messages with actual and expected lengths
@@ -33,6 +35,7 @@ A comprehensive collection of reusable validators following Django's validator p
   - Works with both `String` and `&str` types
 
 #### Numeric Validators
+
 - **MinValueValidator**: Validates minimum numeric values
   - Generic over any `PartialOrd + Display + Clone` type
   - Supports integers (i8, i16, i32, i64, isize, u8, u16, u32, u64, usize)
@@ -48,6 +51,7 @@ A comprehensive collection of reusable validators following Django's validator p
   - Reports whether value is too small or too large
 
 #### Email Validator
+
 - **EmailValidator**: RFC 5322 compliant email validation
   - Case-insensitive validation
   - Local part validation (max 64 characters)
@@ -63,6 +67,7 @@ A comprehensive collection of reusable validators following Django's validator p
   - Works with both `String` and `&str` types
 
 #### URL Validator
+
 - **UrlValidator**: HTTP/HTTPS URL validation
   - Scheme validation (http, https)
   - Port number support (1-5 digits)
@@ -74,6 +79,7 @@ A comprehensive collection of reusable validators following Django's validator p
   - Works with both `String` and `&str` types
 
 #### Error Types
+
 - `InvalidEmail(String)`: Invalid email address format
 - `InvalidUrl(String)`: Invalid URL format
 - `TooSmall { value: String, min: String }`: Value below minimum
@@ -86,6 +92,7 @@ A comprehensive collection of reusable validators following Django's validator p
 ### Planned
 
 #### Additional Validators
+
 - **SlugValidator**: Validate URL-safe slugs
 - **UUIDValidator**: Validate UUID formats (v1-v5)
 - **IPAddressValidator**: Validate IPv4/IPv6 addresses
@@ -102,6 +109,7 @@ A comprehensive collection of reusable validators following Django's validator p
 - **PostalCodeValidator**: Validate postal codes (country-specific)
 
 #### Enhanced Features
+
 - **Validator Composition**: Combine multiple validators with AND/OR logic
 - **Conditional Validation**: Apply validators based on conditions
 - **Async Validators**: Support for async validation operations
@@ -111,6 +119,7 @@ A comprehensive collection of reusable validators following Django's validator p
 - **Schema Validation**: JSON Schema and other schema format support
 
 #### Performance Optimizations
+
 - **Lazy Regex Compilation**: Compile regex patterns only when needed
 - **Validator Caching**: Cache compiled validators for reuse
 - **Parallel Validation**: Run independent validators concurrently

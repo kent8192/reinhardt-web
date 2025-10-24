@@ -11,6 +11,7 @@ Database migration system for managing schema changes across PostgreSQL, MySQL, 
 ### Implemented ✓
 
 #### Core Migration System
+
 - **Migration Operations**: Comprehensive set of operations for schema changes
   - Model operations: `CreateModel`, `DeleteModel`, `RenameModel`
   - Field operations: `AddField`, `RemoveField`, `AlterField`, `RenameField`
@@ -65,6 +66,7 @@ Database migration system for managing schema changes across PostgreSQL, MySQL, 
 ### Planned
 
 #### Advanced Features
+
 - **Migration Graph**: Complete dependency resolution system (graph.rs skeleton exists)
 - **Migration Squashing**: Combine multiple migrations into one for performance
 - **Data Migrations**: Built-in support for complex data transformations
@@ -74,16 +76,19 @@ Database migration system for managing schema changes across PostgreSQL, MySQL, 
 - **Schema History Visualization**: Graphical representation of migration history
 
 #### Enhanced Autodetection
+
 - **Field Default Detection**: Automatically detect default value changes
 - **Constraint Detection**: Better support for CHECK, UNIQUE, and FOREIGN KEY constraints
 - **Index Optimization**: Suggest index additions based on model relationships
 
 #### Database-Specific Features
+
 - **PostgreSQL**: Advanced types (JSONB, Arrays, Custom types)
 - **MySQL**: Storage engine management, partition support
 - **SQLite**: Better handling of ALTER TABLE limitations
 
 #### Developer Experience
+
 - **Interactive Mode**: Guided migration creation
 - **Conflict Resolution**: Automatic handling of migration conflicts
 - **Migration Testing**: Built-in tools for testing migrations
@@ -121,6 +126,62 @@ let command = MakeMigrationsCommand::new(options);
 let created_files = command.execute();
 ```
 
+### Composite Primary Keys
+
+Migrations support composite primary keys through the `CreateModel` operation:
+
+```rust
+use reinhardt_migrations::{
+    operations::{CreateModel, FieldDefinition},
+    Migration,
+};
+
+// Create a migration with composite primary key
+let migration = Migration::new("0001_initial", "myapp")
+    .add_operation(
+        CreateModel::new(
+            "post_tags",
+            vec![
+                FieldDefinition::new("post_id", "INTEGER", true, false, None),
+                FieldDefinition::new("tag_id", "INTEGER", true, false, None),
+                FieldDefinition::new("description", "VARCHAR(200)", false, false, None),
+            ],
+        )
+        .with_composite_primary_key(vec!["post_id".to_string(), "tag_id".to_string()])
+    );
+
+// This generates SQL like:
+// CREATE TABLE post_tags (
+//     post_id INTEGER NOT NULL,
+//     tag_id INTEGER NOT NULL,
+//     description VARCHAR(200) NOT NULL,
+//     PRIMARY KEY (post_id, tag_id)
+// );
+```
+
+When using the `#[derive(Model)]` macro with multiple `primary_key = true` fields, migrations will automatically detect and generate composite primary key constraints:
+
+```rust
+use reinhardt_macros::Model;
+use serde::{Deserialize, Serialize};
+
+#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+#[model(app_label = "myapp", table_name = "post_tags")]
+struct PostTag {
+    #[field(primary_key = true)]
+    post_id: i64,
+
+    #[field(primary_key = true)]
+    tag_id: i64,
+
+    #[field(max_length = 200)]
+    description: String,
+}
+
+// The migration autodetector will recognize this as a composite primary key
+// and generate the appropriate CreateModel operation with composite_primary_key
+```
+
 ### Applying Migrations
 
 ```rust
@@ -154,6 +215,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Integration with Reinhardt Framework
 
 This crate is part of the Reinhardt framework and integrates with:
+
 - `reinhardt-database`: Database abstraction layer
 - `reinhardt-di`: Dependency injection system
 - `reinhardt-orm`: Object-relational mapping (future integration)
@@ -161,6 +223,7 @@ This crate is part of the Reinhardt framework and integrates with:
 ## License
 
 Licensed under either of:
+
 - Apache License, Version 2.0
 - MIT license
 

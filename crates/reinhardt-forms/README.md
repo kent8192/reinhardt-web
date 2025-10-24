@@ -41,12 +41,14 @@ Django-inspired form handling and validation for Rust
 #### Implemented ✓
 
 **Basic Fields:**
+
 - `CharField`: Text input with min/max length, stripping, null character validation
 - `IntegerField`: Integer input with min/max value constraints, string parsing
 - `BooleanField`: Boolean/checkbox input with flexible type coercion
 - `EmailField`: Email validation with regex, length constraints
 
 **Advanced Fields:**
+
 - `FloatField`: Floating-point number validation with min/max constraints
 - `DecimalField`: Precise decimal number handling with scale and precision
 - `DateField`: Date input with multiple format support and locale handling
@@ -68,6 +70,7 @@ Django-inspired form handling and validation for Rust
 - `SplitDateTimeField`: Separate date and time inputs
 
 **Model-Related Fields:**
+
 - `ModelChoiceField`: Foreign key selection with queryset support
 - `ModelMultipleChoiceField`: Many-to-many selection
 
@@ -167,6 +170,29 @@ Django-inspired form handling and validation for Rust
   - Custom error messages
   - Error message internationalization support
 
+#### Implemented ✓
+
+- **Security Features**:
+  - Rate limiting integration (`RateLimiter`)
+  - Honeypot fields (`HoneypotField`)
+  - Form security middleware (`FormSecurityMiddleware`)
+
+- **File Handling**:
+  - Temporary file cleanup via `Drop` implementation
+  - File upload handler with size and extension validation
+  - Memory-based file uploads
+  - Disk-based temporary files with auto-deletion
+
+- **Internationalization** (Partial):
+  - Locale-aware date/time formatting (`DateField` with `localize` support)
+  - Number format localization (`DecimalField` with `thousands_separator`)
+  - Locale configuration per field
+
+- **Form Templating** (Partial):
+  - Bootstrap 5 integration (`BootstrapRenderer`)
+  - Tailwind CSS integration (`TailwindRenderer`)
+  - CSS framework renderers for text inputs, selects, and checkboxes
+
 ### Planned Features
 
 - **Advanced CSRF Protection**:
@@ -179,11 +205,8 @@ Django-inspired form handling and validation for Rust
   - Chunked upload support
   - Progress tracking
   - File validation rules engine
-  - Temporary file cleanup
 
 - **Security Features**:
-  - Rate limiting integration
-  - Honeypot fields
   - Advanced XSS protection
   - Input sanitization rules
 
@@ -196,15 +219,14 @@ Django-inspired form handling and validation for Rust
 
 - **Internationalization**:
   - Multi-language error messages
-  - Locale-aware date/time formatting
-  - Number format localization
   - RTL language support
+  - Complete i18n message catalog
 
 - **Form Templating**:
-  - Template-based rendering
+  - Template-based rendering engine
   - Custom form layouts
-  - Bootstrap/Tailwind integration
-  - Accessible form markup generation
+  - Accessible form markup generation (ARIA attributes)
+  - Additional CSS framework support
 
 - **Advanced Widgets**:
   - Rich text editor
@@ -277,6 +299,7 @@ form.add_clean_function(|data| {
 ## Design Philosophy
 
 This crate follows Django's forms philosophy:
+
 - Declarative field definitions
 - Separation of validation logic
 - Automatic HTML rendering

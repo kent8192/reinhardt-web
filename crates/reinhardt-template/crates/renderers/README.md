@@ -11,15 +11,18 @@ Renderers for converting response data to different formats. Includes JSONRender
 ### Core Renderers
 
 #### JSONRenderer
+
 Renders responses as JSON with configurable formatting options.
 
 **Features:**
+
 - Standard JSON output
 - Pretty printing support with `.pretty(true)`
 - ASCII encoding control with `.ensure_ascii(true/false)`
 - Configurable formatting options
 
 **Example:**
+
 ```rust
 use reinhardt_renderers::{JSONRenderer, Renderer};
 use serde_json::json;
@@ -33,15 +36,18 @@ let result = renderer.render(&data, None).await?;
 ```
 
 #### XMLRenderer
+
 Renders responses as XML with customizable root element.
 
 **Features:**
+
 - Automatic JSON to XML conversion
 - Configurable root element name
 - XML declaration included
 - Proper indentation and formatting
 
 **Example:**
+
 ```rust
 use reinhardt_renderers::XMLRenderer;
 
@@ -52,9 +58,11 @@ let result = renderer.render(&data, None).await?;
 ```
 
 #### BrowsableAPIRenderer
+
 HTML self-documenting API interface (re-exported from `reinhardt-browsable-api`).
 
 **Features:**
+
 - Interactive web interface for API exploration
 - Form-based API testing
 - Authentication support in browser
@@ -64,9 +72,11 @@ HTML self-documenting API interface (re-exported from `reinhardt-browsable-api`)
 ### Specialized Renderers
 
 #### AdminRenderer
+
 Django-like admin interface renderer for resource management.
 
 **Features:**
+
 - Admin-style HTML interface
 - Automatic table generation from data
 - Resource creation confirmation messages
@@ -75,6 +85,7 @@ Django-like admin interface renderer for resource management.
 - Automatic detail URL generation
 
 **Example:**
+
 ```rust
 use reinhardt_renderers::AdminRenderer;
 
@@ -83,15 +94,18 @@ let renderer = AdminRenderer::new()
 ```
 
 #### StaticHTMLRenderer
+
 Returns pre-defined static HTML content, ignoring input data.
 
 **Features:**
+
 - Static HTML content serving
 - Data-independent rendering
 - Useful for static pages and templates
 - Simple content configuration
 
 **Example:**
+
 ```rust
 use reinhardt_renderers::StaticHTMLRenderer;
 
@@ -100,9 +114,11 @@ let renderer = StaticHTMLRenderer::new(content);
 ```
 
 #### DocumentationRenderer
+
 Renders API documentation from OpenAPI schemas.
 
 **Features:**
+
 - HTML documentation generation
 - Markdown documentation generation
 - OpenAPI schema parsing
@@ -110,6 +126,7 @@ Renders API documentation from OpenAPI schemas.
 - Configurable output format (HTML or Markdown)
 
 **Example:**
+
 ```rust
 use reinhardt_renderers::DocumentationRenderer;
 
@@ -122,9 +139,11 @@ let renderer = DocumentationRenderer::new()
 ```
 
 #### SchemaJSRenderer
+
 Renders OpenAPI schemas as JavaScript for Schema.js library.
 
 **Features:**
+
 - OpenAPI to JavaScript conversion
 - Helper function generation (`getEndpoint`, `getAllPaths`)
 - CommonJS module export support
@@ -132,6 +151,7 @@ Renders OpenAPI schemas as JavaScript for Schema.js library.
 - Valid identifier handling
 
 **Example:**
+
 ```rust
 use reinhardt_renderers::SchemaJSRenderer;
 
@@ -222,28 +242,34 @@ let result = json_renderer.render(&openapi_spec, None).await?;
 ### Core Traits
 
 #### Renderer Trait
+
 Base trait for all renderers with async support.
 
 **Methods:**
+
 - `media_types()` - Returns supported MIME types
 - `render()` - Async rendering of data to bytes
 - `format()` - Optional format identifier
 
 #### RendererContext
+
 Context information passed to renderers during rendering.
 
 ## Planned
 
 ### Additional Renderers
+
 - **TemplateRenderer** - Template-based HTML rendering with template engine integration
 
 ### Content Negotiation
+
 - Automatic renderer selection based on Accept headers
 - Renderer registry for managing multiple renderers
 - Quality value (q-factor) support
 - Format suffix handling (e.g., `/api/users.json`)
 
 ### Advanced Features
+
 - Custom renderer middleware
 - Renderer chaining
 - Response caching
@@ -265,4 +291,3 @@ Context information passed to renderers during rendering.
 - `reinhardt-browsable-api` - Browsable API interface implementation
 - `reinhardt-exception` - Error handling
 - `reinhardt-apps` - Application framework
-

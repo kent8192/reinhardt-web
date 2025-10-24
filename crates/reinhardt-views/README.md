@@ -11,12 +11,14 @@ This crate provides the view layer for building RESTful APIs in Reinhardt. It in
 ### Implemented ✓
 
 #### Core View Infrastructure
+
 - **View Trait** - Base trait for all views with async dispatch support
   - Automatic OPTIONS method handling
   - Customizable allowed methods
   - Async request/response processing
 
 #### Class-Based Views
+
 - **ListView** - Display paginated lists of objects
   - Configurable pagination with DRF-style metadata
   - Multi-field ordering (ascending/descending)
@@ -33,6 +35,7 @@ This crate provides the view layer for building RESTful APIs in Reinhardt. It in
   - HEAD method support
 
 #### View Mixins
+
 - **MultipleObjectMixin** - Common functionality for list views
   - Object retrieval
   - Ordering configuration
@@ -44,6 +47,7 @@ This crate provides the view layer for building RESTful APIs in Reinhardt. It in
   - Context data building
 
 #### Generic API Views (Stubs)
+
 - **ListAPIView** - List endpoint
 - **CreateAPIView** - Create endpoint
 - **UpdateAPIView** - Update endpoint
@@ -54,6 +58,7 @@ This crate provides the view layer for building RESTful APIs in Reinhardt. It in
 - **RetrieveUpdateDestroyAPIView** - Combined retrieve/update/delete endpoint
 
 #### OpenAPI Schema Generation
+
 - **OpenAPISpec** - OpenAPI 3.0 specification structure
 - **Schema** - JSON Schema definitions
 - **PathItem** - API path definitions with HTTP methods
@@ -65,40 +70,55 @@ This crate provides the view layer for building RESTful APIs in Reinhardt. It in
 - **EndpointInfo** - Endpoint metadata for documentation
 
 #### Browsable API
+
 - Basic rendering infrastructure (minimal stub)
 
 #### Admin Integration
+
 - Re-exports admin views from `reinhardt-contrib`
 - Admin change view support
 - Integration with Django-style admin interface
 
+#### ViewSets (from `reinhardt-viewsets`)
+
+- **ModelViewSet** - Complete CRUD operations for models
+  - List, Create, Retrieve, Update, Partial Update, Destroy actions
+  - Automatic HTTP method mapping
+  - Custom action support (`ActionType::Custom`)
+- **ViewSet Builder** - Fluent API for ViewSet configuration
+- **Action System** - Type-safe action definitions
+  - Built-in actions (List, Retrieve, Create, Update, PartialUpdate, Destroy)
+  - Custom action support
+  - Detail/non-detail action distinction
+- **Handler System** - Request routing and dispatch
+- **Dependency Injection** - Field and method injection for ViewSets
+- **Middleware Support** - ViewSet-specific middleware
+- **Registry** - ViewSet registration and discovery
+
 ### Planned
 
-#### Enhanced Generic Views
-- Full implementation of generic API views
-- Model-aware CRUD operations
-- Automatic serializer integration
-- Permission and authentication hooks
-
-#### Advanced View Features
-- ViewSets with automatic routing
-- Custom actions support
-- Nested resources handling
-- Batch operations support
-
 #### Enhanced Browsable API
+
 - HTML rendering for API exploration
 - Interactive API documentation
 - Form generation for POST/PUT/PATCH methods
 - Syntax highlighting for responses
 
 #### Schema Generation Enhancements
+
 - Automatic schema inference from models
 - Type-safe schema generation from Rust types
 - Request/response example generation
 - Schema validation utilities
 
+#### Advanced ViewSet Features
+
+- Nested resources handling
+- Batch operations support
+- Optimistic locking support
+
 #### Template Support
+
 - Template-based rendering
 - Context processors
 - Template inheritance
@@ -184,6 +204,7 @@ let spec = OpenAPISpec::new(Info::new(
 ## Testing
 
 The crate includes comprehensive unit tests covering:
+
 - Basic view functionality
 - ListView pagination and ordering
 - DetailView object retrieval

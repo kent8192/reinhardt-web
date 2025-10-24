@@ -42,6 +42,7 @@ reinhardt-conf = { version = "0.1.0", features = ["async", "encryption"] }
 ```
 
 Available features:
+
 - `settings` (default): Core settings functionality
 - `async`: Asynchronous settings operations
 - `dynamic-redis`: Redis-backed dynamic settings

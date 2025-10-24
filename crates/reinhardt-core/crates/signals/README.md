@@ -726,20 +726,20 @@ println!("Min execution time: {:?}", metrics.min_execution_time());println!("Max
 ## Django vs Reinhardt Signals Comparison
 
 | Feature             | Django | Reinhardt | Notes                                      |
-| ------------------- | ------ | --------- | ------------------------------------------ |
-| Sender filtering    | ✅     | ✅        | Rust uses TypeId for type-safe filtering   |
-| dispatch_uid        | ✅     | ✅        | Prevents duplicate registration            |
-| send_robust         | ✅     | ✅        | Continues execution even if receivers fail |
-| Weak references     | ✅     | ✅        | Available in dispatch module               |
-| @receiver decorator | ✅     | ✅        | Use `connect_receiver!` macro              |
-| Async support       | ⚠️     | ✅        | Native async/await support                 |
-| Type safety         | ❌     | ✅        | Compile-time type checking                 |
-| Memory safety       | ⚠️     | ✅        | Guaranteed by Rust ownership               |
-| Middleware          | ❌     | ✅        | Intercept signals at multiple stages       |
-| Signal composition  | ❌     | ✅        | Chain, merge, filter, and map signals      |
-| Performance metrics | ❌     | ✅        | Built-in performance monitoring            |
-| Predicates          | ❌     | ✅        | Conditional receiver execution             |
-| Priority ordering   | ❌     | ✅        | Execute receivers in priority order        |
+|---------------------|--------|-----------|--------------------------------------------|
+| Sender filtering    | ✅      | ✅         | Rust uses TypeId for type-safe filtering   |
+| dispatch_uid        | ✅      | ✅         | Prevents duplicate registration            |
+| send_robust         | ✅      | ✅         | Continues execution even if receivers fail |
+| Weak references     | ✅      | ✅         | Available in dispatch module               |
+| @receiver decorator | ✅      | ✅         | Use `connect_receiver!` macro              |
+| Async support       | ⚠️     | ✅         | Native async/await support                 |
+| Type safety         | ❌      | ✅         | Compile-time type checking                 |
+| Memory safety       | ⚠️     | ✅         | Guaranteed by Rust ownership               |
+| Middleware          | ❌      | ✅         | Intercept signals at multiple stages       |
+| Signal composition  | ❌      | ✅         | Chain, merge, filter, and map signals      |
+| Performance metrics | ❌      | ✅         | Built-in performance monitoring            |
+| Predicates          | ❌      | ✅         | Conditional receiver execution             |
+| Priority ordering   | ❌      | ✅         | Execute receivers in priority order        |
 
 ## Performance
 

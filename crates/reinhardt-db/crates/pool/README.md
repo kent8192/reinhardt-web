@@ -13,6 +13,7 @@ Provides efficient connection reuse, automatic cleanup, and configurable pool si
 ### Implemented ✓
 
 #### Core Connection Pool
+
 - **Multi-database support**: PostgreSQL, MySQL, SQLite connection pools
   - `ConnectionPool::new_postgres()` - Create PostgreSQL connection pool
   - `ConnectionPool::new_mysql()` - Create MySQL connection pool
@@ -23,6 +24,7 @@ Provides efficient connection reuse, automatic cleanup, and configurable pool si
 - **Inner pool access**: Direct access to underlying sqlx pool when needed
 
 #### Pool Configuration
+
 - **Flexible sizing**: Configurable min/max connection limits
   - `max_connections` - Maximum number of connections
   - `min_connections` - Minimum idle connections to maintain
@@ -39,6 +41,7 @@ Provides efficient connection reuse, automatic cleanup, and configurable pool si
 - **Builder pattern**: `PoolOptions` for ergonomic configuration with method chaining
 
 #### Event System
+
 - **Connection lifecycle events**: Track connection state changes
   - `ConnectionAcquired` - Connection checked out from pool
   - `ConnectionReturned` - Connection returned to pool
@@ -55,6 +58,7 @@ Provides efficient connection reuse, automatic cleanup, and configurable pool si
 - **Serializable events**: Events support serde serialization
 
 #### Connection Management
+
 - **Connection invalidation**:
   - Hard invalidation via `invalidate()` - connection immediately unusable
   - Soft invalidation via `soft_invalidate()` - can complete current operation
@@ -63,6 +67,7 @@ Provides efficient connection reuse, automatic cleanup, and configurable pool si
 - **Automatic cleanup**: Connections automatically returned on drop with event emission
 
 #### Pool Management
+
 - **Multi-pool management**: `PoolManager` for managing multiple named pools
   - `add_pool()` - Register a named pool
   - `get_pool()` - Retrieve pool by name with type safety
@@ -71,12 +76,14 @@ Provides efficient connection reuse, automatic cleanup, and configurable pool si
 - **Shared configuration**: Common config across managed pools
 
 #### Dependency Injection Support
+
 - **Database service wrapper**: `DatabaseService` for DI frameworks
 - **Database URL type**: `DatabaseUrl` wrapper for type-safe URLs
 - **Pool type placeholders**: `MySqlPool`, `PostgresPool`, `SqlitePool` types
 - **Manager types**: Dedicated manager types for each database backend
 
 #### Error Handling
+
 - **Comprehensive error types**: Detailed error variants
   - `PoolClosed` - Pool has been closed
   - `Timeout` - Operation timeout
@@ -92,4 +99,3 @@ Provides efficient connection reuse, automatic cleanup, and configurable pool si
 ### Planned
 
 Currently all planned features are implemented.
-

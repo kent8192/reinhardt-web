@@ -69,6 +69,7 @@ The `DefaultExceptionHandler` automatically converts errors into HTTP responses:
 ### BaseHandler
 
 The core request handler that:
+
 - Emits `request_started` signal
 - Processes the request (delegates to URL resolver and views)
 - Emits `request_finished` signal
@@ -109,13 +110,13 @@ The exception module provides:
 
 ## Django Equivalents
 
-| Reinhardt                    | Django                              |
-|------------------------------|-------------------------------------|
-| `BaseHandler`                | `django.core.handlers.base.BaseHandler` |
-| `MiddlewareChain`            | `django.core.handlers.base.MiddlewareChain` |
-| `ExceptionHandler`           | `django.core.handlers.exception.exception_handler` |
-| `request_started` signal     | `django.core.signals.request_started` |
-| `request_finished` signal    | `django.core.signals.request_finished` |
+| Reinhardt                 | Django                                             |
+| ------------------------- | -------------------------------------------------- |
+| `BaseHandler`             | `django.core.handlers.base.BaseHandler`            |
+| `MiddlewareChain`         | `django.core.handlers.base.MiddlewareChain`        |
+| `ExceptionHandler`        | `django.core.handlers.exception.exception_handler` |
+| `request_started` signal  | `django.core.signals.request_started`              |
+| `request_finished` signal | `django.core.signals.request_finished`             |
 
 ## Implementation Notes
 

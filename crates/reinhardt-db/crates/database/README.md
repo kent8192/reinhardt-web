@@ -11,6 +11,7 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
 ### Core Abstraction Layer ✓
 
 #### Database Backend Trait (Implemented ✓)
+
 - `DatabaseBackend` trait for unified database interface
 - Async database operations (execute, fetch_one, fetch_all, fetch_optional)
 - Database capability detection (RETURNING clause, ON CONFLICT support)
@@ -18,6 +19,7 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
 - Connection pooling support via sqlx
 
 #### Query Builders (Implemented ✓)
+
 - **SelectBuilder**: SELECT queries with WHERE, LIMIT clauses
 - **InsertBuilder**: INSERT with optional RETURNING support
 - **UpdateBuilder**: UPDATE with SET and WHERE clauses, NOW() function support
@@ -25,6 +27,7 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
 - Type-safe parameter binding via `QueryValue` enum
 
 #### Type System (Implemented ✓)
+
 - `QueryValue` enum: Null, Bool, Int, Float, String, Bytes, Timestamp
 - `Row` type for query results with type-safe column access
 - `QueryResult` for tracking rows affected
@@ -32,6 +35,7 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
 - `DatabaseType` enum: Postgres, Sqlite, Mysql
 
 #### Schema Editor System (Implemented ✓)
+
 - `BaseDatabaseSchemaEditor` trait for DDL operations
 - CREATE/DROP TABLE support
 - ALTER TABLE operations (add/drop/rename columns, constraints)
@@ -42,6 +46,7 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
 ### SQL Database Support
 
 #### PostgreSQL (Implemented ✓)
+
 - **Connection Management**: Connection pooling via sqlx PgPool
 - **Query Execution**: Full async query support with parameter binding
 - **Type Mapping**: Comprehensive type conversion (primitives, timestamps, bytes, NULL)
@@ -58,6 +63,7 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
   - IF EXISTS support for safer operations ✓
 
 #### MySQL (Implemented ✓)
+
 - **Connection Management**: Connection pooling via sqlx MySqlPool
 - **Query Execution**: Full async query support with parameter binding
 - **Type Mapping**: Comprehensive type conversion (primitives, timestamps, bytes, NULL)
@@ -68,6 +74,7 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
 - **Schema Editor**: Standard DDL operations ✓
 
 #### SQLite (Implemented ✓)
+
 - **Connection Management**: Connection pooling via sqlx SqlitePool
 - **Query Execution**: Full async query support with parameter binding
 - **Type Mapping**: Comprehensive type conversion (primitives, timestamps, bytes, NULL)
@@ -80,6 +87,7 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
 ### Planned Features
 
 #### PostgreSQL Advanced Features (Planned)
+
 - Array field operations
 - JSONB field operations and operators
 - HStore field support
@@ -91,6 +99,7 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
 - Custom types and domains
 
 #### MySQL Advanced Features (Planned)
+
 - JSON field operations and path expressions
 - Full-text search (FULLTEXT index, MATCH AGAINST)
 - Spatial data types and operations
@@ -98,13 +107,15 @@ Database abstraction layer for Reinhardt framework with unified interfaces for S
 - Partition management
 
 #### SQLite Advanced Features (Planned)
+
 - JSON1 extension operations
 - FTS5 full-text search
-- R*Tree spatial index
+- R\*Tree spatial index
 - Virtual table support
 - Common Table Expressions (CTE)
 
 #### General Enhancements (Planned)
+
 - Transaction management
 - Connection pool configuration
 - Query result streaming for large datasets
@@ -245,12 +256,12 @@ async fn insert_user(conn: &DatabaseConnection, name: &str) -> Result<()> {
 
 ## Feature Flags
 
-| Feature         | Description                           | Default |
-| --------------- | ------------------------------------- | ------- |
-| `postgres`      | PostgreSQL support                    | ✅      |
-| `mysql`         | MySQL support                         | ❌      |
-| `sqlite`        | SQLite support                        | ❌      |
-| `all-databases` | Enable all SQL databases              | ❌      |
+| Feature         | Description              | Default |
+| --------------- | ------------------------ | ------- |
+| `postgres`      | PostgreSQL support       | ✅      |
+| `mysql`         | MySQL support            | ❌      |
+| `sqlite`        | SQLite support           | ❌      |
+| `all-databases` | Enable all SQL databases | ❌      |
 
 ## Architecture
 

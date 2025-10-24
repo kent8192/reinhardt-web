@@ -17,31 +17,35 @@ Django is known for being "batteries-included", but this comes at a cost: simple
 - 📦 **Composable** - Feature flags for incremental adoption (`routing`, `params`, `di`, `schema`, `database`)
 - **App builder API** - Simple `App::new().route().serve()` pattern
 - **Handler integration** - Works with any `Handler` trait implementation
+- **Function-based endpoint macros** - FastAPI-style `#[get]`, `#[post]`, `#[put]`, `#[patch]`, `#[delete]` decorators
+- **Built-in middleware shortcuts** - Quick imports for common middleware (CORS, CSRF, Compression, Logging, etc.)
 
 ### Planned
 
-- Function-based endpoint macros (e.g., `#[get("/users")]`)
-- Built-in middleware shortcuts
+- More middleware configuration helpers
+- Additional utility functions
 
 ## Quick Start
 
 Add Reinhardt Micro to your `Cargo.toml`:
 
 ```toml
-[dependencies]reinhardt-micro = "0.1.0"
+[dependencies]
+reinhardt-micro = "0.1.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
-Create a simple API:
+### Example 1: Basic API with Endpoint Macros
 
-```rustuse reinhardt_micro::prelude::*;
+```rust
+use reinhardt_micro::prelude::*;
 
 #[tokio::main]
 async fn main() {
     let app = App::new()
-        .route("/", get(hello))
-        .route("/users/:id", get(get_user))
-        .route("/users", post(create_user));
+        .route("/", hello)
+        .route("/users/:id", get_user)
+        .route("/users", create_user);
 
     app.serve("127.0.0.1:8000").await.unwrap();
 }
@@ -50,6 +54,7 @@ async fn hello() -> &'static str {
     "Hello, World!"
 }
 
+#[get("/users/:id")]
 async fn get_user(Path(id): Path<u64>) -> String {
     format!("User ID: {}", id)
 }
@@ -60,8 +65,32 @@ struct CreateUser {
     email: String,
 }
 
+#[post("/users")]
 async fn create_user(Json(user): Json<CreateUser>) -> String {
     format!("Created user: {}", user.name)
+}
+```
+
+### Example 2: With Middleware
+
+```rust
+use reinhardt_micro::prelude::*;
+use reinhardt_micro::middleware::*;
+
+#[tokio::main]
+async fn main() {
+    let app = App::new()
+        .middleware(CorsMiddleware::permissive())
+        .middleware(LoggingMiddleware::new())
+        .middleware(GZipMiddleware::new())
+        .route("/api/users", list_users);
+
+    app.serve("127.0.0.1:8000").await.unwrap();
+}
+
+#[get("/api/users")]
+async fn list_users() -> &'static str {
+    "[{\"id\": 1, \"name\": \"Alice\"}]"
 }
 ```
 
@@ -84,18 +113,18 @@ Available features:
 ## Comparison with Full Reinhardt
 
 | Feature              | Reinhardt Micro | Reinhardt (Standard) | Reinhardt (Full) |
-| -------------------- | --------------- | -------------------- | ---------------- |
+|----------------------|-----------------|----------------------|------------------|
 | Binary Size          | ~5-10 MB        | ~20-30 MB            | ~50+ MB          |
 | Compile Time         | Fast            | Medium               | Slow             |
-| Routing              | ✅              | ✅                   | ✅               |
-| Parameter Extraction | ✅              | ✅                   | ✅               |
-| Dependency Injection | ✅              | ✅                   | ✅               |
-| ORM                  | Optional        | ✅                   | ✅               |
-| Admin Panel          | ❌              | ❌                   | ✅               |
-| Authentication       | ❌              | ✅                   | ✅               |
-| Migrations           | ❌              | ✅                   | ✅               |
-| Forms                | ❌              | ❌                   | ✅               |
-| Templates            | ❌              | ❌                   | ✅               |
+| Routing              | ✅               | ✅                    | ✅                |
+| Parameter Extraction | ✅               | ✅                    | ✅                |
+| Dependency Injection | ✅               | ✅                    | ✅                |
+| ORM                  | Optional        | ✅                    | ✅                |
+| Admin Panel          | ❌               | ❌                    | ✅                |
+| Authentication       | ❌               | ✅                    | ✅                |
+| Migrations           | ❌               | ✅                    | ✅                |
+| Forms                | ❌               | ❌                    | ✅                |
+| Templates            | ❌               | ❌                    | ✅                |
 
 ## When to Use
 

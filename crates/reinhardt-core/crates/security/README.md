@@ -11,6 +11,7 @@ Security utilities and middleware for protecting web applications. Provides comp
 ### Implemented ✓
 
 #### CSRF Protection
+
 - **Token Generation & Validation**: Cryptographically secure CSRF token generation with masking/unmasking mechanism
 - **Token Management**: `get_secret()`, `get_token()`, `rotate_token()` functions for lifecycle management
 - **Format Validation**: `check_token_format()` validates token length and character set
@@ -23,11 +24,13 @@ Security utilities and middleware for protecting web applications. Provides comp
 - **Error Handling**: Detailed rejection reasons for debugging (bad origin, bad referer, missing token, etc.)
 
 #### XSS Prevention
+
 - **HTML Escaping**: `escape_html()` escapes dangerous characters (`<`, `>`, `&`, `"`, `'`)
 - **HTML Sanitization**: `sanitize_html()` for basic HTML input sanitization
 - **Safe Output**: Prevents script injection in user-generated content
 
 #### Security Headers
+
 - **Content Security Policy (CSP)**: Configurable CSP with granular control over:
   - `default-src`, `script-src`, `style-src`, `img-src`
   - `connect-src`, `font-src`, `object-src`, `media-src`, `frame-src`
@@ -41,6 +44,7 @@ Security utilities and middleware for protecting web applications. Provides comp
   - `Permissions-Policy` (optional)
 
 #### HSTS (HTTP Strict Transport Security)
+
 - **HSTS Configuration**: `HstsConfig` with builder pattern
 - **Configurable Options**:
   - `max_age`: Configurable duration in seconds
@@ -50,11 +54,13 @@ Security utilities and middleware for protecting web applications. Provides comp
 - **Secure Defaults**: 1-year max-age default configuration
 
 #### Security Utilities
+
 - **Secure Token Generation**: `generate_token()` creates cryptographically random tokens
 - **SHA-256 Hashing**: `hash_sha256()` for secure string hashing
 - **Random Number Generation**: Built on `rand` crate for security
 
 #### Error Handling
+
 - **Comprehensive Error Types**: `SecurityError` enum with specific variants
 - **CSRF Validation Errors**: Detailed error messages for debugging
 - **XSS Detection**: Error type for potential XSS attempts
@@ -63,4 +69,3 @@ Security utilities and middleware for protecting web applications. Provides comp
 ### Planned
 
 Currently all planned features are implemented.
-

@@ -16,6 +16,13 @@ Automatic URL routing configuration for Reinhardt framework
   - Support for custom ViewSet actions (both list and detail-level)
   - Request dispatching with path parameter extraction
   - Integration with `Handler` trait from `reinhardt-apps`
+- **`UnifiedRouter`**: Hierarchical router with support for nested routing structures
+  - Three API style unification (FastAPI-style, Django-style, DRF-style)
+  - Nested router mounting with automatic prefix inheritance
+  - DI context propagation from parent to child routers
+  - Middleware stack composition (parent → child order)
+  - Namespace-based route organization
+  - Depth-first route resolution algorithm
 
 ### Route Definition
 
@@ -31,6 +38,8 @@ Automatic URL routing configuration for Reinhardt framework
   - Parameter extraction syntax (`/users/{id}/`)
   - Regex-based pattern matching with named groups
   - Parameter name validation and tracking
+  - `is_match()`: Test if a path matches the pattern
+  - `extract_params()`: Extract path parameters from a matched path
 - **`PathMatcher`**: Efficient path matching engine
   - Multiple pattern registration
   - Path parameter extraction and mapping
@@ -53,6 +62,7 @@ Automatic URL routing configuration for Reinhardt framework
 ### URL Reversal (Django-style reverse())
 
 #### Runtime String-based Reversal
+
 - **`UrlReverser`**: Name-to-URL resolution engine
   - Route registration and lookup by name
   - Parameter substitution in URL patterns
@@ -62,6 +72,7 @@ Automatic URL routing configuration for Reinhardt framework
 - **`reverse()` function**: Standalone convenience function for URL reversal
 
 #### Compile-time Type-safe Reversal
+
 - **`UrlPattern` trait**: Define type-safe URL patterns at compile time
   - Constant pattern and name definitions
   - Zero-cost abstraction for URL definitions
@@ -108,6 +119,26 @@ Automatic URL routing configuration for Reinhardt framework
   - `Validation`: Pattern parsing or parameter validation errors
 - **`ReverseResult<T>`**: Type alias for reversal operations
 
+### Hierarchical Routing (UnifiedRouter)
+
+- **Nested router mounting**: Build hierarchical routing structures
+  - `mount(prefix, child)`: Mount child router with automatic prefix inheritance
+  - `mount_mut(&mut self, prefix, child)`: Mutable reference version
+  - `group(namespace)`: Create namespace groups for organization
+- **Builder pattern configuration**:
+  - `with_prefix(prefix)`: Set URL prefix for router
+  - `with_namespace(namespace)`: Set namespace for route naming
+  - `with_di_context(context)`: Attach dependency injection context
+  - `with_middleware(middleware)`: Add middleware to router
+- **Automatic inheritance**:
+  - DI context inherited from parent to child
+  - Middleware stacks accumulated (parent → child order)
+  - Prefix concatenation for nested paths
+- **Route resolution**:
+  - Depth-first search algorithm
+  - Child routers checked before parent's own routes
+  - Full middleware and DI context propagation
+
 ## Planned
 
 ### Advanced Features
@@ -115,10 +146,10 @@ Automatic URL routing configuration for Reinhardt framework
 - **`SimpleRouter`**: Lightweight router for basic routing needs
   - Minimal overhead for simple applications
   - Subset of DefaultRouter functionality
-- **Nested routing**: Nested resource URL patterns
-  - Parent-child resource relationships
-  - Automatic nested URL generation
-- **Route groups**: Group routes with shared middleware/configuration
+- **Namespace-based URL reversal** (Phase 2 - In Progress):
+  - Hierarchical route naming (`"v1:users:detail"`)
+  - Nested namespace resolution
+  - URL reversal with namespace support
 - **Route caching**: Performance optimization for large route tables
 - **Custom converters**: Type-specific path parameter converters
   - Integer, UUID, slug converters
@@ -130,7 +161,9 @@ Automatic URL routing configuration for Reinhardt framework
 - **OpenAPI integration**: Automatic OpenAPI schema generation from routes
 - **Route visualization**: Generate route maps for documentation
 
-## Usage Example
+## Usage Examples
+
+### DefaultRouter (Traditional)
 
 ```rust
 use reinhardt_routers::{DefaultRouter, Router, path, include_routes};
@@ -159,14 +192,83 @@ let user_url = router.reverse_with("users-detail", &[("id", "123")]).unwrap();
 // => "/users/123/"
 ```
 
+### UnifiedRouter (Hierarchical)
+
+```rust
+use reinhardt_routers::UnifiedRouter;
+use reinhardt_di::InjectionContext;
+use reinhardt_middleware::AuthMiddleware;
+use std::sync::Arc;
+
+// Create main router
+let app = UnifiedRouter::new()
+    .with_middleware(Arc::new(LoggingMiddleware));
+
+// Create API v1 router
+let api_v1 = UnifiedRouter::new()
+    .with_namespace("v1")
+    .with_middleware(Arc::new(AuthMiddleware));
+
+// Create users router
+let users_router = UnifiedRouter::new()
+    .viewset("users", Arc::new(UserViewSet::new()));
+
+// Create posts router
+let posts_router = UnifiedRouter::new()
+    .viewset("posts", Arc::new(PostViewSet::new()));
+
+// Build hierarchy
+let app = app
+    .mount("/api/v1",
+        api_v1
+            .mount("/users", users_router)
+            .mount("/posts", posts_router)
+    );
+
+// Resulting URL structure:
+// GET  /api/v1/users/       -> List users
+// POST /api/v1/users/       -> Create user
+// GET  /api/v1/users/{id}/  -> Get user
+// PUT  /api/v1/users/{id}/  -> Update user
+// DELETE /api/v1/users/{id}/ -> Delete user
+// (same for /api/v1/posts/)
+
+// Middleware stack for /api/v1/users/:
+// 1. LoggingMiddleware (from app)
+// 2. AuthMiddleware (from api_v1)
+```
+
+### Mixed API Styles with UnifiedRouter
+
+```rust
+use reinhardt_routers::UnifiedRouter;
+use hyper::Method;
+use std::sync::Arc;
+
+let router = UnifiedRouter::new()
+    // FastAPI-style: Function-based endpoint
+    .function("/health", Method::GET, health_check)
+
+    // DRF-style: ViewSet with automatic CRUD
+    .viewset("users", Arc::new(UserViewSet::new()))
+
+    // Django-style: Class-based view
+    .view("/about", Arc::new(AboutView));
+
+// All three styles work seamlessly together!
+```
+
 ## Dependencies
 
 - `reinhardt-apps`: Handler trait and request/response types
 - `reinhardt-viewsets`: ViewSet trait and action definitions
 - `reinhardt-exception`: Error types and result handling
+- `reinhardt-di` (optional, with `unified-router` feature): Dependency injection support
+- `reinhardt-middleware` (optional, with `unified-router` feature): Middleware system
 - `regex`: Pattern matching engine
 - `nom`: Parser combinator library for regex conversion
 - `async-trait`: Async trait support
+- `hyper`: HTTP types (Method, Uri, etc.)
 
 ## License
 

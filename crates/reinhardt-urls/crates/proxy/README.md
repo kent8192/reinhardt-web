@@ -11,6 +11,7 @@ Association proxies allow you to access attributes on related objects as if they
 ### Implemented ✓
 
 #### Core Association Proxy (`proxy.rs`)
+
 - `AssociationProxy<T, U>` - Main proxy type for relationship traversal
 - `ProxyAccessor` trait - Interface for getting/setting proxy targets
 - `ProxyTarget` enum - Represents scalar or collection proxy results
@@ -19,12 +20,14 @@ Association proxies allow you to access attributes on related objects as if they
 - Comprehensive type conversion methods (`as_string()`, `as_integer()`, `as_float()`, `as_boolean()`)
 
 #### Scalar Proxies (`scalar.rs`)
+
 - `ScalarProxy` - For one-to-one and many-to-one relationships
 - `ScalarComparison` enum - Rich comparison operators (Eq, Ne, Gt, Gte, Lt, Lte, In, NotIn, IsNull, IsNotNull, Like, NotLike)
 - Async get/set operations for scalar values
 - Builder methods for all comparison types
 
 #### Collection Proxies (`collection.rs`)
+
 - `CollectionProxy` - For one-to-many and many-to-many relationships
 - Unique value support with deduplication
 - Collection manipulation methods:
@@ -41,12 +44,14 @@ Association proxies allow you to access attributes on related objects as if they
 - `CollectionAggregations` - Wrapper for aggregation operations (sum, avg, min, max)
 
 #### Query Filtering (`query.rs`)
+
 - `FilterOp` enum - Filter operations (Eq, Ne, Lt, Le, Gt, Ge, In, NotIn, Contains, StartsWith, EndsWith)
 - `FilterCondition` - Condition with field, operator, and value
 - `QueryFilter` - Container for multiple conditions
 - `matches()` method for evaluating conditions against ScalarValue
 
 #### Join Operations (`joins.rs`)
+
 - `JoinConfig` - Configuration for eager/lazy loading
 - `LoadingStrategy` enum - Eager, Lazy, Select strategies
 - `NestedProxy` - Multi-level relationship traversal
@@ -58,6 +63,7 @@ Association proxies allow you to access attributes on related objects as if they
   - `traverse_relationships()` - Navigate relationship paths
 
 #### Builder Pattern (`builder.rs`)
+
 - `ProxyBuilder<T, U>` - Fluent API for proxy construction
 - Method chaining for configuration:
   - `relationship()` - Set relationship name
@@ -69,6 +75,7 @@ Association proxies allow you to access attributes on related objects as if they
 - `association_proxy()` helper function
 
 #### Reflection System (`reflection.rs`)
+
 - `Reflectable` trait - Core trait for runtime introspection
   - `get_relationship()` / `get_relationship_mut()` - Access relationships
   - `get_attribute()` / `set_attribute()` - Access attributes
@@ -83,6 +90,7 @@ Association proxies allow you to access attributes on related objects as if they
   - `extract_collection_values()` - Bulk value extraction
 
 #### Error Handling
+
 - `ProxyError` enum with comprehensive error types:
   - `RelationshipNotFound` - Missing relationship
   - `AttributeNotFound` - Missing attribute
@@ -95,4 +103,3 @@ Association proxies allow you to access attributes on related objects as if they
 ### Planned
 
 Currently all planned features are implemented.
-
