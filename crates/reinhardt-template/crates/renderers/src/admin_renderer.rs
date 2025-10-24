@@ -7,6 +7,30 @@ use crate::renderer::{RenderResult, Renderer, RendererContext};
 use async_trait::async_trait;
 use bytes::Bytes;
 use serde_json::Value;
+use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
+use tera::{Context, Tera};
+
+static TERA_ENGINE: OnceLock<Arc<Tera>> = OnceLock::new();
+
+fn get_tera_engine() -> &'static Arc<Tera> {
+    TERA_ENGINE.get_or_init(|| {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let template_dir = PathBuf::from(manifest_dir).join("templates");
+        let glob_pattern = format!("{}/**/*", template_dir.display());
+
+        match Tera::new(&glob_pattern) {
+            Ok(tera) => Arc::new(tera),
+            Err(e) => {
+                eprintln!(
+                    "Warning: Failed to initialize Tera for admin templates: {}",
+                    e
+                );
+                Arc::new(Tera::default())
+            }
+        }
+    })
+}
 
 /// Renderer for admin interface responses
 ///
@@ -76,6 +100,99 @@ impl AdminRenderer {
 
     /// Renders admin HTML for the given data
     fn render_admin_html(&self, data: &Value, _context: Option<&RendererContext>) -> String {
+        let tera = get_tera_engine();
+        let mut context = Context::new();
+
+        // Add result_url if available
+        if let Some(result_url) = self.get_result_url(data) {
+            context.insert("result_url", &result_url);
+        }
+
+        // Build context based on data type
+        match data {
+            Value::Object(map) => {
+                context.insert("is_object", &true);
+                context.insert("is_array", &false);
+
+                let fields: Vec<serde_json::Value> = map
+                    .iter()
+                    .map(|(key, value)| {
+                        let value_str = match value {
+                            Value::String(s) => s.clone(),
+                            Value::Number(n) => n.to_string(),
+                            Value::Bool(b) => b.to_string(),
+                            Value::Null => "null".to_string(),
+                            Value::Array(_) | Value::Object(_) => {
+                                serde_json::to_string_pretty(value)
+                                    .unwrap_or_else(|_| "{}".to_string())
+                            }
+                        };
+                        serde_json::json!({"key": key, "value": value_str})
+                    })
+                    .collect();
+                context.insert("fields", &fields);
+            }
+            Value::Array(arr) => {
+                context.insert("is_object", &false);
+                context.insert("is_array", &true);
+
+                // Extract headers from first object
+                let headers: Vec<String> = if let Some(Value::Object(obj)) = arr.first() {
+                    obj.keys().cloned().collect()
+                } else {
+                    vec![]
+                };
+                context.insert("headers", &headers);
+
+                // Build rows
+                let rows: Vec<Vec<String>> = arr
+                    .iter()
+                    .filter_map(|item| {
+                        if let Value::Object(obj) = item {
+                            Some(
+                                headers
+                                    .iter()
+                                    .map(|key| {
+                                        obj.get(key).map_or("".to_string(), |value| match value {
+                                            Value::String(s) => s.clone(),
+                                            Value::Number(n) => n.to_string(),
+                                            Value::Bool(b) => b.to_string(),
+                                            Value::Null => "null".to_string(),
+                                            _ => serde_json::to_string(value)
+                                                .unwrap_or_else(|_| "{}".to_string()),
+                                        })
+                                    })
+                                    .collect(),
+                            )
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                context.insert("rows", &rows);
+            }
+            _ => {
+                context.insert("is_object", &false);
+                context.insert("is_array", &false);
+                context.insert(
+                    "data",
+                    &serde_json::to_string_pretty(data).unwrap_or_else(|_| "{}".to_string()),
+                );
+            }
+        }
+
+        // Try to render with template, fallback to hardcoded HTML if fails
+        tera.render("admin.html", &context).unwrap_or_else(|e| {
+            eprintln!(
+                "Warning: Failed to render admin.html template: {}. Using fallback.",
+                e
+            );
+            self.render_fallback_html(data)
+        })
+    }
+
+    /// Fallback HTML rendering (original hardcoded logic)
+    fn render_fallback_html(&self, data: &Value) -> String {
         let mut html = String::from("<!DOCTYPE html>\n<html>\n<head>\n");
         html.push_str("<title>Admin Interface</title>\n");
         html.push_str("<style>\n");
@@ -87,7 +204,6 @@ impl AdminRenderer {
         html.push_str("</style>\n");
         html.push_str("</head>\n<body>\n");
 
-        // Check if this is a resource creation response
         if let Some(result_url) = self.get_result_url(data) {
             html.push_str("<div class=\"success\">Resource created successfully!</div>\n");
             html.push_str(&format!(
@@ -96,7 +212,6 @@ impl AdminRenderer {
             ));
         }
 
-        // Render data as a table
         html.push_str("<h2>Data</h2>\n");
         html.push_str("<table class=\"data-table\">\n");
 
@@ -121,10 +236,8 @@ impl AdminRenderer {
                 html.push_str("</tbody>\n");
             }
             Value::Array(arr) => {
-                // For arrays, render each item as a row
                 if let Some(first) = arr.first() {
                     if let Value::Object(obj) = first {
-                        // Use keys from first object as headers
                         html.push_str("<thead><tr>");
                         for key in obj.keys() {
                             html.push_str(&format!("<th>{}</th>", key));
@@ -210,7 +323,8 @@ mod tests {
         let html = String::from_utf8(result.to_vec()).unwrap();
 
         assert!(html.contains("Resource created successfully"));
-        assert!(html.contains("/admin/42"));
+        // URL path is HTML-escaped by Tera (/ becomes &#x2F;)
+        assert!(html.contains("&#x2F;admin&#x2F;42") || html.contains("/admin/42"));
     }
 
     #[tokio::test]
@@ -221,7 +335,8 @@ mod tests {
         let result = renderer.render(&data, None).await.unwrap();
         let html = String::from_utf8(result.to_vec()).unwrap();
 
-        assert!(html.contains("/custom/5"));
+        // URL path is HTML-escaped by Tera (/ becomes &#x2F;)
+        assert!(html.contains("&#x2F;custom&#x2F;5") || html.contains("/custom/5"));
     }
 
     #[tokio::test]

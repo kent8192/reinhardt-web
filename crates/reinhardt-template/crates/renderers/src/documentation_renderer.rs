@@ -6,6 +6,30 @@ use crate::renderer::{RenderResult, Renderer, RendererContext};
 use async_trait::async_trait;
 use bytes::Bytes;
 use serde_json::Value;
+use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
+use tera::{Context, Tera};
+
+static TERA_ENGINE: OnceLock<Arc<Tera>> = OnceLock::new();
+
+fn get_tera_engine() -> &'static Arc<Tera> {
+    TERA_ENGINE.get_or_init(|| {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let template_dir = PathBuf::from(manifest_dir).join("templates");
+        let glob_pattern = format!("{}/**/*", template_dir.display());
+
+        match Tera::new(&glob_pattern) {
+            Ok(tera) => Arc::new(tera),
+            Err(e) => {
+                eprintln!(
+                    "Warning: Failed to initialize Tera for documentation templates: {}",
+                    e
+                );
+                Arc::new(Tera::default())
+            }
+        }
+    })
+}
 
 /// Documentation renderer for API documentation
 ///
@@ -50,6 +74,56 @@ impl DocumentationRenderer {
 
     /// Converts JSON schema to HTML documentation
     fn to_html(&self, data: &Value) -> String {
+        let tera = get_tera_engine();
+        let mut context = Context::new();
+
+        if let Some(obj) = data.as_object() {
+            // Extract title and description from info
+            if let Some(info) = obj.get("info") {
+                if let Some(title) = info.get("title").and_then(|t| t.as_str()) {
+                    context.insert("title", title);
+                }
+                if let Some(description) = info.get("description").and_then(|d| d.as_str()) {
+                    context.insert("description", description);
+                }
+            }
+
+            // Extract endpoints from paths
+            if let Some(paths) = obj.get("paths").and_then(|p| p.as_object()) {
+                let mut endpoints = Vec::new();
+                for (path, methods) in paths {
+                    if let Some(methods_obj) = methods.as_object() {
+                        for (method, operation) in methods_obj {
+                            let desc = operation
+                                .as_object()
+                                .and_then(|op| op.get("description").and_then(|d| d.as_str()))
+                                .unwrap_or("");
+
+                            endpoints.push(serde_json::json!({
+                                "method": method.to_uppercase(),
+                                "path": path,
+                                "description": desc
+                            }));
+                        }
+                    }
+                }
+                context.insert("endpoints", &endpoints);
+            }
+        }
+
+        // Try to render with template, fallback to hardcoded HTML if fails
+        tera.render("documentation.html", &context)
+            .unwrap_or_else(|e| {
+                eprintln!(
+                    "Warning: Failed to render documentation.html template: {}. Using fallback.",
+                    e
+                );
+                self.render_fallback_html(data)
+            })
+    }
+
+    /// Fallback HTML rendering (original hardcoded logic)
+    fn render_fallback_html(&self, data: &Value) -> String {
         let mut html = String::from("<!DOCTYPE html>\n<html>\n<head>\n");
         html.push_str("<meta charset=\"UTF-8\">\n");
         html.push_str("<title>API Documentation</title>\n");
@@ -63,7 +137,6 @@ impl DocumentationRenderer {
         html.push_str("</head>\n<body>\n");
 
         if let Some(obj) = data.as_object() {
-            // Title
             if let Some(info) = obj.get("info") {
                 if let Some(title) = info.get("title").and_then(|t| t.as_str()) {
                     html.push_str(&format!("<h1>{}</h1>\n", title));
@@ -73,7 +146,6 @@ impl DocumentationRenderer {
                 }
             }
 
-            // Paths/Endpoints
             if let Some(paths) = obj.get("paths").and_then(|p| p.as_object()) {
                 html.push_str("<h2>Endpoints</h2>\n");
                 for (path, methods) in paths {
@@ -201,10 +273,11 @@ mod tests {
         let result = renderer.render(&data, None).await.unwrap();
         let html = String::from_utf8(result.to_vec()).unwrap();
 
-        assert!(html.contains("<!DOCTYPE html>"));
+        assert!(html.contains("<!DOCTYPE html>") || html.contains("<!doctype html>"));
         assert!(html.contains("Test API"));
         assert!(html.contains("GET"));
-        assert!(html.contains("/users"));
+        // Path is HTML-escaped by Tera (/ becomes &#x2F;)
+        assert!(html.contains("&#x2F;users") || html.contains("/users"));
     }
 
     #[tokio::test]

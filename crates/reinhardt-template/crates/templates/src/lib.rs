@@ -26,15 +26,30 @@
 //! assert_eq!(tmpl.render().unwrap(), "Hello World!");
 //! ```
 
+pub mod advanced_filters;
 pub mod custom_filters;
+pub mod debug_tools;
+pub mod error_reporting;
 pub mod fs_loader;
 pub mod i18n_filters;
 pub mod static_filters;
 
+pub use advanced_filters::{
+    add, default as default_filter, filesizeformat, first, floatformat, join as join_filter, last,
+    pluralize, slugify, timesince, title as title_filter, truncate as truncate_filter, urlencode,
+    wordcount,
+};
 pub use askama::Template;
 pub use custom_filters::{
     capitalize, default, join, length, ljust, lower, replace, reverse, rjust, split, striptags,
     title, trim, truncate, upper,
+};
+pub use debug_tools::{
+    debug_filter, get_debug_panel, get_debug_panel_mut, init_debug_panel, DebugPanel,
+    TemplateContext, TemplateProfile,
+};
+pub use error_reporting::{
+    suggest_similar, TemplateError as EnhancedTemplateError, TemplateErrorContext,
 };
 pub use fs_loader::FileSystemTemplateLoader;
 pub use reinhardt_exception::Error as TemplateError;
