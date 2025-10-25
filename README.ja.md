@@ -341,13 +341,12 @@ Reinhardtはコミュニティ駆動のプロジェクトです。サポート�
 
 ## 🤝 コントリビューション
 
-コントリビューションを歓迎します！開始するには[Contributing Guide](CONTRIBUTING.md)をお読みください。
+コントリビューションを歓迎します！開始するには[Contributing Guide](CONTRIBUTING.ja.md)をお読みください。
 
 **クイックリンク**:
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [開発環境のセットアップ](CONTRIBUTING.md#development-setup)
-- [テストガイドライン](CLAUDE.md#testing-best-practices)
-- [コミット規約](CLAUDE.commit.md)
+- [開発環境のセットアップ](CONTRIBUTING.ja.md#開発環境のセットアップ)
+- [テストガイドライン](CONTRIBUTING.ja.md#テストガイドライン)
+- [コミットガイドライン](CONTRIBUTING.ja.md#コミットガイドライン)
 
 ## ライセンス
 
@@ -370,7 +369,3 @@ Reinhardtはコミュニティ駆動のプロジェクトです。サポート�
 詳細な帰属表示については[THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES)を参照してください。
 
 **注意:** このプロジェクトはDjango Software Foundation、Encode OSS Ltd.、Sebastián Ramírez氏(FastAPI作者)、またはMichael Bayer氏(SQLAlchemy作者)と提携または承認されたものではありません。
-
-## コントリビューション
-
-コントリビューションを歓迎します！お気軽にプルリクエストを送信してください。

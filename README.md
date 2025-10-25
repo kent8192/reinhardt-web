@@ -344,10 +344,9 @@ Before asking, please check:
 We love contributions! Please read our [Contributing Guide](CONTRIBUTING.md) to get started.
 
 **Quick links**:
-- [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Development Setup](CONTRIBUTING.md#development-setup)
-- [Testing Guidelines](CLAUDE.md#testing-best-practices)
-- [Commit Conventions](CLAUDE.commit.md)
+- [Testing Guidelines](CONTRIBUTING.md#testing-guidelines)
+- [Commit Guidelines](CONTRIBUTING.md#commit-guidelines)
 
 ## License
 
