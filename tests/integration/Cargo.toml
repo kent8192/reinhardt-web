@@ -114,6 +114,7 @@ askama = "0.14.0"
 # Testing utilities
 tempfile = "3.14"
 testcontainers = "0.25.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [features]
 testcontainers = []

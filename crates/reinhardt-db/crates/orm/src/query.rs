@@ -5,6 +5,7 @@
 //! When the `django-compat` feature is enabled, it exports the Django QuerySet API.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // Django QuerySet API types (stub implementations)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -757,14 +758,14 @@ where
             let col_alias = Alias::new(field_name);
 
             match pk_value {
-                crate::composite_pk::PkValue::Int(v) => {
+                &crate::composite_pk::PkValue::Int(v) => {
                     let condition = Expr::col(col_alias)
-                        .binary(BinOper::Equal, Expr::value(Value::BigInt(Some(*v))));
+                        .binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v))));
                     query.and_where(condition);
                 }
-                crate::composite_pk::PkValue::Uint(v) => {
+                &crate::composite_pk::PkValue::Uint(v) => {
                     let condition = Expr::col(col_alias)
-                        .binary(BinOper::Equal, Expr::value(Value::BigInt(Some(*v as i64))));
+                        .binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v as i64))));
                     query.and_where(condition);
                 }
                 crate::composite_pk::PkValue::String(v) => {
@@ -774,9 +775,9 @@ where
                     );
                     query.and_where(condition);
                 }
-                crate::composite_pk::PkValue::Bool(v) => {
+                &crate::composite_pk::PkValue::Bool(v) => {
                     let condition = Expr::col(col_alias)
-                        .binary(BinOper::Equal, Expr::value(Value::Bool(Some(*v))));
+                        .binary(BinOper::Equal, Expr::value(Value::Bool(Some(v))));
                     query.and_where(condition);
                 }
             }

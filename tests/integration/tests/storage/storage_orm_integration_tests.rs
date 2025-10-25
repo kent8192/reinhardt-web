@@ -2,8 +2,10 @@
 //!
 //! These tests verify file storage integration with ORM file fields.
 
+use image::{ImageBuffer, Rgb};
 use reinhardt_orm::file_fields::{FileField as ORMFileField, ImageField as ORMImageField};
 use reinhardt_storage::{InMemoryStorage, LocalStorage, Storage};
+use std::io::Cursor;
 use tempfile::TempDir;
 
 async fn create_test_storage() -> (LocalStorage, TempDir) {
@@ -11,6 +13,19 @@ async fn create_test_storage() -> (LocalStorage, TempDir) {
     let storage = LocalStorage::new(temp_dir.path(), "http://localhost/media");
     storage.ensure_base_dir().await.unwrap();
     (storage, temp_dir)
+}
+
+/// Create a test image with specified dimensions
+fn create_test_image(width: u32, height: u32) -> Vec<u8> {
+    let img: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_fn(width, height, |x, y| {
+        // Create a simple gradient pattern
+        Rgb([(x % 256) as u8, (y % 256) as u8, 128])
+    });
+
+    let mut buffer = Cursor::new(Vec::new());
+    img.write_to(&mut buffer, image::ImageFormat::Png)
+        .unwrap();
+    buffer.into_inner()
 }
 
 #[tokio::test]
@@ -174,18 +189,19 @@ async fn test_imagefield_constructor() {
 
 #[tokio::test]
 async fn test_imagefield_dimensions() {
-    // Tests storage operations for image files
-    // TODO: Implement actual image format parsing to extract real dimensions
-    // NOTE: Uses fake image data; real implementation would parse actual image format
-    let (storage, _temp_dir) = create_test_storage().await;
+    // Tests image dimension extraction from actual image data
+    let field = ORMImageField::new("uploads/images");
 
-    let path = "images/photo.jpg";
-    storage.save(path, b"fake image data").await.unwrap();
+    // Create a test image with known dimensions
+    let width = 640;
+    let height = 480;
+    let image_data = create_test_image(width, height);
 
-    let metadata = storage.metadata(path).await.unwrap();
-    assert!(metadata.size > 0);
+    // Extract dimensions from the image
+    let (extracted_width, extracted_height) = field.validate_image(&image_data).unwrap();
 
-    storage.delete(path).await.unwrap();
+    assert_eq!(extracted_width, width, "Width should match");
+    assert_eq!(extracted_height, height, "Height should match");
 }
 
 #[tokio::test]
@@ -204,18 +220,23 @@ async fn test_imagefield_field_save_file() {
 
 #[tokio::test]
 async fn test_imagefield_update_dimension_fields() {
-    // Tests storage operations for resized images
-    // TODO: Implement actual image dimension extraction from image data
-    // NOTE: Uses fake image data; real implementation would extract actual dimensions
-    let (storage, _temp_dir) = create_test_storage().await;
+    // Tests dimension extraction from resized images
+    let field = ORMImageField::with_dimensions("uploads/images", "width", "height");
 
-    let path = "images/resized.jpg";
-    storage.save(path, b"resized image").await.unwrap();
+    // Create a test image with specific dimensions
+    let width = 800;
+    let height = 600;
+    let image_data = create_test_image(width, height);
 
-    let metadata = storage.metadata(path).await.unwrap();
-    assert!(metadata.size > 0);
+    // Extract dimensions from the image
+    let (extracted_width, extracted_height) = field.validate_image(&image_data).unwrap();
 
-    storage.delete(path).await.unwrap();
+    assert_eq!(extracted_width, width, "Resized width should match");
+    assert_eq!(extracted_height, height, "Resized height should match");
+
+    // Verify width and height fields are configured
+    assert_eq!(field.width_field, Some("width".to_string()));
+    assert_eq!(field.height_field, Some("height".to_string()));
 }
 
 #[tokio::test]
