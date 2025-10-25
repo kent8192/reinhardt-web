@@ -1,14 +1,12 @@
-mod test_helpers;
-
 use bytes::Bytes;
 use http::{HeaderMap, Method, StatusCode, Uri, Version};
 use reinhardt_exception::Result;
 use reinhardt_http::{Request, Response};
+use reinhardt_integration_tests::test_helpers::{shutdown_test_server, spawn_test_server};
 use reinhardt_types::Handler;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use test_helpers::*;
 
 /// REST API handler for a simple blog
 struct BlogApiHandler {

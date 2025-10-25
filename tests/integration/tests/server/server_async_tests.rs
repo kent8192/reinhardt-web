@@ -1,3 +1,4 @@
+#[path = "server_test_helpers.rs"]
 mod test_helpers;
 
 use bytes::Bytes;

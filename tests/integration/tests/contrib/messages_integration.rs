@@ -37,5 +37,3 @@
 //! ```bash
 //! cargo test -p reinhardt-integration-tests --test messages_integration -- --list
 //! ```
-
-mod messages;
