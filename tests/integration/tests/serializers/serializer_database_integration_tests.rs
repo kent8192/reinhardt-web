@@ -208,8 +208,7 @@ async fn test_serialize_query_results() {
 
     // Serialize the list
     let serializer = JsonSerializer::<Vec<Post>>::new();
-    let serialized = Serializer::serialize(&serializer, &posts).unwrap();
-    let json_str = String::from_utf8(serialized).unwrap();
+    let json_str = Serializer::serialize(&serializer, &posts).unwrap();
 
     assert!(json_str.contains("\"Post 1\""));
     assert!(json_str.contains("\"Post 5\""));
@@ -332,8 +331,7 @@ async fn test_relationship_serialization_with_db() {
 
     // Serialize comments
     let serializer = JsonSerializer::<Vec<Comment>>::new();
-    let serialized = Serializer::serialize(&serializer, &comments).unwrap();
-    let json_str = String::from_utf8(serialized).unwrap();
+    let json_str = Serializer::serialize(&serializer, &comments).unwrap();
 
     assert!(json_str.contains("\"Author 1\""));
     assert!(json_str.contains("\"Comment 3\""));
@@ -634,8 +632,7 @@ async fn test_serializer_database_pagination() {
 
     // Serialize page
     let serializer = JsonSerializer::<Vec<Post>>::new();
-    let serialized = Serializer::serialize(&serializer, &page1).unwrap();
-    let json_str = String::from_utf8(serialized).unwrap();
+    let json_str = Serializer::serialize(&serializer, &page1).unwrap();
 
     assert!(json_str.contains("\"Post 01\""));
     assert!(!json_str.contains("\"Post 11\"")); // Not in page 1
