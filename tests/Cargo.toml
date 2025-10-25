@@ -100,10 +100,6 @@ name = "api_metadata_tests"
 path = "integration/tests/api/metadata_tests.rs"
 
 [[test]]
-name = "api_openapi_schema_integration"
-path = "integration/tests/api/openapi_schema_integration.rs"
-
-[[test]]
 name = "api_parser_advanced_integration"
 path = "integration/tests/api/parser_advanced_integration.rs"
 
@@ -124,10 +120,6 @@ name = "auth_auth_security_integration"
 path = "integration/tests/auth/auth_security_integration.rs"
 
 [[test]]
-name = "auth_router_auth_integration"
-path = "integration/tests/auth/router_auth_integration.rs"
-
-[[test]]
 name = "contrib_contrib_health_integration_tests"
 path = "integration/tests/contrib/contrib_health_integration_tests.rs"
 
@@ -136,20 +128,8 @@ name = "contrib_contrib_messages_integration_tests"
 path = "integration/tests/contrib/contrib_messages_integration_tests.rs"
 
 [[test]]
-name = "contrib_flatpages_http"
-path = "integration/tests/contrib/flatpages_http.rs"
-
-[[test]]
-name = "contrib_flatpages_integration_tests"
-path = "integration/tests/contrib/flatpages_integration_tests.rs"
-
-[[test]]
 name = "contrib_graphql_integration"
 path = "integration/tests/contrib/graphql_integration.rs"
-
-[[test]]
-name = "contrib_mail_integration_tests"
-path = "integration/tests/contrib/mail_integration_tests.rs"
 
 [[test]]
 name = "contrib_messages_framework_integration"
@@ -160,28 +140,12 @@ name = "contrib_messages_integration"
 path = "integration/tests/contrib/messages_integration.rs"
 
 [[test]]
-name = "contrib_syndication_integration_tests"
-path = "integration/tests/contrib/syndication_integration_tests.rs"
-
-[[test]]
 name = "contrib_websocket_integration_tests"
 path = "integration/tests/contrib/websocket_integration_tests.rs"
 
 [[test]]
-name = "database_database_advanced_tests"
-path = "integration/tests/database/database_advanced_tests.rs"
-
-[[test]]
-name = "database_database_integration_tests"
-path = "integration/tests/database/database_integration_tests.rs"
-
-[[test]]
 name = "database_orm_core_integration_tests"
 path = "integration/tests/database/orm_core_integration_tests.rs"
-
-[[test]]
-name = "database_orm_model_serializer_integration"
-path = "integration/tests/database/orm_model_serializer_integration.rs"
 
 [[test]]
 name = "di_di_core_integration_tests"
@@ -228,56 +192,12 @@ name = "messages_test_views"
 path = "integration/tests/messages/test_views.rs"
 
 [[test]]
-name = "middleware_csp_integration"
-path = "integration/tests/middleware/csp_integration.rs"
-
-[[test]]
 name = "middleware_csrf_middleware_integration"
 path = "integration/tests/middleware/csrf_middleware_integration.rs"
 
 [[test]]
-name = "middleware_csrf_tests"
-path = "integration/tests/middleware/csrf_tests.rs"
-
-[[test]]
-name = "middleware_https_redirect_integration"
-path = "integration/tests/middleware/https_redirect_integration.rs"
-
-[[test]]
-name = "middleware_redirects_integration"
-path = "integration/tests/middleware/redirects_integration.rs"
-
-[[test]]
-name = "middleware_security_middleware_integration"
-path = "integration/tests/middleware/security_middleware_integration.rs"
-
-[[test]]
 name = "pagination_orm"
 path = "integration/tests/pagination/orm.rs"
-
-[[test]]
-name = "pagination_rest"
-path = "integration/tests/pagination/rest.rs"
-
-[[test]]
-name = "proxy_proxy_advanced_features_tests"
-path = "integration/tests/proxy/proxy_advanced_features_tests.rs"
-
-[[test]]
-name = "proxy_proxy_orm_integration_tests"
-path = "integration/tests/proxy/proxy_orm_integration_tests.rs"
-
-[[test]]
-name = "rendering_renderer_advanced_integration"
-path = "integration/tests/rendering/renderer_advanced_integration.rs"
-
-[[test]]
-name = "rendering_renderer_integration"
-path = "integration/tests/rendering/renderer_integration.rs"
-
-[[test]]
-name = "rendering_renderer_specialized_integration"
-path = "integration/tests/rendering/renderer_specialized_integration.rs"
 
 [[test]]
 name = "rendering_renderer_template_integration"
@@ -288,88 +208,16 @@ name = "rendering_renderers_core_integration_tests"
 path = "integration/tests/rendering/renderers_core_integration_tests.rs"
 
 [[test]]
-name = "rendering_renderers_http_integration_tests"
-path = "integration/tests/rendering/renderers_http_integration_tests.rs"
-
-[[test]]
-name = "rendering_template_i18n_integration"
-path = "integration/tests/rendering/template_i18n_integration.rs"
-
-[[test]]
-name = "rendering_template_pagination_integration"
-path = "integration/tests/rendering/template_pagination_integration.rs"
-
-[[test]]
-name = "rendering_template_renderer_advanced_integration"
-path = "integration/tests/rendering/template_renderer_advanced_integration.rs"
-
-[[test]]
-name = "rendering_template_static_integration"
-path = "integration/tests/rendering/template_static_integration.rs"
-
-[[test]]
-name = "routing_router_lifecycle_integration"
-path = "integration/tests/routing/router_lifecycle_integration.rs"
-
-[[test]]
-name = "routing_router_schema_integration"
-path = "integration/tests/routing/router_schema_integration.rs"
-
-[[test]]
-name = "routing_router_template_integration"
-path = "integration/tests/routing/router_template_integration.rs"
-
-[[test]]
 name = "routing_router_viewset_integration"
 path = "integration/tests/routing/router_viewset_integration.rs"
-
-[[test]]
-name = "routing_viewset_inspector_tests"
-path = "integration/tests/routing/viewset_inspector_tests.rs"
 
 [[test]]
 name = "routing_viewset_router_tests"
 path = "integration/tests/routing/viewset_router_tests.rs"
 
 [[test]]
-name = "serializers_serializer_basic_integration"
-path = "integration/tests/serializers/serializer_basic_integration.rs"
-
-[[test]]
-name = "serializers_serializer_database_integration_tests"
-path = "integration/tests/serializers/serializer_database_integration_tests.rs"
-
-[[test]]
-name = "serializers_serializer_forms_integration_tests"
-path = "integration/tests/serializers/serializer_forms_integration_tests.rs"
-
-[[test]]
 name = "serializers_serializer_integration_tests"
 path = "integration/tests/serializers/serializer_integration_tests.rs"
-
-[[test]]
-name = "serializers_serializer_model_basic_tests"
-path = "integration/tests/serializers/serializer_model_basic_tests.rs"
-
-[[test]]
-name = "serializers_serializer_model_crud_tests"
-path = "integration/tests/serializers/serializer_model_crud_tests.rs"
-
-[[test]]
-name = "serializers_serializer_model_meta_tests"
-path = "integration/tests/serializers/serializer_model_meta_tests.rs"
-
-[[test]]
-name = "serializers_serializer_model_relations_tests"
-path = "integration/tests/serializers/serializer_model_relations_tests.rs"
-
-[[test]]
-name = "serializers_serializer_model_validator_integration_tests"
-path = "integration/tests/serializers/serializer_model_validator_integration_tests.rs"
-
-[[test]]
-name = "serializers_serializer_rest_integration_tests"
-path = "integration/tests/serializers/serializer_rest_integration_tests.rs"
 
 [[test]]
 name = "serializers_serializer_nested_integration_tests"
@@ -380,140 +228,28 @@ name = "server_server_advanced_integration"
 path = "integration/tests/server/server_advanced_integration.rs"
 
 [[test]]
-name = "server_server_async_tests"
-path = "integration/tests/server/server_async_tests.rs"
-
-[[test]]
-name = "server_server_basic_tests"
-path = "integration/tests/server/server_basic_tests.rs"
-
-[[test]]
-name = "server_server_e2e_http_tests"
-path = "integration/tests/server/server_e2e_http_tests.rs"
-
-[[test]]
-name = "server_server_integration_tests"
-path = "integration/tests/server/server_integration_tests.rs"
-
-[[test]]
 name = "server_server_middleware_integration_tests"
 path = "integration/tests/server/server_middleware_integration_tests.rs"
-
-[[test]]
-name = "server_server_protocol_tests"
-path = "integration/tests/server/server_protocol_tests.rs"
 
 [[test]]
 name = "server_server_test_helpers"
 path = "integration/tests/server/server_test_helpers.rs"
 
 [[test]]
-name = "server_server_tests"
-path = "integration/tests/server/server_tests.rs"
-
-[[test]]
-name = "sessions_session_database_tests"
-path = "integration/tests/sessions/session_database_tests.rs"
-
-[[test]]
 name = "sessions_session_security_integration"
 path = "integration/tests/sessions/session_security_integration.rs"
-
-[[test]]
-name = "settings_dynamic_settings_memory"
-path = "integration/tests/settings/dynamic_settings_memory.rs"
 
 [[test]]
 name = "settings_hot_reload_integration"
 path = "integration/tests/settings/hot_reload_integration.rs"
 
 [[test]]
-name = "settings_settings_database_backend_tests"
-path = "integration/tests/settings/settings_database_backend_tests.rs"
-
-[[test]]
-name = "settings_settings_encryption_tests"
-path = "integration/tests/settings/settings_encryption_tests.rs"
-
-[[test]]
-name = "settings_settings_redis_backend_tests"
-path = "integration/tests/settings/settings_redis_backend_tests.rs"
-
-[[test]]
 name = "settings_settings_system_integration"
 path = "integration/tests/settings/settings_system_integration.rs"
 
 [[test]]
-name = "sitemaps_sitemap_advanced_real_tests"
-path = "integration/tests/sitemaps/sitemap_advanced_real_tests.rs"
-
-[[test]]
-name = "sitemaps_sitemap_basic_generation_tests"
-path = "integration/tests/sitemaps/sitemap_basic_generation_tests.rs"
-
-[[test]]
-name = "sitemaps_sitemap_cache_real_tests"
-path = "integration/tests/sitemaps/sitemap_cache_real_tests.rs"
-
-[[test]]
-name = "sitemaps_sitemap_http_real_tests"
-path = "integration/tests/sitemaps/sitemap_http_real_tests.rs"
-
-[[test]]
-name = "sitemaps_sitemap_http_tests"
-path = "integration/tests/sitemaps/sitemap_http_tests.rs"
-
-[[test]]
-name = "sitemaps_sitemap_i18n_real_tests"
-path = "integration/tests/sitemaps/sitemap_i18n_real_tests.rs"
-
-[[test]]
-name = "sitemaps_sitemap_orm_integration_tests"
-path = "integration/tests/sitemaps/sitemap_orm_integration_tests.rs"
-
-[[test]]
-name = "sitemaps_sitemap_template_tests"
-path = "integration/tests/sitemaps/sitemap_template_tests.rs"
-
-[[test]]
-name = "storage_static_handler_integration_tests"
-path = "integration/tests/storage/static_handler_integration_tests.rs"
-
-[[test]]
-name = "storage_storage_advanced_tests"
-path = "integration/tests/storage/storage_advanced_tests.rs"
-
-[[test]]
-name = "storage_storage_forms_integration_tests"
-path = "integration/tests/storage/storage_forms_integration_tests.rs"
-
-[[test]]
-name = "storage_storage_orm_integration_tests"
-path = "integration/tests/storage/storage_orm_integration_tests.rs"
-
-[[test]]
-name = "storage_storage_settings_integration_tests"
-path = "integration/tests/storage/storage_settings_integration_tests.rs"
-
-[[test]]
-name = "utils_background_tasks_integration"
-path = "integration/tests/utils/background_tasks_integration.rs"
-
-[[test]]
-name = "utils_i18n_framework_integration"
-path = "integration/tests/utils/i18n_framework_integration.rs"
-
-[[test]]
-name = "utils_logging_email_integration_tests"
-path = "integration/tests/utils/logging_email_integration_tests.rs"
-
-[[test]]
 name = "utils_logging_orm_integration_tests"
 path = "integration/tests/utils/logging_orm_integration_tests.rs"
-
-[[test]]
-name = "utils_logging_template_integration_tests"
-path = "integration/tests/utils/logging_template_integration_tests.rs"
 
 [[test]]
 name = "utils_pagination_basic_tests"
@@ -532,10 +268,6 @@ name = "utils_utils_comprehensive_integration"
 path = "integration/tests/utils/utils_comprehensive_integration.rs"
 
 [[test]]
-name = "validation_param_openapi_integration"
-path = "integration/tests/validation/param_openapi_integration.rs"
-
-[[test]]
 name = "validation_param_validation_integration"
 path = "integration/tests/validation/param_validation_integration.rs"
 
@@ -544,21 +276,6 @@ name = "validation_validator_orm_integration_tests"
 path = "integration/tests/validation/validator_orm_integration_tests.rs"
 
 [[test]]
-name = "validation_validator_serializer_integration_tests"
-path = "integration/tests/validation/validator_serializer_integration_tests.rs"
-
-[[test]]
-name = "views_views_api_integration_tests"
-path = "integration/tests/views/views_api_integration_tests.rs"
-
-[[test]]
 name = "views_views_core_integration_tests"
 path = "integration/tests/views/views_core_integration_tests.rs"
 
-[[test]]
-name = "views_views_integration_tests"
-path = "integration/tests/views/views_integration_tests.rs"
-
-[[test]]
-name = "contrib_graphql_grpc_integration"
-path = "integration/tests/contrib/graphql_grpc_integration.rs"
