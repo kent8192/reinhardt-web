@@ -17,30 +17,37 @@ impl BaseDatabaseSchemaEditor for MockSchemaEditor {
     }
 
     fn drop_table_sql(&self, _table_name: &str) -> String {
+        // TODO: Implement drop_table_sql for complete schema editor mock
         unimplemented!()
     }
 
     fn add_column_sql(&self, _table_name: &str, _column_name: &str, _column_type: &str) -> String {
+        // TODO: Implement add_column_sql for complete schema editor mock
         unimplemented!()
     }
 
     fn drop_column_sql(&self, _table_name: &str, _column_name: &str) -> String {
+        // TODO: Implement drop_column_sql for complete schema editor mock
         unimplemented!()
     }
 
     fn alter_column_sql(&self, _table_name: &str, _column_name: &str, _new_type: &str) -> String {
+        // TODO: Implement alter_column_sql for complete schema editor mock
         unimplemented!()
     }
 
     fn rename_column_sql(&self, _table_name: &str, _old_name: &str, _new_name: &str) -> String {
+        // TODO: Implement rename_column_sql for complete schema editor mock
         unimplemented!()
     }
 
     fn add_constraint_sql(&self, _table_name: &str, _constraint: &str) -> String {
+        // TODO: Implement add_constraint_sql for complete schema editor mock
         unimplemented!()
     }
 
     fn drop_constraint_sql(&self, _table_name: &str, _constraint_name: &str) -> String {
+        // TODO: Implement drop_constraint_sql for complete schema editor mock
         unimplemented!()
     }
 }

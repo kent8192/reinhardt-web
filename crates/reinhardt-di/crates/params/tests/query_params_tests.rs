@@ -653,6 +653,7 @@ async fn test_query_multi_same_name() {
     let ctx = create_empty_context();
 
     let result = Query::<QueryParams>::from_request(&req, &ctx).await;
+    // TODO: Implement custom deserializer or manual parsing for repeated query parameter keys
     // NOTE: serde_urlencoded doesn't support repeated keys by default
     // This is a known limitation - manual parsing or custom deserializer needed
     // For now, document the limitation

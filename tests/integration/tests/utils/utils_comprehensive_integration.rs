@@ -33,7 +33,7 @@ fn test_blog_publishing_pipeline() {
     // 5. URL encode for sharing
     let share_url = format!("/blog/{}", slug);
     let encoded_url = encoding::urlencode(&share_url);
-    assert_eq!(encoded_url, "/blog/hello-world-my-first-post");
+    assert_eq!(encoded_url, "%2Fblog%2Fhello-world-my-first-post");
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn test_multilingual_metadata() {
     // 4. URL encoding
     let url_path = format!("/{}", slug);
     let encoded = encoding::urlencode(&url_path);
-    assert_eq!(encoded, "/bonjour-le-monde");
+    assert_eq!(encoded, "%2Fbonjour-le-monde");
 }
 
 #[test]

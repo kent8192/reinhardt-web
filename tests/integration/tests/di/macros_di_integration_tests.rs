@@ -1,18 +1,5 @@
 //! Dependency injection macros integration tests
 //!
-//! **STATUS: DISABLED** - This test file is currently disabled due to compilation errors.
-//!
-//! **Issue**: The `#[use_injection]` macro modifies function signatures in ways that
-//! are incompatible with the current test code. The macro is designed to automatically
-//! inject dependencies, but the test calling code still uses the old signature expecting
-//! explicit context parameters.
-//!
-//! **Next Steps**:
-//! 1. Review the reinhardt-macros DI macro implementation to understand the expected usage
-//! 2. Implement `Injectable` trait for test structs (Database, Config, Logger)
-//! 3. Update function calls to match the macro-transformed signatures
-//! 4. Consider creating example code or documentation for proper DI macro usage
-//!
 //! Integration tests for reinhardt-macros' dependency injection macros
 //! (#[endpoint] and #[use_injection]) working with reinhardt-di's
 //! injection context and scope management.

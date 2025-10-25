@@ -314,6 +314,8 @@ async fn test_batched_queries() {
 
 #[tokio::test]
 async fn test_subscription_lifecycle() {
+    // TODO: Fully test event delivery in spawned tasks once Rust 2024 lifetime capture
+    // rules and async-graphql 7.0 compatibility issues are resolved
     // NOTE: This test demonstrates subscription setup but due to Rust 2024 lifetime capture
     // rules and async-graphql 7.0 compatibility issues, we cannot fully test event delivery
     // in spawned tasks. The subscription mechanism itself is tested in the unit tests.
@@ -473,6 +475,8 @@ async fn test_query_aliases() {
 
 #[tokio::test]
 async fn test_multiple_subscriptions() {
+    // TODO: Fully test event delivery for multiple subscriptions once Rust 2024 lifetime capture
+    // compatibility issues are resolved
     // NOTE: Similar to test_subscription_lifecycle, this test demonstrates multiple subscription
     // setup but cannot fully test event delivery due to Rust 2024 lifetime capture compatibility.
 

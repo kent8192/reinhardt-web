@@ -62,8 +62,8 @@ async fn test_memory_backend_multiple_types() {
     let ratio: f64 = settings.get("ratio").await.unwrap().unwrap();
     assert!((ratio - 3.14).abs() < 0.01);
 
-    let tags: Vec<&str> = settings.get("tags").await.unwrap().unwrap();
-    assert_eq!(tags, vec!["rust", "framework"]);
+    let tags: Vec<String> = settings.get("tags").await.unwrap().unwrap();
+    assert_eq!(tags, vec!["rust".to_string(), "framework".to_string()]);
 }
 
 #[tokio::test]

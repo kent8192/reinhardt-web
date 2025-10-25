@@ -912,6 +912,7 @@ impl BaseCommand for ArgumentOrderCommand {
 }
 
 #[test]
+#[serial_test::serial(env_vars)]
 fn test_find_command_without_path() {
     // Test that command discovery works even when PATH is empty
     use std::env;

@@ -46,6 +46,25 @@ impl Drop for EnvVarGuard {
     }
 }
 
+/// RAII guard for working directory - automatically restores on drop
+struct WorkingDirGuard {
+    original_dir: PathBuf,
+}
+
+impl WorkingDirGuard {
+    fn new(new_dir: PathBuf) -> std::io::Result<Self> {
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(&new_dir)?;
+        Ok(Self { original_dir })
+    }
+}
+
+impl Drop for WorkingDirGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original_dir);
+    }
+}
+
 impl TestEnvironment {
     fn new() -> Self {
         Self {
@@ -78,8 +97,8 @@ impl TestEnvironment {
 // StartProject Command Tests
 // ============================================================================
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_creates_project_structure() {
     let env = TestEnvironment::new();
     let project_name = "myproject";
@@ -98,8 +117,8 @@ async fn test_startproject_creates_project_structure() {
     assert!(env.file_exists(&format!("{}/src/main.rs", project_name)));
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_with_custom_directory() {
     let env = TestEnvironment::new();
     let project_name = "myproject";
@@ -117,6 +136,7 @@ async fn test_startproject_with_custom_directory() {
     assert!(env.file_exists(&format!("{}/Cargo.toml", custom_dir)));
 }
 
+#[serial]
 #[tokio::test]
 async fn test_startproject_missing_name() {
     let ctx = CommandContext::new(vec![]);
@@ -132,8 +152,8 @@ async fn test_startproject_missing_name() {
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_mtv_style() {
     let env = TestEnvironment::new();
     let project_name = "mtv_project";
@@ -151,8 +171,8 @@ async fn test_startproject_mtv_style() {
     assert!(env.file_exists(&format!("{}/Cargo.toml", project_name)));
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_restful_style() {
     let env = TestEnvironment::new();
     let project_name = "api_project";
@@ -170,6 +190,7 @@ async fn test_startproject_restful_style() {
 }
 
 // Translation of Django's StartProject tests
+#[serial]
 #[tokio::test]
 async fn test_startproject_wrong_args() {
     // Test wrong number of arguments
@@ -179,8 +200,8 @@ async fn test_startproject_wrong_args() {
     assert!(result.is_err());
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_simple_project() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -191,8 +212,8 @@ async fn test_startproject_simple_project() {
     assert!(result.is_ok());
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_importable_project_name() {
     // Test that reserved keywords fail
     let env = TestEnvironment::new();
@@ -207,8 +228,8 @@ async fn test_startproject_importable_project_name() {
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_command_does_not_import() {
     // Verify command doesn't import project code
     let env = TestEnvironment::new();
@@ -220,8 +241,8 @@ async fn test_startproject_command_does_not_import() {
     assert!(result.is_ok());
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_simple_project_different_directory() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -232,8 +253,8 @@ async fn test_startproject_simple_project_different_directory() {
     assert!(result.is_ok());
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_custom_project_template() {
     // Test with custom template path
     let env = TestEnvironment::new();
@@ -246,8 +267,8 @@ async fn test_startproject_custom_project_template() {
     let _result = cmd.execute(&ctx).await;
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_file_without_extension() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -279,8 +300,8 @@ async fn test_startproject_file_without_extension() {
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_custom_project_template_context_variables() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -310,8 +331,8 @@ async fn test_startproject_custom_project_template_context_variables() {
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_no_escaping_of_project_variables() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -341,8 +362,8 @@ async fn test_startproject_no_escaping_of_project_variables() {
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_custom_project_destination_missing() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -374,8 +395,8 @@ async fn test_startproject_custom_project_destination_missing() {
     );
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startproject_honor_umask() {
     #[cfg(unix)]
     {
@@ -411,8 +432,8 @@ async fn test_startproject_honor_umask() {
 // StartApp Command Tests
 // ============================================================================
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_creates_app_structure() {
     let env = TestEnvironment::new();
     let app_name = "myapp";
@@ -433,11 +454,11 @@ async fn test_startapp_creates_app_structure() {
     assert!(result.is_ok(), "StartApp command failed: {:?}", result);
 
     // Verify app directory was created in apps/
-    assert!(env.file_exists(&format!("apps/{}/mod.rs", app_name)));
+    assert!(env.file_exists(&format!("apps/{}/lib.rs", app_name)));
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_with_custom_directory() {
     let env = TestEnvironment::new();
     let app_name = "myapp";
@@ -457,9 +478,10 @@ async fn test_startapp_with_custom_directory() {
     let result = cmd.execute(&ctx).await;
     assert!(result.is_ok(), "StartApp with custom directory failed");
 
-    assert!(env.file_exists(&format!("{}/mod.rs", custom_dir)));
+    assert!(env.file_exists(&format!("{}/lib.rs", custom_dir)));
 }
 
+#[serial]
 #[tokio::test]
 async fn test_startapp_missing_name() {
     let ctx = CommandContext::new(vec![]);
@@ -475,8 +497,8 @@ async fn test_startapp_missing_name() {
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_mtv_style() {
     let env = TestEnvironment::new();
     let app_name = "mtv_app";
@@ -497,8 +519,8 @@ async fn test_startapp_mtv_style() {
     assert!(result.is_ok(), "MTV app creation failed");
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_restful_style() {
     let env = TestEnvironment::new();
     let app_name = "api_app";
@@ -519,8 +541,8 @@ async fn test_startapp_restful_style() {
     assert!(result.is_ok(), "RESTful app creation failed");
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_workspace_mode() {
     let env = TestEnvironment::new();
     let app_name = "workspace_app";
@@ -546,8 +568,8 @@ async fn test_startapp_workspace_mode() {
 }
 
 // Translation of Django's StartApp tests
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_invalid_name() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -557,8 +579,8 @@ async fn test_startapp_invalid_name() {
     let _result = cmd.execute(&ctx).await;
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_importable_name() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -568,8 +590,8 @@ async fn test_startapp_importable_name() {
     let _result = cmd.execute(&ctx).await;
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_invalid_target_name() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -579,8 +601,8 @@ async fn test_startapp_invalid_target_name() {
     let _result = cmd.execute(&ctx).await;
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_importable_target_name() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -590,8 +612,8 @@ async fn test_startapp_importable_target_name() {
     let _result = cmd.execute(&ctx).await;
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_trailing_slash_in_target_app_directory_name() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -601,8 +623,8 @@ async fn test_startapp_trailing_slash_in_target_app_directory_name() {
     let _result = cmd.execute(&ctx).await;
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_overlaying_app() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -628,8 +650,8 @@ async fn test_startapp_overlaying_app() {
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_template() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -644,7 +666,7 @@ async fn test_startapp_template() {
     let template_dir = env.path().join("app_template");
     fs::create_dir_all(&template_dir).expect("Failed to create template dir");
     fs::write(
-        template_dir.join("mod.rs.tpl"),
+        template_dir.join("lib.rs.tpl"),
         "// App: {{ app_name }}\npub mod routes;\n",
     )
     .expect("Failed to write template");
@@ -660,12 +682,12 @@ async fn test_startapp_template() {
 
     if result.is_ok() {
         // Custom template should be used
-        assert!(env.file_exists("apps/myapp/mod.rs") || env.file_exists("myapp/mod.rs"));
+        assert!(env.file_exists("apps/myapp/lib.rs") || env.file_exists("myapp/lib.rs"));
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_creates_directory_when_custom_app_destination_missing() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -683,12 +705,12 @@ async fn test_startapp_creates_directory_when_custom_app_destination_missing() {
 
     // Should create the directory
     if result.is_ok() {
-        assert!(env.file_exists("custom/location/mod.rs"));
+        assert!(env.file_exists("custom/location/lib.rs"));
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_custom_app_destination_missing_with_nested_subdirectory() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -709,12 +731,12 @@ async fn test_startapp_custom_app_destination_missing_with_nested_subdirectory()
 
     // Should create all nested directories
     if result.is_ok() {
-        assert!(env.file_exists("deep/nested/path/to/app/mod.rs"));
+        assert!(env.file_exists("deep/nested/path/to/app/lib.rs"));
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_custom_name_with_app_within_other_app() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -738,12 +760,12 @@ async fn test_startapp_custom_name_with_app_within_other_app() {
     let result2 = cmd.execute(&ctx2).await;
 
     if result2.is_ok() {
-        assert!(env.file_exists("apps/parent_app/child_app/mod.rs"));
+        assert!(env.file_exists("apps/parent_app/child_app/lib.rs"));
     }
 }
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_startapp_custom_app_directory_creation_error_handling() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -796,6 +818,7 @@ fn test_admin_scripts_context_options() {
 // Base Command Tests
 // ============================================================================
 
+#[serial]
 #[tokio::test]
 async fn test_base_command_lifecycle() {
     struct TestCommand {
@@ -892,8 +915,8 @@ fn test_command_option_value() {
 // Template Command Tests
 // ============================================================================
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_template_rendering() {
     use reinhardt_commands::{TemplateCommand, TemplateContext};
 
@@ -946,8 +969,8 @@ fn test_command_error_variants() {
 // Integration Tests
 // ============================================================================
 
+#[serial]
 #[tokio::test]
-#[ignore] // TODO: Implement TemplateCommand::handle
 async fn test_full_project_and_app_workflow() {
     let env = TestEnvironment::new();
     std::env::set_current_dir(env.path()).expect("Failed to change directory");
@@ -976,7 +999,7 @@ async fn test_full_project_and_app_workflow() {
     match app_result {
         Ok(_) => {
             // Verify app was created
-            assert!(env.file_exists(&format!("{}/apps/{}/mod.rs", project_name, app_name)));
+            assert!(env.file_exists(&format!("{}/apps/{}/lib.rs", project_name, app_name)));
         }
         Err(e) => {
             // Log error but don't fail test as this depends on project template completeness
@@ -1025,6 +1048,7 @@ fn test_admin_scripts_to_camel_case() {
 // Translation of DjangoAdminNoSettings test class
 // ============================================================================
 
+#[serial]
 #[tokio::test]
 async fn test_djangoadmin_nosettings_builtin_command() {
     // Test builtin command execution without settings
@@ -1052,6 +1076,7 @@ async fn test_djangoadmin_nosettings_builtin_with_bad_settings() {
     // env_guard automatically cleans up on drop
 }
 
+#[serial]
 #[tokio::test]
 async fn test_djangoadmin_nosettings_builtin_with_bad_environment() {
     // Test builtin command with bad environment
@@ -1063,6 +1088,7 @@ async fn test_djangoadmin_nosettings_builtin_with_bad_environment() {
     assert_eq!(std::env::var("PYTHONPATH").unwrap(), "/invalid/path");
 }
 
+#[serial]
 #[tokio::test]
 async fn test_djangoadmin_nosettings_commands_with_invalid_settings() {
     // Test commands with invalid settings
@@ -1077,6 +1103,7 @@ async fn test_djangoadmin_nosettings_commands_with_invalid_settings() {
 // Translation of DjangoAdminDefaultSettings test class
 // ============================================================================
 
+#[serial]
 #[tokio::test]
 async fn test_djangoadmin_defaultsettings_builtin_command() {
     let env = TestEnvironment::new();
@@ -1087,6 +1114,7 @@ async fn test_djangoadmin_defaultsettings_builtin_command() {
     assert!(env.file_exists("settings.rs"));
 }
 
+#[serial]
 #[tokio::test]
 async fn test_djangoadmin_defaultsettings_builtin_with_settings() {
     let env = TestEnvironment::new();
@@ -1135,6 +1163,7 @@ async fn test_djangoadmin_defaultsettings_builtin_with_bad_environment() {
     // env_guard automatically cleans up on drop
 }
 
+#[serial]
 #[tokio::test]
 async fn test_djangoadmin_defaultsettings_custom_command() {
     let env = TestEnvironment::new();
@@ -1144,6 +1173,7 @@ async fn test_djangoadmin_defaultsettings_custom_command() {
     assert!(env.path().exists());
 }
 
+#[serial]
 #[tokio::test]
 async fn test_djangoadmin_defaultsettings_custom_command_with_settings() {
     // Test custom command with explicit settings

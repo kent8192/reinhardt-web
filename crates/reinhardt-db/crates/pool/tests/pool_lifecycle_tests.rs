@@ -2,7 +2,7 @@
 //! Tests for connection recycling, invalidation, and pool recreation
 
 use reinhardt_pool::{ConnectionPool, PoolConfig};
-use sqlx::{Executor, Sqlite};
+use sqlx::Sqlite;
 use std::time::Duration;
 
 #[tokio::test]
@@ -83,7 +83,7 @@ async fn test_connection_info_persistence() {
 
     // Note: SQLx doesn't expose connection info like SQLAlchemy
     // This test verifies basic connection reuse behavior
-    let conn1_id = {
+    let _conn1_id = {
         let conn = pool
             .inner()
             .acquire()
@@ -94,7 +94,7 @@ async fn test_connection_info_persistence() {
     };
 
     // Release and reacquire
-    let conn2_id = {
+    let _conn2_id = {
         let conn = pool
             .inner()
             .acquire()

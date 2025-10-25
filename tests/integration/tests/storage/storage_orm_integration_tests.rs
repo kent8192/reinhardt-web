@@ -175,6 +175,7 @@ async fn test_imagefield_constructor() {
 #[tokio::test]
 async fn test_imagefield_dimensions() {
     // Tests storage operations for image files
+    // TODO: Implement actual image format parsing to extract real dimensions
     // NOTE: Uses fake image data; real implementation would parse actual image format
     let (storage, _temp_dir) = create_test_storage().await;
 
@@ -204,6 +205,7 @@ async fn test_imagefield_field_save_file() {
 #[tokio::test]
 async fn test_imagefield_update_dimension_fields() {
     // Tests storage operations for resized images
+    // TODO: Implement actual image dimension extraction from image data
     // NOTE: Uses fake image data; real implementation would extract actual dimensions
     let (storage, _temp_dir) = create_test_storage().await;
 
