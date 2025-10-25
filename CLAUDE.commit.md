@@ -18,16 +18,31 @@ This file defines the git commit policy for the Reinhardt project. These rules e
 ### CE-2 (MUST): Commit Granularity
 
 - Commits **MUST** be split into developer-friendly, understandable units
-- Each commit should represent a single logical change or purpose
+- **Each commit should represent a specific intent to achieve a goal, NOT the goal itself**
+  - ❌ Bad: Committing an entire "authentication feature" in one commit (goal-level)
+  - ✅ Good: Separate commits for each building block:
+    - "Implement password hashing with bcrypt" (specific intent)
+    - "Add JWT token generation logic" (specific intent)
+    - "Create session middleware" (specific intent)
 - **Each commit MUST be small enough to be explained in a single line**
   - If you can't describe the commit clearly in one line, it's too large and should be split
-  - ❌ Bad: A commit that adds feature A, fixes bug B, and refactors module C
-  - ✅ Good: Three separate commits, each doing one thing
+  - The description should explain the specific intent, not just the feature name
   - **Note**: This refers to the _scope of changes_, not the commit message length
     - The commit message itself can and should be detailed with body and footer
-    - What matters is that the commit's _purpose_ can be summarized in one line
-- Group files by change purpose at a fine-grained level
-- Ensure commits tell a clear story when reviewing history
+    - What matters is that the commit's _intent_ can be summarized in one line
+- **Avoid monolithic commits at feature-level**
+  - ❌ Bad Examples:
+    - "feat(auth): Implement authentication feature" (too broad, feature-level)
+    - "feat(auth): Add JWT, session, and OAuth support" (multiple intents)
+    - "feat(api): Add user CRUD endpoints" (multiple endpoints = multiple intents)
+  - ✅ Good Examples:
+    - "feat(auth): Implement bcrypt password hashing for user authentication"
+    - "feat(auth): Add JWT token generation with RS256 algorithm"
+    - "feat(auth): Create session storage middleware"
+    - "feat(api): Add user creation endpoint with validation"
+    - "feat(api): Add user retrieval endpoint"
+- Group files by specific intent at a fine-grained level
+- Ensure commits tell a clear story when reviewing history, with each step being a concrete implementation detail
 
 ### CE-3 (MUST): Partial File Commits
 
@@ -196,8 +211,11 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - ❌ NO pushing without explicit user instruction
 - ❌ NO committing .gitignore files
 - ❌ NO batch commits (multiple commits without user confirmation)
-- ✅ SPLIT commits by logical purpose
+- ❌ NO monolithic feature-level commits (e.g., "Implement authentication feature")
+- ❌ NO combining multiple intents in one commit (e.g., "Add JWT and OAuth support")
+- ✅ SPLIT commits by specific intent, not feature-level goals
 - ✅ KEEP each commit small enough to explain in one line
+- ✅ FOCUS on concrete implementation details, not broad feature names
 - ✅ USE `git add -e` or patch files for partial file commits
 - ✅ CREATE one commit at a time with user confirmation between each
 
