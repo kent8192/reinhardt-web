@@ -42,7 +42,6 @@
 //! TODO: Write-behind - Asynchronous cache updates
 //! TODO: Cache-aside - Application-managed caching
 //! TODO: Read-through - Automatic cache population on miss
-//! TODO: Cache inspection - List keys, view entries, export cache state
 //! TODO: Automatic cleanup - Background task for expired entry removal
 //! TODO: Event hooks - Pre/post cache operations callbacks
 //! TODO: Full Redis integration - Complete implementation of Redis operations
@@ -76,6 +75,19 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
+
+/// Cache entry information for inspection
+#[derive(Debug, Clone)]
+pub struct CacheEntryInfo {
+    /// The key of the entry
+    pub key: String,
+    /// Size of the value in bytes
+    pub size: usize,
+    /// Whether the entry has an expiration time
+    pub has_expiry: bool,
+    /// Seconds until expiration (if applicable)
+    pub ttl_seconds: Option<u64>,
+}
 
 /// Cache statistics
 #[derive(Debug, Clone, Default)]
@@ -356,6 +368,86 @@ impl InMemoryCache {
             entry_count,
             memory_usage,
         }
+    }
+
+    /// List all keys in the cache
+    ///
+    /// Returns a vector of all keys currently stored in the cache,
+    /// including expired entries that haven't been cleaned up yet.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_cache::{InMemoryCache, Cache};
+    ///
+    /// # async fn example() {
+    /// let cache = InMemoryCache::new();
+    ///
+    /// cache.set("key1", &"value1", None).await.unwrap();
+    /// cache.set("key2", &"value2", None).await.unwrap();
+    /// cache.set("key3", &"value3", None).await.unwrap();
+    ///
+    /// let keys = cache.list_keys().await;
+    /// assert_eq!(keys.len(), 3);
+    /// assert!(keys.contains(&"key1".to_string()));
+    /// assert!(keys.contains(&"key2".to_string()));
+    /// assert!(keys.contains(&"key3".to_string()));
+    /// # }
+    /// ```
+    pub async fn list_keys(&self) -> Vec<String> {
+        let store = self.store.read().await;
+        store.keys().cloned().collect()
+    }
+
+    /// Inspect a cache entry
+    ///
+    /// Returns detailed information about a specific cache entry,
+    /// or None if the entry doesn't exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_cache::{InMemoryCache, Cache};
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() {
+    /// let cache = InMemoryCache::new();
+    ///
+    /// // Set a value with TTL
+    /// cache.set("key1", &"value1", Some(Duration::from_secs(300))).await.unwrap();
+    ///
+    /// // Inspect the entry
+    /// let info = cache.inspect_entry("key1").await;
+    /// assert!(info.is_some());
+    ///
+    /// let info = info.unwrap();
+    /// assert_eq!(info.key, "key1");
+    /// assert!(info.has_expiry);
+    /// assert!(info.ttl_seconds.is_some());
+    /// assert!(info.ttl_seconds.unwrap() <= 300);
+    ///
+    /// // Non-existent key
+    /// let info = cache.inspect_entry("nonexistent").await;
+    /// assert!(info.is_none());
+    /// # }
+    /// ```
+    pub async fn inspect_entry(&self, key: &str) -> Option<CacheEntryInfo> {
+        let store = self.store.read().await;
+        store.get(key).map(|entry| {
+            let ttl_seconds = entry.expires_at.and_then(|expires_at| {
+                expires_at
+                    .duration_since(SystemTime::now())
+                    .ok()
+                    .map(|d| d.as_secs())
+            });
+
+            CacheEntryInfo {
+                key: key.to_string(),
+                size: entry.value.len(),
+                has_expiry: entry.expires_at.is_some(),
+                ttl_seconds,
+            }
+        })
     }
 }
 
@@ -746,5 +838,158 @@ mod tests {
         let stats = CacheStatistics::default();
         assert_eq!(stats.hit_rate(), 0.0);
         assert_eq!(stats.miss_rate(), 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_list_keys() {
+        let cache = InMemoryCache::new();
+
+        // Initially empty
+        let keys = cache.list_keys().await;
+        assert_eq!(keys.len(), 0);
+
+        // Add some keys
+        cache.set("key1", &"value1", None).await.unwrap();
+        cache.set("key2", &"value2", None).await.unwrap();
+        cache.set("key3", &"value3", None).await.unwrap();
+
+        let keys = cache.list_keys().await;
+        assert_eq!(keys.len(), 3);
+        assert!(keys.contains(&"key1".to_string()));
+        assert!(keys.contains(&"key2".to_string()));
+        assert!(keys.contains(&"key3".to_string()));
+
+        // Delete a key
+        cache.delete("key2").await.unwrap();
+
+        let keys = cache.list_keys().await;
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&"key1".to_string()));
+        assert!(!keys.contains(&"key2".to_string()));
+        assert!(keys.contains(&"key3".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_list_keys_includes_expired() {
+        let cache = InMemoryCache::new();
+
+        // Set a key with short TTL
+        cache
+            .set("expired_key", &"value", Some(Duration::from_millis(10)))
+            .await
+            .unwrap();
+
+        // Set a key without TTL
+        cache.set("valid_key", &"value", None).await.unwrap();
+
+        // Wait for first key to expire
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        // list_keys should include expired keys (until cleanup)
+        let keys = cache.list_keys().await;
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&"expired_key".to_string()));
+        assert!(keys.contains(&"valid_key".to_string()));
+
+        // After cleanup, expired key should be gone
+        cache.cleanup_expired().await;
+        let keys = cache.list_keys().await;
+        assert_eq!(keys.len(), 1);
+        assert!(!keys.contains(&"expired_key".to_string()));
+        assert!(keys.contains(&"valid_key".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_inspect_entry_basic() {
+        let cache = InMemoryCache::new();
+
+        // Non-existent key
+        let info = cache.inspect_entry("nonexistent").await;
+        assert!(info.is_none());
+
+        // Add a key without expiry
+        cache.set("key1", &"value1", None).await.unwrap();
+
+        let info = cache.inspect_entry("key1").await;
+        assert!(info.is_some());
+
+        let info = info.unwrap();
+        assert_eq!(info.key, "key1");
+        assert!(!info.has_expiry);
+        assert!(info.ttl_seconds.is_none());
+        assert!(info.size > 0);
+    }
+
+    #[tokio::test]
+    async fn test_inspect_entry_with_ttl() {
+        let cache = InMemoryCache::new();
+
+        // Set a value with TTL
+        cache
+            .set("key1", &"value1", Some(Duration::from_secs(300)))
+            .await
+            .unwrap();
+
+        let info = cache.inspect_entry("key1").await;
+        assert!(info.is_some());
+
+        let info = info.unwrap();
+        assert_eq!(info.key, "key1");
+        assert!(info.has_expiry);
+        assert!(info.ttl_seconds.is_some());
+
+        // TTL should be <= 300 seconds
+        let ttl = info.ttl_seconds.unwrap();
+        assert!(ttl <= 300);
+        assert!(ttl > 0);
+    }
+
+    #[tokio::test]
+    async fn test_inspect_entry_size() {
+        let cache = InMemoryCache::new();
+
+        // Set values of different sizes
+        cache.set("small", &"x", None).await.unwrap();
+        cache
+            .set("large", &"x".repeat(1000), None)
+            .await
+            .unwrap();
+
+        let small_info = cache.inspect_entry("small").await.unwrap();
+        let large_info = cache.inspect_entry("large").await.unwrap();
+
+        assert!(large_info.size > small_info.size);
+    }
+
+    #[tokio::test]
+    async fn test_inspect_entry_expired() {
+        let cache = InMemoryCache::new();
+
+        // Set with short TTL
+        cache
+            .set("key1", &"value1", Some(Duration::from_millis(10)))
+            .await
+            .unwrap();
+
+        // Inspect before expiration
+        let info = cache.inspect_entry("key1").await;
+        assert!(info.is_some());
+
+        // Wait for expiration
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        // Entry still exists (not cleaned up)
+        let info = cache.inspect_entry("key1").await;
+        assert!(info.is_some());
+
+        let info = info.unwrap();
+        assert!(info.has_expiry);
+        // TTL should be None because it's expired
+        assert!(info.ttl_seconds.is_none());
+
+        // After cleanup, entry should be gone
+        cache.cleanup_expired().await;
+        let info = cache.inspect_entry("key1").await;
+        assert!(info.is_none());
     }
 }
