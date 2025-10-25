@@ -2,15 +2,6 @@
 //!
 //! This crate provides Django-style validators for common validation needs,
 //! as well as compile-time validated database identifier types.
-//!
-//! ## Planned Features
-//! TODO: Implement SlugValidator for URL-safe slugs
-//! TODO: Add UUIDValidator for UUID formats (v1-v5)
-//! TODO: Implement IPAddressValidator for IPv4/IPv6 addresses
-//! TODO: Add DateValidator for date format validation
-//! TODO: Implement TimeValidator for time format validation
-//! TODO: Add DateTimeValidator for datetime format validation
-//! TODO: Implement JSONValidator for JSON structure and schema validation
 
 pub mod email;
 pub mod errors;
@@ -25,7 +16,10 @@ pub use email::EmailValidator;
 pub use errors::{ValidationError, ValidationResult};
 pub use identifier::{ConstraintName, FieldName, IdentifierValidationError, TableName};
 pub use numeric::{MaxValueValidator, MinValueValidator, RangeValidator};
-pub use string::{MaxLengthValidator, MinLengthValidator, RegexValidator};
+pub use string::{
+    DateTimeValidator, DateValidator, IPAddressValidator, JSONValidator, MaxLengthValidator,
+    MinLengthValidator, RegexValidator, SlugValidator, TimeValidator, UUIDValidator,
+};
 pub use uniqueness::UniqueValidator;
 pub use url::UrlValidator;
 
