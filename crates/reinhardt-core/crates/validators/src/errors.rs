@@ -28,6 +28,27 @@ pub enum ValidationError {
     #[error("Field '{field}' must be unique. Value '{value}' already exists")]
     NotUnique { field: String, value: String },
 
+    #[error("Invalid slug: {0}")]
+    InvalidSlug(String),
+
+    #[error("Invalid UUID: {0}")]
+    InvalidUUID(String),
+
+    #[error("Invalid IP address: {0}")]
+    InvalidIPAddress(String),
+
+    #[error("Invalid date: {0}")]
+    InvalidDate(String),
+
+    #[error("Invalid time: {0}")]
+    InvalidTime(String),
+
+    #[error("Invalid datetime: {0}")]
+    InvalidDateTime(String),
+
+    #[error("Invalid JSON: {0}")]
+    InvalidJSON(String),
+
     #[error("Custom validation error: {0}")]
     Custom(String),
 }
