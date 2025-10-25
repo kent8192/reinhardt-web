@@ -1,41 +1,133 @@
 # reinhardt-urls
 
-ReinhardtフレームワークのURLルーティングおよびプロキシユーティリティ
+Reinhardtフレームワーク向けのURLルーティングおよびプロキシユーティリティ
 
 ## 概要
 
-`reinhardt-urls`は、Reinhardtアプリケーション向けの包括的なURLルーティングおよびリレーションシッププロキシ機能を提供します。Django風のURLルーティングとSQLAlchemy風のアソシエーションプロキシを組み合わせ、リレーションシップを通じた透過的な属性アクセスを実現します。
+`reinhardt-urls`は、DjangoのURLシステムにインスパイアされた、Reinhardtアプリケーション向けの包括的なURLルーティングおよび遅延ロードプロキシ機能を提供します。この親クレートは、ルーター、ルーティングマクロ、遅延ロードプロキシユーティリティを統合し、強力なURL管理機能を提供します。
 
 ## 機能
 
-このクレートは以下のサブクレートから機能を再エクスポートしています：
+### 実装済み ✓
 
-- **Routers** (`reinhardt-routers`): 自動URLルーティング設定
-  - 組み合わせ可能なルーターインターフェースのための`Router` trait
-  - 自動ViewSet URL生成付きの`DefaultRouter`
-  - 自動リスト/詳細エンドポイント生成（`/resource/`と`/resource/{id}/`）
-  - カスタムViewSetアクションサポート（リストと詳細レベル）
-  - パスパラメータ抽出付きリクエストディスパッチ
-  - オプショナルな名前空間付き名前付きルート
+この親クレートは、以下のサブクレートから機能を再エクスポートします:
+
+- **ルーター** (`reinhardt-routers`): 自動URL ルーティング設定
+  - DjangoにインスパイアされたURLルーティング
+  - ViewSetの自動URL生成
+  - 名前空間とバージョニングのサポート
   - URL逆引き機能
-  - 名前空間パターンからのバージョン抽出
+  - URLパターンマッチング用のPathPattern
+  - 自動エンドポイント生成機能付きDefaultRouter
+  - カスタムアクションのサポート(リストレベルおよび詳細レベル)
 
-- **Routers Macros** (`reinhardt-routers-macros`): ルーティング用の手続き型マクロ
-  - ルート定義のための`#[route]`マクロ
-  - コンパイル時ルート検証
-  - 型安全なルート生成
+- **ルーターマクロ** (`reinhardt-routers-macros`): ルーティング関連の手続き型マクロ
+  - コンパイル時のルート検証
+  - 型安全なURLパターン生成
+  - ルート登録マクロ
 
-- **Proxy** (`reinhardt-proxy`): リレーションシップトラバーサル用のアソシエーションプロキシ
-  - 透過的な属性アクセスのための`AssociationProxy<T, U>`
-  - 一対一および多対一リレーションシップのための`ScalarProxy`
-  - 一対多および多対多リレーションシップのための`CollectionProxy`
-  - 豊富な比較演算子（Eq、Ne、Gt、Gte、Lt、Lte、In、NotIn等）
-  - 非同期get/set操作
-  - コレクション操作メソッド
+- **プロキシ** (`reinhardt-proxy`): 遅延ロードプロキシシステム
+  - Djangoスタイルの SimpleLazyObject 実装
+  - スレッドセーフな遅延評価
+  - ORMとの統合による遅延モデルロード
+  - 初回アクセス時の自動初期化
+  - 複雑な初期化ロジックのサポート
+  - 高度なプロキシ機能:
+    - アソシエーションプロキシ(SQLAlchemyスタイル)
+    - 比較操作を持つスカラープロキシ
+    - リレーションシップ管理用のコレクションプロキシ
+    - クエリフィルタリングとJoin操作
+    - 遅延/即時ロード戦略
+    - リレーションシップキャッシング
+
+- **高度なURLパターンマッチング**:
+  - `path!` マクロによるコンパイル時パス検証
+  - パラメータ抽出を伴う実行時パターンマッチング
+  - パス制約の検証(snake_caseパラメータ、二重スラッシュ禁止など)
+  - 名前付きキャプチャグループを使用した正規表現ベースのURLマッチング
+
+### 予定
+
+- ルートミドルウェアのサポート
+
+## インストール
+
+`Cargo.toml`に以下を追加してください:
+
+```toml
+[dependencies]
+reinhardt-urls = "0.1.0"
+```
+
+### オプション機能
+
+必要に応じて特定のサブクレートを有効化できます:
+
+```toml
+[dependencies]
+reinhardt-urls = { version = "0.1.0", features = ["routers", "proxy"] }
+```
+
+利用可能な機能:
+
+- `routers` (デフォルト): URLルーティングシステム
+- `routers-macros` (デフォルト): ルーティングマクロ
+- `proxy` (デフォルト): 遅延ロードプロキシ
+
+## 使用例
+
+### URLルーティング
+
+```rust
+use reinhardt_urls::{Router, DefaultRouter, Route};
+
+// ルーターを作成
+let mut router = DefaultRouter::new();
+
+// ViewSetを登録
+router.register("users", UserViewSet::new());
+
+// カスタムルートを追加
+router.add_route(Route::new("/custom/", custom_handler));
+
+// リクエストをマッチング
+if let Some((handler, params)) = router.match_request(&request) {
+    handler.handle(request, params).await?;
+}
+```
+
+### URL逆引き
+
+```rust
+use reinhardt_urls::reverse;
+
+// 名前によるURL逆引き
+let url = reverse("user-detail", &[("id", "123")]);
+// 返り値: /users/123/
+
+// 名前空間付き
+let url = reverse("api:v1:user-list", &[]);
+// 返り値: /api/v1/users/
+```
+
+### 遅延ロードプロキシ
+
+```rust
+use reinhardt_proxy::SimpleLazyObject;
+
+// 遅延オブジェクトを作成
+let lazy_user = SimpleLazyObject::new(|| {
+    // 重い初期化処理
+    User::from_database(user_id)
+});
+
+// アクセス時に初期化がトリガーされる
+let name = lazy_user.name; // ここで初期化が行われる
+```
 
 ## サブクレート
 
-このクレートは以下のサブクレートを含んでいます：
+この親クレートには以下のサブクレートが含まれています:
 
 ```
 reinhardt-urls/
@@ -43,7 +135,11 @@ reinhardt-urls/
 ├── src/
 │   └── lib.rs          # サブクレートからの再エクスポート
 └── crates/
-    ├── routers/        # URLルーティング
-    ├── routers-macros/ # ルーティングマクロ
-    └── proxy/          # アソシエーションプロキシ
+    ├── routers/         # URLルーティングシステム
+    ├── routers-macros/  # ルーティング手続き型マクロ
+    └── proxy/           # 遅延ロードプロキシ
 ```
+
+## ライセンス
+
+Apache License, Version 2.0 または MIT ライセンスのいずれかの条件の下でライセンスされています。

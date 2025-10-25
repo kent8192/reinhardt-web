@@ -14,3 +14,14 @@ ReinhardtフレームワークのREST API機能用コア抽象化
 - リクエスト/レスポンス処理抽象化
 - コンテンツネゴシエーションサポート
 - REST操作用の汎用型定義
+
+## インストール
+
+```toml
+[dependencies]
+rest-core = "0.1.0"
+```
+
+## ライセンス
+
+Apache License, Version 2.0 または MIT ライセンスのいずれかの条件の下でライセンスされています。

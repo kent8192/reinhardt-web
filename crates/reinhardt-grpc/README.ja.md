@@ -1,14 +1,14 @@
 # reinhardt-grpc
 
-Reinhardt フレームワーク向けの gRPC 基盤クレート。
+Reinhardtフレームワーク向けのgRPC基盤クレート
 
 ## 概要
 
-このクレートは、Reinhardt フレームワークに gRPC 機能を提供するための基盤を提供します。フレームワークレベルの共通型とアダプター trait のみを含み、ドメイン固有の実装はユーザーが行います。
+このクレートは、ReinhardtフレームワークにgRPC機能を提供するための基盤を提供します。フレームワークレベルの共通型とアダプタートレイトのみを含み、ドメイン固有の実装はユーザーが行います。
 
-## 提供機能
+## 機能
 
-### 1. 共通 Protobuf 型
+### 1. 共通Protobuf型
 
 フレームワークが提供する汎用的な型:
 
@@ -46,14 +46,14 @@ message BatchResult {
 }
 ```
 
-### 2. アダプター trait
+### 2. アダプタートレイト
 
-gRPC サービスを他のフレームワークコンポーネント（GraphQL など）に統合するための trait:
+gRPCサービスを他のフレームワークコンポーネント(GraphQLなど)に統合するためのトレイト:
 
 ```rust
 use reinhardt_grpc::{GrpcServiceAdapter, GrpcSubscriptionAdapter};
 
-/// Query/Mutation 用アダプター
+/// Query/Mutation用アダプター
 #[async_trait]
 pub trait GrpcServiceAdapter: Send + Sync {
     type Input;
@@ -63,7 +63,7 @@ pub trait GrpcServiceAdapter: Send + Sync {
     async fn call(&self, input: Self::Input) -> Result<Self::Output, Self::Error>;
 }
 
-/// Subscription 用アダプター
+/// Subscription用アダプター
 pub trait GrpcSubscriptionAdapter: Send + Sync {
     type Proto;
     type GraphQL;
@@ -75,7 +75,7 @@ pub trait GrpcSubscriptionAdapter: Send + Sync {
 
 ### 3. エラー処理
 
-gRPC エラー型と変換:
+gRPCエラー型と変換:
 
 ```rust
 use reinhardt_grpc::{GrpcError, GrpcResult};
@@ -91,9 +91,9 @@ pub enum GrpcError {
 
 ## 使用方法
 
-### 独自の .proto ファイルを使用する
+### 独自の.protoファイルを使用する
 
-1. プロジェクトに `proto/` ディレクトリを作成
+1. プロジェクトに`proto/`ディレクトリを作成
 
 ```
 my-app/
@@ -105,7 +105,7 @@ my-app/
 └── Cargo.toml
 ```
 
-2. `build.rs` で .proto ファイルをコンパイル
+2. `build.rs`で.protoファイルをコンパイル
 
 ```rust
 // build.rs
@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-3. `Cargo.toml` に依存関係を追加
+3. `Cargo.toml`に依存関係を追加
 
 ```toml
 [dependencies]
@@ -150,14 +150,14 @@ pub mod proto {
     }
 }
 
-// reinhardt-grpc の共通型を使用
+// reinhardt-grpcの共通型を使用
 use reinhardt_grpc::proto::common::{Empty, Timestamp, PageInfo};
 ```
 
-### GraphQL との統合
+### GraphQLとの統合
 
-`reinhardt-graphql` クレートと組み合わせて使用する場合は、[reinhardt-graphql のドキュメント](../reinhardt-contrib/crates/graphql/README.md)を参照してください。
+`reinhardt-graphql`クレートと組み合わせて使用する場合は、[reinhardt-graphqlのドキュメント](../reinhardt-contrib/crates/graphql/README.md)を参照してください。
 
 ## ライセンス
 
-MIT OR Apache-2.0
+Apache License, Version 2.0またはMITライセンスのいずれかの条件の下でライセンスされています。

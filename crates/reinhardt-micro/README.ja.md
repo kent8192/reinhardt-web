@@ -6,33 +6,46 @@
 
 Djangoは「バッテリーインクルード」として知られていますが、それには代償があります。シンプルなサービスが不要な複雑さと依存関係を抱えてしまうのです。Reinhardt Microは、ニーズに合わせてスケールする**最小限で構成可能な**フレームワークを提供することで、この問題を解決します。
 
-## 特徴
+## 機能
 
-- 🪶 **軽量**: 最小限の依存関係、高速なコンパイル、小さなバイナリサイズ
-- 🚀 **高速**: TokioとHyperをベースに最高のパフォーマンスを実現
-- 🔒 **型安全**: Rustの型システムを活用したコンパイル時の保証
-- 🎯 **集中**: ルーティング、パラメータ抽出、DIのみ - それ以上は不要
-- 📦 **構成可能**: 必要なときにのみ機能を追加
+### 実装済み ✓
+
+- 🪶 **軽量** - 最小限の依存関係 (87行のコード)、高速なコンパイル (~10秒)、小さなバイナリ (~5-10 MB)
+- 🚀 **高速** - TokioとHyperをベースに、最初から非同期対応
+- 🔒 **型安全** - Path、Query、Jsonエクストラクタを備えた完全なRust型システム
+- 🎯 **集中** - ルーティング (`App`、`route`)、パラメータ抽出 (`reinhardt-params`)、DI (`reinhardt-di`) のみ
+- 📦 **構成可能** - 段階的な導入のためのフィーチャーフラグ (`routing`、`params`、`di`、`schema`、`database`)
+- **AppビルダーAPI** - シンプルな `App::new().route().serve()` パターン
+- **ハンドラー統合** - あらゆる `Handler` トレイト実装と連携
+- **関数ベースのエンドポイントマクロ** - FastAPIスタイルの `#[get]`、`#[post]`、`#[put]`、`#[patch]`、`#[delete]` デコレータ
+- **組み込みミドルウェアショートカット** - 一般的なミドルウェア (CORS、CSRF、圧縮、ロギングなど) のクイックインポート
+
+### 予定
+
+- より多くのミドルウェア設定ヘルパー
+- 追加のユーティリティ関数
 
 ## クイックスタート
 
 `Cargo.toml`にReinhardt Microを追加:
 
 ```toml
-[dependencies]reinhardt-micro = "0.1.0"
+[dependencies]
+reinhardt-micro = "0.1.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
-シンプルなAPIを作成:
+### 例1: エンドポイントマクロを使った基本的なAPI
 
-```rustuse reinhardt_micro::prelude::*;
+```rust
+use reinhardt_micro::prelude::*;
 
 #[tokio::main]
 async fn main() {
     let app = App::new()
-        .route("/", get(hello))
-        .route("/users/:id", get(get_user))
-        .route("/users", post(create_user));
+        .route("/", hello)
+        .route("/users/:id", get_user)
+        .route("/users", create_user);
 
     app.serve("127.0.0.1:8000").await.unwrap();
 }
@@ -41,6 +54,7 @@ async fn hello() -> &'static str {
     "Hello, World!"
 }
 
+#[get("/users/:id")]
 async fn get_user(Path(id): Path<u64>) -> String {
     format!("User ID: {}", id)
 }
@@ -51,24 +65,49 @@ struct CreateUser {
     email: String,
 }
 
+#[post("/users")]
 async fn create_user(Json(user): Json<CreateUser>) -> String {
     format!("Created user: {}", user.name)
 }
 ```
 
-## Feature Flag
+### 例2: ミドルウェアを使用
 
-Reinhardt Microは、コアを軽量に保つためにfeature flagを使用します:
+```rust
+use reinhardt_micro::prelude::*;
+use reinhardt_micro::middleware::*;
+
+#[tokio::main]
+async fn main() {
+    let app = App::new()
+        .middleware(CorsMiddleware::permissive())
+        .middleware(LoggingMiddleware::new())
+        .middleware(GZipMiddleware::new())
+        .route("/api/users", list_users);
+
+    app.serve("127.0.0.1:8000").await.unwrap();
+}
+
+#[get("/api/users")]
+async fn list_users() -> &'static str {
+    "[{\"id\": 1, \"name\": \"Alice\"}]"
+}
+```
+
+## フィーチャーフラグ
+
+Reinhardt Microは、コアを軽量に保つためにフィーチャーフラグを使用します:
 
 ```toml
-[dependencies]reinhardt-micro = { version = "0.1.0", default-features = false, features = ["routing", "params"] }
+[dependencies]
+reinhardt-micro = { version = "0.1.0", default-features = false, features = ["routing", "params"] }
 ```
 
 利用可能な機能:
 
 - `routing` (デフォルト): 基本的なルーティング機能
-- `params` (デフォルト): 型安全なパラメータ抽出 (Path, Query, Jsonなど)
-- `di` (デフォルト): Dependency Injectionシステム
+- `params` (デフォルト): 型安全なパラメータ抽出 (Path、Query、Jsonなど)
+- `di` (デフォルト): 依存性注入システム
 - `schema` (デフォルト): OpenAPIスキーマ生成
 - `database`: ORM統合 (オプション)
 
@@ -76,17 +115,17 @@ Reinhardt Microは、コアを軽量に保つためにfeature flagを使用し�
 
 | 機能                 | Reinhardt Micro | Reinhardt (Standard) | Reinhardt (Full) |
 |----------------------|-----------------|----------------------|------------------|
-| バイナリサイズ              | ~5-10 MB        | ~20-30 MB            | ~50+ MB          |
-| コンパイル時間            | 高速            | 中程度               | 低速             |
-| ルーティング               | ✅               | ✅                    | ✅                |
-| パラメータ抽出            | ✅               | ✅                    | ✅                |
-| Dependency Injection | ✅               | ✅                    | ✅                |
-| ORM                  | オプション           | ✅                    | ✅                |
+| バイナリサイズ       | ~5-10 MB        | ~20-30 MB            | ~50+ MB          |
+| コンパイル時間       | 高速            | 中程度               | 低速             |
+| ルーティング         | ✅               | ✅                    | ✅                |
+| パラメータ抽出       | ✅               | ✅                    | ✅                |
+| 依存性注入           | ✅               | ✅                    | ✅                |
+| ORM                  | オプション       | ✅                    | ✅                |
 | 管理画面             | ❌               | ❌                    | ✅                |
 | 認証                 | ❌               | ✅                    | ✅                |
-| マイグレーション             | ❌               | ✅                    | ✅                |
-| フォーム                 | ❌               | ❌                    | ✅                |
-| テンプレート               | ❌               | ❌                    | ✅                |
+| マイグレーション     | ❌               | ✅                    | ✅                |
+| フォーム             | ❌               | ❌                    | ✅                |
+| テンプレート         | ❌               | ❌                    | ✅                |
 
 ## 使用シーン
 
@@ -109,13 +148,16 @@ Reinhardt Microから始めて、ニーズの成長に合わせてフルReinhard
 
 ```toml
 # Microから開始
-[dependencies]reinhardt-micro = "0.1.0"
+[dependencies]
+reinhardt-micro = "0.1.0"
 
 # Standardにアップグレード
-[dependencies]reinhardt = { version = "0.1.0", default-features = false, features = ["minimal"] }
+[dependencies]
+reinhardt = { version = "0.1.0", default-features = false, features = ["minimal"] }
 
 # フルフレームワーク
-[dependencies]reinhardt = "0.1.0"  # または features = ["full"]
+[dependencies]
+reinhardt = "0.1.0"  # または features = ["full"]
 ```
 
 ## サンプル
@@ -124,7 +166,7 @@ Reinhardt Microから始めて、ニーズの成長に合わせてフルReinhard
 
 - シンプルなREST API
 - JSON CRUD操作
-- Dependency Injection
+- 依存性注入
 - データベース統合
 
 ## ライセンス
