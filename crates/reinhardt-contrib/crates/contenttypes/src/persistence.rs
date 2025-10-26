@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "database")]
 use async_trait::async_trait;
 #[cfg(feature = "database")]
-use sea_query::{Alias, BinOper, ColumnDef, Condition, Expr, ExprTrait, Index, Query, SimpleExpr, SqliteQueryBuilder, Table};
+use sea_query::{Alias, BinOper, ColumnDef, Condition, Expr, ExprTrait, Index, Query, SqliteQueryBuilder, Table};
 #[cfg(feature = "database")]
 use sqlx::{AnyPool, Row};
 #[cfg(feature = "database")]
@@ -281,8 +281,9 @@ impl ContentTypePersistence {
             .col(ColumnDef::new(Alias::new("model")).string_len(100).not_null())
             .to_owned();
         let sql = stmt.to_string(SqliteQueryBuilder);
+        let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        sqlx::query(&*sql).execute(&*self.pool).await.map_err(|e| {
+        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
             PersistenceError::DatabaseError(format!("Failed to create table: {}", e))
         })?;
 
@@ -296,8 +297,9 @@ impl ContentTypePersistence {
             .col(Alias::new("model"))
             .to_owned();
         let sql = idx.to_string(SqliteQueryBuilder);
+        let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        sqlx::query(&*sql).execute(&*self.pool).await.map_err(|e| {
+        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
             PersistenceError::DatabaseError(format!("Failed to create unique index: {}", e))
         })?;
 
@@ -309,8 +311,9 @@ impl ContentTypePersistence {
             .col(Alias::new("app_label"))
             .to_owned();
         let sql = idx.to_string(SqliteQueryBuilder);
+        let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        sqlx::query(&*sql).execute(&*self.pool).await.map_err(|e| {
+        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
             PersistenceError::DatabaseError(format!("Failed to create app_label index: {}", e))
         })?;
 
@@ -322,8 +325,9 @@ impl ContentTypePersistence {
             .col(Alias::new("model"))
             .to_owned();
         let sql = idx.to_string(SqliteQueryBuilder);
+        let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        sqlx::query(&*sql).execute(&*self.pool).await.map_err(|e| {
+        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
             PersistenceError::DatabaseError(format!("Failed to create model index: {}", e))
         })?;
 
@@ -346,8 +350,9 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
             ))
             .to_owned();
         let sql = stmt.to_string(SqliteQueryBuilder);
+        let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        let row = sqlx::query(&*sql)
+        let row = sqlx::query(sql_leaked)
             .fetch_optional(&*self.pool)
             .await
             .map_err(|e| {
@@ -383,8 +388,9 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
             .cond_where(Condition::all().add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))))
             .to_owned();
         let sql = stmt.to_string(SqliteQueryBuilder);
+        let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        let row = sqlx::query(&*sql)
+        let row = sqlx::query(sql_leaked)
             .fetch_optional(&*self.pool)
             .await
             .map_err(|e| {
@@ -432,8 +438,9 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
             .order_by(Alias::new("model"), sea_query::Order::Asc)
             .to_owned();
         let sql = stmt.to_string(SqliteQueryBuilder);
+        let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        let rows = sqlx::query(&*sql).fetch_all(&*self.pool).await.map_err(|e| {
+        let rows = sqlx::query(sql_leaked).fetch_all(&*self.pool).await.map_err(|e| {
             PersistenceError::DatabaseError(format!("Failed to load all content types: {}", e))
         })?;
 
@@ -469,8 +476,9 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
                 .cond_where(Condition::all().add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))))
                 .to_owned();
             let sql = stmt.to_string(SqliteQueryBuilder);
+            let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-            sqlx::query(&*sql).execute(&*self.pool).await.map_err(|e| {
+            sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
                 PersistenceError::DatabaseError(format!("Failed to update content type: {}", e))
             })?;
 
@@ -484,12 +492,15 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
                 .expect("Failed to build insert statement")
                 .to_owned();
             let sql = stmt.to_string(SqliteQueryBuilder);
+            let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-            let result = sqlx::query(&*sql).execute(&*self.pool).await.map_err(|e| {
+            let result = sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
                 PersistenceError::DatabaseError(format!("Failed to insert content type: {}", e))
             })?;
 
-            let id = result.last_insert_id();
+            let id = result.last_insert_id().ok_or_else(|| {
+                PersistenceError::DatabaseError("Failed to get last insert ID".to_string())
+            })?;
 
             Ok(ContentType {
                 id: Some(id),
@@ -505,8 +516,9 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
             .cond_where(Condition::all().add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))))
             .to_owned();
         let sql = stmt.to_string(SqliteQueryBuilder);
+        let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        sqlx::query(&*sql).execute(&*self.pool).await.map_err(|e| {
+        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
             PersistenceError::DatabaseError(format!("Failed to delete content type: {}", e))
         })?;
 
@@ -515,14 +527,15 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 
     async fn exists(&self, app_label: &str, model: &str) -> Result<bool, PersistenceError> {
         let stmt = Query::select()
-            .expr(1.into())
+            .expr(Expr::val(1))
             .from(Alias::new("django_content_type"))
             .cond_where(Condition::all().add(Expr::col(Alias::new("app_label")).binary(BinOper::Equal, Expr::val(app_label))))
             .cond_where(Condition::all().add(Expr::col(Alias::new("model")).binary(BinOper::Equal, Expr::val(model))))
             .to_owned();
         let sql = stmt.to_string(SqliteQueryBuilder);
+        let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        let row = sqlx::query(&*sql)
+        let row = sqlx::query(sql_leaked)
             .fetch_optional(&*self.pool)
             .await
             .map_err(|e| {
