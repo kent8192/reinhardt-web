@@ -26,7 +26,7 @@
 
 use crate::{MigrationError, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Key identifying a migration (app_label, migration_name)
 ///
