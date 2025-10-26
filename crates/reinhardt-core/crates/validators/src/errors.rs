@@ -67,6 +67,27 @@ pub enum ValidationError {
         allowed_countries: String,
     },
 
+    #[error("Invalid IBAN: {0}")]
+    InvalidIBAN(String),
+
+    #[error("IBAN country code not allowed: {country_code} (allowed: {allowed_codes})")]
+    IBANCountryNotAllowed {
+        country_code: String,
+        allowed_codes: String,
+    },
+
+    #[error("Invalid file extension: {extension} (allowed: {allowed_extensions})")]
+    InvalidFileExtension {
+        extension: String,
+        allowed_extensions: String,
+    },
+
+    #[error("Invalid MIME type: {mime_type} (allowed: {allowed_mime_types})")]
+    InvalidMimeType {
+        mime_type: String,
+        allowed_mime_types: String,
+    },
+
     #[error("Custom validation error: {0}")]
     Custom(String),
 }
