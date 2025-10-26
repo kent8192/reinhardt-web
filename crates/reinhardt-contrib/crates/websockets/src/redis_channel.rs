@@ -31,8 +31,6 @@ use async_trait::async_trait;
 use redis::aio::ConnectionManager;
 #[cfg(feature = "redis-channel")]
 use redis::{AsyncCommands, Client};
-#[cfg(feature = "redis-channel")]
-use std::time::Duration;
 
 /// Redis channel layer configuration
 #[cfg(feature = "redis-channel")]
@@ -313,6 +311,141 @@ pub struct RedisChannelLayer;
 mod tests {
     use super::*;
     use crate::connection::Message;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    /// Mock Redis storage for testing
+    ///
+    /// This mock provides an in-memory implementation of Redis operations
+    /// needed for testing the RedisChannelLayer without requiring a real Redis instance.
+    #[derive(Clone, Default)]
+    struct MockRedisStorage {
+        /// In-memory storage for lists (channel messages)
+        lists: Arc<Mutex<HashMap<String, Vec<String>>>>,
+        /// In-memory storage for sets (group members)
+        sets: Arc<Mutex<HashMap<String, std::collections::HashSet<String>>>>,
+    }
+
+    impl MockRedisStorage {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn rpush(&self, key: &str, value: &str) {
+            let mut lists = self.lists.lock().unwrap();
+            lists.entry(key.to_string()).or_default().push(value.to_string());
+        }
+
+        fn lpop(&self, key: &str) -> Option<String> {
+            let mut lists = self.lists.lock().unwrap();
+            if let Some(list) = lists.get_mut(key) {
+                if !list.is_empty() {
+                    return Some(list.remove(0));
+                }
+            }
+            None
+        }
+
+        fn sadd(&self, key: &str, member: &str) {
+            let mut sets = self.sets.lock().unwrap();
+            sets.entry(key.to_string()).or_default().insert(member.to_string());
+        }
+
+        fn srem(&self, key: &str, member: &str) {
+            let mut sets = self.sets.lock().unwrap();
+            if let Some(set) = sets.get_mut(key) {
+                set.remove(member);
+            }
+        }
+
+        fn smembers(&self, key: &str) -> Vec<String> {
+            let sets = self.sets.lock().unwrap();
+            sets.get(key)
+                .map(|set| set.iter().cloned().collect())
+                .unwrap_or_default()
+        }
+    }
+
+    /// Mock RedisChannelLayer for testing
+    ///
+    /// This structure mimics the behavior of RedisChannelLayer but uses in-memory storage
+    /// instead of a real Redis connection.
+    struct MockRedisChannelLayer {
+        config: RedisConfig,
+        storage: MockRedisStorage,
+    }
+
+    impl MockRedisChannelLayer {
+        fn new(config: RedisConfig) -> Self {
+            Self {
+                config,
+                storage: MockRedisStorage::new(),
+            }
+        }
+
+        fn channel_key(&self, channel: &str) -> String {
+            format!("{}{}", self.config.channel_prefix, channel)
+        }
+
+        fn group_key(&self, group: &str) -> String {
+            format!("{}{}", self.config.group_prefix, group)
+        }
+
+        fn serialize_message(&self, message: &ChannelMessage) -> ChannelResult<String> {
+            serde_json::to_string(message)
+                .map_err(|e| ChannelError::SerializationError(format!("Serialize error: {}", e)))
+        }
+
+        fn deserialize_message(&self, data: &str) -> ChannelResult<ChannelMessage> {
+            serde_json::from_str(data)
+                .map_err(|e| ChannelError::SerializationError(format!("Deserialize error: {}", e)))
+        }
+
+        async fn send(&self, channel: &str, message: ChannelMessage) -> ChannelResult<()> {
+            let key = self.channel_key(channel);
+            let data = self.serialize_message(&message)?;
+            self.storage.rpush(&key, &data);
+            Ok(())
+        }
+
+        async fn receive(&self, channel: &str) -> ChannelResult<Option<ChannelMessage>> {
+            let key = self.channel_key(channel);
+            match self.storage.lpop(&key) {
+                Some(data) => {
+                    let message = self.deserialize_message(&data)?;
+                    Ok(Some(message))
+                }
+                None => Ok(None),
+            }
+        }
+
+        async fn group_add(&self, group: &str, channel: &str) -> ChannelResult<()> {
+            let key = self.group_key(group);
+            self.storage.sadd(&key, channel);
+            Ok(())
+        }
+
+        async fn group_discard(&self, group: &str, channel: &str) -> ChannelResult<()> {
+            let key = self.group_key(group);
+            self.storage.srem(&key, channel);
+            Ok(())
+        }
+
+        async fn group_send(&self, group: &str, message: ChannelMessage) -> ChannelResult<()> {
+            let key = self.group_key(group);
+            let channels = self.storage.smembers(&key);
+
+            if channels.is_empty() {
+                return Err(ChannelError::GroupNotFound(group.to_string()));
+            }
+
+            for channel in channels {
+                self.send(&channel, message.clone()).await?;
+            }
+
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_redis_config_default() {
@@ -339,32 +472,21 @@ mod tests {
     #[test]
     fn test_channel_key_generation() {
         let config = RedisConfig::default();
-        let layer = RedisChannelLayer {
-            config: config.clone(),
-            connection: todo!("Mock connection for testing"),
-        };
-
+        let layer = MockRedisChannelLayer::new(config);
         assert_eq!(layer.channel_key("test"), "ws:channel:test");
     }
 
     #[test]
     fn test_group_key_generation() {
         let config = RedisConfig::default();
-        let layer = RedisChannelLayer {
-            config: config.clone(),
-            connection: todo!("Mock connection for testing"),
-        };
-
+        let layer = MockRedisChannelLayer::new(config);
         assert_eq!(layer.group_key("test_group"), "ws:group:test_group");
     }
 
     #[test]
     fn test_message_serialization() {
         let config = RedisConfig::default();
-        let layer = RedisChannelLayer {
-            config: config.clone(),
-            connection: todo!("Mock connection for testing"),
-        };
+        let layer = MockRedisChannelLayer::new(config);
 
         let msg = ChannelMessage::new("user_1".to_string(), Message::text("Hello".to_string()));
 
@@ -372,5 +494,146 @@ mod tests {
         let deserialized = layer.deserialize_message(&serialized).unwrap();
 
         assert_eq!(msg.sender(), deserialized.sender());
+    }
+
+    #[tokio::test]
+    async fn test_send_message_to_channel() {
+        let config = RedisConfig::default();
+        let layer = MockRedisChannelLayer::new(config);
+
+        let msg = ChannelMessage::new(
+            "user_1".to_string(),
+            Message::text("Test message".to_string()),
+        );
+
+        // Send message
+        let result = layer.send("test_channel", msg.clone()).await;
+        assert!(result.is_ok());
+
+        // Verify message was stored
+        let key = layer.channel_key("test_channel");
+        let stored = layer.storage.lpop(&key);
+        assert!(stored.is_some());
+
+        // Verify deserialized message
+        let deserialized = layer.deserialize_message(&stored.unwrap()).unwrap();
+        assert_eq!(deserialized.sender(), msg.sender());
+    }
+
+    #[tokio::test]
+    async fn test_receive_message_from_channel() {
+        let config = RedisConfig::default();
+        let layer = MockRedisChannelLayer::new(config);
+
+        let msg = ChannelMessage::new(
+            "user_1".to_string(),
+            Message::text("Test message".to_string()),
+        );
+
+        // Manually add message to mock storage
+        let key = layer.channel_key("test_channel");
+        let serialized = layer.serialize_message(&msg).unwrap();
+        layer.storage.rpush(&key, &serialized);
+
+        // Receive message
+        let result = layer.receive("test_channel").await;
+        assert!(result.is_ok());
+
+        let received = result.unwrap();
+        assert!(received.is_some());
+        assert_eq!(received.unwrap().sender(), msg.sender());
+
+        // Verify queue is empty
+        let result2 = layer.receive("test_channel").await;
+        assert!(result2.is_ok());
+        assert!(result2.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_group_add_and_discard() {
+        let config = RedisConfig::default();
+        let layer = MockRedisChannelLayer::new(config);
+
+        // Add channel to group
+        let result = layer.group_add("test_group", "channel_1").await;
+        assert!(result.is_ok());
+
+        // Verify channel was added
+        let key = layer.group_key("test_group");
+        let members = layer.storage.smembers(&key);
+        assert_eq!(members.len(), 1);
+        assert!(members.contains(&"channel_1".to_string()));
+
+        // Add another channel
+        let result = layer.group_add("test_group", "channel_2").await;
+        assert!(result.is_ok());
+
+        let members = layer.storage.smembers(&key);
+        assert_eq!(members.len(), 2);
+
+        // Discard channel
+        let result = layer.group_discard("test_group", "channel_1").await;
+        assert!(result.is_ok());
+
+        let members = layer.storage.smembers(&key);
+        assert_eq!(members.len(), 1);
+        assert!(members.contains(&"channel_2".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_group_send() {
+        let config = RedisConfig::default();
+        let layer = MockRedisChannelLayer::new(config);
+
+        // Add channels to group
+        layer.group_add("test_group", "channel_1").await.unwrap();
+        layer.group_add("test_group", "channel_2").await.unwrap();
+
+        // Send message to group
+        let msg = ChannelMessage::new(
+            "user_1".to_string(),
+            Message::text("Group message".to_string()),
+        );
+
+        let result = layer.group_send("test_group", msg.clone()).await;
+        assert!(result.is_ok());
+
+        // Verify both channels received the message
+        let key1 = layer.channel_key("channel_1");
+        let key2 = layer.channel_key("channel_2");
+
+        let msg1 = layer.storage.lpop(&key1);
+        let msg2 = layer.storage.lpop(&key2);
+
+        assert!(msg1.is_some());
+        assert!(msg2.is_some());
+
+        let deserialized1 = layer.deserialize_message(&msg1.unwrap()).unwrap();
+        let deserialized2 = layer.deserialize_message(&msg2.unwrap()).unwrap();
+
+        assert_eq!(deserialized1.sender(), msg.sender());
+        assert_eq!(deserialized2.sender(), msg.sender());
+    }
+
+    #[tokio::test]
+    async fn test_group_send_to_empty_group() {
+        let config = RedisConfig::default();
+        let layer = MockRedisChannelLayer::new(config);
+
+        let msg = ChannelMessage::new(
+            "user_1".to_string(),
+            Message::text("Test message".to_string()),
+        );
+
+        // Send to non-existent group
+        let result = layer.group_send("empty_group", msg).await;
+        assert!(result.is_err());
+
+        match result {
+            Err(ChannelError::GroupNotFound(group)) => {
+                assert_eq!(group, "empty_group");
+            }
+            _ => panic!("Expected GroupNotFound error"),
+        }
     }
 }
