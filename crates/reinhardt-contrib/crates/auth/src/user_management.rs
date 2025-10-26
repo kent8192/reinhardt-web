@@ -3,7 +3,7 @@
 //! Provides CRUD operations for user management.
 
 use crate::backend::PasswordHasher;
-use crate::user::{SimpleUser, User};
+use crate::user::SimpleUser;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -212,7 +212,7 @@ impl<H: PasswordHasher> UserManager<H> {
         // Hash password
         let password_hash = self
             .hasher
-            .hash_password(&data.password)
+            .hash(&data.password)
             .map_err(|e| UserManagementError::Other(e.to_string()))?;
 
         // Create user
@@ -505,7 +505,7 @@ impl<H: PasswordHasher> UserManager<H> {
 
         Ok(self
             .hasher
-            .verify_password(password, hash)
+            .verify(password, hash)
             .map_err(|e| UserManagementError::Other(e.to_string()))?)
     }
 }
