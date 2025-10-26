@@ -18,7 +18,7 @@
 //! assert_eq!(result, "The **quick** brown fox");
 //! ```
 
-use regex::{escape, RegexBuilder};
+use regex::{RegexBuilder, escape};
 use serde::{Deserialize, Serialize};
 
 /// Trait for search result highlighting
@@ -503,9 +503,11 @@ mod tests {
         let results = highlighter.highlight_fields(&fields, "Rust");
 
         assert_eq!(results.len(), 2);
-        assert!(results
-            .iter()
-            .all(|r| r.highlighted.contains("<mark>Rust</mark>")));
+        assert!(
+            results
+                .iter()
+                .all(|r| r.highlighted.contains("<mark>Rust</mark>"))
+        );
     }
 
     #[test]

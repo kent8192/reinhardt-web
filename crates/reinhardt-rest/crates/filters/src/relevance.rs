@@ -308,19 +308,135 @@ impl RelevanceScorer {
     ///
     /// This would typically add scoring calculations to the SELECT clause
     /// and ORDER BY for relevance-based ranking.
-    fn generate_scoring_sql(&self, _sql: String, _search_terms: &str) -> FilterResult<String> {
-        // TODO: Implement scoring SQL generation based on algorithm
-        // This requires:
-        // 1. Detecting search fields
-        // 2. Generating algorithm-specific scoring expressions
-        // 3. Adding scoring to SELECT and ORDER BY clauses
-        // 4. Applying field boosts
-        // 5. Filtering by min_score if set
-        todo!(
-            "Implement relevance scoring SQL generation. \
-             This should add scoring calculations based on the selected algorithm \
-             and apply field boosts. The implementation is database-specific."
-        )
+    fn generate_scoring_sql(&self, sql: String, search_terms: &str) -> FilterResult<String> {
+        use crate::filter::FilterError;
+
+        if self.field_boosts.is_empty() {
+            return Err(FilterError::InvalidParameter(
+                "No search fields configured for relevance scoring".to_string(),
+            ));
+        }
+
+        let sql_upper = sql.to_uppercase();
+
+        let select_end = sql_upper
+            .find(" FROM ")
+            .ok_or_else(|| FilterError::InvalidQuery("No FROM clause found in SQL".to_string()))?;
+
+        let select_part = &sql[0..select_end];
+        let rest_part = &sql[select_end..];
+
+        let score_expr = self.generate_score_expression(search_terms);
+
+        let new_select = if select_part.trim().eq_ignore_ascii_case("SELECT *") {
+            format!("{}, {} AS relevance_score", select_part, score_expr)
+        } else {
+            format!("{}, {} AS relevance_score", select_part, score_expr)
+        };
+
+        let mut result_sql = format!("{}{}", new_select, rest_part);
+
+        if let Some(min_score) = self.min_score {
+            result_sql = self.add_min_score_filter(result_sql, min_score)?;
+        }
+
+        result_sql = self.add_order_by(result_sql);
+
+        Ok(result_sql)
+    }
+
+    /// Generate scoring expression based on the algorithm
+    fn generate_score_expression(&self, search_terms: &str) -> String {
+        let field_scores: Vec<String> = self
+            .field_boosts
+            .iter()
+            .map(|boost| {
+                let field_name = &boost.field_name;
+                let boost_factor = boost.boost_factor;
+                let base_score = match &self.algorithm {
+                    ScoringAlgorithm::TfIdf => {
+                        format!(
+                            "(LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER('{terms}'), ''))) / LENGTH('{terms}') * LOG(1000.0 / (1.0 + (LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER('{terms}'), '')))))",
+                            field = field_name,
+                            terms = search_terms.replace('\'', "''")
+                        )
+                    }
+                    ScoringAlgorithm::BM25 { k1, b } => {
+                        let avg_field_len = 100.0;
+                        format!(
+                            "((LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER('{terms}'), ''))) / LENGTH('{terms}')) * ({k1} + 1.0) / ((LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER('{terms}'), ''))) / LENGTH('{terms}') + {k1} * (1.0 - {b} + {b} * LENGTH({field}) / {avg_len}))",
+                            field = field_name,
+                            terms = search_terms.replace('\'', "''"),
+                            k1 = k1,
+                            b = b,
+                            avg_len = avg_field_len
+                        )
+                    }
+                    ScoringAlgorithm::Custom(func_name) => {
+                        format!(
+                            "{}('{}', {})",
+                            func_name,
+                            search_terms.replace('\'', "''"),
+                            field_name
+                        )
+                    }
+                };
+
+                if boost_factor == 1.0 {
+                    base_score
+                } else {
+                    format!("({}) * {}", base_score, boost_factor)
+                }
+            })
+            .collect();
+
+        if field_scores.is_empty() {
+            "0.0".to_string()
+        } else if field_scores.len() == 1 {
+            field_scores[0].clone()
+        } else {
+            format!("({})", field_scores.join(" + "))
+        }
+    }
+
+    /// Add minimum score filter to WHERE clause
+    fn add_min_score_filter(&self, sql: String, min_score: f64) -> FilterResult<String> {
+        let sql_upper = sql.to_uppercase();
+        let score_condition = format!("relevance_score >= {}", min_score);
+
+        if let Some(where_pos) = sql_upper.find(" WHERE ") {
+            let (before_where, after_where) = sql.split_at(where_pos);
+            let after_where_keyword = &after_where[7..];
+            Ok(format!(
+                "{} WHERE {} AND ({})",
+                before_where, score_condition, after_where_keyword
+            ))
+        } else if let Some(group_pos) = sql_upper.find(" GROUP BY ") {
+            let (before_group, after_group) = sql.split_at(group_pos);
+            Ok(format!(
+                "{} WHERE {} {}",
+                before_group, score_condition, after_group
+            ))
+        } else if let Some(order_pos) = sql_upper.find(" ORDER BY ") {
+            let (before_order, after_order) = sql.split_at(order_pos);
+            Ok(format!(
+                "{} WHERE {} {}",
+                before_order, score_condition, after_order
+            ))
+        } else {
+            Ok(format!("{} WHERE {}", sql, score_condition))
+        }
+    }
+
+    /// Add ORDER BY clause for relevance ranking
+    fn add_order_by(&self, sql: String) -> String {
+        let sql_upper = sql.to_uppercase();
+
+        if sql_upper.contains(" ORDER BY ") {
+            sql.replace(" ORDER BY ", " ORDER BY relevance_score DESC, ")
+        } else {
+            format!("{} ORDER BY relevance_score DESC", sql)
+        }
     }
 }
 
@@ -445,7 +561,7 @@ mod tests {
     }
 
     #[test]
-    fn test_relevance_scorer_with_min_score() {
+    fn test_relevance_scorer_min_score_setter() {
         let scorer = RelevanceScorer::new().with_min_score(0.3);
         assert_eq!(scorer.min_score, Some(0.3));
     }
@@ -478,5 +594,278 @@ mod tests {
         let result = scorer.filter_queryset(&params, sql.clone()).await.unwrap();
 
         assert_eq!(result, sql);
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_tfidf_algorithm() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 2.0)
+            .with_boost_field("content", 1.0);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "rust".to_string());
+
+        let sql = "SELECT id, title FROM articles".to_string();
+        let result = scorer.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("relevance_score"));
+        assert!(result.contains("ORDER BY relevance_score DESC"));
+        assert!(result.contains("title"));
+        assert!(result.contains("content"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_bm25_algorithm() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::BM25 { k1: 1.5, b: 0.75 })
+            .with_boost_field("title", 1.0);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "programming".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = scorer.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("relevance_score"));
+        assert!(result.contains("ORDER BY relevance_score DESC"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_custom_algorithm() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::Custom("my_score_func".to_string()))
+            .with_boost_field("title", 1.0);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "test".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = scorer.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("my_score_func"));
+        assert!(result.contains("relevance_score"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_with_min_score() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 1.0)
+            .with_min_score(0.5);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "rust".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = scorer.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("WHERE"));
+        assert!(result.contains("relevance_score >= 0.5"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_with_existing_where() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 1.0)
+            .with_min_score(0.3);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "rust".to_string());
+
+        let sql = "SELECT * FROM articles WHERE published = true".to_string();
+        let result = scorer.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("relevance_score >= 0.3"));
+        assert!(result.contains("AND"));
+        assert!(result.contains("published = true"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_with_existing_order_by() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 1.0);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "rust".to_string());
+
+        let sql = "SELECT * FROM articles ORDER BY created_at DESC".to_string();
+        let result = scorer.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("ORDER BY relevance_score DESC"));
+        assert!(result.contains("created_at DESC"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_field_boost_application() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 3.0)
+            .with_boost_field("content", 1.0);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "rust".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = scorer.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("* 3"));
+        assert!(result.contains("title"));
+        assert!(result.contains("content"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_multiple_fields() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::BM25 { k1: 1.2, b: 0.75 })
+            .with_boost_field("title", 2.0)
+            .with_boost_field("content", 1.0)
+            .with_boost_field("tags", 1.5);
+
+        let mut params = HashMap::new();
+        params.insert("search".to_string(), "rust".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = scorer.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("title"));
+        assert!(result.contains("content"));
+        assert!(result.contains("tags"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_no_fields_error() {
+        let scorer = RelevanceScorer::new().with_algorithm(ScoringAlgorithm::TfIdf);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "rust".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = scorer.filter_queryset(&params, sql).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("No search fields"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_invalid_sql_no_from() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 1.0);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "rust".to_string());
+
+        let sql = "SELECT * WHERE id = 1".to_string();
+        let result = scorer.filter_queryset(&params, sql).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("No FROM clause"));
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_query_param_variants() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 1.0);
+
+        let sql = "SELECT * FROM articles".to_string();
+
+        let mut params_q = HashMap::new();
+        params_q.insert("q".to_string(), "rust".to_string());
+        let result_q = scorer.filter_queryset(&params_q, sql.clone()).await;
+        assert!(result_q.is_ok());
+
+        let mut params_search = HashMap::new();
+        params_search.insert("search".to_string(), "rust".to_string());
+        let result_search = scorer.filter_queryset(&params_search, sql.clone()).await;
+        assert!(result_search.is_ok());
+
+        let mut params_query = HashMap::new();
+        params_query.insert("query".to_string(), "rust".to_string());
+        let result_query = scorer.filter_queryset(&params_query, sql).await;
+        assert!(result_query.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scorer_sql_injection_protection() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 1.0);
+
+        let mut params = HashMap::new();
+        let malicious_input = "rust'; DROP TABLE articles; --";
+        params.insert("q".to_string(), malicious_input.to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = scorer.filter_queryset(&params, sql).await.unwrap();
+
+        let escaped_input = malicious_input.replace('\'', "''");
+        assert!(result.contains(&escaped_input));
+        assert!(result.contains("''"));
+    }
+
+    #[test]
+    fn test_generate_score_expression_tfidf() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 1.0);
+
+        let expr = scorer.generate_score_expression("test");
+        assert!(expr.contains("LENGTH"));
+        assert!(expr.contains("REPLACE"));
+        assert!(expr.contains("LOG"));
+        assert!(expr.contains("title"));
+    }
+
+    #[test]
+    fn test_generate_score_expression_bm25() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::BM25 { k1: 1.2, b: 0.75 })
+            .with_boost_field("content", 1.0);
+
+        let expr = scorer.generate_score_expression("test");
+        assert!(expr.contains("1.2"));
+        assert!(expr.contains("0.75"));
+        assert!(expr.contains("content"));
+    }
+
+    #[test]
+    fn test_generate_score_expression_custom() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::Custom("custom_score".to_string()))
+            .with_boost_field("title", 1.0);
+
+        let expr = scorer.generate_score_expression("test");
+        assert!(expr.contains("custom_score"));
+        assert!(expr.contains("'test'"));
+        assert!(expr.contains("title"));
+    }
+
+    #[test]
+    fn test_generate_score_expression_with_boost() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 2.5);
+
+        let expr = scorer.generate_score_expression("test");
+        assert!(expr.contains("* 2.5"));
+    }
+
+    #[test]
+    fn test_generate_score_expression_multiple_fields() {
+        let scorer = RelevanceScorer::new()
+            .with_algorithm(ScoringAlgorithm::TfIdf)
+            .with_boost_field("title", 2.0)
+            .with_boost_field("content", 1.0);
+
+        let expr = scorer.generate_score_expression("test");
+        assert!(expr.contains("title"));
+        assert!(expr.contains("content"));
+        assert!(expr.contains("+"));
     }
 }

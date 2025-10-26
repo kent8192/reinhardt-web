@@ -108,15 +108,12 @@ impl SynonymDictionary {
         // Add term → synonym
         self.synonyms
             .entry(term.clone())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(synonym.clone());
 
         // Add synonym → term if bidirectional
         if self.bidirectional {
-            self.synonyms
-                .entry(synonym)
-                .or_insert_with(HashSet::new)
-                .insert(term);
+            self.synonyms.entry(synonym).or_default().insert(term);
         }
     }
 
@@ -406,18 +403,44 @@ impl SynonymExpander {
     /// Generate SQL with synonym expansion
     ///
     /// This would modify the WHERE clause to include synonym alternatives.
-    fn apply_expansion(&self, _sql: String, _search_terms: &str) -> FilterResult<String> {
-        // TODO: Implement SQL generation with synonym expansion
-        // This requires:
-        // 1. Parsing the search terms
-        // 2. Expanding each term with synonyms
-        // 3. Modifying WHERE clause to include synonym alternatives (OR conditions)
-        // 4. Handling phrase queries appropriately
-        todo!(
-            "Implement synonym expansion in SQL WHERE clauses. \
-             This should expand search terms with their synonyms and generate \
-             appropriate OR conditions in the query."
-        )
+    ///
+    /// # Arguments
+    ///
+    /// * `sql` - The original SQL query
+    /// * `search_terms` - The search terms to expand with synonyms
+    ///
+    /// # Returns
+    ///
+    /// Modified SQL with synonym expansion in WHERE clause
+    fn apply_expansion(&self, sql: String, search_terms: &str) -> FilterResult<String> {
+        // Expand search terms with synonyms
+        let expanded_terms = self.expand_query(search_terms);
+
+        if expanded_terms.is_empty() {
+            return Ok(sql);
+        }
+
+        // Generate WHERE conditions for expanded terms
+        // Each term should match as a whole word or phrase in a generic search field
+        let conditions: Vec<String> = expanded_terms
+            .iter()
+            .map(|term| {
+                // Escape single quotes in SQL
+                let escaped_term = term.replace('\'', "''");
+                format!("content LIKE '%{}%'", escaped_term)
+            })
+            .collect();
+
+        let where_clause = format!("WHERE ({})", conditions.join(" OR "));
+
+        // Inject WHERE clause into SQL
+        if sql.to_uppercase().contains("WHERE") {
+            // SQL already has WHERE clause, append with AND
+            Ok(sql.replace("WHERE", &format!("{} AND", where_clause)))
+        } else {
+            // No WHERE clause, append at the end
+            Ok(format!("{} {}", sql, where_clause))
+        }
     }
 }
 
@@ -631,5 +654,127 @@ mod tests {
             .unwrap();
 
         assert_eq!(result, sql);
+    }
+
+    #[tokio::test]
+    async fn test_synonym_expander_single_term_expansion() {
+        let mut dict = SynonymDictionary::new();
+        dict.add_synonym("fast", "quick");
+        dict.add_synonym("fast", "rapid");
+
+        let expander = SynonymExpander::new().with_dictionary(dict);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "fast".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = expander.filter_queryset(&params, sql).await.unwrap();
+
+        // Should contain WHERE clause with OR conditions
+        assert!(result.contains("WHERE"));
+        assert!(result.contains("OR"));
+        // Should include original term and synonyms
+        assert!(result.contains("fast"));
+        assert!(result.contains("quick"));
+        assert!(result.contains("rapid"));
+    }
+
+    #[tokio::test]
+    async fn test_synonym_expander_multi_term_expansion() {
+        let mut dict = SynonymDictionary::new();
+        dict.add_synonym("fast", "quick");
+        dict.add_synonym("car", "automobile");
+
+        let expander = SynonymExpander::new().with_dictionary(dict);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "fast car".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = expander.filter_queryset(&params, sql).await.unwrap();
+
+        // Should contain WHERE clause with all terms and synonyms
+        assert!(result.contains("WHERE"));
+        assert!(result.contains("fast"));
+        assert!(result.contains("quick"));
+        assert!(result.contains("car"));
+        assert!(result.contains("automobile"));
+    }
+
+    #[tokio::test]
+    async fn test_synonym_expander_existing_where_clause() {
+        let mut dict = SynonymDictionary::new();
+        dict.add_synonym("fast", "quick");
+
+        let expander = SynonymExpander::new().with_dictionary(dict);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "fast".to_string());
+
+        let sql = "SELECT * FROM articles WHERE status = 'published'".to_string();
+        let result = expander.filter_queryset(&params, sql).await.unwrap();
+
+        // Should preserve existing WHERE clause and add synonym conditions with AND
+        assert!(result.contains("WHERE"));
+        assert!(result.contains("AND"));
+        assert!(result.contains("status = 'published'"));
+        assert!(result.contains("fast"));
+        assert!(result.contains("quick"));
+    }
+
+    #[tokio::test]
+    async fn test_synonym_expander_sql_injection_protection() {
+        let mut dict = SynonymDictionary::new();
+        dict.add_synonym("test", "test'; DROP TABLE articles; --");
+
+        let expander = SynonymExpander::new().with_dictionary(dict);
+
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "test".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = expander.filter_queryset(&params, sql).await.unwrap();
+
+        // Single quotes should be escaped
+        assert!(result.contains("test''"));
+        assert!(!result.contains("DROP TABLE"));
+    }
+
+    #[tokio::test]
+    async fn test_synonym_expander_with_search_param() {
+        let mut dict = SynonymDictionary::new();
+        dict.add_synonym("fast", "quick");
+
+        let expander = SynonymExpander::new().with_dictionary(dict);
+
+        let mut params = HashMap::new();
+        params.insert("search".to_string(), "fast".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = expander.filter_queryset(&params, sql).await.unwrap();
+
+        // Should work with "search" parameter as well
+        assert!(result.contains("WHERE"));
+        assert!(result.contains("fast"));
+        assert!(result.contains("quick"));
+    }
+
+    #[tokio::test]
+    async fn test_synonym_expander_with_query_param() {
+        let mut dict = SynonymDictionary::new();
+        dict.add_synonym("fast", "quick");
+
+        let expander = SynonymExpander::new().with_dictionary(dict);
+
+        let mut params = HashMap::new();
+        params.insert("query".to_string(), "fast".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = expander.filter_queryset(&params, sql).await.unwrap();
+
+        // Should work with "query" parameter as well
+        assert!(result.contains("WHERE"));
+        assert!(result.contains("fast"));
+        assert!(result.contains("quick"));
     }
 }

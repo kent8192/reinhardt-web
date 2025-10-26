@@ -3,7 +3,6 @@
 //! Provides filtering capabilities for fields within a specified range.
 
 use std::fmt::Debug;
-use std::marker::PhantomData;
 
 /// Range filter for numeric and date fields
 ///

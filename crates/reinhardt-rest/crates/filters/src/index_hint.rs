@@ -5,23 +5,25 @@
 //! # Examples
 //!
 //! ```
-//! use reinhardt_filters::{FilterBackend, IndexHintFilter, IndexStrategy};
+//! use reinhardt_filters::{FilterBackend, IndexHintFilter, IndexStrategy, DatabaseType};
 //! use std::collections::HashMap;
 //!
 //! # async fn example() {
-//! // Create filter with index hints
-//! let filter = IndexHintFilter::new()
+//! // Create filter with index hints for MySQL
+//! let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
 //!     .with_index("idx_users_email", IndexStrategy::Use)
 //!     .with_index("idx_users_created_at", IndexStrategy::Force);
 //!
 //! let params = HashMap::new();
-//! let sql = "SELECT * FROM users".to_string();
+//! let sql = "SELECT * FROM users WHERE email = 'test@example.com'".to_string();
 //! let result = filter.filter_queryset(&params, sql).await;
 //! # }
 //! ```
 
 use crate::filter::{FilterBackend, FilterResult};
+use crate::optimizer::DatabaseType;
 use async_trait::async_trait;
+use regex::Regex;
 use std::collections::HashMap;
 
 /// Index usage strategy
@@ -121,13 +123,25 @@ impl IndexHint {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_filters::{IndexHint, IndexStrategy};
+    /// use reinhardt_filters::{IndexHint, IndexStrategy, DatabaseType};
     ///
     /// let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
-    /// let sql = hint.to_sql_hint();
-    /// assert!(sql.contains("USE INDEX"));
+    /// let mysql_sql = hint.to_sql_hint(DatabaseType::MySQL);
+    /// assert!(mysql_sql.contains("USE INDEX"));
+    ///
+    /// let sqlite_sql = hint.to_sql_hint(DatabaseType::SQLite);
+    /// assert!(sqlite_sql.contains("INDEXED BY"));
     /// ```
-    pub fn to_sql_hint(&self) -> String {
+    pub fn to_sql_hint(&self, db_type: DatabaseType) -> String {
+        match db_type {
+            DatabaseType::MySQL => self.to_mysql_hint(),
+            DatabaseType::SQLite => self.to_sqlite_hint(),
+            DatabaseType::PostgreSQL => self.to_postgresql_hint(),
+        }
+    }
+
+    /// Generate MySQL-specific index hint
+    fn to_mysql_hint(&self) -> String {
         let hint_type = match self.strategy {
             IndexStrategy::Use => "USE INDEX",
             IndexStrategy::Force => "FORCE INDEX",
@@ -135,6 +149,27 @@ impl IndexHint {
         };
 
         format!("{} ({})", hint_type, self.index_name)
+    }
+
+    /// Generate SQLite-specific index hint
+    fn to_sqlite_hint(&self) -> String {
+        match self.strategy {
+            IndexStrategy::Use | IndexStrategy::Force => {
+                format!("INDEXED BY {}", self.index_name)
+            }
+            IndexStrategy::Ignore => "NOT INDEXED".to_string(),
+        }
+    }
+
+    /// Generate PostgreSQL-specific index hint (comment-based)
+    fn to_postgresql_hint(&self) -> String {
+        let hint_type = match self.strategy {
+            IndexStrategy::Use => "USE",
+            IndexStrategy::Force => "FORCE",
+            IndexStrategy::Ignore => "IGNORE",
+        };
+
+        format!("/* {} INDEX: {} */", hint_type, self.index_name)
     }
 }
 
@@ -145,33 +180,46 @@ impl IndexHint {
 ///
 /// # Database Compatibility
 ///
-/// Currently supports MySQL/MariaDB syntax. PostgreSQL and other databases
-/// use different hint mechanisms.
+/// - **MySQL/MariaDB**: Native index hints (USE INDEX, FORCE INDEX, IGNORE INDEX)
+/// - **SQLite**: INDEXED BY clause and NOT INDEXED
+/// - **PostgreSQL**: Comment-based hints (for documentation only)
 ///
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::{FilterBackend, IndexHintFilter, IndexStrategy};
+/// use reinhardt_filters::{FilterBackend, IndexHintFilter, IndexStrategy, DatabaseType};
 /// use std::collections::HashMap;
 ///
 /// # async fn example() {
-/// let filter = IndexHintFilter::new()
+/// // MySQL example
+/// let mysql_filter = IndexHintFilter::for_database(DatabaseType::MySQL)
 ///     .with_index("idx_users_email", IndexStrategy::Use)
 ///     .with_index("idx_users_created_at", IndexStrategy::Force);
 ///
+/// // SQLite example
+/// let sqlite_filter = IndexHintFilter::for_database(DatabaseType::SQLite)
+///     .with_index("idx_users_email", IndexStrategy::Use);
+///
 /// let params = HashMap::new();
-/// let sql = "SELECT * FROM users".to_string();
-/// let result = filter.filter_queryset(&params, sql).await;
+/// let sql = "SELECT * FROM users WHERE email = 'test@example.com'".to_string();
+/// let result = mysql_filter.filter_queryset(&params, sql).await;
 /// # }
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct IndexHintFilter {
     hints: Vec<IndexHint>,
     enabled: bool,
+    db_type: DatabaseType,
+}
+
+impl Default for IndexHintFilter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl IndexHintFilter {
-    /// Create a new index hint filter
+    /// Create a new index hint filter with MySQL as default database
     ///
     /// # Examples
     ///
@@ -184,6 +232,26 @@ impl IndexHintFilter {
         Self {
             hints: Vec::new(),
             enabled: true,
+            db_type: DatabaseType::MySQL,
+        }
+    }
+
+    /// Create an index hint filter for a specific database type
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_filters::{IndexHintFilter, DatabaseType};
+    ///
+    /// let mysql_filter = IndexHintFilter::for_database(DatabaseType::MySQL);
+    /// let sqlite_filter = IndexHintFilter::for_database(DatabaseType::SQLite);
+    /// let pg_filter = IndexHintFilter::for_database(DatabaseType::PostgreSQL);
+    /// ```
+    pub fn for_database(db_type: DatabaseType) -> Self {
+        Self {
+            hints: Vec::new(),
+            enabled: true,
+            db_type,
         }
     }
 
@@ -246,19 +314,122 @@ impl IndexHintFilter {
 
     /// Apply index hints to SQL query
     ///
-    /// Note: This is a placeholder implementation. Full implementation requires
-    /// SQL parsing and table detection.
+    /// Parses SQL and injects database-specific index hints after table names
+    /// in FROM and JOIN clauses.
     fn apply_hints(&self, sql: String) -> FilterResult<String> {
         if !self.enabled || self.hints.is_empty() {
             return Ok(sql);
         }
 
-        // TODO: Implement proper SQL parsing and hint injection
-        // Current implementation is a basic placeholder
-        todo!(
-            "Implement SQL parsing to inject index hints at appropriate locations. \
-             This requires identifying table references and inserting hints after table names."
-        )
+        match self.db_type {
+            DatabaseType::MySQL => self.apply_mysql_hints(sql),
+            DatabaseType::SQLite => self.apply_sqlite_hints(sql),
+            DatabaseType::PostgreSQL => self.apply_postgresql_hints(sql),
+        }
+    }
+
+    /// Apply MySQL-specific index hints
+    ///
+    /// Injects hints after table names in FROM and JOIN clauses.
+    /// Example: `FROM users` -> `FROM users USE INDEX (idx_email)`
+    fn apply_mysql_hints(&self, sql: String) -> FilterResult<String> {
+        self.apply_hints_internal(sql, DatabaseType::MySQL)
+    }
+
+    /// Apply SQLite-specific index hints
+    ///
+    /// Injects hints after table names in FROM and JOIN clauses.
+    /// Example: `FROM users` -> `FROM users INDEXED BY idx_email`
+    fn apply_sqlite_hints(&self, sql: String) -> FilterResult<String> {
+        self.apply_hints_internal(sql, DatabaseType::SQLite)
+    }
+
+    /// Internal method to apply hints with proper table matching
+    fn apply_hints_internal(&self, sql: String, db_type: DatabaseType) -> FilterResult<String> {
+        // Find all table references in the SQL
+        let table_regex = Regex::new(r"(?i)\b(FROM|JOIN)\s+(\w+)\b").map_err(|e| {
+            crate::filter::FilterError::InvalidQuery(format!("Invalid regex: {}", e))
+        })?;
+
+        let mut table_positions: Vec<(usize, String, String)> = Vec::new(); // (position, keyword, table_name)
+
+        for caps in table_regex.captures_iter(&sql) {
+            if let Some(pos) = caps.get(0) {
+                let keyword = caps[1].to_string();
+                let table_name = caps[2].to_string();
+                table_positions.push((pos.end(), keyword, table_name));
+            }
+        }
+
+        // Build a map of table name to hints
+        let mut table_hints: HashMap<String, Vec<String>> = HashMap::new();
+        let mut unassigned_hints: Vec<String> = Vec::new();
+
+        for hint in &self.hints {
+            let hint_sql = hint.to_sql_hint(db_type);
+            if let Some(ref table_name) = hint.table_name {
+                table_hints
+                    .entry(table_name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(hint_sql);
+            } else {
+                unassigned_hints.push(hint_sql);
+            }
+        }
+
+        // Apply hints by reconstructing the SQL
+        let mut result = String::new();
+        let mut last_pos = 0;
+        let mut unassigned_idx = 0;
+
+        for (end_pos, keyword, table_name) in table_positions {
+            // Add the part before this match
+            let start_match = end_pos - keyword.len() - table_name.len() - 1;
+            result.push_str(&sql[last_pos..start_match]);
+
+            // Add the keyword and table name
+            result.push_str(&keyword);
+            result.push(' ');
+            result.push_str(&table_name);
+
+            // Add table-specific hints if any
+            if let Some(hints) = table_hints.get(&table_name.to_lowercase()) {
+                for hint_sql in hints {
+                    result.push(' ');
+                    result.push_str(hint_sql);
+                }
+            }
+            // Otherwise, use next unassigned hint if available
+            else if unassigned_idx < unassigned_hints.len() {
+                result.push(' ');
+                result.push_str(&unassigned_hints[unassigned_idx]);
+                unassigned_idx += 1;
+            }
+
+            last_pos = end_pos;
+        }
+
+        // Add remaining SQL
+        result.push_str(&sql[last_pos..]);
+
+        Ok(result)
+    }
+
+    /// Apply PostgreSQL-specific index hints (as comments)
+    ///
+    /// PostgreSQL doesn't support native index hints, so we add them as comments
+    /// for documentation purposes. The actual optimization would require
+    /// session-level SET commands.
+    fn apply_postgresql_hints(&self, sql: String) -> FilterResult<String> {
+        let mut result = sql;
+
+        for hint in &self.hints {
+            let hint_sql = hint.to_sql_hint(DatabaseType::PostgreSQL);
+            // For PostgreSQL, we just prepend the comment
+            result = format!("{} {}", hint_sql, result);
+        }
+
+        Ok(result)
     }
 }
 
@@ -304,24 +475,52 @@ mod tests {
     }
 
     #[test]
-    fn test_index_hint_to_sql_use() {
+    fn test_index_hint_to_sql_mysql_use() {
         let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
-        let sql = hint.to_sql_hint();
+        let sql = hint.to_sql_hint(DatabaseType::MySQL);
         assert_eq!(sql, "USE INDEX (idx_users_email)");
     }
 
     #[test]
-    fn test_index_hint_to_sql_force() {
+    fn test_index_hint_to_sql_mysql_force() {
         let hint = IndexHint::new("idx_users_created_at", IndexStrategy::Force);
-        let sql = hint.to_sql_hint();
+        let sql = hint.to_sql_hint(DatabaseType::MySQL);
         assert_eq!(sql, "FORCE INDEX (idx_users_created_at)");
     }
 
     #[test]
-    fn test_index_hint_to_sql_ignore() {
+    fn test_index_hint_to_sql_mysql_ignore() {
         let hint = IndexHint::new("idx_users_status", IndexStrategy::Ignore);
-        let sql = hint.to_sql_hint();
+        let sql = hint.to_sql_hint(DatabaseType::MySQL);
         assert_eq!(sql, "IGNORE INDEX (idx_users_status)");
+    }
+
+    #[test]
+    fn test_index_hint_to_sql_sqlite_use() {
+        let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
+        let sql = hint.to_sql_hint(DatabaseType::SQLite);
+        assert_eq!(sql, "INDEXED BY idx_users_email");
+    }
+
+    #[test]
+    fn test_index_hint_to_sql_sqlite_force() {
+        let hint = IndexHint::new("idx_users_created_at", IndexStrategy::Force);
+        let sql = hint.to_sql_hint(DatabaseType::SQLite);
+        assert_eq!(sql, "INDEXED BY idx_users_created_at");
+    }
+
+    #[test]
+    fn test_index_hint_to_sql_sqlite_ignore() {
+        let hint = IndexHint::new("idx_users_status", IndexStrategy::Ignore);
+        let sql = hint.to_sql_hint(DatabaseType::SQLite);
+        assert_eq!(sql, "NOT INDEXED");
+    }
+
+    #[test]
+    fn test_index_hint_to_sql_postgresql() {
+        let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
+        let sql = hint.to_sql_hint(DatabaseType::PostgreSQL);
+        assert_eq!(sql, "/* USE INDEX: idx_users_email */");
     }
 
     #[test]
@@ -373,5 +572,206 @@ mod tests {
         let result = filter.filter_queryset(&params, sql.clone()).await.unwrap();
 
         assert_eq!(result, sql);
+    }
+
+    // MySQL hint injection tests
+
+    #[tokio::test]
+    async fn test_mysql_use_index_hint_injection() {
+        let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
+            .with_index("idx_users_email", IndexStrategy::Use);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users WHERE email = 'test@example.com'".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users USE INDEX (idx_users_email)"));
+    }
+
+    #[tokio::test]
+    async fn test_mysql_force_index_hint_injection() {
+        let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
+            .with_index("idx_users_id", IndexStrategy::Force);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users WHERE id = 1".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users FORCE INDEX (idx_users_id)"));
+    }
+
+    #[tokio::test]
+    async fn test_mysql_ignore_index_hint_injection() {
+        let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
+            .with_index("idx_users_status", IndexStrategy::Ignore);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users WHERE status = 'active'".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users IGNORE INDEX (idx_users_status)"));
+    }
+
+    #[tokio::test]
+    async fn test_mysql_multiple_hints() {
+        let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
+            .with_index("idx_users_email", IndexStrategy::Use)
+            .with_index("idx_orders_user_id", IndexStrategy::Force);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users JOIN orders ON users.id = orders.user_id".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users USE INDEX (idx_users_email)"));
+        assert!(result.contains("JOIN orders FORCE INDEX (idx_orders_user_id)"));
+    }
+
+    #[tokio::test]
+    async fn test_mysql_hint_with_table_name() {
+        let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
+            .with_hint(IndexHint::new("idx_email", IndexStrategy::Use).for_table("users"));
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users JOIN orders ON users.id = orders.user_id".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users USE INDEX (idx_email)"));
+        // orders should not have the hint
+        assert!(!result.contains("JOIN orders USE INDEX"));
+    }
+
+    // SQLite hint injection tests
+
+    #[tokio::test]
+    async fn test_sqlite_indexed_by_hint() {
+        let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
+            .with_index("idx_users_email", IndexStrategy::Use);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users WHERE email = 'test@example.com'".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users INDEXED BY idx_users_email"));
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_indexed_by_force() {
+        let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
+            .with_index("idx_users_id", IndexStrategy::Force);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users WHERE id = 1".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users INDEXED BY idx_users_id"));
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_not_indexed_hint() {
+        let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
+            .with_index("idx_users_status", IndexStrategy::Ignore);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users WHERE status = 'active'".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users NOT INDEXED"));
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_multiple_tables_with_hints() {
+        let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
+            .with_index("idx_users_email", IndexStrategy::Use)
+            .with_index("idx_orders_user_id", IndexStrategy::Force);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users JOIN orders ON users.id = orders.user_id".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users INDEXED BY idx_users_email"));
+        assert!(result.contains("JOIN orders INDEXED BY idx_orders_user_id"));
+    }
+
+    // PostgreSQL hint injection tests
+
+    #[tokio::test]
+    async fn test_postgresql_comment_hint() {
+        let filter = IndexHintFilter::for_database(DatabaseType::PostgreSQL)
+            .with_index("idx_users_email", IndexStrategy::Use);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users WHERE email = 'test@example.com'".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("/* USE INDEX: idx_users_email */"));
+        assert!(result.contains("SELECT * FROM users"));
+    }
+
+    #[tokio::test]
+    async fn test_postgresql_multiple_hints() {
+        let filter = IndexHintFilter::for_database(DatabaseType::PostgreSQL)
+            .with_index("idx_users_email", IndexStrategy::Use)
+            .with_index("idx_users_created_at", IndexStrategy::Force);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("/* USE INDEX: idx_users_email */"));
+        assert!(result.contains("/* FORCE INDEX: idx_users_created_at */"));
+    }
+
+    // Complex query tests
+
+    #[tokio::test]
+    async fn test_mysql_join_with_multiple_hints() {
+        let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
+            .with_hint(IndexHint::new("idx_email", IndexStrategy::Use).for_table("users"))
+            .with_hint(IndexHint::new("idx_user_id", IndexStrategy::Force).for_table("orders"));
+
+        let params = HashMap::new();
+        let sql =
+            "SELECT * FROM users INNER JOIN orders ON users.id = orders.user_id WHERE users.email = 'test@example.com'"
+                .to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("FROM users USE INDEX (idx_email)"));
+        assert!(result.contains("JOIN orders FORCE INDEX (idx_user_id)"));
+    }
+
+    #[tokio::test]
+    async fn test_mysql_case_insensitive_from_join() {
+        let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
+            .with_index("idx_users_email", IndexStrategy::Use);
+
+        let params = HashMap::new();
+        let sql = "SELECT * from users where email = 'test@example.com'".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("from users USE INDEX (idx_users_email)"));
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_left_join_with_hint() {
+        let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
+            .with_hint(IndexHint::new("idx_user_id", IndexStrategy::Use).for_table("orders"));
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id".to_string();
+        let result = filter.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("JOIN orders INDEXED BY idx_user_id"));
+    }
+
+    #[test]
+    fn test_for_database_constructor() {
+        let mysql_filter = IndexHintFilter::for_database(DatabaseType::MySQL);
+        assert_eq!(mysql_filter.db_type, DatabaseType::MySQL);
+
+        let sqlite_filter = IndexHintFilter::for_database(DatabaseType::SQLite);
+        assert_eq!(sqlite_filter.db_type, DatabaseType::SQLite);
+
+        let pg_filter = IndexHintFilter::for_database(DatabaseType::PostgreSQL);
+        assert_eq!(pg_filter.db_type, DatabaseType::PostgreSQL);
     }
 }
