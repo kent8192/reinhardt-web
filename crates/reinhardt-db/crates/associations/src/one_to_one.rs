@@ -84,7 +84,7 @@ impl<T, K> OneToOne<T, K> {
     /// }
     ///
     /// let rel: OneToOne<User, i64> = OneToOne::new("user_id");
-    /// assert_eq!(rel.field_name(), "user_id");
+    /// assert_eq!(rel.get_field_name(), "user_id");
     /// ```
     pub fn new(field_name: impl Into<String>) -> Self {
         Self {
@@ -116,7 +116,7 @@ impl<T, K> OneToOne<T, K> {
     ///
     /// let rel: OneToOne<User, i64> = OneToOne::new("user_id")
     ///     .to_field("uuid");
-    /// assert_eq!(rel.to_field(), "uuid");
+    /// assert_eq!(rel.get_to_field(), "uuid");
     /// ```
     pub fn to_field(mut self, to_field: impl Into<String>) -> Self {
         self.to_field = to_field.into();
@@ -137,7 +137,7 @@ impl<T, K> OneToOne<T, K> {
     ///
     /// let rel: OneToOne<User, i64> = OneToOne::new("user_id")
     ///     .related_name("profile");
-    /// assert_eq!(rel.related_name(), Some("profile"));
+    /// assert_eq!(rel.get_related_name(), Some("profile"));
     /// ```
     pub fn related_name(mut self, name: impl Into<String>) -> Self {
         self.related_name = Some(name.into());
@@ -158,7 +158,7 @@ impl<T, K> OneToOne<T, K> {
     ///
     /// let rel: OneToOne<User, i64> = OneToOne::new("user_id")
     ///     .on_delete(CascadeAction::Cascade);
-    /// assert_eq!(rel.on_delete(), CascadeAction::Cascade);
+    /// assert_eq!(rel.get_on_delete(), CascadeAction::Cascade);
     /// ```
     pub fn on_delete(mut self, action: CascadeAction) -> Self {
         self.on_delete = action;
@@ -179,7 +179,7 @@ impl<T, K> OneToOne<T, K> {
     ///
     /// let rel: OneToOne<User, i64> = OneToOne::new("user_id")
     ///     .on_update(CascadeAction::SetNull);
-    /// assert_eq!(rel.on_update(), CascadeAction::SetNull);
+    /// assert_eq!(rel.get_on_update(), CascadeAction::SetNull);
     /// ```
     pub fn on_update(mut self, action: CascadeAction) -> Self {
         self.on_update = action;
@@ -221,7 +221,7 @@ impl<T, K> OneToOne<T, K> {
     ///
     /// let rel: OneToOne<User, i64> = OneToOne::new("user_id")
     ///     .db_constraint("fk_profile_user");
-    /// assert_eq!(rel.db_constraint(), Some("fk_profile_user"));
+    /// assert_eq!(rel.get_db_constraint(), Some("fk_profile_user"));
     /// ```
     pub fn db_constraint(mut self, name: impl Into<String>) -> Self {
         self.db_constraint = Some(name.into());
@@ -250,27 +250,27 @@ impl<T, K> OneToOne<T, K> {
     }
 
     /// Get the field name
-    pub fn field_name(&self) -> &str {
+    pub fn get_field_name(&self) -> &str {
         &self.field_name
     }
 
     /// Get the to_field name
-    pub fn to_field(&self) -> &str {
+    pub fn get_to_field(&self) -> &str {
         &self.to_field
     }
 
     /// Get the related_name
-    pub fn related_name(&self) -> Option<&str> {
+    pub fn get_related_name(&self) -> Option<&str> {
         self.related_name.as_deref()
     }
 
     /// Get the on_delete action
-    pub fn on_delete(&self) -> CascadeAction {
+    pub fn get_on_delete(&self) -> CascadeAction {
         self.on_delete
     }
 
     /// Get the on_update action
-    pub fn on_update(&self) -> CascadeAction {
+    pub fn get_on_update(&self) -> CascadeAction {
         self.on_update
     }
 
@@ -285,7 +285,7 @@ impl<T, K> OneToOne<T, K> {
     }
 
     /// Get the database constraint name
-    pub fn db_constraint(&self) -> Option<&str> {
+    pub fn get_db_constraint(&self) -> Option<&str> {
         self.db_constraint.as_deref()
     }
 
@@ -321,11 +321,11 @@ mod tests {
     #[test]
     fn test_one_to_one_creation() {
         let rel: OneToOne<User, i64> = OneToOne::new("user_id");
-        assert_eq!(rel.field_name(), "user_id");
-        assert_eq!(rel.to_field(), "id");
-        assert_eq!(rel.related_name(), None);
-        assert_eq!(rel.on_delete(), CascadeAction::NoAction);
-        assert_eq!(rel.on_update(), CascadeAction::NoAction);
+        assert_eq!(rel.get_field_name(), "user_id");
+        assert_eq!(rel.get_to_field(), "id");
+        assert_eq!(rel.get_related_name(), None);
+        assert_eq!(rel.get_on_delete(), CascadeAction::NoAction);
+        assert_eq!(rel.get_on_update(), CascadeAction::NoAction);
         assert!(!rel.is_null());
         assert!(rel.has_db_index());
         assert!(!rel.is_parent_link());
@@ -341,20 +341,20 @@ mod tests {
             .db_constraint("fk_profile_user")
             .parent_link(true);
 
-        assert_eq!(rel.field_name(), "user_id");
-        assert_eq!(rel.related_name(), Some("profile"));
-        assert_eq!(rel.on_delete(), CascadeAction::Cascade);
-        assert_eq!(rel.on_update(), CascadeAction::SetNull);
+        assert_eq!(rel.get_field_name(), "user_id");
+        assert_eq!(rel.get_related_name(), Some("profile"));
+        assert_eq!(rel.get_on_delete(), CascadeAction::Cascade);
+        assert_eq!(rel.get_on_update(), CascadeAction::SetNull);
         assert!(rel.is_null());
         assert!(rel.has_db_index());
-        assert_eq!(rel.db_constraint(), Some("fk_profile_user"));
+        assert_eq!(rel.get_db_constraint(), Some("fk_profile_user"));
         assert!(rel.is_parent_link());
     }
 
     #[test]
     fn test_to_field_customization() {
         let rel: OneToOne<User, i64> = OneToOne::new("user_id").to_field("uuid");
-        assert_eq!(rel.to_field(), "uuid");
+        assert_eq!(rel.get_to_field(), "uuid");
     }
 
     #[test]
@@ -369,7 +369,7 @@ mod tests {
 
         for action in actions {
             let rel: OneToOne<User, i64> = OneToOne::new("user_id").on_delete(action);
-            assert_eq!(rel.on_delete(), action);
+            assert_eq!(rel.get_on_delete(), action);
         }
     }
 

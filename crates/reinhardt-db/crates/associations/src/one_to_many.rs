@@ -119,7 +119,7 @@ impl<T, K> OneToMany<T, K> {
     ///
     /// let rel: OneToMany<Post, i64> = OneToMany::new("posts")
     ///     .to_field("uuid");
-    /// assert_eq!(rel.to_field(), "uuid");
+    /// assert_eq!(rel.get_to_field(), "uuid");
     /// ```
     pub fn to_field(mut self, to_field: impl Into<String>) -> Self {
         self.to_field = to_field.into();
@@ -158,7 +158,7 @@ impl<T, K> OneToMany<T, K> {
     }
 
     /// Get the to_field name
-    pub fn to_field(&self) -> &str {
+    pub fn get_to_field(&self) -> &str {
         &self.to_field
     }
 
@@ -196,7 +196,7 @@ mod tests {
         let rel: OneToMany<Post, i64> = OneToMany::new("posts");
         assert_eq!(rel.accessor_name(), "posts");
         assert_eq!(rel.foreign_key_field(), "");
-        assert_eq!(rel.to_field(), "id");
+        assert_eq!(rel.get_to_field(), "id");
         assert!(rel.is_lazy());
     }
 
@@ -209,7 +209,7 @@ mod tests {
 
         assert_eq!(rel.accessor_name(), "posts");
         assert_eq!(rel.foreign_key_field(), "author_id");
-        assert_eq!(rel.to_field(), "uuid");
+        assert_eq!(rel.get_to_field(), "uuid");
         assert!(!rel.is_lazy());
     }
 
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn test_to_field_customization() {
         let rel: OneToMany<Post, i64> = OneToMany::new("posts").to_field("user_uuid");
-        assert_eq!(rel.to_field(), "user_uuid");
+        assert_eq!(rel.get_to_field(), "user_uuid");
     }
 
     #[test]
@@ -239,7 +239,7 @@ mod tests {
         let rel: OneToMany<Post, i64> = OneToMany::new("comments");
         assert_eq!(rel.accessor_name(), "comments");
         assert!(rel.is_lazy());
-        assert_eq!(rel.to_field(), "id");
+        assert_eq!(rel.get_to_field(), "id");
     }
 
     #[test]

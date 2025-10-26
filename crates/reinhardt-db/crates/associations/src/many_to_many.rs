@@ -115,7 +115,7 @@ impl<T, K> ManyToMany<T, K> {
     ///
     /// let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")
     ///     .related_name("students");
-    /// assert_eq!(rel.related_name(), Some("students"));
+    /// assert_eq!(rel.get_related_name(), Some("students"));
     /// ```
     pub fn related_name(mut self, name: impl Into<String>) -> Self {
         self.related_name = Some(name.into());
@@ -136,7 +136,7 @@ impl<T, K> ManyToMany<T, K> {
     ///
     /// let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")
     ///     .through("student_courses");
-    /// assert_eq!(rel.through(), Some("student_courses"));
+    /// assert_eq!(rel.get_through(), Some("student_courses"));
     /// ```
     pub fn through(mut self, table_name: impl Into<String>) -> Self {
         self.through = Some(table_name.into());
@@ -157,7 +157,7 @@ impl<T, K> ManyToMany<T, K> {
     ///
     /// let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")
     ///     .source_field("student_id");
-    /// assert_eq!(rel.source_field(), "student_id");
+    /// assert_eq!(rel.get_source_field(), "student_id");
     /// ```
     pub fn source_field(mut self, field_name: impl Into<String>) -> Self {
         self.source_field = field_name.into();
@@ -178,7 +178,7 @@ impl<T, K> ManyToMany<T, K> {
     ///
     /// let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")
     ///     .target_field("course_id");
-    /// assert_eq!(rel.target_field(), "course_id");
+    /// assert_eq!(rel.get_target_field(), "course_id");
     /// ```
     pub fn target_field(mut self, field_name: impl Into<String>) -> Self {
         self.target_field = field_name.into();
@@ -199,7 +199,7 @@ impl<T, K> ManyToMany<T, K> {
     ///
     /// let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")
     ///     .on_delete(CascadeAction::Restrict);
-    /// assert_eq!(rel.on_delete(), CascadeAction::Restrict);
+    /// assert_eq!(rel.get_on_delete(), CascadeAction::Restrict);
     /// ```
     pub fn on_delete(mut self, action: CascadeAction) -> Self {
         self.on_delete = action;
@@ -242,7 +242,7 @@ impl<T, K> ManyToMany<T, K> {
     /// let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")
     ///     .add_through_field("enrolled_at")
     ///     .add_through_field("grade");
-    /// assert_eq!(rel.through_fields().len(), 2);
+    /// assert_eq!(rel.get_through_fields().len(), 2);
     /// ```
     pub fn add_through_field(mut self, field_name: impl Into<String>) -> Self {
         self.through_fields.push(field_name.into());
@@ -263,7 +263,7 @@ impl<T, K> ManyToMany<T, K> {
     ///
     /// let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")
     ///     .db_constraint_prefix("m2m_students_courses");
-    /// assert_eq!(rel.db_constraint_prefix(), Some("m2m_students_courses"));
+    /// assert_eq!(rel.get_db_constraint_prefix(), Some("m2m_students_courses"));
     /// ```
     pub fn db_constraint_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.db_constraint_prefix = Some(prefix.into());
@@ -276,27 +276,27 @@ impl<T, K> ManyToMany<T, K> {
     }
 
     /// Get the related_name
-    pub fn related_name(&self) -> Option<&str> {
+    pub fn get_related_name(&self) -> Option<&str> {
         self.related_name.as_deref()
     }
 
     /// Get the through table name
-    pub fn through(&self) -> Option<&str> {
+    pub fn get_through(&self) -> Option<&str> {
         self.through.as_deref()
     }
 
     /// Get the source field name
-    pub fn source_field(&self) -> &str {
+    pub fn get_source_field(&self) -> &str {
         &self.source_field
     }
 
     /// Get the target field name
-    pub fn target_field(&self) -> &str {
+    pub fn get_target_field(&self) -> &str {
         &self.target_field
     }
 
     /// Get the on_delete action
-    pub fn on_delete(&self) -> CascadeAction {
+    pub fn get_on_delete(&self) -> CascadeAction {
         self.on_delete
     }
 
@@ -306,12 +306,12 @@ impl<T, K> ManyToMany<T, K> {
     }
 
     /// Get additional through fields
-    pub fn through_fields(&self) -> &[String] {
+    pub fn get_through_fields(&self) -> &[String] {
         &self.through_fields
     }
 
     /// Get the database constraint prefix
-    pub fn db_constraint_prefix(&self) -> Option<&str> {
+    pub fn get_db_constraint_prefix(&self) -> Option<&str> {
         self.db_constraint_prefix.as_deref()
     }
 }
@@ -342,13 +342,13 @@ mod tests {
     fn test_many_to_many_creation() {
         let rel: ManyToMany<Course, i64> = ManyToMany::new("courses");
         assert_eq!(rel.accessor_name(), "courses");
-        assert_eq!(rel.related_name(), None);
-        assert_eq!(rel.through(), None);
-        assert_eq!(rel.source_field(), "");
-        assert_eq!(rel.target_field(), "");
-        assert_eq!(rel.on_delete(), CascadeAction::Cascade);
+        assert_eq!(rel.get_related_name(), None);
+        assert_eq!(rel.get_through(), None);
+        assert_eq!(rel.get_source_field(), "");
+        assert_eq!(rel.get_target_field(), "");
+        assert_eq!(rel.get_on_delete(), CascadeAction::Cascade);
         assert!(rel.is_lazy());
-        assert_eq!(rel.through_fields().len(), 0);
+        assert_eq!(rel.get_through_fields().len(), 0);
     }
 
     #[test]
@@ -363,13 +363,13 @@ mod tests {
             .db_constraint_prefix("m2m_sc");
 
         assert_eq!(rel.accessor_name(), "courses");
-        assert_eq!(rel.related_name(), Some("students"));
-        assert_eq!(rel.through(), Some("student_courses"));
-        assert_eq!(rel.source_field(), "student_id");
-        assert_eq!(rel.target_field(), "course_id");
-        assert_eq!(rel.on_delete(), CascadeAction::Restrict);
+        assert_eq!(rel.get_related_name(), Some("students"));
+        assert_eq!(rel.get_through(), Some("student_courses"));
+        assert_eq!(rel.get_source_field(), "student_id");
+        assert_eq!(rel.get_target_field(), "course_id");
+        assert_eq!(rel.get_on_delete(), CascadeAction::Restrict);
         assert!(!rel.is_lazy());
-        assert_eq!(rel.db_constraint_prefix(), Some("m2m_sc"));
+        assert_eq!(rel.get_db_constraint_prefix(), Some("m2m_sc"));
     }
 
     #[test]
@@ -379,10 +379,10 @@ mod tests {
             .add_through_field("grade")
             .add_through_field("status");
 
-        assert_eq!(rel.through_fields().len(), 3);
-        assert_eq!(rel.through_fields()[0], "enrolled_at");
-        assert_eq!(rel.through_fields()[1], "grade");
-        assert_eq!(rel.through_fields()[2], "status");
+        assert_eq!(rel.get_through_fields().len(), 3);
+        assert_eq!(rel.get_through_fields()[0], "enrolled_at");
+        assert_eq!(rel.get_through_fields()[1], "grade");
+        assert_eq!(rel.get_through_fields()[2], "status");
     }
 
     #[test]
@@ -397,7 +397,7 @@ mod tests {
 
         for action in actions {
             let rel: ManyToMany<Course, i64> = ManyToMany::new("courses").on_delete(action);
-            assert_eq!(rel.on_delete(), action);
+            assert_eq!(rel.get_on_delete(), action);
         }
     }
 
@@ -420,7 +420,7 @@ mod tests {
             .target_field("course_id");
 
         assert_eq!(student_courses.accessor_name(), "courses");
-        assert_eq!(student_courses.related_name(), Some("students"));
+        assert_eq!(student_courses.get_related_name(), Some("students"));
 
         // The reverse side would be configured on the Course model
         let course_students: ManyToMany<Student, i64> = ManyToMany::new("students")
@@ -430,7 +430,7 @@ mod tests {
             .target_field("student_id");
 
         assert_eq!(course_students.accessor_name(), "students");
-        assert_eq!(course_students.related_name(), Some("courses"));
+        assert_eq!(course_students.get_related_name(), Some("courses"));
     }
 
     #[test]
@@ -443,8 +443,8 @@ mod tests {
             .target_field("follower_id");
 
         assert_eq!(followers.accessor_name(), "followers");
-        assert_eq!(followers.related_name(), Some("following"));
-        assert_eq!(followers.through(), Some("user_follows"));
+        assert_eq!(followers.get_related_name(), Some("following"));
+        assert_eq!(followers.get_through(), Some("user_follows"));
     }
 
     #[test]
@@ -457,10 +457,10 @@ mod tests {
             .add_through_field("completed")
             .add_through_field("notes");
 
-        assert_eq!(rel.through_fields().len(), 4);
-        assert!(rel.through_fields().contains(&"enrolled_at".to_string()));
-        assert!(rel.through_fields().contains(&"grade".to_string()));
-        assert!(rel.through_fields().contains(&"completed".to_string()));
-        assert!(rel.through_fields().contains(&"notes".to_string()));
+        assert_eq!(rel.get_through_fields().len(), 4);
+        assert!(rel.get_through_fields().contains(&"enrolled_at".to_string()));
+        assert!(rel.get_through_fields().contains(&"grade".to_string()));
+        assert!(rel.get_through_fields().contains(&"completed".to_string()));
+        assert!(rel.get_through_fields().contains(&"notes".to_string()));
     }
 }
