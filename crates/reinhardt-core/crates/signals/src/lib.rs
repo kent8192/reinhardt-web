@@ -41,35 +41,43 @@
 //! post_save::<User>().send(&user).await?;
 //! ```
 //!
-//! ## Planned Features
-//! TODO: Signal Batching - Batch multiple signals into a single dispatch
-//! TODO: Signal Throttling - Rate limiting for signal emissions
-//! TODO: Persistent Signals - Store and replay signals from durable storage
-//! TODO: Signal Replay - Replay past signals for debugging and testing
-//! TODO: Signal History - Track signal emission history with timestamps
-//! TODO: Dead Letter Queue - Handle failed signals with retry logic
-//! TODO: ORM Integration - Automatic signal dispatch from ORM operations
-//! TODO: Transaction Support - Signals tied to database transaction lifecycle
-//! TODO: Distributed Signals - Cross-service signal dispatch via message brokers
-//! TODO: WebSocket Signals - Real-time signal propagation to clients
-//! TODO: GraphQL Subscriptions - Signal-based GraphQL subscription support
-//! TODO: Signal Debugger - Visual debugging tool for signal flow
-//! TODO: Signal Profiler - Performance profiling for signal systems
-//! TODO: Signal Documentation Generator - Auto-generate docs from signal definitions
-//! TODO: Signal Visualization - Graphical representation of signal connections
-
+//! ## Implemented Integration Features
+//!
+//! - **ORM Integration**: Automatic signal dispatch from ORM operations
+//! - **Transaction Support**: Signals tied to database transaction lifecycle
+//! - **Distributed Signals**: Cross-service signal dispatch via message brokers
+//! - **WebSocket Signals**: Real-time signal propagation to clients
+//! - **GraphQL Subscriptions**: Signal-based GraphQL subscription support
+//!
 // Module declarations
+pub mod batching;
 mod context;
 mod core;
 mod db_events;
+pub mod debugger;
 pub mod dispatch;
+pub mod dlq;
+pub mod doc_generator;
 mod error;
+pub mod history;
 mod lifecycle_events;
 mod middleware;
 mod model_signals;
+pub mod persistence;
+pub mod profiler;
 mod registry;
+pub mod replay;
 mod request_events;
 mod signal;
+pub mod throttling;
+pub mod visualization;
+
+// Integration modules
+pub mod distributed;
+pub mod graphql_integration;
+pub mod orm_integration;
+pub mod transaction;
+pub mod websocket_integration;
 
 // Re-export core types
 pub use context::{SignalContext, SignalMetrics};
