@@ -7,6 +7,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_parsers::parser::{ParsedData, Parser};
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
@@ -21,6 +22,8 @@ pub struct Request {
     pub query_params: HashMap<String, String>,
     /// Indicates if this request came over HTTPS
     pub is_secure: bool,
+    /// Remote address of the client (if available)
+    pub remote_addr: Option<SocketAddr>,
     /// Parsers for request body
     parsers: Vec<Box<dyn Parser>>,
     /// Cached parsed data (lazy parsing)
@@ -71,6 +74,7 @@ impl Request {
             path_params: HashMap::new(),
             query_params,
             is_secure: false, // Default to insecure, can be set later
+            remote_addr: None,
             parsers: Vec::new(),
             parsed_data: Arc::new(Mutex::new(None)),
             body_consumed: Arc::new(AtomicBool::new(false)),
@@ -118,6 +122,7 @@ impl Request {
             path_params: HashMap::new(),
             query_params,
             is_secure,
+            remote_addr: None,
             parsers: Vec::new(),
             parsed_data: Arc::new(Mutex::new(None)),
             body_consumed: Arc::new(AtomicBool::new(false)),
