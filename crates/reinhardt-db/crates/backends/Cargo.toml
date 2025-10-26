@@ -25,7 +25,8 @@ sea-query-binder = { version = "0.7", features = [
 pg_escape = "0.1.1"
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+serial_test = { workspace = true }
 
 [features]
 default = ["postgres"]

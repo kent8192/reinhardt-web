@@ -33,6 +33,13 @@ pub use backends::mysql::schema::MySQLSchemaEditor;
 #[cfg(feature = "sqlite")]
 pub use backends::sqlite::schema::SQLiteSchemaEditor;
 
+// Re-export two-phase commit implementations
+#[cfg(feature = "postgres")]
+pub use backends::postgresql::two_phase::{PostgresTwoPhaseParticipant, PreparedTransactionInfo};
+
+#[cfg(feature = "mysql")]
+pub use backends::mysql::two_phase::{MySqlTwoPhaseParticipant, XaTransactionInfo};
+
 // Re-export dialect backends
 #[cfg(feature = "postgres")]
 pub use dialect::PostgresBackend;
