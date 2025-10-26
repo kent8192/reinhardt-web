@@ -135,6 +135,7 @@ impl MediaType {
 #[derive(Debug, Clone)]
 pub enum ParsedData {
     Json(Value),
+    Xml(Value),
     Form(HashMap<String, String>),
     MultiPart {
         fields: HashMap<String, String>,

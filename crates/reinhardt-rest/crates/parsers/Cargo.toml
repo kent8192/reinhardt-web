@@ -19,6 +19,7 @@ mime = "0.3"
 thiserror = "1.0"
 futures-util = "0.3"
 urlencoding = "2.1"
+quick-xml = "0.36"
 reinhardt-exception = { workspace = true }
 
 [dev-dependencies]

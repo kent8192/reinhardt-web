@@ -5,6 +5,7 @@
 //! ## Parsers
 //!
 //! - **JSONParser**: Parse JSON request bodies
+//! - **XMLParser**: Parse XML request bodies (application/xml, text/xml)
 //! - **FormParser**: Parse HTML form data (application/x-www-form-urlencoded)
 //! - **MultiPartParser**: Handle file uploads (multipart/form-data)
 //! - **FileUploadParser**: Raw file upload handling
@@ -19,7 +20,6 @@
 //! ```
 //!
 //! ## Planned Features
-//! TODO: XML Parser - For `application/xml` and `text/xml`
 //! TODO: YAML Parser - For `application/x-yaml`
 //! TODO: MessagePack Parser - For binary message format
 //! TODO: Protobuf Parser - For Protocol Buffers
@@ -37,9 +37,11 @@ pub mod form;
 pub mod json;
 pub mod multipart;
 pub mod parser;
+pub mod xml;
 
 pub use file::FileUploadParser;
 pub use form::FormParser;
 pub use json::JSONParser;
 pub use multipart::MultiPartParser;
 pub use parser::{MediaType, ParseError, ParseResult, Parser};
+pub use xml::{XmlParserConfig, XmlParserConfigBuilder, XMLParser};
