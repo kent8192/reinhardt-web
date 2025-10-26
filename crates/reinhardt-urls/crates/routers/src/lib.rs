@@ -1,18 +1,72 @@
 //! # Reinhardt Routers
 //!
-//! URL routing for Reinhardt framework.
+//! URL routing for Reinhardt framework with advanced features:
 //!
-//! ## Planned Features
-//! TODO: Namespace-based URL reversal - Hierarchical route naming (`"v1:users:detail"`)
-//! TODO: Nested namespace resolution
-//! TODO: URL reversal with namespace support
-//! TODO: Route introspection - Runtime route analysis and debugging
-//! TODO: OpenAPI integration - Automatic OpenAPI schema generation from routes
-//! TODO: Route visualization - Generate route maps for documentation
+//! - **Namespace-based URL reversal**: Hierarchical route naming (`"api:v1:users:detail"`)
+//! - **Nested namespace resolution**: Parent-child namespace relationships
+//! - **Route introspection**: Runtime route analysis and debugging
+//! - **OpenAPI integration**: Automatic OpenAPI schema generation from routes
+//! - **Route visualization**: Generate route maps for documentation (ASCII, DOT, Markdown)
+//!
+//! # Examples
+//!
+//! ## Basic Routing
+//!
+//! ```
+//! use reinhardt_routers::{UnifiedRouter, Route};
+//! use hyper::Method;
+//!
+//! let router = UnifiedRouter::new()
+//!     .with_prefix("/api/v1")
+//!     .with_namespace("v1");
+//! ```
+//!
+//! ## Namespace-based URL Reversal
+//!
+//! ```
+//! use reinhardt_routers::namespace::{NamespaceResolver, Namespace};
+//!
+//! let mut resolver = NamespaceResolver::new();
+//! resolver.register("api:v1:users:detail", "/api/v1/users/{id}/");
+//!
+//! let url = resolver.resolve("api:v1:users:detail", &[("id", "123")]).unwrap();
+//! assert_eq!(url, "/api/v1/users/123/");
+//! ```
+//!
+//! ## Route Introspection
+//!
+//! ```
+//! use reinhardt_routers::introspection::RouteInspector;
+//! use hyper::Method;
+//!
+//! let mut inspector = RouteInspector::new();
+//! inspector.add_route("/api/users/", vec![Method::GET], Some("api:users:list"), None);
+//!
+//! let routes = inspector.find_by_namespace("api");
+//! assert_eq!(routes.len(), 1);
+//! ```
+//!
+//! ## Route Visualization
+//!
+//! ```
+//! use reinhardt_routers::visualization::{RouteVisualizer, VisualizationFormat};
+//! use reinhardt_routers::introspection::RouteInspector;
+//! use hyper::Method;
+//!
+//! let mut inspector = RouteInspector::new();
+//! inspector.add_route("/users/", vec![Method::GET], Some("users:list"), None);
+//!
+//! let visualizer = RouteVisualizer::from_inspector(&inspector);
+//! let tree = visualizer.render(VisualizationFormat::Tree);
+//! println!("{}", tree);
+//! ```
 
 pub mod cache;
 pub mod converters;
 pub mod helpers;
+pub mod introspection;
+pub mod namespace;
+pub mod openapi_integration;
 pub mod pattern;
 pub mod reverse;
 pub mod route;
@@ -20,6 +74,7 @@ pub mod router;
 pub mod script_prefix;
 pub mod simple;
 pub mod unified_router;
+pub mod visualization;
 
 // Re-export the path! macro for compile-time path validation
 pub use reinhardt_routers_macros::path;
