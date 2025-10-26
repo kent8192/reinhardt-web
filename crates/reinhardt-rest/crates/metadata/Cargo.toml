@@ -9,6 +9,7 @@ description = "Metadata API for OPTIONS requests in Reinhardt framework"
 reinhardt-apps = { workspace = true }
 reinhardt-serializers = { version = "0.1.0", path = "../serializers" }
 async-trait = "0.1"
+regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

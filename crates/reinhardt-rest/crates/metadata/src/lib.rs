@@ -6,6 +6,10 @@
 //!
 //! - **BaseMetadata**: Base trait for metadata providers
 //! - **SimpleMetadata**: Default metadata implementation that returns view and field information
+//! - **OpenAPI Schema Generation**: Convert field metadata to OpenAPI 3.0 schemas
+//! - **Type Inference**: Automatic schema inference from Rust types
+//! - **Validation Patterns**: Pre-defined regex patterns for common validation scenarios
+//! - **Field Dependencies**: Define conditional requirements and field relationships
 //! - Automatic field type detection
 //! - Action-based metadata (POST, PUT, etc.)
 //!
@@ -24,27 +28,68 @@
 //! };
 //! ```
 //!
-//! ## Planned Features
-//! TODO: OpenAPI 3.0 schema generation from field metadata
-//! TODO: Automatic schema inference from Rust types
-//! TODO: Schema validation and documentation
-//! TODO: Serializer-aware metadata generation
-//! TODO: Model-based metadata introspection
-//! TODO: Custom metadata class support
-//! TODO: Regular expression validation patterns
-//! TODO: Field dependencies and conditional requirements
+//! ## OpenAPI Schema Generation Example
+//!
+//! ```rust
+//! use reinhardt_metadata::{FieldInfoBuilder, FieldType, generate_field_schema};
+//!
+//! let field = FieldInfoBuilder::new(FieldType::String)
+//!     .required(true)
+//!     .min_length(3)
+//!     .max_length(50)
+//!     .build();
+//!
+//! let schema = generate_field_schema(&field);
+//! assert_eq!(schema.schema_type, Some("string".to_string()));
+//! ```
+//!
+//! ## Type Inference Example
+//!
+//! ```rust
+//! use reinhardt_metadata::SchemaInferencer;
+//!
+//! let inferencer = SchemaInferencer::new();
+//! let schema = inferencer.infer_openapi_schema("Vec<String>");
+//! assert_eq!(schema.schema_type, Some("array".to_string()));
+//! ```
+//!
+//! ## Validation Pattern Example
+//!
+//! ```rust
+//! use reinhardt_metadata::ValidationPattern;
+//!
+//! let pattern = ValidationPattern::email();
+//! assert!(pattern.is_valid("user@example.com"));
+//! ```
+//!
+//! ## Field Dependencies Example
+//!
+//! ```rust
+//! use reinhardt_metadata::{DependencyManager, FieldDependency};
+//!
+//! let mut manager = DependencyManager::new();
+//! manager.add_dependency(FieldDependency::requires("country", vec!["address"]));
+//! ```
 
 mod base;
+mod dependencies;
 mod fields;
+mod inferencer;
 mod options;
+mod patterns;
 mod response;
+mod schema;
 mod types;
 mod validators;
 
 // Re-export all public items
 pub use base::{BaseMetadata, SimpleMetadata};
+pub use dependencies::{DependencyManager, DependencyType, FieldDependency};
 pub use fields::{FieldInfo, FieldInfoBuilder};
+pub use inferencer::SchemaInferencer;
 pub use options::MetadataOptions;
+pub use patterns::ValidationPattern;
 pub use response::{ActionMetadata, MetadataResponse};
+pub use schema::{OpenApiSchema, generate_field_schema, generate_object_schema};
 pub use types::{ChoiceInfo, FieldType, MetadataError};
 pub use validators::FieldValidator;
