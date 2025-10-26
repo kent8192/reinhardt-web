@@ -20,6 +20,12 @@
 /// ```
 use std::fmt;
 
+use pg_escape::quote_identifier;
+use sea_query::{
+    Alias, ColumnDef, Index, IndexCreateStatement, IndexDropStatement, Table,
+    TableAlterStatement, TableCreateStatement, TableDropStatement,
+};
+
 /// DDL reference objects for schema operations
 pub mod ddl_references;
 
@@ -144,19 +150,14 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
     /// Execute a SQL statement
     async fn execute(&mut self, sql: &str) -> SchemaEditorResult<()>;
 
-    /// Quote a database identifier (table name, column name, etc.)
-    fn quote_name(&self, name: &str) -> String;
-
-    /// Quote a value for SQL
-    fn quote_value(&self, value: &str) -> String;
-
-    /// Generate CREATE TABLE SQL
+    /// Generate CREATE TABLE statement using SeaQuery
     ///
     /// # Example
     ///
     /// ```rust
     /// use reinhardt_database::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
     /// use async_trait::async_trait;
+    /// use sea_query::PostgresQueryBuilder;
     ///
     /// struct TestEditor;
     ///
@@ -165,103 +166,120 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
     ///     async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
     ///         Ok(())
     ///     }
-    ///
-    ///     fn quote_name(&self, name: &str) -> String {
-    ///         format!("\"{}\"", name)
-    ///     }
-    ///
-    ///     fn quote_value(&self, value: &str) -> String {
-    ///         format!("'{}'", value)
-    ///     }
     /// }
     ///
     /// let editor = TestEditor;
-    /// let sql = editor.create_table_sql("users", &[
+    /// let stmt = editor.create_table_statement("users", &[
     ///     ("id", "INTEGER PRIMARY KEY"),
     ///     ("name", "VARCHAR(100)"),
     /// ]);
+    /// let sql = stmt.to_string(PostgresQueryBuilder);
     /// assert!(sql.contains("CREATE TABLE"));
-    /// assert!(sql.contains("\"users\""));
     /// ```
-    fn create_table_sql(&self, table: &str, columns: &[(&str, &str)]) -> String {
-        let quoted_table = self.quote_name(table);
-        let column_defs: Vec<String> = columns
-            .iter()
-            .map(|(name, def)| format!("{} {}", self.quote_name(name), def))
-            .collect();
+    fn create_table_statement(&self, table: &str, columns: &[(&str, &str)]) -> TableCreateStatement {
+        let mut stmt = Table::create();
+        stmt.table(Alias::new(table)).if_not_exists();
 
-        format!("CREATE TABLE {} ({})", quoted_table, column_defs.join(", "))
-    }
-
-    /// Generate DROP TABLE SQL
-    fn drop_table_sql(&self, table: &str, cascade: bool) -> String {
-        let quoted_table = self.quote_name(table);
-        if cascade {
-            format!("DROP TABLE {} CASCADE", quoted_table)
-        } else {
-            format!("DROP TABLE {}", quoted_table)
+        for (name, definition) in columns {
+            let mut col = ColumnDef::new(Alias::new(*name));
+            // Use custom() for raw type definitions since we receive them as strings
+            col.custom(Alias::new(*definition));
+            stmt.col(&mut col);
         }
+
+        stmt.to_owned()
     }
 
-    /// Generate ALTER TABLE ADD COLUMN SQL
-    fn add_column_sql(&self, table: &str, column: &str, definition: &str) -> String {
-        format!(
-            "ALTER TABLE {} ADD COLUMN {} {}",
-            self.quote_name(table),
-            self.quote_name(column),
-            definition
-        )
+    /// Generate DROP TABLE statement using SeaQuery
+    fn drop_table_statement(&self, table: &str, cascade: bool) -> TableDropStatement {
+        let mut stmt = Table::drop();
+        stmt.table(Alias::new(table)).if_exists();
+
+        if cascade {
+            stmt.cascade();
+        }
+
+        stmt.to_owned()
     }
 
-    /// Generate ALTER TABLE DROP COLUMN SQL
-    fn drop_column_sql(&self, table: &str, column: &str) -> String {
-        format!(
-            "ALTER TABLE {} DROP COLUMN {}",
-            self.quote_name(table),
-            self.quote_name(column)
-        )
+    /// Generate ALTER TABLE ADD COLUMN statement using SeaQuery
+    fn add_column_statement(&self, table: &str, column: &str, definition: &str) -> TableAlterStatement {
+        let mut stmt = Table::alter();
+        stmt.table(Alias::new(table));
+
+        let mut col = ColumnDef::new(Alias::new(column));
+        // Use custom() for raw type definitions
+        col.custom(Alias::new(definition));
+        stmt.add_column(&mut col);
+
+        stmt.to_owned()
     }
 
-    /// Generate ALTER TABLE RENAME COLUMN SQL
-    fn rename_column_sql(&self, table: &str, old_name: &str, new_name: &str) -> String {
+    /// Generate ALTER TABLE DROP COLUMN statement using SeaQuery
+    fn drop_column_statement(&self, table: &str, column: &str) -> TableAlterStatement {
+        let mut stmt = Table::alter();
+        stmt.table(Alias::new(table));
+        stmt.drop_column(Alias::new(column));
+
+        stmt.to_owned()
+    }
+
+    /// Generate ALTER TABLE RENAME COLUMN SQL using pg_escape for sanitization
+    ///
+    /// Note: SeaQuery doesn't support RENAME COLUMN, so we use raw SQL with pg_escape sanitization
+    fn rename_column_statement(&self, table: &str, old_name: &str, new_name: &str) -> String {
         format!(
             "ALTER TABLE {} RENAME COLUMN {} TO {}",
-            self.quote_name(table),
-            self.quote_name(old_name),
-            self.quote_name(new_name)
+            quote_identifier(table),
+            quote_identifier(old_name),
+            quote_identifier(new_name)
         )
     }
 
-    /// Generate CREATE INDEX SQL
-    fn create_index_sql(
+    /// Generate CREATE INDEX statement using SeaQuery (or pg_escape for partial indexes)
+    ///
+    /// Note: SeaQuery doesn't support partial indexes (WHERE clause), so we use raw SQL with pg_escape for those cases
+    fn create_index_statement(
         &self,
         name: &str,
         table: &str,
         columns: &[&str],
         unique: bool,
         condition: Option<&str>,
-    ) -> String {
-        let unique_keyword = if unique { "UNIQUE " } else { "" };
-        let quoted_columns: Vec<String> = columns.iter().map(|c| self.quote_name(c)).collect();
-
-        let mut sql = format!(
-            "CREATE {}INDEX {} ON {} ({})",
-            unique_keyword,
-            self.quote_name(name),
-            self.quote_name(table),
-            quoted_columns.join(", ")
-        );
-
-        if let Some(cond) = condition {
-            sql.push_str(&format!(" WHERE {}", cond));
+    ) -> Result<IndexCreateStatement, String> {
+        if condition.is_some() {
+            // SeaQuery doesn't support partial indexes, return error to indicate fallback needed
+            return Err(format!(
+                "Partial indexes not supported by SeaQuery. Use raw SQL: CREATE {}INDEX {} ON {} ({}) WHERE {}",
+                if unique { "UNIQUE " } else { "" },
+                quote_identifier(name),
+                quote_identifier(table),
+                columns.iter().map(|c| quote_identifier(c).to_string()).collect::<Vec<_>>().join(", "),
+                condition.unwrap()
+            ));
         }
 
-        sql
+        let mut stmt = Index::create();
+        stmt.name(name)
+            .table(Alias::new(table));
+
+        if unique {
+            stmt.unique();
+        }
+
+        for col in columns {
+            stmt.col(Alias::new(*col));
+        }
+
+        Ok(stmt.to_owned())
     }
 
-    /// Generate DROP INDEX SQL
-    fn drop_index_sql(&self, name: &str) -> String {
-        format!("DROP INDEX {}", self.quote_name(name))
+    /// Generate DROP INDEX statement using SeaQuery
+    fn drop_index_statement(&self, name: &str) -> IndexDropStatement {
+        let mut stmt = Index::drop();
+        stmt.name(name).if_exists();
+
+        stmt.to_owned()
     }
 }
 
@@ -304,23 +322,18 @@ mod tests {
         async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
             Ok(())
         }
-
-        fn quote_name(&self, name: &str) -> String {
-            format!("\"{}\"", name)
-        }
-
-        fn quote_value(&self, value: &str) -> String {
-            format!("'{}'", value.replace('\'', "''"))
-        }
     }
 
     #[test]
-    fn test_create_table_sql() {
+    fn test_create_table_statement() {
+        use sea_query::PostgresQueryBuilder;
+
         let editor = TestSchemaEditor;
-        let sql = editor.create_table_sql(
+        let stmt = editor.create_table_statement(
             "users",
             &[("id", "INTEGER PRIMARY KEY"), ("name", "VARCHAR(100)")],
         );
+        let sql = stmt.to_string(PostgresQueryBuilder);
 
         assert!(sql.contains("CREATE TABLE"));
         assert!(sql.contains("\"users\""));
@@ -329,44 +342,70 @@ mod tests {
     }
 
     #[test]
-    fn test_drop_table_sql() {
+    fn test_drop_table_statement() {
+        use sea_query::PostgresQueryBuilder;
+
         let editor = TestSchemaEditor;
 
-        let sql_no_cascade = editor.drop_table_sql("users", false);
-        assert_eq!(sql_no_cascade, "DROP TABLE \"users\"");
+        let stmt_no_cascade = editor.drop_table_statement("users", false);
+        let sql_no_cascade = stmt_no_cascade.to_string(PostgresQueryBuilder);
+        assert!(sql_no_cascade.contains("DROP TABLE"));
+        assert!(sql_no_cascade.contains("\"users\""));
 
-        let sql_cascade = editor.drop_table_sql("users", true);
-        assert_eq!(sql_cascade, "DROP TABLE \"users\" CASCADE");
+        let stmt_cascade = editor.drop_table_statement("users", true);
+        let sql_cascade = stmt_cascade.to_string(PostgresQueryBuilder);
+        assert!(sql_cascade.contains("DROP TABLE"));
+        assert!(sql_cascade.contains("\"users\""));
+        assert!(sql_cascade.contains("CASCADE"));
     }
 
     #[test]
-    fn test_add_column_sql() {
-        let editor = TestSchemaEditor;
-        let sql = editor.add_column_sql("users", "email", "VARCHAR(255)");
+    fn test_add_column_statement() {
+        use sea_query::PostgresQueryBuilder;
 
-        assert!(sql.contains("ALTER TABLE \"users\""));
-        assert!(sql.contains("ADD COLUMN \"email\" VARCHAR(255)"));
+        let editor = TestSchemaEditor;
+        let stmt = editor.add_column_statement("users", "email", "VARCHAR(255)");
+        let sql = stmt.to_string(PostgresQueryBuilder);
+
+        assert!(sql.contains("ALTER TABLE"));
+        assert!(sql.contains("\"users\""));
+        assert!(sql.contains("ADD COLUMN"));
+        assert!(sql.contains("\"email\""));
+        assert!(sql.contains("VARCHAR(255)"));
     }
 
     #[test]
-    fn test_create_index_sql() {
+    fn test_create_index_statement() {
+        use sea_query::PostgresQueryBuilder;
+
         let editor = TestSchemaEditor;
 
-        let sql = editor.create_index_sql("idx_email", "users", &["email"], false, None);
-        assert!(sql.contains("CREATE INDEX \"idx_email\""));
-        assert!(sql.contains("ON \"users\""));
+        // Simple index
+        let stmt = editor.create_index_statement("idx_email", "users", &["email"], false, None);
+        assert!(stmt.is_ok());
+        let sql = stmt.unwrap().to_string(PostgresQueryBuilder);
+        assert!(sql.contains("CREATE INDEX"));
+        assert!(sql.contains("idx_email"));
+        assert!(sql.contains("\"users\""));
 
-        let unique_sql = editor.create_index_sql("idx_email_uniq", "users", &["email"], true, None);
+        // Unique index
+        let unique_stmt = editor.create_index_statement("idx_email_uniq", "users", &["email"], true, None);
+        assert!(unique_stmt.is_ok());
+        let unique_sql = unique_stmt.unwrap().to_string(PostgresQueryBuilder);
         assert!(unique_sql.contains("CREATE UNIQUE INDEX"));
 
-        let partial_sql = editor.create_index_sql(
+        // Partial index (not supported by SeaQuery, returns error with fallback SQL)
+        let partial_result = editor.create_index_statement(
             "idx_active",
             "users",
             &["email"],
             false,
             Some("active = true"),
         );
-        assert!(partial_sql.contains("WHERE active = true"));
+        assert!(partial_result.is_err());
+        let error_msg = partial_result.unwrap_err();
+        assert!(error_msg.contains("Partial indexes not supported"));
+        assert!(error_msg.contains("WHERE active = true"));
     }
 
     #[test]
