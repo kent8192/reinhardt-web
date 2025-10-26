@@ -401,3 +401,241 @@ mod tests {
         assert!(state.get_model("myapp", "User").is_none());
     }
 }
+
+/// Complex data migration builder
+///
+/// Provides a fluent API for building complex data migrations with batching,
+/// progress tracking, and error handling.
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_migrations::operations::special::DataMigration;
+///
+/// let migration = DataMigration::new("users", "Migrate user data")
+///     .batch_size(1000)
+///     .add_transformation("UPDATE users SET status = 'active' WHERE status IS NULL")
+///     .add_transformation("UPDATE users SET created_at = NOW() WHERE created_at IS NULL");
+/// ```
+#[derive(Debug, Clone)]
+pub struct DataMigration {
+    /// Table name
+    pub table: String,
+    /// Migration description
+    pub description: String,
+    /// Batch size for processing
+    pub batch_size: usize,
+    /// SQL transformations to apply
+    pub transformations: Vec<String>,
+    /// Whether to use transactions
+    pub use_transactions: bool,
+}
+
+impl DataMigration {
+    /// Create a new data migration
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::special::DataMigration;
+    ///
+    /// let migration = DataMigration::new("users", "Update user statuses");
+    /// assert_eq!(migration.table, "users");
+    /// assert_eq!(migration.batch_size, 1000);
+    /// ```
+    pub fn new(table: impl Into<String>, description: impl Into<String>) -> Self {
+        Self {
+            table: table.into(),
+            description: description.into(),
+            batch_size: 1000,
+            transformations: Vec::new(),
+            use_transactions: true,
+        }
+    }
+
+    /// Set batch size for processing
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::special::DataMigration;
+    ///
+    /// let migration = DataMigration::new("users", "Migrate data")
+    ///     .batch_size(500);
+    /// assert_eq!(migration.batch_size, 500);
+    /// ```
+    pub fn batch_size(mut self, size: usize) -> Self {
+        self.batch_size = size;
+        self
+    }
+
+    /// Add a SQL transformation
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::special::DataMigration;
+    ///
+    /// let migration = DataMigration::new("users", "Clean data")
+    ///     .add_transformation("UPDATE users SET email = LOWER(email)");
+    /// assert_eq!(migration.transformations.len(), 1);
+    /// ```
+    pub fn add_transformation(mut self, sql: impl Into<String>) -> Self {
+        self.transformations.push(sql.into());
+        self
+    }
+
+    /// Set whether to use transactions
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::special::DataMigration;
+    ///
+    /// let migration = DataMigration::new("users", "Migrate")
+    ///     .use_transactions(false);
+    /// assert!(!migration.use_transactions);
+    /// ```
+    pub fn use_transactions(mut self, use_tx: bool) -> Self {
+        self.use_transactions = use_tx;
+        self
+    }
+
+    /// Generate batched SQL statements
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::special::DataMigration;
+    ///
+    /// let migration = DataMigration::new("users", "Update emails")
+    ///     .batch_size(100)
+    ///     .add_transformation("UPDATE users SET email = LOWER(email) WHERE id >= {start} AND id < {end}");
+    ///
+    /// let statements = migration.generate_batched_sql(1000);
+    /// assert_eq!(statements.len(), 10); // 1000 / 100 = 10 batches
+    /// ```
+    pub fn generate_batched_sql(&self, total_rows: usize) -> Vec<String> {
+        let mut statements = Vec::new();
+        let num_batches = (total_rows + self.batch_size - 1) / self.batch_size;
+
+        for batch in 0..num_batches {
+            let start = batch * self.batch_size;
+            let end = ((batch + 1) * self.batch_size).min(total_rows);
+
+            for transformation in &self.transformations {
+                let sql = transformation
+                    .replace("{start}", &start.to_string())
+                    .replace("{end}", &end.to_string())
+                    .replace("{batch_size}", &self.batch_size.to_string())
+                    .replace("{table}", &self.table);
+
+                statements.push(sql);
+            }
+        }
+
+        statements
+    }
+
+    /// Convert to RunSQL operation
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::special::DataMigration;
+    ///
+    /// let migration = DataMigration::new("users", "Migrate")
+    ///     .add_transformation("UPDATE users SET status = 'active'");
+    ///
+    /// let run_sql = migration.to_run_sql();
+    /// assert!(run_sql.sql.contains("UPDATE users"));
+    /// ```
+    pub fn to_run_sql(&self) -> RunSQL {
+        let sql = if self.use_transactions {
+            format!(
+                "BEGIN;\n{}\nCOMMIT;",
+                self.transformations.join(";\n")
+            )
+        } else {
+            self.transformations.join(";\n")
+        };
+
+        RunSQL::new(sql)
+    }
+}
+
+#[cfg(test)]
+mod data_migration_tests {
+    use super::*;
+
+    #[test]
+    fn test_data_migration_creation() {
+        let migration = DataMigration::new("users", "Migrate user data");
+        assert_eq!(migration.table, "users");
+        assert_eq!(migration.description, "Migrate user data");
+        assert_eq!(migration.batch_size, 1000);
+        assert!(migration.use_transactions);
+    }
+
+    #[test]
+    fn test_data_migration_batch_size() {
+        let migration = DataMigration::new("users", "Migrate")
+            .batch_size(500);
+        assert_eq!(migration.batch_size, 500);
+    }
+
+    #[test]
+    fn test_data_migration_add_transformation() {
+        let migration = DataMigration::new("users", "Clean")
+            .add_transformation("UPDATE users SET email = LOWER(email)")
+            .add_transformation("UPDATE users SET name = TRIM(name)");
+
+        assert_eq!(migration.transformations.len(), 2);
+    }
+
+    #[test]
+    fn test_data_migration_use_transactions() {
+        let migration = DataMigration::new("users", "Migrate")
+            .use_transactions(false);
+        assert!(!migration.use_transactions);
+    }
+
+    #[test]
+    fn test_generate_batched_sql() {
+        let migration = DataMigration::new("users", "Update")
+            .batch_size(100)
+            .add_transformation(
+                "UPDATE users SET processed = true WHERE id >= {start} AND id < {end}",
+            );
+
+        let statements = migration.generate_batched_sql(250);
+        assert_eq!(statements.len(), 3); // 250 / 100 = 3 batches
+
+        assert!(statements[0].contains("id >= 0 AND id < 100"));
+        assert!(statements[1].contains("id >= 100 AND id < 200"));
+        assert!(statements[2].contains("id >= 200 AND id < 250"));
+    }
+
+    #[test]
+    fn test_to_run_sql_with_transactions() {
+        let migration = DataMigration::new("users", "Migrate")
+            .add_transformation("UPDATE users SET status = 'active'")
+            .add_transformation("UPDATE users SET verified = true");
+
+        let run_sql = migration.to_run_sql();
+        assert!(run_sql.sql.contains("BEGIN"));
+        assert!(run_sql.sql.contains("COMMIT"));
+        assert!(run_sql.sql.contains("UPDATE users"));
+    }
+
+    #[test]
+    fn test_to_run_sql_without_transactions() {
+        let migration = DataMigration::new("users", "Migrate")
+            .use_transactions(false)
+            .add_transformation("UPDATE users SET status = 'active'");
+
+        let run_sql = migration.to_run_sql();
+        assert!(!run_sql.sql.contains("BEGIN"));
+        assert!(!run_sql.sql.contains("COMMIT"));
+    }
+}

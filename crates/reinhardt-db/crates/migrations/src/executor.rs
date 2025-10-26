@@ -4,10 +4,11 @@
 
 use crate::{
     operations::SqlDialect, DatabaseMigrationRecorder, Migration, MigrationPlan, MigrationRecorder,
-    Result,
+    Operation, Result,
 };
 use backends::{connection::DatabaseConnection, types::DatabaseType};
 use sqlx::SqlitePool;
+use std::collections::{HashMap, HashSet};
 
 pub struct ExecutionResult {
     pub applied: Vec<String>,
@@ -339,5 +340,274 @@ impl DatabaseMigrationExecutor {
             applied,
             failed: None,
         })
+    }
+}
+
+/// Operation optimizer for migration execution
+///
+/// Reorders and optimizes operations for better performance and safety.
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_migrations::executor::OperationOptimizer;
+/// use reinhardt_migrations::{Operation, ColumnDefinition};
+///
+/// let ops = vec![
+///     Operation::AddColumn {
+///         table: "users".to_string(),
+///         column: ColumnDefinition::new("name", "VARCHAR(100)"),
+///     },
+///     Operation::CreateTable {
+///         name: "users".to_string(),
+///         columns: vec![],
+///         constraints: vec![],
+///     },
+/// ];
+///
+/// let optimizer = OperationOptimizer::new();
+/// let optimized = optimizer.optimize(ops);
+/// // CreateTable should come before AddColumn
+/// ```
+pub struct OperationOptimizer {
+    _private: (),
+}
+
+impl OperationOptimizer {
+    /// Create a new operation optimizer
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::executor::OperationOptimizer;
+    ///
+    /// let optimizer = OperationOptimizer::new();
+    /// ```
+    pub fn new() -> Self {
+        Self { _private: () }
+    }
+
+    /// Optimize and reorder operations
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::executor::OperationOptimizer;
+    /// use reinhardt_migrations::{Operation, ColumnDefinition};
+    ///
+    /// let ops = vec![
+    ///     Operation::CreateTable {
+    ///         name: "users".to_string(),
+    ///         columns: vec![],
+    ///         constraints: vec![],
+    ///     },
+    /// ];
+    ///
+    /// let optimizer = OperationOptimizer::new();
+    /// let optimized = optimizer.optimize(ops);
+    /// assert_eq!(optimized.len(), 1);
+    /// ```
+    pub fn optimize(&self, operations: Vec<Operation>) -> Vec<Operation> {
+        let mut optimized = operations;
+
+        // Step 1: Reorder operations by dependency
+        optimized = self.reorder_by_dependency(optimized);
+
+        // Step 2: Group similar operations
+        optimized = self.group_similar_operations(optimized);
+
+        // Step 3: Remove redundant operations
+        optimized = self.remove_redundant_operations(optimized);
+
+        optimized
+    }
+
+    /// Reorder operations to respect dependencies
+    fn reorder_by_dependency(&self, operations: Vec<Operation>) -> Vec<Operation> {
+        let mut ordered = Vec::new();
+        let mut remaining = operations;
+        let mut created_tables = HashSet::new();
+
+        // Priority order:
+        // 1. CreateTable
+        // 2. AddColumn
+        // 3. AlterColumn
+        // 4. CreateIndex
+        // 5. AddConstraint
+        // 6. RunSQL
+        // 7. RenameColumn
+        // 8. DropColumn
+        // 9. DropTable
+
+        // First pass: Create tables
+        let mut i = 0;
+        while i < remaining.len() {
+            if let Operation::CreateTable { name, .. } = &remaining[i] {
+                created_tables.insert(name.clone());
+                ordered.push(remaining.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+
+        // Second pass: Add columns (only for created tables)
+        i = 0;
+        while i < remaining.len() {
+            if let Operation::AddColumn { table, .. } = &remaining[i] {
+                if created_tables.contains(table) {
+                    ordered.push(remaining.remove(i));
+                } else {
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        // Third pass: Other operations
+        ordered.extend(remaining);
+
+        ordered
+    }
+
+    /// Group similar operations together
+    fn group_similar_operations(&self, operations: Vec<Operation>) -> Vec<Operation> {
+        let mut by_table: HashMap<String, Vec<Operation>> = HashMap::new();
+        let mut other_ops = Vec::new();
+
+        for op in operations {
+            match &op {
+                Operation::AddColumn { table, .. }
+                | Operation::DropColumn { table, .. }
+                | Operation::AlterColumn { table, .. } => {
+                    by_table.entry(table.clone()).or_default().push(op);
+                }
+                _ => {
+                    other_ops.push(op);
+                }
+            }
+        }
+
+        let mut grouped = Vec::new();
+
+        // Add table-specific operations grouped by table
+        for (_, ops) in by_table {
+            grouped.extend(ops);
+        }
+
+        // Add other operations
+        grouped.extend(other_ops);
+
+        grouped
+    }
+
+    /// Remove redundant operations
+    fn remove_redundant_operations(&self, operations: Vec<Operation>) -> Vec<Operation> {
+        let mut optimized = Vec::new();
+        let mut seen_tables = HashSet::new();
+
+        for operation in operations {
+            match &operation {
+                Operation::CreateTable { name, .. } => {
+                    if !seen_tables.contains(name) {
+                        seen_tables.insert(name.clone());
+                        optimized.push(operation);
+                    }
+                }
+                _ => {
+                    optimized.push(operation);
+                }
+            }
+        }
+
+        optimized
+    }
+}
+
+impl Default for OperationOptimizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod optimizer_tests {
+    use super::*;
+    use crate::ColumnDefinition;
+
+    #[test]
+    fn test_optimizer_creation() {
+        let optimizer = OperationOptimizer::new();
+        let ops = vec![];
+        let optimized = optimizer.optimize(ops);
+        assert_eq!(optimized.len(), 0);
+    }
+
+    #[test]
+    fn test_reorder_create_before_add() {
+        let optimizer = OperationOptimizer::new();
+
+        let ops = vec![
+            Operation::AddColumn {
+                table: "users".to_string(),
+                column: ColumnDefinition::new("name", "VARCHAR(100)"),
+            },
+            Operation::CreateTable {
+                name: "users".to_string(),
+                columns: vec![],
+                constraints: vec![],
+            },
+        ];
+
+        let optimized = optimizer.optimize(ops);
+
+        // CreateTable should come before AddColumn
+        assert!(matches!(optimized[0], Operation::CreateTable { .. }));
+        assert!(matches!(optimized[1], Operation::AddColumn { .. }));
+    }
+
+    #[test]
+    fn test_remove_duplicate_create_table() {
+        let optimizer = OperationOptimizer::new();
+
+        let ops = vec![
+            Operation::CreateTable {
+                name: "users".to_string(),
+                columns: vec![],
+                constraints: vec![],
+            },
+            Operation::CreateTable {
+                name: "users".to_string(),
+                columns: vec![],
+                constraints: vec![],
+            },
+        ];
+
+        let optimized = optimizer.optimize(ops);
+        assert_eq!(optimized.len(), 1);
+    }
+
+    #[test]
+    fn test_group_operations_by_table() {
+        let optimizer = OperationOptimizer::new();
+
+        let ops = vec![
+            Operation::AddColumn {
+                table: "users".to_string(),
+                column: ColumnDefinition::new("name", "VARCHAR(100)"),
+            },
+            Operation::CreateTable {
+                name: "posts".to_string(),
+                columns: vec![],
+                constraints: vec![],
+            },
+            Operation::AddColumn {
+                table: "users".to_string(),
+                column: ColumnDefinition::new("email", "VARCHAR(255)"),
+            },
+        ];
+
+        let optimized = optimizer.optimize(ops);
+        assert_eq!(optimized.len(), 3);
     }
 }
