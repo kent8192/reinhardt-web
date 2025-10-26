@@ -68,8 +68,22 @@ impl<T> CrudMixin for T where T: ListMixin + RetrieveMixin + CreateMixin + Updat
 ///     type Item = User;
 ///
 ///     async fn bulk_create(&self, request: BatchRequest<Self::Item>) -> Result<BatchResponse<Self::Item>> {
-///         // Implementation would create multiple users in a transaction
-///         todo!("Implement bulk creation with database transaction")
+///         // Example implementation: Create users from batch request
+///         use reinhardt_viewsets::BatchOperationResult;
+///
+///         let results: Vec<BatchOperationResult<User>> = request.operations
+///             .iter()
+///             .enumerate()
+///             .map(|(index, _op)| {
+///                 // Simplified: Return success with created user
+///                 BatchOperationResult::success(index, Some(User {
+///                     id: (index + 1) as i64,
+///                     name: format!("User {}", index + 1),
+///                 }))
+///             })
+///             .collect();
+///
+///         Ok(BatchResponse::new(results))
 ///     }
 /// }
 /// ```
@@ -110,8 +124,22 @@ pub trait BulkCreateMixin: Send + Sync {
 ///     type Item = User;
 ///
 ///     async fn bulk_update(&self, request: BatchRequest<Self::Item>) -> Result<BatchResponse<Self::Item>> {
-///         // Implementation would update multiple users in a transaction
-///         todo!("Implement bulk update with database transaction")
+///         // Example implementation: Update users from batch request
+///         use reinhardt_viewsets::BatchOperationResult;
+///
+///         let results: Vec<BatchOperationResult<User>> = request.operations
+///             .iter()
+///             .enumerate()
+///             .map(|(index, _op)| {
+///                 // Simplified: Return success with updated user
+///                 BatchOperationResult::success(index, Some(User {
+///                     id: (index + 1) as i64,
+///                     name: format!("Updated User {}", index + 1),
+///                 }))
+///             })
+///             .collect();
+///
+///         Ok(BatchResponse::new(results))
 ///     }
 /// }
 /// ```
@@ -152,8 +180,19 @@ pub trait BulkUpdateMixin: Send + Sync {
 ///     type Item = User;
 ///
 ///     async fn bulk_delete(&self, request: BatchRequest<Self::Item>) -> Result<BatchResponse<Self::Item>> {
-///         // Implementation would delete multiple users in a transaction
-///         todo!("Implement bulk deletion with database transaction")
+///         // Example implementation: Delete users from batch request
+///         use reinhardt_viewsets::BatchOperationResult;
+///
+///         let results: Vec<BatchOperationResult<User>> = request.operations
+///             .iter()
+///             .enumerate()
+///             .map(|(index, _op)| {
+///                 // Simplified: Return success without data (deletion)
+///                 BatchOperationResult::success(index, None)
+///             })
+///             .collect();
+///
+///         Ok(BatchResponse::new(results))
 ///     }
 /// }
 /// ```

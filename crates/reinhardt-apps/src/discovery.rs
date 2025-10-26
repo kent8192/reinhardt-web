@@ -202,34 +202,26 @@ pub fn build_reverse_relations() {
 
 /// Extract relationship metadata from a model
 ///
-/// **Current Implementation**: This is a placeholder that returns an empty vector.
-/// The actual implementation requires the ORM to expose relationship metadata
-/// through the model registry or via a trait implementation.
+/// **Current Limitation**: The actual relationship metadata extraction from models
+/// is not yet fully implemented due to architectural constraints. This function
+/// currently returns an empty vector as a placeholder.
+///
+/// # Implementation Notes
+///
+/// To fully implement this function, we need to:
+/// 1. Avoid circular dependencies between `reinhardt-apps` and `reinhardt-orm`
+/// 2. Design a registry system that allows ORM to register relationship metadata
+/// 3. Consider creating a separate `reinhardt-models-registry` crate for shared types
 ///
 /// # Future Implementation
 ///
-/// This function should:
-/// 1. Introspect the model to find ForeignKey and ManyToMany fields
-/// 2. Extract field names, target models, and related_name options
-/// 3. Return RelationMetadata for each relationship found
-fn extract_model_relations(model: &ModelMetadata) -> Vec<RelationMetadata> {
-    // TODO: Implement actual relationship extraction
-    // This requires integration with the ORM's relationship system
-    // The ORM needs to provide a way to introspect model relationships
-    // through ModelMetadata or a related trait
-
+/// When the architecture is updated, this function should:
+/// 1. Retrieve relationship metadata from a global registry
+/// 2. Convert relationship information to `RelationMetadata` format
+/// 3. Handle different relationship types (OneToOne, OneToMany, ManyToMany)
+fn extract_model_relations(_model: &ModelMetadata) -> Vec<RelationMetadata> {
     // Placeholder implementation - returns empty vector
-    // Once the ORM exposes relationship metadata, this will be implemented as:
-    // 1. Get relationship fields from model (via trait or metadata)
-    // 2. For each relationship, create RelationMetadata with:
-    //    - from_model: model.model_name
-    //    - to_model: relationship.target_model
-    //    - field_name: relationship.field_name
-    //    - related_name: relationship.related_name
-    //    - relation_type: determine from relationship kind
-
-    // For demonstration, we could detect relationships if they were exposed
-    let _ = model; // Suppress unused warning
+    // This will be implemented once the architecture supports it without circular dependencies
     Vec::new()
 }
 

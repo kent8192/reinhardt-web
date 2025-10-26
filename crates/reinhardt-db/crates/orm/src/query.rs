@@ -295,7 +295,16 @@ where
         }
     }
 
-    /// Build WHERE clause from accumulated filters (legacy compatibility)
+    /// Build WHERE clause from accumulated filters
+    ///
+    /// # Deprecation Note
+    ///
+    /// This method is maintained for backward compatibility with existing code that
+    /// expects a string-based WHERE clause. New code should use `build_where_condition()`
+    /// which returns a `Condition` object that can be directly added to SeaQuery statements.
+    ///
+    /// This method generates a complete SELECT statement internally and extracts only
+    /// the WHERE portion, which is less efficient than using `build_where_condition()`.
     fn build_where_clause(&self) -> (String, Vec<String>) {
         if self.filters.is_empty() {
             return (String::new(), Vec::new());
@@ -313,8 +322,7 @@ where
         use sea_query::PostgresQueryBuilder;
         let sql = stmt.to_string(PostgresQueryBuilder);
 
-        // Extract WHERE clause portion
-        // TODO: This is a temporary solution; refactor callers to use SelectStatement directly
+        // Extract WHERE clause portion by finding the WHERE keyword
         let where_clause = if let Some(idx) = sql.find(" WHERE ") {
             sql[idx..].to_string()
         } else {
@@ -492,13 +500,18 @@ where
 
     /// Check if a related field is a many-to-many relation
     ///
-    /// # TODO
-    /// This is a simplified heuristic. In production, this should be determined
-    /// from model metadata/field definitions.
-    fn is_many_to_many_relation(&self, _related_field: &str) -> bool {
-        // TODO: Implement proper M2M detection using model metadata
-        // For now, return false (assume all are one-to-many)
-        false
+    /// Determines relationship type by querying the model's metadata.
+    /// Returns true if the relationship is defined as ManyToMany in the model metadata.
+    fn is_many_to_many_relation(&self, related_field: &str) -> bool {
+        // Get relationship metadata from the model
+        let relations = T::relationship_metadata();
+
+        // Find the relationship with the matching name
+        relations
+            .iter()
+            .find(|rel| rel.name == related_field)
+            .map(|rel| rel.relationship_type == crate::relationship::RelationshipType::ManyToMany)
+            .unwrap_or(false)
     }
 
     /// Generate query for one-to-many prefetch
@@ -726,11 +739,22 @@ where
     /// ```
     #[cfg(feature = "django-compat")]
     pub async fn count(&self) -> reinhardt_apps::Result<usize> {
-        let conn = crate::manager::get_connection().await?;
-        let table_name = T::table_name();
-        let (where_clause, _values) = self.build_where_clause();
+        use sea_query::{Func, PostgresQueryBuilder};
 
-        let sql = format!("SELECT COUNT(*) FROM {}{}", table_name, where_clause);
+        let conn = crate::manager::get_connection().await?;
+
+        // Build COUNT query using SeaQuery
+        let mut stmt = SeaQuery::select();
+        stmt.from(Alias::new(T::table_name()))
+            .expr(Func::count(Expr::col(Asterisk)));
+
+        // Add WHERE conditions
+        if let Some(cond) = self.build_where_condition() {
+            stmt.cond_where(cond);
+        }
+
+        // Convert to SQL
+        let (sql, _values) = stmt.build(PostgresQueryBuilder);
 
         // Execute query
         let rows = conn.query(&sql).await?;
