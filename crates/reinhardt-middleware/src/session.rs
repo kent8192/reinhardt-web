@@ -4,7 +4,6 @@
 //! Supports various backends including Cookie, Redis, and database.
 
 use async_trait::async_trait;
-use hyper::StatusCode;
 use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -67,13 +66,11 @@ impl SessionData {
     where
         T: Serialize,
     {
-        self.data
-            .insert(key, serde_json::to_value(value).map_err(|e| {
-                reinhardt_exception::Error::new(
-                    reinhardt_exception::ErrorKind::ValidationError,
-                    format!("Failed to serialize session value: {}", e),
-                )
-            })?);
+        self.data.insert(
+            key,
+            serde_json::to_value(value)
+                .map_err(|e| reinhardt_apps::Error::Serialization(e.to_string()))?,
+        );
         Ok(())
     }
 
@@ -426,11 +423,9 @@ impl Middleware for SessionMiddleware {
         let cookie = self.build_cookie_header(&session.id);
         response.headers.insert(
             hyper::header::SET_COOKIE,
-            hyper::header::HeaderValue::from_str(&cookie)
-                .map_err(|e| reinhardt_exception::Error::new(
-                    reinhardt_exception::ErrorKind::InternalServerError,
-                    format!("Failed to create cookie header: {}", e),
-                ))?,
+            hyper::header::HeaderValue::from_str(&cookie).map_err(|e| {
+                reinhardt_apps::Error::Internal(format!("Failed to create cookie header: {}", e))
+            })?,
         );
 
         Ok(response)
