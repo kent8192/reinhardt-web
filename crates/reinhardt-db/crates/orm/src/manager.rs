@@ -1,5 +1,9 @@
 use crate::connection::{DatabaseConnection, DatabaseExecutor};
 use crate::{Model, QuerySet};
+use sea_query::{
+    Alias, DeleteStatement, Expr, ExprTrait, InsertStatement, Query, SelectStatement,
+    UpdateStatement,
+};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -70,31 +74,70 @@ impl<M: Model> Manager<M> {
         QuerySet::new().filter(filter)
     }
 
-    /// Create a new record
+    /// Create a new record using SeaQuery for SQL injection protection
     pub async fn create(&self, model: &M) -> reinhardt_apps::Result<M> {
         let conn = get_connection().await?;
         let json = serde_json::to_value(model)
             .map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
 
-        // Extract fields and values from model with proper serialization
+        // Extract fields and values from model
         let obj = json.as_object().ok_or_else(|| {
             reinhardt_apps::Error::Database("Model must serialize to object".to_string())
         })?;
 
-        let fields: Vec<String> = obj.keys().cloned().collect();
-        let values: Vec<String> = obj.values().map(|v| Self::serialize_value(v)).collect();
+        // Build SeaQuery INSERT statement
+        let mut stmt = Query::insert();
+        stmt.into_table(Alias::new(M::table_name()));
 
-        let sql = format!(
-            "INSERT INTO {} ({}) VALUES ({}) RETURNING *",
-            M::table_name(),
-            fields.join(", "),
-            values.join(", ")
-        );
+        let fields: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
+        let values: Vec<sea_query::Value> =
+            obj.values().map(|v| Self::json_to_sea_value(v)).collect();
+
+        stmt.columns(fields);
+        stmt.values_panic(values);
+
+        // Add RETURNING * support
+        stmt.returning(Query::returning().columns([sea_query::Asterisk]));
+
+        use sea_query::PostgresQueryBuilder;
+        let sql = stmt.to_string(PostgresQueryBuilder);
 
         let row = conn.query_one(&sql).await?;
         let value = serde_json::to_value(&row.data)
             .map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
         serde_json::from_value(value).map_err(|e| reinhardt_apps::Error::Database(e.to_string()))
+    }
+
+    /// Convert serde_json::Value to sea_query::Value for parameter binding
+    fn json_to_sea_value(v: &serde_json::Value) -> sea_query::Value {
+        match v {
+            serde_json::Value::Null => sea_query::Value::Int(None),
+            serde_json::Value::Bool(b) => sea_query::Value::Bool(Some(*b)),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    sea_query::Value::BigInt(Some(i))
+                } else if let Some(f) = n.as_f64() {
+                    sea_query::Value::Double(Some(f))
+                } else {
+                    sea_query::Value::Int(None)
+                }
+            }
+            serde_json::Value::String(s) => sea_query::Value::String(Some(Box::new(s.clone()))),
+            serde_json::Value::Array(arr) => {
+                // Convert JSON array to sea_query array
+                let values: Vec<sea_query::Value> =
+                    arr.iter().map(|v| Self::json_to_sea_value(v)).collect();
+                // Use String representation for PostgreSQL array syntax
+                sea_query::Value::Array(sea_query::ArrayType::String, Some(Box::new(values)))
+            }
+            serde_json::Value::Object(_obj) => {
+                // Convert to JSONB for PostgreSQL
+                let json_str = v.to_string();
+                sea_query::Value::Json(Some(Box::new(
+                    serde_json::from_str(&json_str).unwrap_or(serde_json::Value::Null),
+                )))
+            }
+        }
     }
 
     /// Serialize a JSON value to SQL-compatible string representation
@@ -120,7 +163,7 @@ impl<M: Model> Manager<M> {
         }
     }
 
-    /// Update an existing record
+    /// Update an existing record using SeaQuery for SQL injection protection
     pub async fn update(&self, model: &M) -> reinhardt_apps::Result<M> {
         let conn = get_connection().await?;
         let pk = model.primary_key().ok_or_else(|| {
@@ -134,25 +177,28 @@ impl<M: Model> Manager<M> {
             reinhardt_apps::Error::Database("Model must serialize to object".to_string())
         })?;
 
-        let updates: Vec<String> = obj
+        // Build SeaQuery UPDATE statement
+        let mut stmt = Query::update();
+        stmt.table(Alias::new(M::table_name()));
+
+        // Add SET clauses for all fields except primary key
+        for (k, v) in obj
             .iter()
             .filter(|(k, _)| k.as_str() != M::primary_key_field())
-            .map(|(k, v)| {
-                if v.is_string() {
-                    format!("{} = '{}'", k, v.as_str().unwrap())
-                } else {
-                    format!("{} = {}", k, v)
-                }
-            })
-            .collect();
+        {
+            stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
+        }
 
-        let sql = format!(
-            "UPDATE {} SET {} WHERE {} = {} RETURNING *",
-            M::table_name(),
-            updates.join(", "),
-            M::primary_key_field(),
-            pk
-        );
+        // Add WHERE clause for primary key
+        // Convert primary key to sea_query::Value for type safety
+        let pk_value = sea_query::Value::String(Some(Box::new(pk.to_string())));
+        stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+
+        // Add RETURNING * support
+        stmt.returning(Query::returning().columns([sea_query::Asterisk]));
+
+        use sea_query::PostgresQueryBuilder;
+        let sql = stmt.to_string(PostgresQueryBuilder);
 
         let row = conn.query_one(&sql).await?;
         let value = serde_json::to_value(&row.data)
@@ -160,34 +206,44 @@ impl<M: Model> Manager<M> {
         serde_json::from_value(value).map_err(|e| reinhardt_apps::Error::Database(e.to_string()))
     }
 
-    /// Delete a record
+    /// Delete a record using SeaQuery for SQL injection protection
     pub async fn delete(&self, pk: M::PrimaryKey) -> reinhardt_apps::Result<()> {
         let conn = get_connection().await?;
-        let sql = format!(
-            "DELETE FROM {} WHERE {} = {}",
-            M::table_name(),
-            M::primary_key_field(),
-            pk
-        );
+
+        // Build SeaQuery DELETE statement
+        let mut stmt = Query::delete();
+        stmt.from_table(Alias::new(M::table_name()))
+            .and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk.to_string()));
+
+        use sea_query::PostgresQueryBuilder;
+        let sql = stmt.to_string(PostgresQueryBuilder);
 
         conn.execute(&sql).await?;
         Ok(())
     }
 
-    /// Count records
+    /// Count records using SeaQuery
     pub async fn count(&self) -> reinhardt_apps::Result<i64> {
         let conn = get_connection().await?;
-        let sql = format!("SELECT COUNT(*) as count FROM {}", M::table_name());
+
+        // Build SeaQuery SELECT COUNT(*) statement
+        let stmt = Query::select()
+            .from(Alias::new(M::table_name()))
+            .expr(sea_query::Func::count(Expr::col(sea_query::Asterisk)))
+            .to_owned();
+
+        use sea_query::PostgresQueryBuilder;
+        let sql = stmt.to_string(PostgresQueryBuilder);
 
         let row = conn.query_one(&sql).await?;
         row.get::<i64>("count")
             .ok_or_else(|| reinhardt_apps::Error::Database("Failed to get count".to_string()))
     }
 
-    /// Bulk create multiple records (similar to Django's bulk_create())
-    pub fn bulk_create_sql(&self, models: &[M]) -> String {
+    /// Bulk create multiple records using SeaQuery (similar to Django's bulk_create())
+    pub fn bulk_create_query(&self, models: &[M]) -> Option<InsertStatement> {
         if models.is_empty() {
-            return String::new();
+            return None;
         }
 
         // Convert all models to JSON and extract field names from first model
@@ -197,44 +253,47 @@ impl<M: Model> Manager<M> {
             .collect();
 
         if json_values.is_empty() {
-            return String::new();
+            return None;
         }
 
         // Get field names from first model
         let first_obj = match json_values[0].as_object() {
             Some(obj) => obj,
-            None => return String::new(),
+            None => return None,
         };
 
-        let fields: Vec<String> = first_obj.keys().cloned().collect();
+        let fields: Vec<_> = first_obj.keys().map(|k| Alias::new(k.as_str())).collect();
 
-        // Build value rows for each model
-        let value_rows: Vec<String> = json_values
-            .iter()
-            .filter_map(|val| {
-                let obj = val.as_object()?;
-                let values: Vec<String> = fields
-                    .iter()
+        // Build SeaQuery INSERT statement
+        let mut stmt = Query::insert();
+        stmt.into_table(Alias::new(M::table_name())).columns(fields);
+
+        // Add value rows for each model
+        for val in &json_values {
+            if let Some(obj) = val.as_object() {
+                let values: Vec<sea_query::Value> = first_obj
+                    .keys()
                     .map(|field| {
                         obj.get(field)
-                            .map(|v| Self::serialize_value(v))
-                            .unwrap_or_else(|| "NULL".to_string())
+                            .map(|v| Self::json_to_sea_value(v))
+                            .unwrap_or(sea_query::Value::Int(None))
                     })
                     .collect();
-                Some(format!("({})", values.join(", ")))
-            })
-            .collect();
-
-        if value_rows.is_empty() {
-            return String::new();
+                stmt.values_panic(values);
+            }
         }
 
-        format!(
-            "INSERT INTO {} ({}) VALUES {}",
-            M::table_name(),
-            fields.join(", "),
-            value_rows.join(", ")
-        )
+        Some(stmt.to_owned())
+    }
+
+    /// Generate bulk create SQL (convenience method)
+    pub fn bulk_create_sql(&self, models: &[M]) -> String {
+        if let Some(stmt) = self.bulk_create_query(models) {
+            use sea_query::PostgresQueryBuilder;
+            stmt.to_string(PostgresQueryBuilder)
+        } else {
+            String::new()
+        }
     }
 
     /// Generate UPDATE query for QuerySet
@@ -447,47 +506,56 @@ impl<M: Model> Manager<M> {
         Ok(total_updated)
     }
 
-    /// Get or create - SQL generation only (for testing)
+    /// Get or create - SQL generation using SeaQuery (for testing)
+    pub fn get_or_create_queries(
+        &self,
+        lookup_fields: &HashMap<String, String>,
+        defaults: &HashMap<String, String>,
+    ) -> (SelectStatement, InsertStatement) {
+        // Generate SELECT query with SeaQuery
+        let mut select_stmt = Query::select();
+        select_stmt
+            .from(Alias::new(M::table_name()))
+            .column(sea_query::Asterisk);
+
+        for (k, v) in lookup_fields.iter() {
+            select_stmt.and_where(Expr::col(Alias::new(k.as_str())).eq(v.as_str()));
+        }
+
+        // Generate INSERT query with SeaQuery
+        let mut insert_fields = lookup_fields.clone();
+        insert_fields.extend(defaults.clone());
+
+        let mut insert_stmt = Query::insert();
+        insert_stmt.into_table(Alias::new(M::table_name()));
+
+        let columns: Vec<_> = insert_fields
+            .keys()
+            .map(|k| Alias::new(k.as_str()))
+            .collect();
+        let values: Vec<sea_query::Value> = insert_fields
+            .values()
+            .map(|v| sea_query::Value::String(Some(Box::new(v.clone()))))
+            .collect();
+
+        insert_stmt.columns(columns);
+        insert_stmt.values_panic(values);
+
+        (select_stmt.to_owned(), insert_stmt.to_owned())
+    }
+
+    /// Get or create - SQL generation (convenience method for testing)
     pub fn get_or_create_sql(
         &self,
         lookup_fields: &HashMap<String, String>,
         defaults: &HashMap<String, String>,
     ) -> (String, String) {
-        // Generate SELECT query
-        let select_conditions: Vec<String> = lookup_fields
-            .iter()
-            .map(|(k, v)| format!("{} = '{}'", k, v))
-            .collect();
-
-        let select_sql = format!(
-            "SELECT * FROM {} WHERE {}",
-            M::table_name(),
-            select_conditions.join(" AND ")
-        );
-
-        // Generate INSERT query
-        let mut insert_fields = lookup_fields.clone();
-        insert_fields.extend(defaults.clone());
-
-        let fields: Vec<&String> = insert_fields.keys().collect();
-        let values: Vec<&String> = insert_fields.values().collect();
-
-        let insert_sql = format!(
-            "INSERT INTO {} ({}) VALUES ({})",
-            M::table_name(),
-            fields
-                .iter()
-                .map(|f| f.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
-            values
-                .iter()
-                .map(|v| format!("'{}'", v))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-
-        (select_sql, insert_sql)
+        let (select_stmt, insert_stmt) = self.get_or_create_queries(lookup_fields, defaults);
+        use sea_query::PostgresQueryBuilder;
+        (
+            select_stmt.to_string(PostgresQueryBuilder),
+            insert_stmt.to_string(PostgresQueryBuilder),
+        )
     }
 
     /// Bulk create - SQL generation only (for testing)
@@ -527,44 +595,67 @@ impl<M: Model> Manager<M> {
         sql
     }
 
-    /// Bulk update - SQL generation only (for testing)
+    /// Bulk update using SeaQuery - SQL generation (for testing)
+    pub fn bulk_update_query_detailed(
+        &self,
+        updates: &[(M::PrimaryKey, HashMap<String, String>)],
+        fields: &[String],
+    ) -> Option<UpdateStatement>
+    where
+        M::PrimaryKey: std::fmt::Display + Clone,
+    {
+        if updates.is_empty() || fields.is_empty() {
+            return None;
+        }
+
+        let mut stmt = Query::update();
+        stmt.table(Alias::new(M::table_name()));
+
+        // Generate CASE statements for each field
+        for field in fields {
+            // Build CASE expression for this field
+            let mut case_expr = sea_query::CaseStatement::new();
+
+            for (pk, field_map) in updates.iter() {
+                if let Some(value) = field_map.get(field) {
+                    // WHEN id = pk THEN 'value'
+                    case_expr.case(
+                        Expr::col(Alias::new("id")).eq(pk.to_string()),
+                        Expr::val(value.clone()),
+                    );
+                }
+            }
+
+            // field = CASE ... END
+            stmt.value(Alias::new(field.as_str()), case_expr);
+        }
+
+        // WHERE id IN (...)
+        let ids: Vec<sea_query::Value> = updates
+            .iter()
+            .map(|(pk, _)| sea_query::Value::String(Some(Box::new(pk.to_string()))))
+            .collect();
+
+        stmt.and_where(Expr::col(Alias::new("id")).is_in(ids));
+
+        Some(stmt.to_owned())
+    }
+
+    /// Bulk update - SQL generation (convenience method for testing)
     pub fn bulk_update_sql_detailed(
         &self,
         updates: &[(M::PrimaryKey, HashMap<String, String>)],
         fields: &[String],
     ) -> String
     where
-        M::PrimaryKey: std::fmt::Display,
+        M::PrimaryKey: std::fmt::Display + Clone,
     {
-        if updates.is_empty() || fields.is_empty() {
-            return String::new();
+        if let Some(stmt) = self.bulk_update_query_detailed(updates, fields) {
+            use sea_query::PostgresQueryBuilder;
+            stmt.to_string(PostgresQueryBuilder)
+        } else {
+            String::new()
         }
-
-        // Generate CASE statements for each field
-        let case_statements: Vec<String> = fields
-            .iter()
-            .map(|field| {
-                let cases: Vec<String> = updates
-                    .iter()
-                    .filter_map(|(pk, field_map)| {
-                        field_map
-                            .get(field)
-                            .map(|value| format!("WHEN id = {} THEN '{}'", pk, value))
-                    })
-                    .collect();
-
-                format!("{} = CASE {} END", field, cases.join(" "))
-            })
-            .collect();
-
-        let ids: Vec<String> = updates.iter().map(|(pk, _)| format!("{}", pk)).collect();
-
-        format!(
-            "UPDATE {} SET {} WHERE id IN ({})",
-            M::table_name(),
-            case_statements.join(", "),
-            ids.join(", ")
-        )
     }
 }
 

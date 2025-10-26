@@ -40,16 +40,8 @@ lazy_static = "1.4"
 futures = "0.3"
 refinery = { workspace = true, optional = true }
 sqlx = { workspace = true }
-sea-query = { version = "1.0.0-rc.1", features = [
-  "backend-postgres",
-  "backend-mysql",
-  "backend-sqlite",
-] }
-sea-query-binder = { version = "0.7", features = [
-  "sqlx-postgres",
-  "sqlx-mysql",
-  "sqlx-sqlite",
-] }
+sea-query = { workspace = true }
+sea-query-sqlx = { workspace = true }
 
 # Cryptography
 aes-gcm = { workspace = true }

@@ -4,8 +4,8 @@
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 //! When the `django-compat` feature is enabled, it exports the Django QuerySet API.
 
+use sea_query::{Alias, Asterisk, Condition, Expr, ExprTrait, Query as SeaQuery, SelectStatement};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // Django QuerySet API types (stub implementations)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,38 +156,172 @@ where
         (placeholder, formatted_value)
     }
 
-    /// Build WHERE clause from accumulated filters
+    /// Build WHERE condition using SeaQuery from accumulated filters
+    fn build_where_condition(&self) -> Option<Condition> {
+        if self.filters.is_empty() {
+            return None;
+        }
+
+        let mut cond = Condition::all();
+
+        for filter in &self.filters {
+            let col = Expr::col(Alias::new(&filter.field));
+
+            let expr = match (&filter.operator, &filter.value) {
+                (FilterOperator::Eq, FilterValue::Null) => col.is_null(),
+                (FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
+                (FilterOperator::Eq, v) => col.eq(Self::filter_value_to_sea_value(v)),
+                (FilterOperator::Ne, v) => col.ne(Self::filter_value_to_sea_value(v)),
+                (FilterOperator::Gt, v) => col.gt(Self::filter_value_to_sea_value(v)),
+                (FilterOperator::Gte, v) => col.gte(Self::filter_value_to_sea_value(v)),
+                (FilterOperator::Lt, v) => col.lt(Self::filter_value_to_sea_value(v)),
+                (FilterOperator::Lte, v) => col.lte(Self::filter_value_to_sea_value(v)),
+                (FilterOperator::In, FilterValue::String(s)) => {
+                    let values = Self::parse_array_string(s);
+                    col.is_in(values)
+                }
+                (FilterOperator::NotIn, FilterValue::String(s)) => {
+                    let values = Self::parse_array_string(s);
+                    col.is_not_in(values)
+                }
+                (FilterOperator::Contains, FilterValue::String(s)) => col.like(format!("%{}%", s)),
+                (FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
+                (FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
+                // Handle Integer, Float, Boolean for text operators
+                (FilterOperator::Contains, FilterValue::Integer(i)) => col.like(format!("%{}%", i)),
+                (FilterOperator::Contains, FilterValue::Float(f)) => col.like(format!("%{}%", f)),
+                (FilterOperator::Contains, FilterValue::Boolean(b)) => col.like(format!("%{}%", b)),
+                (FilterOperator::Contains, FilterValue::Null) => col.like("%"),
+                (FilterOperator::StartsWith, FilterValue::Integer(i)) => {
+                    col.like(format!("{}%", i))
+                }
+                (FilterOperator::StartsWith, FilterValue::Float(f)) => col.like(format!("{}%", f)),
+                (FilterOperator::StartsWith, FilterValue::Boolean(b)) => {
+                    col.like(format!("{}%", b))
+                }
+                (FilterOperator::StartsWith, FilterValue::Null) => col.like("%"),
+                (FilterOperator::EndsWith, FilterValue::Integer(i)) => col.like(format!("%{}", i)),
+                (FilterOperator::EndsWith, FilterValue::Float(f)) => col.like(format!("%{}", f)),
+                (FilterOperator::EndsWith, FilterValue::Boolean(b)) => col.like(format!("%{}", b)),
+                (FilterOperator::EndsWith, FilterValue::Null) => col.like("%"),
+                // Handle In/NotIn for non-String types
+                (FilterOperator::In, FilterValue::Integer(i)) => col.is_in(vec![*i]),
+                (FilterOperator::In, FilterValue::Float(f)) => col.is_in(vec![*f]),
+                (FilterOperator::In, FilterValue::Boolean(b)) => col.is_in(vec![*b]),
+                (FilterOperator::In, FilterValue::Null) => {
+                    col.is_in(vec![sea_query::Value::Int(None)])
+                }
+                (FilterOperator::NotIn, FilterValue::Integer(i)) => col.is_not_in(vec![*i]),
+                (FilterOperator::NotIn, FilterValue::Float(f)) => col.is_not_in(vec![*f]),
+                (FilterOperator::NotIn, FilterValue::Boolean(b)) => col.is_not_in(vec![*b]),
+                (FilterOperator::NotIn, FilterValue::Null) => {
+                    col.is_not_in(vec![sea_query::Value::Int(None)])
+                }
+            };
+
+            cond = cond.add(expr);
+        }
+
+        Some(cond)
+    }
+
+    /// Convert FilterValue to sea_query::Value
+    fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
+        match v {
+            FilterValue::String(s) => s.clone().into(),
+            FilterValue::Integer(i) => (*i).into(),
+            FilterValue::Float(f) => (*f).into(),
+            FilterValue::Boolean(b) => (*b).into(),
+            FilterValue::Null => sea_query::Value::Int(None),
+        }
+    }
+
+    /// Convert FilterValue to String representation
+    fn value_to_string(v: &FilterValue) -> String {
+        match v {
+            FilterValue::String(s) => s.clone(),
+            FilterValue::Integer(i) => i.to_string(),
+            FilterValue::Float(f) => f.to_string(),
+            FilterValue::Boolean(b) => b.to_string(),
+            FilterValue::Null => String::new(),
+        }
+    }
+
+    /// Parse array string into Vec<sea_query::Value>
+    /// Supports comma-separated values or JSON array format
+    fn parse_array_string(s: &str) -> Vec<sea_query::Value> {
+        let trimmed = s.trim();
+
+        // Try parsing as JSON array first
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(trimmed) {
+                return arr
+                    .iter()
+                    .map(|v| match v {
+                        serde_json::Value::String(s) => s.clone().into(),
+                        serde_json::Value::Number(n) => {
+                            if let Some(i) = n.as_i64() {
+                                i.into()
+                            } else if let Some(f) = n.as_f64() {
+                                f.into()
+                            } else {
+                                n.to_string().into()
+                            }
+                        }
+                        serde_json::Value::Bool(b) => (*b).into(),
+                        _ => v.to_string().into(),
+                    })
+                    .collect();
+            }
+        }
+
+        // Fallback to comma-separated parsing
+        trimmed
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string().into())
+            .collect()
+    }
+
+    /// Convert FilterValue to array of sea_query::Value
+    fn value_to_array(v: &FilterValue) -> Vec<sea_query::Value> {
+        match v {
+            FilterValue::String(s) => Self::parse_array_string(s),
+            FilterValue::Integer(i) => vec![(*i).into()],
+            FilterValue::Float(f) => vec![(*f).into()],
+            FilterValue::Boolean(b) => vec![(*b).into()],
+            FilterValue::Null => vec![sea_query::Value::Int(None)],
+        }
+    }
+
+    /// Build WHERE clause from accumulated filters (legacy compatibility)
     fn build_where_clause(&self) -> (String, Vec<String>) {
         if self.filters.is_empty() {
             return (String::new(), Vec::new());
         }
 
-        let mut conditions = Vec::new();
-        let mut values = Vec::new();
-        let mut param_index = 1;
+        // Build SeaQuery condition
+        let mut stmt = SeaQuery::select();
+        stmt.from(Alias::new("dummy"));
 
-        for filter in &self.filters {
-            let operator_sql = Self::operator_to_sql(&filter.operator);
-            let (placeholder, value) =
-                Self::value_to_sql_placeholder(&filter.value, &filter.operator, param_index);
-
-            let condition = if matches!(filter.value, FilterValue::Null) {
-                if matches!(filter.operator, FilterOperator::Eq) {
-                    format!("{} IS NULL", filter.field)
-                } else {
-                    format!("{} IS NOT NULL", filter.field)
-                }
-            } else {
-                format!("{} {} {}", filter.field, operator_sql, placeholder)
-            };
-
-            conditions.push(condition);
-            values.push(value);
-            param_index += 1;
+        if let Some(cond) = self.build_where_condition() {
+            stmt.cond_where(cond);
         }
 
-        let where_clause = format!(" WHERE {}", conditions.join(" AND "));
-        (where_clause, values)
+        // Convert to SQL string
+        use sea_query::PostgresQueryBuilder;
+        let sql = stmt.to_string(PostgresQueryBuilder);
+
+        // Extract WHERE clause portion
+        // TODO: This is a temporary solution; refactor callers to use SelectStatement directly
+        let where_clause = if let Some(idx) = sql.find(" WHERE ") {
+            sql[idx..].to_string()
+        } else {
+            String::new()
+        };
+
+        (where_clause, Vec::new())
     }
 
     /// Eagerly load related objects using JOIN queries
@@ -220,9 +354,9 @@ where
         self
     }
 
-    /// Generate SELECT SQL with JOIN clauses for select_related fields
+    /// Generate SELECT query with JOIN clauses for select_related fields
     ///
-    /// Returns SQL with LEFT JOIN for each related field to enable eager loading.
+    /// Returns SeaQuery SelectStatement with LEFT JOIN for each related field to enable eager loading.
     ///
     /// # Examples
     ///
@@ -235,47 +369,46 @@ where
     ///         FilterValue::Boolean(true),
     ///     ));
     ///
-    /// let (sql, params) = queryset.select_related_sql();
-    /// // sql: "SELECT posts.*, author.*, category.* FROM posts
-    /// //       LEFT JOIN users AS author ON posts.author_id = author.id
-    /// //       LEFT JOIN categories AS category ON posts.category_id = category.id
-    /// //       WHERE posts.published = $1"
-    /// // params: ["true"]
+    /// let stmt = queryset.select_related_query();
+    /// // Generates:
+    /// // SELECT posts.*, author.*, category.* FROM posts
+    /// //   LEFT JOIN users AS author ON posts.author_id = author.id
+    /// //   LEFT JOIN categories AS category ON posts.category_id = category.id
+    /// //   WHERE posts.published = $1
     /// ```
-    pub fn select_related_sql(&self) -> (String, Vec<String>) {
+    pub fn select_related_query(&self) -> SelectStatement {
         let table_name = T::table_name();
-        let (where_clause, values) = self.build_where_clause();
+        let mut stmt = SeaQuery::select();
+        stmt.from(Alias::new(table_name));
 
-        // Build SELECT columns: main table + related tables
-        let mut select_parts = vec![format!("{}.*", table_name)];
-        let mut join_clauses = Vec::new();
+        // Add main table columns
+        stmt.column((Alias::new(table_name), Asterisk));
 
+        // Add LEFT JOIN for each related field
         for related_field in &self.select_related_fields {
             // Convention: related_field is the field name in the model
             // We assume FK field is "{related_field}_id" and join to "{related_field}s" table
-            let fk_field = format!("{}_id", related_field);
-            let related_table = format!("{}s", related_field); // Simple pluralization
+            let fk_field = Alias::new(&format!("{}_id", related_field));
+            let related_table = Alias::new(&format!("{}s", related_field));
+            let related_alias = Alias::new(related_field);
 
-            select_parts.push(format!("{}.*", related_field));
-            join_clauses.push(format!(
-                "LEFT JOIN {} AS {} ON {}.{} = {}.id",
-                related_table, related_field, table_name, fk_field, related_field
-            ));
+            // LEFT JOIN related_table AS related_field ON table.fk_field = related_field.id
+            stmt.left_join(
+                related_table,
+                Expr::col((Alias::new(table_name), fk_field))
+                    .equals((related_alias.clone(), Alias::new("id"))),
+            );
+
+            // Add related table columns to SELECT
+            stmt.column((related_alias, Asterisk));
         }
 
-        let select_clause = select_parts.join(", ");
-        let joins = if join_clauses.is_empty() {
-            String::new()
-        } else {
-            format!(" {}", join_clauses.join(" "))
-        };
+        // Apply WHERE conditions
+        if let Some(cond) = self.build_where_condition() {
+            stmt.cond_where(cond);
+        }
 
-        let sql = format!(
-            "SELECT {} FROM {}{}{}",
-            select_clause, table_name, joins, where_clause
-        );
-
-        (sql, values)
+        stmt.to_owned()
     }
 
     /// Eagerly load related objects using separate queries
@@ -311,9 +444,9 @@ where
         self
     }
 
-    /// Generate SELECT SQL queries for prefetch_related fields
+    /// Generate SELECT queries for prefetch_related fields
     ///
-    /// Returns a vector of (field_name, sql, params) tuples, one for each prefetch field.
+    /// Returns a vector of (field_name, SelectStatement) tuples, one for each prefetch field.
     /// Each query fetches related objects using IN clause with collected primary keys.
     ///
     /// # Examples
@@ -325,46 +458,102 @@ where
     /// let main_results = queryset.all().await?; // Main query
     /// let pk_values = vec![1, 2, 3]; // Collected from main results
     ///
-    /// let prefetch_queries = queryset.prefetch_related_sql(&pk_values);
-    /// // Returns:
-    /// // [
-    /// //   ("comments", "SELECT * FROM comments WHERE post_id IN ($1, $2, $3)", ["1", "2", "3"]),
-    /// //   ("tags", "SELECT tags.* FROM tags
-    /// //             INNER JOIN post_tags ON tags.id = post_tags.tag_id
-    /// //             WHERE post_tags.post_id IN ($1, $2, $3)", ["1", "2", "3"])
-    /// // ]
+    /// let prefetch_queries = queryset.prefetch_related_queries(&pk_values);
+    /// // Returns SelectStatements for:
+    /// // 1. comments: SELECT * FROM comments WHERE post_id IN ($1, $2, $3)
+    /// // 2. tags: SELECT tags.* FROM tags
+    /// //          INNER JOIN post_tags ON tags.id = post_tags.tag_id
+    /// //          WHERE post_tags.post_id IN ($1, $2, $3)
     /// ```
-    pub fn prefetch_related_sql(&self, pk_values: &[i64]) -> Vec<(String, String, Vec<String>)> {
+    pub fn prefetch_related_queries(&self, pk_values: &[i64]) -> Vec<(String, SelectStatement)> {
         if pk_values.is_empty() {
             return Vec::new();
         }
 
-        let table_name = T::table_name();
         let mut queries = Vec::new();
 
         for related_field in &self.prefetch_related_fields {
-            // Build IN clause with placeholders
-            let placeholders: Vec<String> =
-                (1..=pk_values.len()).map(|i| format!("${}", i)).collect();
-            let in_clause = placeholders.join(", ");
-            let params: Vec<String> = pk_values.iter().map(|v| v.to_string()).collect();
+            // Determine if this is a many-to-many relation or one-to-many
+            // For now, we check if junction table name pattern is likely
+            // TODO: Get this from model metadata
+            let is_m2m = self.is_many_to_many_relation(related_field);
 
-            // Convention: related_field could be direct FK or M2M
-            // For one-to-many: SELECT * FROM {related_field} WHERE {main_table}_id IN (...)
-            // For many-to-many: Need junction table join
-            let related_table = format!("{}s", related_field); // Simple pluralization
-            let fk_field = format!("{}_id", table_name.trim_end_matches('s')); // Reverse: users -> user_id
+            let stmt = if is_m2m {
+                self.prefetch_many_to_many_query(related_field, pk_values)
+            } else {
+                self.prefetch_one_to_many_query(related_field, pk_values)
+            };
 
-            // Simple one-to-many query (for M2M, would need junction table logic)
-            let sql = format!(
-                "SELECT * FROM {} WHERE {} IN ({})",
-                related_table, fk_field, in_clause
-            );
-
-            queries.push((related_field.clone(), sql, params));
+            queries.push((related_field.clone(), stmt));
         }
 
         queries
+    }
+
+    /// Check if a related field is a many-to-many relation
+    ///
+    /// # TODO
+    /// This is a simplified heuristic. In production, this should be determined
+    /// from model metadata/field definitions.
+    fn is_many_to_many_relation(&self, _related_field: &str) -> bool {
+        // TODO: Implement proper M2M detection using model metadata
+        // For now, return false (assume all are one-to-many)
+        false
+    }
+
+    /// Generate query for one-to-many prefetch
+    ///
+    /// Generates: SELECT * FROM related_table WHERE fk_field IN (pk_values)
+    fn prefetch_one_to_many_query(
+        &self,
+        related_field: &str,
+        pk_values: &[i64],
+    ) -> SelectStatement {
+        let table_name = T::table_name();
+        let related_table = Alias::new(&format!("{}s", related_field));
+        let fk_field = Alias::new(&format!("{}_id", table_name.trim_end_matches('s')));
+
+        let mut stmt = SeaQuery::select();
+        stmt.from(related_table).column(Asterisk);
+
+        // Add IN clause with pk_values
+        let values: Vec<sea_query::Value> = pk_values.iter().map(|&id| id.into()).collect();
+        stmt.and_where(Expr::col(fk_field).is_in(values));
+
+        stmt.to_owned()
+    }
+
+    /// Generate query for many-to-many prefetch
+    ///
+    /// Generates: SELECT related.*, junction.main_id FROM related
+    ///            INNER JOIN junction ON related.id = junction.related_id
+    ///            WHERE junction.main_id IN (pk_values)
+    fn prefetch_many_to_many_query(
+        &self,
+        related_field: &str,
+        pk_values: &[i64],
+    ) -> SelectStatement {
+        let table_name = T::table_name();
+        let junction_table = Alias::new(&format!("{}_{}", table_name, related_field));
+        let related_table = Alias::new(&format!("{}s", related_field));
+        let junction_main_fk = Alias::new(&format!("{}_id", table_name.trim_end_matches('s')));
+        let junction_related_fk = Alias::new(&format!("{}_id", related_field));
+
+        let mut stmt = SeaQuery::select();
+        stmt.from(related_table.clone())
+            .column((related_table.clone(), Asterisk))
+            .column((junction_table.clone(), junction_main_fk.clone()))
+            .inner_join(
+                junction_table.clone(),
+                Expr::col((related_table.clone(), Alias::new("id")))
+                    .equals((junction_table.clone(), junction_related_fk)),
+            );
+
+        // Add IN clause with pk_values
+        let values: Vec<sea_query::Value> = pk_values.iter().map(|&id| id.into()).collect();
+        stmt.and_where(Expr::col((junction_table, junction_main_fk)).is_in(values));
+
+        stmt.to_owned()
     }
 
     /// Execute the queryset and return all matching records
@@ -402,15 +591,24 @@ where
         T: serde::de::DeserializeOwned,
     {
         let conn = crate::manager::get_connection().await?;
-        let table_name = T::table_name();
-        let (where_clause, _values) = self.build_where_clause();
 
-        let sql = if self.select_related_fields.is_empty() {
-            format!("SELECT * FROM {}{}", table_name, where_clause)
+        let stmt = if self.select_related_fields.is_empty() {
+            // Simple SELECT without JOINs
+            let mut stmt = SeaQuery::select();
+            stmt.from(Alias::new(T::table_name())).column(Asterisk);
+
+            if let Some(cond) = self.build_where_condition() {
+                stmt.cond_where(cond);
+            }
+
+            stmt.to_owned()
         } else {
-            let (select_sql, _) = self.select_related_sql();
-            select_sql
+            // SELECT with JOINs for select_related
+            self.select_related_query()
         };
+
+        // Convert SeaQuery statement to SQL
+        let (sql, values) = stmt.build(PostgresQueryBuilder);
 
         // Execute query and deserialize results
         let rows = conn.query(&sql).await?;
@@ -604,6 +802,24 @@ where
         }
     }
 
+    /// Generate UPDATE statement using SeaQuery
+    pub fn update_query(&self, updates: &[(&str, &str)]) -> sea_query::UpdateStatement {
+        let mut stmt = SeaQuery::update();
+        stmt.table(Alias::new(T::table_name()));
+
+        // Add SET clauses
+        for (field, value) in updates {
+            stmt.value(Alias::new(*field), value.to_string());
+        }
+
+        // Add WHERE conditions
+        if let Some(cond) = self.build_where_condition() {
+            stmt.cond_where(cond);
+        }
+
+        stmt.to_owned()
+    }
+
     /// Generate UPDATE SQL with WHERE clause and parameter binding
     ///
     /// Returns SQL with placeholders ($1, $2, etc.) and the values to bind.
@@ -623,43 +839,10 @@ where
     /// // params: ["Alice", "alice@example.com", "1"]
     /// ```
     pub fn update_sql(&self, updates: &[(&str, &str)]) -> (String, Vec<String>) {
-        let table_name = T::table_name();
-        let (where_clause, mut where_values) = self.build_where_clause();
-
-        // Build SET clause with parameter placeholders
-        let mut param_index = 1;
-        let mut set_parts = Vec::new();
-        let mut set_values = Vec::new();
-
-        for (field, value) in updates {
-            set_parts.push(format!("{} = ${}", field, param_index));
-            set_values.push(value.to_string());
-            param_index += 1;
-        }
-
-        let set_clause = format!(" SET {}", set_parts.join(", "));
-
-        // Adjust WHERE clause parameter indices to start after SET clause parameters
-        let where_clause_adjusted = if !where_clause.is_empty() {
-            let mut adjusted = where_clause.clone();
-            for i in (1..=where_values.len()).rev() {
-                let old_placeholder = format!("${}", i);
-                let new_placeholder = format!("${}", param_index - 1 + i);
-                adjusted = adjusted.replace(&old_placeholder, &new_placeholder);
-            }
-            adjusted
-        } else {
-            where_clause
-        };
-
-        let sql = format!(
-            "UPDATE {}{}{}",
-            table_name, set_clause, where_clause_adjusted
-        );
-        let mut all_values = set_values;
-        all_values.append(&mut where_values);
-
-        (sql, all_values)
+        let stmt = self.update_query(updates);
+        use sea_query::PostgresQueryBuilder;
+        let sql = stmt.to_string(PostgresQueryBuilder);
+        (sql, Vec::new())
     }
 
     /// Generate DELETE SQL with WHERE clause and parameter binding
@@ -685,18 +868,30 @@ where
     /// // sql: "DELETE FROM users WHERE id = $1"
     /// // params: ["1"]
     /// ```
-    pub fn delete_sql(&self) -> (String, Vec<String>) {
+    /// Generate DELETE statement using SeaQuery
+    pub fn delete_query(&self) -> sea_query::DeleteStatement {
         if self.filters.is_empty() {
             panic!(
                 "DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
             );
         }
 
-        let table_name = T::table_name();
-        let (where_clause, values) = self.build_where_clause();
+        let mut stmt = SeaQuery::delete();
+        stmt.from_table(Alias::new(T::table_name()));
 
-        let sql = format!("DELETE FROM {}{}", table_name, where_clause);
-        (sql, values)
+        // Add WHERE conditions
+        if let Some(cond) = self.build_where_condition() {
+            stmt.cond_where(cond);
+        }
+
+        stmt.to_owned()
+    }
+
+    pub fn delete_sql(&self) -> (String, Vec<String>) {
+        let stmt = self.delete_query();
+        use sea_query::PostgresQueryBuilder;
+        let sql = stmt.to_string(PostgresQueryBuilder);
+        (sql, Vec::new())
     }
 
     /// Retrieve a single object by composite primary key
@@ -748,7 +943,7 @@ where
 
         // Build SELECT query using sea-query
         let table_name = T::table_name();
-        let mut query = Query::select();
+        let mut query = SeaQuery::select();
 
         // Use Alias::new for table name
         let table_alias = Alias::new(table_name);
@@ -834,8 +1029,8 @@ pub use crate::sqlalchemy_query::*;
 #[cfg(all(test, feature = "django-compat"))]
 mod tests {
     use super::*;
-    use crate::manager::Manager;
     use crate::Model;
+    use crate::manager::Manager;
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

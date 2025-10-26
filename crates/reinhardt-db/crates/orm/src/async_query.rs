@@ -6,10 +6,12 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
+use crate::Model;
 use crate::engine::Engine;
 use crate::expressions::Q;
 use crate::query_execution::QueryCompiler;
-use crate::Model;
+use crate::types::DatabaseDialect;
+use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
 use std::marker::PhantomData;
 
 /// Async query builder
@@ -93,14 +95,24 @@ impl<T: Model> AsyncQuery<T> {
 
         let order_refs: Vec<&str> = self.order_by.iter().map(|s| s.as_str()).collect();
 
-        self.compiler.compile_select::<T>(
+        let stmt = self.compiler.compile_select::<T>(
             &self.table,
             &cols,
             combined_where.as_ref(),
             &order_refs,
             self.limit,
             self.offset,
-        )
+        );
+
+        // Convert statement to SQL string based on dialect
+        match self.compiler.dialect() {
+            DatabaseDialect::PostgreSQL => stmt.to_string(PostgresQueryBuilder),
+            DatabaseDialect::MySQL => stmt.to_string(MysqlQueryBuilder),
+            DatabaseDialect::SQLite => stmt.to_string(SqliteQueryBuilder),
+            // MSSQL support: use PostgreSQL builder as fallback for now
+            // sea-query v1.0.0-rc.15 doesn't have MssqlQueryBuilder yet
+            DatabaseDialect::MSSQL => stmt.to_string(PostgresQueryBuilder),
+        }
     }
     /// Execute query and fetch all results
     ///
