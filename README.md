@@ -127,99 +127,229 @@ reinhardt = { version = "0.1.0", features = ["standard", "websockets", "graphql"
 
 ## Quick Start
 
-### Basic CRUD API
+### 1. Install Reinhardt Admin Tool
+
+```bash
+cargo install reinhardt-admin
+```
+
+### 2. Create a New Project
+
+```bash
+# Create a RESTful API project
+reinhardt-admin startproject my-api --template-type restful
+cd my-api
+
+# Or create a Model-Template-View (MTV) project
+reinhardt-admin startproject my-web --template-type mtv
+```
+
+This generates a complete project structure:
+
+```
+my-api/
+├── Cargo.toml
+├── src/
+│   ├── main.rs
+│   ├── config.rs
+│   ├── apps.rs
+│   ├── config/
+│   │   ├── settings.rs
+│   │   ├── settings/
+│   │   │   ├── base.rs
+│   │   │   ├── local.rs
+│   │   │   ├── staging.rs
+│   │   │   └── production.rs
+│   │   ├── urls.rs
+│   │   └── apps.rs
+│   └── bin/
+│       ├── runserver.rs
+│       └── manage.rs
+└── README.md
+```
+
+### 3. Run the Development Server
+
+```bash
+# Using the runserver binary (recommended)
+cargo run --bin runserver
+
+# Or using manage command
+cargo run --bin manage runserver
+
+# Server will start at http://127.0.0.1:8000
+```
+
+### 4. Create Your First App
+
+```bash
+# Create a new app
+cargo run --bin manage startapp users --template-type restful
+```
+
+This creates an app structure:
+
+```
+users/
+├── lib.rs
+├── models.rs
+├── models/
+├── views.rs
+├── views/
+├── serializers.rs
+├── serializers/
+├── admin.rs
+├── urls.rs
+└── tests.rs
+```
+
+### 5. Register ViewSets
+
+Edit your app's `urls.rs`:
 
 ```rust
-use reinhardt::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use reinhardt_routers::UnifiedRouter;
+use crate::views::UserViewSet;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct User {
-    id: i64,
-    name: String,
-    email: String,
-}
+pub fn url_patterns() -> UnifiedRouter {
+    let router = UnifiedRouter::builder()
+        .build();
 
-#[derive(Debug, Clone)]
-struct UserSerializer;
+    // Register ViewSet for automatic CRUD endpoints
+    router.register_viewset("users", UserViewSet::new());
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a router
-    let mut router = DefaultRouter::new();
-
-    // Create and register a ViewSet for CRUD operations
-    let user_viewset: Arc<ModelViewSet<User, UserSerializer>> =
-        Arc::new(ModelViewSet::new("users"));
-    router.register_viewset("users", user_viewset);
-
-    // Start the server
-    println!("Server running on http://127.0.0.1:8000");
-    reinhardt::serve("127.0.0.1:8000", router).await?;
-
-    Ok(())
+    router
 }
 ```
 
-This creates a full CRUD API with the following endpoints:
+Include in `src/config/urls.rs`:
 
-- `GET /users/` - List all users
-- `POST /users/` - Create a new user
-- `GET /users/{id}/` - Retrieve a user
-- `PUT /users/{id}/` - Update a user
-- `DELETE /users/{id}/` - Delete a user
+```rust
+use reinhardt::prelude::*;
+use std::sync::Arc;
+
+pub fn url_patterns() -> Arc<UnifiedRouter> {
+    let router = UnifiedRouter::builder()
+        .build();
+
+    // Include app routers
+    router.include_router("/api/", users::urls::url_patterns(), Some("users".to_string()));
+
+    Arc::new(router)
+}
+```
+
+For a complete step-by-step guide, see [Getting Started](docs/GETTING_STARTED.md).
 
 ## 🎓 Learn by Example
 
 ### With Database
+
+Configure database in `src/config/settings/base.rs`:
+
+```rust
+use reinhardt::prelude::*;
+
+pub struct Settings {
+    pub database_url: String,
+    pub debug: bool,
+}
+
+impl Settings {
+    pub fn new() -> Self {
+        Self {
+            database_url: std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://localhost/mydb".to_string()),
+            debug: true,
+        }
+    }
+}
+```
+
+Define models in your app (e.g., `users/models.rs`):
 
 ```rust
 use reinhardt::prelude::*;
 
 #[derive(Model, Serialize, Deserialize)]
 #[reinhardt(table_name = "users")]
-struct User {
+pub struct User {
     #[reinhardt(primary_key)]
-    id: i64,
-    email: String,
-    name: String,
+    pub id: i64,
+    pub email: String,
+    pub name: String,
+}
+```
+
+Register in `src/config/apps.rs`:
+
+```rust
+use reinhardt_macros::installed_apps;
+
+installed_apps! {
+    auth: "reinhardt.contrib.auth",
+    contenttypes: "reinhardt.contrib.contenttypes",
+    users: "users",
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let db = Database::connect("postgres://localhost/mydb").await?;
-    let router = DefaultRouter::new().with_database(db);
-
-    reinhardt::serve("127.0.0.1:8000", router).await?;
-    Ok(())
+pub fn get_installed_apps() -> Vec<String> {
+    InstalledApp::all_apps()
 }
 ```
 
 ### With Authentication
 
+Add to your app's `views/profile.rs`:
+
 ```rust
 use reinhardt::prelude::*;
+use crate::models::User;
 
 #[endpoint(GET, "/profile")]
-async fn get_profile(
+pub async fn get_profile(
     user: Authenticated<User>,
 ) -> Json<UserProfile> {
     Json(user.to_profile())
 }
 ```
 
+Re-export in your app's `views.rs`:
+
+```rust
+mod profile;
+pub use profile::*;
+```
+
+Register URL in your app's `urls.rs`:
+
+```rust
+use reinhardt_routers::UnifiedRouter;
+use crate::views;
+
+pub fn url_patterns() -> UnifiedRouter {
+    let router = UnifiedRouter::builder()
+        .build();
+
+    router.add_function_route("/profile", Method::GET, views::get_profile);
+
+    router
+}
+```
+
 ### With Dependency Injection
+
+In your app's `views/user.rs`:
 
 ```rust
 use reinhardt::prelude::*;
+use crate::models::User;
 
 async fn get_db() -> Database {
     Database::from_env()
 }
 
 #[endpoint(GET, "/users/{id}")]
-async fn get_user(
+pub async fn get_user(
     Path(id): Path<i64>,
     Depends(db): Depends<Database, get_db>,
 ) -> Result<Json<User>> {
@@ -228,29 +358,53 @@ async fn get_user(
 }
 ```
 
+Re-export in your app's `views.rs`:
+
+```rust
+mod user;
+pub use user::*;
+```
+
 ### With Serializers and Validation
+
+In your app's `serializers/user.rs`:
 
 ```rust
 use reinhardt::prelude::*;
 
 #[derive(Serialize, Deserialize, Validate)]
-struct CreateUserRequest {
+pub struct CreateUserRequest {
     #[validate(email)]
-    email: String,
+    pub email: String,
     #[validate(length(min = 3, max = 50))]
-    name: String,
+    pub name: String,
 }
 
 #[derive(Serializer)]
 #[serializer(model = "User")]
-struct UserSerializer {
-    id: i64,
-    email: String,
-    name: String,
+pub struct UserSerializer {
+    pub id: i64,
+    pub email: String,
+    pub name: String,
 }
+```
+
+Re-export in your app's `serializers.rs`:
+
+```rust
+mod user;
+pub use user::*;
+```
+
+In your app's `views/user.rs`:
+
+```rust
+use reinhardt::prelude::*;
+use crate::models::User;
+use crate::serializers::{CreateUserRequest, UserSerializer};
 
 #[endpoint(POST, "/users")]
-async fn create_user(
+pub async fn create_user(
     Json(req): Json<CreateUserRequest>,
     db: Depends<Database>,
 ) -> Result<Json<UserSerializer>> {

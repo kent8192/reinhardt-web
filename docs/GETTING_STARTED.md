@@ -12,14 +12,32 @@ Before you begin, make sure you have:
 
 ## Installation
 
-### Step 1: Create a New Project
+### Step 1: Install Reinhardt Admin
 
 ```bash
-cargo new my-api
-cd my-api
+cargo install reinhardt-admin
 ```
 
-### Step 2: Choose Your Flavor
+### Step 2: Create a New Project
+
+```bash
+# Create a RESTful API project
+reinhardt-admin startproject my-api --template-type restful
+cd my-api
+
+# Or create a Model-Template-View (MTV) project
+reinhardt-admin startproject my-web --template-type mtv
+```
+
+This generates a complete project structure with:
+- Configuration files (`src/config/`)
+- Settings management with environment support
+- URL routing configuration
+- App registry
+- Management commands (`src/bin/manage.rs`)
+- Development server (`src/bin/runserver.rs`)
+
+### Step 3: Choose Your Flavor
 
 Reinhardt comes in three flavors. Choose the one that fits your needs:
 
@@ -58,52 +76,120 @@ serde = { version = "1.0", features = ["derive"] }
 
 For this guide, we'll use the **Standard** flavor.
 
+The project template already includes all necessary dependencies in `Cargo.toml`.
+
 ## Your First API
 
-Let's build a simple "Hello World" API.
+The generated project already has a working server! Let's customize it.
 
-### Step 3: Create Your First Endpoint
+### Step 4: Run the Development Server
 
-Edit `src/main.rs`:
+```bash
+# Using the runserver binary (recommended)
+cargo run --bin runserver
+
+# Or using manage command
+cargo run --bin manage runserver
+```
+
+Visit `http://127.0.0.1:8000/` in your browser. You should see a welcome message.
+
+### Step 5: Create Your First App
+
+```bash
+# Create a new app for our API
+cargo run --bin manage startapp hello --template-type restful
+```
+
+This creates a `hello` app with the following structure:
+
+```
+hello/
+├── lib.rs
+├── models.rs
+├── views.rs
+├── serializers.rs
+├── urls.rs
+├── admin.rs
+└── tests.rs
+```
+
+### Step 6: Create a Simple Endpoint
+
+Edit `hello/views.rs`:
 
 ```rust
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-struct HelloResponse {
+pub struct HelloResponse {
     message: String,
 }
 
-async fn hello_world() -> Result<JsonResponse<HelloResponse>, Error> {
+pub async fn hello_world() -> Result<JsonResponse<HelloResponse>, Error> {
     Ok(JsonResponse::new(HelloResponse {
         message: "Hello, Reinhardt!".to_string(),
     }))
 }
+```
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a router
-    let mut router = Router::new();
+### Step 7: Register the Route
 
-    // Register the endpoint
-    router.get("/hello", hello_world);
+Edit `hello/urls.rs`:
 
-    // Start the server
-    println!("Server running on http://127.0.0.1:8000");
-    reinhardt::serve("127.0.0.1:8000", router).await?;
+```rust
+use reinhardt_routers::UnifiedRouter;
+use crate::views;
 
-    Ok(())
+pub fn url_patterns() -> UnifiedRouter {
+    let router = UnifiedRouter::builder()
+        .build();
+
+    router.add_function_route("/hello", Method::GET, views::hello_world);
+
+    router
 }
 ```
 
-### Step 4: Run Your API
+### Step 8: Include in Project URLs
 
-```bash
-cargo run
+Edit `src/config/urls.rs`:
+
+```rust
+use reinhardt::prelude::*;
+use std::sync::Arc;
+
+pub fn url_patterns() -> Arc<UnifiedRouter> {
+    let router = UnifiedRouter::builder()
+        .build();
+
+    // Include hello app routes
+    router.include_router("/", hello::urls::url_patterns(), Some("hello".to_string()));
+
+    Arc::new(router)
+}
 ```
 
-Visit `http://127.0.0.1:8000/hello` in your browser or use curl:
+### Step 9: Register the App
+
+Edit `src/config/apps.rs`:
+
+```rust
+use reinhardt_macros::installed_apps;
+
+installed_apps! {
+    hello: "hello",
+}
+
+pub fn get_installed_apps() -> Vec<String> {
+    InstalledApp::all_apps()
+}
+```
+
+### Step 10: Test Your Endpoint
+
+Restart the server and visit:
 
 ```bash
 curl http://127.0.0.1:8000/hello
@@ -119,22 +205,30 @@ You should see:
 
 ## Building a Real API
 
-Now let's build a more realistic API with CRUD operations.
+Now let's build a more realistic API with CRUD operations using ViewSets.
 
-### Step 5: Define Your Model
+### Step 11: Create a Todos App
+
+```bash
+cargo run --bin manage startapp todos --template-type restful
+```
+
+### Step 12: Define Your Model
+
+Edit `todos/models.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Todo {
-    id: Option<i64>,
-    title: String,
-    completed: bool,
+pub struct Todo {
+    pub id: Option<i64>,
+    pub title: String,
+    pub completed: bool,
 }
 
 impl Todo {
-    fn new(title: String) -> Self {
+    pub fn new(title: String) -> Self {
         Self {
             id: None,
             title,
@@ -144,102 +238,137 @@ impl Todo {
 }
 ```
 
-### Step 6: Create a ViewSet
+### Step 13: Create Serializer
+
+Edit `todos/serializers.rs`:
+
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TodoSerializer {
+    pub id: Option<i64>,
+    pub title: String,
+    pub completed: bool,
+}
+```
+
+### Step 14: Create a ViewSet
+
+Edit `todos/views.rs`:
 
 ```rust
 use reinhardt::viewsets::ModelViewSet;
-use std::sync::{Arc, Mutex};
+use crate::models::Todo;
+use crate::serializers::TodoSerializer;
 
-// In-memory storage (replace with database in production)
-type TodoStore = Arc<Mutex<Vec<Todo>>>;
+// Create a ViewSet for automatic CRUD operations
+pub struct TodoViewSet;
 
-async fn list_todos(store: Arc<TodoStore>) -> Result<JsonResponse<Vec<Todo>>, Error> {
-    let todos = store.lock().unwrap().clone();
-    Ok(JsonResponse::new(todos))
-}
-
-async fn create_todo(
-    Json(mut todo): Json<Todo>,
-    store: Arc<TodoStore>,
-) -> Result<JsonResponse<Todo>, Error> {
-    let mut todos = store.lock().unwrap();
-    let id = todos.len() as i64 + 1;
-    todo.id = Some(id);
-    todos.push(todo.clone());
-    Ok(JsonResponse::new(todo))
+impl TodoViewSet {
+    pub fn new() -> ModelViewSet<Todo, TodoSerializer> {
+        ModelViewSet::new("todo")
+    }
 }
 ```
 
-### Step 7: Set Up Routes
+### Step 15: Register ViewSet in URLs
+
+Edit `todos/urls.rs`:
 
 ```rust
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let store = Arc::new(Mutex::new(Vec::new()));
+use reinhardt_routers::UnifiedRouter;
+use crate::views::TodoViewSet;
 
-    let mut router = Router::new();
+pub fn url_patterns() -> UnifiedRouter {
+    let router = UnifiedRouter::builder()
+        .build();
 
-    // Clone store for each route
-    let store_list = store.clone();
-    let store_create = store.clone();
+    // Register ViewSet - this creates all CRUD endpoints automatically
+    router.register_viewset("todos", TodoViewSet::new());
 
-    router.get("/todos", move || list_todos(store_list.clone()));
-    router.post("/todos", move |json| create_todo(json, store_create.clone()));
-
-    println!("Server running on http://127.0.0.1:8000");
-    reinhardt::serve("127.0.0.1:8000", router).await?;
-
-    Ok(())
+    router
 }
 ```
 
-### Step 8: Test Your API
+This automatically creates:
+- `GET /todos/` - List all todos
+- `POST /todos/` - Create a new todo
+- `GET /todos/{id}/` - Retrieve a todo
+- `PUT /todos/{id}/` - Update a todo
+- `DELETE /todos/{id}/` - Delete a todo
+
+### Step 16: Include in Project
+
+Edit `src/config/urls.rs`:
+
+```rust
+use reinhardt::prelude::*;
+use std::sync::Arc;
+
+pub fn url_patterns() -> Arc<UnifiedRouter> {
+    let router = UnifiedRouter::builder()
+        .build();
+
+    router.include_router("/api/", todos::urls::url_patterns(), Some("todos".to_string()));
+
+    Arc::new(router)
+}
+```
+
+Edit `src/config/apps.rs`:
+
+```rust
+use reinhardt_macros::installed_apps;
+
+installed_apps! {
+    todos: "todos",
+}
+
+pub fn get_installed_apps() -> Vec<String> {
+    InstalledApp::all_apps()
+}
+```
+
+### Step 17: Test Your API
 
 ```bash
 # List todos (empty initially)
-curl http://127.0.0.1:8000/todos
+curl http://127.0.0.1:8000/api/todos/
 
 # Create a todo
-curl -X POST http://127.0.0.1:8000/todos \
+curl -X POST http://127.0.0.1:8000/api/todos/ \
   -H "Content-Type: application/json" \
   -d '{"title":"Learn Reinhardt","completed":false}'
 
-# List todos again
-curl http://127.0.0.1:8000/todos
+# Get a specific todo
+curl http://127.0.0.1:8000/api/todos/1/
+
+# Update a todo
+curl -X PUT http://127.0.0.1:8000/api/todos/1/ \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Learn Reinhardt","completed":true}'
+
+# Delete a todo
+curl -X DELETE http://127.0.0.1:8000/api/todos/1/
 ```
 
 ## Project Management Commands
 
-Reinhardt provides Django-style management commands for common development tasks.
-
-### Setting Up Management Commands
-
-First, install the commands crate:
-
-```toml
-[dependencies]
-reinhardt-commands = "0.1.0"
-```
-
-Create `src/bin/manage.rs` for project-specific commands:
-
-```bash
-# Use reinhardt-admin to create a new project with manage.rs included
-cargo install reinhardt-commands
-reinhardt-admin startproject myproject
-```
-
-Or manually create `src/bin/manage.rs` - see the [reinhardt-commands documentation](../crates/reinhardt-commands/README.md) for a complete example.
+The generated project includes `src/bin/manage.rs` for Django-style management commands.
 
 ### Common Commands
 
 ```bash
-# Database migrations
-cargo run --bin manage makemigrations
-cargo run --bin manage migrate
+# Create a new app
+cargo run --bin manage startapp myapp --template-type restful
 
 # Development server
 cargo run --bin manage runserver
+
+# Database migrations (when using database features)
+cargo run --bin manage makemigrations
+cargo run --bin manage migrate
 
 # Check project for issues
 cargo run --bin manage check
@@ -253,13 +382,14 @@ cargo run --bin manage shell
 
 ### Global CLI Tool
 
-Install `reinhardt-admin` globally for project scaffolding:
+You already installed `reinhardt-admin` in Step 1. Use it for:
 
 ```bash
-cargo install reinhardt-commands
-
 # Create new projects
 reinhardt-admin startproject myproject --template-type restful
+reinhardt-admin startproject myweb --template-type mtv
+
+# Create new apps (from project root)
 reinhardt-admin startapp myapp --template-type restful
 ```
 

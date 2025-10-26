@@ -13,12 +13,20 @@ cargo --version
 
 You should see version information for both commands. If not, visit [rust-lang.org](https://www.rust-lang.org/tools/install) to install Rust.
 
+## Installing Reinhardt Admin
+
+First, install the global tool for project generation:
+
+```bash
+cargo install reinhardt-admin
+```
+
 ## Creating a Project
 
 Navigate to a directory where you'd like to store your code, then run:
 
 ```bash
-cargo new polls_project
+reinhardt-admin startproject polls_project --template-type mtv
 cd polls_project
 ```
 
@@ -27,34 +35,40 @@ This creates a `polls_project` directory with the following structure:
 ```
 polls_project/
 ├── Cargo.toml
+├── README.md
 └── src/
-    └── main.rs
+    ├── main.rs
+    ├── config.rs
+    ├── apps.rs
+    ├── config/
+    │   ├── settings.rs
+    │   ├── settings/
+    │   │   ├── base.rs
+    │   │   ├── local.rs
+    │   │   ├── staging.rs
+    │   │   └── production.rs
+    │   ├── urls.rs
+    │   └── apps.rs
+    └── bin/
+        ├── runserver.rs
+        └── manage.rs
 ```
 
-## Adding Reinhardt Dependencies
-
-Open `Cargo.toml` and add the Reinhardt dependencies. For this tutorial, we'll use the **standard** flavor which includes templates, forms, and the admin interface:
-
-```toml
-[package]
-name = "polls_project"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-reinhardt = { version = "0.1.0", features = ["standard"] }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-```
+**Note**: For this tutorial, we're using the **MTV (Model-Template-View)** template which includes templates, forms, and the admin interface.
 
 ## Understanding the Project Structure
 
-Let's understand what we have:
+Let's understand the key elements of the generated project:
 
 - `Cargo.toml` - Configuration file for your project and its dependencies
 - `src/main.rs` - The entry point for your application
-
-Unlike Django, Reinhardt doesn't have a `manage.py` file. Instead, you'll use Cargo commands to run your project.
+- `src/config/` - Project configuration
+  - `settings/` - Environment-specific settings (base, local, staging, production)
+  - `urls.rs` - URL routing configuration
+  - `apps.rs` - Installed apps registration
+- `src/bin/` - Executable files
+  - `manage.rs` - Management commands (equivalent to Django's `manage.py`)
+  - `runserver.rs` - Development server
 
 ## Creating Your First View
 
@@ -141,7 +155,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Now let's run the development server:
 
 ```bash
-cargo run
+# Using the runserver binary (recommended)
+cargo run --bin runserver
+
+# Or using the manage command
+cargo run --bin manage runserver
 ```
 
 You should see output similar to:
@@ -149,18 +167,20 @@ You should see output similar to:
 ```
     Compiling polls_project v0.1.0 (/path/to/polls_project)
      Finished dev [unoptimized + debuginfo] target(s) in 2.34s
-      Running `target/debug/polls_project`
-Starting development server at http://127.0.0.1:8000/
-Quit the server with CTRL-C.
+      Running `target/debug/runserver`
+
+Reinhardt Development Server
+──────────────────────────────────────────────────
+
+  ✓ http://127.0.0.1:8000
+  Environment: Debug
+
+Quit the server with CTRL+C
 ```
 
-Open your web browser and visit `http://127.0.0.1:8000/`. You should see the text:
+Open your web browser and visit `http://127.0.0.1:8000/`. You should see a welcome message.
 
-```
-Hello, world. You're at the polls index.
-```
-
-Congratulations! You've created your first Reinhardt view.
+Congratulations! Your Reinhardt project is now running!
 
 ## Understanding What Happened
 
@@ -197,11 +217,31 @@ path("polls/{id}/", poll_detail)
 
 The `{id}` syntax creates a URL parameter that will be passed to your view.
 
-## Creating the Polls App Module
+## Creating the Polls App
 
-In Reinhardt, it's best practice to organize your code into modules (similar to Django's apps). Let's create a `polls` module:
+In Reinhardt, we organize features into apps (similar to Django). Let's create a `polls` app:
 
-Create a new file `src/polls.rs`:
+```bash
+cargo run --bin manage startapp polls --template-type mtv
+```
+
+This creates a `polls` directory with the following structure:
+
+```
+polls/
+├── lib.rs
+├── models.rs
+├── models/
+├── views.rs
+├── views/
+├── admin.rs
+├── urls.rs
+└── tests.rs
+```
+
+### Creating a View
+
+Edit `polls/views.rs`:
 
 ```rust
 use reinhardt::prelude::*;
@@ -215,46 +255,60 @@ pub async fn index(_request: Request) -> Result<Response, Box<dyn std::error::Er
 }
 ```
 
-Update `src/urls.rs` to use this module:
+### Setting Up URL Patterns
+
+Edit `polls/urls.rs`:
 
 ```rust
-use reinhardt::prelude::*;
+use reinhardt_routers::UnifiedRouter;
+use crate::views;
 
-pub fn url_patterns() -> Vec<Route> {
-    vec![
-        path("polls/", crate::polls::index),
-    ]
+pub fn url_patterns() -> UnifiedRouter {
+    let router = UnifiedRouter::builder()
+        .build();
+
+    router.add_function_route("/", Method::GET, views::index);
+
+    router
 }
 ```
 
-Update `src/main.rs` to declare the module:
+### Registering with the Project
+
+Edit `src/config/urls.rs` to include the polls app routes:
 
 ```rust
-mod urls;
-mod polls;
-
 use reinhardt::prelude::*;
+use std::sync::Arc;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut router = DefaultRouter::new();
+pub fn url_patterns() -> Arc<UnifiedRouter> {
+    let router = UnifiedRouter::builder()
+        .build();
 
-    for route in urls::url_patterns() {
-        router.add_route(route);
-    }
+    // Include polls app routes
+    router.include_router("/polls/", polls::urls::url_patterns(), Some("polls".to_string()));
 
-    let server = Server::new("127.0.0.1:8000", router);
-
-    println!("Starting development server at http://127.0.0.1:8000/");
-    println!("Quit the server with CTRL-C.");
-
-    server.run().await?;
-
-    Ok(())
+    Arc::new(router)
 }
 ```
 
-Restart your server (press Ctrl-C and run `cargo run` again) and visit `http://127.0.0.1:8000/polls/`. You should see the same message.
+### Registering the App
+
+Edit `src/config/apps.rs`:
+
+```rust
+use reinhardt_macros::installed_apps;
+
+installed_apps! {
+    polls: "polls",
+}
+
+pub fn get_installed_apps() -> Vec<String> {
+    InstalledApp::all_apps()
+}
+```
+
+Restart your server (press Ctrl-C and run `cargo run --bin runserver` again) and visit `http://127.0.0.1:8000/polls/`. You should see the message.
 
 ## Adding More Views
 

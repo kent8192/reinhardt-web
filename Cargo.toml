@@ -268,7 +268,8 @@ redis = { version = "1.0.0-rc.2", features = [
 
 # Connection pooling & migrations
 refinery = { version = "0.9.0", features = ["tokio-postgres"] }
-sea-query = "1.0.0-rc.15"
+sea-query = "1.0.0-rc.1"
+sea-query-sqlx = { version = "0.8.0-rc.9", features = ["sqlx-postgres", "sqlx-mysql", "sqlx-sqlite"] }
 
 # Testing
 testcontainers = "0.25.0"

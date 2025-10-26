@@ -13,12 +13,20 @@ cargo --version
 
 両方のコマンドでバージョン情報が表示されるはずです。表示されない場合は、[rust-lang.org](https://www.rust-lang.org/tools/install)にアクセスしてRustをインストールしてください。
 
+## Reinhardt Adminのインストール
+
+まず、プロジェクト生成用のグローバルツールをインストールします：
+
+```bash
+cargo install reinhardt-admin
+```
+
 ## プロジェクトの作成
 
 コードを保存したいディレクトリに移動し、次のコマンドを実行します：
 
 ```bash
-cargo new polls_project
+reinhardt-admin startproject polls_project --template-type mtv
 cd polls_project
 ```
 
@@ -27,36 +35,40 @@ cd polls_project
 ```
 polls_project/
 ├── Cargo.toml
+├── README.md
 └── src/
-    └── main.rs
+    ├── main.rs
+    ├── config.rs
+    ├── apps.rs
+    ├── config/
+    │   ├── settings.rs
+    │   ├── settings/
+    │   │   ├── base.rs
+    │   │   ├── local.rs
+    │   │   ├── staging.rs
+    │   │   └── production.rs
+    │   ├── urls.rs
+    │   └── apps.rs
+    └── bin/
+        ├── runserver.rs
+        └── manage.rs
 ```
 
-## Reinhardt依存関係の追加
-
-`Cargo.toml`を開き、Reinhardtの依存関係を追加します。このチュートリアルでは、テンプレート、フォーム、管理画面を含む**standard**フレーバーを使用します：
-
-```toml
-[package]
-name = "polls_project"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-reinhardt = { version = "0.1.0", features = ["standard"] }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-```
-
-**注意**: Reinhardtでは、`reinhardt`クレート一つで全ての機能にアクセスできます。必要な機能は`features`フラグで制御します。
+**注意**: このチュートリアルでは、テンプレート、フォーム、管理画面を含む**MTV (Model-Template-View)**テンプレートを使用します。
 
 ## プロジェクト構造の理解
 
-現在のプロジェクト構成を理解しましょう：
+生成されたプロジェクトの主要な要素を理解しましょう：
 
 - `Cargo.toml` - プロジェクトとその依存関係の設定ファイル
 - `src/main.rs` - アプリケーションのエントリーポイント
-
-Djangoとは異なり、Reinhardtには`manage.py`ファイルはありません。代わりに、Cargoコマンドを使用してプロジェクトを実行します。
+- `src/config/` - プロジェクト設定
+  - `settings/` - 環境別設定（base, local, staging, production）
+  - `urls.rs` - URLルーティング設定
+  - `apps.rs` - インストール済みアプリの登録
+- `src/bin/` - 実行可能ファイル
+  - `manage.rs` - 管理コマンド（Djangoの`manage.py`に相当）
+  - `runserver.rs` - 開発サーバー
 
 ## 最初のビューの作成
 
@@ -143,7 +155,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 それでは開発サーバーを実行しましょう：
 
 ```bash
-cargo run
+# runserverバイナリを使用（推奨）
+cargo run --bin runserver
+
+# またはmanageコマンドを使用
+cargo run --bin manage runserver
 ```
 
 以下のような出力が表示されるはずです：
@@ -151,18 +167,20 @@ cargo run
 ```
     Compiling polls_project v0.1.0 (/path/to/polls_project)
      Finished dev [unoptimized + debuginfo] target(s) in 2.34s
-      Running `target/debug/polls_project`
-Starting development server at http://127.0.0.1:8000/
-Quit the server with CTRL-C.
+      Running `target/debug/runserver`
+
+Reinhardt Development Server
+──────────────────────────────────────────────────
+
+  ✓ http://127.0.0.1:8000
+  Environment: Debug
+
+Quit the server with CTRL+C
 ```
 
-Webブラウザを開いて`http://127.0.0.1:8000/`にアクセスします。以下のテキストが表示されるはずです：
+Webブラウザを開いて`http://127.0.0.1:8000/`にアクセスします。ウェルカムメッセージが表示されるはずです。
 
-```
-Hello, world. You're at the polls index.
-```
-
-おめでとうございます！最初のReinhardtビューを作成しました。
+おめでとうございます！Reinhardtプロジェクトが正常に起動しました。
 
 ## 何が起こったのか
 
@@ -199,11 +217,31 @@ path("polls/{id}/", poll_detail)
 
 `{id}`構文はビューに渡されるURLパラメータを作成します。
 
-## Pollsアプリモジュールの作成
+## Pollsアプリの作成
 
-Reinhardtでは、コードをモジュールに整理することがベストプラクティスです（Djangoのアプリに似ています）。`polls`モジュールを作成しましょう：
+Reinhardtでは、機能ごとにアプリを作成して整理します（Djangoと同様）。`polls`アプリを作成しましょう：
 
-新しいファイル`src/polls.rs`を作成します：
+```bash
+cargo run --bin manage startapp polls --template-type mtv
+```
+
+これにより、以下の構造を持つ`polls`ディレクトリが作成されます：
+
+```
+polls/
+├── lib.rs
+├── models.rs
+├── models/
+├── views.rs
+├── views/
+├── admin.rs
+├── urls.rs
+└── tests.rs
+```
+
+### ビューの作成
+
+`polls/views.rs`を編集します：
 
 ```rust
 use reinhardt::prelude::*;
@@ -217,46 +255,60 @@ pub async fn index(_request: Request) -> Result<Response, Box<dyn std::error::Er
 }
 ```
 
-`src/urls.rs`を更新してこのモジュールを使用します：
+### URLパターンの設定
+
+`polls/urls.rs`を編集します：
 
 ```rust
-use reinhardt::prelude::*;
+use reinhardt_routers::UnifiedRouter;
+use crate::views;
 
-pub fn url_patterns() -> Vec<Route> {
-    vec![
-        path("polls/", crate::polls::index),
-    ]
+pub fn url_patterns() -> UnifiedRouter {
+    let router = UnifiedRouter::builder()
+        .build();
+
+    router.add_function_route("/", Method::GET, views::index);
+
+    router
 }
 ```
 
-`src/main.rs`を更新してモジュールを宣言します：
+### プロジェクトURLへの登録
+
+`src/config/urls.rs`を編集して、pollsアプリのURLを含めます：
 
 ```rust
-mod urls;
-mod polls;
-
 use reinhardt::prelude::*;
+use std::sync::Arc;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut router = DefaultRouter::new();
+pub fn url_patterns() -> Arc<UnifiedRouter> {
+    let router = UnifiedRouter::builder()
+        .build();
 
-    for route in urls::url_patterns() {
-        router.add_route(route);
-    }
+    // pollsアプリのルーターを含める
+    router.include_router("/polls/", polls::urls::url_patterns(), Some("polls".to_string()));
 
-    let server = Server::new("127.0.0.1:8000", router);
-
-    println!("Starting development server at http://127.0.0.1:8000/");
-    println!("Quit the server with CTRL-C.");
-
-    server.run().await?;
-
-    Ok(())
+    Arc::new(router)
 }
 ```
 
-サーバーを再起動（Ctrl-Cを押して`cargo run`を再度実行）して、`http://127.0.0.1:8000/polls/`にアクセスします。同じメッセージが表示されるはずです。
+### アプリの登録
+
+`src/config/apps.rs`を編集します：
+
+```rust
+use reinhardt_macros::installed_apps;
+
+installed_apps! {
+    polls: "polls",
+}
+
+pub fn get_installed_apps() -> Vec<String> {
+    InstalledApp::all_apps()
+}
+```
+
+サーバーを再起動（Ctrl-Cを押して`cargo run --bin runserver`を再度実行）して、`http://127.0.0.1:8000/polls/`にアクセスします。メッセージが表示されるはずです。
 
 ## さらにビューを追加
 

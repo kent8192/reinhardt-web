@@ -350,6 +350,12 @@ src/database.rs
 - **User-Facing Placeholders**:
   - **NEVER** use TODO or NOTE comments in user-facing code
   - Provide actual implementations or use `todo!()`/`unimplemented!()` macro for compile-time errors
+- **Full Implementation Requirement**:
+  - When implementation is **NOT** a full implementation, **MUST** leave either:
+    - `// TODO:` comment with explanation, OR
+    - `todo!()` macro
+  - **NEVER** use NOTE comments or other alternative notations for incomplete implementations
+  - This rule applies to all incomplete implementations, placeholders, stubs, and mocks
 - **Placeholder/Stub/Mock Implementation Rules**:
   - **ALL** placeholder implementations (excluding tests and documentation) **MUST** be marked with `todo!()` macro or `// TODO:` comment
   - This includes:

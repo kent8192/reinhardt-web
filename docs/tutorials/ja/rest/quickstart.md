@@ -4,39 +4,45 @@
 
 ## プロジェクトのセットアップ
 
-tutorialという名前の新しいReinhardtプロジェクトを作成します。
+まず、グローバルツールをインストールします：
 
 ```bash
-# プロジェクトディレクトリを作成
-mkdir tutorial
+cargo install reinhardt-admin
+```
+
+tutorialという名前の新しいReinhardtプロジェクトを作成します：
+
+```bash
+# RESTful APIプロジェクトを作成
+reinhardt-admin startproject tutorial --template-type restful
 cd tutorial
-
-# 新しいプロジェクトをセットアップ
-cargo init --name tutorial
 ```
 
-`Cargo.toml`にReinhardtの依存関係を追加します:
-
-```toml
-[dependencies]
-reinhardt = { version = "0.1.0", features = ["standard", "rest", "serializers", "viewsets", "routers", "auth"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
-```
-
-> **注記**: `reinhardt`クレートの`"standard"`フィーチャーフラグに加えて、REST API機能に必要な`"rest"`、`"serializers"`、`"viewsets"`、`"routers"`、`"auth"`を追加します。すべての機能は統合された`reinhardt`クレートから提供されるため、個別の`reinhardt-*`依存関係を追加する必要はありません。フィーチャーフラグの詳細については、[Feature Flags Guide](../../../FEATURE_FLAGS.md)を参照してください。
-
-プロジェクトのレイアウトは以下のようになります:
+これにより、以下のプロジェクト構造が生成されます：
 
 ```
-$ tree .
-.
+tutorial/
 ├── Cargo.toml
-└── src
-    └── main.rs
+├── README.md
+└── src/
+    ├── main.rs
+    ├── config.rs
+    ├── apps.rs
+    ├── config/
+    │   ├── settings.rs
+    │   ├── settings/
+    │   │   ├── base.rs
+    │   │   ├── local.rs
+    │   │   ├── staging.rs
+    │   │   └── production.rs
+    │   ├── urls.rs
+    │   └── apps.rs
+    └── bin/
+        ├── runserver.rs
+        └── manage.rs
 ```
+
+生成された`Cargo.toml`には、REST API開発に必要なすべての依存関係が既に含まれています。
 
 ## モデル
 
@@ -85,12 +91,18 @@ let group_viewset = ReadOnlyModelViewSet::<Group, GroupSerializer>::new("group")
 
 ## ルーティング
 
-ViewSetをルーターに登録してURLを自動生成します。`src/main.rs`の完全な例:
+まず、usersアプリを作成します：
+
+```bash
+cargo run --bin manage startapp users --template-type restful
+```
+
+### モデルとシリアライザの定義
+
+`users/models.rs`を編集：
 
 ```rust
-use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
-use std::sync::Arc;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
@@ -98,12 +110,12 @@ pub struct User {
     pub username: String,
     pub email: String,
 }
+```
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Group {
-    pub id: i64,
-    pub name: String,
-}
+`users/serializers.rs`を編集：
+
+```rust
+use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserSerializer {
@@ -111,48 +123,86 @@ pub struct UserSerializer {
     pub username: String,
     pub email: String,
 }
+```
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GroupSerializer {
-    pub id: i64,
-    pub name: String,
-}
+### ViewSetの作成
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // ルーターを作成
-    let mut router = DefaultRouter::new();
+`users/views.rs`を編集：
 
-    // ViewSetを登録
-    let user_viewset = ModelViewSet::<User, UserSerializer>::new("user");
-    let group_viewset = ReadOnlyModelViewSet::<Group, GroupSerializer>::new("group");
+```rust
+use reinhardt::viewsets::ModelViewSet;
+use crate::models::User;
+use crate::serializers::UserSerializer;
 
-    router.register_viewset("users", user_viewset);
-    router.register_viewset("groups", group_viewset);
+pub struct UserViewSet;
 
-    // 以下のURLが自動的に生成されます:
-    // GET/POST    /users/      - ユーザーリスト/作成
-    // GET/PUT/DELETE /users/{id}/ - ユーザー詳細/更新/削除
-    // GET         /groups/     - グループリスト
-    // GET         /groups/{id}/ - グループ詳細
-
-    // サーバーを起動（実装は省略）
-    // reinhardt::serve(router).await
-
-    Ok(())
+impl UserViewSet {
+    pub fn new() -> ModelViewSet<User, UserSerializer> {
+        ModelViewSet::new("user")
+    }
 }
 ```
 
-ルーターは以下のURLパターンを自動的に生成します:
+### URLの設定
 
-- `GET /users/` - ユーザーのリスト
-- `POST /users/` - 新しいユーザーの作成
-- `GET /users/{id}/` - 特定のユーザーの取得
-- `PUT /users/{id}/` - ユーザーの更新
-- `PATCH /users/{id}/` - ユーザーの部分更新
-- `DELETE /users/{id}/` - ユーザーの削除
-- `GET /groups/` - グループのリスト
-- `GET /groups/{id}/` - 特定のグループの取得
+`users/urls.rs`を編集：
+
+```rust
+use reinhardt_routers::UnifiedRouter;
+use crate::views::UserViewSet;
+
+pub fn url_patterns() -> UnifiedRouter {
+    let router = UnifiedRouter::builder()
+        .build();
+
+    // ViewSetを登録 - CRUD エンドポイントが自動生成されます
+    router.register_viewset("users", UserViewSet::new());
+
+    router
+}
+```
+
+### プロジェクトURLへの登録
+
+`src/config/urls.rs`を編集：
+
+```rust
+use reinhardt::prelude::*;
+use std::sync::Arc;
+
+pub fn url_patterns() -> Arc<UnifiedRouter> {
+    let router = UnifiedRouter::builder()
+        .build();
+
+    // usersアプリのルーターを含める
+    router.include_router("/api/", users::urls::url_patterns(), Some("users".to_string()));
+
+    Arc::new(router)
+}
+```
+
+`src/config/apps.rs`を編集：
+
+```rust
+use reinhardt_macros::installed_apps;
+
+installed_apps! {
+    users: "users",
+}
+
+pub fn get_installed_apps() -> Vec<String> {
+    InstalledApp::all_apps()
+}
+```
+
+これで以下のURLパターンが自動的に生成されます:
+
+- `GET /api/users/` - ユーザーのリスト
+- `POST /api/users/` - 新しいユーザーの作成
+- `GET /api/users/{id}/` - 特定のユーザーの取得
+- `PUT /api/users/{id}/` - ユーザーの更新
+- `PATCH /api/users/{id}/` - ユーザーの部分更新
+- `DELETE /api/users/{id}/` - ユーザーの削除
 
 ## パーミッション（オプション）
 
@@ -178,27 +228,33 @@ let pagination = PageNumberPagination::new(10); // 1ページあたり10件
 
 ## APIのテスト
 
+まず、開発サーバーを起動します：
+
+```bash
+cargo run --bin runserver
+```
+
 APIをテストするには、curlまたはhttpieを使用します:
 
 ```bash
 # ユーザーのリストを取得
-curl http://127.0.0.1:8000/users/
+curl http://127.0.0.1:8000/api/users/
 
 # 新しいユーザーを作成
-curl -X POST http://127.0.0.1:8000/users/ \
+curl -X POST http://127.0.0.1:8000/api/users/ \
   -H "Content-Type: application/json" \
   -d '{"username":"alice","email":"alice@example.com"}'
 
 # 特定のユーザーを取得
-curl http://127.0.0.1:8000/users/1/
+curl http://127.0.0.1:8000/api/users/1/
 
 # ユーザーを更新
-curl -X PUT http://127.0.0.1:8000/users/1/ \
+curl -X PUT http://127.0.0.1:8000/api/users/1/ \
   -H "Content-Type: application/json" \
   -d '{"username":"alice","email":"newemail@example.com"}'
 
 # ユーザーを削除
-curl -X DELETE http://127.0.0.1:8000/users/1/
+curl -X DELETE http://127.0.0.1:8000/api/users/1/
 ```
 
 ## まとめ
