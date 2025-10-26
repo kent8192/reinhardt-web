@@ -11,13 +11,11 @@
 //! - **Database Backend** (feature: `database`): Persist sessions in a database
 //! - **File Backend** (feature: `file`): Store sessions as files on disk
 //! - **Cookie Backend** (feature: `cookie`): Store encrypted sessions in cookies
-//!
-//! ## Planned Features
-//! TODO: Implement automatic session expiration and cleanup
-//! TODO: Add session key rotation support
-//! TODO: Integrate CSRF protection
-//! TODO: Support multiple session serialization formats (JSON, MessagePack, etc.)
-//! TODO: Add session storage migration tools
+//! - **Automatic Cleanup**: Remove expired sessions automatically
+//! - **Session Key Rotation**: Rotate session keys for enhanced security
+//! - **CSRF Protection**: Integration with reinhardt-forms CSRF tokens
+//! - **Multiple Serialization Formats**: JSON and MessagePack support
+//! - **Storage Migration**: Tools for migrating sessions between backends
 //!
 //! ## Quick Start
 //!
@@ -46,10 +44,15 @@
 //! ```
 
 pub mod backends;
+pub mod cleanup;
 pub mod config;
+pub mod csrf;
 pub mod di_support;
 pub mod middleware;
+pub mod migration;
 pub mod models;
+pub mod rotation;
+pub mod serialization;
 pub mod session;
 
 // Re-export common types
@@ -61,6 +64,15 @@ pub use backends::DatabaseSessionBackend;
 
 #[cfg(feature = "file")]
 pub use backends::FileSessionBackend;
+
+pub use cleanup::{CleanupConfig, CleanupableBackend, SessionCleanupTask, SessionMetadata};
+pub use csrf::{CsrfSessionManager, CsrfTokenData};
+pub use migration::{MigrationConfig, MigrationResult, Migrator, SessionMigrator};
+pub use rotation::{RotationMetadata, RotationPolicy, SessionRotator};
+pub use serialization::{JsonSerializer, SerializationFormat, Serializer};
+
+#[cfg(feature = "messagepack")]
+pub use serialization::MessagePackSerializer;
 
 pub use session::Session;
 
