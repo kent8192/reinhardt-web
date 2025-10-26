@@ -322,14 +322,74 @@ impl RateLimitMiddleware {
                 format!("route:{}", request.uri.path())
             }
             RateLimitStrategy::PerUser => {
-                // TODO: Get from user authentication info
-                "user:anonymous".to_string()
+                if let Some(user_id) = self.extract_user_id(request) {
+                    format!("user:{}", user_id)
+                } else {
+                    "user:anonymous".to_string()
+                }
             }
             RateLimitStrategy::PerIp => {
-                // TODO: Get IP address from request
-                "ip:unknown".to_string()
+                format!("ip:{}", self.extract_client_ip(request))
             }
         }
+    }
+
+    /// Extract user ID from request
+    ///
+    /// Attempts to retrieve the authenticated user ID from request extensions.
+    fn extract_user_id(&self, request: &Request) -> Option<String> {
+        // Try to get user ID from extensions
+        // The user ID might be stored as String or i64
+        if let Some(user_id) = request.extensions.get::<String>() {
+            Some(user_id)
+        } else if let Some(user_id) = request.extensions.get::<i64>() {
+            Some(user_id.to_string())
+        } else {
+            None
+        }
+    }
+
+    /// Extract client IP address from request
+    ///
+    /// Extracts the client IP in the following order:
+    /// 1. X-Forwarded-For header (first IP in the list)
+    /// 2. X-Real-IP header
+    /// 3. remote_addr field from the request
+    /// 4. Falls back to 127.0.0.1 if none available
+    fn extract_client_ip(&self, request: &Request) -> String {
+        // 1. Check X-Forwarded-For header
+        if let Some(xff) = request.headers.get("X-Forwarded-For") {
+            if let Ok(xff_str) = xff.to_str() {
+                // X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
+                // Take the first (leftmost) IP as the original client IP
+                if let Some(first_ip) = xff_str.split(',').next() {
+                    let trimmed = first_ip.trim();
+                    // Validate IP format
+                    if trimmed.parse::<std::net::IpAddr>().is_ok() {
+                        return trimmed.to_string();
+                    }
+                }
+            }
+        }
+
+        // 2. Check X-Real-IP header
+        if let Some(xri) = request.headers.get("X-Real-IP") {
+            if let Ok(ip_str) = xri.to_str() {
+                let trimmed = ip_str.trim();
+                // Validate IP format
+                if trimmed.parse::<std::net::IpAddr>().is_ok() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+
+        // 3. Check remote_addr field
+        if let Some(addr) = request.remote_addr {
+            return addr.ip().to_string();
+        }
+
+        // 4. Fallback to localhost
+        "127.0.0.1".to_string()
     }
 
     /// Create a rate limit error response
@@ -625,5 +685,291 @@ mod tests {
 
         let count = store.get_request_count("test", Duration::from_secs(60));
         assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_extract_ip_from_x_forwarded_for() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Forwarded-For",
+            "203.0.113.195, 70.41.3.18, 150.172.238.178"
+                .parse()
+                .unwrap(),
+        );
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            headers,
+            Bytes::new(),
+        );
+
+        let ip = middleware.extract_client_ip(&request);
+        assert_eq!(ip, "203.0.113.195");
+    }
+
+    #[tokio::test]
+    async fn test_extract_ip_from_x_real_ip() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Real-IP", "198.51.100.42".parse().unwrap());
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            headers,
+            Bytes::new(),
+        );
+
+        let ip = middleware.extract_client_ip(&request);
+        assert_eq!(ip, "198.51.100.42");
+    }
+
+    #[tokio::test]
+    async fn test_extract_ip_from_remote_addr() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let mut request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        // Set remote_addr
+        request.remote_addr = Some("192.0.2.123:8080".parse().unwrap());
+
+        let ip = middleware.extract_client_ip(&request);
+        assert_eq!(ip, "192.0.2.123");
+    }
+
+    #[tokio::test]
+    async fn test_extract_ip_fallback_to_localhost() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let ip = middleware.extract_client_ip(&request);
+        assert_eq!(ip, "127.0.0.1");
+    }
+
+    #[tokio::test]
+    async fn test_extract_ip_priority_x_forwarded_for_over_x_real_ip() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", "203.0.113.195".parse().unwrap());
+        headers.insert("X-Real-IP", "198.51.100.42".parse().unwrap());
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            headers,
+            Bytes::new(),
+        );
+
+        let ip = middleware.extract_client_ip(&request);
+        assert_eq!(ip, "203.0.113.195"); // X-Forwarded-For takes priority
+    }
+
+    #[tokio::test]
+    async fn test_extract_user_id_from_string() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        // Insert user ID as String
+        request.extensions.insert("user123".to_string());
+
+        let user_id = middleware.extract_user_id(&request);
+        assert_eq!(user_id, Some("user123".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_extract_user_id_from_i64() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        // Insert user ID as i64
+        request.extensions.insert(42i64);
+
+        let user_id = middleware.extract_user_id(&request);
+        assert_eq!(user_id, Some("42".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_extract_user_id_anonymous() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let user_id = middleware.extract_user_id(&request);
+        assert_eq!(user_id, None);
+    }
+
+    #[tokio::test]
+    async fn test_generate_key_per_user_authenticated() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        request.extensions.insert("user456".to_string());
+
+        let key = middleware.generate_key(&request);
+        assert_eq!(key, "user:user456");
+    }
+
+    #[tokio::test]
+    async fn test_generate_key_per_user_anonymous() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let key = middleware.generate_key(&request);
+        assert_eq!(key, "user:anonymous");
+    }
+
+    #[tokio::test]
+    async fn test_generate_key_per_ip() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
+        let middleware = RateLimitMiddleware::new(config);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", "203.0.113.195".parse().unwrap());
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            headers,
+            Bytes::new(),
+        );
+
+        let key = middleware.generate_key(&request);
+        assert_eq!(key, "ip:203.0.113.195");
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_per_ip_different_ips() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 1.0, 0.1);
+        let middleware = Arc::new(RateLimitMiddleware::new(config));
+        let handler = Arc::new(TestHandler::new(StatusCode::OK));
+
+        // First request from IP1
+        let mut headers1 = HeaderMap::new();
+        headers1.insert("X-Forwarded-For", "203.0.113.1".parse().unwrap());
+        let request1 = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            headers1,
+            Bytes::new(),
+        );
+        let response1 = middleware
+            .process(request1, handler.clone())
+            .await
+            .unwrap();
+        assert_eq!(response1.status, StatusCode::OK);
+
+        // First request from IP2 should also succeed (different bucket)
+        let mut headers2 = HeaderMap::new();
+        headers2.insert("X-Forwarded-For", "203.0.113.2".parse().unwrap());
+        let request2 = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            headers2,
+            Bytes::new(),
+        );
+        let response2 = middleware.process(request2, handler).await.unwrap();
+        assert_eq!(response2.status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_per_user_different_users() {
+        let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 1.0, 0.1);
+        let middleware = Arc::new(RateLimitMiddleware::new(config));
+        let handler = Arc::new(TestHandler::new(StatusCode::OK));
+
+        // First request from user1
+        let request1 = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        request1.extensions.insert("user1".to_string());
+        let response1 = middleware
+            .process(request1, handler.clone())
+            .await
+            .unwrap();
+        assert_eq!(response1.status, StatusCode::OK);
+
+        // First request from user2 should also succeed (different bucket)
+        let request2 = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        request2.extensions.insert("user2".to_string());
+        let response2 = middleware.process(request2, handler).await.unwrap();
+        assert_eq!(response2.status, StatusCode::OK);
     }
 }
