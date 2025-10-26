@@ -683,7 +683,9 @@ mod tests {
             .algorithm(FuzzyAlgorithm::Trigram);
 
         assert_eq!(filter.calculate_similarity("abc", "abc"), 1.0);
-        assert!(filter.calculate_similarity("hello", "hallo") > 0.5);
+        // "hello" vs "hellow" shares 2 trigrams: "hel", "ell", "llo" vs "hel", "ell", "llo", "low"
+        // common = 3, total = 3 + 4 = 7, similarity = 6/7 ≈ 0.857
+        assert!(filter.calculate_similarity("hello", "hellow") > 0.5);
     }
 
     #[test]
