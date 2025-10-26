@@ -11,7 +11,7 @@ use backends::{connection::DatabaseConnection, DatabaseError, DatabaseType, Row 
 #[cfg(feature = "pooling")]
 use deadpool_sqlx::{Pool, Runtime};
 
-use sqlx::{Any, AnyPool};
+use sqlx::{Any, AnyPool, AssertSqlSafe};
 
 /// Database engine configuration
 #[derive(Debug, Clone)]
@@ -109,7 +109,7 @@ impl Engine {
             println!("SQL: {}", sql);
         }
 
-        let result = sqlx::query(sql).execute(&self.pool).await?;
+        let result = sqlx::query(AssertSqlSafe(sql)).execute(&self.pool).await?;
         Ok(result.rows_affected())
     }
     /// Execute a query and return results
@@ -119,7 +119,7 @@ impl Engine {
             println!("SQL: {}", sql);
         }
 
-        sqlx::query(sql).fetch_all(&self.pool).await
+        sqlx::query(AssertSqlSafe(sql)).fetch_all(&self.pool).await
     }
     /// Execute a query and return a single result
     ///
@@ -128,7 +128,7 @@ impl Engine {
             println!("SQL: {}", sql);
         }
 
-        sqlx::query(sql).fetch_one(&self.pool).await
+        sqlx::query(AssertSqlSafe(sql)).fetch_one(&self.pool).await
     }
     /// Execute a query and return an optional result
     ///
@@ -140,7 +140,7 @@ impl Engine {
             println!("SQL: {}", sql);
         }
 
-        sqlx::query(sql).fetch_optional(&self.pool).await
+        sqlx::query(AssertSqlSafe(sql)).fetch_optional(&self.pool).await
     }
     /// Begin a transaction
     ///

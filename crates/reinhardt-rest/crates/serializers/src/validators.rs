@@ -44,7 +44,7 @@
 
 use crate::SerializerError;
 use reinhardt_orm::Model;
-use sqlx::{Pool, Postgres, Row};
+use sqlx::{AssertSqlSafe, Pool, Postgres, Row};
 use std::marker::PhantomData;
 use thiserror::Error;
 
@@ -232,7 +232,7 @@ impl<M: Model> UniqueValidator<M> {
 
         let count: i64 = if let Some(pk) = instance_pk {
             let pk_str = pk.to_string();
-            sqlx::query(&query)
+            sqlx::query(AssertSqlSafe(query.as_str()))
                 .bind(value)
                 .bind(pk_str)
                 .fetch_one(pool)
@@ -243,7 +243,7 @@ impl<M: Model> UniqueValidator<M> {
                 })?
                 .get("count")
         } else {
-            sqlx::query(&query)
+            sqlx::query(AssertSqlSafe(query.as_str()))
                 .bind(value)
                 .fetch_one(pool)
                 .await
@@ -407,7 +407,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
             )
         };
 
-        let mut query_builder = sqlx::query(&query);
+        let mut query_builder = sqlx::query(AssertSqlSafe(query.as_str()));
         let mut field_values = Vec::new();
         for field_name in &self.field_names {
             let value =

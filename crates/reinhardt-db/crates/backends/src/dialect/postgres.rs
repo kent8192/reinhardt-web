@@ -1,7 +1,7 @@
 //! PostgreSQL dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{postgres::PgRow, Column, PgPool, Row as SqlxRow};
+use sqlx::{postgres::PgRow, AssertSqlSafe, Column, PgPool, Row as SqlxRow};
 use std::sync::Arc;
 
 use crate::{
@@ -94,7 +94,7 @@ impl DatabaseBackend for PostgresBackend {
     }
 
     async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
-        let mut query = sqlx::query(sql);
+        let mut query = sqlx::query(AssertSqlSafe(sql));
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -105,29 +105,29 @@ impl DatabaseBackend for PostgresBackend {
     }
 
     async fn fetch_one(&self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
-        let mut query = sqlx::query(sql);
+        let mut query = sqlx::query(AssertSqlSafe(sql));
         for param in &params {
             query = Self::bind_value(query, param);
         }
-        let pg_row = query.fetch_one(self.pool.as_ref()).await?;
-        Self::convert_row(pg_row)
+        let row = query.fetch_one(self.pool.as_ref()).await?;
+        Self::convert_row(row)
     }
 
     async fn fetch_all(&self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
-        let mut query = sqlx::query(sql);
+        let mut query = sqlx::query(AssertSqlSafe(sql));
         for param in &params {
             query = Self::bind_value(query, param);
         }
-        let pg_rows = query.fetch_all(self.pool.as_ref()).await?;
-        pg_rows.into_iter().map(Self::convert_row).collect()
+        let rows = query.fetch_all(self.pool.as_ref()).await?;
+        rows.into_iter().map(Self::convert_row).collect()
     }
 
     async fn fetch_optional(&self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
-        let mut query = sqlx::query(sql);
+        let mut query = sqlx::query(AssertSqlSafe(sql));
         for param in &params {
             query = Self::bind_value(query, param);
         }
-        let pg_row = query.fetch_optional(self.pool.as_ref()).await?;
-        pg_row.map(Self::convert_row).transpose()
+        let row = query.fetch_optional(self.pool.as_ref()).await?;
+        row.map(Self::convert_row).transpose()
     }
 }

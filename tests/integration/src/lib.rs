@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use reinhardt_apps::{Handler, Request, Response, Result};
-use sqlx::{Pool, Postgres};
+use sqlx::{AssertSqlSafe, Pool, Postgres};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -79,7 +79,7 @@ pub async fn create_flatpages_tables(pool: &Pool<Postgres>) {
     // Generate and execute SQL for each operation
     for operation in &flatpages_migration.operations {
         let sql = operation.to_sql(&SqlDialect::Postgres);
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(sql.as_str()))
             .execute(pool)
             .await
             .expect("Failed to create table");
@@ -107,7 +107,7 @@ pub async fn cleanup_test_tables(pool: &Pool<Postgres>) {
     for operation in &cleanup_migration.operations {
         let sql = operation.to_sql(&SqlDialect::Postgres);
         // Ignore errors during cleanup (tables might not exist)
-        let _ = sqlx::query(&sql).execute(pool).await;
+        let _ = sqlx::query(AssertSqlSafe(sql.as_str())).execute(pool).await;
     }
 }
 
