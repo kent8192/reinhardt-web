@@ -35,6 +35,22 @@ pub use builder::{
     RouteConfig,
 };
 
+// Re-export from registry module
+pub use registry::{
+    clear_model_cache, clear_relationship_cache, clear_reverse_relations, find_model,
+    get_models_for_app, get_registered_models, get_registered_relationships,
+    get_relationships_for_model, get_relationships_to_model,
+    get_reverse_relations_for_model, register_reverse_relation, ModelMetadata,
+    RelationshipMetadata, RelationshipType, ReverseRelationMetadata, ReverseRelationType, MODELS,
+    RELATIONSHIPS,
+};
+
+// Re-export from discovery module
+pub use discovery::{
+    build_reverse_relations, create_reverse_relation, discover_all_models, discover_migrations,
+    discover_models, MigrationMetadata, RelationMetadata, RelationType,
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
