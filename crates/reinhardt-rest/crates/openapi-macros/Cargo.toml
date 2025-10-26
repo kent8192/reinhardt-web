@@ -1,0 +1,23 @@
+[package]
+name = "reinhardt-openapi-macros"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Procedural macros for OpenAPI schema generation in Reinhardt"
+keywords = ["web", "framework", "openapi", "macros"]
+categories = ["web-programming", "development-tools"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "extra-traits"] }
+
+[dev-dependencies]
+reinhardt-openapi = { path = "../openapi" }
+utoipa = "^5.4.0"
+trybuild = "1.0"

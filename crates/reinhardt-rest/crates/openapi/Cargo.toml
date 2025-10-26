@@ -8,6 +8,7 @@ authors.workspace = true
 
 [dependencies]
 reinhardt-apps = { workspace = true }
+reinhardt-openapi-macros = { path = "../openapi-macros" }
 reinhardt-serializers = { workspace = true, optional = true }
 reinhardt-viewsets = { workspace = true }
 serde = { workspace = true }

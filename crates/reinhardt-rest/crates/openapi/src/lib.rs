@@ -11,12 +11,10 @@
 //! - **YAML/JSON**: Export schemas in both formats
 //!
 //! ## Planned Features
-//! TODO: Add attribute macro support for field configuration (#[schema(example, description)])
 //! TODO: Implement nested schema generation with $ref references
 //! TODO: Add advanced enum handling (tagged, adjacently tagged, untagged)
 //! TODO: Integrate with serde attributes (#[serde(rename)], #[serde(skip)])
 //! TODO: Implement schema registry for component reuse
-//! TODO: Add validation constraint reflection (min, max, pattern)
 //!
 //! ## Example
 //!
@@ -44,6 +42,7 @@ use thiserror::Error;
 
 pub use auto_schema::{SchemaObject, ToSchema};
 pub use generator::SchemaGenerator;
+pub use reinhardt_openapi_macros::Schema;
 pub use openapi::{
     ComponentsExt, Header, Info, MediaType, OpenApiSchema, OpenApiSchemaExt, Operation,
     OperationExt, Parameter, ParameterExt, ParameterIn as ParameterLocation, PathItem, PathItemExt,
