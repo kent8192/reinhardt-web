@@ -128,6 +128,8 @@ pub struct WebSocketConnection {
     id: String,
     tx: mpsc::UnboundedSender<Message>,
     closed: Arc<RwLock<bool>>,
+    /// Subprotocol (negotiated protocol during WebSocket handshake)
+    subprotocol: Option<String>,
 }
 
 impl WebSocketConnection {
@@ -148,7 +150,58 @@ impl WebSocketConnection {
             id,
             tx,
             closed: Arc::new(RwLock::new(false)),
+            subprotocol: None,
         }
+    }
+
+    /// Creates a new WebSocket connection with the given ID, sender, and subprotocol.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_websockets::{WebSocketConnection, Message};
+    /// use tokio::sync::mpsc;
+    ///
+    /// let (tx, _rx) = mpsc::unbounded_channel();
+    /// let conn = WebSocketConnection::with_subprotocol(
+    ///     "connection_1".to_string(),
+    ///     tx,
+    ///     Some("chat".to_string())
+    /// );
+    /// assert_eq!(conn.id(), "connection_1");
+    /// assert_eq!(conn.subprotocol(), Some("chat"));
+    /// ```
+    pub fn with_subprotocol(
+        id: String,
+        tx: mpsc::UnboundedSender<Message>,
+        subprotocol: Option<String>,
+    ) -> Self {
+        Self {
+            id,
+            tx,
+            closed: Arc::new(RwLock::new(false)),
+            subprotocol,
+        }
+    }
+
+    /// Gets the negotiated subprotocol, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_websockets::{WebSocketConnection, Message};
+    /// use tokio::sync::mpsc;
+    ///
+    /// let (tx, _rx) = mpsc::unbounded_channel();
+    /// let conn = WebSocketConnection::with_subprotocol(
+    ///     "test".to_string(),
+    ///     tx,
+    ///     Some("chat".to_string())
+    /// );
+    /// assert_eq!(conn.subprotocol(), Some("chat"));
+    /// ```
+    pub fn subprotocol(&self) -> Option<&str> {
+        self.subprotocol.as_deref()
     }
     /// Gets the connection ID.
     ///
