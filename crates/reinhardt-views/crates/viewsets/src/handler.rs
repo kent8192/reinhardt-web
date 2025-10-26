@@ -396,6 +396,7 @@ where
             is_authenticated: false, // Simplified - in real implementation would check session
             is_admin: false,
             is_active: true,
+            user: None,
         };
 
         for permission in &self.permission_classes {

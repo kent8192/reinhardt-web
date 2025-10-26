@@ -1,12 +1,15 @@
 use async_trait::async_trait;
 use reinhardt_types::Request;
 
+use crate::user::User;
+
 /// Context for permission checks
 pub struct PermissionContext<'a> {
     pub request: &'a Request,
     pub is_authenticated: bool,
     pub is_admin: bool,
     pub is_active: bool,
+    pub user: Option<&'a dyn User>,
 }
 
 /// Permission trait for authorization checks

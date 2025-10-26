@@ -34,6 +34,7 @@ use async_trait::async_trait;
 ///         is_authenticated: false,
 ///         is_admin: false,
 ///         is_active: false,
+///         user: None,
 ///     };
 ///
 ///     assert!(permission.has_permission(&context).await);
@@ -78,6 +79,7 @@ impl Permission for DrfAllowAny {
 ///         is_authenticated: true,
 ///         is_admin: false,
 ///         is_active: true,
+///         user: None,
 ///     };
 ///     assert!(permission.has_permission(&context).await);
 ///
@@ -87,6 +89,7 @@ impl Permission for DrfAllowAny {
 ///         is_authenticated: false,
 ///         is_admin: false,
 ///         is_active: false,
+///         user: None,
 ///     };
 ///     assert!(!permission.has_permission(&context).await);
 /// }
@@ -130,6 +133,7 @@ impl Permission for DrfIsAuthenticated {
 ///         is_authenticated: true,
 ///         is_admin: true,
 ///         is_active: true,
+///         user: None,
 ///     };
 ///     assert!(permission.has_permission(&context).await);
 ///
@@ -139,6 +143,7 @@ impl Permission for DrfIsAuthenticated {
 ///         is_authenticated: true,
 ///         is_admin: false,
 ///         is_active: true,
+///         user: None,
 ///     };
 ///     assert!(!permission.has_permission(&context).await);
 /// }
@@ -183,6 +188,7 @@ impl Permission for DrfIsAdminUser {
 ///         is_authenticated: false,
 ///         is_admin: false,
 ///         is_active: false,
+///         user: None,
 ///     };
 ///     assert!(permission.has_permission(&context).await);
 ///
@@ -199,6 +205,7 @@ impl Permission for DrfIsAdminUser {
 ///         is_authenticated: false,
 ///         is_admin: false,
 ///         is_active: false,
+///         user: None,
 ///     };
 ///     assert!(!permission.has_permission(&context).await);
 /// }
@@ -239,6 +246,7 @@ mod tests {
             is_authenticated: false,
             is_admin: false,
             is_active: false,
+            user: None,
         };
 
         assert!(permission.has_permission(&context).await);
@@ -260,6 +268,7 @@ mod tests {
             is_authenticated: true,
             is_admin: false,
             is_active: true,
+            user: None,
         };
 
         assert!(permission.has_permission(&context).await);
@@ -281,6 +290,7 @@ mod tests {
             is_authenticated: false,
             is_admin: false,
             is_active: false,
+            user: None,
         };
 
         assert!(!permission.has_permission(&context).await);
@@ -302,6 +312,7 @@ mod tests {
             is_authenticated: true,
             is_admin: true,
             is_active: true,
+            user: None,
         };
 
         assert!(permission.has_permission(&context).await);
@@ -323,6 +334,7 @@ mod tests {
             is_authenticated: true,
             is_admin: false,
             is_active: true,
+            user: None,
         };
 
         assert!(!permission.has_permission(&context).await);
@@ -344,6 +356,7 @@ mod tests {
             is_authenticated: false,
             is_admin: true,
             is_active: false,
+            user: None,
         };
 
         assert!(!permission.has_permission(&context).await);
@@ -365,6 +378,7 @@ mod tests {
             is_authenticated: false,
             is_admin: false,
             is_active: false,
+            user: None,
         };
 
         assert!(permission.has_permission(&context).await);
@@ -386,6 +400,7 @@ mod tests {
             is_authenticated: false,
             is_admin: false,
             is_active: false,
+            user: None,
         };
 
         assert!(permission.has_permission(&context).await);
@@ -407,6 +422,7 @@ mod tests {
             is_authenticated: false,
             is_admin: false,
             is_active: false,
+            user: None,
         };
 
         assert!(permission.has_permission(&context).await);
@@ -428,6 +444,7 @@ mod tests {
             is_authenticated: false,
             is_admin: false,
             is_active: false,
+            user: None,
         };
 
         assert!(!permission.has_permission(&context).await);
@@ -449,6 +466,7 @@ mod tests {
             is_authenticated: true,
             is_admin: false,
             is_active: true,
+            user: None,
         };
 
         assert!(permission.has_permission(&context).await);
