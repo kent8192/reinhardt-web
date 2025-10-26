@@ -5,7 +5,7 @@
 //! ## Pagination Styles
 //!
 //! - **PageNumberPagination**: Simple page number based pagination
-//! - **LimitOffsetPagination**: Limit/offset based pagination  
+//! - **LimitOffsetPagination**: Limit/offset based pagination
 //! - **CursorPagination**: Cursor-based pagination for large datasets
 //!
 //! ## Example
@@ -29,1481 +29,104 @@
 //! TODO: Custom ordering strategies for cursor pagination
 //! TODO: Performance optimizations for very large datasets
 
+mod core;
+mod cursor;
+mod limit_offset;
+mod page_number;
+
+// Re-export core types and traits
+pub use crate::core::{
+    AsyncPaginator, Page, PaginatedResponse, Paginator, PaginationMetadata, SchemaParameter,
+};
+
+// Re-export pagination implementations
+pub use crate::cursor::CursorPagination;
+pub use crate::limit_offset::LimitOffsetPagination;
+pub use crate::page_number::{ErrorMessages, PageNumberPagination};
+
 use async_trait::async_trait;
-use reinhardt_exception::{Error, Result};
-use serde::{Deserialize, Serialize};
+use reinhardt_exception::Result;
 
-/// Represents pagination metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaginationMetadata {
-    pub count: usize,
-    pub next: Option<String>,
-    pub previous: Option<String>,
-}
+// ============================================================================
+// Enum Wrapper for dyn Paginator Compatibility
+// ============================================================================
 
-/// Paginated response wrapper
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaginatedResponse<T> {
-    pub count: usize,
-    pub next: Option<String>,
-    pub previous: Option<String>,
-    pub results: Vec<T>,
-}
-
-impl<T> PaginatedResponse<T> {
-    /// Creates a new paginated response with results and metadata.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::{PaginatedResponse, PaginationMetadata};
-    ///
-    /// let metadata = PaginationMetadata {
-    ///     count: 100,
-    ///     next: Some("/api/items?page=2".to_string()),
-    ///     previous: None,
-    /// };
-    /// let items = vec![1, 2, 3, 4, 5];
-    /// let response = PaginatedResponse::new(items, metadata);
-    /// assert_eq!(response.count, 100);
-    /// assert_eq!(response.results.len(), 5);
-    /// ```
-    pub fn new(results: Vec<T>, metadata: PaginationMetadata) -> Self {
-        Self {
-            count: metadata.count,
-            next: metadata.next,
-            previous: metadata.previous,
-            results,
-        }
-    }
-}
-
-/// Represents a single page of results
-#[derive(Debug, Clone)]
-pub struct Page<T> {
-    /// Items in this page
-    pub object_list: Vec<T>,
-    /// Current page number (1-indexed)
-    pub number: usize,
-    /// Total number of pages
-    pub num_pages: usize,
-    /// Total number of items across all pages
-    pub count: usize,
-    /// Items per page
-    pub page_size: usize,
-}
-
-impl<T: Clone> Page<T> {
-    /// Creates a new page with the given parameters.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let items = vec!["item1", "item2", "item3"];
-    /// let page = Page::new(items, 1, 10, 30, 3);
-    /// assert_eq!(page.number, 1);
-    /// assert_eq!(page.num_pages, 10);
-    /// assert_eq!(page.count, 30);
-    /// assert_eq!(page.object_list.len(), 3);
-    /// ```
-    pub fn new(
-        object_list: Vec<T>,
-        number: usize,
-        num_pages: usize,
-        count: usize,
-        page_size: usize,
-    ) -> Self {
-        Self {
-            object_list,
-            number,
-            num_pages,
-            count,
-            page_size,
-        }
-    }
-    /// Returns the 1-based index of the first item on this page
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let items = vec!["a", "b", "c"];
-    /// let page = Page::new(items, 2, 5, 15, 3);
-    /// assert_eq!(page.start_index(), 4); // (2-1) * 3 + 1 = 4
-    /// ```
-    pub fn start_index(&self) -> usize {
-        if self.object_list.is_empty() {
-            0
-        } else {
-            (self.number - 1) * self.page_size + 1
-        }
-    }
-    /// Returns the 1-based index of the last item on this page
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let items = vec!["a", "b", "c"];
-    /// let page = Page::new(items, 2, 5, 15, 3);
-    /// assert_eq!(page.end_index(), 6); // start_index (4) + len (3) - 1 = 6
-    /// ```
-    pub fn end_index(&self) -> usize {
-        if self.object_list.is_empty() {
-            0
-        } else {
-            self.start_index() + self.object_list.len() - 1
-        }
-    }
-    /// Returns true if there is a next page
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let items = vec![1, 2, 3];
-    /// let page = Page::new(items, 2, 5, 50, 10);
-    /// assert!(page.has_next());
-    ///
-    /// let last_page = Page::new(vec![1], 5, 5, 50, 10);
-    /// assert!(!last_page.has_next());
-    /// ```
-    pub fn has_next(&self) -> bool {
-        self.number < self.num_pages
-    }
-    /// Returns true if there is a previous page
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let items = vec![1, 2, 3];
-    /// let page = Page::new(items, 2, 5, 50, 10);
-    /// assert!(page.has_previous());
-    ///
-    /// let first_page = Page::new(vec![1], 1, 5, 50, 10);
-    /// assert!(!first_page.has_previous());
-    /// ```
-    pub fn has_previous(&self) -> bool {
-        self.number > 1
-    }
-    /// Returns true if there are other pages (previous or next)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let middle_page = Page::new(vec![1, 2, 3], 2, 5, 50, 10);
-    /// assert!(middle_page.has_other_pages());
-    ///
-    /// let only_page = Page::new(vec![1], 1, 1, 1, 10);
-    /// assert!(!only_page.has_other_pages());
-    /// ```
-    pub fn has_other_pages(&self) -> bool {
-        self.has_previous() || self.has_next()
-    }
-    /// Returns the next page number
-    ///
-    /// # Errors
-    /// Returns `InvalidPage` if there is no next page
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let page = Page::new(vec![1, 2, 3], 2, 5, 50, 10);
-    /// assert_eq!(page.next_page_number().unwrap(), 3);
-    ///
-    /// let last_page = Page::new(vec![1], 5, 5, 50, 10);
-    /// assert!(last_page.next_page_number().is_err());
-    /// ```
-    pub fn next_page_number(&self) -> Result<usize> {
-        if self.has_next() {
-            Ok(self.number + 1)
-        } else {
-            Err(Error::Validation(
-                "That page contains no results".to_string(),
-            ))
-        }
-    }
-    /// Returns the previous page number
-    ///
-    /// # Errors
-    /// Returns `InvalidPage` if there is no previous page
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let page = Page::new(vec![1, 2, 3], 3, 5, 50, 10);
-    /// assert_eq!(page.previous_page_number().unwrap(), 2);
-    ///
-    /// let first_page = Page::new(vec![1], 1, 5, 50, 10);
-    /// assert!(first_page.previous_page_number().is_err());
-    /// ```
-    pub fn previous_page_number(&self) -> Result<usize> {
-        if self.has_previous() {
-            Ok(self.number - 1)
-        } else {
-            Err(Error::InvalidPage(
-                "That page number is less than 1".to_string(),
-            ))
-        }
-    }
-    /// Returns the length of items in this page
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let items = vec!["a", "b", "c"];
-    /// let page = Page::new(items, 1, 3, 10, 5);
-    /// assert_eq!(page.len(), 3);
-    /// ```
-    pub fn len(&self) -> usize {
-        self.object_list.len()
-    }
-    /// Returns true if this page contains no items
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let empty_page: Page<i32> = Page::new(vec![], 1, 1, 0, 10);
-    /// assert!(empty_page.is_empty());
-    ///
-    /// let page = Page::new(vec![1], 1, 1, 1, 10);
-    /// assert!(!page.is_empty());
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        self.object_list.is_empty()
-    }
-    /// Returns an iterator over all page numbers (1-indexed)
-    ///
-    /// This is equivalent to Django's `paginator.page_range`
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let page = Page::new(vec![1], 2, 5, 50, 10);
-    /// let pages: Vec<usize> = page.page_range().collect();
-    /// assert_eq!(pages, vec![1, 2, 3, 4, 5]);
-    /// ```
-    pub fn page_range(&self) -> std::ops::RangeInclusive<usize> {
-        1..=self.num_pages
-    }
-    /// Returns an elided page range with ellipsis for long ranges
-    ///
-    /// This is equivalent to Django's `paginator.get_elided_page_range()`
-    ///
-    /// # Arguments
-    /// * `on_each_side` - Number of pages on each side of current page (default: 3)
-    /// * `on_ends` - Number of pages on start and end (default: 2)
-    ///
-    /// # Returns
-    /// Vector of page numbers or `None` (representing ellipsis)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    // For a large page range, ellipsis (None) are added
-    /// let page = Page::new(vec![1], 10, 20, 200, 10);
-    /// let elided = page.get_elided_page_range(2, 2);
-    // Result like: [Some(1), Some(2), None, Some(8), Some(9), Some(10), Some(11), Some(12), None, Some(19), Some(20)]
-    /// assert!(elided.contains(&None)); // Contains ellipsis
-    /// assert!(elided.contains(&Some(10))); // Contains current page
-    /// ```
-    pub fn get_elided_page_range(&self, on_each_side: usize, on_ends: usize) -> Vec<Option<usize>> {
-        let mut result = Vec::new();
-
-        // If we have few enough pages, don't elide
-        let needed_pages = on_each_side * 2 + 1 + on_ends * 2;
-        if self.num_pages <= needed_pages {
-            return (1..=self.num_pages).map(Some).collect();
-        }
-
-        // Start pages
-        for i in 1..=on_ends {
-            if i <= self.num_pages {
-                result.push(Some(i));
-            }
-        }
-
-        // Left ellipsis
-        let left_start = self.number.saturating_sub(on_each_side);
-        if left_start > on_ends + 1 {
-            result.push(None); // Ellipsis
-        }
-
-        // Middle pages
-        let middle_start = std::cmp::max(on_ends + 1, left_start);
-        let middle_end = std::cmp::min(self.num_pages - on_ends, self.number + on_each_side);
-
-        for i in middle_start..=middle_end {
-            if i > on_ends && i <= self.num_pages - on_ends {
-                result.push(Some(i));
-            }
-        }
-
-        // Right ellipsis
-        if middle_end < self.num_pages - on_ends {
-            result.push(None); // Ellipsis
-        }
-
-        // End pages
-        for i in (self.num_pages - on_ends + 1)..=self.num_pages {
-            if i > middle_end {
-                result.push(Some(i));
-            }
-        }
-
-        result
-    }
-    /// Get an item by index
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let items = vec!["a", "b", "c"];
-    /// let page = Page::new(items, 1, 1, 3, 10);
-    /// assert_eq!(page.get(0), Some(&"a"));
-    /// assert_eq!(page.get(2), Some(&"c"));
-    /// assert_eq!(page.get(3), None);
-    /// ```
-    pub fn get(&self, index: usize) -> Option<&T> {
-        self.object_list.get(index)
-    }
-    /// Get a slice of items
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::Page;
-    ///
-    /// let items = vec!["a", "b", "c", "d", "e"];
-    /// let page = Page::new(items, 1, 1, 5, 10);
-    /// assert_eq!(page.get_slice(1..4), Some(&["b", "c", "d"][..]));
-    /// assert_eq!(page.get_slice(0..2), Some(&["a", "b"][..]));
-    /// ```
-    pub fn get_slice(&self, range: std::ops::Range<usize>) -> Option<&[T]> {
-        self.object_list.get(range)
-    }
-}
-
-// Implement Index trait for direct indexing
-impl<T: Clone> std::ops::Index<usize> for Page<T> {
-    type Output = T;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.object_list[index]
-    }
-}
-
-// Implement IntoIterator for Page
-impl<T: Clone> IntoIterator for Page<T> {
-    type Item = T;
-    type IntoIter = std::vec::IntoIter<T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.object_list.into_iter()
-    }
-}
-
-// Implement IntoIterator for &Page
-impl<'a, T: Clone> IntoIterator for &'a Page<T> {
-    type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.object_list.iter()
-    }
-}
-
-/// Trait for pagination implementations
-#[async_trait]
-pub trait Paginator: Send + Sync {
-    /// Paginate the given items based on request parameters
-    fn paginate<T: Clone + Send + Sync>(
-        &self,
-        items: &[T],
-        page_param: Option<&str>,
-        base_url: &str,
-    ) -> Result<PaginatedResponse<T>>;
-
-    /// Get the pagination metadata for schema generation
-    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        Vec::new()
-    }
-}
-
-/// Async version of Paginator trait
+/// Enum wrapper for Paginator implementations to enable dyn compatibility
 ///
-/// This trait provides async pagination support, equivalent to Django's AsyncPaginator.
-/// For in-memory operations, this simply wraps the sync implementation.
-/// This trait becomes useful when integrating with async data sources (databases, APIs).
-#[async_trait]
-pub trait AsyncPaginator: Send + Sync {
-    /// Async version of paginate
-    ///
-    /// Paginate the given items based on request parameters asynchronously.
-    async fn apaginate<T: Clone + Send + Sync>(
-        &self,
-        items: &[T],
-        page_param: Option<&str>,
-        base_url: &str,
-    ) -> Result<PaginatedResponse<T>>;
-
-    /// Get the pagination metadata for schema generation
-    /// (Same as sync version - no I/O involved)
-    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        Vec::new()
-    }
-}
-
-/// Schema parameter for OpenAPI/documentation
-#[derive(Debug, Clone, Serialize)]
-pub struct SchemaParameter {
-    pub name: String,
-    pub required: bool,
-    pub location: String,
-    pub description: String,
-    pub schema_type: String,
-}
-
-/// Page number based pagination
-///
-/// Example URLs:
-/// - `http://api.example.org/accounts/?page=4`
-/// - `http://api.example.org/accounts/?page=4&page_size=100`
+/// This wrapper allows using different pagination strategies through a single
+/// type, solving the issue that `Paginator` trait with generic methods cannot
+/// be used as `dyn Paginator`.
 #[derive(Debug, Clone)]
-pub struct PageNumberPagination {
-    /// Default page size
-    pub page_size: usize,
-    /// Query parameter name for page number
-    pub page_query_param: String,
-    /// Query parameter name for page size (optional)
-    pub page_size_query_param: Option<String>,
-    /// Maximum allowed page size
-    pub max_page_size: Option<usize>,
-    /// Strings that represent the last page
-    pub last_page_strings: Vec<String>,
-    /// Minimum number of items allowed on the last page
-    /// If the last page has fewer items than this, they are merged with the previous page
-    pub orphans: usize,
-    /// Whether to allow an empty first page
-    pub allow_empty_first_page: bool,
-    /// Custom error messages
-    pub error_messages: ErrorMessages,
+pub enum PaginatorImpl {
+    /// Page number based pagination
+    PageNumber(PageNumberPagination),
+    /// Limit/offset based pagination
+    LimitOffset(LimitOffsetPagination),
+    /// Cursor based pagination
+    Cursor(CursorPagination),
 }
 
-/// Custom error messages for pagination
-#[derive(Debug, Clone)]
-pub struct ErrorMessages {
-    /// Error message for invalid page number (not parseable as integer)
-    pub invalid_page: String,
-    /// Error message for page number less than 1
-    pub min_page: String,
-    /// Error message for page number beyond available pages
-    pub no_results: String,
-}
-
-impl Default for ErrorMessages {
-    fn default() -> Self {
-        Self {
-            invalid_page: "Invalid page number".to_string(),
-            min_page: "That page number is less than 1".to_string(),
-            no_results: "That page contains no results".to_string(),
-        }
-    }
-}
-
-impl Default for PageNumberPagination {
-    fn default() -> Self {
-        Self {
-            page_size: 10,
-            page_query_param: "page".to_string(),
-            page_size_query_param: None,
-            max_page_size: None,
-            last_page_strings: vec!["last".to_string()],
-            orphans: 0,
-            allow_empty_first_page: true,
-            error_messages: ErrorMessages::default(),
-        }
-    }
-}
-
-impl PageNumberPagination {
-    /// Creates a new PageNumberPagination with default settings
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::PageNumberPagination;
-    ///
-    /// let paginator = PageNumberPagination::new();
-    /// assert_eq!(paginator.page_size, 10);
-    /// assert_eq!(paginator.page_query_param, "page");
-    /// ```
-    pub fn new() -> Self {
-        Self::default()
-    }
-    /// Sets the default page size for pagination
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::PageNumberPagination;
-    ///
-    /// let paginator = PageNumberPagination::new().page_size(20);
-    /// assert_eq!(paginator.page_size, 20);
-    /// ```
-    pub fn page_size(mut self, size: usize) -> Self {
-        self.page_size = size;
-        self
-    }
-    /// Sets the maximum allowed page size
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::PageNumberPagination;
-    ///
-    /// let paginator = PageNumberPagination::new()
-    ///     .page_size(10)
-    ///     .max_page_size(100);
-    /// assert_eq!(paginator.max_page_size, Some(100));
-    /// ```
-    pub fn max_page_size(mut self, size: usize) -> Self {
-        self.max_page_size = Some(size);
-        self
-    }
-    /// Sets the query parameter name for custom page size
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::PageNumberPagination;
-    ///
-    /// let paginator = PageNumberPagination::new()
-    ///     .page_size_query_param("limit");
-    /// assert_eq!(paginator.page_size_query_param, Some("limit".to_string()));
-    /// ```
-    pub fn page_size_query_param(mut self, param: impl Into<String>) -> Self {
-        self.page_size_query_param = Some(param.into());
-        self
-    }
-    /// Sets the minimum number of items allowed on the last page
-    ///
-    /// If the last page has fewer items than this, they are merged with the previous page
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::PageNumberPagination;
-    ///
-    /// let paginator = PageNumberPagination::new()
-    ///     .page_size(10)
-    ///     .orphans(3);
-    /// assert_eq!(paginator.orphans, 3);
-    /// ```
-    pub fn orphans(mut self, orphans: usize) -> Self {
-        self.orphans = orphans;
-        self
-    }
-    /// Sets whether to allow an empty first page
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::PageNumberPagination;
-    ///
-    /// let paginator = PageNumberPagination::new()
-    ///     .allow_empty_first_page(false);
-    /// assert_eq!(paginator.allow_empty_first_page, false);
-    /// ```
-    pub fn allow_empty_first_page(mut self, allow: bool) -> Self {
-        self.allow_empty_first_page = allow;
-        self
-    }
-    /// Sets custom error messages for pagination errors
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::{PageNumberPagination, ErrorMessages};
-    ///
-    /// let messages = ErrorMessages {
-    ///     invalid_page: "Invalid page!".to_string(),
-    ///     min_page: "Page too low!".to_string(),
-    ///     no_results: "No results!".to_string(),
-    /// };
-    /// let paginator = PageNumberPagination::new()
-    ///     .error_messages(messages);
-    /// assert_eq!(paginator.error_messages.invalid_page, "Invalid page!");
-    /// ```
-    pub fn error_messages(mut self, messages: ErrorMessages) -> Self {
-        self.error_messages = messages;
-        self
-    }
-    /// Get a page, returning a valid page even with invalid arguments
-    ///
-    /// This is a lenient version that:
-    /// - Returns the first page if the page number is invalid (not parseable)
-    /// - Returns the last page if the page number is out of range
-    /// - Never returns an error
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::{PageNumberPagination, Page};
-    ///
-    /// let paginator = PageNumberPagination::new().page_size(5);
-    /// let items: Vec<i32> = (1..=20).collect();
-    ///
-    // Get page 2
-    /// let page = paginator.get_page(&items, Some("2"));
-    /// assert_eq!(page.number, 2);
-    /// assert_eq!(page.len(), 5);
-    ///
-    // Invalid page number defaults to page 1
-    /// let page = paginator.get_page(&items, Some("invalid"));
-    /// assert_eq!(page.number, 1);
-    ///
-    // Out of range page number returns last page
-    /// let page = paginator.get_page(&items, Some("100"));
-    /// assert_eq!(page.number, 4);
-    /// ```
-    pub fn get_page<T: Clone>(&self, items: &[T], page_param: Option<&str>) -> Page<T> {
-        let total_count = items.len();
-
-        // Calculate total pages (same logic as paginate)
-        let total_pages = if total_count == 0 {
-            if self.allow_empty_first_page {
-                1
-            } else {
-                1 // Return 1 even if empty to avoid error
-            }
-        } else {
-            if total_count <= self.page_size {
-                1
-            } else {
-                let pages = total_count / self.page_size;
-                let remainder = total_count % self.page_size;
-                if remainder > 0 && remainder <= self.orphans {
-                    pages
-                } else if remainder > 0 {
-                    pages + 1
-                } else {
-                    pages
-                }
-            }
-        };
-
-        // Parse page number with fallback
-        let page_number = page_param
-            .and_then(|p| self.parse_page_number(p, total_pages).ok())
-            .unwrap_or(1); // Default to 1 if parsing fails
-
-        // Clamp page number to valid range
-        let page_number = if page_number > total_pages && total_count > 0 {
-            total_pages // Return last page if out of range
-        } else if page_number == 0 {
-            1
-        } else {
-            page_number
-        };
-
-        // Calculate offsets
-        let (start, end) = if total_count == 0 {
-            (0, 0)
-        } else if page_number == total_pages {
-            let start = (page_number - 1) * self.page_size;
-            (start, total_count)
-        } else {
-            let start = (page_number - 1) * self.page_size;
-            let end = std::cmp::min(start + self.page_size, total_count);
-            (start, end)
-        };
-
-        let object_list = items[start..end].to_vec();
-
-        Page {
-            object_list,
-            number: page_number,
-            num_pages: total_pages,
-            count: total_count,
-            page_size: self.page_size,
-        }
-    }
-    /// Async version of get_page
-    ///
-    /// Returns a valid page even with invalid arguments, never errors.
-    /// This is the async equivalent of Django's `aget_page()`.
-    ///
-    /// # Note
-    /// For in-memory operations (current implementation), this simply calls
-    /// the sync version since no I/O is involved.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::PageNumberPagination;
-    ///
-    /// async fn example() {
-    ///     let paginator = PageNumberPagination::new().page_size(5);
-    ///     let items: Vec<i32> = (1..=20).collect();
-    ///
-    ///     let page = paginator.aget_page(&items, Some("2")).await;
-    ///     assert_eq!(page.number, 2);
-    ///     assert_eq!(page.len(), 5);
-    /// }
-    /// ```
-    pub async fn aget_page<T: Clone + Send + Sync>(
-        &self,
-        items: &[T],
-        page_param: Option<&str>,
-    ) -> Page<T> {
-        self.get_page(items, page_param)
-    }
-
-    fn parse_page_number(&self, page_str: &str, total_pages: usize) -> Result<usize> {
-        // Check if it's a "last" page string
-        if self.last_page_strings.iter().any(|s| s == page_str) {
-            return Ok(total_pages);
-        }
-
-        // Try to parse as integer first
-        if let Ok(n) = page_str.parse::<usize>() {
-            if n == 0 {
-                return Err(Error::InvalidPage(self.error_messages.min_page.clone()));
-            }
-            return Ok(n);
-        }
-
-        // Try to parse as float and convert to integer
-        if let Ok(f) = page_str.parse::<f64>() {
-            // Check if it's a valid integer float (e.g., 1.0, 2.0)
-            if f.fract() == 0.0 && f > 0.0 {
-                let n = f as usize;
-                if n == 0 {
-                    return Err(Error::InvalidPage(self.error_messages.min_page.clone()));
-                }
-                return Ok(n);
-            }
-        }
-
-        // If all parsing failed, return error
-        Err(Error::InvalidPage(self.error_messages.invalid_page.clone()))
-    }
-
-    fn build_url(&self, base_url: &str, page: usize) -> String {
-        let url = url::Url::parse(base_url)
-            .unwrap_or_else(|_| url::Url::parse(&format!("http://localhost{}", base_url)).unwrap());
-
-        let mut new_url = url.clone();
-        new_url
-            .query_pairs_mut()
-            .clear()
-            .append_pair(&self.page_query_param, &page.to_string());
-
-        // Copy other query parameters
-        for (key, value) in url.query_pairs() {
-            if key != self.page_query_param {
-                new_url.query_pairs_mut().append_pair(&key, &value);
-            }
-        }
-
-        new_url.to_string()
-    }
-}
-
-#[async_trait]
-impl Paginator for PageNumberPagination {
+impl Paginator for PaginatorImpl {
     fn paginate<T: Clone + Send + Sync>(
         &self,
         items: &[T],
         page_param: Option<&str>,
         base_url: &str,
     ) -> Result<PaginatedResponse<T>> {
-        let total_count = items.len();
-
-        // Handle empty list with allow_empty_first_page=false
-        if total_count == 0 && !self.allow_empty_first_page {
-            return Err(Error::InvalidPage(self.error_messages.no_results.clone()));
+        match self {
+            Self::PageNumber(p) => p.paginate(items, page_param, base_url),
+            Self::LimitOffset(p) => p.paginate(items, page_param, base_url),
+            Self::Cursor(p) => p.paginate(items, page_param, base_url),
         }
-
-        // Calculate total pages considering orphans
-        let total_pages = if total_count == 0 {
-            if self.allow_empty_first_page {
-                1
-            } else {
-                0
-            }
-        } else {
-            // Calculate pages with orphans consideration
-            if total_count <= self.page_size {
-                1
-            } else {
-                let pages = total_count / self.page_size;
-                let remainder = total_count % self.page_size;
-
-                // If remainder is small enough (orphans), merge with previous page
-                if remainder > 0 && remainder <= self.orphans {
-                    // Merge with previous page
-                    pages
-                } else if remainder > 0 {
-                    // Create new page
-                    pages + 1
-                } else {
-                    pages
-                }
-            }
-        };
-
-        // Get page number
-        let page_number = if let Some(param) = page_param {
-            self.parse_page_number(param, total_pages)?
-        } else {
-            1
-        };
-
-        // Validate page number
-        if page_number > total_pages && total_count > 0 {
-            return Err(Error::InvalidPage(self.error_messages.no_results.clone()));
-        }
-
-        // Calculate offset considering orphans
-        let (start, end) = if total_count == 0 {
-            (0, 0)
-        } else if page_number == total_pages {
-            // Last page: might include orphans from calculation
-            let start = (page_number - 1) * self.page_size;
-            (start, total_count)
-        } else {
-            let start = (page_number - 1) * self.page_size;
-            let end = std::cmp::min(start + self.page_size, total_count);
-            (start, end)
-        };
-
-        // Get page results
-        let results = items[start..end].to_vec();
-
-        // Build next/previous links
-        let next = if page_number < total_pages {
-            Some(self.build_url(base_url, page_number + 1))
-        } else {
-            None
-        };
-
-        let previous = if page_number > 1 {
-            Some(self.build_url(base_url, page_number - 1))
-        } else {
-            None
-        };
-
-        Ok(PaginatedResponse {
-            count: total_count,
-            next,
-            previous,
-            results,
-        })
     }
 
     fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        let mut params = vec![SchemaParameter {
-            name: self.page_query_param.clone(),
-            required: false,
-            location: "query".to_string(),
-            description: "A page number within the paginated result set.".to_string(),
-            schema_type: "integer".to_string(),
-        }];
-
-        if let Some(ref page_size_param) = self.page_size_query_param {
-            params.push(SchemaParameter {
-                name: page_size_param.clone(),
-                required: false,
-                location: "query".to_string(),
-                description: "Number of results to return per page.".to_string(),
-                schema_type: "integer".to_string(),
-            });
+        match self {
+            Self::PageNumber(p) => Paginator::get_schema_parameters(p),
+            Self::LimitOffset(p) => Paginator::get_schema_parameters(p),
+            Self::Cursor(p) => Paginator::get_schema_parameters(p),
         }
-
-        params
     }
 }
 
 #[async_trait]
-impl AsyncPaginator for PageNumberPagination {
+impl AsyncPaginator for PaginatorImpl {
     async fn apaginate<T: Clone + Send + Sync>(
         &self,
         items: &[T],
         page_param: Option<&str>,
         base_url: &str,
     ) -> Result<PaginatedResponse<T>> {
-        // For in-memory operations, just call the sync version
-        self.paginate(items, page_param, base_url)
+        match self {
+            Self::PageNumber(p) => p.apaginate(items, page_param, base_url).await,
+            Self::LimitOffset(p) => p.apaginate(items, page_param, base_url).await,
+            Self::Cursor(p) => p.apaginate(items, page_param, base_url).await,
+        }
     }
 
     fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        Paginator::get_schema_parameters(self)
-    }
-}
-
-/// Limit/offset based pagination
-///
-/// Example URLs:
-/// - `http://api.example.org/accounts/?limit=100`
-/// - `http://api.example.org/accounts/?offset=400&limit=100`
-#[derive(Debug, Clone)]
-pub struct LimitOffsetPagination {
-    /// Default limit (page size)
-    pub default_limit: usize,
-    /// Query parameter name for limit
-    pub limit_query_param: String,
-    /// Query parameter name for offset
-    pub offset_query_param: String,
-    /// Maximum allowed limit
-    pub max_limit: Option<usize>,
-}
-
-impl Default for LimitOffsetPagination {
-    fn default() -> Self {
-        Self {
-            default_limit: 10,
-            limit_query_param: "limit".to_string(),
-            offset_query_param: "offset".to_string(),
-            max_limit: None,
+        match self {
+            Self::PageNumber(p) => AsyncPaginator::get_schema_parameters(p),
+            Self::LimitOffset(p) => AsyncPaginator::get_schema_parameters(p),
+            Self::Cursor(p) => AsyncPaginator::get_schema_parameters(p),
         }
     }
 }
 
-impl LimitOffsetPagination {
-    /// Creates a new LimitOffsetPagination with default settings
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::LimitOffsetPagination;
-    ///
-    /// let paginator = LimitOffsetPagination::new();
-    /// assert_eq!(paginator.default_limit, 10);
-    /// assert_eq!(paginator.limit_query_param, "limit");
-    /// assert_eq!(paginator.offset_query_param, "offset");
-    /// ```
-    pub fn new() -> Self {
-        Self::default()
-    }
-    /// Sets the default limit (page size) for pagination
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::LimitOffsetPagination;
-    ///
-    /// let paginator = LimitOffsetPagination::new().default_limit(25);
-    /// assert_eq!(paginator.default_limit, 25);
-    /// ```
-    pub fn default_limit(mut self, limit: usize) -> Self {
-        self.default_limit = limit;
-        self
-    }
-    /// Sets the maximum allowed limit
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::LimitOffsetPagination;
-    ///
-    /// let paginator = LimitOffsetPagination::new()
-    ///     .default_limit(10)
-    ///     .max_limit(100);
-    /// assert_eq!(paginator.max_limit, Some(100));
-    /// ```
-    pub fn max_limit(mut self, limit: usize) -> Self {
-        self.max_limit = Some(limit);
-        self
+impl PaginatorImpl {
+    /// Create a page number pagination instance
+    pub fn page_number(pagination: PageNumberPagination) -> Self {
+        Self::PageNumber(pagination)
     }
 
-    fn parse_positive_int(value: &str) -> Result<usize> {
-        value
-            .parse::<usize>()
-            .map_err(|_| Error::Validation(format!("Invalid number: {}", value)))
+    /// Create a limit/offset pagination instance
+    pub fn limit_offset(pagination: LimitOffsetPagination) -> Self {
+        Self::LimitOffset(pagination)
     }
 
-    /// Parse limit and offset from URL query parameters
-    fn parse_params(&self, params: &str, _base_url: &str) -> Result<(usize, usize)> {
-        // Try to parse as URL first, otherwise treat as query string
-        let query_string = if params.starts_with("http") || params.starts_with('/') {
-            if let Ok(url) = url::Url::parse(params)
-                .or_else(|_| url::Url::parse(&format!("http://localhost{}", params)))
-            {
-                url.query().unwrap_or("").to_string()
-            } else {
-                params.to_string()
-            }
-        } else {
-            params.to_string()
-        };
-
-        let mut limit = self.default_limit;
-        let mut offset = 0;
-
-        // Parse query parameters
-        for pair in query_string.split('&') {
-            let parts: Vec<&str> = pair.split('=').collect();
-            if parts.len() == 2 {
-                let key = parts[0];
-                let value = parts[1];
-
-                if key == self.limit_query_param {
-                    limit = Self::parse_positive_int(value)?;
-                    // Apply max_limit if configured
-                    if let Some(max) = self.max_limit {
-                        if limit > max {
-                            return Err(Error::InvalidLimit(format!(
-                                "Limit {} exceeds maximum {}",
-                                limit, max
-                            )));
-                        }
-                    }
-                } else if key == self.offset_query_param {
-                    offset = Self::parse_positive_int(value)?;
-                }
-            }
-        }
-
-        Ok((limit, offset))
-    }
-
-    fn build_url(&self, base_url: &str, offset: usize, limit: usize) -> String {
-        let url = url::Url::parse(base_url)
-            .unwrap_or_else(|_| url::Url::parse(&format!("http://localhost{}", base_url)).unwrap());
-
-        let mut new_url = url.clone();
-        new_url
-            .query_pairs_mut()
-            .clear()
-            .append_pair(&self.offset_query_param, &offset.to_string())
-            .append_pair(&self.limit_query_param, &limit.to_string());
-
-        // Copy other query parameters
-        for (key, value) in url.query_pairs() {
-            if key != self.offset_query_param && key != self.limit_query_param {
-                new_url.query_pairs_mut().append_pair(&key, &value);
-            }
-        }
-
-        new_url.to_string()
-    }
-}
-
-#[async_trait]
-impl Paginator for LimitOffsetPagination {
-    fn paginate<T: Clone + Send + Sync>(
-        &self,
-        items: &[T],
-        params: Option<&str>,
-        base_url: &str,
-    ) -> Result<PaginatedResponse<T>> {
-        // Parse query parameters from URL or params string
-        let (limit, offset) = if let Some(param_str) = params {
-            self.parse_params(param_str, base_url)?
-        } else {
-            (self.default_limit, 0)
-        };
-
-        let total_count = items.len();
-
-        // Validate offset
-        if offset > total_count {
-            return Ok(PaginatedResponse {
-                count: total_count,
-                next: None,
-                previous: None,
-                results: vec![],
-            });
-        }
-
-        // Calculate slice bounds
-        let start = offset;
-        let end = std::cmp::min(start + limit, total_count);
-
-        // Get results
-        let results = items[start..end].to_vec();
-
-        // Build next/previous links
-        let next = if end < total_count {
-            Some(self.build_url(base_url, offset + limit, limit))
-        } else {
-            None
-        };
-
-        let previous = if offset > 0 {
-            let prev_offset = if offset >= limit { offset - limit } else { 0 };
-            Some(self.build_url(base_url, prev_offset, limit))
-        } else {
-            None
-        };
-
-        Ok(PaginatedResponse {
-            count: total_count,
-            next,
-            previous,
-            results,
-        })
-    }
-
-    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        vec![
-            SchemaParameter {
-                name: self.limit_query_param.clone(),
-                required: false,
-                location: "query".to_string(),
-                description: "Number of results to return per page.".to_string(),
-                schema_type: "integer".to_string(),
-            },
-            SchemaParameter {
-                name: self.offset_query_param.clone(),
-                required: false,
-                location: "query".to_string(),
-                description: "The initial index from which to return the results.".to_string(),
-                schema_type: "integer".to_string(),
-            },
-        ]
-    }
-}
-
-/// Cursor-based pagination for large datasets
-///
-/// Provides consistent pagination even when items are added/removed.
-/// Uses opaque cursor tokens instead of page numbers.
-#[derive(Debug, Clone)]
-pub struct CursorPagination {
-    /// Default page size
-    pub page_size: usize,
-    /// Query parameter name for cursor
-    pub cursor_query_param: String,
-    /// Query parameter name for page size (optional)
-    pub page_size_query_param: Option<String>,
-    /// Ordering field(s) for cursor
-    pub ordering: Vec<String>,
-    /// Maximum allowed page size
-    pub max_page_size: Option<usize>,
-}
-
-#[async_trait]
-impl AsyncPaginator for LimitOffsetPagination {
-    async fn apaginate<T: Clone + Send + Sync>(
-        &self,
-        items: &[T],
-        params: Option<&str>,
-        base_url: &str,
-    ) -> Result<PaginatedResponse<T>> {
-        // For in-memory operations, just call the sync version
-        self.paginate(items, params, base_url)
-    }
-
-    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        Paginator::get_schema_parameters(self)
-    }
-}
-
-impl Default for CursorPagination {
-    fn default() -> Self {
-        Self {
-            page_size: 10,
-            cursor_query_param: "cursor".to_string(),
-            page_size_query_param: Some("page_size".to_string()),
-            ordering: vec!["-created".to_string()],
-            max_page_size: Some(100),
-        }
-    }
-}
-
-impl CursorPagination {
-    /// Creates a new CursorPagination with default settings
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::CursorPagination;
-    ///
-    /// let paginator = CursorPagination::new();
-    /// assert_eq!(paginator.page_size, 10);
-    /// assert_eq!(paginator.cursor_query_param, "cursor");
-    /// assert_eq!(paginator.max_page_size, Some(100));
-    /// ```
-    pub fn new() -> Self {
-        Self::default()
-    }
-    /// Sets the default page size for cursor pagination
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::CursorPagination;
-    ///
-    /// let paginator = CursorPagination::new().page_size(20);
-    /// assert_eq!(paginator.page_size, 20);
-    /// ```
-    pub fn page_size(mut self, size: usize) -> Self {
-        self.page_size = size;
-        self
-    }
-    /// Sets the maximum allowed page size
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::CursorPagination;
-    ///
-    /// let paginator = CursorPagination::new()
-    ///     .page_size(10)
-    ///     .max_page_size(50);
-    /// assert_eq!(paginator.max_page_size, Some(50));
-    /// ```
-    pub fn max_page_size(mut self, size: usize) -> Self {
-        self.max_page_size = Some(size);
-        self
-    }
-    /// Sets the ordering fields for cursor-based pagination
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_pagination::CursorPagination;
-    ///
-    /// let paginator = CursorPagination::new()
-    ///     .ordering(vec!["-created_at".to_string(), "id".to_string()]);
-    /// assert_eq!(paginator.ordering, vec!["-created_at", "id"]);
-    /// ```
-    pub fn ordering(mut self, fields: Vec<String>) -> Self {
-        self.ordering = fields;
-        self
-    }
-
-    /// Encode cursor with timestamp and checksum for security
-    /// Format: base64(position:timestamp:checksum)
-    fn encode_cursor(&self, position: usize) -> String {
-        use base64::{engine::general_purpose, Engine as _};
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        // Create checksum to prevent tampering
-        let mut hasher = DefaultHasher::new();
-        position.hash(&mut hasher);
-        timestamp.hash(&mut hasher);
-        let checksum = hasher.finish();
-
-        let cursor_data = format!("{}:{}:{}", position, timestamp, checksum);
-        general_purpose::STANDARD.encode(cursor_data.as_bytes())
-    }
-
-    /// Decode and validate cursor
-    fn decode_cursor(&self, cursor: &str) -> Result<usize> {
-        use base64::{engine::general_purpose, Engine as _};
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let decoded = general_purpose::STANDARD
-            .decode(cursor)
-            .map_err(|_| Error::InvalidPage("Invalid cursor".to_string()))?;
-        let cursor_data = String::from_utf8(decoded)
-            .map_err(|_| Error::InvalidPage("Invalid cursor encoding".to_string()))?;
-
-        // Parse cursor components
-        let parts: Vec<&str> = cursor_data.split(':').collect();
-        if parts.len() != 3 {
-            return Err(Error::InvalidPage("Malformed cursor".to_string()));
-        }
-
-        let position: usize = parts[0]
-            .parse()
-            .map_err(|_| Error::InvalidPage("Invalid cursor value".to_string()))?;
-        let timestamp: u64 = parts[1]
-            .parse()
-            .map_err(|_| Error::InvalidPage("Invalid cursor timestamp".to_string()))?;
-        let provided_checksum: u64 = parts[2]
-            .parse()
-            .map_err(|_| Error::InvalidPage("Invalid cursor checksum".to_string()))?;
-
-        // Verify checksum
-        let mut hasher = DefaultHasher::new();
-        position.hash(&mut hasher);
-        timestamp.hash(&mut hasher);
-        let expected_checksum = hasher.finish();
-
-        if provided_checksum != expected_checksum {
-            return Err(Error::InvalidPage("Cursor checksum mismatch".to_string()));
-        }
-
-        // Check if cursor is too old (optional: 24 hour expiry)
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        if now - timestamp > 86400 {
-            return Err(Error::Validation("Cursor expired".to_string()));
-        }
-
-        Ok(position)
-    }
-
-    fn build_url(&self, base_url: &str, cursor: &str) -> String {
-        let url = url::Url::parse(base_url)
-            .unwrap_or_else(|_| url::Url::parse(&format!("http://localhost{}", base_url)).unwrap());
-
-        let mut new_url = url.clone();
-        new_url
-            .query_pairs_mut()
-            .clear()
-            .append_pair(&self.cursor_query_param, cursor);
-
-        // Copy other query parameters (including page_size)
-        for (key, value) in url.query_pairs() {
-            if key != self.cursor_query_param {
-                new_url.query_pairs_mut().append_pair(&key, &value);
-            }
-        }
-
-        new_url.to_string()
-    }
-}
-
-#[async_trait]
-impl Paginator for CursorPagination {
-    fn paginate<T: Clone + Send + Sync>(
-        &self,
-        items: &[T],
-        cursor_param: Option<&str>,
-        base_url: &str,
-    ) -> Result<PaginatedResponse<T>> {
-        let total_count = items.len();
-
-        // Parse page_size from URL if page_size_query_param is set
-        let page_size = if let Some(ref param_name) = self.page_size_query_param {
-            if let Ok(url) = url::Url::parse(base_url) {
-                url.query_pairs()
-                    .find(|(key, _)| key == param_name)
-                    .and_then(|(_, value)| value.parse::<usize>().ok())
-                    .filter(|&size| size > 0) // Reject 0 or negative
-                    .map(|size| {
-                        // Clamp to max_page_size if set
-                        if let Some(max) = self.max_page_size {
-                            std::cmp::min(size, max)
-                        } else {
-                            size
-                        }
-                    })
-                    .unwrap_or(self.page_size)
-            } else {
-                self.page_size
-            }
-        } else {
-            self.page_size
-        };
-
-        // Get position from cursor
-        let position = if let Some(cursor) = cursor_param {
-            self.decode_cursor(cursor)?
-        } else {
-            0
-        };
-
-        // Calculate slice bounds
-        let start = position;
-        let end = std::cmp::min(start + page_size, total_count);
-
-        // Get results
-        let results = items[start..end].to_vec();
-
-        // Build next/previous cursors
-        let next = if end < total_count {
-            let next_cursor = self.encode_cursor(end);
-            Some(self.build_url(base_url, &next_cursor))
-        } else {
-            None
-        };
-
-        let previous = if position > 0 {
-            let prev_position = if position >= self.page_size {
-                position - self.page_size
-            } else {
-                0
-            };
-            let prev_cursor = self.encode_cursor(prev_position);
-            Some(self.build_url(base_url, &prev_cursor))
-        } else {
-            None
-        };
-
-        Ok(PaginatedResponse {
-            count: total_count,
-            next,
-            previous,
-            results,
-        })
-    }
-
-    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        let mut params = vec![SchemaParameter {
-            name: self.cursor_query_param.clone(),
-            required: false,
-            location: "query".to_string(),
-            description: "The pagination cursor value.".to_string(),
-            schema_type: "string".to_string(),
-        }];
-
-        if let Some(ref param_name) = self.page_size_query_param {
-            params.push(SchemaParameter {
-                name: param_name.clone(),
-                required: false,
-                location: "query".to_string(),
-                description: "Number of results to return per page.".to_string(),
-                schema_type: "integer".to_string(),
-            });
-        }
-
-        params
-    }
-}
-
-#[async_trait]
-impl AsyncPaginator for CursorPagination {
-    async fn apaginate<T: Clone + Send + Sync>(
-        &self,
-        items: &[T],
-        cursor_param: Option<&str>,
-        base_url: &str,
-    ) -> Result<PaginatedResponse<T>> {
-        // For in-memory operations, just call the sync version
-        self.paginate(items, cursor_param, base_url)
-    }
-
-    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        Paginator::get_schema_parameters(self)
+    /// Create a cursor pagination instance
+    pub fn cursor(pagination: CursorPagination) -> Self {
+        Self::Cursor(pagination)
     }
 }
 
@@ -1592,7 +215,10 @@ mod tests {
 
         let result = paginator.paginate(&items, Some("invalid"), "http://api.example.com/items");
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::InvalidPage(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            reinhardt_exception::Error::InvalidPage(_)
+        ));
     }
 
     #[test]
@@ -1602,7 +228,10 @@ mod tests {
 
         let result = paginator.paginate(&items, Some("0"), "http://api.example.com/items");
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::InvalidPage(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            reinhardt_exception::Error::InvalidPage(_)
+        ));
     }
 
     #[test]
@@ -1778,7 +407,10 @@ mod tests {
 
         let result = paginator.paginate(&items, Some("limit=50"), "http://api.example.com/items");
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::InvalidLimit(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            reinhardt_exception::Error::InvalidLimit(_)
+        ));
     }
 
     #[test]
@@ -1850,7 +482,10 @@ mod tests {
             "http://api.example.com/items",
         );
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::InvalidPage(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            reinhardt_exception::Error::InvalidPage(_)
+        ));
     }
 
     #[test]
@@ -2187,7 +822,10 @@ mod tests {
 
         let result = paginator.paginate(&items, Some("1"), "http://api.example.com/items");
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::InvalidPage(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            reinhardt_exception::Error::InvalidPage(_)
+        ));
     }
 
     #[test]
@@ -2237,7 +875,7 @@ mod tests {
         // Test invalid page (non-numeric)
         let result = paginator.paginate(&items, Some("abc"), "http://api.example.com/items");
         assert!(result.is_err());
-        if let Err(Error::InvalidPage(msg)) = result {
+        if let Err(reinhardt_exception::Error::InvalidPage(msg)) = result {
             assert_eq!(msg, "Wrong page number");
         } else {
             panic!("Expected InvalidPage error");
@@ -2246,7 +884,7 @@ mod tests {
         // Test min page (page 0)
         let result = paginator.paginate(&items, Some("0"), "http://api.example.com/items");
         assert!(result.is_err());
-        if let Err(Error::InvalidPage(msg)) = result {
+        if let Err(reinhardt_exception::Error::InvalidPage(msg)) = result {
             assert_eq!(msg, "Too small");
         } else {
             panic!("Expected InvalidPage error");
@@ -2255,7 +893,7 @@ mod tests {
         // Test no results (page beyond range)
         let result = paginator.paginate(&items, Some("10"), "http://api.example.com/items");
         assert!(result.is_err());
-        if let Err(Error::InvalidPage(msg)) = result {
+        if let Err(reinhardt_exception::Error::InvalidPage(msg)) = result {
             assert_eq!(msg, "There is nothing here");
         } else {
             panic!("Expected InvalidPage error");
@@ -2270,7 +908,7 @@ mod tests {
         // Test default error message for out of range
         let result = paginator.paginate(&items, Some("10"), "http://api.example.com/items");
         assert!(result.is_err());
-        if let Err(Error::InvalidPage(msg)) = result {
+        if let Err(reinhardt_exception::Error::InvalidPage(msg)) = result {
             assert_eq!(msg, "That page contains no results");
         } else {
             panic!("Expected InvalidPage error");
@@ -2279,7 +917,7 @@ mod tests {
         // Test default error message for page 0
         let result = paginator.paginate(&items, Some("0"), "http://api.example.com/items");
         assert!(result.is_err());
-        if let Err(Error::InvalidPage(msg)) = result {
+        if let Err(reinhardt_exception::Error::InvalidPage(msg)) = result {
             assert_eq!(msg, "That page number is less than 1");
         } else {
             panic!("Expected InvalidPage error");
@@ -2300,7 +938,7 @@ mod tests {
         // Custom message for min_page
         let result = paginator.paginate(&items, Some("0"), "http://api.example.com/items");
         assert!(result.is_err());
-        if let Err(Error::InvalidPage(msg)) = result {
+        if let Err(reinhardt_exception::Error::InvalidPage(msg)) = result {
             assert_eq!(msg, "Too small");
         } else {
             panic!("Expected InvalidPage error");
@@ -2309,7 +947,7 @@ mod tests {
         // Default message for no_results
         let result = paginator.paginate(&items, Some("10"), "http://api.example.com/items");
         assert!(result.is_err());
-        if let Err(Error::InvalidPage(msg)) = result {
+        if let Err(reinhardt_exception::Error::InvalidPage(msg)) = result {
             assert_eq!(msg, "That page contains no results");
         } else {
             panic!("Expected InvalidPage error");
@@ -2566,6 +1204,15 @@ mod tests {
         );
     }
 
+    // Tests for async operations are in a separate module
+    // since they require tokio runtime
+}
+
+// Async tests in a separate module
+#[cfg(test)]
+mod async_tests {
+    use super::*;
+
     // ========================================
     // Async Tests - PageNumberPagination
     // ========================================
@@ -2664,7 +1311,7 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        if let Err(Error::InvalidPage(msg)) = result {
+        if let Err(reinhardt_exception::Error::InvalidPage(msg)) = result {
             assert_eq!(msg, "Custom no results");
         }
     }
@@ -2764,7 +1411,10 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::InvalidLimit(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            reinhardt_exception::Error::InvalidLimit(_)
+        ));
     }
 
     #[tokio::test]
@@ -2897,88 +1547,5 @@ mod tests {
 
         assert_eq!(page.results.len(), 10);
         assert!(page.next.is_none()); // No more items
-    }
-}
-
-// ============================================================================
-// Enum Wrapper for dyn Paginator Compatibility
-// ============================================================================
-
-/// Enum wrapper for Paginator implementations to enable dyn compatibility
-///
-/// This wrapper allows using different pagination strategies through a single
-/// type, solving the issue that `Paginator` trait with generic methods cannot
-/// be used as `dyn Paginator`.
-#[derive(Debug, Clone)]
-pub enum PaginatorImpl {
-    /// Page number based pagination
-    PageNumber(PageNumberPagination),
-    /// Limit/offset based pagination
-    LimitOffset(LimitOffsetPagination),
-    /// Cursor based pagination
-    Cursor(CursorPagination),
-}
-
-impl Paginator for PaginatorImpl {
-    fn paginate<T: Clone + Send + Sync>(
-        &self,
-        items: &[T],
-        page_param: Option<&str>,
-        base_url: &str,
-    ) -> Result<PaginatedResponse<T>> {
-        match self {
-            Self::PageNumber(p) => p.paginate(items, page_param, base_url),
-            Self::LimitOffset(p) => p.paginate(items, page_param, base_url),
-            Self::Cursor(p) => p.paginate(items, page_param, base_url),
-        }
-    }
-
-    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        match self {
-            Self::PageNumber(p) => Paginator::get_schema_parameters(p),
-            Self::LimitOffset(p) => Paginator::get_schema_parameters(p),
-            Self::Cursor(p) => Paginator::get_schema_parameters(p),
-        }
-    }
-}
-
-#[async_trait]
-impl AsyncPaginator for PaginatorImpl {
-    async fn apaginate<T: Clone + Send + Sync>(
-        &self,
-        items: &[T],
-        page_param: Option<&str>,
-        base_url: &str,
-    ) -> Result<PaginatedResponse<T>> {
-        match self {
-            Self::PageNumber(p) => p.apaginate(items, page_param, base_url).await,
-            Self::LimitOffset(p) => p.apaginate(items, page_param, base_url).await,
-            Self::Cursor(p) => p.apaginate(items, page_param, base_url).await,
-        }
-    }
-
-    fn get_schema_parameters(&self) -> Vec<SchemaParameter> {
-        match self {
-            Self::PageNumber(p) => AsyncPaginator::get_schema_parameters(p),
-            Self::LimitOffset(p) => AsyncPaginator::get_schema_parameters(p),
-            Self::Cursor(p) => AsyncPaginator::get_schema_parameters(p),
-        }
-    }
-}
-
-impl PaginatorImpl {
-    /// Create a page number pagination instance
-    pub fn page_number(pagination: PageNumberPagination) -> Self {
-        Self::PageNumber(pagination)
-    }
-
-    /// Create a limit/offset pagination instance
-    pub fn limit_offset(pagination: LimitOffsetPagination) -> Self {
-        Self::LimitOffset(pagination)
-    }
-
-    /// Create a cursor pagination instance
-    pub fn cursor(pagination: CursorPagination) -> Self {
-        Self::Cursor(pagination)
     }
 }
