@@ -2,18 +2,16 @@
 //!
 //! Authentication and authorization system for Reinhardt framework.
 //!
-//! ## Planned Features
-//! TODO: DjangoModelPermissions - Django-style model permissions
-//! TODO: DjangoModelPermissionsOrAnonReadOnly - Anonymous read access
-//! TODO: ModelPermission - CRUD permissions per model
-//! TODO: Permission Checking - Object-level permission support
-//! TODO: DRF Authentication Classes - Compatible authentication interfaces
-//! TODO: DRF Permission Classes - Compatible permission interfaces
-//! TODO: Browsable API Support - Integration with DRF-style browsable API
-//! TODO: User Management - CRUD operations for users
-//! TODO: Group Management - User groups and permissions
-//! TODO: Permission Assignment - Assign permissions to users/groups
-//! TODO: createsuperuser Command - CLI tool for creating admin users
+//! ## Features
+//!
+//! - **DjangoModelPermissions**: Django-style model permissions with `app_label.action_model` format
+//! - **DjangoModelPermissionsOrAnonReadOnly**: Anonymous read access for unauthenticated users
+//! - **Object-Level Permissions**: Fine-grained access control on individual objects
+//! - **User Management**: CRUD operations for users with password hashing
+//! - **Group Management**: User groups and permission assignment
+//! - **DRF-Compatible Authentication**: Multiple authentication backends (JWT, Token, Session, OAuth2)
+//! - **DRF-Compatible Permissions**: Permission classes for common authorization scenarios
+//! - **createsuperuser Command**: CLI tool for creating admin users
 
 pub mod advanced_permissions;
 pub mod backend;
@@ -21,11 +19,13 @@ pub mod basic;
 pub mod di_support;
 pub mod drf_authentication;
 pub mod drf_permissions;
+pub mod group_management;
 pub mod handlers;
 pub mod ip_permission;
 pub mod jwt;
 pub mod mfa;
 pub mod model_permissions;
+pub mod object_permissions;
 pub mod oauth2;
 pub mod permission_operators;
 pub mod permissions;
@@ -37,8 +37,9 @@ pub mod token_blacklist;
 pub mod token_rotation;
 pub mod token_storage;
 pub mod user;
+pub mod user_management;
 
-pub use advanced_permissions::{ObjectPermission, RoleBasedPermission};
+pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
 pub use backend::{Argon2Hasher, AuthBackend, CompositeAuthBackend, PasswordHasher};
 pub use basic::BasicAuthentication as HttpBasicAuth;
 pub use drf_authentication::{
@@ -48,11 +49,17 @@ pub use drf_authentication::{
 pub use drf_permissions::{
     DrfAllowAny, DrfIsAdminUser, DrfIsAuthenticated, DrfIsAuthenticatedOrReadOnly,
 };
+pub use group_management::{
+    CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,
+};
 pub use handlers::{LoginCredentials, LoginHandler, LogoutHandler, SESSION_COOKIE_NAME};
 pub use ip_permission::{CidrRange, IpBlacklistPermission, IpWhitelistPermission};
 pub use jwt::{Claims, JwtAuth};
 pub use mfa::MFAAuthentication as MfaManager;
-pub use model_permissions::ModelPermission;
+pub use model_permissions::{
+    DjangoModelPermissions, DjangoModelPermissionsOrAnonReadOnly, ModelPermission,
+};
+pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPermissionManager};
 pub use oauth2::{
     AccessToken, AuthorizationCode, GrantType, InMemoryOAuth2Store, OAuth2Application,
     OAuth2Authentication, OAuth2TokenStore,
@@ -78,6 +85,9 @@ pub use token_storage::{
     InMemoryTokenStorage, StoredToken, TokenStorage, TokenStorageError, TokenStorageResult,
 };
 pub use user::{AnonymousUser, SimpleUser, User};
+pub use user_management::{
+    CreateUserData, UpdateUserData, UserManagementError, UserManagementResult, UserManager,
+};
 
 /// Authentication errors
 #[derive(Debug, Clone)]
