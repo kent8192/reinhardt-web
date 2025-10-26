@@ -10,14 +10,8 @@ fn test_write_simple_migration() {
         Migration::new("0001_initial", "testapp").add_operation(Operation::CreateTable {
             name: "users".to_string(),
             columns: vec![
-                ColumnDefinition {
-                    name: "id".to_string(),
-                    type_definition: "INTEGER PRIMARY KEY".to_string(),
-                },
-                ColumnDefinition {
-                    name: "username".to_string(),
-                    type_definition: "VARCHAR(150) NOT NULL".to_string(),
-                },
+                ColumnDefinition::new("id", "INTEGER PRIMARY KEY"),
+                ColumnDefinition::new("username", "VARCHAR(150) NOT NULL"),
             ],
             constraints: vec![],
         });
@@ -42,10 +36,7 @@ fn test_write_add_column_migration() {
     let migration =
         Migration::new("0002_add_email", "testapp").add_operation(Operation::AddColumn {
             table: "users".to_string(),
-            column: ColumnDefinition {
-                name: "email".to_string(),
-                type_definition: "VARCHAR(255)".to_string(),
-            },
+            column: ColumnDefinition::new("email", "VARCHAR(255)"),
         });
 
     let writer = MigrationWriter::new(migration);
@@ -81,10 +72,7 @@ fn test_write_alter_column_migration() {
         Migration::new("0004_alter_username", "testapp").add_operation(Operation::AlterColumn {
             table: "users".to_string(),
             column: "username".to_string(),
-            new_definition: ColumnDefinition {
-                name: "username".to_string(),
-                type_definition: "VARCHAR(200) NOT NULL".to_string(),
-            },
+            new_definition: ColumnDefinition::new("username", "VARCHAR(200) NOT NULL"),
         });
 
     let writer = MigrationWriter::new(migration);
@@ -120,14 +108,8 @@ fn test_write_migration_with_dependencies() {
         .add_operation(Operation::CreateTable {
             name: "profile".to_string(),
             columns: vec![
-                ColumnDefinition {
-                    name: "id".to_string(),
-                    type_definition: "INTEGER PRIMARY KEY".to_string(),
-                },
-                ColumnDefinition {
-                    name: "user_id".to_string(),
-                    type_definition: "INTEGER NOT NULL".to_string(),
-                },
+                ColumnDefinition::new("id", "INTEGER PRIMARY KEY"),
+                ColumnDefinition::new("user_id", "INTEGER NOT NULL"),
             ],
             constraints: vec![],
         });
@@ -148,23 +130,14 @@ fn test_write_migration_with_multiple_operations() {
         .add_operation(Operation::CreateTable {
             name: "categories".to_string(),
             columns: vec![
-                ColumnDefinition {
-                    name: "id".to_string(),
-                    type_definition: "INTEGER PRIMARY KEY".to_string(),
-                },
-                ColumnDefinition {
-                    name: "name".to_string(),
-                    type_definition: "VARCHAR(100) NOT NULL".to_string(),
-                },
+                ColumnDefinition::new("id", "INTEGER PRIMARY KEY"),
+                ColumnDefinition::new("name", "VARCHAR(100) NOT NULL"),
             ],
             constraints: vec![],
         })
         .add_operation(Operation::AddColumn {
             table: "users".to_string(),
-            column: ColumnDefinition {
-                name: "category_id".to_string(),
-                type_definition: "INTEGER".to_string(),
-            },
+            column: ColumnDefinition::new("category_id", "INTEGER"),
         });
 
     let writer = MigrationWriter::new(migration);
@@ -182,10 +155,7 @@ fn test_migration_file_format() {
     // Test that the generated migration file has correct format
     let migration = Migration::new("0001_initial", "myapp").add_operation(Operation::CreateTable {
         name: "test_table".to_string(),
-        columns: vec![ColumnDefinition {
-            name: "id".to_string(),
-            type_definition: "INTEGER".to_string(),
-        }],
+        columns: vec![ColumnDefinition::new("id", "INTEGER")],
         constraints: vec![],
     });
 
@@ -211,10 +181,7 @@ fn test_write_to_file() {
     let migration =
         Migration::new("0001_initial", "testapp").add_operation(Operation::CreateTable {
             name: "test".to_string(),
-            columns: vec![ColumnDefinition {
-                name: "id".to_string(),
-                type_definition: "INTEGER".to_string(),
-            }],
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
             constraints: vec![],
         });
 
@@ -243,14 +210,8 @@ fn test_serialization_indentation() {
         Migration::new("0001_initial", "testapp").add_operation(Operation::CreateTable {
             name: "users".to_string(),
             columns: vec![
-                ColumnDefinition {
-                    name: "id".to_string(),
-                    type_definition: "INTEGER".to_string(),
-                },
-                ColumnDefinition {
-                    name: "name".to_string(),
-                    type_definition: "VARCHAR(100)".to_string(),
-                },
+                ColumnDefinition::new("id", "INTEGER"),
+                ColumnDefinition::new("name", "VARCHAR(100)"),
             ],
             constraints: vec![],
         });
