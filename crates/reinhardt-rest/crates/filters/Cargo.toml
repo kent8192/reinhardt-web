@@ -8,12 +8,19 @@ description = "Filtering backends for Reinhardt framework (Django REST Framework
 [dependencies]
 reinhardt-apps = { workspace = true }
 reinhardt-orm = { workspace = true }
+reinhardt-cache = { workspace = true, optional = true }
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 regex = "1.10"
 geo-types = "0.7"
+sha2 = "0.10"
+hex = "0.4"
+
+[features]
+default = []
+caching = ["dep:reinhardt-cache"]
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util"] }

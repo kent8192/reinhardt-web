@@ -1,0 +1,521 @@
+//! Custom filter backend system
+//!
+//! Provides a pluggable filter backend architecture for specialized filtering needs.
+//!
+//! # Examples
+//!
+//! ```
+//! use reinhardt_filters::{FilterBackend, FilterResult, CustomFilterBackend};
+//! use std::collections::HashMap;
+//! use async_trait::async_trait;
+//!
+//! // Define a custom filter backend
+//! struct MyCustomFilter;
+//!
+//! #[async_trait]
+//! impl FilterBackend for MyCustomFilter {
+//!     async fn filter_queryset(
+//!         &self,
+//!         query_params: &HashMap<String, String>,
+//!         sql: String,
+//!     ) -> FilterResult<String> {
+//!         // Custom filtering logic
+//!         Ok(sql)
+//!     }
+//! }
+//!
+//! # async fn example() {
+//! // Use the custom filter
+//! let filter = MyCustomFilter;
+//! let mut backend = CustomFilterBackend::new();
+//! backend.add_filter(Box::new(filter));
+//! # }
+//! ```
+
+use crate::filter::{FilterBackend, FilterError, FilterResult};
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// A composable filter backend that chains multiple filters
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_filters::{FilterBackend, CustomFilterBackend};
+/// use std::collections::HashMap;
+/// use async_trait::async_trait;
+///
+/// struct SearchFilter;
+/// struct OrderingFilter;
+///
+/// #[async_trait]
+/// impl FilterBackend for SearchFilter {
+///     async fn filter_queryset(
+///         &self,
+///         query_params: &HashMap<String, String>,
+///         sql: String,
+///     ) -> reinhardt_filters::FilterResult<String> {
+///         Ok(sql)
+///     }
+/// }
+///
+/// #[async_trait]
+/// impl FilterBackend for OrderingFilter {
+///     async fn filter_queryset(
+///         &self,
+///         query_params: &HashMap<String, String>,
+///         sql: String,
+///     ) -> reinhardt_filters::FilterResult<String> {
+///         Ok(sql)
+///     }
+/// }
+///
+/// # async fn example() {
+/// let mut backend = CustomFilterBackend::new();
+/// backend.add_filter(Box::new(SearchFilter));
+/// backend.add_filter(Box::new(OrderingFilter));
+///
+/// let params = HashMap::new();
+/// let result = backend.filter_queryset(&params, "SELECT * FROM users".to_string()).await;
+/// # }
+/// ```
+#[derive(Default)]
+pub struct CustomFilterBackend {
+    filters: Vec<Arc<dyn FilterBackend>>,
+}
+
+impl CustomFilterBackend {
+    /// Create a new custom filter backend
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_filters::CustomFilterBackend;
+    ///
+    /// let backend = CustomFilterBackend::new();
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            filters: Vec::new(),
+        }
+    }
+
+    /// Add a filter to the backend chain
+    ///
+    /// Filters are applied in the order they are added.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_filters::{FilterBackend, CustomFilterBackend};
+    /// use std::collections::HashMap;
+    /// use async_trait::async_trait;
+    ///
+    /// struct MyFilter;
+    ///
+    /// #[async_trait]
+    /// impl FilterBackend for MyFilter {
+    ///     async fn filter_queryset(
+    ///         &self,
+    ///         query_params: &HashMap<String, String>,
+    ///         sql: String,
+    ///     ) -> reinhardt_filters::FilterResult<String> {
+    ///         Ok(sql)
+    ///     }
+    /// }
+    ///
+    /// let mut backend = CustomFilterBackend::new();
+    /// backend.add_filter(Box::new(MyFilter));
+    /// ```
+    pub fn add_filter(&mut self, filter: Box<dyn FilterBackend>) {
+        self.filters.push(Arc::from(filter));
+    }
+
+    /// Get the number of filters in the chain
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_filters::{FilterBackend, CustomFilterBackend};
+    /// use std::collections::HashMap;
+    /// use async_trait::async_trait;
+    ///
+    /// struct MyFilter;
+    ///
+    /// #[async_trait]
+    /// impl FilterBackend for MyFilter {
+    ///     async fn filter_queryset(
+    ///         &self,
+    ///         query_params: &HashMap<String, String>,
+    ///         sql: String,
+    ///     ) -> reinhardt_filters::FilterResult<String> {
+    ///         Ok(sql)
+    ///     }
+    /// }
+    ///
+    /// let mut backend = CustomFilterBackend::new();
+    /// assert_eq!(backend.filter_count(), 0);
+    /// backend.add_filter(Box::new(MyFilter));
+    /// assert_eq!(backend.filter_count(), 1);
+    /// ```
+    pub fn filter_count(&self) -> usize {
+        self.filters.len()
+    }
+}
+
+#[async_trait]
+impl FilterBackend for CustomFilterBackend {
+    async fn filter_queryset(
+        &self,
+        query_params: &HashMap<String, String>,
+        mut sql: String,
+    ) -> FilterResult<String> {
+        for filter in &self.filters {
+            sql = filter.filter_queryset(query_params, sql).await?;
+        }
+        Ok(sql)
+    }
+}
+
+/// A simple search filter backend implementation
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_filters::{FilterBackend, SimpleSearchBackend};
+/// use std::collections::HashMap;
+///
+/// # async fn example() {
+/// let backend = SimpleSearchBackend::new("search");
+/// let mut params = HashMap::new();
+/// params.insert("search".to_string(), "rust".to_string());
+///
+/// let sql = "SELECT * FROM articles".to_string();
+/// let result = backend.filter_queryset(&params, sql).await.unwrap();
+/// assert!(result.contains("WHERE"));
+/// # }
+/// ```
+pub struct SimpleSearchBackend {
+    param_name: String,
+    fields: Vec<String>,
+}
+
+impl SimpleSearchBackend {
+    /// Create a new simple search backend
+    ///
+    /// # Arguments
+    ///
+    /// * `param_name` - The query parameter name to look for (e.g., "search", "q")
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_filters::SimpleSearchBackend;
+    ///
+    /// let backend = SimpleSearchBackend::new("search");
+    /// ```
+    pub fn new(param_name: impl Into<String>) -> Self {
+        Self {
+            param_name: param_name.into(),
+            fields: Vec::new(),
+        }
+    }
+
+    /// Add a field to search in
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_filters::SimpleSearchBackend;
+    ///
+    /// let backend = SimpleSearchBackend::new("search")
+    ///     .with_field("title")
+    ///     .with_field("content");
+    /// ```
+    pub fn with_field(mut self, field: impl Into<String>) -> Self {
+        self.fields.push(field.into());
+        self
+    }
+}
+
+#[async_trait]
+impl FilterBackend for SimpleSearchBackend {
+    async fn filter_queryset(
+        &self,
+        query_params: &HashMap<String, String>,
+        sql: String,
+    ) -> FilterResult<String> {
+        if let Some(search_query) = query_params.get(&self.param_name) {
+            if self.fields.is_empty() {
+                return Err(FilterError::InvalidParameter(
+                    "No search fields configured".to_string(),
+                ));
+            }
+
+            let conditions: Vec<String> = self
+                .fields
+                .iter()
+                .map(|field| format!("{} LIKE '%{}%'", field, search_query))
+                .collect();
+
+            let where_clause = format!("WHERE ({})", conditions.join(" OR "));
+
+            if sql.to_uppercase().contains("WHERE") {
+                Ok(sql.replace("WHERE", &format!("{} AND", where_clause)))
+            } else {
+                Ok(format!("{} {}", sql, where_clause))
+            }
+        } else {
+            Ok(sql)
+        }
+    }
+}
+
+/// A simple ordering filter backend implementation
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_filters::{FilterBackend, SimpleOrderingBackend};
+/// use std::collections::HashMap;
+///
+/// # async fn example() {
+/// let backend = SimpleOrderingBackend::new("ordering")
+///     .allow_field("created_at")
+///     .allow_field("title");
+///
+/// let mut params = HashMap::new();
+/// params.insert("ordering".to_string(), "-created_at".to_string());
+///
+/// let sql = "SELECT * FROM articles".to_string();
+/// let result = backend.filter_queryset(&params, sql).await.unwrap();
+/// assert!(result.contains("ORDER BY created_at DESC"));
+/// # }
+/// ```
+pub struct SimpleOrderingBackend {
+    param_name: String,
+    allowed_fields: Vec<String>,
+}
+
+impl SimpleOrderingBackend {
+    /// Create a new simple ordering backend
+    ///
+    /// # Arguments
+    ///
+    /// * `param_name` - The query parameter name to look for (e.g., "ordering", "sort")
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_filters::SimpleOrderingBackend;
+    ///
+    /// let backend = SimpleOrderingBackend::new("ordering");
+    /// ```
+    pub fn new(param_name: impl Into<String>) -> Self {
+        Self {
+            param_name: param_name.into(),
+            allowed_fields: Vec::new(),
+        }
+    }
+
+    /// Add an allowed field for ordering
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_filters::SimpleOrderingBackend;
+    ///
+    /// let backend = SimpleOrderingBackend::new("ordering")
+    ///     .allow_field("created_at")
+    ///     .allow_field("title");
+    /// ```
+    pub fn allow_field(mut self, field: impl Into<String>) -> Self {
+        self.allowed_fields.push(field.into());
+        self
+    }
+}
+
+#[async_trait]
+impl FilterBackend for SimpleOrderingBackend {
+    async fn filter_queryset(
+        &self,
+        query_params: &HashMap<String, String>,
+        sql: String,
+    ) -> FilterResult<String> {
+        if let Some(ordering) = query_params.get(&self.param_name) {
+            let (field, direction) = if let Some(field_name) = ordering.strip_prefix('-') {
+                (field_name, "DESC")
+            } else {
+                (ordering.as_str(), "ASC")
+            };
+
+            if !self.allowed_fields.contains(&field.to_string()) {
+                return Err(FilterError::InvalidParameter(format!(
+                    "Field '{}' is not allowed for ordering",
+                    field
+                )));
+            }
+
+            let order_clause = format!("ORDER BY {} {}", field, direction);
+
+            if sql.to_uppercase().contains("ORDER BY") {
+                Ok(sql.replace("ORDER BY", &format!("{},", order_clause)))
+            } else {
+                Ok(format!("{} {}", sql, order_clause))
+            }
+        } else {
+            Ok(sql)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_custom_filter_backend_empty() {
+        let backend = CustomFilterBackend::new();
+        assert_eq!(backend.filter_count(), 0);
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM users".to_string();
+        let result = backend.filter_queryset(&params, sql.clone()).await.unwrap();
+        assert_eq!(result, sql);
+    }
+
+    #[tokio::test]
+    async fn test_custom_filter_backend_with_filters() {
+        let mut backend = CustomFilterBackend::new();
+        backend.add_filter(Box::new(SimpleSearchBackend::new("search").with_field("name")));
+
+        assert_eq!(backend.filter_count(), 1);
+
+        let mut params = HashMap::new();
+        params.insert("search".to_string(), "john".to_string());
+
+        let sql = "SELECT * FROM users".to_string();
+        let result = backend.filter_queryset(&params, sql).await.unwrap();
+        assert!(result.contains("WHERE"));
+        assert!(result.contains("name LIKE '%john%'"));
+    }
+
+    #[tokio::test]
+    async fn test_simple_search_backend() {
+        let backend = SimpleSearchBackend::new("search")
+            .with_field("title")
+            .with_field("content");
+
+        let mut params = HashMap::new();
+        params.insert("search".to_string(), "rust".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = backend.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("WHERE"));
+        assert!(result.contains("title LIKE '%rust%'"));
+        assert!(result.contains("content LIKE '%rust%'"));
+        assert!(result.contains("OR"));
+    }
+
+    #[tokio::test]
+    async fn test_simple_search_backend_no_query() {
+        let backend = SimpleSearchBackend::new("search").with_field("title");
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM articles".to_string();
+        let result = backend.filter_queryset(&params, sql.clone()).await.unwrap();
+
+        assert_eq!(result, sql);
+    }
+
+    #[tokio::test]
+    async fn test_simple_search_backend_no_fields() {
+        let backend = SimpleSearchBackend::new("search");
+
+        let mut params = HashMap::new();
+        params.insert("search".to_string(), "rust".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = backend.filter_queryset(&params, sql).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_simple_ordering_backend_asc() {
+        let backend = SimpleOrderingBackend::new("ordering")
+            .allow_field("created_at")
+            .allow_field("title");
+
+        let mut params = HashMap::new();
+        params.insert("ordering".to_string(), "created_at".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = backend.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("ORDER BY created_at ASC"));
+    }
+
+    #[tokio::test]
+    async fn test_simple_ordering_backend_desc() {
+        let backend = SimpleOrderingBackend::new("ordering")
+            .allow_field("created_at")
+            .allow_field("title");
+
+        let mut params = HashMap::new();
+        params.insert("ordering".to_string(), "-created_at".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = backend.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("ORDER BY created_at DESC"));
+    }
+
+    #[tokio::test]
+    async fn test_simple_ordering_backend_invalid_field() {
+        let backend = SimpleOrderingBackend::new("ordering").allow_field("created_at");
+
+        let mut params = HashMap::new();
+        params.insert("ordering".to_string(), "invalid_field".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = backend.filter_queryset(&params, sql).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_simple_ordering_backend_no_query() {
+        let backend = SimpleOrderingBackend::new("ordering").allow_field("created_at");
+
+        let params = HashMap::new();
+        let sql = "SELECT * FROM articles".to_string();
+        let result = backend.filter_queryset(&params, sql.clone()).await.unwrap();
+
+        assert_eq!(result, sql);
+    }
+
+    #[tokio::test]
+    async fn test_chained_filters() {
+        let mut backend = CustomFilterBackend::new();
+        backend.add_filter(Box::new(
+            SimpleSearchBackend::new("search").with_field("title"),
+        ));
+        backend.add_filter(Box::new(
+            SimpleOrderingBackend::new("ordering").allow_field("created_at"),
+        ));
+
+        let mut params = HashMap::new();
+        params.insert("search".to_string(), "rust".to_string());
+        params.insert("ordering".to_string(), "-created_at".to_string());
+
+        let sql = "SELECT * FROM articles".to_string();
+        let result = backend.filter_queryset(&params, sql).await.unwrap();
+
+        assert!(result.contains("WHERE"));
+        assert!(result.contains("title LIKE '%rust%'"));
+        assert!(result.contains("ORDER BY created_at DESC"));
+    }
+}

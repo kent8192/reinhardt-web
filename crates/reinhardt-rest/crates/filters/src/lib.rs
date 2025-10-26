@@ -3,16 +3,21 @@
 //! Provides compile-time type-safe filtering using reinhardt-orm's Field<M, T> system.
 //!
 //! ## Planned Features
-//! TODO: Custom filter backends for specialized use cases
-//! TODO: Query result caching
 //! TODO: Intelligent index usage
 //! TODO: Query plan optimization hints
 //! TODO: Relevance scoring
 //! TODO: Synonym handling
-//! TODO: Search result highlighting
 
 // Core filter trait
 pub mod filter;
+
+// Custom filter backends
+pub mod backend;
+
+#[cfg(feature = "caching")]
+pub mod caching;
+
+pub mod highlighting;
 
 // Type-safe filtering system
 pub mod field_extensions;
@@ -27,6 +32,17 @@ pub mod searchable;
 
 // Core exports
 pub use filter::{FilterBackend, FilterError, FilterResult};
+
+// Custom filter backend exports
+pub use backend::{CustomFilterBackend, SimpleOrderingBackend, SimpleSearchBackend};
+
+#[cfg(feature = "caching")]
+pub use caching::{generate_cache_key, CachedFilterBackend, CacheStats};
+
+pub use highlighting::{
+    HighlightedResult, HtmlHighlighter, MultiFieldHighlighter, PlainTextHighlighter,
+    SearchHighlighter,
+};
 
 // Type-safe exports
 pub use field_extensions::FieldOrderingExt;
