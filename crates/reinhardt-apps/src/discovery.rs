@@ -17,7 +17,10 @@
 //! // build_reverse_relations();
 //! ```
 
-use crate::registry::{get_models_for_app, get_registered_models, ModelMetadata};
+use crate::registry::{
+    get_models_for_app, get_registered_models, register_reverse_relation, ModelMetadata,
+    ReverseRelationMetadata, ReverseRelationType,
+};
 
 /// Discover all models for a given application
 ///
@@ -199,44 +202,51 @@ pub fn build_reverse_relations() {
 
 /// Extract relationship metadata from a model
 ///
-/// **Current Limitation**: The actual relationship metadata extraction from models
-/// is not yet fully implemented due to architectural constraints.
+/// This function retrieves all relationships originating from the specified model
+/// by looking up the model in the global RELATIONSHIPS registry.
 ///
-/// # Implementation Notes
+/// # Implementation
 ///
-/// To fully implement this function, we need to:
-/// 1. Avoid circular dependencies between `reinhardt-apps` and `reinhardt-orm`
-/// 2. Design a registry system that allows ORM to register relationship metadata
-/// 3. Consider creating a separate `reinhardt-models-registry` crate for shared types
-///
-/// # Future Implementation
-///
-/// When the architecture is updated, this function should:
-/// 1. Retrieve relationship metadata from a global registry
-/// 2. Convert relationship information to `RelationMetadata` format
-/// 3. Handle different relationship types (OneToOne, OneToMany, ManyToMany)
+/// This implementation uses Approach 1 from the architecture design:
+/// A separate distributed slice (`RELATIONSHIPS`) for relationship metadata that is
+/// populated at compile time via derive macros.
 ///
 /// # Returns
 ///
-/// Currently returns an empty vector. Full implementation pending architectural changes.
-// TODO: Implement relationship metadata extraction from ORM models
-//
-// Required changes:
-// 1. Add relationship metadata to ModelMetadata struct or create a separate registry
-// 2. Implement relationship introspection in reinhardt-orm
-// 3. Ensure no circular dependencies between crates
-// 4. Consider creating reinhardt-models-registry crate for shared relationship types
-//
-// Design considerations:
-// - Should relationship metadata be part of ModelMetadata or a separate registry?
-// - How to handle bidirectional relationship registration without circular deps?
-// - What's the best way to expose field-level relationship information?
-//
-// See docs/IMPLEMENTATION_NOTES.md for detailed architecture discussion.
-fn extract_model_relations(_model: &ModelMetadata) -> Vec<RelationMetadata> {
-    // Placeholder implementation - returns empty vector
-    // Full implementation requires architectural changes described above
-    Vec::new()
+/// A vector of `RelationMetadata` instances representing the relationships from this model.
+fn extract_model_relations(model: &ModelMetadata) -> Vec<RelationMetadata> {
+    use crate::registry::get_relationships_for_model;
+
+    // Get the qualified model name
+    let qualified_name = model.qualified_name();
+
+    // Look up relationships from the global registry
+    let relationships = get_relationships_for_model(&qualified_name);
+
+    // Convert RelationshipMetadata to RelationMetadata
+    relationships
+        .into_iter()
+        .map(|rel| {
+            // Map RelationshipType to RelationType
+            let relation_type = match rel.relationship_type {
+                crate::registry::RelationshipType::ForeignKey => RelationType::OneToMany,
+                crate::registry::RelationshipType::ManyToMany => RelationType::ManyToMany,
+                crate::registry::RelationshipType::OneToOne => RelationType::OneToOne,
+            };
+
+            // Extract model name from qualified name (e.g., "auth.User" -> "User")
+            let from_model = rel.from_model_name();
+            let to_model = rel.to_model_name();
+
+            RelationMetadata::new(
+                from_model,
+                to_model,
+                rel.field_name,
+                rel.related_name,
+                relation_type,
+            )
+        })
+        .collect()
 }
 
 /// Create a reverse relation descriptor and register it
@@ -252,10 +262,41 @@ fn extract_model_relations(_model: &ModelMetadata) -> Vec<RelationMetadata> {
 ///
 /// # Relation Type Mapping
 ///
-/// - ForeignKey (OneToMany) -> Reverse is OneToMany (collection)
-/// - ManyToMany -> Reverse is ManyToMany (collection)
-/// - OneToOne -> Reverse is OneToOne (single object)
-fn create_reverse_relation(relation: &RelationMetadata) {
+/// - ForeignKey (OneToMany) -> Reverse is ReverseOneToMany (collection)
+/// - ManyToMany -> Reverse is ReverseManyToMany (collection)
+/// - OneToOne -> Reverse is ReverseOneToOne (single object)
+///
+/// # Lazy Loading Strategy
+///
+/// Reverse relations are registered in the global registry for future use:
+/// - By default, accessing a reverse relation triggers a lazy query
+/// - Eager loading can be enabled via select_related() or prefetch_related()
+/// - The QuerySet system handles the actual database queries
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_apps::discovery::{RelationMetadata, RelationType, create_reverse_relation};
+/// use reinhardt_apps::registry::clear_reverse_relations;
+///
+/// // Clear any existing reverse relations (for testing)
+/// clear_reverse_relations();
+///
+/// // For Post.author -> User relationship
+/// let relation = RelationMetadata::new(
+///     "Post",
+///     "User",
+///     "author",
+///     Some("posts"),
+///     RelationType::OneToMany,
+/// );
+///
+/// // This creates User.posts reverse accessor
+/// create_reverse_relation(&relation);
+///
+/// // Later: user.posts().all() returns QuerySet<Post>
+/// ```
+pub fn create_reverse_relation(relation: &RelationMetadata) {
     // Generate reverse relation name
     let reverse_name = if let Some(name) = relation.related_name {
         name.to_string()
@@ -264,43 +305,31 @@ fn create_reverse_relation(relation: &RelationMetadata) {
         format!("{}_set", relation.from_model.to_lowercase())
     };
 
-    // Determine reverse relation type
+    // Map forward relation type to reverse relation type
     let reverse_type = match relation.relation_type {
-        RelationType::OneToMany => RelationType::ManyToMany, // ForeignKey reverse
-        RelationType::ManyToMany => RelationType::ManyToMany, // M2M is bidirectional
-        RelationType::OneToOne => RelationType::OneToOne,    // O2O is bidirectional
+        RelationType::OneToMany => ReverseRelationType::ReverseOneToMany,
+        RelationType::ManyToMany => ReverseRelationType::ReverseManyToMany,
+        RelationType::OneToOne => ReverseRelationType::ReverseOneToOne,
     };
 
-    // TODO: Register reverse relation in model registry
-    //
-    // Required implementation:
-    // 1. Extend ModelMetadata or create a dynamic relation registry
-    // 2. Add reverse accessor that returns QuerySet/collection
-    // 3. Implement lazy loading strategy (lazy by default, eager via select_related)
-    // 4. Handle inverse foreign keys and junction tables for M2M
-    //
-    // Example usage after implementation:
-    // ```
-    // // For Post.author -> User, creates:
-    // // User.posts (or User.post_set if no related_name)
-    // let user = User::find(1)?;
-    // let posts = user.posts().all()?; // Returns QuerySet<Post>
-    // ```
-    //
-    // Design considerations:
-    // - Should reverse relations be added to ModelMetadata statically or dynamically?
-    // - How to generate accessor methods without derive macros?
-    // - What's the best way to handle lazy vs eager loading?
-    // - Should we use trait objects or generic types for reverse accessors?
-    //
-    // Relation details:
-    // - Reverse name: {reverse_name}
-    // - Relation type: {reverse_type:?}
-    // - From: {from} -> To: {to}
-    //
-    // See docs/IMPLEMENTATION_NOTES.md for detailed design.
+    // Leak strings to get 'static lifetime for registry
+    let to_model_static: &'static str =
+        Box::leak(relation.to_model.to_string().into_boxed_str());
+    let from_model_static: &'static str =
+        Box::leak(relation.from_model.to_string().into_boxed_str());
+    let field_name_static: &'static str =
+        Box::leak(relation.field_name.to_string().into_boxed_str());
 
-    let _ = (reverse_name, reverse_type); // Suppress unused warnings until implementation
+    // Create and register reverse relation metadata
+    let reverse_relation = ReverseRelationMetadata::new(
+        to_model_static,       // Reverse relation goes on the target model
+        reverse_name,          // The accessor name (e.g., "posts" or "post_set")
+        from_model_static,     // Related model (where the forward relation is defined)
+        reverse_type,          // Type of reverse relation
+        field_name_static,     // Original field name for join queries
+    );
+
+    register_reverse_relation(reverse_relation);
 }
 
 /// Migration metadata
@@ -763,28 +792,114 @@ mod tests {
     fn test_build_reverse_relations_basic() {
         // Should not panic - basic implementation exists
         build_reverse_relations();
-        // Currently no-op as models don't expose relationship metadata
     }
 
     #[test]
-    fn test_extract_model_relations_placeholder() {
-        let metadata = ModelMetadata::new("test", "User", "users");
-        let relations = extract_model_relations(&metadata);
-        // Currently returns empty vector as relationship metadata is not exposed
+    fn test_extract_model_relations_with_registry() {
+        use crate::registry::clear_relationship_cache;
+
+        clear_relationship_cache();
+
+        // Test with blog.Post which has relationships in the test registry
+        let post_metadata = ModelMetadata::new("blog", "Post", "blog_posts");
+        let relations = extract_model_relations(&post_metadata);
+
+        // Should find the test relationships (author and tags)
+        assert_eq!(relations.len(), 2);
+
+        // Check that relationships are correctly converted
+        let field_names: Vec<&str> = relations.iter().map(|r| r.field_name).collect();
+        assert!(field_names.contains(&"author"));
+        assert!(field_names.contains(&"tags"));
+
+        // Check relationship types
+        let author_rel = relations.iter().find(|r| r.field_name == "author").unwrap();
+        assert_eq!(author_rel.relation_type, RelationType::OneToMany);
+        assert_eq!(author_rel.to_model, "User");
+
+        let tags_rel = relations.iter().find(|r| r.field_name == "tags").unwrap();
+        assert_eq!(tags_rel.relation_type, RelationType::ManyToMany);
+        assert_eq!(tags_rel.to_model, "Tag");
+    }
+
+    #[test]
+    fn test_extract_model_relations_no_relationships() {
+        use crate::registry::clear_relationship_cache;
+
+        clear_relationship_cache();
+
+        // Test with a model that has no relationships
+        let user_metadata = ModelMetadata::new("auth", "User", "auth_users");
+        let relations = extract_model_relations(&user_metadata);
         assert_eq!(relations.len(), 0);
     }
 
     #[test]
-    fn test_create_reverse_relation_default_naming() {
-        let relation =
-            RelationMetadata::new("Post", "User", "author", None, RelationType::OneToMany);
-        // Should not panic - creates reverse relation descriptor
-        create_reverse_relation(&relation);
-        // Currently no-op as registry doesn't support dynamic reverse relations
+    fn test_extract_model_relations_different_models() {
+        use crate::registry::clear_relationship_cache;
+
+        clear_relationship_cache();
+
+        // Test with different model names to ensure consistency
+        let user_metadata = ModelMetadata::new("auth", "User", "auth_users");
+        let post_metadata = ModelMetadata::new("blog", "Post", "blog_posts");
+        let comment_metadata = ModelMetadata::new("blog", "Comment", "blog_comments");
+
+        let user_relations = extract_model_relations(&user_metadata);
+        let post_relations = extract_model_relations(&post_metadata);
+        let comment_relations = extract_model_relations(&comment_metadata);
+
+        // User and Comment have no relationships, Post has 2
+        assert_eq!(user_relations.len(), 0);
+        assert_eq!(post_relations.len(), 2);
+        assert_eq!(comment_relations.len(), 0);
     }
 
     #[test]
+    fn test_extract_model_relations_no_panic() {
+        use crate::registry::clear_relationship_cache;
+
+        clear_relationship_cache();
+
+        // Ensure the function doesn't panic even with unusual inputs
+        let metadata = ModelMetadata::new("", "", "");
+        let relations = extract_model_relations(&metadata);
+        assert_eq!(relations.len(), 0);
+    }
+
+    #[test]
+    #[serial_test::serial(reverse_relations)]
+    fn test_create_reverse_relation_default_naming() {
+        use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
+
+        clear_reverse_relations();
+
+        let relation =
+            RelationMetadata::new("Post", "User", "author", None, RelationType::OneToMany);
+        create_reverse_relation(&relation);
+
+        // Verify reverse relation was registered
+        let reverse_relations = get_reverse_relations_for_model("User");
+        assert_eq!(reverse_relations.len(), 1);
+
+        let reverse = &reverse_relations[0];
+        assert_eq!(reverse.on_model, "User");
+        assert_eq!(reverse.accessor_name, "post_set"); // Default naming
+        assert_eq!(reverse.related_model, "Post");
+        assert_eq!(
+            reverse.relation_type,
+            crate::registry::ReverseRelationType::ReverseOneToMany
+        );
+        assert_eq!(reverse.through_field, "author");
+    }
+
+    #[test]
+    #[serial_test::serial(reverse_relations)]
     fn test_create_reverse_relation_with_related_name() {
+        use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
+
+        clear_reverse_relations();
+
         let relation = RelationMetadata::new(
             "Post",
             "User",
@@ -792,12 +907,24 @@ mod tests {
             Some("posts"),
             RelationType::OneToMany,
         );
-        // Should use provided related_name instead of default
         create_reverse_relation(&relation);
+
+        // Verify reverse relation was registered with custom name
+        let reverse_relations = get_reverse_relations_for_model("User");
+        assert_eq!(reverse_relations.len(), 1);
+
+        let reverse = &reverse_relations[0];
+        assert_eq!(reverse.accessor_name, "posts"); // Custom name
+        assert_eq!(reverse.related_model, "Post");
     }
 
     #[test]
+    #[serial_test::serial(reverse_relations)]
     fn test_create_reverse_relation_many_to_many() {
+        use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
+
+        clear_reverse_relations();
+
         let relation = RelationMetadata::new(
             "User",
             "Role",
@@ -806,10 +933,26 @@ mod tests {
             RelationType::ManyToMany,
         );
         create_reverse_relation(&relation);
+
+        // Verify reverse relation type for M2M
+        let reverse_relations = get_reverse_relations_for_model("Role");
+        assert_eq!(reverse_relations.len(), 1);
+
+        let reverse = &reverse_relations[0];
+        assert_eq!(reverse.accessor_name, "users");
+        assert_eq!(
+            reverse.relation_type,
+            crate::registry::ReverseRelationType::ReverseManyToMany
+        );
     }
 
     #[test]
+    #[serial_test::serial(reverse_relations)]
     fn test_create_reverse_relation_one_to_one() {
+        use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
+
+        clear_reverse_relations();
+
         let relation = RelationMetadata::new(
             "Profile",
             "User",
@@ -818,5 +961,108 @@ mod tests {
             RelationType::OneToOne,
         );
         create_reverse_relation(&relation);
+
+        // Verify reverse relation type for O2O
+        let reverse_relations = get_reverse_relations_for_model("User");
+        assert_eq!(reverse_relations.len(), 1);
+
+        let reverse = &reverse_relations[0];
+        assert_eq!(reverse.accessor_name, "profile");
+        assert_eq!(
+            reverse.relation_type,
+            crate::registry::ReverseRelationType::ReverseOneToOne
+        );
+    }
+
+    #[test]
+    #[serial_test::serial(reverse_relations)]
+    fn test_create_reverse_relation_multiple_relations() {
+        use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
+
+        clear_reverse_relations();
+
+        // User has multiple reverse relations
+        let relation1 = RelationMetadata::new(
+            "Post",
+            "User",
+            "author",
+            Some("posts"),
+            RelationType::OneToMany,
+        );
+        let relation2 = RelationMetadata::new(
+            "Comment",
+            "User",
+            "author",
+            Some("comments"),
+            RelationType::OneToMany,
+        );
+
+        create_reverse_relation(&relation1);
+        create_reverse_relation(&relation2);
+
+        let reverse_relations = get_reverse_relations_for_model("User");
+        assert_eq!(reverse_relations.len(), 2);
+
+        let accessor_names: Vec<String> = reverse_relations
+            .iter()
+            .map(|r| r.accessor_name.clone())
+            .collect();
+        assert!(accessor_names.contains(&"posts".to_string()));
+        assert!(accessor_names.contains(&"comments".to_string()));
+    }
+
+    #[test]
+    #[serial_test::serial(reverse_relations)]
+    fn test_create_reverse_relation_type_mapping() {
+        use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
+
+        clear_reverse_relations();
+
+        // Test all relation type mappings
+        let one_to_many = RelationMetadata::new(
+            "Post",
+            "User",
+            "author",
+            Some("posts"),
+            RelationType::OneToMany,
+        );
+        create_reverse_relation(&one_to_many);
+
+        let many_to_many = RelationMetadata::new(
+            "User",
+            "Group",
+            "groups",
+            Some("users"),
+            RelationType::ManyToMany,
+        );
+        create_reverse_relation(&many_to_many);
+
+        let one_to_one = RelationMetadata::new(
+            "Profile",
+            "Account",
+            "account",
+            Some("profile"),
+            RelationType::OneToOne,
+        );
+        create_reverse_relation(&one_to_one);
+
+        // Verify type mappings
+        let user_reverse = get_reverse_relations_for_model("User");
+        assert_eq!(
+            user_reverse[0].relation_type,
+            crate::registry::ReverseRelationType::ReverseOneToMany
+        );
+
+        let group_reverse = get_reverse_relations_for_model("Group");
+        assert_eq!(
+            group_reverse[0].relation_type,
+            crate::registry::ReverseRelationType::ReverseManyToMany
+        );
+
+        let account_reverse = get_reverse_relations_for_model("Account");
+        assert_eq!(
+            account_reverse[0].relation_type,
+            crate::registry::ReverseRelationType::ReverseOneToOne
+        );
     }
 }
