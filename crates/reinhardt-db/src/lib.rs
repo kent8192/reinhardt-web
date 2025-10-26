@@ -3,8 +3,8 @@
 //! Django-style database layer for Reinhardt framework.
 //!
 //! This crate provides a unified database abstraction that combines:
-//! - **Database Backends**: Low-level database operations (from `reinhardt-database`)
-//! - **Connection Pooling**: Advanced connection pool management (from `reinhardt-pool`)
+//! - **Database Backends**: Low-level database operations
+//! - **Connection Pooling**: Advanced connection pool management
 //! - **ORM**: Django-style ORM for database queries
 //! - **Migrations**: Database schema migration system
 //! - **Hybrid Types**: Common database type abstractions
@@ -85,10 +85,6 @@
 //! - `sqlite`: SQLite support
 //! - `mysql`: MySQL support
 //! - `all-databases`: Enable all database backends
-
-// Re-export database abstraction layer
-#[cfg(feature = "database")]
-pub use reinhardt_database as database;
 
 // Re-export backends with convenient module structure
 #[cfg(feature = "backends")]
