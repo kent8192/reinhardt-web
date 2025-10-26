@@ -3,7 +3,6 @@
 //! Provides compile-time type-safe filtering using reinhardt-orm's Field<M, T> system.
 //!
 //! ## Planned Features
-//! TODO: Geographic/spatial filtering
 //! TODO: Custom filter backends for specialized use cases
 //! TODO: Query result caching
 //! TODO: Intelligent index usage
@@ -19,6 +18,7 @@ pub mod filter;
 pub mod field_extensions;
 pub mod fulltext;
 pub mod fuzzy;
+pub mod geo;
 pub mod multi_term;
 pub mod ordering_field;
 pub mod query_filter;
@@ -32,6 +32,7 @@ pub use filter::{FilterBackend, FilterError, FilterResult};
 pub use field_extensions::FieldOrderingExt;
 pub use fulltext::{FullTextSearchFilter, FullTextSearchMode};
 pub use fuzzy::{FuzzyAlgorithm, FuzzySearchFilter};
+pub use geo::{BoundingBoxFilter, DistanceFilter, DistanceUnit, NearbyFilter, PolygonFilter};
 pub use multi_term::{MultiTermSearch, Operator, SearchTerm, TermType};
 pub use ordering_field::{OrderDirection, OrderingField};
 pub use query_filter::QueryFilter;
