@@ -173,7 +173,8 @@ impl ETagMiddleware {
     fn generate_etag(&self, body: &[u8]) -> String {
         let mut hasher = Sha256::new();
         hasher.update(body);
-        let hash = format!("{:x}", hasher.finalize());
+        let result = hasher.finalize();
+        let hash = hex::encode(result);
 
         // Use first 16 characters (shortened version)
         let short_hash = &hash[..16];
@@ -238,14 +239,32 @@ impl Middleware for ETagMiddleware {
             return handler.handle(request).await;
         }
 
+        // Extract If-None-Match and If-Match headers before moving request
+        let if_none_match = request
+            .headers
+            .get(hyper::header::IF_NONE_MATCH)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        let if_match = request
+            .headers
+            .get(hyper::header::IF_MATCH)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
         // Call handler
-        let response = handler.handle(request.clone()).await?;
+        let response = handler.handle(request).await?;
 
         // Generate ETag
         let etag = self.generate_etag(&response.body);
 
         // Check If-None-Match header (for GET/HEAD requests)
-        if (method == "GET" || method == "HEAD") && self.check_if_none_match(&request, &etag) {
+        if (method == "GET" || method == "HEAD")
+            && if_none_match.as_ref().map_or(false, |inm| {
+                inm.split(',')
+                    .any(|tag| tag.trim().trim_matches('"') == etag.trim_matches('"'))
+            })
+        {
             // Return 304 Not Modified
             let mut not_modified = Response::new(StatusCode::NOT_MODIFIED);
             not_modified.headers.insert(
@@ -258,7 +277,9 @@ impl Middleware for ETagMiddleware {
 
         // Check If-Match header (for PUT/PATCH/DELETE requests)
         if (method == "PUT" || method == "PATCH" || method == "DELETE")
-            && !self.check_if_match(&request, &etag)
+            && if_match
+                .as_ref()
+                .map_or(false, |im| !im.contains(&etag) && im != "*")
         {
             // Return 412 Precondition Failed
             return Ok(Response::new(StatusCode::PRECONDITION_FAILED)
