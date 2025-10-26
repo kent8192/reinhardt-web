@@ -1,14 +1,15 @@
 //! Application configuration and registry for Reinhardt
 //!
 //! ## Planned Features
-//! TODO: Implement model discovery and registration
-//! TODO: Add reverse relation building
-//! TODO: Implement ready hooks (AppConfig.ready())
-//! TODO: Add signal integration for app lifecycle events
-//! TODO: Implement migration detection
+//! - Full reverse relation building (requires ORM relationship system integration)
+//! - Migration detection and management (requires reinhardt-migrations crate)
 
 pub mod apps;
 pub mod builder;
+pub mod discovery;
+pub mod hooks;
+pub mod registry;
+pub mod signals;
 
 // Re-export from reinhardt-http
 pub use reinhardt_http::{Request, Response, StreamBody, StreamingResponse};
@@ -20,13 +21,13 @@ pub use reinhardt_settings::{DatabaseConfig, MiddlewareConfig, Settings, Templat
 pub use reinhardt_exception::{Error, Result};
 
 // Re-export from reinhardt-server
-pub use reinhardt_server::{serve, HttpServer};
+pub use reinhardt_server::{HttpServer, serve};
 
 // Re-export from reinhardt-types
 pub use reinhardt_types::{Handler, Middleware, MiddlewareChain};
 
 // Re-export from apps module
-pub use apps::{get_apps, init_apps, init_apps_checked, AppConfig, AppError, AppResult, Apps};
+pub use apps::{AppConfig, AppError, AppResult, Apps, get_apps, init_apps, init_apps_checked};
 
 // Re-export from builder module
 pub use builder::{
