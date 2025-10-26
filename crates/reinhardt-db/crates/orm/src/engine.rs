@@ -6,7 +6,7 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use backends::{connection::DatabaseConnection, DatabaseError, DatabaseType, Row as DbRow};
+use backends::{DatabaseError, DatabaseType, Row as DbRow, connection::DatabaseConnection};
 
 #[cfg(feature = "pooling")]
 use deadpool_sqlx::{Pool, Runtime};

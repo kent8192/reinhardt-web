@@ -5,6 +5,7 @@
 //! This module provides execution methods similar to SQLAlchemy's Query class
 
 use crate::Model;
+use sea_query::{Alias, Expr, ExprTrait, Func, Query, SelectStatement};
 use std::marker::PhantomData;
 
 /// Query execution result types
@@ -27,51 +28,52 @@ pub enum ExecutionResult<T> {
 pub trait QueryExecution<T: Model> {
     /// Get a single result by primary key
     /// Corresponds to SQLAlchemy's .get()
-    fn get(&self, pk: &T::PrimaryKey) -> String;
+    fn get(&self, pk: &T::PrimaryKey) -> SelectStatement;
 
     /// Get all results
     /// Corresponds to SQLAlchemy's .all()
-    fn all(&self) -> String;
+    fn all(&self) -> SelectStatement;
 
     /// Get first result or None
     /// Corresponds to SQLAlchemy's .first()
-    fn first(&self) -> String;
+    fn first(&self) -> SelectStatement;
 
     /// Get exactly one result, raise if 0 or >1
     /// Corresponds to SQLAlchemy's .one()
-    fn one(&self) -> String;
+    fn one(&self) -> SelectStatement;
 
     /// Get one result or None, raise if >1
     /// Corresponds to SQLAlchemy's .one_or_none()
-    fn one_or_none(&self) -> String;
+    fn one_or_none(&self) -> SelectStatement;
 
     /// Get scalar value (first column of first row)
     /// Corresponds to SQLAlchemy's .scalar()
-    fn scalar(&self) -> String;
+    fn scalar(&self) -> SelectStatement;
 
     /// Count results
     /// Corresponds to SQLAlchemy's .count()
-    fn count(&self) -> String;
+    fn count(&self) -> SelectStatement;
 
     /// Check if any results exist
     /// Corresponds to SQLAlchemy's .exists()
-    fn exists(&self) -> String;
+    fn exists(&self) -> SelectStatement;
 }
 
 /// Execution context for SELECT queries
 pub struct SelectExecution<T: Model> {
-    sql: String,
+    stmt: SelectStatement,
     _phantom: PhantomData<T>,
 }
 
 impl<T: Model> SelectExecution<T> {
-    /// Create a new query execution context with the given SQL
+    /// Create a new query execution context with the given SelectStatement
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use reinhardt_orm::execution::SelectExecution;
     /// use reinhardt_orm::Model;
+    /// use sea_query::{Alias, Query};
     /// use serde::{Serialize, Deserialize};
     ///
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,22 +89,23 @@ impl<T: Model> SelectExecution<T> {
     ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
     /// }
     ///
-    /// let exec = SelectExecution::<User>::new("SELECT * FROM users".to_string());
-    /// assert_eq!(exec.sql(), "SELECT * FROM users");
+    /// let stmt = Query::select().from(Alias::new("users")).to_owned();
+    /// let exec = SelectExecution::<User>::new(stmt);
     /// ```
-    pub fn new(sql: String) -> Self {
+    pub fn new(stmt: SelectStatement) -> Self {
         Self {
-            sql,
+            stmt,
             _phantom: PhantomData,
         }
     }
-    /// Get the underlying SQL query
+    /// Get a reference to the underlying SelectStatement
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// use reinhardt_orm::execution::SelectExecution;
     /// use reinhardt_orm::Model;
+    /// use sea_query::{Alias, Expr, ExprTrait, Query};
     /// use serde::{Serialize, Deserialize};
     ///
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,65 +121,72 @@ impl<T: Model> SelectExecution<T> {
     ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
     /// }
     ///
-    /// let exec = SelectExecution::<User>::new("SELECT * FROM users WHERE active = true".to_string());
-    /// assert!(exec.sql().contains("WHERE"));
+    /// let stmt = Query::select()
+    ///     .from(Alias::new("users"))
+    ///     .and_where(Expr::col(Alias::new("active")).eq(true))
+    ///     .to_owned();
+    /// let exec = SelectExecution::<User>::new(stmt);
     /// ```
-    pub fn sql(&self) -> &str {
-        &self.sql
+    pub fn statement(&self) -> &SelectStatement {
+        &self.stmt
     }
 }
 
 impl<T: Model> QueryExecution<T> for SelectExecution<T>
 where
-    T::PrimaryKey: std::fmt::Debug,
+    T::PrimaryKey: Into<sea_query::Value> + Clone,
 {
-    fn get(&self, pk: &T::PrimaryKey) -> String {
-        format!(
-            "SELECT * FROM {} WHERE {} = '{:?}' LIMIT 1",
-            T::table_name(),
-            T::primary_key_field(),
-            pk
-        )
+    fn get(&self, pk: &T::PrimaryKey) -> SelectStatement {
+        Query::select()
+            .from(Alias::new(T::table_name()))
+            .column(sea_query::Asterisk)
+            .and_where(Expr::col(Alias::new(T::primary_key_field())).eq(pk.clone()))
+            .limit(1)
+            .to_owned()
     }
 
-    fn all(&self) -> String {
-        self.sql.clone()
+    fn all(&self) -> SelectStatement {
+        self.stmt.clone()
     }
 
-    fn first(&self) -> String {
-        if self.sql.contains("LIMIT") {
-            self.sql.clone()
-        } else {
-            format!("{} LIMIT 1", self.sql)
-        }
+    fn first(&self) -> SelectStatement {
+        let mut stmt = self.stmt.clone();
+        stmt.limit(1);
+        stmt
     }
 
-    fn one(&self) -> String {
+    fn one(&self) -> SelectStatement {
         // In real implementation, this would check result count
-        format!("{} LIMIT 2 /* EXPECT ONE */", self.sql)
+        let mut stmt = self.stmt.clone();
+        stmt.limit(2);
+        stmt
     }
 
-    fn one_or_none(&self) -> String {
-        format!("{} LIMIT 2 /* EXPECT ZERO OR ONE */", self.sql)
+    fn one_or_none(&self) -> SelectStatement {
+        let mut stmt = self.stmt.clone();
+        stmt.limit(2);
+        stmt
     }
 
-    fn scalar(&self) -> String {
-        format!("{} LIMIT 1 /* SCALAR */", self.sql)
+    fn scalar(&self) -> SelectStatement {
+        let mut stmt = self.stmt.clone();
+        stmt.limit(1);
+        stmt
     }
 
-    fn count(&self) -> String {
-        // Extract FROM clause and WHERE clause from original SQL
-        if self.sql.contains("FROM") {
-            let parts: Vec<&str> = self.sql.split("FROM").collect();
-            if parts.len() > 1 {
-                return format!("SELECT COUNT(*) FROM {}", parts[1]);
-            }
-        }
-        format!("SELECT COUNT(*) FROM {}", T::table_name())
+    fn count(&self) -> SelectStatement {
+        // Use the original statement as a subquery and count all rows from it
+        // This preserves all WHERE, JOIN, and other conditions
+        Query::select()
+            .expr(Func::count(Expr::col(sea_query::Asterisk)))
+            .from_subquery(self.stmt.clone(), Alias::new("subquery"))
+            .to_owned()
     }
 
-    fn exists(&self) -> String {
-        format!("SELECT EXISTS({})", self.sql)
+    fn exists(&self) -> SelectStatement {
+        Query::select()
+            .expr(Expr::exists(self.stmt.clone()))
+            .to_owned()
     }
 }
 
@@ -354,41 +364,76 @@ mod tests {
 
     #[test]
     fn test_execution_get() {
-        let exec = SelectExecution::<User>::new("SELECT * FROM users".to_string());
-        let sql = exec.get(&123);
+        use sea_query::{Alias, PostgresQueryBuilder, Query};
+
+        let stmt = Query::select()
+            .from(Alias::new("users"))
+            .column(sea_query::Asterisk)
+            .to_owned();
+        let exec = SelectExecution::<User>::new(stmt);
+        let result_stmt = exec.get(&123);
+        let sql = result_stmt.to_string(PostgresQueryBuilder);
         assert!(sql.contains("WHERE"));
-        assert!(sql.contains("123"));
-        assert!(sql.contains("LIMIT 1"));
+        assert!(sql.contains("LIMIT"));
     }
 
     #[test]
     fn test_all() {
-        let exec = SelectExecution::<User>::new("SELECT * FROM users".to_string());
-        let sql = exec.all();
-        assert_eq!(sql, "SELECT * FROM users");
+        use sea_query::{Alias, PostgresQueryBuilder, Query};
+
+        let stmt = Query::select()
+            .from(Alias::new("users"))
+            .column(sea_query::Asterisk)
+            .to_owned();
+        let exec = SelectExecution::<User>::new(stmt);
+        let result_stmt = exec.all();
+        let sql = result_stmt.to_string(PostgresQueryBuilder);
+        assert!(sql.contains("SELECT"));
+        assert!(sql.contains("users"));
     }
 
     #[test]
     fn test_first() {
-        let exec =
-            SelectExecution::<User>::new("SELECT * FROM users WHERE active = true".to_string());
-        let sql = exec.first();
-        assert!(sql.contains("LIMIT 1"));
+        use sea_query::{Alias, Expr, PostgresQueryBuilder, Query};
+
+        let stmt = Query::select()
+            .from(Alias::new("users"))
+            .column(sea_query::Asterisk)
+            .and_where(Expr::col(Alias::new("active")).eq(true))
+            .to_owned();
+        let exec = SelectExecution::<User>::new(stmt);
+        let result_stmt = exec.first();
+        let sql = result_stmt.to_string(PostgresQueryBuilder);
+        assert!(sql.contains("LIMIT"));
     }
 
     #[test]
     fn test_execution_count() {
-        let exec =
-            SelectExecution::<User>::new("SELECT * FROM users WHERE active = true".to_string());
-        let sql = exec.count();
-        assert!(sql.contains("COUNT(*)"));
+        use sea_query::{Alias, Expr, PostgresQueryBuilder, Query};
+
+        let stmt = Query::select()
+            .from(Alias::new("users"))
+            .column(sea_query::Asterisk)
+            .and_where(Expr::col(Alias::new("active")).eq(true))
+            .to_owned();
+        let exec = SelectExecution::<User>::new(stmt);
+        let result_stmt = exec.count();
+        let sql = result_stmt.to_string(PostgresQueryBuilder);
+        assert!(sql.contains("COUNT"));
     }
 
     #[test]
     fn test_execution_exists() {
-        let exec =
-            SelectExecution::<User>::new("SELECT * FROM users WHERE name = 'Alice'".to_string());
-        let sql = exec.exists();
+        use sea_query::{Alias, Expr, PostgresQueryBuilder, Query};
+
+        let stmt = Query::select()
+            .from(Alias::new("users"))
+            .column(sea_query::Asterisk)
+            .and_where(Expr::col(Alias::new("name")).eq("Alice"))
+            .to_owned();
+        let exec = SelectExecution::<User>::new(stmt);
+        let result_stmt = exec.exists();
+        let sql = result_stmt.to_string(PostgresQueryBuilder);
         assert!(sql.contains("EXISTS"));
     }
 

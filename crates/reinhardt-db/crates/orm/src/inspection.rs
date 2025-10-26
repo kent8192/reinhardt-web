@@ -3,11 +3,11 @@
 //! This module provides introspection capabilities for examining model metadata,
 //! field definitions, relationships, indexes, and constraints at runtime.
 
+use crate::Model;
 use crate::constraints::{CheckConstraint, Constraint, ForeignKeyConstraint, UniqueConstraint};
 use crate::fields::{Field, FieldKwarg};
 use crate::indexes::Index;
 use crate::relationship::RelationshipType;
-use crate::Model;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 

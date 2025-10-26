@@ -9,9 +9,9 @@
 mod postgres_tests {
     use reinhardt_orm::database::Database;
     #[cfg(feature = "postgres")]
-    use reinhardt_orm::{fields::JsonbField, Model};
+    use reinhardt_orm::{Model, fields::JsonbField};
 
-    use serde_json::{json, Value as JsonValue};
+    use serde_json::{Value as JsonValue, json};
     use std::collections::HashMap;
 
     // Test 1: JSONB field creation

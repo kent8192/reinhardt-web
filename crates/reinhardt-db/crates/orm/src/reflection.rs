@@ -518,7 +518,7 @@ fn json_value_to_field_value(value: serde_json::Value) -> FieldValue {
 mod tests {
     use super::*;
     use crate::model::Model;
-    use crate::registry::{registry, ColumnMapping, EntityMapper};
+    use crate::registry::{ColumnMapping, EntityMapper, registry};
     use serial_test::serial;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
