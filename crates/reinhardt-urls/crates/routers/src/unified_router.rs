@@ -16,24 +16,34 @@ use reinhardt_viewsets::{Action, ViewSet};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+pub use self::handlers::FunctionHandler;
+pub use self::matching::{extract_params, path_matches};
+pub use self::global::{clear_router, get_router, is_router_registered, register_router};
+
+pub(crate) use self::handlers::ViewSetHandler;
+
+mod handlers;
+mod matching;
+pub mod global;
+
 /// Route match result with metadata
 #[derive(Clone)]
-struct RouteMatch {
+pub(crate) struct RouteMatch {
     /// Matched handler
-    handler: Arc<dyn Handler>,
+    pub handler: Arc<dyn Handler>,
 
     /// Extracted path parameters
-    params: HashMap<String, String>,
+    pub params: HashMap<String, String>,
 
     /// Full matched path
     #[allow(dead_code)]
-    full_path: String,
+    pub full_path: String,
 
     /// Middleware stack to apply (parent → child order)
-    middleware_stack: Vec<Arc<dyn Middleware>>,
+    pub middleware_stack: Vec<Arc<dyn Middleware>>,
 
     /// DI context
-    di_context: Option<Arc<InjectionContext>>,
+    pub di_context: Option<Arc<InjectionContext>>,
 }
 
 /// Unified router with hierarchical routing support
@@ -106,18 +116,18 @@ pub struct UnifiedRouter {
 }
 
 /// Function-based route
-struct FunctionRoute {
-    path: String,
-    method: Method,
-    handler: Arc<dyn Handler>,
-    name: Option<String>,
+pub(crate) struct FunctionRoute {
+    pub path: String,
+    pub method: Method,
+    pub handler: Arc<dyn Handler>,
+    pub name: Option<String>,
 }
 
 /// Class-based view route
-struct ViewRoute {
-    path: String,
-    handler: Arc<dyn Handler>,
-    name: Option<String>,
+pub(crate) struct ViewRoute {
+    pub path: String,
+    pub handler: Arc<dyn Handler>,
+    pub name: Option<String>,
 }
 
 impl UnifiedRouter {
@@ -954,65 +964,6 @@ impl UnifiedRouter {
     }
 }
 
-/// Handler adapter for ViewSets
-struct ViewSetHandler {
-    viewset: Arc<dyn ViewSet>,
-    action: Action,
-}
-
-#[async_trait]
-impl Handler for ViewSetHandler {
-    async fn handle(&self, req: Request) -> Result<Response> {
-        // Check if ViewSet supports DI
-        if self.viewset.supports_di() {
-            if let Some(di_ctx) = req.get_di_context::<InjectionContext>() {
-                // Use DI-aware dispatch
-                return self
-                    .viewset
-                    .dispatch_with_context(req, self.action, &di_ctx)
-                    .await;
-            }
-        }
-
-        // Fallback to regular dispatch
-        self.viewset.dispatch(req, self.action).await
-    }
-}
-
-/// Check if a path matches a pattern
-fn path_matches(path: &str, pattern: &str) -> bool {
-    if let Ok(pat) = PathPattern::new(pattern) {
-        pat.is_match(path)
-    } else {
-        path == pattern
-    }
-}
-
-/// Extract parameters from a path using a pattern
-fn extract_params(path: &str, pattern: &str) -> HashMap<String, String> {
-    if let Ok(pat) = PathPattern::new(pattern) {
-        pat.extract_params(path).unwrap_or_default()
-    } else {
-        HashMap::new()
-    }
-}
-
-/// Function handler adapter
-struct FunctionHandler<F> {
-    func: F,
-}
-
-#[async_trait]
-impl<F, Fut> Handler for FunctionHandler<F>
-where
-    F: Fn(Request) -> Fut + Send + Sync,
-    Fut: std::future::Future<Output = Result<Response>> + Send,
-{
-    async fn handle(&self, req: Request) -> Result<Response> {
-        (self.func)(req).await
-    }
-}
-
 impl Default for UnifiedRouter {
     fn default() -> Self {
         Self::new()
@@ -1247,88 +1198,5 @@ mod tests {
 
         // Should support deep nesting
         assert_eq!(api.children_count(), 1);
-    }
-}
-
-// Global router registry for URL inspection (showurls command)
-use once_cell::sync::OnceCell;
-use std::sync::RwLock as StdRwLock;
-
-/// Global router registry
-static GLOBAL_ROUTER: OnceCell<StdRwLock<Option<Arc<UnifiedRouter>>>> = OnceCell::new();
-
-/// Register the application's main router globally
-///
-/// This allows commands like `showurls` to inspect registered routes.
-///
-/// # Examples
-///
-/// ```ignore
-/// use reinhardt_routers::{UnifiedRouter, register_router};
-///
-/// let router = UnifiedRouter::new()
-///     .with_prefix("/api/v1")
-///     .function("/health", Method::GET, health_handler);
-///
-/// register_router(Arc::new(router));
-/// ```
-pub fn register_router(router: Arc<UnifiedRouter>) {
-    let cell = GLOBAL_ROUTER.get_or_init(|| StdRwLock::new(None));
-    let mut guard = cell.write().unwrap();
-    *guard = Some(router);
-}
-
-/// Get a reference to the globally registered router
-///
-/// Returns `None` if no router has been registered.
-///
-/// # Examples
-///
-/// ```ignore
-/// use reinhardt_routers::get_router;
-///
-/// if let Some(router) = get_router() {
-///     let routes = router.get_all_routes();
-///     println!("Registered routes: {}", routes.len());
-/// }
-/// ```
-pub fn get_router() -> Option<Arc<UnifiedRouter>> {
-    GLOBAL_ROUTER
-        .get()
-        .and_then(|cell| cell.read().unwrap().clone())
-}
-
-/// Check if a router has been registered
-///
-/// # Examples
-///
-/// ```ignore
-/// use reinhardt_routers::is_router_registered;
-///
-/// if !is_router_registered() {
-///     println!("Warning: No router registered");
-/// }
-/// ```
-pub fn is_router_registered() -> bool {
-    GLOBAL_ROUTER
-        .get()
-        .map(|cell| cell.read().unwrap().is_some())
-        .unwrap_or(false)
-}
-
-/// Clear the registered router (useful for tests)
-///
-/// # Examples
-///
-/// ```ignore
-/// use reinhardt_routers::clear_router;
-///
-/// clear_router();
-/// assert!(!is_router_registered());
-/// ```
-pub fn clear_router() {
-    if let Some(cell) = GLOBAL_ROUTER.get() {
-        let mut guard = cell.write().unwrap();
-        *guard = None;
     }
 }
