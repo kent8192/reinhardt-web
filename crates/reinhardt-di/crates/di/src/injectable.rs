@@ -1,6 +1,6 @@
 //! Injectable trait for dependencies
 
-use crate::{context::InjectionContext, DiResult};
+use crate::{DiResult, context::InjectionContext};
 
 /// Injectable trait for dependencies.
 ///

@@ -213,10 +213,12 @@ fn test_deeply_nested_structure() {
     let stats = command.execute().unwrap();
 
     assert_eq!(stats.copied, 1);
-    assert!(dest_dir
-        .path()
-        .join("level1/level2/level3/level4/deep_file.txt")
-        .exists());
+    assert!(
+        dest_dir
+            .path()
+            .join("level1/level2/level3/level4/deep_file.txt")
+            .exists()
+    );
 }
 
 #[test]

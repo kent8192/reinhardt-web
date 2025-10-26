@@ -39,7 +39,10 @@ async fn test_renderer_registry_by_media_type() {
     // Get renderer by media type
     let renderer = registry.get_renderer_by_media_type("application/json");
     assert!(renderer.is_some());
-    assert_eq!(renderer.unwrap().media_type(), "application/json; charset=utf-8");
+    assert_eq!(
+        renderer.unwrap().media_type(),
+        "application/json; charset=utf-8"
+    );
 }
 
 #[tokio::test]

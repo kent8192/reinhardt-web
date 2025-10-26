@@ -455,9 +455,11 @@ mod tests {
 
         let response = middleware.process(request, handler).await.unwrap();
 
-        assert!(response
-            .headers
-            .contains_key("Content-Security-Policy-Report-Only"));
+        assert!(
+            response
+                .headers
+                .contains_key("Content-Security-Policy-Report-Only")
+        );
         assert!(!response.headers.contains_key("Content-Security-Policy"));
     }
 

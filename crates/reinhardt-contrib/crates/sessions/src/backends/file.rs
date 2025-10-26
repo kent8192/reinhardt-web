@@ -385,20 +385,24 @@ mod tests {
             .await
             .expect("Failed to save session");
 
-        assert!(backend
-            .exists("test_session_2")
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            backend
+                .exists("test_session_2")
+                .await
+                .expect("Failed to check existence")
+        );
 
         backend
             .delete("test_session_2")
             .await
             .expect("Failed to delete session");
 
-        assert!(!backend
-            .exists("test_session_2")
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            !backend
+                .exists("test_session_2")
+                .await
+                .expect("Failed to check existence")
+        );
     }
 
     #[tokio::test]
@@ -407,10 +411,12 @@ mod tests {
         let backend = FileSessionBackend::new(Some(_guard.path().to_path_buf()))
             .expect("Failed to create backend");
 
-        assert!(!backend
-            .exists("nonexistent")
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            !backend
+                .exists("nonexistent")
+                .await
+                .expect("Failed to check existence")
+        );
 
         let session_data = json!({ "key": "value" });
         backend
@@ -418,10 +424,12 @@ mod tests {
             .await
             .expect("Failed to save session");
 
-        assert!(backend
-            .exists("test_session_3")
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            backend
+                .exists("test_session_3")
+                .await
+                .expect("Failed to check existence")
+        );
     }
 
     #[tokio::test]
@@ -439,19 +447,23 @@ mod tests {
             .expect("Failed to save session");
 
         // Session should exist immediately
-        assert!(backend
-            .exists("test_session_4")
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            backend
+                .exists("test_session_4")
+                .await
+                .expect("Failed to check existence")
+        );
 
         // Wait for expiration
         sleep(Duration::from_secs(2)).await;
 
         // Session should be expired and removed
-        assert!(!backend
-            .exists("test_session_4")
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            !backend
+                .exists("test_session_4")
+                .await
+                .expect("Failed to check existence")
+        );
 
         // Loading should return None
         let loaded: Option<serde_json::Value> = backend

@@ -628,12 +628,16 @@ mod tests {
         let validator = RangeValidator::between(0.0, 100.0);
 
         assert!(validator.validate("key", &Value::Number(50.into())).is_ok());
-        assert!(validator
-            .validate("key", &Value::Number((-10).into()))
-            .is_err());
-        assert!(validator
-            .validate("key", &Value::Number(150.into()))
-            .is_err());
+        assert!(
+            validator
+                .validate("key", &Value::Number((-10).into()))
+                .is_err()
+        );
+        assert!(
+            validator
+                .validate("key", &Value::Number(150.into()))
+                .is_err()
+        );
     }
 
     #[test]
@@ -641,11 +645,15 @@ mod tests {
         let validator =
             ChoiceValidator::new(vec!["a".to_string(), "b".to_string(), "c".to_string()]);
 
-        assert!(validator
-            .validate("key", &Value::String("a".to_string()))
-            .is_ok());
-        assert!(validator
-            .validate("key", &Value::String("d".to_string()))
-            .is_err());
+        assert!(
+            validator
+                .validate("key", &Value::String("a".to_string()))
+                .is_ok()
+        );
+        assert!(
+            validator
+                .validate("key", &Value::String("d".to_string()))
+                .is_err()
+        );
     }
 }

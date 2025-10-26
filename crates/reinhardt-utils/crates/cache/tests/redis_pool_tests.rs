@@ -5,7 +5,7 @@
 #[cfg(feature = "redis-backend")]
 mod redis_pool_integration {
     use deadpool_redis::Config as PoolConfig;
-    use reinhardt_cache::{redis_backend::RedisCache, Cache};
+    use reinhardt_cache::{Cache, redis_backend::RedisCache};
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
     use std::time::Duration;
@@ -41,8 +41,8 @@ mod redis_pool_integration {
         let mut config = PoolConfig::from_url(url);
         config.pool = Some(deadpool_redis::PoolConfig::new(10));
 
-        let cache = RedisCache::with_pool_config(config)
-            .expect("Failed to create cache from config");
+        let cache =
+            RedisCache::with_pool_config(config).expect("Failed to create cache from config");
 
         assert!(cache.pool().status().size > 0);
     }
@@ -61,23 +61,20 @@ mod redis_pool_integration {
         let cache_clone2 = cache.clone();
         let cache_clone3 = cache.clone();
 
-        let task1 = tokio::spawn(async move {
-            cache_clone1
-                .set("concurrent_key_1", &"value1", None)
-                .await
-        });
+        let task1 =
+            tokio::spawn(
+                async move { cache_clone1.set("concurrent_key_1", &"value1", None).await },
+            );
 
-        let task2 = tokio::spawn(async move {
-            cache_clone2
-                .set("concurrent_key_2", &"value2", None)
-                .await
-        });
+        let task2 =
+            tokio::spawn(
+                async move { cache_clone2.set("concurrent_key_2", &"value2", None).await },
+            );
 
-        let task3 = tokio::spawn(async move {
-            cache_clone3
-                .set("concurrent_key_3", &"value3", None)
-                .await
-        });
+        let task3 =
+            tokio::spawn(
+                async move { cache_clone3.set("concurrent_key_3", &"value3", None).await },
+            );
 
         let results = tokio::join!(task1, task2, task3);
         assert!(results.0.is_ok());
@@ -277,18 +274,9 @@ mod redis_pool_integration {
             .await
             .expect("Failed to set many values");
 
-        let value1: Option<String> = cache
-            .get("set_many_1")
-            .await
-            .expect("Failed to get value");
-        let value2: Option<String> = cache
-            .get("set_many_2")
-            .await
-            .expect("Failed to get value");
-        let value3: Option<String> = cache
-            .get("set_many_3")
-            .await
-            .expect("Failed to get value");
+        let value1: Option<String> = cache.get("set_many_1").await.expect("Failed to get value");
+        let value2: Option<String> = cache.get("set_many_2").await.expect("Failed to get value");
+        let value3: Option<String> = cache.get("set_many_3").await.expect("Failed to get value");
 
         assert_eq!(value1, Some("value1".to_string()));
         assert_eq!(value2, Some("value2".to_string()));
@@ -440,7 +428,10 @@ mod redis_pool_integration {
         let status = cache.pool().status();
 
         assert!(status.size > 0, "Pool should have connections");
-        assert!(status.available > 0, "Pool should have available connections");
+        assert!(
+            status.available > 0,
+            "Pool should have available connections"
+        );
     }
 
     #[tokio::test]
@@ -460,7 +451,10 @@ mod redis_pool_integration {
                 let value: Option<i32> = cache_clone.get(&key).await.expect("Failed to get value");
                 assert_eq!(value, Some(i));
 
-                cache_clone.delete(&key).await.expect("Failed to delete key");
+                cache_clone
+                    .delete(&key)
+                    .await
+                    .expect("Failed to delete key");
             });
             handles.push(handle);
         }

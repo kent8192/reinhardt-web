@@ -6,10 +6,10 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
+use crate::Model;
 use crate::engine::Engine;
 use crate::expressions::Q;
 use crate::types::DatabaseDialect;
-use crate::Model;
 use serde::de::DeserializeOwned;
 use std::marker::PhantomData;
 

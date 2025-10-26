@@ -1,7 +1,7 @@
 //! SQLite dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{sqlite::SqliteRow, AssertSqlSafe, Column, Row as SqlxRow, SqlitePool};
+use sqlx::{AssertSqlSafe, Column, Row as SqlxRow, SqlitePool, sqlite::SqliteRow};
 use std::sync::Arc;
 
 use crate::{

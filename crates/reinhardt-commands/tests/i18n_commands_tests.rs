@@ -141,14 +141,18 @@ async fn test_compilemessages_multiple_locales() {
     assert!(result.is_ok());
 
     // Check that MO files were created for specified locales
-    assert!(temp_dir
-        .path()
-        .join("locale/en_us/LC_MESSAGES/reinhardt.mo")
-        .exists());
-    assert!(temp_dir
-        .path()
-        .join("locale/fr_fr/LC_MESSAGES/reinhardt.mo")
-        .exists());
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/en_us/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/fr_fr/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
 }
 
 #[tokio::test]
@@ -178,19 +182,25 @@ async fn test_compilemessages_exclude() {
     assert!(result.is_ok());
 
     // Check that MO files were created for non-excluded locales
-    assert!(temp_dir
-        .path()
-        .join("locale/en_us/LC_MESSAGES/reinhardt.mo")
-        .exists());
-    assert!(temp_dir
-        .path()
-        .join("locale/fr_fr/LC_MESSAGES/reinhardt.mo")
-        .exists());
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/en_us/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/fr_fr/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
     // ja_jp should not have MO file
-    assert!(!temp_dir
-        .path()
-        .join("locale/ja_jp/LC_MESSAGES/reinhardt.mo")
-        .exists());
+    assert!(
+        !temp_dir
+            .path()
+            .join("locale/ja_jp/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
 }
 
 #[tokio::test]
@@ -229,14 +239,18 @@ async fn test_makemessages_multiple_locales() {
     assert!(result.is_ok());
 
     // Check that PO files were created for both locales
-    assert!(temp_dir
-        .path()
-        .join("locale/en_us/LC_MESSAGES/reinhardt.po")
-        .exists());
-    assert!(temp_dir
-        .path()
-        .join("locale/ja_jp/LC_MESSAGES/reinhardt.po")
-        .exists());
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/en_us/LC_MESSAGES/reinhardt.po")
+            .exists()
+    );
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/ja_jp/LC_MESSAGES/reinhardt.po")
+            .exists()
+    );
 }
 
 #[tokio::test]
@@ -416,18 +430,24 @@ async fn test_compilemessages_all_locales() {
     assert!(result.is_ok());
 
     // All MO files should be created
-    assert!(temp_dir
-        .path()
-        .join("locale/en_us/LC_MESSAGES/reinhardt.mo")
-        .exists());
-    assert!(temp_dir
-        .path()
-        .join("locale/fr_fr/LC_MESSAGES/reinhardt.mo")
-        .exists());
-    assert!(temp_dir
-        .path()
-        .join("locale/ja_jp/LC_MESSAGES/reinhardt.mo")
-        .exists());
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/en_us/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/fr_fr/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/ja_jp/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
 }
 
 #[tokio::test]
@@ -459,22 +479,30 @@ async fn test_compilemessages_multiple_excludes() {
     assert!(result.is_ok());
 
     // Check that only non-excluded locales have MO files
-    assert!(temp_dir
-        .path()
-        .join("locale/en_us/LC_MESSAGES/reinhardt.mo")
-        .exists());
-    assert!(temp_dir
-        .path()
-        .join("locale/fr_fr/LC_MESSAGES/reinhardt.mo")
-        .exists());
-    assert!(!temp_dir
-        .path()
-        .join("locale/ja_jp/LC_MESSAGES/reinhardt.mo")
-        .exists());
-    assert!(!temp_dir
-        .path()
-        .join("locale/de_de/LC_MESSAGES/reinhardt.mo")
-        .exists());
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/en_us/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
+    assert!(
+        temp_dir
+            .path()
+            .join("locale/fr_fr/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
+    assert!(
+        !temp_dir
+            .path()
+            .join("locale/ja_jp/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
+    assert!(
+        !temp_dir
+            .path()
+            .join("locale/de_de/LC_MESSAGES/reinhardt.mo")
+            .exists()
+    );
 }
 
 #[tokio::test]

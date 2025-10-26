@@ -2,7 +2,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse::Parser, punctuated::Punctuated, Expr, ExprLit, ItemFn, Lit, Meta, Result, Token};
+use syn::{Expr, ExprLit, ItemFn, Lit, Meta, Result, Token, parse::Parser, punctuated::Punctuated};
 /// Implementation of the `action` procedural macro
 ///
 /// This function is used internally by the `#[action]` attribute macro.

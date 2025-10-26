@@ -16,15 +16,15 @@ use reinhardt_viewsets::{Action, ViewSet};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+pub use self::global::{clear_router, get_router, is_router_registered, register_router};
 pub use self::handlers::FunctionHandler;
 pub use self::matching::{extract_params, path_matches};
-pub use self::global::{clear_router, get_router, is_router_registered, register_router};
 
 pub(crate) use self::handlers::ViewSetHandler;
 
+pub mod global;
 mod handlers;
 mod matching;
-pub mod global;
 
 /// Route match result with metadata
 #[derive(Clone)]
@@ -997,13 +997,10 @@ impl Handler for UnifiedRouter {
             route_match.handler.handle(req).await
         } else {
             // Build middleware chain
-            let chain = route_match
-                .middleware_stack
-                .iter()
-                .fold(
-                    MiddlewareChain::new(route_match.handler.clone()),
-                    |chain, mw| chain.with_middleware(mw.clone()),
-                );
+            let chain = route_match.middleware_stack.iter().fold(
+                MiddlewareChain::new(route_match.handler.clone()),
+                |chain, mw| chain.with_middleware(mw.clone()),
+            );
 
             // Execute chain
             chain.handle(req).await

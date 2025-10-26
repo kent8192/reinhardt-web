@@ -1,8 +1,8 @@
 //! Integration tests for field introspection in ModelSerializer
 
 use reinhardt_orm::Model;
-use reinhardt_serializers::introspection::{FieldInfo, FieldIntrospector};
 use reinhardt_serializers::ModelSerializer;
+use reinhardt_serializers::introspection::{FieldInfo, FieldIntrospector};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

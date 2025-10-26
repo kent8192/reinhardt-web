@@ -14,7 +14,7 @@ pub fn init_test_logging() {
 #[cfg(feature = "dynamic-redis")]
 pub mod redis_helpers {
     use reinhardt_settings::backends::RedisBackend;
-    use testcontainers::{clients::Cli, Container, GenericImage};
+    use testcontainers::{Container, GenericImage, clients::Cli};
 
     pub struct RedisContainer<'a> {
         pub container: Container<'a, GenericImage>,
@@ -42,7 +42,7 @@ pub mod redis_helpers {
 #[cfg(feature = "dynamic-database")]
 pub mod database_helpers {
     use reinhardt_settings::backends::DatabaseBackend;
-    use testcontainers::{clients::Cli, Container, GenericImage};
+    use testcontainers::{Container, GenericImage, clients::Cli};
 
     pub struct PostgresContainer<'a> {
         pub container: Container<'a, GenericImage>,

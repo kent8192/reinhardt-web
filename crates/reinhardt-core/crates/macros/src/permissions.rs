@@ -4,8 +4,8 @@ use crate::permission_macro;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{
-    parse::Parser, punctuated::Punctuated, spanned::Spanned, Error, Expr, ExprLit, ItemFn, Lit,
-    LitStr, Meta, Result, Token,
+    Error, Expr, ExprLit, ItemFn, Lit, LitStr, Meta, Result, Token, parse::Parser,
+    punctuated::Punctuated, spanned::Spanned,
 };
 
 /// Validate a single permission string at compile time

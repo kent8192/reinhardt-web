@@ -8,7 +8,7 @@
 use reinhardt_validators::ValidationResult;
 use sqlx::PgPool;
 use std::sync::Arc;
-use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
+use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
 /// Test database setup and management with TestContainers
 pub struct TestDatabase {
@@ -26,22 +26,23 @@ impl TestDatabase {
         use std::time::Duration;
 
         // Try to use TestContainers first
-        let (database_url, container): (String, Option<_>) = if let Ok(url) = std::env::var("TEST_DATABASE_URL") {
-            // Use existing database if TEST_DATABASE_URL is set
-            (url, None)
-        } else {
-            // Start PostgreSQL container using TestContainers
-            let postgres_image = GenericImage::new("postgres", "17-alpine")
-                .with_wait_for(WaitFor::message_on_stderr(
-                    "database system is ready to accept connections",
-                ))
-                .with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
+        let (database_url, container): (String, Option<_>) =
+            if let Ok(url) = std::env::var("TEST_DATABASE_URL") {
+                // Use existing database if TEST_DATABASE_URL is set
+                (url, None)
+            } else {
+                // Start PostgreSQL container using TestContainers
+                let postgres_image = GenericImage::new("postgres", "17-alpine")
+                    .with_wait_for(WaitFor::message_on_stderr(
+                        "database system is ready to accept connections",
+                    ))
+                    .with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
 
-            let container = postgres_image.start().await?;
-            let port = container.get_host_port_ipv4(5432).await?;
-            let url = format!("postgres://postgres@127.0.0.1:{}/postgres", port);
-            (url, Some(container))
-        };
+                let container = postgres_image.start().await?;
+                let port = container.get_host_port_ipv4(5432).await?;
+                let url = format!("postgres://postgres@127.0.0.1:{}/postgres", port);
+                (url, Some(container))
+            };
 
         // Configure pool with appropriate timeouts for testing
         let pool = PgPoolOptions::new()
@@ -65,9 +66,7 @@ impl TestDatabase {
         } else {
             // For external database connections, create a dummy container
             // This won't actually be used, but satisfies the struct field requirement
-            GenericImage::new("postgres", "17-alpine")
-                .start()
-                .await?
+            GenericImage::new("postgres", "17-alpine").start().await?
         };
 
         Ok(Self {
@@ -252,4 +251,3 @@ pub fn assert_validation_result<T: std::fmt::Debug>(
         }
     }
 }
-

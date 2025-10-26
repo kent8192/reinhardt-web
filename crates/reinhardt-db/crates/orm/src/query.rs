@@ -687,7 +687,9 @@ where
     /// ```
     pub fn delete_sql(&self) -> (String, Vec<String>) {
         if self.filters.is_empty() {
-            panic!("DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete.");
+            panic!(
+                "DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
+            );
         }
 
         let table_name = T::table_name();
@@ -808,13 +810,11 @@ where
 
         // Deserialize the single row into the model
         let row = &rows[0];
-        let value = serde_json::to_value(&row.data).map_err(|e| {
-            reinhardt_apps::Error::Database(format!("Serialization error: {}", e))
-        })?;
+        let value = serde_json::to_value(&row.data)
+            .map_err(|e| reinhardt_apps::Error::Database(format!("Serialization error: {}", e)))?;
 
-        serde_json::from_value(value).map_err(|e| {
-            reinhardt_apps::Error::Database(format!("Deserialization error: {}", e))
-        })
+        serde_json::from_value(value)
+            .map_err(|e| reinhardt_apps::Error::Database(format!("Deserialization error: {}", e)))
     }
 }
 
@@ -834,8 +834,8 @@ pub use crate::sqlalchemy_query::*;
 #[cfg(all(test, feature = "django-compat"))]
 mod tests {
     use super::*;
-    use crate::manager::Manager;
     use crate::Model;
+    use crate::manager::Manager;
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

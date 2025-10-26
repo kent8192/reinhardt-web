@@ -226,7 +226,9 @@ impl Validator<String> for SlugValidator {
 impl Validator<str> for SlugValidator {
     fn validate(&self, value: &str) -> ValidationResult<()> {
         if value.is_empty() {
-            return Err(ValidationError::InvalidSlug("Slug cannot be empty".to_string()));
+            return Err(ValidationError::InvalidSlug(
+                "Slug cannot be empty".to_string(),
+            ));
         }
 
         if self.regex.is_match(value) {
@@ -295,16 +297,21 @@ impl Validator<String> for UUIDValidator {
 impl Validator<str> for UUIDValidator {
     fn validate(&self, value: &str) -> ValidationResult<()> {
         // UUID format: 8-4-4-4-12 hex digits
-        let uuid_regex = Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").unwrap();
+        let uuid_regex =
+            Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").unwrap();
 
         if !uuid_regex.is_match(&value.to_lowercase()) {
-            return Err(ValidationError::InvalidUUID("Invalid UUID format".to_string()));
+            return Err(ValidationError::InvalidUUID(
+                "Invalid UUID format".to_string(),
+            ));
         }
 
         if let Some(version) = self.version {
             let parts: Vec<&str> = value.split('-').collect();
             if parts.len() != 5 {
-                return Err(ValidationError::InvalidUUID("Invalid UUID format".to_string()));
+                return Err(ValidationError::InvalidUUID(
+                    "Invalid UUID format".to_string(),
+                ));
             }
 
             let version_part = parts[2];
@@ -406,14 +413,18 @@ impl Validator<str> for IPAddressValidator {
             // Validate IPv4
             let parts: Vec<&str> = value.split('.').collect();
             if parts.len() != 4 {
-                return Err(ValidationError::InvalidIPAddress("Invalid IPv4 format".to_string()));
+                return Err(ValidationError::InvalidIPAddress(
+                    "Invalid IPv4 format".to_string(),
+                ));
             }
 
             for part in parts {
                 match part.parse::<u8>() {
                     Ok(_) => {}
                     Err(_) => {
-                        return Err(ValidationError::InvalidIPAddress("Invalid IPv4 octet".to_string()));
+                        return Err(ValidationError::InvalidIPAddress(
+                            "Invalid IPv4 octet".to_string(),
+                        ));
                     }
                 }
             }
@@ -422,17 +433,23 @@ impl Validator<str> for IPAddressValidator {
             // Basic IPv6 validation (simplified)
             let parts: Vec<&str> = value.split(':').collect();
             if parts.len() < 3 || parts.len() > 8 {
-                return Err(ValidationError::InvalidIPAddress("Invalid IPv6 format".to_string()));
+                return Err(ValidationError::InvalidIPAddress(
+                    "Invalid IPv6 format".to_string(),
+                ));
             }
 
             for part in parts {
                 if !part.is_empty() && part.len() > 4 {
-                    return Err(ValidationError::InvalidIPAddress("Invalid IPv6 segment".to_string()));
+                    return Err(ValidationError::InvalidIPAddress(
+                        "Invalid IPv6 segment".to_string(),
+                    ));
                 }
                 if !part.is_empty() {
                     for c in part.chars() {
                         if !c.is_ascii_hexdigit() {
-                            return Err(ValidationError::InvalidIPAddress("Invalid IPv6 character".to_string()));
+                            return Err(ValidationError::InvalidIPAddress(
+                                "Invalid IPv6 character".to_string(),
+                            ));
                         }
                     }
                 }
@@ -440,7 +457,9 @@ impl Validator<str> for IPAddressValidator {
             return Ok(());
         }
 
-        Err(ValidationError::InvalidIPAddress("Invalid IP address".to_string()))
+        Err(ValidationError::InvalidIPAddress(
+            "Invalid IP address".to_string(),
+        ))
     }
 }
 
@@ -617,7 +636,9 @@ impl Validator<str> for DateTimeValidator {
     fn validate(&self, value: &str) -> ValidationResult<()> {
         NaiveDateTime::parse_from_str(value, &self.format)
             .map(|_| ())
-            .map_err(|_| ValidationError::InvalidDateTime(format!("Expected format: {}", self.format)))
+            .map_err(|_| {
+                ValidationError::InvalidDateTime(format!("Expected format: {}", self.format))
+            })
     }
 }
 

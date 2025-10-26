@@ -22,7 +22,7 @@
 //! let config = Depends::<Config>::no_cache().resolve(ctx).await?;
 //! ```
 
-use crate::{context::InjectionContext, DiResult, Injectable};
+use crate::{DiResult, Injectable, context::InjectionContext};
 use std::ops::Deref;
 use std::sync::Arc;
 

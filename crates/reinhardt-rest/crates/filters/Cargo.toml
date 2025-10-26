@@ -17,5 +17,9 @@ geo-types = "0.7"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util"] }
-sqlx = { version = "0.9.0-alpha.1", features = ["runtime-tokio", "tls-rustls", "sqlite"] }
+sqlx = { version = "0.9.0-alpha.1", features = [
+  "runtime-tokio",
+  "tls-rustls",
+  "sqlite",
+] }
 tempfile = "3.0"

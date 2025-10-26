@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use std::fmt::{self, Debug};
 use std::ops::Deref;
 
-use crate::{extract::FromRequest, ParamContext, ParamError, ParamResult};
+use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
 
 /// Extract a single value from the URL path
 ///
@@ -96,7 +96,9 @@ macro_rules! impl_path_from_str {
 }
 
 // Implement for common primitive types
-impl_path_from_str!(i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, f32, f64, bool);
+impl_path_from_str!(
+    i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, f32, f64, bool
+);
 
 // Special implementation for String (no parsing needed)
 #[async_trait]

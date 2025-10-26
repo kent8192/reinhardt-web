@@ -4,7 +4,7 @@
 mod grpc_tests {
     use async_graphql::{EmptySubscription, Object, Schema};
     use reinhardt_graphql::grpc_service::GraphQLGrpcService;
-    use reinhardt_grpc::proto::graphql::{graph_ql_service_server::GraphQlService, GraphQlRequest};
+    use reinhardt_grpc::proto::graphql::{GraphQlRequest, graph_ql_service_server::GraphQlService};
     use tonic::Request;
 
     // Simple Query type for testing

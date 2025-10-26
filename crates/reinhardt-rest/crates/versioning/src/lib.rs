@@ -1097,7 +1097,7 @@ mod tests {
     #[tokio::test]
     async fn test_namespace_versioning_router_integration() {
         use reinhardt_apps::{Handler, Response};
-        use reinhardt_routers::{path, DefaultRouter, Router};
+        use reinhardt_routers::{DefaultRouter, Router, path};
         use std::sync::Arc;
 
         struct DummyHandler;

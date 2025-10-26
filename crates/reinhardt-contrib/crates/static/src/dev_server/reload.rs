@@ -5,7 +5,7 @@
 
 use super::WatchEvent;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 /// Auto-reload notification system
 ///

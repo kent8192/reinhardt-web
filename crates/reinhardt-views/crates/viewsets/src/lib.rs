@@ -29,9 +29,7 @@ pub use batch_operations::{
 };
 pub use builder::ViewSetBuilder;
 pub use di_support::{DatabaseConnection, DiViewSet, ViewSetFactory};
-pub use filtering_support::{
-    FilterConfig, FilterableViewSet, InMemoryFilter, OrderingConfig,
-};
+pub use filtering_support::{FilterConfig, FilterableViewSet, InMemoryFilter, OrderingConfig};
 pub use handler::{ModelViewSetHandler, ViewError, ViewSetHandler};
 pub use metadata::{ActionHandler, ActionMetadata, ActionRegistryEntry, FunctionActionHandler};
 pub use middleware::{
@@ -39,7 +37,7 @@ pub use middleware::{
 };
 pub use mixins::{CreateMixin, DestroyMixin, ListMixin, RetrieveMixin, UpdateMixin};
 pub use nested_resources::{
-    nested_detail_url, nested_url, NestedResource, NestedResourcePath, NestedViewSet,
+    NestedResource, NestedResourcePath, NestedViewSet, nested_detail_url, nested_url,
 };
 pub use pagination_support::{PaginatedViewSet, PaginationConfig};
 pub use registry::{action, get_registered_actions, register_action};

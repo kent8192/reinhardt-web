@@ -332,8 +332,8 @@ mod tests {
 
     #[test]
     fn test_filter_query() {
-        let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
-            .query("rust programming");
+        let filter: FullTextSearchFilter<Article> =
+            FullTextSearchFilter::new().query("rust programming");
         assert_eq!(filter.get_query(), "rust programming");
     }
 
@@ -361,30 +361,28 @@ mod tests {
 
     #[test]
     fn test_filter_mode() {
-        let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
-            .mode(FullTextSearchMode::Boolean);
+        let filter: FullTextSearchFilter<Article> =
+            FullTextSearchFilter::new().mode(FullTextSearchMode::Boolean);
         assert_eq!(filter.get_mode(), FullTextSearchMode::Boolean);
 
-        let filter2: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
-            .mode(FullTextSearchMode::Phrase);
+        let filter2: FullTextSearchFilter<Article> =
+            FullTextSearchFilter::new().mode(FullTextSearchMode::Phrase);
         assert_eq!(filter2.get_mode(), FullTextSearchMode::Phrase);
     }
 
     #[test]
     fn test_filter_min_score() {
-        let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
-            .min_score(0.75);
+        let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new().min_score(0.75);
         assert_eq!(filter.get_min_score(), Some(0.75));
     }
 
     #[test]
     fn test_filter_language() {
-        let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
-            .language("english");
+        let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new().language("english");
         assert_eq!(filter.get_language(), Some("english"));
 
-        let filter2: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
-            .language("spanish");
+        let filter2: FullTextSearchFilter<Article> =
+            FullTextSearchFilter::new().language("spanish");
         assert_eq!(filter2.get_language(), Some("spanish"));
     }
 

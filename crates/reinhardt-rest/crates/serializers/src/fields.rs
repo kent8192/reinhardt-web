@@ -1107,8 +1107,7 @@ impl DateTimeField {
             return Err(FieldError::Required);
         }
 
-        NaiveDateTime::parse_from_str(value, &self.format)
-            .map_err(|_| FieldError::InvalidDateTime)
+        NaiveDateTime::parse_from_str(value, &self.format).map_err(|_| FieldError::InvalidDateTime)
     }
 
     /// Validate a datetime string

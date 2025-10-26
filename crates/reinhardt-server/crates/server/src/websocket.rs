@@ -9,16 +9,13 @@ use std::sync::Arc;
 #[cfg(feature = "websocket")]
 use tokio::net::{TcpListener, TcpStream};
 #[cfg(feature = "websocket")]
-use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, broadcast};
 #[cfg(feature = "websocket")]
-use tokio_tungstenite::{accept_async, tungstenite::Message, WebSocketStream};
+use tokio_tungstenite::{WebSocketStream, accept_async, tungstenite::Message};
 
 /// Type alias for WebSocket stream writer
 #[cfg(feature = "websocket")]
-type WsWriter = futures_util::stream::SplitSink<
-    WebSocketStream<TcpStream>,
-    Message,
->;
+type WsWriter = futures_util::stream::SplitSink<WebSocketStream<TcpStream>, Message>;
 
 /// Client connection information
 #[cfg(feature = "websocket")]

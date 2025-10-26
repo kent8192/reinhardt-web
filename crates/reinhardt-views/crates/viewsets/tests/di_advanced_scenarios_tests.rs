@@ -7,7 +7,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
 use reinhardt_apps::{Request, Response, Result};
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
-use reinhardt_macros::{endpoint, Injectable};
+use reinhardt_macros::{Injectable, endpoint};
 use reinhardt_viewsets::{Action, ActionType, ViewSet};
 use std::sync::Arc;
 
@@ -980,7 +980,7 @@ async fn test_async_service_initialization() {
 
 #[tokio::test]
 async fn test_timeout_handling_in_injection() {
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     #[derive(Clone)]
     struct SlowService {

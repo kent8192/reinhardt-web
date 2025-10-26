@@ -1,4 +1,4 @@
-use async_graphql::{Context, EmptySubscription, Object, Result as GqlResult, Schema, ID};
+use async_graphql::{Context, EmptySubscription, ID, Object, Result as GqlResult, Schema};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

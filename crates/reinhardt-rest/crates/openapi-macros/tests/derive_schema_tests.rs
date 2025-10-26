@@ -349,10 +349,7 @@ fn test_explicit_description_overrides_doc_comment() {
             if let Some(id_schema) = obj.properties.get("id") {
                 match id_schema {
                     utoipa::openapi::RefOr::T(Schema::Object(id_obj)) => {
-                        assert_eq!(
-                            id_obj.description,
-                            Some("Explicit description".to_string())
-                        );
+                        assert_eq!(id_obj.description, Some("Explicit description".to_string()));
                     }
                     _ => panic!("Expected Object schema for id field"),
                 }
@@ -383,7 +380,10 @@ fn test_combined_attributes() {
             if let Some(email_schema) = obj.properties.get("email") {
                 match email_schema {
                     utoipa::openapi::RefOr::T(Schema::Object(email_obj)) => {
-                        assert_eq!(email_obj.description, Some("User's email address".to_string()));
+                        assert_eq!(
+                            email_obj.description,
+                            Some("User's email address".to_string())
+                        );
                         assert_eq!(email_obj.format, Some("email".to_string()));
                         assert!(email_obj.example.is_some());
                         assert_eq!(email_obj.min_length, Some(5));

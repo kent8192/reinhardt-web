@@ -60,14 +60,14 @@ pub fn injectable_derive_impl(input: DeriveInput) -> Result<TokenStream> {
                 return Err(syn::Error::new_spanned(
                     struct_name,
                     "Injectable can only be derived for structs with named fields",
-                ))
+                ));
             }
         },
         _ => {
             return Err(syn::Error::new_spanned(
                 struct_name,
                 "Injectable can only be derived for structs",
-            ))
+            ));
         }
     };
 

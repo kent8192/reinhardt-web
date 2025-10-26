@@ -12,11 +12,11 @@ use hyper::Method;
 // use indexmap::IndexMap;
 use reinhardt_viewsets::{ActionMetadata, ViewSet};
 use std::collections::HashMap;
+use utoipa::openapi::ContentBuilder;
 use utoipa::openapi::path::{HttpMethod, OperationBuilder, ParameterBuilder, PathItemBuilder};
 use utoipa::openapi::request_body::RequestBodyBuilder;
 use utoipa::openapi::response::ResponseBuilder;
 use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
-use utoipa::openapi::ContentBuilder;
 
 /// Inspects ViewSets to extract schema information
 ///

@@ -2,9 +2,9 @@
 //!
 //! Provides ready-to-use handlers for common authentication workflows
 
-use crate::session::{Session, SessionId, SessionStore, SESSION_KEY_USER_ID};
-use crate::user::User;
 use crate::AuthenticationBackend;
+use crate::session::{SESSION_KEY_USER_ID, Session, SessionId, SessionStore};
+use crate::user::User;
 use async_trait::async_trait;
 use reinhardt_apps::{Handler, Request, Response, Result};
 use serde::{Deserialize, Serialize};
@@ -199,9 +199,9 @@ impl<S: SessionStore + 'static> Handler for LogoutHandler<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AuthenticationError;
     use crate::session::InMemorySessionStore;
     use crate::user::SimpleUser;
-    use crate::AuthenticationError;
     use bytes::Bytes;
     use hyper::{HeaderMap, Method, Uri, Version};
     use uuid::Uuid;

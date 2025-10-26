@@ -412,9 +412,7 @@ impl FromStr for CidrRange {
         let prefix_len = parts[1].parse::<u8>().map_err(|e| e.to_string())?;
 
         match network {
-            IpAddr::V4(_) if prefix_len > 32 => {
-                Err("IPv4 prefix length must be <= 32".to_string())
-            }
+            IpAddr::V4(_) if prefix_len > 32 => Err("IPv4 prefix length must be <= 32".to_string()),
             IpAddr::V6(_) if prefix_len > 128 => {
                 Err("IPv6 prefix length must be <= 128".to_string())
             }

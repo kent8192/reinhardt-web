@@ -103,10 +103,12 @@ fn test_check_token_hmac_invalid() {
 
     let result = check_token_hmac("invalid-token", &secret, session_id);
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .reason
-        .contains("HMAC verification failed"));
+    assert!(
+        result
+            .unwrap_err()
+            .reason
+            .contains("HMAC verification failed")
+    );
 }
 
 #[test]
@@ -223,7 +225,8 @@ fn test_hmac_short_secret() {
 
 #[test]
 fn test_hmac_long_secret() {
-    let long_secret = b"this-is-a-very-long-secret-key-much-longer-than-32-bytes-for-testing-purposes";
+    let long_secret =
+        b"this-is-a-very-long-secret-key-much-longer-than-32-bytes-for-testing-purposes";
     let message = "session-12345";
 
     let token = generate_token_hmac(long_secret, message);

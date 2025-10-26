@@ -8,8 +8,8 @@
 //! 3. Nested dependencies share cached values
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // Counter dependency - increments each time it's instantiated
 #[derive(Clone)]

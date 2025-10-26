@@ -187,8 +187,8 @@ impl Default for Argon2Hasher {
 impl PasswordHasher for Argon2Hasher {
     fn hash(&self, password: &str) -> reinhardt_apps::Result<String> {
         use argon2::{
-            password_hash::{PasswordHasher as _, SaltString},
             Argon2,
+            password_hash::{PasswordHasher as _, SaltString},
         };
 
         // Use rand crate's rng which provides OsRng-backed randomness
@@ -213,8 +213,8 @@ impl PasswordHasher for Argon2Hasher {
 
     fn verify(&self, password: &str, hash: &str) -> reinhardt_apps::Result<bool> {
         use argon2::{
-            password_hash::{PasswordHash, PasswordVerifier},
             Argon2,
+            password_hash::{PasswordHash, PasswordVerifier},
         };
 
         let parsed_hash = PasswordHash::new(hash)

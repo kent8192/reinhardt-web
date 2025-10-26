@@ -201,10 +201,9 @@ impl DatabaseConnection {
     /// # });
     /// ```
     pub async fn get_connection(&self) -> DiResult<sqlx::pool::PoolConnection<sqlx::Sqlite>> {
-        self.pool
-            .acquire()
-            .await
-            .map_err(|e| DiError::ProviderError(format!("Failed to acquire database connection: {}", e)))
+        self.pool.acquire().await.map_err(|e| {
+            DiError::ProviderError(format!("Failed to acquire database connection: {}", e))
+        })
     }
 }
 
@@ -217,8 +216,8 @@ impl Injectable for DatabaseConnection {
         }
 
         // Fallback: try to get database URL from environment or context
-        let db_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "sqlite::memory:".to_string());
+        let db_url =
+            std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite::memory:".to_string());
 
         let db = DatabaseConnection::new(&db_url).await?;
 

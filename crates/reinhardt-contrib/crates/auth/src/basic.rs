@@ -2,7 +2,7 @@
 
 use crate::drf_authentication::Authentication;
 use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use reinhardt_types::Request;
 use std::collections::HashMap;
 use uuid::Uuid;

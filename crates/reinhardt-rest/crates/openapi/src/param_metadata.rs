@@ -3,8 +3,8 @@
 //! This module provides utilities to extract OpenAPI parameter metadata from
 //! Reinhardt's parameter types (Path, Query, Header, Cookie).
 
-use crate::openapi::{Parameter, ParameterIn as ParameterLocation, Required};
 use crate::ToSchema;
+use crate::openapi::{Parameter, ParameterIn as ParameterLocation, Required};
 use std::marker::PhantomData;
 
 /// Trait for types that can provide OpenAPI parameter metadata

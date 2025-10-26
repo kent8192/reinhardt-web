@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_apps::{Handler, Request, Response, Result};
-use reinhardt_routers::{path, re_path, DefaultRouter, Router};
+use reinhardt_routers::{DefaultRouter, Router, path, re_path};
 use std::sync::Arc;
 
 // Mock handlers for testing

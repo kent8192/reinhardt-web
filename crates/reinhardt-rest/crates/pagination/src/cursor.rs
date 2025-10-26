@@ -100,7 +100,7 @@ impl CursorPagination {
     /// Encode cursor with timestamp and checksum for security
     /// Format: base64(position:timestamp:checksum)
     fn encode_cursor(&self, position: usize) -> String {
-        use base64::{engine::general_purpose, Engine as _};
+        use base64::{Engine as _, engine::general_purpose};
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
@@ -121,7 +121,7 @@ impl CursorPagination {
 
     /// Decode and validate cursor
     fn decode_cursor(&self, cursor: &str) -> Result<usize> {
-        use base64::{engine::general_purpose, Engine as _};
+        use base64::{Engine as _, engine::general_purpose};
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 

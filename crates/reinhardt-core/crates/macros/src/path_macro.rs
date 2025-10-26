@@ -7,19 +7,19 @@
 //! of the URL pattern, enabling better error messages and future extensibility.
 
 use nom::{
+    IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take_while1},
     character::complete::{alpha1, alphanumeric1},
     combinator::{map, recognize, value, verify},
     multi::{many0, many0_count},
     sequence::{delimited, pair, separated_pair},
-    IResult, Parser,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    parse::{Parse, ParseStream},
     Error, LitStr, Result,
+    parse::{Parse, ParseStream},
 };
 
 // ============================================================================

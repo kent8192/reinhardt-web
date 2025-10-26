@@ -2,13 +2,13 @@
 
 #[cfg(feature = "graphql-grpc")]
 mod subscription_tests {
-    use async_graphql::{Schema, ID};
+    use async_graphql::{ID, Schema};
     use reinhardt_graphql::{
         grpc_service::GraphQLGrpcService,
         schema::{Mutation, Query, User},
         subscription::{EventBroadcaster, SubscriptionRoot, UserEvent},
     };
-    use reinhardt_grpc::proto::graphql::{graph_ql_service_server::GraphQlService, GraphQlRequest};
+    use reinhardt_grpc::proto::graphql::{GraphQlRequest, graph_ql_service_server::GraphQlService};
     use tokio_stream::StreamExt;
     use tonic::Request;
 

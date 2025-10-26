@@ -211,10 +211,12 @@ fn test_multiple_apps() {
 
     assert_eq!(changes.created_models.len(), 2);
     assert!(changes.created_models.iter().any(|(app, _)| app == "books"));
-    assert!(changes
-        .created_models
-        .iter()
-        .any(|(app, _)| app == "authors"));
+    assert!(
+        changes
+            .created_models
+            .iter()
+            .any(|(app, _)| app == "authors")
+    );
 }
 
 #[test]
@@ -440,7 +442,7 @@ fn test_multiple_changes_same_model() {
     new_model.add_field(field("id", "INTEGER", false));
     new_model.add_field(field("title", "VARCHAR(200)", false)); // altered
     new_model.add_field(field("new_field", "VARCHAR(50)", false)); // added
-                                                                   // old_field removed
+    // old_field removed
     to_state.add_model(new_model);
 
     let autodetector = MigrationAutodetector::new(from_state, to_state);
@@ -512,9 +514,11 @@ fn test_generate_operations_from_changes() {
 
     assert!(!operations.is_empty());
     // Should generate at least one CreateTable operation
-    assert!(operations
-        .iter()
-        .any(|op| matches!(op, reinhardt_migrations::Operation::CreateTable { .. })));
+    assert!(
+        operations
+            .iter()
+            .any(|op| matches!(op, reinhardt_migrations::Operation::CreateTable { .. }))
+    );
 }
 
 #[test]

@@ -209,9 +209,11 @@ async fn test_dispatch_injection_without_context_fails() {
     // Verify it fails with appropriate error
     assert!(result.is_err());
     let error = result.err().unwrap();
-    assert!(error
-        .to_string()
-        .contains("ViewSet requires DI context but none was provided"));
+    assert!(
+        error
+            .to_string()
+            .contains("ViewSet requires DI context but none was provided")
+    );
 }
 
 /// ViewSet with cache control in dispatch

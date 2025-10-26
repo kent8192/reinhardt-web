@@ -347,8 +347,8 @@ impl QueryFieldCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query_fields::Field;
     use crate::Model;
+    use crate::query_fields::Field;
     use reinhardt_validators::TableName;
 
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

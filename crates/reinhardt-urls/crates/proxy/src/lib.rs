@@ -48,8 +48,8 @@ pub mod scalar;
 pub use builder::ProxyBuilder;
 pub use collection::{CollectionAggregations, CollectionOperations, CollectionProxy};
 pub use joins::{
-    extract_through_path, filter_through_path, traverse_and_extract, traverse_relationships,
-    JoinConfig, LoadingStrategy, NestedProxy, RelationshipPath,
+    JoinConfig, LoadingStrategy, NestedProxy, RelationshipPath, extract_through_path,
+    filter_through_path, traverse_and_extract, traverse_relationships,
 };
 pub use loading::{
     EagerLoadConfig, EagerLoadable, LazyLoadable, LazyLoaded, LoadStrategy, RelationshipCache,
@@ -58,8 +58,8 @@ pub use orm_integration::OrmReflectable;
 pub use proxy::{AssociationProxy, ProxyAccessor, ProxyTarget, ScalarValue};
 pub use query::{FilterCondition, FilterOp, QueryFilter};
 pub use reflection::{
-    downcast_relationship, extract_collection_values, AttributeExtractor, ProxyCollection,
-    Reflectable, ReflectableFactory,
+    AttributeExtractor, ProxyCollection, Reflectable, ReflectableFactory, downcast_relationship,
+    extract_collection_values,
 };
 pub use scalar::{ScalarComparison, ScalarProxy};
 
@@ -96,6 +96,8 @@ pub enum ProxyError {
     SerializationError(String),
 
     /// Factory not configured for collection proxy
-    #[error("Factory not configured for collection proxy - required for creating objects from scalar values")]
+    #[error(
+        "Factory not configured for collection proxy - required for creating objects from scalar values"
+    )]
     FactoryNotConfigured,
 }

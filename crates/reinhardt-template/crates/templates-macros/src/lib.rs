@@ -34,11 +34,11 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, LitStr};
+use syn::{LitStr, parse_macro_input};
 
 mod validation;
 
-use validation::{validate_template_path, TemplateValidationError};
+use validation::{TemplateValidationError, validate_template_path};
 
 /// Validates template path syntax at compile time.
 ///

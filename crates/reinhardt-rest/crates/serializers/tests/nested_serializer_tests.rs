@@ -1,9 +1,9 @@
 //! Integration tests for nested serializers and recursive serialization
 
 use reinhardt_orm::Model;
-use reinhardt_serializers::nested_config::{NestedFieldConfig, NestedSerializerConfig};
-use reinhardt_serializers::recursive::{circular, depth, SerializationContext};
 use reinhardt_serializers::ModelSerializer;
+use reinhardt_serializers::nested_config::{NestedFieldConfig, NestedSerializerConfig};
+use reinhardt_serializers::recursive::{SerializationContext, circular, depth};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

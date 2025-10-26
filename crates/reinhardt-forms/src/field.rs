@@ -403,7 +403,7 @@ impl FormField for CharField {
                     _ => {
                         return Err(FieldError::Invalid(
                             "Cannot convert value to string".to_string(),
-                        ))
+                        ));
                     }
                 };
 
@@ -1429,9 +1429,11 @@ mod tests {
         let mut short_field = EmailField::new("email".to_string());
         short_field.max_length = Some(15);
 
-        assert!(short_field
-            .clean(Some(&serde_json::json!("a@foo.com")))
-            .is_ok());
+        assert!(
+            short_field
+                .clean(Some(&serde_json::json!("a@foo.com")))
+                .is_ok()
+        );
         assert!(matches!(
             short_field.clean(Some(&serde_json::json!("verylongemail@example.com"))),
             Err(FieldError::Validation(_))

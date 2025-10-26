@@ -45,9 +45,9 @@ pub use performance::{
     BatchValidator, IntrospectionCache, N1Detector, PerformanceMetrics, PerformanceStats,
     QueryCache,
 };
+pub use pool_manager::ConnectionPoolManager;
 #[cfg(feature = "django-compat")]
 pub use pool_manager::default_pool_config;
-pub use pool_manager::ConnectionPoolManager;
 pub use queryset_integration::{CacheAwareSaveContext, SaveContext, SerializerSaveMixin};
 pub use recursive::{RecursiveError, RecursiveResult, SerializationContext};
 pub use relation_fields_orm::{
@@ -59,8 +59,8 @@ pub use relations::{
 };
 pub use serializer::{Deserializer, JsonSerializer, Serializer, SerializerError, ValidatorError};
 pub use validator::{
-    validate_fields, FieldLevelValidation, FieldValidator, ObjectLevelValidation, ObjectValidator,
-    ValidationError, ValidationResult,
+    FieldLevelValidation, FieldValidator, ObjectLevelValidation, ObjectValidator, ValidationError,
+    ValidationResult, validate_fields,
 };
 pub use validator_config::ValidatorConfig;
 pub use validators::{DatabaseValidatorError, UniqueTogetherValidator, UniqueValidator};

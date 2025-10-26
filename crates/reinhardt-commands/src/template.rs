@@ -215,7 +215,10 @@ impl TemplateCommand {
 
         ctx.verbose(&format!(
             "Created: {}",
-            output_path.strip_prefix(output_base).unwrap_or(&output_path).display()
+            output_path
+                .strip_prefix(output_base)
+                .unwrap_or(&output_path)
+                .display()
         ));
 
         Ok(())
@@ -251,18 +254,16 @@ impl BaseCommand for TemplateCommand {
 
         let name = ctx
             .arg(0)
-            .ok_or_else(|| {
-                CommandError::InvalidArguments("You must provide a name.".to_string())
-            })?
+            .ok_or_else(|| CommandError::InvalidArguments("You must provide a name.".to_string()))?
             .clone();
 
         let target = ctx.arg(1).map(std::path::PathBuf::from);
 
-        let template_dir = ctx
-            .option("template")
-            .ok_or_else(|| {
-                CommandError::InvalidArguments("You must provide a template directory via --template.".to_string())
-            })?;
+        let template_dir = ctx.option("template").ok_or_else(|| {
+            CommandError::InvalidArguments(
+                "You must provide a template directory via --template.".to_string(),
+            )
+        })?;
 
         let template_path = std::path::PathBuf::from(template_dir);
 

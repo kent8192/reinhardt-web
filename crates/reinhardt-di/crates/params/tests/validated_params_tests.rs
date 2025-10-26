@@ -95,9 +95,11 @@ async fn test_validated_path_url() {
     // Valid URLs
     assert!(validated.validate_string("https://example.com").is_ok());
     assert!(validated.validate_string("http://localhost:8000").is_ok());
-    assert!(validated
-        .validate_string("https://example.com/path?query=value")
-        .is_ok());
+    assert!(
+        validated
+            .validate_string("https://example.com/path?query=value")
+            .is_ok()
+    );
 
     // Invalid URLs
     assert!(validated.validate_string("not-a-url").is_err());
@@ -133,9 +135,11 @@ async fn test_validated_path_combined() {
     assert!(validated.validate_string("a@b.com").is_err());
 
     // Invalid: too long
-    assert!(validated
-        .validate_string("verylongemailaddressthatshouldexceedfiftycharacters@example.com")
-        .is_err());
+    assert!(
+        validated
+            .validate_string("verylongemailaddressthatshouldexceedfiftycharacters@example.com")
+            .is_err()
+    );
 
     // Invalid: not an email
     assert!(validated.validate_string("not-an-email-string").is_err());

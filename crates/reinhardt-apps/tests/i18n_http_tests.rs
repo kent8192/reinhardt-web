@@ -4,8 +4,8 @@
 
 use bytes::Bytes;
 use hyper::{
-    header::{ACCEPT_LANGUAGE, COOKIE},
     HeaderMap, Method, Version,
+    header::{ACCEPT_LANGUAGE, COOKIE},
 };
 use reinhardt_apps::Request;
 

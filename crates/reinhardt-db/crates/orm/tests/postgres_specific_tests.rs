@@ -9,9 +9,9 @@
 mod postgres_tests {
     use reinhardt_orm::database::Database;
     #[cfg(feature = "postgres")]
-    use reinhardt_orm::{fields::JsonbField, Model};
+    use reinhardt_orm::{Model, fields::JsonbField};
 
-    use serde_json::{json, Value as JsonValue};
+    use serde_json::{Value as JsonValue, json};
     use std::collections::HashMap;
 
     // Test 1: JSONB field creation
@@ -112,8 +112,7 @@ mod postgres_tests {
     // Test 11: Full-text search query with tsquery
     #[tokio::test]
     async fn test_tsquery_search() {
-        let query =
-            "SELECT * FROM articles WHERE search_vector @@ to_tsquery('english', 'rust & postgres')";
+        let query = "SELECT * FROM articles WHERE search_vector @@ to_tsquery('english', 'rust & postgres')";
 
         assert!(query.contains("@@"));
         assert!(query.contains("to_tsquery"));

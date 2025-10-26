@@ -403,4 +403,3 @@ path = "tests/serializers/serializer_nested_integration_tests.rs"
 [[test]]
 name = "unified_router_integration"
 path = "tests/routing/unified_router_integration_tests.rs"
-

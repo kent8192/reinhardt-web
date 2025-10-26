@@ -5,9 +5,9 @@
 
 use reinhardt_integration_tests::security_test_helpers::*;
 
-use base64::{engine::general_purpose, Engine as _};
-use hyper::header::{HeaderName, HeaderValue, AUTHORIZATION, WWW_AUTHENTICATE};
+use base64::{Engine as _, engine::general_purpose};
 use hyper::StatusCode;
+use hyper::header::{AUTHORIZATION, HeaderName, HeaderValue, WWW_AUTHENTICATE};
 
 /// Create Basic Auth header value
 fn create_basic_auth(username: &str, password: &str) -> String {
@@ -252,7 +252,7 @@ fn test_bearer_token_with_special_chars() {
 fn test_authorization_header_with_extra_spaces() {
     // Test: Extra spaces in authorization header
     let auth = "Basic  dXNlcjpwYXNz"; // Extra space
-                                      // This should be invalid or handled gracefully
+    // This should be invalid or handled gracefully
     assert!(auth.starts_with("Basic"));
 }
 

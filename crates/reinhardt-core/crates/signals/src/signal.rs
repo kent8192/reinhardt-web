@@ -19,7 +19,7 @@ pub(crate) struct ReceiverInfo<T: Send + Sync + 'static> {
     pub(crate) receiver: ReceiverFn<T>,
     pub(crate) sender_type_id: Option<TypeId>,
     pub(crate) dispatch_uid: Option<String>,
-    pub(crate) priority: i32,                     // Higher values execute first
+    pub(crate) priority: i32, // Higher values execute first
     pub(crate) predicate: Option<PredicateFn<T>>, // Optional condition for execution
 }
 

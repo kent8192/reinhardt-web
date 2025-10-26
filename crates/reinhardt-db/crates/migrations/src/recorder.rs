@@ -212,8 +212,7 @@ impl DatabaseMigrationRecorder {
     /// # }
     /// ```
     pub async fn record_applied(&self, app: &str, name: &str) -> crate::Result<()> {
-        let sql =
-            "INSERT INTO reinhardt_migrations (app, name, applied) VALUES ($1, $2, CURRENT_TIMESTAMP)";
+        let sql = "INSERT INTO reinhardt_migrations (app, name, applied) VALUES ($1, $2, CURRENT_TIMESTAMP)";
         let params = vec![
             QueryValue::String(app.to_string()),
             QueryValue::String(name.to_string()),
@@ -339,15 +338,21 @@ mod tests {
         assert_eq!(migrations.len(), 3);
 
         // Verify all migrations were recorded
-        assert!(migrations
-            .iter()
-            .any(|m| m.app == "auth" && m.name == "0001_initial"));
-        assert!(migrations
-            .iter()
-            .any(|m| m.app == "users" && m.name == "0001_initial"));
-        assert!(migrations
-            .iter()
-            .any(|m| m.app == "auth" && m.name == "0002_add_field"));
+        assert!(
+            migrations
+                .iter()
+                .any(|m| m.app == "auth" && m.name == "0001_initial")
+        );
+        assert!(
+            migrations
+                .iter()
+                .any(|m| m.app == "users" && m.name == "0001_initial")
+        );
+        assert!(
+            migrations
+                .iter()
+                .any(|m| m.app == "auth" && m.name == "0002_add_field")
+        );
     }
 
     #[test]

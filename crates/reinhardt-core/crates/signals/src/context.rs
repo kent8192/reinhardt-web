@@ -4,8 +4,8 @@ use parking_lot::RwLock;
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 /// Context information passed with signals

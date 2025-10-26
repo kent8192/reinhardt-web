@@ -2,8 +2,8 @@
 
 use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope};
 use serial_test::serial;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Default, Debug, PartialEq)]
 struct CommonQueryParams {

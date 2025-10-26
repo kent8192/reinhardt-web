@@ -485,9 +485,8 @@ mod tests {
     async fn test_rate_limit_permission_custom_strategy() {
         let backend = Arc::new(MemoryBackend::new());
         let config = RateLimitConfig::new(2, 60, RateLimitKeyStrategy::Custom);
-        let permission = RateLimitPermission::new(backend, config).with_custom_key(|_ctx| {
-            Some("custom_key".to_string())
-        });
+        let permission = RateLimitPermission::new(backend, config)
+            .with_custom_key(|_ctx| Some("custom_key".to_string()));
 
         let headers = HeaderMap::new();
         let request = create_test_request(headers);

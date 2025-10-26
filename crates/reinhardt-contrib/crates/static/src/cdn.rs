@@ -493,7 +493,10 @@ mod tests {
         assert!(endpoint.contains("purge_cache"));
 
         // Test Custom provider
-        let config = CdnConfig::new(CdnProvider::Custom("mycdn".to_string()), "example.com".to_string());
+        let config = CdnConfig::new(
+            CdnProvider::Custom("mycdn".to_string()),
+            "example.com".to_string(),
+        );
         let helper = CdnPurgeHelper::new(config);
         let endpoint = helper.get_purge_endpoint();
         assert!(endpoint.contains("custom://mycdn/purge"));

@@ -233,7 +233,10 @@ impl TimeBasedPermission {
         // Check time windows
         if !self.time_windows.is_empty() {
             let time = dt.time();
-            let time_allowed = self.time_windows.iter().any(|window| window.contains(&time));
+            let time_allowed = self
+                .time_windows
+                .iter()
+                .any(|window| window.contains(&time));
             if !time_allowed {
                 return false;
             }
@@ -548,8 +551,7 @@ mod tests {
 
     #[test]
     fn test_permission_add_date_range() {
-        let permission =
-            TimeBasedPermission::new().add_date_range("2024-01-01", "2024-12-31");
+        let permission = TimeBasedPermission::new().add_date_range("2024-01-01", "2024-12-31");
 
         assert_eq!(permission.date_ranges.len(), 1);
     }

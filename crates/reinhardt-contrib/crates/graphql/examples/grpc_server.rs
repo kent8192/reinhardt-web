@@ -68,6 +68,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(not(feature = "graphql-grpc"))]
 fn main() {
     eprintln!("This example requires the 'graphql-grpc' feature.");
-    eprintln!("Run with: cargo run --package reinhardt-graphql --features graphql-grpc --example grpc_server");
+    eprintln!(
+        "Run with: cargo run --package reinhardt-graphql --features graphql-grpc --example grpc_server"
+    );
     std::process::exit(1);
 }

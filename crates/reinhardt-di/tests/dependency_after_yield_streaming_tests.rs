@@ -2,8 +2,8 @@ use bytes::Bytes;
 use futures::stream::{self, Stream};
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
 use reinhardt_http::StreamingResponse;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Session that can be iterated
 #[derive(Clone)]

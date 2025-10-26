@@ -4,8 +4,8 @@ use futures_util::{SinkExt, StreamExt};
 use reinhardt_server::{WebSocketHandler, WebSocketServer};
 use serde::{Deserialize, Serialize};
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
 use tokio::net::TcpListener;

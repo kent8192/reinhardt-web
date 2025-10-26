@@ -502,8 +502,8 @@ mod tests {
     #[test]
     fn test_filter_field_customization() {
         let center = Point::new(0.0, 0.0);
-        let filter = DistanceFilter::<()>::new(center, 1000.0, DistanceUnit::Meters)
-            .field("coordinates");
+        let filter =
+            DistanceFilter::<()>::new(center, 1000.0, DistanceUnit::Meters).field("coordinates");
 
         assert_eq!(filter.field_name, "coordinates");
     }

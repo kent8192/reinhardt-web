@@ -36,7 +36,7 @@ mod page_number;
 
 // Re-export core types and traits
 pub use crate::core::{
-    AsyncPaginator, Page, PaginatedResponse, Paginator, PaginationMetadata, SchemaParameter,
+    AsyncPaginator, Page, PaginatedResponse, PaginationMetadata, Paginator, SchemaParameter,
 };
 
 // Re-export pagination implementations

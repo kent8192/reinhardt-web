@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::ops::Deref;
 
-use crate::{extract::FromRequest, ParamContext, ParamError, ParamResult};
+use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
 
 /// Extract a value from cookies
 pub struct Cookie<T>(pub T);

@@ -1,7 +1,7 @@
 use crate::drf_authentication::Authentication;
 use crate::{AuthenticationError, SimpleUser, User};
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use reinhardt_apps::Request;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

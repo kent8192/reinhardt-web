@@ -42,8 +42,8 @@ impl TokenRotationConfig {
     /// ```
     pub fn new() -> Self {
         Self {
-            rotation_interval: 3600,    // 1 hour
-            grace_period: 300,          // 5 minutes
+            rotation_interval: 3600, // 1 hour
+            grace_period: 300,       // 5 minutes
             max_active_tokens: 5,
             rotate_on_use: false,
         }
@@ -151,7 +151,11 @@ impl TokenRotationRecord {
     /// assert_eq!(record.old_token(), "old_token");
     /// assert_eq!(record.new_token(), "new_token");
     /// ```
-    pub fn new(old_token: impl Into<String>, new_token: impl Into<String>, rotated_at: i64) -> Self {
+    pub fn new(
+        old_token: impl Into<String>,
+        new_token: impl Into<String>,
+        rotated_at: i64,
+    ) -> Self {
         Self {
             old_token: old_token.into(),
             new_token: new_token.into(),
@@ -395,8 +399,7 @@ mod tests {
 
     #[test]
     fn test_rotation_record_with_user_id() {
-        let record = TokenRotationRecord::new("old", "new", 123)
-            .with_user_id(42);
+        let record = TokenRotationRecord::new("old", "new", 123).with_user_id(42);
         assert_eq!(record.user_id(), 42);
     }
 
@@ -406,7 +409,7 @@ mod tests {
 
         assert!(!record.grace_period_expired(1200, 300)); // 200s elapsed, grace = 300s
         assert!(!record.grace_period_expired(1300, 300)); // 300s elapsed, grace = 300s
-        assert!(record.grace_period_expired(1301, 300));  // 301s elapsed, grace = 300s
+        assert!(record.grace_period_expired(1301, 300)); // 301s elapsed, grace = 300s
     }
 
     #[test]
@@ -419,28 +422,28 @@ mod tests {
 
     #[test]
     fn test_should_rotate() {
-        let config = TokenRotationConfig::new()
-            .rotation_interval(3600);
+        let config = TokenRotationConfig::new().rotation_interval(3600);
         let manager = AutoTokenRotationManager::new(config);
 
-        assert!(!manager.should_rotate(5000, 7000));   // 2000s elapsed < 3600s
-        assert!(!manager.should_rotate(5000, 8599));   // 3599s elapsed < 3600s
-        assert!(manager.should_rotate(5000, 8600));    // 3600s elapsed = 3600s
-        assert!(manager.should_rotate(5000, 10000));   // 5000s elapsed > 3600s
+        assert!(!manager.should_rotate(5000, 7000)); // 2000s elapsed < 3600s
+        assert!(!manager.should_rotate(5000, 8599)); // 3599s elapsed < 3600s
+        assert!(manager.should_rotate(5000, 8600)); // 3600s elapsed = 3600s
+        assert!(manager.should_rotate(5000, 10000)); // 5000s elapsed > 3600s
     }
 
     #[test]
     fn test_record_and_get_rotation() {
-        let config = TokenRotationConfig::new()
-            .grace_period(300);
+        let config = TokenRotationConfig::new().grace_period(300);
         let manager = AutoTokenRotationManager::new(config);
 
-        let record = TokenRotationRecord::new("old_token", "new_token", 1000)
-            .with_user_id(42);
+        let record = TokenRotationRecord::new("old_token", "new_token", 1000).with_user_id(42);
         manager.record_rotation(record);
 
         // Within grace period
-        assert_eq!(manager.get_rotated_token("old_token", 1200), Some("new_token".to_string()));
+        assert_eq!(
+            manager.get_rotated_token("old_token", 1200),
+            Some("new_token".to_string())
+        );
 
         // Beyond grace period
         assert_eq!(manager.get_rotated_token("old_token", 2000), None);
@@ -448,8 +451,7 @@ mod tests {
 
     #[test]
     fn test_cleanup_expired() {
-        let config = TokenRotationConfig::new()
-            .grace_period(300);
+        let config = TokenRotationConfig::new().grace_period(300);
         let manager = AutoTokenRotationManager::new(config);
 
         manager.record_rotation(TokenRotationRecord::new("old1", "new1", 1000));
@@ -469,18 +471,23 @@ mod tests {
 
     #[test]
     fn test_multiple_rotations() {
-        let config = TokenRotationConfig::new()
-            .grace_period(300);
+        let config = TokenRotationConfig::new().grace_period(300);
         let manager = AutoTokenRotationManager::new(config);
 
         manager.record_rotation(
-            TokenRotationRecord::new("token1_v1", "token1_v2", 1000).with_user_id(1)
+            TokenRotationRecord::new("token1_v1", "token1_v2", 1000).with_user_id(1),
         );
         manager.record_rotation(
-            TokenRotationRecord::new("token2_v1", "token2_v2", 1100).with_user_id(2)
+            TokenRotationRecord::new("token2_v1", "token2_v2", 1100).with_user_id(2),
         );
 
-        assert_eq!(manager.get_rotated_token("token1_v1", 1200), Some("token1_v2".to_string()));
-        assert_eq!(manager.get_rotated_token("token2_v1", 1200), Some("token2_v2".to_string()));
+        assert_eq!(
+            manager.get_rotated_token("token1_v1", 1200),
+            Some("token1_v2".to_string())
+        );
+        assert_eq!(
+            manager.get_rotated_token("token2_v1", 1200),
+            Some("token2_v2".to_string())
+        );
     }
 }

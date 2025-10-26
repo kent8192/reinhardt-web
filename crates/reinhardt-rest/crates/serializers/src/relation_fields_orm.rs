@@ -7,8 +7,8 @@
 
 use crate::SerializerError;
 use async_trait::async_trait;
-use reinhardt_orm::{query::*, Model};
-use serde::{de::DeserializeOwned, Serialize};
+use reinhardt_orm::{Model, query::*};
+use serde::{Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;
 
 /// Primary key related field with ORM query support

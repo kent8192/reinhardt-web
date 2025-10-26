@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use reinhardt_exception::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 
@@ -557,10 +557,7 @@ mod tests {
 
         // Set some values
         cache.set("key1", &"short", None).await.unwrap();
-        cache
-            .set("key2", &"a longer value", None)
-            .await
-            .unwrap();
+        cache.set("key2", &"a longer value", None).await.unwrap();
 
         let stats = cache.get_statistics().await;
         assert!(stats.memory_usage > 0);
@@ -687,10 +684,7 @@ mod tests {
 
         // Set values of different sizes
         cache.set("small", &"x", None).await.unwrap();
-        cache
-            .set("large", &"x".repeat(1000), None)
-            .await
-            .unwrap();
+        cache.set("large", &"x".repeat(1000), None).await.unwrap();
 
         let small_info = cache.inspect_entry("small").await.unwrap();
         let large_info = cache.inspect_entry("large").await.unwrap();
@@ -797,10 +791,7 @@ mod tests {
             .set("short_lived", &"value1", Some(Duration::from_millis(50)))
             .await
             .unwrap();
-        cache
-            .set("long_lived", &"value2", None)
-            .await
-            .unwrap();
+        cache.set("long_lived", &"value2", None).await.unwrap();
 
         // Both should exist initially
         assert!(cache.has_key("short_lived").await.unwrap());

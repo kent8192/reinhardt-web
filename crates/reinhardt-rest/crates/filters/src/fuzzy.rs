@@ -502,10 +502,7 @@ impl<M> FuzzySearchFilter<M> {
             return 0.0;
         }
 
-        let common = a_trigrams
-            .iter()
-            .filter(|t| b_trigrams.contains(t))
-            .count();
+        let common = a_trigrams.iter().filter(|t| b_trigrams.contains(t)).count();
         let total = a_trigrams.len() + b_trigrams.len();
 
         (2.0 * common as f64) / total as f64
@@ -660,8 +657,8 @@ mod tests {
 
     #[test]
     fn test_levenshtein_similarity() {
-        let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new()
-            .algorithm(FuzzyAlgorithm::Levenshtein);
+        let filter: FuzzySearchFilter<User> =
+            FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::Levenshtein);
 
         assert_eq!(filter.calculate_similarity("abc", "abc"), 1.0);
         assert!(filter.calculate_similarity("kitten", "sitting") > 0.5);
@@ -669,8 +666,8 @@ mod tests {
 
     #[test]
     fn test_jaro_winkler_similarity() {
-        let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new()
-            .algorithm(FuzzyAlgorithm::JaroWinkler);
+        let filter: FuzzySearchFilter<User> =
+            FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::JaroWinkler);
 
         assert_eq!(filter.calculate_similarity("abc", "abc"), 1.0);
         assert!(filter.calculate_similarity("martha", "marhta") > 0.9);
@@ -679,8 +676,8 @@ mod tests {
 
     #[test]
     fn test_trigram_similarity() {
-        let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new()
-            .algorithm(FuzzyAlgorithm::Trigram);
+        let filter: FuzzySearchFilter<User> =
+            FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::Trigram);
 
         assert_eq!(filter.calculate_similarity("abc", "abc"), 1.0);
         // "hello" vs "hellow" shares 2 trigrams: "hel", "ell", "llo" vs "hel", "ell", "llo", "low"
@@ -699,8 +696,8 @@ mod tests {
 
     #[test]
     fn test_soundex_similarity() {
-        let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new()
-            .algorithm(FuzzyAlgorithm::Soundex);
+        let filter: FuzzySearchFilter<User> =
+            FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::Soundex);
 
         assert_eq!(filter.calculate_similarity("Smith", "Smythe"), 1.0);
         assert_eq!(filter.calculate_similarity("Johnson", "Jonson"), 1.0);

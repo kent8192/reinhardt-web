@@ -294,7 +294,8 @@ struct RequestService {
 impl Service<hyper::Request<Incoming>> for RequestService {
     type Response = hyper::Response<Full<Bytes>>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
 
     fn call(&self, req: hyper::Request<Incoming>) -> Self::Future {
         let handler = self.handler.clone();
@@ -466,8 +467,7 @@ mod tests {
             prefix: "Middleware: ".to_string(),
         });
 
-        let server = HttpServer::new(Arc::new(TestHandler))
-            .with_middleware(middleware);
+        let server = HttpServer::new(Arc::new(TestHandler)).with_middleware(middleware);
 
         // Verify middleware is added
         assert_eq!(server.middlewares.len(), 1);

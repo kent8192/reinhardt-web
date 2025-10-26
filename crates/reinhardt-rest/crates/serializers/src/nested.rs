@@ -669,10 +669,12 @@ mod tests {
 
         let result = serializer.deserialize(&json.to_string());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message()
-            .contains("Creating nested instances is not allowed"));
+        assert!(
+            result
+                .unwrap_err()
+                .message()
+                .contains("Creating nested instances is not allowed")
+        );
     }
 
     #[test]
@@ -691,10 +693,12 @@ mod tests {
 
         let result = serializer.deserialize(&json.to_string());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message()
-            .contains("Updating nested instances is not allowed"));
+        assert!(
+            result
+                .unwrap_err()
+                .message()
+                .contains("Updating nested instances is not allowed")
+        );
     }
 
     #[test]
@@ -747,10 +751,12 @@ mod tests {
 
         let result = serializer.deserialize(&json.to_string());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message()
-            .contains("Creating nested instances is not allowed"));
+        assert!(
+            result
+                .unwrap_err()
+                .message()
+                .contains("Creating nested instances is not allowed")
+        );
     }
 
     #[test]

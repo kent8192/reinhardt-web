@@ -92,7 +92,10 @@ impl BaseCommand for MakeMessagesCommand {
             normalized_locales.push(Self::normalize_locale(locale));
         }
 
-        ctx.verbose(&format!("Processing locales: {}", normalized_locales.join(", ")));
+        ctx.verbose(&format!(
+            "Processing locales: {}",
+            normalized_locales.join(", ")
+        ));
 
         // Get file extensions
         let extensions = ctx.option_values("extension").unwrap_or_else(|| {
@@ -180,7 +183,10 @@ impl MakeMessagesCommand {
         }
 
         // Check for invalid characters (only alphanumeric, underscore, and hyphen allowed)
-        if !locale.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+        if !locale
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
             return Err(CommandError::InvalidArguments(format!(
                 "Invalid locale format: {}. Only lowercase letters, numbers, underscores, and hyphens are allowed (e.g., en_us, en-US, ja_jp)",
                 locale
@@ -188,7 +194,11 @@ impl MakeMessagesCommand {
         }
 
         // Check for invalid patterns
-        if locale.starts_with('_') || locale.ends_with('_') || locale.starts_with('-') || locale.ends_with('-') {
+        if locale.starts_with('_')
+            || locale.ends_with('_')
+            || locale.starts_with('-')
+            || locale.ends_with('-')
+        {
             return Err(CommandError::InvalidArguments(format!(
                 "Locale cannot start or end with underscore or hyphen: {}",
                 locale

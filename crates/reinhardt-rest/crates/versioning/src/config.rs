@@ -361,10 +361,12 @@ mod tests {
 
         let versioning = config.create_versioning();
         // The versioning instance should be created successfully
-        assert!(versioning
-            .determine_version(&crate::test_utils::create_test_request("/", vec![]))
-            .await
-            .is_ok());
+        assert!(
+            versioning
+                .determine_version(&crate::test_utils::create_test_request("/", vec![]))
+                .await
+                .is_ok()
+        );
     }
 
     #[test]

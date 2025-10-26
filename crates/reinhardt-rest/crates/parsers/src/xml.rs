@@ -6,10 +6,10 @@
 use crate::parser::{ParseResult, ParsedData, Parser};
 use async_trait::async_trait;
 use bytes::Bytes;
-use quick_xml::events::{attributes::Attributes, Event};
 use quick_xml::Reader;
+use quick_xml::events::{Event, attributes::Attributes};
 use reinhardt_exception::Error;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 /// XML parser configuration
 #[derive(Debug, Clone)]
@@ -140,7 +140,9 @@ impl XmlParserConfigBuilder {
     pub fn build(self) -> XmlParserConfig {
         let default = XmlParserConfig::default();
         XmlParserConfig {
-            include_attributes: self.include_attributes.unwrap_or(default.include_attributes),
+            include_attributes: self
+                .include_attributes
+                .unwrap_or(default.include_attributes),
             attribute_prefix: self.attribute_prefix.unwrap_or(default.attribute_prefix),
             text_key: self.text_key.unwrap_or(default.text_key),
             preserve_cdata: self.preserve_cdata.unwrap_or(default.preserve_cdata),
@@ -242,9 +244,9 @@ impl XMLParser {
                 }
 
                 Ok(Event::Text(e)) => {
-                    let text = e.unescape().map_err(|e| {
-                        Error::Validation(format!("XML unescape error: {}", e))
-                    })?;
+                    let text = e
+                        .unescape()
+                        .map_err(|e| Error::Validation(format!("XML unescape error: {}", e)))?;
 
                     if self.config.trim_text {
                         let trimmed = text.trim();
@@ -292,10 +294,7 @@ impl XMLParser {
                 Ok(_) => {}
 
                 Err(e) => {
-                    return Err(Error::Validation(format!(
-                        "XML parse error: {}",
-                        e
-                    )));
+                    return Err(Error::Validation(format!("XML parse error: {}", e)));
                 }
             }
         }
@@ -310,9 +309,8 @@ impl XMLParser {
         obj: &mut Map<String, Value>,
     ) -> ParseResult<()> {
         for attr in attributes {
-            let attr = attr.map_err(|e| {
-                Error::Validation(format!("XML attribute error: {}", e))
-            })?;
+            let attr =
+                attr.map_err(|e| Error::Validation(format!("XML attribute error: {}", e)))?;
 
             let key = format!(
                 "{}{}",
@@ -440,9 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_xml_parser_with_numbers() {
-        let config = XmlParserConfig::builder()
-            .parse_numbers(true)
-            .build();
+        let config = XmlParserConfig::builder().parse_numbers(true).build();
 
         let parser = XMLParser::with_config(config);
         let xml = Bytes::from("<root><count>42</count><price>19.99</price></root>");
@@ -460,9 +456,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_xml_parser_with_booleans() {
-        let config = XmlParserConfig::builder()
-            .parse_booleans(true)
-            .build();
+        let config = XmlParserConfig::builder().parse_booleans(true).build();
 
         let parser = XMLParser::with_config(config);
         let xml = Bytes::from("<root><active>true</active><enabled>false</enabled></root>");

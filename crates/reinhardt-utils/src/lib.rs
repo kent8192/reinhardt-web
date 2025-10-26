@@ -47,7 +47,7 @@ pub use reinhardt_storage as storage;
 
 pub use dateformat::format as format_date;
 pub use encoding::{escapejs, slugify, truncate_chars, truncate_words, urldecode, urlencode};
-pub use html::{escape, escape_attr, strip_tags, unescape, SafeString};
+pub use html::{SafeString, escape, escape_attr, strip_tags, unescape};
 pub use text::{capfirst, floatcomma, intcomma, ordinal, pluralize, title};
 pub use timezone::{
     get_timezone_name_local, get_timezone_name_utc, localtime, now, to_local, to_utc,

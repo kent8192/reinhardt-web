@@ -6,7 +6,7 @@
 use reinhardt_orm::Model;
 use reinhardt_pagination::{Page, PageNumberPagination, PaginatedResponse};
 use serde::{Deserialize, Serialize};
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 
 // ============================================================================
 // Test Models

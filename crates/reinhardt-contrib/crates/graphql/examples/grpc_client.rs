@@ -14,7 +14,7 @@
 
 #[cfg(feature = "graphql-grpc")]
 use reinhardt_grpc::proto::graphql::{
-    graph_ql_service_client::GraphQlServiceClient, GraphQlRequest,
+    GraphQlRequest, graph_ql_service_client::GraphQlServiceClient,
 };
 
 #[cfg(feature = "graphql-grpc")]
@@ -183,6 +183,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(not(feature = "graphql-grpc"))]
 fn main() {
     eprintln!("This example requires the 'graphql-grpc' feature.");
-    eprintln!("Run with: cargo run --package reinhardt-graphql --features graphql-grpc --example grpc_client");
+    eprintln!(
+        "Run with: cargo run --package reinhardt-graphql --features graphql-grpc --example grpc_client"
+    );
     std::process::exit(1);
 }

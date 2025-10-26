@@ -1,6 +1,6 @@
 mod common;
 
-use common::{assertions, TestFileSetup};
+use common::{TestFileSetup, assertions};
 use reinhardt_static::handler::{StaticError, StaticFileHandler};
 use std::fs;
 use tempfile::TempDir;

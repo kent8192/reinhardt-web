@@ -4,8 +4,8 @@
 //! Useful for identifying broken links on your site before users encounter them.
 
 use async_trait::async_trait;
-use hyper::header::{REFERER, USER_AGENT};
 use hyper::StatusCode;
+use hyper::header::{REFERER, USER_AGENT};
 use regex::Regex;
 use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
 use serde::{Deserialize, Serialize};

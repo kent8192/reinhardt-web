@@ -653,10 +653,17 @@ async fn test_query_multi_same_name() {
     let ctx = create_empty_context();
 
     let result = Query::<QueryParams>::from_request(&req, &ctx).await;
-    assert!(result.is_ok(), "Should successfully parse repeated query parameters");
+    assert!(
+        result.is_ok(),
+        "Should successfully parse repeated query parameters"
+    );
 
     let params = result.unwrap();
-    assert_eq!(params.q, vec![5, 6], "Should parse both values into a vector");
+    assert_eq!(
+        params.q,
+        vec![5, 6],
+        "Should parse both values into a vector"
+    );
 }
 
 /// Test: Validation errors for multiple query parameters with incorrect types

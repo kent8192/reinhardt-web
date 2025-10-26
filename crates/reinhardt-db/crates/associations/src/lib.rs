@@ -17,9 +17,7 @@ pub mod proxy;
 
 pub use collection::AssociationCollection;
 pub use foreign_key::{CascadeAction, ForeignKey};
-pub use loading::{
-    EagerLoader, JoinedLoader, LazyLoader, LoadingStrategy, SelectInLoader,
-};
+pub use loading::{EagerLoader, JoinedLoader, LazyLoader, LoadingStrategy, SelectInLoader};
 pub use many_to_many::ManyToMany;
 pub use one_to_many::OneToMany;
 pub use one_to_one::OneToOne;

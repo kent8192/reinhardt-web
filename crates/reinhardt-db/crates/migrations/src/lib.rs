@@ -33,11 +33,11 @@ pub use executor::{ExecutionResult, MigrationExecutor};
 pub use graph::{MigrationGraph, MigrationKey, MigrationNode};
 pub use loader::MigrationLoader;
 pub use migration::Migration;
-pub use model_registry::{global_registry, FieldMetadata, ModelMetadata, ModelRegistry};
-pub use plan::MigrationPlan;
+pub use model_registry::{FieldMetadata, ModelMetadata, ModelRegistry, global_registry};
 pub use operations::{
     AddColumn, AlterColumn, ColumnDefinition, CreateTable, DropColumn, Operation, SqlDialect,
 };
+pub use plan::MigrationPlan;
 
 // New operations from refactored modules
 pub use operations::{

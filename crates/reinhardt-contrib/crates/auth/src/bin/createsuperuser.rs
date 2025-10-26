@@ -11,8 +11,8 @@ use sqlx::{Pool, Sqlite, SqlitePool};
 
 #[cfg(feature = "database")]
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
+    password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
 };
 
 #[cfg(feature = "database")]

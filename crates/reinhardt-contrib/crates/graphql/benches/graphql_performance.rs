@@ -5,12 +5,12 @@
 //! - GraphQL over gRPC (network protocol overhead)
 
 use async_graphql::{EmptySubscription, Object, Schema};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 #[cfg(feature = "graphql-grpc")]
 use reinhardt_graphql::grpc_service::GraphQLGrpcService;
 #[cfg(feature = "graphql-grpc")]
-use reinhardt_grpc::proto::graphql::{graph_ql_service_server::GraphQlService, GraphQlRequest};
+use reinhardt_grpc::proto::graphql::{GraphQlRequest, graph_ql_service_server::GraphQlService};
 #[cfg(feature = "graphql-grpc")]
 use tonic::Request;
 

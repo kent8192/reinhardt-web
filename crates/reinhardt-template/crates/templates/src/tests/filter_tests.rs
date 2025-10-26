@@ -2,7 +2,7 @@
 //!
 //! Tests for template filters inspired by Django's filter tests
 
-use crate::{static_filter, static_path_join, StaticConfig};
+use crate::{StaticConfig, static_filter, static_path_join};
 use askama::Template;
 use std::collections::HashMap;
 

@@ -414,7 +414,7 @@ impl<U: UrlPatternWithParams> Default for UrlParams<U> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{path, Route};
+    use crate::{Route, path};
     use async_trait::async_trait;
     use reinhardt_apps::{Handler, Request, Response, Result as CoreResult};
     use std::sync::Arc;

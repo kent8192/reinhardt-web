@@ -42,13 +42,13 @@ use thiserror::Error;
 
 pub use auto_schema::{SchemaObject, ToSchema};
 pub use generator::SchemaGenerator;
-pub use reinhardt_openapi_macros::Schema;
 pub use openapi::{
     ComponentsExt, Header, Info, MediaType, OpenApiSchema, OpenApiSchemaExt, Operation,
     OperationExt, Parameter, ParameterExt, ParameterIn as ParameterLocation, PathItem, PathItemExt,
     RequestBody, Required, Response, ResponsesExt, Schema, SchemaExt, Server,
 };
 pub use param_metadata::{CookieParam, HeaderParam, ParameterMetadata, PathParam, QueryParam};
+pub use reinhardt_openapi_macros::Schema;
 pub use swagger::SwaggerUI;
 pub use viewset_inspector::{InspectorConfig, ViewSetInspector};
 

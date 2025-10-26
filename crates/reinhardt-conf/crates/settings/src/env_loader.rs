@@ -174,7 +174,7 @@ impl EnvLoader {
                     return Err(EnvError::IoError(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         ".env file not found in current or parent directories",
-                    )))
+                    )));
                 }
             }
         }

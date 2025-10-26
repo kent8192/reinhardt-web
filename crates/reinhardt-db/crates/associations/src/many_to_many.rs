@@ -458,7 +458,10 @@ mod tests {
             .add_through_field("notes");
 
         assert_eq!(rel.get_through_fields().len(), 4);
-        assert!(rel.get_through_fields().contains(&"enrolled_at".to_string()));
+        assert!(
+            rel.get_through_fields()
+                .contains(&"enrolled_at".to_string())
+        );
         assert!(rel.get_through_fields().contains(&"grade".to_string()));
         assert!(rel.get_through_fields().contains(&"completed".to_string()));
         assert!(rel.get_through_fields().contains(&"notes".to_string()));

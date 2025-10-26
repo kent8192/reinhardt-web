@@ -1,7 +1,7 @@
 //! OpenAPI schema generator
 
-use crate::openapi::OpenApiSchema;
 use crate::SchemaError;
+use crate::openapi::OpenApiSchema;
 
 /// Schema generator for OpenAPI schemas
 ///

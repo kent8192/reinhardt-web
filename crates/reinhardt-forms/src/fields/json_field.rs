@@ -1,7 +1,7 @@
 //! JSONField implementation for handling JSON data in forms
 
-use crate::field::{FieldError, FieldResult, FormField};
 use crate::Widget;
+use crate::field::{FieldError, FieldResult, FormField};
 use serde_json::{self, Value};
 
 /// A field for JSON data

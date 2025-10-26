@@ -100,7 +100,7 @@ pub use connection::{DatabaseBackend, DatabaseConnection, DatabaseExecutor, Quer
 pub use constraints::{
     CheckConstraint, Constraint, ForeignKeyConstraint, OnDelete, OnUpdate, UniqueConstraint,
 };
-pub use expressions::{Exists, OuterRef, QOperator, Subquery, F, Q};
+pub use expressions::{Exists, F, OuterRef, Q, QOperator, Subquery};
 pub use functions::{
     Abs, Cast, Ceil, Concat, CurrentDate, CurrentTime, Extract, ExtractComponent, Floor, Greatest,
     Least, Length, Lower, Mod, Now, NullIf, Power, Round, SqlType, Sqrt, Substr, Trim, TrimType,
@@ -114,8 +114,8 @@ pub use query_fields::{
 };
 pub use set_operations::{CombinedQuery, SetOperation, SetOperationBuilder};
 pub use transaction::{
-    atomic, atomic_with_isolation, Atomic, IsolationLevel, Savepoint, Transaction,
-    TransactionScope, TransactionState,
+    Atomic, IsolationLevel, Savepoint, Transaction, TransactionScope, TransactionState, atomic,
+    atomic_with_isolation,
 };
 pub use validators::{
     EmailValidator, FieldValidators, MaxLengthValidator, MinLengthValidator, ModelValidators,
@@ -140,30 +140,30 @@ pub use file_fields::{FileField, FileFieldError, ImageField};
 
 pub use database_routing::DatabaseRouter;
 pub use events::{
-    event_registry, AttributeEvents, EventListener, EventRegistry, EventResult, InstanceEvents,
-    MapperEvents, SessionEvents,
+    AttributeEvents, EventListener, EventRegistry, EventResult, InstanceEvents, MapperEvents,
+    SessionEvents, event_registry,
 };
 pub use execution::{ExecutionResult, QueryExecution, SelectExecution};
 // Re-export from reinhardt-hybrid
 pub use loading::{
-    joinedload, lazyload, noload, raiseload, selectinload, subqueryload, LoadContext, LoadOption,
-    LoadOptionBuilder, LoadingStrategy,
+    LoadContext, LoadOption, LoadOptionBuilder, LoadingStrategy, joinedload, lazyload, noload,
+    raiseload, selectinload, subqueryload,
 };
 pub use polymorphic::{
-    polymorphic_registry, InheritanceType, PolymorphicConfig, PolymorphicIdentity,
-    PolymorphicQuery, PolymorphicRegistry, PolymorphicRelation,
+    InheritanceType, PolymorphicConfig, PolymorphicIdentity, PolymorphicQuery, PolymorphicRegistry,
+    PolymorphicRelation, polymorphic_registry,
 };
 pub use query_options::{
     CompiledCacheOption, ExecutionOptions, ForUpdateMode, IsolationLevel as QueryIsolationLevel,
     QueryOptions, QueryOptionsBuilder,
 };
-pub use registry::{registry, ColumnInfo, Mapper, MapperRegistry, TableInfo};
+pub use registry::{ColumnInfo, Mapper, MapperRegistry, TableInfo, registry};
 pub use reinhardt_hybrid::{
     Comparator as HybridComparator, HybridMethod, HybridProperty, UpperCaseComparator,
 };
 pub use relationship::{CascadeOption, Relationship, RelationshipDirection, RelationshipType};
 pub use session::{Session, SessionError};
-pub use sqlalchemy_query::{column, select, Column as SqlColumn, JoinType, SelectQuery};
+pub use sqlalchemy_query::{Column as SqlColumn, JoinType, SelectQuery, column, select};
 pub use typed_join::TypedJoin;
 pub use types::{
     ArrayType, DatabaseDialect, HstoreType, InetType, JsonType, SqlTypeDefinition, SqlValue,
@@ -172,8 +172,8 @@ pub use types::{
 
 // New features - engine, migrations, many-to-many, async queries
 pub use async_query::{AsyncQuery, AsyncSession};
-pub use engine::{create_engine, create_engine_with_config, Engine, EngineConfig};
-pub use many_to_many::{association_table, AssociationTable, ManyToMany};
+pub use engine::{Engine, EngineConfig, create_engine, create_engine_with_config};
+pub use many_to_many::{AssociationTable, ManyToMany, association_table};
 pub use query_execution::{ExecutableQuery, QueryCompiler};
 
 // Django ORM compatibility layer (optional)

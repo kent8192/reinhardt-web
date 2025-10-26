@@ -53,7 +53,10 @@ impl BaseCommand for SendTestEmailCommand {
         }
 
         // Get backend option (defaults to console)
-        let backend_name = ctx.option("backend").map(|s| s.as_str()).unwrap_or("console");
+        let backend_name = ctx
+            .option("backend")
+            .map(|s| s.as_str())
+            .unwrap_or("console");
 
         // Check verbose option
         let verbose = ctx.has_option("verbose");

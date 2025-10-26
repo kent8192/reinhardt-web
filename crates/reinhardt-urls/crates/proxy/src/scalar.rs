@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::proxy::ScalarValue;
 use crate::ProxyResult;
+use crate::proxy::ScalarValue;
 
 /// Scalar proxy for accessing a single related object's attribute
 ///

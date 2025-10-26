@@ -65,9 +65,11 @@ fn test_add_middleware() {
     settings.add_middleware("myapp.middleware.CustomMiddleware");
 
     assert_eq!(settings.middleware.len(), initial_count + 1);
-    assert!(settings
-        .middleware
-        .contains(&"myapp.middleware.CustomMiddleware".to_string()));
+    assert!(
+        settings
+            .middleware
+            .contains(&"myapp.middleware.CustomMiddleware".to_string())
+    );
 }
 
 #[test]

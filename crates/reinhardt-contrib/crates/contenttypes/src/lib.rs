@@ -16,6 +16,6 @@
 pub mod contenttypes;
 
 pub use contenttypes::{
-    ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable, GenericRelationQuery,
-    ModelType, CONTENT_TYPE_REGISTRY,
+    CONTENT_TYPE_REGISTRY, ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable,
+    GenericRelationQuery, ModelType,
 };

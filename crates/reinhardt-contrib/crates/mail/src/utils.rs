@@ -2,7 +2,7 @@
 //!
 //! Helper functions for sending emails quickly.
 
-use crate::{backends::EmailBackend, EmailMessage, EmailResult};
+use crate::{EmailMessage, EmailResult, backends::EmailBackend};
 use reinhardt_settings::EmailSettings;
 
 /// Send a simple email
@@ -216,11 +216,7 @@ pub async fn mail_admins(
         backend,
     );
 
-    if fail_silently {
-        Ok(())
-    } else {
-        result
-    }
+    if fail_silently { Ok(()) } else { result }
 }
 /// Send an email to managers
 ///
@@ -301,11 +297,7 @@ pub async fn mail_managers(
         backend,
     );
 
-    if fail_silently {
-        Ok(())
-    } else {
-        result
-    }
+    if fail_silently { Ok(()) } else { result }
 }
 
 #[cfg(test)]

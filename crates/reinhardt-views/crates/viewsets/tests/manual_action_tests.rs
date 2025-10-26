@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
 use reinhardt_apps::{Request, Response};
-use reinhardt_viewsets::{action, register_action, ActionMetadata, FunctionActionHandler, ViewSet};
+use reinhardt_viewsets::{ActionMetadata, FunctionActionHandler, ViewSet, action, register_action};
 
 #[derive(Debug, Clone)]
 struct TestViewSet {

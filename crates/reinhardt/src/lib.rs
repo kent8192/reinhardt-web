@@ -113,8 +113,8 @@ pub use reinhardt_viewsets::{
 
 // Re-export routers
 pub use reinhardt_routers::{
-    clear_router, get_router, is_router_registered, register_router, DefaultRouter, PathMatcher,
-    PathPattern, Route, Router, UnifiedRouter,
+    DefaultRouter, PathMatcher, PathPattern, Route, Router, UnifiedRouter, clear_router,
+    get_router, is_router_registered, register_router,
 };
 
 // Re-export auth
@@ -141,7 +141,7 @@ pub use reinhardt_throttling::{AnonRateThrottle, ScopedRateThrottle, Throttle, U
 
 // Re-export signals
 pub use reinhardt_signals::{
-    m2m_changed, post_delete, post_save, pre_delete, pre_save, M2MAction, M2MChangeEvent, Signal,
+    M2MAction, M2MChangeEvent, Signal, m2m_changed, post_delete, post_save, pre_delete, pre_save,
 };
 
 // Re-export views
@@ -180,8 +180,8 @@ pub use reinhardt_rest::*;
 // Re-export database related (database feature)
 #[cfg(feature = "database")]
 pub use reinhardt_contenttypes::{
-    ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable, GenericRelationQuery,
-    ModelType, CONTENT_TYPE_REGISTRY,
+    CONTENT_TYPE_REGISTRY, ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable,
+    GenericRelationQuery, ModelType,
 };
 #[cfg(feature = "database")]
 pub use reinhardt_migrations::{
@@ -220,18 +220,6 @@ pub use tokio;
 /// Prelude module for convenient imports
 pub mod prelude {
     pub use crate::{
-        // External
-        async_trait,
-        clear_router,
-        get_router,
-        is_router_registered,
-        m2m_changed,
-
-        post_delete,
-        post_save,
-        pre_delete,
-        pre_save,
-        register_router,
         // Versioning
         AcceptHeaderVersioning,
         Action,
@@ -332,6 +320,18 @@ pub mod prelude {
         ViewSet,
 
         XMLRenderer,
+        // External
+        async_trait,
+        clear_router,
+        get_router,
+        is_router_registered,
+        m2m_changed,
+
+        post_delete,
+        post_save,
+        pre_delete,
+        pre_save,
+        register_router,
     };
 
     // Cache (if enabled)

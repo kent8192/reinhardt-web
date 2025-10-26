@@ -128,10 +128,8 @@ impl GcsStorage {
             // Create temporary file for service account key
             // GCS client library reads credentials from GOOGLE_APPLICATION_CREDENTIALS env var
             let temp_dir = std::env::temp_dir();
-            let key_file_path = temp_dir.join(format!(
-                "gcs-service-account-{}.json",
-                std::process::id()
-            ));
+            let key_file_path =
+                temp_dir.join(format!("gcs-service-account-{}.json", std::process::id()));
 
             // Write service account key to temporary file
             std::fs::write(&key_file_path, key_json).map_err(|e| {
@@ -394,7 +392,9 @@ mod tests {
         let error = result.unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
         assert!(
-            error.to_string().contains("Invalid service account key JSON"),
+            error
+                .to_string()
+                .contains("Invalid service account key JSON"),
             "Error message should indicate JSON validation failure"
         );
     }

@@ -387,11 +387,13 @@ mod tests {
         let mut field = GenericIPAddressField::new("ip".to_string());
         field.protocol = IPProtocol::IPv6;
 
-        assert!(field
-            .clean(Some(&serde_json::json!(
-                "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
-            )))
-            .is_ok());
+        assert!(
+            field
+                .clean(Some(&serde_json::json!(
+                    "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+                )))
+                .is_ok()
+        );
         assert!(field.clean(Some(&serde_json::json!("::1"))).is_ok());
     }
 }

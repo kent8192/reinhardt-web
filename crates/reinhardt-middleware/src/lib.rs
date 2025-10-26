@@ -34,13 +34,12 @@ pub use cors::CorsMiddleware;
 pub use csp::{CspConfig, CspMiddleware, CspNonce};
 pub use csp_helpers::{csp_nonce_attr, get_csp_nonce};
 pub use csrf::{
-    check_origin, check_referer, check_token, get_secret,
-    get_token, is_same_domain, CsrfConfig,
-    CsrfMeta, CsrfMiddleware, CsrfMiddlewareConfig, CsrfToken, InvalidTokenFormat, RejectRequest,
-    SameSite, CSRF_ALLOWED_CHARS, CSRF_SECRET_LENGTH, CSRF_SESSION_KEY, CSRF_TOKEN_LENGTH,
+    CSRF_ALLOWED_CHARS, CSRF_SECRET_LENGTH, CSRF_SESSION_KEY, CSRF_TOKEN_LENGTH, CsrfConfig,
+    CsrfMeta, CsrfMiddleware, CsrfMiddlewareConfig, CsrfToken, InvalidTokenFormat,
     REASON_BAD_ORIGIN, REASON_BAD_REFERER, REASON_CSRF_TOKEN_MISSING, REASON_INCORRECT_LENGTH,
     REASON_INSECURE_REFERER, REASON_INVALID_CHARACTERS, REASON_MALFORMED_REFERER,
-    REASON_NO_CSRF_COOKIE, REASON_NO_REFERER,
+    REASON_NO_CSRF_COOKIE, REASON_NO_REFERER, RejectRequest, SameSite, check_origin, check_referer,
+    check_token, get_secret, get_token, is_same_domain,
 };
 pub use flatpages::{Flatpage, FlatpageStore, FlatpagesConfig, FlatpagesMiddleware};
 pub use gzip::{GZipConfig, GZipMiddleware};
@@ -50,12 +49,12 @@ pub use logging::LoggingMiddleware;
 pub use messages::{CookieStorage, Message, MessageLevel, MessageStorage, SessionStorage};
 pub use metrics::{MetricsConfig, MetricsMiddleware, MetricsStore};
 pub use redirect_fallback::{RedirectFallbackMiddleware, RedirectResponseConfig};
-pub use request_id::{RequestIdConfig, RequestIdMiddleware, REQUEST_ID_HEADER};
+pub use request_id::{REQUEST_ID_HEADER, RequestIdConfig, RequestIdMiddleware};
 pub use security_middleware::{SecurityConfig, SecurityMiddleware};
-pub use site::{Site, SiteConfig, SiteMiddleware, SiteRegistry, SITE_ID_HEADER};
+pub use site::{SITE_ID_HEADER, Site, SiteConfig, SiteMiddleware, SiteRegistry};
 pub use tracing::{
-    Span, SpanStatus, TraceStore, TracingConfig, TracingMiddleware, PARENT_SPAN_ID_HEADER,
-    SPAN_ID_HEADER, TRACE_ID_HEADER,
+    PARENT_SPAN_ID_HEADER, SPAN_ID_HEADER, Span, SpanStatus, TRACE_ID_HEADER, TraceStore,
+    TracingConfig, TracingMiddleware,
 };
 pub use xframe::{XFrameOptions, XFrameOptionsMiddleware};
 
@@ -132,12 +131,16 @@ mod tests {
 
         assert_eq!(response.status, StatusCode::NO_CONTENT);
         assert!(response.headers.contains_key("Access-Control-Allow-Origin"));
-        assert!(response
-            .headers
-            .contains_key("Access-Control-Allow-Methods"));
-        assert!(response
-            .headers
-            .contains_key("Access-Control-Allow-Headers"));
+        assert!(
+            response
+                .headers
+                .contains_key("Access-Control-Allow-Methods")
+        );
+        assert!(
+            response
+                .headers
+                .contains_key("Access-Control-Allow-Headers")
+        );
     }
 
     #[tokio::test]

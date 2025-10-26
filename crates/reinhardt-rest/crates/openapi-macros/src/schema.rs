@@ -75,9 +75,9 @@ pub fn extract_field_attributes(attrs: &[Attribute]) -> FieldAttributes {
         if let Ok(meta_list) = attr.meta.require_list() {
             for nested_meta in meta_list
                 .parse_args_with(
-                syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
-            )
-            .unwrap_or_default()
+                    syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
+                )
+                .unwrap_or_default()
             {
                 match nested_meta {
                     Meta::NameValue(nv) => {

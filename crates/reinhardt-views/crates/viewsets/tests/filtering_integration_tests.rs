@@ -72,8 +72,7 @@ async fn test_extract_filters_from_request() {
 
 #[tokio::test]
 async fn test_extract_search_from_request() {
-    let filter_config =
-        FilterConfig::new().with_search_fields(vec!["name", "description"]);
+    let filter_config = FilterConfig::new().with_search_fields(vec!["name", "description"]);
 
     let viewset: ModelViewSet<TestModel, TestSerializer> =
         ModelViewSet::new("items").with_filters(filter_config);
@@ -258,7 +257,9 @@ async fn test_extract_filters_skip_pagination_params() {
 
     let request = Request::new(
         Method::GET,
-        Uri::from_static("/items/?status=active&page=2&page_size=10&limit=20&offset=0&cursor=abc&ordering=name&search=test"),
+        Uri::from_static(
+            "/items/?status=active&page=2&page_size=10&limit=20&offset=0&cursor=abc&ordering=name&search=test",
+        ),
         Version::HTTP_11,
         HeaderMap::new(),
         Bytes::new(),

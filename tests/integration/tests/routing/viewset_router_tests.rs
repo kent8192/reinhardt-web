@@ -195,7 +195,7 @@ async fn test_viewset_router_http_methods() {
 #[tokio::test]
 async fn test_extra_actions_with_router() {
     use async_trait::async_trait;
-    use reinhardt_viewsets::{register_action, ActionMetadata, FunctionActionHandler};
+    use reinhardt_viewsets::{ActionMetadata, FunctionActionHandler, register_action};
 
     // Define a custom ViewSet type
     #[derive(Debug, Clone)]
@@ -286,7 +286,7 @@ async fn test_extra_actions_with_router() {
 #[tokio::test]
 async fn test_get_extra_actions() {
     use async_trait::async_trait;
-    use reinhardt_viewsets::{action, register_action, ActionMetadata, FunctionActionHandler};
+    use reinhardt_viewsets::{ActionMetadata, FunctionActionHandler, action, register_action};
 
     // Define a custom ViewSet type
     #[derive(Debug, Clone)]
@@ -339,16 +339,18 @@ async fn test_get_extra_actions() {
 
     assert_eq!(extra_actions.len(), 2);
     assert!(extra_actions.iter().any(|a| a.name == "custom_list_action"));
-    assert!(extra_actions
-        .iter()
-        .any(|a| a.name == "custom_detail_action"));
+    assert!(
+        extra_actions
+            .iter()
+            .any(|a| a.name == "custom_detail_action")
+    );
 }
 
 /// Test extra action URL map generation
 #[tokio::test]
 async fn test_extra_action_url_map() {
     use async_trait::async_trait;
-    use reinhardt_viewsets::{register_action, ActionMetadata, FunctionActionHandler};
+    use reinhardt_viewsets::{ActionMetadata, FunctionActionHandler, register_action};
 
     // Define a custom ViewSet type
     #[derive(Debug, Clone)]
@@ -407,7 +409,7 @@ async fn test_extra_action_url_map() {
 #[tokio::test]
 async fn test_action_names_with_kwargs() {
     use async_trait::async_trait;
-    use reinhardt_viewsets::{register_action, ActionMetadata, FunctionActionHandler};
+    use reinhardt_viewsets::{ActionMetadata, FunctionActionHandler, register_action};
 
     // Define a custom ViewSet type
     #[derive(Debug, Clone)]
@@ -547,7 +549,7 @@ async fn test_initialize_view_set_with_both_name_and_suffix() {
 /// Test viewset has required attributes after as_view()
 #[tokio::test]
 async fn test_args_kwargs_request_action_map_on_self() {
-    use reinhardt_viewsets::{viewset_actions, ViewSetHandler};
+    use reinhardt_viewsets::{ViewSetHandler, viewset_actions};
 
     // Test that ViewSetHandler has the expected behavior:
     // 1. action_map is set during construction
@@ -594,7 +596,7 @@ async fn test_args_kwargs_request_action_map_on_self() {
 #[tokio::test]
 async fn test_login_required_middleware_compat() {
     use hyper::{Method, Uri, Version};
-    use reinhardt_viewsets::{viewset_actions, TestViewSet};
+    use reinhardt_viewsets::{TestViewSet, viewset_actions};
     use std::collections::HashMap;
 
     // Test ViewSet without login required

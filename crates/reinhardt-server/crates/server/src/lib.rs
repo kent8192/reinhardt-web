@@ -10,17 +10,17 @@ pub mod graphql;
 #[cfg(feature = "websocket")]
 pub mod websocket;
 
-pub use http::{serve, serve_with_shutdown, HttpServer};
-pub use http2::{serve_http2, serve_http2_with_shutdown, Http2Server};
+pub use http::{HttpServer, serve, serve_with_shutdown};
+pub use http2::{Http2Server, serve_http2, serve_http2_with_shutdown};
 pub use rate_limit::{RateLimitConfig, RateLimitHandler, RateLimitStrategy};
-pub use shutdown::{shutdown_signal, with_shutdown, ShutdownCoordinator};
+pub use shutdown::{ShutdownCoordinator, shutdown_signal, with_shutdown};
 pub use timeout::TimeoutHandler;
 
 #[cfg(feature = "graphql")]
-pub use graphql::{graphql_handler, GraphQLHandler};
+pub use graphql::{GraphQLHandler, graphql_handler};
 
 #[cfg(feature = "websocket")]
-pub use websocket::{serve_websocket, BroadcastManager, WebSocketHandler, WebSocketServer};
+pub use websocket::{BroadcastManager, WebSocketHandler, WebSocketServer, serve_websocket};
 
 // Re-export types needed for server trait
 pub use reinhardt_http::{Request, Response};

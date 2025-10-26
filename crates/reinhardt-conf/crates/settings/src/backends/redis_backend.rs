@@ -441,19 +441,23 @@ mod tests {
             .expect("Failed to set setting");
 
         // Verify setting exists
-        assert!(backend
-            .exists(key)
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            backend
+                .exists(key)
+                .await
+                .expect("Failed to check existence")
+        );
 
         // Delete setting
         backend.delete(key).await.expect("Failed to delete setting");
 
         // Verify setting no longer exists
-        assert!(!backend
-            .exists(key)
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            !backend
+                .exists(key)
+                .await
+                .expect("Failed to check existence")
+        );
     }
 
     #[tokio::test]
@@ -474,10 +478,12 @@ mod tests {
         assert_eq!(retrieved, Some(value.to_string()));
 
         // Verify it exists
-        assert!(backend
-            .exists(key)
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            backend
+                .exists(key)
+                .await
+                .expect("Failed to check existence")
+        );
 
         // Cleanup
         backend.delete(key).await.expect("Failed to delete setting");

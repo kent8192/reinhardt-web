@@ -65,7 +65,9 @@ pub enum DatabaseValidatorError {
     },
 
     /// A unique together constraint was violated for multiple fields
-    #[error("Unique together constraint violated: fields ({fields:?}) with values ({values:?}) already exist in table {table}")]
+    #[error(
+        "Unique together constraint violated: fields ({fields:?}) with values ({values:?}) already exist in table {table}"
+    )]
     UniqueTogetherViolation {
         /// The field names that violated the constraint
         fields: Vec<String>,

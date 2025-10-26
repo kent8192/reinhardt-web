@@ -193,8 +193,7 @@ type HmacSha256 = Hmac<Sha256>;
 /// assert_eq!(token.len(), 64); // HMAC-SHA256 produces 32 bytes = 64 hex chars
 /// ```
 pub fn generate_token_hmac(secret: &[u8], message: &str) -> String {
-    let mut mac = HmacSha256::new_from_slice(secret)
-        .expect("HMAC can take key of any size");
+    let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC can take key of any size");
     mac.update(message.as_bytes());
     let result = mac.finalize();
     hex::encode(result.into_bytes())
@@ -235,8 +234,7 @@ pub fn verify_token_hmac(token: &str, secret: &[u8], message: &str) -> bool {
     };
 
     // Generate expected HMAC
-    let mut mac = HmacSha256::new_from_slice(secret)
-        .expect("HMAC can take key of any size");
+    let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC can take key of any size");
     mac.update(message.as_bytes());
 
     // Constant-time comparison to prevent timing attacks

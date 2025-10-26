@@ -5,7 +5,7 @@
 use clap::Parser;
 use console::style;
 use reinhardt_migrations::{
-    autodetector::ProjectState, MakeMigrationsCommand, MakeMigrationsOptions,
+    MakeMigrationsCommand, MakeMigrationsOptions, autodetector::ProjectState,
 };
 use std::path::PathBuf;
 

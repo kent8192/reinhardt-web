@@ -11,7 +11,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_apps::{Handler, Request, Response, Result};
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
-use reinhardt_macros::{endpoint, Injectable as InjectableDerive};
+use reinhardt_macros::{Injectable as InjectableDerive, endpoint};
 use reinhardt_viewsets::{Action, ViewSet, ViewSetHandler};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -330,8 +330,8 @@ async fn test_mixed_cache_behavior() {
 
 #[tokio::test]
 async fn test_memory_reuse_with_caching() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::LazyLock;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     static MEMORY_COUNTER: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(3500));
 

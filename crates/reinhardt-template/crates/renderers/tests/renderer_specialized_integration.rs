@@ -515,20 +515,28 @@ mod specialized_renderer_tests {
         let form_renderer = HTMLFormRenderer::new();
 
         // HTML renderers should have text/html in media_types
-        assert!(static_renderer
-            .media_types()
-            .contains(&"text/html".to_string()));
-        assert!(doc_renderer
-            .media_types()
-            .contains(&"text/html".to_string()));
-        assert!(form_renderer
-            .media_types()
-            .contains(&"text/html".to_string()));
+        assert!(
+            static_renderer
+                .media_types()
+                .contains(&"text/html".to_string())
+        );
+        assert!(
+            doc_renderer
+                .media_types()
+                .contains(&"text/html".to_string())
+        );
+        assert!(
+            form_renderer
+                .media_types()
+                .contains(&"text/html".to_string())
+        );
 
         // JS renderer should have application/javascript in media_types
-        assert!(schema_renderer
-            .media_types()
-            .contains(&"application/javascript".to_string()));
+        assert!(
+            schema_renderer
+                .media_types()
+                .contains(&"application/javascript".to_string())
+        );
     }
 
     #[tokio::test]

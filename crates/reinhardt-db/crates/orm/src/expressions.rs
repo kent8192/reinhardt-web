@@ -1259,9 +1259,11 @@ mod expressions_extended_tests {
     fn test_in_subquery_1() {
         // Test IN with subquery
         let subquery = Subquery::new("SELECT category_id FROM featured_categories");
-        assert!(subquery
-            .to_sql()
-            .contains("SELECT category_id FROM featured_categories"));
+        assert!(
+            subquery
+                .to_sql()
+                .contains("SELECT category_id FROM featured_categories")
+        );
     }
 
     #[test]

@@ -18,8 +18,8 @@ use std::sync::Arc;
 
 #[tokio::test]
 async fn test_complete_request_response_cycle() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::LazyLock;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     static REQUEST_COUNTER: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
 

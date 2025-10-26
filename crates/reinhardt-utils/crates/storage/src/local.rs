@@ -513,7 +513,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_modified_time_changes() {
-        use tokio::time::{sleep, Duration};
+        use tokio::time::{Duration, sleep};
 
         let (storage, _temp_dir) = create_test_storage().await;
 

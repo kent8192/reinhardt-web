@@ -98,10 +98,7 @@ impl RoomManager {
     ///
     /// # Deprecated
     /// This method is deprecated. Iterate over your rooms manually instead.
-    #[deprecated(
-        since = "0.2.0",
-        note = "Iterate over your rooms manually instead"
-    )]
+    #[deprecated(since = "0.2.0", note = "Iterate over your rooms manually instead")]
     pub async fn broadcast_to_all(&self, message: Message) -> WebSocketResult<()> {
         let rooms = self.rooms.read().await;
         for room in rooms.values() {
@@ -130,10 +127,7 @@ impl RoomManager {
     ///
     /// # Deprecated
     /// This method is deprecated. Manage rooms in your application instead.
-    #[deprecated(
-        since = "0.2.0",
-        note = "Manage rooms in your application instead"
-    )]
+    #[deprecated(since = "0.2.0", note = "Manage rooms in your application instead")]
     pub async fn get_all_rooms(&self) -> Vec<String> {
         let rooms = self.rooms.read().await;
         rooms.keys().cloned().collect()

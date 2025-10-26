@@ -246,9 +246,11 @@ mod tests {
     fn test_csrf_validator_origin() {
         let validator = CsrfValidator::new().add_trusted_origin("https://example.com".to_string());
 
-        assert!(validator
-            .validate_origin(Some("https://example.com"), "https://example.com")
-            .is_ok());
+        assert!(
+            validator
+                .validate_origin(Some("https://example.com"), "https://example.com")
+                .is_ok()
+        );
         assert_eq!(
             validator.validate_origin(Some("https://evil.com"), "https://example.com"),
             Err(CsrfError::OriginMismatch)
@@ -263,9 +265,11 @@ mod tests {
     fn test_csrf_validator_referer() {
         let validator = CsrfValidator::new();
 
-        assert!(validator
-            .validate_referer(Some("https://example.com/page"), "example.com")
-            .is_ok());
+        assert!(
+            validator
+                .validate_referer(Some("https://example.com/page"), "example.com")
+                .is_ok()
+        );
         assert_eq!(
             validator.validate_referer(Some("https://evil.com/page"), "example.com"),
             Err(CsrfError::RefererMismatch)
@@ -282,12 +286,16 @@ mod tests {
             .check_origin(false)
             .check_referer(false);
 
-        assert!(validator
-            .validate_origin(Some("https://evil.com"), "https://example.com")
-            .is_ok());
-        assert!(validator
-            .validate_referer(Some("https://evil.com/page"), "example.com")
-            .is_ok());
+        assert!(
+            validator
+                .validate_origin(Some("https://evil.com"), "https://example.com")
+                .is_ok()
+        );
+        assert!(
+            validator
+                .validate_referer(Some("https://evil.com/page"), "example.com")
+                .is_ok()
+        );
     }
 
     #[test]

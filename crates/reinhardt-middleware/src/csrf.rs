@@ -16,16 +16,12 @@ use std::sync::Arc;
 
 // Re-export CSRF functionality from reinhardt-security
 pub use reinhardt_security::csrf::{
-    check_origin, check_referer,
-    check_token_hmac as check_token,
-    get_secret_bytes as get_secret,
-    get_token_hmac as get_token,
-    is_same_domain,
-    CsrfConfig, CsrfMeta, CsrfToken, InvalidTokenFormat, RejectRequest, SameSite,
-    CSRF_ALLOWED_CHARS, CSRF_SECRET_LENGTH, CSRF_SESSION_KEY, CSRF_TOKEN_LENGTH,
-    REASON_BAD_ORIGIN, REASON_BAD_REFERER, REASON_CSRF_TOKEN_MISSING,
-    REASON_INCORRECT_LENGTH, REASON_INSECURE_REFERER, REASON_INVALID_CHARACTERS,
-    REASON_MALFORMED_REFERER, REASON_NO_CSRF_COOKIE, REASON_NO_REFERER,
+    CSRF_ALLOWED_CHARS, CSRF_SECRET_LENGTH, CSRF_SESSION_KEY, CSRF_TOKEN_LENGTH, CsrfConfig,
+    CsrfMeta, CsrfToken, InvalidTokenFormat, REASON_BAD_ORIGIN, REASON_BAD_REFERER,
+    REASON_CSRF_TOKEN_MISSING, REASON_INCORRECT_LENGTH, REASON_INSECURE_REFERER,
+    REASON_INVALID_CHARACTERS, REASON_MALFORMED_REFERER, REASON_NO_CSRF_COOKIE, REASON_NO_REFERER,
+    RejectRequest, SameSite, check_origin, check_referer, check_token_hmac as check_token,
+    get_secret_bytes as get_secret, get_token_hmac as get_token, is_same_domain,
 };
 
 /// CSRF middleware configuration
@@ -117,7 +113,13 @@ impl CsrfMiddleware {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(request.uri.to_string().as_bytes());
-        hasher.update(request.headers.get("User-Agent").map(|v| v.as_bytes()).unwrap_or(b""));
+        hasher.update(
+            request
+                .headers
+                .get("User-Agent")
+                .map(|v| v.as_bytes())
+                .unwrap_or(b""),
+        );
         hex::encode(hasher.finalize())
     }
 
@@ -417,7 +419,12 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("X-CSRFToken", token.parse().unwrap());
         // Add session cookie with session_id
-        headers.insert("Cookie", format!("csrftoken={}; sessionid={}", token, session_id).parse().unwrap());
+        headers.insert(
+            "Cookie",
+            format!("csrftoken={}; sessionid={}", token, session_id)
+                .parse()
+                .unwrap(),
+        );
 
         let request = Request::new(
             Method::POST,
@@ -506,7 +513,12 @@ mod tests {
 
         let mut headers = HeaderMap::new();
         // Add session cookie with session_id
-        headers.insert("Cookie", format!("csrftoken={}; sessionid={}", token, session_id).parse().unwrap());
+        headers.insert(
+            "Cookie",
+            format!("csrftoken={}; sessionid={}", token, session_id)
+                .parse()
+                .unwrap(),
+        );
         headers.insert("X-CSRFToken", token.parse().unwrap());
 
         let request = Request::new(

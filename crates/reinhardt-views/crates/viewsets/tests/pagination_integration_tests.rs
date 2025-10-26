@@ -21,8 +21,8 @@ async fn test_default_pagination_config() {
 
 #[tokio::test]
 async fn test_custom_page_number_pagination() {
-    let viewset: ModelViewSet<TestItem, ()> = ModelViewSet::new("items")
-        .with_pagination(PaginationConfig::page_number(20, Some(100)));
+    let viewset: ModelViewSet<TestItem, ()> =
+        ModelViewSet::new("items").with_pagination(PaginationConfig::page_number(20, Some(100)));
 
     let config = viewset.get_pagination_config();
     assert!(config.is_some());
@@ -41,8 +41,8 @@ async fn test_custom_page_number_pagination() {
 
 #[tokio::test]
 async fn test_limit_offset_pagination() {
-    let viewset: ModelViewSet<TestItem, ()> = ModelViewSet::new("items")
-        .with_pagination(PaginationConfig::limit_offset(25, Some(500)));
+    let viewset: ModelViewSet<TestItem, ()> =
+        ModelViewSet::new("items").with_pagination(PaginationConfig::limit_offset(25, Some(500)));
 
     let config = viewset.get_pagination_config();
     assert!(config.is_some());
@@ -81,8 +81,7 @@ async fn test_cursor_pagination() {
 
 #[tokio::test]
 async fn test_disabled_pagination() {
-    let viewset: ModelViewSet<TestItem, ()> =
-        ModelViewSet::new("items").without_pagination();
+    let viewset: ModelViewSet<TestItem, ()> = ModelViewSet::new("items").without_pagination();
 
     let config = viewset.get_pagination_config();
     assert!(

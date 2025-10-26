@@ -595,19 +595,23 @@ mod tests {
             .expect("Failed to set setting");
 
         // Verify setting exists
-        assert!(backend
-            .exists(key)
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            backend
+                .exists(key)
+                .await
+                .expect("Failed to check existence")
+        );
 
         // Delete setting
         backend.delete(key).await.expect("Failed to delete setting");
 
         // Verify setting no longer exists
-        assert!(!backend
-            .exists(key)
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            !backend
+                .exists(key)
+                .await
+                .expect("Failed to check existence")
+        );
     }
 
     #[tokio::test]
@@ -664,10 +668,12 @@ mod tests {
         // Verify active settings still exist
         for i in 0..3 {
             let key = format!("active_{}", i);
-            assert!(backend
-                .exists(&key)
-                .await
-                .expect("Failed to check existence"));
+            assert!(
+                backend
+                    .exists(&key)
+                    .await
+                    .expect("Failed to check existence")
+            );
         }
     }
 
@@ -688,10 +694,12 @@ mod tests {
         assert_eq!(retrieved, Some(value));
 
         // Verify it exists
-        assert!(backend
-            .exists(key)
-            .await
-            .expect("Failed to check existence"));
+        assert!(
+            backend
+                .exists(key)
+                .await
+                .expect("Failed to check existence")
+        );
     }
 
     #[tokio::test]

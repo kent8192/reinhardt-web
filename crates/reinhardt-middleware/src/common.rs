@@ -3,8 +3,8 @@
 //! Provides URL normalization and common request processing patterns.
 
 use async_trait::async_trait;
-use hyper::header::HOST;
 use hyper::StatusCode;
+use hyper::header::HOST;
 use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

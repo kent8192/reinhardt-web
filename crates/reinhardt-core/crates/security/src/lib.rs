@@ -61,13 +61,13 @@ pub enum SecurityError {
 
 // Re-export CSRF types and constants
 pub use csrf::{
-    RejectRequest, CSRF_SECRET_LENGTH, CSRF_SESSION_KEY, CSRF_TOKEN_LENGTH, REASON_BAD_ORIGIN,
-    REASON_BAD_REFERER, REASON_CSRF_TOKEN_MISSING, REASON_INSECURE_REFERER, REASON_MALFORMED_REFERER,
-    REASON_NO_REFERER,
+    CSRF_SECRET_LENGTH, CSRF_SESSION_KEY, CSRF_TOKEN_LENGTH, REASON_BAD_ORIGIN, REASON_BAD_REFERER,
+    REASON_CSRF_TOKEN_MISSING, REASON_INSECURE_REFERER, REASON_MALFORMED_REFERER,
+    REASON_NO_REFERER, RejectRequest,
 };
 
 // Re-export CSRF utility functions
-pub use csrf::{check_origin, check_referer, is_same_domain, CsrfMeta};
+pub use csrf::{CsrfMeta, check_origin, check_referer, is_same_domain};
 
 // Re-export HMAC-based CSRF functions (primary API)
 pub use csrf::{

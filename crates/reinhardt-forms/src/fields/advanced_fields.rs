@@ -1,7 +1,7 @@
 //! Advanced field types for specialized data validation
 
-use crate::field::{FieldError, FieldResult, FormField};
 use crate::Widget;
+use crate::field::{FieldError, FieldResult, FormField};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -947,7 +947,7 @@ impl FormField for PasswordField {
                 return Err(FieldError::validation(
                     Some(&self.name),
                     "Invalid password format.",
-                ))
+                ));
             }
         };
 

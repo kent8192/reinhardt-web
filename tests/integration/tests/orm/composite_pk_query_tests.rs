@@ -4,7 +4,7 @@
 //! database queries for records with composite primary keys.
 
 use reinhardt_macros::Model;
-use reinhardt_orm::{manager::init_database, composite_pk::PkValue, Model as _, QuerySet};
+use reinhardt_orm::{composite_pk::PkValue, manager::init_database, Model as _, QuerySet};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage};
@@ -43,7 +43,9 @@ async fn setup_test_db() -> (testcontainers::ContainerAsync<GenericImage>, Strin
     let postgres = GenericImage::new("postgres", "16-alpine")
         .with_env_var("POSTGRES_PASSWORD", "test")
         .with_env_var("POSTGRES_DB", "test_db")
-        .with_wait_for(WaitFor::message_on_stderr("database system is ready to accept connections"))
+        .with_wait_for(WaitFor::message_on_stderr(
+            "database system is ready to accept connections",
+        ))
         .start()
         .await
         .expect("Failed to start PostgreSQL container");
@@ -172,17 +174,13 @@ async fn test_get_composite_with_optional_field() {
         .await
         .expect("Failed to get connection");
 
-    conn.execute(
-        "INSERT INTO user_roles (user_id, role_id, granted_by) VALUES (1, 5, 'admin')",
-    )
-    .await
-    .expect("Failed to insert test data");
+    conn.execute("INSERT INTO user_roles (user_id, role_id, granted_by) VALUES (1, 5, 'admin')")
+        .await
+        .expect("Failed to insert test data");
 
-    conn.execute(
-        "INSERT INTO user_roles (user_id, role_id, granted_by) VALUES (2, 5, NULL)",
-    )
-    .await
-    .expect("Failed to insert test data with NULL");
+    conn.execute("INSERT INTO user_roles (user_id, role_id, granted_by) VALUES (2, 5, NULL)")
+        .await
+        .expect("Failed to insert test data with NULL");
 
     // Query record with optional field present
     let queryset = QuerySet::<UserRole>::new();
@@ -222,17 +220,13 @@ async fn test_get_composite_multiple_records() {
         .await
         .expect("Failed to get connection");
 
-    conn.execute(
-        "INSERT INTO post_tags (post_id, tag_id, description) VALUES (10, 20, 'First')",
-    )
-    .await
-    .expect("Failed to insert test data");
+    conn.execute("INSERT INTO post_tags (post_id, tag_id, description) VALUES (10, 20, 'First')")
+        .await
+        .expect("Failed to insert test data");
 
-    conn.execute(
-        "INSERT INTO post_tags (post_id, tag_id, description) VALUES (10, 21, 'Second')",
-    )
-    .await
-    .expect("Failed to insert test data");
+    conn.execute("INSERT INTO post_tags (post_id, tag_id, description) VALUES (10, 21, 'Second')")
+        .await
+        .expect("Failed to insert test data");
 
     // Query should succeed for unique composite key
     let queryset = QuerySet::<PostTag>::new();
@@ -241,7 +235,10 @@ async fn test_get_composite_multiple_records() {
     pk_values.insert("tag_id".to_string(), PkValue::Int(20));
 
     let result = queryset.get_composite(&pk_values).await;
-    assert!(result.is_ok(), "Query should succeed for unique composite PK");
+    assert!(
+        result.is_ok(),
+        "Query should succeed for unique composite PK"
+    );
 
     let post_tag = result.unwrap();
     assert_eq!(post_tag.post_id, 10);
@@ -292,7 +289,10 @@ async fn test_get_composite_string_pk() {
     // Query with string PK
     let queryset = QuerySet::<StringComposite>::new();
     let mut pk_values = HashMap::new();
-    pk_values.insert("category".to_string(), PkValue::String("electronics".to_string()));
+    pk_values.insert(
+        "category".to_string(),
+        PkValue::String("electronics".to_string()),
+    );
     pk_values.insert("item_id".to_string(), PkValue::Int(100));
 
     let result = queryset.get_composite(&pk_values).await;

@@ -24,9 +24,10 @@ async fn test_viewset_builder_validation_empty_actions() {
 
     // Check error message without unwrapping
     match result {
-        Err(e) => assert!(e
-            .to_string()
-            .contains("The `actions` argument must be provided")),
+        Err(e) => assert!(
+            e.to_string()
+                .contains("The `actions` argument must be provided")
+        ),
         Ok(_) => panic!("Expected error but got success"),
     }
 }

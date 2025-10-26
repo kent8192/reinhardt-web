@@ -252,7 +252,10 @@ brotli = "8.0.2"
 phonenumber = "0.3.7+8.13.52"
 
 # Redis (for sessions)
-redis = { version = "1.0.0-rc.2", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "1.0.0-rc.2", features = [
+  "tokio-comp",
+  "connection-manager",
+] }
 
 # Connection pooling & migrations
 refinery = { version = "0.9.0", features = ["tokio-postgres"] }

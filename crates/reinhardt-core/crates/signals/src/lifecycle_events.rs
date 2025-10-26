@@ -64,8 +64,8 @@ impl fmt::Display for M2MAction {
     }
 }
 
-pub fn m2m_changed<T: Send + Sync + 'static, R: Send + Sync + 'static>(
-) -> Signal<M2MChangeEvent<T, R>> {
+pub fn m2m_changed<T: Send + Sync + 'static, R: Send + Sync + 'static>()
+-> Signal<M2MChangeEvent<T, R>> {
     get_signal::<M2MChangeEvent<T, R>>(SignalName::M2M_CHANGED)
 }
 

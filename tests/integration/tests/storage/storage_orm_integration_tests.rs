@@ -23,8 +23,7 @@ fn create_test_image(width: u32, height: u32) -> Vec<u8> {
     });
 
     let mut buffer = Cursor::new(Vec::new());
-    img.write_to(&mut buffer, image::ImageFormat::Png)
-        .unwrap();
+    img.write_to(&mut buffer, image::ImageFormat::Png).unwrap();
     buffer.into_inner()
 }
 

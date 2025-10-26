@@ -277,4 +277,3 @@ path = "integration/tests/validation/validator_orm_integration_tests.rs"
 [[test]]
 name = "views_views_core_integration_tests"
 path = "integration/tests/views/views_core_integration_tests.rs"
-

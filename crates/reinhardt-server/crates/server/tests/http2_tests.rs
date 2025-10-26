@@ -1,5 +1,5 @@
 use reinhardt_http::{Request, Response};
-use reinhardt_server_core::{serve_http2_with_shutdown, Http2Server, ShutdownCoordinator};
+use reinhardt_server_core::{Http2Server, ShutdownCoordinator, serve_http2_with_shutdown};
 use reinhardt_types::Handler;
 use std::net::SocketAddr;
 use std::sync::Arc;

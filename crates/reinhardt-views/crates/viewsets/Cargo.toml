@@ -17,7 +17,12 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 hyper = { workspace = true }
-sqlx = { workspace = true, features = ["any", "sqlite", "runtime-tokio", "tls-rustls"] }
+sqlx = { workspace = true, features = [
+  "any",
+  "sqlite",
+  "runtime-tokio",
+  "tls-rustls",
+] }
 inventory = "0.3"
 lazy_static = "1.4"
 urlencoding = "2.1"

@@ -1,9 +1,7 @@
 language: rust
 project_name: "reinhardt"
-
 encoding: "utf-8"
 ignore_all_files_in_gitignore: false
-
 ignored_paths:
   - "target/**"
   - "**/*.rs.bk"
@@ -11,27 +9,21 @@ ignored_paths:
   - ".cargo/**"
   - ".git/**"
   - "**/.env*"
-
 # 明示的に含める場合
 include:
   - "**/*.rs"
   - "**/*.toml"
-
 read_only: false
 excluded_tools: []
-
 # 推奨コンテキスト
 recommended_context: "ide-assistant"
 recommended_modes:
   - "editing"
-
 included_optional_tools:
   - "switch_modes"
-
 # ダッシュボード設定
 web_dashboard: true
-web_dashboard_open_on_launch: false  # 起動時の自動オープンを無効化する場合
-
+web_dashboard_open_on_launch: false # 起動時の自動オープンを無効化する場合
 initial_prompt: |
   This is a Rust project using cargo.
   Common commands:

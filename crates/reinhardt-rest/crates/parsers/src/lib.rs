@@ -44,4 +44,4 @@ pub use form::FormParser;
 pub use json::JSONParser;
 pub use multipart::MultiPartParser;
 pub use parser::{MediaType, ParseError, ParseResult, Parser};
-pub use xml::{XmlParserConfig, XmlParserConfigBuilder, XMLParser};
+pub use xml::{XMLParser, XmlParserConfig, XmlParserConfigBuilder};

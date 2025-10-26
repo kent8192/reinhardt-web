@@ -326,7 +326,9 @@ impl BaseCommand for RunServerCommand {
             }
             #[cfg(not(feature = "autoreload"))]
             {
-                ctx.warning("Auto-reload disabled: Enable 'autoreload' feature to use this functionality");
+                ctx.warning(
+                    "Auto-reload disabled: Enable 'autoreload' feature to use this functionality",
+                );
             }
         }
 
@@ -357,7 +359,10 @@ impl BaseCommand for RunServerCommand {
             ctx.info("  let router = DefaultRouter::new();");
             ctx.info("  // Register your routes");
             ctx.info("  let server = HttpServer::new(Arc::new(router));");
-            ctx.info(&format!("  server.listen(\"{}\".parse()?).await?;", address));
+            ctx.info(&format!(
+                "  server.listen(\"{}\".parse()?).await?;",
+                address
+            ));
 
             Ok(())
         }
@@ -382,10 +387,9 @@ impl BaseCommand for RunServerCommand {
             ));
         }
 
-        let router = reinhardt_routers::get_router()
-            .ok_or_else(|| crate::CommandError::ExecutionError(
-                "Failed to get registered router".to_string()
-            ))?;
+        let router = reinhardt_routers::get_router().ok_or_else(|| {
+            crate::CommandError::ExecutionError("Failed to get registered router".to_string())
+        })?;
 
         // Parse socket address
         let addr: std::net::SocketAddr = address.parse().map_err(|e| {
@@ -417,11 +421,15 @@ impl BaseCommand for RunServerCommand {
             }
             #[cfg(not(feature = "autoreload"))]
             {
-                server.listen_with_shutdown(addr, coordinator).await
+                server
+                    .listen_with_shutdown(addr, coordinator)
+                    .await
                     .map_err(|e| crate::CommandError::ExecutionError(e.to_string()))
             }
         } else {
-            server.listen_with_shutdown(addr, coordinator).await
+            server
+                .listen_with_shutdown(addr, coordinator)
+                .await
                 .map_err(|e| crate::CommandError::ExecutionError(e.to_string()))
         }
     }
@@ -442,15 +450,22 @@ impl BaseCommand for RunServerCommand {
 
         // Create file watcher
         let (tx, rx) = channel();
-        let mut watcher: RecommendedWatcher = Watcher::new(tx, Config::default())
-            .map_err(|e| crate::CommandError::ExecutionError(format!("Failed to create file watcher: {}", e)))?;
+        let mut watcher: RecommendedWatcher = Watcher::new(tx, Config::default()).map_err(|e| {
+            crate::CommandError::ExecutionError(format!("Failed to create file watcher: {}", e))
+        })?;
 
         // Watch current directory for changes
         let watch_path = Path::new(".");
-        watcher.watch(watch_path, RecursiveMode::Recursive)
-            .map_err(|e| crate::CommandError::ExecutionError(format!("Failed to watch directory: {}", e)))?;
+        watcher
+            .watch(watch_path, RecursiveMode::Recursive)
+            .map_err(|e| {
+                crate::CommandError::ExecutionError(format!("Failed to watch directory: {}", e))
+            })?;
 
-        ctx.success(&format!("Watching for file changes in {}", watch_path.display()));
+        ctx.success(&format!(
+            "Watching for file changes in {}",
+            watch_path.display()
+        ));
 
         // Spawn file watcher task
         let shutdown_for_reload = coordinator.clone();
@@ -459,15 +474,18 @@ impl BaseCommand for RunServerCommand {
                 match res {
                     Ok(Event { kind, paths, .. }) => {
                         // Only reload on modify or create events
-                        if matches!(kind, notify::EventKind::Modify(_) | notify::EventKind::Create(_)) {
+                        if matches!(
+                            kind,
+                            notify::EventKind::Modify(_) | notify::EventKind::Create(_)
+                        ) {
                             // Filter out temporary files and build artifacts
                             let should_reload = paths.iter().any(|p| {
                                 let path_str = p.to_string_lossy();
-                                !path_str.contains("/target/") &&
-                                !path_str.contains("/.git/") &&
-                                !path_str.ends_with('~') &&
-                                !path_str.ends_with(".swp") &&
-                                (path_str.ends_with(".rs") || path_str.ends_with(".toml"))
+                                !path_str.contains("/target/")
+                                    && !path_str.contains("/.git/")
+                                    && !path_str.ends_with('~')
+                                    && !path_str.ends_with(".swp")
+                                    && (path_str.ends_with(".rs") || path_str.ends_with(".toml"))
                             });
 
                             if should_reload {
@@ -483,7 +501,9 @@ impl BaseCommand for RunServerCommand {
         });
 
         // Run server
-        let result = server.listen_with_shutdown(addr, coordinator).await
+        let result = server
+            .listen_with_shutdown(addr, coordinator)
+            .await
             .map_err(|e| crate::CommandError::ExecutionError(e.to_string()));
 
         ctx.info("Auto-reload detected code change. Please restart the server.");

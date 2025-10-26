@@ -26,9 +26,11 @@ fn test_project_state_add_model() {
     state.add_model(model);
 
     assert_eq!(state.models.len(), 1);
-    assert!(state
-        .models
-        .contains_key(&("myapp".to_string(), "User".to_string())));
+    assert!(
+        state
+            .models
+            .contains_key(&("myapp".to_string(), "User".to_string()))
+    );
 }
 
 #[test]
@@ -60,9 +62,11 @@ fn test_project_state_clone() {
 
     let cloned = state.clone();
     assert_eq!(cloned.models.len(), state.models.len());
-    assert!(cloned
-        .models
-        .contains_key(&("myapp".to_string(), "User".to_string())));
+    assert!(
+        cloned
+            .models
+            .contains_key(&("myapp".to_string(), "User".to_string()))
+    );
 }
 
 #[test]

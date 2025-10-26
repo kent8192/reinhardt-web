@@ -6,7 +6,7 @@ use crate::i18n_filters::{
     blocktrans, blocktrans_plural, get_current_language, localize_date_filter,
     localize_number_filter, trans, trans_with_context,
 };
-use reinhardt_i18n::{activate_with_catalog, MessageCatalog};
+use reinhardt_i18n::{MessageCatalog, activate_with_catalog};
 
 fn setup_french_catalog() {
     let mut catalog = MessageCatalog::new("fr_FR");

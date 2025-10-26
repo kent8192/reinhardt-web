@@ -4,7 +4,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use reinhardt_apps::{Handler, Request, Response, Result};
-use reinhardt_routers::{path, re_path, DefaultRouter, Router};
+use reinhardt_routers::{DefaultRouter, Router, path, re_path};
 use std::sync::Arc;
 
 // Simple mock handler for testing
