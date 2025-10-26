@@ -95,7 +95,7 @@ impl LocalStorage {
     fn compute_checksum(content: &[u8]) -> String {
         let mut hasher = Sha256::new();
         hasher.update(content);
-        format!("{:x}", hasher.finalize())
+        hex::encode(hasher.finalize())
     }
 }
 
