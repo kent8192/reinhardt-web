@@ -3,13 +3,7 @@
 //! Authentication and authorization system for Reinhardt framework.
 //!
 //! ## Planned Features
-//! TODO: Token Storage - Token persistence and lookup
-//! TODO: Token Rotation - Automatic token rotation for security
 //! TODO: RateLimitPermission - Request rate limiting by IP or user
-//! TODO: TimeBasedPermission - Time-of-day access control
-//! TODO: IpWhitelistPermission - IP-based access control
-//! TODO: IpBlacklistPermission - IP blocking
-//! TODO: Permission Operators - AND, OR, NOT combinators for complex logic
 //! TODO: DjangoModelPermissions - Django-style model permissions
 //! TODO: DjangoModelPermissionsOrAnonReadOnly - Anonymous read access
 //! TODO: ModelPermission - CRUD permissions per model
@@ -29,6 +23,7 @@ pub mod di_support;
 pub mod drf_authentication;
 pub mod drf_permissions;
 pub mod handlers;
+pub mod ip_permission;
 pub mod jwt;
 pub mod mfa;
 pub mod model_permissions;
@@ -37,7 +32,10 @@ pub mod permission_operators;
 pub mod permissions;
 pub mod remote_user;
 pub mod session;
+pub mod time_based_permission;
 pub mod token_blacklist;
+pub mod token_rotation;
+pub mod token_storage;
 pub mod user;
 
 pub use advanced_permissions::{ObjectPermission, RoleBasedPermission};
@@ -51,6 +49,7 @@ pub use drf_permissions::{
     DrfAllowAny, DrfIsAdminUser, DrfIsAuthenticated, DrfIsAuthenticatedOrReadOnly,
 };
 pub use handlers::{LoginCredentials, LoginHandler, LogoutHandler, SESSION_COOKIE_NAME};
+pub use ip_permission::{CidrRange, IpBlacklistPermission, IpWhitelistPermission};
 pub use jwt::{Claims, JwtAuth};
 pub use mfa::MFAAuthentication as MfaManager;
 pub use model_permissions::ModelPermission;
@@ -65,9 +64,14 @@ pub use permissions::{
 };
 pub use remote_user::RemoteUserAuthentication as RemoteUserAuth;
 pub use session::{InMemorySessionStore, Session, SessionId, SessionStore, SESSION_KEY_USER_ID};
+pub use time_based_permission::{DateRange, TimeBasedPermission, TimeWindow};
 pub use token_blacklist::{
     BlacklistReason, BlacklistStats, BlacklistedToken, InMemoryRefreshTokenStore,
     InMemoryTokenBlacklist, RefreshToken, RefreshTokenStore, TokenBlacklist, TokenRotationManager,
+};
+pub use token_rotation::{AutoTokenRotationManager, TokenRotationConfig, TokenRotationRecord};
+pub use token_storage::{
+    InMemoryTokenStorage, StoredToken, TokenStorage, TokenStorageError, TokenStorageResult,
 };
 pub use user::{AnonymousUser, SimpleUser, User};
 
