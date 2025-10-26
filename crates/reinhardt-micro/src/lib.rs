@@ -118,7 +118,7 @@ pub mod prelude {
     pub use serde::{Deserialize, Serialize};
 }
 
-use reinhardt_routers::{DefaultRouter, Router, path as route_path};
+use reinhardt_routers::{path as route_path, DefaultRouter, Router};
 use reinhardt_server::serve as http_serve;
 use reinhardt_types::Handler;
 use std::net::SocketAddr;

@@ -6,10 +6,10 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use crate::Model;
 use crate::engine::Engine;
 use crate::expressions::Q;
 use crate::query_execution::QueryCompiler;
+use crate::Model;
 use std::marker::PhantomData;
 
 /// Async query builder

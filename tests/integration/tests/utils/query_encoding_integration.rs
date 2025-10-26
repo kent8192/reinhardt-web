@@ -2,7 +2,7 @@
 //!
 //! These tests verify URL encoding and query parameter handling.
 
-use percent_encoding::{AsciiSet, CONTROLS, percent_decode_str, utf8_percent_encode};
+use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, CONTROLS};
 use reinhardt_params::Query;
 use reinhardt_routers::Route;
 use serde_json::json;

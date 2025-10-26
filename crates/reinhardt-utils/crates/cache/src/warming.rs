@@ -84,7 +84,9 @@ pub trait CacheWarmer<C: Cache>: Send + Sync {
 pub struct FunctionWarmer<C, F>
 where
     C: Cache,
-    F: Fn(std::sync::Arc<C>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
+    F: Fn(
+            std::sync::Arc<C>,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
         + Send
         + Sync,
 {
@@ -95,7 +97,9 @@ where
 impl<C, F> FunctionWarmer<C, F>
 where
     C: Cache,
-    F: Fn(std::sync::Arc<C>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
+    F: Fn(
+            std::sync::Arc<C>,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
         + Send
         + Sync,
 {
@@ -112,7 +116,9 @@ where
 impl<C, F> CacheWarmer<C> for FunctionWarmer<C, F>
 where
     C: Cache,
-    F: Fn(std::sync::Arc<C>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
+    F: Fn(
+            std::sync::Arc<C>,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
         + Send
         + Sync,
 {

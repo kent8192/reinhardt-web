@@ -53,7 +53,7 @@ pub mod utils;
 use thiserror::Error;
 
 pub use backends::{
-    ConsoleBackend, EmailBackend, FileBackend, MemoryBackend, SmtpBackend, backend_from_settings,
+    backend_from_settings, ConsoleBackend, EmailBackend, FileBackend, MemoryBackend, SmtpBackend,
 };
 pub use message::{Alternative, Attachment, EmailMessage, EmailMessageBuilder};
 pub use utils::{mail_admins, mail_managers, send_mail, send_mail_with_backend, send_mass_mail};

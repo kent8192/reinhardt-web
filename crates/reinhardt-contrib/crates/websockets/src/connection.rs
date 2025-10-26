@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tokio::sync::mpsc;
+use tokio::sync::RwLock;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WebSocketError {

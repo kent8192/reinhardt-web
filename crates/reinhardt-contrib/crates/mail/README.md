@@ -56,4 +56,3 @@ Email framework for sending emails with support for HTML and plain text, attachm
   - AttachmentError: File attachment errors
   - InvalidHeader: Email header validation errors
   - HeaderInjection: Security validation for header injection attacks
-

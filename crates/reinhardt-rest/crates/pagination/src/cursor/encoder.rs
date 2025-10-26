@@ -91,7 +91,7 @@ impl Default for Base64CursorEncoder {
 
 impl CursorEncoder for Base64CursorEncoder {
     fn encode(&self, position: usize) -> Result<String> {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -109,7 +109,7 @@ impl CursorEncoder for Base64CursorEncoder {
     }
 
     fn decode(&self, cursor: &str) -> Result<usize> {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let decoded = general_purpose::STANDARD
             .decode(cursor)

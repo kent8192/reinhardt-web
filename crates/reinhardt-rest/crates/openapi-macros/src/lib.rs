@@ -26,11 +26,11 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, parse_macro_input};
+use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
 mod schema;
 
-use schema::{FieldAttributes, extract_field_attributes};
+use schema::{extract_field_attributes, FieldAttributes};
 
 /// Derive macro for automatic OpenAPI schema generation.
 ///

@@ -3,9 +3,9 @@
 use crate::fields::FieldInfo;
 use crate::types::FieldType;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 #[cfg(test)]
 use serde_json::json;
+use serde_json::Value;
 use std::collections::HashMap;
 
 /// OpenAPI 3.0 schema representation

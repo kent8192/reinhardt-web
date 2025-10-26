@@ -310,10 +310,9 @@ mod tests {
             "INSERT INTO roles (name) VALUES ('user')".to_string(),
         ]);
 
-        assert!(
-            sql.sql
-                .contains("INSERT INTO roles (name) VALUES ('admin')")
-        );
+        assert!(sql
+            .sql
+            .contains("INSERT INTO roles (name) VALUES ('admin')"));
         assert!(sql.sql.contains("INSERT INTO roles (name) VALUES ('user')"));
     }
 
@@ -375,8 +374,8 @@ mod tests {
 
     #[test]
     fn test_state_operation_remove_model() {
-        use crate::operations::FieldDefinition;
         use crate::operations::models::CreateModel;
+        use crate::operations::FieldDefinition;
 
         let mut state = ProjectState::new();
 

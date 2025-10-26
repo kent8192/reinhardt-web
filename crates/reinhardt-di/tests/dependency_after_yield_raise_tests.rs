@@ -8,8 +8,8 @@
 //! 3. Response is sent before yield cleanup runs
 
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 #[derive(Debug)]
 struct CustomError {

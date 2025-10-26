@@ -697,7 +697,7 @@ fn test_normalize_path_patterns_truncates_wildcard_base() {
 #[tokio::test]
 #[serial_test::serial(i18n)]
 async fn test_language_preserved() {
-    use reinhardt_i18n::{MessageCatalog, activate, deactivate, get_locale, load_catalog};
+    use reinhardt_i18n::{activate, deactivate, get_locale, load_catalog, MessageCatalog};
 
     // Setup: Create and load a test catalog
     let mut catalog = MessageCatalog::new("fr");
@@ -729,7 +729,7 @@ async fn test_language_preserved() {
 #[tokio::test]
 #[serial_test::serial(i18n)]
 async fn test_no_translations_deactivate_translations() {
-    use reinhardt_i18n::{MessageCatalog, activate, deactivate, get_locale, load_catalog};
+    use reinhardt_i18n::{activate, deactivate, get_locale, load_catalog, MessageCatalog};
 
     // Setup: Create and load a test catalog
     let mut catalog = MessageCatalog::new("de");
@@ -838,11 +838,9 @@ impl BaseCommand for ListOptionCommand {
     }
 
     fn options(&self) -> Vec<CommandOption> {
-        vec![
-            CommandOption::option(None, "items", "List of items")
-                .required()
-                .multi(),
-        ]
+        vec![CommandOption::option(None, "items", "List of items")
+            .required()
+            .multi()]
     }
 }
 

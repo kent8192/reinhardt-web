@@ -9,8 +9,8 @@
 //! 4. Generator-like patterns (setup/teardown) work with dependencies
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 // Callable struct dependency (like Python's __call__)
 #[derive(Clone)]

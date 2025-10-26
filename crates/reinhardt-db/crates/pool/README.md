@@ -95,4 +95,3 @@ Provides efficient connection reuse, automatic cleanup, and configurable pool si
   - `PoolNotFound` - Named pool not found
 - **Type-safe results**: `PoolResult<T>` type alias
 - **Error propagation**: Automatic conversion from sqlx errors
-

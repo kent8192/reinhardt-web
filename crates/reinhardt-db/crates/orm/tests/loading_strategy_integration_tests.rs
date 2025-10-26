@@ -8,12 +8,12 @@
 #[cfg(feature = "integration-tests")]
 mod integration_tests {
     use reinhardt_orm::{
-        LoadContext, LoadOptionBuilder, LoadingStrategy, Model, joinedload, lazyload, selectinload,
-        subqueryload,
+        joinedload, lazyload, selectinload, subqueryload, LoadContext, LoadOptionBuilder,
+        LoadingStrategy, Model,
     };
     use reinhardt_validators::TableName;
     use serde::{Deserialize, Serialize};
-    use sqlx::{Row, SqlitePool, sqlite::SqlitePoolOptions};
+    use sqlx::{sqlite::SqlitePoolOptions, Row, SqlitePool};
     use std::sync::Arc;
     use tokio::sync::Mutex;
 

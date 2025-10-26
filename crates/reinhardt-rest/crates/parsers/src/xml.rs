@@ -6,10 +6,10 @@
 use crate::parser::{ParseResult, ParsedData, Parser};
 use async_trait::async_trait;
 use bytes::Bytes;
+use quick_xml::events::{attributes::Attributes, Event};
 use quick_xml::Reader;
-use quick_xml::events::{Event, attributes::Attributes};
 use reinhardt_exception::Error;
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 /// XML parser configuration
 #[derive(Debug, Clone)]

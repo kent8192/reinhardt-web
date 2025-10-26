@@ -378,6 +378,7 @@ src/database.rs
     }
     ```
 - **Examples**:
+
   ```rust
   // ✅ Good: Clear TODO comment (planning)
   // TODO: Implement caching mechanism for frequently accessed data

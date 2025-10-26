@@ -28,79 +28,79 @@ mkdir -p static/polls/images
 
 ```css
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #f5f5f5;
-    margin: 0;
-    padding: 20px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f5f5f5;
+  margin: 0;
+  padding: 20px;
 }
 
 h1 {
-    color: #2c3e50;
-    border-bottom: 3px solid #3498db;
-    padding-bottom: 10px;
+  color: #2c3e50;
+  border-bottom: 3px solid #3498db;
+  padding-bottom: 10px;
 }
 
 ul {
-    list-style-type: none;
-    padding: 0;
+  list-style-type: none;
+  padding: 0;
 }
 
 li {
-    background-color: white;
-    margin: 10px 0;
-    padding: 15px;
-    border-radius: 5px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background-color: white;
+  margin: 10px 0;
+  padding: 15px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 li a {
-    color: #3498db;
-    text-decoration: none;
-    font-size: 18px;
+  color: #3498db;
+  text-decoration: none;
+  font-size: 18px;
 }
 
 li a:hover {
-    color: #2980b9;
-    text-decoration: underline;
+  color: #2980b9;
+  text-decoration: underline;
 }
 
 form {
-    background-color: white;
-    padding: 20px;
-    border-radius: 5px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background-color: white;
+  padding: 20px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 input[type="radio"] {
-    margin-right: 10px;
+  margin-right: 10px;
 }
 
 label {
-    font-size: 16px;
-    margin: 10px 0;
-    display: block;
+  font-size: 16px;
+  margin: 10px 0;
+  display: block;
 }
 
 input[type="submit"] {
-    background-color: #3498db;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    font-size: 16px;
-    border-radius: 5px;
-    cursor: pointer;
-    margin-top: 15px;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-top: 15px;
 }
 
 input[type="submit"]:hover {
-    background-color: #2980b9;
+  background-color: #2980b9;
 }
 
 .no-polls {
-    text-align: center;
-    color: #7f8c8d;
-    font-size: 18px;
-    padding: 40px;
+  text-align: center;
+  color: #7f8c8d;
+  font-size: 18px;
+  padding: 40px;
 }
 ```
 
@@ -111,27 +111,31 @@ input[type="submit"]:hover {
 ```html
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>投票</title>
-    <link rel="stylesheet" type="text/css" href="{{ 'polls/css/style.css'|static }}">
-</head>
-<body>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="{{ 'polls/css/style.css'|static }}"
+    />
+  </head>
+  <body>
     <h1>最新の投票</h1>
 
     {% if latest_question_list %}
-        <ul>
-        {% for question in latest_question_list %}
-            <li>
-                <a href="{% url 'polls:detail' question.id %}">
-                    {{ question.question_text }}
-                </a>
-            </li>
-        {% endfor %}
-        </ul>
+    <ul>
+      {% for question in latest_question_list %}
+      <li>
+        <a href="{% url 'polls:detail' question.id %}">
+          {{ question.question_text }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
     {% else %}
-        <p class="no-polls">利用可能な投票はありません。</p>
+    <p class="no-polls">利用可能な投票はありません。</p>
     {% endif %}
-</body>
+  </body>
 </html>
 ```
 
@@ -145,13 +149,14 @@ input[type="submit"]:hover {
 
 ```css
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(rgba(255,255,255,0.9), rgba(255,255,255,0.9)),
-                url('../images/background.png');
-    background-size: cover;
-    background-attachment: fixed;
-    margin: 0;
-    padding: 20px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9)),
+    url("../images/background.png");
+  background-size: cover;
+  background-attachment: fixed;
+  margin: 0;
+  padding: 20px;
 }
 ```
 

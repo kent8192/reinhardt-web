@@ -6,9 +6,9 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Ident, LitStr, Result, Token,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
+    Ident, LitStr, Result, Token,
 };
 
 /// Represents a single app entry: `label: "path.to.app"`

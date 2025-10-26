@@ -379,11 +379,10 @@ mod tests {
     fn test_query_plan_analyze() {
         let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)").analyze();
         assert!(!plan.suggestions.is_empty());
-        assert!(
-            plan.suggestions
-                .iter()
-                .any(|s| s.contains("sequential scan"))
-        );
+        assert!(plan
+            .suggestions
+            .iter()
+            .any(|s| s.contains("sequential scan")));
     }
 
     #[test]

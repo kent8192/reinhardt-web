@@ -338,21 +338,15 @@ mod tests {
         assert_eq!(migrations.len(), 3);
 
         // Verify all migrations were recorded
-        assert!(
-            migrations
-                .iter()
-                .any(|m| m.app == "auth" && m.name == "0001_initial")
-        );
-        assert!(
-            migrations
-                .iter()
-                .any(|m| m.app == "users" && m.name == "0001_initial")
-        );
-        assert!(
-            migrations
-                .iter()
-                .any(|m| m.app == "auth" && m.name == "0002_add_field")
-        );
+        assert!(migrations
+            .iter()
+            .any(|m| m.app == "auth" && m.name == "0001_initial"));
+        assert!(migrations
+            .iter()
+            .any(|m| m.app == "users" && m.name == "0001_initial"));
+        assert!(migrations
+            .iter()
+            .any(|m| m.app == "auth" && m.name == "0002_add_field"));
     }
 
     #[test]

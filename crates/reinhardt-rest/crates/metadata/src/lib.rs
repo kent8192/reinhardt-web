@@ -90,6 +90,6 @@ pub use inferencer::SchemaInferencer;
 pub use options::MetadataOptions;
 pub use patterns::ValidationPattern;
 pub use response::{ActionMetadata, MetadataResponse};
-pub use schema::{OpenApiSchema, generate_field_schema, generate_object_schema};
+pub use schema::{generate_field_schema, generate_object_schema, OpenApiSchema};
 pub use types::{ChoiceInfo, FieldType, MetadataError};
 pub use validators::FieldValidator;

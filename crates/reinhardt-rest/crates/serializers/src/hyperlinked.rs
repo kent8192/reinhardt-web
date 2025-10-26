@@ -5,7 +5,7 @@
 
 use crate::{Serializer, SerializerError};
 use reinhardt_orm::Model;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;

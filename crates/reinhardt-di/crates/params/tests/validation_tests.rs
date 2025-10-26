@@ -61,11 +61,9 @@ mod tests {
         assert!(constrained.validate_string("abc").is_ok());
         assert!(constrained.validate_string("12345678901234567890").is_ok());
         assert!(constrained.validate_string("ab").is_err());
-        assert!(
-            constrained
-                .validate_string("123456789012345678901")
-                .is_err()
-        );
+        assert!(constrained
+            .validate_string("123456789012345678901")
+            .is_err());
     }
 
     #[test]
@@ -123,11 +121,9 @@ mod tests {
 
         // Valid emails
         assert!(constrained.validate_string("test@example.com").is_ok());
-        assert!(
-            constrained
-                .validate_string("user.name@domain.co.jp")
-                .is_ok()
-        );
+        assert!(constrained
+            .validate_string("user.name@domain.co.jp")
+            .is_ok());
         assert!(constrained.validate_string("admin+tag@company.org").is_ok());
 
         // Invalid emails
@@ -146,11 +142,9 @@ mod tests {
         // Valid URLs
         assert!(constrained.validate_string("https://example.com").is_ok());
         assert!(constrained.validate_string("http://localhost:8000").is_ok());
-        assert!(
-            constrained
-                .validate_string("https://example.com/path?query=value")
-                .is_ok()
-        );
+        assert!(constrained
+            .validate_string("https://example.com/path?query=value")
+            .is_ok());
 
         // Invalid URLs
         assert!(constrained.validate_string("invalid").is_err());
@@ -172,11 +166,9 @@ mod tests {
         assert!(constrained.validate_string("a@b.").is_err());
 
         // Invalid: too long (>50 chars)
-        assert!(
-            constrained
-                .validate_string("verylongemailaddressthatshouldexceedfiftycharacters@example.com")
-                .is_err()
-        );
+        assert!(constrained
+            .validate_string("verylongemailaddressthatshouldexceedfiftycharacters@example.com")
+            .is_err());
 
         // Invalid: not an email
         assert!(constrained.validate_string("not-an-email").is_err());
@@ -209,11 +201,9 @@ mod tests {
         let constrained = path.min_length(10).max_length(100).url();
 
         // Valid
-        assert!(
-            constrained
-                .validate_string("https://example.com/path")
-                .is_ok()
-        );
+        assert!(constrained
+            .validate_string("https://example.com/path")
+            .is_ok());
 
         // Invalid: too short
         assert!(constrained.validate_string("http://a").is_err());

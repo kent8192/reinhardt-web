@@ -1,8 +1,8 @@
 //! ModelChoiceField and ModelMultipleChoiceField for ORM integration
 
-use crate::Widget;
 use crate::field::{FieldError, FieldResult, FormField};
 use crate::model_form::FormModel;
+use crate::Widget;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::marker::PhantomData;

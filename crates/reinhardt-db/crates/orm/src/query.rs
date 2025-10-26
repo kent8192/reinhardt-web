@@ -834,8 +834,8 @@ pub use crate::sqlalchemy_query::*;
 #[cfg(all(test, feature = "django-compat"))]
 mod tests {
     use super::*;
-    use crate::Model;
     use crate::manager::Manager;
+    use crate::Model;
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

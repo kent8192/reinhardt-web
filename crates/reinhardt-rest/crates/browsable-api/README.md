@@ -60,4 +60,3 @@ Web-based interface for exploring and testing API endpoints. Provides human-frie
 - Responsive container layout with shadow effects
 - Form styling with proper input controls
 - Header table display with clean formatting
-

@@ -9,9 +9,9 @@ use std::sync::Arc;
 #[cfg(feature = "websocket")]
 use tokio::net::{TcpListener, TcpStream};
 #[cfg(feature = "websocket")]
-use tokio::sync::{Mutex, RwLock, broadcast};
+use tokio::sync::{broadcast, Mutex, RwLock};
 #[cfg(feature = "websocket")]
-use tokio_tungstenite::{WebSocketStream, accept_async, tungstenite::Message};
+use tokio_tungstenite::{accept_async, tungstenite::Message, WebSocketStream};
 
 /// Type alias for WebSocket stream writer
 #[cfg(feature = "websocket")]

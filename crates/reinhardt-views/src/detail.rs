@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use reinhardt_apps::{Request, Response};
 use reinhardt_exception::{Error, Result};
 use reinhardt_orm::{
-    Model, QuerySet,
     query::{Filter, FilterOperator, FilterValue},
+    Model, QuerySet,
 };
 use reinhardt_serializers::Serializer;
 use serde::{Deserialize, Serialize};

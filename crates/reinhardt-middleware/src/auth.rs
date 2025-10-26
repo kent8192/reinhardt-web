@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
-use reinhardt_auth::session::{SESSION_KEY_USER_ID, SessionStore};
+use reinhardt_auth::session::{SessionStore, SESSION_KEY_USER_ID};
 use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 use std::sync::Arc;
 
@@ -262,9 +262,9 @@ mod tests {
     use super::*;
     use bytes::Bytes;
     use hyper::{HeaderMap, Method, Uri, Version};
-    use reinhardt_auth::AuthenticationError;
     use reinhardt_auth::session::{InMemorySessionStore, Session};
     use reinhardt_auth::user::SimpleUser;
+    use reinhardt_auth::AuthenticationError;
     use uuid::Uuid;
 
     struct TestHandler;

@@ -9,7 +9,7 @@ pub mod types;
 pub mod grpc_service;
 
 pub use context::{DataLoader, GraphQLContext, LoaderError};
-pub use schema::{AppSchema, CreateUserInput, Mutation, Query, User, UserStorage, create_schema};
+pub use schema::{create_schema, AppSchema, CreateUserInput, Mutation, Query, User, UserStorage};
 pub use subscription::{EventBroadcaster, SubscriptionRoot, UserEvent};
 
 #[cfg(feature = "graphql-grpc")]

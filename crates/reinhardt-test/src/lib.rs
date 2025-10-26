@@ -29,8 +29,8 @@ pub use debug::{DebugEntry, DebugPanel, DebugToolbar, SqlQuery, TimingInfo};
 pub use factory::{APIRequestFactory, RequestBuilder};
 pub use fixtures::{Factory, FactoryBuilder, FixtureError, FixtureLoader, FixtureResult};
 pub use messages::{
-    MessagesTestMixin, assert_message_count, assert_message_exists, assert_message_level,
-    assert_message_tags, assert_messages,
+    assert_message_count, assert_message_exists, assert_message_level, assert_message_tags,
+    assert_messages, MessagesTestMixin,
 };
 pub use mock::{CallRecord, MockFunction, Spy};
 pub use response::{ResponseExt, TestResponse};
@@ -38,8 +38,8 @@ pub use testcase::APITestCase;
 
 #[cfg(feature = "testcontainers")]
 pub use containers::{
-    MySqlContainer, PostgresContainer, RedisContainer, TestDatabase, with_mysql, with_postgres,
-    with_redis,
+    with_mysql, with_postgres, with_redis, MySqlContainer, PostgresContainer, RedisContainer,
+    TestDatabase,
 };
 
 /// Re-export commonly used testing types
@@ -50,7 +50,7 @@ pub mod prelude {
     pub use super::factory::APIRequestFactory;
     pub use super::fixtures::{Factory, FactoryBuilder, FixtureLoader};
     pub use super::messages::{
-        MessagesTestMixin, assert_message_count, assert_message_exists, assert_messages,
+        assert_message_count, assert_message_exists, assert_messages, MessagesTestMixin,
     };
     pub use super::mock::{MockFunction, Spy};
     pub use super::response::TestResponse;
@@ -58,7 +58,7 @@ pub mod prelude {
 
     #[cfg(feature = "testcontainers")]
     pub use super::containers::{
-        MySqlContainer, PostgresContainer, RedisContainer, TestDatabase, with_mysql, with_postgres,
-        with_redis,
+        with_mysql, with_postgres, with_redis, MySqlContainer, PostgresContainer, RedisContainer,
+        TestDatabase,
     };
 }

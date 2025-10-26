@@ -9,7 +9,7 @@ use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 use std::ops::Deref;
 
-use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
+use crate::{extract::FromRequest, ParamContext, ParamError, ParamResult};
 
 /// Marker trait for cookie names
 pub trait CookieName {

@@ -140,32 +140,24 @@ mod tests {
         let validator = UrlValidator::new();
         assert!(validator.validate("http://example.com/").is_ok());
         assert!(validator.validate("http://example.com/path").is_ok());
-        assert!(
-            validator
-                .validate("http://example.com/path/to/resource")
-                .is_ok()
-        );
-        assert!(
-            validator
-                .validate("http://example.com/path/to/resource/")
-                .is_ok()
-        );
+        assert!(validator
+            .validate("http://example.com/path/to/resource")
+            .is_ok());
+        assert!(validator
+            .validate("http://example.com/path/to/resource/")
+            .is_ok());
     }
 
     #[test]
     fn test_url_validator_with_query_strings() {
         let validator = UrlValidator::new();
         assert!(validator.validate("http://example.com?query=value").is_ok());
-        assert!(
-            validator
-                .validate("http://example.com/?query=value")
-                .is_ok()
-        );
-        assert!(
-            validator
-                .validate("http://example.com/path?query=value&other=value2")
-                .is_ok()
-        );
+        assert!(validator
+            .validate("http://example.com/?query=value")
+            .is_ok());
+        assert!(validator
+            .validate("http://example.com/path?query=value&other=value2")
+            .is_ok());
     }
 
     #[test]
@@ -173,27 +165,21 @@ mod tests {
         let validator = UrlValidator::new();
         assert!(validator.validate("http://example.com#section").is_ok());
         assert!(validator.validate("http://example.com/#section").is_ok());
-        assert!(
-            validator
-                .validate("http://example.com/path#section")
-                .is_ok()
-        );
-        assert!(
-            validator
-                .validate("http://example.com/path?query=value#section")
-                .is_ok()
-        );
+        assert!(validator
+            .validate("http://example.com/path#section")
+            .is_ok());
+        assert!(validator
+            .validate("http://example.com/path?query=value#section")
+            .is_ok());
     }
 
     #[test]
     fn test_url_validator_with_subdomains() {
         let validator = UrlValidator::new();
         assert!(validator.validate("http://subdomain.example.com/").is_ok());
-        assert!(
-            validator
-                .validate("http://sub.subdomain.example.com/")
-                .is_ok()
-        );
+        assert!(validator
+            .validate("http://sub.subdomain.example.com/")
+            .is_ok());
         assert!(validator.validate("http://a.b.c.example.com/").is_ok());
     }
 
@@ -202,22 +188,18 @@ mod tests {
         let validator = UrlValidator::new();
         assert!(validator.validate("https://example.com/").is_ok());
         assert!(validator.validate("https://www.example.com/").is_ok());
-        assert!(
-            validator
-                .validate("https://secure.example.com/login")
-                .is_ok()
-        );
+        assert!(validator
+            .validate("https://secure.example.com/login")
+            .is_ok());
     }
 
     #[test]
     fn test_url_validator_with_hyphens() {
         let validator = UrlValidator::new();
         assert!(validator.validate("http://valid-domain.com/").is_ok());
-        assert!(
-            validator
-                .validate("http://my-long-domain-name.com/")
-                .is_ok()
-        );
+        assert!(validator
+            .validate("http://my-long-domain-name.com/")
+            .is_ok());
         assert!(validator.validate("http://sub-domain.example.com/").is_ok());
 
         // Invalid: hyphens at start or end
@@ -275,20 +257,14 @@ mod tests {
     #[test]
     fn test_url_validator_special_characters_in_path() {
         let validator = UrlValidator::new();
-        assert!(
-            validator
-                .validate("http://example.com/path_with_underscore")
-                .is_ok()
-        );
-        assert!(
-            validator
-                .validate("http://example.com/path-with-dash")
-                .is_ok()
-        );
-        assert!(
-            validator
-                .validate("http://example.com/path.with.dots")
-                .is_ok()
-        );
+        assert!(validator
+            .validate("http://example.com/path_with_underscore")
+            .is_ok());
+        assert!(validator
+            .validate("http://example.com/path-with-dash")
+            .is_ok());
+        assert!(validator
+            .validate("http://example.com/path.with.dots")
+            .is_ok());
     }
 }

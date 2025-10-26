@@ -8,7 +8,7 @@ use hyper::StatusCode;
 use reinhardt_http::{Request, Response};
 use reinhardt_routers::DefaultRouter;
 use reinhardt_signals::{
-    RequestFinishedEvent, RequestStartedEvent, request_finished, request_started,
+    request_finished, request_started, RequestFinishedEvent, RequestStartedEvent,
 };
 use reinhardt_types::Handler;
 use std::sync::Arc;
@@ -159,7 +159,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use hyper::{HeaderMap, Method, Uri, Version};
-    use reinhardt_routers::{DefaultRouter, Router, path};
+    use reinhardt_routers::{path, DefaultRouter, Router};
 
     // Test handler for routing tests
     struct TestHandler {

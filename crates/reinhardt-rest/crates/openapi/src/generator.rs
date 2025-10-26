@@ -210,8 +210,7 @@ impl SchemaGenerator {
     /// ```
     pub fn to_yaml(&self) -> Result<String, SchemaError> {
         let schema = self.generate()?;
-        serde_yaml::to_string(&schema)
-            .map_err(|e| SchemaError::SerializationError(e.to_string()))
+        serde_yaml::to_string(&schema).map_err(|e| SchemaError::SerializationError(e.to_string()))
     }
 }
 
@@ -224,8 +223,8 @@ impl Default for SchemaGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openapi::SchemaExt;
     use crate::openapi::Schema;
+    use crate::openapi::SchemaExt;
 
     #[test]
     fn test_new_generator() {
@@ -281,9 +280,7 @@ mod tests {
 
     #[test]
     fn test_to_json() {
-        let generator = SchemaGenerator::new()
-            .title("My API")
-            .version("1.0.0");
+        let generator = SchemaGenerator::new().title("My API").version("1.0.0");
 
         let json = generator.to_json().unwrap();
         assert!(json.contains("\"title\":\"My API\""));
@@ -292,9 +289,7 @@ mod tests {
 
     #[test]
     fn test_to_yaml() {
-        let generator = SchemaGenerator::new()
-            .title("My API")
-            .version("1.0.0");
+        let generator = SchemaGenerator::new().title("My API").version("1.0.0");
 
         let yaml = generator.to_yaml().unwrap();
         assert!(yaml.contains("title: My API"));
@@ -348,9 +343,7 @@ mod tests {
 
     #[test]
     fn test_empty_registry() {
-        let generator = SchemaGenerator::new()
-            .title("Empty API")
-            .version("1.0.0");
+        let generator = SchemaGenerator::new().title("Empty API").version("1.0.0");
 
         let schema = generator.generate().unwrap();
         assert!(schema.components.is_some());

@@ -1,5 +1,5 @@
-use reinhardt_negotiation::MediaType;
 use reinhardt_negotiation::detector::ContentTypeDetector;
+use reinhardt_negotiation::MediaType;
 
 #[test]
 fn test_detect_json_object() {

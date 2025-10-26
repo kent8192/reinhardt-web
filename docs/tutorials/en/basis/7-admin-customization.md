@@ -248,19 +248,12 @@ You can override admin templates to change the look and feel. Create custom temp
 Create `templates/admin/base_site.html`:
 
 ```html
-{% extends "admin/base.html" %}
-
-{% block title %}{{ title }} | Polls Admin{% endblock %}
-
-{% block branding %}
+{% extends "admin/base.html" %} {% block title %}{{ title }} | Polls Admin{%
+endblock %} {% block branding %}
 <h1 id="site-name">
-    <a href="{% url 'admin:index' %}">
-        Polls Administration
-    </a>
+  <a href="{% url 'admin:index' %}"> Polls Administration </a>
 </h1>
-{% endblock %}
-
-{% block nav-global %}{% endblock %}
+{% endblock %} {% block nav-global %}{% endblock %}
 ```
 
 This customizes the admin site header.
@@ -270,14 +263,11 @@ This customizes the admin site header.
 Create `templates/admin/index.html` to customize the admin home page:
 
 ```html
-{% extends "admin/index.html" %}
-
-{% block content %}
+{% extends "admin/index.html" %} {% block content %}
 <h2>Welcome to the Polls Administration</h2>
 <p>Use the sidebar to manage polls and choices.</p>
 
-{{ block.super }}
-{% endblock %}
+{{ block.super }} {% endblock %}
 ```
 
 ## Admin Actions

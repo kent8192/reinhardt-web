@@ -6,7 +6,7 @@
 use crate::{Backend, BackendError, BackendResult};
 use async_trait::async_trait;
 use dashmap::DashMap;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 

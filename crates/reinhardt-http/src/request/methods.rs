@@ -79,7 +79,11 @@ impl Request {
     /// assert_eq!(request.scheme(), "http");
     /// ```
     pub fn scheme(&self) -> &str {
-        if self.is_secure() { "https" } else { "http" }
+        if self.is_secure() {
+            "https"
+        } else {
+            "http"
+        }
     }
 
     /// Build an absolute URI for the request

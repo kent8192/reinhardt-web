@@ -12,9 +12,9 @@
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_apps::Request;
+use reinhardt_params::extract::FromRequest;
 #[cfg(feature = "validation")]
 use reinhardt_params::WithValidation;
-use reinhardt_params::extract::FromRequest;
 use reinhardt_params::{ParamContext, ParamError, Path, PathStruct};
 use serde::Deserialize;
 use std::collections::HashMap;

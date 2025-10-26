@@ -1,7 +1,7 @@
 //! Browsable API renderer
 
 use http_body_util::Full;
-use hyper::{Response, StatusCode, body::Bytes};
+use hyper::{body::Bytes, Response, StatusCode};
 use serde_json::Value;
 
 use super::{ColorScheme, FormGenerator, SyntaxHighlighter};

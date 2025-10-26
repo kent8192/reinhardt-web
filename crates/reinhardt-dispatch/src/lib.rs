@@ -138,7 +138,7 @@ pub mod middleware;
 
 // Re-exports
 pub use dispatcher::Dispatcher;
-pub use exception::{ExceptionHandler, convert_exception_to_response};
+pub use exception::{convert_exception_to_response, ExceptionHandler};
 pub use handler::BaseHandler;
 pub use middleware::MiddlewareChain;
 

@@ -2,12 +2,12 @@
 /// Inspired by Django's django.urls.conf module
 use crate::Route;
 use nom::{
-    IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take_while1},
     character::complete::{anychar, char},
     combinator::map,
     multi::many0,
+    IResult, Parser,
 };
 use reinhardt_apps::Handler;
 use std::sync::Arc;

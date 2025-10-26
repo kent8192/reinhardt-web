@@ -104,8 +104,8 @@ cargo run --bin manage runserver
 
 ### Django Equivalents
 
-| Django                     | Reinhardt                             |
-|---------------------------|---------------------------------------|
+| Django                            | Reinhardt                               |
+|-----------------------------------|-----------------------------------------|
 | `python manage.py makemigrations` | `cargo run --bin manage makemigrations` |
 | `python manage.py migrate`        | `cargo run --bin manage migrate`        |
 | `python manage.py runserver`      | `cargo run --bin manage runserver`      |

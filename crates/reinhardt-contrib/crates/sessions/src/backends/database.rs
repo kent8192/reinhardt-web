@@ -479,12 +479,10 @@ mod tests {
             .expect("Failed to save session");
 
         // Verify session exists
-        assert!(
-            backend
-                .exists(session_key)
-                .await
-                .expect("Failed to check existence")
-        );
+        assert!(backend
+            .exists(session_key)
+            .await
+            .expect("Failed to check existence"));
 
         // Delete session
         backend
@@ -493,12 +491,10 @@ mod tests {
             .expect("Failed to delete session");
 
         // Verify session no longer exists
-        assert!(
-            !backend
-                .exists(session_key)
-                .await
-                .expect("Failed to check existence")
-        );
+        assert!(!backend
+            .exists(session_key)
+            .await
+            .expect("Failed to check existence"));
     }
 
     #[tokio::test]
@@ -558,12 +554,10 @@ mod tests {
         // Verify active sessions still exist
         for i in 0..3 {
             let key = format!("active_{}", i);
-            assert!(
-                backend
-                    .exists(&key)
-                    .await
-                    .expect("Failed to check existence")
-            );
+            assert!(backend
+                .exists(&key)
+                .await
+                .expect("Failed to check existence"));
         }
     }
 }

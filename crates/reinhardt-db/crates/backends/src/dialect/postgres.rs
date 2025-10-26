@@ -1,7 +1,7 @@
 //! PostgreSQL dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{AssertSqlSafe, Column, PgPool, Row as SqlxRow, postgres::PgRow};
+use sqlx::{postgres::PgRow, AssertSqlSafe, Column, PgPool, Row as SqlxRow};
 use std::sync::Arc;
 
 use crate::{

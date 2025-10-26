@@ -2,7 +2,7 @@
 //! Based on Django's HandlerLoggingTests and LogResponseRealLoggerTests
 
 use reinhardt_logging::{
-    LogLevel, LogRecord, Logger, escape_control_chars, handlers::MemoryHandler,
+    escape_control_chars, handlers::MemoryHandler, LogLevel, LogRecord, Logger,
 };
 use std::sync::Arc;
 

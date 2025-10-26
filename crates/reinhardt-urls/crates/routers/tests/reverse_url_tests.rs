@@ -4,7 +4,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use reinhardt_apps::{Handler, Request, Response, Result};
-use reinhardt_routers::{DefaultRouter, Router, path};
+use reinhardt_routers::{path, DefaultRouter, Router};
 use std::collections::HashMap;
 use std::sync::Arc;
 

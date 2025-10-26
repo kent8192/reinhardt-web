@@ -95,4 +95,3 @@ Provides compile-time code generation for common patterns.
   - DateTime fields: `year()`, `month()`, `day()`, `hour()`
   - All fields: `eq()`, `ne()`, `gt()`, `gte()`, `lt()`, `lte()`
   - Example: `QuerySet::<User>::new().filter(User::email().lower().contains("example.com"))`
-

@@ -1,7 +1,7 @@
 // Pattern matching and path parsing tests
 // Inspired by Django REST Framework's test_routers.py (lookup fields, regex, etc.)
 
-use reinhardt_routers::{PathMatcher, PathPattern, path};
+use reinhardt_routers::{path, PathMatcher, PathPattern};
 
 // Test: Basic path pattern matching
 #[test]

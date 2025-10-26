@@ -95,8 +95,8 @@ impl ConnectionPoolManager {
     /// // Connection is automatically returned to pool when dropped
     /// ```
     #[cfg(feature = "django-compat")]
-    pub async fn acquire()
-    -> Result<reinhardt_pool::PooledConnection<sqlx::Postgres>, SerializerError> {
+    pub async fn acquire(
+    ) -> Result<reinhardt_pool::PooledConnection<sqlx::Postgres>, SerializerError> {
         let pool = Self::get_pool().ok_or_else(|| SerializerError::Other {
             message: "Connection pool not initialized".to_string(),
         })?;

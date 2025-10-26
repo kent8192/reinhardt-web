@@ -61,9 +61,9 @@ impl FileCache {
     /// # }
     /// ```
     pub async fn new(cache_dir: PathBuf) -> Result<Self> {
-        fs::create_dir_all(&cache_dir).await.map_err(|e| {
-            Error::Internal(format!("Failed to create cache directory: {}", e))
-        })?;
+        fs::create_dir_all(&cache_dir)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to create cache directory: {}", e)))?;
 
         Ok(Self {
             cache_dir,
@@ -153,13 +153,15 @@ impl FileCache {
         let mut index = self.index.write().await;
         index.clear();
 
-        let mut entries = fs::read_dir(&self.cache_dir).await.map_err(|e| {
-            Error::Internal(format!("Failed to read cache directory: {}", e))
-        })?;
+        let mut entries = fs::read_dir(&self.cache_dir)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to read cache directory: {}", e)))?;
 
-        while let Some(entry) = entries.next_entry().await.map_err(|e| {
-            Error::Internal(format!("Failed to read directory entry: {}", e))
-        })? {
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to read directory entry: {}", e)))?
+        {
             let path = entry.path();
             if path.is_file() {
                 if let Ok(data) = fs::read(&path).await {
@@ -195,12 +197,12 @@ impl Cache for FileCache {
             return Ok(None);
         }
 
-        let data = fs::read(&path).await.map_err(|e| {
-            Error::Internal(format!("Failed to read cache file: {}", e))
-        })?;
+        let data = fs::read(&path)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to read cache file: {}", e)))?;
 
-        let stored: StoredEntry = serde_json::from_slice(&data)
-            .map_err(|e| Error::Serialization(e.to_string()))?;
+        let stored: StoredEntry =
+            serde_json::from_slice(&data).map_err(|e| Error::Serialization(e.to_string()))?;
 
         if stored.entry.is_expired() {
             // Clean up expired file
@@ -232,12 +234,11 @@ impl Cache for FileCache {
         };
 
         let path = self.get_file_path(key);
-        let data = serde_json::to_vec(&stored)
-            .map_err(|e| Error::Serialization(e.to_string()))?;
+        let data = serde_json::to_vec(&stored).map_err(|e| Error::Serialization(e.to_string()))?;
 
-        fs::write(&path, data).await.map_err(|e| {
-            Error::Internal(format!("Failed to write cache file: {}", e))
-        })?;
+        fs::write(&path, data)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to write cache file: {}", e)))?;
 
         let mut index = self.index.write().await;
         index.insert(key.to_string(), path);
@@ -249,9 +250,9 @@ impl Cache for FileCache {
         let path = self.get_file_path(key);
 
         if path.exists() {
-            fs::remove_file(&path).await.map_err(|e| {
-                Error::Internal(format!("Failed to delete cache file: {}", e))
-            })?;
+            fs::remove_file(&path)
+                .await
+                .map_err(|e| Error::Internal(format!("Failed to delete cache file: {}", e)))?;
         }
 
         let mut index = self.index.write().await;
@@ -267,12 +268,12 @@ impl Cache for FileCache {
             return Ok(false);
         }
 
-        let data = fs::read(&path).await.map_err(|e| {
-            Error::Internal(format!("Failed to read cache file: {}", e))
-        })?;
+        let data = fs::read(&path)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to read cache file: {}", e)))?;
 
-        let stored: StoredEntry = serde_json::from_slice(&data)
-            .map_err(|e| Error::Serialization(e.to_string()))?;
+        let stored: StoredEntry =
+            serde_json::from_slice(&data).map_err(|e| Error::Serialization(e.to_string()))?;
 
         Ok(!stored.entry.is_expired())
     }

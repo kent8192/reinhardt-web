@@ -77,24 +77,24 @@ mkdir -p templates/polls
 ```html
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>投票</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>最新の投票</h1>
 
     {% if latest_question_list %}
-        <ul>
-        {% for question in latest_question_list %}
-            <li>
-                <a href="/polls/{{ question.id }}/">{{ question.question_text }}</a>
-            </li>
-        {% endfor %}
-        </ul>
+    <ul>
+      {% for question in latest_question_list %}
+      <li>
+        <a href="/polls/{{ question.id }}/">{{ question.question_text }}</a>
+      </li>
+      {% endfor %}
+    </ul>
     {% else %}
-        <p>利用可能な投票はありません。</p>
+    <p>利用可能な投票はありません。</p>
     {% endif %}
-</body>
+  </body>
 </html>
 ```
 
@@ -103,20 +103,25 @@ mkdir -p templates/polls
 ```html
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>{{ question.question_text }}</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>{{ question.question_text }}</h1>
 
     <form action="/polls/{{ question.id }}/vote/" method="post">
-        {% for choice in question.choices %}
-            <input type="radio" name="choice" id="choice{{ choice.id }}" value="{{ choice.id }}">
-            <label for="choice{{ choice.id }}">{{ choice.choice_text }}</label><br>
-        {% endfor %}
-        <input type="submit" value="投票">
+      {% for choice in question.choices %}
+      <input
+        type="radio"
+        name="choice"
+        id="choice{{ choice.id }}"
+        value="{{ choice.id }}"
+      />
+      <label for="choice{{ choice.id }}">{{ choice.choice_text }}</label><br />
+      {% endfor %}
+      <input type="submit" value="投票" />
     </form>
-</body>
+  </body>
 </html>
 ```
 
@@ -125,20 +130,20 @@ mkdir -p templates/polls
 ```html
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>{{ question.question_text }}の結果</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>{{ question.question_text }}</h1>
 
     <ul>
-    {% for choice in choices %}
-        <li>{{ choice.choice_text }} -- {{ choice.votes }} 票</li>
-    {% endfor %}
+      {% for choice in choices %}
+      <li>{{ choice.choice_text }} -- {{ choice.votes }} 票</li>
+      {% endfor %}
     </ul>
 
     <a href="/polls/{{ question.id }}/">再度投票しますか？</a>
-</body>
+  </body>
 </html>
 ```
 
@@ -199,6 +204,7 @@ pub fn url_patterns() -> Vec<Route> {
 異なるアプリ間の名前の競合を避けるため、名前空間化されたURL名を使用します。形式は`app_name:url_name`です。
 
 この場合：
+
 - `polls:index` - pollsアプリのインデックスビュー
 - `polls:detail` - pollsアプリの詳細ビュー
 - `polls:results` - 結果ビュー

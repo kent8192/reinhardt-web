@@ -5,7 +5,7 @@
 #[cfg(feature = "redis-backend")]
 mod redis_pool_integration {
     use deadpool_redis::Config as PoolConfig;
-    use reinhardt_cache::{Cache, redis_backend::RedisCache};
+    use reinhardt_cache::{redis_backend::RedisCache, Cache};
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
     use std::time::Duration;

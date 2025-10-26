@@ -1,5 +1,5 @@
-use crate::EmailResult;
 use crate::message::EmailMessage;
+use crate::EmailResult;
 
 /// Trait for email backends
 pub trait EmailBackend: Send + Sync {

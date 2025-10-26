@@ -9,13 +9,13 @@
 //! followed by letters, numbers, or underscores).
 
 use nom::{
-    IResult, Parser,
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, alphanumeric1},
     combinator::{map, recognize},
     multi::many0_count,
     sequence::{pair, separated_pair},
+    IResult, Parser,
 };
 
 // ============================================================================
@@ -200,11 +200,9 @@ mod tests {
     fn test_invalid_no_dot() {
         let result = parse_and_validate("authviewuser");
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("must be in 'app.permission' format")
-        );
+        assert!(result
+            .unwrap_err()
+            .contains("must be in 'app.permission' format"));
     }
 
     #[test]
@@ -225,11 +223,9 @@ mod tests {
     fn test_invalid_empty_permission() {
         let result = parse_and_validate("auth.");
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("Permission codename cannot be empty")
-        );
+        assert!(result
+            .unwrap_err()
+            .contains("Permission codename cannot be empty"));
     }
 
     #[test]

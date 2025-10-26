@@ -7,9 +7,9 @@ use crate::storage::Storage;
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
-    Client as S3Client,
     config::{Credentials, Region},
     primitives::ByteStream,
+    Client as S3Client,
 };
 use std::io;
 

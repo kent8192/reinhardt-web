@@ -8,7 +8,7 @@ use std::env;
 use std::path::PathBuf;
 
 pub use crate::env_loader::EnvLoader;
-pub use crate::env_parser::{DatabaseUrl, parse_bool, parse_database_url, parse_list};
+pub use crate::env_parser::{parse_bool, parse_database_url, parse_list, DatabaseUrl};
 
 /// Environment variable manager with prefix support
 #[derive(Debug, Clone)]

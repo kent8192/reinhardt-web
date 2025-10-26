@@ -6,7 +6,7 @@ use serde::de::DeserializeOwned;
 use std::fmt::{self, Debug};
 use std::ops::Deref;
 
-use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
+use crate::{extract::FromRequest, ParamContext, ParamError, ParamResult};
 
 #[cfg(feature = "multipart")]
 use futures_util::{future::ready, stream::once};

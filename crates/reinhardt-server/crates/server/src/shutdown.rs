@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Notify;
 use tokio::sync::broadcast;
+use tokio::sync::Notify;
 use tokio::time::timeout;
 
 /// Shutdown coordinator that manages graceful server shutdown

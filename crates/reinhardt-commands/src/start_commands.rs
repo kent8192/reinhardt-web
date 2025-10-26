@@ -7,8 +7,8 @@
 //! - django/core/management/commands/startapp.py
 
 use crate::{
-    BaseCommand, CommandArgument, CommandContext, CommandError, CommandOption, CommandResult,
-    TemplateCommand, TemplateContext, generate_secret_key, to_camel_case,
+    generate_secret_key, to_camel_case, BaseCommand, CommandArgument, CommandContext, CommandError,
+    CommandOption, CommandResult, TemplateCommand, TemplateContext,
 };
 use async_trait::async_trait;
 use std::env;

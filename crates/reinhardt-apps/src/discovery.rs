@@ -17,7 +17,7 @@
 //! // build_reverse_relations();
 //! ```
 
-use crate::registry::{ModelMetadata, get_models_for_app, get_registered_models};
+use crate::registry::{get_models_for_app, get_registered_models, ModelMetadata};
 
 /// Discover all models for a given application
 ///
@@ -276,7 +276,7 @@ pub fn discover_migrations(_app_label: &str) -> Vec<MigrationMetadata> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::{MODELS, ModelMetadata};
+    use crate::registry::{ModelMetadata, MODELS};
     use linkme::distributed_slice;
 
     // Test models for discovery
@@ -310,11 +310,9 @@ mod tests {
         // Should have at least our test models
         assert!(models.len() >= 2);
 
-        assert!(
-            models
-                .iter()
-                .any(|m| m.app_label == "discovery_test" && m.model_name == "User")
-        );
+        assert!(models
+            .iter()
+            .any(|m| m.app_label == "discovery_test" && m.model_name == "User"));
     }
 
     #[test]

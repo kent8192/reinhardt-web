@@ -413,13 +413,13 @@ This will generate:
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-    <link rel="stylesheet" href="/static/css/style.css">
+  <head>
+    <link rel="stylesheet" href="/static/css/style.css" />
     <script src="/static/js/app.js"></script>
-</head>
-<body>
-    <img src="/static/images/logo.png" alt="Logo">
-</body>
+  </head>
+  <body>
+    <img src="/static/images/logo.png" alt="Logo" />
+  </body>
 </html>
 ```
 
@@ -459,13 +459,13 @@ The same template will now generate hashed URLs for cache busting:
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-    <link rel="stylesheet" href="/static/css/style.abc123def.css">
+  <head>
+    <link rel="stylesheet" href="/static/css/style.abc123def.css" />
     <script src="/static/js/app.456789abc.js"></script>
-</head>
-<body>
-    <img src="/static/images/logo.xyz987uvw.png" alt="Logo">
-</body>
+  </head>
+  <body>
+    <img src="/static/images/logo.xyz987uvw.png" alt="Logo" />
+  </body>
 </html>
 ```
 
@@ -488,7 +488,7 @@ reinhardt_templates::init_static_config(static_config);
 Templates will now generate CDN URLs:
 
 ```html
-<link rel="stylesheet" href="https://cdn.example.com/assets/css/style.css">
+<link rel="stylesheet" href="https://cdn.example.com/assets/css/style.css" />
 ```
 
 #### Advanced: Custom Manifest Loading
@@ -858,11 +858,11 @@ let minifier = AdvancedJsMinifier::development();
 
 **Configuration Presets**:
 
-| Preset | Mangle | Compress | Drop Console | Drop Debugger | Use Case |
-|--------|--------|----------|--------------|---------------|----------|
-| `production()` | ✓ | ✓ | ✓ | ✓ | Production builds |
-| `development()` | ✗ | ✗ | ✗ | ✗ | Development builds |
-| `new()` (default) | ✓ | ✓ | ✗ | ✓ | General use |
+| Preset            | Mangle | Compress | Drop Console | Drop Debugger | Use Case           |
+|-------------------|--------|----------|--------------|---------------|--------------------|
+| `production()`    | ✓      | ✓        | ✓            | ✓             | Production builds  |
+| `development()`   | ✗      | ✗        | ✗            | ✗             | Development builds |
+| `new()` (default) | ✓      | ✓        | ✗            | ✓             | General use        |
 
 **Performance Benefits**:
 

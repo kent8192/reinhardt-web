@@ -27,4 +27,3 @@ Core HTTP abstractions for the Reinhardt framework. Provides request and respons
   - Store/retrieve arbitrary typed data
   - Thread-safe with Arc/Mutex
 - **Error integration** - Re-exports `reinhardt_exception::Error` and `Result`
-

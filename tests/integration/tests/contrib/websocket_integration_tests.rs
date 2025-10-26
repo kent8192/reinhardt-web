@@ -6,7 +6,7 @@
 use reinhardt_websockets::{Message, RoomManager, WebSocketConnection};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tokio::time::{Duration, timeout};
+use tokio::time::{timeout, Duration};
 
 /// Integration test: WebSocket with room manager and multiple connections
 #[tokio::test]
@@ -51,11 +51,9 @@ async fn test_websocket_room_manager_integration() {
     assert!(matches!(msg2, Message::Text { .. }));
 
     // room2 should not receive the message
-    assert!(
-        timeout(Duration::from_millis(50), rx3.recv())
-            .await
-            .is_err()
-    );
+    assert!(timeout(Duration::from_millis(50), rx3.recv())
+        .await
+        .is_err());
 }
 
 /// Integration test: WebSocket chat room with disconnect notifications

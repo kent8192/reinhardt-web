@@ -6,8 +6,8 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use crate::Model;
 use crate::loading::LoadingStrategy;
+use crate::Model;
 use std::marker::PhantomData;
 
 /// Relationship type - defines cardinality

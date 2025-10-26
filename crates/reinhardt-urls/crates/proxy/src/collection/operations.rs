@@ -1,8 +1,8 @@
 //! Collection operations for filtering and transforming
 
 use super::CollectionProxy;
-use crate::ProxyResult;
 use crate::proxy::ScalarValue;
+use crate::ProxyResult;
 
 /// Collection operations for filtering and transforming
 #[derive(Debug, Clone)]

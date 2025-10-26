@@ -3,7 +3,7 @@
 //! Tests based on Django's i18n/tests.py - lazy translation functionality
 
 use reinhardt_i18n::{
-    MessageCatalog, activate, deactivate, gettext_lazy, load_catalog, ngettext_lazy,
+    activate, deactivate, gettext_lazy, load_catalog, ngettext_lazy, MessageCatalog,
 };
 use serial_test::serial;
 use std::sync::Mutex;

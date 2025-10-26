@@ -1,7 +1,7 @@
 //! Advanced field types for specialized data validation
 
-use crate::Widget;
 use crate::field::{FieldError, FieldResult, FormField};
+use crate::Widget;
 use serde_json::Value;
 use std::collections::HashMap;
 

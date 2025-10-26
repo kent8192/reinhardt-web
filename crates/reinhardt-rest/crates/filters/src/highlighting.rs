@@ -217,11 +217,7 @@ impl PlainTextHighlighter {
     /// let result = highlighter.highlight("Hello world", "world");
     /// assert_eq!(result, "Hello >>world<<");
     /// ```
-    pub fn with_markers(
-        mut self,
-        prefix: impl Into<String>,
-        suffix: impl Into<String>,
-    ) -> Self {
+    pub fn with_markers(mut self, prefix: impl Into<String>, suffix: impl Into<String>) -> Self {
         self.prefix = prefix.into();
         self.suffix = suffix.into();
         self

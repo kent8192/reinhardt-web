@@ -3,7 +3,7 @@
 //! This crate provides derive macros to simplify gRPC ↔ GraphQL integration.
 
 use proc_macro::TokenStream;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{parse_macro_input, DeriveInput};
 
 mod convert;
 mod subscription;

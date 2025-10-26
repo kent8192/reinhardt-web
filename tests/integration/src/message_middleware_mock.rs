@@ -134,11 +134,9 @@ mod tests {
 
         let result = middleware.add_message(&mut storage, Level::Info, "Test");
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("MessageMiddleware is not installed")
-        );
+        assert!(result
+            .unwrap_err()
+            .contains("MessageMiddleware is not installed"));
     }
 
     #[test]

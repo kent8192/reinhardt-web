@@ -65,4 +65,3 @@ Security utilities and middleware for protecting web applications. Provides comp
 - **CSRF Validation Errors**: Detailed error messages for debugging
 - **XSS Detection**: Error type for potential XSS attempts
 - **Configuration Errors**: Validation for security configurations
-

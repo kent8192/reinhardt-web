@@ -52,7 +52,7 @@ pub mod error_pages;
 
 // Re-export core functions
 pub use get_or_404::{
-    GetError, exists_or_404_response, get_list_or_404_response, get_or_404_response,
+    exists_or_404_response, get_list_or_404_response, get_or_404_response, GetError,
 };
 pub use redirect::{redirect, redirect_permanent};
 pub use render::{render_html, render_json, render_json_pretty, render_text};

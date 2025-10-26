@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use reinhardt_apps::Request;
 
-use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
+use crate::{extract::FromRequest, ParamContext, ParamError, ParamResult};
 
 /// Extract the raw request body as bytes
 ///

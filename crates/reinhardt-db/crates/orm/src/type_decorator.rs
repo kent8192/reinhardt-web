@@ -1,6 +1,6 @@
 use aes_gcm::{
-    Aes256Gcm, Nonce,
     aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
 };
 use rand::RngCore;
 /// TypeDecorator - Custom type wrapper for database columns

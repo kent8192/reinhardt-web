@@ -1,8 +1,8 @@
 //! Task system tests based on Django's task test cases
 
 use reinhardt_tasks::{
-    DummyBackend, ImmediateBackend, TASK_MAX_PRIORITY, TASK_MIN_PRIORITY, Task, TaskBackend,
-    TaskBackends, TaskExecutor, TaskId, TaskPriority, TaskResult, TaskStatus,
+    DummyBackend, ImmediateBackend, Task, TaskBackend, TaskBackends, TaskExecutor, TaskId,
+    TaskPriority, TaskResult, TaskStatus, TASK_MAX_PRIORITY, TASK_MIN_PRIORITY,
 };
 use std::sync::Arc;
 

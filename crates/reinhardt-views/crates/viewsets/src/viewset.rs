@@ -1,6 +1,6 @@
 use crate::actions::Action;
 use crate::filtering_support::{FilterConfig, FilterableViewSet, OrderingConfig};
-use crate::metadata::{ActionMetadata, get_actions_for_viewset};
+use crate::metadata::{get_actions_for_viewset, ActionMetadata};
 use crate::middleware::ViewSetMiddleware;
 use crate::pagination_support::{PaginatedViewSet, PaginationConfig};
 use async_trait::async_trait;

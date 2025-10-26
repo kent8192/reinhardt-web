@@ -84,19 +84,19 @@ pub use model_signals::{post_delete, post_save, pre_delete, pre_save};
 
 // Re-export db events
 pub use db_events::{
-    DbEvent, after_delete, after_insert, after_update, before_delete, before_insert, before_update,
+    after_delete, after_insert, after_update, before_delete, before_insert, before_update, DbEvent,
 };
 
 // Re-export lifecycle events
 pub use lifecycle_events::{
-    ClassPreparedEvent, M2MAction, M2MChangeEvent, MigrationEvent, PostInitEvent, PreInitEvent,
     class_prepared, m2m_changed, post_init, post_migrate, pre_init, pre_migrate,
+    ClassPreparedEvent, M2MAction, M2MChangeEvent, MigrationEvent, PostInitEvent, PreInitEvent,
 };
 
 // Re-export request events
 pub use request_events::{
-    GotRequestExceptionEvent, RequestFinishedEvent, RequestStartedEvent, SettingChangedEvent,
     got_request_exception, request_finished, request_started, setting_changed,
+    GotRequestExceptionEvent, RequestFinishedEvent, RequestStartedEvent, SettingChangedEvent,
 };
 
 // Re-export dispatch types
@@ -163,8 +163,8 @@ macro_rules! connect_receiver {
 mod tests {
     use super::*;
     use parking_lot::Mutex;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     #[derive(Debug, Clone)]
     #[allow(dead_code)]

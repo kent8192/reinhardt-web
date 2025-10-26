@@ -293,6 +293,7 @@ A powerful Object-Relational Mapping system inspired by Django's ORM and SQLAlch
 - **get_composite()** - Query by composite primary key values
 
 Example:
+
 ```rust
 use reinhardt_macros::Model;
 use serde::{Deserialize, Serialize};
@@ -325,6 +326,7 @@ let pk_values = post_tag.get_composite_pk_values();
 - **index_metadata()** - Retrieve index information for model fields
 
 Example:
+
 ```rust
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[model(app_label = "test_app", table_name = "users")]
@@ -351,6 +353,7 @@ assert_eq!(indexes.len(), 2);
 - **ConstraintType** - Constraint types (Check, ForeignKey, Unique)
 
 Example:
+
 ```rust
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[model(app_label = "test_app", table_name = "products")]
@@ -387,6 +390,7 @@ assert_eq!(price_constraint.definition, "price > 0");
 Validators are stored in field metadata attributes and can be accessed at runtime.
 
 Example:
+
 ```rust
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[model(app_label = "test_app", table_name = "users")]
@@ -420,4 +424,3 @@ assert!(email_field.attributes.contains_key("email"));
 - **HybridProperty** - Properties that work at both instance and class level
 - **HybridMethod** - Methods that work at both instance and class level
 - **HybridComparator** - Custom comparison logic for hybrid properties
-

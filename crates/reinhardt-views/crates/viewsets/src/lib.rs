@@ -39,7 +39,7 @@ pub use mixins::{
     DestroyMixin, ListMixin, RetrieveMixin, UpdateMixin,
 };
 pub use nested_resources::{
-    NestedResource, NestedResourcePath, NestedViewSet, nested_detail_url, nested_url,
+    nested_detail_url, nested_url, NestedResource, NestedResourcePath, NestedViewSet,
 };
 pub use pagination_support::{PaginatedViewSet, PaginationConfig};
 pub use registry::{action, get_registered_actions, register_action};

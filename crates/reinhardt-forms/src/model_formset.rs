@@ -3,9 +3,9 @@
 //! ModelFormSets allow editing multiple model instances at once, handling
 //! creation, updates, and deletion in a single form submission.
 
-use crate::FormError;
 use crate::formset::FormSet;
 use crate::model_form::{FormModel, ModelForm, ModelFormConfig};
+use crate::FormError;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 

@@ -7,7 +7,7 @@ use clap::Parser;
 use colored::Colorize;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper::{Request, Response, StatusCode, body::Incoming};
+use hyper::{body::Incoming, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use rustls::ServerConfig;
 use rustls_pemfile::{certs, private_key};

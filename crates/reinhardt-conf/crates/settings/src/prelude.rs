@@ -8,14 +8,14 @@ pub use crate::advanced::{
 };
 pub use crate::builder::{BuildError, GetError, MergedSettings, SettingsBuilder};
 pub use crate::env::{Env, EnvError};
-pub use crate::env_loader::{EnvLoader, load_env, load_env_auto, load_env_optional};
+pub use crate::env_loader::{load_env, load_env_auto, load_env_optional, EnvLoader};
 pub use crate::env_parser::{
-    CacheUrl, DatabaseUrl, parse_bool, parse_cache_url, parse_database_url, parse_dict, parse_list,
+    parse_bool, parse_cache_url, parse_database_url, parse_dict, parse_list, CacheUrl, DatabaseUrl,
 };
 pub use crate::profile::Profile;
 pub use crate::sources::{
-    ConfigSource, DefaultSource, DotEnvSource, EnvSource, JsonFileSource, SourceError,
-    TomlFileSource, auto_source,
+    auto_source, ConfigSource, DefaultSource, DotEnvSource, EnvSource, JsonFileSource, SourceError,
+    TomlFileSource,
 };
 pub use crate::validation::{
     ChoiceValidator, PatternValidator, RangeValidator, RequiredValidator, SecurityValidator,
@@ -32,9 +32,9 @@ pub use crate::dynamic::{DynamicBackend, DynamicError, DynamicResult, DynamicSet
 
 #[cfg(feature = "async")]
 pub use crate::secrets::{
+    providers::{env::EnvSecretProvider, memory::MemorySecretProvider},
     SecretError, SecretManager, SecretMetadata, SecretProvider, SecretResult, SecretString,
     SecretValue, SecretVersion,
-    providers::{env::EnvSecretProvider, memory::MemorySecretProvider},
 };
 
 #[cfg(feature = "vault")]

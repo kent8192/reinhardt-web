@@ -338,7 +338,11 @@ where
                         _ => std::cmp::Ordering::Equal,
                     };
 
-                    if descending { cmp.reverse() } else { cmp }
+                    if descending {
+                        cmp.reverse()
+                    } else {
+                        cmp
+                    }
                 });
             }
         }

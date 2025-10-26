@@ -1,8 +1,8 @@
-use async_graphql::{Context, ID, Subscription};
+use async_graphql::{Context, Subscription, ID};
 use futures_util::Stream;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tokio::sync::broadcast;
+use tokio::sync::RwLock;
 
 /// Event types for subscriptions
 #[derive(Debug, Clone)]

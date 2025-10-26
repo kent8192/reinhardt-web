@@ -5,8 +5,8 @@
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use futures_util::StreamExt;
 use futures_util::stream::Stream;
+use futures_util::StreamExt;
 use reinhardt_exception::Error;
 use std::pin::Pin;
 

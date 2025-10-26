@@ -83,6 +83,7 @@ Reinhardt uses a workspace structure:
 -  **DECLARE** modules in `lib.rs` or parent module with `mod module_name;`
 
 Example:
+
 ```rust
 // In lib.rs
 pub mod http;
@@ -126,15 +127,18 @@ pub mod routing;
 ### TODO and Placeholder Policy
 
 **TODO Comments**:
+
 - Use `// TODO:` for planning and unimplemented features
 - Explain what needs to be implemented and why it's pending
 - **DELETE** when functionality is implemented
 
 **Runtime Markers**:
+
 - Use `todo!()` for features that **WILL** be implemented
 - Use `unimplemented!()` for features that **WILL NOT** be implemented (intentionally omitted)
 
 **Placeholder Implementations**:
+
 - **ALL** placeholder implementations **MUST** be marked with `todo!()` or `// TODO:`
 - This includes:
   - Empty function bodies returning default values
@@ -143,6 +147,7 @@ pub mod routing;
 - **Exception**: Tests and documentation may use simplified implementations
 
 Examples:
+
 ```rust
 //  Good: Marked placeholder
 pub fn get_cache_config() -> CacheConfig {
@@ -191,28 +196,33 @@ pub fn get_config() -> Config {
 ### Test Organization
 
 **Unit Tests**:
+
 - Use exactly ONE Reinhardt crate
 - Place within the functional crate being tested
 - Test that specific crate's functionality in isolation
 
 **Integration Tests**:
+
 - Use TWO or MORE Reinhardt crates
 - **MUST** be placed in the `tests` crate
 - Test interactions between multiple crates
 
 **Dependency Rules**:
+
 - Functional crates **MUST NOT** include other Reinhardt crates as `dev-dependencies`
 - This ensures unit tests remain isolated
 
 ### Test Implementation
 
 **Global State Management**:
+
 - Tests modifying global state MUST be serialized using `serial_test` crate
 - Use named serial groups: `#[serial(group_name)]`
 - Common groups: `i18n`, `url_overrides`, etc.
 - Always call cleanup functions in teardown
 
 Example:
+
 ```rust
 use serial_test::serial;
 
@@ -226,10 +236,12 @@ fn test_translation() {
 ```
 
 **Test Cleanup**:
+
 - **ALL** files, directories, or environmental changes created during tests **MUST** be deleted upon completion
 - Use test fixtures, `Drop` implementations, or explicit cleanup
 
 **Infrastructure Testing**:
+
 - Use **TestContainers** for tests requiring actual infrastructure (databases, message queues)
 - Prefer real infrastructure over mocks when feasible
 
@@ -240,6 +252,7 @@ fn test_translation() {
 ### Commit Policy
 
 **CRITICAL RULES**:
+
 - **NEVER** create commits without explicit user instruction
 - **NEVER** push commits without explicit user instruction
 - Always wait for user confirmation before committing
@@ -257,11 +270,13 @@ fn test_translation() {
 When a file contains changes with different purposes, use:
 
 **Method 1: Editor-based Patch Editing (Recommended)**
+
 ```bash
 git add -e <file>
 ```
 
 **Method 2: Patch File Approach**
+
 ```bash
 git diff <file> > /tmp/changes.patch
 # Edit patch file
@@ -271,6 +286,7 @@ git apply --cached /tmp/changes.patch
 ### Commit Message Format
 
 **Structure**:
+
 ```
 type(scope): Brief description in English
 
@@ -292,6 +308,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 **Type Values**:
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `refactor`: Code refactoring
@@ -304,6 +321,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 **Scope**: Module or component name (e.g., `orm`, `http`, `shortcuts`)
 
 **Requirements**:
+
 - Subject line: Be specific, not vague
 - Body: Organize by module/component, list file changes with line counts
 - Footer: Include Claude Code attribution and Co-Authored-By line
@@ -311,6 +329,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 **Style Reference**:
 Always examine recent commits before writing new ones:
+
 ```bash
 git log --pretty=format:"%s%n%b" -10
 ```
@@ -324,16 +343,19 @@ For detailed commit guidelines, see [CLAUDE.commit.md](CLAUDE.commit.md).
 ### Before Submitting
 
 1. **Ensure all tests pass**:
+
    ```bash
    cargo test --workspace
    ```
 
 2. **Run code formatting**:
+
    ```bash
    cargo fmt --all
    ```
 
 3. **Check for linting issues**:
+
    ```bash
    cargo clippy --workspace -- -D warnings
    ```
@@ -343,6 +365,7 @@ For detailed commit guidelines, see [CLAUDE.commit.md](CLAUDE.commit.md).
 ### Submitting a Pull Request
 
 1. **Create a feature branch**:
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -352,6 +375,7 @@ For detailed commit guidelines, see [CLAUDE.commit.md](CLAUDE.commit.md).
 3. **Commit your changes** following commit guidelines
 
 4. **Push to your fork**:
+
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -386,6 +410,7 @@ For detailed commit guidelines, see [CLAUDE.commit.md](CLAUDE.commit.md).
 ### Documentation Scope
 
 Update documentation for:
+
 - **New features**: Add descriptions, usage examples, API references
 - **Modified features**: Update affected sections
 - **Deprecated features**: Mark as deprecated, provide migration guides
@@ -413,6 +438,7 @@ Update documentation for:
 ### Before Asking
 
 Please check:
+
 -  [Getting Started Guide](docs/GETTING_STARTED.md)
 -  [Examples](examples/)
 -  Existing GitHub Issues and Discussions
@@ -425,6 +451,7 @@ Please check:
 ### Critical Rules
 
 **Code & Module System**:
+
 - L NO `mod.rs` files
 - L NO TODO/NOTE comments in user-facing placeholders
 - L NO unmarked placeholder implementations
@@ -432,21 +459,25 @@ Please check:
 -  MARK ALL placeholders with `todo!()` or `// TODO:`
 
 **Testing**:
+
 - L NO skeleton tests
 - L NO cross-crate dev-dependencies in functional crates
 -  CLEAN UP all test artifacts
 -  SERIALIZE tests with global state using `#[serial]`
 
 **File Management**:
+
 - L NO saving files to project directory (use `/tmp`)
 - L NO relative paths with more than one level up
 -  DELETE `/tmp` files when done
 
 **Documentation**:
+
 - L NO outdated documentation after code changes
 -  UPDATE documentation with code changes
 
 **Commits**:
+
 - L NO commits without user instruction
 - L NO batch commits without confirmation
 -  SPLIT commits by logical purpose

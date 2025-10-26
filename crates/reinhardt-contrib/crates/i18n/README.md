@@ -49,4 +49,3 @@ Framework for translating applications into multiple languages with Django-style
 - **String conversion**: Seamless conversion to String type
 - **Plural support**: Lazy evaluation for plural translations
 - **Context support**: Lazy evaluation for contextual translations
-

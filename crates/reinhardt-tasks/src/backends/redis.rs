@@ -2,7 +2,7 @@
 
 use crate::{Task, TaskExecutionError, TaskId, TaskStatus};
 use async_trait::async_trait;
-use redis::{AsyncCommands, RedisError, aio::ConnectionManager};
+use redis::{aio::ConnectionManager, AsyncCommands, RedisError};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -220,9 +220,9 @@ mod tests {
     use crate::{Task, TaskId, TaskPriority};
     use serial_test::serial;
     use testcontainers::{
-        GenericImage,
         core::{ContainerPort, WaitFor},
         runners::AsyncRunner,
+        GenericImage,
     };
 
     struct TestTask {

@@ -127,7 +127,7 @@ impl Scheduler {
     /// scheduler.run().await;
     /// ```
     pub async fn run(&self) {
-        use tokio::time::{Duration, sleep};
+        use tokio::time::{sleep, Duration};
 
         loop {
             let now = Utc::now();

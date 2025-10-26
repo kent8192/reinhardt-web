@@ -1,7 +1,7 @@
 //! Tests for log level filtering functionality
 //! Based on Django's DefaultLoggingTests
 
-use reinhardt_logging::{LogLevel, Logger, LoggingConfig, LoggingManager, handlers::MemoryHandler};
+use reinhardt_logging::{handlers::MemoryHandler, LogLevel, Logger, LoggingConfig, LoggingManager};
 use std::sync::Arc;
 
 #[tokio::test]

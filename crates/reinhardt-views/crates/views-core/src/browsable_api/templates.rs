@@ -1,7 +1,7 @@
 //! Interactive API documentation templates
 
 use http_body_util::Full;
-use hyper::{Response, StatusCode, body::Bytes};
+use hyper::{body::Bytes, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

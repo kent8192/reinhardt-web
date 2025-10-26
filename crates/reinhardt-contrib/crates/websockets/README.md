@@ -51,4 +51,3 @@ WebSocket protocol support for real-time bidirectional communication. Includes c
   - `on_message`: Handle incoming messages
   - `on_connect`: Handle new connections
   - `on_disconnect`: Handle disconnections
-

@@ -410,8 +410,8 @@ impl AuthenticationBackend for SessionAuthentication {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::JwtAuth;
     use crate::basic::BasicAuthentication;
+    use crate::JwtAuth;
     use bytes::Bytes;
     use hyper::{HeaderMap, Method, Uri, Version};
 

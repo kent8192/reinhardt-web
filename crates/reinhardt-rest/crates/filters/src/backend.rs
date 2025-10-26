@@ -388,7 +388,9 @@ mod tests {
     #[tokio::test]
     async fn test_custom_filter_backend_with_filters() {
         let mut backend = CustomFilterBackend::new();
-        backend.add_filter(Box::new(SimpleSearchBackend::new("search").with_field("name")));
+        backend.add_filter(Box::new(
+            SimpleSearchBackend::new("search").with_field("name"),
+        ));
 
         assert_eq!(backend.filter_count(), 1);
 

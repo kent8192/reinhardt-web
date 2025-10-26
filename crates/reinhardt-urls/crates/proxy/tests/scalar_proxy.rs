@@ -4,7 +4,7 @@
 //! one-to-one and many-to-one relationships, based on SQLAlchemy's tests.
 
 use reinhardt_proxy::{
-    ProxyError, ProxyResult, ScalarComparison, ScalarProxy, ScalarValue, reflection::Reflectable,
+    reflection::Reflectable, ProxyError, ProxyResult, ScalarComparison, ScalarProxy, ScalarValue,
 };
 use std::any::Any;
 

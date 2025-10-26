@@ -330,7 +330,7 @@ mod tests {
         let validator = CompositeValidator::new()
             .add(SizeLimitValidator::new(100))
             .add(ContentTypeValidator::new(vec![
-                "application/json".to_string(),
+                "application/json".to_string()
             ]));
 
         let body = Bytes::from("small");
@@ -345,7 +345,7 @@ mod tests {
         let validator = CompositeValidator::new()
             .add(SizeLimitValidator::new(3))
             .add(ContentTypeValidator::new(vec![
-                "application/json".to_string(),
+                "application/json".to_string()
             ]));
 
         let body = Bytes::from("this is too long");
@@ -360,7 +360,7 @@ mod tests {
         let validator = CompositeValidator::new()
             .add(SizeLimitValidator::new(100))
             .add(ContentTypeValidator::new(vec![
-                "application/json".to_string(),
+                "application/json".to_string()
             ]));
 
         let body = Bytes::from("small");
@@ -373,7 +373,7 @@ mod tests {
         let validator = CompositeValidator::new()
             .add(SizeLimitValidator::new(100))
             .add(ContentTypeValidator::new(vec![
-                "application/json".to_string(),
+                "application/json".to_string()
             ]));
 
         let data = ParsedData::Json(json!({"key": "value"}));

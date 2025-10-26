@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use reinhardt_exception::Error;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use crate::parser::{ParseResult, ParsedData, Parser};

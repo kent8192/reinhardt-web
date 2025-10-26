@@ -20,4 +20,3 @@ Provides comprehensive error handling with Django-inspired exception hierarchy. 
 - **anyhow integration** - `Other` variant wraps any `anyhow::Error` for compatibility
 - **Error categorization** - `ErrorKind` enum for categorical classification
 - **Standard conversions** - `From` implementations for `serde_json::Error`, `std::io::Error`, `http::Error`
-

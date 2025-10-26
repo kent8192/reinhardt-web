@@ -8,8 +8,8 @@
 
 use crate::{SerializerError, ValidatorError};
 use async_trait::async_trait;
-use reinhardt_orm::{Model, transaction::Transaction};
-use serde::{Serialize, de::DeserializeOwned};
+use reinhardt_orm::{transaction::Transaction, Model};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::marker::PhantomData;

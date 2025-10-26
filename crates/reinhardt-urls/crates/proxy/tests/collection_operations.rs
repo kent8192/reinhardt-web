@@ -4,7 +4,7 @@
 //! based on SQLAlchemy's association_proxy tests.
 
 use reinhardt_proxy::{
-    CollectionProxy, ProxyError, ProxyResult, ScalarValue, reflection::Reflectable,
+    reflection::Reflectable, CollectionProxy, ProxyError, ProxyResult, ScalarValue,
 };
 use std::any::Any;
 

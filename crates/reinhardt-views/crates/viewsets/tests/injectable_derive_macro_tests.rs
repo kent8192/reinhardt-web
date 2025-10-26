@@ -134,8 +134,8 @@ async fn test_macro_empty_named_struct() {
 
 #[tokio::test]
 async fn test_macro_default_cache_enabled() {
-    use std::sync::LazyLock;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::LazyLock;
 
     static COUNTER: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
 
@@ -498,8 +498,8 @@ async fn test_macro_multiple_injections_independence() {
 
 #[tokio::test]
 async fn test_macro_context_isolation() {
-    use std::sync::LazyLock;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::LazyLock;
 
     static ISOLATED_COUNTER: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(300));
 

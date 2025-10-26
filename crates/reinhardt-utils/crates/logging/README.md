@@ -73,4 +73,3 @@ Includes request logging, error logging, and integration with external logging s
   - `attach_memory_handler()`: Easy test handler attachment
 - **Type Safety**: Strongly-typed configuration and log levels
 - **Async Support**: Built on Tokio for async runtime compatibility
-

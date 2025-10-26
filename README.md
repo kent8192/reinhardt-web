@@ -9,9 +9,9 @@
   <p>All the power of Django's batteries-included philosophy,<br/>
   with the flexibility to include only what you need.</p>
 
-  [![Crates.io](https://img.shields.io/crates/v/reinhardt.svg)](https://crates.io/crates/reinhardt)
-  [![Documentation](https://docs.rs/reinhardt/badge.svg)](https://docs.rs/reinhardt)
-  [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/reinhardt.svg)](https://crates.io/crates/reinhardt)
+[![Documentation](https://docs.rs/reinhardt/badge.svg)](https://docs.rs/reinhardt)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 </div>
 
@@ -32,18 +32,19 @@ You may be looking for:
 
 Reinhardt brings together the best of three worlds:
 
-| Inspiration | What We Borrowed | What We Improved |
-|------------|------------------|------------------|
-| 🐍 **Django** | Batteries-included philosophy, ORM design, admin panel | Feature flags for modular builds, Rust's type safety |
-| 🎯 **Django REST** | Serializers, ViewSets, permissions | Compile-time validation, zero-cost abstractions |
-| ⚡ **FastAPI** | DI system, automatic OpenAPI | Native Rust performance, no runtime overhead |
-| 🗄️ **SQLAlchemy** | QuerySet patterns, relationship handling | Type-safe query builder, compile-time validation |
+| Inspiration        | What We Borrowed                                       | What We Improved                                     |
+|--------------------|--------------------------------------------------------|------------------------------------------------------|
+| 🐍 **Django**      | Batteries-included philosophy, ORM design, admin panel | Feature flags for modular builds, Rust's type safety |
+| 🎯 **Django REST** | Serializers, ViewSets, permissions                     | Compile-time validation, zero-cost abstractions      |
+| ⚡ **FastAPI**      | DI system, automatic OpenAPI                           | Native Rust performance, no runtime overhead         |
+| 🗄️ **SQLAlchemy** | QuerySet patterns, relationship handling               | Type-safe query builder, compile-time validation     |
 
 **Result**: A framework that's familiar to Python developers, but with Rust's performance and safety guarantees.
 
 ## ✨ Features
 
 ### 🎯 Core Framework
+
 - **Type-Safe ORM**: QuerySet API with compile-time query validation
 - **Powerful Serializers**: Automatic validation and transformation
 - **Flexible ViewSets**: DRY principle for CRUD operations
@@ -51,6 +52,7 @@ Reinhardt brings together the best of three worlds:
 - **Multi-Auth Support**: JWT, Token, Session, and Basic authentication
 
 ### 🚀 FastAPI-Inspired Ergonomics
+
 - **Parameter Extraction**: Type-safe `Path<T>`, `Query<T>`, `Header<T>`, `Cookie<T>`, `Json<T>`, `Form<T>` extractors
 - **Dependency Injection**: FastAPI-style DI system with `Depends<T>`, request scoping, and caching
 - **Auto OpenAPI**: Generate OpenAPI 3.0 schemas from Rust types with `#[derive(Schema)]`
@@ -58,6 +60,7 @@ Reinhardt brings together the best of three worlds:
 - **Background Tasks**: Simple async task execution
 
 ### 🔋 Batteries Included
+
 - **Admin Panel**: Django-style auto-generated admin interface (coming soon)
 - **Middleware System**: Request/response processing pipeline
 - **Management Commands**: CLI tools for migrations, static files, and more
@@ -67,6 +70,7 @@ Reinhardt brings together the best of three worlds:
 - **Signals**: Event-driven hooks (pre_save, post_save, pre_delete, post_delete, m2m_changed)
 
 ### 🌍 Advanced Features
+
 - **GraphQL Support**: Build GraphQL APIs alongside REST (coming soon)
 - **WebSocket Support**: Real-time bidirectional communication (coming soon)
 - **Internationalization**: Multi-language support
@@ -258,10 +262,10 @@ async fn create_user(
 
 ## Choosing the Right Flavor
 
-| Feature               | Micro    | Standard  | Full    |
-| --------------------- | -------- | --------- | ------- |
-| Binary Size           | ~5-10 MB | ~20-30 MB | ~50+ MB |
-| Compile Time          | Fast     | Medium    | Slower  |
+| Feature      | Micro    | Standard  | Full    |
+|--------------|----------|-----------|---------|
+| Binary Size  | ~5-10 MB | ~20-30 MB | ~50+ MB |
+| Compile Time | Fast     | Medium    | Slower  |
 | **Core Features**     |
 | Routing               | ✅       | ✅        | ✅      |
 | Parameter Extraction  | ✅       | ✅        | ✅      |
@@ -335,6 +339,7 @@ Reinhardt is a community-driven project. Here's where you can get help:
 - 📖 **Documentation**: [Read the guides](docs/)
 
 Before asking, please check:
+
 - ✅ [Getting Started Guide](docs/GETTING_STARTED.md)
 - ✅ [Examples](examples/)
 - ✅ Existing GitHub Issues and Discussions
@@ -344,6 +349,7 @@ Before asking, please check:
 We love contributions! Please read our [Contributing Guide](CONTRIBUTING.md) to get started.
 
 **Quick links**:
+
 - [Development Setup](CONTRIBUTING.md#development-setup)
 - [Testing Guidelines](CONTRIBUTING.md#testing-guidelines)
 - [Commit Guidelines](CONTRIBUTING.md#commit-guidelines)

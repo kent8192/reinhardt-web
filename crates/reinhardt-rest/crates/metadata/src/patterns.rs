@@ -498,13 +498,11 @@ mod tests {
         );
 
         assert_eq!(pattern.examples.as_ref().unwrap().len(), 3);
-        assert!(
-            pattern
-                .examples
-                .as_ref()
-                .unwrap()
-                .contains(&"123".to_string())
-        );
+        assert!(pattern
+            .examples
+            .as_ref()
+            .unwrap()
+            .contains(&"123".to_string()));
     }
 
     #[test]

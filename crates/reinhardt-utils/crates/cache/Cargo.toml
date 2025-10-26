@@ -45,7 +45,12 @@ redis-backend = ["redis", "deadpool-redis"]
 redis-cluster = ["redis-backend"]
 redis-sentinel = ["redis-backend"]
 memcached-backend = ["memcache-async"]
-all-backends = ["redis-backend", "redis-cluster", "redis-sentinel", "memcached-backend"]
+all-backends = [
+  "redis-backend",
+  "redis-cluster",
+  "redis-sentinel",
+  "memcached-backend",
+]
 
 [dev-dependencies]
 tokio = { workspace = true }

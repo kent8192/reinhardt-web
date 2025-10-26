@@ -4,7 +4,7 @@ use crate::connection::{Message, WebSocketConnection, WebSocketError};
 use crate::handler::RoomManager;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tokio::time::{Duration, timeout};
+use tokio::time::{timeout, Duration};
 
 /// Test: Basic WebSocket message sending and receiving
 #[tokio::test]

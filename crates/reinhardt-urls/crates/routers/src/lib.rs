@@ -29,9 +29,12 @@ pub use converters::{
     Converter, ConverterError, ConverterResult, DateConverter, FloatConverter, IntegerConverter,
     PathConverter, SlugConverter, UuidConverter,
 };
-pub use helpers::{IncludedRouter, include_routes, path, re_path};
+pub use helpers::{include_routes, path, re_path, IncludedRouter};
 pub use pattern::{PathMatcher, PathPattern};
 pub use reverse::{
+    reverse,
+    reverse_typed,
+    reverse_typed_with_params,
     ReverseError,
     ReverseResult,
     UrlParams,
@@ -39,14 +42,11 @@ pub use reverse::{
     UrlPattern,
     UrlPatternWithParams,
     UrlReverser,
-    reverse,
-    reverse_typed,
-    reverse_typed_with_params,
 };
 pub use route::Route;
 pub use router::{DefaultRouter, Router};
 pub use script_prefix::{clear_script_prefix, get_script_prefix, set_script_prefix};
 pub use simple::SimpleRouter;
 pub use unified_router::{
-    UnifiedRouter, clear_router, get_router, is_router_registered, register_router,
+    clear_router, get_router, is_router_registered, register_router, UnifiedRouter,
 };

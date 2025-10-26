@@ -70,12 +70,10 @@ fn test_writable_nested_serializer_validates_create_permission() {
     // Should fail - create not allowed
     let result = serializer.deserialize(&json.to_string());
     assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .message()
-            .contains("Creating nested instances is not allowed")
-    );
+    assert!(result
+        .unwrap_err()
+        .message()
+        .contains("Creating nested instances is not allowed"));
 }
 
 #[test]
@@ -95,12 +93,10 @@ fn test_writable_nested_serializer_validates_update_permission() {
     // Should fail - update not allowed
     let result = serializer.deserialize(&json.to_string());
     assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .message()
-            .contains("Updating nested instances is not allowed")
-    );
+    assert!(result
+        .unwrap_err()
+        .message()
+        .contains("Updating nested instances is not allowed"));
 }
 
 #[test]

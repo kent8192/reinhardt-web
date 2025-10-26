@@ -21,13 +21,13 @@ pub use reinhardt_settings::{DatabaseConfig, MiddlewareConfig, Settings, Templat
 pub use reinhardt_exception::{Error, Result};
 
 // Re-export from reinhardt-server
-pub use reinhardt_server::{HttpServer, serve};
+pub use reinhardt_server::{serve, HttpServer};
 
 // Re-export from reinhardt-types
 pub use reinhardt_types::{Handler, Middleware, MiddlewareChain};
 
 // Re-export from apps module
-pub use apps::{AppConfig, AppError, AppResult, Apps, get_apps, init_apps, init_apps_checked};
+pub use apps::{get_apps, init_apps, init_apps_checked, AppConfig, AppError, AppResult, Apps};
 
 // Re-export from builder module
 pub use builder::{

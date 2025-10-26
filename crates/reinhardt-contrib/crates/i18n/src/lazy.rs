@@ -88,7 +88,7 @@ impl From<LazyString> for String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MessageCatalog, activate_with_catalog, deactivate};
+    use crate::{activate_with_catalog, deactivate, MessageCatalog};
     use serial_test::serial;
 
     #[test]

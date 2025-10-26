@@ -1,6 +1,6 @@
 //! Integration tests for installed_apps with reinhardt-core
 
-use reinhardt_apps::{Settings, init_apps_checked};
+use reinhardt_apps::{init_apps_checked, Settings};
 
 #[test]
 fn test_init_apps_with_macro() {
@@ -26,11 +26,9 @@ fn test_settings_with_validated_apps() {
     });
 
     assert_eq!(settings.installed_apps.len(), 2);
-    assert!(
-        settings
-            .installed_apps
-            .contains(&"reinhardt.contrib.auth".to_string())
-    );
+    assert!(settings
+        .installed_apps
+        .contains(&"reinhardt.contrib.auth".to_string()));
 }
 
 #[test]

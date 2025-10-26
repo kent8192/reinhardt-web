@@ -4,8 +4,8 @@ use crate::config::PoolConfig;
 use crate::errors::{PoolError, PoolResult};
 use crate::events::{PoolEvent, PoolEventListener};
 use sqlx::{Database, MySql, Pool, Postgres, Sqlite};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// A database connection pool
@@ -214,7 +214,7 @@ where
     /// If active connections are not returned within this time, the pool
     /// will be forcefully closed.
     pub async fn close(&self) {
-        use tokio::time::{Duration, timeout};
+        use tokio::time::{timeout, Duration};
 
         // Try to close gracefully with a timeout
         let close_future = self.pool.close();

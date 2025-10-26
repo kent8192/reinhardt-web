@@ -18,7 +18,7 @@ pub mod dev_server;
 
 pub use caching::{CacheControlConfig, CacheControlMiddleware, CacheDirective, CachePolicy};
 pub use cdn::{CdnConfig, CdnInvalidationRequest, CdnProvider, CdnPurgeHelper, CdnUrlGenerator};
-pub use checks::{CheckLevel, CheckMessage, check_static_files_config};
+pub use checks::{check_static_files_config, CheckLevel, CheckMessage};
 pub use dependency_resolver::DependencyGraph;
 pub use handler::{StaticError, StaticFile, StaticFileHandler, StaticResult};
 pub use health::{

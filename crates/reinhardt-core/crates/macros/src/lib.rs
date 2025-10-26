@@ -21,7 +21,7 @@
 //! ```
 
 use proc_macro::TokenStream;
-use syn::{ItemFn, parse_macro_input};
+use syn::{parse_macro_input, ItemFn};
 
 mod action;
 mod api_view;

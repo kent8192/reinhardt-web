@@ -55,7 +55,7 @@ pub use mail_commands::SendTestEmailCommand;
 pub use output::OutputWrapper;
 pub use registry::CommandRegistry;
 pub use start_commands::{StartAppCommand, StartProjectCommand};
-pub use template::{TemplateCommand, TemplateContext, generate_secret_key, to_camel_case};
+pub use template::{generate_secret_key, to_camel_case, TemplateCommand, TemplateContext};
 
 #[derive(Debug, Error)]
 pub enum CommandError {

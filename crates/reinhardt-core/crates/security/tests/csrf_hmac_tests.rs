@@ -103,12 +103,10 @@ fn test_check_token_hmac_invalid() {
 
     let result = check_token_hmac("invalid-token", &secret, session_id);
     assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .reason
-            .contains("HMAC verification failed")
-    );
+    assert!(result
+        .unwrap_err()
+        .reason
+        .contains("HMAC verification failed"));
 }
 
 #[test]

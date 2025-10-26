@@ -77,24 +77,24 @@ Create `templates/polls/index.html`:
 ```html
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>Polls</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>Latest Polls</h1>
 
     {% if latest_question_list %}
-        <ul>
-        {% for question in latest_question_list %}
-            <li>
-                <a href="/polls/{{ question.id }}/">{{ question.question_text }}</a>
-            </li>
-        {% endfor %}
-        </ul>
+    <ul>
+      {% for question in latest_question_list %}
+      <li>
+        <a href="/polls/{{ question.id }}/">{{ question.question_text }}</a>
+      </li>
+      {% endfor %}
+    </ul>
     {% else %}
-        <p>No polls are available.</p>
+    <p>No polls are available.</p>
     {% endif %}
-</body>
+  </body>
 </html>
 ```
 
@@ -103,20 +103,25 @@ Create `templates/polls/detail.html`:
 ```html
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>{{ question.question_text }}</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>{{ question.question_text }}</h1>
 
     <form action="/polls/{{ question.id }}/vote/" method="post">
-        {% for choice in question.choices %}
-            <input type="radio" name="choice" id="choice{{ choice.id }}" value="{{ choice.id }}">
-            <label for="choice{{ choice.id }}">{{ choice.choice_text }}</label><br>
-        {% endfor %}
-        <input type="submit" value="Vote">
+      {% for choice in question.choices %}
+      <input
+        type="radio"
+        name="choice"
+        id="choice{{ choice.id }}"
+        value="{{ choice.id }}"
+      />
+      <label for="choice{{ choice.id }}">{{ choice.choice_text }}</label><br />
+      {% endfor %}
+      <input type="submit" value="Vote" />
     </form>
-</body>
+  </body>
 </html>
 ```
 
@@ -125,20 +130,23 @@ Create `templates/polls/results.html`:
 ```html
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>Results for {{ question.question_text }}</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>{{ question.question_text }}</h1>
 
     <ul>
-    {% for choice in choices %}
-        <li>{{ choice.choice_text }} -- {{ choice.votes }} vote{{ choice.votes|pluralize }}</li>
-    {% endfor %}
+      {% for choice in choices %}
+      <li>
+        {{ choice.choice_text }} -- {{ choice.votes }} vote{{
+        choice.votes|pluralize }}
+      </li>
+      {% endfor %}
     </ul>
 
     <a href="/polls/{{ question.id }}/">Vote again?</a>
-</body>
+  </body>
 </html>
 ```
 
@@ -199,6 +207,7 @@ Now you can use the `url` filter in templates:
 To avoid name conflicts between different apps, we use namespaced URL names. The format is `app_name:url_name`.
 
 In our case:
+
 - `polls:index` - The index view of the polls app
 - `polls:detail` - The detail view of the polls app
 - `polls:results` - The results view

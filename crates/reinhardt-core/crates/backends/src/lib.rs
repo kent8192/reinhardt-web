@@ -35,7 +35,7 @@
 //! ```
 
 use async_trait::async_trait;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use std::time::Duration;
 use thiserror::Error;
 

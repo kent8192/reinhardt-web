@@ -55,11 +55,11 @@ pub use custom_filters::{
     title, trim, truncate, upper,
 };
 pub use debug_tools::{
-    DebugPanel, TemplateContext, TemplateProfile, debug_filter, get_debug_panel,
-    get_debug_panel_mut, init_debug_panel,
+    debug_filter, get_debug_panel, get_debug_panel_mut, init_debug_panel, DebugPanel,
+    TemplateContext, TemplateProfile,
 };
 pub use error_reporting::{
-    TemplateError as EnhancedTemplateError, TemplateErrorContext, suggest_similar,
+    suggest_similar, TemplateError as EnhancedTemplateError, TemplateErrorContext,
 };
 pub use fs_loader::FileSystemTemplateLoader;
 pub use reinhardt_exception::Error as TemplateError;
@@ -68,7 +68,7 @@ pub use i18n_filters::{
     blocktrans, blocktrans_plural, get_current_language, localize_date_filter,
     localize_number_filter, trans, trans_with_context,
 };
-pub use static_filters::{StaticConfig, init_static_config, static_filter, static_path_join};
+pub use static_filters::{init_static_config, static_filter, static_path_join, StaticConfig};
 
 use reinhardt_exception::{Error, Result};
 use std::collections::HashMap;

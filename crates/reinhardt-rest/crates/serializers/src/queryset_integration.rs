@@ -13,7 +13,7 @@
 use crate::SerializerError;
 use async_trait::async_trait;
 use reinhardt_orm::Model;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 

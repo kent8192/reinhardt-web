@@ -369,7 +369,11 @@ impl Paginator for PageNumberPagination {
 
         // Calculate total pages considering orphans
         let total_pages = if total_count == 0 {
-            if self.allow_empty_first_page { 1 } else { 0 }
+            if self.allow_empty_first_page {
+                1
+            } else {
+                0
+            }
         } else {
             // Calculate pages with orphans consideration
             if total_count <= self.page_size {

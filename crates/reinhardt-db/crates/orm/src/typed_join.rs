@@ -3,9 +3,9 @@
 //! This module provides compile-time type safety for JOIN operations
 //! by leveraging the existing Field<M, T> type system.
 
-use crate::Model;
 use crate::query_fields::Field;
 use crate::sqlalchemy_query::JoinType;
+use crate::Model;
 use std::marker::PhantomData;
 
 /// Type-safe JOIN condition between two models

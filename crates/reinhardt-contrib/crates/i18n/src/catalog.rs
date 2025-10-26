@@ -146,7 +146,11 @@ impl MessageCatalog {
         }
         // French and similar languages: 0 and 1 are singular (index 0), 2+ are plural (index 1)
         else if self.locale.starts_with("fr") {
-            if count == 0 || count == 1 { 0 } else { 1 }
+            if count == 0 || count == 1 {
+                0
+            } else {
+                1
+            }
         }
         // English and default: 1 is singular (index 0), 0 and 2+ are plural (index 1)
         else if count == 1 {

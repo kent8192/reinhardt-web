@@ -4,7 +4,7 @@
 use async_graphql::Schema;
 #[cfg(feature = "graphql-grpc")]
 use reinhardt_grpc::proto::graphql::{
-    GraphQlRequest, GraphQlResponse, SubscriptionEvent, graph_ql_service_server::GraphQlService,
+    graph_ql_service_server::GraphQlService, GraphQlRequest, GraphQlResponse, SubscriptionEvent,
 };
 #[cfg(feature = "graphql-grpc")]
 use std::{pin::Pin, sync::Arc};

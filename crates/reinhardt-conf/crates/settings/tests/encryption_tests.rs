@@ -18,11 +18,9 @@ mod encryption_tests {
         let key = vec![0u8; 16]; // Invalid: only 16 bytes
         let result = ConfigEncryptor::new(key);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("Encryption key must be exactly 32 bytes")
-        );
+        assert!(result
+            .unwrap_err()
+            .contains("Encryption key must be exactly 32 bytes"));
     }
 
     #[test]
@@ -160,11 +158,9 @@ mod encryption_fallback_tests {
         let key = vec![];
         let result = ConfigEncryptor::new(key);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("Encryption key cannot be empty")
-        );
+        assert!(result
+            .unwrap_err()
+            .contains("Encryption key cannot be empty"));
     }
 
     #[test]

@@ -94,25 +94,29 @@ Forms should be protected against Cross-Site Request Forgery (CSRF) attacks. Upd
 ```html
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>{{ question.question_text }}</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>{{ question.question_text }}</h1>
 
     {% if error_message %}
-        <p><strong>{{ error_message }}</strong></p>
+    <p><strong>{{ error_message }}</strong></p>
     {% endif %}
 
     <form action="/polls/{{ question.id }}/vote/" method="post">
-        {% csrf_token %}
-        {% for choice in question.choices %}
-            <input type="radio" name="choice" id="choice{{ choice.id }}" value="{{ choice.id }}">
-            <label for="choice{{ choice.id }}">{{ choice.choice_text }}</label><br>
-        {% endfor %}
-        <input type="submit" value="Vote">
+      {% csrf_token %} {% for choice in question.choices %}
+      <input
+        type="radio"
+        name="choice"
+        id="choice{{ choice.id }}"
+        value="{{ choice.id }}"
+      />
+      <label for="choice{{ choice.id }}">{{ choice.choice_text }}</label><br />
+      {% endfor %}
+      <input type="submit" value="Vote" />
     </form>
-</body>
+  </body>
 </html>
 ```
 

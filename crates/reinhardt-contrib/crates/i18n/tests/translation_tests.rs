@@ -3,8 +3,8 @@
 //! Tests based on Django's i18n/tests.py - TranslationTests class
 
 use reinhardt_i18n::{
-    MessageCatalog, activate, deactivate, get_language, gettext, load_catalog, ngettext, npgettext,
-    pgettext,
+    activate, deactivate, get_language, gettext, load_catalog, ngettext, npgettext, pgettext,
+    MessageCatalog,
 };
 use serial_test::serial;
 use std::sync::Mutex;

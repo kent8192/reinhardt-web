@@ -3,8 +3,8 @@
 //! Translated from Django's db/migrations/executor.py
 
 use crate::{
-    DatabaseMigrationRecorder, Migration, MigrationPlan, MigrationRecorder, Result,
-    operations::SqlDialect,
+    operations::SqlDialect, DatabaseMigrationRecorder, Migration, MigrationPlan, MigrationRecorder,
+    Result,
 };
 use backends::{connection::DatabaseConnection, types::DatabaseType};
 use sqlx::SqlitePool;

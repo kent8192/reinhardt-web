@@ -8,7 +8,7 @@
 use reinhardt_validators::ValidationResult;
 use sqlx::PgPool;
 use std::sync::Arc;
-use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
+use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
 
 /// Test database setup and management with TestContainers
 pub struct TestDatabase {

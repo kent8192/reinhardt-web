@@ -317,10 +317,7 @@ mod tests {
         let params = HashMap::new();
         let sql = "SELECT * FROM users".to_string();
 
-        let result1 = backend
-            .filter_queryset(&params, sql.clone())
-            .await
-            .unwrap();
+        let result1 = backend.filter_queryset(&params, sql.clone()).await.unwrap();
         let result2 = backend.filter_queryset(&params, sql).await.unwrap();
 
         assert_eq!(result1, result2);
@@ -338,10 +335,7 @@ mod tests {
 
         let sql = "SELECT * FROM articles".to_string();
 
-        let result1 = backend
-            .filter_queryset(&params, sql.clone())
-            .await
-            .unwrap();
+        let result1 = backend.filter_queryset(&params, sql.clone()).await.unwrap();
         let result2 = backend.filter_queryset(&params, sql).await.unwrap();
 
         assert_eq!(result1, result2);

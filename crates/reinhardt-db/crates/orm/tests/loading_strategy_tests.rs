@@ -4,8 +4,8 @@
 //! Validates joinedload, selectinload, subqueryload, lazyload, raiseload, noload strategies.
 
 use reinhardt_orm::{
-    LoadContext, LoadOptionBuilder, LoadingStrategy, Model, joinedload, lazyload, noload,
-    raiseload, selectinload, subqueryload,
+    joinedload, lazyload, noload, raiseload, selectinload, subqueryload, LoadContext,
+    LoadOptionBuilder, LoadingStrategy, Model,
 };
 use reinhardt_validators::TableName;
 use serde::{Deserialize, Serialize};

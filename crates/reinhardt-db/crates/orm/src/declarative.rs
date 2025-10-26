@@ -4,7 +4,7 @@
 //! similar to SQLAlchemy's declarative base system.
 
 use crate::fields::Field;
-use crate::registry::{ColumnInfo, EntityMapper, TableInfo, registry};
+use crate::registry::{registry, ColumnInfo, EntityMapper, TableInfo};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -634,11 +634,9 @@ mod tests {
 
         assert_eq!(metadata.primary_key_fields.len(), 2);
         assert!(metadata.primary_key_fields.contains(&"user_id".to_string()));
-        assert!(
-            metadata
-                .primary_key_fields
-                .contains(&"group_id".to_string())
-        );
+        assert!(metadata
+            .primary_key_fields
+            .contains(&"group_id".to_string()));
     }
 
     #[test]

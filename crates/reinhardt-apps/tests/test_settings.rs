@@ -117,21 +117,15 @@ fn test_settings_installed_apps_contains_defaults() {
     let settings = Settings::default();
 
     // Check that default apps are installed
-    assert!(
-        settings
-            .installed_apps
-            .contains(&"reinhardt.contrib.admin".to_string())
-    );
-    assert!(
-        settings
-            .installed_apps
-            .contains(&"reinhardt.contrib.auth".to_string())
-    );
-    assert!(
-        settings
-            .installed_apps
-            .contains(&"reinhardt.contrib.contenttypes".to_string())
-    );
+    assert!(settings
+        .installed_apps
+        .contains(&"reinhardt.contrib.admin".to_string()));
+    assert!(settings
+        .installed_apps
+        .contains(&"reinhardt.contrib.auth".to_string()));
+    assert!(settings
+        .installed_apps
+        .contains(&"reinhardt.contrib.contenttypes".to_string()));
 }
 
 #[test]
@@ -139,16 +133,12 @@ fn test_settings_middleware_contains_defaults() {
     let settings = Settings::default();
 
     // Check that default middleware is configured
-    assert!(
-        settings
-            .middleware
-            .contains(&"reinhardt.middleware.security.SecurityMiddleware".to_string())
-    );
-    assert!(
-        settings
-            .middleware
-            .contains(&"reinhardt.middleware.csrf.CsrfViewMiddleware".to_string())
-    );
+    assert!(settings
+        .middleware
+        .contains(&"reinhardt.middleware.security.SecurityMiddleware".to_string()));
+    assert!(settings
+        .middleware
+        .contains(&"reinhardt.middleware.csrf.CsrfViewMiddleware".to_string()));
 }
 
 #[test]

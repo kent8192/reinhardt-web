@@ -1,8 +1,8 @@
 //! Aggregation operations on collections
 
 use super::CollectionProxy;
-use crate::ProxyResult;
 use crate::proxy::ScalarValue;
+use crate::ProxyResult;
 
 /// Aggregation operations on collections
 #[derive(Debug, Clone)]

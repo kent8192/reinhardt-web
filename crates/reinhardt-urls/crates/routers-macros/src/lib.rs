@@ -34,11 +34,11 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{LitStr, parse_macro_input};
+use syn::{parse_macro_input, LitStr};
 
 mod validation;
 
-use validation::{PathValidationError, validate_path_syntax};
+use validation::{validate_path_syntax, PathValidationError};
 
 /// Validates URL path syntax at compile time.
 ///

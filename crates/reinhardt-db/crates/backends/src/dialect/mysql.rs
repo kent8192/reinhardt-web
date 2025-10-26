@@ -1,7 +1,7 @@
 //! MySQL dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{Column, MySqlPool, Row as SqlxRow, mysql::MySqlRow};
+use sqlx::{mysql::MySqlRow, Column, MySqlPool, Row as SqlxRow};
 use std::sync::Arc;
 
 use crate::{

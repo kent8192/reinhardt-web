@@ -426,12 +426,10 @@ mod tests {
         assert!(schema["properties"]["APP_NAME"].is_object());
         assert_eq!(schema["properties"]["APP_NAME"]["type"], "string");
         assert_eq!(schema["properties"]["DEBUG"]["type"], "boolean");
-        assert!(
-            schema["required"]
-                .as_array()
-                .unwrap()
-                .contains(&Value::String("APP_NAME".to_string()))
-        );
+        assert!(schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&Value::String("APP_NAME".to_string())));
     }
 
     #[test]

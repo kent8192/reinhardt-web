@@ -231,7 +231,11 @@ impl ConnectionPool for StaticPool {
 
     fn active_connections(&self) -> usize {
         let conn_opt = self.connection.lock().unwrap();
-        if conn_opt.is_some() { 1 } else { 0 }
+        if conn_opt.is_some() {
+            1
+        } else {
+            0
+        }
     }
 }
 

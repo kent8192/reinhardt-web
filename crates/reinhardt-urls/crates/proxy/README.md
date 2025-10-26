@@ -99,4 +99,3 @@ Association proxies allow you to access attributes on related objects as if they
   - `DatabaseError` - Database operation errors
   - `SerializationError` - Serialization errors
 - `ProxyResult<T>` type alias for Result with ProxyError
-

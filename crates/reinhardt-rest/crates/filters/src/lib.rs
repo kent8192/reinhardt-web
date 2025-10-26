@@ -37,7 +37,7 @@ pub use filter::{FilterBackend, FilterError, FilterResult};
 pub use backend::{CustomFilterBackend, SimpleOrderingBackend, SimpleSearchBackend};
 
 #[cfg(feature = "caching")]
-pub use caching::{CacheStats, CachedFilterBackend, generate_cache_key};
+pub use caching::{generate_cache_key, CacheStats, CachedFilterBackend};
 
 pub use highlighting::{
     HighlightedResult, HtmlHighlighter, MultiFieldHighlighter, PlainTextHighlighter,

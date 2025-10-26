@@ -214,7 +214,7 @@ impl Handler for SimpleRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Router, path};
+    use crate::{path, Router};
     use async_trait::async_trait;
     use bytes::Bytes;
     use hyper::{HeaderMap, Method, Uri, Version};

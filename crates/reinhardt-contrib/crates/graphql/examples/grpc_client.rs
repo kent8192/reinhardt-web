@@ -14,7 +14,7 @@
 
 #[cfg(feature = "graphql-grpc")]
 use reinhardt_grpc::proto::graphql::{
-    GraphQlRequest, graph_ql_service_client::GraphQlServiceClient,
+    graph_ql_service_client::GraphQlServiceClient, GraphQlRequest,
 };
 
 #[cfg(feature = "graphql-grpc")]

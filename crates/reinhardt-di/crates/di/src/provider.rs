@@ -14,7 +14,7 @@ pub type ProviderFn = Arc<
 
 pub trait Provider: Send + Sync {
     fn provide(&self)
-    -> Pin<Box<dyn Future<Output = DiResult<Box<dyn Any + Send + Sync>>> + Send>>;
+        -> Pin<Box<dyn Future<Output = DiResult<Box<dyn Any + Send + Sync>>> + Send>>;
 }
 
 impl<F, Fut, T> Provider for F

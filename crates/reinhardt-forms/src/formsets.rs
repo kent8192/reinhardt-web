@@ -3,9 +3,9 @@
 //! This module provides advanced FormSet features including inline formsets,
 //! model-based formsets, and dynamic formset generation.
 
-use crate::FormError;
 use crate::formset::FormSet;
 use crate::model_form::{FormModel, ModelForm};
+use crate::FormError;
 use std::marker::PhantomData;
 
 /// InlineFormSet for managing forms related to a parent model
@@ -438,8 +438,8 @@ impl FormSetFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ModelFormConfig;
     use crate::model_form::FieldType;
+    use crate::ModelFormConfig;
     use serde_json::Value;
 
     // Test model implementation

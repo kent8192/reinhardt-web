@@ -6,8 +6,8 @@
 use reinhardt_logging::handlers::MemoryHandler;
 use reinhardt_logging::{Handler, LogLevel, LogRecord, Logger};
 use std::sync::Arc;
-use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::mpsc;
+use tokio::sync::Mutex as AsyncMutex;
 
 /// Queue-based handler for non-blocking logging
 pub struct QueueHandler {

@@ -15,7 +15,7 @@ pub trait Router: Send + Sync {
 
     /// Handle a request (similar to Handler::handle)
     fn route(&self, request: Request)
-    -> impl std::future::Future<Output = Result<Response>> + Send;
+        -> impl std::future::Future<Output = Result<Response>> + Send;
 }
 
 /// Default router implementation

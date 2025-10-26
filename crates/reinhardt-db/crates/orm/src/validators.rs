@@ -1138,11 +1138,9 @@ mod tests {
 
         // Invalid emails - length errors
         let long_local = "a".repeat(65);
-        assert!(
-            validator
-                .validate(&format!("{}@example.com", long_local))
-                .is_err()
-        );
+        assert!(validator
+            .validate(&format!("{}@example.com", long_local))
+            .is_err());
 
         // Invalid emails - quoted string errors
         assert!(validator.validate(r#""user"name"@example.com"#).is_err()); // Unescaped quote
@@ -1255,11 +1253,9 @@ mod tests {
 
         model_validators.add_field_validator("email".to_string(), email_validators);
 
-        assert!(
-            model_validators
-                .validate("email", "test@example.com")
-                .is_ok()
-        );
+        assert!(model_validators
+            .validate("email", "test@example.com")
+            .is_ok());
         assert!(model_validators.validate("email", "invalid").is_err());
     }
 

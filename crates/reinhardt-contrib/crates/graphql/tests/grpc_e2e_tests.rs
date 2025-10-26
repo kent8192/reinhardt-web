@@ -8,8 +8,8 @@ mod e2e_tests {
         schema::{Mutation, Query, UserStorage},
     };
     use reinhardt_grpc::proto::graphql::{
-        GraphQlRequest, graph_ql_service_client::GraphQlServiceClient,
-        graph_ql_service_server::GraphQlServiceServer,
+        graph_ql_service_client::GraphQlServiceClient,
+        graph_ql_service_server::GraphQlServiceServer, GraphQlRequest,
     };
     use std::time::Duration;
     use tokio::time::sleep;

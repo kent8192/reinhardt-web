@@ -33,7 +33,7 @@ pub use executor::{ExecutionResult, MigrationExecutor};
 pub use graph::{MigrationGraph, MigrationKey, MigrationNode};
 pub use loader::MigrationLoader;
 pub use migration::Migration;
-pub use model_registry::{FieldMetadata, ModelMetadata, ModelRegistry, global_registry};
+pub use model_registry::{global_registry, FieldMetadata, ModelMetadata, ModelRegistry};
 pub use operations::{
     AddColumn, AlterColumn, ColumnDefinition, CreateTable, DropColumn, Operation, SqlDialect,
 };

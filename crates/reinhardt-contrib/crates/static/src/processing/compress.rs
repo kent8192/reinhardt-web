@@ -60,8 +60,8 @@ impl GzipCompressor {
 
     /// Compress data using gzip
     fn compress_gzip(&self, input: &[u8]) -> ProcessingResult<Vec<u8>> {
-        use flate2::Compression;
         use flate2::write::GzEncoder;
+        use flate2::Compression;
 
         let mut encoder = GzEncoder::new(Vec::new(), Compression::new(self.level));
         encoder.write_all(input)?;

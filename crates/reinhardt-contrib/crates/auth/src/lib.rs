@@ -67,7 +67,7 @@ pub use rate_limit_permission::{
     RateLimitPermissionBuilder,
 };
 pub use remote_user::RemoteUserAuthentication as RemoteUserAuth;
-pub use session::{InMemorySessionStore, SESSION_KEY_USER_ID, Session, SessionId, SessionStore};
+pub use session::{InMemorySessionStore, Session, SessionId, SessionStore, SESSION_KEY_USER_ID};
 pub use time_based_permission::{DateRange, TimeBasedPermission, TimeWindow};
 pub use token_blacklist::{
     BlacklistReason, BlacklistStats, BlacklistedToken, InMemoryRefreshTokenStore,

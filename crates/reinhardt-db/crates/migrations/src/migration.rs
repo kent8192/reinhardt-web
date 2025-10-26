@@ -126,8 +126,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_alter_order_with_respect_to() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -176,8 +176,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_alter_order_with_respect_to_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -208,20 +208,18 @@ mod migrations_extended_tests {
         };
         add_order.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "books")
-                .unwrap()
-                .fields
-                .contains_key("_order")
-        );
+        assert!(state
+            .get_model("app", "books")
+            .unwrap()
+            .fields
+            .contains_key("_order"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_auto_field_does_not_request_default() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -239,20 +237,18 @@ mod migrations_extended_tests {
         };
         add_op.state_forwards("testapp", &mut state);
 
-        assert!(
-            state
-                .get_model("testapp", "items")
-                .unwrap()
-                .fields
-                .contains_key("id")
-        );
+        assert!(state
+            .get_model("testapp", "items")
+            .unwrap()
+            .fields
+            .contains_key("id"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_auto_field_does_not_request_default_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -275,8 +271,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_blank_textfield_and_charfield() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -308,8 +304,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_blank_textfield_and_charfield_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -326,20 +322,18 @@ mod migrations_extended_tests {
         };
         add_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "posts")
-                .unwrap()
-                .fields
-                .contains_key("description")
-        );
+        assert!(state
+            .get_model("app", "posts")
+            .unwrap()
+            .fields
+            .contains_key("description"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_composite_pk() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -363,8 +357,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_composite_pk_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -416,8 +410,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_constraints_with_dict_keys() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -443,8 +437,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_constraints_with_dict_keys_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -464,8 +458,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_constraints_with_new_model() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -488,8 +482,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_constraints_with_new_model_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -509,8 +503,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_custom_fk_with_hardcoded_to() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -533,20 +527,18 @@ mod migrations_extended_tests {
         };
         create_posts.state_forwards("testapp", &mut state);
 
-        assert!(
-            state
-                .get_model("testapp", "posts")
-                .unwrap()
-                .fields
-                .contains_key("author_id")
-        );
+        assert!(state
+            .get_model("testapp", "posts")
+            .unwrap()
+            .fields
+            .contains_key("author_id"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_custom_fk_with_hardcoded_to_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -573,8 +565,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_date_fields_with_auto_now_add_asking_for_default() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -592,20 +584,18 @@ mod migrations_extended_tests {
         };
         add_op.state_forwards("testapp", &mut state);
 
-        assert!(
-            state
-                .get_model("testapp", "posts")
-                .unwrap()
-                .fields
-                .contains_key("created_at")
-        );
+        assert!(state
+            .get_model("testapp", "posts")
+            .unwrap()
+            .fields
+            .contains_key("created_at"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_date_fields_with_auto_now_add_asking_for_default_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -628,8 +618,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_date_fields_with_auto_now_add_not_asking_for_null_addition() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -650,20 +640,18 @@ mod migrations_extended_tests {
         };
         add_op.state_forwards("testapp", &mut state);
 
-        assert!(
-            state
-                .get_model("testapp", "events")
-                .unwrap()
-                .fields
-                .contains_key("created_at")
-        );
+        assert!(state
+            .get_model("testapp", "events")
+            .unwrap()
+            .fields
+            .contains_key("created_at"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_date_fields_with_auto_now_add_not_asking_for_null_addition_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -689,8 +677,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_date_fields_with_auto_now_not_asking_for_default() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -709,20 +697,18 @@ mod migrations_extended_tests {
         };
         add_op.state_forwards("testapp", &mut state);
 
-        assert!(
-            state
-                .get_model("testapp", "records")
-                .unwrap()
-                .fields
-                .contains_key("updated_at")
-        );
+        assert!(state
+            .get_model("testapp", "records")
+            .unwrap()
+            .fields
+            .contains_key("updated_at"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_date_fields_with_auto_now_not_asking_for_default_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -745,8 +731,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_field() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -772,8 +758,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_field_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -790,20 +776,18 @@ mod migrations_extended_tests {
         };
         add_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "users")
-                .unwrap()
-                .fields
-                .contains_key("email")
-        );
+        assert!(state
+            .get_model("app", "users")
+            .unwrap()
+            .fields
+            .contains_key("email"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_field_and_unique_together() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -829,20 +813,18 @@ mod migrations_extended_tests {
         };
         unique_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "users")
-                .unwrap()
-                .fields
-                .contains_key("username")
-        );
+        assert!(state
+            .get_model("app", "users")
+            .unwrap()
+            .fields
+            .contains_key("username"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_field_and_unique_together_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -868,20 +850,18 @@ mod migrations_extended_tests {
         };
         unique_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "posts")
-                .unwrap()
-                .fields
-                .contains_key("slug")
-        );
+        assert!(state
+            .get_model("app", "posts")
+            .unwrap()
+            .fields
+            .contains_key("slug"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_field_before_generated_field() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -923,8 +903,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_field_before_generated_field_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -956,20 +936,18 @@ mod migrations_extended_tests {
         };
         add_generated.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "users")
-                .unwrap()
-                .fields
-                .contains_key("full_name")
-        );
+        assert!(state
+            .get_model("app", "users")
+            .unwrap()
+            .fields
+            .contains_key("full_name"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_field_with_default() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -995,8 +973,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_field_with_default_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1013,20 +991,18 @@ mod migrations_extended_tests {
         };
         add_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "products")
-                .unwrap()
-                .fields
-                .contains_key("price")
-        );
+        assert!(state
+            .get_model("app", "products")
+            .unwrap()
+            .fields
+            .contains_key("price"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_fk_before_generated_field() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1078,8 +1054,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_fk_before_generated_field_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1123,8 +1099,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_index_with_new_model() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1154,8 +1130,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_index_with_new_model_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1219,8 +1195,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_many_to_many() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1263,8 +1239,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_many_to_many_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1305,8 +1281,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_model_order_with_respect_to() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1329,20 +1305,18 @@ mod migrations_extended_tests {
         };
         create_child.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "child")
-                .unwrap()
-                .fields
-                .contains_key("_order")
-        );
+        assert!(state
+            .get_model("app", "child")
+            .unwrap()
+            .fields
+            .contains_key("_order"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_model_order_with_respect_to_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1363,8 +1337,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_model_order_with_respect_to_constraint() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1385,8 +1359,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_model_order_with_respect_to_constraint_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1407,8 +1381,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_model_order_with_respect_to_index() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1436,8 +1410,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_model_order_with_respect_to_index_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1458,8 +1432,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_model_order_with_respect_to_unique_together() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1486,8 +1460,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_model_order_with_respect_to_unique_together_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1516,8 +1490,8 @@ mod migrations_extended_tests {
     fn test_add_model_with_field_removed_from_base_model() {
         // Tests joined table inheritance where child model has its own table
         // linked to parent table via foreign key
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1561,8 +1535,8 @@ mod migrations_extended_tests {
     fn test_add_model_with_field_removed_from_base_model_1() {
         // Tests single table inheritance where parent and children share one table
         // using a discriminator column to distinguish types
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1606,8 +1580,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_non_blank_textfield_and_charfield() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1639,8 +1613,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_non_blank_textfield_and_charfield_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1657,20 +1631,18 @@ mod migrations_extended_tests {
         };
         add_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "posts")
-                .unwrap()
-                .fields
-                .contains_key("body")
-        );
+        assert!(state
+            .get_model("app", "posts")
+            .unwrap()
+            .fields
+            .contains_key("body"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_not_null_field_with_db_default() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1698,8 +1670,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_not_null_field_with_db_default_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1716,20 +1688,18 @@ mod migrations_extended_tests {
         };
         add_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "orders")
-                .unwrap()
-                .fields
-                .contains_key("status")
-        );
+        assert!(state
+            .get_model("app", "orders")
+            .unwrap()
+            .fields
+            .contains_key("status"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_add_unique_together() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1756,8 +1726,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_add_unique_together_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1834,8 +1804,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_add() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1860,8 +1830,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_add_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1884,8 +1854,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_change() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -1911,8 +1881,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_change_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2051,8 +2021,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_no_changes() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2078,8 +2048,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_no_changes_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2103,8 +2073,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_remove() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2128,8 +2098,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_remove_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2152,8 +2122,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_with_model_change() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2187,8 +2157,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_db_table_with_model_change_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2211,8 +2181,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_field() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2242,8 +2212,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_field_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2264,20 +2234,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "users")
-                .unwrap()
-                .fields
-                .contains_key("email")
-        );
+        assert!(state
+            .get_model("app", "users")
+            .unwrap()
+            .fields
+            .contains_key("email"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_field_and_unique_together() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2311,8 +2279,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_field_and_unique_together_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2346,8 +2314,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_fk_dependency_other_app() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2378,20 +2346,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("blog_app", &mut state);
 
-        assert!(
-            state
-                .get_model("blog_app", "posts")
-                .unwrap()
-                .fields
-                .contains_key("author_id")
-        );
+        assert!(state
+            .get_model("blog_app", "posts")
+            .unwrap()
+            .fields
+            .contains_key("author_id"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_fk_dependency_other_app_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2425,8 +2391,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_not_null_oneoff_default() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2451,20 +2417,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("testapp", &mut state);
 
-        assert!(
-            state
-                .get_model("testapp", "users")
-                .unwrap()
-                .fields
-                .contains_key("nickname")
-        );
+        assert!(state
+            .get_model("testapp", "users")
+            .unwrap()
+            .fields
+            .contains_key("nickname"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_not_null_oneoff_default_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2485,20 +2449,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "profiles")
-                .unwrap()
-                .fields
-                .contains_key("bio")
-        );
+        assert!(state
+            .get_model("app", "profiles")
+            .unwrap()
+            .fields
+            .contains_key("bio"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_not_null_with_db_default() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2520,20 +2482,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("testapp", &mut state);
 
-        assert!(
-            state
-                .get_model("testapp", "products")
-                .unwrap()
-                .fields
-                .contains_key("quantity")
-        );
+        assert!(state
+            .get_model("testapp", "products")
+            .unwrap()
+            .fields
+            .contains_key("quantity"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_not_null_with_db_default_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2554,20 +2514,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "items")
-                .unwrap()
-                .fields
-                .contains_key("available")
-        );
+        assert!(state
+            .get_model("app", "items")
+            .unwrap()
+            .fields
+            .contains_key("available"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_not_null_with_default() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2592,20 +2550,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("testapp", &mut state);
 
-        assert!(
-            state
-                .get_model("testapp", "users")
-                .unwrap()
-                .fields
-                .contains_key("status")
-        );
+        assert!(state
+            .get_model("testapp", "users")
+            .unwrap()
+            .fields
+            .contains_key("status"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_not_null_with_default_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2626,20 +2582,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "products")
-                .unwrap()
-                .fields
-                .contains_key("active")
-        );
+        assert!(state
+            .get_model("app", "products")
+            .unwrap()
+            .fields
+            .contains_key("active"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_not_null_without_default() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2661,20 +2615,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("testapp", &mut state);
 
-        assert!(
-            state
-                .get_model("testapp", "users")
-                .unwrap()
-                .fields
-                .contains_key("email")
-        );
+        assert!(state
+            .get_model("testapp", "users")
+            .unwrap()
+            .fields
+            .contains_key("email"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_field_to_not_null_without_default_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2695,20 +2647,18 @@ mod migrations_extended_tests {
         };
         alter_op.state_forwards("app", &mut state);
 
-        assert!(
-            state
-                .get_model("app", "orders")
-                .unwrap()
-                .fields
-                .contains_key("customer_id")
-        );
+        assert!(state
+            .get_model("app", "orders")
+            .unwrap()
+            .fields
+            .contains_key("customer_id"));
     }
 
     #[test]
     // From: Django/migrations
     fn test_alter_fk_before_model_deletion() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2757,8 +2707,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_fk_before_model_deletion_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2794,8 +2744,8 @@ mod migrations_extended_tests {
     // From: Django/migrations
     fn test_alter_many_to_many() {
         // Tests altering a many-to-many association table by adding extra fields
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2857,8 +2807,8 @@ mod migrations_extended_tests {
     // From: Django/migrations
     fn test_alter_many_to_many_1() {
         // Tests altering a many-to-many by changing field types in association table
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
 
         let mut state = ProjectState::new();
 
@@ -2956,8 +2906,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_model_options() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
         use std::collections::HashMap;
 
         let mut state = ProjectState::new();
@@ -2989,8 +2939,8 @@ mod migrations_extended_tests {
     #[test]
     // From: Django/migrations
     fn test_alter_model_options_1() {
-        use crate::ProjectState;
         use crate::operations::*;
+        use crate::ProjectState;
         use std::collections::HashMap;
 
         let mut state = ProjectState::new();

@@ -4,8 +4,8 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use flate2::Compression;
 use flate2::write::GzEncoder;
+use flate2::Compression;
 use hyper::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE};
 use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
 use std::io::Write;

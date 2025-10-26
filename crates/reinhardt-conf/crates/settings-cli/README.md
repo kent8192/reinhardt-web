@@ -67,4 +67,3 @@ Command-line interface for managing Reinhardt configuration files. Provides comm
   - Text format with colorized syntax highlighting
   - JSON format with pretty printing
   - TOML format with pretty printing
-

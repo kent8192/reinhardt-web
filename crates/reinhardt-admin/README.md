@@ -54,10 +54,10 @@ reinhardt-admin --version
 
 ## Django Equivalents
 
-| Django | Reinhardt |
-|--------|-----------|
+| Django                                | Reinhardt                                |
+|---------------------------------------|------------------------------------------|
 | `django-admin startproject myproject` | `reinhardt-admin startproject myproject` |
-| `django-admin startapp myapp` | `reinhardt-admin startapp myapp` |
+| `django-admin startapp myapp`         | `reinhardt-admin startapp myapp`         |
 
 ## Project Templates
 
