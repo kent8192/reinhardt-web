@@ -21,6 +21,9 @@ futures-util = "0.3"
 urlencoding = "2.1"
 quick-xml = "0.36"
 reinhardt-exception = { workspace = true }
+serde_yaml = { workspace = true }
+flate2 = { workspace = true }
+brotli = { workspace = true }
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full"] }

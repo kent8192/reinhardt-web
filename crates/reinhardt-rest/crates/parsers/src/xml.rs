@@ -159,6 +159,7 @@ impl XmlParserConfigBuilder {
 ///
 /// ```
 /// use reinhardt_parsers::xml::{XMLParser, XmlParserConfig};
+/// use reinhardt_parsers::Parser;
 ///
 /// let parser = XMLParser::new();
 /// assert_eq!(parser.media_types(), vec!["application/xml", "text/xml"]);

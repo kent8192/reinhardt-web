@@ -136,6 +136,7 @@ impl MediaType {
 pub enum ParsedData {
     Json(Value),
     Xml(Value),
+    Yaml(Value),
     Form(HashMap<String, String>),
     MultiPart {
         fields: HashMap<String, String>,
