@@ -60,11 +60,188 @@ For details about the Reinhardt project, please refer to README.md.
 
 ## Code Style & Conventions
 
-### CS-1 (MUST): Module System
+### CS-1 (MUST): Module System - Rust 2024 Edition
 
-- **DO NOT USE `mod.rs`**
-- **MUST USE 2024 EDITION MODULE SYSTEM** for all modules
-- Use `mod module_name;` in `lib.rs` or `main.rs`
+**Basic Principles:**
+
+- **NEVER USE `mod.rs` files** (Rust 2015 deprecated pattern)
+- **MUST USE `module.rs` + `module/` directory structure** (Rust 2018+ recommended pattern)
+- Declare modules with `mod module_name;` in `lib.rs` or `main.rs`
+
+**Module Organization Patterns:**
+
+1. **Small Module (Single File)**
+
+   ```
+   src/
+   ├── lib.rs          // mod utils;
+   └── utils.rs        // pub fn helper() {}
+   ```
+
+2. **Medium Module (With Submodules)**
+
+   ```
+   src/
+   ├── lib.rs          // mod database;
+   ├── database.rs     // pub mod pool; pub mod connection;
+   └── database/
+       ├── pool.rs
+       └── connection.rs
+   ```
+
+3. **Large Module (Hierarchical Structure)**
+
+   ```
+   src/
+   ├── lib.rs             // mod api;
+   ├── api.rs             // pub mod handlers; pub mod middleware;
+   └── api/
+       ├── handlers.rs    // pub mod user; pub mod auth;
+       ├── handlers/
+       │   ├── user.rs
+       │   └── auth.rs
+       ├── middleware.rs
+       └── middleware/
+           └── logging.rs
+   ```
+
+**Visibility and Encapsulation:**
+
+- Use `pub use` in module entry points (`module.rs`) to control API surface
+- Hide implementation details in submodules
+- Example:
+
+  ```rust
+  // database.rs (entry point)
+  mod pool;
+  mod connection;
+
+  // Public API
+  pub use pool::{Pool, PoolConfig};
+  pub use connection::Connection;
+
+  // Internal implementation remains private
+  // pool::InternalPoolManager is not visible externally
+  ```
+
+**Anti-Patterns (Patterns to Avoid):**
+
+❌ **Pattern 1: Using `mod.rs`**
+
+```
+src/
+├── lib.rs
+└── database/
+    ├── mod.rs      // ❌ Old Rust 2015 style
+    ├── pool.rs
+    └── connection.rs
+```
+
+✅ **Correct Pattern:**
+
+```
+src/
+├── lib.rs
+├── database.rs     // ✅ Module entry point
+└── database/
+    ├── pool.rs
+    └── connection.rs
+```
+
+❌ **Pattern 2: Glob Import Abuse**
+
+```rust
+// ❌ Bad: Pollutes namespace
+pub use database::*;
+```
+
+✅ **Correct Pattern:**
+
+```rust
+// ✅ Good: Explicit re-export
+pub use database::{Pool, Connection, PoolConfig};
+```
+
+❌ **Pattern 3: Circular Dependencies**
+
+```rust
+// module_a.rs
+use crate::module_b::TypeB;  // ❌ A → B
+
+// module_b.rs
+use crate::module_a::TypeA;  // ❌ B → A (circular)
+```
+
+✅ **Correct Pattern:**
+
+```rust
+// Extract common types
+// types.rs
+pub struct TypeA;
+pub struct TypeB;
+
+// module_a.rs
+use crate::types::{TypeA, TypeB};
+
+// module_b.rs
+use crate::types::{TypeA, TypeB};
+```
+
+❌ **Pattern 4: Excessive Flat Structure**
+
+```
+src/
+├── lib.rs
+├── user_handler.rs
+├── user_service.rs
+├── user_repository.rs
+├── auth_handler.rs
+├── auth_service.rs
+└── auth_repository.rs    // ❌ Related files scattered
+```
+
+✅ **Correct Pattern:**
+
+```
+src/
+├── lib.rs
+├── user.rs
+├── user/
+│   ├── handler.rs
+│   ├── service.rs
+│   └── repository.rs
+├── auth.rs
+└── auth/
+    ├── handler.rs
+    ├── service.rs
+    └── repository.rs     // ✅ Logically grouped
+```
+
+**Filesystem Structure Principles:**
+
+1. **Single Entry Point**: Each module has one entry point (`module.rs`)
+2. **Logical Hierarchy**: File structure mirrors logical module hierarchy
+3. **Explicit Publicity**: Use `pub use` to intentionally expose API
+4. **Limited Depth**: Avoid excessive nesting (>4 levels)
+
+**Migration Guide:**
+
+Converting from `mod.rs` to `module.rs`:
+
+1. Move `module/mod.rs` → `module.rs`
+2. Keep `mod submodule;` declarations in `module.rs`
+3. Maintain `pub use` re-exports
+4. No changes needed in parent module declaration (`mod module;`)
+
+Example:
+
+```bash
+# Before
+src/database/mod.rs
+
+# After
+src/database.rs
+```
 
 ### CS-2 (SHOULD): Code Organization
 
@@ -308,20 +485,16 @@ For details about the Reinhardt project, please refer to README.md.
 
 When modifying features, check and update the following documentation as applicable:
 
-- **README.md**: Project-level overview and features (English)
-- **README.ja.md**: Project-level overview and features (Japanese)
-- **Crate README.md**: Individual crate documentation (English)
-- **Crate README.ja.md**: Individual crate documentation (Japanese)
+- **README.md**: Project-level overview and features
+- **Crate README.md**: Individual crate documentation
 - **docs/ directory**: Detailed guides, tutorials, and API documentation
   - `docs/GETTING_STARTED.md`: Getting started guide
   - `docs/FEATURE_FLAGS.md`: Feature flags documentation
   - `docs/tutorials/`: Tutorial files
   - Other relevant documentation files
 
-### DM-3 (MUST): Documentation Synchronization
+### DM-3 (MUST): Documentation Consistency
 
-- Keep English and Japanese documentation synchronized
-- When updating README.md, update README.ja.md as well
 - Ensure consistency across all documentation levels (project, crate, docs/)
 
 ### DM-4 (SHOULD): Documentation Scope
@@ -416,7 +589,11 @@ For detailed commit guidelines including message format, granularity, and execut
 
 ### Code & Module System
 
-- ❌ NO `mod.rs` files
+- ❌ NO `mod.rs` files (use `module.rs` + `module/` directory)
+- ❌ NO `module/mod.rs` pattern (Rust 2015 deprecated style)
+- ❌ NO glob imports (`use module::*`)
+- ❌ NO circular module dependencies
+- ❌ NO excessive module nesting (>4 levels)
 - ❌ NO TODO/NOTE comments in user-facing placeholders
 - ❌ NO unmarked placeholder/stub/mock implementations
 - ❌ NO keeping obsolete code
@@ -424,7 +601,10 @@ For detailed commit guidelines including message format, granularity, and execut
 - ❌ NO comments documenting deleted code/tests
 - ❌ NO alternative notations like `Implementation Note:`, `FIXME:`, etc.
 - ❌ NO using `unimplemented!()` for future work (use `todo!()` instead)
-- ✅ USE 2024 edition module system
+- ✅ USE `module.rs` + `module/` directory structure (Rust 2024 Edition)
+- ✅ USE explicit `pub use` for API control
+- ✅ GROUP related functionality in module hierarchies
+- ✅ MIRROR logical structure in filesystem layout
 - ✅ MARK ALL placeholders/stubs/mocks with `todo!()` or `// TODO:` comment
 - ✅ DELETE old code immediately
 - ✅ USE `// TODO:` comments for planning
@@ -451,10 +631,8 @@ For detailed commit guidelines including message format, granularity, and execut
 ### Documentation
 
 - ❌ NO outdated documentation after code changes
-- ❌ NO unsynchronized English/Japanese documentation
 - ❌ NO Planned Features in README.md files
 - ✅ UPDATE documentation with code changes in the same workflow
-- ✅ SYNCHRONIZE README.md and README.ja.md
 - ✅ UPDATE all relevant crate and docs/ files
 - ✅ VERIFY examples and code snippets are working
 - ✅ PLACE Planned Features in lib.rs file headers

@@ -375,16 +375,12 @@ For detailed commit guidelines, see [CLAUDE.commit.md](CLAUDE.commit.md).
 
 **ALWAYS** update documentation when implementing or modifying features:
 
-- **README.md**: Project-level overview (English)
-- **README.ja.md**: Project-level overview (Japanese)
-- **Crate README.md**: Individual crate documentation (English)
-- **Crate README.ja.md**: Individual crate documentation (Japanese)
+- **README.md**: Project-level overview
+- **Crate README.md**: Individual crate documentation
 - **docs/** directory: Detailed guides and tutorials
 
-### Documentation Synchronization
+### Documentation Consistency
 
-- Keep English and Japanese documentation synchronized
-- Update both `README.md` and `README.ja.md`
 - Ensure consistency across all documentation levels
 
 ### Documentation Scope
@@ -449,7 +445,6 @@ Please check:
 **Documentation**:
 - L NO outdated documentation after code changes
 -  UPDATE documentation with code changes
--  SYNCHRONIZE English and Japanese docs
 
 **Commits**:
 - L NO commits without user instruction
