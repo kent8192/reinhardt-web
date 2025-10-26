@@ -80,7 +80,7 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .gte(100);
-    /// assert_eq!(filter.gte(), Some(&100));
+    /// assert_eq!(filter.get_gte(), Some(&100));
     /// ```
     pub fn gte(mut self, value: T) -> Self {
         self.gte = Some(value);
@@ -96,7 +96,7 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .gt(100);
-    /// assert_eq!(filter.gt(), Some(&100));
+    /// assert_eq!(filter.get_gt(), Some(&100));
     /// ```
     pub fn gt(mut self, value: T) -> Self {
         self.gt = Some(value);
@@ -112,7 +112,7 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .lte(500);
-    /// assert_eq!(filter.lte(), Some(&500));
+    /// assert_eq!(filter.get_lte(), Some(&500));
     /// ```
     pub fn lte(mut self, value: T) -> Self {
         self.lte = Some(value);
@@ -128,7 +128,7 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .lt(500);
-    /// assert_eq!(filter.lt(), Some(&500));
+    /// assert_eq!(filter.get_lt(), Some(&500));
     /// ```
     pub fn lt(mut self, value: T) -> Self {
         self.lt = Some(value);
@@ -144,8 +144,8 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .between(100, 500);
-    /// assert_eq!(filter.gte(), Some(&100));
-    /// assert_eq!(filter.lte(), Some(&500));
+    /// assert_eq!(filter.get_gte(), Some(&100));
+    /// assert_eq!(filter.get_lte(), Some(&500));
     /// ```
     pub fn between(mut self, min: T, max: T) -> Self {
         self.gte = Some(min);
@@ -159,22 +159,22 @@ where
     }
 
     /// Get the gte value
-    pub fn gte(&self) -> Option<&T> {
+    pub fn get_gte(&self) -> Option<&T> {
         self.gte.as_ref()
     }
 
     /// Get the gt value
-    pub fn gt(&self) -> Option<&T> {
+    pub fn get_gt(&self) -> Option<&T> {
         self.gt.as_ref()
     }
 
     /// Get the lte value
-    pub fn lte(&self) -> Option<&T> {
+    pub fn get_lte(&self) -> Option<&T> {
         self.lte.as_ref()
     }
 
     /// Get the lt value
-    pub fn lt(&self) -> Option<&T> {
+    pub fn get_lt(&self) -> Option<&T> {
         self.lt.as_ref()
     }
 
@@ -401,44 +401,44 @@ mod tests {
     #[test]
     fn test_range_filter_gte() {
         let filter: RangeFilter<i32> = RangeFilter::new("price").gte(100);
-        assert_eq!(filter.gte(), Some(&100));
+        assert_eq!(filter.get_gte(), Some(&100));
         assert!(filter.has_bounds());
     }
 
     #[test]
     fn test_range_filter_gt() {
         let filter: RangeFilter<i32> = RangeFilter::new("price").gt(100);
-        assert_eq!(filter.gt(), Some(&100));
+        assert_eq!(filter.get_gt(), Some(&100));
         assert!(filter.has_bounds());
     }
 
     #[test]
     fn test_range_filter_lte() {
         let filter: RangeFilter<i32> = RangeFilter::new("price").lte(500);
-        assert_eq!(filter.lte(), Some(&500));
+        assert_eq!(filter.get_lte(), Some(&500));
         assert!(filter.has_bounds());
     }
 
     #[test]
     fn test_range_filter_lt() {
         let filter: RangeFilter<i32> = RangeFilter::new("price").lt(500);
-        assert_eq!(filter.lt(), Some(&500));
+        assert_eq!(filter.get_lt(), Some(&500));
         assert!(filter.has_bounds());
     }
 
     #[test]
     fn test_range_filter_between() {
         let filter: RangeFilter<i32> = RangeFilter::new("price").between(100, 500);
-        assert_eq!(filter.gte(), Some(&100));
-        assert_eq!(filter.lte(), Some(&500));
+        assert_eq!(filter.get_gte(), Some(&100));
+        assert_eq!(filter.get_lte(), Some(&500));
         assert!(filter.has_bounds());
     }
 
     #[test]
     fn test_range_filter_complex() {
         let filter: RangeFilter<i32> = RangeFilter::new("price").gt(100).lt(500);
-        assert_eq!(filter.gt(), Some(&100));
-        assert_eq!(filter.lt(), Some(&500));
+        assert_eq!(filter.get_gt(), Some(&100));
+        assert_eq!(filter.get_lt(), Some(&500));
         assert!(filter.has_bounds());
     }
 
@@ -451,20 +451,20 @@ mod tests {
     #[test]
     fn test_date_range_filter_after() {
         let filter = DateRangeFilter::new("created_at").after("2024-01-01");
-        assert_eq!(filter.inner().gte(), Some(&"2024-01-01".to_string()));
+        assert_eq!(filter.inner().get_gte(), Some(&"2024-01-01".to_string()));
     }
 
     #[test]
     fn test_date_range_filter_before() {
         let filter = DateRangeFilter::new("created_at").before("2024-12-31");
-        assert_eq!(filter.inner().lte(), Some(&"2024-12-31".to_string()));
+        assert_eq!(filter.inner().get_lte(), Some(&"2024-12-31".to_string()));
     }
 
     #[test]
     fn test_date_range_filter_range() {
         let filter = DateRangeFilter::new("created_at").range("2024-01-01", "2024-12-31");
-        assert_eq!(filter.inner().gte(), Some(&"2024-01-01".to_string()));
-        assert_eq!(filter.inner().lte(), Some(&"2024-12-31".to_string()));
+        assert_eq!(filter.inner().get_gte(), Some(&"2024-01-01".to_string()));
+        assert_eq!(filter.inner().get_lte(), Some(&"2024-12-31".to_string()));
     }
 
     #[test]
@@ -476,19 +476,19 @@ mod tests {
     #[test]
     fn test_numeric_range_filter_min() {
         let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("quantity").min(10);
-        assert_eq!(filter.inner().gte(), Some(&10));
+        assert_eq!(filter.inner().get_gte(), Some(&10));
     }
 
     #[test]
     fn test_numeric_range_filter_max() {
         let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("quantity").max(100);
-        assert_eq!(filter.inner().lte(), Some(&100));
+        assert_eq!(filter.inner().get_lte(), Some(&100));
     }
 
     #[test]
     fn test_numeric_range_filter_range() {
         let filter: NumericRangeFilter<f64> = NumericRangeFilter::new("price").range(99.99, 999.99);
-        assert_eq!(filter.inner().gte(), Some(&99.99));
-        assert_eq!(filter.inner().lte(), Some(&999.99));
+        assert_eq!(filter.inner().get_gte(), Some(&99.99));
+        assert_eq!(filter.inner().get_lte(), Some(&999.99));
     }
 }
