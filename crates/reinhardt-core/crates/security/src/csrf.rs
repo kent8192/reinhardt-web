@@ -84,6 +84,10 @@ pub struct CsrfConfig {
     pub cookie_path: String,
     /// Cookie max age in seconds (None = session cookie)
     pub cookie_max_age: Option<i64>,
+    /// Enable token rotation (security enhancement)
+    pub enable_token_rotation: bool,
+    /// Token rotation interval in seconds (None = rotate on every request)
+    pub token_rotation_interval: Option<u64>,
 }
 
 impl Default for CsrfConfig {
@@ -97,6 +101,8 @@ impl Default for CsrfConfig {
             cookie_domain: None,
             cookie_path: "/".to_string(),
             cookie_max_age: None, // Session cookie
+            enable_token_rotation: false, // Development default
+            token_rotation_interval: None, // Rotate on every request when enabled
         }
     }
 }
@@ -112,6 +118,7 @@ impl CsrfConfig {
     /// let config = CsrfConfig::production();
     /// assert!(config.cookie_secure);
     /// assert_eq!(config.cookie_path, "/");
+    /// assert!(config.enable_token_rotation);
     /// ```
     pub fn production() -> Self {
         Self {
@@ -123,7 +130,26 @@ impl CsrfConfig {
             cookie_domain: None,
             cookie_path: "/".to_string(),
             cookie_max_age: Some(31449600), // 1 year
+            enable_token_rotation: true,    // Enable rotation in production
+            token_rotation_interval: Some(3600), // Rotate every hour
         }
+    }
+
+    /// Enable token rotation
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_security::csrf::CsrfConfig;
+    ///
+    /// let config = CsrfConfig::default().with_token_rotation(Some(1800));
+    /// assert!(config.enable_token_rotation);
+    /// assert_eq!(config.token_rotation_interval, Some(1800));
+    /// ```
+    pub fn with_token_rotation(mut self, interval: Option<u64>) -> Self {
+        self.enable_token_rotation = true;
+        self.token_rotation_interval = interval;
+        self
     }
 }
 
@@ -371,4 +397,103 @@ pub fn check_referer(
 /// Check if two domains are the same
 pub fn is_same_domain(domain1: &str, domain2: &str) -> bool {
     domain1 == domain2
+}
+
+/// Generate token timestamp
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_security::csrf::get_token_timestamp;
+///
+/// let timestamp = get_token_timestamp();
+/// assert!(timestamp > 0);
+/// ```
+pub fn get_token_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+/// Check if token rotation is due
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_security::csrf::{should_rotate_token, get_token_timestamp};
+///
+/// let current_time = get_token_timestamp();
+/// let token_time = current_time - 3700; // 1 hour and 1 minute ago
+/// assert!(should_rotate_token(token_time, current_time, Some(3600)));
+/// assert!(!should_rotate_token(token_time, current_time, None)); // No rotation without interval
+/// ```
+pub fn should_rotate_token(
+    token_timestamp: u64,
+    current_timestamp: u64,
+    rotation_interval: Option<u64>,
+) -> bool {
+    match rotation_interval {
+        Some(interval) => current_timestamp - token_timestamp >= interval,
+        None => false, // Always rotate when interval is not specified
+    }
+}
+
+/// Generate token with timestamp
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_security::csrf::{get_secret_bytes, generate_token_with_timestamp};
+///
+/// let secret = get_secret_bytes();
+/// let session_id = "user-session-12345";
+/// let token_data = generate_token_with_timestamp(&secret, session_id);
+/// assert!(token_data.contains(':'));
+/// ```
+pub fn generate_token_with_timestamp(secret_bytes: &[u8], session_id: &str) -> String {
+    let timestamp = get_token_timestamp();
+    let message = format!("{}:{}", session_id, timestamp);
+    let token = generate_token_hmac(secret_bytes, &message);
+    format!("{}:{}", token, timestamp)
+}
+
+/// Verify token with timestamp
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_security::csrf::{get_secret_bytes, generate_token_with_timestamp, verify_token_with_timestamp};
+///
+/// let secret = get_secret_bytes();
+/// let session_id = "user-session-12345";
+/// let token_data = generate_token_with_timestamp(&secret, session_id);
+///
+/// assert!(verify_token_with_timestamp(&token_data, &secret, session_id).is_ok());
+/// ```
+pub fn verify_token_with_timestamp(
+    token_data: &str,
+    secret_bytes: &[u8],
+    session_id: &str,
+) -> Result<u64, RejectRequest> {
+    let parts: Vec<&str> = token_data.split(':').collect();
+    if parts.len() != 2 {
+        return Err(RejectRequest {
+            reason: "Invalid token format (missing timestamp)".to_string(),
+        });
+    }
+
+    let token = parts[0];
+    let timestamp: u64 = parts[1].parse().map_err(|_| RejectRequest {
+        reason: "Invalid timestamp format".to_string(),
+    })?;
+
+    let message = format!("{}:{}", session_id, timestamp);
+    if !verify_token_hmac(token, secret_bytes, &message) {
+        return Err(RejectRequest {
+            reason: "CSRF token mismatch (HMAC verification failed)".to_string(),
+        });
+    }
+
+    Ok(timestamp)
 }
