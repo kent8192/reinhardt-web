@@ -216,7 +216,7 @@ impl WebSocketConsumer for BroadcastConsumer {
 
     async fn on_message(
         &self,
-        context: &mut ConsumerContext,
+        _context: &mut ConsumerContext,
         message: Message,
     ) -> WebSocketResult<()> {
         self.room

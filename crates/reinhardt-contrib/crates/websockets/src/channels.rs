@@ -43,7 +43,7 @@ pub enum ChannelError {
 ///
 /// assert_eq!(msg.sender(), "user_1");
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChannelMessage {
     sender: String,
     payload: Message,

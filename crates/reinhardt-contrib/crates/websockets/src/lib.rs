@@ -36,20 +36,68 @@
 //! # });
 //! ```
 //!
-//! ## Planned Features
+//! ## Advanced Features
 //!
-//! - Message compression (gzip, deflate, brotli)
-//! - Automatic reconnection support with exponential backoff
-//! - Custom protocol support (subprotocols)
-//! - Redis-backed channel layer for horizontal scaling
-//! - WebSocket metrics and monitoring
+//! ### Message Compression
+//!
+//! The `compression` feature enables gzip, deflate, and brotli compression for WebSocket messages:
+//!
+//! ```toml
+//! [dependencies]
+//! reinhardt-websockets = { version = "0.1", features = ["compression"] }
+//! ```
+//!
+//! ### Automatic Reconnection
+//!
+//! The `reconnection` module provides automatic reconnection with exponential backoff:
+//!
+//! ```
+//! use reinhardt_websockets::reconnection::{ReconnectionConfig, ReconnectionStrategy};
+//! use std::time::Duration;
+//!
+//! let config = ReconnectionConfig::default()
+//!     .with_max_attempts(5)
+//!     .with_initial_delay(Duration::from_secs(1));
+//!
+//! let mut strategy = ReconnectionStrategy::new(config);
+//! ```
+//!
+//! ### Redis Channel Layer
+//!
+//! The `redis-channel` feature enables distributed messaging via Redis:
+//!
+//! ```toml
+//! [dependencies]
+//! reinhardt-websockets = { version = "0.1", features = ["redis-channel"] }
+//! ```
+//!
+//! ### Metrics and Monitoring
+//!
+//! The `metrics` module provides comprehensive WebSocket metrics:
+//!
+//! ```
+//! use reinhardt_websockets::metrics::{WebSocketMetrics, MetricsCollector};
+//!
+//! let metrics = WebSocketMetrics::new();
+//! metrics.record_connection();
+//! metrics.record_message_sent();
+//!
+//! let snapshot = metrics.snapshot();
+//! println!("{}", snapshot.summary());
+//! ```
 
 pub mod auth;
 pub mod channels;
+#[cfg(feature = "compression")]
+pub mod compression;
 pub mod connection;
 pub mod consumers;
 pub mod handler;
+pub mod metrics;
 pub mod middleware;
+pub mod reconnection;
+#[cfg(feature = "redis-channel")]
+pub mod redis_channel;
 pub mod room;
 pub mod routing;
 pub mod throttling;
@@ -62,17 +110,25 @@ pub use channels::{
     ChannelError, ChannelLayer, ChannelLayerWrapper, ChannelMessage, ChannelResult,
     InMemoryChannelLayer,
 };
+#[cfg(feature = "compression")]
+pub use compression::{compress_message, decompress_message, CompressionCodec};
 pub use connection::{Message, WebSocketConnection, WebSocketError, WebSocketResult};
 pub use consumers::{
     BroadcastConsumer, ConsumerChain, ConsumerContext, EchoConsumer, JsonConsumer,
     WebSocketConsumer,
 };
 pub use handler::{RoomManager, WebSocketHandler};
+pub use metrics::{MetricsCollector, MetricsSnapshot, PeriodicReporter, WebSocketMetrics};
+#[cfg(feature = "metrics")]
+pub use metrics::MetricsExporter;
 pub use middleware::{
     ConnectionContext, ConnectionMiddleware, IpFilterMiddleware, LoggingMiddleware,
     MessageMiddleware, MessageSizeLimitMiddleware, MiddlewareChain, MiddlewareError,
     MiddlewareResult,
 };
+pub use reconnection::{ReconnectionConfig, ReconnectionStrategy};
+#[cfg(feature = "redis-channel")]
+pub use redis_channel::{RedisChannelLayer, RedisConfig};
 pub use room::{Room, RoomError, RoomManager as RoomMgr, RoomResult};
 pub use routing::{
     clear_websocket_router, get_websocket_router, register_websocket_router,
