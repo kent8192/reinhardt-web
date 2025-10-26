@@ -7,6 +7,7 @@ pub mod commands;
 pub mod di_support;
 pub mod executor;
 pub mod graph;
+pub mod introspection;
 pub mod loader;
 pub mod migration;
 pub mod model_registry;
@@ -48,6 +49,11 @@ pub use visualization::{HistoryEntry, MigrationStats, MigrationVisualizer, Outpu
 pub use writer::MigrationWriter;
 pub use zero_downtime::{MigrationPhase, Strategy, ZeroDowntimeMigration};
 
+pub use introspection::{
+    ColumnInfo, DatabaseIntrospector, DatabaseSchema, ForeignKeyInfo, IndexInfo, TableInfo,
+    UniqueConstraintInfo,
+};
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -81,6 +87,9 @@ pub enum MigrationError {
 
     #[error("Node not found: {message} - {node}")]
     NodeNotFound { message: String, node: String },
+
+    #[error("Introspection error: {0}")]
+    IntrospectionError(String),
 }
 
 pub type Result<T> = std::result::Result<T, MigrationError>;
