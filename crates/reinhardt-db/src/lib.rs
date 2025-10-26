@@ -105,7 +105,17 @@ pub mod pool {
     //! This module provides SQLAlchemy-inspired connection pooling with
     //! dependency injection support and event-driven lifecycle hooks.
 
+    // Re-export all backends-pool types (includes DI support)
     pub use ::backends_pool::*;
+
+    // Also re-export pool-specific types
+    pub use reinhardt_pool::{
+        config::{PoolConfig, PoolOptions},
+        errors::{PoolError, PoolResult},
+        events::{PoolEvent, PoolEventListener},
+        manager::PoolManager,
+        pool::{ConnectionPool, PooledConnection},
+    };
 }
 
 // Re-export internal crates
