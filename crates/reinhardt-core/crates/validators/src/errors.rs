@@ -49,6 +49,15 @@ pub enum ValidationError {
     #[error("Invalid JSON: {0}")]
     InvalidJSON(String),
 
+    #[error("Invalid credit card number: {0}")]
+    InvalidCreditCard(String),
+
+    #[error("Credit card type not allowed: {card_type} (allowed: {allowed_types})")]
+    CardTypeNotAllowed {
+        card_type: String,
+        allowed_types: String,
+    },
+
     #[error("Custom validation error: {0}")]
     Custom(String),
 }

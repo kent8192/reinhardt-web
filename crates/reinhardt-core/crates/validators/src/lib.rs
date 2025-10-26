@@ -4,6 +4,7 @@
 //! as well as compile-time validated database identifier types.
 
 pub mod color;
+pub mod credit_card;
 pub mod email;
 pub mod errors;
 pub mod identifier;
@@ -14,6 +15,7 @@ pub mod uniqueness;
 pub mod url;
 
 pub use color::{ColorFormat, ColorValidator};
+pub use credit_card::{CardType, CreditCardValidator};
 pub use email::EmailValidator;
 pub use errors::{ValidationError, ValidationResult};
 pub use identifier::{ConstraintName, FieldName, IdentifierValidationError, TableName};
@@ -28,6 +30,7 @@ pub use url::UrlValidator;
 /// Re-export commonly used types
 pub mod prelude {
     pub use crate::color::*;
+    pub use crate::credit_card::*;
     pub use crate::email::*;
     pub use crate::errors::*;
     pub use crate::identifier::*;
