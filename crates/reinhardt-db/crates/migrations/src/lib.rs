@@ -3,7 +3,6 @@
 //! Database migration system for Reinhardt framework.
 //!
 //! ## Planned Features
-//! TODO: Complete migration graph dependency resolution system
 //! TODO: Implement migration squashing to combine multiple migrations
 //! TODO: Add built-in support for complex data migrations
 //! TODO: Implement zero-downtime migration support
