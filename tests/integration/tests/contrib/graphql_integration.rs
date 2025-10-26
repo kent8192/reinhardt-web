@@ -5,7 +5,7 @@ use reinhardt_graphql::{
     create_schema, EventBroadcaster, Mutation, Query, SubscriptionRoot, User, UserEvent,
     UserStorage,
 };
-use tokio::time::{timeout, Duration};
+use tokio_stream::StreamExt;
 
 #[tokio::test]
 async fn test_full_graphql_workflow() {
@@ -314,12 +314,7 @@ async fn test_batched_queries() {
 
 #[tokio::test]
 async fn test_subscription_lifecycle() {
-    // TODO: Fully test event delivery in spawned tasks once Rust 2024 lifetime capture
-    // rules and async-graphql 7.0 compatibility issues are resolved
-    // NOTE: This test demonstrates subscription setup but due to Rust 2024 lifetime capture
-    // rules and async-graphql 7.0 compatibility issues, we cannot fully test event delivery
-    // in spawned tasks. The subscription mechanism itself is tested in the unit tests.
-
+    // Create schema with subscription support
     let storage = UserStorage::new();
     let broadcaster = EventBroadcaster::new();
 
@@ -334,26 +329,46 @@ async fn test_subscription_lifecycle() {
                 id
                 name
                 email
+                active
             }
         }
     "#;
 
-    // Verify the subscription query is valid and stream can be created
-    let stream = schema.execute_stream(subscription_query);
+    // Execute subscription and get stream
+    let mut stream = schema.execute_stream(subscription_query);
 
-    // Test passes if we can create the stream without errors
-    // Full event delivery testing would require async-graphql compatibility with Rust 2024
-    drop(stream);
+    // Broadcast a user created event in a separate task
+    let broadcaster_clone = broadcaster.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Verify broadcaster works independently (covered in unit tests)
-    let user = User {
-        id: ID::from("sub-test-1"),
-        name: "SubUser".to_string(),
-        email: "subuser@example.com".to_string(),
-        active: true,
-    };
+        let user = User {
+            id: ID::from("sub-test-1"),
+            name: "Subscription Test".to_string(),
+            email: "sub@test.com".to_string(),
+            active: true,
+        };
 
-    broadcaster.broadcast(UserEvent::Created(user)).await;
+        broadcaster_clone.broadcast(UserEvent::Created(user)).await;
+    });
+
+    // Wait for the event
+    let event = tokio::time::timeout(tokio::time::Duration::from_secs(2), stream.next())
+        .await
+        .expect("Timeout waiting for subscription event")
+        .expect("Stream should yield an event");
+
+    // Verify event data
+    assert!(event.errors.is_empty(), "Event should not have errors");
+    let data = event.data.into_json().unwrap();
+
+    assert!(data["userCreated"]["id"]
+        .as_str()
+        .unwrap()
+        .contains("sub-test-1"));
+    assert_eq!(data["userCreated"]["name"], "Subscription Test");
+    assert_eq!(data["userCreated"]["email"], "sub@test.com");
+    assert_eq!(data["userCreated"]["active"], true);
 }
 
 #[tokio::test]
@@ -475,11 +490,7 @@ async fn test_query_aliases() {
 
 #[tokio::test]
 async fn test_multiple_subscriptions() {
-    // TODO: Fully test event delivery for multiple subscriptions once Rust 2024 lifetime capture
-    // compatibility issues are resolved
-    // NOTE: Similar to test_subscription_lifecycle, this test demonstrates multiple subscription
-    // setup but cannot fully test event delivery due to Rust 2024 lifetime capture compatibility.
-
+    // Create schema with subscription support
     let storage = UserStorage::new();
     let broadcaster = EventBroadcaster::new();
 
@@ -488,40 +499,89 @@ async fn test_multiple_subscriptions() {
         .data(broadcaster.clone())
         .finish();
 
-    // Verify multiple different subscription types can be created
-    let sub1 = r#"subscription { userCreated { name } }"#;
-    let sub2 = r#"subscription { userUpdated { name } }"#;
-    let sub3 = r#"subscription { userDeleted }"#;
+    // Create multiple different subscription types
+    let sub1_query = r#"subscription { userCreated { id name } }"#;
+    let sub2_query = r#"subscription { userUpdated { id name active } }"#;
+    let sub3_query = r#"subscription { userDeleted }"#;
 
-    let stream1 = schema.execute_stream(sub1);
-    let stream2 = schema.execute_stream(sub2);
-    let stream3 = schema.execute_stream(sub3);
+    let mut stream1 = schema.execute_stream(sub1_query);
+    let mut stream2 = schema.execute_stream(sub2_query);
+    let mut stream3 = schema.execute_stream(sub3_query);
 
-    // Test passes if all streams can be created without errors
-    drop(stream1);
-    drop(stream2);
-    drop(stream3);
+    // Broadcast mixed events in a separate task
+    let broadcaster_clone = broadcaster.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Verify broadcaster works with multiple event types (covered in unit tests)
-    broadcaster
-        .broadcast(UserEvent::Created(User {
-            id: ID::from("multi-1"),
-            name: "Created".to_string(),
-            email: "created@example.com".to_string(),
-            active: true,
-        }))
-        .await;
+        // Send Created event (should be received by stream1)
+        broadcaster_clone
+            .broadcast(UserEvent::Created(User {
+                id: ID::from("multi-1"),
+                name: "Created User".to_string(),
+                email: "created@example.com".to_string(),
+                active: true,
+            }))
+            .await;
 
-    broadcaster
-        .broadcast(UserEvent::Updated(User {
-            id: ID::from("multi-2"),
-            name: "Updated".to_string(),
-            email: "updated@example.com".to_string(),
-            active: false,
-        }))
-        .await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-    broadcaster
-        .broadcast(UserEvent::Deleted(ID::from("multi-3")))
-        .await;
+        // Send Updated event (should be received by stream2)
+        broadcaster_clone
+            .broadcast(UserEvent::Updated(User {
+                id: ID::from("multi-2"),
+                name: "Updated User".to_string(),
+                email: "updated@example.com".to_string(),
+                active: false,
+            }))
+            .await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+        // Send Deleted event (should be received by stream3)
+        broadcaster_clone
+            .broadcast(UserEvent::Deleted(ID::from("multi-3")))
+            .await;
+    });
+
+    // Wait for and verify Created event on stream1
+    let event1 = tokio::time::timeout(tokio::time::Duration::from_secs(2), stream1.next())
+        .await
+        .expect("Timeout waiting for created event")
+        .expect("Stream1 should yield an event");
+
+    assert!(event1.errors.is_empty());
+    let data1 = event1.data.into_json().unwrap();
+    assert!(data1["userCreated"]["id"]
+        .as_str()
+        .unwrap()
+        .contains("multi-1"));
+    assert_eq!(data1["userCreated"]["name"], "Created User");
+
+    // Wait for and verify Updated event on stream2
+    let event2 = tokio::time::timeout(tokio::time::Duration::from_secs(2), stream2.next())
+        .await
+        .expect("Timeout waiting for updated event")
+        .expect("Stream2 should yield an event");
+
+    assert!(event2.errors.is_empty());
+    let data2 = event2.data.into_json().unwrap();
+    assert!(data2["userUpdated"]["id"]
+        .as_str()
+        .unwrap()
+        .contains("multi-2"));
+    assert_eq!(data2["userUpdated"]["name"], "Updated User");
+    assert_eq!(data2["userUpdated"]["active"], false);
+
+    // Wait for and verify Deleted event on stream3
+    let event3 = tokio::time::timeout(tokio::time::Duration::from_secs(2), stream3.next())
+        .await
+        .expect("Timeout waiting for deleted event")
+        .expect("Stream3 should yield an event");
+
+    assert!(event3.errors.is_empty());
+    let data3 = event3.data.into_json().unwrap();
+    assert!(data3["userDeleted"]
+        .as_str()
+        .unwrap()
+        .contains("multi-3"));
 }

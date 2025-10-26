@@ -2,53 +2,34 @@
 
 use reinhardt_migrations::operations::models::CreateModel;
 use reinhardt_migrations::operations::FieldDefinition;
-use reinhardt_migrations::schema_editor::BaseDatabaseSchemaEditor;
+use reinhardt_migrations::schema_editor::{BaseDatabaseSchemaEditor, SchemaEditorResult};
 
 /// Mock schema editor for testing SQL generation
 struct MockSchemaEditor;
 
+#[async_trait::async_trait]
 impl BaseDatabaseSchemaEditor for MockSchemaEditor {
+    async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
+        // Mock implementation - does nothing
+        Ok(())
+    }
+
+    fn quote_name(&self, name: &str) -> String {
+        // Simple quoting for testing - just wrap in double quotes
+        format!("\"{}\"", name)
+    }
+
+    fn quote_value(&self, value: &str) -> String {
+        // Simple value quoting - wrap in single quotes and escape existing quotes
+        format!("'{}'", value.replace('\'', "''"))
+    }
+
     fn create_table_sql(&self, table_name: &str, columns: &[(&str, &str)]) -> String {
         let column_defs: Vec<String> = columns
             .iter()
             .map(|(name, type_def)| format!("{} {}", name, type_def))
             .collect();
         format!("CREATE TABLE {} ({})", table_name, column_defs.join(", "))
-    }
-
-    fn drop_table_sql(&self, _table_name: &str) -> String {
-        // TODO: Implement drop_table_sql for complete schema editor mock
-        unimplemented!()
-    }
-
-    fn add_column_sql(&self, _table_name: &str, _column_name: &str, _column_type: &str) -> String {
-        // TODO: Implement add_column_sql for complete schema editor mock
-        unimplemented!()
-    }
-
-    fn drop_column_sql(&self, _table_name: &str, _column_name: &str) -> String {
-        // TODO: Implement drop_column_sql for complete schema editor mock
-        unimplemented!()
-    }
-
-    fn alter_column_sql(&self, _table_name: &str, _column_name: &str, _new_type: &str) -> String {
-        // TODO: Implement alter_column_sql for complete schema editor mock
-        unimplemented!()
-    }
-
-    fn rename_column_sql(&self, _table_name: &str, _old_name: &str, _new_name: &str) -> String {
-        // TODO: Implement rename_column_sql for complete schema editor mock
-        unimplemented!()
-    }
-
-    fn add_constraint_sql(&self, _table_name: &str, _constraint: &str) -> String {
-        // TODO: Implement add_constraint_sql for complete schema editor mock
-        unimplemented!()
-    }
-
-    fn drop_constraint_sql(&self, _table_name: &str, _constraint_name: &str) -> String {
-        // TODO: Implement drop_constraint_sql for complete schema editor mock
-        unimplemented!()
     }
 }
 

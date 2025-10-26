@@ -5,5 +5,8 @@
   "rust-analyzer.checkOnSave": false,
   "rust-analyzer.showSyntaxTree": false,
   "rust-analyzer.testExplorer": true,
-  "rust-analyzer.cargo.buildScripts.rebuildOnSave": false
+  "rust-analyzer.cargo.buildScripts.rebuildOnSave": false,
+  "claudeCode.allowDangerouslySkipPermissions": false,
+  "claudeCode.useTerminal": true,
+  "claudeCode.doNotExcludeSearchPatterns": false
 }
