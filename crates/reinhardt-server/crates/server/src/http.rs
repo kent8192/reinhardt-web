@@ -143,11 +143,11 @@ impl HttpServer {
         let handler = self.build_handler();
 
         loop {
-            let (stream, _) = listener.accept().await?;
+            let (stream, socket_addr) = listener.accept().await?;
             let handler = handler.clone();
 
             tokio::task::spawn(async move {
-                if let Err(err) = Self::handle_connection(stream, handler).await {
+                if let Err(err) = Self::handle_connection(stream, socket_addr, handler).await {
                     eprintln!("Error handling connection: {:?}", err);
                 }
             });
@@ -205,14 +205,14 @@ impl HttpServer {
             tokio::select! {
                 // Accept new connection
                 result = listener.accept() => {
-                    let (stream, _) = result?;
+                    let (stream, socket_addr) = result?;
                     let handler = handler.clone();
                     let mut conn_shutdown = coordinator.subscribe();
 
                     tokio::task::spawn(async move {
                         // Handle connection with shutdown support
                         tokio::select! {
-                            result = Self::handle_connection(stream, handler) => {
+                            result = Self::handle_connection(stream, socket_addr, handler) => {
                                 if let Err(err) = result {
                                     eprintln!("Error handling connection: {:?}", err);
                                 }
@@ -263,16 +263,21 @@ impl HttpServer {
     /// let handler = Arc::new(MyHandler);
     /// let addr: SocketAddr = "127.0.0.1:8080".parse()?;
     /// let stream = TcpStream::connect(addr).await?;
-    /// HttpServer::handle_connection(stream, handler).await?;
+    /// let socket_addr = stream.peer_addr()?;
+    /// HttpServer::handle_connection(stream, socket_addr, handler).await?;
     /// # Ok(())
     /// # }
     /// ```
     pub async fn handle_connection(
         stream: TcpStream,
+        socket_addr: SocketAddr,
         handler: Arc<dyn Handler>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let io = TokioIo::new(stream);
-        let service = RequestService { handler };
+        let service = RequestService {
+            handler,
+            remote_addr: socket_addr,
+        };
 
         http1::Builder::new().serve_connection(io, service).await?;
 
@@ -283,15 +288,17 @@ impl HttpServer {
 /// Service implementation for hyper
 struct RequestService {
     handler: Arc<dyn Handler>,
+    remote_addr: SocketAddr,
 }
 
 impl Service<hyper::Request<Incoming>> for RequestService {
     type Response = hyper::Response<Full<Bytes>>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
 
     fn call(&self, req: hyper::Request<Incoming>) -> Self::Future {
         let handler = self.handler.clone();
+        let remote_addr = self.remote_addr;
 
         Box::pin(async move {
             // Extract request parts
@@ -301,13 +308,14 @@ impl Service<hyper::Request<Incoming>> for RequestService {
             let body_bytes = body.collect().await?.to_bytes();
 
             // Create reinhardt Request
-            let request = Request::new(
+            let mut request = Request::new(
                 parts.method,
                 parts.uri,
                 parts.version,
                 parts.headers,
                 Bytes::from(body_bytes),
             );
+            request.remote_addr = Some(remote_addr);
 
             // Handle request
             let response = handler
