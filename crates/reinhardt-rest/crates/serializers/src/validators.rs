@@ -44,6 +44,7 @@
 
 use crate::SerializerError;
 use reinhardt_orm::Model;
+use sea_query::{Alias, Asterisk, Expr, ExprTrait, Func, PostgresQueryBuilder, Query};
 use sqlx::{AssertSqlSafe, Pool, Postgres, Row};
 use std::marker::PhantomData;
 use thiserror::Error;
@@ -220,17 +221,17 @@ impl<M: Model> UniqueValidator<M> {
         let table_name = M::table_name();
         let pk_field = M::primary_key_field();
 
-        let query = if let Some(_pk) = instance_pk {
-            format!(
-                "SELECT COUNT(*) as count FROM {} WHERE {} = $1 AND {} != $2",
-                table_name, self.field_name, pk_field
-            )
-        } else {
-            format!(
-                "SELECT COUNT(*) as count FROM {} WHERE {} = $1",
-                table_name, self.field_name
-            )
-        };
+        // Build SeaQuery statement
+        let mut stmt = Query::select();
+        stmt.expr_as(Func::count(Expr::col(Asterisk)), Alias::new("count"))
+            .from(Alias::new(table_name))
+            .and_where(Expr::col(Alias::new(&self.field_name)).eq("$1"));
+
+        if instance_pk.is_some() {
+            stmt.and_where(Expr::col(Alias::new(pk_field)).ne("$2"));
+        }
+
+        let (query, _) = stmt.build(PostgresQueryBuilder);
 
         let count: i64 = if let Some(pk) = instance_pk {
             let pk_str = pk.to_string();
@@ -388,26 +389,24 @@ impl<M: Model> UniqueTogetherValidator<M> {
         let table_name = M::table_name();
         let pk_field = M::primary_key_field();
 
-        let mut where_clauses = Vec::new();
-        for (i, field_name) in self.field_names.iter().enumerate() {
-            where_clauses.push(format!("{} = ${}", field_name, i + 1));
-        }
-        let where_clause = where_clauses.join(" AND ");
+        // Build SeaQuery statement
+        let mut stmt = Query::select();
+        stmt.expr_as(Func::count(Expr::col(Asterisk)), Alias::new("count"))
+            .from(Alias::new(table_name));
 
-        let query = if let Some(_pk) = instance_pk {
-            format!(
-                "SELECT COUNT(*) as count FROM {} WHERE {} AND {} != ${}",
-                table_name,
-                where_clause,
-                pk_field,
-                self.field_names.len() + 1
-            )
-        } else {
-            format!(
-                "SELECT COUNT(*) as count FROM {} WHERE {}",
-                table_name, where_clause
-            )
-        };
+        // Add WHERE conditions for each field
+        for (i, field_name) in self.field_names.iter().enumerate() {
+            stmt.and_where(Expr::col(Alias::new(field_name)).eq(format!("${}", i + 1)));
+        }
+
+        // Add primary key exclusion condition if updating
+        if instance_pk.is_some() {
+            stmt.and_where(
+                Expr::col(Alias::new(pk_field)).ne(format!("${}", self.field_names.len() + 1)),
+            );
+        }
+
+        let (query, _) = stmt.build(PostgresQueryBuilder);
 
         let mut query_builder = sqlx::query(AssertSqlSafe(query.as_str()));
         let mut field_values = Vec::new();
