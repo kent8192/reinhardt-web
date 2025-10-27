@@ -261,10 +261,11 @@ mod tests {
         let result = renderer.render(&context, None).await;
         assert!(result.is_err());
 
-        if let Err(Error::Internal(msg)) = result {
-            assert!(msg.contains("File-based template loading not yet implemented"));
-        } else {
-            panic!("Expected Internal error");
+        match result {
+            Err(Error::Internal(msg)) => {
+                assert!(msg.contains("File-based template loading not yet implemented"));
+            }
+            _ => panic!("Expected Internal error"),
         }
     }
 

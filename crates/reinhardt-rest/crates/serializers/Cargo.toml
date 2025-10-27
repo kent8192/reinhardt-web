@@ -26,6 +26,7 @@ thiserror = { workspace = true }
 urlencoding = "2.1"
 chrono = { workspace = true }
 sqlx = { workspace = true }
+sea-query = { version = "1.0.0-rc.1", features = ["backend-postgres"] }
 regex = "1.10"
 
 # Optional serialization formats
