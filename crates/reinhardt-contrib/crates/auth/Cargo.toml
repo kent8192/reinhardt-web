@@ -6,6 +6,14 @@ license.workspace = true
 
 [features]
 default = []
+
+# Fine-grained authentication features
+jwt = []
+session = []
+oauth = []
+token = []
+
+# Database and session storage
 database = ["sqlx", "sea-query", "sea-query-binder"]
 redis-sessions = ["redis"]
 

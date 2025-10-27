@@ -22,19 +22,25 @@ pub mod drf_permissions;
 pub mod group_management;
 pub mod handlers;
 pub mod ip_permission;
+#[cfg(feature = "jwt")]
 pub mod jwt;
 pub mod mfa;
 pub mod model_permissions;
 pub mod object_permissions;
+#[cfg(feature = "oauth")]
 pub mod oauth2;
 pub mod permission_operators;
 pub mod permissions;
 pub mod rate_limit_permission;
 pub mod remote_user;
+#[cfg(feature = "session")]
 pub mod session;
 pub mod time_based_permission;
+#[cfg(any(feature = "jwt", feature = "token"))]
 pub mod token_blacklist;
+#[cfg(any(feature = "jwt", feature = "token"))]
 pub mod token_rotation;
+#[cfg(any(feature = "jwt", feature = "token"))]
 pub mod token_storage;
 pub mod user;
 pub mod user_management;
@@ -54,12 +60,14 @@ pub use group_management::{
 };
 pub use handlers::{LoginCredentials, LoginHandler, LogoutHandler, SESSION_COOKIE_NAME};
 pub use ip_permission::{CidrRange, IpBlacklistPermission, IpWhitelistPermission};
+#[cfg(feature = "jwt")]
 pub use jwt::{Claims, JwtAuth};
 pub use mfa::MFAAuthentication as MfaManager;
 pub use model_permissions::{
     DjangoModelPermissions, DjangoModelPermissionsOrAnonReadOnly, ModelPermission,
 };
 pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPermissionManager};
+#[cfg(feature = "oauth")]
 pub use oauth2::{
     AccessToken, AuthorizationCode, GrantType, InMemoryOAuth2Store, OAuth2Application,
     OAuth2Authentication, OAuth2TokenStore,
@@ -74,13 +82,17 @@ pub use rate_limit_permission::{
     RateLimitPermissionBuilder,
 };
 pub use remote_user::RemoteUserAuthentication as RemoteUserAuth;
+#[cfg(feature = "session")]
 pub use session::{InMemorySessionStore, Session, SessionId, SessionStore, SESSION_KEY_USER_ID};
 pub use time_based_permission::{DateRange, TimeBasedPermission, TimeWindow};
+#[cfg(any(feature = "jwt", feature = "token"))]
 pub use token_blacklist::{
     BlacklistReason, BlacklistStats, BlacklistedToken, InMemoryRefreshTokenStore,
     InMemoryTokenBlacklist, RefreshToken, RefreshTokenStore, TokenBlacklist, TokenRotationManager,
 };
+#[cfg(any(feature = "jwt", feature = "token"))]
 pub use token_rotation::{AutoTokenRotationManager, TokenRotationConfig, TokenRotationRecord};
+#[cfg(any(feature = "jwt", feature = "token"))]
 pub use token_storage::{
     InMemoryTokenStorage, StoredToken, TokenStorage, TokenStorageError, TokenStorageResult,
 };
@@ -155,6 +167,7 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    #[cfg(feature = "jwt")]
     fn test_auth_jwt_generate_unit() {
         let jwt_auth = JwtAuth::new(b"test_secret_key");
         let user_id = "user123".to_string();
