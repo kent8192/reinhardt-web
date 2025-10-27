@@ -1,6 +1,6 @@
 //! Dependency injection support for database pools
 
-use crate::pool::config::PoolConfig;
+use crate::config::PoolConfig;
 
 /// Database service for dependency injection
 #[derive(Clone)]
@@ -66,3 +66,8 @@ impl SqliteManager {
         Self { _config: config }
     }
 }
+
+// Type aliases for convenient use in dependency injection
+pub type MySqlPool = crate::pool::ConnectionPool<sqlx::MySql>;
+pub type PostgresPool = crate::pool::ConnectionPool<sqlx::Postgres>;
+pub type SqlitePool = crate::pool::ConnectionPool<sqlx::Sqlite>;
