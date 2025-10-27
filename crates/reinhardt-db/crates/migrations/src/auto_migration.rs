@@ -59,32 +59,43 @@ impl AutoMigrationGenerator {
         // Create migration
         let migration = Migration {
             name: migration_name.clone(),
-            app: "auto".to_string(),
+            app_label: "auto".to_string(),
             dependencies: Vec::new(),
             operations: operations.clone(),
+            replaces: Vec::new(),
+            atomic: true,
         };
 
         // Write migration file
-        let writer = MigrationWriter::new(self.output_dir.clone());
-        let migration_file = writer.write(&migration)?;
+        let writer = MigrationWriter::new(migration.clone());
+        let migration_file = writer
+            .write_to_file(&self.output_dir)
+            .map_err(|e| AutoMigrationError::WriteError(e.to_string()))?;
 
         // Generate rollback operations
         let rollback_operations = self.generate_rollback(&operations);
         let rollback_file = if !rollback_operations.is_empty() {
             let rollback_migration = Migration {
                 name: format!("{}_rollback", migration_name),
-                app: "auto".to_string(),
-                dependencies: vec![migration_name],
+                app_label: "auto".to_string(),
+                dependencies: vec![("auto".to_string(), migration_name)],
                 operations: rollback_operations,
+                replaces: Vec::new(),
+                atomic: true,
             };
-            Some(writer.write(&rollback_migration)?)
+            let rollback_writer = MigrationWriter::new(rollback_migration);
+            Some(
+                rollback_writer
+                    .write_to_file(&self.output_dir)
+                    .map_err(|e| AutoMigrationError::WriteError(e.to_string()))?,
+            )
         } else {
             None
         };
 
         Ok(AutoMigrationResult {
-            migration_file,
-            rollback_file,
+            migration_file: std::path::PathBuf::from(migration_file),
+            rollback_file: rollback_file.map(std::path::PathBuf::from),
             operation_count: operations.len(),
             has_destructive_changes: has_destructive,
         })
@@ -92,19 +103,21 @@ impl AutoMigrationGenerator {
 
     /// Generate rollback operations
     fn generate_rollback(&self, operations: &[Operation]) -> Vec<Operation> {
+        // TODO: Implement rollback generation once model-level operations are added
+        // Currently, Operation enum only supports table-level operations
         operations
             .iter()
             .rev()
             .filter_map(|op| match op {
-                Operation::CreateModel(create) => Some(Operation::DeleteModel(crate::operations::DeleteModel {
-                    name: create.name.clone(),
-                })),
-                Operation::DeleteModel(_) => None, // Cannot rollback delete
-                Operation::AddField(add) => Some(Operation::RemoveField(crate::operations::RemoveField {
-                    model_name: add.model_name.clone(),
-                    name: add.name.clone(),
-                })),
-                Operation::RemoveField(_) => None, // Cannot rollback remove
+                Operation::CreateTable { name, .. } => Some(Operation::DropTable {
+                    name: name.clone(),
+                }),
+                Operation::DropTable { .. } => None, // Cannot rollback drop
+                Operation::AddColumn { table, column } => Some(Operation::DropColumn {
+                    table: table.clone(),
+                    column: column.name.clone(),
+                }),
+                Operation::DropColumn { .. } => None, // Cannot rollback drop column
                 _ => None,
             })
             .collect()
@@ -191,7 +204,6 @@ impl From<std::io::Error> for AutoMigrationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operations::CreateModel;
     use std::collections::HashMap;
 
     #[test]
@@ -199,15 +211,15 @@ mod tests {
         let target_schema = DatabaseSchema::default();
         let generator = AutoMigrationGenerator::new(target_schema, PathBuf::from("/tmp"));
 
-        let operations = vec![Operation::CreateModel(CreateModel {
+        let operations = vec![Operation::CreateTable {
             name: "users".to_string(),
-            fields: Vec::new(),
-            options: HashMap::new(),
-        })];
+            columns: Vec::new(),
+            constraints: Vec::new(),
+        }];
 
         let rollback = generator.generate_rollback(&operations);
         assert_eq!(rollback.len(), 1);
-        assert!(matches!(rollback[0], Operation::DeleteModel(_)));
+        assert!(matches!(rollback[0], Operation::DropTable { .. }));
     }
 
     #[test]

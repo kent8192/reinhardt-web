@@ -613,6 +613,71 @@ impl SQLiteIntrospector {
         Ok(foreign_keys)
     }
 
+    /// Extracts index information from SQLite using PRAGMA index_list and PRAGMA index_info.
+    ///
+    /// Note: sea_schema doesn't detect regular (non-unique) indexes created with CREATE INDEX,
+    /// so we need to use PRAGMA commands to get complete index information.
+    async fn extract_indexes(
+        pool: &sqlx::SqlitePool,
+        table_name: &str,
+    ) -> Result<HashMap<String, IndexInfo>> {
+        #[derive(sqlx::FromRow)]
+        struct IndexListRow {
+            #[allow(dead_code)]
+            seq: i64,
+            name: String,
+            unique: i64,
+            #[allow(dead_code)]
+            origin: String,
+            #[allow(dead_code)]
+            partial: i64,
+        }
+
+        #[derive(sqlx::FromRow)]
+        struct IndexInfoRow {
+            #[allow(dead_code)]
+            seqno: i64,
+            #[allow(dead_code)]
+            cid: i64,
+            name: Option<String>,
+        }
+
+        let mut indexes = HashMap::new();
+
+        // Get list of indexes for the table
+        let query = format!("PRAGMA index_list({})", table_name);
+        let index_list: Vec<IndexListRow> = sqlx::query_as(&query)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
+
+        for index_row in index_list {
+            // Get columns for this index
+            let info_query = format!("PRAGMA index_info({})", index_row.name);
+            let index_info: Vec<IndexInfoRow> = sqlx::query_as(&info_query)
+                .fetch_all(pool)
+                .await
+                .map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
+
+            let columns: Vec<String> = index_info
+                .into_iter()
+                .filter_map(|info| info.name)
+                .collect();
+
+            indexes.insert(
+                index_row.name.clone(),
+                IndexInfo {
+                    name: index_row.name,
+                    columns,
+                    unique: index_row.unique != 0,
+                    index_type: None,
+                },
+            );
+        }
+
+        Ok(indexes)
+    }
+
     fn convert_table_def(table_def: &sea_schema::sqlite::def::TableDef) -> Result<TableInfo> {
         let mut columns = HashMap::new();
         let mut primary_key = Vec::new();
@@ -649,7 +714,8 @@ impl SQLiteIntrospector {
             );
         }
 
-        // Extract indexes
+        // Extract indexes from table_def (UNIQUE constraints detected by sea_schema)
+        // Note: Regular indexes will be extracted separately using PRAGMA index_list
         let mut indexes = HashMap::new();
         for index_def in &table_def.indexes {
             indexes.insert(
@@ -709,6 +775,10 @@ impl DatabaseIntrospector for SQLiteIntrospector {
             let foreign_keys = Self::extract_foreign_keys(&self.pool, &table_info.name).await?;
             table_info.foreign_keys = foreign_keys;
 
+            // Extract indexes using PRAGMA index_list (sea_schema doesn't detect regular indexes)
+            let indexes = Self::extract_indexes(&self.pool, &table_info.name).await?;
+            table_info.indexes = indexes;
+
             tables.insert(table_info.name.clone(), table_info);
         }
 
@@ -731,6 +801,10 @@ impl DatabaseIntrospector for SQLiteIntrospector {
                 // Extract foreign keys using PRAGMA foreign_key_list
                 let foreign_keys = Self::extract_foreign_keys(&self.pool, &table_info.name).await?;
                 table_info.foreign_keys = foreign_keys;
+
+                // Extract indexes using PRAGMA index_list
+                let indexes = Self::extract_indexes(&self.pool, &table_info.name).await?;
+                table_info.indexes = indexes;
 
                 return Ok(Some(table_info));
             }

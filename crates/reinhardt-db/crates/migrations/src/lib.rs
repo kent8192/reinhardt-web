@@ -23,7 +23,10 @@ pub mod zero_downtime;
 
 pub use autodetector::{
     ConstraintDefinition, DetectedChanges, FieldState, IndexDefinition, MigrationAutodetector,
-    ModelState, ProjectState,
+    ModelState, ProjectState, SimilarityConfig,
+    // Phase 2: Pattern Learning and Inference
+    ChangeTracker, PatternMatcher, InferenceEngine, InferredIntent, InferenceRule, RuleCondition,
+    MigrationPrompt, InteractiveAutodetector,
 };
 pub use commands::{MakeMigrationsCommand, MakeMigrationsOptions, MigrateCommand, MigrateOptions};
 pub use di_support::{MigrationConfig, MigrationService};
@@ -42,8 +45,8 @@ pub use plan::{MigrationPlan, TransactionMode};
 // New operations from refactored modules
 pub use operations::{
     special::DataMigration, AddField, AlterField, CreateCollation, CreateExtension, CreateModel,
-    DeleteModel, DropExtension, FieldDefinition, RemoveField, RenameField, RenameModel, RunCode,
-    RunSQL, StateOperation,
+    DeleteModel, DropExtension, FieldDefinition, MoveModel, RemoveField, RenameField, RenameModel,
+    RunCode, RunSQL, StateOperation,
 };
 pub use recorder::{DatabaseMigrationRecorder, MigrationRecord, MigrationRecorder};
 pub use schema_diff::{
@@ -59,7 +62,7 @@ pub use writer::MigrationWriter;
 pub use zero_downtime::{MigrationPhase, Strategy, ZeroDowntimeMigration};
 
 pub use introspection::{
-    ColumnInfo, DatabaseIntrospector, DatabaseSchema, ForeignKeyInfo, IndexInfo, TableInfo,
+    ColumnInfo, DatabaseIntrospector, ForeignKeyInfo, IndexInfo, TableInfo,
     UniqueConstraintInfo,
 };
 
