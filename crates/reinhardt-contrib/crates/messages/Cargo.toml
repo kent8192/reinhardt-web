@@ -2,6 +2,7 @@
 name = "reinhardt-messages"
 version = "0.1.0"
 edition = "2021"
+description = "Django-style messaging framework for displaying notifications to users"
 repository.workspace = true
 
 [dependencies]

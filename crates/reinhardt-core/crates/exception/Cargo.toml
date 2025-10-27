@@ -3,6 +3,7 @@ name = "reinhardt-exception"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Unified error types and result handling for the Reinhardt framework"
 repository.workspace = true
 
 [dependencies]
