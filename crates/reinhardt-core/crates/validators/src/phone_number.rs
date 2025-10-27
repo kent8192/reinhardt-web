@@ -264,10 +264,11 @@ mod tests {
         let validator = PhoneNumberValidator::new();
         let result = validator.validate("12025551234");
         assert!(result.is_err());
-        if let Err(ValidationError::InvalidPhoneNumber(msg)) = result {
-            assert!(msg.contains("E.164 format"));
-        } else {
-            panic!("Expected InvalidPhoneNumber error");
+        match result {
+            Err(ValidationError::InvalidPhoneNumber(msg)) => {
+                assert!(msg.contains("E.164 format"));
+            }
+            _ => panic!("Expected InvalidPhoneNumber error"),
         }
     }
 
@@ -276,10 +277,11 @@ mod tests {
         let validator = PhoneNumberValidator::new();
         let result = validator.validate("+123");
         assert!(result.is_err());
-        if let Err(ValidationError::InvalidPhoneNumber(msg)) = result {
-            assert!(msg.contains("5-15 digits"));
-        } else {
-            panic!("Expected InvalidPhoneNumber error");
+        match result {
+            Err(ValidationError::InvalidPhoneNumber(msg)) => {
+                assert!(msg.contains("5-15 digits"));
+            }
+            _ => panic!("Expected InvalidPhoneNumber error"),
         }
     }
 
@@ -288,10 +290,11 @@ mod tests {
         let validator = PhoneNumberValidator::new();
         let result = validator.validate("+12345678901234567890");
         assert!(result.is_err());
-        if let Err(ValidationError::InvalidPhoneNumber(msg)) = result {
-            assert!(msg.contains("5-15 digits"));
-        } else {
-            panic!("Expected InvalidPhoneNumber error");
+        match result {
+            Err(ValidationError::InvalidPhoneNumber(msg)) => {
+                assert!(msg.contains("5-15 digits"));
+            }
+            _ => panic!("Expected InvalidPhoneNumber error"),
         }
     }
 
@@ -300,10 +303,11 @@ mod tests {
         let validator = PhoneNumberValidator::new();
         let result = validator.validate("");
         assert!(result.is_err());
-        if let Err(ValidationError::InvalidPhoneNumber(msg)) = result {
-            assert!(msg.contains("cannot be empty"));
-        } else {
-            panic!("Expected InvalidPhoneNumber error");
+        match result {
+            Err(ValidationError::InvalidPhoneNumber(msg)) => {
+                assert!(msg.contains("cannot be empty"));
+            }
+            _ => panic!("Expected InvalidPhoneNumber error"),
         }
     }
 
@@ -330,17 +334,17 @@ mod tests {
         // Disallowed country (France +33)
         let result = validator.validate("+33123456789");
         assert!(result.is_err());
-        if let Err(ValidationError::CountryCodeNotAllowed {
-            country_code,
-            allowed_countries,
-        }) = result
-        {
-            assert_eq!(country_code, "33");
-            assert!(allowed_countries.contains("1"));
-            assert!(allowed_countries.contains("81"));
-            assert!(allowed_countries.contains("44"));
-        } else {
-            panic!("Expected CountryCodeNotAllowed error");
+        match result {
+            Err(ValidationError::CountryCodeNotAllowed {
+                country_code,
+                allowed_countries,
+            }) => {
+                assert_eq!(country_code, "33");
+                assert!(allowed_countries.contains("1"));
+                assert!(allowed_countries.contains("81"));
+                assert!(allowed_countries.contains("44"));
+            }
+            _ => panic!("Expected CountryCodeNotAllowed error"),
         }
     }
 
@@ -361,10 +365,11 @@ mod tests {
         // Extensions should fail when not allowed
         let result = validator.validate("+12025551234 ext. 123");
         assert!(result.is_err());
-        if let Err(ValidationError::InvalidPhoneNumber(msg)) = result {
-            assert!(msg.contains("Extensions are not allowed"));
-        } else {
-            panic!("Expected InvalidPhoneNumber error for extension");
+        match result {
+            Err(ValidationError::InvalidPhoneNumber(msg)) => {
+                assert!(msg.contains("Extensions are not allowed"));
+            }
+            _ => panic!("Expected InvalidPhoneNumber error for extension"),
         }
     }
 

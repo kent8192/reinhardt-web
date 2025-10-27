@@ -567,11 +567,12 @@ mod tests {
         let validator = MinLengthValidator::new(5);
         let result = validator.validate("hi");
         assert!(result.is_err());
-        if let Err(ValidationError::TooShort { length, min }) = result {
-            assert_eq!(length, 2);
-            assert_eq!(min, 5);
-        } else {
-            panic!("Expected TooShort error");
+        match result {
+            Err(ValidationError::TooShort { length, min }) => {
+                assert_eq!(length, 2);
+                assert_eq!(min, 5);
+            }
+            _ => panic!("Expected TooShort error"),
         }
     }
 
@@ -606,11 +607,12 @@ mod tests {
         let validator = MaxLengthValidator::new(10);
         let result = validator.validate("hello world");
         assert!(result.is_err());
-        if let Err(ValidationError::TooLong { length, max }) = result {
-            assert_eq!(length, 11);
-            assert_eq!(max, 10);
-        } else {
-            panic!("Expected TooLong error");
+        match result {
+            Err(ValidationError::TooLong { length, max }) => {
+                assert_eq!(length, 11);
+                assert_eq!(max, 10);
+            }
+            _ => panic!("Expected TooLong error"),
         }
     }
 
@@ -653,10 +655,11 @@ mod tests {
 
         let result = validator.validate("abc");
         assert!(result.is_err());
-        if let Err(ValidationError::PatternMismatch(msg)) = result {
-            assert_eq!(msg, "Value must contain only digits");
-        } else {
-            panic!("Expected PatternMismatch error");
+        match result {
+            Err(ValidationError::PatternMismatch(msg)) => {
+                assert_eq!(msg, "Value must contain only digits");
+            }
+            _ => panic!("Expected PatternMismatch error"),
         }
     }
 
