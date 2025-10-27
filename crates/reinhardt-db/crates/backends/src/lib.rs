@@ -8,6 +8,7 @@ pub mod backends;
 pub mod connection;
 pub mod dialect;
 pub mod error;
+pub mod optimization;
 pub mod query_builder;
 pub mod schema;
 pub mod types;
