@@ -154,3 +154,112 @@ args = ["make", "--list-all-steps"]
 description = "Show available tasks"
 command = "cargo"
 args = ["make", "--list-all-steps"]
+
+# ============================================================================
+# Examples Tests Tasks
+# ============================================================================
+
+[tasks.examples-setup]
+description = "Setup examples directory (.env file creation)"
+cwd = "examples"
+script = '''
+if [ ! -f .env ]; then
+  cp .env.example .env
+  echo "✅ .env file created"
+else
+  echo "⚠️  .env file already exists"
+fi
+'''
+
+[tasks.examples-up]
+description = "Start infrastructure for examples (PostgreSQL)"
+cwd = "examples"
+script = '''
+podman-compose up -d postgres
+echo "⏳ Waiting for PostgreSQL to start..."
+sleep 5
+echo "✅ PostgreSQL started"
+'''
+
+[tasks.examples-down]
+description = "Stop infrastructure for examples"
+cwd = "examples"
+script = '''
+podman-compose down
+'''
+
+[tasks.examples-test]
+description = "Test all examples (requires reinhardt to be published to crates.io)"
+dependencies = ["examples-up"]
+cwd = "examples"
+script = '''
+echo "🧪 Running examples tests..."
+cargo test --workspace --verbose || (cd .. && cargo make examples-down && exit 1)
+cd ..
+cargo make examples-down
+echo "✅ Examples tests completed"
+'''
+
+[tasks.examples-test-keep]
+description = "Test examples and keep infrastructure running"
+dependencies = ["examples-up"]
+cwd = "examples"
+command = "cargo"
+args = ["test", "--workspace", "--verbose"]
+
+[tasks.examples-check-published]
+description = "Check if reinhardt is published to crates.io"
+script = '''
+if cargo search reinhardt | grep -q "^reinhardt ="; then
+  echo "✅ reinhardt is available on crates.io"
+  exit 0
+else
+  echo "⚠️ reinhardt is NOT available on crates.io"
+  echo "   Examples tests will be skipped"
+  exit 1
+fi
+'''
+
+[tasks.examples-update]
+description = "Update examples dependencies from crates.io"
+cwd = "examples"
+command = "cargo"
+args = ["update"]
+
+[tasks.examples-build]
+description = "Build all examples"
+cwd = "examples"
+command = "cargo"
+args = ["build", "--workspace", "--release"]
+
+[tasks.examples-clean]
+description = "Clean examples build artifacts"
+cwd = "examples"
+command = "cargo"
+args = ["clean"]
+
+[tasks.examples-status]
+description = "Check examples infrastructure status"
+cwd = "examples"
+script = '''
+podman-compose ps
+'''
+
+[tasks.examples-logs]
+description = "Show examples infrastructure logs"
+cwd = "examples"
+script = '''
+podman-compose logs -f
+'''
+
+# ============================================================================
+# Combined CI Tasks (including examples)
+# ============================================================================
+
+[tasks.ci-full]
+description = "Run all CI checks including examples tests"
+dependencies = ["check", "fmt", "clippy", "test", "examples-test"]
+
+[tasks.ci-with-examples]
+description = "Alias for ci-full"
+dependencies = ["ci-full"]
