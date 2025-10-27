@@ -146,45 +146,45 @@
 //! # }
 //! ```
 //!
-//! ## Planned Features
-//!
-//! The following advanced features are planned for future releases:
-//!
 //! ### Streaming Support
 //!
 //! Stream large responses incrementally instead of buffering entire response:
 //!
-//! ```rust,ignore
-//! use reinhardt_renderers::*;
-//! use futures::stream::Stream;
+//! ```rust
+//! use reinhardt_renderers::streaming::{StreamingJSONRenderer, StreamingRenderer};
+//! use serde_json::json;
+//! use futures::StreamExt;
 //!
+//! # #[tokio::main]
+//! # async fn main() {
 //! let streaming_renderer = StreamingJSONRenderer::new();
+//! let large_dataset = json!([{"id": 1}, {"id": 2}, {"id": 3}]);
 //!
-//! // Returns Stream<Item = Bytes> instead of Bytes
-//! let stream = streaming_renderer.render_stream(&large_dataset, None).await?;
+//! // Returns Stream<Item = Result<Bytes, Error>> instead of Bytes
+//! let mut stream = streaming_renderer.render_stream(&large_dataset, None).await.unwrap();
 //!
 //! // Stream can be consumed incrementally
 //! while let Some(chunk) = stream.next().await {
-//!     send_to_client(chunk?).await?;
+//!     let bytes = chunk.unwrap();
+//!     // send_to_client(bytes).await;
 //! }
+//! # }
 //! ```
 //!
-//! **Design Considerations**:
-//! - Which renderers should support streaming (JSON arrays, CSV, XML)?
-//! - How to handle streaming errors mid-response?
-//! - Should streaming be opt-in or automatic based on data size?
-//! - What buffer sizes are optimal for different formats?
+//! Available streaming renderers:
+//! - **StreamingJSONRenderer**: Streams JSON arrays element by element
+//! - **StreamingCSVRenderer**: Streams CSV rows incrementally
 //!
 //! ### Compression Support
 //!
 //! Automatic response compression with multiple algorithms:
 //!
-//! ```rust,ignore
-//! use reinhardt_renderers::*;
+//! ```rust
+//! use reinhardt_renderers::{CompressionRenderer, CompressionAlgorithm, JSONRenderer, Renderer, RendererContext};
+//! use serde_json::json;
 //!
-//! let renderer = JSONRenderer::new()
-//!     .with_compression(CompressionAlgorithm::Gzip { level: 6 });
-//!
+//! # #[tokio::main]
+//! # async fn main() {
 //! // Or use content negotiation
 //! let compressed_renderer = CompressionRenderer::new(
 //!     JSONRenderer::new(),
@@ -195,22 +195,21 @@
 //!     ]
 //! );
 //!
-//! // Automatically selects best compression based on Accept-Encoding header
-//! let (bytes, content_type, encoding) = compressed_renderer
-//!     .render_compressed(&data, &context)
-//!     .await?;
-//! ```
+//! let data = json!({"message": "hello"});
+//! let context = RendererContext::new()
+//!     .with_extra("accept_encoding", "gzip");
 //!
-//! **Design Considerations**:
-//! - Which compression algorithms to support (gzip, brotli, zstd, deflate)?
-//! - How to balance compression ratio vs CPU usage?
-//! - Should compression be applied before or after caching?
-//! - What minimum response size should trigger compression?
-//! - How to handle Accept-Encoding negotiation?
+//! // Automatically selects best compression based on Accept-Encoding header
+//! let bytes = compressed_renderer
+//!     .render(&data, Some(&context))
+//!     .await.unwrap();
+//! # }
+//! ```
 
 pub mod admin_renderer;
 pub mod cached;
 pub mod chain;
+pub mod compression;
 pub mod csv_renderer;
 pub mod documentation_renderer;
 pub mod format_suffix;
@@ -220,6 +219,7 @@ pub mod openapi;
 pub mod renderer;
 pub mod schemajs_renderer;
 pub mod static_html_renderer;
+pub mod streaming;
 pub mod template_html_renderer;
 pub mod xml;
 pub mod yaml_renderer;
@@ -230,6 +230,7 @@ mod tests;
 pub use admin_renderer::AdminRenderer;
 pub use cached::{CacheConfig, CachedRenderer};
 pub use chain::RendererChain;
+pub use compression::{CompressionAlgorithm, CompressionRenderer};
 pub use csv_renderer::CSVRenderer;
 pub use documentation_renderer::DocumentationRenderer;
 pub use json::JSONRenderer;
@@ -238,6 +239,7 @@ pub use openapi::OpenAPIRenderer;
 pub use renderer::{RenderResult, Renderer, RendererContext, RendererRegistry};
 pub use schemajs_renderer::SchemaJSRenderer;
 pub use static_html_renderer::StaticHTMLRenderer;
+pub use streaming::{StreamingConfig, StreamingCSVRenderer, StreamingJSONRenderer, StreamingRenderer};
 pub use template_html_renderer::TemplateHTMLRenderer;
 pub use xml::XMLRenderer;
 pub use yaml_renderer::YAMLRenderer;
