@@ -75,18 +75,21 @@ impl BaseCommand for SendTestEmailCommand {
                 let backend = ConsoleBackend;
                 backend
                     .send_messages(&[message])
+                    .await
                     .map_err(|e| CommandError::ExecutionError(e.to_string()))?
             }
             "memory" => {
                 let backend = MemoryBackend::new();
                 backend
                     .send_messages(&[message])
+                    .await
                     .map_err(|e| CommandError::ExecutionError(e.to_string()))?
             }
             "file" => {
-                let backend = FileBackend;
+                let backend = FileBackend::new("/tmp/reinhardt_emails");
                 backend
                     .send_messages(&[message])
+                    .await
                     .map_err(|e| CommandError::ExecutionError(e.to_string()))?
             }
             _ => {
