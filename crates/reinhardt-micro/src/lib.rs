@@ -40,35 +40,6 @@
 //! - `with_logging()`: Structured logging configuration
 //! - `with_metrics()`: Metrics collection
 //!
-//! ## Planned Features
-//!
-//! ### Additional Utility Functions
-//!
-//! Planned utility additions:
-//!
-//! ```rust,ignore
-//! use reinhardt_micro::utils::*;
-//!
-//! // Response builders
-//! ok_json(data);              // 200 OK with JSON
-//! created_json(data);         // 201 Created with JSON
-//! no_content();               // 204 No Content
-//! bad_request(message);       // 400 Bad Request
-//! unauthorized(message);      // 401 Unauthorized
-//! not_found(message);         // 404 Not Found
-//! internal_error(message);    // 500 Internal Server Error
-//!
-//! // Request helpers
-//! extract_bearer_token(&request);  // Extract JWT from Authorization header
-//! parse_query_params::<T>(&request); // Parse query string into type T
-//! validate_content_type(&request, "application/json");
-//!
-//! // Testing utilities
-//! test_request(method, path, body);  // Create test request
-//! assert_json_response(response, expected); // Assert JSON response
-//! ```
-//!
-//! For detailed implementation status, see GitHub issues with the `enhancement` label.
 //!
 //! ## Quick Start
 //!
@@ -160,7 +131,7 @@ pub mod middleware {
 /// Middleware configuration helpers
 pub mod middleware_config;
 
-/// Utility functions for common request operations
+/// Utility functions for response building, request handling, and testing
 pub mod utils;
 
 /// Prelude module for convenient imports

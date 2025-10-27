@@ -203,6 +203,138 @@ pub fn internal_error(message: impl Into<String>) -> Response {
         .with_body(error_body)
 }
 
+/// Creates a 202 Accepted response.
+///
+/// Indicates that the request has been accepted for processing, but processing
+/// has not been completed. Typically used for asynchronous operations.
+///
+/// # Returns
+///
+/// A `Response` with status code 202 and no body
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_micro::utils::accepted;
+///
+/// let response = accepted();
+/// assert_eq!(response.status(), 202);
+/// ```
+pub fn accepted() -> Response {
+    Response::new(hyper::StatusCode::ACCEPTED)
+}
+
+/// Creates a 403 Forbidden response with an error message.
+///
+/// Indicates that the server understood the request but refuses to authorize it.
+///
+/// # Arguments
+///
+/// * `message` - The error message to include in the response body
+///
+/// # Returns
+///
+/// A `Response` with status code 403 and the error message as JSON
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_micro::utils::forbidden;
+///
+/// let response = forbidden("Access denied to this resource");
+/// assert_eq!(response.status(), 403);
+/// ```
+pub fn forbidden(message: impl Into<String>) -> Response {
+    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+    Response::forbidden()
+        .with_header("Content-Type", "application/json")
+        .with_body(error_body)
+}
+
+/// Creates a 409 Conflict response with an error message.
+///
+/// Indicates that the request could not be completed due to a conflict
+/// with the current state of the target resource.
+///
+/// # Arguments
+///
+/// * `message` - The error message to include in the response body
+///
+/// # Returns
+///
+/// A `Response` with status code 409 and the error message as JSON
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_micro::utils::conflict;
+///
+/// let response = conflict("Email already exists");
+/// assert_eq!(response.status(), 409);
+/// ```
+pub fn conflict(message: impl Into<String>) -> Response {
+    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+    Response::new(hyper::StatusCode::CONFLICT)
+        .with_header("Content-Type", "application/json")
+        .with_body(error_body)
+}
+
+/// Creates a 422 Unprocessable Entity response with an error message.
+///
+/// Indicates that the server understands the content type of the request entity,
+/// and the syntax is correct, but it was unable to process the contained instructions.
+///
+/// # Arguments
+///
+/// * `message` - The error message to include in the response body
+///
+/// # Returns
+///
+/// A `Response` with status code 422 and the error message as JSON
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_micro::utils::unprocessable_entity;
+///
+/// let response = unprocessable_entity("Validation failed: age must be positive");
+/// assert_eq!(response.status(), 422);
+/// ```
+pub fn unprocessable_entity(message: impl Into<String>) -> Response {
+    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+    Response::new(hyper::StatusCode::UNPROCESSABLE_ENTITY)
+        .with_header("Content-Type", "application/json")
+        .with_body(error_body)
+}
+
+/// Creates a 503 Service Unavailable response with an error message.
+///
+/// Indicates that the server is not ready to handle the request, usually
+/// because it is temporarily overloaded or down for maintenance.
+///
+/// # Arguments
+///
+/// * `message` - The error message to include in the response body
+///
+/// # Returns
+///
+/// A `Response` with status code 503 and the error message as JSON
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_micro::utils::service_unavailable;
+///
+/// let response = service_unavailable("Service is under maintenance");
+/// assert_eq!(response.status(), 503);
+/// ```
+pub fn service_unavailable(message: impl Into<String>) -> Response {
+    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+    Response::new(hyper::StatusCode::SERVICE_UNAVAILABLE)
+        .with_header("Content-Type", "application/json")
+        .with_body(error_body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,5 +412,40 @@ mod tests {
 
         let response = unauthorized(String::from("auth failed"));
         assert!(response.body().contains("auth failed"));
+    }
+
+    #[test]
+    fn test_accepted() {
+        let response = accepted();
+        assert_eq!(response.status(), 202);
+        assert!(response.body().is_empty());
+    }
+
+    #[test]
+    fn test_forbidden() {
+        let response = forbidden("Access denied");
+        assert_eq!(response.status(), 403);
+        assert!(response.body().contains("Access denied"));
+    }
+
+    #[test]
+    fn test_conflict() {
+        let response = conflict("Resource already exists");
+        assert_eq!(response.status(), 409);
+        assert!(response.body().contains("Resource already exists"));
+    }
+
+    #[test]
+    fn test_unprocessable_entity() {
+        let response = unprocessable_entity("Validation failed");
+        assert_eq!(response.status(), 422);
+        assert!(response.body().contains("Validation failed"));
+    }
+
+    #[test]
+    fn test_service_unavailable() {
+        let response = service_unavailable("Under maintenance");
+        assert_eq!(response.status(), 503);
+        assert!(response.body().contains("Under maintenance"));
     }
 }
