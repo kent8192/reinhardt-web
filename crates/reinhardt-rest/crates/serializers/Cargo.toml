@@ -5,8 +5,13 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = []
+default = ["json"]
 django-compat = ["reinhardt-orm/django-compat"]
+
+# Serialization formats
+json = []
+xml = ["quick-xml", "serde-xml-rs"]
+yaml = ["serde_yaml"]
 
 [dependencies]
 reinhardt-apps = { workspace = true }
@@ -21,6 +26,11 @@ thiserror = { workspace = true }
 urlencoding = "2.1"
 chrono = { workspace = true }
 sqlx = { workspace = true }
+
+# Optional serialization formats
+quick-xml = { version = "0.37", features = ["serialize"], optional = true }
+serde-xml-rs = { version = "0.6", optional = true }
+serde_yaml = { version = "0.9", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
