@@ -1,8 +1,6 @@
 #[cfg(feature = "graphql")]
 use async_graphql::{EmptySubscription, Schema};
 #[cfg(feature = "graphql")]
-use bytes::Bytes;
-#[cfg(feature = "graphql")]
 use http::{Method, StatusCode};
 #[cfg(feature = "graphql")]
 use reinhardt_http::{Request, Response};

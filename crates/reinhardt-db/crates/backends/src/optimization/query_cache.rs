@@ -6,7 +6,6 @@
 //! - Cache invalidation strategies
 
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -149,16 +148,6 @@ impl QueryCache {
             total_hits,
             expired_entries,
         }
-    }
-
-    /// Hash query parameters
-    pub fn hash_params(params: &[&dyn Hash]) -> u64 {
-        use std::collections::hash_map::DefaultHasher;
-        let mut hasher = DefaultHasher::new();
-        for param in params {
-            param.hash(&mut hasher);
-        }
-        hasher.finish()
     }
 }
 
