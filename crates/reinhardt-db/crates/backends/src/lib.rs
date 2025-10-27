@@ -33,6 +33,9 @@ pub use backends::mysql::schema::MySQLSchemaEditor;
 #[cfg(feature = "sqlite")]
 pub use backends::sqlite::schema::SQLiteSchemaEditor;
 
+#[cfg(feature = "mongodb-backend")]
+pub use backends::mongodb::{MongoDBBackend, MongoDBQueryBuilder, MongoDBSchemaEditor};
+
 // Re-export two-phase commit implementations
 #[cfg(feature = "postgres")]
 pub use backends::postgresql::two_phase::{PostgresTwoPhaseParticipant, PreparedTransactionInfo};

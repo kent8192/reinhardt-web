@@ -10,6 +10,8 @@ pub enum DatabaseType {
     Postgres,
     Sqlite,
     Mysql,
+    #[cfg(feature = "mongodb-backend")]
+    MongoDB,
 }
 
 /// Query value types

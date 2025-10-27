@@ -91,6 +91,13 @@ impl InsertBuilder {
             DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
             DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
             DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+            #[cfg(feature = "mongodb-backend")]
+            DatabaseType::MongoDB => {
+                return (
+                    String::new(),
+                    Vec::new(),
+                )
+            }
         };
 
         (sql, self.values.clone())
@@ -173,6 +180,13 @@ impl UpdateBuilder {
             DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
             DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
             DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+            #[cfg(feature = "mongodb-backend")]
+            DatabaseType::MongoDB => {
+                return (
+                    String::new(),
+                    Vec::new(),
+                )
+            }
         };
 
         // Preserve parameter order: first SET values, then WHERE values
@@ -270,6 +284,11 @@ impl SelectBuilder {
             DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
             DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
             DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+            #[cfg(feature = "mongodb-backend")]
+            DatabaseType::MongoDB => {
+                // MongoDB doesn't use SQL
+                String::new()
+            }
         };
 
         // Collect parameters
@@ -350,6 +369,11 @@ impl DeleteBuilder {
             DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
             DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
             DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+            #[cfg(feature = "mongodb-backend")]
+            DatabaseType::MongoDB => {
+                // MongoDB doesn't use SQL
+                String::new()
+            }
         };
 
         // Collect parameters
