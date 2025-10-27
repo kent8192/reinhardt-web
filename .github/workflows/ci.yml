@@ -143,11 +143,98 @@ jobs:
       - name: Run integration tests
         run: cargo test --package tests --all-features
 
+  test-examples:
+    name: Examples Tests (crates.io)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reinhardt
+          POSTGRES_PASSWORD: reinhardt_dev
+          POSTGRES_DB: reinhardt_examples
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "examples -> target"
+
+      - name: Check if reinhardt is published
+        id: check-published
+        run: |
+          cd examples
+          if cargo search reinhardt | grep -q "^reinhardt ="; then
+            echo "available=true" >> $GITHUB_OUTPUT
+            echo "✅ reinhardt is available on crates.io"
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "⚠️ reinhardt is NOT available on crates.io"
+          fi
+
+      - name: Setup environment
+        if: steps.check-published.outputs.available == 'true'
+        run: |
+          cd examples
+          cp .env.example .env
+          echo "DATABASE_URL=postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_examples" >> .env
+
+      - name: Wait for PostgreSQL
+        if: steps.check-published.outputs.available == 'true'
+        run: |
+          until pg_isready -h localhost -p 5432 -U reinhardt; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Update dependencies (crates.io)
+        if: steps.check-published.outputs.available == 'true'
+        run: |
+          cd examples
+          cargo update
+
+      - name: Test Examples
+        if: steps.check-published.outputs.available == 'true'
+        run: |
+          cd examples
+          cargo test --workspace --verbose
+        env:
+          DATABASE_URL: postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_examples
+
+      - name: Build Examples
+        if: steps.check-published.outputs.available == 'true'
+        run: |
+          cd examples
+          cargo build --workspace --release
+
+      - name: Skip Examples Tests (not published)
+        if: steps.check-published.outputs.available == 'false'
+        run: |
+          echo "⚠️ reinhardt is not available from crates.io"
+          echo "   Skipping examples tests"
+          echo "   This is expected if reinhardt is not yet published"
+
+
   # All jobs must pass
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [check, fmt, clippy, test-unit, test-integration]
+    needs: [check, fmt, clippy, test-unit, test-integration, test-examples]
     steps:
       - name: Mark CI as successful
         run: echo "All CI checks passed!"

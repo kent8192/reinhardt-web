@@ -1,0 +1,124 @@
+name: Examples Tests (crates.io)
+
+on:
+  # Run weekly on Sundays
+  schedule:
+    - cron: '0 0 * * 0'
+
+  # Allow manual execution
+  workflow_dispatch:
+
+  # Run when new version tags are pushed
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  check-availability:
+    name: Check reinhardt availability
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Check if reinhardt is published
+        id: check
+        run: |
+          cd examples
+          if cargo search reinhardt | grep -q "^reinhardt ="; then
+            echo "available=true" >> $GITHUB_OUTPUT
+            echo "✅ reinhardt is available on crates.io"
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "⚠️ reinhardt is NOT available on crates.io"
+          fi
+
+  test-examples:
+    name: Test Examples
+    needs: check-availability
+    runs-on: ubuntu-latest
+
+    services:
+      # Use docker services in GitHub Actions
+      # (Podman is for local development)
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reinhardt
+          POSTGRES_PASSWORD: reinhardt_dev
+          POSTGRES_DB: reinhardt_examples
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    strategy:
+      matrix:
+        rust: [stable, beta]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust ${{ matrix.rust }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Setup environment
+        run: |
+          cd examples
+          cp .env.example .env
+          echo "DATABASE_URL=postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_examples" >> .env
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('examples/**/Cargo.lock') }}
+
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U reinhardt; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Update dependencies (crates.io)
+        if: needs.check-availability.outputs.available == 'true'
+        run: |
+          cd examples
+          cargo update
+
+      - name: Test Examples
+        if: needs.check-availability.outputs.available == 'true'
+        run: |
+          cd examples
+          cargo test --workspace --verbose
+        env:
+          DATABASE_URL: postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_examples
+
+      - name: Build Examples
+        if: needs.check-availability.outputs.available == 'true'
+        run: |
+          cd examples
+          cargo build --workspace --release
+
+      - name: Skip Tests (not available)
+        if: needs.check-availability.outputs.available == 'false'
+        run: |
+          echo "⚠️ reinhardt is not available from crates.io"
+          echo "   Skipping examples tests"
+          echo "   This is expected if reinhardt is not yet published"
+          exit 0
