@@ -450,15 +450,11 @@ impl OperationOptimizer {
             }
         }
 
-        // Second pass: Add columns (only for created tables)
+        // Second pass: Add columns (for all tables)
         i = 0;
         while i < remaining.len() {
-            if let Operation::AddColumn { table, .. } = &remaining[i] {
-                if created_tables.contains(table) {
-                    ordered.push(remaining.remove(i));
-                } else {
-                    i += 1;
-                }
+            if let Operation::AddColumn { .. } = &remaining[i] {
+                ordered.push(remaining.remove(i));
             } else {
                 i += 1;
             }
@@ -473,10 +469,15 @@ impl OperationOptimizer {
     /// Group similar operations together
     fn group_similar_operations(&self, operations: Vec<Operation>) -> Vec<Operation> {
         let mut by_table: HashMap<String, Vec<Operation>> = HashMap::new();
+        let mut create_ops = Vec::new();
         let mut other_ops = Vec::new();
 
         for op in operations {
             match &op {
+                Operation::CreateTable { .. } => {
+                    // CreateTable operations go first
+                    create_ops.push(op);
+                }
                 Operation::AddColumn { table, .. }
                 | Operation::DropColumn { table, .. }
                 | Operation::AlterColumn { table, .. } => {
@@ -489,6 +490,9 @@ impl OperationOptimizer {
         }
 
         let mut grouped = Vec::new();
+
+        // Add create table operations first
+        grouped.extend(create_ops);
 
         // Add table-specific operations grouped by table
         for (_, ops) in by_table {

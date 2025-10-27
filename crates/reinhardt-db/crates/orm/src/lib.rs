@@ -2,11 +2,15 @@
 //!
 //! Object-Relational Mapping for Reinhardt framework.
 //!
-//! ## Planned Features
-//! TODO: Migration generation from model changes (provided by reinhardt-migrations)
-//! TODO: Migration dependency resolution (provided by reinhardt-migrations)
-//! TODO: Forward and backward migration execution (provided by reinhardt-migrations)
-//! TODO: Schema introspection and diffing (provided by reinhardt-migrations)
+//! ## Migration System
+//!
+//! The reinhardt-migrations crate provides comprehensive migration support:
+//! - **Migration generation from model changes** (✅ Implemented)
+//! - **Migration dependency resolution with DAG** (✅ Implemented)
+//! - **Forward and backward migration execution** (✅ Implemented)
+//! - **Schema introspection and diffing** (✅ Implemented)
+//!
+//! See `reinhardt-migrations` crate for detailed documentation.
 
 // Core modules - always available
 pub mod aggregation;

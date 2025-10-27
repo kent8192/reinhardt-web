@@ -162,7 +162,7 @@ mod migrations_extended_tests {
         add_order.state_forwards("testapp", &mut state);
 
         // Create composite index on (category_id, _order)
-        let create_index = Operation::CreateIndex {
+        let _create_index = Operation::CreateIndex {
             table: "items".to_string(),
             columns: vec!["category_id".to_string(), "_order".to_string()],
             unique: false,
@@ -1398,7 +1398,7 @@ mod migrations_extended_tests {
         create_op.state_forwards("app", &mut state);
 
         // Add index on (parent_id, _order)
-        let create_index = Operation::CreateIndex {
+        let _create_index = Operation::CreateIndex {
             table: "items".to_string(),
             columns: vec!["parent_id".to_string(), "_order".to_string()],
             unique: false,

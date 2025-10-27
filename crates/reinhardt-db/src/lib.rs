@@ -42,8 +42,19 @@
 //! - **Migration Files**: Generate migration files from model changes
 //! - **Rollback Support**: Reverse migrations when needed
 //!
+//! ## Available Database Backends
+//!
+//! The backends crate provides multiple database backend implementations:
+//! - **PostgreSQL**: Full support with connection pooling
+//! - **MySQL**: Full support with connection pooling
+//! - **SQLite**: Full support with connection pooling
+//! - **MongoDB**: Full support with connection pooling (✅)
+//! - **CockroachDB**: Distributed transaction support (✅)
+//!
 //! ## Planned Features
-//! TODO: Add support for additional database backends (MongoDB, CockroachDB, etc.)
+//!
+//! - Additional database backend optimizations
+//! - Enhanced schema migration tools
 //!
 //! ## Quick Start
 //!
