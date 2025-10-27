@@ -3,8 +3,7 @@
 //! This module implements the `TwoPhaseParticipant` trait for MySQL using
 //! the XA transaction protocol (XA START, XA END, XA PREPARE, XA COMMIT, XA ROLLBACK).
 
-use async_trait::async_trait;
-use sqlx::{MySqlPool, Row};
+use sqlx::{AssertSqlSafe, MySqlPool, Row};
 use std::sync::Arc;
 
 use crate::error::{DatabaseError, Result};
@@ -98,7 +97,7 @@ impl MySqlTwoPhaseParticipant {
     /// ```
     pub async fn begin(&self, xid: &str) -> Result<()> {
         let sql = format!("XA START '{}'", Self::escape_xid(xid));
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(&*sql))
             .execute(self.pool.as_ref())
             .await
             .map_err(DatabaseError::from)?;
@@ -125,7 +124,7 @@ impl MySqlTwoPhaseParticipant {
     /// ```
     pub async fn end(&self, xid: &str) -> Result<()> {
         let sql = format!("XA END '{}'", Self::escape_xid(xid));
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(&*sql))
             .execute(self.pool.as_ref())
             .await
             .map_err(DatabaseError::from)?;
@@ -159,7 +158,7 @@ impl MySqlTwoPhaseParticipant {
     /// ```
     pub async fn prepare(&self, xid: &str) -> Result<()> {
         let sql = format!("XA PREPARE '{}'", Self::escape_xid(xid));
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(&*sql))
             .execute(self.pool.as_ref())
             .await
             .map_err(DatabaseError::from)?;
@@ -188,7 +187,7 @@ impl MySqlTwoPhaseParticipant {
     /// ```
     pub async fn commit(&self, xid: &str) -> Result<()> {
         let sql = format!("XA COMMIT '{}'", Self::escape_xid(xid));
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(&*sql))
             .execute(self.pool.as_ref())
             .await
             .map_err(DatabaseError::from)?;
@@ -217,7 +216,7 @@ impl MySqlTwoPhaseParticipant {
     /// ```
     pub async fn commit_one_phase(&self, xid: &str) -> Result<()> {
         let sql = format!("XA COMMIT '{}' ONE PHASE", Self::escape_xid(xid));
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(&*sql))
             .execute(self.pool.as_ref())
             .await
             .map_err(DatabaseError::from)?;
@@ -242,7 +241,7 @@ impl MySqlTwoPhaseParticipant {
     /// ```
     pub async fn rollback(&self, xid: &str) -> Result<()> {
         let sql = format!("XA ROLLBACK '{}'", Self::escape_xid(xid));
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(&*sql))
             .execute(self.pool.as_ref())
             .await
             .map_err(DatabaseError::from)?;
