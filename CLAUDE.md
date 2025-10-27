@@ -142,6 +142,19 @@ trunk lint  # Lint code
 TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres cargo test
 ```
 
+**Container Runtime (Podman):**
+```bash
+# Start Podman machine (macOS/Windows)
+podman machine start
+
+# Verify Podman status
+podman version
+podman ps
+
+# Stop Podman machine
+podman machine stop
+```
+
 ---
 
 ## Database Operations
