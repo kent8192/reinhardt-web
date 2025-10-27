@@ -28,32 +28,33 @@
 //! - `cli-tools` - CLI and background jobs
 //! - `test-utils` - Testing utilities
 //!
-//! ### Fine-grained Control (Planned)
+//! ### Fine-grained Control
 //!
-//! The following fine-grained feature flags are planned for future releases:
+//! Fine-grained feature flags for precise control over included functionality:
 //!
-//! #### Authentication (Planned)
+//! #### Authentication ✅
 //! - `auth-jwt` - JWT authentication
 //! - `auth-session` - Session-based authentication
-//! - `auth-oauth` - OAuth support
+//! - `auth-oauth` - OAuth2 support
+//! - `auth-token` - Token authentication
 //!
-//! #### Database Backends (Planned)
+//! #### Database Backends ✅
 //! - `db-postgres` - PostgreSQL support
 //! - `db-mysql` - MySQL support
 //! - `db-sqlite` - SQLite support
 //! - `db-mongodb` - MongoDB support
-//! - `db-cockroachdb` - CockroachDB support
+//! - `db-cockroachdb` - CockroachDB support (distributed transactions)
 //!
-//! #### Serialization (Planned)
-//! - `serialize-json` - JSON serialization
-//! - `serialize-xml` - XML serialization
-//! - `serialize-yaml` - YAML serialization
+//! #### Serialization ✅
+//! - `serialize-json` - JSON serialization (via `serde_json`)
+//! - `serialize-xml` - XML serialization (via `quick-xml` and `serde-xml-rs`)
+//! - `serialize-yaml` - YAML serialization (via `serde_yaml`)
 //!
-//! #### Middleware (Planned)
-//! - `middleware-cors` - CORS middleware
-//! - `middleware-compression` - Response compression
-//! - `middleware-security` - Security headers
-//! - `middleware-rate-limit` - Rate limiting
+//! #### Middleware ✅
+//! - `middleware-cors` - CORS (Cross-Origin Resource Sharing) middleware
+//! - `middleware-compression` - Response compression (Gzip, Brotli)
+//! - `middleware-security` - Security headers (HSTS, XSS Protection, etc.)
+//! - `middleware-rate-limit` - Rate limiting and throttling
 //!
 //! See [docs/FEATURE_FLAGS.md](../docs/FEATURE_FLAGS.md) for detailed documentation.
 //!
