@@ -33,6 +33,12 @@ rust-embed = "8.5"
 glob = "0.3"
 notify = { version = "6.0", optional = true }
 
+# AST dependencies for robust code generation
+syn = { version = "2.0", features = ["full", "parsing"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+prettyplease = "0.2"
+
 # TLS/HTTPS support
 rustls = "0.23"
 tokio-rustls = "0.26"
