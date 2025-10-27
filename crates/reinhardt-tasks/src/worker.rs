@@ -348,7 +348,7 @@ impl Worker {
     async fn execute_task(
         &self,
         task_id: crate::TaskId,
-        _backend: Arc<dyn TaskBackend>,
+        backend: Arc<dyn TaskBackend>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("[{}] Executing task: {}", self.config.name, task_id);
 
@@ -366,26 +366,32 @@ impl Worker {
             }
         }
 
+        // Get task name from backend
+        let task_name = match backend.get_task_data(task_id).await? {
+            Some(serialized_task) => serialized_task.name().to_string(),
+            None => "unknown_task".to_string(),
+        };
+
         // Execute task with registry if available
         let result: Result<(), Box<dyn std::error::Error + Send + Sync>> =
             if let Some(ref _registry) = self.registry {
-            // In a real implementation, we would:
-            // 1. Get serialized task data from backend
-            // 2. Deserialize task using registry
-            // 3. Execute the task
-            // For now, this is a placeholder showing the pattern
-            println!(
-                "[{}] Task execution with registry (placeholder)",
-                self.config.name
-            );
-            Ok(())
-        } else {
-            println!(
-                "[{}] Task execution without registry (basic mode)",
-                self.config.name
-            );
-            Ok(())
-        };
+                // In a real implementation, we would:
+                // 1. Get serialized task data from backend
+                // 2. Deserialize task using registry
+                // 3. Execute the task
+                // For now, this is a placeholder showing the pattern
+                println!(
+                    "[{}] Task execution with registry (placeholder)",
+                    self.config.name
+                );
+                Ok(())
+            } else {
+                println!(
+                    "[{}] Task execution without registry (basic mode)",
+                    self.config.name
+                );
+                Ok(())
+            };
 
         let completed_at = Utc::now();
         let duration_ms = (completed_at - started_at).num_milliseconds() as u64;
@@ -416,7 +422,7 @@ impl Worker {
         if !self.webhook_senders.is_empty() {
             let webhook_event = WebhookEvent {
                 task_id,
-                task_name: "task".to_string(), // TODO: Get actual task name from registry
+                task_name,
                 status: webhook_status,
                 result: match webhook_status {
                     crate::webhook::TaskStatus::Success => {
