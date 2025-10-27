@@ -30,6 +30,15 @@ sqlx = { workspace = true, features = [
   "mysql",
 ], optional = true }
 
+# AWS SQS backend (optional)
+aws-config = { version = "1.1.7", features = [
+  "behavior-version-latest",
+], optional = true }
+aws-sdk-sqs = { version = "1.76.0", optional = true }
+
+# RabbitMQ backend (optional)
+lapin = { version = "2.5", optional = true }
+
 [dev-dependencies]
 tokio = { workspace = true }
 testcontainers = { workspace = true }
@@ -40,4 +49,6 @@ mockito = "1.5"
 default = []
 redis-backend = ["redis"]
 database-backend = ["sqlx"]
-all-backends = ["redis-backend", "database-backend"]
+sqs-backend = ["aws-config", "aws-sdk-sqs"]
+rabbitmq-backend = ["lapin"]
+all-backends = ["redis-backend", "database-backend", "sqs-backend", "rabbitmq-backend"]
