@@ -31,8 +31,8 @@ pub use ip_address::IPAddressValidator;
 pub use numeric::{MaxValueValidator, MinValueValidator, RangeValidator};
 pub use phone_number::PhoneNumberValidator;
 pub use string::{
-    DateTimeValidator, DateValidator, IPAddressValidator, JSONValidator, MaxLengthValidator,
-    MinLengthValidator, RegexValidator, SlugValidator, TimeValidator, UUIDValidator,
+    DateTimeValidator, DateValidator, JSONValidator, MaxLengthValidator, MinLengthValidator,
+    RegexValidator, SlugValidator, TimeValidator, UUIDValidator,
 };
 pub use uniqueness::UniqueValidator;
 pub use url::UrlValidator;
