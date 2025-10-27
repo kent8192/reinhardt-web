@@ -211,6 +211,33 @@ impl crate::backend::TaskBackend for RedisBackend {
         }
     }
 
+    async fn get_task_data(
+        &self,
+        task_id: TaskId,
+    ) -> Result<Option<crate::registry::SerializedTask>, TaskExecutionError> {
+        let mut conn = (*self.connection).clone();
+
+        let metadata_json: Option<String> = conn
+            .get(self.task_key(task_id))
+            .await
+            .map_err(|e: RedisError| TaskExecutionError::BackendError(e.to_string()))?;
+
+        match metadata_json {
+            Some(json) => {
+                let metadata: TaskMetadata = serde_json::from_str(&json)
+                    .map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+
+                // Return a placeholder serialized task
+                // In production, task data should be stored separately
+                Ok(Some(crate::registry::SerializedTask::new(
+                    metadata.name,
+                    "{}".to_string(),
+                )))
+            }
+            None => Ok(None),
+        }
+    }
+
     fn backend_name(&self) -> &str {
         "redis"
     }

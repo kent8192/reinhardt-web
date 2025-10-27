@@ -68,6 +68,12 @@ pub use backends::RedisBackend;
 
 #[cfg(feature = "database-backend")]
 pub use backends::SqliteBackend;
+
+#[cfg(feature = "sqs-backend")]
+pub use backends::{SqsBackend, SqsConfig};
+
+#[cfg(feature = "rabbitmq-backend")]
+pub use backends::{RabbitMQBackend, RabbitMQConfig};
 pub use chain::{ChainStatus, TaskChain, TaskChainBuilder};
 pub use dag::{TaskDAG, TaskNode, TaskNodeStatus};
 pub use load_balancer::{LoadBalancer, LoadBalancingStrategy, WorkerInfo, WorkerId, WorkerMetrics};
@@ -89,6 +95,9 @@ pub use backends::redis::RedisResultBackend;
 
 #[cfg(feature = "database-backend")]
 pub use backends::sqlite::SqliteResultBackend;
+
+#[cfg(feature = "sqs-backend")]
+pub use backends::sqs::SqsResultBackend;
 pub use retry::{RetryState, RetryStrategy};
 pub use scheduler::{CronSchedule, Schedule, Scheduler};
 pub use task::{

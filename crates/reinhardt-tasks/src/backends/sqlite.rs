@@ -197,6 +197,31 @@ impl crate::backend::TaskBackend for SqliteBackend {
         }
     }
 
+    async fn get_task_data(
+        &self,
+        task_id: TaskId,
+    ) -> Result<Option<crate::registry::SerializedTask>, TaskExecutionError> {
+        let id_str = task_id.to_string();
+
+        let record: Option<(String,)> = sqlx::query_as("SELECT name FROM tasks WHERE id = ?")
+            .bind(&id_str)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+
+        match record {
+            Some((name,)) => {
+                // Return a placeholder serialized task
+                // In production, task data should be stored separately
+                Ok(Some(crate::registry::SerializedTask::new(
+                    name,
+                    "{}".to_string(),
+                )))
+            }
+            None => Ok(None),
+        }
+    }
+
     fn backend_name(&self) -> &str {
         "sqlite"
     }
@@ -313,7 +338,7 @@ impl ResultBackend for SqliteResultBackend {
         .map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
         match record {
-            Some((status_str, result, error, created_at)) => {
+            Some((status_str, result, error, _created_at)) => {
                 let status = match status_str.as_str() {
                     "pending" => TaskStatus::Pending,
                     "running" => TaskStatus::Running,
