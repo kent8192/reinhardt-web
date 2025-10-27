@@ -5,11 +5,13 @@
 
 pub mod color;
 pub mod credit_card;
+pub mod custom_regex;
 pub mod email;
 pub mod errors;
 pub mod file_type;
 pub mod iban;
 pub mod identifier;
+pub mod ip_address;
 pub mod numeric;
 pub mod phone_number;
 pub mod reserved;
@@ -19,11 +21,13 @@ pub mod url;
 
 pub use color::{ColorFormat, ColorValidator};
 pub use credit_card::{CardType, CreditCardValidator};
+pub use custom_regex::CustomRegexValidator;
 pub use email::EmailValidator;
 pub use errors::{ValidationError, ValidationResult};
 pub use file_type::FileTypeValidator;
 pub use iban::IBANValidator;
 pub use identifier::{ConstraintName, FieldName, IdentifierValidationError, TableName};
+pub use ip_address::IPAddressValidator;
 pub use numeric::{MaxValueValidator, MinValueValidator, RangeValidator};
 pub use phone_number::PhoneNumberValidator;
 pub use string::{
@@ -37,11 +41,13 @@ pub use url::UrlValidator;
 pub mod prelude {
     pub use crate::color::*;
     pub use crate::credit_card::*;
+    pub use crate::custom_regex::*;
     pub use crate::email::*;
     pub use crate::errors::*;
     pub use crate::file_type::*;
     pub use crate::iban::*;
     pub use crate::identifier::*;
+    pub use crate::ip_address::*;
     pub use crate::numeric::*;
     pub use crate::phone_number::*;
     pub use crate::string::*;
