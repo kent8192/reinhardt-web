@@ -17,20 +17,14 @@
 //! ## Available Backend Implementations
 //!
 //! The backends crate provides multiple backend implementations:
-//! - **Cache Backends**: Redis (✅), DynamoDB (✅), Memcached (planned)
+//! - **Cache Backends**: Redis (✅), DynamoDB (✅), Memcached (✅)
 //! - **Email Backends**: SMTP (✅), SendGrid (✅), AWS SES (✅), Mailgun (✅)
+//! - **Queue Backends**: Redis (✅), RabbitMQ (✅), AWS SQS (✅)
+//! - **Session Backends**: JWT (✅), Database (✅), Redis (✅), Cookie (✅), File (✅)
+//! - **Storage Backends**: S3 (✅), Azure Blob (✅), GCS (✅), FileSystem (✅), Memory (✅)
 //!
-//! ## Planned Features
-//!
-//! The following enhancements are planned for future releases:
-//! - **Session Backends**: Database, Redis, JWT
-//! - **Storage Backends**: S3, Azure Blob, GCS
-//! - **Queue Backends**: Redis, RabbitMQ, AWS SQS
-//! - **Memcached Cache Backend**: Complete implementation
-//!
-//! For detailed implementation plans and design discussions, see the individual
-//! crate documentation in `reinhardt-middleware`, `reinhardt-security`,
-//! `reinhardt-validators`, and `reinhardt-backends`.
+//! For detailed implementation and usage information, see the individual
+//! crate documentation in `reinhardt-contrib`, `reinhardt-tasks`, `reinhardt-core/backends`.
 
 #[cfg(feature = "types")]
 pub use reinhardt_types as types;
