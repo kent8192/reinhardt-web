@@ -184,6 +184,16 @@ impl PathMatcher {
     }
     /// Match a path and extract parameters
     ///
+    /// Currently uses linear search O(n) through all patterns.
+    /// This is acceptable for most applications (< 1000 routes) and benefits from RouteCache.
+    ///
+    /// # Performance Notes
+    ///
+    /// - **Current**: O(n) linear search through patterns
+    /// - **With Cache**: Most requests hit cache (O(1))
+    /// - **Future optimization**: Radix tree or Trie for O(m) where m = path length
+    ///   (Complex due to regex pattern integration)
+    ///
     /// # Examples
     ///
     /// ```
@@ -200,6 +210,8 @@ impl PathMatcher {
     /// assert_eq!(params.get("id"), Some(&"123".to_string()));
     /// ```
     pub fn match_path(&self, path: &str) -> Option<(String, HashMap<String, String>)> {
+        // TODO: Consider Radix tree optimization for very large route sets (>1000 routes)
+        // Current O(n) linear search is acceptable with RouteCache for typical applications
         for (pattern, handler_id) in &self.patterns {
             if let Some(captures) = pattern.regex.captures(path) {
                 let mut params = HashMap::new();
