@@ -1,0 +1,6 @@
+version: '3.8'
+
+services:
+  postgres:
+    # Database setup is now handled by reinhardt-migrations
+    # No init scripts needed - migrations will be applied on application startup

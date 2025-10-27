@@ -1,0 +1,34 @@
+[package]
+name = "example-database-integration"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "manage"
+path = "src/bin/manage.rs"
+
+[dependencies]
+# Caret requirement: 0.1.x
+# TODO: This dependency will not resolve until reinhardt is published
+reinhardt = "^0.1"
+reinhardt-commands = "^0.1"
+reinhardt-core = "^0.1"
+reinhardt-macros = "^0.1"
+
+# Common utilities with manage CLI support
+example-common = { path = "../common", features = ["manage"] }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+console = "0.15"
+async-trait = "0.1"
+
+[dev-dependencies]
+example-test-macros = { path = "../test-macros" }
+example-common = { path = "../common" }
+
+[build-dependencies]
+example-common = { path = "../common" }
