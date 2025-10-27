@@ -483,6 +483,8 @@ Reinhardt includes the following core components:
 - 📖 [API Reference](https://docs.rs/reinhardt) (Coming soon)
 - 📝 [Tutorials](docs/tutorials/) - Learn by building real applications
 
+**For AI Assistants**: See [CLAUDE.md](CLAUDE.md) for project-specific coding standards, testing guidelines, and development conventions.
+
 ## 💬 Getting Help
 
 Reinhardt is a community-driven project. Here's where you can get help:
