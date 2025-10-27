@@ -18,9 +18,26 @@
 //! - **Profiling**: Track dependency resolution performance and identify bottlenecks
 //! - **Advanced Caching**: LRU and TTL-based caching strategies
 //!
-//! ## Planned Features
+//! ## Generator Support (generator feature) ✅
 //!
-//! - Async generator syntax integration when stable in Rust
+//! Generator-based dependency resolution for lazy, streaming dependency injection.
+//!
+//! **Note**: Uses `genawaiter` crate as a workaround for unstable native async yield.
+//! Will be migrated to native syntax when Rust stabilizes async generators.
+//!
+//! ```rust,ignore
+//! #[cfg(feature = "generator")]
+//! use reinhardt_di::generator::DependencyGenerator;
+//!
+//! #[cfg(feature = "generator")]
+//! let gen = DependencyGenerator::new(|co| async move {
+//!     let db = resolve_database().await;
+//!     co.yield_(db).await;
+//!
+//!     let cache = resolve_cache().await;
+//!     co.yield_(cache).await;
+//! });
+//! ```
 //!
 //! ## Example
 //!
@@ -83,6 +100,10 @@ pub use di::*;
 
 #[cfg(feature = "params")]
 pub use reinhardt_params as params;
+
+// Generator support
+#[cfg(feature = "generator")]
+pub mod generator;
 
 // Development tools
 #[cfg(feature = "dev-tools")]
