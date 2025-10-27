@@ -192,8 +192,8 @@ impl Backend for RedisBackend {
     async fn clear(&self) -> BackendResult<()> {
         let mut conn = self.get_connection().await?;
 
-        redis::cmd("FLUSHDB")
-            .query_async::<_, ()>(&mut conn)
+        let _: () = redis::cmd("FLUSHDB")
+            .query_async(&mut conn)
             .await
             .map_err(|e| BackendError::Internal(format!("Redis FLUSHDB error: {}", e)))?;
 
