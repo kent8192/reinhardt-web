@@ -25,6 +25,7 @@ redis = { version = "0.27", features = [
 # Cache backends
 deadpool-redis = { version = "0.18", optional = true }
 memcache-async = { version = "0.5", optional = true }
+tokio-util = { version = "0.7", features = ["compat"], optional = true }
 aws-config = { version = "1.5", optional = true }
 aws-sdk-dynamodb = { version = "1.50", optional = true }
 
@@ -53,7 +54,7 @@ memory = []
 redis-backend = ["dep:redis"]
 # Cache backends
 redis-cache = ["dep:redis", "dep:deadpool-redis"]
-memcached-cache = ["dep:memcache-async"]
+memcached-cache = ["dep:memcache-async", "dep:tokio-util"]
 dynamodb-cache = ["dep:aws-config", "dep:aws-sdk-dynamodb"]
 cache = ["redis-cache", "memcached-cache", "dynamodb-cache"]
 # Email backends
