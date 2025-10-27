@@ -21,7 +21,7 @@
 
 use crate::ProjectState;
 use backends::schema::BaseDatabaseSchemaEditor;
-use pg_escape::{quote_identifier, quote_literal};
+use pg_escape::quote_literal;
 use serde::{Deserialize, Serialize};
 
 /// Create a PostgreSQL extension
@@ -104,11 +104,12 @@ impl CreateExtension {
     /// ```
     pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
         let mut parts = vec!["CREATE EXTENSION IF NOT EXISTS".to_string()];
-        parts.push(quote_identifier(&self.name).to_string());
+        // Always use double quotes for PostgreSQL identifier safety
+        parts.push(format!("\"{}\"", self.name));
 
         if let Some(ref schema) = self.schema {
             parts.push("SCHEMA".to_string());
-            parts.push(quote_identifier(schema).to_string());
+            parts.push(format!("\"{}\"", schema));
         }
 
         if let Some(ref version) = self.version {
@@ -137,8 +138,8 @@ impl CreateExtension {
     /// ```
     pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
         vec![format!(
-            "DROP EXTENSION IF EXISTS {};",
-            quote_identifier(&self.name)
+            "DROP EXTENSION IF EXISTS \"{}\";",
+            self.name
         )]
     }
 }
@@ -184,16 +185,16 @@ impl DropExtension {
     /// ```
     pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
         vec![format!(
-            "DROP EXTENSION IF EXISTS {};",
-            quote_identifier(&self.name)
+            "DROP EXTENSION IF EXISTS \"{}\";",
+            self.name
         )]
     }
 
     /// Generate reverse SQL (recreate extension)
     pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
         vec![format!(
-            "CREATE EXTENSION IF NOT EXISTS {};",
-            quote_identifier(&self.name)
+            "CREATE EXTENSION IF NOT EXISTS \"{}\";",
+            self.name
         )]
     }
 }
@@ -263,9 +264,10 @@ impl CreateCollation {
     /// assert!(sql[0].contains("german"));
     /// ```
     pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+        // Always use double quotes for PostgreSQL identifier safety
         let mut sql = format!(
-            "CREATE COLLATION IF NOT EXISTS {} (LOCALE = {}",
-            quote_identifier(&self.name),
+            "CREATE COLLATION IF NOT EXISTS \"{}\" (LOCALE = {}",
+            self.name,
             quote_literal(&self.locale)
         );
 
@@ -283,8 +285,8 @@ impl CreateCollation {
     /// Generate reverse SQL
     pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
         vec![format!(
-            "DROP COLLATION IF EXISTS {};",
-            quote_identifier(&self.name)
+            "DROP COLLATION IF EXISTS \"{}\";",
+            self.name
         )]
     }
 }

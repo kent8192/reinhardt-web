@@ -6,7 +6,8 @@
 //! - Index changes
 //! - Constraint changes
 
-use crate::operations::{AddField, CreateModel, DeleteModel, Operation, RemoveField};
+use crate::operations::Operation;
+use crate::ColumnDefinition;
 use std::collections::HashMap;
 
 /// Schema difference detector
@@ -193,36 +194,64 @@ impl SchemaDiff {
         // Add tables
         for table_name in diff.tables_to_add {
             if let Some(table_schema) = self.target_schema.tables.get(&table_name) {
-                operations.push(Operation::CreateModel(CreateModel {
+                // Map columns to ColumnDefinition
+                let columns: Vec<_> = table_schema
+                    .columns
+                    .iter()
+                    .map(|(name, col)| ColumnDefinition {
+                        name: name.clone(),
+                        type_definition: col.data_type.clone(),
+                        not_null: !col.nullable,
+                        default: col.default.clone(),
+                        unique: false, // TODO: Extract from constraints
+                        primary_key: col.primary_key,
+                        auto_increment: false, // TODO: Detect from column properties
+                        max_length: None, // TODO: Extract from data type
+                    })
+                    .collect();
+
+                operations.push(Operation::CreateTable {
                     name: table_name.clone(),
-                    fields: Vec::new(), // Populated from table_schema.columns
-                    options: HashMap::new(),
-                }));
+                    columns,
+                    constraints: Vec::new(), // TODO: Extract constraints
+                });
             }
         }
 
         // Remove tables
         for table_name in diff.tables_to_remove {
-            operations.push(Operation::DeleteModel(DeleteModel {
+            operations.push(Operation::DropTable {
                 name: table_name.clone(),
-            }));
+            });
         }
 
         // Add columns
         for (table_name, col_name) in diff.columns_to_add {
-            operations.push(Operation::AddField(AddField {
-                model_name: table_name.clone(),
-                name: col_name.clone(),
-                field: String::new(), // Field definition
-            }));
+            if let Some(table_schema) = self.target_schema.tables.get(&table_name) {
+                if let Some(col_schema) = table_schema.columns.get(&col_name) {
+                    operations.push(Operation::AddColumn {
+                        table: table_name.clone(),
+                        column: ColumnDefinition {
+                            name: col_name.clone(),
+                            type_definition: col_schema.data_type.clone(),
+                            not_null: !col_schema.nullable,
+                            default: col_schema.default.clone(),
+                            unique: false,
+                            primary_key: col_schema.primary_key,
+                            auto_increment: false,
+                            max_length: None,
+                        },
+                    });
+                }
+            }
         }
 
         // Remove columns
         for (table_name, col_name) in diff.columns_to_remove {
-            operations.push(Operation::RemoveField(RemoveField {
-                model_name: table_name.clone(),
-                name: col_name.clone(),
-            }));
+            operations.push(Operation::DropColumn {
+                table: table_name.clone(),
+                column: col_name.clone(),
+            });
         }
 
         operations

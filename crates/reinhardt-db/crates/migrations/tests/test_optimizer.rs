@@ -7,6 +7,12 @@ fn create_column(name: &str, type_def: &str) -> ColumnDefinition {
     ColumnDefinition {
         name: name.to_string(),
         type_definition: type_def.to_string(),
+        not_null: false,
+        unique: false,
+        primary_key: false,
+        auto_increment: false,
+        default: None,
+        max_length: None,
     }
 }
 

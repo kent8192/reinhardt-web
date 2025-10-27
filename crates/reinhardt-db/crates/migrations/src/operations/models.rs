@@ -31,7 +31,6 @@
 
 use crate::{FieldState, ModelState, ProjectState};
 use backends::schema::BaseDatabaseSchemaEditor;
-use pg_escape::quote_identifier;
 use sea_query::PostgresQueryBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -444,11 +443,215 @@ impl RenameModel {
     pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
         // Note: BaseDatabaseSchemaEditor doesn't have rename_table_sql yet
         // We'll need to add that method or use a different approach
+        // Always use double quotes for PostgreSQL identifier safety
         vec![format!(
-            "ALTER TABLE {} RENAME TO {}",
-            quote_identifier(&self.old_name),
-            quote_identifier(&self.new_name)
+            "ALTER TABLE \"{}\" RENAME TO \"{}\"",
+            self.old_name,
+            self.new_name
         )]
+    }
+}
+
+/// Move a model from one app to another
+///
+/// This operation moves a model from one application to another while preserving
+/// its data and structure. Unlike Django which requires manual migration steps,
+/// Reinhardt provides an explicit MoveModel operation.
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_migrations::operations::models::{CreateModel, MoveModel};
+/// use reinhardt_migrations::operations::FieldDefinition;
+/// use reinhardt_migrations::ProjectState;
+///
+/// let mut state = ProjectState::new();
+///
+/// // Create a model in myapp
+/// let create = CreateModel::new(
+///     "User",
+///     vec![FieldDefinition::new("id", "INTEGER", true, false, None)],
+/// );
+/// create.state_forwards("myapp", &mut state);
+///
+/// // Move it to auth app
+/// let move_op = MoveModel::new("User", "myapp", "auth");
+/// move_op.state_forwards("auth", &mut state);
+///
+/// assert!(state.get_model("myapp", "User").is_none());
+/// assert!(state.get_model("auth", "User").is_some());
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoveModel {
+    pub model_name: String,
+    pub from_app: String,
+    pub to_app: String,
+    pub rename_table: bool,
+    pub old_table_name: Option<String>,
+    pub new_table_name: Option<String>,
+}
+
+impl MoveModel {
+    /// Create a new MoveModel operation
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::models::MoveModel;
+    ///
+    /// let move_op = MoveModel::new("User", "myapp", "auth");
+    /// assert_eq!(move_op.model_name, "User");
+    /// assert_eq!(move_op.from_app, "myapp");
+    /// assert_eq!(move_op.to_app, "auth");
+    /// assert!(!move_op.rename_table);
+    /// ```
+    pub fn new(
+        model_name: impl Into<String>,
+        from_app: impl Into<String>,
+        to_app: impl Into<String>,
+    ) -> Self {
+        Self {
+            model_name: model_name.into(),
+            from_app: from_app.into(),
+            to_app: to_app.into(),
+            rename_table: false,
+            old_table_name: None,
+            new_table_name: None,
+        }
+    }
+
+    /// Enable table renaming during the move
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::models::MoveModel;
+    ///
+    /// let move_op = MoveModel::new("User", "myapp", "auth")
+    ///     .with_table_rename("myapp_user", "auth_user");
+    ///
+    /// assert!(move_op.rename_table);
+    /// assert_eq!(move_op.old_table_name, Some("myapp_user".to_string()));
+    /// assert_eq!(move_op.new_table_name, Some("auth_user".to_string()));
+    /// ```
+    pub fn with_table_rename(
+        mut self,
+        old_table: impl Into<String>,
+        new_table: impl Into<String>,
+    ) -> Self {
+        self.rename_table = true;
+        self.old_table_name = Some(old_table.into());
+        self.new_table_name = Some(new_table.into());
+        self
+    }
+
+    /// Apply to project state (forward)
+    ///
+    /// This removes the model from the source app and adds it to the target app.
+    pub fn state_forwards(&self, _app_label: &str, state: &mut ProjectState) {
+        // Remove from source app
+        if let Some(model) = state
+            .models
+            .remove(&(self.from_app.clone(), self.model_name.clone()))
+        {
+            // Update app_label
+            let mut new_model = model;
+            new_model.app_label = self.to_app.clone();
+
+            // Add to target app
+            state
+                .models
+                .insert((self.to_app.clone(), self.model_name.clone()), new_model);
+        }
+    }
+
+    /// Apply to project state (backward/reverse)
+    ///
+    /// This moves the model back to its original app.
+    pub fn state_backwards(&self, _app_label: &str, state: &mut ProjectState) {
+        // Remove from target app
+        if let Some(model) = state
+            .models
+            .remove(&(self.to_app.clone(), self.model_name.clone()))
+        {
+            // Restore original app_label
+            let mut original_model = model;
+            original_model.app_label = self.from_app.clone();
+
+            // Add back to source app
+            state.models.insert(
+                (self.from_app.clone(), self.model_name.clone()),
+                original_model,
+            );
+        }
+    }
+
+    /// Generate SQL using schema editor
+    ///
+    /// If rename_table is true, generates ALTER TABLE RENAME statement.
+    /// Otherwise, no SQL is needed since app_label is a Python/Rust concept
+    /// that doesn't affect the database schema.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use reinhardt_migrations::operations::models::MoveModel;
+    /// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+    ///
+    /// // Without table rename
+    /// let move_op1 = MoveModel::new("User", "myapp", "auth");
+    /// let factory = SchemaEditorFactory::new();
+    /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+    /// let sql1 = move_op1.database_forwards(editor.as_ref());
+    /// assert!(sql1.is_empty()); // No SQL needed
+    ///
+    /// // With table rename
+    /// let move_op2 = MoveModel::new("User", "myapp", "auth")
+    ///     .with_table_rename("myapp_user", "auth_user");
+    /// let sql2 = move_op2.database_forwards(editor.as_ref());
+    /// assert_eq!(sql2.len(), 1);
+    /// assert!(sql2[0].contains("ALTER TABLE"));
+    /// ```
+    pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+        if self.rename_table {
+            if let (Some(old_table), Some(new_table)) = (&self.old_table_name, &self.new_table_name)
+            {
+                // Always use double quotes for PostgreSQL identifier safety
+                vec![format!(
+                    "ALTER TABLE \"{}\" RENAME TO \"{}\"",
+                    old_table,
+                    new_table
+                )]
+            } else {
+                vec![]
+            }
+        } else {
+            // App label is a framework concept, no database changes needed
+            vec![]
+        }
+    }
+
+    /// Generate reverse SQL
+    pub fn database_backwards(
+        &self,
+        _schema_editor: &dyn BaseDatabaseSchemaEditor,
+    ) -> Vec<String> {
+        if self.rename_table {
+            if let (Some(old_table), Some(new_table)) = (&self.old_table_name, &self.new_table_name)
+            {
+                // Reverse: rename back to original
+                // Always use double quotes for PostgreSQL identifier safety
+                vec![format!(
+                    "ALTER TABLE \"{}\" RENAME TO \"{}\"",
+                    new_table,
+                    old_table
+                )]
+            } else {
+                vec![]
+            }
+        } else {
+            vec![]
+        }
     }
 }
 
@@ -723,5 +926,133 @@ mod tests {
         assert_eq!(model.fields.len(), 2);
         assert!(model.fields.contains_key("id"));
         assert!(model.fields.contains_key("name"));
+    }
+
+    #[test]
+    fn test_move_model_basic() {
+        let mut state = ProjectState::new();
+
+        // Create a model in myapp
+        let create = CreateModel::new(
+            "User",
+            vec![FieldDefinition::new("id", "INTEGER", true, false, None::<String>)],
+        );
+        create.state_forwards("myapp", &mut state);
+        assert!(state.get_model("myapp", "User").is_some());
+
+        // Move to auth app
+        let move_op = MoveModel::new("User", "myapp", "auth");
+        move_op.state_forwards("auth", &mut state);
+
+        // Check model is moved
+        assert!(state.get_model("myapp", "User").is_none());
+        assert!(state.get_model("auth", "User").is_some());
+
+        // Check app_label is updated
+        let model = state.get_model("auth", "User").unwrap();
+        assert_eq!(model.app_label, "auth");
+    }
+
+    #[test]
+    fn test_move_model_preserves_fields() {
+        let mut state = ProjectState::new();
+
+        // Create a model with multiple fields
+        let create = CreateModel::new(
+            "User",
+            vec![
+                FieldDefinition::new("id", "INTEGER", true, false, None::<String>),
+                FieldDefinition::new("email", "VARCHAR(255)", false, false, None::<String>),
+                FieldDefinition::new("name", "VARCHAR(100)", false, false, None::<String>),
+            ],
+        );
+        create.state_forwards("myapp", &mut state);
+
+        // Move it
+        let move_op = MoveModel::new("User", "myapp", "auth");
+        move_op.state_forwards("auth", &mut state);
+
+        // Check fields are preserved
+        let model = state.get_model("auth", "User").unwrap();
+        assert_eq!(model.fields.len(), 3);
+        assert!(model.fields.contains_key("id"));
+        assert!(model.fields.contains_key("email"));
+        assert!(model.fields.contains_key("name"));
+    }
+
+    #[test]
+    fn test_move_model_backwards() {
+        let mut state = ProjectState::new();
+
+        // Create and move model
+        let create = CreateModel::new(
+            "User",
+            vec![FieldDefinition::new("id", "INTEGER", true, false, None::<String>)],
+        );
+        create.state_forwards("myapp", &mut state);
+
+        let move_op = MoveModel::new("User", "myapp", "auth");
+        move_op.state_forwards("auth", &mut state);
+        assert!(state.get_model("auth", "User").is_some());
+
+        // Reverse the move
+        move_op.state_backwards("myapp", &mut state);
+
+        // Check model is back in original app
+        assert!(state.get_model("auth", "User").is_none());
+        assert!(state.get_model("myapp", "User").is_some());
+
+        let model = state.get_model("myapp", "User").unwrap();
+        assert_eq!(model.app_label, "myapp");
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn test_move_model_without_table_rename() {
+        use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
+
+        let move_op = MoveModel::new("User", "myapp", "auth");
+        let factory = SchemaEditorFactory::new();
+        let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+
+        let sql = move_op.database_forwards(editor.as_ref());
+        assert!(sql.is_empty()); // No SQL needed when not renaming table
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn test_move_model_with_table_rename() {
+        use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
+
+        let move_op = MoveModel::new("User", "myapp", "auth")
+            .with_table_rename("myapp_user", "auth_user");
+
+        let factory = SchemaEditorFactory::new();
+        let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+
+        let sql = move_op.database_forwards(editor.as_ref());
+        assert_eq!(sql.len(), 1);
+        assert!(sql[0].contains("ALTER TABLE"));
+        assert!(sql[0].contains("\"myapp_user\""));
+        assert!(sql[0].contains("\"auth_user\""));
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn test_move_model_backward_sql() {
+        use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
+
+        let move_op = MoveModel::new("User", "myapp", "auth")
+            .with_table_rename("myapp_user", "auth_user");
+
+        let factory = SchemaEditorFactory::new();
+        let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+
+        let sql = move_op.database_backwards(editor.as_ref());
+        assert_eq!(sql.len(), 1);
+        assert!(sql[0].contains("ALTER TABLE"));
+        // Reverse: auth_user back to myapp_user
+        assert!(sql[0].contains("\"auth_user\""));
+        assert!(sql[0].contains("\"myapp_user\""));
     }
 }

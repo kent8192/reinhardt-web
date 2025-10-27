@@ -45,7 +45,7 @@ pub mod special;
 
 // Re-export commonly used types for convenience
 pub use fields::{AddField, AlterField, RemoveField, RenameField};
-pub use models::{CreateModel, DeleteModel, FieldDefinition, RenameModel};
+pub use models::{CreateModel, DeleteModel, FieldDefinition, MoveModel, RenameModel};
 pub use postgres::{CreateCollation, CreateExtension, DropExtension};
 pub use special::{RunCode, RunSQL, StateOperation};
 
