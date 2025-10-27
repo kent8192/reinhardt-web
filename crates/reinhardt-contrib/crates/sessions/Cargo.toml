@@ -38,6 +38,7 @@ aes-gcm = { version = "0.10", optional = true }
 rand = { version = "0.8", optional = true }
 hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
+jsonwebtoken = { workspace = true, optional = true }
 
 # Optional dependencies for HTTP middleware
 reinhardt-http = { workspace = true, optional = true }
@@ -58,6 +59,7 @@ database = [
 ]
 file = ["tokio", "fs2"]
 cookie = ["base64", "aes-gcm", "rand", "hmac", "sha2"]
+jwt = ["jsonwebtoken"]
 middleware = ["reinhardt-http", "reinhardt-types", "reinhardt-exception"]
 messagepack = ["rmp-serde"]
 

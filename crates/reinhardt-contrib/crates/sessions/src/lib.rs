@@ -11,6 +11,7 @@
 //! - **Database Backend** (feature: `database`): Persist sessions in a database
 //! - **File Backend** (feature: `file`): Store sessions as files on disk
 //! - **Cookie Backend** (feature: `cookie`): Store encrypted sessions in cookies
+//! - **JWT Backend** (feature: `jwt`): Store sessions as JSON Web Tokens
 //! - **Automatic Cleanup**: Remove expired sessions automatically
 //! - **Session Key Rotation**: Rotate session keys for enhanced security
 //! - **CSRF Protection**: Integration with reinhardt-forms CSRF tokens
@@ -64,6 +65,9 @@ pub use backends::DatabaseSessionBackend;
 
 #[cfg(feature = "file")]
 pub use backends::FileSessionBackend;
+
+#[cfg(feature = "jwt")]
+pub use backends::{JwtConfig, JwtSessionBackend};
 
 pub use cleanup::{CleanupConfig, CleanupableBackend, SessionCleanupTask, SessionMetadata};
 pub use csrf::{CsrfSessionManager, CsrfTokenData};
