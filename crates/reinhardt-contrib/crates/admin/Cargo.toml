@@ -1,0 +1,41 @@
+[package]
+name = "reinhardt-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Django-style admin panel for Reinhardt framework"
+repository = "https://github.com/kent8192/reinhardt-rs"
+keywords = ["reinhardt", "admin", "django", "web", "framework"]
+categories = ["web-programming"]
+
+[features]
+default = []
+# Template rendering with Jinja2-style engine
+templates = ["reinhardt-templates"]
+# File upload handling
+file-uploads = ["reinhardt-storage"]
+
+[dependencies]
+# Reinhardt dependencies
+reinhardt-auth = { path = "../auth", version = "0.1.0" }
+reinhardt-http = { workspace = true }
+reinhardt-types = { workspace = true }
+reinhardt-orm = { path = "../../../reinhardt-db/crates/orm", version = "0.1.0" }
+reinhardt-routers = { workspace = true }
+reinhardt-pagination = { path = "../../../reinhardt-rest/crates/pagination", version = "0.1.0" }
+reinhardt-filters = { path = "../../../reinhardt-rest/crates/filters", version = "0.1.0" }
+reinhardt-templates = { workspace = true, optional = true }
+reinhardt-storage = { workspace = true, optional = true }
+
+# Core dependencies
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = "6.1.0"
+
+[dev-dependencies]
+tokio-test = { workspace = true }
