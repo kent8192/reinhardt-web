@@ -79,7 +79,9 @@ associations = ["dep:reinhardt-associations"]
 postgres = ["sqlx/postgres"]
 sqlite = ["sqlx/sqlite"]
 mysql = ["sqlx/mysql"]
-all-databases = ["postgres", "sqlite", "mysql"]
+mongodb-backend = []
+cockroachdb-backend = ["postgres"]  # CockroachDB uses PostgreSQL protocol
+all-databases = ["postgres", "sqlite", "mysql", "mongodb-backend", "cockroachdb-backend"]
 
 [dev-dependencies]
 tokio-test = "0.4"
