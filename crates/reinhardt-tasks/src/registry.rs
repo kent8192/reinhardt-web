@@ -117,7 +117,8 @@ impl SerializedTask {
 /// impl TaskFactory for EmailTaskFactory {
 ///     async fn create(&self, data: &str) -> TaskResult<Box<dyn TaskExecutor>> {
 ///         // Deserialize data and create task executor
-///         todo!("Implement task creation from JSON data")
+///         let email_data: serde_json::Value = serde_json::from_str(data)?;
+///         Ok(Box::new(EmailTask { to: email_data["to"].as_str().unwrap().to_string() }))
 ///     }
 /// }
 /// ```
@@ -140,10 +141,16 @@ pub trait TaskFactory: Send + Sync {
 /// use std::sync::Arc;
 ///
 /// # struct EmailTaskFactory;
+/// # struct EmailTask { to: String }
+/// # #[async_trait]
+/// # impl TaskExecutor for EmailTask {
+/// #     async fn execute(&self) -> TaskResult<()> { Ok(()) }
+/// # }
 /// # #[async_trait]
 /// # impl TaskFactory for EmailTaskFactory {
-/// #     async fn create(&self, _data: &str) -> TaskResult<Box<dyn TaskExecutor>> {
-/// #         todo!()
+/// #     async fn create(&self, data: &str) -> TaskResult<Box<dyn TaskExecutor>> {
+/// #         let email_data: serde_json::Value = serde_json::from_str(data)?;
+/// #         Ok(Box::new(EmailTask { to: email_data["to"].as_str().unwrap().to_string() }))
 /// #     }
 /// # }
 ///
@@ -188,9 +195,15 @@ impl TaskRegistry {
     /// use std::sync::Arc;
     ///
     /// # struct MyTaskFactory;
+    /// # struct MyTask;
+    /// # #[async_trait::async_trait]
+    /// # impl reinhardt_tasks::TaskExecutor for MyTask {
+    /// #     async fn execute(&self) -> reinhardt_tasks::TaskResult<()> { Ok(()) }
+    /// # }
+    /// # #[async_trait::async_trait]
     /// # impl TaskFactory for MyTaskFactory {
     /// #     async fn create(&self, _data: &str) -> reinhardt_tasks::TaskResult<Box<dyn reinhardt_tasks::TaskExecutor>> {
-    /// #         todo!()
+    /// #         Ok(Box::new(MyTask))
     /// #     }
     /// # }
     ///
@@ -407,7 +420,9 @@ mod tests {
         let registry = TaskRegistry::new();
         let factory = Arc::new(TestTaskFactory);
 
-        registry.register("task1".to_string(), factory.clone()).await;
+        registry
+            .register("task1".to_string(), factory.clone())
+            .await;
         registry.register("task2".to_string(), factory).await;
 
         let names = registry.list().await;
