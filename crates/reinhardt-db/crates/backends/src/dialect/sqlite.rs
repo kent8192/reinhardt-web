@@ -1,7 +1,7 @@
 //! SQLite dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{sqlite::SqliteRow, AssertSqlSafe, Column, Row as SqlxRow, SqlitePool};
+use sqlx::{sqlite::SqliteRow, Column, Row as SqlxRow, SqlitePool};
 use std::sync::Arc;
 
 use crate::{
@@ -23,9 +23,9 @@ impl SqliteBackend {
     }
 
     fn bind_value<'q>(
-        query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments>,
+        query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
         value: &'q QueryValue,
-    ) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments> {
+    ) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
         match value {
             QueryValue::Null => query.bind(None::<i32>),
             QueryValue::Bool(b) => query.bind(b),
@@ -93,7 +93,7 @@ impl DatabaseBackend for SqliteBackend {
     }
 
     async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
-        let mut query = sqlx::query(AssertSqlSafe(sql));
+        let mut query = sqlx::query(sql);
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -104,7 +104,7 @@ impl DatabaseBackend for SqliteBackend {
     }
 
     async fn fetch_one(&self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
-        let mut query = sqlx::query(AssertSqlSafe(sql));
+        let mut query = sqlx::query(sql);
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -113,7 +113,7 @@ impl DatabaseBackend for SqliteBackend {
     }
 
     async fn fetch_all(&self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
-        let mut query = sqlx::query(AssertSqlSafe(sql));
+        let mut query = sqlx::query(sql);
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -122,7 +122,7 @@ impl DatabaseBackend for SqliteBackend {
     }
 
     async fn fetch_optional(&self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
-        let mut query = sqlx::query(AssertSqlSafe(sql));
+        let mut query = sqlx::query(sql);
         for param in &params {
             query = Self::bind_value(query, param);
         }

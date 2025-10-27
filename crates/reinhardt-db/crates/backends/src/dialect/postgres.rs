@@ -1,7 +1,7 @@
 //! PostgreSQL dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{postgres::PgRow, AssertSqlSafe, Column, PgPool, Row as SqlxRow};
+use sqlx::{postgres::PgRow, Column, PgPool, Row as SqlxRow};
 use std::sync::Arc;
 
 use crate::{
@@ -94,7 +94,7 @@ impl DatabaseBackend for PostgresBackend {
     }
 
     async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
-        let mut query = sqlx::query(AssertSqlSafe(sql));
+        let mut query = sqlx::query(sql);
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -105,7 +105,7 @@ impl DatabaseBackend for PostgresBackend {
     }
 
     async fn fetch_one(&self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
-        let mut query = sqlx::query(AssertSqlSafe(sql));
+        let mut query = sqlx::query(sql);
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -114,7 +114,7 @@ impl DatabaseBackend for PostgresBackend {
     }
 
     async fn fetch_all(&self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
-        let mut query = sqlx::query(AssertSqlSafe(sql));
+        let mut query = sqlx::query(sql);
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -123,7 +123,7 @@ impl DatabaseBackend for PostgresBackend {
     }
 
     async fn fetch_optional(&self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
-        let mut query = sqlx::query(AssertSqlSafe(sql));
+        let mut query = sqlx::query(sql);
         for param in &params {
             query = Self::bind_value(query, param);
         }

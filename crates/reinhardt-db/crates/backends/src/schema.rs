@@ -20,7 +20,6 @@
 /// ```
 use std::fmt;
 
-use pg_escape::quote_identifier;
 use sea_query::{
     Alias, ColumnDef, Index, IndexCreateStatement, IndexDropStatement, Table,
     TableAlterStatement, TableCreateStatement, TableDropStatement,
@@ -224,15 +223,16 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
         stmt.to_owned()
     }
 
-    /// Generate ALTER TABLE RENAME COLUMN SQL using pg_escape for sanitization
+    /// Generate ALTER TABLE RENAME COLUMN SQL
     ///
-    /// Note: SeaQuery doesn't support RENAME COLUMN, so we use raw SQL with pg_escape sanitization
+    /// Always uses double quotes for PostgreSQL identifier safety.
+    /// Note: SeaQuery doesn't support RENAME COLUMN, so we use raw SQL.
     fn rename_column_statement(&self, table: &str, old_name: &str, new_name: &str) -> String {
         format!(
-            "ALTER TABLE {} RENAME COLUMN {} TO {}",
-            quote_identifier(table),
-            quote_identifier(old_name),
-            quote_identifier(new_name)
+            "ALTER TABLE \"{}\" RENAME COLUMN \"{}\" TO \"{}\"",
+            table,
+            old_name,
+            new_name
         )
     }
 
@@ -249,12 +249,13 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
     ) -> Result<IndexCreateStatement, String> {
         if condition.is_some() {
             // SeaQuery doesn't support partial indexes, return error to indicate fallback needed
+            // Always use double quotes for PostgreSQL identifier safety
             return Err(format!(
-                "Partial indexes not supported by SeaQuery. Use raw SQL: CREATE {}INDEX {} ON {} ({}) WHERE {}",
+                "Partial indexes not supported by SeaQuery. Use raw SQL: CREATE {}INDEX \"{}\" ON \"{}\" ({}) WHERE {}",
                 if unique { "UNIQUE " } else { "" },
-                quote_identifier(name),
-                quote_identifier(table),
-                columns.iter().map(|c| quote_identifier(c).to_string()).collect::<Vec<_>>().join(", "),
+                name,
+                table,
+                columns.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", "),
                 condition.unwrap()
             ));
         }
