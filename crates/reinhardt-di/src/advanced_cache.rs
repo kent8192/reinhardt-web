@@ -19,7 +19,9 @@
 //! ```
 
 #[cfg(feature = "dev-tools")]
-use std::collections::{HashMap, VecDeque};
+use indexmap::IndexMap;
+#[cfg(feature = "dev-tools")]
+use std::collections::HashMap;
 #[cfg(feature = "dev-tools")]
 use std::hash::Hash;
 #[cfg(feature = "dev-tools")]
@@ -28,6 +30,7 @@ use std::time::{Duration, Instant};
 /// LRU (Least Recently Used) cache implementation
 ///
 /// Evicts the least recently used items when capacity is exceeded.
+/// Uses IndexMap for O(1) access, insertion, and removal operations.
 #[cfg(feature = "dev-tools")]
 #[derive(Debug)]
 pub struct LruCache<K, V>
@@ -35,8 +38,7 @@ where
     K: Eq + Hash + Clone,
 {
     capacity: usize,
-    map: HashMap<K, V>,
-    order: VecDeque<K>,
+    map: IndexMap<K, V>,
 }
 
 #[cfg(feature = "dev-tools")]
@@ -56,14 +58,14 @@ where
     pub fn new(capacity: usize) -> Self {
         Self {
             capacity,
-            map: HashMap::new(),
-            order: VecDeque::new(),
+            map: IndexMap::new(),
         }
     }
 
     /// Insert a key-value pair into the cache
     ///
     /// If the cache is at capacity, the least recently used item is evicted.
+    /// Uses IndexMap for O(1) operations instead of O(n) with VecDeque::retain.
     ///
     /// # Example
     ///
@@ -81,20 +83,21 @@ where
     /// ```
     pub fn insert(&mut self, key: K, value: V) {
         if self.map.contains_key(&key) {
-            self.order.retain(|k| k != &key);
+            // Move to end (most recently used): O(1)
+            self.map.shift_remove(&key);
         } else if self.map.len() >= self.capacity {
-            if let Some(old_key) = self.order.pop_front() {
-                self.map.remove(&old_key);
-            }
+            // Remove least recently used (first entry): O(1)
+            self.map.shift_remove_index(0);
         }
 
-        self.map.insert(key.clone(), value);
-        self.order.push_back(key);
+        // Insert at end (most recently used): O(1)
+        self.map.insert(key, value);
     }
 
     /// Get a value from the cache
     ///
     /// Updates the item's position to mark it as recently used.
+    /// Uses IndexMap for O(1) operations instead of O(n) with VecDeque::retain.
     ///
     /// # Example
     ///
@@ -109,8 +112,9 @@ where
     /// ```
     pub fn get(&mut self, key: &K) -> Option<&V> {
         if self.map.contains_key(key) {
-            self.order.retain(|k| k != key);
-            self.order.push_back(key.clone());
+            // Move to end (most recently used): O(1)
+            let value = self.map.shift_remove(key)?;
+            self.map.insert(key.clone(), value);
             self.map.get(key)
         } else {
             None
@@ -131,8 +135,7 @@ where
     /// assert!(cache.get(&"key".to_string()).is_none());
     /// ```
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        self.order.retain(|k| k != key);
-        self.map.remove(key)
+        self.map.shift_remove(key)
     }
 
     /// Clear all items from the cache
@@ -151,7 +154,6 @@ where
     /// ```
     pub fn clear(&mut self) {
         self.map.clear();
-        self.order.clear();
     }
 
     /// Get the number of items in the cache
