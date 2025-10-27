@@ -83,6 +83,76 @@ full = [
   "contrib",
 ]
 
+# API-only preset - REST without templates/forms
+api-only = [
+  "minimal",
+  "reinhardt-serializers",
+  "reinhardt-viewsets",
+  "reinhardt-auth",
+  "reinhardt-parsers",
+  "reinhardt-renderers",
+  "reinhardt-versioning",
+  "reinhardt-metadata",
+  "reinhardt-negotiation",
+  "reinhardt-rest",
+  "reinhardt-pagination",
+  "reinhardt-filters",
+  "reinhardt-throttling",
+]
+
+# GraphQL-focused preset
+graphql-server = [
+  "minimal",
+  "reinhardt-graphql",
+  "reinhardt-auth",
+  "database",
+]
+
+# WebSocket-centric preset
+websocket-server = [
+  "minimal",
+  "reinhardt-websockets",
+  "reinhardt-auth",
+  "reinhardt-cache",
+]
+
+# CLI/Background jobs preset
+cli-tools = [
+  "database",
+  "reinhardt-migrations",
+  "reinhardt-tasks",
+  "reinhardt-mail",
+]
+
+# Testing utilities preset
+test-utils = [
+  "reinhardt-test",
+  "database",
+]
+
+# Fine-grained authentication (TODO: Implement in reinhardt-auth crate)
+# auth-jwt = ["reinhardt-auth/jwt"]
+# auth-session = ["reinhardt-auth/session", "sessions"]
+# auth-oauth = ["reinhardt-auth/oauth"]
+
+# Fine-grained database support (TODO: Implement in reinhardt-db crate)
+# db-postgres = ["database", "reinhardt-db/postgres"]
+# db-mysql = ["database", "reinhardt-db/mysql"]
+# db-sqlite = ["database", "reinhardt-db/sqlite"]
+# db-mongodb = ["database", "reinhardt-db/mongodb-backend"]
+# db-cockroachdb = ["database", "reinhardt-db/cockroachdb-backend"]
+
+# Fine-grained serialization (TODO: Implement in reinhardt-serializers crate)
+# serialize-json = ["reinhardt-serializers/json"]
+# serialize-xml = ["reinhardt-serializers/xml"]
+# serialize-yaml = ["reinhardt-serializers/yaml"]
+
+# Fine-grained middleware (TODO: Implement in reinhardt-middleware crate)
+# middleware-cors = ["reinhardt-middleware/cors"]
+# middleware-compression = ["reinhardt-middleware/compression"]
+# middleware-security = ["reinhardt-middleware/security"]
+# middleware-rate-limit = ["reinhardt-middleware/rate-limit"]
+
 [dependencies]
 # Core dependencies (always included)
 reinhardt-apps = { workspace = true }

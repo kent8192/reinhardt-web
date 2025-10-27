@@ -13,68 +13,49 @@
 //! - **Zero-Cost Abstractions**: High-level ergonomics without runtime overhead
 //! - **Async-First**: Built on tokio and async/await from the ground up
 //!
-//! ## Planned Features
+//! ## Feature Flags
 //!
-//! ### Additional Feature Flag Combinations
+//! Reinhardt provides flexible feature flags to control compilation and reduce binary size.
 //!
-//! Planned feature presets for specific use cases:
+//! ### Presets
 //!
-//! ```toml
-//! # API-only (REST without templates/forms)
-//! [dependencies]
-//! reinhardt = { version = "0.1", features = ["api-only"] }
-//! # Includes: routing, serializers, viewsets, auth, but excludes templates, forms
+//! - `minimal` - Core functionality only (routing, DI, params)
+//! - `standard` (default) - Balanced for most projects
+//! - `full` - All features enabled
+//! - `api-only` - REST API without templates/forms
+//! - `graphql-server` - GraphQL-focused setup
+//! - `websocket-server` - WebSocket-centric setup
+//! - `cli-tools` - CLI and background jobs
+//! - `test-utils` - Testing utilities
 //!
-//! # GraphQL-focused
-//! [dependencies]
-//! reinhardt = { version = "0.1", features = ["graphql-server"] }
-//! # Includes: GraphQL, subscriptions, DataLoader, but minimal REST features
+//! ### Fine-grained Control (Planned)
 //!
-//! # WebSocket-centric
-//! [dependencies]
-//! reinhardt = { version = "0.1", features = ["websocket-server"] }
-//! # Includes: WebSocket, pub/sub, channels, real-time features
+//! The following fine-grained feature flags are planned for future releases:
 //!
-//! # CLI/Background jobs
-//! [dependencies]
-//! reinhardt = { version = "0.1", features = ["cli-tools"] }
-//! # Includes: commands, migrations, task queue, but no HTTP server
+//! #### Authentication (Planned)
+//! - `auth-jwt` - JWT authentication
+//! - `auth-session` - Session-based authentication
+//! - `auth-oauth` - OAuth support
 //!
-//! # Testing utilities
-//! [dependencies]
-//! reinhardt = { version = "0.1", features = ["test-utils"] }
-//! # Includes: test client, fixtures, factories, assertions
-//! ```
+//! #### Database Backends (Planned)
+//! - `db-postgres` - PostgreSQL support
+//! - `db-mysql` - MySQL support
+//! - `db-sqlite` - SQLite support
+//! - `db-mongodb` - MongoDB support
+//! - `db-cockroachdb` - CockroachDB support
 //!
-//! ### More Granular Feature Control
+//! #### Serialization (Planned)
+//! - `serialize-json` - JSON serialization
+//! - `serialize-xml` - XML serialization
+//! - `serialize-yaml` - YAML serialization
 //!
-//! Planned fine-grained feature flags:
+//! #### Middleware (Planned)
+//! - `middleware-cors` - CORS middleware
+//! - `middleware-compression` - Response compression
+//! - `middleware-security` - Security headers
+//! - `middleware-rate-limit` - Rate limiting
 //!
-//! ```toml
-//! # Fine-grained authentication
-//! reinhardt = { features = ["auth-jwt", "auth-session", "auth-oauth"] }
-//!
-//! # Fine-grained database support
-//! reinhardt = { features = ["db-postgres", "db-mysql", "db-sqlite"] }
-//!
-//! # Fine-grained serialization
-//! reinhardt = { features = ["serialize-json", "serialize-xml", "serialize-yaml"] }
-//!
-//! # Fine-grained middleware
-//! reinhardt = { features = ["middleware-cors", "middleware-compression", "middleware-security"] }
-//! ```
-//!
-//! **Benefits**:
-//! - Smaller binary sizes by excluding unused features
-//! - Faster compilation by reducing dependency tree
-//! - Better tree-shaking for WASM targets
-//! - Clearer dependencies for specific use cases
-//!
-//! **Implementation Status**: Under design
-//!
-//! See [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md) for current feature flag documentation
-//! and [GitHub Discussions](https://github.com/yourusername/reinhardt/discussions) for
-//! feature flag proposals.
+//! See [docs/FEATURE_FLAGS.md](../docs/FEATURE_FLAGS.md) for detailed documentation.
 //!
 //! ## Quick Example
 //!
