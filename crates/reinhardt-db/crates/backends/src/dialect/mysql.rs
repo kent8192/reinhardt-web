@@ -1,7 +1,7 @@
 //! MySQL dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{mysql::MySqlRow, Column, MySqlPool, Row as SqlxRow};
+use sqlx::{mysql::MySqlRow, AssertSqlSafe, Column, MySqlPool, Row as SqlxRow};
 use std::sync::Arc;
 
 use crate::{
@@ -93,7 +93,7 @@ impl DatabaseBackend for MySqlBackend {
     }
 
     async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
-        let mut query = sqlx::query(sql);
+        let mut query = sqlx::query(AssertSqlSafe(sql));
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -104,7 +104,7 @@ impl DatabaseBackend for MySqlBackend {
     }
 
     async fn fetch_one(&self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
-        let mut query = sqlx::query(sql);
+        let mut query = sqlx::query(AssertSqlSafe(sql));
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -113,7 +113,7 @@ impl DatabaseBackend for MySqlBackend {
     }
 
     async fn fetch_all(&self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
-        let mut query = sqlx::query(sql);
+        let mut query = sqlx::query(AssertSqlSafe(sql));
         for param in &params {
             query = Self::bind_value(query, param);
         }
@@ -122,7 +122,7 @@ impl DatabaseBackend for MySqlBackend {
     }
 
     async fn fetch_optional(&self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
-        let mut query = sqlx::query(sql);
+        let mut query = sqlx::query(AssertSqlSafe(sql));
         for param in &params {
             query = Self::bind_value(query, param);
         }
