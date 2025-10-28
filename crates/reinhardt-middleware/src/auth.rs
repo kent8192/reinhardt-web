@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+#[cfg(feature = "session")]
 use reinhardt_auth::session::{SessionStore, SESSION_KEY_USER_ID};
 use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 use std::sync::Arc;
@@ -89,11 +90,13 @@ use std::sync::Arc;
 ///     }
 /// }
 /// ```
+#[cfg(feature = "session")]
 pub struct AuthenticationMiddleware<S: SessionStore, A: AuthenticationBackend> {
     session_store: Arc<S>,
     auth_backend: Arc<A>,
 }
 
+#[cfg(feature = "session")]
 impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
     /// Create a new authentication middleware
     ///
@@ -142,6 +145,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
 
     /// Extract session ID from cookies
     fn extract_session_id(&self, request: &Request) -> Option<String> {
+        const SESSION_COOKIE_NAME: &str = "sessionid";
         request
             .headers
             .get("cookie")
@@ -149,7 +153,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
             .and_then(|cookies| {
                 cookies.split(';').find_map(|cookie| {
                     let mut parts = cookie.trim().split('=');
-                    if parts.next()? == reinhardt_auth::handlers::SESSION_COOKIE_NAME {
+                    if parts.next()? == SESSION_COOKIE_NAME {
                         Some(parts.next()?.to_string())
                     } else {
                         None
@@ -173,6 +177,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
     }
 }
 
+#[cfg(feature = "session")]
 #[async_trait]
 impl<S: SessionStore + 'static, A: AuthenticationBackend + 'static> Middleware
     for AuthenticationMiddleware<S, A>

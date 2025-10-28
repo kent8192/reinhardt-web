@@ -42,7 +42,11 @@
 #[cfg(feature = "generator")]
 use genawaiter::sync::{Co, Gen};
 #[cfg(feature = "generator")]
+use genawaiter::GeneratorState;
+#[cfg(feature = "generator")]
 use std::future::Future;
+#[cfg(feature = "generator")]
+use std::marker::PhantomData;
 #[cfg(feature = "generator")]
 use std::pin::Pin;
 
@@ -55,7 +59,8 @@ use std::pin::Pin;
 /// This uses `genawaiter` as a workaround for unstable native async yield.
 #[cfg(feature = "generator")]
 pub struct DependencyGenerator<T, R> {
-    gen: Gen<T, (), R>,
+    generator: Gen<T, (), Pin<Box<dyn Future<Output = R> + Send + 'static>>>,
+    _phantom: PhantomData<(T, R)>,
 }
 
 #[cfg(feature = "generator")]
@@ -83,12 +88,8 @@ where
         F: FnOnce(Co<T>) -> Pin<Box<dyn Future<Output = R> + Send + 'static>> + Send + 'static,
     {
         Self {
-            gen: Gen::new(|co| {
-                Box::pin(async move {
-                    let fut = producer(co);
-                    fut.await
-                })
-            }),
+            generator: Gen::new(|co| producer(co)),
+            _phantom: PhantomData,
         }
     }
 
@@ -96,7 +97,10 @@ where
     ///
     /// Returns `None` when the generator is exhausted.
     pub async fn next(&mut self) -> Option<T> {
-        self.gen.async_resume().await
+        match self.generator.async_resume().await {
+            GeneratorState::Yielded(value) => Some(value),
+            GeneratorState::Complete(_) => None,
+        }
     }
 
     /// Collect all remaining dependencies into a vector
@@ -118,7 +122,8 @@ where
 /// This uses `genawaiter` as a workaround for unstable native async yield.
 #[cfg(feature = "generator")]
 pub struct DependencyStream<T> {
-    gen: Gen<T, (), ()>,
+    generator: Gen<T, (), Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
+    _phantom: PhantomData<T>,
 }
 
 #[cfg(feature = "generator")]
@@ -132,24 +137,23 @@ where
         F: FnOnce(Co<T>) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static,
     {
         Self {
-            gen: Gen::new(|co| {
-                Box::pin(async move {
-                    let fut = producer(co);
-                    fut.await
-                })
-            }),
+            generator: Gen::new(|co| producer(co)),
+            _phantom: PhantomData,
         }
     }
 
     /// Stream the next dependency
     pub async fn next(&mut self) -> Option<T> {
-        self.gen.async_resume().await
+        match self.generator.async_resume().await {
+            GeneratorState::Yielded(value) => Some(value),
+            GeneratorState::Complete(_) => None,
+        }
     }
 
     /// Check if stream has more dependencies
     pub async fn is_empty(&mut self) -> bool {
         // Peek without consuming
-        matches!(self.gen.async_resume().await, None)
+        matches!(self.generator.async_resume().await, GeneratorState::Complete(_))
     }
 }
 
@@ -194,7 +198,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dependency_generator_basic() {
-        let mut gen = DependencyGenerator::new(|co| {
+        let mut generator = DependencyGenerator::new(|co| {
             Box::pin(async move {
                 co.yield_(1).await;
                 co.yield_(2).await;
@@ -202,15 +206,15 @@ mod tests {
             })
         });
 
-        assert_eq!(gen.next().await, Some(1));
-        assert_eq!(gen.next().await, Some(2));
-        assert_eq!(gen.next().await, Some(3));
-        assert_eq!(gen.next().await, None);
+        assert_eq!(generator.next().await, Some(1));
+        assert_eq!(generator.next().await, Some(2));
+        assert_eq!(generator.next().await, Some(3));
+        assert_eq!(generator.next().await, None);
     }
 
     #[tokio::test]
     async fn test_dependency_generator_collect() {
-        let gen = DependencyGenerator::new(|co| {
+        let generator = DependencyGenerator::new(|co| {
             Box::pin(async move {
                 co.yield_(1).await;
                 co.yield_(2).await;
@@ -218,7 +222,7 @@ mod tests {
             })
         });
 
-        let deps = gen.collect().await;
+        let deps = generator.collect().await;
         assert_eq!(deps, vec![1, 2, 3]);
     }
 
@@ -245,17 +249,17 @@ mod tests {
             })
         });
 
-        let mut gen = RequestScopedGenerator::new("request-123".to_string(), stream);
+        let mut generator = RequestScopedGenerator::new("request-123".to_string(), stream);
 
-        assert_eq!(gen.request_id(), "request-123");
-        assert_eq!(gen.resolve_next().await, Some("dependency1".to_string()));
-        assert_eq!(gen.resolve_next().await, Some("dependency2".to_string()));
-        assert_eq!(gen.resolve_next().await, None);
+        assert_eq!(generator.request_id(), "request-123");
+        assert_eq!(generator.resolve_next().await, Some("dependency1".to_string()));
+        assert_eq!(generator.resolve_next().await, Some("dependency2".to_string()));
+        assert_eq!(generator.resolve_next().await, None);
     }
 
     #[tokio::test]
     async fn test_async_operations_in_generator() {
-        let mut gen = DependencyGenerator::new(|co| {
+        let mut generator = DependencyGenerator::new(|co| {
             Box::pin(async move {
                 // Simulate async database connection
                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -267,7 +271,7 @@ mod tests {
             })
         });
 
-        let deps = gen.collect().await;
+        let deps = generator.collect().await;
         assert_eq!(deps, vec!["database".to_string(), "cache".to_string()]);
     }
 }

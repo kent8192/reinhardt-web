@@ -277,7 +277,7 @@ where
         }
 
         // Cache miss - call inner viewset and cache result
-        let response = self.inner.retrieve(request.clone(), id.clone()).await?;
+        let response = self.inner.retrieve(request, id.clone()).await?;
         let cached = CachedResponse::from_response(&response);
 
         // Cache the response with configured TTL

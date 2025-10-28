@@ -9,6 +9,9 @@ pub struct Response {
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: Bytes,
+    /// Indicates whether the middleware chain should stop processing
+    /// When true, no further middleware or handlers will be executed
+    stop_chain: bool,
 }
 
 /// Streaming HTTP Response
@@ -40,6 +43,7 @@ impl Response {
             status,
             headers: HeaderMap::new(),
             body: Bytes::new(),
+            stop_chain: false,
         }
     }
     /// Create a Response with HTTP 200 OK status
@@ -331,6 +335,59 @@ impl Response {
         value: hyper::header::HeaderValue,
     ) -> Self {
         self.headers.insert(key, value);
+        self
+    }
+
+    /// Check if this response should stop the middleware chain
+    ///
+    /// When true, no further middleware or handlers will be executed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_http::Response;
+    ///
+    /// let response = Response::ok();
+    /// assert!(!response.should_stop_chain());
+    ///
+    /// let stopping_response = Response::ok().with_stop_chain(true);
+    /// assert!(stopping_response.should_stop_chain());
+    /// ```
+    pub fn should_stop_chain(&self) -> bool {
+        self.stop_chain
+    }
+
+    /// Set whether this response should stop the middleware chain
+    ///
+    /// When set to true, the middleware chain will stop processing and return
+    /// this response immediately, skipping any remaining middleware and handlers.
+    ///
+    /// This is useful for early returns in middleware, such as:
+    /// - Authentication failures (401 Unauthorized)
+    /// - CORS preflight responses (204 No Content)
+    /// - Rate limiting rejections (429 Too Many Requests)
+    /// - Cache hits (304 Not Modified)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_http::Response;
+    /// use hyper::StatusCode;
+    ///
+    /// // Early return for authentication failure
+    /// let auth_failure = Response::unauthorized()
+    ///     .with_body("Authentication required")
+    ///     .with_stop_chain(true);
+    /// assert!(auth_failure.should_stop_chain());
+    ///
+    /// // CORS preflight response
+    /// let preflight = Response::no_content()
+    ///     .with_header("Access-Control-Allow-Origin", "*")
+    ///     .with_stop_chain(true);
+    /// assert!(preflight.should_stop_chain());
+    /// ```
+    pub fn with_stop_chain(mut self, stop: bool) -> Self {
+        self.stop_chain = stop;
         self
     }
 }

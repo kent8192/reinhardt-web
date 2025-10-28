@@ -277,3 +277,8 @@ path = "integration/tests/validation/validator_orm_integration_tests.rs"
 [[test]]
 name = "views_views_core_integration_tests"
 path = "integration/tests/views/views_core_integration_tests.rs"
+
+# Benchmark tests
+[[test]]
+name = "bench_template_compile_time_vs_runtime"
+path = "bench/template_compile_time_vs_runtime.rs"
