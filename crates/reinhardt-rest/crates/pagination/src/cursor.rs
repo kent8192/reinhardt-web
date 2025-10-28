@@ -5,7 +5,9 @@
 //! - Bi-directional pagination
 //! - Relay-style pagination via [`relay`]
 //! - Custom ordering strategies via [`ordering`]
+//! - Database-integrated cursor pagination via [`database`]
 
+pub mod database;
 pub mod encoder;
 pub mod ordering;
 pub mod relay;
@@ -14,6 +16,10 @@ use async_trait::async_trait;
 use reinhardt_exception::Result;
 
 use crate::core::{AsyncPaginator, PaginatedResponse, Paginator, SchemaParameter};
+pub use database::{
+    Cursor as DatabaseCursor, CursorPaginatedResponse, CursorPaginator, Direction, HasTimestamp,
+    PaginationError,
+};
 pub use encoder::{Base64CursorEncoder, CursorEncoder};
 pub use ordering::{CreatedAtOrdering, IdOrdering, OrderingStrategy};
 pub use relay::{Connection, Edge, PageInfo, RelayPagination};
@@ -261,11 +267,7 @@ impl Paginator for CursorPagination {
         };
 
         let previous = if self.bidirectional && position > 0 {
-            let prev_position = if position >= page_size {
-                position - page_size
-            } else {
-                0
-            };
+            let prev_position = position.saturating_sub(page_size);
             let prev_cursor = self.encoder.encode(prev_position)?;
             Some(self.build_url(base_url, &prev_cursor))
         } else {

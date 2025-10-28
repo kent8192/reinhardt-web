@@ -256,39 +256,26 @@ impl RelayPagination {
             self.encoder.decode(after_cursor)? + 1
         } else if let Some(before_cursor) = before {
             let before_pos = self.encoder.decode(before_cursor)?;
-            if before_pos >= page_size {
-                before_pos - page_size
-            } else {
-                0
-            }
+            before_pos.saturating_sub(page_size)
         } else if is_forward {
             0
         } else {
             // Backward pagination from end
-            if total_count >= page_size {
-                total_count - page_size
-            } else {
-                0
-            }
+            total_count.saturating_sub(page_size)
         };
 
         // Calculate slice bounds
         let end = std::cmp::min(start + page_size, total_count);
-        let actual_start = if !is_forward && before.is_none() {
-            start
-        } else {
-            start
-        };
 
         // Get items
-        let slice = &items[actual_start..end];
+        let slice = &items[start..end];
 
         // Create edges with cursors
         let edges: Result<Vec<Edge<T>>> = slice
             .iter()
             .enumerate()
             .map(|(i, item)| {
-                let position = actual_start + i;
+                let position = start + i;
                 let cursor = self.encoder.encode(position)?;
                 Ok(Edge {
                     node: item.clone(),
@@ -299,7 +286,7 @@ impl RelayPagination {
         let edges = edges?;
 
         // Determine page info
-        let has_previous_page = actual_start > 0;
+        let has_previous_page = start > 0;
         let has_next_page = end < total_count;
         let start_cursor = edges.first().map(|e| e.cursor.clone());
         let end_cursor = edges.last().map(|e| e.cursor.clone());

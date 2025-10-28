@@ -212,25 +212,17 @@ impl PageNumberPagination {
         let total_count = items.len();
 
         // Calculate total pages (same logic as paginate)
-        let total_pages = if total_count == 0 {
-            if self.allow_empty_first_page {
-                1
-            } else {
-                1 // Return 1 even if empty to avoid error
-            }
+        let total_pages = if total_count <= self.page_size {
+            1
         } else {
-            if total_count <= self.page_size {
-                1
+            let pages = total_count / self.page_size;
+            let remainder = total_count % self.page_size;
+            if remainder > 0 && remainder <= self.orphans {
+                pages
+            } else if remainder > 0 {
+                pages + 1
             } else {
-                let pages = total_count / self.page_size;
-                let remainder = total_count % self.page_size;
-                if remainder > 0 && remainder <= self.orphans {
-                    pages
-                } else if remainder > 0 {
-                    pages + 1
-                } else {
-                    pages
-                }
+                pages
             }
         };
 

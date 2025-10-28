@@ -114,13 +114,12 @@ impl LimitOffsetPagination {
                 if key == self.limit_query_param {
                     limit = Self::parse_positive_int(value)?;
                     // Apply max_limit if configured
-                    if let Some(max) = self.max_limit {
-                        if limit > max {
-                            return Err(Error::InvalidLimit(format!(
-                                "Limit {} exceeds maximum {}",
-                                limit, max
-                            )));
-                        }
+                    if let Some(max) = self.max_limit
+                        && limit > max {
+                        return Err(Error::InvalidLimit(format!(
+                            "Limit {} exceeds maximum {}",
+                            limit, max
+                        )));
                     }
                 } else if key == self.offset_query_param {
                     offset = Self::parse_positive_int(value)?;
@@ -195,7 +194,7 @@ impl Paginator for LimitOffsetPagination {
         };
 
         let previous = if offset > 0 {
-            let prev_offset = if offset >= limit { offset - limit } else { 0 };
+            let prev_offset = offset.saturating_sub(limit);
             Some(self.build_url(base_url, prev_offset, limit))
         } else {
             None
