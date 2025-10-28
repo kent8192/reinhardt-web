@@ -20,6 +20,7 @@ pub mod di_support;
 pub mod drf_authentication;
 pub mod drf_permissions;
 pub mod group_management;
+#[cfg(feature = "session")]
 pub mod handlers;
 pub mod ip_permission;
 #[cfg(feature = "jwt")]
@@ -58,6 +59,7 @@ pub use drf_permissions::{
 pub use group_management::{
     CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,
 };
+#[cfg(feature = "session")]
 pub use handlers::{LoginCredentials, LoginHandler, LogoutHandler, SESSION_COOKIE_NAME};
 pub use ip_permission::{CidrRange, IpBlacklistPermission, IpWhitelistPermission};
 #[cfg(feature = "jwt")]

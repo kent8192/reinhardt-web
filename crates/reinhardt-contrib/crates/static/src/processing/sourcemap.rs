@@ -3,7 +3,6 @@
 //! Generates source maps to help with debugging minified JavaScript and CSS files.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 

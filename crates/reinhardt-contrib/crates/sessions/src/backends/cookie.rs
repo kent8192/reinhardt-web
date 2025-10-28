@@ -179,7 +179,7 @@ impl CookieSessionBackend {
 
     /// Sign data using HMAC-SHA256
     fn sign(&self, data: &[u8]) -> Result<Vec<u8>, SessionError> {
-        let mut mac = HmacSha256::new_from_slice(&self.signing_secret)
+        let mut mac = <HmacSha256 as hmac::Mac>::new_from_slice(&self.signing_secret)
             .map_err(|e| SessionError::SerializationError(format!("HMAC init failed: {}", e)))?;
         mac.update(data);
         Ok(mac.finalize().into_bytes().to_vec())
@@ -187,7 +187,7 @@ impl CookieSessionBackend {
 
     /// Verify HMAC-SHA256 signature
     fn verify_signature(&self, data: &[u8], signature: &[u8]) -> Result<(), SessionError> {
-        let mut mac = HmacSha256::new_from_slice(&self.signing_secret)
+        let mut mac = <HmacSha256 as hmac::Mac>::new_from_slice(&self.signing_secret)
             .map_err(|e| SessionError::SerializationError(format!("HMAC init failed: {}", e)))?;
         mac.update(data);
         mac.verify_slice(signature).map_err(|_| {

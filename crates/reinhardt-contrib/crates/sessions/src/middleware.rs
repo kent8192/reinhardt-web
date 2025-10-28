@@ -246,11 +246,11 @@ impl<B: SessionBackend> SessionMiddleware<B> {
 #[cfg(feature = "middleware")]
 #[async_trait]
 impl<B: SessionBackend + 'static> Middleware for SessionMiddleware<B> {
-    async fn process(&self, mut request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+    async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
         // Load session from cookie
         let session_key = self.get_session_key_from_cookie(&request);
 
-        let session: Session<B> = if let Some(key) = session_key {
+        let mut session: Session<B> = if let Some(key) = session_key {
             Session::from_key(self.backend.clone(), key)
                 .await
                 .unwrap_or_else(|_| Session::new(self.backend.clone()))
@@ -259,25 +259,22 @@ impl<B: SessionBackend + 'static> Middleware for SessionMiddleware<B> {
         };
 
         // Store session in request extensions
-        request.extensions.insert(session);
+        request.extensions.insert(session.clone());
 
         // Process the request
-        let mut response = next.handle(request.clone()).await?;
+        let mut response = next.handle(request).await?;
 
-        // Retrieve session from extensions (it may have been modified)
-        if let Some(mut session) = request.extensions.get::<Session<B>>() {
-            // Save session if modified
-            if session.is_modified() {
-                session.save().await.map_err(|e| {
-                    reinhardt_exception::Error::Internal(format!("Failed to save session: {}", e))
-                })?;
+        // Save session if modified
+        if session.is_modified() {
+            session.save().await.map_err(|e| {
+                reinhardt_exception::Error::Internal(format!("Failed to save session: {}", e))
+            })?;
 
-                // Add Set-Cookie header
-                let session_key_str = session.get_or_create_key();
-                let cookie_value = self.build_set_cookie_header(session_key_str);
+            // Add Set-Cookie header
+            let session_key_str = session.get_or_create_key();
+            let cookie_value = self.build_set_cookie_header(session_key_str);
 
-                response = response.with_header("Set-Cookie", &cookie_value);
-            }
+            response = response.with_header("Set-Cookie", &cookie_value);
         }
 
         Ok(response)

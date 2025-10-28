@@ -60,7 +60,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 /// Default session directory
 const DEFAULT_SESSION_DIR: &str = "/tmp/reinhardt_sessions";
