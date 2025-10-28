@@ -5,7 +5,7 @@
 //! - `SlugRelatedField` with slug-based queries
 //! - Query optimization with select_related/prefetch_related
 
-use crate::SerializerError;
+use crate::{SerializerError, ValidatorError};
 use async_trait::async_trait;
 use reinhardt_orm::{query::*, Model};
 use serde::{de::DeserializeOwned, Serialize};
@@ -235,9 +235,9 @@ where
 
         // Filter by primary key IN (pks)
         let pk_field = T::primary_key_field();
-        let pk_values: Vec<FilterValue> = pks
+        let pk_values: Vec<String> = pks
             .iter()
-            .map(|pk| FilterValue::String(pk.to_string()))
+            .map(|pk| pk.to_string())
             .collect();
 
         let filter = Filter::new(
@@ -471,9 +471,9 @@ where
         let mut queryset = QuerySet::<T>::new();
 
         // Filter by slug field IN (slugs)
-        let slug_values: Vec<FilterValue> = slugs
+        let slug_values: Vec<String> = slugs
             .iter()
-            .map(|s| FilterValue::String(s.clone()))
+            .map(|s| s.clone())
             .collect();
 
         let filter = Filter::new(

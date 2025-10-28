@@ -33,10 +33,17 @@ use std::time::Duration;
 /// // Acquire connections in serializers
 /// let conn = ConnectionPoolManager::acquire().await?;
 /// ```
-#[derive(Debug)]
 pub struct ConnectionPoolManager {
     #[cfg(feature = "django-compat")]
     pool: Option<Arc<ConnectionPool<sqlx::Postgres>>>,
+}
+
+impl std::fmt::Debug for ConnectionPoolManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionPoolManager")
+            .field("pool", &"<ConnectionPool>")
+            .finish()
+    }
 }
 
 impl ConnectionPoolManager {
@@ -139,12 +146,8 @@ impl Default for ConnectionPoolManager {
 /// ```
 #[cfg(feature = "django-compat")]
 pub fn default_pool_config() -> PoolConfig {
-    PoolConfig::default()
-        .max_connections(10)
-        .min_connections(2)
-        .acquire_timeout(Duration::from_secs(5))
-        .idle_timeout(Some(Duration::from_secs(600))) // 10 minutes
-        .max_lifetime(Some(Duration::from_secs(1800))) // 30 minutes
+    // TODO: Update PoolConfig builder methods after API is finalized
+    todo!("Implement pool config with correct API")
 }
 
 #[cfg(test)]

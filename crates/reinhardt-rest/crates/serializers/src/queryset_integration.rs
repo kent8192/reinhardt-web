@@ -13,6 +13,8 @@
 use crate::SerializerError;
 use async_trait::async_trait;
 use reinhardt_orm::Model;
+#[cfg(feature = "django-compat")]
+use reinhardt_orm::QuerySet;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -92,7 +94,7 @@ where
         Self::validate_for_create(&data).await?;
 
         // Deserialize to model
-        let _model: Self::Model =
+        let model: Self::Model =
             serde_json::from_value(data).map_err(|e| SerializerError::Serde {
                 message: format!("Failed to deserialize: {}", e),
             })?;

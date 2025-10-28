@@ -32,6 +32,7 @@
 //! This design avoids the N+1 query problem and gives developers explicit control
 //! over when and how relationships are loaded.
 
+use crate::arena::SerializationArena;
 use crate::{Serializer, SerializerError};
 use reinhardt_orm::Model;
 use serde_json::Value;
@@ -84,6 +85,7 @@ use std::marker::PhantomData;
 pub struct NestedSerializer<M: Model, R: Model> {
     relationship_field: String,
     depth: usize,
+    use_arena: bool,
     _phantom: PhantomData<(M, R)>,
 }
 
@@ -125,6 +127,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
         Self {
             relationship_field: relationship_field.into(),
             depth: 1,
+            use_arena: true,
             _phantom: PhantomData,
         }
     }
@@ -168,6 +171,44 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
         self.depth = depth;
         self
     }
+
+    /// Disable arena allocation (use traditional heap allocation instead)
+    ///
+    /// This is provided for backward compatibility or when arena allocation
+    /// is not desired. By default, arena allocation is enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use reinhardt_serializers::NestedSerializer;
+    /// # use reinhardt_orm::Model;
+    /// # use serde::{Serialize, Deserialize};
+    /// #
+    /// # #[derive(Debug, Clone, Serialize, Deserialize)]
+    /// # struct Post { id: Option<i64>, title: String }
+    /// # #[derive(Debug, Clone, Serialize, Deserialize)]
+    /// # struct Author { id: Option<i64>, name: String }
+    /// #
+    /// # impl Model for Post {
+    /// #     type PrimaryKey = i64;
+    /// #     fn table_name() -> &'static str { "posts" }
+    /// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+    /// # }
+    /// #
+    /// # impl Model for Author {
+    /// #     type PrimaryKey = i64;
+    /// #     fn table_name() -> &'static str { "authors" }
+    /// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+    /// # }
+    /// let serializer = NestedSerializer::<Post, Author>::new("author")
+    ///     .without_arena(); // Disable arena allocation
+    /// ```
+    pub fn without_arena(mut self) -> Self {
+        self.use_arena = false;
+        self
+    }
 }
 
 impl<M: Model, R: Model> Serializer for NestedSerializer<M, R> {
@@ -175,6 +216,28 @@ impl<M: Model, R: Model> Serializer for NestedSerializer<M, R> {
     type Output = String;
 
     fn serialize(&self, input: &Self::Input) -> Result<Self::Output, SerializerError> {
+        if self.use_arena {
+            // Arena-based serialization
+            let arena = SerializationArena::new();
+            let serialized = arena.serialize_model(input, self.depth);
+            let json_value = arena.to_json(serialized);
+            serde_json::to_string(&json_value)
+                .map_err(|e| SerializerError::new(format!("Serialization error: {}", e)))
+        } else {
+            // Traditional heap-based serialization (backward compatibility)
+            self.serialize_without_arena(input)
+        }
+    }
+
+    fn deserialize(&self, output: &Self::Output) -> Result<Self::Input, SerializerError> {
+        serde_json::from_str(output)
+            .map_err(|e| SerializerError::new(format!("Deserialization error: {}", e)))
+    }
+}
+
+impl<M: Model, R: Model> NestedSerializer<M, R> {
+    /// Serialize without using arena allocation (traditional approach)
+    fn serialize_without_arena(&self, input: &M) -> Result<String, SerializerError> {
         // Serialize parent model to JSON
         let mut parent_value = serde_json::to_value(input)
             .map_err(|e| SerializerError::new(format!("Serialization error: {}", e)))?;
@@ -201,11 +264,6 @@ impl<M: Model, R: Model> Serializer for NestedSerializer<M, R> {
         // Convert the value back to string
         serde_json::to_string(&parent_value)
             .map_err(|e| SerializerError::new(format!("Serialization error: {}", e)))
-    }
-
-    fn deserialize(&self, output: &Self::Output) -> Result<Self::Input, SerializerError> {
-        serde_json::from_str(output)
-            .map_err(|e| SerializerError::new(format!("Deserialization error: {}", e)))
     }
 }
 
@@ -864,5 +922,74 @@ mod tests {
         let nested = result.unwrap();
         assert!(nested.is_array());
         assert_eq!(nested.as_array().unwrap().len(), 2);
+    }
+
+    // Arena allocation tests
+    #[test]
+    fn test_nested_serializer_with_arena() {
+        let serializer = NestedSerializer::<Post, Author>::new("author");
+        let post = Post {
+            id: Some(1),
+            title: "Test Post".to_string(),
+        };
+
+        let result = serializer.serialize(&post);
+        assert!(result.is_ok());
+
+        let json_str = result.unwrap();
+        let value: Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(value["id"], 1);
+        assert_eq!(value["title"], "Test Post");
+    }
+
+    #[test]
+    fn test_nested_serializer_without_arena() {
+        let serializer = NestedSerializer::<Post, Author>::new("author").without_arena();
+        let post = Post {
+            id: Some(1),
+            title: "Test Post".to_string(),
+        };
+
+        let result = serializer.serialize(&post);
+        assert!(result.is_ok());
+
+        let json_str = result.unwrap();
+        let value: Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(value["id"], 1);
+        assert_eq!(value["title"], "Test Post");
+    }
+
+    #[test]
+    fn test_nested_serializer_arena_vs_non_arena() {
+        let post = Post {
+            id: Some(1),
+            title: "Test Post".to_string(),
+        };
+
+        let arena_serializer = NestedSerializer::<Post, Author>::new("author");
+        let non_arena_serializer = NestedSerializer::<Post, Author>::new("author").without_arena();
+
+        let arena_result = arena_serializer.serialize(&post).unwrap();
+        let non_arena_result = non_arena_serializer.serialize(&post).unwrap();
+
+        // Both should produce the same JSON
+        let arena_value: Value = serde_json::from_str(&arena_result).unwrap();
+        let non_arena_value: Value = serde_json::from_str(&non_arena_result).unwrap();
+
+        assert_eq!(arena_value, non_arena_value);
+    }
+
+    #[test]
+    fn test_nested_serializer_with_depth() {
+        let serializer = NestedSerializer::<Post, Author>::new("author").depth(5);
+        assert_eq!(serializer.depth, 5);
+
+        let post = Post {
+            id: Some(1),
+            title: "Test Post".to_string(),
+        };
+
+        let result = serializer.serialize(&post);
+        assert!(result.is_ok());
     }
 }

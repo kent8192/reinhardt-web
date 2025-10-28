@@ -153,36 +153,53 @@ fn test_serialization_context_max_depth() {
 
 #[test]
 fn test_circular_reference_detection() {
+    let author = Author {
+        id: Some(1),
+        name: "John".to_string(),
+        email: "john@example.com".to_string(),
+    };
+
     let mut context = SerializationContext::new(5);
 
-    assert!(!circular::would_be_circular(&context, "user:1"));
+    // First visit succeeds
+    assert!(context.visit(&author));
 
-    context.mark_visited("user:1".to_string());
-    assert!(circular::would_be_circular(&context, "user:1"));
-    assert!(!circular::would_be_circular(&context, "user:2"));
+    // Second visit fails (circular reference detected)
+    assert!(!context.visit(&author));
 }
 
 #[test]
-fn test_circular_try_visit() {
+fn test_circular_visit_cleanup() {
+    let author = Author {
+        id: Some(1),
+        name: "John".to_string(),
+        email: "john@example.com".to_string(),
+    };
+
     let mut context = SerializationContext::new(5);
 
-    assert!(circular::try_visit(&mut context, "user:1").is_ok());
-    assert!(context.is_visited("user:1"));
+    context.visit(&author);
+    context.leave(&author);
 
-    assert!(circular::try_visit(&mut context, "user:1").is_err());
+    // After leaving, can visit again
+    assert!(context.visit(&author));
 }
 
 #[test]
 fn test_circular_visit_with_cleanup() {
+    let author = Author {
+        id: Some(1),
+        name: "John".to_string(),
+        email: "john@example.com".to_string(),
+    };
+
     let mut context = SerializationContext::new(5);
 
-    let result = circular::visit_with(&mut context, "user:1", |ctx| {
-        assert!(ctx.is_visited("user:1"));
-        Ok(42)
-    });
+    let result = circular::visit_with(&mut context, &author, |_ctx| Ok(42));
 
     assert_eq!(result.unwrap(), 42);
-    assert!(!context.is_visited("user:1"));
+    // Object is automatically unmarked after the function completes
+    assert!(context.visit(&author)); // Can visit again
 }
 
 #[test]
@@ -220,21 +237,70 @@ fn test_depth_descend_with() {
 
 #[test]
 fn test_combined_depth_and_circular_detection() {
+    let post = Post {
+        id: Some(1),
+        title: "Test".to_string(),
+        content: "Content".to_string(),
+        author_id: 1,
+    };
+
     let mut context = SerializationContext::new(3);
 
-    circular::visit_with(&mut context, "post:1", |ctx| {
-        assert_eq!(ctx.current_depth(), 0);
-        assert!(ctx.is_visited("post:1"));
+    circular::visit_with(&mut context, &post, |ctx| {
+        assert_eq!(ctx.current_depth(), 1);
 
         let child = ctx.child();
-        assert_eq!(child.current_depth(), 1);
-        assert!(child.is_visited("post:1"));
+        assert_eq!(child.current_depth(), 2);
 
         Ok(())
     })
     .unwrap();
 
-    assert!(!context.is_visited("post:1"));
+    // Object is automatically unmarked after the function completes
+    assert!(context.visit(&post)); // Can visit again
+}
+
+#[test]
+fn test_different_objects_same_data() {
+    let author1 = Author {
+        id: Some(1),
+        name: "John".to_string(),
+        email: "john@example.com".to_string(),
+    };
+    let author2 = Author {
+        id: Some(1),
+        name: "John".to_string(),
+        email: "john@example.com".to_string(),
+    };
+
+    let mut context = SerializationContext::new(5);
+
+    // Both authors have same data but different memory addresses
+    assert!(context.visit(&author1));
+    assert!(context.visit(&author2)); // Should succeed - different objects
+
+    context.leave(&author1);
+    context.leave(&author2);
+}
+
+#[test]
+fn test_same_object_multiple_references() {
+    let author = Author {
+        id: Some(1),
+        name: "John".to_string(),
+        email: "john@example.com".to_string(),
+    };
+
+    let mut context = SerializationContext::new(5);
+
+    // Visit the same object
+    assert!(context.visit(&author));
+
+    // Create another reference to the same object
+    let author_ref = &author;
+
+    // Second visit with different reference should fail (same object)
+    assert!(!context.visit(author_ref));
 }
 
 #[test]
@@ -258,4 +324,221 @@ fn test_model_serializer_with_nested_and_meta() {
 
     assert!(serializer.is_nested_field("author"));
     assert_eq!(serializer.nested_config().get_depth("author"), Some(2));
+}
+
+// Arena Allocation Tests
+mod arena_tests {
+    use super::*;
+    use reinhardt_serializers::arena::{FieldValue, SerializationArena};
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_arena_basic_serialization() {
+        let arena = SerializationArena::new();
+        let author = Author {
+            id: Some(1),
+            name: "Alice".to_string(),
+            email: "alice@example.com".to_string(),
+        };
+
+        let serialized = arena.serialize_model(&author, 3);
+        let json = arena.to_json(serialized);
+
+        assert_eq!(json["id"].as_f64().unwrap(), 1.0);
+        assert_eq!(json["name"], "Alice");
+        assert_eq!(json["email"], "alice@example.com");
+    }
+
+    #[test]
+    fn test_arena_nested_structure() {
+        let arena = SerializationArena::new();
+
+        let mut inner_map = HashMap::new();
+        inner_map.insert("city".to_string(), FieldValue::String("Tokyo".to_string()));
+        inner_map.insert("country".to_string(), FieldValue::String("Japan".to_string()));
+
+        let mut outer_map = HashMap::new();
+        outer_map.insert("name".to_string(), FieldValue::String("Alice".to_string()));
+        outer_map.insert("address".to_string(), FieldValue::Object(inner_map));
+
+        let serialized = arena.allocate_field(&FieldValue::Object(outer_map));
+        let json = arena.to_json(serialized);
+
+        assert_eq!(json["name"], "Alice");
+        assert_eq!(json["address"]["city"], "Tokyo");
+        assert_eq!(json["address"]["country"], "Japan");
+    }
+
+    #[test]
+    fn test_arena_deeply_nested_structure() {
+        let arena = SerializationArena::new();
+
+        // Create depth-5 nested structure
+        let mut level5 = HashMap::new();
+        level5.insert("value".to_string(), FieldValue::String("deep".to_string()));
+
+        let mut level4 = HashMap::new();
+        level4.insert("level5".to_string(), FieldValue::Object(level5));
+
+        let mut level3 = HashMap::new();
+        level3.insert("level4".to_string(), FieldValue::Object(level4));
+
+        let mut level2 = HashMap::new();
+        level2.insert("level3".to_string(), FieldValue::Object(level3));
+
+        let mut level1 = HashMap::new();
+        level1.insert("level2".to_string(), FieldValue::Object(level2));
+
+        let serialized = arena.allocate_field(&FieldValue::Object(level1));
+        let json = arena.to_json(serialized);
+
+        assert_eq!(json["level2"]["level3"]["level4"]["level5"]["value"], "deep");
+    }
+
+    #[test]
+    fn test_arena_large_array() {
+        let arena = SerializationArena::new();
+
+        // Create large array (1000 elements)
+        let arr: Vec<FieldValue> = (0..1000).map(|i| FieldValue::Integer(i)).collect();
+
+        let serialized = arena.allocate_field(&FieldValue::Array(arr));
+        let json = arena.to_json(serialized);
+
+        assert!(json.is_array());
+        assert_eq!(json.as_array().unwrap().len(), 1000);
+        assert_eq!(json[0], 0);
+        assert_eq!(json[999], 999);
+    }
+
+    #[test]
+    fn test_arena_mixed_nested_structure() {
+        let arena = SerializationArena::new();
+
+        // Object containing arrays containing objects
+        let mut inner_obj = HashMap::new();
+        inner_obj.insert("id".to_string(), FieldValue::Integer(1));
+        inner_obj.insert("title".to_string(), FieldValue::String("Post 1".to_string()));
+
+        let arr = vec![FieldValue::Object(inner_obj)];
+
+        let mut outer_obj = HashMap::new();
+        outer_obj.insert("items".to_string(), FieldValue::Array(arr));
+        outer_obj.insert("count".to_string(), FieldValue::Integer(1));
+
+        let serialized = arena.allocate_field(&FieldValue::Object(outer_obj));
+        let json = arena.to_json(serialized);
+
+        assert_eq!(json["items"][0]["id"], 1);
+        assert_eq!(json["items"][0]["title"], "Post 1");
+        assert_eq!(json["count"], 1);
+    }
+
+    #[test]
+    fn test_arena_complex_nested_model() {
+        let arena = SerializationArena::new();
+
+        // Create a complex nested model structure
+        let post1 = Post {
+            id: Some(1),
+            title: "First Post".to_string(),
+            content: "Content 1".to_string(),
+            author_id: 1,
+        };
+
+        let post2 = Post {
+            id: Some(2),
+            title: "Second Post".to_string(),
+            content: "Content 2".to_string(),
+            author_id: 1,
+        };
+
+        let serialized1 = arena.serialize_model(&post1, 3);
+        let serialized2 = arena.serialize_model(&post2, 3);
+
+        let json1 = arena.to_json(serialized1);
+        let json2 = arena.to_json(serialized2);
+
+        assert_eq!(json1["id"].as_f64().unwrap(), 1.0);
+        assert_eq!(json1["title"], "First Post");
+        assert_eq!(json2["id"].as_f64().unwrap(), 2.0);
+        assert_eq!(json2["title"], "Second Post");
+    }
+
+    #[test]
+    fn test_arena_with_depth_10() {
+        let arena = SerializationArena::new();
+
+        // Create depth-10 nested structure
+        let mut current = HashMap::new();
+        current.insert("value".to_string(), FieldValue::Integer(10));
+
+        for i in (1..=10).rev() {
+            let mut next = HashMap::new();
+            next.insert(
+                format!("level{}", i),
+                FieldValue::Object(current.clone()),
+            );
+            current = next;
+        }
+
+        let serialized = arena.allocate_field(&FieldValue::Object(current));
+        let json = arena.to_json(serialized);
+
+        // Verify the deep nesting
+        let mut current_json = &json;
+        for i in 1..=10 {
+            current_json = &current_json[format!("level{}", i)];
+        }
+        assert_eq!(current_json["value"], 10);
+    }
+
+    #[test]
+    fn test_arena_multiple_allocations_in_same_arena() {
+        let arena = SerializationArena::new();
+
+        // Allocate multiple independent structures in the same arena
+        let field1 = FieldValue::String("value1".to_string());
+        let field2 = FieldValue::Integer(42);
+        let field3 = FieldValue::Boolean(true);
+
+        let serialized1 = arena.allocate_field(&field1);
+        let serialized2 = arena.allocate_field(&field2);
+        let serialized3 = arena.allocate_field(&field3);
+
+        let json1 = arena.to_json(serialized1);
+        let json2 = arena.to_json(serialized2);
+        let json3 = arena.to_json(serialized3);
+
+        assert_eq!(json1, "value1");
+        assert_eq!(json2, 42);
+        assert_eq!(json3, true);
+    }
+
+    #[test]
+    fn test_arena_many_nodes_structure() {
+        let arena = SerializationArena::new();
+
+        // Create a structure with many nodes (100 objects)
+        let mut objects = vec![];
+        for i in 0..100 {
+            let mut obj = HashMap::new();
+            obj.insert("id".to_string(), FieldValue::Integer(i));
+            obj.insert(
+                "name".to_string(),
+                FieldValue::String(format!("Item {}", i)),
+            );
+            objects.push(FieldValue::Object(obj));
+        }
+
+        let serialized = arena.allocate_field(&FieldValue::Array(objects));
+        let json = arena.to_json(serialized);
+
+        assert!(json.is_array());
+        assert_eq!(json.as_array().unwrap().len(), 100);
+        assert_eq!(json[0]["id"], 0);
+        assert_eq!(json[0]["name"], "Item 0");
+        assert_eq!(json[99]["id"], 99);
+        assert_eq!(json[99]["name"], "Item 99");
+    }
 }

@@ -11,8 +11,8 @@ pub struct SerializationContext {
     current_depth: usize,
     /// Maximum allowed depth
     max_depth: usize,
-    /// Set of visited object identifiers to detect circular references
-    visited: HashSet<String>,
+    /// Set of visited object identities (pointer addresses) to detect circular references
+    visited: HashSet<usize>,
 }
 
 impl SerializationContext {
@@ -59,54 +59,133 @@ impl SerializationContext {
         self.current_depth < self.max_depth
     }
 
-    /// Check if an object has been visited
+    /// Visit an object, marking it as visited for circular reference detection
+    ///
+    /// Returns `true` if the object can be visited (not visited before),
+    /// `false` if it's already visited.
     ///
     /// # Examples
     ///
     /// ```
     /// use reinhardt_serializers::recursive::SerializationContext;
     ///
-    /// let mut context = SerializationContext::new(5);
-    /// assert!(!context.is_visited("user:1"));
+    /// struct User { id: i64 }
+    /// let user = User { id: 1 };
     ///
-    /// context.mark_visited("user:1".to_string());
-    /// assert!(context.is_visited("user:1"));
+    /// let mut context = SerializationContext::new(5);
+    /// assert!(context.visit(&user));
+    /// assert!(!context.visit(&user)); // Already visited
     /// ```
-    pub fn is_visited(&self, object_id: &str) -> bool {
-        self.visited.contains(object_id)
+    pub fn visit<T>(&mut self, obj: &T) -> bool {
+        let id = obj as *const T as usize;
+
+        if self.visited.contains(&id) {
+            return false; // Circular reference detected
+        }
+
+        self.visited.insert(id);
+        true
     }
 
-    /// Mark an object as visited
+    /// Leave an object, unmarking it as visited (for backtracking)
     ///
     /// # Examples
     ///
     /// ```
     /// use reinhardt_serializers::recursive::SerializationContext;
     ///
+    /// struct User { id: i64 }
+    /// let user = User { id: 1 };
+    ///
     /// let mut context = SerializationContext::new(5);
-    /// context.mark_visited("user:1".to_string());
-    /// assert!(context.is_visited("user:1"));
+    /// context.visit(&user);
+    /// context.leave(&user);
+    /// assert!(context.visit(&user)); // Can visit again after leaving
     /// ```
-    pub fn mark_visited(&mut self, object_id: String) {
+    pub fn leave<T>(&mut self, obj: &T) {
+        let id = obj as *const T as usize;
+        self.visited.remove(&id);
+    }
+
+    /// Check if an object has been visited (deprecated: use `visit()` instead)
+    ///
+    /// # Deprecated
+    ///
+    /// This method uses string-based identification which is less efficient than
+    /// pointer-based identification. Use `visit()` and `leave()` methods instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_serializers::recursive::SerializationContext;
+    /// use std::collections::hash_map::DefaultHasher;
+    /// use std::hash::{Hash, Hasher};
+    ///
+    /// struct User { id: i64 }
+    /// let user = User { id: 1 };
+    ///
+    /// let mut context = SerializationContext::new(5);
+    /// let mut hasher = DefaultHasher::new();
+    /// (&user as *const User as usize).hash(&mut hasher);
+    /// let id = hasher.finish() as usize;
+    /// assert!(!context.is_visited_by_id(id));
+    /// ```
+    #[deprecated(since = "0.1.0", note = "Use `visit()` and `leave()` instead")]
+    pub fn is_visited_by_id(&self, object_id: usize) -> bool {
+        self.visited.contains(&object_id)
+    }
+
+    /// Mark an object as visited (deprecated: use `visit()` instead)
+    ///
+    /// # Deprecated
+    ///
+    /// This method uses string-based identification which is less efficient than
+    /// pointer-based identification. Use `visit()` and `leave()` methods instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reinhardt_serializers::recursive::SerializationContext;
+    ///
+    /// struct User { id: i64 }
+    /// let user = User { id: 1 };
+    ///
+    /// let mut context = SerializationContext::new(5);
+    /// let id = &user as *const User as usize;
+    /// context.mark_visited_by_id(id);
+    /// assert!(context.is_visited_by_id(id));
+    /// ```
+    #[deprecated(since = "0.1.0", note = "Use `visit()` and `leave()` instead")]
+    pub fn mark_visited_by_id(&mut self, object_id: usize) {
         self.visited.insert(object_id);
     }
 
-    /// Unmark an object as visited (for backtracking)
+    /// Unmark an object as visited (deprecated: use `leave()` instead)
+    ///
+    /// # Deprecated
+    ///
+    /// This method uses string-based identification which is less efficient than
+    /// pointer-based identification. Use `visit()` and `leave()` methods instead.
     ///
     /// # Examples
     ///
     /// ```
     /// use reinhardt_serializers::recursive::SerializationContext;
     ///
-    /// let mut context = SerializationContext::new(5);
-    /// context.mark_visited("user:1".to_string());
-    /// assert!(context.is_visited("user:1"));
+    /// struct User { id: i64 }
+    /// let user = User { id: 1 };
     ///
-    /// context.unmark_visited("user:1");
-    /// assert!(!context.is_visited("user:1"));
+    /// let mut context = SerializationContext::new(5);
+    /// let id = &user as *const User as usize;
+    /// context.mark_visited_by_id(id);
+    /// assert!(context.is_visited_by_id(id));
+    ///
+    /// context.unmark_visited_by_id(id);
+    /// assert!(!context.is_visited_by_id(id));
     /// ```
-    pub fn unmark_visited(&mut self, object_id: &str) {
-        self.visited.remove(object_id);
+    #[deprecated(since = "0.1.0", note = "Use `visit()` and `leave()` instead")]
+    pub fn unmark_visited_by_id(&mut self, object_id: usize) {
+        self.visited.remove(&object_id);
     }
 
     /// Create a child context with increased depth
@@ -227,76 +306,64 @@ pub trait ObjectIdentifiable {
 pub mod circular {
     use super::*;
 
-    /// Check if adding an object would create a circular reference
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_serializers::recursive::{SerializationContext, circular};
-    ///
-    /// let mut context = SerializationContext::new(5);
-    /// context.mark_visited("user:1".to_string());
-    ///
-    /// assert!(circular::would_be_circular(&context, "user:1"));
-    /// assert!(!circular::would_be_circular(&context, "user:2"));
-    /// ```
-    pub fn would_be_circular(context: &SerializationContext, object_id: &str) -> bool {
-        context.is_visited(object_id)
-    }
-
-    /// Attempt to visit an object, returning an error if it would create a circular reference
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_serializers::recursive::{SerializationContext, circular};
-    ///
-    /// let mut context = SerializationContext::new(5);
-    ///
-    /// assert!(circular::try_visit(&mut context, "user:1").is_ok());
-    /// assert!(circular::try_visit(&mut context, "user:1").is_err());
-    /// ```
-    pub fn try_visit(context: &mut SerializationContext, object_id: &str) -> RecursiveResult<()> {
-        if would_be_circular(context, object_id) {
-            return Err(RecursiveError::CircularReference {
-                object_id: object_id.to_string(),
-            });
-        }
-        context.mark_visited(object_id.to_string());
-        Ok(())
-    }
-
-    /// Visit an object and execute a function, automatically unmarking on completion
+    /// Visit an object and execute a function, automatically cleaning up on completion
     ///
     /// This ensures proper cleanup even if the function panics or returns an error.
+    /// Uses pointer-based identity for accurate circular reference detection.
+    /// Manages depth automatically by creating a child context.
     ///
     /// # Examples
     ///
     /// ```
     /// use reinhardt_serializers::recursive::{SerializationContext, circular};
     ///
+    /// struct User { id: i64 }
+    /// let user = User { id: 1 };
+    ///
     /// let mut context = SerializationContext::new(5);
     ///
-    /// let result = circular::visit_with(&mut context, "user:1", |ctx| {
+    /// let result = circular::visit_with(&mut context, &user, |ctx| {
     ///     // Do serialization work here
-    ///     Ok(())
+    ///     Ok(42)
     /// });
     ///
-    /// assert!(result.is_ok());
+    /// assert_eq!(result.unwrap(), 42);
     /// // Object is automatically unmarked after the function completes
-    /// assert!(!context.is_visited("user:1"));
+    /// assert!(context.visit(&user)); // Can visit again
     /// ```
-    pub fn visit_with<F, T>(
+    pub fn visit_with<T, F, R>(
         context: &mut SerializationContext,
-        object_id: &str,
+        obj: &T,
         f: F,
-    ) -> RecursiveResult<T>
+    ) -> RecursiveResult<R>
     where
-        F: FnOnce(&mut SerializationContext) -> RecursiveResult<T>,
+        F: FnOnce(&mut SerializationContext) -> RecursiveResult<R>,
     {
-        try_visit(context, object_id)?;
-        let result = f(context);
-        context.unmark_visited(object_id);
+        // Check circular reference
+        if !context.visit(obj) {
+            let id = obj as *const T as usize;
+            return Err(RecursiveError::CircularReference {
+                object_id: format!("0x{:x}", id),
+            });
+        }
+
+        // Check depth limit
+        if !context.can_go_deeper() {
+            context.leave(obj);
+            return Err(RecursiveError::MaxDepthExceeded {
+                current_depth: context.current_depth(),
+                max_depth: context.max_depth(),
+            });
+        }
+
+        // Create child context with increased depth
+        let mut child_context = context.child();
+
+        // Execute function
+        let result = f(&mut child_context);
+
+        // Cleanup
+        context.leave(obj);
         result
     }
 }
@@ -404,30 +471,41 @@ mod tests {
     }
 
     #[test]
-    fn test_context_visited() {
+    fn test_context_visit_and_leave() {
+        #[allow(dead_code)]
+        struct User {
+            id: i64,
+        }
+        let user = User { id: 1 };
+
         let mut context = SerializationContext::new(5);
-        assert!(!context.is_visited("user:1"));
+        assert!(context.visit(&user));
 
-        context.mark_visited("user:1".to_string());
-        assert!(context.is_visited("user:1"));
+        // Second visit should fail (circular reference)
+        assert!(!context.visit(&user));
 
-        context.unmark_visited("user:1");
-        assert!(!context.is_visited("user:1"));
+        // After leaving, can visit again
+        context.leave(&user);
+        assert!(context.visit(&user));
     }
 
     #[test]
     fn test_context_reset() {
+        #[allow(dead_code)]
+        struct User {
+            id: i64,
+        }
+        let user = User { id: 1 };
+
         let mut context = SerializationContext::new(3);
-        context.mark_visited("user:1".to_string());
+        context.visit(&user);
 
         let child = context.child();
         assert_eq!(child.current_depth(), 1);
-        assert!(child.is_visited("user:1"));
 
         let mut reset_context = child;
         reset_context.reset();
         assert_eq!(reset_context.current_depth(), 0);
-        assert!(!reset_context.is_visited("user:1"));
     }
 
     #[test]
@@ -472,56 +550,97 @@ mod tests {
     }
 
     #[test]
-    fn test_circular_would_be_circular() {
-        let mut context = SerializationContext::new(5);
-        assert!(!would_be_circular(&context, "user:1"));
+    fn test_circular_reference_detection() {
+        #[allow(dead_code)]
+        struct User {
+            id: i64,
+        }
+        let user = User { id: 1 };
 
-        context.mark_visited("user:1".to_string());
-        assert!(would_be_circular(&context, "user:1"));
-        assert!(!would_be_circular(&context, "user:2"));
-    }
-
-    #[test]
-    fn test_circular_try_visit() {
         let mut context = SerializationContext::new(5);
 
-        assert!(try_visit(&mut context, "user:1").is_ok());
-        assert!(context.is_visited("user:1"));
+        // First visit succeeds
+        assert!(context.visit(&user));
 
-        let err = try_visit(&mut context, "user:1").unwrap_err();
-        assert_eq!(
-            err,
-            RecursiveError::CircularReference {
-                object_id: "user:1".to_string()
-            }
-        );
+        // Second visit fails (circular reference detected)
+        assert!(!context.visit(&user));
     }
 
     #[test]
     fn test_circular_visit_with() {
+        #[allow(dead_code)]
+        struct User {
+            id: i64,
+        }
+        let user = User { id: 1 };
+
         let mut context = SerializationContext::new(5);
 
-        let result = visit_with(&mut context, "user:1", |ctx| {
-            assert!(ctx.is_visited("user:1"));
-            Ok(42)
-        });
+        let result = visit_with(&mut context, &user, |_ctx| Ok(42));
 
         assert_eq!(result.unwrap(), 42);
-        assert!(!context.is_visited("user:1"));
+        // Object is automatically unmarked after the function completes
+        assert!(context.visit(&user)); // Can visit again
     }
 
     #[test]
     fn test_circular_visit_with_error() {
+        #[allow(dead_code)]
+        struct User {
+            id: i64,
+        }
+        let user = User { id: 1 };
+
         let mut context = SerializationContext::new(5);
 
-        let result: RecursiveResult<()> = visit_with(&mut context, "user:1", |_ctx| {
+        let result: RecursiveResult<()> = visit_with(&mut context, &user, |_ctx| {
             Err(RecursiveError::SerializationError {
                 message: "test".to_string(),
             })
         });
 
         assert!(result.is_err());
-        assert!(!context.is_visited("user:1"));
+        // Object is automatically unmarked even on error
+        assert!(context.visit(&user)); // Can visit again
+    }
+
+    #[test]
+    fn test_different_objects_same_string_representation() {
+        #[allow(dead_code)]
+        struct User {
+            id: i64,
+        }
+        let user1 = User { id: 1 };
+        let user2 = User { id: 1 };
+
+        let mut context = SerializationContext::new(5);
+
+        // Both users have same ID but different memory addresses
+        assert!(context.visit(&user1));
+        assert!(context.visit(&user2)); // Should succeed - different objects
+
+        context.leave(&user1);
+        context.leave(&user2);
+    }
+
+    #[test]
+    fn test_same_object_multiple_references() {
+        #[allow(dead_code)]
+        struct User {
+            id: i64,
+        }
+        let user = User { id: 1 };
+
+        let mut context = SerializationContext::new(5);
+
+        // Visit the same object
+        assert!(context.visit(&user));
+
+        // Create another reference to the same object
+        let user_ref = &user;
+
+        // Second visit with different reference should fail (same object)
+        assert!(!context.visit(user_ref));
     }
 
     #[test]

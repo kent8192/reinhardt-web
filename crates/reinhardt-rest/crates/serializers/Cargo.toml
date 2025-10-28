@@ -7,7 +7,7 @@ repository.workspace = true
 
 [features]
 default = ["json"]
-django-compat = ["reinhardt-orm/django-compat"]
+django-compat = ["reinhardt-orm/django-compat", "dep:reinhardt-pool", "dep:once_cell"]
 
 # Serialization formats
 json = []
@@ -20,6 +20,7 @@ reinhardt-parsers = { version = "0.1.0", path = "../parsers" }
 reinhardt-renderers = { workspace = true }
 reinhardt-negotiation = { version = "0.1.0", path = "../negotiation" }
 reinhardt-orm = { workspace = true }
+reinhardt-pool = { version = "0.1.0", path = "../../../reinhardt-db/crates/pool", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
@@ -29,6 +30,8 @@ chrono = { workspace = true }
 sqlx = { workspace = true }
 sea-query = { version = "1.0.0-rc.1", features = ["backend-postgres"] }
 regex = "1.10"
+once_cell = { version = "1.20", optional = true }
+typed-arena = "2.0"
 
 # Optional serialization formats
 quick-xml = { version = "0.37", features = ["serialize"], optional = true }

@@ -1,5 +1,6 @@
 //! Serializers for Reinhardt REST framework
 
+pub mod arena;
 pub mod cache_invalidation;
 pub mod content_negotiation;
 pub mod fields;
@@ -23,6 +24,7 @@ pub mod validator;
 pub mod validator_config;
 pub mod validators;
 
+pub use arena::{FieldValue, SerializationArena, SerializedValue};
 pub use cache_invalidation::{CacheInvalidator, InvalidationStrategy};
 pub use content_negotiation::ContentNegotiator;
 pub use fields::{
