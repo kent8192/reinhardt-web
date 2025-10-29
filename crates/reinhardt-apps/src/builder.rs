@@ -768,7 +768,7 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(BuildError::InvalidConfig(msg)) => {
-                assert!(msg.contains("Duplicate app label"));
+                assert_eq!(msg, "Duplicate app label: myapp");
             }
             _ => panic!("Expected InvalidConfig error"),
         }
@@ -784,7 +784,7 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(BuildError::RouteError(msg)) => {
-                assert!(msg.contains("Duplicate route name"));
+                assert_eq!(msg, "Duplicate route name: users");
             }
             _ => panic!("Expected RouteError"),
         }

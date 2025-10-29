@@ -581,6 +581,7 @@ pub fn clear_reverse_relations() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     // Test model registrations
     #[distributed_slice(MODELS)]
@@ -638,9 +639,8 @@ mod tests {
         let blog_models = get_models_for_app("blog");
         assert_eq!(blog_models.len(), 2);
 
-        let model_names: Vec<&str> = blog_models.iter().map(|m| m.model_name).collect();
-        assert!(model_names.contains(&"Post"));
-        assert!(model_names.contains(&"Comment"));
+        let model_names: HashSet<&str> = blog_models.iter().map(|m| m.model_name).collect();
+        assert_eq!(model_names, HashSet::from(["Post", "Comment"]));
 
         let auth_models = get_models_for_app("auth");
         assert_eq!(auth_models.len(), 1);
@@ -763,10 +763,12 @@ mod tests {
         let relations = get_reverse_relations_for_model("User");
         assert_eq!(relations.len(), 2);
 
-        let accessor_names: Vec<String> =
+        let accessor_names: HashSet<String> =
             relations.iter().map(|r| r.accessor_name.clone()).collect();
-        assert!(accessor_names.contains(&"posts".to_string()));
-        assert!(accessor_names.contains(&"comments".to_string()));
+        assert_eq!(
+            accessor_names,
+            HashSet::from(["posts".to_string(), "comments".to_string()])
+        );
     }
 
     #[test]
@@ -896,9 +898,8 @@ mod tests {
         let post_rels = get_relationships_for_model("blog.Post");
         assert_eq!(post_rels.len(), 2);
 
-        let field_names: Vec<&str> = post_rels.iter().map(|r| r.field_name).collect();
-        assert!(field_names.contains(&"author"));
-        assert!(field_names.contains(&"tags"));
+        let field_names: HashSet<&str> = post_rels.iter().map(|r| r.field_name).collect();
+        assert_eq!(field_names, HashSet::from(["author", "tags"]));
     }
 
     #[test]
@@ -914,8 +915,8 @@ mod tests {
         let user_rels = get_relationships_to_model("auth.User");
         assert!(user_rels.len() >= 1);
 
-        let from_models: Vec<&str> = user_rels.iter().map(|r| r.from_model).collect();
-        assert!(from_models.contains(&"blog.Post"));
+        let from_models: HashSet<&str> = user_rels.iter().map(|r| r.from_model).collect();
+        assert!(from_models.contains("blog.Post"));
     }
 
     #[test]

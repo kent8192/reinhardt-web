@@ -551,12 +551,13 @@ mod tests {
 
     #[test]
     fn test_discover_models() {
+        use std::collections::HashSet;
+
         let models = discover_models("discovery_test");
         assert_eq!(models.len(), 2);
 
-        let model_names: Vec<&str> = models.iter().map(|m| m.model_name).collect();
-        assert!(model_names.contains(&"User"));
-        assert!(model_names.contains(&"Post"));
+        let model_names: HashSet<&str> = models.iter().map(|m| m.model_name).collect();
+        assert_eq!(model_names, HashSet::from(["User", "Post"]));
     }
 
     #[test]
@@ -732,9 +733,9 @@ mod tests {
         assert_eq!(relations.len(), 2);
 
         // Check that relationships are correctly converted
-        let field_names: Vec<&str> = relations.iter().map(|r| r.field_name).collect();
-        assert!(field_names.contains(&"author"));
-        assert!(field_names.contains(&"tags"));
+        use std::collections::HashSet;
+        let field_names: HashSet<&str> = relations.iter().map(|r| r.field_name).collect();
+        assert_eq!(field_names, HashSet::from(["author", "tags"]));
 
         // Check relationship types
         let author_rel = relations.iter().find(|r| r.field_name == "author").unwrap();
@@ -927,12 +928,15 @@ mod tests {
         let reverse_relations = get_reverse_relations_for_model("User");
         assert_eq!(reverse_relations.len(), 2);
 
-        let accessor_names: Vec<String> = reverse_relations
+        use std::collections::HashSet;
+        let accessor_names: HashSet<String> = reverse_relations
             .iter()
             .map(|r| r.accessor_name.clone())
             .collect();
-        assert!(accessor_names.contains(&"posts".to_string()));
-        assert!(accessor_names.contains(&"comments".to_string()));
+        assert_eq!(
+            accessor_names,
+            HashSet::from(["posts".to_string(), "comments".to_string()])
+        );
     }
 
     #[test]

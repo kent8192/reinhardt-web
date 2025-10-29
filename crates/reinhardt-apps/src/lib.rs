@@ -91,7 +91,8 @@ mod tests {
         let response = Response::ok().with_json(&data).unwrap();
 
         let body_str = String::from_utf8(response.body.to_vec()).unwrap();
-        assert!(body_str.contains("Hello, world!"));
+        let parsed: serde_json::Value = serde_json::from_str(&body_str).unwrap();
+        assert_eq!(parsed["message"], "Hello, world!");
         assert_eq!(
             response.headers.get(hyper::header::CONTENT_TYPE).unwrap(),
             "application/json"
