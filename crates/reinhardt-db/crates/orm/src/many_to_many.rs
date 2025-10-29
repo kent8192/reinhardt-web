@@ -493,10 +493,12 @@ mod tests {
         let table = AssociationTable::new("student_courses", "student_id", "course_id");
         let sql = table.to_create_sql(SqliteQueryBuilder);
 
-        assert!(sql.contains("CREATE TABLE"));
-        assert!(sql.contains("student_courses"));
-        assert!(sql.contains("student_id"));
-        assert!(sql.contains("course_id"));
+        assert_eq!(
+            sql,
+            "CREATE TABLE IF NOT EXISTS \"student_courses\" ( \"student_id\" integer NOT NULL, \"course_id\" integer NOT NULL, PRIMARY KEY (\"student_id\", \"course_id\") )",
+            "Expected exact CREATE TABLE SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -508,10 +510,12 @@ mod tests {
             .with_column("grade", "VARCHAR(2)");
 
         let sql = table.to_create_sql(SqliteQueryBuilder);
-        assert!(sql.contains("enrolled_at"));
-        assert!(sql.contains("TIMESTAMP"));
-        assert!(sql.contains("grade"));
-        assert!(sql.contains("VARCHAR(2)"));
+        assert_eq!(
+            sql,
+            "CREATE TABLE IF NOT EXISTS \"student_courses\" ( \"student_id\" integer NOT NULL, \"course_id\" integer NOT NULL, \"enrolled_at\" datetime, \"grade\" VARCHAR(2), PRIMARY KEY (\"student_id\", \"course_id\") )",
+            "Expected exact CREATE TABLE with extra columns SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -522,10 +526,12 @@ mod tests {
         let m2m = ManyToMany::<Student, Course>::new(assoc);
 
         let join_sql = m2m.join_sql(SqliteQueryBuilder);
-        assert!(join_sql.contains("student_courses"));
-        assert!(join_sql.contains("students"));
-        assert!(join_sql.contains("courses"));
-        assert!(join_sql.contains("INNER JOIN"));
+        assert_eq!(
+            join_sql,
+            "SELECT \"students\".*, \"courses\".* FROM \"students\" INNER JOIN \"student_courses\" ON \"students\".\"id\" = \"student_courses\".\"student_id\" INNER JOIN \"courses\" ON \"student_courses\".\"course_id\" = \"courses\".\"id\"",
+            "Expected exact JOIN SQL, got: {}",
+            join_sql
+        );
     }
 
     #[test]
@@ -536,10 +542,12 @@ mod tests {
         let m2m = ManyToMany::<Student, Course>::new(assoc);
 
         let sql = m2m.add_sql(1, 10, SqliteQueryBuilder);
-        assert!(sql.contains("INSERT INTO"));
-        assert!(sql.contains("student_courses"));
-        assert!(sql.contains("student_id"));
-        assert!(sql.contains("course_id"));
+        assert_eq!(
+            sql,
+            "INSERT INTO \"student_courses\" (\"student_id\", \"course_id\") VALUES (1, 10)",
+            "Expected exact INSERT SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -550,10 +558,12 @@ mod tests {
         let m2m = ManyToMany::<Student, Course>::new(assoc);
 
         let sql = m2m.remove_sql(1, 10, SqliteQueryBuilder);
-        assert!(sql.contains("DELETE FROM"));
-        assert!(sql.contains("student_courses"));
-        assert!(sql.contains("student_id"));
-        assert!(sql.contains("course_id"));
+        assert_eq!(
+            sql,
+            "DELETE FROM \"student_courses\" WHERE \"student_id\" = 1 AND \"course_id\" = 10",
+            "Expected exact DELETE SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -651,11 +661,11 @@ mod tests {
 
         let sql = table.to_create_sql(SqliteQueryBuilder);
 
-        // Verify table creation includes typed columns
-        assert!(sql.contains("CREATE TABLE"));
-        assert!(sql.contains("enrollments"));
-        assert!(sql.contains("enrolled_at"));
-        assert!(sql.contains("grade"));
-        assert!(sql.contains("notes"));
+        assert_eq!(
+            sql,
+            "CREATE TABLE IF NOT EXISTS \"enrollments\" ( \"student_id\" integer NOT NULL, \"course_id\" integer NOT NULL, \"enrolled_at\" datetime, \"grade\" integer, \"notes\" text, PRIMARY KEY (\"student_id\", \"course_id\") )",
+            "Expected exact CREATE TABLE with typed columns SQL, got: {}",
+            sql
+        );
     }
 }

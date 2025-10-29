@@ -64,8 +64,14 @@ impl InsertBuilder {
     ///     .value("email", "alice@example.com");
     ///
     /// let (sql, params) = builder.build();
-    /// assert!(sql.contains("INSERT INTO users"));
+    /// // SQL output order may vary, verify components separately
+    /// assert!(sql.starts_with("INSERT INTO users ("));
+    /// assert!(sql.contains("name"));
+    /// assert!(sql.contains("email"));
+    /// assert!(sql.contains(") VALUES (?, ?)"));
     /// assert_eq!(params.len(), 2);
+    /// assert_eq!(params[0], "Alice");
+    /// assert_eq!(params[1], "alice@example.com");
     /// ```
     pub fn value(mut self, column: &str, value: &str) -> Self {
         self.values
@@ -93,7 +99,12 @@ impl InsertBuilder {
     ///     .hybrid_value("email", &lower_email, "TEST@EXAMPLE.COM");
     ///
     /// let (sql, _) = builder.build();
-    /// assert!(sql.contains("LOWER"));
+    /// assert_eq!(
+    ///     sql,
+    ///     "INSERT INTO users (email) VALUES (LOWER('TEST@EXAMPLE.COM'))",
+    ///     "Expected INSERT with LOWER expression, got: {}",
+    ///     sql
+    /// );
     /// ```
     pub fn hybrid_value<T, R>(
         mut self,
@@ -130,9 +141,15 @@ impl InsertBuilder {
     ///     .expanded_hybrid(vec![("x", "10"), ("y", "20")]);
     ///
     /// let (sql, params) = builder.build();
-    /// assert!(sql.contains("INSERT INTO points"));
-    /// assert!(sql.contains("x"));
-    /// assert!(sql.contains("y"));
+    /// assert_eq!(
+    ///     sql,
+    ///     "INSERT INTO points (x, y) VALUES (?, ?)",
+    ///     "Expected INSERT with expanded columns x and y, got: {}",
+    ///     sql
+    /// );
+    /// assert_eq!(params.len(), 2);
+    /// assert_eq!(params[0], "10");
+    /// assert_eq!(params[1], "20");
     /// ```
     pub fn expanded_hybrid(mut self, columns: Vec<(&str, &str)>) -> Self {
         let expanded = columns
@@ -157,9 +174,14 @@ impl InsertBuilder {
     ///     .value("age", "25");
     ///
     /// let (sql, params) = builder.build();
-    /// assert!(sql.starts_with("INSERT INTO users"));
+    /// // SQL output order may vary, verify components separately
+    /// assert!(sql.starts_with("INSERT INTO users ("));
     /// assert!(sql.contains("name"));
     /// assert!(sql.contains("age"));
+    /// assert!(sql.contains(") VALUES (?, ?)"));
+    /// assert_eq!(params.len(), 2);
+    /// assert!(params.contains(&"Bob".to_string()));
+    /// assert!(params.contains(&"25".to_string()));
     /// ```
     pub fn build(&self) -> (String, Vec<String>) {
         let mut columns = Vec::new();
@@ -266,8 +288,14 @@ impl UpdateBuilder {
     ///     .where_clause("id = 1");
     ///
     /// let (sql, params) = builder.build();
-    /// assert!(sql.contains("UPDATE users"));
-    /// assert!(sql.contains("SET"));
+    /// // SQL output order may vary, verify components separately
+    /// assert!(sql.starts_with("UPDATE users SET "));
+    /// assert!(sql.contains("name=?"));
+    /// assert!(sql.contains("age=?"));
+    /// assert!(sql.contains(" WHERE id = 1"));
+    /// assert_eq!(params.len(), 2);
+    /// assert!(params.contains(&"Charlie".to_string()));
+    /// assert!(params.contains(&"30".to_string()));
     /// ```
     pub fn set(mut self, column: &str, value: &str) -> Self {
         self.values
@@ -296,7 +324,12 @@ impl UpdateBuilder {
     ///     .where_clause("id = 1");
     ///
     /// let (sql, _) = builder.build();
-    /// assert!(sql.contains("LOWER"));
+    /// assert_eq!(
+    ///     sql,
+    ///     "UPDATE users SET email=LOWER('UPDATED@EXAMPLE.COM') WHERE id = 1",
+    ///     "Expected UPDATE with LOWER expression, got: {}",
+    ///     sql
+    /// );
     /// ```
     pub fn set_hybrid<T, R>(
         mut self,
@@ -333,9 +366,15 @@ impl UpdateBuilder {
     ///     .where_clause("id = 5");
     ///
     /// let (sql, params) = builder.build();
-    /// assert!(sql.contains("UPDATE points"));
-    /// assert!(sql.contains("x=?"));
-    /// assert!(sql.contains("y=?"));
+    /// assert_eq!(
+    ///     sql,
+    ///     "UPDATE points SET x=?, y=? WHERE id = 5",
+    ///     "Expected UPDATE with expanded columns x and y, got: {}",
+    ///     sql
+    /// );
+    /// assert_eq!(params.len(), 2);
+    /// assert_eq!(params[0], "100");
+    /// assert_eq!(params[1], "200");
     /// ```
     pub fn set_expanded(mut self, columns: Vec<(&str, &str)>) -> Self {
         let expanded = columns
@@ -358,8 +397,15 @@ impl UpdateBuilder {
     ///     .set("status", "active")
     ///     .where_clause("created_at < '2024-01-01'");
     ///
-    /// let (sql, _) = builder.build();
-    /// assert!(sql.contains("WHERE created_at"));
+    /// let (sql, params) = builder.build();
+    /// assert_eq!(
+    ///     sql,
+    ///     "UPDATE users SET status=? WHERE created_at < '2024-01-01'",
+    ///     "Expected UPDATE with WHERE clause, got: {}",
+    ///     sql
+    /// );
+    /// assert_eq!(params.len(), 1);
+    /// assert_eq!(params[0], "active");
     /// ```
     pub fn where_clause(mut self, condition: &str) -> Self {
         self.where_clause = Some(condition.to_string());
@@ -377,7 +423,13 @@ impl UpdateBuilder {
     ///     .where_clause("id = 10");
     ///
     /// let (sql, params) = builder.build();
-    /// assert!(sql.starts_with("UPDATE users"));
+    /// assert_eq!(
+    ///     sql,
+    ///     "UPDATE users SET name=? WHERE id = 10",
+    ///     "Expected UPDATE with name and WHERE clause, got: {}",
+    ///     sql
+    /// );
+    /// assert_eq!(params.len(), 1);
     /// assert_eq!(params[0], "David");
     /// ```
     pub fn build(&self) -> (String, Vec<String>) {
@@ -445,10 +497,30 @@ mod tests {
             .value("last_name", "Doe");
 
         let (sql, params) = builder.build();
-        assert!(sql.contains("INSERT INTO person"));
-        assert!(sql.contains("first_name"));
-        assert!(sql.contains("last_name"));
-        assert_eq!(params.len(), 2);
+        // SQL output order may vary, verify components separately
+        assert!(
+            sql.starts_with("INSERT INTO person ("),
+            "Expected INSERT INTO person, got: {}",
+            sql
+        );
+        assert!(sql.contains("first_name"), "Expected first_name in SQL: {}", sql);
+        assert!(sql.contains("last_name"), "Expected last_name in SQL: {}", sql);
+        assert!(
+            sql.contains(") VALUES (?, ?)"),
+            "Expected VALUES (?, ?), got: {}",
+            sql
+        );
+        assert_eq!(params.len(), 2, "Expected 2 parameters, got: {}", params.len());
+        assert!(
+            params.contains(&"John".to_string()),
+            "Expected 'John' in params: {:?}",
+            params
+        );
+        assert!(
+            params.contains(&"Doe".to_string()),
+            "Expected 'Doe' in params: {:?}",
+            params
+        );
     }
 
     #[test]
@@ -458,10 +530,14 @@ mod tests {
             .where_clause("id = 1");
 
         let (sql, params) = builder.build();
-        assert!(sql.contains("UPDATE person"));
-        assert!(sql.contains("SET first_name=?"));
-        assert!(sql.contains("WHERE id = 1"));
-        assert_eq!(params[0], "Jane");
+        assert_eq!(
+            sql,
+            "UPDATE person SET first_name=? WHERE id = 1",
+            "Expected exact UPDATE SQL, got: {}",
+            sql
+        );
+        assert_eq!(params.len(), 1, "Expected 1 parameter, got: {}", params.len());
+        assert_eq!(params[0], "Jane", "Expected 'Jane', got: {}", params[0]);
     }
 
     #[test]
@@ -469,10 +545,15 @@ mod tests {
         let builder = InsertBuilder::new("points").expanded_hybrid(vec![("x", "10"), ("y", "20")]);
 
         let (sql, params) = builder.build();
-        assert!(sql.contains("INSERT INTO points"));
-        assert!(sql.contains("x"));
-        assert!(sql.contains("y"));
-        assert_eq!(params.len(), 2);
+        assert_eq!(
+            sql,
+            "INSERT INTO points (x, y) VALUES (?, ?)",
+            "Expected INSERT with expanded columns, got: {}",
+            sql
+        );
+        assert_eq!(params.len(), 2, "Expected 2 parameters, got: {}", params.len());
+        assert_eq!(params[0], "10", "Expected '10' as first param, got: {}", params[0]);
+        assert_eq!(params[1], "20", "Expected '20' as second param, got: {}", params[1]);
     }
 
     #[test]
@@ -482,11 +563,15 @@ mod tests {
             .where_clause("id = 1");
 
         let (sql, params) = builder.build();
-        assert!(sql.contains("UPDATE points"));
-        assert!(sql.contains("x=?"));
-        assert!(sql.contains("y=?"));
-        assert!(sql.contains("WHERE id = 1"));
-        assert_eq!(params.len(), 2);
+        assert_eq!(
+            sql,
+            "UPDATE points SET x=?, y=? WHERE id = 1",
+            "Expected UPDATE with expanded columns, got: {}",
+            sql
+        );
+        assert_eq!(params.len(), 2, "Expected 2 parameters, got: {}", params.len());
+        assert_eq!(params[0], "30", "Expected '30' as first param, got: {}", params[0]);
+        assert_eq!(params[1], "40", "Expected '40' as second param, got: {}", params[1]);
     }
 
     #[test]
@@ -502,11 +587,22 @@ mod tests {
             .value("name", "John")
             .hybrid_value("email", &lower_email, "TEST@EXAMPLE.COM");
 
-        let (sql, _params) = builder.build();
-        assert!(sql.contains("INSERT INTO users"));
-        assert!(sql.contains("email"));
-        // Should use the hybrid expression
-        assert!(sql.contains("LOWER"));
+        let (sql, params) = builder.build();
+        // SQL output order may vary, verify components separately
+        assert!(
+            sql.starts_with("INSERT INTO users ("),
+            "Expected INSERT INTO users, got: {}",
+            sql
+        );
+        assert!(sql.contains("name"), "Expected 'name' column in SQL: {}", sql);
+        assert!(sql.contains("email"), "Expected 'email' column in SQL: {}", sql);
+        assert!(
+            sql.contains("LOWER('TEST@EXAMPLE.COM')"),
+            "Expected LOWER expression in SQL: {}",
+            sql
+        );
+        assert_eq!(params.len(), 1, "Expected 1 parameter for name, got: {}", params.len());
+        assert_eq!(params[0], "John", "Expected 'John' as parameter, got: {}", params[0]);
     }
 
     #[test]
@@ -522,10 +618,30 @@ mod tests {
             .hybrid_value("email", &simple_prop, "test@example.com");
 
         let (sql, params) = builder.build();
-        assert!(sql.contains("INSERT INTO users"));
-        // Should use direct value since no expression
-        assert_eq!(params.len(), 2);
-        assert!(params.contains(&"test@example.com".to_string()));
+        // SQL output order may vary, verify components separately
+        assert!(
+            sql.starts_with("INSERT INTO users ("),
+            "Expected INSERT INTO users, got: {}",
+            sql
+        );
+        assert!(sql.contains("name"), "Expected 'name' column in SQL: {}", sql);
+        assert!(sql.contains("email"), "Expected 'email' column in SQL: {}", sql);
+        assert!(
+            sql.contains(") VALUES (?, ?)"),
+            "Expected VALUES (?, ?), got: {}",
+            sql
+        );
+        assert_eq!(params.len(), 2, "Expected 2 parameters, got: {}", params.len());
+        assert!(
+            params.contains(&"John".to_string()),
+            "Expected 'John' in params: {:?}",
+            params
+        );
+        assert!(
+            params.contains(&"test@example.com".to_string()),
+            "Expected 'test@example.com' in params: {:?}",
+            params
+        );
     }
 
     #[test]
@@ -541,11 +657,14 @@ mod tests {
             .set_hybrid("email", &lower_email, "UPDATED@EXAMPLE.COM")
             .where_clause("id = 1");
 
-        let (sql, _params) = builder.build();
-        assert!(sql.contains("UPDATE users"));
-        assert!(sql.contains("email="));
-        assert!(sql.contains("LOWER"));
-        assert!(sql.contains("WHERE id = 1"));
+        let (sql, params) = builder.build();
+        assert_eq!(
+            sql,
+            "UPDATE users SET email=LOWER('UPDATED@EXAMPLE.COM') WHERE id = 1",
+            "Expected UPDATE with LOWER expression, got: {}",
+            sql
+        );
+        assert_eq!(params.len(), 0, "Expected 0 parameters (using expression), got: {}", params.len());
     }
 
     #[test]
@@ -561,9 +680,13 @@ mod tests {
             .where_clause("id = 1");
 
         let (sql, params) = builder.build();
-        assert!(sql.contains("UPDATE users"));
-        assert!(sql.contains("email=?"));
-        assert_eq!(params.len(), 1);
-        assert_eq!(params[0], "updated@example.com");
+        assert_eq!(
+            sql,
+            "UPDATE users SET email=? WHERE id = 1",
+            "Expected UPDATE with direct value, got: {}",
+            sql
+        );
+        assert_eq!(params.len(), 1, "Expected 1 parameter, got: {}", params.len());
+        assert_eq!(params[0], "updated@example.com", "Expected 'updated@example.com', got: {}", params[0]);
     }
 }

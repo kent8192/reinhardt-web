@@ -60,9 +60,12 @@ fn test_single_plain_bulk() {
         .value("id", "1");
 
     let (sql, params) = insert_builder.build();
-    assert!(sql.contains("INSERT INTO a"));
+    // Verify exact SQL structure (column order may vary)
+    assert!(sql.starts_with("INSERT INTO a"));
     assert!(sql.contains("x"));
     assert!(sql.contains("id"));
+    assert!(sql.contains("VALUES (?, ?)"));
+    // Exact parameter verification (order matches SQL column order)
     assert_eq!(params.len(), 2);
     assert!(params.contains(&"5".to_string()));
     assert!(params.contains(&"1".to_string()));
@@ -85,13 +88,13 @@ fn test_expand_plain_update_values() {
         .where_clause("a.x = 10 AND a.y = 12");
 
     let (sql, params) = builder.build();
+    // Verify exact SQL structure with both columns
     assert!(sql.starts_with("UPDATE a SET"));
     assert!(sql.contains("x=?"));
     assert!(sql.contains("y=?"));
-    assert!(sql.contains("WHERE a.x = 10 AND a.y = 12"));
-    assert_eq!(params.len(), 2);
-    assert!(params.contains(&"5".to_string()));
-    assert!(params.contains(&"6".to_string()));
+    assert!(sql.ends_with("WHERE a.x = 10 AND a.y = 12"));
+    // Exact parameter verification
+    assert_eq!(params, vec!["5", "6"]);
 }
 
 #[test]
@@ -103,9 +106,8 @@ fn test_expand_update_insert_values() {
     assert!(sql.starts_with("INSERT INTO a"));
     assert!(sql.contains("x"));
     assert!(sql.contains("y"));
-    assert_eq!(params.len(), 2);
-    assert!(params.contains(&"5".to_string()));
-    assert!(params.contains(&"6".to_string()));
+    // Exact parameter verification
+    assert_eq!(params, vec!["5", "6"]);
 }
 
 #[test]
@@ -117,7 +119,8 @@ fn test_expand_update_update_values() {
     assert!(sql.contains("UPDATE a SET"));
     assert!(sql.contains("x=?"));
     assert!(sql.contains("y=?"));
-    assert_eq!(params.len(), 2);
+    // Exact parameter verification
+    assert_eq!(params, vec!["5", "6"]);
 }
 
 #[test]
@@ -133,7 +136,11 @@ fn test_derived_update_insert_values() {
     assert!(sql.contains("x"));
     assert!(sql.contains("y"));
     assert!(sql.contains("z"));
+    // Exact parameter verification (order may vary based on insertion order)
     assert_eq!(params.len(), 3);
+    assert!(params.contains(&"5".to_string()));
+    assert!(params.contains(&"6".to_string()));
+    assert!(params.contains(&"11".to_string()));
 }
 
 #[test]
@@ -149,7 +156,11 @@ fn test_derived_update_update_values() {
     assert!(sql.contains("x=?"));
     assert!(sql.contains("y=?"));
     assert!(sql.contains("z=?"));
+    // Exact parameter verification (order may vary based on insertion order)
     assert_eq!(params.len(), 3);
+    assert!(params.contains(&"5".to_string()));
+    assert!(params.contains(&"6".to_string()));
+    assert!(params.contains(&"11".to_string()));
 }
 
 #[test]
@@ -163,7 +174,10 @@ fn test_multiple_columns_insert() {
     assert!(sql.contains("INSERT INTO person"));
     assert!(sql.contains("first_name"));
     assert!(sql.contains("last_name"));
+    // Exact parameter verification (order may vary based on insertion order)
     assert_eq!(params.len(), 2);
+    assert!(params.contains(&"Dr.".to_string()));
+    assert!(params.contains(&"No".to_string()));
 }
 
 #[test]
@@ -177,7 +191,10 @@ fn test_multiple_columns_update() {
     assert!(sql.contains("UPDATE person SET"));
     assert!(sql.contains("first_name=?"));
     assert!(sql.contains("last_name=?"));
+    // Exact parameter verification (order may vary based on insertion order)
     assert_eq!(params.len(), 2);
+    assert!(params.contains(&"Dr.".to_string()));
+    assert!(params.contains(&"No".to_string()));
 }
 
 #[test]
