@@ -377,10 +377,25 @@ fn test_hyperlinked_relations() {
     let serialized = serializer.serialize(&post).unwrap();
     let json: Value = serde_json::from_str(&serialized).unwrap();
 
-    // Verify basic fields
-    assert_eq!(json["id"].as_i64().unwrap(), 1);
-    assert_eq!(json["title"].as_str().unwrap(), "Test Post");
-    assert_eq!(json["author_id"].as_i64().unwrap(), 42);
+    // Verify basic fields with detailed error messages
+    assert_eq!(
+        json["id"].as_i64().unwrap(),
+        1,
+        "Expected post id to be 1, but got {:?}",
+        json["id"]
+    );
+    assert_eq!(
+        json["title"].as_str().unwrap(),
+        "Test Post",
+        "Expected post title to be 'Test Post', but got {:?}",
+        json["title"]
+    );
+    assert_eq!(
+        json["author_id"].as_i64().unwrap(),
+        42,
+        "Expected author_id to be 42, but got {:?}",
+        json["author_id"]
+    );
 
     // Generate hyperlink URL for the author
     let mut params = HashMap::new();
@@ -451,9 +466,19 @@ fn test_pk_reverse_foreign_key() {
     assert_eq!(reverse_rel.relationship_type(), RelationshipType::OneToMany);
 
     // Verify reverse SQL generation
+    // NOTE: Using contains() for SQL validation is acceptable because SQL formatting
+    // (whitespace, clause order for some DB engines) may vary
     let sql = reverse_rel.load_sql("1");
-    assert!(sql.contains("SELECT * FROM books"));
-    assert!(sql.contains("WHERE author_id = 1"));
+    assert!(
+        sql.contains("SELECT * FROM books"),
+        "SQL should contain SELECT clause. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("WHERE author_id = 1"),
+        "SQL should contain WHERE clause. Actual: {}",
+        sql
+    );
 
     // Test serializer with Author model
     let serializer = ModelSerializer::<Author>::new();
@@ -631,18 +656,48 @@ fn test_pk_reverse_many_to_many() {
     );
 
     // Verify association table SQL generation
+    // NOTE: Using contains() for SQL validation is acceptable because SQL formatting
+    // (whitespace, clause order for some DB engines) may vary
     let sql = assoc_table.to_create_sql();
-    assert!(sql.contains("CREATE TABLE article_tags"));
-    assert!(sql.contains("article_id INTEGER NOT NULL"));
-    assert!(sql.contains("tag_id INTEGER NOT NULL"));
-    assert!(sql.contains("PRIMARY KEY (article_id, tag_id)"));
+    assert!(
+        sql.contains("CREATE TABLE article_tags"),
+        "SQL should contain CREATE TABLE clause. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("article_id INTEGER NOT NULL"),
+        "SQL should contain article_id column. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("tag_id INTEGER NOT NULL"),
+        "SQL should contain tag_id column. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("PRIMARY KEY (article_id, tag_id)"),
+        "SQL should contain PRIMARY KEY constraint. Actual: {}",
+        sql
+    );
 
     // Test ManyToMany relationship helper
     let m2m = ManyToMany::<Article, Tag>::new(assoc_table);
     let join_sql = m2m.join_sql();
-    assert!(join_sql.contains("JOIN article_tags"));
-    assert!(join_sql.contains("articles"));
-    assert!(join_sql.contains("tags"));
+    assert!(
+        join_sql.contains("JOIN article_tags"),
+        "JOIN SQL should contain JOIN clause. Actual: {}",
+        join_sql
+    );
+    assert!(
+        join_sql.contains("articles"),
+        "JOIN SQL should reference articles table. Actual: {}",
+        join_sql
+    );
+    assert!(
+        join_sql.contains("tags"),
+        "JOIN SQL should reference tags table. Actual: {}",
+        join_sql
+    );
 
     // Test serializers for both models
     let article_serializer = ModelSerializer::<Article>::new();
@@ -721,19 +776,57 @@ fn test_pk_reverse_through() {
     let m2m = ManyToMany::<Student, Course>::new(assoc_table.clone());
 
     // Verify association table SQL generation
+    // NOTE: Using contains() for SQL validation is acceptable because SQL formatting
+    // (whitespace, clause order for some DB engines) may vary
     let sql = assoc_table.to_create_sql();
-    assert!(sql.contains("CREATE TABLE student_courses"));
-    assert!(sql.contains("student_id INTEGER NOT NULL"));
-    assert!(sql.contains("course_id INTEGER NOT NULL"));
-    assert!(sql.contains("enrolled_at TIMESTAMP"));
-    assert!(sql.contains("grade VARCHAR(2)"));
-    assert!(sql.contains("PRIMARY KEY (student_id, course_id)"));
+    assert!(
+        sql.contains("CREATE TABLE student_courses"),
+        "SQL should contain CREATE TABLE clause. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("student_id INTEGER NOT NULL"),
+        "SQL should contain student_id column. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("course_id INTEGER NOT NULL"),
+        "SQL should contain course_id column. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("enrolled_at TIMESTAMP"),
+        "SQL should contain enrolled_at column. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("grade VARCHAR(2)"),
+        "SQL should contain grade column. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("PRIMARY KEY (student_id, course_id)"),
+        "SQL should contain PRIMARY KEY constraint. Actual: {}",
+        sql
+    );
 
     // Verify join SQL generation
     let join_sql = m2m.join_sql();
-    assert!(join_sql.contains("JOIN student_courses"));
-    assert!(join_sql.contains("students"));
-    assert!(join_sql.contains("courses"));
+    assert!(
+        join_sql.contains("JOIN student_courses"),
+        "JOIN SQL should contain JOIN clause. Actual: {}",
+        join_sql
+    );
+    assert!(
+        join_sql.contains("students"),
+        "JOIN SQL should reference students table. Actual: {}",
+        join_sql
+    );
+    assert!(
+        join_sql.contains("courses"),
+        "JOIN SQL should reference courses table. Actual: {}",
+        join_sql
+    );
 
     // Serialize and deserialize models
     let serializer = ModelSerializer::<Student>::new();
@@ -1029,9 +1122,19 @@ fn test_unique_together_validator() {
     );
 
     // Verify constraint SQL generation
+    // NOTE: Using contains() for SQL validation is acceptable because SQL formatting
+    // (whitespace, clause order for some DB engines) may vary
     let sql = constraint.to_sql();
-    assert!(sql.contains("CONSTRAINT unique_team_user"));
-    assert!(sql.contains("UNIQUE (team_id, user_id)"));
+    assert!(
+        sql.contains("CONSTRAINT unique_team_user"),
+        "SQL should contain CONSTRAINT clause. Actual: {}",
+        sql
+    );
+    assert!(
+        sql.contains("UNIQUE (team_id, user_id)"),
+        "SQL should contain UNIQUE constraint. Actual: {}",
+        sql
+    );
     assert_eq!(constraint.name(), "unique_team_user");
     assert_eq!(constraint.fields.len(), 2);
 
@@ -1156,9 +1259,35 @@ fn test_serializer_in_api_view() {
 
     // Test JSON serialization of API response
     let json = list_response.to_json().unwrap();
-    assert!(json.contains("\"status\":200"));
-    assert!(json.contains("Write tests"));
-    assert!(json.contains("Review code"));
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    // Verify response structure
+    assert_eq!(
+        parsed["status"].as_i64().unwrap(),
+        200,
+        "Response status should be 200, got: {:?}",
+        parsed["status"]
+    );
+
+    // Verify data array exists and contains tasks
+    let data = parsed["data"].as_array().expect("Response should have data array");
+    assert_eq!(data.len(), 2, "Data array should contain 2 tasks");
+
+    // Verify first task
+    assert_eq!(
+        data[0]["title"].as_str().unwrap(),
+        "Write tests",
+        "First task title should be 'Write tests', got: {:?}",
+        data[0]["title"]
+    );
+
+    // Verify second task
+    assert_eq!(
+        data[1]["title"].as_str().unwrap(),
+        "Review code",
+        "Second task title should be 'Review code', got: {:?}",
+        data[1]["title"]
+    );
 }
 
 #[test]
@@ -1236,10 +1365,28 @@ fn test_paginated_serializer_response() {
 
     // Test JSON serialization of paginated response
     let json = serde_json::to_string(&paginated).unwrap();
-    assert!(json.contains("\"count\":10"));
-    assert!(json.contains("Great article!"));
-    assert!(json.contains("\"author\":\"Alice\""));
-    assert!(json.contains("?page=2"));
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    // Verify pagination structure fields individually
+    assert_eq!(parsed["count"], 10, "count field should be 10");
+    assert!(parsed["next"].is_string(), "next field should be a string");
+    assert_eq!(parsed["next"].as_str().unwrap(), "/api/comments?page=2", "next URL should be correct");
+    assert!(parsed["previous"].is_null(), "previous field should be null on first page");
+    assert!(parsed["results"].is_array(), "results field should be an array");
+    assert_eq!(parsed["results"].as_array().unwrap().len(), 3, "results should contain 3 items");
+
+    // Verify result content by checking individual fields
+    let results = parsed["results"].as_array().unwrap();
+    assert_eq!(
+        results[0]["text"].as_str().unwrap(),
+        "Great article!",
+        "First comment text should be 'Great article!'"
+    );
+    assert_eq!(
+        results[0]["author"].as_str().unwrap(),
+        "Alice",
+        "First comment author should be 'Alice'"
+    );
 
     // Test last page (no next, has previous)
     let last_page_metadata = PaginationMetadata {

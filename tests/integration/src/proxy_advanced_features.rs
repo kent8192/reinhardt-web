@@ -261,9 +261,10 @@ async fn test_proxy_alias_serialization() {
         .build();
 
     let json = serde_json::to_string(&alias).unwrap();
-    assert!(json.contains("serializable_field"));
-    assert!(json.contains("data"));
-    assert!(json.contains("value"));
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["name"], "serializable_field");
+    assert_eq!(parsed["relationship"], "data");
+    assert_eq!(parsed["attribute"], "value");
 
     test_case.cleanup().await;
 }
@@ -288,9 +289,10 @@ async fn test_proxy_serialization() {
         .with_loading_strategy(LoadingStrategy::Joined);
 
     let json = serde_json::to_string(&proxy).unwrap();
-    assert!(json.contains("\"relationship\":\"posts\""));
-    assert!(json.contains("\"attribute\":\"title\""));
-    assert!(json.contains("\"unique\":true"));
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["relationship"], "posts");
+    assert_eq!(parsed["attribute"], "title");
+    assert_eq!(parsed["unique"], true);
 
     test_case.cleanup().await;
 }
@@ -324,8 +326,10 @@ async fn test_proxy_config_serialization() {
         .with_condition("users.id = posts.user_id");
 
     let json = serde_json::to_string(&config).unwrap();
-    assert!(json.contains("joined"));
-    assert!(json.contains("LEFT JOIN"));
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["loading_strategy"], "joined");
+    assert_eq!(parsed["join_type"], "LEFT JOIN");
+    assert_eq!(parsed["condition"], "users.id = posts.user_id");
 
     test_case.cleanup().await;
 }

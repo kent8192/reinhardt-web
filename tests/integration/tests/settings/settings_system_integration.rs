@@ -152,8 +152,18 @@ fn test_settings_serialization() {
     // Serialize to JSON
     let json = serde_json::to_string(&settings).unwrap();
     assert!(!json.is_empty());
-    assert!(json.contains("debug"));
-    assert!(json.contains("secret_key"));
+
+    // Deserialize to verify structure
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert!(
+        parsed.get("debug").is_some(),
+        "Serialized JSON should contain 'debug' field"
+    );
+    assert!(
+        parsed.get("secret_key").is_some(),
+        "Serialized JSON should contain 'secret_key' field"
+    );
+    assert_eq!(parsed["debug"].as_bool(), Some(true));
 }
 
 #[test]

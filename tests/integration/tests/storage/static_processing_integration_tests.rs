@@ -190,9 +190,27 @@ fn test_source_map_serialization() {
     map.add_source_content("const x = 1;".to_string());
 
     let json = map.to_json().unwrap();
-    assert!(json.contains("\"version\":3"));
-    assert!(json.contains("\"file\":\"app.min.js\""));
-    assert!(json.contains("\"sources\""));
+
+    // Deserialize to verify exact structure
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        parsed["version"].as_i64(),
+        Some(3),
+        "SourceMap version should be 3"
+    );
+    assert_eq!(
+        parsed["file"].as_str(),
+        Some("app.min.js"),
+        "SourceMap file should be 'app.min.js'"
+    );
+    assert!(
+        parsed.get("sources").is_some(),
+        "SourceMap should contain 'sources' field"
+    );
+    assert!(
+        parsed["sources"].is_array(),
+        "SourceMap 'sources' should be an array"
+    );
 }
 
 #[cfg(feature = "source-maps")]

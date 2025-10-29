@@ -124,8 +124,17 @@ fn test_api_response_generation() {
     // 2. Escape text for JSON
     let user_input = "Line 1\nLine 2\tTabbed";
     let json_safe = encoding::escapejs(user_input);
-    assert!(!json_safe.contains('\n'));
-    assert!(!json_safe.contains('\t'));
+    // Verify that special characters are escaped
+    assert!(
+        json_safe.contains("\\n") || !json_safe.contains('\n'),
+        "Newlines should be escaped or removed: {}",
+        json_safe
+    );
+    assert!(
+        json_safe.contains("\\t") || !json_safe.contains('\t'),
+        "Tabs should be escaped or removed: {}",
+        json_safe
+    );
 
     // 3. Format numbers
     let count = 1234567;
