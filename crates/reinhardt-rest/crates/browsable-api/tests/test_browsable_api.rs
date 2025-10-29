@@ -76,8 +76,9 @@ mod anonymous_user_tests {
         );
 
         // Verify no form is rendered (anonymous users shouldn't see forms for protected endpoints)
-        assert!(
-            !html.contains("Make a Request"),
+        assert_eq!(
+            html.matches("Make a Request").count(),
+            0,
             "Anonymous users should not see request forms on protected endpoints"
         );
 
@@ -131,8 +132,9 @@ mod anonymous_user_tests {
 
         // Verify no allowed methods are shown (empty vec)
         let allowed_section = html.split("Allowed methods:").nth(1).unwrap_or("");
-        assert!(
-            !allowed_section.contains("method-badge method-get"),
+        assert_eq!(
+            allowed_section.matches("method-badge method-get").count(),
+            0,
             "Should not show GET badge when no methods are allowed"
         );
 
@@ -212,9 +214,11 @@ mod dropdown_with_auth_tests {
         // Verify it's a POST form
         assert!(html.contains("POST"), "Logout should use POST method");
 
-        // Verify form structure
+        // Verify form structure exists
+        let has_request_section = html.matches("Make a Request").count() >= 1;
+        let has_form = html.matches("<form").count() >= 1;
         assert!(
-            html.contains("Make a Request") || html.contains("form"),
+            has_request_section || has_form,
             "Should render a form for logout"
         );
 
@@ -316,8 +320,10 @@ mod dropdown_with_auth_tests {
         // Verify logout URL with next parameter
         assert!(html.contains("/auth/logout/"), "Should contain logout URL");
         // The URL may be HTML-encoded by Handlebars, so check for the path
+        let has_next_query = html.matches("?next=/").count() >= 1;
+        let has_next_param = html.matches("next").count() >= 1;
         assert!(
-            html.contains("?next=/") || html.contains("next"),
+            has_next_query || has_next_param,
             "Should contain next parameter in logout URL"
         );
 
@@ -357,8 +363,9 @@ mod no_dropdown_without_auth_tests {
         let html = renderer.render(&context).unwrap();
 
         // Verify no form is rendered when request_form is None
-        assert!(
-            !html.contains("Make a Request"),
+        assert_eq!(
+            html.matches("Make a Request").count(),
+            0,
             "Should not show request form when auth is disabled"
         );
 
@@ -393,16 +400,19 @@ mod no_dropdown_without_auth_tests {
         let html = renderer.render(&context).unwrap();
 
         // Verify no auth-related elements
-        assert!(
-            !html.contains("dropdown"),
+        assert_eq!(
+            html.matches("dropdown").count(),
+            0,
             "Should not contain dropdown elements"
         );
-        assert!(
-            !html.contains("login"),
+        assert_eq!(
+            html.matches("login").count(),
+            0,
             "Should not contain login references"
         );
-        assert!(
-            !html.contains("logout"),
+        assert_eq!(
+            html.matches("logout").count(),
+            0,
             "Should not contain logout references"
         );
 
