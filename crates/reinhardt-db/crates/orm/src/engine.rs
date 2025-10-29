@@ -2,17 +2,44 @@
 //!
 //! SQLAlchemy-inspired database engine with connection pooling.
 //!
+//! This module provides a high-level database engine abstraction with built-in
+//! connection pooling using SQLx's `AnyPool`. The pooling configuration allows
+//! fine-grained control over connection lifecycle, timeouts, and pool sizes.
+//!
+//! ## Connection Pooling
+//!
+//! The engine uses SQLx's connection pooling with the following configurable parameters:
+//! - `pool_min_size`: Minimum number of connections in the pool
+//! - `pool_max_size`: Maximum number of connections in the pool
+//! - `pool_timeout`: Timeout for acquiring a connection from the pool
+//! - `pool_idle_timeout`: Maximum idle time before a connection is closed
+//! - `pool_max_lifetime`: Maximum lifetime of a connection before it's closed
+//!
+//! ## Examples
+//!
+//! ```no_run
+//! use reinhardt_orm::engine::{EngineConfig, create_engine_with_config};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create engine with custom pool configuration
+//! let config = EngineConfig::new("postgres://localhost/mydb")
+//!     .with_pool_size(5, 20)  // Min: 5, Max: 20
+//!     .with_timeout(30)       // 30 seconds connection timeout
+//!     .with_idle_timeout(Some(600))    // 10 minutes idle timeout
+//!     .with_max_lifetime(Some(1800));  // 30 minutes max lifetime
+//!
+//! let engine = create_engine_with_config(config).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! This module is inspired by SQLAlchemy's engine implementation
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
 use backends::{DatabaseError, DatabaseType, Row as DbRow, connection::DatabaseConnection};
-
-// TODO: Implement connection pooling with deadpool_sqlx
-// #[cfg(feature = "pooling")]
-// use deadpool_sqlx::{Pool, Runtime};
-
-use sqlx::{Any, AnyPool};
+use sqlx::{Any, AnyPool, pool::PoolOptions};
+use std::time::Duration;
 
 /// Database engine configuration
 #[derive(Debug, Clone)]
@@ -29,6 +56,12 @@ pub struct EngineConfig {
     /// Connection timeout in seconds
     pub pool_timeout: u64,
 
+    /// Maximum idle time for a connection in seconds (None = no limit)
+    pub pool_idle_timeout: Option<u64>,
+
+    /// Maximum lifetime for a connection in seconds (None = no limit)
+    pub pool_max_lifetime: Option<u64>,
+
     /// Enable echo (log all SQL)
     pub echo: bool,
 
@@ -43,6 +76,8 @@ impl Default for EngineConfig {
             pool_min_size: 1,
             pool_max_size: 10,
             pool_timeout: 30,
+            pool_idle_timeout: Some(600), // 10 minutes
+            pool_max_lifetime: Some(1800), // 30 minutes
             echo: false,
             query_cache_size: 500,
         }
@@ -63,6 +98,25 @@ impl EngineConfig {
         self.pool_max_size = max;
         self
     }
+
+    /// Set connection timeout in seconds
+    pub fn with_timeout(mut self, timeout: u64) -> Self {
+        self.pool_timeout = timeout;
+        self
+    }
+
+    /// Set idle timeout in seconds (None = no limit)
+    pub fn with_idle_timeout(mut self, timeout: Option<u64>) -> Self {
+        self.pool_idle_timeout = timeout;
+        self
+    }
+
+    /// Set max lifetime in seconds (None = no limit)
+    pub fn with_max_lifetime(mut self, lifetime: Option<u64>) -> Self {
+        self.pool_max_lifetime = lifetime;
+        self
+    }
+
     /// Enable SQL echo
     pub fn with_echo(mut self, echo: bool) -> Self {
         self.echo = echo;
@@ -85,7 +139,22 @@ impl Engine {
     /// Create a new engine from config
     ///
     pub async fn from_config(config: EngineConfig) -> Result<Self, sqlx::Error> {
-        let pool = AnyPool::connect(&config.url).await?;
+        let mut pool_options = PoolOptions::<Any>::new()
+            .min_connections(config.pool_min_size)
+            .max_connections(config.pool_max_size)
+            .acquire_timeout(Duration::from_secs(config.pool_timeout));
+
+        // Set idle timeout if specified
+        if let Some(idle_timeout) = config.pool_idle_timeout {
+            pool_options = pool_options.idle_timeout(Duration::from_secs(idle_timeout));
+        }
+
+        // Set max lifetime if specified
+        if let Some(max_lifetime) = config.pool_max_lifetime {
+            pool_options = pool_options.max_lifetime(Duration::from_secs(max_lifetime));
+        }
+
+        let pool = pool_options.connect(&config.url).await?;
 
         Ok(Self { pool, config })
     }

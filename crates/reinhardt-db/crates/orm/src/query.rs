@@ -121,6 +121,7 @@ where
     }
 
     /// Convert FilterOperator to SQL operator string
+    #[allow(dead_code)]
     fn operator_to_sql(operator: &FilterOperator) -> &'static str {
         match operator {
             FilterOperator::Eq => "=",
@@ -138,6 +139,7 @@ where
     }
 
     /// Convert FilterValue to SQL parameter placeholder and prepare value for binding
+    #[allow(dead_code)]
     fn value_to_sql_placeholder(
         value: &FilterValue,
         operator: &FilterOperator,
@@ -257,6 +259,7 @@ where
     }
 
     /// Convert FilterValue to String representation
+    #[allow(dead_code)]
     fn value_to_string(v: &FilterValue) -> String {
         match v {
             FilterValue::String(s) => s.clone(),
@@ -306,6 +309,7 @@ where
     }
 
     /// Convert FilterValue to array of sea_query::Value
+    #[allow(dead_code)]
     fn value_to_array(v: &FilterValue) -> Vec<sea_query::Value> {
         match v {
             FilterValue::String(s) => Self::parse_array_string(s),
@@ -327,6 +331,7 @@ where
     ///
     /// This method generates a complete SELECT statement internally and extracts only
     /// the WHERE portion, which is less efficient than using `build_where_condition()`.
+    #[allow(dead_code)]
     fn build_where_clause(&self) -> (String, Vec<String>) {
         if self.filters.is_empty() {
             return (String::new(), Vec::new());
@@ -642,7 +647,7 @@ where
         };
 
         // Convert SeaQuery statement to SQL
-        let (sql, values) = stmt.build(PostgresQueryBuilder);
+        let (sql, _values) = stmt.build(PostgresQueryBuilder);
 
         // Execute query and deserialize results
         let rows = conn.query(&sql).await?;
@@ -972,7 +977,7 @@ where
     where
         T: crate::Model + Clone,
     {
-        use sea_query::{Alias, BinOper, Expr, ExprTrait, PostgresQueryBuilder, Query, Value};
+        use sea_query::{Alias, BinOper, Expr, ExprTrait, PostgresQueryBuilder, Value};
 
         // Get composite primary key definition from the model
         let composite_pk = T::composite_primary_key().ok_or_else(|| {

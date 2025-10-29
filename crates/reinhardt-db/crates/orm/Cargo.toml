@@ -18,9 +18,9 @@ advanced-queries = []
 # Integration tests with real database
 integration-tests = []
 # Database driver features
-postgres = []
-sqlite = []
-mysql = []
+postgres = ["backends/postgres"]
+sqlite = ["backends/sqlite"]
+mysql = ["backends/mysql"]
 
 [dependencies]
 reinhardt-apps = { workspace = true }
@@ -43,7 +43,6 @@ futures = "0.3"
 refinery = { workspace = true, optional = true }
 sqlx = { workspace = true }
 sea-query = { workspace = true }
-sea-query-sqlx = { workspace = true }
 
 # Cryptography
 aes-gcm = { workspace = true }

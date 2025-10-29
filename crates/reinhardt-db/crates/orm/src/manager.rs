@@ -1,7 +1,7 @@
 use crate::connection::DatabaseConnection;
 use crate::{Model, QuerySet};
 use sea_query::{
-    Alias, DeleteStatement, Expr, ExprTrait, InsertStatement, Query, SelectStatement,
+    Alias, Expr, ExprTrait, InsertStatement, Query, SelectStatement,
     UpdateStatement,
 };
 use std::collections::HashMap;
@@ -123,20 +123,26 @@ impl<M: Model> Manager<M> {
                 }
             }
             serde_json::Value::String(s) => sea_query::Value::String(Some(s.clone())),
-            serde_json::Value::Array(_arr) => {
-                // Convert JSON array to string representation
-                // TODO: Use proper array type when sea-query v1.0 stabilizes array support
-                sea_query::Value::String(Some(v.to_string()))
+            serde_json::Value::Array(arr) => {
+                // Use sea-query's Array type for PostgreSQL arrays
+                let values: Vec<sea_query::Value> = arr
+                    .iter()
+                    .map(Self::json_to_sea_value)
+                    .collect();
+                sea_query::Value::Array(
+                    sea_query::ArrayType::String,
+                    Some(Box::new(values))
+                )
             }
             serde_json::Value::Object(_obj) => {
-                // Convert JSON object to string representation
-                // TODO: Use proper JSON type when sea-query v1.0 stabilizes JSON support
-                sea_query::Value::String(Some(v.to_string()))
+                // Use sea-query's Json type for PostgreSQL JSONB/JSON columns
+                sea_query::Value::Json(Some(v.clone()))
             }
         }
     }
 
     /// Serialize a JSON value to SQL-compatible string representation
+    #[allow(dead_code)]
     fn serialize_value(v: &serde_json::Value) -> String {
         match v {
             serde_json::Value::Null => "NULL".to_string(),
