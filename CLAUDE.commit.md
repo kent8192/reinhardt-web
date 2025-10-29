@@ -51,7 +51,7 @@ When a single file contains changes with different purposes, use one of the foll
 #### Method 1: Editor-based Patch Editing (Recommended)
 
 ```bash
-git add -e <file>
+git add --patch <file>
 ```
 
 - Opens patch directly in editor without interactive prompts
@@ -84,15 +84,6 @@ git apply --cached /tmp/changes.patch
 - **NEVER** commit files specified in .gitignore
 - Verify staged files before committing
 - Use `git status` to confirm no ignored files are included
-
-### CE-5 (MUST): No Batch Commits
-
-- **NEVER** execute multiple commits in a batch operation
-- **ALWAYS** create commits one at a time, with user confirmation between each
-- After creating a commit, wait for user instruction before proceeding with the next commit
-- ❌ Bad: Creating 5 commits in sequence without user interaction
-- ✅ Good: Create one commit, inform user, wait for next instruction, then proceed
-- This ensures user has control and visibility over commit history
 
 ---
 
@@ -216,7 +207,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - ✅ SPLIT commits by specific intent, not feature-level goals
 - ✅ KEEP each commit small enough to explain in one line
 - ✅ FOCUS on concrete implementation details, not broad feature names
-- ✅ USE `git add -e` or patch files for partial file commits
+- ✅ USE `git add --patch` with patch files for partial file commits
 - ✅ CREATE one commit at a time with user confirmation between each
 
 ### Message Format
