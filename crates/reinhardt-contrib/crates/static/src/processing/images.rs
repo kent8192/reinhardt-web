@@ -13,8 +13,10 @@ use std::path::Path;
 /// Optimizes images to reduce file size while maintaining quality.
 pub struct ImageOptimizer {
     /// Quality level (1-100)
+    #[allow(dead_code)]
     quality: u8,
     /// Enable lossy compression
+    #[allow(dead_code)]
     lossy: bool,
 }
 
