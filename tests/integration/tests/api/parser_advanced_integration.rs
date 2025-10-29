@@ -147,7 +147,11 @@ fn test_json_parser_media_types() {
     let parser = JSONParser::new();
     let media_types = parser.media_types();
 
-    assert!(media_types.contains(&"application/json".to_string()));
+    assert_eq!(
+        media_types,
+        vec!["application/json".to_string()],
+        "JSONParser should support exactly 'application/json' media type"
+    );
 }
 
 #[tokio::test]

@@ -31,14 +31,42 @@ fn test_browsable_api_html_response() {
 
     let html = renderer.render(&context).unwrap();
 
-    // Verify HTML structure
-    assert!(html.contains("<!DOCTYPE html>"));
-    assert!(html.contains("<html>"));
-    assert!(html.contains("User List API"));
-    assert!(html.contains("Get a list of all users"));
-    assert!(html.contains("/api/users/"));
-    assert!(html.contains("Alice"));
-    assert!(html.contains("alice@example.com"));
+    // Verify HTML structure and content
+    assert!(
+        html.contains("<!DOCTYPE html>"),
+        "HTML should start with DOCTYPE, got: {}",
+        &html[..100.min(html.len())]
+    );
+    assert!(
+        html.contains("<html>"),
+        "HTML should have html element, got: {}",
+        &html[..200.min(html.len())]
+    );
+    assert!(
+        html.contains("<title>User List API - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>User List API</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
+    assert!(
+        html.contains("Get a list of all users"),
+        "HTML should contain description text, got: {}",
+        &html[..1200.min(html.len())]
+    );
+    assert!(
+        html.contains("/api/users/"),
+        "HTML should display endpoint URL, got: {}",
+        &html[..1200.min(html.len())]
+    );
+    assert!(
+        html.contains("Alice") && html.contains("alice@example.com"),
+        "HTML should display user data from JSON response, got partial: {}",
+        &html[..2000.min(html.len())]
+    );
 }
 
 #[test]
@@ -68,11 +96,32 @@ fn test_browsable_api_json_data_display() {
 
     let html = renderer.render(&context).unwrap();
 
-    // Verify JSON data is displayed
-    assert!(html.contains("Laptop"));
-    assert!(html.contains("999.99"));
-    assert!(html.contains("Intel i7"));
-    assert!(html.contains("16GB"));
+    // Verify JSON data is displayed with exact values
+    assert!(
+        html.contains("<title>Product Detail - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>Product Detail</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
+    assert!(
+        html.contains("Laptop"),
+        "HTML should display product name, got: {}",
+        &html[..2000.min(html.len())]
+    );
+    assert!(
+        html.contains("999.99"),
+        "HTML should display product price, got: {}",
+        &html[..2000.min(html.len())]
+    );
+    assert!(
+        html.contains("Intel i7") && html.contains("16GB"),
+        "HTML should display nested specs data, got: {}",
+        &html[..2000.min(html.len())]
+    );
 }
 
 // ============================================================================
@@ -124,11 +173,37 @@ fn test_browsable_api_form_rendering() {
 
     let html = renderer.render(&context).unwrap();
 
-    // Verify form elements are present
-    assert!(html.contains("form"));
-    assert!(html.contains("title"));
-    assert!(html.contains("content"));
-    assert!(html.contains("Enter the post title"));
+    // Verify form elements are present with specific HTML structure
+    assert!(
+        html.contains("<title>Create Post - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>Create Post</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
+    assert!(
+        html.contains("<form"),
+        "HTML should contain form element, got: {}",
+        &html[..2000.min(html.len())]
+    );
+    assert!(
+        html.contains("name=\"title\""),
+        "Form should have title field, got: {}",
+        &html[..3000.min(html.len())]
+    );
+    assert!(
+        html.contains("name=\"content\""),
+        "Form should have content field, got: {}",
+        &html[..3000.min(html.len())]
+    );
+    assert!(
+        html.contains("Enter the post title"),
+        "Form should display help text, got: {}",
+        &html[..3000.min(html.len())]
+    );
 }
 
 #[test]
@@ -155,13 +230,32 @@ fn test_browsable_api_method_selection() {
 
     let html = renderer.render(&context).unwrap();
 
-    // Verify all HTTP methods are displayed
-    assert!(html.contains("GET"));
-    assert!(html.contains("POST"));
-    assert!(html.contains("PUT"));
-    assert!(html.contains("PATCH"));
-    assert!(html.contains("DELETE"));
-    assert!(html.contains("Allowed methods"));
+    // Verify all HTTP methods are displayed in allowed methods section
+    assert!(
+        html.contains("<title>Resource Endpoint - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>Resource Endpoint</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
+    assert!(
+        html.contains("<strong>Allowed methods:</strong>"),
+        "HTML should have allowed methods section with exact label, got: {}",
+        &html[..2000.min(html.len())]
+    );
+    // Verify all methods are present as badge elements
+    let methods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+    for method in &methods {
+        assert!(
+            html.contains(method),
+            "HTML should contain {} method in allowed methods, got: {}",
+            method,
+            &html[..3000.min(html.len())]
+        );
+    }
 }
 
 #[test]
@@ -183,9 +277,22 @@ fn test_browsable_api_authentication_ui() {
 
     let html = renderer.render(&context).unwrap();
 
-    // Verify authentication-related content
-    assert!(html.contains("Authenticated Endpoint"));
-    assert!(html.contains("Requires authentication"));
+    // Verify authentication-related content is displayed
+    assert!(
+        html.contains("<title>Authenticated Endpoint - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>Authenticated Endpoint</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
+    assert!(
+        html.contains("Requires authentication"),
+        "HTML should display authentication requirement in description, got: {}",
+        &html[..2000.min(html.len())]
+    );
 }
 
 // ============================================================================
@@ -211,9 +318,22 @@ fn test_browsable_api_accepts_header() {
 
     let html = renderer.render(&context).unwrap();
 
-    // Should render HTML for browser
-    assert!(html.contains("<!DOCTYPE html>"));
-    assert!(html.contains("Content Negotiation Test"));
+    // Should render HTML for browser with proper structure
+    assert!(
+        html.contains("<!DOCTYPE html>"),
+        "HTML should start with DOCTYPE for browser rendering, got: {}",
+        &html[..100.min(html.len())]
+    );
+    assert!(
+        html.contains("<title>Content Negotiation Test - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>Content Negotiation Test</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
 }
 
 #[test]
@@ -238,9 +358,27 @@ fn test_browsable_api_json_response_display() {
 
     let html = renderer.render(&context).unwrap();
 
-    // JSON data should be visible in HTML
-    assert!(html.contains("success"));
-    assert!(html.contains("[") || html.contains("data"));
+    // JSON data should be visible in HTML with exact values
+    assert!(
+        html.contains("<title>JSON Response - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>JSON Response</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
+    assert!(
+        html.contains("success"),
+        "HTML should display JSON status field, got: {}",
+        &html[..2000.min(html.len())]
+    );
+    assert!(
+        html.contains("data"),
+        "HTML should display JSON data field name, got: {}",
+        &html[..2000.min(html.len())]
+    );
 }
 
 // ============================================================================
@@ -270,9 +408,27 @@ fn test_browsable_api_error_response() {
 
     let html = renderer.render(&context).unwrap();
 
-    // Error details should be visible
-    assert!(html.contains("Validation failed"));
-    assert!(html.contains("This field is required"));
+    // Error details should be visible with exact messages
+    assert!(
+        html.contains("<title>Error Response - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>Error Response</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
+    assert!(
+        html.contains("Validation failed"),
+        "HTML should display error message in response data, got: {}",
+        &html[..2000.min(html.len())]
+    );
+    assert!(
+        html.contains("This field is required"),
+        "HTML should display validation error detail in response data, got: {}",
+        &html[..3000.min(html.len())]
+    );
 }
 
 #[test]
@@ -296,8 +452,22 @@ fn test_browsable_api_success_created() {
 
     let html = renderer.render(&context).unwrap();
 
-    assert!(html.contains("Resource Created"));
-    assert!(html.contains("123"));
+    // Verify created resource response
+    assert!(
+        html.contains("<title>Resource Created - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>Resource Created</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
+    assert!(
+        html.contains("123"),
+        "HTML should display created resource ID in response data, got: {}",
+        &html[..2000.min(html.len())]
+    );
 }
 
 // ============================================================================
@@ -359,9 +529,35 @@ fn test_browsable_api_various_field_types() {
 
     let html = renderer.render(&context).unwrap();
 
-    // Verify different field types
-    assert!(html.contains("name"));
-    assert!(html.contains("age"));
-    assert!(html.contains("bio"));
-    assert!(html.contains("Must be 18 or older"));
+    // Verify different field types are rendered correctly
+    assert!(
+        html.contains("<title>Update Profile - Reinhardt API</title>"),
+        "HTML should have exact title with Reinhardt API suffix, got: {}",
+        &html[..500.min(html.len())]
+    );
+    assert!(
+        html.contains("<h1>Update Profile</h1>"),
+        "HTML should have h1 with title, got: {}",
+        &html[..1000.min(html.len())]
+    );
+    assert!(
+        html.contains("name=\"name\""),
+        "Form should have name field with exact attribute, got: {}",
+        &html[..3000.min(html.len())]
+    );
+    assert!(
+        html.contains("name=\"age\""),
+        "Form should have age field with exact attribute, got: {}",
+        &html[..3000.min(html.len())]
+    );
+    assert!(
+        html.contains("name=\"bio\""),
+        "Form should have bio field with exact attribute, got: {}",
+        &html[..3000.min(html.len())]
+    );
+    assert!(
+        html.contains("Must be 18 or older"),
+        "Form should display field help text, got: {}",
+        &html[..3000.min(html.len())]
+    );
 }

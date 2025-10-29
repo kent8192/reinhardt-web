@@ -53,19 +53,34 @@ async fn test_url_path_versioning_with_middleware_chain() {
     let request = create_request("/v2/users/", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"2\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "2",
+        "API version mismatch. Expected version field to be '2', got: {:?}",
+        parsed["version"]
+    );
 
     // Test with v1 in path
     let request = create_request("/v1/users/", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"1\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "1",
+        "API version mismatch. Expected version field to be '1', got: {:?}",
+        parsed["version"]
+    );
 
     // Test without version (should use default)
     let request = create_request("/users/", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"1.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "1.0",
+        "API version mismatch. Expected version field to be '1.0', got: {:?}",
+        parsed["version"]
+    );
 }
 
 #[tokio::test]
@@ -84,13 +99,23 @@ async fn test_accept_header_versioning_with_middleware_chain() {
     let request = create_request("/users/", vec![("accept", "application/json; version=2.0")]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"2.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "2.0",
+        "API version mismatch. Expected version field to be '2.0', got: {:?}",
+        parsed["version"]
+    );
 
     // Test without version (should use default)
     let request = create_request("/users/", vec![("accept", "application/json")]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"1.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "1.0",
+        "API version mismatch. Expected version field to be '1.0', got: {:?}",
+        parsed["version"]
+    );
 }
 
 #[tokio::test]
@@ -109,7 +134,12 @@ async fn test_query_parameter_versioning_with_middleware_chain() {
     let request = create_request("/users/?version=3.0", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"3.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "3.0",
+        "API version mismatch. Expected version field to be '3.0', got: {:?}",
+        parsed["version"]
+    );
 
     // Test with custom version parameter name
     let versioning = QueryParameterVersioning::new()
@@ -123,7 +153,12 @@ async fn test_query_parameter_versioning_with_middleware_chain() {
     let request = create_request("/users/?v=2.0", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"2.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "2.0",
+        "API version mismatch. Expected version field to be '2.0', got: {:?}",
+        parsed["version"]
+    );
 }
 
 #[tokio::test]
@@ -142,13 +177,23 @@ async fn test_hostname_versioning_with_middleware_chain() {
     let request = create_request("/users/", vec![("host", "v2.api.example.com")]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"v2\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "v2",
+        "API version mismatch. Expected version field to be 'v2', got: {:?}",
+        parsed["version"]
+    );
 
     // Test without version (should use default)
     let request = create_request("/users/", vec![("host", "api.example.com")]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"1.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "1.0",
+        "API version mismatch. Expected version field to be '1.0', got: {:?}",
+        parsed["version"]
+    );
 }
 
 #[tokio::test]
@@ -167,13 +212,23 @@ async fn test_namespace_versioning_with_middleware_chain() {
     let request = create_request("/v1/users/", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"1\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "1",
+        "API version mismatch. Expected version field to be '1', got: {:?}",
+        parsed["version"]
+    );
 
     // Test with v2.0 namespace
     let request = create_request("/v2.0/users/", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"2.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "2.0",
+        "API version mismatch. Expected version field to be '2.0', got: {:?}",
+        parsed["version"]
+    );
 }
 
 #[tokio::test]
@@ -201,7 +256,12 @@ async fn test_multiple_middleware_strategies() {
     );
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"2.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "2.0",
+        "API version mismatch. Expected version field to be '2.0', got: {:?}",
+        parsed["version"]
+    );
 }
 
 #[tokio::test]
@@ -254,7 +314,12 @@ async fn test_version_propagation_through_request_lifecycle() {
     let request = create_request("/users/?version=2.0", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"2.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "2.0",
+        "API version mismatch. Expected version field to be '2.0', got: {:?}",
+        parsed["version"]
+    );
 }
 
 #[tokio::test]
@@ -272,7 +337,12 @@ async fn test_empty_allowed_versions() {
     let request = create_request("/v99/users/", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"99\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "99",
+        "API version mismatch. Expected version field to be '99', got: {:?}",
+        parsed["version"]
+    );
 }
 
 #[tokio::test]
@@ -301,13 +371,23 @@ async fn test_version_or_with_fallback() {
     let request = create_request("/v2/users/", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"2\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "2",
+        "API version mismatch. Expected version field to be '2', got: {:?}",
+        parsed["version"]
+    );
 
     // Without version (should use default, not fallback)
     let request = create_request("/users/", vec![]);
     let response = chain.handle(request).await.unwrap();
     let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("\"version\":\"1.0\""));
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        parsed["version"], "1.0",
+        "API version mismatch. Expected version field to be '1.0', got: {:?}",
+        parsed["version"]
+    );
 }
 
 #[tokio::test]
@@ -350,7 +430,24 @@ async fn test_concurrent_requests_with_different_versions() {
     let body2 = String::from_utf8(result2.body.to_vec()).unwrap();
     let body3 = String::from_utf8(result3.body.to_vec()).unwrap();
 
-    assert!(body1.contains("\"version\":\"1\""));
-    assert!(body2.contains("\"version\":\"2\""));
-    assert!(body3.contains("\"version\":\"3\""));
+    let parsed1: serde_json::Value = serde_json::from_str(&body1).unwrap();
+    assert_eq!(
+        parsed1["version"], "1",
+        "API version mismatch. Expected version field to be '1', got: {:?}",
+        parsed1["version"]
+    );
+
+    let parsed2: serde_json::Value = serde_json::from_str(&body2).unwrap();
+    assert_eq!(
+        parsed2["version"], "2",
+        "API version mismatch. Expected version field to be '2', got: {:?}",
+        parsed2["version"]
+    );
+
+    let parsed3: serde_json::Value = serde_json::from_str(&body3).unwrap();
+    assert_eq!(
+        parsed3["version"], "3",
+        "API version mismatch. Expected version field to be '3', got: {:?}",
+        parsed3["version"]
+    );
 }
