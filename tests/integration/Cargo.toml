@@ -10,6 +10,7 @@ autotests = false
 [dependencies]
 # Reinhardt crates
 reinhardt-contrib = { path = "../../crates/reinhardt-contrib" }
+reinhardt-admin = { path = "../../crates/reinhardt-contrib/crates/admin" }
 reinhardt-auth = { path = "../../crates/reinhardt-contrib/crates/auth" }
 reinhardt-security = { path = "../../crates/reinhardt-core/crates/security" }
 reinhardt-middleware = { path = "../../crates/reinhardt-middleware" }
@@ -403,3 +404,14 @@ path = "tests/serializers/serializer_nested_integration_tests.rs"
 [[test]]
 name = "unified_router_integration"
 path = "tests/routing/unified_router_integration_tests.rs"
+
+
+# Admin actions integration tests
+[[test]]
+name = "admin_actions_integration"
+path = "tests/admin/admin_actions_integration.rs"
+
+
+[[test]]
+name = "admin_audit_integration"
+path = "tests/admin/admin_audit_integration.rs"

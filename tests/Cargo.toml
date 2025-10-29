@@ -7,10 +7,11 @@ publish = false
 
 [dependencies]
 # Reinhardt crates
+reinhardt-admin = { path = "../crates/reinhardt-contrib/crates/admin", version = "0.1.0" }
 reinhardt-apps = { workspace = true }
 reinhardt-auth = { workspace = true }
 reinhardt-browsable-api = { workspace = true }
-reinhardt-cache = { workspace = true }
+reinhardt-cache = { workspace = true, features = ["redis-sentinel", "memcached-backend"] }
 reinhardt-contrib = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-exception = { workspace = true }
@@ -89,6 +90,14 @@ protox = "0.7"
 
 [lib]
 path = "integration/src/lib.rs"
+
+[[test]]
+name = "admin_crud_integration"
+path = "integration/tests/admin_crud_integration.rs"
+
+[[test]]
+name = "admin_database_audit_logger"
+path = "integration/tests/admin_database_audit_logger.rs"
 
 [[test]]
 name = "api_browsable_api_integration"
@@ -278,7 +287,19 @@ path = "integration/tests/validation/validator_orm_integration_tests.rs"
 name = "views_views_core_integration_tests"
 path = "integration/tests/views/views_core_integration_tests.rs"
 
+[[test]]
+name = "cache_redis_sentinel_integration"
+path = "integration/tests/cache_redis_sentinel_integration.rs"
+
+[[test]]
+name = "cache_memcached_integration"
+path = "integration/tests/cache_memcached_integration.rs"
+
 # Benchmark tests
 [[test]]
 name = "bench_template_compile_time_vs_runtime"
 path = "bench/template_compile_time_vs_runtime.rs"
+
+[[test]]
+name = "cache_pubsub_integration"
+path = "integration/tests/cache_pubsub_integration.rs"
