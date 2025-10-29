@@ -632,6 +632,138 @@ mod tests {
         assert!(middleware.is_secure_request(&request_https));
     }
 
+
+    #[tokio::test]
+    async fn test_csrf_middleware_referer_validation_success() {
+        let secret = "abcdefghijklmnopqrstuvwxyz012345";
+        let mut config = CsrfMiddlewareConfig::default();
+        config.check_referer_header = true;
+        config.trusted_origins = vec!["https://example.com".to_string()];
+
+        let mut middleware = CsrfMiddleware::with_config(config);
+        middleware.test_secret = Some(secret.to_string());
+        let handler = Arc::new(TestHandler);
+
+        let session_id = "test_session";
+        let token = get_token(secret.as_bytes(), session_id);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("Referer", "https://example.com/page".parse().unwrap());
+        headers.insert("X-CSRFToken", token.parse().unwrap());
+        headers.insert(
+            "Cookie",
+            format!("sessionid={}", session_id).parse().unwrap(),
+        );
+
+        let request = Request::new(
+            Method::POST,
+            Uri::from_static("/submit"),
+            Version::HTTP_11,
+            headers,
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await;
+        assert!(response.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_csrf_middleware_referer_validation_cross_origin_fails() {
+        let secret = "abcdefghijklmnopqrstuvwxyz012345";
+        let mut config = CsrfMiddlewareConfig::default();
+        config.check_referer_header = true;
+        config.trusted_origins = vec!["https://example.com".to_string()];
+
+        let mut middleware = CsrfMiddleware::with_config(config);
+        middleware.test_secret = Some(secret.to_string());
+        let handler = Arc::new(TestHandler);
+
+        let session_id = "test_session";
+        let token = get_token(secret.as_bytes(), session_id);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("Referer", "https://evil.com/page".parse().unwrap());
+        headers.insert("X-CSRFToken", token.parse().unwrap());
+        headers.insert(
+            "Cookie",
+            format!("sessionid={}", session_id).parse().unwrap(),
+        );
+
+        let request = Request::new(
+            Method::POST,
+            Uri::from_static("/submit"),
+            Version::HTTP_11,
+            headers,
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await;
+        assert!(response.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_csrf_token_empty_string() {
+        let middleware = CsrfMiddleware::new();
+        let handler = Arc::new(TestHandler);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("X-CSRFToken", "".parse().unwrap());
+
+        let request = Request::new(
+            Method::POST,
+            Uri::from_static("/submit"),
+            Version::HTTP_11,
+            headers,
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await;
+        assert!(response.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_csrf_cookie_samesite_attribute() {
+        let middleware = CsrfMiddleware::new();
+        let handler = Arc::new(TestHandler);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await.unwrap();
+        
+        let set_cookie = response.headers.get("Set-Cookie").unwrap().to_str().unwrap();
+        assert!(set_cookie.contains("SameSite="));
+    }
+
+    #[tokio::test]
+    async fn test_csrf_multiple_exempt_paths() {
+        let mut config = CsrfMiddlewareConfig::default();
+        config = config.add_exempt_path("/api/webhook".to_string());
+        config = config.add_exempt_path("/api/callback".to_string());
+        config = config.add_exempt_path("/health".to_string());
+
+        let middleware = CsrfMiddleware::with_config(config);
+        let handler = Arc::new(TestHandler);
+
+        for path in &["/api/webhook", "/api/callback", "/health"] {
+            let request = Request::new(
+                Method::POST,
+                Uri::from_static(path),
+                Version::HTTP_11,
+                HeaderMap::new(),
+                Bytes::new(),
+            );
+
+            let response = middleware.process(request, handler.clone()).await;
+            assert!(response.is_ok(), "Path {} should be exempt", path);
+        }
+    }
+
     #[tokio::test]
     async fn test_csrf_middleware_config_add_exempt_path() {
         let config = CsrfMiddlewareConfig::default()

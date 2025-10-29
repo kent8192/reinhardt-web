@@ -661,4 +661,96 @@ mod tests {
         assert_eq!(store.len(), 0);
         assert!(store.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_multiple_status_codes_cached() {
+        let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlOnly);
+        let middleware = Arc::new(CacheMiddleware::new(config));
+
+        // Test with 404 status (cached by default)
+        let handler_404 = Arc::new(TestHandler::new(StatusCode::NOT_FOUND));
+        let request1 = Request::new(
+            Method::GET,
+            Uri::from_static("/not-found"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response1 = middleware
+            .process(request1, handler_404.clone())
+            .await
+            .unwrap();
+        assert_eq!(response1.status, StatusCode::NOT_FOUND);
+        assert_eq!(response1.headers.get("x-cache").unwrap(), "MISS");
+        assert_eq!(handler_404.get_call_count(), 1);
+
+        // Second request to same 404 URL (cache hit)
+        let request1b = Request::new(
+            Method::GET,
+            Uri::from_static("/not-found"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response1b = middleware
+            .process(request1b, handler_404.clone())
+            .await
+            .unwrap();
+        assert_eq!(response1b.status, StatusCode::NOT_FOUND);
+        assert_eq!(response1b.headers.get("x-cache").unwrap(), "HIT");
+        assert_eq!(handler_404.get_call_count(), 1); // Not called again
+
+        // Test with 500 status (also cached by default)
+        let handler_500 = Arc::new(TestHandler::new(StatusCode::INTERNAL_SERVER_ERROR));
+        let request2 = Request::new(
+            Method::GET,
+            Uri::from_static("/error"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response2 = middleware
+            .process(request2, handler_500.clone())
+            .await
+            .unwrap();
+        assert_eq!(response2.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response2.headers.get("x-cache").unwrap(), "MISS");
+    }
+
+    #[tokio::test]
+    async fn test_cache_key_strategy_url_and_method() {
+        let config =
+            CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlAndMethod);
+        let middleware = Arc::new(CacheMiddleware::new(config));
+        let handler = Arc::new(TestHandler::new(StatusCode::OK));
+
+        // GET request to /api
+        let request1 = Request::new(
+            Method::GET,
+            Uri::from_static("/api"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response1 = middleware
+            .process(request1, handler.clone())
+            .await
+            .unwrap();
+        assert_eq!(response1.headers.get("x-cache").unwrap(), "MISS");
+        assert_eq!(handler.get_call_count(), 1);
+
+        // HEAD request to same URL (different cache key due to method)
+        let handler2 = Arc::new(TestHandler::new(StatusCode::OK));
+        let request2 = Request::new(
+            Method::HEAD,
+            Uri::from_static("/api"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response2 = middleware.process(request2, handler2.clone()).await.unwrap();
+        // Different method should result in cache miss
+        assert_eq!(response2.headers.get("x-cache").unwrap(), "MISS");
+        assert_eq!(handler2.get_call_count(), 1);
+    }
 }

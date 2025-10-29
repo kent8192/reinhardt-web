@@ -656,4 +656,102 @@ mod tests {
             .unwrap();
         assert!(csp_header.contains("frame-ancestors 'self' https://trusted.com"));
     }
+
+    #[tokio::test]
+    async fn test_nonce_uniqueness_across_requests() {
+        let config = CspConfig {
+            directives: {
+                let mut d = HashMap::new();
+                d.insert("script-src".to_string(), vec!["'self'".to_string()]);
+                d
+            },
+            report_only: false,
+            include_nonce: true,
+        };
+        let middleware = CspMiddleware::with_config(config);
+        let handler = Arc::new(TestHandler);
+
+        // First request
+        let request1 = Request::new(
+            Method::GET,
+            Uri::from_static("/page1"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response1 = middleware.process(request1, handler.clone()).await.unwrap();
+        let csp1 = response1
+            .headers
+            .get("Content-Security-Policy")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        // Second request
+        let request2 = Request::new(
+            Method::GET,
+            Uri::from_static("/page2"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response2 = middleware.process(request2, handler).await.unwrap();
+        let csp2 = response2
+            .headers
+            .get("Content-Security-Policy")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        // Extract nonces
+        let extract_nonce = |csp: &str| -> Option<String> {
+            csp.split("'nonce-")
+                .nth(1)
+                .and_then(|s| s.split('\'').next())
+                .map(|s| s.to_string())
+        };
+
+        let nonce1 = extract_nonce(&csp1);
+        let nonce2 = extract_nonce(&csp2);
+
+        assert!(nonce1.is_some(), "First CSP should contain nonce");
+        assert!(nonce2.is_some(), "Second CSP should contain nonce");
+
+        // Nonces should be different (uniqueness check)
+        assert_ne!(nonce1, nonce2, "Nonces should be unique across requests");
+    }
+
+    #[tokio::test]
+    async fn test_response_body_preserved() {
+        struct TestHandlerWithBody;
+
+        #[async_trait]
+        impl Handler for TestHandlerWithBody {
+            async fn handle(&self, _request: Request) -> Result<Response> {
+                Ok(Response::new(StatusCode::OK)
+                    .with_body(Bytes::from("custom response content")))
+            }
+        }
+
+        let middleware = CspMiddleware::new();
+        let handler = Arc::new(TestHandlerWithBody);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/page"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await.unwrap();
+
+        // CSP header should be present
+        assert!(response.headers.contains_key("Content-Security-Policy"));
+
+        // Response body should be preserved exactly
+        assert_eq!(response.body, Bytes::from("custom response content"));
+    }
 }

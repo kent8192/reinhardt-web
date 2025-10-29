@@ -79,7 +79,7 @@ pub use tracing::{
 };
 pub use xframe::{XFrameOptions, XFrameOptionsMiddleware};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cors"))]
 mod tests {
     use super::*;
     use bytes::Bytes;

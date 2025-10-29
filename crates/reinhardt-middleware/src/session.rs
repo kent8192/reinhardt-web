@@ -690,4 +690,51 @@ mod tests {
         assert_eq!(store.len(), 1);
         assert!(store.get(&id2).is_some());
     }
+
+    #[tokio::test]
+    async fn test_with_defaults_constructor() {
+        let middleware = SessionMiddleware::with_defaults();
+        let handler = Arc::new(TestHandler);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/page"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await.unwrap();
+
+        assert_eq!(response.status, StatusCode::OK);
+        assert!(response.headers.contains_key("set-cookie"));
+
+        let cookie = response.headers.get("set-cookie").unwrap().to_str().unwrap();
+        // Default cookie name should be "sessionid"
+        assert!(cookie.starts_with("sessionid="));
+        // Default path should be "/"
+        assert!(cookie.contains("Path=/"));
+    }
+
+    #[tokio::test]
+    async fn test_custom_cookie_name() {
+        let config = SessionConfig::new("my_session".to_string(), Duration::from_secs(3600));
+        let middleware = SessionMiddleware::new(config);
+        let handler = Arc::new(TestHandler);
+
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/test"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await.unwrap();
+
+        let cookie = response.headers.get("set-cookie").unwrap().to_str().unwrap();
+        // Custom cookie name should be used
+        assert!(cookie.starts_with("my_session="));
+        assert!(!cookie.starts_with("sessionid="));
+    }
 }

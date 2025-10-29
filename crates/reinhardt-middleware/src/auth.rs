@@ -47,6 +47,8 @@ use std::sync::Arc;
 /// #             email: "test@example.com".to_string(),
 /// #             is_active: true,
 /// #             is_admin: false,
+/// #             is_staff: false,
+/// #             is_superuser: false,
 /// #         })))
 /// #     }
 /// #     fn get_user(&self, _user_id: &str) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
@@ -262,7 +264,7 @@ impl AuthState {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "session"))]
 mod tests {
     use super::*;
     use bytes::Bytes;
@@ -323,6 +325,8 @@ mod tests {
             email: "test@example.com".to_string(),
             is_active: true,
             is_admin: false,
+            is_staff: false,
+            is_superuser: false,
         };
         let auth_backend = Arc::new(TestAuthBackend { user: Some(user) });
 

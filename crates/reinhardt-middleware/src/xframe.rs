@@ -302,4 +302,108 @@ mod tests {
         // Should keep the original DENY value
         assert_eq!(response.headers.get(&X_FRAME_OPTIONS).unwrap(), "DENY");
     }
+
+    #[tokio::test]
+    async fn test_new_constructor_with_deny() {
+        let middleware = XFrameOptionsMiddleware::new(XFrameOptions::Deny);
+        let handler = Arc::new(TestHandler);
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/secure"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await.unwrap();
+        assert_eq!(response.headers.get(&X_FRAME_OPTIONS).unwrap(), "DENY");
+    }
+
+    #[tokio::test]
+    async fn test_new_constructor_with_same_origin() {
+        let middleware = XFrameOptionsMiddleware::new(XFrameOptions::SameOrigin);
+        let handler = Arc::new(TestHandler);
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/dashboard"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await.unwrap();
+        assert_eq!(
+            response.headers.get(&X_FRAME_OPTIONS).unwrap(),
+            "SAMEORIGIN"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_response_body_preserved() {
+        struct TestHandlerWithBody;
+
+        #[async_trait]
+        impl Handler for TestHandlerWithBody {
+            async fn handle(&self, _request: Request) -> Result<Response> {
+                Ok(Response::new(StatusCode::OK)
+                    .with_body(Bytes::from(&b"custom response body"[..])))
+            }
+        }
+
+        let middleware = XFrameOptionsMiddleware::deny();
+        let handler = Arc::new(TestHandlerWithBody);
+        let request = Request::new(
+            Method::GET,
+            Uri::from_static("/content"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+
+        let response = middleware.process(request, handler).await.unwrap();
+
+        // Header should be added
+        assert_eq!(response.headers.get(&X_FRAME_OPTIONS).unwrap(), "DENY");
+        // Body should be preserved
+        assert_eq!(response.body, Bytes::from(&b"custom response body"[..]));
+    }
+
+    #[tokio::test]
+    async fn test_middleware_reusable_across_requests() {
+        let middleware = XFrameOptionsMiddleware::deny();
+        let handler = Arc::new(TestHandler);
+
+        // First request
+        let request1 = Request::new(
+            Method::GET,
+            Uri::from_static("/page1"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response1 = middleware.process(request1, handler.clone()).await.unwrap();
+        assert_eq!(response1.headers.get(&X_FRAME_OPTIONS).unwrap(), "DENY");
+
+        // Second request
+        let request2 = Request::new(
+            Method::POST,
+            Uri::from_static("/page2"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response2 = middleware.process(request2, handler.clone()).await.unwrap();
+        assert_eq!(response2.headers.get(&X_FRAME_OPTIONS).unwrap(), "DENY");
+
+        // Third request
+        let request3 = Request::new(
+            Method::PUT,
+            Uri::from_static("/page3"),
+            Version::HTTP_11,
+            HeaderMap::new(),
+            Bytes::new(),
+        );
+        let response3 = middleware.process(request3, handler).await.unwrap();
+        assert_eq!(response3.headers.get(&X_FRAME_OPTIONS).unwrap(), "DENY");
+    }
 }
