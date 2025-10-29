@@ -391,6 +391,85 @@ fn test_i18n_activation() {
 
 **Why?** Global state tests can conflict if run in parallel.
 
+### ❌ Loose Assertions
+
+**DON'T:**
+```rust
+#[test]
+fn test_error_message() {
+    let result = validate_input("");
+    let error = result.unwrap_err();
+    // ❌ Too permissive - could match unintended substrings
+    assert!(error.to_string().contains("invalid"));
+}
+
+#[test]
+fn test_calculation() {
+    let result = calculate_discount(100, 10);
+    // ❌ Should check exact value, not just range
+    assert!(result > 0);
+    assert!(result < 100);
+}
+
+#[test]
+fn test_response_body() {
+    let response = get_user_info();
+    // ❌ Loose pattern matching
+    assert!(response.contains("\"id\":"));
+    assert!(response.contains("\"name\":"));
+}
+```
+
+**DO:**
+```rust
+#[test]
+fn test_error_message() {
+    let result = validate_input("");
+    let error = result.unwrap_err();
+    // ✅ Exact error message verification
+    assert_eq!(error.to_string(), "Input cannot be empty");
+}
+
+#[test]
+fn test_calculation() {
+    let result = calculate_discount(100, 10);
+    // ✅ Exact value expected
+    assert_eq!(result, 90);
+}
+
+#[test]
+fn test_response_body() {
+    let response = get_user_info();
+    // ✅ Deserialize and check exact structure
+    let user: UserInfo = serde_json::from_str(&response).unwrap();
+    assert_eq!(user.id, 123);
+    assert_eq!(user.name, "Alice");
+}
+```
+
+**EXCEPTION - When Loose Assertions Are Acceptable:**
+```rust
+#[test]
+fn test_generate_uuid() {
+    let uuid = generate_uuid();
+    // ✅ UUID is random, can only check format
+    assert_eq!(uuid.len(), 36);
+    assert_eq!(uuid.chars().filter(|&c| c == '-').count(), 4);
+}
+
+#[test]
+fn test_timestamp() {
+    let before = SystemTime::now();
+    let timestamp = get_current_timestamp();
+    let after = SystemTime::now();
+    // ✅ Timestamp is system-dependent, verified within bounds
+    assert!(timestamp >= before);
+    assert!(timestamp <= after);
+}
+```
+
+**Why?** Loose assertions like `contains()` or range checks can pass with incorrect values. Strict assertions catch bugs that loose assertions would miss.
+
 ---
 
 ## File Management Anti-Patterns
@@ -631,6 +710,7 @@ Use `fetch_data().await` asynchronously...  // ✅ Current!
 - ❌ Integration tests in functional crates
 - ❌ No test cleanup
 - ❌ Global state without `#[serial]`
+- ❌ Loose assertions (`contains`, range checks) without justification
 
 **File Management:**
 - ❌ Saving to project directory (use /tmp)

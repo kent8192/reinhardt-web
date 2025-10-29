@@ -350,6 +350,128 @@ fn test_url_override() {
 
 **ALWAYS** call cleanup functions (e.g., `deactivate()`, `clear_url_overrides()`) in test teardown.
 
+### TI-5 (MUST): Assertion Strictness
+
+**Use strict assertions with exact value comparisons instead of loose pattern matching.**
+
+Assertions MUST use the most strict and precise verification method available:
+
+**Preferred Methods:**
+- `assert_eq!(actual, expected)` - For exact value equality
+- `assert_ne!(actual, unexpected)` - For exact value inequality
+- `assert!(matches!(value, Pattern))` - For pattern matching with specific variants
+
+**Avoid Loose Assertions:**
+- ❌ `assert!(string.contains("substring"))` - Too permissive, may match unintended content
+- ❌ `assert!(result.is_ok())` without checking the contained value
+- ❌ `assert!(value > 0)` when you know the exact expected value
+
+**Exception:**
+Loose assertions are acceptable ONLY when strict assertions are impossible or impractical:
+- Random values (e.g., UUIDs, timestamps, random numbers)
+- System-dependent values (e.g., process IDs, file system paths)
+- Non-deterministic operations (e.g., async race conditions with bounded outcomes)
+
+**Examples:**
+
+❌ **BAD - Loose Assertions:**
+```rust
+#[test]
+fn test_error_message() {
+    let result = validate_input("");
+    let error = result.unwrap_err();
+    // ❌ Too permissive - could match unintended substrings
+    assert!(error.to_string().contains("invalid"));
+}
+
+#[test]
+fn test_generate_id() {
+    let id = generate_id();
+    // ❌ Doesn't verify the actual format or value
+    assert!(id.len() > 0);
+}
+
+#[test]
+fn test_calculation() {
+    let result = calculate_discount(100, 10);
+    // ❌ Should check exact value, not just range
+    assert!(result > 0);
+    assert!(result < 100);
+}
+```
+
+✅ **GOOD - Strict Assertions:**
+```rust
+#[test]
+fn test_error_message() {
+    let result = validate_input("");
+    let error = result.unwrap_err();
+    // ✅ Exact error message verification
+    assert_eq!(error.to_string(), "Input cannot be empty");
+}
+
+#[test]
+fn test_generate_id() {
+    let id = generate_sequential_id();
+    // ✅ Exact value verification for deterministic IDs
+    assert_eq!(id, 1);
+}
+
+#[test]
+fn test_calculation() {
+    let result = calculate_discount(100, 10);
+    // ✅ Exact value expected
+    assert_eq!(result, 90);
+}
+```
+
+✅ **GOOD - Acceptable Loose Assertions (Justified Cases):**
+```rust
+#[test]
+fn test_generate_uuid() {
+    let uuid = generate_uuid();
+    // ✅ UUID is random, can only check format
+    assert!(uuid.len() == 36);
+    assert!(uuid.chars().filter(|&c| c == '-').count() == 4);
+}
+
+#[test]
+fn test_timestamp_generation() {
+    let before = SystemTime::now();
+    let timestamp = get_current_timestamp();
+    let after = SystemTime::now();
+    // ✅ Timestamp is system-dependent, can only check range
+    assert!(timestamp >= before);
+    assert!(timestamp <= after);
+}
+
+#[test]
+fn test_random_selection() {
+    let choices = vec!["a", "b", "c"];
+    let selected = random_choice(&choices);
+    // ✅ Random result, can only verify it's in the set
+    assert!(choices.contains(&selected));
+}
+```
+
+**Justification Requirement:**
+
+When using loose assertions, add a comment explaining why strict assertions are not possible:
+
+```rust
+#[test]
+fn test_concurrent_counter() {
+    let counter = AtomicCounter::new();
+    // Increment from multiple threads
+    // ...
+
+    // NOTE: Using range assertion because exact value depends on thread scheduling
+    // which is non-deterministic. We verify the counter incremented at least once.
+    assert!(counter.get() > 0);
+    assert!(counter.get() <= expected_max);
+}
+```
+
 ---
 
 ## Infrastructure Testing
@@ -402,6 +524,8 @@ Before submitting a PR with tests:
 - [ ] All test artifacts cleaned up
 - [ ] Global state tests use `#[serial(group_name)]`
 - [ ] Cleanup functions called in serial tests
+- [ ] Assertions use strict value comparisons (`assert_eq!`) instead of loose matching (`contains`)
+- [ ] Loose assertions are justified with comments when necessary
 - [ ] Infrastructure tests use TestContainers where appropriate
 
 ### Common Test Patterns

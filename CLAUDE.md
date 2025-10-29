@@ -67,11 +67,12 @@ See @docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 - Functional crates MUST NOT include other Reinhardt crates in `dev-dependencies`
 - ALL test artifacts MUST be cleaned up
 - Global state tests MUST use `#[serial(group_name)]`
+- Use strict assertions (`assert_eq!`) instead of loose matching (`contains`)
 
 See @docs/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Testing philosophy (TP-1, TP-2)
 - Test organization (TO-1, TO-2)
-- Test implementation (TI-1 ~ TI-4)
+- Test implementation (TI-1 ~ TI-5)
 - Infrastructure testing (IT-1)
 
 ### File Management
@@ -212,6 +213,7 @@ Before submitting code:
 - Save files to project directory (use `/tmp`)
 - Leave backup files (`.bak`, `.backup`, `.old`, `~`)
 - Create skeleton tests (tests without assertions)
+- Use loose assertions (`contains`) without justification
 - Use glob imports (`use module::*`)
 - Create circular dependencies
 - Leave unmarked placeholder implementations
