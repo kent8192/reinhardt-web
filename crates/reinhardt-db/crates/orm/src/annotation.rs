@@ -200,7 +200,12 @@ mod tests {
     fn test_annotation_aggregate() {
         let agg = Aggregate::count(Some("id"));
         let ann = Annotation::new("num_items", AnnotationValue::Aggregate(agg));
-        assert!(ann.to_sql().contains("COUNT(id) AS num_items"));
+        let sql = ann.to_sql();
+        assert!(
+            sql.contains("COUNT(id)") && sql.contains("AS num_items"),
+            "SQL should contain 'COUNT(id) AS num_items'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -226,10 +231,26 @@ mod tests {
         };
         let ann = Annotation::new("age_group", AnnotationValue::Expression(expr));
         let sql = ann.to_sql();
-        assert!(sql.contains("CASE"));
-        assert!(sql.contains("WHEN age >= 18 THEN 'adult'"));
-        assert!(sql.contains("ELSE 'minor'"));
-        assert!(sql.contains("AS age_group"));
+        assert!(
+            sql.starts_with("CASE") || sql.contains(" CASE "),
+            "SQL should contain CASE clause. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("WHEN age >= 18 THEN 'adult'"),
+            "SQL should contain 'WHEN age >= 18 THEN 'adult''. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("ELSE 'minor'"),
+            "SQL should contain 'ELSE 'minor''. Got: {}",
+            sql
+        );
+        assert!(
+            sql.ends_with("AS age_group") || sql.contains(" AS age_group"),
+            "SQL should end with 'AS age_group'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -283,6 +304,33 @@ mod annotation_extended_tests {
     use crate::aggregation::*;
     use crate::annotation::*;
     use crate::expressions::{F, Q};
+    use crate::Model;
+    use reinhardt_validators::TableName;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct TestModel {
+        id: Option<i64>,
+        name: String,
+    }
+
+    const TEST_MODEL_TABLE: TableName = TableName::new_const("test_model");
+
+    impl Model for TestModel {
+        type PrimaryKey = i64;
+
+        fn table_name() -> &'static TableName {
+            &TEST_MODEL_TABLE
+        }
+
+        fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+            self.id.as_ref()
+        }
+
+        fn set_primary_key(&mut self, key: Self::PrimaryKey) {
+            self.id = Some(key);
+        }
+    }
 
     #[test]
     // From: Django/annotations
@@ -302,7 +350,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM") || sql.contains("age"));
+        assert!(
+            sql.contains("SUM") || sql.contains("age"),
+            "SQL should contain 'SUM' or 'age'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -322,7 +374,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("value"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("value"),
+            "SQL should contain 'COUNT' or 'value'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -344,9 +400,17 @@ mod annotation_extended_tests {
         let sql = qs.to_sql();
 
         // Should contain the annotation
-        assert!(sql.contains("age") || sql.contains("other_age"));
+        assert!(
+            sql.contains("age") || sql.contains("other_age"),
+            "SQL should contain 'age' or 'other_age'. Got: {}",
+            sql
+        );
         // Should contain SUM aggregation
-        assert!(sql.contains("SUM"));
+        assert!(
+            sql.starts_with("SUM") || sql.contains(" SUM "),
+            "SQL should contain SUM clause. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -366,7 +430,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("AVG") || sql.contains("value") || sql.contains("doubled"));
+        assert!(
+            sql.contains("AVG") || sql.contains("value") || sql.contains("doubled"),
+            "SQL should contain 'AVG', 'value', or 'doubled'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -386,7 +454,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("MAX") || sql.contains("field1") || sql.contains("computed"));
+        assert!(
+            sql.contains("MAX") || sql.contains("field1") || sql.contains("computed"),
+            "SQL should contain 'MAX', 'field1', or 'computed'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -406,7 +478,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("MIN") || sql.contains("price") || sql.contains("calc"));
+        assert!(
+            sql.contains("MIN") || sql.contains("price") || sql.contains("calc"),
+            "SQL should contain 'MIN', 'price', or 'calc'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -425,7 +501,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("name") && sql.contains("age"));
+        assert!(
+            sql.contains("name") && sql.contains("age"),
+            "SQL should contain 'name' and 'age'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -444,7 +524,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("id") && sql.contains("name"));
+        assert!(
+            sql.contains("id") && sql.contains("name"),
+            "SQL should contain 'id' and 'name'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -465,7 +549,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("rating"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("rating"),
+            "SQL should contain 'COUNT' or 'rating'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -485,7 +573,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM") || sql.contains("price") || sql.contains("total"));
+        assert!(
+            sql.contains("SUM") || sql.contains("price") || sql.contains("total"),
+            "SQL should contain 'SUM', 'price', or 'total'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -502,7 +594,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("field1") || sql.contains("expr_alias"));
+        assert!(
+            sql.contains("field1") || sql.contains("expr_alias"),
+            "SQL should contain 'field1' or 'expr_alias'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -519,7 +615,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("value") || sql.contains("complex"));
+        assert!(
+            sql.contains("value") || sql.contains("complex"),
+            "SQL should contain 'value' or 'complex'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -536,7 +636,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("name") || sql.contains("default_alias"));
+        assert!(
+            sql.contains("name") || sql.contains("default_alias"),
+            "SQL should contain 'name' or 'default_alias'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -558,39 +662,79 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("field1") || sql.contains("field2"));
+        assert!(
+            sql.contains("field1") || sql.contains("field2"),
+            "SQL should contain 'field1' or 'field2'. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_alias_filtered_relation_sql_injection() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_alias_filtered_relation_sql_injection_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_alias_filtered_relation_sql_injection_2() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_alias_filtered_relation_sql_injection_3() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -615,7 +759,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SELECT") && (sql.contains("active") || sql.contains("status")));
+        assert!(
+            sql.contains("SELECT") && (sql.contains("active") || sql.contains("status")),
+            "SQL should contain 'SELECT' and ('active' or 'status'). Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -639,7 +787,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SELECT"));
+        assert!(
+            sql.starts_with("SELECT") || sql.contains(" SELECT "),
+            "SQL should contain SELECT clause. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -659,7 +811,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM") || sql.contains("value"));
+        assert!(
+            sql.contains("SUM") || sql.contains("value"),
+            "SQL should contain 'SUM' or 'value'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -677,7 +833,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("items"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("items"),
+            "SQL should contain 'COUNT' or 'items'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -694,7 +854,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT"));
+        assert!(
+            sql.starts_with("COUNT") || sql.contains(" COUNT "),
+            "SQL should contain COUNT clause. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -711,39 +875,79 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM"));
+        assert!(
+            sql.starts_with("SUM") || sql.contains(" SUM "),
+            "SQL should contain SUM clause. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_annotation_and_alias_filter_in_subquery() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_annotation_and_alias_filter_in_subquery_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_annotation_and_alias_filter_related_in_subquery() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_annotation_and_alias_filter_related_in_subquery_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -765,7 +969,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("MAX") || sql.contains("pubdate"));
+        assert!(
+            sql.contains("MAX") || sql.contains("pubdate"),
+            "SQL should contain 'MAX' or 'pubdate'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -796,23 +1004,45 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("SELECT"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("SELECT"),
+            "SQL should contain 'COUNT' or 'SELECT'. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_annotation_filter_with_subquery() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_annotation_filter_with_subquery_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -836,7 +1066,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("type"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("type"),
+            "SQL should contain 'COUNT' or 'type'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -860,7 +1094,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("status"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("status"),
+            "SQL should contain 'COUNT' or 'status'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -881,7 +1119,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM") || sql.contains("pages"));
+        assert!(
+            sql.contains("SUM") || sql.contains("pages"),
+            "SQL should contain 'SUM' or 'pages'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -912,7 +1154,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM") || sql.contains("SELECT"));
+        assert!(
+            sql.contains("SUM") || sql.contains("SELECT"),
+            "SQL should contain 'SUM' or 'SELECT'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -929,7 +1175,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("field1") || sql.contains("expr"));
+        assert!(
+            sql.contains("field1") || sql.contains("expr"),
+            "SQL should contain 'field1' or 'expr'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -951,7 +1201,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("field1") || sql.contains("field2"));
+        assert!(
+            sql.contains("field1") || sql.contains("field2"),
+            "SQL should contain 'field1' or 'field2'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -968,7 +1222,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("active") || sql.contains("is_active"));
+        assert!(
+            sql.contains("active") || sql.contains("is_active"),
+            "SQL should contain 'active' or 'is_active'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -991,23 +1249,45 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("enabled") || sql.contains("WHERE"));
+        assert!(
+            sql.contains("enabled") || sql.contains("WHERE"),
+            "SQL should contain 'enabled' or 'WHERE'. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_chaining_annotation_filter_with_m2m() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_chaining_annotation_filter_with_m2m_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1029,7 +1309,9 @@ mod annotation_extended_tests {
         assert!(
             sql.contains("id")
                 && sql.contains("name")
-                && (sql.contains("field1") || sql.contains("annotated"))
+                && (sql.contains("field1") || sql.contains("annotated")),
+            "SQL should contain 'id', 'name', and ('field1' or 'annotated'). Got: {}",
+            sql
         );
     }
 
@@ -1049,7 +1331,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("id") && (sql.contains("value") || sql.contains("extra")));
+        assert!(
+            sql.contains("id") && (sql.contains("value") || sql.contains("extra")),
+            "SQL should contain 'id' and ('value' or 'extra'). Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1068,7 +1354,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("value") || sql.contains("computed"));
+        assert!(
+            sql.contains("value") || sql.contains("computed"),
+            "SQL should contain 'value' or 'computed'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1087,7 +1377,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("id") && sql.contains("name"));
+        assert!(
+            sql.contains("id") && sql.contains("name"),
+            "SQL should contain 'id' and 'name'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1113,7 +1407,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("value"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("value"),
+            "SQL should contain 'COUNT' or 'value'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1136,7 +1434,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM") || sql.contains("field"));
+        assert!(
+            sql.contains("SUM") || sql.contains("field"),
+            "SQL should contain 'SUM' or 'field'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1162,7 +1464,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("price") || sql.contains("rating"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("price") || sql.contains("rating"),
+            "SQL should contain 'COUNT', 'price', or 'rating'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1185,7 +1491,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("MAX") || sql.contains("value"));
+        assert!(
+            sql.contains("MAX") || sql.contains("value"),
+            "SQL should contain 'MAX' or 'value'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1205,7 +1515,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("DISTINCT") || sql.contains("rating"));
+        assert!(
+            sql.contains("DISTINCT") || sql.contains("rating"),
+            "SQL should contain 'DISTINCT' or 'rating'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1224,7 +1538,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("DISTINCT"));
+        assert!(
+            sql.starts_with("DISTINCT") || sql.contains(" DISTINCT "),
+            "SQL should contain DISTINCT clause. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1269,7 +1587,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("DISTINCT"));
+        assert!(
+            sql.starts_with("DISTINCT") || sql.contains(" DISTINCT "),
+            "SQL should contain DISTINCT clause. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1286,7 +1608,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("id") || sql.contains("simple"));
+        assert!(
+            sql.contains("id") || sql.contains("simple"),
+            "SQL should contain 'id' or 'simple'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1303,151 +1629,317 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("name") || sql.contains("minimal"));
+        assert!(
+            sql.contains("name") || sql.contains("minimal"),
+            "SQL should contain 'name' or 'minimal'. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_agg_with_double_f() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_agg_with_double_f_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_alias_agg_with_double_f() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_alias_agg_with_double_f_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_alias_with_double_f() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_alias_with_double_f_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_alias_with_f() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_alias_with_f_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_annotation() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_annotation_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_annotation_with_double_f() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_annotation_with_double_f_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_annotation_with_f() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_annotation_with_f_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_decimal_annotation() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_decimal_annotation_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_wrong_annotation() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/annotations
     fn test_filter_wrong_annotation_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        let sql = q.to_sql();
+        assert!(
+            sql.contains("status"),
+            "SQL should contain 'status'. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("="),
+            "SQL should contain '='. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1464,7 +1956,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("field1") || sql.contains("full_expr"));
+        assert!(
+            sql.contains("field1") || sql.contains("full_expr"),
+            "SQL should contain 'field1' or 'full_expr'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1487,7 +1983,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("value1") || sql.contains("complex_expr"));
+        assert!(
+            sql.contains("value1") || sql.contains("complex_expr"),
+            "SQL should contain 'value1' or 'complex_expr'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1510,7 +2010,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM") || sql.contains("price"));
+        assert!(
+            sql.contains("SUM") || sql.contains("price"),
+            "SQL should contain 'SUM' or 'price'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1533,7 +2037,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("value"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("value"),
+            "SQL should contain 'COUNT' or 'value'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1550,7 +2058,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("field1") || sql.contains("wrapped"));
+        assert!(
+            sql.contains("field1") || sql.contains("wrapped"),
+            "SQL should contain 'field1' or 'wrapped'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1567,7 +2079,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("value") || sql.contains("wrapped_expr"));
+        assert!(
+            sql.contains("value") || sql.contains("wrapped_expr"),
+            "SQL should contain 'value' or 'wrapped_expr'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1591,7 +2107,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("category"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("category"),
+            "SQL should contain 'COUNT' or 'category'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1615,7 +2135,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM") || sql.contains("status"));
+        assert!(
+            sql.contains("SUM") || sql.contains("status"),
+            "SQL should contain 'SUM' or 'status'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1632,7 +2156,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("related") || sql.contains("name"));
+        assert!(
+            sql.contains("related") || sql.contains("name"),
+            "SQL should contain 'related' or 'name'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1649,7 +2177,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("parent") || sql.contains("value"));
+        assert!(
+            sql.contains("parent") || sql.contains("value"),
+            "SQL should contain 'parent' or 'value'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1666,7 +2198,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("foreign_key") || sql.contains("field"));
+        assert!(
+            sql.contains("foreign_key") || sql.contains("field"),
+            "SQL should contain 'foreign_key' or 'field'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1683,7 +2219,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("relation") || sql.contains("data"));
+        assert!(
+            sql.contains("relation") || sql.contains("data"),
+            "SQL should contain 'relation' or 'data'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1700,7 +2240,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("related") || sql.contains("transformed"));
+        assert!(
+            sql.contains("related") || sql.contains("transformed"),
+            "SQL should contain 'related' or 'transformed'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1717,7 +2261,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("parent") || sql.contains("converted"));
+        assert!(
+            sql.contains("parent") || sql.contains("converted"),
+            "SQL should contain 'parent' or 'converted'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1737,7 +2285,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("ORDER BY") && sql.contains("COUNT"));
+        assert!(
+            sql.contains("ORDER BY") && sql.contains("COUNT"),
+            "SQL should contain 'ORDER BY' and 'COUNT'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1757,7 +2309,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("ORDER BY") && sql.contains("SUM"));
+        assert!(
+            sql.contains("ORDER BY") && sql.contains("SUM"),
+            "SQL should contain 'ORDER BY' and 'SUM'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1776,7 +2332,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("ORDER BY") && (sql.contains("age") || sql.contains("other_age")));
+        assert!(
+            sql.contains("ORDER BY") && (sql.contains("age") || sql.contains("other_age")),
+            "SQL should contain 'ORDER BY' and ('age' or 'other_age'). Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1795,7 +2355,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("ORDER BY"));
+        assert!(
+            sql.contains("ORDER BY"),
+            "SQL should contain ORDER BY clause. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1817,7 +2381,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("ORDER BY") && (sql.contains("COUNT") || sql.contains("age")));
+        assert!(
+            sql.contains("ORDER BY") && (sql.contains("COUNT") || sql.contains("age")),
+            "SQL should contain 'ORDER BY' and ('COUNT' or 'age'). Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1836,7 +2404,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("ORDER BY") && sql.contains("SUM"));
+        assert!(
+            sql.contains("ORDER BY") && sql.contains("SUM"),
+            "SQL should contain 'ORDER BY' and 'SUM'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1855,7 +2427,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("ORDER BY") && (sql.contains("age") || sql.contains("other_age")));
+        assert!(
+            sql.contains("ORDER BY") && (sql.contains("age") || sql.contains("other_age")),
+            "SQL should contain 'ORDER BY' and ('age' or 'other_age'). Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1878,7 +2454,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("ORDER BY"));
+        assert!(
+            sql.contains("ORDER BY"),
+            "SQL should contain ORDER BY clause. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1900,7 +2480,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("COUNT") || sql.contains("value"));
+        assert!(
+            sql.contains("COUNT") || sql.contains("value"),
+            "SQL should contain 'COUNT' or 'value'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1922,7 +2506,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("SUM") || sql.contains("status"));
+        assert!(
+            sql.contains("SUM") || sql.contains("status"),
+            "SQL should contain 'SUM' or 'status'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1938,7 +2526,11 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("inherited_field") || sql.contains("raw_field"));
+        assert!(
+            sql.contains("inherited_field") || sql.contains("raw_field"),
+            "SQL should contain 'inherited_field' or 'raw_field'. Got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1954,6 +2546,10 @@ mod annotation_extended_tests {
 
         let sql = qs.to_sql();
 
-        assert!(sql.contains("base_field") || sql.contains("parent_field"));
+        assert!(
+            sql.contains("base_field") || sql.contains("parent_field"),
+            "SQL should contain 'base_field' or 'parent_field'. Got: {}",
+            sql
+        );
     }
 }

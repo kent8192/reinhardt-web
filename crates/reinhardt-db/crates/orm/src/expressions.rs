@@ -577,9 +577,12 @@ mod tests {
         let q = q1.and(q2);
 
         let sql = q.to_sql();
-        assert!(sql.contains("age >= 18"));
-        assert!(sql.contains("country = 'US'"));
-        assert!(sql.contains("AND"));
+        assert_eq!(
+            sql,
+            "(age >= 18 AND country = 'US')",
+            "Expected exact AND query structure, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -589,9 +592,12 @@ mod tests {
         let q = q1.or(q2);
 
         let sql = q.to_sql();
-        assert!(sql.contains("status = 'active'"));
-        assert!(sql.contains("status = 'pending'"));
-        assert!(sql.contains("OR"));
+        assert_eq!(
+            sql,
+            "(status = 'active' OR status = 'pending')",
+            "Expected exact OR query structure, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -610,9 +616,12 @@ mod tests {
         let q = q1.and(q2).or(q3);
 
         let sql = q.to_sql();
-        assert!(sql.contains("age >= 18"));
-        assert!(sql.contains("country = 'US'"));
-        assert!(sql.contains("status = 'premium'"));
+        assert_eq!(
+            sql,
+            "((age >= 18 AND country = 'US') OR status = 'premium')",
+            "Expected exact complex query structure, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -624,10 +633,12 @@ mod tests {
         let q = q1.and(q2).and(q3);
 
         let sql = q.to_sql();
-        assert!(sql.contains("a = 1"));
-        assert!(sql.contains("b = 2"));
-        assert!(sql.contains("c = 3"));
-        assert!(sql.matches("AND").count() >= 2);
+        assert_eq!(
+            sql,
+            "(a = 1 AND b = 2 AND c = 3)",
+            "Expected exact chained AND query structure, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -639,10 +650,12 @@ mod tests {
         let q = q1.or(q2).or(q3);
 
         let sql = q.to_sql();
-        assert!(sql.contains("x = 1"));
-        assert!(sql.contains("y = 2"));
-        assert!(sql.contains("z = 3"));
-        assert!(sql.matches("OR").count() >= 2);
+        assert_eq!(
+            sql,
+            "(x = 1 OR y = 2 OR z = 3)",
+            "Expected exact chained OR query structure, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -655,9 +668,12 @@ mod tests {
     fn test_subquery() {
         let subquery = Subquery::new("SELECT id FROM users WHERE active = 1");
         let sql = subquery.to_sql();
-        assert!(sql.contains("SELECT id FROM users WHERE active = 1"));
-        assert!(sql.starts_with("("));
-        assert!(sql.ends_with(")"));
+        assert_eq!(
+            sql,
+            "(SELECT id FROM users WHERE active = 1)",
+            "Expected exact subquery SQL with parentheses, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -672,9 +688,12 @@ mod tests {
     fn test_expressions_exists() {
         let exists = Exists::new("SELECT 1 FROM orders WHERE user_id = 123");
         let sql = exists.to_sql();
-        assert!(sql.starts_with("EXISTS("));
-        assert!(sql.ends_with(")"));
-        assert!(sql.contains("SELECT 1 FROM orders WHERE user_id = 123"));
+        assert_eq!(
+            sql,
+            "EXISTS(SELECT 1 FROM orders WHERE user_id = 123)",
+            "Expected exact EXISTS SQL structure, got: {}",
+            sql
+        );
     }
 }
 // Auto-generated tests for expressions module
@@ -727,7 +746,12 @@ mod expressions_extended_tests {
         // Test subquery with aggregate
         let subquery = Subquery::new("SELECT COUNT(*) FROM orders WHERE status = 'completed'");
         let sql = subquery.to_sql();
-        assert!(sql.contains("SELECT COUNT(*) FROM orders"));
+        assert_eq!(
+            sql,
+            "(SELECT COUNT(*) FROM orders WHERE status = 'completed')",
+            "Expected exact subquery with aggregate, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -736,7 +760,12 @@ mod expressions_extended_tests {
         // Test subquery with aggregate
         let subquery = Subquery::new("SELECT AVG(price) FROM products");
         let sql = subquery.to_sql();
-        assert!(sql.contains("SELECT AVG(price) FROM products"));
+        assert_eq!(
+            sql,
+            "(SELECT AVG(price) FROM products)",
+            "Expected exact subquery with AVG aggregate, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -807,16 +836,24 @@ mod expressions_extended_tests {
     // From: Django/expressions
     fn test_annotate_values_filter() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_annotate_values_filter_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
@@ -890,7 +927,12 @@ mod expressions_extended_tests {
     fn test_annotations_within_subquery() {
         // Test annotations in subquery
         let subquery = Subquery::new("SELECT id, COUNT(*) as total FROM items GROUP BY id");
-        assert!(subquery.to_sql().contains("COUNT(*)"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT id, COUNT(*) as total FROM items GROUP BY id)",
+            "Expected exact subquery with annotations, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -899,23 +941,36 @@ mod expressions_extended_tests {
         // Test annotations in subquery
         let subquery =
             Subquery::new("SELECT user_id, SUM(amount) as total FROM orders GROUP BY user_id");
-        assert!(subquery.to_sql().contains("SUM(amount)"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT user_id, SUM(amount) as total FROM orders GROUP BY user_id)",
+            "Expected exact subquery with SUM aggregate, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_case_in_filter_if_boolean_output_field() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_case_in_filter_if_boolean_output_field_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
@@ -923,7 +978,12 @@ mod expressions_extended_tests {
     fn test_date_subquery_subtraction() {
         // Test date subtraction in subquery
         let subquery = Subquery::new("SELECT date1 - date2 FROM events");
-        assert!(subquery.to_sql().contains("date1 - date2"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT date1 - date2 FROM events)",
+            "Expected exact subquery with date subtraction, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -931,7 +991,12 @@ mod expressions_extended_tests {
     fn test_date_subquery_subtraction_1() {
         // Test date subtraction in subquery
         let subquery = Subquery::new("SELECT end_date - start_date FROM projects");
-        assert!(subquery.to_sql().contains("end_date - start_date"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT end_date - start_date FROM projects)",
+            "Expected exact subquery with date subtraction, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -954,16 +1019,24 @@ mod expressions_extended_tests {
     // From: Django/expressions
     fn test_datetime_and_durationfield_addition_with_filter() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_datetime_and_durationfield_addition_with_filter_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
@@ -971,7 +1044,12 @@ mod expressions_extended_tests {
     fn test_datetime_subquery_subtraction() {
         // Test datetime subtraction in subquery
         let subquery = Subquery::new("SELECT updated_at - created_at FROM records");
-        assert!(subquery.to_sql().contains("updated_at - created_at"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT updated_at - created_at FROM records)",
+            "Expected exact subquery with datetime subtraction, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -979,7 +1057,12 @@ mod expressions_extended_tests {
     fn test_datetime_subquery_subtraction_1() {
         // Test datetime subtraction in subquery
         let subquery = Subquery::new("SELECT NOW() - last_login FROM users");
-        assert!(subquery.to_sql().contains("NOW() - last_login"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT NOW() - last_login FROM users)",
+            "Expected exact subquery with NOW() function, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -1034,16 +1117,24 @@ mod expressions_extended_tests {
     // From: Django/expressions
     fn test_exists_in_filter() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_exists_in_filter_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
@@ -1054,8 +1145,12 @@ mod expressions_extended_tests {
         let q2 = Q::new("price", "<=", "100");
         let q = q1.and(q2);
         let sql = q.to_sql();
-        assert!(sql.contains("price >= 10"));
-        assert!(sql.contains("price <= 100"));
+        assert_eq!(
+            sql,
+            "(price >= 10 AND price <= 100)",
+            "Expected exact range query with AND, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1066,168 +1161,252 @@ mod expressions_extended_tests {
         let q2 = Q::new("age", "<", "65");
         let q = q1.and(q2);
         let sql = q.to_sql();
-        assert!(sql.contains("age > 18"));
-        assert!(sql.contains("age < 65"));
+        assert_eq!(
+            sql,
+            "(age > 18 AND age < 65)",
+            "Expected exact age range query, got: {}",
+            sql
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_by_empty_exists() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_by_empty_exists_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_decimal_expression() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_decimal_expression_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_inter_attribute() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_inter_attribute_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_not_equals_other_field() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_not_equals_other_field_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_with_join() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filter_with_join_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filtered_aggregates() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filtered_aggregates_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filtering_on_annotate_that_uses_q() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filtering_on_annotate_that_uses_q_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filtering_on_q_that_is_boolean() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filtering_on_q_that_is_boolean_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filtering_on_rawsql_that_is_boolean() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
     // From: Django/expressions
     fn test_filtering_on_rawsql_that_is_boolean_1() {
         let q = Q::new("status", "=", "active");
-        assert!(q.to_sql().contains("status"));
-        assert!(q.to_sql().contains("="));
+        assert_eq!(
+            q.to_sql(),
+            "status = 'active'",
+            "Expected exact Q condition SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
@@ -1243,7 +1422,12 @@ mod expressions_extended_tests {
     fn test_in_lookup_allows_f_expressions_and_expressions_for_integers_1() {
         // Test IN lookup with integer expressions
         let q = Q::new("id", "IN", "1,2,3,4,5");
-        assert!(q.to_sql().contains("IN"));
+        assert_eq!(
+            q.to_sql(),
+            "id IN '1,2,3,4,5'",
+            "Expected exact IN query, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
@@ -1251,7 +1435,12 @@ mod expressions_extended_tests {
     fn test_in_subquery() {
         // Test IN with subquery
         let subquery = Subquery::new("SELECT id FROM active_users");
-        assert!(subquery.to_sql().contains("SELECT id FROM active_users"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT id FROM active_users)",
+            "Expected exact subquery for IN clause, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -1259,10 +1448,11 @@ mod expressions_extended_tests {
     fn test_in_subquery_1() {
         // Test IN with subquery
         let subquery = Subquery::new("SELECT category_id FROM featured_categories");
-        assert!(
-            subquery
-                .to_sql()
-                .contains("SELECT category_id FROM featured_categories")
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT category_id FROM featured_categories)",
+            "Expected exact subquery for featured categories, got: {}",
+            subquery.to_sql()
         );
     }
 
@@ -1303,7 +1493,12 @@ mod expressions_extended_tests {
     fn test_lookups_subquery() {
         // Test lookups with subquery
         let subquery = Subquery::new("SELECT MAX(price) FROM products WHERE available = 1");
-        assert!(subquery.to_sql().contains("MAX(price)"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT MAX(price) FROM products WHERE available = 1)",
+            "Expected exact subquery with MAX aggregate, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -1311,7 +1506,12 @@ mod expressions_extended_tests {
     fn test_lookups_subquery_1() {
         // Test lookups with subquery
         let subquery = Subquery::new("SELECT MIN(created_at) FROM events");
-        assert!(subquery.to_sql().contains("MIN(created_at)"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT MIN(created_at) FROM events)",
+            "Expected exact subquery with MIN aggregate, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -1340,7 +1540,12 @@ mod expressions_extended_tests {
         // Test negated EXISTS
         let exists = Exists::new("");
         let q = Q::new("NOT", "", exists.to_sql());
-        assert!(q.to_sql().contains("EXISTS"));
+        assert_eq!(
+            q.to_sql(),
+            "NOT  'EXISTS()'",
+            "Expected exact negated EXISTS SQL, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
@@ -1348,7 +1553,12 @@ mod expressions_extended_tests {
     fn test_negated_empty_exists_1() {
         // Test negated EXISTS query
         let q = Q::new("id", "NOT IN", "SELECT id FROM deleted");
-        assert!(q.to_sql().contains("NOT IN"));
+        assert_eq!(
+            q.to_sql(),
+            "id NOT IN 'SELECT id FROM deleted'",
+            "Expected exact NOT IN query, got: {}",
+            q.to_sql()
+        );
     }
 
     #[test]
@@ -1360,7 +1570,12 @@ mod expressions_extended_tests {
             "SELECT * FROM orders WHERE user_id IN {}",
             inner.to_sql()
         ));
-        assert!(outer.to_sql().contains("SELECT id FROM users"));
+        assert_eq!(
+            outer.to_sql(),
+            "(SELECT * FROM orders WHERE user_id IN (SELECT id FROM users WHERE active = 1))",
+            "Expected exact nested subquery, got: {}",
+            outer.to_sql()
+        );
     }
 
     #[test]
@@ -1370,7 +1585,12 @@ mod expressions_extended_tests {
         let subquery = Subquery::new(
             "SELECT category_id FROM (SELECT * FROM products WHERE price > 100) AS expensive",
         );
-        assert!(subquery.to_sql().contains("SELECT category_id"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT category_id FROM (SELECT * FROM products WHERE price > 100) AS expensive)",
+            "Expected exact nested subquery with alias, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -1382,7 +1602,12 @@ mod expressions_extended_tests {
             "SELECT COUNT(*) FROM children WHERE parent_id = {}",
             outer_ref.to_sql()
         ));
-        assert!(subquery.to_sql().contains("parent.id"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT COUNT(*) FROM children WHERE parent_id = parent.id)",
+            "Expected exact subquery with OuterRef, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -1467,7 +1692,12 @@ mod expressions_extended_tests {
         // Test F expression in subquery
         let f = F::new("price");
         let subquery = Subquery::new(&format!("SELECT {} FROM products", f.to_sql()));
-        assert!(subquery.to_sql().contains("price"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT price FROM products)",
+            "Expected exact subquery with F expression, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -1483,7 +1713,12 @@ mod expressions_extended_tests {
     fn test_order_by_exists() {
         // Test ordering by EXISTS clause
         let exists = Exists::new("SELECT 1 FROM related WHERE related.parent_id = main.id");
-        assert!(exists.to_sql().starts_with("EXISTS("));
+        assert_eq!(
+            exists.to_sql(),
+            "EXISTS(SELECT 1 FROM related WHERE related.parent_id = main.id)",
+            "Expected exact EXISTS with related join, got: {}",
+            exists.to_sql()
+        );
     }
 
     #[test]
@@ -1491,7 +1726,12 @@ mod expressions_extended_tests {
     fn test_order_by_exists_1() {
         // Test ordering by EXISTS clause
         let exists = Exists::new("SELECT 1 FROM tags WHERE tags.item_id = items.id");
-        assert!(exists.to_sql().contains("SELECT 1"));
+        assert_eq!(
+            exists.to_sql(),
+            "EXISTS(SELECT 1 FROM tags WHERE tags.item_id = items.id)",
+            "Expected exact EXISTS with correlation, got: {}",
+            exists.to_sql()
+        );
     }
 
     #[test]
@@ -1503,7 +1743,12 @@ mod expressions_extended_tests {
 FROM users
 WHERE active = 1",
         );
-        assert!(subquery.to_sql().contains("FROM users"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT id\nFROM users\nWHERE active = 1)",
+            "Expected exact multiline subquery, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -1515,7 +1760,12 @@ WHERE active = 1",
 FROM orders
 GROUP BY user_id",
         );
-        assert!(subquery.to_sql().contains("COUNT(*)"));
+        assert_eq!(
+            subquery.to_sql(),
+            "(SELECT COUNT(*)\nFROM orders\nGROUP BY user_id)",
+            "Expected exact multiline subquery with GROUP BY, got: {}",
+            subquery.to_sql()
+        );
     }
 
     #[test]
@@ -1527,9 +1777,12 @@ GROUP BY user_id",
         let q3 = Q::new("c", "=", "3");
         let q = q1.and(q2).or(q3);
         let sql = q.to_sql();
-        assert!(sql.contains("a = 1"));
-        assert!(sql.contains("b = 2"));
-        assert!(sql.contains("c = 3"));
+        assert_eq!(
+            sql,
+            "((a = 1 AND b = 2) OR c = 3)",
+            "Expected exact order of operations with AND/OR, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1539,7 +1792,12 @@ GROUP BY user_id",
         let q1 = Q::new("x", "=", "1");
         let q2 = Q::new("y", "=", "2");
         let q = q1.or(q2).not();
-        assert!(q.to_sql().contains("NOT"));
+        assert_eq!(
+            q.to_sql(),
+            "NOT ((x = 1 OR y = 2))",
+            "Expected exact NOT with OR operation, got: {}",
+            q.to_sql()
+        );
     }
 }
 

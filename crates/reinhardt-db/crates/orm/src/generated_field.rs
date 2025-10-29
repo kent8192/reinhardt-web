@@ -300,45 +300,60 @@ mod tests {
     fn test_generated_field_to_sql() {
         let field = GeneratedField::new("a + b", StorageType::Virtual);
         let sql = field.to_sql();
-        assert!(sql.contains("GENERATED ALWAYS AS"));
-        assert!(sql.contains("(a + b)"));
-        assert!(sql.contains("VIRTUAL"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS (a + b) VIRTUAL",
+            "Expected exact generated field SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
     fn test_generated_field_to_sql_stored() {
         let field = GeneratedField::stored_field("CONCAT(first_name, ' ', last_name)");
         let sql = field.to_sql();
-        assert!(sql.contains("GENERATED ALWAYS AS"));
-        assert!(sql.contains("STORED"));
-        assert!(sql.contains("CONCAT(first_name, ' ', last_name)"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS (CONCAT(first_name, ' ', last_name)) STORED",
+            "Expected exact stored generated field SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
     fn test_generated_field_postgres_sql() {
         let field = GeneratedField::virtual_field("price * 1.2");
         let sql = field.to_postgres_sql();
-        assert!(sql.contains("GENERATED ALWAYS AS"));
-        assert!(sql.contains("price * 1.2"));
-        assert!(sql.contains("VIRTUAL"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS (price * 1.2) VIRTUAL",
+            "Expected exact PostgreSQL generated field SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
     fn test_generated_field_mysql_sql() {
         let field = GeneratedField::stored_field("quantity * unit_price");
         let sql = field.to_mysql_sql();
-        assert!(sql.contains("GENERATED ALWAYS AS"));
-        assert!(sql.contains("quantity * unit_price"));
-        assert!(sql.contains("STORED"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS (quantity * unit_price) STORED",
+            "Expected exact MySQL generated field SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
     fn test_generated_field_sqlite_sql() {
         let field = GeneratedField::virtual_field("json_extract(data, '$.name')");
         let sql = field.to_sqlite_sql();
-        assert!(sql.contains("GENERATED ALWAYS AS"));
-        assert!(sql.contains("json_extract(data, '$.name')"));
-        assert!(sql.contains("VIRTUAL"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS (json_extract(data, '$.name')) VIRTUAL",
+            "Expected exact SQLite generated field SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -385,8 +400,12 @@ mod tests {
             "CASE WHEN status = 'active' THEN price * 0.9 ELSE price END",
         );
         let sql = field.to_sql();
-        assert!(sql.contains("CASE WHEN"));
-        assert!(sql.contains("STORED"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS (CASE WHEN status = 'active' THEN price * 0.9 ELSE price END) STORED",
+            "Expected exact complex expression SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -400,8 +419,12 @@ mod tests {
     fn test_arithmetic_expression() {
         let field = GeneratedField::stored_field("(price - discount) * quantity");
         let sql = field.to_sql();
-        assert!(sql.contains("(price - discount) * quantity"));
-        assert!(sql.contains("STORED"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS ((price - discount) * quantity) STORED",
+            "Expected exact arithmetic expression SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -428,14 +451,23 @@ mod tests {
         let mysql_sql = field.to_mysql_sql();
         let sqlite_sql = field.to_sqlite_sql();
 
-        // All should contain the same core components
-        assert!(pg_sql.contains("GENERATED ALWAYS AS"));
-        assert!(mysql_sql.contains("GENERATED ALWAYS AS"));
-        assert!(sqlite_sql.contains("GENERATED ALWAYS AS"));
+        let expected = "GENERATED ALWAYS AS (price * tax_rate) STORED";
 
-        assert!(pg_sql.contains("STORED"));
-        assert!(mysql_sql.contains("STORED"));
-        assert!(sqlite_sql.contains("STORED"));
+        assert_eq!(
+            pg_sql, expected,
+            "Expected exact PostgreSQL SQL, got: {}",
+            pg_sql
+        );
+        assert_eq!(
+            mysql_sql, expected,
+            "Expected exact MySQL SQL, got: {}",
+            mysql_sql
+        );
+        assert_eq!(
+            sqlite_sql, expected,
+            "Expected exact SQLite SQL, got: {}",
+            sqlite_sql
+        );
     }
 
     #[test]
@@ -473,7 +505,12 @@ mod tests {
     fn test_date_expression() {
         let field = GeneratedField::stored_field("DATE_ADD(created_at, INTERVAL 30 DAY)");
         let sql = field.to_sql();
-        assert!(sql.contains("DATE_ADD(created_at, INTERVAL 30 DAY)"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS (DATE_ADD(created_at, INTERVAL 30 DAY)) STORED",
+            "Expected exact date expression SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -486,7 +523,12 @@ mod tests {
     fn test_conditional_expression() {
         let field = GeneratedField::stored_field("IF(quantity > 10, price * 0.9, price)");
         let sql = field.to_sql();
-        assert!(sql.contains("IF(quantity > 10, price * 0.9, price)"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS (IF(quantity > 10, price * 0.9, price)) STORED",
+            "Expected exact conditional expression SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -494,14 +536,24 @@ mod tests {
         let field = GeneratedField::virtual_field(
             "(SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)",
         );
-        assert!(field.expression.contains("SELECT COUNT(*)"));
+        assert_eq!(
+            field.expression,
+            "(SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)",
+            "Expected exact subquery expression, got: {}",
+            field.expression
+        );
     }
 
     #[test]
     fn test_aggregate_expression() {
         let field = GeneratedField::stored_field("COALESCE(discount, 0) + base_price");
         let sql = field.to_sql();
-        assert!(sql.contains("COALESCE(discount, 0) + base_price"));
+        assert_eq!(
+            sql,
+            "GENERATED ALWAYS AS (COALESCE(discount, 0) + base_price) STORED",
+            "Expected exact aggregate expression SQL, got: {}",
+            sql
+        );
     }
 
     #[test]

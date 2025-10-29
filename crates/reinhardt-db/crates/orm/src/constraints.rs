@@ -259,8 +259,13 @@ mod tests {
     #[test]
     fn test_constraints_foreign_key_constraint() {
         let constraint = ForeignKeyConstraint::new("fk_user", "user_id", "users", "id");
-        assert!(constraint.to_sql().contains("FOREIGN KEY (user_id)"));
-        assert!(constraint.to_sql().contains("REFERENCES users (id)"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE NO ACTION",
+            "Expected exact foreign key constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -268,15 +273,26 @@ mod tests {
         let constraint = ForeignKeyConstraint::new("fk_post", "post_id", "posts", "id")
             .on_delete(OnDelete::Cascade)
             .on_update(OnUpdate::Cascade);
-        assert!(constraint.to_sql().contains("ON DELETE CASCADE"));
-        assert!(constraint.to_sql().contains("ON UPDATE CASCADE"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT fk_post FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE ON UPDATE CASCADE",
+            "Expected exact foreign key constraint SQL with CASCADE actions, got: {}",
+            sql
+        );
     }
 
     #[test]
     fn test_foreign_key_set_null() {
         let constraint = ForeignKeyConstraint::new("fk_author", "author_id", "users", "id")
             .on_delete(OnDelete::SetNull);
-        assert!(constraint.to_sql().contains("ON DELETE SET NULL"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT fk_author FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE NO ACTION",
+            "Expected exact foreign key constraint SQL with SET NULL action, got: {}",
+            sql
+        );
     }
 }
 
@@ -312,7 +328,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -324,7 +346,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -336,7 +364,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -348,7 +382,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -360,7 +400,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -372,7 +418,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -384,7 +436,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -396,7 +454,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -408,7 +472,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -420,7 +490,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -432,7 +508,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -444,7 +526,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -456,7 +544,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -468,7 +562,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -480,7 +580,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -492,7 +598,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -504,7 +616,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -516,7 +634,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -528,7 +652,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -540,7 +670,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -552,7 +688,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -564,7 +706,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -576,7 +724,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -588,7 +742,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -600,7 +760,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -612,7 +778,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -624,7 +796,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -636,7 +814,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -648,7 +832,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -660,7 +850,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -672,7 +868,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -684,7 +886,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -696,7 +904,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -708,7 +922,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -720,7 +940,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -732,7 +958,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -744,7 +976,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -756,7 +994,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -768,7 +1012,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -780,7 +1030,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -792,7 +1048,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -804,7 +1066,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -816,7 +1084,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -828,7 +1102,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -840,7 +1120,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -852,7 +1138,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -864,7 +1156,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -876,7 +1174,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -888,7 +1192,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -900,7 +1210,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -912,7 +1228,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -924,7 +1246,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -936,7 +1264,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -948,7 +1282,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -960,7 +1300,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -972,7 +1318,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -984,7 +1336,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -996,7 +1354,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1008,7 +1372,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1020,7 +1390,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1032,7 +1408,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1044,7 +1426,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1056,7 +1444,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1068,7 +1462,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1080,7 +1480,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1092,7 +1498,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1104,7 +1516,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1116,7 +1534,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1128,7 +1552,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1140,7 +1570,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1152,7 +1588,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1164,7 +1606,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1176,7 +1624,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1188,7 +1642,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1200,7 +1660,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1212,7 +1678,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1224,7 +1696,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1236,7 +1714,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1248,7 +1732,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1260,7 +1750,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1272,7 +1768,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1284,7 +1786,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1296,7 +1804,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1308,7 +1822,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1320,7 +1840,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1332,7 +1858,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1344,7 +1876,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1356,7 +1894,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1368,7 +1912,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1380,7 +1930,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1392,7 +1948,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1404,7 +1966,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1416,7 +1984,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1428,7 +2002,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1440,7 +2020,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1452,7 +2038,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1464,7 +2056,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "age >= 18");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (age >= 18)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1476,7 +2074,13 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1488,6 +2092,12 @@ mod constraints_extended_tests {
         use super::*;
         let constraint = CheckConstraint::new("test_constraint", "value > 0");
         assert_eq!(constraint.name(), "test_constraint");
-        assert!(constraint.to_sql().contains("CHECK"));
+        let sql = constraint.to_sql();
+        assert_eq!(
+            sql,
+            "CONSTRAINT test_constraint CHECK (value > 0)",
+            "Expected exact CHECK constraint SQL, got: {}",
+            sql
+        );
     }
 }
