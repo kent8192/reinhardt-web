@@ -129,4 +129,8 @@ impl DatabaseBackend for SqliteBackend {
         let row = query.fetch_optional(self.pool.as_ref()).await?;
         row.map(Self::convert_row).transpose()
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

@@ -62,6 +62,35 @@ impl DatabaseConnection {
         })
     }
 
+    /// Connect to MongoDB database
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - MongoDB connection string (e.g., "mongodb://localhost:27017")
+    /// * `database` - Database name to use
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// use reinhardt_db_backends::connection::DatabaseConnection;
+    ///
+    /// let connection = DatabaseConnection::connect_mongodb(
+    ///     "mongodb://localhost:27017",
+    ///     "mydb"
+    /// ).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "mongodb-backend")]
+    pub async fn connect_mongodb(url: &str, database: &str) -> Result<Self> {
+        use crate::backends::mongodb::MongoDBBackend;
+        let backend = MongoDBBackend::connect(url).await?.with_database(database);
+        Ok(Self {
+            backend: Arc::new(backend),
+        })
+    }
+
     pub fn backend(&self) -> Arc<dyn DatabaseBackend> {
         self.backend.clone()
     }

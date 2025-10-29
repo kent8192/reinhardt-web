@@ -717,6 +717,10 @@ impl DatabaseBackend for MongoDBBackend {
             "MongoDB requires using the query builder instead of raw SQL".to_string(),
         ))
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[cfg(test)]

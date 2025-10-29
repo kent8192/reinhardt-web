@@ -33,4 +33,7 @@ pub trait DatabaseBackend: Send + Sync {
 
     /// Fetches an optional single row from the database
     async fn fetch_optional(&self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>>;
+
+    /// Returns self as &dyn std::any::Any for downcasting
+    fn as_any(&self) -> &dyn std::any::Any;
 }

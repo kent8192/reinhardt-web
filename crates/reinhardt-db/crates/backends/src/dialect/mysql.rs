@@ -129,4 +129,8 @@ impl DatabaseBackend for MySqlBackend {
         let mysql_row = query.fetch_optional(self.pool.as_ref()).await?;
         mysql_row.map(Self::convert_row).transpose()
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
