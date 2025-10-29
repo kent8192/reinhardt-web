@@ -61,6 +61,30 @@
 //! # }
 //! ```
 //!
+//! ### Memcached Backend
+//!
+//! Memcached support is available with the `memcached-backend` feature:
+//!
+//! ```toml
+//! [dependencies]
+//! reinhardt-cache = { version = "0.1", features = ["memcached-backend"] }
+//! ```
+//!
+//! ```rust,ignore
+//! use reinhardt_cache::{Cache, MemcachedCache, MemcachedConfig};
+//!
+//! # async fn example() {
+//! let config = MemcachedConfig {
+//!     servers: vec!["127.0.0.1:11211".to_string()],
+//!     pool_size: 10,
+//!     timeout_ms: 1000,
+//! };
+//!
+//! let cache = MemcachedCache::new(config).await.unwrap();
+//! cache.set("key", b"value", Some(3600)).await.unwrap();
+//! # }
+//! ```
+//!
 
 mod cache_trait;
 mod entry;
@@ -78,22 +102,19 @@ pub mod warming;
 #[cfg(feature = "redis-backend")]
 pub mod redis_backend;
 
-// TODO: Implement memcached backend
-// #[cfg(feature = "memcached-backend")]
-// pub mod memcached;
+#[cfg(feature = "memcached-backend")]
+pub mod memcached;
 
 pub mod hybrid;
 
 #[cfg(feature = "redis-cluster")]
 pub mod redis_cluster;
 
-// TODO: Implement redis sentinel support
-// #[cfg(feature = "redis-sentinel")]
-// pub mod redis_sentinel;
+#[cfg(feature = "redis-sentinel")]
+pub mod redis_sentinel;
 
-// TODO: Implement Redis pub/sub support
-// #[cfg(feature = "redis-backend")]
-// pub mod pubsub;
+#[cfg(feature = "redis-backend")]
+pub mod pubsub;
 
 // Re-export exception types
 pub use reinhardt_exception::Result;
@@ -111,22 +132,21 @@ pub use middleware::{CacheMiddleware, CacheMiddlewareConfig};
 #[cfg(feature = "redis-backend")]
 pub use redis_backend::RedisCache;
 
-// TODO: Re-export memcached when implemented
-// #[cfg(feature = "memcached-backend")]
-// pub use memcached::MemcachedCache;
+#[cfg(feature = "memcached-backend")]
+pub use memcached::{MemcachedCache, MemcachedConfig};
 
 pub use hybrid::HybridCache;
 
 #[cfg(feature = "redis-cluster")]
 pub use redis_cluster::RedisClusterCache;
 
-// TODO: Re-export redis sentinel when implemented
-// #[cfg(feature = "redis-sentinel")]
-// pub use redis_sentinel::RedisSentinelCache;
+#[cfg(feature = "redis-sentinel")]
+pub use redis_sentinel::{RedisSentinelCache, RedisSentinelConfig};
 
-// TODO: Re-export pubsub when implemented
-// #[cfg(feature = "redis-backend")]
-// pub use pubsub::{CacheInvalidation, CacheInvalidationChannel};
+#[cfg(feature = "redis-backend")]
+pub use pubsub::{
+    CacheInvalidationChannel, CacheInvalidationMessage, CacheInvalidationSubscriber,
+};
 
 // Re-export DI support
 pub use di_support::CacheService;

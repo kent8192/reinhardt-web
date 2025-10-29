@@ -214,13 +214,13 @@ impl LayeredCacheStore {
     }
 
     /// Get a clone of the internal store (for read-only operations)
-    pub async fn get_store_clone(&self) -> HashMap<String, CacheEntry> {
+    pub(crate) async fn get_store_clone(&self) -> HashMap<String, CacheEntry> {
         let store = self.store.read().await;
         store.clone()
     }
 
     /// Get a specific cache entry (for inspection)
-    pub async fn get_entry(&self, key: &str) -> Option<CacheEntry> {
+    pub(crate) async fn get_entry(&self, key: &str) -> Option<CacheEntry> {
         let store = self.store.read().await;
         store.get(key).cloned()
     }

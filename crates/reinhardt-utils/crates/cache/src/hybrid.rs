@@ -136,6 +136,7 @@ where
     }
 
     /// Promote a value from L2 to L1
+    #[allow(dead_code)]
     async fn promote<T>(&self, key: &str, value: &T, ttl: Option<Duration>) -> Result<()>
     where
         T: Serialize + Send + Sync,

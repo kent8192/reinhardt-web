@@ -171,6 +171,7 @@ impl RedisClusterCache {
     }
 
     /// Get a connection to the cluster
+    #[allow(dead_code)]
     async fn get_connection(&self) -> Result<redis::cluster::ClusterConnection> {
         self.client
             .get_connection()
