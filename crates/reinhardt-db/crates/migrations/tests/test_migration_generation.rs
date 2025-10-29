@@ -233,7 +233,11 @@ fn test_generate_migration_for_deleted_model() {
     let changes = autodetector.detect_changes();
 
     // Verify
-    assert_eq!(changes.deleted_models.len(), 1, "Should detect 1 deleted model");
+    assert_eq!(
+        changes.deleted_models.len(),
+        1,
+        "Should detect 1 deleted model"
+    );
     assert_eq!(changes.deleted_models[0].0, "users");
     assert_eq!(changes.deleted_models[0].1, "User");
 
@@ -293,13 +297,12 @@ fn test_write_migration_file() {
     fs::create_dir_all(&test_dir).expect("Failed to create test directory");
 
     // Create a migration
-    let migration = Migration::new("0001_initial", "testapp").add_operation(
-        Operation::CreateTable {
+    let migration =
+        Migration::new("0001_initial", "testapp").add_operation(Operation::CreateTable {
             name: "Test".to_string(),
             columns: vec![],
             constraints: vec![],
-        },
-    );
+        });
 
     // Write migration
     let writer = MigrationWriter::new(migration);
@@ -308,7 +311,10 @@ fn test_write_migration_file() {
         .expect("Failed to write migration file");
 
     // Verify
-    assert!(PathBuf::from(&filepath).exists(), "Migration file should exist");
+    assert!(
+        PathBuf::from(&filepath).exists(),
+        "Migration file should exist"
+    );
     assert!(
         filepath.ends_with("0001_initial.rs"),
         "Migration file should have correct name"
@@ -377,5 +383,8 @@ fn test_generate_migration_for_multiple_changes() {
 
     // Generate operations
     let operations = autodetector.generate_operations();
-    assert!(operations.len() >= 3, "Should generate at least 3 operations");
+    assert!(
+        operations.len() >= 3,
+        "Should generate at least 3 operations"
+    );
 }

@@ -211,10 +211,12 @@ fn test_multiple_apps() {
 
     assert_eq!(changes.created_models.len(), 2);
     assert!(changes.created_models.iter().any(|(app, _)| app == "books"));
-    assert!(changes
-        .created_models
-        .iter()
-        .any(|(app, _)| app == "authors"));
+    assert!(
+        changes
+            .created_models
+            .iter()
+            .any(|(app, _)| app == "authors")
+    );
 }
 
 #[test]
@@ -244,7 +246,7 @@ fn test_rename_model_detected_as_rename() {
     // Verify either rename detection (if implemented) or delete+create fallback
     let has_rename = !changes.renamed_models.is_empty();
     let has_delete_create = changes.created_models.len() == 1 && changes.deleted_models.len() == 1;
-    
+
     assert!(
         has_rename || has_delete_create,
         "Expected either rename detection or delete+create fallback. \
@@ -279,11 +281,22 @@ fn test_rename_model_detected_as_delete_and_create() {
     let changes = autodetector.detect_changes();
 
     // Should detect as delete + create due to low similarity
-    assert_eq!(changes.created_models.len(), 1, "Expected model creation to be detected");
-    assert_eq!(changes.deleted_models.len(), 1, "Expected model deletion to be detected");
-    
+    assert_eq!(
+        changes.created_models.len(),
+        1,
+        "Expected model creation to be detected"
+    );
+    assert_eq!(
+        changes.deleted_models.len(),
+        1,
+        "Expected model deletion to be detected"
+    );
+
     // Verify not detected as rename
-    assert!(changes.renamed_models.is_empty(), "Should not detect as rename");
+    assert!(
+        changes.renamed_models.is_empty(),
+        "Should not detect as rename"
+    );
 }
 
 #[test]
@@ -311,7 +324,7 @@ fn test_rename_field_detected_as_rename() {
     // Verify either rename detection (if implemented) or add+remove fallback
     let has_rename = !changes.renamed_fields.is_empty();
     let has_add_remove = changes.added_fields.len() == 1 && changes.removed_fields.len() == 1;
-    
+
     assert!(
         has_rename || has_add_remove,
         "Expected either rename detection or add+remove fallback. \
@@ -344,11 +357,22 @@ fn test_rename_field_detected_as_add_and_remove() {
     let changes = autodetector.detect_changes();
 
     // Should detect as add + remove due to different types
-    assert_eq!(changes.added_fields.len(), 1, "Expected field addition to be detected");
-    assert_eq!(changes.removed_fields.len(), 1, "Expected field removal to be detected");
-    
+    assert_eq!(
+        changes.added_fields.len(),
+        1,
+        "Expected field addition to be detected"
+    );
+    assert_eq!(
+        changes.removed_fields.len(),
+        1,
+        "Expected field removal to be detected"
+    );
+
     // Verify not detected as rename
-    assert!(changes.renamed_fields.is_empty(), "Should not detect as rename");
+    assert!(
+        changes.renamed_fields.is_empty(),
+        "Should not detect as rename"
+    );
 }
 
 #[test]
@@ -504,7 +528,7 @@ fn test_multiple_changes_same_model() {
     new_model.add_field(field("id", "INTEGER", false));
     new_model.add_field(field("title", "VARCHAR(200)", false)); // altered
     new_model.add_field(field("new_field", "VARCHAR(50)", false)); // added
-                                                                   // old_field removed
+    // old_field removed
     to_state.add_model(new_model);
 
     let autodetector = MigrationAutodetector::new(from_state, to_state);
@@ -576,9 +600,11 @@ fn test_generate_operations_from_changes() {
 
     assert!(!operations.is_empty());
     // Should generate at least one CreateTable operation
-    assert!(operations
-        .iter()
-        .any(|op| matches!(op, reinhardt_migrations::Operation::CreateTable { .. })));
+    assert!(
+        operations
+            .iter()
+            .any(|op| matches!(op, reinhardt_migrations::Operation::CreateTable { .. }))
+    );
 }
 
 #[test]
@@ -707,7 +733,7 @@ fn test_cross_app_model_move_detected_as_move() {
     // Verify either move detection (if implemented) or delete+create fallback
     let has_move = !changes.moved_models.is_empty();
     let has_delete_create = changes.created_models.len() == 1 && changes.deleted_models.len() == 1;
-    
+
     assert!(
         has_move || has_delete_create,
         "Expected either move detection or delete+create fallback. \
@@ -742,9 +768,17 @@ fn test_cross_app_model_move_detected_as_delete_and_create() {
     let changes = autodetector.detect_changes();
 
     // Should detect as delete + create due to different structure
-    assert_eq!(changes.created_models.len(), 1, "Expected model creation to be detected");
-    assert_eq!(changes.deleted_models.len(), 1, "Expected model deletion to be detected");
-    
+    assert_eq!(
+        changes.created_models.len(),
+        1,
+        "Expected model creation to be detected"
+    );
+    assert_eq!(
+        changes.deleted_models.len(),
+        1,
+        "Expected model deletion to be detected"
+    );
+
     // Verify not detected as move
     assert!(changes.moved_models.is_empty(), "Should not detect as move");
 }
@@ -772,10 +806,11 @@ fn test_model_dependencies_simple() {
     let changes = autodetector.detect_changes();
 
     // blog.Post should depend on accounts.User
-    assert!(changes.model_dependencies.contains_key(&(
-        "blog".to_string(),
-        "Post".to_string()
-    )));
+    assert!(
+        changes
+            .model_dependencies
+            .contains_key(&("blog".to_string(), "Post".to_string()))
+    );
 
     let deps = changes
         .model_dependencies
@@ -811,9 +846,10 @@ fn test_model_dependencies_many_to_many() {
         .model_dependencies
         .get(&("books".to_string(), "Book".to_string()));
     assert!(deps.is_some());
-    assert!(deps
-        .unwrap()
-        .contains(&("authors".to_string(), "Author".to_string())));
+    assert!(
+        deps.unwrap()
+            .contains(&("authors".to_string(), "Author".to_string()))
+    );
 }
 
 #[test]
@@ -1076,7 +1112,11 @@ fn test_inference_engine_basic() {
     let intents = engine.infer_intents(
         &[],
         &[],
-        &[("app".to_string(), "User".to_string(), "created_at".to_string())],
+        &[(
+            "app".to_string(),
+            "User".to_string(),
+            "created_at".to_string(),
+        )],
         &[],
     );
 
@@ -1105,7 +1145,12 @@ fn test_inference_engine_model_rename_rule() {
 
     // Test model rename detection
     let intents = engine.infer_intents(
-        &[("app".to_string(), "OldUser".to_string(), "app".to_string(), "NewUser".to_string())],
+        &[(
+            "app".to_string(),
+            "OldUser".to_string(),
+            "app".to_string(),
+            "NewUser".to_string(),
+        )],
         &[],
         &[],
         &[],
@@ -1130,8 +1175,16 @@ fn test_inference_engine_field_tracking_rule() {
         &[],
         &[],
         &[
-            ("app".to_string(), "User".to_string(), "created_at".to_string()),
-            ("app".to_string(), "User".to_string(), "updated_at".to_string()),
+            (
+                "app".to_string(),
+                "User".to_string(),
+                "created_at".to_string(),
+            ),
+            (
+                "app".to_string(),
+                "User".to_string(),
+                "updated_at".to_string(),
+            ),
         ],
         &[],
     );
