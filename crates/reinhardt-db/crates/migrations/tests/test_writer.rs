@@ -20,14 +20,46 @@ fn test_write_simple_migration() {
     let content = writer.as_string();
 
     // Verify generated content
-    assert!(content.contains("0001_initial"));
-    assert!(content.contains("testapp"));
-    assert!(content.contains("CreateTable"));
-    assert!(content.contains("users"));
-    assert!(content.contains("id"));
-    assert!(content.contains("username"));
-    assert!(content.contains("INTEGER PRIMARY KEY"));
-    assert!(content.contains("VARCHAR(150) NOT NULL"));
+    assert!(
+        content.contains("0001_initial"),
+        "マイグレーション名 '0001_initial' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("testapp"),
+        "アプリ名 'testapp' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("CreateTable"),
+        "Operation::CreateTable が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("users"),
+        "テーブル名 'users' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("id"),
+        "カラム名 'id' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("username"),
+        "カラム名 'username' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("INTEGER PRIMARY KEY"),
+        "カラム定義 'INTEGER PRIMARY KEY' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("VARCHAR(150) NOT NULL"),
+        "カラム定義 'VARCHAR(150) NOT NULL' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 }
 
 #[test]
@@ -42,10 +74,26 @@ fn test_write_add_column_migration() {
     let writer = MigrationWriter::new(migration);
     let content = writer.as_string();
 
-    assert!(content.contains("0002_add_email"));
-    assert!(content.contains("AddColumn"));
-    assert!(content.contains("email"));
-    assert!(content.contains("VARCHAR(255)"));
+    assert!(
+        content.contains("0002_add_email"),
+        "マイグレーション名 '0002_add_email' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("AddColumn"),
+        "Operation::AddColumn が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("email"),
+        "カラム名 'email' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("VARCHAR(255)"),
+        "カラム定義 'VARCHAR(255)' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 }
 
 #[test]
@@ -60,9 +108,21 @@ fn test_write_drop_column_migration() {
     let writer = MigrationWriter::new(migration);
     let content = writer.as_string();
 
-    assert!(content.contains("0003_remove_email"));
-    assert!(content.contains("DropColumn"));
-    assert!(content.contains("email"));
+    assert!(
+        content.contains("0003_remove_email"),
+        "マイグレーション名 '0003_remove_email' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("DropColumn"),
+        "Operation::DropColumn が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("email"),
+        "カラム名 'email' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 }
 
 #[test]
@@ -78,10 +138,26 @@ fn test_write_alter_column_migration() {
     let writer = MigrationWriter::new(migration);
     let content = writer.as_string();
 
-    assert!(content.contains("0004_alter_username"));
-    assert!(content.contains("AlterColumn"));
-    assert!(content.contains("username"));
-    assert!(content.contains("VARCHAR(200) NOT NULL"));
+    assert!(
+        content.contains("0004_alter_username"),
+        "マイグレーション名 '0004_alter_username' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("AlterColumn"),
+        "Operation::AlterColumn が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("username"),
+        "カラム名 'username' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("VARCHAR(200) NOT NULL"),
+        "カラム定義 'VARCHAR(200) NOT NULL' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 }
 
 #[test]
@@ -95,9 +171,21 @@ fn test_write_drop_table_migration() {
     let writer = MigrationWriter::new(migration);
     let content = writer.as_string();
 
-    assert!(content.contains("0005_delete_users"));
-    assert!(content.contains("DropTable"));
-    assert!(content.contains("users"));
+    assert!(
+        content.contains("0005_delete_users"),
+        "マイグレーション名 '0005_delete_users' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("DropTable"),
+        "Operation::DropTable が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("users"),
+        "テーブル名 'users' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 }
 
 #[test]
@@ -117,10 +205,26 @@ fn test_write_migration_with_dependencies() {
     let writer = MigrationWriter::new(migration);
     let content = writer.as_string();
 
-    assert!(content.contains("0002_add_profile"));
-    assert!(content.contains("add_dependency"));
-    assert!(content.contains("auth"));
-    assert!(content.contains("0001_initial"));
+    assert!(
+        content.contains("0002_add_profile"),
+        "マイグレーション名 '0002_add_profile' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("add_dependency"),
+        "依存関係メソッド 'add_dependency' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("auth"),
+        "依存先アプリ 'auth' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("0001_initial"),
+        "依存先マイグレーション '0001_initial' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 }
 
 #[test]
@@ -143,11 +247,31 @@ fn test_write_migration_with_multiple_operations() {
     let writer = MigrationWriter::new(migration);
     let content = writer.as_string();
 
-    assert!(content.contains("0006_complex"));
-    assert!(content.contains("CreateTable"));
-    assert!(content.contains("categories"));
-    assert!(content.contains("AddColumn"));
-    assert!(content.contains("category_id"));
+    assert!(
+        content.contains("0006_complex"),
+        "マイグレーション名 '0006_complex' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("CreateTable"),
+        "Operation::CreateTable が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("categories"),
+        "テーブル名 'categories' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("AddColumn"),
+        "Operation::AddColumn が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("category_id"),
+        "カラム名 'category_id' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 }
 
 #[test]
@@ -163,16 +287,40 @@ fn test_migration_file_format() {
     let content = writer.as_string();
 
     // Check file header
-    assert!(content.contains("//! Auto-generated migration"));
-    assert!(content.contains("//! Name: 0001_initial"));
-    assert!(content.contains("//! App: myapp"));
+    assert!(
+        content.contains("//! Auto-generated migration"),
+        "ファイルヘッダー '//! Auto-generated migration' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("//! Name: 0001_initial"),
+        "マイグレーション名ヘッダー '//! Name: 0001_initial' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("//! App: myapp"),
+        "アプリ名ヘッダー '//! App: myapp' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 
     // Check imports
-    assert!(content.contains("use reinhardt_migrations"));
+    assert!(
+        content.contains("use reinhardt_migrations"),
+        "インポート文 'use reinhardt_migrations' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 
     // Check function definition
-    assert!(content.contains("pub fn migration_0001_initial() -> Migration"));
-    assert!(content.contains("Migration::new(\"0001_initial\", \"myapp\")"));
+    assert!(
+        content.contains("pub fn migration_0001_initial() -> Migration"),
+        "関数定義 'pub fn migration_0001_initial() -> Migration' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("Migration::new(\"0001_initial\", \"myapp\")"),
+        "マイグレーション初期化コード 'Migration::new(\"0001_initial\", \"myapp\")' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 }
 
 #[test]
@@ -192,12 +340,26 @@ fn test_write_to_file() {
     let filepath = writer.write_to_file(&temp_dir).unwrap();
 
     // Verify file was created
-    assert!(std::path::Path::new(&filepath).exists());
+    assert!(
+        std::path::Path::new(&filepath).exists(),
+        "マイグレーションファイルが作成されませんでした: {}",
+        filepath
+    );
 
     // Verify file content
     let content = std::fs::read_to_string(&filepath).unwrap();
-    assert!(content.contains("0001_initial"));
-    assert!(content.contains("testapp"));
+    assert!(
+        content.contains("0001_initial"),
+        "ファイル内容にマイグレーション名 '0001_initial' が含まれていません。\nファイルパス: {}\n内容:\n{}",
+        filepath,
+        content
+    );
+    assert!(
+        content.contains("testapp"),
+        "ファイル内容にアプリ名 'testapp' が含まれていません。\nファイルパス: {}\n内容:\n{}",
+        filepath,
+        content
+    );
 
     // Cleanup
     std::fs::remove_file(&filepath).unwrap();
@@ -220,7 +382,19 @@ fn test_serialization_indentation() {
     let content = writer.as_string();
 
     // Check that proper indentation is maintained
-    assert!(content.contains("    .add_operation"));
-    assert!(content.contains("        name:"));
-    assert!(content.contains("        columns: vec!["));
+    assert!(
+        content.contains("    .add_operation"),
+        "インデント '    .add_operation' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("        name:"),
+        "インデント '        name:' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
+    assert!(
+        content.contains("        columns: vec!["),
+        "インデント '        columns: vec![' が生成コードに含まれていません。\n生成されたコード:\n{}",
+        content
+    );
 }

@@ -657,15 +657,11 @@ mod tests {
     fn test_field_definition_to_sql() {
         let field = FieldDefinition::new("id", "INTEGER", true, false, None::<String>);
         let sql = field.to_sql_definition();
-        assert!(sql.contains("INTEGER"));
-        assert!(sql.contains("PRIMARY KEY"));
+        assert_eq!(sql, "INTEGER PRIMARY KEY");
 
         let field2 = FieldDefinition::new("email", "VARCHAR(255)", false, true, Some("''"));
         let sql2 = field2.to_sql_definition();
-        assert!(sql2.contains("VARCHAR(255)"));
-        assert!(sql2.contains("UNIQUE"));
-        assert!(sql2.contains("DEFAULT ''"));
-        assert!(sql2.contains("NOT NULL"));
+        assert_eq!(sql2, "VARCHAR(255) UNIQUE NOT NULL DEFAULT ''");
     }
 
     #[test]
@@ -684,8 +680,8 @@ mod tests {
         let model = state.get_model("myapp", "User").unwrap();
         assert_eq!(model.name, "User");
         assert_eq!(model.fields.len(), 2);
-        assert!(model.fields.contains_key("id"));
-        assert!(model.fields.contains_key("name"));
+        assert_eq!(model.fields.get("id").unwrap().name, "id");
+        assert_eq!(model.fields.get("name").unwrap().name, "name");
     }
 
     #[test]
@@ -704,12 +700,12 @@ mod tests {
             )],
         );
         create.state_forwards("myapp", &mut state);
-        assert!(state.get_model("myapp", "User").is_some());
+        assert_eq!(state.get_model("myapp", "User").is_some(), true);
 
         // Delete it
         let delete = DeleteModel::new("User");
         delete.state_forwards("myapp", &mut state);
-        assert!(state.get_model("myapp", "User").is_none());
+        assert_eq!(state.get_model("myapp", "User").is_none(), true);
     }
 
     #[test]
@@ -733,7 +729,7 @@ mod tests {
         let rename = RenameModel::new("User", "Customer");
         rename.state_forwards("myapp", &mut state);
 
-        assert!(state.get_model("myapp", "User").is_none());
+        assert_eq!(state.get_model("myapp", "User").is_none(), true);
         let model = state.get_model("myapp", "Customer").unwrap();
         assert_eq!(model.name, "Customer");
     }
@@ -749,8 +745,7 @@ mod tests {
 
         let sql = delete.database_forwards(editor.as_ref());
         assert_eq!(sql.len(), 1);
-        assert!(sql[0].contains("DROP TABLE"));
-        assert!(sql[0].contains("\"users\""));
+        assert_eq!(sql[0], "DROP TABLE IF EXISTS \"users\"");
     }
 
     #[cfg(feature = "postgres")]
@@ -764,9 +759,7 @@ mod tests {
 
         let sql = rename.database_forwards(editor.as_ref());
         assert_eq!(sql.len(), 1);
-        assert!(sql[0].contains("ALTER TABLE"));
-        assert!(sql[0].contains("\"users\""));
-        assert!(sql[0].contains("\"customers\""));
+        assert_eq!(sql[0], "ALTER TABLE \"users\" RENAME TO \"customers\"");
     }
 
     #[test]
@@ -774,9 +767,9 @@ mod tests {
         let field = FieldDefinition::new("email", "VARCHAR(255)", false, false, None::<String>)
             .nullable(true);
 
-        assert!(field.null);
+        assert_eq!(field.null, true);
         let sql = field.to_sql_definition();
-        assert!(!sql.contains("NOT NULL"));
+        assert_eq!(sql, "VARCHAR(255)");
     }
 
     #[test]
@@ -841,10 +834,10 @@ mod tests {
 
         let model = state.get_model("myapp", "User").unwrap();
         assert_eq!(model.fields.len(), 4);
-        assert!(model.fields.contains_key("id"));
-        assert!(model.fields.contains_key("username"));
-        assert!(model.fields.contains_key("email"));
-        assert!(model.fields.contains_key("is_active"));
+        assert_eq!(model.fields.get("id").unwrap().name, "id");
+        assert_eq!(model.fields.get("username").unwrap().name, "username");
+        assert_eq!(model.fields.get("email").unwrap().name, "email");
+        assert_eq!(model.fields.get("is_active").unwrap().name, "is_active");
     }
 
     #[test]
@@ -854,7 +847,7 @@ mod tests {
         assert_eq!(field.default, Some("'pending'".to_string()));
 
         let sql = field.to_sql_definition();
-        assert!(sql.contains("DEFAULT 'pending'"));
+        assert_eq!(sql, "VARCHAR(20) NOT NULL DEFAULT 'pending'");
     }
 
     #[test]
@@ -886,15 +879,15 @@ mod tests {
         create1.state_forwards("myapp", &mut state);
         create2.state_forwards("myapp", &mut state);
 
-        assert!(state.get_model("myapp", "User").is_some());
-        assert!(state.get_model("myapp", "Post").is_some());
+        assert_eq!(state.get_model("myapp", "User").is_some(), true);
+        assert_eq!(state.get_model("myapp", "Post").is_some(), true);
 
         // Delete only User
         let delete = DeleteModel::new("User");
         delete.state_forwards("myapp", &mut state);
 
-        assert!(state.get_model("myapp", "User").is_none());
-        assert!(state.get_model("myapp", "Post").is_some());
+        assert_eq!(state.get_model("myapp", "User").is_none(), true);
+        assert_eq!(state.get_model("myapp", "Post").is_some(), true);
     }
 
     #[test]
@@ -918,8 +911,8 @@ mod tests {
         // Check that fields are preserved
         let model = state.get_model("myapp", "Account").unwrap();
         assert_eq!(model.fields.len(), 2);
-        assert!(model.fields.contains_key("id"));
-        assert!(model.fields.contains_key("name"));
+        assert_eq!(model.fields.get("id").unwrap().name, "id");
+        assert_eq!(model.fields.get("name").unwrap().name, "name");
     }
 
     #[test]
@@ -938,15 +931,15 @@ mod tests {
             )],
         );
         create.state_forwards("myapp", &mut state);
-        assert!(state.get_model("myapp", "User").is_some());
+        assert_eq!(state.get_model("myapp", "User").is_some(), true);
 
         // Move to auth app
         let move_op = MoveModel::new("User", "myapp", "auth");
         move_op.state_forwards("auth", &mut state);
 
         // Check model is moved
-        assert!(state.get_model("myapp", "User").is_none());
-        assert!(state.get_model("auth", "User").is_some());
+        assert_eq!(state.get_model("myapp", "User").is_none(), true);
+        assert_eq!(state.get_model("auth", "User").is_some(), true);
 
         // Check app_label is updated
         let model = state.get_model("auth", "User").unwrap();
@@ -975,9 +968,9 @@ mod tests {
         // Check fields are preserved
         let model = state.get_model("auth", "User").unwrap();
         assert_eq!(model.fields.len(), 3);
-        assert!(model.fields.contains_key("id"));
-        assert!(model.fields.contains_key("email"));
-        assert!(model.fields.contains_key("name"));
+        assert_eq!(model.fields.get("id").unwrap().name, "id");
+        assert_eq!(model.fields.get("email").unwrap().name, "email");
+        assert_eq!(model.fields.get("name").unwrap().name, "name");
     }
 
     #[test]
@@ -999,14 +992,14 @@ mod tests {
 
         let move_op = MoveModel::new("User", "myapp", "auth");
         move_op.state_forwards("auth", &mut state);
-        assert!(state.get_model("auth", "User").is_some());
+        assert_eq!(state.get_model("auth", "User").is_some(), true);
 
         // Reverse the move
         move_op.state_backwards("myapp", &mut state);
 
         // Check model is back in original app
-        assert!(state.get_model("auth", "User").is_none());
-        assert!(state.get_model("myapp", "User").is_some());
+        assert_eq!(state.get_model("auth", "User").is_none(), true);
+        assert_eq!(state.get_model("myapp", "User").is_some(), true);
 
         let model = state.get_model("myapp", "User").unwrap();
         assert_eq!(model.app_label, "myapp");
@@ -1022,7 +1015,8 @@ mod tests {
         let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 
         let sql = move_op.database_forwards(editor.as_ref());
-        assert!(sql.is_empty()); // No SQL needed when not renaming table
+        // No SQL needed when not renaming table
+        assert_eq!(sql.len(), 0);
     }
 
     #[cfg(feature = "postgres")]
@@ -1038,9 +1032,7 @@ mod tests {
 
         let sql = move_op.database_forwards(editor.as_ref());
         assert_eq!(sql.len(), 1);
-        assert!(sql[0].contains("ALTER TABLE"));
-        assert!(sql[0].contains("\"myapp_user\""));
-        assert!(sql[0].contains("\"auth_user\""));
+        assert_eq!(sql[0], "ALTER TABLE \"myapp_user\" RENAME TO \"auth_user\"");
     }
 
     #[cfg(feature = "postgres")]
@@ -1056,9 +1048,7 @@ mod tests {
 
         let sql = move_op.database_backwards(editor.as_ref());
         assert_eq!(sql.len(), 1);
-        assert!(sql[0].contains("ALTER TABLE"));
         // Reverse: auth_user back to myapp_user
-        assert!(sql[0].contains("\"auth_user\""));
-        assert!(sql[0].contains("\"myapp_user\""));
+        assert_eq!(sql[0], "ALTER TABLE \"auth_user\" RENAME TO \"myapp_user\"");
     }
 }

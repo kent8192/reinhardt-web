@@ -1026,8 +1026,21 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("CREATE TABLE"));
-        assert!(sql.contains("users"));
+        assert!(
+            sql.contains("CREATE TABLE"),
+            "SQL should contain CREATE TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("id") && sql.contains("name"),
+            "SQL should contain both 'id' and 'name' columns, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1038,9 +1051,21 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("DROP TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("CASCADE"));
+        assert!(
+            sql.contains("DROP TABLE"),
+            "SQL should contain DROP TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("CASCADE"),
+            "SQL should include CASCADE option, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1061,10 +1086,26 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("ADD COLUMN"));
-        assert!(sql.contains("email"));
+        assert!(
+            sql.contains("ALTER TABLE"),
+            "SQL should contain ALTER TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("ADD COLUMN"),
+            "SQL should contain ADD COLUMN clause, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("email"),
+            "SQL should reference 'email' column, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1076,10 +1117,26 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("DROP COLUMN"));
-        assert!(sql.contains("email"));
+        assert!(
+            sql.contains("ALTER TABLE"),
+            "SQL should contain ALTER TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("DROP COLUMN"),
+            "SQL should contain DROP COLUMN clause, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("email"),
+            "SQL should reference 'email' column, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1101,8 +1158,21 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("users"));
+        assert!(
+            sql.contains("ALTER TABLE"),
+            "SQL should contain ALTER TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("age"),
+            "SQL should reference 'age' column, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1114,8 +1184,16 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("users"));
-        assert!(sql.contains("accounts"));
+        assert!(
+            sql.contains("users"),
+            "SQL should reference old table name 'users', got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("accounts"),
+            "SQL should reference new table name 'accounts', got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1128,11 +1206,31 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("RENAME COLUMN"));
-        assert!(sql.contains("name"));
-        assert!(sql.contains("full_name"));
+        assert!(
+            sql.contains("ALTER TABLE"),
+            "SQL should contain ALTER TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("RENAME COLUMN"),
+            "SQL should contain RENAME COLUMN clause, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("name"),
+            "SQL should reference old column name 'name', got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("full_name"),
+            "SQL should reference new column name 'full_name', got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1144,10 +1242,26 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("ADD"));
-        assert!(sql.contains("age_check"));
+        assert!(
+            sql.contains("ALTER TABLE"),
+            "SQL should contain ALTER TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("ADD"),
+            "SQL should contain ADD keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("age_check"),
+            "SQL should contain constraint name 'age_check', got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1159,10 +1273,26 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("DROP CONSTRAINT"));
-        assert!(sql.contains("age_check"));
+        assert!(
+            sql.contains("ALTER TABLE"),
+            "SQL should contain ALTER TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("DROP CONSTRAINT"),
+            "SQL should contain DROP CONSTRAINT clause, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("age_check"),
+            "SQL should reference constraint 'age_check', got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1175,9 +1305,21 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("CREATE INDEX"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("email"));
+        assert!(
+            sql.contains("CREATE INDEX"),
+            "SQL should contain CREATE INDEX keywords, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("email"),
+            "SQL should reference 'email' column, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1190,9 +1332,21 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("CREATE UNIQUE INDEX"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("email"));
+        assert!(
+            sql.contains("CREATE UNIQUE INDEX"),
+            "SQL should contain CREATE UNIQUE INDEX keywords, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("email"),
+            "SQL should reference 'email' column, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1204,8 +1358,16 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("DROP INDEX"));
-        assert!(sql.contains("idx_users_email"));
+        assert!(
+            sql.contains("DROP INDEX"),
+            "SQL should contain DROP INDEX keywords, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("idx_users_email"),
+            "SQL should contain generated index name 'idx_users_email', got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1217,8 +1379,16 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("CREATE EXTENSION"));
-        assert!(sql.contains("uuid-ossp"));
+        assert!(
+            sql.contains("CREATE EXTENSION"),
+            "SQL should contain CREATE EXTENSION keywords, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("uuid-ossp"),
+            "SQL should reference 'uuid-ossp' extension, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1230,9 +1400,21 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("COMMENT ON TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("User accounts table"));
+        assert!(
+            sql.contains("COMMENT ON TABLE"),
+            "SQL should contain COMMENT ON TABLE keywords, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("User accounts table"),
+            "SQL should include comment text 'User accounts table', got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1244,9 +1426,21 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("COMMENT ON TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("NULL"));
+        assert!(
+            sql.contains("COMMENT ON TABLE"),
+            "SQL should contain COMMENT ON TABLE keywords, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("NULL"),
+            "SQL should include NULL for null comment, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1258,12 +1452,31 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("ADD CONSTRAINT"));
-        assert!(sql.contains("UNIQUE"));
-        assert!(sql.contains("email"));
-        assert!(sql.contains("username"));
+        assert!(
+            sql.contains("ALTER TABLE"),
+            "SQL should contain ALTER TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("ADD CONSTRAINT"),
+            "SQL should contain ADD CONSTRAINT clause, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("UNIQUE"),
+            "SQL should contain UNIQUE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("email") && sql.contains("username"),
+            "SQL should reference both 'email' and 'username' columns, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1275,7 +1488,10 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert_eq!(sql, "");
+        assert_eq!(
+            sql, "",
+            "SQL should be empty for empty unique_together constraint"
+        );
     }
 
     #[test]
@@ -1290,7 +1506,7 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert_eq!(sql, "");
+        assert_eq!(sql, "", "SQL should be empty for model options operation");
     }
 
     #[test]
@@ -1313,9 +1529,21 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("CREATE TABLE"));
-        assert!(sql.contains("admin_users"));
-        assert!(sql.contains("user_id"));
+        assert!(
+            sql.contains("CREATE TABLE"),
+            "SQL should contain CREATE TABLE keywords, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("admin_users"),
+            "SQL should reference 'admin_users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("user_id"),
+            "SQL should include join column 'user_id', got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1328,10 +1556,26 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("ADD COLUMN"));
-        assert!(sql.contains("user_type"));
+        assert!(
+            sql.contains("ALTER TABLE"),
+            "SQL should contain ALTER TABLE keyword, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "SQL should reference 'users' table, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("ADD COLUMN"),
+            "SQL should contain ADD COLUMN clause, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("user_type"),
+            "SQL should reference 'user_type' column, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1366,11 +1610,22 @@ mod tests {
 
         op.state_forwards("myapp", &mut state);
         let model = state.get_model("myapp", "users");
-        assert!(model.is_some());
+        assert!(model.is_some(), "Model 'users' should exist in state");
         let model = model.unwrap();
-        assert_eq!(model.fields.len(), 2);
-        assert!(model.fields.contains_key("id"));
-        assert!(model.fields.contains_key("name"));
+        assert_eq!(
+            model.fields.len(),
+            2,
+            "Model should have exactly 2 fields, got: {}",
+            model.fields.len()
+        );
+        assert!(
+            model.fields.contains_key("id"),
+            "Model should contain 'id' field"
+        );
+        assert!(
+            model.fields.contains_key("name"),
+            "Model should contain 'name' field"
+        );
     }
 
     #[test]
@@ -1389,7 +1644,10 @@ mod tests {
         };
 
         op.state_forwards("myapp", &mut state);
-        assert!(state.get_model("myapp", "users").is_none());
+        assert!(
+            state.get_model("myapp", "users").is_none(),
+            "Model 'users' should be removed from state after drop"
+        );
     }
 
     #[test]
@@ -1419,8 +1677,16 @@ mod tests {
 
         op.state_forwards("myapp", &mut state);
         let model = state.get_model("myapp", "users").unwrap();
-        assert_eq!(model.fields.len(), 2);
-        assert!(model.fields.contains_key("email"));
+        assert_eq!(
+            model.fields.len(),
+            2,
+            "Model should have 2 fields after adding 'email', got: {}",
+            model.fields.len()
+        );
+        assert!(
+            model.fields.contains_key("email"),
+            "Model should contain newly added 'email' field"
+        );
     }
 
     #[test]
@@ -1446,8 +1712,16 @@ mod tests {
 
         op.state_forwards("myapp", &mut state);
         let model = state.get_model("myapp", "users").unwrap();
-        assert_eq!(model.fields.len(), 1);
-        assert!(!model.fields.contains_key("email"));
+        assert_eq!(
+            model.fields.len(),
+            1,
+            "Model should have 1 field after dropping 'email', got: {}",
+            model.fields.len()
+        );
+        assert!(
+            !model.fields.contains_key("email"),
+            "Model should not contain dropped 'email' field"
+        );
     }
 
     #[test]
@@ -1467,8 +1741,14 @@ mod tests {
         };
 
         op.state_forwards("myapp", &mut state);
-        assert!(state.get_model("myapp", "users").is_none());
-        assert!(state.get_model("myapp", "accounts").is_some());
+        assert!(
+            state.get_model("myapp", "users").is_none(),
+            "Old model name 'users' should not exist after rename"
+        );
+        assert!(
+            state.get_model("myapp", "accounts").is_some(),
+            "New model name 'accounts' should exist after rename"
+        );
     }
 
     #[test]
@@ -1490,8 +1770,14 @@ mod tests {
 
         op.state_forwards("myapp", &mut state);
         let model = state.get_model("myapp", "users").unwrap();
-        assert!(!model.fields.contains_key("name"));
-        assert!(model.fields.contains_key("full_name"));
+        assert!(
+            !model.fields.contains_key("name"),
+            "Old field name 'name' should not exist after rename"
+        );
+        assert!(
+            model.fields.contains_key("full_name"),
+            "New field name 'full_name' should exist after rename"
+        );
     }
 
     #[test]
@@ -1503,10 +1789,21 @@ mod tests {
         };
 
         let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
-        assert!(reverse.is_some());
+        assert!(
+            reverse.is_some(),
+            "CreateTable should have reverse SQL operation"
+        );
         let sql = reverse.unwrap();
-        assert!(sql.contains("DROP TABLE"));
-        assert!(sql.contains("users"));
+        assert!(
+            sql.contains("DROP TABLE"),
+            "Reverse SQL should contain DROP TABLE, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("users"),
+            "Reverse SQL should reference 'users' table, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1516,7 +1813,10 @@ mod tests {
         };
 
         let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
-        assert!(reverse.is_none());
+        assert!(
+            reverse.is_none(),
+            "DropTable should not have reverse SQL (cannot recreate table structure)"
+        );
     }
 
     #[test]
@@ -1536,10 +1836,21 @@ mod tests {
         };
 
         let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
-        assert!(reverse.is_some());
+        assert!(
+            reverse.is_some(),
+            "AddColumn should have reverse SQL operation"
+        );
         let sql = reverse.unwrap();
-        assert!(sql.contains("DROP COLUMN"));
-        assert!(sql.contains("email"));
+        assert!(
+            sql.contains("DROP COLUMN"),
+            "Reverse SQL should contain DROP COLUMN, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("email"),
+            "Reverse SQL should reference 'email' column, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1550,9 +1861,16 @@ mod tests {
         };
 
         let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
-        assert!(reverse.is_some());
+        assert!(
+            reverse.is_some(),
+            "RunSQL with reverse_sql should have reverse SQL"
+        );
         let sql = reverse.unwrap();
-        assert!(sql.contains("DROP INDEX"));
+        assert!(
+            sql.contains("DROP INDEX"),
+            "Reverse SQL should contain provided reverse_sql, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1563,20 +1881,29 @@ mod tests {
         };
 
         let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
-        assert!(reverse.is_none());
+        assert!(
+            reverse.is_none(),
+            "RunSQL without reverse_sql should not have reverse SQL"
+        );
     }
 
     #[test]
     fn test_column_definition_new() {
         let col = ColumnDefinition::new("id", "INTEGER");
-        assert_eq!(col.name, "id");
-        assert_eq!(col.type_definition, "INTEGER");
-        assert!(!col.not_null);
-        assert!(!col.unique);
-        assert!(!col.primary_key);
-        assert!(!col.auto_increment);
-        assert!(col.default.is_none());
-        assert!(col.max_length.is_none());
+        assert_eq!(col.name, "id", "Column name should be 'id'");
+        assert_eq!(
+            col.type_definition, "INTEGER",
+            "Column type should be 'INTEGER'"
+        );
+        assert!(!col.not_null, "not_null should default to false");
+        assert!(!col.unique, "unique should default to false");
+        assert!(!col.primary_key, "primary_key should default to false");
+        assert!(
+            !col.auto_increment,
+            "auto_increment should default to false"
+        );
+        assert!(col.default.is_none(), "default should be None");
+        assert!(col.max_length.is_none(), "max_length should be None");
     }
 
     #[test]
@@ -1587,7 +1914,10 @@ mod tests {
             constraints: vec![],
         };
         let value = op.convert_default_value("null");
-        assert!(matches!(value, sea_query::Value::String(None)));
+        assert!(
+            matches!(value, sea_query::Value::String(None)),
+            "NULL value should be converted to sea_query::Value::String(None)"
+        );
     }
 
     #[test]
@@ -1598,10 +1928,16 @@ mod tests {
             constraints: vec![],
         };
         let value = op.convert_default_value("true");
-        assert!(matches!(value, sea_query::Value::Bool(Some(true))));
+        assert!(
+            matches!(value, sea_query::Value::Bool(Some(true))),
+            "'true' should be converted to sea_query::Value::Bool(Some(true))"
+        );
 
         let value = op.convert_default_value("false");
-        assert!(matches!(value, sea_query::Value::Bool(Some(false))));
+        assert!(
+            matches!(value, sea_query::Value::Bool(Some(false))),
+            "'false' should be converted to sea_query::Value::Bool(Some(false))"
+        );
     }
 
     #[test]
@@ -1612,7 +1948,10 @@ mod tests {
             constraints: vec![],
         };
         let value = op.convert_default_value("42");
-        assert!(matches!(value, sea_query::Value::BigInt(Some(42))));
+        assert!(
+            matches!(value, sea_query::Value::BigInt(Some(42))),
+            "Integer '42' should be converted to sea_query::Value::BigInt(Some(42))"
+        );
     }
 
     #[test]
@@ -1623,7 +1962,10 @@ mod tests {
             constraints: vec![],
         };
         let value = op.convert_default_value("3.14");
-        assert!(matches!(value, sea_query::Value::Double(_)));
+        assert!(
+            matches!(value, sea_query::Value::Double(_)),
+            "Float '3.14' should be converted to sea_query::Value::Double"
+        );
     }
 
     #[test]
@@ -1635,8 +1977,11 @@ mod tests {
         };
         let value = op.convert_default_value("'hello'");
         match value {
-            sea_query::Value::String(Some(s)) => assert_eq!(s, "hello"),
-            _ => panic!("Expected string value"),
+            sea_query::Value::String(Some(s)) => assert_eq!(
+                s, "hello",
+                "Quoted string should be unquoted and stored as 'hello'"
+            ),
+            _ => panic!("Expected sea_query::Value::String(Some(\"hello\")), got different variant"),
         }
     }
 
@@ -1649,7 +1994,8 @@ mod tests {
         };
         let mut col = ColumnDef::new(Alias::new("id"));
         op.apply_column_type(&mut col, "INTEGER", None);
-        // Cannot easily assert internal state, but this verifies no panic
+        // This test verifies that INTEGER type application doesn't panic
+        // Internal state cannot be easily asserted with sea_query's ColumnDef API
     }
 
     #[test]
@@ -1661,7 +2007,8 @@ mod tests {
         };
         let mut col = ColumnDef::new(Alias::new("name"));
         op.apply_column_type(&mut col, "VARCHAR", Some(100));
-        // Cannot easily assert internal state, but this verifies no panic
+        // This test verifies that VARCHAR(100) type application doesn't panic
+        // Internal state cannot be easily asserted with sea_query's ColumnDef API
     }
 
     #[test]
@@ -1673,7 +2020,8 @@ mod tests {
         };
         let mut col = ColumnDef::new(Alias::new("data"));
         op.apply_column_type(&mut col, "CUSTOM_TYPE", None);
-        // Cannot easily assert internal state, but this verifies no panic
+        // This test verifies that custom type application doesn't panic
+        // Internal state cannot be easily asserted with sea_query's ColumnDef API
     }
 
     #[test]
@@ -1685,9 +2033,21 @@ mod tests {
         };
 
         let sql = op.to_sql(&SqlDialect::Postgres);
-        assert!(sql.contains("first_name"));
-        assert!(sql.contains("last_name"));
-        assert!(sql.contains("idx_users_first_name_last_name"));
+        assert!(
+            sql.contains("first_name"),
+            "SQL should include 'first_name' column, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("last_name"),
+            "SQL should include 'last_name' column, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("idx_users_first_name_last_name"),
+            "SQL should include composite index name, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1699,8 +2059,16 @@ mod tests {
 
         let stmt = op.to_statement();
         let sql = stmt.to_sql_string();
-        assert!(sql.contains("COMMENT ON TABLE"));
-        assert!(sql.contains("User''s account table"));
+        assert!(
+            sql.contains("COMMENT ON TABLE"),
+            "SQL should contain COMMENT ON TABLE keywords, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("User''s account table"),
+            "SQL should properly escape single quotes in comment, got: {}",
+            sql
+        );
     }
 
     #[test]
@@ -1732,7 +2100,11 @@ mod tests {
         op.state_forwards("myapp", &mut state);
         let model = state.get_model("myapp", "users").unwrap();
         let field = model.fields.get("age").unwrap();
-        assert_eq!(field.field_type, "BIGINT");
+        assert_eq!(
+            field.field_type, "BIGINT",
+            "Field type should be updated to BIGINT, got: {}",
+            field.field_type
+        );
     }
 
     #[test]
@@ -1756,10 +2128,21 @@ mod tests {
 
         op.state_forwards("myapp", &mut state);
         let model = state.get_model("myapp", "admin_users");
-        assert!(model.is_some());
+        assert!(
+            model.is_some(),
+            "Inherited table 'admin_users' should exist in state"
+        );
         let model = model.unwrap();
-        assert_eq!(model.base_model, Some("users".to_string()));
-        assert_eq!(model.inheritance_type, Some("joined_table".to_string()));
+        assert_eq!(
+            model.base_model,
+            Some("users".to_string()),
+            "base_model should be set to 'users'"
+        );
+        assert_eq!(
+            model.inheritance_type,
+            Some("joined_table".to_string()),
+            "inheritance_type should be 'joined_table'"
+        );
     }
 
     #[test]
@@ -1781,7 +2164,15 @@ mod tests {
 
         op.state_forwards("myapp", &mut state);
         let model = state.get_model("myapp", "users").unwrap();
-        assert_eq!(model.discriminator_column, Some("user_type".to_string()));
-        assert_eq!(model.inheritance_type, Some("single_table".to_string()));
+        assert_eq!(
+            model.discriminator_column,
+            Some("user_type".to_string()),
+            "discriminator_column should be set to 'user_type'"
+        );
+        assert_eq!(
+            model.inheritance_type,
+            Some("single_table".to_string()),
+            "inheritance_type should be 'single_table'"
+        );
     }
 }

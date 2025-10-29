@@ -7,6 +7,7 @@ use reinhardt_migrations::{
     ConstraintDefinition, FieldState, IndexDefinition, MigrationAutodetector, ModelState,
     ProjectState,
 };
+use std::collections::HashSet;
 
 /// Helper function to create a simple field
 fn field(name: &str, field_type: &str, nullable: bool) -> FieldState {
@@ -210,12 +211,18 @@ fn test_multiple_apps() {
     let changes = autodetector.detect_changes();
 
     assert_eq!(changes.created_models.len(), 2);
-    assert!(changes.created_models.iter().any(|(app, _)| app == "books"));
-    assert!(
-        changes
-            .created_models
-            .iter()
-            .any(|(app, _)| app == "authors")
+
+    // Use HashSet for collection comparison with detailed error message
+    let actual_apps: HashSet<_> = changes
+        .created_models
+        .iter()
+        .map(|(app, _)| app.as_str())
+        .collect();
+    let expected_apps: HashSet<_> = ["books", "authors"].iter().cloned().collect();
+    assert_eq!(
+        actual_apps, expected_apps,
+        "Expected apps {:?} but got {:?}",
+        expected_apps, actual_apps
     );
 }
 
@@ -528,7 +535,7 @@ fn test_multiple_changes_same_model() {
     new_model.add_field(field("id", "INTEGER", false));
     new_model.add_field(field("title", "VARCHAR(200)", false)); // altered
     new_model.add_field(field("new_field", "VARCHAR(50)", false)); // added
-    // old_field removed
+                                                                   // old_field removed
     to_state.add_model(new_model);
 
     let autodetector = MigrationAutodetector::new(from_state, to_state);
@@ -600,11 +607,9 @@ fn test_generate_operations_from_changes() {
 
     assert!(!operations.is_empty());
     // Should generate at least one CreateTable operation
-    assert!(
-        operations
-            .iter()
-            .any(|op| matches!(op, reinhardt_migrations::Operation::CreateTable { .. }))
-    );
+    assert!(operations
+        .iter()
+        .any(|op| matches!(op, reinhardt_migrations::Operation::CreateTable { .. })));
 }
 
 #[test]
@@ -626,8 +631,15 @@ fn test_generate_migrations() {
     let migrations = autodetector.generate_migrations();
 
     assert_eq!(migrations.len(), 2);
-    assert!(migrations.iter().any(|m| m.app_label == "books"));
-    assert!(migrations.iter().any(|m| m.app_label == "authors"));
+
+    // Use HashSet for collection comparison with detailed error message
+    let actual_apps: HashSet<_> = migrations.iter().map(|m| m.app_label.as_str()).collect();
+    let expected_apps: HashSet<_> = ["books", "authors"].iter().cloned().collect();
+    assert_eq!(
+        actual_apps, expected_apps,
+        "Expected app labels {:?} but got {:?}",
+        expected_apps, actual_apps
+    );
 }
 
 // ============================================================================
@@ -806,11 +818,9 @@ fn test_model_dependencies_simple() {
     let changes = autodetector.detect_changes();
 
     // blog.Post should depend on accounts.User
-    assert!(
-        changes
-            .model_dependencies
-            .contains_key(&("blog".to_string(), "Post".to_string()))
-    );
+    assert!(changes
+        .model_dependencies
+        .contains_key(&("blog".to_string(), "Post".to_string())));
 
     let deps = changes
         .model_dependencies
@@ -846,10 +856,9 @@ fn test_model_dependencies_many_to_many() {
         .model_dependencies
         .get(&("books".to_string(), "Book".to_string()));
     assert!(deps.is_some());
-    assert!(
-        deps.unwrap()
-            .contains(&("authors".to_string(), "Author".to_string()))
-    );
+    assert!(deps
+        .unwrap()
+        .contains(&("authors".to_string(), "Author".to_string())));
 }
 
 #[test]

@@ -17,10 +17,26 @@ fn test_create_table_basic() {
 
     // Test SQL generation for SQLite
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("CREATE TABLE"));
-    assert!(sql.contains("test_table"));
-    assert!(sql.contains("id"));
-    assert!(sql.contains("name"));
+    assert!(
+        sql.contains("CREATE TABLE"),
+        "Expected SQL to contain 'CREATE TABLE', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("test_table"),
+        "Expected SQL to contain 'test_table', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("id"),
+        "Expected SQL to contain 'id', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("name"),
+        "Expected SQL to contain 'name', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -36,8 +52,16 @@ fn test_create_table_with_constraints() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("UNIQUE"));
-    assert!(sql.contains("email"));
+    assert!(
+        sql.contains("UNIQUE"),
+        "Expected SQL to contain 'UNIQUE', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("email"),
+        "Expected SQL to contain 'email', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -48,8 +72,16 @@ fn test_drop_table() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("DROP TABLE"));
-    assert!(sql.contains("test_table"));
+    assert!(
+        sql.contains("DROP TABLE"),
+        "Expected SQL to contain 'DROP TABLE', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("test_table"),
+        "Expected SQL to contain 'test_table', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -61,9 +93,21 @@ fn test_add_column() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("ALTER TABLE"));
-    assert!(sql.contains("ADD COLUMN"));
-    assert!(sql.contains("new_field"));
+    assert!(
+        sql.contains("ALTER TABLE"),
+        "Expected SQL to contain 'ALTER TABLE', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("ADD COLUMN"),
+        "Expected SQL to contain 'ADD COLUMN', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("new_field"),
+        "Expected SQL to contain 'new_field', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -75,8 +119,16 @@ fn test_add_column_with_default() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("DEFAULT"));
-    assert!(sql.contains("pending"));
+    assert!(
+        sql.contains("DEFAULT"),
+        "Expected SQL to contain 'DEFAULT', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("pending"),
+        "Expected SQL to contain 'pending', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -88,9 +140,21 @@ fn test_drop_column() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("ALTER TABLE"));
-    assert!(sql.contains("DROP COLUMN"));
-    assert!(sql.contains("old_field"));
+    assert!(
+        sql.contains("ALTER TABLE"),
+        "Expected SQL to contain 'ALTER TABLE', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("DROP COLUMN"),
+        "Expected SQL to contain 'DROP COLUMN', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("old_field"),
+        "Expected SQL to contain 'old_field', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -104,19 +168,47 @@ fn test_alter_column() {
 
     // SQLite doesn't support ALTER COLUMN natively
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("test_table"));
+    assert!(
+        sql.contains("test_table"),
+        "Expected SQL to contain 'test_table', got: {}",
+        sql
+    );
 
     // Test with PostgreSQL
     let sql_pg = operation.to_sql(&SqlDialect::Postgres);
-    assert!(sql_pg.contains("ALTER TABLE"));
-    assert!(sql_pg.contains("ALTER COLUMN"));
-    assert!(sql_pg.contains("field_name"));
+    assert!(
+        sql_pg.contains("ALTER TABLE"),
+        "Expected PostgreSQL SQL to contain 'ALTER TABLE', got: {}",
+        sql_pg
+    );
+    assert!(
+        sql_pg.contains("ALTER COLUMN"),
+        "Expected PostgreSQL SQL to contain 'ALTER COLUMN', got: {}",
+        sql_pg
+    );
+    assert!(
+        sql_pg.contains("field_name"),
+        "Expected PostgreSQL SQL to contain 'field_name', got: {}",
+        sql_pg
+    );
 
     // Test with MySQL
     let sql_mysql = operation.to_sql(&SqlDialect::Mysql);
-    assert!(sql_mysql.contains("ALTER TABLE"));
-    assert!(sql_mysql.contains("MODIFY COLUMN"));
-    assert!(sql_mysql.contains("field_name"));
+    assert!(
+        sql_mysql.contains("ALTER TABLE"),
+        "Expected MySQL SQL to contain 'ALTER TABLE', got: {}",
+        sql_mysql
+    );
+    assert!(
+        sql_mysql.contains("MODIFY COLUMN"),
+        "Expected MySQL SQL to contain 'MODIFY COLUMN', got: {}",
+        sql_mysql
+    );
+    assert!(
+        sql_mysql.contains("field_name"),
+        "Expected MySQL SQL to contain 'field_name', got: {}",
+        sql_mysql
+    );
 }
 
 #[test]
@@ -128,8 +220,16 @@ fn test_rename_table() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("old_table"));
-    assert!(sql.contains("new_table"));
+    assert!(
+        sql.contains("old_table"),
+        "Expected SQL to contain 'old_table', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("new_table"),
+        "Expected SQL to contain 'new_table', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -142,7 +242,11 @@ fn test_rename_column() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("test_table"));
+    assert!(
+        sql.contains("test_table"),
+        "Expected SQL to contain 'test_table', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -154,8 +258,16 @@ fn test_run_sql() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("CREATE INDEX"));
-    assert!(sql.contains("idx_name"));
+    assert!(
+        sql.contains("CREATE INDEX"),
+        "Expected SQL to contain 'CREATE INDEX', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("idx_name"),
+        "Expected SQL to contain 'idx_name', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -168,8 +280,16 @@ fn test_create_index() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("CREATE INDEX"));
-    assert!(sql.contains("test_table"));
+    assert!(
+        sql.contains("CREATE INDEX"),
+        "Expected SQL to contain 'CREATE INDEX', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("test_table"),
+        "Expected SQL to contain 'test_table', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -181,8 +301,16 @@ fn test_drop_index() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("DROP INDEX"));
-    assert!(sql.contains("test_table"));
+    assert!(
+        sql.contains("DROP INDEX"),
+        "Expected SQL to contain 'DROP INDEX', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("test_table"),
+        "Expected SQL to contain 'test_table', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -194,8 +322,16 @@ fn test_add_constraint() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("test_table"));
-    assert!(sql.contains("check_positive"));
+    assert!(
+        sql.contains("test_table"),
+        "Expected SQL to contain 'test_table', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("check_positive"),
+        "Expected SQL to contain 'check_positive', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -207,7 +343,11 @@ fn test_drop_constraint() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("test_table"));
+    assert!(
+        sql.contains("test_table"),
+        "Expected SQL to contain 'test_table', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -223,9 +363,21 @@ fn test_postgres_sql_generation() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Postgres);
-    assert!(sql.contains("CREATE TABLE"));
-    assert!(sql.contains("SERIAL"));
-    assert!(sql.contains("JSONB"));
+    assert!(
+        sql.contains("CREATE TABLE"),
+        "Expected PostgreSQL SQL to contain 'CREATE TABLE', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("SERIAL"),
+        "Expected PostgreSQL SQL to contain 'SERIAL', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("JSONB"),
+        "Expected PostgreSQL SQL to contain 'JSONB', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -241,8 +393,16 @@ fn test_mysql_sql_generation() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Mysql);
-    assert!(sql.contains("CREATE TABLE"));
-    assert!(sql.contains("AUTO_INCREMENT"));
+    assert!(
+        sql.contains("CREATE TABLE"),
+        "Expected MySQL SQL to contain 'CREATE TABLE', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("AUTO_INCREMENT"),
+        "Expected MySQL SQL to contain 'AUTO_INCREMENT', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -261,8 +421,16 @@ fn test_operation_reversibility() {
     let forward_sql = forward_op.to_sql(&SqlDialect::Sqlite);
     let reverse_sql = reverse_op.to_sql(&SqlDialect::Sqlite);
 
-    assert!(forward_sql.contains("CREATE"));
-    assert!(reverse_sql.contains("DROP"));
+    assert!(
+        forward_sql.contains("CREATE"),
+        "Expected forward SQL to contain 'CREATE', got: {}",
+        forward_sql
+    );
+    assert!(
+        reverse_sql.contains("DROP"),
+        "Expected reverse SQL to contain 'DROP', got: {}",
+        reverse_sql
+    );
 }
 
 #[test]
@@ -279,9 +447,21 @@ fn test_column_definition_with_multiple_constraints() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("NOT NULL"));
-    assert!(sql.contains("UNIQUE"));
-    assert!(sql.contains("CHECK"));
+    assert!(
+        sql.contains("NOT NULL"),
+        "Expected SQL to contain 'NOT NULL', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("UNIQUE"),
+        "Expected SQL to contain 'UNIQUE', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("CHECK"),
+        "Expected SQL to contain 'CHECK', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -297,8 +477,16 @@ fn test_migrations_foreign_key_constraint() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("FOREIGN KEY"));
-    assert!(sql.contains("REFERENCES"));
+    assert!(
+        sql.contains("FOREIGN KEY"),
+        "Expected SQL to contain 'FOREIGN KEY', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("REFERENCES"),
+        "Expected SQL to contain 'REFERENCES', got: {}",
+        sql
+    );
 }
 
 #[test]
@@ -311,6 +499,14 @@ fn test_migrations_operations_composite_index() {
     };
 
     let sql = operation.to_sql(&SqlDialect::Sqlite);
-    assert!(sql.contains("name"));
-    assert!(sql.contains("email"));
+    assert!(
+        sql.contains("name"),
+        "Expected SQL to contain 'name', got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("email"),
+        "Expected SQL to contain 'email', got: {}",
+        sql
+    );
 }
