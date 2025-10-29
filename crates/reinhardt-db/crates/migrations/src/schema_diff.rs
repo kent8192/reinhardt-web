@@ -6,8 +6,8 @@
 //! - Index changes
 //! - Constraint changes
 
-use crate::operations::Operation;
 use crate::ColumnDefinition;
+use crate::operations::Operation;
 use std::collections::HashMap;
 
 /// Schema difference detector
@@ -51,6 +51,10 @@ pub struct ColumnSchema {
     pub default: Option<String>,
     /// Primary key
     pub primary_key: bool,
+    /// Auto increment
+    pub auto_increment: bool,
+    /// Maximum length (for VARCHAR, CHAR, etc.)
+    pub max_length: Option<u32>,
 }
 
 /// Index schema
@@ -198,22 +202,31 @@ impl SchemaDiff {
                 let columns: Vec<_> = table_schema
                     .columns
                     .iter()
-                    .map(|(name, col)| ColumnDefinition {
-                        name: name.clone(),
-                        type_definition: col.data_type.clone(),
-                        not_null: !col.nullable,
-                        default: col.default.clone(),
-                        unique: false, // TODO: Extract from constraints
-                        primary_key: col.primary_key,
-                        auto_increment: false, // TODO: Detect from column properties
-                        max_length: None, // TODO: Extract from data type
+                    .map(|(name, col)| {
+                        let unique = self.extract_column_constraints(&table_name, name);
+                        let auto_increment = Self::is_auto_increment(col);
+                        let max_length = Self::extract_max_length(&col.data_type);
+
+                        ColumnDefinition {
+                            name: name.clone(),
+                            type_definition: col.data_type.clone(),
+                            not_null: !col.nullable,
+                            default: col.default.clone(),
+                            unique,
+                            primary_key: col.primary_key,
+                            auto_increment,
+                            max_length,
+                        }
                     })
                     .collect();
+
+                // Extract table-level constraints
+                let constraints = self.extract_constraints(&table_name);
 
                 operations.push(Operation::CreateTable {
                     name: table_name.clone(),
                     columns,
-                    constraints: Vec::new(), // TODO: Extract constraints
+                    constraints,
                 });
             }
         }
@@ -229,6 +242,10 @@ impl SchemaDiff {
         for (table_name, col_name) in diff.columns_to_add {
             if let Some(table_schema) = self.target_schema.tables.get(&table_name) {
                 if let Some(col_schema) = table_schema.columns.get(&col_name) {
+                    let unique = self.extract_column_constraints(&table_name, &col_name);
+                    let auto_increment = Self::is_auto_increment(col_schema);
+                    let max_length = Self::extract_max_length(&col_schema.data_type);
+
                     operations.push(Operation::AddColumn {
                         table: table_name.clone(),
                         column: ColumnDefinition {
@@ -236,10 +253,10 @@ impl SchemaDiff {
                             type_definition: col_schema.data_type.clone(),
                             not_null: !col_schema.nullable,
                             default: col_schema.default.clone(),
-                            unique: false,
+                            unique,
                             primary_key: col_schema.primary_key,
-                            auto_increment: false,
-                            max_length: None,
+                            auto_increment,
+                            max_length,
                         },
                     });
                 }
@@ -263,6 +280,138 @@ impl SchemaDiff {
         !diff.tables_to_remove.is_empty()
             || !diff.columns_to_remove.is_empty()
             || !diff.columns_to_modify.is_empty()
+    }
+
+    /// Extract column-level constraints from table constraints and indexes
+    fn extract_column_constraints(&self, table_name: &str, column_name: &str) -> bool {
+        let table_schema = match self.target_schema.tables.get(table_name) {
+            Some(t) => t,
+            None => return false,
+        };
+
+        // Check if column is part of a unique constraint
+        let has_unique_constraint = table_schema.constraints.iter().any(|constraint| {
+            constraint.constraint_type.to_uppercase() == "UNIQUE"
+                && constraint.definition.contains(column_name)
+        });
+
+        // Check if column has unique index (single-column unique index)
+        let has_unique_index = table_schema.indexes.iter().any(|index| {
+            index.unique && index.columns.len() == 1 && index.columns[0] == column_name
+        });
+
+        has_unique_constraint || has_unique_index
+    }
+
+    /// Extract max_length from column data type
+    fn extract_max_length(data_type: &str) -> Option<u32> {
+        let upper_type = data_type.to_uppercase();
+
+        // Match VARCHAR(N), CHAR(N) patterns
+        if upper_type.contains("VARCHAR") || upper_type.contains("CHAR") {
+            if let Some(start) = data_type.find('(') {
+                if let Some(end) = data_type.find(')') {
+                    if let Ok(length) = data_type[start + 1..end].parse::<u32>() {
+                        return Some(length);
+                    }
+                }
+            }
+        }
+
+        // Match DECIMAL(P, S), NUMERIC(P, S) patterns - extract precision (P)
+        if upper_type.contains("DECIMAL") || upper_type.contains("NUMERIC") {
+            if let Some(start) = data_type.find('(') {
+                if let Some(comma_pos) = data_type.find(',') {
+                    if comma_pos > start + 1 {
+                        if let Ok(precision) = data_type[start + 1..comma_pos].trim().parse::<u32>()
+                        {
+                            return Some(precision);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Detect if column is auto-increment based on column properties and data type
+    fn is_auto_increment(column: &ColumnSchema) -> bool {
+        // If already marked as auto_increment, trust it
+        if column.auto_increment {
+            return true;
+        }
+
+        let upper_type = column.data_type.to_uppercase();
+
+        // PostgreSQL SERIAL types (SMALLSERIAL, SERIAL, BIGSERIAL)
+        if upper_type.contains("SERIAL") {
+            return true;
+        }
+
+        // MySQL AUTO_INCREMENT (typically in extra metadata, but check data type comments)
+        if upper_type.contains("AUTO_INCREMENT") {
+            return true;
+        }
+
+        // SQLite: INTEGER PRIMARY KEY is auto-increment by default
+        if column.primary_key && (upper_type == "INTEGER" || upper_type == "INT") {
+            return true;
+        }
+
+        false
+    }
+
+    /// Extract table-level constraint definitions
+    fn extract_constraints(&self, table_name: &str) -> Vec<String> {
+        let table_schema = match self.target_schema.tables.get(table_name) {
+            Some(t) => t,
+            None => return Vec::new(),
+        };
+
+        let mut constraints = Vec::new();
+
+        // Extract PRIMARY KEY constraint
+        let pk_columns: Vec<String> = table_schema
+            .columns
+            .iter()
+            .filter_map(|(name, col)| {
+                if col.primary_key {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if pk_columns.len() > 1 {
+            // Composite primary key
+            let pk_constraint = format!(
+                "CONSTRAINT {}_pkey PRIMARY KEY ({})",
+                table_name,
+                pk_columns.join(", ")
+            );
+            constraints.push(pk_constraint);
+        }
+
+        // Extract UNIQUE constraints from indexes (multi-column unique indexes)
+        for index in &table_schema.indexes {
+            if index.unique && index.columns.len() > 1 {
+                let unique_constraint = format!(
+                    "CONSTRAINT {} UNIQUE ({})",
+                    index.name,
+                    index.columns.join(", ")
+                );
+                constraints.push(unique_constraint);
+            }
+        }
+
+        // Extract constraints from constraint definitions
+        for constraint in &table_schema.constraints {
+            constraints.push(constraint.definition.clone());
+        }
+
+        constraints
     }
 }
 
@@ -319,6 +468,8 @@ mod tests {
                 nullable: false,
                 default: None,
                 primary_key: false,
+                auto_increment: false,
+                max_length: Some(255),
             },
         );
         target.tables.insert("users".to_string(), target_table);
@@ -327,7 +478,10 @@ mod tests {
         let result = diff.detect();
 
         assert_eq!(result.columns_to_add.len(), 1);
-        assert_eq!(result.columns_to_add[0], ("users".to_string(), "email".to_string()));
+        assert_eq!(
+            result.columns_to_add[0],
+            ("users".to_string(), "email".to_string())
+        );
     }
 
     #[test]

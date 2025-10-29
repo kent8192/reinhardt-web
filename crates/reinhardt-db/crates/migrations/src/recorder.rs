@@ -137,14 +137,49 @@ impl DatabaseMigrationRecorder {
             DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
             DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
             DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+            #[cfg(feature = "mongodb")]
             DatabaseType::MongoDB => {
-                // TODO: Implement MongoDB support for migration recording
-                return Err(crate::MigrationError::DatabaseError(
-                    backends::DatabaseError::UnsupportedFeature {
-                        database: "MongoDB".to_string(),
-                        feature: "migrations".to_string(),
+                use bson::doc;
+
+                let backend = self.connection.backend();
+                let backend_any = backend.as_any();
+
+                if let Some(mongo_backend) =
+                    backend_any.downcast_ref::<backends::backends::mongodb::MongoDBBackend>()
+                {
+                    let db = mongo_backend.database();
+                    let collection = db.collection::<bson::Document>("_reinhardt_migrations");
+
+                    let indexes = collection.list_index_names().await.map_err(|e| {
+                        crate::MigrationError::DatabaseError(
+                            backends::DatabaseError::ConnectionError(e.to_string()),
+                        )
+                    })?;
+
+                    if indexes.is_empty() {
+                        use mongodb::IndexModel;
+                        use mongodb::options::IndexOptions;
+
+                        let index = IndexModel::builder()
+                            .keys(doc! { "app": 1, "name": 1 })
+                            .options(IndexOptions::builder().unique(true).build())
+                            .build();
+
+                        collection.create_index(index).await.map_err(|e| {
+                            crate::MigrationError::DatabaseError(
+                                backends::DatabaseError::ConnectionError(e.to_string()),
+                            )
+                        })?;
                     }
-                ));
+
+                    return Ok(());
+                } else {
+                    return Err(crate::MigrationError::DatabaseError(
+                        backends::DatabaseError::ConnectionError(
+                            "Failed to downcast to MongoDBBackend".to_string(),
+                        ),
+                    ));
+                }
             }
         };
 
@@ -175,31 +210,71 @@ impl DatabaseMigrationRecorder {
     /// # }
     /// ```
     pub async fn is_applied(&self, app: &str, name: &str) -> crate::Result<bool> {
-        let sql = "SELECT EXISTS(SELECT 1 FROM reinhardt_migrations WHERE app = $1 AND name = $2) as exists_flag";
-        let params = vec![
-            QueryValue::String(app.to_string()),
-            QueryValue::String(name.to_string()),
-        ];
+        #[cfg(feature = "mongodb")]
+        use backends::types::DatabaseType;
 
-        let rows = self
-            .connection
-            .fetch_all(sql, params)
-            .await
-            .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+        match self.connection.database_type() {
+            #[cfg(feature = "mongodb")]
+            DatabaseType::MongoDB => {
+                use bson::doc;
 
-        if rows.is_empty() {
-            return Ok(false);
-        }
+                let backend = self.connection.backend();
+                let backend_any = backend.as_any();
 
-        let row = &rows[0];
+                if let Some(mongo_backend) =
+                    backend_any.downcast_ref::<backends::backends::mongodb::MongoDBBackend>()
+                {
+                    let db = mongo_backend.database();
+                    let collection = db.collection::<bson::Document>("_reinhardt_migrations");
 
-        // Try to get as bool first, then as i64 for databases that return int
-        if let Ok(exists) = row.get::<bool>("exists_flag") {
-            Ok(exists)
-        } else if let Ok(exists_int) = row.get::<i64>("exists_flag") {
-            Ok(exists_int > 0)
-        } else {
-            Ok(false)
+                    let filter = doc! {
+                        "app": app,
+                        "name": name
+                    };
+
+                    let count = collection.count_documents(filter).await.map_err(|e| {
+                        crate::MigrationError::DatabaseError(backends::DatabaseError::QueryError(
+                            e.to_string(),
+                        ))
+                    })?;
+
+                    Ok(count > 0)
+                } else {
+                    Err(crate::MigrationError::DatabaseError(
+                        backends::DatabaseError::ConnectionError(
+                            "Failed to downcast to MongoDBBackend".to_string(),
+                        ),
+                    ))
+                }
+            }
+            _ => {
+                let sql = "SELECT EXISTS(SELECT 1 FROM reinhardt_migrations WHERE app = $1 AND name = $2) as exists_flag";
+                let params = vec![
+                    QueryValue::String(app.to_string()),
+                    QueryValue::String(name.to_string()),
+                ];
+
+                let rows = self
+                    .connection
+                    .fetch_all(sql, params)
+                    .await
+                    .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+
+                if rows.is_empty() {
+                    return Ok(false);
+                }
+
+                let row = &rows[0];
+
+                // Try to get as bool first, then as i64 for databases that return int
+                if let Ok(exists) = row.get::<bool>("exists_flag") {
+                    Ok(exists)
+                } else if let Ok(exists_int) = row.get::<i64>("exists_flag") {
+                    Ok(exists_int > 0)
+                } else {
+                    Ok(false)
+                }
+            }
         }
     }
 
@@ -221,18 +296,60 @@ impl DatabaseMigrationRecorder {
     /// # }
     /// ```
     pub async fn record_applied(&self, app: &str, name: &str) -> crate::Result<()> {
-        let sql = "INSERT INTO reinhardt_migrations (app, name, applied) VALUES ($1, $2, CURRENT_TIMESTAMP)";
-        let params = vec![
-            QueryValue::String(app.to_string()),
-            QueryValue::String(name.to_string()),
-        ];
+        #[cfg(feature = "mongodb")]
+        use backends::types::DatabaseType;
 
-        self.connection
-            .execute(sql, params)
-            .await
-            .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+        match self.connection.database_type() {
+            #[cfg(feature = "mongodb")]
+            DatabaseType::MongoDB => {
+                use bson::doc;
+                use chrono::Utc;
 
-        Ok(())
+                let backend = self.connection.backend();
+                let backend_any = backend.as_any();
+
+                if let Some(mongo_backend) =
+                    backend_any.downcast_ref::<backends::backends::mongodb::MongoDBBackend>()
+                {
+                    let db = mongo_backend.database();
+                    let collection = db.collection::<bson::Document>("_reinhardt_migrations");
+
+                    let doc = doc! {
+                        "app": app,
+                        "name": name,
+                        "applied": bson::DateTime::from_millis(Utc::now().timestamp_millis())
+                    };
+
+                    collection.insert_one(doc).await.map_err(|e| {
+                        crate::MigrationError::DatabaseError(backends::DatabaseError::QueryError(
+                            e.to_string(),
+                        ))
+                    })?;
+
+                    Ok(())
+                } else {
+                    Err(crate::MigrationError::DatabaseError(
+                        backends::DatabaseError::ConnectionError(
+                            "Failed to downcast to MongoDBBackend".to_string(),
+                        ),
+                    ))
+                }
+            }
+            _ => {
+                let sql = "INSERT INTO reinhardt_migrations (app, name, applied) VALUES ($1, $2, CURRENT_TIMESTAMP)";
+                let params = vec![
+                    QueryValue::String(app.to_string()),
+                    QueryValue::String(name.to_string()),
+                ];
+
+                self.connection
+                    .execute(sql, params)
+                    .await
+                    .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+
+                Ok(())
+            }
+        }
     }
 
     /// Get all applied migrations
@@ -256,50 +373,178 @@ impl DatabaseMigrationRecorder {
     /// # }
     /// ```
     pub async fn get_applied_migrations(&self) -> crate::Result<Vec<MigrationRecord>> {
-        let sql = "SELECT app, name, applied FROM reinhardt_migrations ORDER BY applied";
+        #[cfg(feature = "mongodb")]
+        use backends::types::DatabaseType;
 
-        let rows = self
-            .connection
-            .fetch_all(sql, vec![])
-            .await
-            .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+        match self.connection.database_type() {
+            #[cfg(feature = "mongodb")]
+            DatabaseType::MongoDB => {
+                use bson::doc;
+                use futures::stream::TryStreamExt;
 
-        let mut records = Vec::new();
-        for row in rows {
-            let app: String = row
-                .get("app")
-                .map_err(|e| crate::MigrationError::DatabaseError(e))?;
-            let name: String = row
-                .get("name")
-                .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+                let backend = self.connection.backend();
+                let backend_any = backend.as_any();
 
-            // Parse timestamp from database
-            let applied: DateTime<Utc> = row
-                .get("applied")
-                .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+                if let Some(mongo_backend) =
+                    backend_any.downcast_ref::<backends::backends::mongodb::MongoDBBackend>()
+                {
+                    let db = mongo_backend.database();
+                    let collection = db.collection::<bson::Document>("_reinhardt_migrations");
 
-            records.push(MigrationRecord { app, name, applied });
+                    let find_options = mongodb::options::FindOptions::builder()
+                        .sort(doc! { "applied": 1 })
+                        .build();
+
+                    let mut cursor = collection
+                        .find(doc! {})
+                        .with_options(find_options)
+                        .await
+                        .map_err(|e| {
+                            crate::MigrationError::DatabaseError(
+                                backends::DatabaseError::QueryError(e.to_string()),
+                            )
+                        })?;
+
+                    let mut records = Vec::new();
+                    while let Some(doc) = cursor.try_next().await.map_err(|e| {
+                        crate::MigrationError::DatabaseError(backends::DatabaseError::QueryError(
+                            e.to_string(),
+                        ))
+                    })? {
+                        let app = doc
+                            .get_str("app")
+                            .map_err(|e| {
+                                crate::MigrationError::DatabaseError(
+                                    backends::DatabaseError::QueryError(e.to_string()),
+                                )
+                            })?
+                            .to_string();
+
+                        let name = doc
+                            .get_str("name")
+                            .map_err(|e| {
+                                crate::MigrationError::DatabaseError(
+                                    backends::DatabaseError::QueryError(e.to_string()),
+                                )
+                            })?
+                            .to_string();
+
+                        let applied_bson = doc.get_datetime("applied").map_err(|e| {
+                            crate::MigrationError::DatabaseError(
+                                backends::DatabaseError::QueryError(e.to_string()),
+                            )
+                        })?;
+
+                        let applied = chrono::DateTime::from_timestamp_millis(
+                            applied_bson.timestamp_millis(),
+                        )
+                        .ok_or_else(|| {
+                            crate::MigrationError::DatabaseError(
+                                backends::DatabaseError::QueryError(
+                                    "Invalid timestamp".to_string(),
+                                ),
+                            )
+                        })?;
+
+                        records.push(MigrationRecord { app, name, applied });
+                    }
+
+                    Ok(records)
+                } else {
+                    Err(crate::MigrationError::DatabaseError(
+                        backends::DatabaseError::ConnectionError(
+                            "Failed to downcast to MongoDBBackend".to_string(),
+                        ),
+                    ))
+                }
+            }
+            _ => {
+                let sql = "SELECT app, name, applied FROM reinhardt_migrations ORDER BY applied";
+
+                let rows = self
+                    .connection
+                    .fetch_all(sql, vec![])
+                    .await
+                    .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+
+                let mut records = Vec::new();
+                for row in rows {
+                    let app: String = row
+                        .get("app")
+                        .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+                    let name: String = row
+                        .get("name")
+                        .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+
+                    // Parse timestamp from database
+                    let applied: DateTime<Utc> = row
+                        .get("applied")
+                        .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+
+                    records.push(MigrationRecord { app, name, applied });
+                }
+
+                Ok(records)
+            }
         }
-
-        Ok(records)
     }
 
     /// Unapply a migration (remove from records)
     ///
     /// Used when rolling back migrations.
     pub async fn unapply(&self, app: &str, name: &str) -> crate::Result<()> {
-        let sql = "DELETE FROM reinhardt_migrations WHERE app = $1 AND name = $2";
-        let params = vec![
-            QueryValue::String(app.to_string()),
-            QueryValue::String(name.to_string()),
-        ];
+        #[cfg(feature = "mongodb")]
+        use backends::types::DatabaseType;
 
-        self.connection
-            .execute(sql, params)
-            .await
-            .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+        match self.connection.database_type() {
+            #[cfg(feature = "mongodb")]
+            DatabaseType::MongoDB => {
+                use bson::doc;
 
-        Ok(())
+                let backend = self.connection.backend();
+                let backend_any = backend.as_any();
+
+                if let Some(mongo_backend) =
+                    backend_any.downcast_ref::<backends::backends::mongodb::MongoDBBackend>()
+                {
+                    let db = mongo_backend.database();
+                    let collection = db.collection::<bson::Document>("_reinhardt_migrations");
+
+                    let filter = doc! {
+                        "app": app,
+                        "name": name
+                    };
+
+                    collection.delete_one(filter).await.map_err(|e| {
+                        crate::MigrationError::DatabaseError(backends::DatabaseError::QueryError(
+                            e.to_string(),
+                        ))
+                    })?;
+
+                    Ok(())
+                } else {
+                    Err(crate::MigrationError::DatabaseError(
+                        backends::DatabaseError::ConnectionError(
+                            "Failed to downcast to MongoDBBackend".to_string(),
+                        ),
+                    ))
+                }
+            }
+            _ => {
+                let sql = "DELETE FROM reinhardt_migrations WHERE app = $1 AND name = $2";
+                let params = vec![
+                    QueryValue::String(app.to_string()),
+                    QueryValue::String(name.to_string()),
+                ];
+
+                self.connection
+                    .execute(sql, params)
+                    .await
+                    .map_err(|e| crate::MigrationError::DatabaseError(e))?;
+
+                Ok(())
+            }
+        }
     }
 }
 
@@ -347,15 +592,21 @@ mod tests {
         assert_eq!(migrations.len(), 3);
 
         // Verify all migrations were recorded
-        assert!(migrations
-            .iter()
-            .any(|m| m.app == "auth" && m.name == "0001_initial"));
-        assert!(migrations
-            .iter()
-            .any(|m| m.app == "users" && m.name == "0001_initial"));
-        assert!(migrations
-            .iter()
-            .any(|m| m.app == "auth" && m.name == "0002_add_field"));
+        assert!(
+            migrations
+                .iter()
+                .any(|m| m.app == "auth" && m.name == "0001_initial")
+        );
+        assert!(
+            migrations
+                .iter()
+                .any(|m| m.app == "users" && m.name == "0001_initial")
+        );
+        assert!(
+            migrations
+                .iter()
+                .any(|m| m.app == "auth" && m.name == "0002_add_field")
+        );
     }
 
     #[test]

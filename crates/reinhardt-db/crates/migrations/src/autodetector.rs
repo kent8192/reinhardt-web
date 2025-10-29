@@ -1,10 +1,10 @@
 //! Migration autodetector
 
+use petgraph::Undirected;
 use petgraph::graph::Graph;
 use petgraph::visit::EdgeRef;
-use petgraph::Undirected;
-use strsim::{jaro_winkler, levenshtein};
 use std::collections::HashMap;
+use strsim::{jaro_winkler, levenshtein};
 
 /// Field state for migration detection
 #[derive(Debug, Clone)]
@@ -600,10 +600,7 @@ pub struct DetectedChanges {
     /// Model dependencies for ordering operations
     /// Maps (app_label, model_name) -> Vec<(dependent_app, dependent_model)>
     /// A model depends on another if it has ForeignKey or ManyToMany fields pointing to it
-    pub model_dependencies: std::collections::HashMap<
-        (String, String),
-        Vec<(String, String)>,
-    >,
+    pub model_dependencies: std::collections::HashMap<(String, String), Vec<(String, String)>>,
 }
 
 impl DetectedChanges {
@@ -704,7 +701,20 @@ impl DetectedChanges {
         // If not all models are ordered, there's a circular dependency
         if ordered.len() < all_models.len() {
             // Fall back to original order with a warning
-            // TODO: Log circular dependency warning
+            let unordered_models: Vec<_> = all_models
+                .iter()
+                .filter(|model| !ordered.contains(model))
+                .map(|(app, name)| format!("{}.{}", app, name))
+                .collect();
+
+            eprintln!(
+                "⚠️  Warning: Circular dependency detected in models: [{}]",
+                unordered_models.join(", ")
+            );
+            eprintln!(
+                "    Falling back to original order. Migration operations may need manual reordering."
+            );
+
             all_models.into_iter().collect()
         } else {
             ordered
@@ -938,7 +948,10 @@ impl ChangeTracker {
         };
 
         self.add_entry(entry);
-        self.update_pattern(&format!("RenameModel:{}->{}",old_name, new_name), app_label);
+        self.update_pattern(
+            &format!("RenameModel:{}->{}", old_name, new_name),
+            app_label,
+        );
     }
 
     /// Record a model move between apps
@@ -954,7 +967,10 @@ impl ChangeTracker {
         };
 
         self.add_entry(entry);
-        self.update_pattern(&format!("MoveModel:{}->{}:{}", from_app, to_app, model_name), to_app);
+        self.update_pattern(
+            &format!("MoveModel:{}->{}:{}", from_app, to_app, model_name),
+            to_app,
+        );
     }
 
     /// Record a field addition
@@ -970,7 +986,10 @@ impl ChangeTracker {
         };
 
         self.add_entry(entry);
-        self.update_pattern(&format!("AddField:{}:{}", model_name, field_name), app_label);
+        self.update_pattern(
+            &format!("AddField:{}:{}", model_name, field_name),
+            app_label,
+        );
     }
 
     /// Record a field rename
@@ -993,7 +1012,7 @@ impl ChangeTracker {
 
         self.add_entry(entry);
         self.update_pattern(
-            &format!("RenameField:{}:{}->{}",model_name, old_name, new_name),
+            &format!("RenameField:{}:{}->{}", model_name, old_name, new_name),
             app_label,
         );
     }
@@ -1046,10 +1065,7 @@ impl ChangeTracker {
     ///
     /// # Arguments
     /// * `duration` - Time window (e.g., Duration::from_secs(3600) for last hour)
-    pub fn get_recent_changes(
-        &self,
-        duration: std::time::Duration,
-    ) -> Vec<&ChangeHistoryEntry> {
+    pub fn get_recent_changes(&self, duration: std::time::Duration) -> Vec<&ChangeHistoryEntry> {
         let now = std::time::SystemTime::now();
         self.history
             .iter()
@@ -1327,17 +1343,26 @@ impl Default for PatternMatcher {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuleCondition {
     /// Model rename pattern
-    ModelRename { from_pattern: String, to_pattern: String },
+    ModelRename {
+        from_pattern: String,
+        to_pattern: String,
+    },
     /// Model move pattern
     ModelMove { app_pattern: String },
     /// Field addition pattern
     FieldAddition { field_name_pattern: String },
     /// Field rename pattern
-    FieldRename { from_pattern: String, to_pattern: String },
+    FieldRename {
+        from_pattern: String,
+        to_pattern: String,
+    },
     /// Multiple model renames
     MultipleModelRenames { min_count: usize },
     /// Multiple field additions
-    MultipleFieldAdditions { model_pattern: String, min_count: usize },
+    MultipleFieldAdditions {
+        model_pattern: String,
+        min_count: usize,
+    },
 }
 
 /// Inferred intent from detected changes
@@ -1400,8 +1425,23 @@ pub struct InferenceEngine {
     /// Inference rules
     rules: Vec<InferenceRule>,
     /// Change history for contextual analysis
-    /// TODO: Implement contextual change tracking
-    #[allow(dead_code)]
+    ///
+    /// The change tracker maintains a history of schema changes and can be used
+    /// to improve inference accuracy by analyzing temporal patterns. To use:
+    ///
+    /// 1. Record changes via `record_model_rename()`, `record_field_addition()`, etc.
+    /// 2. Query patterns via `get_frequent_patterns()` or `analyze_cooccurrence()`
+    /// 3. Use pattern analysis to boost confidence scores in inference rules
+    ///
+    /// Example:
+    /// ```
+    /// let mut engine = InferenceEngine::new();
+    /// engine.record_model_rename("blog", "BlogPost", "Post");
+    /// engine.record_field_addition("blog", "Post", "slug");
+    ///
+    /// // Later, check if these changes commonly occur together
+    /// let cooccurrences = engine.analyze_cooccurrence("RenameModel", 2);
+    /// ```
     change_tracker: ChangeTracker,
 }
 
@@ -1428,9 +1468,7 @@ impl InferenceEngine {
                 from_pattern: ".*".to_string(),
                 to_pattern: ".*".to_string(),
             }],
-            optional_conditions: vec![
-                RuleCondition::MultipleModelRenames { min_count: 2 },
-            ],
+            optional_conditions: vec![RuleCondition::MultipleModelRenames { min_count: 2 }],
             intent_type: "Refactoring: Model rename".to_string(),
             base_confidence: 0.7,
             confidence_boost_per_optional: 0.1,
@@ -1453,11 +1491,9 @@ impl InferenceEngine {
         // Rule 3: Cross-app model move
         self.add_rule(InferenceRule {
             name: "cross_app_move".to_string(),
-            conditions: vec![
-                RuleCondition::ModelMove {
-                    app_pattern: ".*".to_string(),
-                },
-            ],
+            conditions: vec![RuleCondition::ModelMove {
+                app_pattern: ".*".to_string(),
+            }],
             optional_conditions: vec![],
             intent_type: "Cross-app model organization".to_string(),
             base_confidence: 0.75,
@@ -1471,12 +1507,10 @@ impl InferenceEngine {
                 from_pattern: ".*".to_string(),
                 to_pattern: ".*".to_string(),
             }],
-            optional_conditions: vec![
-                RuleCondition::MultipleFieldAdditions {
-                    model_pattern: ".*".to_string(),
-                    min_count: 2,
-                },
-            ],
+            optional_conditions: vec![RuleCondition::MultipleFieldAdditions {
+                model_pattern: ".*".to_string(),
+                min_count: 2,
+            }],
             intent_type: "Refactoring: Field rename".to_string(),
             base_confidence: 0.65,
             confidence_boost_per_optional: 0.1,
@@ -1485,12 +1519,10 @@ impl InferenceEngine {
         // Rule 5: Model normalization
         self.add_rule(InferenceRule {
             name: "model_normalization".to_string(),
-            conditions: vec![
-                RuleCondition::MultipleFieldAdditions {
-                    model_pattern: ".*".to_string(),
-                    min_count: 3,
-                },
-            ],
+            conditions: vec![RuleCondition::MultipleFieldAdditions {
+                model_pattern: ".*".to_string(),
+                min_count: 3,
+            }],
             optional_conditions: vec![],
             intent_type: "Schema normalization".to_string(),
             base_confidence: 0.6,
@@ -1507,9 +1539,9 @@ impl InferenceEngine {
     pub fn infer_intents(
         &self,
         model_renames: &[(String, String, String, String)], // (from_app, from_model, to_app, to_model)
-        model_moves: &[(String, String, String, String)],    // (from_app, from_model, to_app, to_model)
-        field_additions: &[(String, String, String)],        // (app, model, field)
-        field_renames: &[(String, String, String, String)],  // (app, model, from_field, to_field)
+        model_moves: &[(String, String, String, String)], // (from_app, from_model, to_app, to_model)
+        field_additions: &[(String, String, String)],     // (app, model, field)
+        field_renames: &[(String, String, String, String)], // (app, model, from_field, to_field)
     ) -> Vec<InferredIntent> {
         let mut intents = Vec::new();
 
@@ -1521,7 +1553,10 @@ impl InferenceEngine {
             // Check required conditions
             for condition in &rule.conditions {
                 match condition {
-                    RuleCondition::ModelRename { from_pattern, to_pattern } => {
+                    RuleCondition::ModelRename {
+                        from_pattern,
+                        to_pattern,
+                    } => {
                         if model_renames.is_empty() {
                             matches_required = false;
                             break;
@@ -1567,7 +1602,10 @@ impl InferenceEngine {
                             matching_fields[0].0, matching_fields[0].1, matching_fields[0].2
                         ));
                     }
-                    RuleCondition::FieldRename { from_pattern, to_pattern } => {
+                    RuleCondition::FieldRename {
+                        from_pattern,
+                        to_pattern,
+                    } => {
                         if field_renames.is_empty() {
                             matches_required = false;
                             break;
@@ -1589,7 +1627,10 @@ impl InferenceEngine {
                         }
                         evidence.push(format!("Multiple model renames: {}", model_renames.len()));
                     }
-                    RuleCondition::MultipleFieldAdditions { model_pattern, min_count } => {
+                    RuleCondition::MultipleFieldAdditions {
+                        model_pattern,
+                        min_count,
+                    } => {
                         let count = if model_pattern == ".*" {
                             field_additions.len()
                         } else {
@@ -1653,10 +1694,152 @@ impl InferenceEngine {
     }
 
     /// Infer intents from DetectedChanges
-    pub fn infer_from_detected_changes(&self, _changes: &DetectedChanges) -> Vec<InferredIntent> {
-        // TODO: Extract actual changes from DetectedChanges
-        // For now, return empty
-        Vec::new()
+    ///
+    /// Extracts change operations from DetectedChanges and runs inference rules on them.
+    ///
+    /// # Arguments
+    /// * `changes` - Detected changes between two project states
+    ///
+    /// # Returns
+    /// Inferred intents sorted by confidence (highest first)
+    pub fn infer_from_detected_changes(&self, changes: &DetectedChanges) -> Vec<InferredIntent> {
+        // Extract model renames: (from_app, from_model, to_app, to_model)
+        let model_renames: Vec<(String, String, String, String)> = changes
+            .renamed_models
+            .iter()
+            .map(|(app, old_name, new_name)| {
+                (app.clone(), old_name.clone(), app.clone(), new_name.clone())
+            })
+            .collect();
+
+        // Extract model moves: (from_app, from_model, to_app, to_model)
+        let model_moves: Vec<(String, String, String, String)> = changes
+            .moved_models
+            .iter()
+            .map(|(from_app, to_app, model, _, _, _)| {
+                (
+                    from_app.clone(),
+                    model.clone(),
+                    to_app.clone(),
+                    model.clone(),
+                )
+            })
+            .collect();
+
+        // Extract field additions: (app, model, field)
+        let field_additions: Vec<(String, String, String)> = changes
+            .added_fields
+            .iter()
+            .map(|(app, model, field)| (app.clone(), model.clone(), field.clone()))
+            .collect();
+
+        // Extract field renames: (app, model, from_field, to_field)
+        let field_renames: Vec<(String, String, String, String)> = changes
+            .renamed_fields
+            .iter()
+            .map(|(app, model, old_name, new_name)| {
+                (
+                    app.clone(),
+                    model.clone(),
+                    old_name.clone(),
+                    new_name.clone(),
+                )
+            })
+            .collect();
+
+        // Run inference on extracted changes
+        self.infer_intents(
+            &model_renames,
+            &model_moves,
+            &field_additions,
+            &field_renames,
+        )
+    }
+
+    /// Record a model rename in the change tracker
+    ///
+    /// This enables contextual analysis for future migrations by tracking patterns.
+    ///
+    /// # Arguments
+    /// * `app_label` - App containing the model
+    /// * `old_name` - Original model name
+    /// * `new_name` - New model name
+    pub fn record_model_rename(&mut self, app_label: &str, old_name: &str, new_name: &str) {
+        self.change_tracker
+            .record_model_rename(app_label, old_name, new_name);
+    }
+
+    /// Record a model move between apps
+    ///
+    /// # Arguments
+    /// * `from_app` - Source app label
+    /// * `to_app` - Target app label
+    /// * `model_name` - Name of the model being moved
+    pub fn record_model_move(&mut self, from_app: &str, to_app: &str, model_name: &str) {
+        self.change_tracker
+            .record_model_move(from_app, to_app, model_name);
+    }
+
+    /// Record a field addition
+    ///
+    /// # Arguments
+    /// * `app_label` - App containing the model
+    /// * `model_name` - Name of the model
+    /// * `field_name` - Name of the field being added
+    pub fn record_field_addition(&mut self, app_label: &str, model_name: &str, field_name: &str) {
+        self.change_tracker
+            .record_field_addition(app_label, model_name, field_name);
+    }
+
+    /// Record a field rename
+    ///
+    /// # Arguments
+    /// * `app_label` - App containing the model
+    /// * `model_name` - Name of the model
+    /// * `old_name` - Original field name
+    /// * `new_name` - New field name
+    pub fn record_field_rename(
+        &mut self,
+        app_label: &str,
+        model_name: &str,
+        old_name: &str,
+        new_name: &str,
+    ) {
+        self.change_tracker
+            .record_field_rename(app_label, model_name, old_name, new_name);
+    }
+
+    /// Get frequent patterns from change history
+    ///
+    /// Returns patterns that occur at least `min_frequency` times.
+    /// This can be used to improve confidence scores for similar patterns.
+    ///
+    /// # Arguments
+    /// * `min_frequency` - Minimum number of occurrences to be considered frequent
+    pub fn get_frequent_patterns(&self, min_frequency: usize) -> Vec<PatternFrequency> {
+        self.change_tracker.get_frequent_patterns(min_frequency)
+    }
+
+    /// Get recent changes within the specified duration
+    ///
+    /// # Arguments
+    /// * `duration` - Time window for recent changes (e.g., last hour)
+    pub fn get_recent_changes(&self, duration: std::time::Duration) -> Vec<&ChangeHistoryEntry> {
+        self.change_tracker.get_recent_changes(duration)
+    }
+
+    /// Analyze co-occurring patterns in change history
+    ///
+    /// Returns pairs of patterns that frequently appear together
+    /// within a time window.
+    ///
+    /// # Arguments
+    /// * `window` - Time window for co-occurrence analysis (default: 1 hour)
+    pub fn analyze_cooccurrence(
+        &self,
+        window: std::time::Duration,
+    ) -> HashMap<(String, String), usize> {
+        self.change_tracker.analyze_cooccurrence(window)
     }
 }
 
@@ -1711,11 +1894,14 @@ impl MigrationPrompt {
     pub fn auto_accept_threshold(&self) -> f64 {
         self.auto_accept_threshold
     }
-    
+
     /// Confirm a single intent with the user
     ///
     /// Returns true if the user confirms, false if they reject
-    pub fn confirm_intent(&self, intent: &InferredIntent) -> Result<bool, Box<dyn std::error::Error>> {
+    pub fn confirm_intent(
+        &self,
+        intent: &InferredIntent,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         // Auto-accept high-confidence changes
         if intent.confidence >= self.auto_accept_threshold {
             println!(
@@ -1725,7 +1911,7 @@ impl MigrationPrompt {
             );
             return Ok(true);
         }
-        
+
         // Build prompt message
         let message = format!(
             "Detected: {} (confidence: {:.1}%)\nDetails: {}\n\nAccept this change?",
@@ -1733,7 +1919,7 @@ impl MigrationPrompt {
             intent.confidence * 100.0,
             intent.description
         );
-        
+
         // Show evidence
         if !intent.evidence.is_empty() {
             println!("\nEvidence:");
@@ -1741,7 +1927,7 @@ impl MigrationPrompt {
                 println!("  • {}", evidence);
             }
         }
-        
+
         // Prompt user
         dialoguer::Confirm::with_theme(&self.theme)
             .with_prompt(message)
@@ -1749,7 +1935,7 @@ impl MigrationPrompt {
             .interact()
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
     }
-    
+
     /// Select one intent from multiple alternatives
     ///
     /// Returns the index of the selected intent, or None if user cancels
@@ -1761,13 +1947,13 @@ impl MigrationPrompt {
         if alternatives.is_empty() {
             return Ok(None);
         }
-        
+
         // Single alternative - just confirm
         if alternatives.len() == 1 {
             let confirmed = self.confirm_intent(&alternatives[0])?;
             return Ok(if confirmed { Some(0) } else { None });
         }
-        
+
         // Build selection items
         let items: Vec<String> = alternatives
             .iter()
@@ -1780,22 +1966,22 @@ impl MigrationPrompt {
                 )
             })
             .collect();
-        
+
         // Show prompt
         println!("\n{}", prompt);
         println!("Multiple possibilities detected:\n");
-        
+
         // Add "None of the above" option
         let mut items_with_none = items.clone();
         items_with_none.push("None of the above / Skip".to_string());
-        
+
         // Prompt user
         let selection = dialoguer::Select::with_theme(&self.theme)
             .items(&items_with_none)
             .default(0)
             .interact()
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-        
+
         // Return None if user selected "None of the above"
         if selection >= items.len() {
             Ok(None)
@@ -1803,7 +1989,7 @@ impl MigrationPrompt {
             Ok(Some(selection))
         }
     }
-    
+
     /// Multi-select intents from a list
     ///
     /// Returns indices of selected intents
@@ -1815,7 +2001,7 @@ impl MigrationPrompt {
         if alternatives.is_empty() {
             return Ok(Vec::new());
         }
-        
+
         // Build selection items
         let items: Vec<String> = alternatives
             .iter()
@@ -1828,20 +2014,20 @@ impl MigrationPrompt {
                 )
             })
             .collect();
-        
+
         // Show prompt
         println!("\n{}", prompt);
         println!("Select all that apply:\n");
-        
+
         // Prompt user with multi-select
         let selections = dialoguer::MultiSelect::with_theme(&self.theme)
             .items(&items)
             .interact()
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-        
+
         Ok(selections)
     }
-    
+
     /// Confirm a model rename with details
     pub fn confirm_model_rename(
         &self,
@@ -1863,19 +2049,23 @@ impl MigrationPrompt {
             );
             return Ok(true);
         }
-        
+
         let message = format!(
             "Rename model from {}.{} to {}.{}?\n(confidence: {:.1}%)",
-            from_app, from_model, to_app, to_model, confidence * 100.0
+            from_app,
+            from_model,
+            to_app,
+            to_model,
+            confidence * 100.0
         );
-        
+
         dialoguer::Confirm::with_theme(&self.theme)
             .with_prompt(message)
             .default(true)
             .interact()
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
     }
-    
+
     /// Confirm a field rename with details
     pub fn confirm_field_rename(
         &self,
@@ -1896,21 +2086,29 @@ impl MigrationPrompt {
             );
             return Ok(true);
         }
-        
+
         let message = format!(
             "Rename field in model {}:\n  {} → {}?\n(confidence: {:.1}%)",
-            model, from_field, to_field, confidence * 100.0
+            model,
+            from_field,
+            to_field,
+            confidence * 100.0
         );
-        
+
         dialoguer::Confirm::with_theme(&self.theme)
             .with_prompt(message)
             .default(true)
             .interact()
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
     }
-    
+
     /// Show progress indicator for long operations
-    pub fn with_progress<F, T>(&self, message: &str, total: u64, operation: F) -> Result<T, Box<dyn std::error::Error>>
+    pub fn with_progress<F, T>(
+        &self,
+        message: &str,
+        total: u64,
+        operation: F,
+    ) -> Result<T, Box<dyn std::error::Error>>
     where
         F: FnOnce(&indicatif::ProgressBar) -> Result<T, Box<dyn std::error::Error>>,
     {
@@ -1922,9 +2120,9 @@ impl MigrationPrompt {
                 .progress_chars("#>-"),
         );
         pb.set_message(message.to_string());
-        
+
         let result = operation(&pb)?;
-        
+
         pb.finish_with_message("Done");
         Ok(result)
     }
@@ -1940,7 +2138,7 @@ impl Default for MigrationPrompt {
 pub trait InteractiveAutodetector {
     /// Detect changes with user prompts for ambiguous cases
     fn detect_changes_interactive(&self) -> Result<DetectedChanges, Box<dyn std::error::Error>>;
-    
+
     /// Apply inferred intents with user confirmation
     fn apply_intents_interactive(
         &self,
@@ -1953,66 +2151,79 @@ impl InteractiveAutodetector for MigrationAutodetector {
     fn detect_changes_interactive(&self) -> Result<DetectedChanges, Box<dyn std::error::Error>> {
         let prompt = MigrationPrompt::new();
         let mut changes = self.detect_changes();
-        
+
         // Build inference engine
         let mut engine = InferenceEngine::new();
         engine.add_default_rules();
-        
+
         // Infer intents from detected changes
         let intents = engine.infer_from_detected_changes(&changes);
-        
+
         // Filter high-confidence intents
         let ambiguous_intents: Vec<_> = intents
             .into_iter()
             .filter(|intent| intent.confidence < prompt.auto_accept_threshold)
             .collect();
-        
+
         // Prompt for ambiguous changes
         if !ambiguous_intents.is_empty() {
-            println!("\n⚠️  Found {} ambiguous change(s) requiring confirmation:", ambiguous_intents.len());
-            
+            println!(
+                "\n⚠️  Found {} ambiguous change(s) requiring confirmation:",
+                ambiguous_intents.len()
+            );
+
             for intent in &ambiguous_intents {
                 let confirmed = prompt.confirm_intent(intent)?;
-                
+
                 if !confirmed {
                     println!("✗ Skipped: {}", intent.description);
-                    // TODO: Remove corresponding operations from changes
+                    // Note: Removing operations from DetectedChanges requires establishing
+                    // a bidirectional mapping between InferredIntent and the specific operations
+                    // (e.g., renamed_models, added_fields, etc.). This is a complex refactoring
+                    // that would require:
+                    // 1. Adding operation IDs or tracking metadata to DetectedChanges
+                    // 2. Maintaining the mapping in InferredIntent
+                    // 3. Implementing removal logic for each operation type
+                    // For now, skipped intents are logged but the underlying operations remain
+                    // in DetectedChanges, which may result in migration operations being
+                    // generated despite user rejection. This should be addressed in a future
+                    // refactoring of the intent inference system.
                 }
             }
         }
-        
+
         // Detect and order dependencies
         self.detect_model_dependencies(&mut changes);
-        
+
         // Check for circular dependencies
         if let Err(cycle) = changes.check_circular_dependencies() {
             println!("\n⚠️  Warning: Circular dependency detected: {:?}", cycle);
-            
+
             let should_continue = dialoguer::Confirm::new()
                 .with_prompt("Continue anyway? (may require manual intervention)")
                 .default(false)
                 .interact()?;
-            
+
             if !should_continue {
                 return Err("Aborted due to circular dependency".into());
             }
         }
-        
+
         Ok(changes)
     }
-    
+
     fn apply_intents_interactive(
         &self,
         intents: Vec<InferredIntent>,
         _changes: &mut DetectedChanges,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let prompt = MigrationPrompt::new();
-        
+
         // Group intents by confidence
         let mut high_confidence = Vec::new();
         let mut medium_confidence = Vec::new();
         let mut low_confidence = Vec::new();
-        
+
         for intent in intents {
             if intent.confidence >= 0.85 {
                 high_confidence.push(intent);
@@ -2022,17 +2233,27 @@ impl InteractiveAutodetector for MigrationAutodetector {
                 low_confidence.push(intent);
             }
         }
-        
+
         // Auto-apply high-confidence intents
-        println!("\n✓ Auto-applying {} high-confidence change(s):", high_confidence.len());
+        println!(
+            "\n✓ Auto-applying {} high-confidence change(s):",
+            high_confidence.len()
+        );
         for intent in &high_confidence {
-            println!("  • {} (confidence: {:.1}%)", intent.description, intent.confidence * 100.0);
+            println!(
+                "  • {} (confidence: {:.1}%)",
+                intent.description,
+                intent.confidence * 100.0
+            );
         }
-        
+
         // Prompt for medium-confidence intents
         if !medium_confidence.is_empty() {
-            println!("\n⚠️  Review {} medium-confidence change(s):", medium_confidence.len());
-            
+            println!(
+                "\n⚠️  Review {} medium-confidence change(s):",
+                medium_confidence.len()
+            );
+
             for intent in &medium_confidence {
                 let confirmed = prompt.confirm_intent(intent)?;
                 if confirmed {
@@ -2042,23 +2263,22 @@ impl InteractiveAutodetector for MigrationAutodetector {
                 }
             }
         }
-        
+
         // Prompt for low-confidence intents with multi-select
         if !low_confidence.is_empty() {
             let selections = prompt.multi_select_intents(
                 &low_confidence,
                 "⚠️  Select low-confidence changes to apply:",
             )?;
-            
+
             for idx in selections {
                 println!("  ✓ Accepted: {}", low_confidence[idx].description);
             }
         }
-        
+
         Ok(())
     }
 }
-
 
 impl MigrationAutodetector {
     /// Create a new migration autodetector with default similarity config
@@ -2339,11 +2559,9 @@ impl MigrationAutodetector {
             // Check if this is a cross-app move or same-app rename
             if deleted_key.0 == created_key.0 {
                 // Same app: this is a rename operation
-                changes.renamed_models.push((
-                    deleted_key.0,
-                    deleted_key.1,
-                    created_key.1,
-                ));
+                changes
+                    .renamed_models
+                    .push((deleted_key.0, deleted_key.1, created_key.1));
             } else {
                 // Different apps: this is a move operation
                 // Determine if table needs to be renamed
@@ -2352,9 +2570,9 @@ impl MigrationAutodetector {
                 let rename_table = old_table != new_table || deleted_key.1 != created_key.1;
 
                 changes.moved_models.push((
-                    deleted_key.0,      // from_app
-                    created_key.0,      // to_app
-                    created_key.1,      // model_name (use new name)
+                    deleted_key.0, // from_app
+                    created_key.0, // to_app
+                    created_key.1, // model_name (use new name)
                     rename_table,
                     if rename_table { Some(old_table) } else { None },
                     if rename_table { Some(new_table) } else { None },
@@ -3065,14 +3283,14 @@ impl MigrationAutodetector {
                         column.to_lowercase(),
                         table.to_lowercase()
                     ),
-                    crate::Operation::DropColumn { table, column } => {
+                    crate::Operation::DropColumn { table, column, .. } => {
                         format!(
                             "0001_remove_{}_{}",
                             column.to_lowercase(),
                             table.to_lowercase()
                         )
                     }
-                    crate::Operation::DropTable { name } => {
+                    crate::Operation::DropTable { name, .. } => {
                         format!("0001_delete_{}", name.to_lowercase())
                     }
                     _ => "0001_auto".to_string(),
@@ -3142,17 +3360,18 @@ impl MigrationAutodetector {
             for (_field_name, field) in &model.fields {
                 // Detect ForeignKey fields by checking field type
                 // Format: "ForeignKey(app.Model)" or "ManyToManyField(app.Model)"
-                if let Some(referenced_model) = self.extract_related_model(&field.field_type) {
+                if let Some(referenced_model) =
+                    self.extract_related_model(&field.field_type, app_label)
+                {
                     dependencies.push(referenced_model);
                 }
             }
 
             // Only store if there are actual dependencies
             if !dependencies.is_empty() {
-                changes.model_dependencies.insert(
-                    (app_label.clone(), model_name.clone()),
-                    dependencies,
-                );
+                changes
+                    .model_dependencies
+                    .insert((app_label.clone(), model_name.clone()), dependencies);
             }
         }
     }
@@ -3162,28 +3381,43 @@ impl MigrationAutodetector {
     /// Parses field type strings like:
     /// - "ForeignKey(app.Model)" -> Some(("app", "Model"))
     /// - "ManyToManyField(app.Model)" -> Some(("app", "Model"))
+    /// - "ForeignKey(Model)" -> Some((current_app, "Model"))
     /// - "CharField" -> None
     ///
     /// # Arguments
     /// * `field_type` - Field type string (e.g., "ForeignKey(accounts.User)")
+    /// * `current_app` - Current app label for resolving unqualified references
     ///
     /// # Returns
     /// * `Some((app_label, model_name))` if field is a relation
     /// * `None` if field is not a relation
-    fn extract_related_model(&self, field_type: &str) -> Option<(String, String)> {
+    fn extract_related_model(
+        &self,
+        field_type: &str,
+        current_app: &str,
+    ) -> Option<(String, String)> {
         // Check for ForeignKey pattern
-        if let Some(inner) = field_type.strip_prefix("ForeignKey(").and_then(|s| s.strip_suffix(")")) {
-            return self.parse_model_reference(inner);
+        if let Some(inner) = field_type
+            .strip_prefix("ForeignKey(")
+            .and_then(|s| s.strip_suffix(")"))
+        {
+            return self.parse_model_reference(inner, current_app);
         }
 
         // Check for ManyToManyField pattern
-        if let Some(inner) = field_type.strip_prefix("ManyToManyField(").and_then(|s| s.strip_suffix(")")) {
-            return self.parse_model_reference(inner);
+        if let Some(inner) = field_type
+            .strip_prefix("ManyToManyField(")
+            .and_then(|s| s.strip_suffix(")"))
+        {
+            return self.parse_model_reference(inner, current_app);
         }
 
         // Check for OneToOneField pattern
-        if let Some(inner) = field_type.strip_prefix("OneToOneField(").and_then(|s| s.strip_suffix(")")) {
-            return self.parse_model_reference(inner);
+        if let Some(inner) = field_type
+            .strip_prefix("OneToOneField(")
+            .and_then(|s| s.strip_suffix(")"))
+        {
+            return self.parse_model_reference(inner, current_app);
         }
 
         None
@@ -3193,23 +3427,30 @@ impl MigrationAutodetector {
     ///
     /// Supports formats:
     /// - "app.Model" -> ("app", "Model")
-    /// - "Model" -> Current app context (if available)
+    /// - "Model" -> (current_app, "Model") - Uses current app for unqualified references
     ///
     /// # Arguments
-    /// * `reference` - Model reference string (e.g., "accounts.User")
+    /// * `reference` - Model reference string (e.g., "accounts.User" or "User")
+    /// * `current_app` - Current app label for resolving unqualified references
     ///
     /// # Returns
     /// * `Some((app_label, model_name))` if parseable
     /// * `None` if format is invalid
-    fn parse_model_reference(&self, reference: &str) -> Option<(String, String)> {
+    fn parse_model_reference(
+        &self,
+        reference: &str,
+        current_app: &str,
+    ) -> Option<(String, String)> {
         let parts: Vec<&str> = reference.split('.').collect();
         match parts.as_slice() {
+            // Fully qualified reference: "app.Model"
             [app, model] => Some((app.to_string(), model.to_string())),
-            [_model] => {
-                // TODO: Handle same-app references
-                // For now, return None for unqualified references
-                None
+            // Unqualified reference: "Model" - assume same app
+            [model] => {
+                // Use current app for same-app references
+                Some((current_app.to_string(), model.to_string()))
             }
+            // Invalid format
             _ => None,
         }
     }
