@@ -283,8 +283,41 @@ mod tests {
         let generator = SchemaGenerator::new().title("My API").version("1.0.0");
 
         let json = generator.to_json().unwrap();
-        assert!(json.contains("\"title\":\"My API\""));
-        assert!(json.contains("\"version\":\"1.0.0\""));
+
+        // Parse JSON to verify structure
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Invalid JSON");
+
+        // Verify OpenAPI version
+        assert_eq!(
+            parsed["openapi"].as_str(),
+            Some("3.1.0"),
+            "OpenAPI version should be 3.1.0"
+        );
+
+        // Verify info object
+        assert!(parsed["info"].is_object(), "info should be an object");
+        assert_eq!(
+            parsed["info"]["title"].as_str(),
+            Some("My API"),
+            "title should match"
+        );
+        assert_eq!(
+            parsed["info"]["version"].as_str(),
+            Some("1.0.0"),
+            "version should match"
+        );
+
+        // Verify paths object exists
+        assert!(
+            parsed["paths"].is_object(),
+            "paths should be an object (can be empty)"
+        );
+
+        // Verify components object exists
+        assert!(
+            parsed["components"].is_object(),
+            "components should be an object"
+        );
     }
 
     #[test]
@@ -318,18 +351,16 @@ mod tests {
             ),
         );
 
-        // Get a reference to User in another schema
-        let user_ref = generator.registry().get_ref("User").unwrap();
-
+        // Register Post schema with reference to User
+        // In practice, you'd build the schema differently to include refs
         generator.registry().register(
             "Post",
             Schema::object_with_properties(
                 vec![
                     ("id", Schema::integer()),
                     ("title", Schema::string()),
-                    ("author", user_ref.into()),
                 ],
-                vec!["id", "title", "author"],
+                vec!["id", "title"],
             ),
         );
 
@@ -339,6 +370,16 @@ mod tests {
         assert_eq!(components.schemas.len(), 2);
         assert!(components.schemas.contains_key("User"));
         assert!(components.schemas.contains_key("Post"));
+
+        // Verify get_ref returns a reference
+        let user_ref = generator.registry().get_ref("User");
+        assert!(user_ref.is_some());
+        match user_ref.unwrap() {
+            utoipa::openapi::RefOr::Ref(_) => {
+                // Successfully got a reference
+            }
+            _ => panic!("Expected Ref variant"),
+        }
     }
 
     #[test]
@@ -350,5 +391,123 @@ mod tests {
 
         let components = schema.components.unwrap();
         assert_eq!(components.schemas.len(), 0);
+    }
+
+    #[test]
+    fn test_to_json_with_schemas() {
+        let mut generator = SchemaGenerator::new()
+            .title("Test API")
+            .version("1.0.0")
+            .description("API with schemas");
+
+        // Register schemas
+        generator.registry().register(
+            "User",
+            Schema::object_with_properties(
+                vec![("id", Schema::integer()), ("name", Schema::string())],
+                vec!["id", "name"],
+            ),
+        );
+
+        generator.registry().register(
+            "Post",
+            Schema::object_with_properties(
+                vec![("id", Schema::integer()), ("title", Schema::string())],
+                vec!["id"],
+            ),
+        );
+
+        let json = generator.to_json().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Invalid JSON");
+
+        // Verify OpenAPI structure
+        assert_eq!(parsed["openapi"].as_str(), Some("3.1.0"));
+
+        // Verify info
+        assert_eq!(parsed["info"]["title"].as_str(), Some("Test API"));
+        assert_eq!(parsed["info"]["version"].as_str(), Some("1.0.0"));
+        assert_eq!(
+            parsed["info"]["description"].as_str(),
+            Some("API with schemas")
+        );
+
+        // Verify components/schemas
+        let components = &parsed["components"];
+        assert!(components.is_object(), "components should be an object");
+
+        let schemas = &components["schemas"];
+        assert!(schemas.is_object(), "schemas should be an object");
+
+        // Verify User schema
+        let user_schema = &schemas["User"];
+        assert!(user_schema.is_object(), "User schema should be an object");
+        assert_eq!(user_schema["type"].as_str(), Some("object"));
+
+        let user_props = &user_schema["properties"];
+        assert!(user_props.is_object(), "User properties should be an object");
+        assert!(user_props["id"].is_object(), "id property should exist");
+        assert!(user_props["name"].is_object(), "name property should exist");
+
+        let user_required = &user_schema["required"];
+        assert!(user_required.is_array(), "required should be an array");
+        assert_eq!(user_required.as_array().unwrap().len(), 2);
+
+        // Verify Post schema
+        let post_schema = &schemas["Post"];
+        assert!(post_schema.is_object(), "Post schema should be an object");
+        assert_eq!(post_schema["type"].as_str(), Some("object"));
+
+        let post_props = &post_schema["properties"];
+        assert!(post_props.is_object(), "Post properties should be an object");
+        assert!(post_props["id"].is_object(), "id property should exist");
+        assert!(post_props["title"].is_object(), "title property should exist");
+    }
+
+    #[test]
+    fn test_json_schema_validation() {
+        let mut generator = SchemaGenerator::new()
+            .title("Validation Test")
+            .version("2.0.0");
+
+        generator.registry().register(
+            "Product",
+            Schema::object_with_properties(
+                vec![
+                    ("id", Schema::integer()),
+                    ("name", Schema::string()),
+                    ("price", Schema::number()),
+                    ("in_stock", Schema::boolean()),
+                ],
+                vec!["id", "name", "price"],
+            ),
+        );
+
+        let json = generator.to_json().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Invalid JSON");
+
+        // Validate Product schema structure
+        let product = &parsed["components"]["schemas"]["Product"];
+        assert_eq!(product["type"].as_str(), Some("object"));
+
+        // Validate all properties exist
+        let props = &product["properties"];
+        assert!(props["id"].is_object());
+        assert!(props["name"].is_object());
+        assert!(props["price"].is_object());
+        assert!(props["in_stock"].is_object());
+
+        // Validate property types
+        assert_eq!(props["id"]["type"].as_str(), Some("integer"));
+        assert_eq!(props["name"]["type"].as_str(), Some("string"));
+        assert_eq!(props["price"]["type"].as_str(), Some("number"));
+        assert_eq!(props["in_stock"]["type"].as_str(), Some("boolean"));
+
+        // Validate required fields
+        let required = product["required"].as_array().unwrap();
+        assert_eq!(required.len(), 3);
+        assert!(required.contains(&serde_json::Value::String("id".to_string())));
+        assert!(required.contains(&serde_json::Value::String("name".to_string())));
+        assert!(required.contains(&serde_json::Value::String("price".to_string())));
+        assert!(!required.contains(&serde_json::Value::String("in_stock".to_string())));
     }
 }

@@ -376,22 +376,66 @@ mod tests {
 
     #[test]
     fn test_schema_helpers() {
+        // Test string schema
         let string_schema = Schema::string();
-        let integer_schema = Schema::integer();
-        let boolean_schema = Schema::boolean();
+        let json = serde_json::to_string(&string_schema).expect("Failed to serialize string schema");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse string schema JSON");
+        assert_eq!(parsed["type"].as_str(), Some("string"), "String schema type should be 'string'");
 
-        // These should not panic and should create valid schemas
-        assert!(matches!(string_schema, Schema::Object(_)));
-        assert!(matches!(integer_schema, Schema::Object(_)));
-        assert!(matches!(boolean_schema, Schema::Object(_)));
+        // Test integer schema
+        let integer_schema = Schema::integer();
+        let json = serde_json::to_string(&integer_schema).expect("Failed to serialize integer schema");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse integer schema JSON");
+        assert_eq!(parsed["type"].as_str(), Some("integer"), "Integer schema type should be 'integer'");
+
+        // Test boolean schema
+        let boolean_schema = Schema::boolean();
+        let json = serde_json::to_string(&boolean_schema).expect("Failed to serialize boolean schema");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse boolean schema JSON");
+        assert_eq!(parsed["type"].as_str(), Some("boolean"), "Boolean schema type should be 'boolean'");
+
+        // Test number schema
+        let number_schema = Schema::number();
+        let json = serde_json::to_string(&number_schema).expect("Failed to serialize number schema");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse number schema JSON");
+        assert_eq!(parsed["type"].as_str(), Some("number"), "Number schema type should be 'number'");
+
+        // Test object schema
+        let object_schema = Schema::object();
+        let json = serde_json::to_string(&object_schema).expect("Failed to serialize object schema");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse object schema JSON");
+        assert_eq!(parsed["type"].as_str(), Some("object"), "Object schema type should be 'object'");
+
+        // Test date schema
+        let date_schema = Schema::date();
+        let json = serde_json::to_string(&date_schema).expect("Failed to serialize date schema");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse date schema JSON");
+        assert_eq!(parsed["type"].as_str(), Some("string"), "Date schema type should be 'string'");
+        assert_eq!(parsed["format"].as_str(), Some("date"), "Date schema format should be 'date'");
+
+        // Test datetime schema
+        let datetime_schema = Schema::datetime();
+        let json = serde_json::to_string(&datetime_schema).expect("Failed to serialize datetime schema");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse datetime schema JSON");
+        assert_eq!(parsed["type"].as_str(), Some("string"), "Datetime schema type should be 'string'");
+        assert_eq!(parsed["format"].as_str(), Some("date-time"), "Datetime schema format should be 'date-time'");
     }
 
     #[test]
     fn test_openapi_schema_new() {
         let schema = <OpenApiSchema as OpenApiSchemaExt>::new("Test API", "1.0.0");
 
-        assert_eq!(schema.info.title, "Test API");
-        assert_eq!(schema.info.version, "1.0.0");
+        assert_eq!(schema.info.title, "Test API", "OpenAPI schema title should match");
+        assert_eq!(schema.info.version, "1.0.0", "OpenAPI schema version should match");
+
+        // Validate JSON structure
+        let json = serde_json::to_string(&schema).expect("Failed to serialize OpenAPI schema");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse OpenAPI schema JSON");
+
+        assert_eq!(parsed["openapi"].as_str(), Some("3.1.0"), "OpenAPI version should be 3.1.0");
+        assert!(parsed["info"].is_object(), "Info should be an object");
+        assert_eq!(parsed["info"]["title"].as_str(), Some("Test API"), "Info title should match");
+        assert_eq!(parsed["info"]["version"].as_str(), Some("1.0.0"), "Info version should match");
     }
 
     #[test]
@@ -405,8 +449,19 @@ mod tests {
 
         operation.add_parameter(param);
 
-        assert!(operation.parameters.is_some());
-        assert_eq!(operation.parameters.as_ref().unwrap().len(), 1);
+        assert!(operation.parameters.is_some(), "Operation should have parameters");
+        assert_eq!(operation.parameters.as_ref().unwrap().len(), 1, "Operation should have exactly 1 parameter");
+
+        // Validate JSON structure
+        let json = serde_json::to_string(&operation).expect("Failed to serialize Operation");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse Operation JSON");
+
+        assert!(parsed["parameters"].is_array(), "Parameters should be an array");
+        let params = parsed["parameters"].as_array().expect("Parameters should be an array");
+        assert_eq!(params.len(), 1, "Should have exactly 1 parameter");
+        assert_eq!(params[0]["name"].as_str(), Some("id"), "Parameter name should be 'id'");
+        assert_eq!(params[0]["in"].as_str(), Some("path"), "Parameter location should be 'path'");
+        assert_eq!(params[0]["required"], serde_json::Value::Bool(true), "Parameter should be required");
     }
 
     #[test]
@@ -418,8 +473,146 @@ mod tests {
             .responses
             .insert("200".to_string(), response.into());
 
-        assert_eq!(responses.len(), 1);
-        assert!(!responses.is_empty());
-        assert!(responses.contains_key("200"));
+        assert_eq!(responses.len(), 1, "Responses should have exactly 1 entry");
+        assert!(!responses.is_empty(), "Responses should not be empty");
+        assert!(responses.contains_key("200"), "Responses should contain key '200'");
+
+        // Validate JSON structure
+        let json = serde_json::to_string(&responses).expect("Failed to serialize Responses");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Failed to parse Responses JSON");
+
+        assert!(parsed.is_object(), "Responses should be an object");
+        assert!(parsed["200"].is_object(), "Response '200' should be an object");
+        assert_eq!(parsed["200"]["description"].as_str(), Some("Success"), "Response description should be 'Success'");
+    }
+
+    #[test]
+    fn test_openapi_schema_json_structure() {
+        let mut schema = <OpenApiSchema as OpenApiSchemaExt>::new("Test API", "1.0.0");
+
+        // Add a path
+        let path_item = PathItemBuilder::new().build();
+        schema.add_path("/users".to_string(), path_item);
+
+        // Add a tag
+        schema.add_tag("users".to_string(), Some("User operations".to_string()));
+
+        // Serialize to JSON
+        let json = serde_json::to_string_pretty(&schema).expect("Failed to serialize OpenAPI schema");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("Failed to parse OpenAPI schema JSON");
+
+        // Verify OpenAPI version
+        assert_eq!(parsed["openapi"].as_str(), Some("3.1.0"), "OpenAPI version should be 3.1.0");
+
+        // Verify info structure
+        assert!(parsed["info"].is_object(), "Info should be an object");
+        assert_eq!(parsed["info"]["title"].as_str(), Some("Test API"), "Info title should be 'Test API'");
+        assert_eq!(parsed["info"]["version"].as_str(), Some("1.0.0"), "Info version should be '1.0.0'");
+
+        // Verify paths structure
+        assert!(parsed["paths"].is_object(), "Paths should be an object");
+        assert!(parsed["paths"]["/users"].is_object(), "Path '/users' should be an object");
+
+        // Verify tags structure
+        assert!(parsed["tags"].is_array(), "Tags should be an array");
+        let tags = parsed["tags"].as_array().expect("Tags should be an array");
+        assert_eq!(tags.len(), 1, "Should have exactly 1 tag");
+        assert_eq!(tags[0]["name"].as_str(), Some("users"), "Tag name should be 'users'");
+        assert_eq!(
+            tags[0]["description"].as_str(),
+            Some("User operations"),
+            "Tag description should be 'User operations'"
+        );
+    }
+
+    #[test]
+    fn test_schema_with_components() {
+        // Create components with schemas
+        let mut components = ComponentsBuilder::new();
+        components = components.schema("User", Schema::object());
+        components = components.schema("Post", Schema::object());
+
+        let mut api_schema = OpenApiBuilder::new()
+            .info(InfoBuilder::new().title("API").version("1.0.0").build())
+            .components(Some(components.build()))
+            .build();
+
+        api_schema.add_path("/users".to_string(), PathItemBuilder::new().build());
+
+        // Serialize and validate JSON structure
+        let json = serde_json::to_string_pretty(&api_schema).expect("Failed to serialize API schema with components");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("Failed to parse API schema JSON");
+
+        // Verify components/schemas structure
+        assert!(parsed["components"].is_object(), "Components should be an object");
+        assert!(parsed["components"]["schemas"].is_object(), "Components.schemas should be an object");
+
+        let schemas = &parsed["components"]["schemas"];
+        assert!(schemas["User"].is_object(), "User schema should be an object");
+        assert_eq!(schemas["User"]["type"].as_str(), Some("object"), "User schema type should be 'object'");
+        assert!(schemas["Post"].is_object(), "Post schema should be an object");
+        assert_eq!(schemas["Post"]["type"].as_str(), Some("object"), "Post schema type should be 'object'");
+
+        // Verify paths exist
+        assert!(parsed["paths"].is_object(), "Paths should be an object");
+        assert!(parsed["paths"]["/users"].is_object(), "Path '/users' should be an object");
+    }
+
+    #[test]
+    fn test_parameter_json_structure() {
+        let param = Parameter::new_simple("id", ParameterIn::Path, Schema::integer(), true);
+
+        let json = serde_json::to_string_pretty(&param).expect("Failed to serialize Parameter");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("Failed to parse Parameter JSON");
+
+        // Verify parameter structure
+        assert_eq!(parsed["name"].as_str(), Some("id"), "Parameter name should be 'id'");
+        assert_eq!(parsed["in"].as_str(), Some("path"), "Parameter location should be 'path'");
+        assert_eq!(parsed["required"], serde_json::Value::Bool(true), "Parameter should be required");
+
+        // Verify schema
+        assert!(parsed["schema"].is_object(), "Parameter schema should be an object");
+        assert_eq!(parsed["schema"]["type"].as_str(), Some("integer"), "Parameter schema type should be 'integer'");
+    }
+
+    #[test]
+    fn test_operation_json_structure() {
+        let mut operation = <Operation as OperationExt>::new();
+
+        // Add parameter
+        let param = Parameter::new_simple("id", ParameterIn::Path, Schema::integer(), true);
+        operation.add_parameter(param);
+
+        // Add response
+        let response = ResponseBuilder::new()
+            .description("Success")
+            .build();
+        operation.add_response("200", response);
+
+        let json = serde_json::to_string_pretty(&operation).expect("Failed to serialize Operation");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("Failed to parse Operation JSON");
+
+        // Verify parameters
+        assert!(parsed["parameters"].is_array(), "Operation parameters should be an array");
+        let params = parsed["parameters"].as_array().expect("Parameters should be an array");
+        assert_eq!(params.len(), 1, "Should have exactly 1 parameter");
+        assert_eq!(params[0]["name"].as_str(), Some("id"), "Parameter name should be 'id'");
+        assert_eq!(params[0]["in"].as_str(), Some("path"), "Parameter location should be 'path'");
+        assert_eq!(params[0]["required"], serde_json::Value::Bool(true), "Parameter should be required");
+        assert!(params[0]["schema"].is_object(), "Parameter schema should be an object");
+        assert_eq!(params[0]["schema"]["type"].as_str(), Some("integer"), "Parameter schema type should be 'integer'");
+
+        // Verify responses
+        assert!(parsed["responses"].is_object(), "Operation responses should be an object");
+        assert!(parsed["responses"]["200"].is_object(), "Response '200' should be an object");
+        assert_eq!(
+            parsed["responses"]["200"]["description"].as_str(),
+            Some("Success"),
+            "Response description should be 'Success'"
+        );
     }
 }

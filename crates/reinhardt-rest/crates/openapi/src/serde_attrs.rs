@@ -4,7 +4,6 @@
 //! when generating OpenAPI schemas.
 
 use crate::openapi::{ObjectBuilder, Schema, SchemaType};
-use std::collections::HashMap;
 use utoipa::openapi::Type;
 
 /// Field metadata extracted from serde attributes
@@ -325,7 +324,10 @@ impl SchemaBuilderExt {
             let mut all_of_schemas = vec![utoipa::openapi::RefOr::T(base_schema)];
             all_of_schemas.extend(flattened_schemas.into_iter().map(utoipa::openapi::RefOr::T));
 
-            Schema::AllOf(utoipa::openapi::schema::AllOf::new(all_of_schemas))
+            let mut all_of = utoipa::openapi::schema::AllOf::new();
+            all_of.items = all_of_schemas;
+
+            Schema::AllOf(all_of)
         } else {
             base_schema
         }

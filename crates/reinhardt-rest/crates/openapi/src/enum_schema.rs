@@ -184,10 +184,10 @@ impl EnumSchemaBuilder {
     ///     .build();
     /// ```
     pub fn build(self) -> Schema {
-        match &self.tagging {
+        match self.tagging.clone() {
             EnumTagging::External => self.build_external(),
-            EnumTagging::Internal { tag } => self.build_internal(tag),
-            EnumTagging::Adjacent { tag, content } => self.build_adjacent(tag, content),
+            EnumTagging::Internal { tag } => self.build_internal(&tag),
+            EnumTagging::Adjacent { tag, content } => self.build_adjacent(&tag, &content),
             EnumTagging::Untagged => self.build_untagged(),
         }
     }
@@ -208,7 +208,8 @@ impl EnumSchemaBuilder {
             })
             .collect();
 
-        let mut one_of = utoipa::openapi::schema::OneOf::new(variant_schemas);
+        let mut one_of = utoipa::openapi::schema::OneOf::new();
+        one_of.items = variant_schemas;
 
         if let Some(desc) = self.description {
             one_of.description = Some(desc);
@@ -280,7 +281,8 @@ impl EnumSchemaBuilder {
             })
             .collect();
 
-        let mut one_of = utoipa::openapi::schema::OneOf::new(variant_schemas);
+        let mut one_of = utoipa::openapi::schema::OneOf::new();
+        one_of.items = variant_schemas;
         one_of.discriminator = Some(utoipa::openapi::schema::Discriminator::new(tag));
 
         if let Some(desc) = self.description {
@@ -316,7 +318,8 @@ impl EnumSchemaBuilder {
             })
             .collect();
 
-        let mut one_of = utoipa::openapi::schema::OneOf::new(variant_schemas);
+        let mut one_of = utoipa::openapi::schema::OneOf::new();
+        one_of.items = variant_schemas;
         one_of.discriminator = Some(utoipa::openapi::schema::Discriminator::new(tag));
 
         if let Some(desc) = self.description {
@@ -334,7 +337,8 @@ impl EnumSchemaBuilder {
             .map(|(_, schema)| RefOr::T(schema))
             .collect();
 
-        let mut one_of = utoipa::openapi::schema::OneOf::new(variant_schemas);
+        let mut one_of = utoipa::openapi::schema::OneOf::new();
+        one_of.items = variant_schemas;
 
         if let Some(desc) = self.description {
             one_of.description = Some(desc);
