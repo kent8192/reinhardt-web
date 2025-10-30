@@ -110,6 +110,54 @@ See @CLAUDE.commit.md for detailed commit guidelines including:
 - Commit message format (CM-1 ~ CM-3)
 - Commit message style guide
 
+### Release & Publishing Policy
+
+**Versioning (Semantic Versioning 2.0.0):**
+- **MUST** follow Semantic Versioning 2.0.0 strictly for all crates
+  - MAJOR version (X.0.0): Breaking changes (API incompatibility)
+  - MINOR version (0.X.0): New features (backward compatible)
+  - PATCH version (0.0.X): Bug fixes (backward compatible)
+- **NEVER** make breaking changes without incrementing MAJOR version
+- Each crate maintains its own independent version
+- Pre-1.0.0 versions (0.x.x) may have breaking changes in MINOR versions (per SemVer spec)
+
+**Tagging Strategy (Per-Crate Tagging):**
+- **MUST** use format: `[crate-name]-v[version]`
+  - Examples: `reinhardt-core-v0.2.0`, `reinhardt-orm-v0.1.1`, `reinhardt-v1.0.0`
+- **MUST** tag each crate individually when published to crates.io
+- Tag message MUST include brief changelog summary
+- Tag MUST be created AFTER committing version changes, not before
+
+**Publishing to crates.io:**
+- **NEVER** publish without explicit user authorization
+- **ALWAYS** use `--dry-run` first for verification
+- Verify all checks pass before publishing:
+  - `cargo check --workspace --all --all-features`
+  - `cargo test --workspace --all --all-features`
+  - `cargo publish --dry-run -p <crate-name>`
+- Commit version bump and CHANGELOG updates BEFORE creating tag
+- Push commits and tags AFTER successful publish
+
+**Publishing Workflow:**
+1. Update crate version in `Cargo.toml`
+2. Update crate's `CHANGELOG.md`
+3. Run all verification commands
+4. Commit version changes (see @CLAUDE.commit.md CE-5)
+5. Wait for explicit user authorization to proceed
+6. Run `cargo publish --dry-run -p <crate-name>`
+7. Wait for user confirmation after dry-run
+8. Run `cargo publish -p <crate-name>`
+9. Create and push tag: `git tag [crate-name]-v[version] -m "Release [crate-name] v[version]"`
+10. Push: `git push && git push --tags`
+
+**Why This Approach:**
+- **Traceability**: Git tag enables complete restoration of specific crate version state
+- **Unambiguous**: Clear identification of which crate at which version (critical for 70+ crates)
+- **Efficient**: Release only changed crates, avoid unnecessary dependency updates
+- **Automation-friendly**: Compatible with tools like `release-plz`, `cargo-release`
+
+See @docs/RELEASE_PROCESS.md for detailed release procedures.
+
 ### Workflow Best Practices
 
 - Run dry-run for ALL batch operations before actual execution
@@ -205,6 +253,11 @@ Before submitting code:
 - Mark placeholders with `todo!()` or `// TODO:`
 - Use `#[serial(group_name)]` for global state tests
 - Split commits by specific intent, not features
+- Follow Semantic Versioning 2.0.0 strictly for all crates
+- Use `[crate-name]-v[version]` format for Git tags
+- Verify with `--dry-run` before publishing to crates.io
+- Commit version bump before creating tags
+- Update crate's CHANGELOG.md with version changes
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
@@ -220,6 +273,10 @@ Before submitting code:
 - Use alternative TODO notations (`FIXME:`, `NOTE:` for unimplemented features)
 - Create batch commits without user confirmation
 - Use relative paths beyond `../`
+- Publish to crates.io without explicit user authorization
+- Create Git tags before committing version changes
+- Skip `--dry-run` verification before publishing
+- Make breaking changes without MAJOR version bump
 
 ### 📚 Detailed Standards
 
@@ -229,6 +286,7 @@ For comprehensive guidelines, see:
 - **Anti-Patterns**: @docs/ANTI_PATTERNS.md
 - **Documentation**: @docs/DOCUMENTATION_STANDARDS.md
 - **Git Commits**: @CLAUDE.commit.md
+- **Release Process**: @docs/RELEASE_PROCESS.md
 - **Project Overview**: @README.md
 
 ---

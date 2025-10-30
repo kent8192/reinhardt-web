@@ -85,6 +85,99 @@ git apply --cached /tmp/changes.patch
 - Verify staged files before committing
 - Use `git status` to confirm no ignored files are included
 
+### CE-5 (MUST): Release Commits
+
+**Version Bump Commits:**
+
+When preparing for crate publication to crates.io:
+
+**Subject Line Format:**
+```
+chore(release): Bump [crate-name] to v[version]
+
+Example:
+chore(release): Bump reinhardt-core to v0.2.0
+```
+
+**Body Format:**
+```
+Prepare for crate publication to crates.io.
+
+Version Changes:
+- crates/[crate-name]/Cargo.toml: version 0.1.0 -> [new-version]
+- crates/[crate-name]/CHANGELOG.md: Add release notes for v[new-version]
+
+Breaking Changes: (if MAJOR version bump)
+- List breaking changes here
+- API changes that affect backward compatibility
+
+New Features: (if MINOR version bump)
+- List new features here
+- Enhancements and additions
+
+Bug Fixes: (if PATCH version bump)
+- List bug fixes here
+- Resolved issues and corrections
+
+[Standard footer with Claude Code attribution]
+```
+
+**Requirements:**
+- Version bump commits MUST be separate from feature/fix commits
+- MUST update both `Cargo.toml` version AND `CHANGELOG.md` in the same commit
+- MUST list all significant changes in the commit body
+- Breaking changes MUST be clearly identified for MAJOR version bumps
+- Git tag MUST be created AFTER commit, not before
+- Commit message MUST follow standard format (CM-1, CM-2, CM-3)
+
+**Example Complete Commit:**
+
+```
+chore(release): Bump reinhardt-orm to v0.2.0
+
+Prepare reinhardt-orm for publication to crates.io.
+
+Version Changes:
+- crates/reinhardt-orm/Cargo.toml: version 0.1.0 -> 0.2.0
+- crates/reinhardt-orm/CHANGELOG.md: Add release notes for v0.2.0
+
+Breaking Changes:
+- QueryBuilder::build() now returns Result<Query> instead of Query
+- Removed deprecated method Model::save_sync()
+
+New Features:
+- Add support for async connection pooling
+- Implement QueryBuilder::with_timeout() method
+- Add Model::bulk_insert() for batch operations
+
+Bug Fixes:
+- Fix race condition in transaction rollback
+- Correct UTC timezone handling in timestamp fields
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Post-Commit Actions (Performed AFTER Commit):**
+
+After committing the version bump:
+
+1. Wait for explicit user authorization to proceed with publishing
+2. Run verification: `cargo publish --dry-run -p [crate-name]`
+3. Wait for user confirmation after dry-run results
+4. Publish: `cargo publish -p [crate-name]`
+5. Create Git tag: `git tag [crate-name]-v[version] -m "Release [crate-name] v[version]"`
+6. Push commits and tags: `git push && git push --tags`
+
+**Critical Rules:**
+- ❌ NEVER create tag before committing version changes
+- ❌ NEVER publish without explicit user authorization
+- ❌ NEVER skip `--dry-run` verification
+- ✅ ALWAYS commit version bump first, then tag
+- ✅ ALWAYS wait for user confirmation between steps
+- ✅ ALWAYS update CHANGELOG.md in the same commit as Cargo.toml
+
 ---
 
 ## Commit Message Structure
