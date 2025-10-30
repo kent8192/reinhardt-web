@@ -7,10 +7,10 @@ repository.workspace = true
 
 [dependencies]
 reinhardt-types = { workspace = true }
-reinhardt-http = { path = "../reinhardt-http" }
+reinhardt-http = { workspace = true }
 reinhardt-settings = { workspace = true }
 reinhardt-exception = { workspace = true }
-reinhardt-server = { path = "../reinhardt-server" }
+reinhardt-server = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
