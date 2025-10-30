@@ -73,7 +73,7 @@ impl DatabaseConnection {
     ///
     /// ```no_run
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// use reinhardt_db_backends::connection::DatabaseConnection;
+    /// use reinhardt_db::backends::connection::DatabaseConnection;
     ///
     /// let connection = DatabaseConnection::connect_mongodb(
     ///     "mongodb://localhost:27017",
@@ -84,7 +84,7 @@ impl DatabaseConnection {
     /// ```
     #[cfg(feature = "mongodb-backend")]
     pub async fn connect_mongodb(url: &str, database: &str) -> Result<Self> {
-        use crate::backends::mongodb::MongoDBBackend;
+        use crate::drivers::mongodb::MongoDBBackend;
         let backend = MongoDBBackend::connect(url).await?.with_database(database);
         Ok(Self {
             backend: Arc::new(backend),

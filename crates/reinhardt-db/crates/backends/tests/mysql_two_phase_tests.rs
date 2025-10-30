@@ -8,7 +8,7 @@
 //! cargo test --test mysql_two_phase_tests -- --test-threads=1
 //! ```
 
-use reinhardt_db_backends::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 use serial_test::serial;
 use sqlx::{MySqlPool, Row};
 

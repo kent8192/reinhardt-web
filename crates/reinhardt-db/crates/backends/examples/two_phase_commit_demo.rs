@@ -35,10 +35,10 @@
 use std::env;
 
 #[cfg(feature = "postgres")]
-use reinhardt_db_backends::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 
 #[cfg(feature = "mysql")]
-use reinhardt_db_backends::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 
 #[tokio::main]
 async fn main() {

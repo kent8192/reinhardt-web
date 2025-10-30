@@ -6,7 +6,7 @@
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_database::schema::{BaseDatabaseSchemaEditor, DDLStatement};
+/// use reinhardt_db::backends::schema::{BaseDatabaseSchemaEditor, DDLStatement};
 ///
 // Example of using schema editor to generate DDL
 /// let create_table = DDLStatement::CreateTable {
@@ -66,7 +66,7 @@ impl DDLStatement {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_database::schema::DDLStatement;
+    /// use reinhardt_db::backends::schema::DDLStatement;
     ///
     /// let stmt = DDLStatement::CreateTable {
     ///     table: "users".to_string(),
@@ -122,7 +122,7 @@ pub enum AlterTableChange {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_database::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
+/// use reinhardt_db::backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
 /// use async_trait::async_trait;
 ///
 /// struct MySchemaEditor;
@@ -133,14 +133,6 @@ pub enum AlterTableChange {
 ///         // Execute SQL
 ///         println!("Executing: {}", sql);
 ///         Ok(())
-///     }
-///
-///     fn quote_name(&self, name: &str) -> String {
-///         format!("\"{}\"", name)
-///     }
-///
-///     fn quote_value(&self, value: &str) -> String {
-///         format!("'{}'", value.replace('\'', "''"))
 ///     }
 /// }
 /// ```
@@ -154,7 +146,7 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_database::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
+    /// use reinhardt_db::backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
     /// use async_trait::async_trait;
     /// use sea_query::PostgresQueryBuilder;
     ///

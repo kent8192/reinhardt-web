@@ -10,7 +10,7 @@
 //! cargo test --test postgres_two_phase_tests -- --test-threads=1
 //! ```
 
-use reinhardt_db_backends::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 use serial_test::serial;
 use sqlx::{PgPool, Row};
 

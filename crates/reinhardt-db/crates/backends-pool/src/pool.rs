@@ -23,7 +23,7 @@ impl ConnectionPool<Postgres> {
     /// # Examples
     ///
     /// ```no_run
-    /// use backends_pool::{ConnectionPool, PoolConfig};
+    /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
@@ -60,7 +60,7 @@ impl ConnectionPool<MySql> {
     /// # Examples
     ///
     /// ```no_run
-    /// use backends_pool::{ConnectionPool, PoolConfig};
+    /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
@@ -97,7 +97,7 @@ impl ConnectionPool<Sqlite> {
     /// # Examples
     ///
     /// ```no_run
-    /// use backends_pool::{ConnectionPool, PoolConfig};
+    /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
@@ -151,7 +151,7 @@ where
     /// # Examples
     ///
     /// ```no_run
-    /// use backends_pool::{ConnectionPool, PoolConfig};
+    /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
@@ -227,7 +227,7 @@ impl ConnectionPool<Postgres> {
     /// # Examples
     ///
     /// ```no_run
-    /// use backends_pool::{ConnectionPool, PoolConfig};
+    /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
@@ -268,7 +268,7 @@ impl ConnectionPool<MySql> {
     /// # Examples
     ///
     /// ```no_run
-    /// use backends_pool::{ConnectionPool, PoolConfig};
+    /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
@@ -309,7 +309,7 @@ impl ConnectionPool<Sqlite> {
     /// # Examples
     ///
     /// ```no_run
-    /// use backends_pool::{ConnectionPool, PoolConfig};
+    /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
@@ -362,7 +362,7 @@ impl<DB: sqlx::Database> PooledConnection<DB> {
     /// # Examples
     ///
     /// ```no_run
-    /// use backends_pool::{ConnectionPool, PoolConfig};
+    /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();

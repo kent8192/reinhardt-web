@@ -4,7 +4,7 @@
 //! and query building capabilities.
 
 pub mod backend;
-pub mod backends;
+pub mod drivers;
 pub mod connection;
 pub mod dialect;
 pub mod error;
@@ -32,23 +32,23 @@ pub use optimization::{
 
 // Re-export database-specific schema editors
 #[cfg(feature = "postgres")]
-pub use backends::postgresql::schema::PostgreSQLSchemaEditor;
+pub use drivers::postgresql::schema::PostgreSQLSchemaEditor;
 
 #[cfg(feature = "mysql")]
-pub use backends::mysql::schema::MySQLSchemaEditor;
+pub use drivers::mysql::schema::MySQLSchemaEditor;
 
 #[cfg(feature = "sqlite")]
-pub use backends::sqlite::schema::SQLiteSchemaEditor;
+pub use drivers::sqlite::schema::SQLiteSchemaEditor;
 
 #[cfg(feature = "mongodb-backend")]
-pub use backends::mongodb::{MongoDBBackend, MongoDBQueryBuilder, MongoDBSchemaEditor};
+pub use drivers::mongodb::{MongoDBBackend, MongoDBQueryBuilder, MongoDBSchemaEditor};
 
 // Re-export two-phase commit implementations
 #[cfg(feature = "postgres")]
-pub use backends::postgresql::two_phase::{PostgresTwoPhaseParticipant, PreparedTransactionInfo};
+pub use drivers::postgresql::two_phase::{PostgresTwoPhaseParticipant, PreparedTransactionInfo};
 
 #[cfg(feature = "mysql")]
-pub use backends::mysql::two_phase::{MySqlTwoPhaseParticipant, XaTransactionInfo};
+pub use drivers::mysql::two_phase::{MySqlTwoPhaseParticipant, XaTransactionInfo};
 
 // Re-export dialect backends
 #[cfg(feature = "postgres")]

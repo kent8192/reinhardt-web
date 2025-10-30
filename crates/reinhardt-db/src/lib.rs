@@ -70,14 +70,16 @@
 //!
 //! ```rust
 //! use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+//! use sea_query::PostgresQueryBuilder;
 //!
 //! let factory = SchemaEditorFactory::new();
 //! let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 //!
-//! let sql = editor.create_table_sql("users", &[
+//! let stmt = editor.create_table_statement("users", &[
 //!     ("id", "INTEGER PRIMARY KEY"),
 //!     ("name", "VARCHAR(100)"),
 //! ]);
+//! let sql = stmt.to_string(PostgresQueryBuilder);
 //! ```
 //!
 //! ### Using Connection Pool
@@ -86,7 +88,7 @@
 //! use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let pool = ConnectionPool::new("postgres://localhost/mydb", PoolConfig::default()).await?;
+//! let pool = ConnectionPool::new_postgres("postgres://localhost/mydb", PoolConfig::default()).await?;
 //! let conn = pool.acquire().await?;
 //! # Ok(())
 //! # }
@@ -113,7 +115,27 @@ pub mod backends {
     //! This module provides low-level database operations, schema editing,
     //! and query building capabilities.
 
+    // Re-export all types and modules from backends crate
     pub use ::backends::*;
+    
+    // Re-export drivers module and its submodules for documentation tests
+    pub use ::backends::drivers;
+    
+    // Re-export database-specific driver modules at backends level
+    #[cfg(feature = "postgres")]
+    pub use ::backends::drivers::postgresql;
+    
+    #[cfg(feature = "mysql")]
+    pub use ::backends::drivers::mysql;
+    
+    #[cfg(feature = "sqlite")]
+    pub use ::backends::drivers::sqlite;
+    
+    #[cfg(feature = "mongodb-backend")]
+    pub use ::backends::drivers::mongodb;
+    
+    #[cfg(feature = "cockroachdb-backend")]
+    pub use ::backends::drivers::cockroachdb;
 }
 
 // Re-export pool with convenient module structure
