@@ -14,6 +14,7 @@ cors = []
 compression = []
 security = []
 rate-limit = []
+session = []
 
 # Database support for certain middleware
 sqlx = ["dep:sqlx"]
