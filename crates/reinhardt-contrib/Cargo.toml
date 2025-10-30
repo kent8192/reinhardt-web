@@ -7,9 +7,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-# CLI dependencies for bin/reinhardt-admin
-clap = { version = "4.5", features = ["derive"], optional = true }
-tokio = { workspace = true, optional = true }
 
 # Re-export internal crates as optional dependencies
 reinhardt-auth = { version = "0.1.0", path = "crates/auth", optional = true }
@@ -29,9 +26,6 @@ regex = { workspace = true }
 
 [features]
 default = []
-
-# CLI feature for reinhardt-admin binary
-cli = ["dep:clap", "dep:tokio"]
 
 # Individual feature flags for each contrib module
 auth = ["dep:reinhardt-auth"]
@@ -56,7 +50,3 @@ full = [
   "websockets",
   "i18n",
 ]
-
-[[bin]]
-name = "reinhardt-admin"
-required-features = ["cli"]
