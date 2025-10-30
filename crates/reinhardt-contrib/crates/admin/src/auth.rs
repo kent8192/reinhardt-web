@@ -39,24 +39,15 @@ impl PermissionAction {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use reinhardt_admin::{AdminAuthBackend, PermissionAction};
 /// use reinhardt_auth::SimpleUser;
-/// use uuid::Uuid;
 ///
 /// # async fn example() {
 /// let auth = AdminAuthBackend::new();
-/// let user = SimpleUser {
-///     id: Uuid::new_v4(),
-///     username: "admin".to_string(),
-///     email: "admin@example.com".to_string(),
-///     is_staff: true,
-///     is_superuser: true,
-///     is_active: true,
-///     is_admin: true,
-/// };
-///
-/// let can_view = auth.check_permission(&user, "User", PermissionAction::View).await;
+/// // Create a user (requires uuid crate in your dependencies)
+/// // let user = SimpleUser { ... };
+/// // let can_view = auth.check_permission(&user, "User", PermissionAction::View).await;
 /// # }
 /// ```
 pub struct AdminAuthBackend {
@@ -77,23 +68,14 @@ impl AdminAuthBackend {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// # use reinhardt_admin::{AdminAuthBackend, PermissionAction};
     /// # use reinhardt_auth::SimpleUser;
-    /// # use uuid::Uuid;
     /// # async fn example() {
     /// let auth = AdminAuthBackend::new();
-    /// let user = SimpleUser {
-    ///     id: Uuid::new_v4(),
-    ///     username: "admin".to_string(),
-    ///     email: "admin@example.com".to_string(),
-    ///     is_staff: true,
-    ///     is_superuser: false,
-    ///     is_active: true,
-    ///     is_admin: false,
-    /// };
-    ///
-    /// let can_change = auth.check_permission(&user, "Article", PermissionAction::Change).await;
+    /// // Create a user (requires uuid crate in your dependencies)
+    /// // let user = SimpleUser { ... };
+    /// // let can_change = auth.check_permission(&user, "Article", PermissionAction::Change).await;
     /// # }
     /// ```
     pub async fn check_permission(

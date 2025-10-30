@@ -16,12 +16,12 @@
 //! // Create a model first
 //! let create = CreateModel::new(
 //!     "User",
-//!     vec![FieldDefinition::new("id", "INTEGER", true, false, None)],
+//!     vec![FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None)],
 //! );
 //! create.state_forwards("myapp", &mut state);
 //!
 //! // Add a field
-//! let add = AddField::new("User", FieldDefinition::new("email", "VARCHAR(255)", false, false, None));
+//! let add = AddField::new("User", FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None));
 //! add.state_forwards("myapp", &mut state);
 //! assert_eq!(state.get_model("myapp", "User").unwrap().fields.len(), 2);
 //!
@@ -54,12 +54,12 @@ pub use super::models::FieldDefinition;
 // Create a model first
 /// let create = CreateModel::new(
 ///     "User",
-///     vec![FieldDefinition::new("id", "INTEGER", true, false, None)],
+///     vec![FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None)],
 /// );
 /// create.state_forwards("myapp", &mut state);
 ///
 // Add a field
-/// let add = AddField::new("User", FieldDefinition::new("email", "VARCHAR(255)", false, false, None));
+/// let add = AddField::new("User", FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None));
 /// add.state_forwards("myapp", &mut state);
 ///
 /// let model = state.get_model("myapp", "User").unwrap();
@@ -110,7 +110,7 @@ impl AddField {
     /// use reinhardt_migrations::operations::FieldDefinition;
     /// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
     ///
-    /// let add = AddField::new("users", FieldDefinition::new("email", "VARCHAR(255)", false, false, None));
+    /// let add = AddField::new("users", FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None));
     /// let factory = SchemaEditorFactory::new();
     /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
     ///
@@ -144,8 +144,8 @@ impl AddField {
 /// let create = CreateModel::new(
 ///     "User",
 ///     vec![
-///         FieldDefinition::new("id", "INTEGER", true, false, None),
-///         FieldDefinition::new("email", "VARCHAR(255)", false, false, None),
+///         FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None),
+///         FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None),
 ///     ],
 /// );
 /// create.state_forwards("myapp", &mut state);
@@ -220,14 +220,14 @@ impl RemoveField {
 /// let create = CreateModel::new(
 ///     "User",
 ///     vec![
-///         FieldDefinition::new("id", "INTEGER", true, false, None),
-///         FieldDefinition::new("email", "VARCHAR(100)", false, false, None),
+///         FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None),
+///         FieldDefinition::new("email", "VARCHAR(100)", false, false, Option::<&str>::None),
 ///     ],
 /// );
 /// create.state_forwards("myapp", &mut state);
 ///
 // Alter the field to make it longer
-/// let alter = AlterField::new("User", FieldDefinition::new("email", "VARCHAR(255)", false, false, None));
+/// let alter = AlterField::new("User", FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None));
 /// alter.state_forwards("myapp", &mut state);
 ///
 /// let model = state.get_model("myapp", "User").unwrap();
@@ -273,7 +273,7 @@ impl AlterField {
     /// use reinhardt_migrations::operations::FieldDefinition;
     /// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
     ///
-    /// let alter = AlterField::new("users", FieldDefinition::new("email", "VARCHAR(500)", false, false, None));
+    /// let alter = AlterField::new("users", FieldDefinition::new("email", "VARCHAR(500)", false, false, Option::<&str>::None));
     /// let factory = SchemaEditorFactory::new();
     /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
     ///
@@ -312,8 +312,8 @@ impl AlterField {
 /// let create = CreateModel::new(
 ///     "User",
 ///     vec![
-///         FieldDefinition::new("id", "INTEGER", true, false, None),
-///         FieldDefinition::new("email", "VARCHAR(255)", false, false, None),
+///         FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None),
+///         FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None),
 ///     ],
 /// );
 /// create.state_forwards("myapp", &mut state);

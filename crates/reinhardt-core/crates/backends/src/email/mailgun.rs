@@ -94,7 +94,7 @@ impl MailgunBackend {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// # #[cfg(feature = "email-mailgun")]
     /// use reinhardt_backends::email::MailgunBackend;
     ///
@@ -112,9 +112,9 @@ impl MailgunBackend {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// # #[cfg(feature = "email-mailgun")]
-    /// use reinhardt_backends::email::{MailgunBackend, MailgunRegion};
+    /// use reinhardt_backends::email::mailgun::{MailgunBackend, MailgunRegion};
     ///
     /// # #[cfg(feature = "email-mailgun")]
     /// let backend = MailgunBackend::with_region(
@@ -141,9 +141,9 @@ impl MailgunBackend {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// # #[cfg(feature = "email-mailgun")]
-    /// use reinhardt_backends::email::{MailgunBackend, MailgunRegion};
+    /// use reinhardt_backends::email::mailgun::{MailgunBackend, MailgunRegion};
     /// use reqwest::Client;
     ///
     /// # #[cfg(feature = "email-mailgun")]

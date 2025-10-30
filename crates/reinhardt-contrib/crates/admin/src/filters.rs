@@ -147,7 +147,7 @@ pub trait ListFilter: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin::BooleanFilter;
+/// use reinhardt_admin::{BooleanFilter, ListFilter};
 ///
 /// let filter = BooleanFilter::new("is_active", "Active Status");
 /// assert_eq!(filter.field_name(), "is_active");
@@ -191,7 +191,7 @@ impl ListFilter for BooleanFilter {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin::ChoiceFilter;
+/// use reinhardt_admin::{ChoiceFilter, ListFilter};
 ///
 /// let filter = ChoiceFilter::new("status", "Status")
 ///     .add_choice("active", "Active")
@@ -254,7 +254,7 @@ impl ListFilter for ChoiceFilter {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin::DateRangeFilter;
+/// use reinhardt_admin::{DateRangeFilter, ListFilter};
 ///
 /// let filter = DateRangeFilter::new("created_at", "Created Date");
 /// let choices = filter.choices();
@@ -322,7 +322,7 @@ impl ListFilter for DateRangeFilter {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin::NumberRangeFilter;
+/// use reinhardt_admin::{NumberRangeFilter, ListFilter};
 ///
 /// let filter = NumberRangeFilter::new("price", "Price Range");
 /// let choices = filter.choices();

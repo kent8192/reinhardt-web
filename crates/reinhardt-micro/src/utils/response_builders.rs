@@ -35,7 +35,7 @@ use serde::Serialize;
 /// };
 ///
 /// let response = ok_json(user).unwrap();
-/// assert_eq!(response.status(), 200);
+/// assert_eq!(response.status, 200);
 /// ```
 pub fn ok_json<T: Serialize>(data: T) -> Result<Response> {
     let json = serde_json::to_string(&data)
@@ -74,7 +74,7 @@ pub fn ok_json<T: Serialize>(data: T) -> Result<Response> {
 /// };
 ///
 /// let response = created_json(user).unwrap();
-/// assert_eq!(response.status(), 201);
+/// assert_eq!(response.status, 201);
 /// ```
 pub fn created_json<T: Serialize>(data: T) -> Result<Response> {
     let json = serde_json::to_string(&data)
@@ -97,7 +97,7 @@ pub fn created_json<T: Serialize>(data: T) -> Result<Response> {
 /// use reinhardt_micro::utils::no_content;
 ///
 /// let response = no_content();
-/// assert_eq!(response.status(), 204);
+/// assert_eq!(response.status, 204);
 /// ```
 pub fn no_content() -> Response {
     Response::no_content()
@@ -119,7 +119,7 @@ pub fn no_content() -> Response {
 /// use reinhardt_micro::utils::bad_request;
 ///
 /// let response = bad_request("Invalid email format");
-/// assert_eq!(response.status(), 400);
+/// assert_eq!(response.status, 400);
 /// ```
 pub fn bad_request(message: impl Into<String>) -> Response {
     let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
@@ -144,7 +144,7 @@ pub fn bad_request(message: impl Into<String>) -> Response {
 /// use reinhardt_micro::utils::unauthorized;
 ///
 /// let response = unauthorized("Missing authentication token");
-/// assert_eq!(response.status(), 401);
+/// assert_eq!(response.status, 401);
 /// ```
 pub fn unauthorized(message: impl Into<String>) -> Response {
     let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
@@ -169,7 +169,7 @@ pub fn unauthorized(message: impl Into<String>) -> Response {
 /// use reinhardt_micro::utils::not_found;
 ///
 /// let response = not_found("User not found");
-/// assert_eq!(response.status(), 404);
+/// assert_eq!(response.status, 404);
 /// ```
 pub fn not_found(message: impl Into<String>) -> Response {
     let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
@@ -194,7 +194,7 @@ pub fn not_found(message: impl Into<String>) -> Response {
 /// use reinhardt_micro::utils::internal_error;
 ///
 /// let response = internal_error("Database connection failed");
-/// assert_eq!(response.status(), 500);
+/// assert_eq!(response.status, 500);
 /// ```
 pub fn internal_error(message: impl Into<String>) -> Response {
     let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
@@ -218,7 +218,7 @@ pub fn internal_error(message: impl Into<String>) -> Response {
 /// use reinhardt_micro::utils::accepted;
 ///
 /// let response = accepted();
-/// assert_eq!(response.status(), 202);
+/// assert_eq!(response.status, 202);
 /// ```
 pub fn accepted() -> Response {
     Response::new(hyper::StatusCode::ACCEPTED)
@@ -242,7 +242,7 @@ pub fn accepted() -> Response {
 /// use reinhardt_micro::utils::forbidden;
 ///
 /// let response = forbidden("Access denied to this resource");
-/// assert_eq!(response.status(), 403);
+/// assert_eq!(response.status, 403);
 /// ```
 pub fn forbidden(message: impl Into<String>) -> Response {
     let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
@@ -270,7 +270,7 @@ pub fn forbidden(message: impl Into<String>) -> Response {
 /// use reinhardt_micro::utils::conflict;
 ///
 /// let response = conflict("Email already exists");
-/// assert_eq!(response.status(), 409);
+/// assert_eq!(response.status, 409);
 /// ```
 pub fn conflict(message: impl Into<String>) -> Response {
     let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
@@ -298,7 +298,7 @@ pub fn conflict(message: impl Into<String>) -> Response {
 /// use reinhardt_micro::utils::unprocessable_entity;
 ///
 /// let response = unprocessable_entity("Validation failed: age must be positive");
-/// assert_eq!(response.status(), 422);
+/// assert_eq!(response.status, 422);
 /// ```
 pub fn unprocessable_entity(message: impl Into<String>) -> Response {
     let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
@@ -326,7 +326,7 @@ pub fn unprocessable_entity(message: impl Into<String>) -> Response {
 /// use reinhardt_micro::utils::service_unavailable;
 ///
 /// let response = service_unavailable("Service is under maintenance");
-/// assert_eq!(response.status(), 503);
+/// assert_eq!(response.status, 503);
 /// ```
 pub fn service_unavailable(message: impl Into<String>) -> Response {
     let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
@@ -353,7 +353,7 @@ mod tests {
             name: "test".to_string(),
         };
         let response = ok_json(data).unwrap();
-        assert_eq!(response.status(), 200);
+        assert_eq!(response.status, 200);
         assert!(response.body().contains(r#""id":1"#));
         assert!(response.body().contains(r#""name":"test""#));
     }
@@ -365,7 +365,7 @@ mod tests {
             name: "created".to_string(),
         };
         let response = created_json(data).unwrap();
-        assert_eq!(response.status(), 201);
+        assert_eq!(response.status, 201);
         assert!(response.body().contains(r#""id":2"#));
         assert!(response.body().contains(r#""name":"created""#));
     }
@@ -373,35 +373,35 @@ mod tests {
     #[test]
     fn test_no_content() {
         let response = no_content();
-        assert_eq!(response.status(), 204);
+        assert_eq!(response.status, 204);
         assert!(response.body().is_empty());
     }
 
     #[test]
     fn test_bad_request() {
         let response = bad_request("Invalid input");
-        assert_eq!(response.status(), 400);
+        assert_eq!(response.status, 400);
         assert!(response.body().contains("Invalid input"));
     }
 
     #[test]
     fn test_unauthorized() {
         let response = unauthorized("Token expired");
-        assert_eq!(response.status(), 401);
+        assert_eq!(response.status, 401);
         assert!(response.body().contains("Token expired"));
     }
 
     #[test]
     fn test_not_found() {
         let response = not_found("Resource not found");
-        assert_eq!(response.status(), 404);
+        assert_eq!(response.status, 404);
         assert!(response.body().contains("Resource not found"));
     }
 
     #[test]
     fn test_internal_error() {
         let response = internal_error("Database error");
-        assert_eq!(response.status(), 500);
+        assert_eq!(response.status, 500);
         assert!(response.body().contains("Database error"));
     }
 
@@ -417,35 +417,35 @@ mod tests {
     #[test]
     fn test_accepted() {
         let response = accepted();
-        assert_eq!(response.status(), 202);
+        assert_eq!(response.status, 202);
         assert!(response.body().is_empty());
     }
 
     #[test]
     fn test_forbidden() {
         let response = forbidden("Access denied");
-        assert_eq!(response.status(), 403);
+        assert_eq!(response.status, 403);
         assert!(response.body().contains("Access denied"));
     }
 
     #[test]
     fn test_conflict() {
         let response = conflict("Resource already exists");
-        assert_eq!(response.status(), 409);
+        assert_eq!(response.status, 409);
         assert!(response.body().contains("Resource already exists"));
     }
 
     #[test]
     fn test_unprocessable_entity() {
         let response = unprocessable_entity("Validation failed");
-        assert_eq!(response.status(), 422);
+        assert_eq!(response.status, 422);
         assert!(response.body().contains("Validation failed"));
     }
 
     #[test]
     fn test_service_unavailable() {
         let response = service_unavailable("Under maintenance");
-        assert_eq!(response.status(), 503);
+        assert_eq!(response.status, 503);
         assert!(response.body().contains("Under maintenance"));
     }
 }

@@ -20,7 +20,8 @@ impl MultiValueField {
     ///
     /// ```
     /// use reinhardt_forms::fields::MultiValueField;
-    /// use reinhardt_forms::field::{CharField, IntegerField, Field};
+    /// use reinhardt_forms::field::{CharField, IntegerField};
+    /// use reinhardt_forms::FormField;
     /// use serde_json::json;
     ///
     // Create a multi-value field combining name and age

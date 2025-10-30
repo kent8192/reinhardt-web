@@ -328,19 +328,20 @@ impl AutoTokenRotationManager {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use reinhardt_auth::{AutoTokenRotationManager, TokenRotationConfig, TokenRotationRecord};
-    ///
-    /// let config = TokenRotationConfig::new()
-    ///     .grace_period(300);
-    /// let manager = AutoTokenRotationManager::new(config);
-    ///
-    /// manager.record_rotation(TokenRotationRecord::new("old1", "new1", 1000));
-    /// manager.record_rotation(TokenRotationRecord::new("old2", "new2", 2000));
-    ///
-    /// let removed = manager.cleanup_expired(2500);
-    /// assert_eq!(removed, 1); // Only old1 is expired
-    /// ```
+   /// ```
+   /// use reinhardt_auth::{AutoTokenRotationManager, TokenRotationConfig, TokenRotationRecord};
+   ///
+   /// let config = TokenRotationConfig::new()
+   ///     .grace_period(300);
+   /// let manager = AutoTokenRotationManager::new(config);
+   ///
+   /// manager.record_rotation(TokenRotationRecord::new("old1", "new1", 1000));
+   /// manager.record_rotation(TokenRotationRecord::new("old2", "new2", 2000));
+   ///
+   /// // Cleanup at time 2200: old1 (1000+300=1300) is expired, old2 (2000+300=2300) is not
+   /// let removed = manager.cleanup_expired(2200);
+   /// assert_eq!(removed, 1); // Only old1 is expired
+   /// ```
     pub fn cleanup_expired(&self, current_time: i64) -> usize {
         let mut history = self.rotation_history.write().unwrap();
         let before_count = history.len();

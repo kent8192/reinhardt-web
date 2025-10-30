@@ -20,12 +20,13 @@ use uuid::Uuid;
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use reinhardt_auth::{AuthenticationBackend, SimpleUser};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 /// use reinhardt_http::Request;
 ///
+/// # async fn example() {
 /// // Create auth backend
 /// let auth = reinhardt_auth::RemoteUserAuth::new();
 ///
@@ -40,9 +41,10 @@ use uuid::Uuid;
 ///     Bytes::new(),
 /// );
 ///
-/// let result = auth.authenticate(&request).unwrap();
+/// let result = auth.authenticate(&request).await.unwrap();
 /// assert!(result.is_some());
 /// assert_eq!(result.unwrap().get_username(), "alice");
+/// # }
 /// ```
 pub struct RemoteUserAuthentication {
     /// Header name to check (default: "REMOTE_USER")

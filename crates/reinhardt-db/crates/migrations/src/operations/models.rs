@@ -16,8 +16,8 @@
 //! let create = CreateModel::new(
 //!     "User",
 //!     vec![
-//!         FieldDefinition::new("id", "INTEGER", true, false, None),
-//!         FieldDefinition::new("email", "VARCHAR(255)", false, false, None),
+//!         FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None),
+//!         FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None),
 //!     ],
 //! );
 //! create.state_forwards("myapp", &mut state);
@@ -67,7 +67,7 @@ impl FieldDefinition {
     /// ```rust
     /// use reinhardt_migrations::operations::FieldDefinition;
     ///
-    /// let field = FieldDefinition::new("id", "INTEGER", true, false, None);
+    /// let field = FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None);
     /// assert_eq!(field.name, "id");
     /// assert!(field.primary_key);
     /// ```
@@ -143,8 +143,8 @@ impl FieldDefinition {
 /// let create = CreateModel::new(
 ///     "User",
 ///     vec![
-///         FieldDefinition::new("id", "INTEGER", true, false, None),
-///         FieldDefinition::new("name", "VARCHAR(100)", false, false, None),
+///         FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None),
+///         FieldDefinition::new("name", "VARCHAR(100)", false, false, Option::<&str>::None),
 ///     ],
 /// );
 ///
@@ -197,8 +197,8 @@ impl CreateModel {
     /// let create = CreateModel::new(
     ///     "post_tags",
     ///     vec![
-    ///         FieldDefinition::new("post_id", "INTEGER", false, false, None),
-    ///         FieldDefinition::new("tag_id", "INTEGER", false, false, None),
+    ///         FieldDefinition::new("post_id", "INTEGER", false, false, Option::<&str>::None),
+    ///         FieldDefinition::new("tag_id", "INTEGER", false, false, Option::<&str>::None),
     ///     ],
     /// )
     /// .with_composite_primary_key(vec!["post_id".to_string(), "tag_id".to_string()]);
@@ -237,8 +237,8 @@ impl CreateModel {
     /// let create = CreateModel::new(
     ///     "users",
     ///     vec![
-    ///         FieldDefinition::new("id", "INTEGER", true, false, None),
-    ///         FieldDefinition::new("email", "VARCHAR(255)", false, false, None),
+    ///         FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None),
+    ///         FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None),
     ///     ],
     /// );
     ///
@@ -328,7 +328,7 @@ impl CreateModel {
 // First create a model
 /// let create = CreateModel::new(
 ///     "User",
-///     vec![FieldDefinition::new("id", "INTEGER", true, false, None)],
+///     vec![FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None)],
 /// );
 /// create.state_forwards("myapp", &mut state);
 /// assert!(state.get_model("myapp", "User").is_some());
@@ -391,7 +391,7 @@ impl DeleteModel {
 // Create a model
 /// let create = CreateModel::new(
 ///     "User",
-///     vec![FieldDefinition::new("id", "INTEGER", true, false, None)],
+///     vec![FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None)],
 /// );
 /// create.state_forwards("myapp", &mut state);
 ///
@@ -469,7 +469,7 @@ impl RenameModel {
 /// // Create a model in myapp
 /// let create = CreateModel::new(
 ///     "User",
-///     vec![FieldDefinition::new("id", "INTEGER", true, false, None)],
+///     vec![FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None)],
 /// );
 /// create.state_forwards("myapp", &mut state);
 ///

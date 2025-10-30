@@ -17,14 +17,14 @@ async fn test_renderer_registry_default() {
 
     let output = String::from_utf8(bytes.to_vec()).unwrap();
 
-    // 厳密なJSON構造検証
+    // Strict JSON structure validation
     let parsed: serde_json::Value = serde_json::from_str(&output)
-        .expect("出力が有効なJSONである必要があります");
+        .expect("Output must be valid JSON");
 
     assert_eq!(
         parsed.get("message"),
         Some(&json!("hello")),
-        "message キーの値が 'hello' である必要があります"
+        "The value of the 'message' key must be 'hello'"
     );
     assert_eq!(content_type, "application/json; charset=utf-8");
 }
@@ -97,38 +97,38 @@ async fn test_render_complex_nested_data() {
     let result = renderer.render(&data, None).await.unwrap();
     let output = String::from_utf8(result.to_vec()).unwrap();
 
-    // 厳密なJSON構造検証
+    // Strict JSON structure validation
     let parsed: serde_json::Value = serde_json::from_str(&output)
-        .expect("出力が有効なJSONである必要があります");
+        .expect("Output must be valid JSON");
 
-    // users配列の検証
+    // Validate users array
     let users = parsed.get("users")
         .and_then(|v| v.as_array())
-        .expect("users キーが配列である必要があります");
+        .expect("The 'users' key must be an array");
 
-    assert_eq!(users.len(), 2, "users配列の長さが2である必要があります");
+    assert_eq!(users.len(), 2, "The length of the users array must be 2");
 
-    // Alice の検証
+    // Validate Alice
     let alice = &users[0];
-    assert_eq!(alice.get("id"), Some(&json!(1)), "Alice の id が 1 である必要があります");
-    assert_eq!(alice.get("name"), Some(&json!("Alice")), "名前が Alice である必要があります");
-    let alice_profile = alice.get("profile").expect("Alice のプロフィールが存在する必要があります");
-    assert_eq!(alice_profile.get("age"), Some(&json!(30)), "Alice の年齢が 30 である必要があります");
-    assert_eq!(alice_profile.get("city"), Some(&json!("Tokyo")), "Alice の都市が Tokyo である必要があります");
+    assert_eq!(alice.get("id"), Some(&json!(1)), "Alice's id must be 1");
+    assert_eq!(alice.get("name"), Some(&json!("Alice")), "The name must be Alice");
+    let alice_profile = alice.get("profile").expect("Alice's profile must exist");
+    assert_eq!(alice_profile.get("age"), Some(&json!(30)), "Alice's age must be 30");
+    assert_eq!(alice_profile.get("city"), Some(&json!("Tokyo")), "Alice's city must be Tokyo");
 
-    // Bob の検証
+    // Validate Bob
     let bob = &users[1];
-    assert_eq!(bob.get("id"), Some(&json!(2)), "Bob の id が 2 である必要があります");
-    assert_eq!(bob.get("name"), Some(&json!("Bob")), "名前が Bob である必要があります");
-    let bob_profile = bob.get("profile").expect("Bob のプロフィールが存在する必要があります");
-    assert_eq!(bob_profile.get("age"), Some(&json!(25)), "Bob の年齢が 25 である必要があります");
-    assert_eq!(bob_profile.get("city"), Some(&json!("Osaka")), "Bob の都市が Osaka である必要があります");
+    assert_eq!(bob.get("id"), Some(&json!(2)), "Bob's id must be 2");
+    assert_eq!(bob.get("name"), Some(&json!("Bob")), "The name must be Bob");
+    let bob_profile = bob.get("profile").expect("Bob's profile must exist");
+    assert_eq!(bob_profile.get("age"), Some(&json!(25)), "Bob's age must be 25");
+    assert_eq!(bob_profile.get("city"), Some(&json!("Osaka")), "Bob's city must be Osaka");
 
-    // meta の検証
-    let meta = parsed.get("meta").expect("meta が存在する必要があります");
-    assert_eq!(meta.get("total"), Some(&json!(2)), "total が 2 である必要があります");
-    assert_eq!(meta.get("page"), Some(&json!(1)), "page が 1 である必要があります");
-    assert_eq!(meta.get("per_page"), Some(&json!(10)), "per_page が 10 である必要があります");
+    // Validate meta
+    let meta = parsed.get("meta").expect("meta must exist");
+    assert_eq!(meta.get("total"), Some(&json!(2)), "total must be 2");
+    assert_eq!(meta.get("page"), Some(&json!(1)), "page must be 1");
+    assert_eq!(meta.get("per_page"), Some(&json!(10)), "per_page must be 10");
 }
 
 /// Test renderer context in real-world scenarios
@@ -148,18 +148,18 @@ async fn test_renderer_with_full_context() {
     let result = renderer.render(&data, Some(&context)).await.unwrap();
     let output = String::from_utf8(result.to_vec()).unwrap();
 
-    // 厳密なJSON構造検証
+    // Strict JSON structure validation
     let parsed: serde_json::Value = serde_json::from_str(&output)
-        .expect("出力が有効なJSONである必要があります");
+        .expect("Output must be valid JSON");
 
     let items = parsed.get("items")
         .and_then(|v| v.as_array())
-        .expect("items キーが配列である必要があります");
+        .expect("The 'items' key must be an array");
 
-    assert_eq!(items.len(), 3, "items配列の長さが3である必要があります");
-    assert_eq!(items[0], json!("item1"), "最初の要素が 'item1' である必要があります");
-    assert_eq!(items[1], json!("item2"), "2番目の要素が 'item2' である必要があります");
-    assert_eq!(items[2], json!("item3"), "3番目の要素が 'item3' である必要があります");
+    assert_eq!(items.len(), 3, "The length of the items array must be 3");
+    assert_eq!(items[0], json!("item1"), "The first element must be 'item1'");
+    assert_eq!(items[1], json!("item2"), "The second element must be 'item2'");
+    assert_eq!(items[2], json!("item3"), "The third element must be 'item3'");
 }
 
 /// Test edge cases from DRF
@@ -219,28 +219,28 @@ async fn test_large_data_rendering() {
     assert!(!result.is_empty());
     let output = String::from_utf8(result.to_vec()).unwrap();
 
-    // 厳密なJSON構造検証
+    // Strict JSON structure validation
     let parsed: serde_json::Value = serde_json::from_str(&output)
-        .expect("出力が有効なJSONである必要があります");
+        .expect("Output must be valid JSON");
 
     let items = parsed.get("items")
         .and_then(|v| v.as_array())
-        .expect("items キーが配列である必要があります");
+        .expect("The 'items' key must be an array");
 
-    assert_eq!(items.len(), 100, "items配列の長さが100である必要があります");
+    assert_eq!(items.len(), 100, "The length of the items array must be 100");
 
-    // 最初と最後の要素を検証
+    // Validate first and last elements
     let first_item = &items[0];
-    assert_eq!(first_item.get("id"), Some(&json!(0)), "最初の要素の id が 0 である必要があります");
-    assert_eq!(first_item.get("name"), Some(&json!("Item 0")), "最初の要素の name が 'Item 0' である必要があります");
-    assert_eq!(first_item.get("value"), Some(&json!(0)), "最初の要素の value が 0 である必要があります");
+    assert_eq!(first_item.get("id"), Some(&json!(0)), "The id of the first element must be 0");
+    assert_eq!(first_item.get("name"), Some(&json!("Item 0")), "The name of the first element must be 'Item 0'");
+    assert_eq!(first_item.get("value"), Some(&json!(0)), "The value of the first element must be 0");
 
     let last_item = &items[99];
-    assert_eq!(last_item.get("id"), Some(&json!(99)), "最後の要素の id が 99 である必要があります");
-    assert_eq!(last_item.get("name"), Some(&json!("Item 99")), "最後の要素の name が 'Item 99' である必要があります");
-    assert_eq!(last_item.get("value"), Some(&json!(990)), "最後の要素の value が 990 である必要があります");
+    assert_eq!(last_item.get("id"), Some(&json!(99)), "The id of the last element must be 99");
+    assert_eq!(last_item.get("name"), Some(&json!("Item 99")), "The name of the last element must be 'Item 99'");
+    assert_eq!(last_item.get("value"), Some(&json!(990)), "The value of the last element must be 990");
 
-    assert_eq!(parsed.get("total"), Some(&json!(100)), "total が 100 である必要があります");
+    assert_eq!(parsed.get("total"), Some(&json!(100)), "total must be 100");
 }
 
 /// Test special characters and escaping
@@ -278,14 +278,14 @@ async fn test_default_renderer_serializes_content_on_accept_any() {
 
     let output = String::from_utf8(bytes.to_vec()).unwrap();
 
-    // 厳密なJSON構造検証
+    // Strict JSON structure validation
     let parsed: serde_json::Value = serde_json::from_str(&output)
-        .expect("出力が有効なJSONである必要があります");
+        .expect("Output must be valid JSON");
 
     assert_eq!(
         parsed.get("message"),
         Some(&json!("hello world")),
-        "message キーの値が 'hello world' である必要があります"
+        "The value of the 'message' key must be 'hello world'"
     );
 }
 
@@ -305,19 +305,19 @@ async fn test_specified_renderer_serializes_content_default_case() {
 
     let output = String::from_utf8(bytes.to_vec()).unwrap();
 
-    // 厳密なJSON構造検証
+    // Strict JSON structure validation
     let parsed: serde_json::Value = serde_json::from_str(&output)
-        .expect("出力が有効なJSONである必要があります");
+        .expect("Output must be valid JSON");
 
     assert_eq!(
         parsed.get("status"),
         Some(&json!("success")),
-        "status キーの値が 'success' である必要があります"
+        "The value of the 'status' key must be 'success'"
     );
     assert_eq!(
         parsed.get("code"),
         Some(&json!(200)),
-        "code キーの値が 200 である必要があります"
+        "The value of the 'code' key must be 200"
     );
 }
 
@@ -357,14 +357,14 @@ async fn test_specified_renderer_serializes_content_on_format_query() {
 
     let output = String::from_utf8(bytes.to_vec()).unwrap();
 
-    // 厳密なJSON構造検証
+    // Strict JSON structure validation
     let parsed: serde_json::Value = serde_json::from_str(&output)
-        .expect("出力が有効なJSONである必要があります");
+        .expect("Output must be valid JSON");
 
     assert_eq!(
         parsed.get("format"),
         Some(&json!("test")),
-        "format キーの値が 'test' である必要があります"
+        "The value of the 'format' key must be 'test'"
     );
 }
 
@@ -386,14 +386,14 @@ async fn test_specified_renderer_is_used_on_format_query_with_matching_accept() 
 
     let output = String::from_utf8(bytes.to_vec()).unwrap();
 
-    // 厳密なJSON構造検証
+    // Strict JSON structure validation
     let parsed: serde_json::Value = serde_json::from_str(&output)
-        .expect("出力が有効なJSONである必要があります");
+        .expect("Output must be valid JSON");
 
     assert_eq!(
         parsed.get("combined"),
         Some(&json!("test")),
-        "combined キーの値が 'test' である必要があります"
+        "The value of the 'combined' key must be 'test'"
     );
 }
 
@@ -415,14 +415,14 @@ async fn test_accept_header_with_quality_values() {
 
     let output = String::from_utf8(bytes.to_vec()).unwrap();
 
-    // 厳密なJSON構造検証
+    // Strict JSON structure validation
     let parsed: serde_json::Value = serde_json::from_str(&output)
-        .expect("出力が有効なJSONである必要があります");
+        .expect("Output must be valid JSON");
 
     assert_eq!(
         parsed.get("quality"),
         Some(&json!("test")),
-        "quality キーの値が 'test' である必要があります"
+        "The value of the 'quality' key must be 'test'"
     );
 }
 

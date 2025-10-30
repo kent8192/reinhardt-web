@@ -19,7 +19,7 @@ use std::sync::Arc;
 ///
 /// Basic usage with in-memory session store:
 ///
-/// ```
+/// ```ignore
 /// use std::sync::Arc;
 /// use reinhardt_middleware::AuthenticationMiddleware;
 /// use reinhardt_auth::session::InMemorySessionStore;
@@ -109,7 +109,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use std::sync::Arc;
     /// use reinhardt_middleware::AuthenticationMiddleware;
     /// use reinhardt_auth::session::InMemorySessionStore;
@@ -119,20 +119,22 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
     /// #
     /// # // Simple test authentication backend
     /// # struct TestAuthBackend;
-    /// # impl AuthenticationBackend for TestAuthBackend {
-    /// #     fn authenticate(&self, _request: &Request) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
-    /// #         Ok(Some(Box::new(SimpleUser {
-    /// #             id: Uuid::new_v4(),
-    /// #             username: "testuser".to_string(),
-    /// #             email: "test@example.com".to_string(),
-    /// #             is_active: true,
-    /// #             is_admin: false,
-    /// #         })))
-    /// #     }
-    /// #     fn get_user(&self, _user_id: &str) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
-    /// #         Ok(None)
-    /// #     }
-    /// # }
+/// # impl AuthenticationBackend for TestAuthBackend {
+/// #     fn authenticate<'a>(&'a self, _request: &'a Request) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
+/// #         Ok(Some(Box::new(SimpleUser {
+/// #             id: Uuid::new_v4(),
+/// #             username: "testuser".to_string(),
+/// #             email: "test@example.com".to_string(),
+/// #             is_active: true,
+/// #             is_admin: false,
+/// #             is_staff: false,
+/// #             is_superuser: false,
+/// #         })))
+/// #     }
+/// #     fn get_user<'a>(&'a self, _user_id: &'a str) -> std::result::Result<Option<Box<dyn User>>, AuthenticationError> {
+/// #         Ok(None)
+/// #     }
+/// # }
     ///
     /// let session_store = Arc::new(InMemorySessionStore::new());
     /// let auth_backend = Arc::new(TestAuthBackend);

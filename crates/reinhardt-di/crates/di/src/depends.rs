@@ -94,7 +94,8 @@ where
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_di::{Depends, InjectionContext};
+    /// use reinhardt_di::{Depends, InjectionContext, SingletonScope};
+    /// use std::sync::Arc;
     ///
     /// #[derive(Clone, Default)]
     /// struct Config {
@@ -102,7 +103,8 @@ where
     /// }
     ///
     /// # tokio_test::block_on(async {
-    /// let ctx = InjectionContext::new();
+    /// let singleton_scope = Arc::new(SingletonScope::new());
+    /// let ctx = InjectionContext::new(singleton_scope);
     /// let result = Depends::<Config>::resolve(&ctx, true).await;
     /// assert!(result.is_ok());
     /// # });
@@ -166,7 +168,8 @@ where
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_di::{Depends, InjectionContext};
+    /// use reinhardt_di::{Depends, InjectionContext, SingletonScope};
+    /// use std::sync::Arc;
     ///
     /// #[derive(Clone, Default)]
     /// struct Config {
@@ -174,7 +177,8 @@ where
     /// }
     ///
     /// # tokio_test::block_on(async {
-    /// let ctx = InjectionContext::new();
+    /// let singleton_scope = Arc::new(SingletonScope::new());
+    /// let ctx = InjectionContext::new(singleton_scope);
     /// let builder = Depends::<Config>::new();
     /// let result = builder.resolve(&ctx).await;
     /// assert!(result.is_ok());

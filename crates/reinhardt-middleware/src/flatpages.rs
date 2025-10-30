@@ -18,7 +18,7 @@ use std::sync::{Arc, RwLock};
 /// # Examples
 ///
 /// ```
-/// use reinhardt_middleware::AuthenticationState;
+/// use reinhardt_middleware::flatpages::AuthenticationState;
 ///
 /// // Authenticated user
 /// let auth = AuthenticationState::authenticated("user123".to_string());

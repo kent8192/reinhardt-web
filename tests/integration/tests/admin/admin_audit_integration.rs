@@ -1,8 +1,8 @@
-//! Admin Audit統合テスト
+//! Admin Audit Integration Tests
 //!
-//! DatabaseAuditLoggerを使用した実運用シナリオのテスト。
-//! PostgreSQLコンテナを使用して、実際のデータベースでのログ記録、
-//! クエリ、集計をテストします。
+//! Tests for production scenarios using DatabaseAuditLogger.
+//! Uses PostgreSQL container to test actual database logging,
+//! querying, and aggregation.
 
 use chrono::{Duration, Utc};
 use reinhardt_admin::audit::{
@@ -15,12 +15,12 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage};
 
-/// テスト用データベースのセットアップとaudit_logsテーブルの作成
+/// Setup test database and create audit_logs table
 async fn setup_test_db() -> (
     testcontainers::ContainerAsync<GenericImage>,
     DatabaseAuditLogger,
 ) {
-    // PostgreSQLコンテナを起動
+    // Start PostgreSQL container
     let postgres = GenericImage::new("postgres", "16-alpine")
         .with_env_var("POSTGRES_PASSWORD", "test")
         .with_env_var("POSTGRES_DB", "test_db")
@@ -38,12 +38,12 @@ async fn setup_test_db() -> (
 
     let database_url = format!("postgres://postgres:test@localhost:{}/test_db", port);
 
-    // DatabaseConnectionを使用して接続を作成
+    // Create connection using DatabaseConnection
     let conn = DatabaseConnection::connect(&database_url)
         .await
         .expect("Failed to connect to database");
 
-    // audit_logsテーブルを作成
+    // Create audit_logs table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS audit_logs (
             id SERIAL PRIMARY KEY,
@@ -60,7 +60,7 @@ async fn setup_test_db() -> (
     .await
     .expect("Failed to create audit_logs table");
 
-    // AdminDatabaseとDatabaseAuditLoggerを作成
+    // Create AdminDatabase and DatabaseAuditLogger
     let admin_db = Arc::new(AdminDatabase::new(Arc::new(conn)));
     let logger = DatabaseAuditLogger::new(admin_db, "audit_logs".to_string());
 
@@ -71,7 +71,7 @@ async fn setup_test_db() -> (
 async fn test_admin_audit_create_action() {
     let (_container, logger) = setup_test_db().await;
 
-    // Createアクションのログを作成
+    // Create log for Create action
     let changes = json!({
         "name": "John Doe",
         "email": "john@example.com",
@@ -88,13 +88,13 @@ async fn test_admin_audit_create_action() {
         .user_agent("Mozilla/5.0 (Admin Client)".to_string())
         .build();
 
-    // ログを記録
+    // Log the record
     let result = logger.log(log).await;
     assert!(result.is_ok(), "Create action logging should succeed");
 
     let inserted_log = result.unwrap();
 
-    // 監査ログの内容を検証
+    // Verify audit log contents
     assert!(inserted_log.id().is_some(), "ID should be assigned");
     assert_eq!(inserted_log.user_id(), "admin_user");
     assert_eq!(inserted_log.model_name(), "User");
@@ -115,7 +115,7 @@ async fn test_admin_audit_create_action() {
 async fn test_admin_audit_update_action() {
     let (_container, logger) = setup_test_db().await;
 
-    // Updateアクションのログを作成（変更前後の値を記録）
+    // Create log for Update action (record before/after values)
     let changes = json!({
         "email": {
             "old": "old@example.com",
@@ -135,13 +135,13 @@ async fn test_admin_audit_update_action() {
         .changes(changes.clone())
         .build();
 
-    // ログを記録
+    // Log the record
     let result = logger.log(log).await;
     assert!(result.is_ok(), "Update action logging should succeed");
 
     let inserted_log = result.unwrap();
 
-    // 監査ログの検証
+    // Verify audit log
     assert_eq!(inserted_log.action(), AuditAction::Update);
     assert_eq!(inserted_log.object_id(), "456");
     assert_eq!(inserted_log.changes(), Some(&changes));
@@ -151,7 +151,7 @@ async fn test_admin_audit_update_action() {
 async fn test_admin_audit_delete_action() {
     let (_container, logger) = setup_test_db().await;
 
-    // Deleteアクションのログを作成（削除されたデータの情報を記録）
+    // Create log for Delete action (record deleted data information)
     let changes = json!({
         "deleted_record": {
             "name": "Jane Smith",
@@ -167,13 +167,13 @@ async fn test_admin_audit_delete_action() {
         .changes(changes.clone())
         .build();
 
-    // ログを記録
+    // Log the record
     let result = logger.log(log).await;
     assert!(result.is_ok(), "Delete action logging should succeed");
 
     let inserted_log = result.unwrap();
 
-    // 監査ログの検証
+    // Verify audit log
     assert_eq!(inserted_log.action(), AuditAction::Delete);
     assert_eq!(inserted_log.object_id(), "789");
     assert_eq!(inserted_log.changes(), Some(&changes));
@@ -183,7 +183,7 @@ async fn test_admin_audit_delete_action() {
 async fn test_admin_audit_query_by_user() {
     let (_container, logger) = setup_test_db().await;
 
-    // 複数ユーザーのログを記録
+    // Record logs for multiple users
     for i in 1..=5 {
         let user_id = if i % 2 == 0 { "user_a" } else { "user_b" };
         let log = AuditLog::builder()
@@ -195,14 +195,14 @@ async fn test_admin_audit_query_by_user() {
         logger.log(log).await.unwrap();
     }
 
-    // user_aでクエリ
+    // Query by user_a
     let query = AuditLogQuery::builder()
         .user_id("user_a".to_string())
         .build();
 
     let results = logger.query(&query).await.expect("Query should succeed");
 
-    // user_aのログのみ取得されることを検証
+    // Verify only user_a's logs are retrieved
     assert_eq!(results.len(), 2, "Should return 2 logs for user_a");
     for log in &results {
         assert_eq!(log.user_id(), "user_a");
@@ -213,7 +213,7 @@ async fn test_admin_audit_query_by_user() {
 async fn test_admin_audit_query_by_model() {
     let (_container, logger) = setup_test_db().await;
 
-    // 異なるモデルのログを記録
+    // Record logs for different models
     let models = vec!["User", "Article", "Comment"];
     for (i, model) in models.iter().enumerate() {
         let log = AuditLog::builder()
@@ -225,14 +225,14 @@ async fn test_admin_audit_query_by_model() {
         logger.log(log).await.unwrap();
     }
 
-    // Articleモデルでクエリ
+    // Query by Article model
     let query = AuditLogQuery::builder()
         .model_name("Article".to_string())
         .build();
 
     let results = logger.query(&query).await.expect("Query should succeed");
 
-    // Articleのログのみ取得されることを検証
+    // Verify only Article logs are retrieved
     assert_eq!(results.len(), 1, "Should return 1 log for Article model");
     assert_eq!(results[0].model_name(), "Article");
 }
@@ -241,7 +241,7 @@ async fn test_admin_audit_query_by_model() {
 async fn test_admin_audit_query_by_date_range() {
     let (_container, logger) = setup_test_db().await;
 
-    // 過去、現在、未来のタイムスタンプでログを記録
+    // Record logs with past, present, and future timestamps
     let now = Utc::now();
     let past = now - Duration::hours(2);
     let future = now + Duration::hours(2);
@@ -255,7 +255,7 @@ async fn test_admin_audit_query_by_date_range() {
 
     logger.log(log_now).await.unwrap();
 
-    // 日時範囲でクエリ（過去から未来まで - 含まれる）
+    // Query by date range (from past to future - included)
     let query_include = AuditLogQuery::builder()
         .start_date(past)
         .end_date(future)
@@ -272,7 +272,7 @@ async fn test_admin_audit_query_by_date_range() {
         "Should return 1 log within date range"
     );
 
-    // 日時範囲でクエリ（範囲外 - 含まれない）
+    // Query by date range (outside range - not included)
     let query_exclude = AuditLogQuery::builder()
         .start_date(past - Duration::hours(10))
         .end_date(past - Duration::hours(5))
@@ -294,7 +294,7 @@ async fn test_admin_audit_query_by_date_range() {
 async fn test_admin_audit_count() {
     let (_container, logger) = setup_test_db().await;
 
-    // 複数のログを記録
+    // Record multiple logs
     for i in 1..=10 {
         let log = AuditLog::builder()
             .user_id("admin".to_string())
@@ -305,7 +305,7 @@ async fn test_admin_audit_count() {
         logger.log(log).await.unwrap();
     }
 
-    // 全ログのカウント
+    // Count all logs
     let query_all = AuditLogQuery::builder().build();
     let count_all = logger.count(&query_all).await.expect("Count should succeed");
 
@@ -316,7 +316,7 @@ async fn test_admin_audit_count() {
 async fn test_admin_audit_complex_query() {
     let (_container, logger) = setup_test_db().await;
 
-    // 多様なログを記録
+    // Record diverse logs
     let scenarios = vec![
         ("user1", "User", "1", AuditAction::Create),
         ("user1", "User", "1", AuditAction::Update),
@@ -335,7 +335,7 @@ async fn test_admin_audit_complex_query() {
         logger.log(log).await.unwrap();
     }
 
-    // 複合クエリ: user1 + User model + Update action
+    // Composite query: user1 + User model + Update action
     let query = AuditLogQuery::builder()
         .user_id("user1".to_string())
         .model_name("User".to_string())
@@ -358,7 +358,7 @@ async fn test_admin_audit_complex_query() {
 async fn test_admin_audit_pagination() {
     let (_container, logger) = setup_test_db().await;
 
-    // 20件のログを記録
+    // Record 20 logs
     for i in 1..=20 {
         let log = AuditLog::builder()
             .user_id("admin".to_string())
@@ -367,25 +367,25 @@ async fn test_admin_audit_pagination() {
             .action(AuditAction::Create)
             .build();
         logger.log(log).await.unwrap();
-        // タイムスタンプの違いを確保
+        // Ensure timestamp differences
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
     }
 
-    // 1ページ目（最初の10件）
+    // Page 1 (first 10 records)
     let query_page1 = AuditLogQuery::builder().limit(10).offset(0).build();
 
     let results_page1 = logger.query(&query_page1).await.expect("Query should succeed");
 
     assert_eq!(results_page1.len(), 10, "Should return 10 logs on page 1");
 
-    // 2ページ目（次の10件）
+    // Page 2 (next 10 records)
     let query_page2 = AuditLogQuery::builder().limit(10).offset(10).build();
 
     let results_page2 = logger.query(&query_page2).await.expect("Query should succeed");
 
     assert_eq!(results_page2.len(), 10, "Should return 10 logs on page 2");
 
-    // ページ間でログが重複しないことを検証
+    // Verify logs don't overlap between pages
     let ids_page1: Vec<_> = results_page1.iter().filter_map(|l| l.id()).collect();
     let ids_page2: Vec<_> = results_page2.iter().filter_map(|l| l.id()).collect();
 
@@ -398,7 +398,7 @@ async fn test_admin_audit_pagination() {
 async fn test_admin_audit_action_variety() {
     let (_container, logger) = setup_test_db().await;
 
-    // 様々なアクションタイプのログを記録
+    // Record logs for various action types
     let actions = vec![
         AuditAction::Create,
         AuditAction::Update,
@@ -419,7 +419,7 @@ async fn test_admin_audit_action_variety() {
         logger.log(log).await.unwrap();
     }
 
-    // 各アクションタイプでクエリして検証
+    // Query and verify for each action type
     for action in actions {
         let query = AuditLogQuery::builder().action(action).build();
 
@@ -434,7 +434,7 @@ async fn test_admin_audit_action_variety() {
 async fn test_admin_audit_bulk_operations() {
     let (_container, logger) = setup_test_db().await;
 
-    // BulkDeleteアクションのログ（複数レコードの一括削除）
+    // Log for BulkDelete action (bulk deletion of multiple records)
     let changes = json!({
         "deleted_count": 5,
         "deleted_ids": ["1", "2", "3", "4", "5"]
@@ -453,11 +453,11 @@ async fn test_admin_audit_bulk_operations() {
 
     let inserted_log = result.unwrap();
 
-    // BulkDeleteログの検証
+    // Verify BulkDelete log
     assert_eq!(inserted_log.action(), AuditAction::BulkDelete);
     assert_eq!(inserted_log.changes(), Some(&changes));
 
-    // BulkDeleteアクションでクエリ
+    // Query by BulkDelete action
     let query = AuditLogQuery::builder()
         .action(AuditAction::BulkDelete)
         .build();
@@ -471,7 +471,7 @@ async fn test_admin_audit_bulk_operations() {
 async fn test_admin_audit_export_import_actions() {
     let (_container, logger) = setup_test_db().await;
 
-    // Exportアクションのログ
+    // Log for Export action
     let export_changes = json!({
         "format": "csv",
         "record_count": 100,
@@ -488,7 +488,7 @@ async fn test_admin_audit_export_import_actions() {
 
     logger.log(export_log).await.unwrap();
 
-    // Importアクションのログ
+    // Log for Import action
     let import_changes = json!({
         "format": "json",
         "record_count": 50,
@@ -505,7 +505,7 @@ async fn test_admin_audit_export_import_actions() {
 
     logger.log(import_log).await.unwrap();
 
-    // ExportとImportアクションでそれぞれクエリ
+    // Query separately for Export and Import actions
     let export_query = AuditLogQuery::builder()
         .action(AuditAction::Export)
         .build();
@@ -533,7 +533,7 @@ async fn test_admin_audit_export_import_actions() {
 async fn test_admin_audit_ordering() {
     let (_container, logger) = setup_test_db().await;
 
-    // タイムスタンプが異なるログを記録
+    // Record logs with different timestamps
     for i in 1..=5 {
         let log = AuditLog::builder()
             .user_id("admin".to_string())
@@ -542,16 +542,16 @@ async fn test_admin_audit_ordering() {
             .action(AuditAction::Create)
             .build();
         logger.log(log).await.unwrap();
-        // タイムスタンプの違いを確保
+        // Ensure timestamp differences
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     }
 
-    // 全ログをクエリ
+    // Query all logs
     let query = AuditLogQuery::builder().build();
 
     let results = logger.query(&query).await.expect("Query should succeed");
 
-    // 降順（最新が最初）であることを検証
+    // Verify descending order (newest first)
     for i in 0..results.len() - 1 {
         assert!(
             results[i].timestamp() >= results[i + 1].timestamp(),

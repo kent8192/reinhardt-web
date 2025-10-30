@@ -81,7 +81,7 @@ pub trait ObjectPermissionChecker: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::object_permissions::ObjectPermissionManager;
+/// use reinhardt_auth::object_permissions::{ObjectPermissionManager, ObjectPermissionChecker};
 /// use reinhardt_auth::user::{SimpleUser, User};
 /// use uuid::Uuid;
 ///
@@ -298,13 +298,13 @@ impl ObjectPermissionChecker for ObjectPermissionManager {
 ///     assert!(perm.has_permission(&context).await);
 /// }
 /// ```
-pub struct ObjectPermission<T: ObjectPermissionChecker> {
+pub struct ObjectPermission<T: ObjectPermissionChecker + Send + Sync> {
     checker: T,
     object_id: String,
     permission: String,
 }
 
-impl<T: ObjectPermissionChecker> ObjectPermission<T> {
+impl<T: ObjectPermissionChecker + Send + Sync> ObjectPermission<T> {
     /// Create a new object permission
     ///
     /// # Examples
@@ -325,7 +325,7 @@ impl<T: ObjectPermissionChecker> ObjectPermission<T> {
 }
 
 #[async_trait]
-impl<T: ObjectPermissionChecker> Permission for ObjectPermission<T> {
+impl<T: ObjectPermissionChecker + Send + Sync> Permission for ObjectPermission<T> {
     async fn has_permission(&self, context: &PermissionContext<'_>) -> bool {
         if !context.is_authenticated {
             return false;

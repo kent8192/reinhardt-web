@@ -29,8 +29,8 @@ impl<T: FormModel> ModelChoiceField<T> {
     ///
     /// ```
     /// use reinhardt_forms::fields::ModelChoiceField;
-    /// use reinhardt_forms::Field;
-    /// use reinhardt_forms::model_form::Model;
+    /// use reinhardt_forms::FormField;
+    /// use reinhardt_forms::FormModel;
     /// use serde_json::{json, Value};
     ///
     // Define a simple Category model
@@ -262,8 +262,8 @@ impl<T: FormModel> ModelMultipleChoiceField<T> {
     ///
     /// ```
     /// use reinhardt_forms::fields::ModelMultipleChoiceField;
-    /// use reinhardt_forms::Field;
-    /// use reinhardt_forms::model_form::Model;
+    /// use reinhardt_forms::FormField;
+    /// use reinhardt_forms::FormModel;
     /// use serde_json::{json, Value};
     ///
     // Define a simple Tag model

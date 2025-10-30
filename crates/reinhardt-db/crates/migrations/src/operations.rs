@@ -24,14 +24,14 @@
 //! let create = CreateModel::new(
 //!     "User",
 //!     vec![
-//!         FieldDefinition::new("id", "INTEGER", true, false, None),
-//!         FieldDefinition::new("name", "VARCHAR(100)", false, false, None),
+//!         FieldDefinition::new("id", "INTEGER", true, false, Option::<&str>::None),
+//!         FieldDefinition::new("name", "VARCHAR(100)", false, false, Option::<&str>::None),
 //!     ],
 //! );
 //! create.state_forwards("myapp", &mut state);
 //!
 //! // Add a field
-//! let add = AddField::new("User", FieldDefinition::new("email", "VARCHAR(255)", false, false, None));
+//! let add = AddField::new("User", FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None));
 //! add.state_forwards("myapp", &mut state);
 //!
 //! // Run custom SQL

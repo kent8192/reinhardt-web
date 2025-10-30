@@ -343,7 +343,7 @@ mod tests {
 
         let html = handler.format_error(&error);
 
-        // HTMLドキュメント構造の検証
+        // Verify HTML document structure
         assert!(
             html.starts_with("<!DOCTYPE html>\n"),
             "HTML output should start with DOCTYPE declaration. Got: {}",
@@ -355,7 +355,7 @@ mod tests {
             &html[html.len().saturating_sub(100)..]
         );
 
-        // 重要なHTML要素の存在を厳密に検証
+        // Strictly verify existence of important HTML elements
         assert!(
             html.contains("<title>Development Error</title>"),
             "HTML should contain <title> element with 'Development Error'. HTML head section: {}",
@@ -381,7 +381,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
 
-        // エラーメッセージの正確な検証
+        // Accurately verify error message
         assert!(
             html.contains("<strong>Error:</strong> File not found"),
             "HTML should contain error message with 'File not found'. Error message section: {}",
@@ -399,7 +399,7 @@ mod tests {
 
         let text = handler.format_error_text(&error);
 
-        // プレーンテキストの正確な構造検証
+        // Accurately verify plain text structure
         assert!(
             text.starts_with("Development Error\n"),
             "Text output should start with 'Development Error\\n'. Got: {}",
@@ -411,7 +411,7 @@ mod tests {
             &text[..100.min(text.len())]
         );
 
-        // エラーメッセージの正確な検証
+        // Accurately verify error message
         assert!(
             text.contains("Error: File not found\n"),
             "Text output should contain 'Error: File not found\\n'. Lines found: {:?}",
@@ -426,7 +426,7 @@ mod tests {
 
         let html = handler.format_error(&error);
 
-        // スタックトレースセクション全体が存在しないことを厳密に検証
+        // Strictly verify that entire stack trace section does not exist
         assert!(
             !html.contains("<div class=\"stack-trace\">"),
             "HTML should NOT contain stack-trace div when stack trace is disabled. Div elements found: {:?}",
@@ -480,7 +480,7 @@ mod tests {
         let handler = DevelopmentErrorHandler::new();
         let styles = handler.error_page_styles();
 
-        // CSSセレクタの正確な存在を検証
+        // Verify accurate existence of CSS selectors
         assert!(
             styles.contains("body {"),
             "CSS should contain 'body' selector. Selectors found: {:?}",
@@ -527,7 +527,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
 
-        // 重要なスタイルプロパティの検証
+        // Verify important style properties
         assert!(
             styles.contains("font-family:"),
             "CSS should contain font-family property. Properties found: {:?}",

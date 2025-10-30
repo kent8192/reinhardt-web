@@ -173,7 +173,7 @@ pub trait ContentTypePersistenceBackend: Send + Sync {
 /// ## Example
 ///
 /// ```rust,no_run
-/// use reinhardt_contenttypes::persistence::ContentTypePersistence;
+/// use reinhardt_contenttypes::persistence::{ContentTypePersistence, ContentTypePersistenceBackend};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Initialize with database URL

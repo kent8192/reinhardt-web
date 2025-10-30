@@ -4,9 +4,13 @@
 
 // Re-export core authentication types from reinhardt-auth
 pub use reinhardt_auth::{
-    AllowAny, AnonymousUser, AuthBackend, Claims, IsAdminUser, IsAuthenticated,
-    IsAuthenticatedOrReadOnly, JwtAuth, Permission, SimpleUser, User,
+    AllowAny, AnonymousUser, AuthBackend, IsAdminUser, IsAuthenticated,
+    IsAuthenticatedOrReadOnly, Permission, SimpleUser, User,
 };
+
+// Re-export JWT types conditionally
+#[cfg(feature = "jwt")]
+pub use reinhardt_auth::{Claims, JwtAuth};
 
 /// Authentication result (REST-specific utility)
 #[derive(Debug, Clone)]

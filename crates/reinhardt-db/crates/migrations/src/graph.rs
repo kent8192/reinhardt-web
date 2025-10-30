@@ -240,9 +240,9 @@ impl MigrationGraph {
     /// graph.add_migration(key1.clone(), vec![]);
     /// graph.add_migration(key2.clone(), vec![key1.clone()]);
     ///
-    /// let deps = graph.get_dependencies(&key2).unwrap();
-    /// assert_eq!(deps.len(), 1);
-    /// assert_eq!(deps[0], &key1);
+/// let deps = graph.get_dependencies(&key2).unwrap();
+/// assert_eq!(deps.len(), 1);
+/// assert_eq!(deps[0], key1);
     /// ```
     pub fn get_dependencies(&self, key: &MigrationKey) -> Option<&[MigrationKey]> {
         self.nodes.get(key).map(|node| node.dependencies.as_slice())

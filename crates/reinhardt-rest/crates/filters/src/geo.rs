@@ -50,7 +50,7 @@ impl DistanceUnit {
 /// use geo_types::Point;
 ///
 /// let center = Point::new(0.0, 0.0);
-/// let filter = DistanceFilter::new(center, 1000.0, DistanceUnit::Meters);
+/// let filter = DistanceFilter::<()>::new(center, 1000.0, DistanceUnit::Meters);
 ///
 /// assert_eq!(filter.get_distance(), 1000.0);
 /// ```

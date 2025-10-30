@@ -27,6 +27,7 @@
 //!
 //! ```no_run
 //! use reinhardt_backends::cache::dynamodb::{DynamoDbCache, DynamoDbCacheConfig};
+//! use reinhardt_backends::cache::CacheBackend;
 //! use std::time::Duration;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {

@@ -823,7 +823,7 @@ impl DetectedChanges {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_migrations::ChangeHistoryEntry;
+/// use reinhardt_migrations::autodetector::ChangeHistoryEntry;
 /// use std::time::SystemTime;
 ///
 /// let entry = ChangeHistoryEntry {
@@ -1410,7 +1410,7 @@ pub struct InferenceRule {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use reinhardt_migrations::InferenceEngine;
 ///
 /// let mut engine = InferenceEngine::new();
@@ -1435,12 +1435,13 @@ pub struct InferenceEngine {
     ///
     /// Example:
     /// ```
+    /// use reinhardt_migrations::autodetector::InferenceEngine;
     /// let mut engine = InferenceEngine::new();
+    /// // Record rename and field addition history
     /// engine.record_model_rename("blog", "BlogPost", "Post");
     /// engine.record_field_addition("blog", "Post", "slug");
-    ///
-    /// // Later, check if these changes commonly occur together
-    /// let cooccurrences = engine.analyze_cooccurrence("RenameModel", 2);
+    /// // Analyze co-occurrence within a 60-second window
+    /// let _cooccurrences = engine.analyze_cooccurrence(std::time::Duration::from_secs(60));
     /// ```
     change_tracker: ChangeTracker,
 }

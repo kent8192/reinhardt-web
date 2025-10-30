@@ -115,9 +115,13 @@ pub use rest_core::routers;
 
 // Re-export authentication types
 pub use rest_core::authentication::{
-    AllowAny, AnonymousUser, AuthBackend, AuthResult, Claims, IsAdminUser, IsAuthenticated,
-    IsAuthenticatedOrReadOnly, JwtAuth, Permission, SimpleUser, User,
+    AllowAny, AnonymousUser, AuthBackend, AuthResult, IsAdminUser, IsAuthenticated,
+    IsAuthenticatedOrReadOnly, Permission, SimpleUser, User,
 };
+
+// Re-export JWT types conditionally
+#[cfg(feature = "jwt")]
+pub use rest_core::authentication::{Claims, JwtAuth};
 
 // Re-export response types
 pub use rest_core::response::{ApiResponse, IntoApiResponse, PaginatedResponse, ResponseBuilder};

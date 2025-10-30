@@ -8,7 +8,7 @@
 //! ```no_run
 //! use reinhardt_backends::email::{Email, EmailBackend};
 //! # #[cfg(feature = "email-smtp")]
-//! use reinhardt_backends::email::{SmtpBackend, SmtpConfig, SmtpAuth, SmtpEncryption};
+//! use reinhardt_backends::email::smtp::{SmtpBackend, SmtpConfig, SmtpAuth, SmtpEncryption};
 //!
 //! # #[cfg(feature = "email-smtp")]
 //! #[tokio::main]
@@ -53,7 +53,7 @@ use std::time::Duration;
 ///
 /// ```
 /// # #[cfg(feature = "email-smtp")]
-/// use reinhardt_backends::email::SmtpEncryption;
+/// use reinhardt_backends::email::smtp::SmtpEncryption;
 ///
 /// # #[cfg(feature = "email-smtp")]
 /// let tls = SmtpEncryption::Tls;
@@ -78,7 +78,7 @@ pub enum SmtpEncryption {
 ///
 /// ```
 /// # #[cfg(feature = "email-smtp")]
-/// use reinhardt_backends::email::SmtpAuth;
+/// use reinhardt_backends::email::smtp::SmtpAuth;
 ///
 /// # #[cfg(feature = "email-smtp")]
 /// let auth = SmtpAuth {
@@ -100,7 +100,7 @@ pub struct SmtpAuth {
 ///
 /// ```
 /// # #[cfg(feature = "email-smtp")]
-/// use reinhardt_backends::email::{SmtpConfig, SmtpAuth, SmtpEncryption};
+/// use reinhardt_backends::email::smtp::{SmtpConfig, SmtpAuth, SmtpEncryption};
 /// use std::time::Duration;
 ///
 /// # #[cfg(feature = "email-smtp")]
@@ -153,7 +153,8 @@ impl Default for SmtpConfig {
 ///
 /// ```no_run
 /// # #[cfg(feature = "email-smtp")]
-/// use reinhardt_backends::email::{Email, EmailBackend, SmtpBackend, SmtpConfig, SmtpEncryption};
+/// use reinhardt_backends::email::{Email, EmailBackend};
+/// use reinhardt_backends::email::smtp::{SmtpBackend, SmtpConfig, SmtpEncryption};
 ///
 /// # #[cfg(feature = "email-smtp")]
 /// #[tokio::main]
@@ -190,7 +191,7 @@ impl SmtpBackend {
     ///
     /// ```no_run
     /// # #[cfg(feature = "email-smtp")]
-    /// use reinhardt_backends::email::{SmtpBackend, SmtpConfig};
+    /// use reinhardt_backends::email::smtp::{SmtpBackend, SmtpConfig};
     ///
     /// # #[cfg(feature = "email-smtp")]
     /// #[tokio::main]

@@ -93,13 +93,14 @@ impl DjangoModelPermissions {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use reinhardt_auth::model_permissions::DjangoModelPermissions;
-    ///
-    /// let mut perm = DjangoModelPermissions::new();
-    /// perm.add_user_permission("alice", "blog.add_article");
-    /// perm.add_user_permission("bob", "blog.view_article");
-    /// ```
+   /// ```no_run
+   /// use reinhardt_auth::model_permissions::DjangoModelPermissions;
+   ///
+   /// let mut perm = DjangoModelPermissions::new();
+   /// // Note: This method uses tokio::block_in_place internally
+   /// perm.add_user_permission("alice", "blog.add_article");
+   /// perm.add_user_permission("bob", "blog.view_article");
+   /// ```
     pub fn add_user_permission(&mut self, username: &str, permission: &str) {
         let user_perms = Arc::clone(&self.user_permissions);
         tokio::task::block_in_place(|| {

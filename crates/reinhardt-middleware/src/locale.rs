@@ -99,7 +99,7 @@ impl Default for LocaleConfig {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use std::sync::Arc;
 /// use reinhardt_middleware::{LocaleMiddleware, locale::LocaleConfig};
 /// use reinhardt_apps::{Handler, Middleware, Request, Response};

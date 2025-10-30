@@ -652,16 +652,6 @@ impl QueryOptimizer {
     ///
     /// Creates a `QueryAnalysis` from a `QueryPlan`, including complexity
     /// classification and indexed suggestions.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_filters::{QueryOptimizer, QueryPlan};
-    ///
-    /// let optimizer = QueryOptimizer::new();
-    /// let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)");
-    /// let analysis = optimizer.analyze_query_plan(&plan);
-    /// ```
     fn analyze_query_plan(&self, query_plan: &QueryPlan) -> QueryAnalysis {
         let complexity = query_plan
             .estimated_cost

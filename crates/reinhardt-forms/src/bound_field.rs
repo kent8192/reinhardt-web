@@ -16,7 +16,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let field: Box<dyn FormField> = Box::new(CharField::new("name".to_string()));
     /// let data = serde_json::json!("John");
@@ -46,7 +46,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let field: Box<dyn FormField> = Box::new(CharField::new("email".to_string()));
     /// let bound = BoundField::new("form".to_string(), &field, None, &[], "");
@@ -60,7 +60,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let field: Box<dyn FormField> = Box::new(CharField::new("email".to_string()));
     ///
@@ -84,7 +84,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let field: Box<dyn FormField> = Box::new(CharField::new("username".to_string()));
     /// let bound = BoundField::new("form".to_string(), &field, None, &[], "profile");
@@ -99,7 +99,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let mut field = CharField::new("name".to_string());
     /// field.label = Some("Full Name".to_string());
@@ -116,7 +116,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let field: Box<dyn FormField> = Box::new(CharField::new("name".to_string()));
     /// let data = serde_json::json!("Alice");
@@ -132,7 +132,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let field: Box<dyn FormField> = Box::new(CharField::new("email".to_string()));
     /// let errors = vec!["Invalid email format".to_string(), "Email is required".to_string()];
@@ -149,7 +149,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let field: Box<dyn FormField> = Box::new(CharField::new("username".to_string()));
     ///
@@ -170,7 +170,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, EmailField, Field, Widget};
+    /// use reinhardt_forms::{BoundField, CharField, EmailField, FormField, Widget};
     ///
     /// let field: Box<dyn FormField> = Box::new(CharField::new("name".to_string()));
     /// let bound = BoundField::new("form".to_string(), &field, None, &[], "");
@@ -188,7 +188,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let mut field = CharField::new("password".to_string());
     /// field.help_text = Some("Must be at least 8 characters".to_string());
@@ -205,7 +205,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let mut field = CharField::new("name".to_string());
     /// field.required = true;
@@ -229,7 +229,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let field: Box<dyn FormField> = Box::new(CharField::new("username".to_string()));
     /// let data = serde_json::json!("john_doe");
@@ -362,7 +362,7 @@ impl<'a> BoundField<'a> {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_forms::{BoundField, CharField, Field};
+    /// use reinhardt_forms::{BoundField, CharField, FormField};
     ///
     /// let mut field = CharField::new("email".to_string());
     /// field.label = Some("Email Address".to_string());

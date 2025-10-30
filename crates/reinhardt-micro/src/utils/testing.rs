@@ -33,7 +33,7 @@ use std::fmt::Debug;
 /// let body = r#"{"name": "Alice"}"#;
 /// let request = test_request(Method::POST, "/api/users", Some(body.to_string()));
 /// assert_eq!(request.method, Method::POST);
-/// assert_eq!(request.body.len(), body.len());
+/// assert_eq!(request.body().len(), body.len());
 /// ```
 pub fn test_request(method: Method, path: &str, body: Option<String>) -> Request {
     let uri = path.parse::<Uri>().expect("Invalid URI");

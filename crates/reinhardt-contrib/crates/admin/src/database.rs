@@ -78,7 +78,9 @@ fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 ///
 /// ```
 /// use reinhardt_admin::AdminDatabase;
-/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend};
+/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
+/// use std::sync::Arc;
+/// use serde::{Serialize, Deserialize};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let conn = DatabaseConnection::new(DatabaseBackend::Postgres);
@@ -90,16 +92,17 @@ fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 /// # }
 ///
 /// // Placeholder User type for example
-/// #[derive(Clone)]
+/// #[derive(Clone, Serialize, Deserialize)]
 /// struct User {
-///     id: i64,
+///     id: Option<i64>,
 ///     name: String,
 /// }
 ///
-/// impl reinhardt_orm::Model for User {
+/// impl Model for User {
 ///     type PrimaryKey = i64;
 ///     fn table_name() -> &'static str { "users" }
-///     fn primary_key(&self) -> &Self::PrimaryKey { &self.id }
+///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+///     fn set_primary_key(&mut self, pk: Self::PrimaryKey) { self.id = Some(pk); }
 /// }
 /// ```
 pub struct AdminDatabase {
@@ -123,8 +126,9 @@ impl AdminDatabase {
     ///
     /// ```
     /// use reinhardt_admin::AdminDatabase;
-    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Filter, FilterOperator, FilterValue};
+    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
     /// use std::sync::Arc;
+    /// use serde::{Serialize, Deserialize};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let conn = DatabaseConnection::new(DatabaseBackend::Postgres);
@@ -138,16 +142,17 @@ impl AdminDatabase {
     /// # Ok(())
     /// # }
     ///
-    /// #[derive(Clone)]
+    /// #[derive(Clone, Serialize, Deserialize)]
     /// struct User {
-    ///     id: i64,
+    ///     id: Option<i64>,
     ///     name: String,
     /// }
     ///
-    /// impl reinhardt_orm::Model for User {
+    /// impl Model for User {
     ///     type PrimaryKey = i64;
     ///     fn table_name() -> &'static str { "users" }
-    ///     fn primary_key(&self) -> &Self::PrimaryKey { &self.id }
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    ///     fn set_primary_key(&mut self, pk: Self::PrimaryKey) { self.id = Some(pk); }
     /// }
     /// ```
     pub async fn list<M: Model>(
@@ -197,8 +202,9 @@ impl AdminDatabase {
     ///
     /// ```
     /// use reinhardt_admin::AdminDatabase;
-    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend};
+    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
     /// use std::sync::Arc;
+    /// use serde::{Serialize, Deserialize};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let conn = DatabaseConnection::new(DatabaseBackend::Postgres);
@@ -208,16 +214,17 @@ impl AdminDatabase {
     /// # Ok(())
     /// # }
     ///
-    /// #[derive(Clone)]
+    /// #[derive(Clone, Serialize, Deserialize)]
     /// struct User {
-    ///     id: i64,
+    ///     id: Option<i64>,
     ///     name: String,
     /// }
     ///
-    /// impl reinhardt_orm::Model for User {
+    /// impl Model for User {
     ///     type PrimaryKey = i64;
     ///     fn table_name() -> &'static str { "users" }
-    ///     fn primary_key(&self) -> &Self::PrimaryKey { &self.id }
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    ///     fn set_primary_key(&mut self, pk: Self::PrimaryKey) { self.id = Some(pk); }
     /// }
     /// ```
     pub async fn get<M: Model>(
@@ -252,9 +259,10 @@ impl AdminDatabase {
     ///
     /// ```
     /// use reinhardt_admin::AdminDatabase;
-    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend};
+    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
     /// use std::sync::Arc;
     /// use std::collections::HashMap;
+    /// use serde::{Serialize, Deserialize};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let conn = DatabaseConnection::new(DatabaseBackend::Postgres);
@@ -268,16 +276,17 @@ impl AdminDatabase {
     /// # Ok(())
     /// # }
     ///
-    /// #[derive(Clone)]
+    /// #[derive(Clone, Serialize, Deserialize)]
     /// struct User {
-    ///     id: i64,
+    ///     id: Option<i64>,
     ///     name: String,
     /// }
     ///
-    /// impl reinhardt_orm::Model for User {
+    /// impl Model for User {
     ///     type PrimaryKey = i64;
     ///     fn table_name() -> &'static str { "users" }
-    ///     fn primary_key(&self) -> &Self::PrimaryKey { &self.id }
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    ///     fn set_primary_key(&mut self, pk: Self::PrimaryKey) { self.id = Some(pk); }
     /// }
     /// ```
     pub async fn create<M: Model>(
@@ -334,9 +343,10 @@ impl AdminDatabase {
     ///
     /// ```
     /// use reinhardt_admin::AdminDatabase;
-    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend};
+    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
     /// use std::sync::Arc;
     /// use std::collections::HashMap;
+    /// use serde::{Serialize, Deserialize};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let conn = DatabaseConnection::new(DatabaseBackend::Postgres);
@@ -349,16 +359,17 @@ impl AdminDatabase {
     /// # Ok(())
     /// # }
     ///
-    /// #[derive(Clone)]
+    /// #[derive(Clone, Serialize, Deserialize)]
     /// struct User {
-    ///     id: i64,
+    ///     id: Option<i64>,
     ///     name: String,
     /// }
     ///
-    /// impl reinhardt_orm::Model for User {
+    /// impl Model for User {
     ///     type PrimaryKey = i64;
     ///     fn table_name() -> &'static str { "users" }
-    ///     fn primary_key(&self) -> &Self::PrimaryKey { &self.id }
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    ///     fn set_primary_key(&mut self, pk: Self::PrimaryKey) { self.id = Some(pk); }
     /// }
     /// ```
     pub async fn update<M: Model>(
@@ -410,8 +421,9 @@ impl AdminDatabase {
     ///
     /// ```
     /// use reinhardt_admin::AdminDatabase;
-    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend};
+    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
     /// use std::sync::Arc;
+    /// use serde::{Serialize, Deserialize};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let conn = DatabaseConnection::new(DatabaseBackend::Postgres);
@@ -421,16 +433,17 @@ impl AdminDatabase {
     /// # Ok(())
     /// # }
     ///
-    /// #[derive(Clone)]
+    /// #[derive(Clone, Serialize, Deserialize)]
     /// struct User {
-    ///     id: i64,
+    ///     id: Option<i64>,
     ///     name: String,
     /// }
     ///
-    /// impl reinhardt_orm::Model for User {
+    /// impl Model for User {
     ///     type PrimaryKey = i64;
     ///     fn table_name() -> &'static str { "users" }
-    ///     fn primary_key(&self) -> &Self::PrimaryKey { &self.id }
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    ///     fn set_primary_key(&mut self, pk: Self::PrimaryKey) { self.id = Some(pk); }
     /// }
     /// ```
     pub async fn delete<M: Model>(
@@ -460,8 +473,9 @@ impl AdminDatabase {
     ///
     /// ```
     /// use reinhardt_admin::AdminDatabase;
-    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend};
+    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
     /// use std::sync::Arc;
+    /// use serde::{Serialize, Deserialize};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let conn = DatabaseConnection::new(DatabaseBackend::Postgres);
@@ -472,16 +486,17 @@ impl AdminDatabase {
     /// # Ok(())
     /// # }
     ///
-    /// #[derive(Clone)]
+    /// #[derive(Clone, Serialize, Deserialize)]
     /// struct User {
-    ///     id: i64,
+    ///     id: Option<i64>,
     ///     name: String,
     /// }
     ///
-    /// impl reinhardt_orm::Model for User {
+    /// impl Model for User {
     ///     type PrimaryKey = i64;
     ///     fn table_name() -> &'static str { "users" }
-    ///     fn primary_key(&self) -> &Self::PrimaryKey { &self.id }
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    ///     fn set_primary_key(&mut self, pk: Self::PrimaryKey) { self.id = Some(pk); }
     /// }
     /// ```
     pub async fn bulk_delete<M: Model>(
@@ -515,8 +530,9 @@ impl AdminDatabase {
     ///
     /// ```
     /// use reinhardt_admin::AdminDatabase;
-    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Filter, FilterOperator, FilterValue};
+    /// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
     /// use std::sync::Arc;
+    /// use serde::{Serialize, Deserialize};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let conn = DatabaseConnection::new(DatabaseBackend::Postgres);
@@ -530,16 +546,17 @@ impl AdminDatabase {
     /// # Ok(())
     /// # }
     ///
-    /// #[derive(Clone)]
+    /// #[derive(Clone, Serialize, Deserialize)]
     /// struct User {
-    ///     id: i64,
+    ///     id: Option<i64>,
     ///     name: String,
     /// }
     ///
-    /// impl reinhardt_orm::Model for User {
+    /// impl Model for User {
     ///     type PrimaryKey = i64;
     ///     fn table_name() -> &'static str { "users" }
-    ///     fn primary_key(&self) -> &Self::PrimaryKey { &self.id }
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+    ///     fn set_primary_key(&mut self, pk: Self::PrimaryKey) { self.id = Some(pk); }
     /// }
     /// ```
     pub async fn count<M: Model>(

@@ -153,7 +153,7 @@ fn test_jwt_special_characters_in_username() {
 fn test_jwt_unicode_username() {
     let jwt_auth = JwtAuth::new(b"test_secret_key");
     let user_id = "user123".to_string();
-    let username = "ユーザー名".to_string(); // Japanese username
+    let username = "ユーザー名".to_string(); // Japanese username (test string)
 
     let token = jwt_auth
         .generate_token(user_id.clone(), username.clone())

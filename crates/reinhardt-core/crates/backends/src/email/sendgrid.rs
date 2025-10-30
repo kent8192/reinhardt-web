@@ -116,7 +116,7 @@ impl SendGridBackend {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// # #[cfg(feature = "email-sendgrid")]
     /// use reinhardt_backends::email::SendGridBackend;
     ///
@@ -136,7 +136,7 @@ impl SendGridBackend {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// # #[cfg(feature = "email-sendgrid")]
     /// use reinhardt_backends::email::SendGridBackend;
     /// use reqwest::Client;

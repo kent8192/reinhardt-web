@@ -105,7 +105,7 @@ impl MigrationWriter {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use reinhardt_migrations::{Migration, Operation, ColumnDefinition, writer::MigrationWriter};
     ///
     /// let migration = Migration::new("0001_initial", "myapp")

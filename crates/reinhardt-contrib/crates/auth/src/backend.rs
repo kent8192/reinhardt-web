@@ -123,8 +123,9 @@ pub trait AuthBackend: Send + Sync {
 /// ```
 /// use reinhardt_auth::PasswordHasher;
 /// use sha2::{Sha256, Digest};
+/// use base64::{Engine, engine::general_purpose::STANDARD};
 ///
-// Simple SHA-256 hasher (NOT recommended for production!)
+/// // Simple SHA-256 hasher (NOT recommended for production!)
 /// struct SimpleHasher;
 ///
 /// impl PasswordHasher for SimpleHasher {
@@ -132,7 +133,7 @@ pub trait AuthBackend: Send + Sync {
 ///         let mut hasher = Sha256::new();
 ///         hasher.update(password.as_bytes());
 ///         let result = hasher.finalize();
-///         Ok(format!("{:x}", result))
+///         Ok(STANDARD.encode(&result))
 ///     }
 ///
 ///     fn verify(&self, password: &str, hash: &str) -> reinhardt_apps::Result<bool> {

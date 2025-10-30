@@ -115,7 +115,7 @@ pub trait ModelAdmin: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin::ModelAdminConfig;
+/// use reinhardt_admin::{ModelAdminConfig, ModelAdmin};
 ///
 /// let admin = ModelAdminConfig::builder()
 ///     .model_name("User")
@@ -144,7 +144,7 @@ impl ModelAdminConfig {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_admin::ModelAdminConfig;
+    /// use reinhardt_admin::{ModelAdminConfig, ModelAdmin};
     ///
     /// let admin = ModelAdminConfig::new("User");
     /// assert_eq!(admin.model_name(), "User");

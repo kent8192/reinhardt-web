@@ -134,7 +134,7 @@ async fn test_middleware_execution_order() {
         .build();
 
     let response = router.handle(req).await.unwrap();
-    // ミドルウェアは登録順に実行される
+    // Middleware is executed in registration order
     assert_eq!(String::from_utf8_lossy(response.body()), "1:2:3:test");
 }
 
@@ -215,7 +215,7 @@ async fn test_multiple_routes_different_middleware_stacks() {
         .with_route_middleware(mw_a.clone())
         .function("/route2", Method::GET, handler2)
         .with_route_middleware(mw_b.clone())
-        .function("/route3", Method::GET, handler3); // ミドルウェアなし
+        .function("/route3", Method::GET, handler3); // No middleware
 
     // route1: global + a
     let req1 = Request::builder()
@@ -273,7 +273,7 @@ async fn test_group_isolation() {
         .mount("/group1", group1.build())
         .mount("/group2", group2.build());
 
-    // group1のミドルウェアはgroup1のルートにのみ適用される
+    // group1 middleware is only applied to group1 routes
     let req1 = Request::builder()
         .method(Method::GET)
         .uri("/group1/test")
@@ -281,7 +281,7 @@ async fn test_group_isolation() {
     let response1 = router.handle(req1).await.unwrap();
     assert_eq!(String::from_utf8_lossy(response1.body()), "g1:g1");
 
-    // group2のミドルウェアはgroup2のルートにのみ適用される
+    // group2 middleware is only applied to group2 routes
     let req2 = Request::builder()
         .method(Method::GET)
         .uri("/group2/test")

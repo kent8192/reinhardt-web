@@ -533,7 +533,7 @@ impl Default for AuditLogQueryBuilder {
 /// ```
 /// use reinhardt_admin::audit::{MemoryAuditLogger, AuditLogger, AuditLog, AuditAction, AuditLogQuery};
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 /// let logger = MemoryAuditLogger::new();
 ///
 /// let log = AuditLog::builder()

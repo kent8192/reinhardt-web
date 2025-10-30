@@ -13,6 +13,7 @@
 //!
 //! ```no_run
 //! use reinhardt_backends::cache::redis::RedisCache;
+//! use reinhardt_backends::cache::CacheBackend;
 //! use std::time::Duration;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
