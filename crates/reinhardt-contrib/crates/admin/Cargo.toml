@@ -40,6 +40,7 @@ dashmap = "6.1.0"
 chrono = { workspace = true }
 sea-query = { workspace = true }
 askama = { workspace = true }
+tera = "1.20"
 rayon = "1.10"
 csv = "1.3"
 

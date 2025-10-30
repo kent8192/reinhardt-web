@@ -5,6 +5,20 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// Custom filter function for templates
+/// Get the length of a collection
+pub fn length<T>(collection: &[T]) -> Result<usize, askama::Error> {
+    Ok(collection.len())
+}
+
+/// Helper function to get a value from a HashMap using a String key
+pub fn get_field<'a>(
+    map: &'a std::collections::HashMap<String, serde_json::Value>,
+    key: &str,
+) -> Option<&'a serde_json::Value> {
+    map.get(key)
+}
+
 /// Specification for a single filter option
 ///
 /// # Examples

@@ -1,12 +1,25 @@
 //! Template rendering for admin interface
 //!
-//! This module provides template rendering using Askama template engine
-//! integrated with reinhardt-templates.
+//! This module provides template rendering using the Tera template engine.
+//! Previously used Askama, but migrated to Tera to resolve:
+//! - HashMap.get() type inference issues
+//! - Option<String> HtmlSafe handling
+//! - Better support for dynamic content and runtime template loading
+//!
+//! The Tera templates use Jinja2-style syntax, compatible with Django templates.
 
 use crate::{AdminError, AdminResult};
-use askama::Template;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
+use tera::Tera;
+
+#[allow(unused_imports)]
+use crate::filters;
+
+// NOTE: Tera provides built-in filters similar to Django/Jinja2
+// Custom filters can be registered on the Tera instance if needed
+// See: https://tera.netlify.app/docs/#filters
 
 /// Admin template context
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -280,188 +293,147 @@ pub struct RecentActionContext {
 }
 
 // ============================================================================
-// Askama Template Structs
+// Template Renderer - Using Tera Template Engine
 // ============================================================================
-
-/// List view template
-#[derive(Template)]
-#[template(path = "list.tpl")]
-struct ListTemplate<'a> {
-    // Base context fields
-    site_title: &'a str,
-    site_header: &'a str,
-    user: Option<&'a UserContext>,
-    available_apps: &'a [AppContext],
-
-    // List view specific fields
-    model_name: &'a str,
-    model_verbose_name: &'a str,
-    items: &'a [HashMap<String, serde_json::Value>],
-    list_display: &'a [String],
-    field_labels: &'a HashMap<String, String>,
-    filters: &'a [FilterContext],
-    search_query: Option<&'a str>,
-    pagination: &'a PaginationContext,
-    actions: &'a [ActionContext],
-}
-
-/// Form view template
-#[derive(Template)]
-#[template(path = "form.tpl")]
-struct FormTemplate<'a> {
-    // Base context fields
-    site_title: &'a str,
-    site_header: &'a str,
-    user: Option<&'a UserContext>,
-    available_apps: &'a [AppContext],
-
-    // Form view specific fields
-    model_name: &'a str,
-    title: &'a str,
-    fields: &'a [FormFieldContext],
-    inlines: &'a [InlineFormsetContext],
-    object_id: Option<&'a str>,
-    errors: &'a [String],
-}
-
-/// Delete confirmation template
-#[derive(Template)]
-#[template(path = "delete_confirmation.tpl")]
-struct DeleteConfirmationTemplate<'a> {
-    // Base context fields
-    site_title: &'a str,
-    site_header: &'a str,
-    user: Option<&'a UserContext>,
-    available_apps: &'a [AppContext],
-
-    // Delete confirmation specific fields
-    model_name: &'a str,
-    object_repr: &'a str,
-    related_objects: &'a [RelatedObjectContext],
-    total_count: usize,
-}
-
-/// Dashboard template
-#[derive(Template)]
-#[template(path = "dashboard.tpl")]
-struct DashboardTemplate<'a> {
-    // Base context fields
-    site_title: &'a str,
-    site_header: &'a str,
-    user: Option<&'a UserContext>,
-    available_apps: &'a [AppContext],
-
-    // Dashboard specific fields
-    widgets: &'a [WidgetContext],
-    recent_actions: &'a [RecentActionContext],
-}
+// Note: Previously used Askama with struct-based templates, but migrated to Tera
+// to resolve HashMap.get() type inference and Option<String> HtmlSafe issues.
+// All template rendering is now done through AdminTemplateRenderer methods.
 
 /// Template renderer
 pub struct AdminTemplateRenderer {
     template_dir: String,
+    tera: Arc<Tera>,
 }
 
 impl AdminTemplateRenderer {
     /// Create a new template renderer
     pub fn new(template_dir: impl Into<String>) -> Self {
+        let template_dir = template_dir.into();
+        
+        // Initialize Tera with templates from the admin templates directory
+        let template_path = format!("{}/**/*.tpl", template_dir);
+        let tera = match Tera::new(&template_path) {
+            Ok(t) => Arc::new(t),
+            Err(e) => {
+                // If templates can't be loaded, create an empty Tera instance
+                eprintln!("Warning: Failed to load templates from {}: {}", template_path, e);
+                Arc::new(Tera::default())
+            }
+        };
+        
+        Self {
+            template_dir,
+            tera,
+        }
+    }
+    
+    /// Create a new template renderer with a custom Tera instance
+    pub fn with_tera(template_dir: impl Into<String>, tera: Tera) -> Self {
         Self {
             template_dir: template_dir.into(),
+            tera: Arc::new(tera),
         }
     }
 
-    /// Render list view
+    /// Render list view using Tera template engine
+    /// This method uses Tera instead of Askama to avoid HashMap.get() type inference issues
     pub fn render_list(&self, context: &ListViewContext) -> AdminResult<String> {
-        let template = ListTemplate {
-            // Base context
-            site_title: &context.admin.site_title,
-            site_header: &context.admin.site_header,
-            user: context.admin.user.as_ref(),
-            available_apps: &context.admin.available_apps,
-            // List view specific
-            model_name: &context.model_name,
-            model_verbose_name: &context.model_verbose_name,
-            items: &context.items,
-            list_display: &context.list_display,
-            field_labels: &context.field_labels,
-            filters: &context.filters,
-            search_query: context.search_query.as_deref(),
-            pagination: &context.pagination,
-            actions: &context.actions,
-        };
-
-        template
-            .render()
-            .map_err(|e| AdminError::TemplateError(e.to_string()))
+        let mut tera_context = tera::Context::new();
+        
+        // Base context
+        tera_context.insert("site_title", &context.admin.site_title);
+        tera_context.insert("site_header", &context.admin.site_header);
+        tera_context.insert("user", &context.admin.user);
+        tera_context.insert("available_apps", &context.admin.available_apps);
+        
+        // List view specific
+        tera_context.insert("model_name", &context.model_name);
+        tera_context.insert("model_verbose_name", &context.model_verbose_name);
+        tera_context.insert("items", &context.items);
+        tera_context.insert("list_display", &context.list_display);
+        tera_context.insert("field_labels", &context.field_labels);
+        tera_context.insert("filters", &context.filters);
+        tera_context.insert("search_query", &context.search_query);
+        tera_context.insert("pagination", &context.pagination);
+        tera_context.insert("actions", &context.actions);
+        
+        self.tera
+            .render("list.tpl", &tera_context)
+            .map_err(|e| AdminError::TemplateError(format!("Failed to render list template: {}", e)))
     }
 
-    /// Render form view
+    /// Render form view using Tera template engine
     pub fn render_form(&self, context: &FormViewContext) -> AdminResult<String> {
-        let template = FormTemplate {
-            // Base context
-            site_title: &context.admin.site_title,
-            site_header: &context.admin.site_header,
-            user: context.admin.user.as_ref(),
-            available_apps: &context.admin.available_apps,
-            // Form view specific
-            model_name: &context.model_name,
-            title: &context.title,
-            fields: &context.fields,
-            inlines: &context.inlines,
-            object_id: context.object_id.as_deref(),
-            errors: &context.errors,
-        };
-
-        template
-            .render()
-            .map_err(|e| AdminError::TemplateError(e.to_string()))
+        let mut tera_context = tera::Context::new();
+        
+        // Base context
+        tera_context.insert("site_title", &context.admin.site_title);
+        tera_context.insert("site_header", &context.admin.site_header);
+        tera_context.insert("user", &context.admin.user);
+        tera_context.insert("available_apps", &context.admin.available_apps);
+        
+        // Form view specific
+        tera_context.insert("model_name", &context.model_name);
+        tera_context.insert("title", &context.title);
+        tera_context.insert("fields", &context.fields);
+        tera_context.insert("inlines", &context.inlines);
+        tera_context.insert("object_id", &context.object_id);
+        tera_context.insert("errors", &context.errors);
+        
+        self.tera
+            .render("form.tpl", &tera_context)
+            .map_err(|e| AdminError::TemplateError(format!("Failed to render form template: {}", e)))
     }
 
-    /// Render delete confirmation
+    /// Render delete confirmation using Tera template engine
     pub fn render_delete_confirmation(
         &self,
         context: &DeleteConfirmationContext,
     ) -> AdminResult<String> {
-        let template = DeleteConfirmationTemplate {
-            // Base context
-            site_title: &context.admin.site_title,
-            site_header: &context.admin.site_header,
-            user: context.admin.user.as_ref(),
-            available_apps: &context.admin.available_apps,
-            // Delete confirmation specific
-            model_name: &context.model_name,
-            object_repr: &context.object_repr,
-            related_objects: &context.related_objects,
-            total_count: context.total_count,
-        };
-
-        template
-            .render()
-            .map_err(|e| AdminError::TemplateError(e.to_string()))
+        let mut tera_context = tera::Context::new();
+        
+        // Base context
+        tera_context.insert("site_title", &context.admin.site_title);
+        tera_context.insert("site_header", &context.admin.site_header);
+        tera_context.insert("user", &context.admin.user);
+        tera_context.insert("available_apps", &context.admin.available_apps);
+        
+        // Delete confirmation specific
+        tera_context.insert("model_name", &context.model_name);
+        tera_context.insert("object_repr", &context.object_repr);
+        tera_context.insert("related_objects", &context.related_objects);
+        tera_context.insert("total_count", &context.total_count);
+        
+        self.tera
+            .render("delete_confirmation.tpl", &tera_context)
+            .map_err(|e| AdminError::TemplateError(format!("Failed to render delete confirmation template: {}", e)))
     }
 
-    /// Render dashboard
+    /// Render dashboard using Tera template engine
+    /// This method uses Tera instead of Askama to avoid Option<String> HtmlSafe handling issues
     pub fn render_dashboard(&self, context: &DashboardContext) -> AdminResult<String> {
-        let template = DashboardTemplate {
-            // Base context
-            site_title: &context.admin.site_title,
-            site_header: &context.admin.site_header,
-            user: context.admin.user.as_ref(),
-            available_apps: &context.admin.available_apps,
-            // Dashboard specific
-            widgets: &context.widgets,
-            recent_actions: &context.recent_actions,
-        };
-
-        template
-            .render()
-            .map_err(|e| AdminError::TemplateError(e.to_string()))
+        let mut tera_context = tera::Context::new();
+        
+        // Base context
+        tera_context.insert("site_title", &context.admin.site_title);
+        tera_context.insert("site_header", &context.admin.site_header);
+        tera_context.insert("user", &context.admin.user);
+        tera_context.insert("available_apps", &context.admin.available_apps);
+        
+        // Dashboard specific
+        tera_context.insert("widgets", &context.widgets);
+        tera_context.insert("recent_actions", &context.recent_actions);
+        
+        self.tera
+            .render("dashboard.tpl", &tera_context)
+            .map_err(|e| AdminError::TemplateError(format!("Failed to render dashboard template: {}", e)))
     }
 
 }
 
 impl Default for AdminTemplateRenderer {
     fn default() -> Self {
-        Self::new("templates/admin")
+        Self::new("crates/reinhardt-contrib/crates/admin/templates")
     }
 }
 

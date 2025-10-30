@@ -213,7 +213,7 @@
 
 {% block content %}
 <!-- Form errors summary -->
-{% if errors %}
+{% if !errors.is_empty() %}
 <div class="form-errors">
     <strong>Please correct the following errors:</strong>
     <ul>
@@ -248,7 +248,7 @@
                 {% endmatch %}
 
                 <!-- Field errors -->
-                {% if field.errors %}
+                {% if !field.errors.is_empty() %}
                     {% for error in field.errors %}
                     <span class="field-error">{{ error }}</span>
                     {% endfor %}
@@ -259,7 +259,7 @@
     </div>
 
     <!-- Inline formsets -->
-    {% if inlines %}
+    {% if !inlines.is_empty() %}
         {% for inline in inlines %}
         <div class="inline-group">
             <h2>{{ inline.verbose_name }}</h2>
@@ -277,11 +277,13 @@
                             {{ field.widget_html|safe }}
                         </div>
 
-                        {% if field.help_text %}
-                        <span class="form-help">{{ field.help_text }}</span>
-                        {% endif %}
+                        {% match field.help_text %}
+                            {% when Some with (text) %}
+                                <span class="form-help">{{ text }}</span>
+                            {% when None %}
+                        {% endmatch %}
 
-                        {% if field.errors %}
+                        {% if !field.errors.is_empty() %}
                             {% for error in field.errors %}
                             <span class="field-error">{{ error }}</span>
                             {% endfor %}

@@ -297,7 +297,7 @@
         <tbody>
             {% for item in items %}
             <tr>
-                {% if actions %}
+                {% if !actions.is_empty() %}
                 <td class="action-checkbox-column">
                     {% if let Some(id_val) = item.get("id") %}
                     <input type="checkbox" name="_selected_action" value="{{ id_val }}">
@@ -336,13 +336,23 @@
     </div>
     <div class="pagination-links">
         {% if pagination.has_previous %}
-            <a href="{{ pagination.previous_url }}">Previous</a>
+            {% match pagination.previous_url %}
+                {% when Some with (url) %}
+                    <a href="{{ url }}">Previous</a>
+                {% when None %}
+                    <span>Previous</span>
+            {% endmatch %}
         {% else %}
             <span>Previous</span>
         {% endif %}
 
         {% if pagination.has_next %}
-            <a href="{{ pagination.next_url }}">Next</a>
+            {% match pagination.next_url %}
+                {% when Some with (url) %}
+                    <a href="{{ url }}">Next</a>
+                {% when None %}
+                    <span>Next</span>
+            {% endmatch %}
         {% else %}
             <span>Next</span>
         {% endif %}
