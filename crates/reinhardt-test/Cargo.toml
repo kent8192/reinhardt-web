@@ -37,7 +37,7 @@ mime = "0.3"
 base64-simd = "0.8"
 
 # Optional dependencies for testcontainers feature
-testcontainers = { workspace = true, optional = true }
+testcontainers = { workspace = true, optional = true, features = ["blocking"] }
 testcontainers-modules = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 
