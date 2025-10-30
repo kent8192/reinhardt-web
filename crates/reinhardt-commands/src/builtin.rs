@@ -367,7 +367,9 @@ impl BaseCommand for RunServerCommand {
             Ok(())
         }
     }
+}
 
+impl RunServerCommand {
     /// Run the development server
     #[cfg(feature = "server")]
     async fn run_server(
@@ -598,7 +600,7 @@ impl BaseCommand for ShowUrlsCommand {
             ));
             ctx.info(&"=".repeat(95));
 
-            for (path, name, namespace, methods) in routes {
+            for (path, name, namespace, methods) in &routes {
                 let methods_str = if methods.is_empty() {
                     "ALL".to_string()
                 } else {
