@@ -79,8 +79,11 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Run unit tests and doc tests
-        run: cargo test --workspace --lib --doc --all-features
+      - name: Run unit tests
+        run: cargo test --workspace --lib --all-features
+
+      - name: Run documentation tests
+        run: cargo test --doc --workspace
 
   test-integration:
     name: Integration Tests
@@ -141,7 +144,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run integration tests
-        run: cargo test --package tests --all-features
+        run: cargo test --package reinhardt-integration-tests --all-features
 
   test-examples:
     name: Examples Tests (crates.io)
