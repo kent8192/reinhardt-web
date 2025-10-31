@@ -241,11 +241,19 @@ impl MergedSettings {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_settings::builder::MergedSettings;
+    /// use reinhardt_settings::builder::SettingsBuilder;
+    /// use reinhardt_settings::sources::DefaultSource;
+    /// use serde_json::Value;
     ///
-    /// let settings = MergedSettings::default();
-    /// let value: Option<String> = settings.get_optional("key");
-    /// assert!(value.is_none());
+    /// let settings = SettingsBuilder::new()
+    ///     .add_source(
+    ///         DefaultSource::new()
+    ///             .with_value("debug", Value::Bool(true))
+    ///     )
+    ///     .build()
+    ///     .unwrap();
+    /// let value: Option<bool> = settings.get_optional("debug");
+    /// assert!(value.is_some());
     /// ```
     pub fn get_optional<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
         self.get(key).ok()
@@ -266,11 +274,19 @@ impl MergedSettings {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_settings::builder::MergedSettings;
+    /// use reinhardt_settings::builder::SettingsBuilder;
+    /// use reinhardt_settings::sources::DefaultSource;
+    /// use serde_json::Value;
     ///
-    /// let settings = MergedSettings::default();
-    /// let exists = settings.contains_key("key");
-    /// assert!(!exists);
+    /// let settings = SettingsBuilder::new()
+    ///     .add_source(
+    ///         DefaultSource::new()
+    ///             .with_value("debug", Value::Bool(true))
+    ///     )
+    ///     .build()
+    ///     .unwrap();
+    /// let exists = settings.contains_key("debug");
+    /// assert!(exists);
     /// ```
     pub fn contains_key(&self, key: &str) -> bool {
         self.data.contains_key(key)
