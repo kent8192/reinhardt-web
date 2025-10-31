@@ -88,7 +88,7 @@ pub fn validate_path_syntax(path: &str) -> Result<(), PathValidationError> {
 /// Validates a single path character (outside of parameters)
 fn validate_path_character(ch: char, position: usize) -> Result<(), PathValidationError> {
     match ch {
-        'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '/' | '.' => Ok(()),
+        'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '/' | '.' | '*' => Ok(()),
         _ => Err(PathValidationError::InvalidCharacter { ch, position }),
     }
 }

@@ -435,8 +435,10 @@ impl UnifiedRouter {
     /// ```rust,no_run
     /// use reinhardt_routers::UnifiedRouter;
     /// # use reinhardt_viewsets::ViewSet;
+    /// # use async_trait::async_trait;
     /// # use std::sync::Arc;
     /// # struct UserViewSet;
+    /// # #[async_trait]
     /// # impl ViewSet for UserViewSet {
     /// #     fn get_basename(&self) -> &str { "users" }
     /// #     async fn dispatch(&self, _req: reinhardt_apps::Request, _action: reinhardt_viewsets::Action)

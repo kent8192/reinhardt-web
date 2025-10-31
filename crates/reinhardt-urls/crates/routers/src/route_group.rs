@@ -169,7 +169,9 @@ impl RouteGroup {
     /// use reinhardt_routers::RouteGroup;
     /// use std::sync::Arc;
     /// # use reinhardt_viewsets::ViewSet;
+    /// # use async_trait::async_trait;
     /// # struct UserViewSet;
+    /// # #[async_trait]
     /// # impl ViewSet for UserViewSet {
     /// #     fn get_basename(&self) -> &str { "users" }
     /// #     async fn dispatch(&self, _req: reinhardt_apps::Request, _action: reinhardt_viewsets::Action)
