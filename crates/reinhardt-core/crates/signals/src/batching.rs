@@ -10,9 +10,9 @@
 //! use reinhardt_signals::Signal;
 //! use std::time::Duration;
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a signal
-//! let signal = Signal::<String>::new(reinhardt_signals::SignalName::custom("user_activity"));
+//! # tokio_test::block_on(async {
+//! // Create a signal (SignalBatcher requires Signal<Vec<T>>)
+//! let signal = Signal::<Vec<String>>::new(reinhardt_signals::SignalName::custom("user_activity"));
 //!
 //! // Create a batcher with custom configuration
 //! let config = BatchConfig::new()
@@ -22,15 +22,14 @@
 //! let batcher = SignalBatcher::new(signal.clone(), config);
 //!
 //! // Queue signals for batching
-//! batcher.queue("user_1_action".to_string()).await?;
-//! batcher.queue("user_2_action".to_string()).await?;
-//! batcher.queue("user_3_action".to_string()).await?;
+//! batcher.queue("user_1_action".to_string()).await.unwrap();
+//! batcher.queue("user_2_action".to_string()).await.unwrap();
+//! batcher.queue("user_3_action".to_string()).await.unwrap();
 //!
 //! // Batch will be automatically flushed based on config
 //! // Or manually flush
-//! batcher.flush().await?;
-//! # Ok(())
-//! # }
+//! batcher.flush().await.unwrap();
+//! # })
 //! ```
 
 use crate::error::SignalError;
@@ -158,20 +157,19 @@ impl<T> BatchState<T> {
 /// use reinhardt_signals::{Signal, SignalName};
 /// use std::time::Duration;
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let signal = Signal::<i32>::new(SignalName::custom("numbers"));
+/// # tokio_test::block_on(async {
+/// let signal = Signal::<Vec<i32>>::new(SignalName::custom("numbers"));
 /// let config = BatchConfig::new().with_max_batch_size(10);
 /// let batcher = SignalBatcher::new(signal, config);
 ///
 /// // Queue items
 /// for i in 0..5 {
-///     batcher.queue(i).await?;
+///     batcher.queue(i).await.unwrap();
 /// }
 ///
 /// // Manual flush
-/// batcher.flush().await?;
-/// # Ok(())
-/// # }
+/// batcher.flush().await.unwrap();
+/// # })
 /// ```
 pub struct SignalBatcher<T: Send + Sync + 'static> {
     signal: Signal<Vec<T>>,
@@ -194,9 +192,11 @@ impl<T: Send + Sync + 'static> SignalBatcher<T> {
     /// use reinhardt_signals::batching::{BatchConfig, SignalBatcher};
     /// use reinhardt_signals::{Signal, SignalName};
     ///
+    /// # tokio_test::block_on(async {
     /// let signal = Signal::<Vec<String>>::new(SignalName::custom("batch_signal"));
     /// let config = BatchConfig::new();
     /// let batcher = SignalBatcher::new(signal, config);
+    /// # })
     /// ```
     pub fn new(signal: Signal<Vec<T>>, config: BatchConfig) -> Self {
         let batcher = Self {
