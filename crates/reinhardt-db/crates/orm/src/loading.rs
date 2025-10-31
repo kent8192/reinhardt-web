@@ -110,7 +110,10 @@ impl LoadOption {
     /// # Examples
     ///
     /// ```
-    /// let instance = Type::new();
+    /// use reinhardt_orm::loading::{LoadOption, LoadingStrategy};
+    /// 
+    /// let option = LoadOption::new("posts", LoadingStrategy::Joined);
+    /// assert_eq!(option.path(), "posts");
     /// ```
     pub fn new(path: impl Into<String>, strategy: LoadingStrategy) -> Self {
         Self {
@@ -148,7 +151,29 @@ impl<T: Model> LoadOptionBuilder<T> {
     /// # Examples
     ///
     /// ```
-    /// let instance = Type::new();
+    /// use reinhardt_orm::{Model, loading::LoadOptionBuilder};
+    /// use serde::{Serialize, Deserialize};
+    /// 
+    /// #[derive(Debug, Serialize, Deserialize)]
+    /// struct User {
+    ///     id: Option<i32>,
+    /// }
+    /// 
+    /// impl Model for User {
+    ///     type PrimaryKey = i32;
+    ///     fn table_name() -> &'static str {
+    ///         "users"
+    ///     }
+    ///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+    ///         self.id.as_ref()
+    ///     }
+    ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+    ///         self.id = Some(value);
+    ///     }
+    /// }
+    /// 
+    /// let builder: LoadOptionBuilder<User> = LoadOptionBuilder::new();
+    /// // Builder is ready to configure loading options
     /// ```
     pub fn new() -> Self {
         Self {
@@ -268,7 +293,9 @@ impl LoadContext {
     /// # Examples
     ///
     /// ```
-    /// let instance = Type::new();
+    /// use reinhardt_orm::loading::LoadContext;
+    /// 
+    /// let context = LoadContext::new();
     /// ```
     pub fn new() -> Self {
         Self::default()
