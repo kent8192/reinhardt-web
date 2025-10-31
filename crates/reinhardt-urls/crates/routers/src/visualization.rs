@@ -71,7 +71,7 @@ impl RouteVisualizer {
     /// use hyper::Method;
     ///
     /// let mut inspector = RouteInspector::new();
-    /// inspector.add_route("/users/", vec![Method::GET], None, None);
+    /// inspector.add_route("/users/", vec![Method::GET], None::<String>, None);
     ///
     /// let visualizer = RouteVisualizer::from_inspector(&inspector);
     /// ```
