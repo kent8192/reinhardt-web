@@ -15,7 +15,7 @@ use tokio::time::timeout;
 /// ```
 /// use std::sync::Arc;
 /// use std::time::Duration;
-/// use reinhardt_server::TimeoutHandler;
+/// use reinhardt_server_core::TimeoutHandler;
 /// use reinhardt_types::Handler;
 /// use reinhardt_http::{Request, Response};
 ///
@@ -49,7 +49,7 @@ impl TimeoutHandler {
     /// ```
     /// use std::sync::Arc;
     /// use std::time::Duration;
-    /// use reinhardt_server::TimeoutHandler;
+    /// use reinhardt_server_core::TimeoutHandler;
     /// use reinhardt_types::Handler;
     /// use reinhardt_http::{Request, Response};
     ///
@@ -79,7 +79,7 @@ impl TimeoutHandler {
     /// ```
     /// use std::sync::Arc;
     /// use std::time::Duration;
-    /// use reinhardt_server::TimeoutHandler;
+    /// use reinhardt_server_core::TimeoutHandler;
     /// use reinhardt_types::Handler;
     /// use reinhardt_http::{Request, Response};
     ///

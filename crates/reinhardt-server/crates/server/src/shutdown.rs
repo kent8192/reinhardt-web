@@ -12,7 +12,7 @@ use tokio::time::timeout;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_server::shutdown::ShutdownCoordinator;
+/// use reinhardt_server_core::shutdown::ShutdownCoordinator;
 /// use std::time::Duration;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -46,7 +46,7 @@ impl ShutdownCoordinator {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::shutdown::ShutdownCoordinator;
+    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
     /// use std::time::Duration;
     ///
     /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
@@ -69,7 +69,7 @@ impl ShutdownCoordinator {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::shutdown::ShutdownCoordinator;
+    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
     /// use std::time::Duration;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -96,7 +96,7 @@ impl ShutdownCoordinator {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::shutdown::ShutdownCoordinator;
+    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
     /// use std::time::Duration;
     ///
     /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
@@ -111,7 +111,7 @@ impl ShutdownCoordinator {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::shutdown::ShutdownCoordinator;
+    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
     /// use std::time::Duration;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -133,7 +133,7 @@ impl ShutdownCoordinator {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::shutdown::ShutdownCoordinator;
+    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
     /// use std::time::Duration;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -162,7 +162,7 @@ impl ShutdownCoordinator {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::shutdown::ShutdownCoordinator;
+    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
     /// use std::time::Duration;
     ///
     /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
@@ -180,7 +180,7 @@ impl ShutdownCoordinator {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_server::shutdown::shutdown_signal;
+/// use reinhardt_server_core::shutdown::shutdown_signal;
 ///
 /// # async fn example() {
 /// println!("Waiting for shutdown signal...");
@@ -225,7 +225,7 @@ pub async fn shutdown_signal() {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_server::shutdown::{with_shutdown, ShutdownCoordinator};
+/// use reinhardt_server_core::shutdown::{with_shutdown, ShutdownCoordinator};
 /// use std::time::Duration;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

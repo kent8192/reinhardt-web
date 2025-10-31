@@ -33,7 +33,7 @@ impl RateLimitConfig {
     ///
     /// ```
     /// use std::time::Duration;
-    /// use reinhardt_server::{RateLimitConfig, RateLimitStrategy};
+    /// use reinhardt_server_core::{RateLimitConfig, RateLimitStrategy};
     ///
     /// let config = RateLimitConfig::new(
     ///     100,
@@ -58,7 +58,7 @@ impl RateLimitConfig {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::RateLimitConfig;
+    /// use reinhardt_server_core::RateLimitConfig;
     ///
     /// let config = RateLimitConfig::per_minute(60);
     /// ```
@@ -75,7 +75,7 @@ impl RateLimitConfig {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::RateLimitConfig;
+    /// use reinhardt_server_core::RateLimitConfig;
     ///
     /// let config = RateLimitConfig::per_hour(1000);
     /// ```
@@ -104,7 +104,7 @@ struct RateLimitEntry {
 /// ```
 /// use std::sync::Arc;
 /// use std::time::Duration;
-/// use reinhardt_server::{RateLimitHandler, RateLimitConfig};
+/// use reinhardt_server_core::{RateLimitHandler, RateLimitConfig};
 /// use reinhardt_types::Handler;
 /// use reinhardt_http::{Request, Response};
 ///
@@ -139,7 +139,7 @@ impl RateLimitHandler {
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use reinhardt_server::{RateLimitHandler, RateLimitConfig};
+    /// use reinhardt_server_core::{RateLimitHandler, RateLimitConfig};
     /// use reinhardt_types::Handler;
     /// use reinhardt_http::{Request, Response};
     ///

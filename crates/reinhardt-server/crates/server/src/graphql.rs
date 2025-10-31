@@ -28,7 +28,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::GraphQLHandler;
+    /// use reinhardt_server_core::GraphQLHandler;
     /// use async_graphql::{Schema, EmptySubscription, EmptyMutation, Object};
     ///
     /// struct QueryRoot;
@@ -51,7 +51,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::GraphQLHandler;
+    /// use reinhardt_server_core::GraphQLHandler;
     /// use async_graphql::Object;
     ///
     /// struct QueryRoot;
@@ -125,7 +125,7 @@ where
 ///
 /// ```
 /// use std::sync::Arc;
-/// use reinhardt_server::graphql_handler;
+/// use reinhardt_server_core::graphql_handler;
 /// use async_graphql::Object;
 ///
 /// struct QueryRoot;

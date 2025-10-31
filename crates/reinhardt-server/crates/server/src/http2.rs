@@ -26,7 +26,7 @@ impl Http2Server {
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use reinhardt_server::Http2Server;
+    /// use reinhardt_server_core::Http2Server;
     /// use reinhardt_types::Handler;
     /// use reinhardt_http::{Request, Response};
     ///
@@ -56,7 +56,7 @@ impl Http2Server {
     /// ```no_run
     /// use std::sync::Arc;
     /// use std::net::SocketAddr;
-    /// use reinhardt_server::Http2Server;
+    /// use reinhardt_server_core::Http2Server;
     /// use reinhardt_types::Handler;
     /// use reinhardt_http::{Request, Response};
     ///
@@ -105,7 +105,7 @@ impl Http2Server {
     /// use std::sync::Arc;
     /// use std::net::SocketAddr;
     /// use std::time::Duration;
-    /// use reinhardt_server::{Http2Server, ShutdownCoordinator};
+    /// use reinhardt_server_core::{Http2Server, ShutdownCoordinator};
     /// use reinhardt_types::Handler;
     /// use reinhardt_http::{Request, Response};
     ///
@@ -183,7 +183,7 @@ impl Http2Server {
     /// use std::sync::Arc;
     /// use std::net::SocketAddr;
     /// use tokio::net::TcpStream;
-    /// use reinhardt_server::Http2Server;
+    /// use reinhardt_server_core::Http2Server;
     /// use reinhardt_types::Handler;
     /// use reinhardt_http::{Request, Response};
     ///
@@ -276,7 +276,7 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 /// ```no_run
 /// use std::sync::Arc;
 /// use std::net::SocketAddr;
-/// use reinhardt_server::serve_http2;
+/// use reinhardt_server_core::serve_http2;
 /// use reinhardt_types::Handler;
 /// use reinhardt_http::{Request, Response};
 ///
@@ -314,7 +314,7 @@ pub async fn serve_http2(
 /// use std::sync::Arc;
 /// use std::net::SocketAddr;
 /// use std::time::Duration;
-/// use reinhardt_server::{serve_http2_with_shutdown, shutdown_signal, ShutdownCoordinator};
+/// use reinhardt_server_core::{serve_http2_with_shutdown, shutdown_signal, ShutdownCoordinator};
 /// use reinhardt_types::Handler;
 /// use reinhardt_http::{Request, Response};
 ///

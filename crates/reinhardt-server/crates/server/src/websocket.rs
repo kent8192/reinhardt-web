@@ -42,7 +42,7 @@ impl BroadcastManager {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_server::BroadcastManager;
+    /// use reinhardt_server_core::BroadcastManager;
     ///
     /// let manager = BroadcastManager::new(100);
     /// ```
@@ -73,7 +73,7 @@ impl BroadcastManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use reinhardt_server::BroadcastManager;
+    /// use reinhardt_server_core::BroadcastManager;
     ///
     /// # async fn example() {
     /// let manager = BroadcastManager::new(100);
@@ -90,7 +90,7 @@ impl BroadcastManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use reinhardt_server::BroadcastManager;
+    /// use reinhardt_server_core::BroadcastManager;
     ///
     /// # async fn example() {
     /// let manager = BroadcastManager::new(100);
@@ -137,8 +137,8 @@ impl WebSocketServer {
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use reinhardt_server::WebSocketServer;
-    /// use reinhardt_server::WebSocketHandler;
+    /// use reinhardt_server_core::WebSocketServer;
+    /// use reinhardt_server_core::WebSocketHandler;
     ///
     /// struct EchoHandler;
     ///
@@ -165,8 +165,8 @@ impl WebSocketServer {
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use reinhardt_server::WebSocketServer;
-    /// use reinhardt_server::WebSocketHandler;
+    /// use reinhardt_server_core::WebSocketServer;
+    /// use reinhardt_server_core::WebSocketHandler;
     ///
     /// struct EchoHandler;
     ///
@@ -192,8 +192,8 @@ impl WebSocketServer {
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use reinhardt_server::WebSocketServer;
-    /// use reinhardt_server::WebSocketHandler;
+    /// use reinhardt_server_core::WebSocketServer;
+    /// use reinhardt_server_core::WebSocketHandler;
     ///
     /// struct EchoHandler;
     ///
@@ -227,8 +227,8 @@ impl WebSocketServer {
     /// ```no_run
     /// use std::sync::Arc;
     /// use std::net::SocketAddr;
-    /// use reinhardt_server::WebSocketServer;
-    /// use reinhardt_server::WebSocketHandler;
+    /// use reinhardt_server_core::WebSocketServer;
+    /// use reinhardt_server_core::WebSocketHandler;
     ///
     /// struct EchoHandler;
     ///
@@ -276,8 +276,8 @@ impl WebSocketServer {
     /// use std::sync::Arc;
     /// use std::net::SocketAddr;
     /// use tokio::net::TcpStream;
-    /// use reinhardt_server::WebSocketServer;
-    /// use reinhardt_server::WebSocketHandler;
+    /// use reinhardt_server_core::WebSocketServer;
+    /// use reinhardt_server_core::WebSocketHandler;
     ///
     /// struct EchoHandler;
     ///
@@ -419,8 +419,8 @@ impl WebSocketServer {
 /// ```no_run
 /// use std::sync::Arc;
 /// use std::net::SocketAddr;
-/// use reinhardt_server::serve_websocket;
-/// use reinhardt_server::WebSocketHandler;
+/// use reinhardt_server_core::serve_websocket;
+/// use reinhardt_server_core::WebSocketHandler;
 ///
 /// struct ChatHandler;
 ///
