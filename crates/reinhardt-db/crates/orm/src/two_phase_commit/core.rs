@@ -15,15 +15,23 @@
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use reinhardt_orm::two_phase_commit::{TwoPhaseCoordinator, PostgresParticipant};
+//! use reinhardt_orm::two_phase_commit::TwoPhaseCoordinator;
+//! #[cfg(feature = "postgres")]
+//! use reinhardt_orm::PostgresParticipantAdapter;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create coordinator
 //! let mut coordinator = TwoPhaseCoordinator::new("global_txn_001");
 //!
-//! // Add participants
-//! coordinator.add_participant(Box::new(PostgresParticipant::new("primary_db", "connection_string")?)).await?;
-//! coordinator.add_participant(Box::new(PostgresParticipant::new("secondary_db", "connection_string")?)).await?;
+//! // Add participants (requires postgres feature)
+//! #[cfg(feature = "postgres")]
+//! {
+//!     let primary_pool = sqlx::PgPool::connect("postgresql://localhost/primary_db").await?;
+//!     let secondary_pool = sqlx::PgPool::connect("postgresql://localhost/secondary_db").await?;
+//!     
+//!     coordinator.add_participant(Box::new(PostgresParticipantAdapter::new("primary_db", primary_pool))).await?;
+//!     coordinator.add_participant(Box::new(PostgresParticipantAdapter::new("secondary_db", secondary_pool))).await?;
+//! }
 //!
 //! // Execute transaction
 //! coordinator.begin().await?;

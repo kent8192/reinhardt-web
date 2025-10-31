@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_orm::postgres::features::{ArrayAgg, FullTextSearch};
+//! use reinhardt_orm::{ArrayAgg, FullTextSearch};
 //!
 //! // Aggregate values into an array
 //! let agg = ArrayAgg::<String>::new("tags".to_string()).distinct();
@@ -34,7 +34,7 @@ use std::marker::PhantomData;
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::features::ArrayAgg;
+/// use reinhardt_orm::ArrayAgg;
 ///
 /// let agg = ArrayAgg::<i32>::new("score".to_string());
 /// assert_eq!(agg.to_sql(), "ARRAY_AGG(score)");
@@ -56,7 +56,7 @@ impl<T> ArrayAgg<T> {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::features::ArrayAgg;
+    /// use reinhardt_orm::ArrayAgg;
     ///
     /// let agg = ArrayAgg::<String>::new("name".to_string());
     /// assert_eq!(agg.to_sql(), "ARRAY_AGG(name)");
@@ -75,7 +75,7 @@ impl<T> ArrayAgg<T> {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::features::ArrayAgg;
+    /// use reinhardt_orm::ArrayAgg;
     ///
     /// let agg = ArrayAgg::<i32>::new("id".to_string()).distinct();
     /// assert!(agg.to_sql().contains("DISTINCT"));
@@ -90,7 +90,7 @@ impl<T> ArrayAgg<T> {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::features::ArrayAgg;
+    /// use reinhardt_orm::ArrayAgg;
     ///
     /// let agg = ArrayAgg::<String>::new("name".to_string())
     ///     .order_by(vec!["created_at DESC".to_string()]);
@@ -128,7 +128,7 @@ impl<T> ArrayAgg<T> {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::features::JsonbBuildObject;
+/// use reinhardt_orm::JsonbBuildObject;
 ///
 /// let builder = JsonbBuildObject::new()
 ///     .add("id", "user_id")
@@ -146,7 +146,7 @@ impl JsonbBuildObject {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::features::JsonbBuildObject;
+    /// use reinhardt_orm::JsonbBuildObject;
     ///
     /// let builder = JsonbBuildObject::new();
     /// assert_eq!(builder.to_sql(), "jsonb_build_object()");
@@ -160,7 +160,7 @@ impl JsonbBuildObject {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::features::JsonbBuildObject;
+    /// use reinhardt_orm::JsonbBuildObject;
     ///
     /// let builder = JsonbBuildObject::new()
     ///     .add("user_id", "id")
@@ -203,7 +203,7 @@ impl Default for JsonbBuildObject {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::features::FullTextSearch;
+/// use reinhardt_orm::FullTextSearch;
 ///
 /// let search = FullTextSearch::new("content".to_string(), "rust programming".to_string());
 /// assert!(search.to_sql().contains("to_tsvector"));
@@ -222,7 +222,7 @@ impl FullTextSearch {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::features::FullTextSearch;
+    /// use reinhardt_orm::FullTextSearch;
     ///
     /// let search = FullTextSearch::new("title".to_string(), "database".to_string());
     /// assert_eq!(search.config(), "english");
@@ -240,7 +240,7 @@ impl FullTextSearch {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::features::FullTextSearch;
+    /// use reinhardt_orm::FullTextSearch;
     ///
     /// let search = FullTextSearch::new("content".to_string(), "bonjour".to_string())
     ///     .with_config("french".to_string());
@@ -261,7 +261,7 @@ impl FullTextSearch {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::features::FullTextSearch;
+    /// use reinhardt_orm::FullTextSearch;
     ///
     /// let search = FullTextSearch::new("body".to_string(), "rust".to_string());
     /// let sql = search.to_sql();
@@ -283,7 +283,7 @@ impl FullTextSearch {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::features::ArrayOverlap;
+/// use reinhardt_orm::ArrayOverlap;
 ///
 /// let overlap = ArrayOverlap::new("tags".to_string(), vec!["rust".to_string(), "web".to_string()]);
 /// assert!(overlap.to_sql().contains("&&"));
@@ -300,7 +300,7 @@ impl ArrayOverlap {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::features::ArrayOverlap;
+    /// use reinhardt_orm::ArrayOverlap;
     ///
     /// let overlap = ArrayOverlap::new(
     ///     "categories".to_string(),

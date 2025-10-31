@@ -14,13 +14,15 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_orm::postgres::fields::{ArrayField, JSONBField};
+//! use reinhardt_orm::{ArrayField, JSONBField};
 //!
 //! // Array field storing tags
-//! let tags_field = ArrayField::new("VARCHAR(50)");
+//! let tags_field = ArrayField::<String>::new("VARCHAR(50)");
+//! assert_eq!(tags_field.base_type(), "VARCHAR(50)");
 //!
 //! // JSONB field for metadata
 //! let metadata_field = JSONBField::new();
+//! assert_eq!(metadata_field.sql_type(), "JSONB");
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -33,7 +35,7 @@ use std::marker::PhantomData;
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::fields::ArrayField;
+/// use reinhardt_orm::ArrayField;
 ///
 // Array of integers
 /// let scores = ArrayField::<i32>::new("INTEGER");
@@ -57,7 +59,7 @@ impl<T> ArrayField<T> {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::fields::ArrayField;
+    /// use reinhardt_orm::ArrayField;
     ///
     /// let field = ArrayField::<i32>::new("INTEGER");
     /// assert_eq!(field.base_type(), "INTEGER");
@@ -98,7 +100,7 @@ impl<T> ArrayField<T> {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::fields::ArrayField;
+    /// use reinhardt_orm::ArrayField;
     ///
     /// let field = ArrayField::<i32>::new("INTEGER");
     /// assert_eq!(field.sql_type(), "INTEGER[]");
@@ -123,7 +125,7 @@ impl<T> ArrayField<T> {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::fields::JSONBField;
+/// use reinhardt_orm::JSONBField;
 ///
 /// let metadata = JSONBField::new();
 /// assert_eq!(metadata.sql_type(), "JSONB");
@@ -139,7 +141,7 @@ impl JSONBField {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::fields::JSONBField;
+    /// use reinhardt_orm::JSONBField;
     ///
     /// let field = JSONBField::new();
     /// assert_eq!(field.sql_type(), "JSONB");
@@ -178,7 +180,7 @@ impl Default for JSONBField {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::fields::HStoreField;
+/// use reinhardt_orm::HStoreField;
 ///
 /// let attributes = HStoreField::new();
 /// assert_eq!(attributes.sql_type(), "HSTORE");
@@ -194,7 +196,7 @@ impl HStoreField {
     /// # Example
     ///
     /// ```rust
-    /// use reinhardt_orm::postgres::fields::HStoreField;
+    /// use reinhardt_orm::HStoreField;
     ///
     /// let field = HStoreField::new();
     /// assert_eq!(field.sql_type(), "HSTORE");
@@ -228,7 +230,7 @@ impl Default for HStoreField {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::fields::IntegerRangeField;
+/// use reinhardt_orm::IntegerRangeField;
 ///
 /// let age_range = IntegerRangeField::new();
 /// assert_eq!(age_range.sql_type(), "INT4RANGE");
@@ -269,7 +271,7 @@ impl Default for IntegerRangeField {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::fields::BigIntegerRangeField;
+/// use reinhardt_orm::BigIntegerRangeField;
 ///
 /// let range = BigIntegerRangeField::new();
 /// assert_eq!(range.sql_type(), "INT8RANGE");
@@ -307,7 +309,7 @@ impl Default for BigIntegerRangeField {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::fields::DateRangeField;
+/// use reinhardt_orm::DateRangeField;
 ///
 /// let period = DateRangeField::new();
 /// assert_eq!(period.sql_type(), "DATERANGE");
@@ -346,7 +348,7 @@ impl Default for DateRangeField {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::fields::DateTimeRangeField;
+/// use reinhardt_orm::DateTimeRangeField;
 ///
 /// let period = DateTimeRangeField::new();
 /// assert_eq!(period.sql_type(), "TSTZRANGE");
@@ -385,7 +387,7 @@ impl Default for DateTimeRangeField {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::postgres::fields::CITextField;
+/// use reinhardt_orm::CITextField;
 ///
 /// let email = CITextField::new();
 /// assert_eq!(email.sql_type(), "CITEXT");
