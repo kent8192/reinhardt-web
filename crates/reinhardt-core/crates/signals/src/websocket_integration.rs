@@ -95,7 +95,7 @@ pub trait WebSocketClient: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_signals::websocket_integration::MockWebSocketClient;
+/// use reinhardt_signals::websocket_integration::{MockWebSocketClient, WebSocketClient};
 ///
 /// let client = MockWebSocketClient::new("client-1");
 /// assert_eq!(client.client_id(), "client-1");

@@ -58,7 +58,7 @@ pub mod debugger;
 pub mod dispatch;
 pub mod dlq;
 pub mod doc_generator;
-mod error;
+pub mod error;
 pub mod history;
 mod lifecycle_events;
 mod middleware;
