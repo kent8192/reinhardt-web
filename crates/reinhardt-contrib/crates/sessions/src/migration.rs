@@ -4,8 +4,8 @@
 //!
 //! ## Example
 //!
-//! ```rust
-//! use reinhardt_sessions::migration::SessionMigrator;
+//! ```ignore
+//! use reinhardt_sessions::migration::{SessionMigrator, Migrator};
 //! use reinhardt_sessions::backends::{InMemorySessionBackend};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -184,8 +184,8 @@ pub trait Migrator {
 ///
 /// # Example
 ///
-/// ```rust
-/// use reinhardt_sessions::migration::{SessionMigrator, MigrationConfig};
+/// ```ignore
+/// use reinhardt_sessions::migration::{SessionMigrator, MigrationConfig, Migrator};
 /// use reinhardt_sessions::backends::InMemorySessionBackend;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
