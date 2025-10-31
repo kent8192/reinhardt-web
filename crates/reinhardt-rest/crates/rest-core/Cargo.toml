@@ -17,4 +17,7 @@ serde_json = { workspace = true }
 reinhardt-routers = { workspace = true }
 reinhardt-auth = { workspace = true }
 reinhardt-pagination = { workspace = true }
-openapi = { version = "0.1.0", path = "../openapi", package = "reinhardt-openapi" }
+reinhardt-openapi = { workspace = true }
+
+[dev-dependencies]
+reinhardt-rest = { workspace = true }
