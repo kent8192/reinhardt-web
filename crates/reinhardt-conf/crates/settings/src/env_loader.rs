@@ -96,15 +96,19 @@ impl EnvLoader {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```rust
     /// use reinhardt_settings::env_loader::EnvLoader;
-    /// use std::path::PathBuf;
+    /// use std::io::Write;
     ///
-    /// let loader = EnvLoader::new()
-    ///     .path(PathBuf::from(".env"));
+    /// let temp_dir = tempfile::tempdir().unwrap();
+    /// let env_path = temp_dir.path().join(".env");
+    /// let mut file = std::fs::File::create(&env_path).unwrap();
+    /// writeln!(file, "TEST_KEY=test_value").unwrap();
     ///
-    // Load the .env file (will error if not found)
+    /// let loader = EnvLoader::new().path(env_path);
     /// loader.load().expect("Failed to load .env");
+    ///
+    /// assert_eq!(std::env::var("TEST_KEY").unwrap(), "test_value");
     /// ```
     pub fn load(&self) -> Result<(), EnvError> {
         let path = match &self.path {
@@ -299,12 +303,17 @@ impl Default for EnvLoader {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```rust
 /// use reinhardt_settings::env_loader::load_env;
-/// use std::path::PathBuf;
+/// use std::io::Write;
 ///
-/// load_env(PathBuf::from(".env")).expect("Failed to load .env");
-// Environment variables from .env are now loaded
+/// let temp_dir = tempfile::tempdir().unwrap();
+/// let env_path = temp_dir.path().join(".env");
+/// let mut file = std::fs::File::create(&env_path).unwrap();
+/// writeln!(file, "LOAD_ENV_KEY=loaded").unwrap();
+///
+/// load_env(env_path).expect("Failed to load .env");
+/// assert_eq!(std::env::var("LOAD_ENV_KEY").unwrap(), "loaded");
 /// ```
 pub fn load_env(path: impl Into<PathBuf>) -> Result<(), EnvError> {
     EnvLoader::new().path(path).load()
@@ -313,11 +322,26 @@ pub fn load_env(path: impl Into<PathBuf>) -> Result<(), EnvError> {
 ///
 /// # Examples
 ///
-/// ```no_run
-/// use reinhardt_settings::env_loader::load_env_auto;
+/// ```rust
+/// use reinhardt_settings::env_loader::EnvLoader;
+/// use std::io::Write;
 ///
-// Searches for .env in current and parent directories
-/// load_env_auto().expect("No .env file found");
+/// let temp_dir = tempfile::tempdir().unwrap();
+/// let env_path = temp_dir.path().join(".env");
+/// let mut file = std::fs::File::create(&env_path).unwrap();
+/// writeln!(file, "AUTO_LOAD_KEY=auto").unwrap();
+///
+/// // Change to temp directory for auto-discovery
+/// let original_dir = std::env::current_dir().unwrap();
+/// std::env::set_current_dir(temp_dir.path()).unwrap();
+///
+/// let loader = EnvLoader::new();
+/// loader.load().expect("Failed to auto-load .env");
+///
+/// assert_eq!(std::env::var("AUTO_LOAD_KEY").unwrap(), "auto");
+///
+/// // Restore original directory
+/// std::env::set_current_dir(original_dir).unwrap();
 /// ```
 pub fn load_env_auto() -> Result<(), EnvError> {
     EnvLoader::new().load()

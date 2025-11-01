@@ -11,13 +11,14 @@
 //!
 //! ## Example
 //!
-//! ```rust,no_run
+//! ```rust
 //! # #[cfg(feature = "async")]
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_settings::backends::MemoryBackend;
 //! use reinhardt_settings::dynamic::{DynamicBackend, DynamicSettings};
 //! use std::sync::Arc;
 //!
+//! # futures::executor::block_on(async {
 //! // Create backend
 //! let backend = Arc::new(MemoryBackend::new());
 //!
@@ -32,6 +33,8 @@
 //! assert_eq!(token, "abc123");
 //!
 //! // After expiration, value is automatically removed
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # }).unwrap();
 //! # Ok(())
 //! # }
 //! ```
@@ -77,7 +80,7 @@ impl ValueEntry {
 ///
 /// ## Example
 ///
-/// ```rust,no_run
+/// ```
 /// # #[cfg(feature = "async")]
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// use reinhardt_settings::backends::MemoryBackend;
@@ -93,15 +96,21 @@ impl ValueEntry {
 /// // Get values
 /// let value1 = backend.get("key1").await?;
 /// assert!(value1.is_some());
+/// assert_eq!(value1.unwrap(), serde_json::json!("value1"));
 ///
 /// // Check existence
 /// assert!(backend.exists("key1").await?);
+/// assert!(backend.exists("key2").await?);
 ///
 /// // List all keys
 /// let keys = backend.keys().await?;
 /// assert_eq!(keys.len(), 2);
+/// assert!(keys.contains(&"key1".to_string()));
+/// assert!(keys.contains(&"key2".to_string()));
 /// # Ok(())
 /// # }
+/// # #[cfg(feature = "async")]
+/// # tokio::runtime::Runtime::new().unwrap().block_on(example()).unwrap();
 /// ```
 pub struct MemoryBackend {
     data: Arc<RwLock<HashMap<String, ValueEntry>>>,
@@ -133,16 +142,15 @@ impl MemoryBackend {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
-    /// # #[cfg(feature = "async")]
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// ```rust
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// use reinhardt_settings::backends::MemoryBackend;
     /// use reinhardt_settings::dynamic::DynamicBackend;
     ///
     /// let backend = MemoryBackend::new();
     ///
     /// // Set value with 1 second TTL
-    /// backend.set("temp", &serde_json::json!("value"), Some(1)).await?;
+    /// backend.set("temp", &serde_json::json!("value"), Some(1)).await.unwrap();
     ///
     /// // Wait for expiration
     /// tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -150,9 +158,9 @@ impl MemoryBackend {
     /// // Clean up expired entries
     /// backend.cleanup_expired();
     ///
-    /// assert!(!backend.exists("temp").await?);
-    /// # Ok(())
-    /// # }
+    /// assert!(!backend.exists("temp").await.unwrap());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # }).unwrap();
     /// ```
     pub fn cleanup_expired(&self) {
         let mut data = self.data.write();
@@ -163,17 +171,20 @@ impl MemoryBackend {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust
     /// # #[cfg(feature = "async")]
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// use reinhardt_settings::backends::MemoryBackend;
     /// use reinhardt_settings::dynamic::DynamicBackend;
     ///
+    /// # futures::executor::block_on(async {
     /// let backend = MemoryBackend::new();
     /// assert_eq!(backend.len(), 0);
     ///
     /// backend.set("key", &serde_json::json!("value"), None).await?;
     /// assert_eq!(backend.len(), 1);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # }).unwrap();
     /// # Ok(())
     /// # }
     /// ```
@@ -199,17 +210,20 @@ impl MemoryBackend {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust
     /// # #[cfg(feature = "async")]
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// use reinhardt_settings::backends::MemoryBackend;
     /// use reinhardt_settings::dynamic::DynamicBackend;
     ///
+    /// # futures::executor::block_on(async {
     /// let backend = MemoryBackend::new();
     /// backend.set("key", &serde_json::json!("value"), None).await?;
     ///
     /// backend.clear();
     /// assert!(backend.is_empty());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # }).unwrap();
     /// # Ok(())
     /// # }
     /// ```

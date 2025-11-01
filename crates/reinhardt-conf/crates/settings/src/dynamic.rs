@@ -11,13 +11,14 @@
 //!
 //! ## Example
 //!
-//! ```rust,no_run
+//! ```rust
 //! # #[cfg(feature = "async")]
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_settings::dynamic::{DynamicSettings, DynamicBackend};
 //! use reinhardt_settings::backends::MemoryBackend;
 //! use std::sync::Arc;
 //!
+//! # futures::executor::block_on(async {
 //! // Create backend
 //! let backend = Arc::new(MemoryBackend::new());
 //!
@@ -30,6 +31,8 @@
 //! // Get a value
 //! let debug: bool = settings.get("debug").await?.unwrap();
 //! assert_eq!(debug, true);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # }).unwrap();
 //! # Ok(())
 //! # }
 //! ```
@@ -79,7 +82,7 @@ pub type DynamicResult<T> = Result<T, DynamicError>;
 ///
 /// ## Example Implementation
 ///
-/// ```rust,no_run
+/// ```
 /// # #[cfg(feature = "async")]
 /// # async fn example() {
 /// use reinhardt_settings::dynamic::{DynamicBackend, DynamicResult};
@@ -116,7 +119,20 @@ pub type DynamicResult<T> = Result<T, DynamicError>;
 ///         Ok(self.data.read().keys().cloned().collect())
 ///     }
 /// }
+///
+/// // Test the backend implementation
+/// let backend = MyBackend {
+///     data: Arc::new(RwLock::new(HashMap::new())),
+/// };
+///
+/// let value = serde_json::json!({"test": "value"});
+/// backend.set("key1", &value, None).await.unwrap();
+/// assert!(backend.exists("key1").await.unwrap());
+/// let retrieved = backend.get("key1").await.unwrap();
+/// assert_eq!(retrieved, Some(value));
 /// # }
+/// # #[cfg(feature = "async")]
+/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 /// ```
 #[async_trait]
 pub trait DynamicBackend: Send + Sync {
@@ -196,9 +212,8 @@ impl CachedValue {
 ///
 /// ## Example
 ///
-/// ```rust,no_run
-/// # #[cfg(feature = "async")]
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// ```rust
+/// # futures::executor::block_on(async {
 /// use reinhardt_settings::dynamic::DynamicSettings;
 /// use reinhardt_settings::backends::MemoryBackend;
 /// use std::sync::Arc;
@@ -211,12 +226,14 @@ impl CachedValue {
 /// settings.enable_cache(100, Some(std::time::Duration::from_secs(300)));
 ///
 /// // Set values
-/// settings.set("app.name", &"MyApp", None).await?;
-/// settings.set("app.debug", &true, Some(3600)).await?;
+/// settings.set("app.name", &"MyApp", None).await.unwrap();
+/// settings.set("app.debug", &true, Some(3600)).await.unwrap();
 ///
 /// // Get values with type safety
-/// let name: String = settings.get("app.name").await?.unwrap();
-/// let debug: bool = settings.get("app.debug").await?.unwrap();
+/// let name: String = settings.get("app.name").await.unwrap().unwrap();
+/// let debug: bool = settings.get("app.debug").await.unwrap().unwrap();
+/// assert_eq!(name, "MyApp");
+/// assert_eq!(debug, true);
 ///
 /// // Subscribe to changes
 /// let sub_id = settings.subscribe(|key, value| {
@@ -224,12 +241,11 @@ impl CachedValue {
 /// });
 ///
 /// // Update triggers observers
-/// settings.set("app.debug", &false, None).await?;
+/// settings.set("app.debug", &false, None).await.unwrap();
 ///
 /// // Unsubscribe
 /// settings.unsubscribe(sub_id);
-/// # Ok(())
-/// # }
+/// # });
 /// ```
 pub struct DynamicSettings {
     backend: Arc<dyn DynamicBackend>,
@@ -248,16 +264,13 @@ impl DynamicSettings {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
-    /// # #[cfg(feature = "async")]
-    /// # async fn example() {
+    /// ```rust
     /// use reinhardt_settings::dynamic::DynamicSettings;
     /// use reinhardt_settings::backends::MemoryBackend;
     /// use std::sync::Arc;
     ///
     /// let backend = Arc::new(MemoryBackend::new());
     /// let settings = DynamicSettings::new(backend);
-    /// # }
     /// ```
     pub fn new(backend: Arc<dyn DynamicBackend>) -> Self {
         Self {
@@ -279,9 +292,7 @@ impl DynamicSettings {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
-    /// # #[cfg(all(feature = "async", feature = "caching"))]
-    /// # async fn example() {
+    /// ```rust
     /// use reinhardt_settings::dynamic::DynamicSettings;
     /// use reinhardt_settings::backends::MemoryBackend;
     /// use std::sync::Arc;
@@ -291,8 +302,8 @@ impl DynamicSettings {
     /// let mut settings = DynamicSettings::new(backend);
     ///
     /// // Cache up to 100 items for 5 minutes
+    /// # #[cfg(feature = "caching")]
     /// settings.enable_cache(100, Some(Duration::from_secs(300)));
-    /// # }
     /// ```
     #[cfg(feature = "caching")]
     pub fn enable_cache(&mut self, capacity: u64, _default_ttl: Option<Duration>) {
@@ -305,18 +316,21 @@ impl DynamicSettings {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust
     /// # #[cfg(feature = "async")]
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # use reinhardt_settings::dynamic::DynamicSettings;
     /// # use reinhardt_settings::backends::MemoryBackend;
     /// # use std::sync::Arc;
+    /// # futures::executor::block_on(async {
     /// # let backend = Arc::new(MemoryBackend::new());
     /// # let settings = DynamicSettings::new(backend);
     /// settings.set("port", &8080, None).await?;
     ///
     /// let port: u16 = settings.get("port").await?.unwrap();
     /// assert_eq!(port, 8080);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # }).unwrap();
     /// # Ok(())
     /// # }
     /// ```
@@ -359,21 +373,19 @@ impl DynamicSettings {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
-    /// # #[cfg(feature = "async")]
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// ```rust
+    /// # futures::executor::block_on(async {
     /// # use reinhardt_settings::dynamic::DynamicSettings;
     /// # use reinhardt_settings::backends::MemoryBackend;
     /// # use std::sync::Arc;
     /// # let backend = Arc::new(MemoryBackend::new());
     /// # let settings = DynamicSettings::new(backend);
     /// // Set without TTL (permanent)
-    /// settings.set("api_key", &"secret", None).await?;
+    /// settings.set("api_key", &"secret", None).await.unwrap();
     ///
     /// // Set with 1 hour TTL
-    /// settings.set("temp_token", &"token123", Some(3600)).await?;
-    /// # Ok(())
-    /// # }
+    /// settings.set("temp_token", &"token123", Some(3600)).await.unwrap();
+    /// # });
     /// ```
     pub async fn set<T: Serialize>(
         &self,
@@ -404,18 +416,21 @@ impl DynamicSettings {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust
     /// # #[cfg(feature = "async")]
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # use reinhardt_settings::dynamic::DynamicSettings;
     /// # use reinhardt_settings::backends::MemoryBackend;
     /// # use std::sync::Arc;
+    /// # futures::executor::block_on(async {
     /// # let backend = Arc::new(MemoryBackend::new());
     /// # let settings = DynamicSettings::new(backend);
     /// settings.set("temp", &"value", None).await?;
     /// settings.delete("temp").await?;
     ///
     /// assert!(settings.get::<String>("temp").await?.is_none());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # }).unwrap();
     /// # Ok(())
     /// # }
     /// ```
@@ -439,18 +454,21 @@ impl DynamicSettings {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust
     /// # #[cfg(feature = "async")]
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # use reinhardt_settings::dynamic::DynamicSettings;
     /// # use reinhardt_settings::backends::MemoryBackend;
     /// # use std::sync::Arc;
+    /// # futures::executor::block_on(async {
     /// # let backend = Arc::new(MemoryBackend::new());
     /// # let settings = DynamicSettings::new(backend);
     /// settings.set("key", &"value", None).await?;
     ///
     /// assert!(settings.exists("key").await?);
     /// assert!(!settings.exists("nonexistent").await?);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # }).unwrap();
     /// # Ok(())
     /// # }
     /// ```
@@ -462,12 +480,13 @@ impl DynamicSettings {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust
     /// # #[cfg(feature = "async")]
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # use reinhardt_settings::dynamic::DynamicSettings;
     /// # use reinhardt_settings::backends::MemoryBackend;
     /// # use std::sync::Arc;
+    /// # futures::executor::block_on(async {
     /// # let backend = Arc::new(MemoryBackend::new());
     /// # let settings = DynamicSettings::new(backend);
     /// settings.set("key1", &"value1", None).await?;
@@ -476,6 +495,8 @@ impl DynamicSettings {
     /// let keys = settings.keys().await?;
     /// assert!(keys.contains(&"key1".to_string()));
     /// assert!(keys.contains(&"key2".to_string()));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # }).unwrap();
     /// # Ok(())
     /// # }
     /// ```
@@ -489,9 +510,8 @@ impl DynamicSettings {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
-    /// # #[cfg(feature = "async")]
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// ```rust
+    /// # futures::executor::block_on(async {
     /// # use reinhardt_settings::dynamic::DynamicSettings;
     /// # use reinhardt_settings::backends::MemoryBackend;
     /// # use std::sync::Arc;
@@ -501,11 +521,10 @@ impl DynamicSettings {
     ///     println!("Changed: {} = {:?}", key, value);
     /// });
     ///
-    /// settings.set("debug", &true, None).await?;  // Triggers callback
+    /// settings.set("debug", &true, None).await.unwrap();  // Triggers callback
     ///
     /// settings.unsubscribe(sub_id);
-    /// # Ok(())
-    /// # }
+    /// # });
     /// ```
     pub fn subscribe<F>(&self, callback: F) -> SubscriptionId
     where
@@ -520,9 +539,7 @@ impl DynamicSettings {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
-    /// # #[cfg(feature = "async")]
-    /// # async fn example() {
+    /// ```rust
     /// # use reinhardt_settings::dynamic::DynamicSettings;
     /// # use reinhardt_settings::backends::MemoryBackend;
     /// # use std::sync::Arc;
@@ -530,7 +547,6 @@ impl DynamicSettings {
     /// # let settings = DynamicSettings::new(backend);
     /// let sub_id = settings.subscribe(|_, _| {});
     /// settings.unsubscribe(sub_id);
-    /// # }
     /// ```
     pub fn unsubscribe(&self, id: SubscriptionId) {
         self.observers.write().remove(&id);
@@ -592,8 +608,8 @@ impl DynamicSettings {
     /// ## Example
     ///
     /// ```rust,no_run
-    /// # #[cfg(all(feature = "async", feature = "hot-reload"))]
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # #[cfg(feature = "hot-reload")]
+    /// # futures::executor::block_on(async {
     /// use reinhardt_settings::dynamic::DynamicSettings;
     /// use reinhardt_settings::backends::MemoryBackend;
     /// use std::sync::Arc;
@@ -602,12 +618,11 @@ impl DynamicSettings {
     /// let backend = Arc::new(MemoryBackend::new());
     /// let settings = DynamicSettings::new(backend).with_hot_reload();
     ///
-    /// // Watch configuration file
-    /// settings.watch_file(Path::new("config.toml")).await?;
+    /// // Watch configuration file (requires actual file for file system watcher)
+    /// // settings.watch_file(Path::new("config.toml")).await.unwrap();
     ///
     /// // Settings will automatically reload when the file changes
-    /// # Ok(())
-    /// # }
+    /// # });
     /// ```
     #[cfg(feature = "hot-reload")]
     pub async fn watch_file(&self, path: &std::path::Path) -> DynamicResult<()> {
@@ -688,8 +703,8 @@ impl DynamicSettings {
     /// ## Example
     ///
     /// ```rust,no_run
-    /// # #[cfg(all(feature = "async", feature = "hot-reload"))]
-    /// # async fn example() {
+    /// # #[cfg(feature = "hot-reload")]
+    /// # {
     /// use reinhardt_settings::dynamic::DynamicSettings;
     /// use reinhardt_settings::backends::MemoryBackend;
     /// use std::sync::Arc;
