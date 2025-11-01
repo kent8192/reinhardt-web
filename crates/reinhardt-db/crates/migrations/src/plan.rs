@@ -134,8 +134,8 @@ impl MigrationPlan {
 	///     .add_dependency("myapp", "0001_initial");
 	///
 	/// let mut plan = MigrationPlan::new()
-	///     .add(migration2.clone())
-	///     .add(migration1.clone());
+	///     .with_migration(migration2.clone())
+	///     .with_migration(migration1.clone());
 	///
 	/// plan.sort().unwrap();
 	///
