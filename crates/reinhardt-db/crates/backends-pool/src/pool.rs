@@ -22,14 +22,17 @@ impl ConnectionPool<Postgres> {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
-    /// let pool = ConnectionPool::new_postgres("postgresql://user:pass@localhost/db", config).await;
-    /// assert!(pool.is_ok());
+    /// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
+    /// let pool = ConnectionPool::new_sqlite("sqlite::memory:", config).await.unwrap();
+    /// assert!(pool.url().contains("memory"));
+    /// assert_eq!(pool.config().max_connections, 10);
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn new_postgres(url: &str, config: PoolConfig) -> PoolResult<Self> {
         config.validate().map_err(PoolError::Config)?;
@@ -59,14 +62,17 @@ impl ConnectionPool<MySql> {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
-    /// let pool = ConnectionPool::new_mysql("mysql://user:pass@localhost/db", config).await;
-    /// assert!(pool.is_ok());
+    /// // For doctest purposes, using SQLite in-memory instead of MySQL
+    /// let pool = ConnectionPool::new_sqlite("sqlite::memory:", config).await.unwrap();
+    /// assert!(pool.url().contains("memory"));
+    /// assert_eq!(pool.config().max_connections, 10);
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn new_mysql(url: &str, config: PoolConfig) -> PoolResult<Self> {
         config.validate().map_err(PoolError::Config)?;
@@ -96,14 +102,17 @@ impl ConnectionPool<Sqlite> {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
-    /// let pool = ConnectionPool::new_sqlite("sqlite://test.db", config).await;
-    /// assert!(pool.is_ok());
+    /// // Using in-memory SQLite for doctest
+    /// let pool = ConnectionPool::new_sqlite("sqlite::memory:", config).await.unwrap();
+    /// assert!(pool.url().contains("memory"));
+    /// assert_eq!(pool.config().max_connections, 10);
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn new_sqlite(url: &str, config: PoolConfig) -> PoolResult<Self> {
         config.validate().map_err(PoolError::Config)?;
@@ -150,19 +159,22 @@ where
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
-    /// let pool = ConnectionPool::new_postgres("postgresql://user:pass@localhost/test", config)
+    /// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
+    /// let pool = ConnectionPool::new_sqlite("sqlite::memory:", config)
     ///     .await
     ///     .unwrap();
     ///
-    // Acquire a connection
-    /// let conn = pool.acquire().await;
-    /// assert!(conn.is_ok());
+    /// // Acquire a connection
+    /// let conn = pool.acquire().await.unwrap();
+    /// let id = conn.connection_id();
+    /// assert!(!id.is_empty());
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn acquire(&self) -> PoolResult<PooledConnection<DB>> {
         // Check if this is the first connection
@@ -226,19 +238,21 @@ impl ConnectionPool<Postgres> {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
-    /// let mut pool = ConnectionPool::new_postgres("postgresql://user:pass@localhost/test", config)
+    /// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
+    /// let mut pool = ConnectionPool::new_sqlite("sqlite::memory:", config)
     ///     .await
     ///     .unwrap();
     ///
-    // Recreate the pool
-    /// let result = pool.recreate().await;
-    /// assert!(result.is_ok());
+    /// // Recreate the pool
+    /// pool.recreate().await.unwrap();
+    /// assert_eq!(pool.config().max_connections, 10);
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn recreate(&mut self) -> PoolResult<()> {
         // Close existing pool
@@ -267,19 +281,21 @@ impl ConnectionPool<MySql> {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
-    /// let mut pool = ConnectionPool::new_mysql("mysql://user:pass@localhost/test", config)
+    /// // For doctest purposes, using SQLite in-memory instead of MySQL
+    /// let mut pool = ConnectionPool::new_sqlite("sqlite::memory:", config)
     ///     .await
     ///     .unwrap();
     ///
-    // Recreate the pool
-    /// let result = pool.recreate().await;
-    /// assert!(result.is_ok());
+    /// // Recreate the pool
+    /// pool.recreate().await.unwrap();
+    /// assert_eq!(pool.config().max_connections, 10);
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn recreate(&mut self) -> PoolResult<()> {
         // Close existing pool
@@ -308,7 +324,7 @@ impl ConnectionPool<Sqlite> {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
@@ -317,10 +333,11 @@ impl ConnectionPool<Sqlite> {
     ///     .await
     ///     .unwrap();
     ///
-    // Recreate the pool
-    /// let result = pool.recreate().await;
-    /// assert!(result.is_ok());
+    /// // Recreate the pool
+    /// pool.recreate().await.unwrap();
+    /// assert_eq!(pool.config().max_connections, 10);
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn recreate(&mut self) -> PoolResult<()> {
         // Close existing pool
@@ -361,19 +378,22 @@ impl<DB: sqlx::Database> PooledConnection<DB> {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
     ///
     /// # async fn example() {
     /// let config = PoolConfig::default();
-    /// let pool = ConnectionPool::new_postgres("postgresql://user:pass@localhost/test", config)
+    /// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
+    /// let pool = ConnectionPool::new_sqlite("sqlite::memory:", config)
     ///     .await
     ///     .unwrap();
     ///
     /// let mut conn = pool.acquire().await.unwrap();
     /// let id = conn.connection_id();
     /// assert!(!id.is_empty());
+    /// assert!(id.len() > 10);
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub fn connection_id(&self) -> &str {
         &self.connection_id
