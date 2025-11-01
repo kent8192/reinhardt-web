@@ -1,0 +1,74 @@
+name: Publish Dry-Run
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, labeled]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  dry-run:
+    name: Dry-run publish check
+    runs-on: ubuntu-latest
+    # Only run for PRs with 'release' label
+    if: contains(github.event.pull_request.labels.*.name, 'release')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for cargo-workspaces
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-workspaces
+        run: cargo install cargo-workspaces
+
+      - name: Run dry-run publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          echo "::group::Running cargo ws publish --dry-run"
+          cargo ws publish --dry-run --all
+          echo "::endgroup::"
+
+      - name: Comment PR (Success)
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ **Publish dry-run succeeded!**\n\nAll crates are ready to be published to crates.io.'
+            })
+
+      - name: Comment PR (Failure)
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **Publish dry-run failed!**\n\nPlease check the workflow logs for details and fix the issues before merging.'
+            })
