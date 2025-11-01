@@ -3,7 +3,7 @@
 //! Tests that use real SQLite databases to validate loading strategies with actual SQL execution.
 //! These tests verify SQL generation, query counts, performance characteristics, and N+1 problem detection.
 //!
-//! Run with: cargo test --package reinhardt-orm --test loading_strategy_integration_tests --features integration-tests
+//! Run with: cargo test --test loading_strategy_integration_tests --features integration-tests
 
 #[cfg(feature = "integration-tests")]
 mod integration_tests {

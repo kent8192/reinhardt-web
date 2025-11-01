@@ -309,3 +309,6 @@ path = "integration/tests/cache_pubsub_integration.rs"
 [[test]]
 name = "contrib_contenttypes_integration_tests"
 path = "integration/tests/contrib/contenttypes_integration_tests.rs"
+
+[[test]]
+name = "orm_loading_strategy_integration_tests"
