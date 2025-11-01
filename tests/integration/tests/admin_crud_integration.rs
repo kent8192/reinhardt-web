@@ -12,14 +12,14 @@
 
 use reinhardt_admin::{
     AdminDatabase, AdminSite, BooleanFilter, ChoiceFilter, FilterManager, ListView, CreateView,
-    UpdateView, DeleteView, ModelAdminConfig,
+    UpdateView, DeleteView, ModelAdminConfig, ListFilter,
 };
 use reinhardt_orm::{DatabaseConnection, Filter, FilterOperator, FilterValue, Model};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage};
+use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
 
 /// Test model representing a user
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,11 +64,11 @@ async fn setup_test_db() -> (
 ) {
     // Start PostgreSQL container
     let postgres = GenericImage::new("postgres", "16-alpine")
-        .with_env_var("POSTGRES_PASSWORD", "test")
-        .with_env_var("POSTGRES_DB", "admin_test_db")
         .with_wait_for(WaitFor::message_on_stderr(
             "database system is ready to accept connections",
         ))
+        .with_env_var("POSTGRES_PASSWORD", "test")
+        .with_env_var("POSTGRES_DB", "admin_test_db")
         .start()
         .await
         .expect("Failed to start PostgreSQL container");
@@ -327,7 +327,13 @@ async fn test_admin_create_view() {
         .with_initial("is_active", json!(true));
 
     assert_eq!(create_view.model_name(), "TestUser");
-    assert_eq!(create_view.get_fields(), Some(&["username", "email", "is_active"][..]));
+    let fields = create_view.get_fields();
+    assert!(fields.is_some());
+    let fields = fields.unwrap();
+    assert_eq!(fields.len(), 3);
+    assert_eq!(fields[0], "username");
+    assert_eq!(fields[1], "email");
+    assert_eq!(fields[2], "is_active");
     assert_eq!(
         create_view.get_initial_data().get("is_active"),
         Some(&json!(true))

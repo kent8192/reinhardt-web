@@ -11,17 +11,17 @@ use reinhardt_orm::DatabaseConnection;
 use serde_json::json;
 use std::net::IpAddr;
 use std::sync::Arc;
-use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage};
+use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
 
 /// Set up test database and create audit_logs table
 async fn setup_test_db() -> (testcontainers::ContainerAsync<GenericImage>, DatabaseAuditLogger) {
     // Start PostgreSQL container
     let postgres = GenericImage::new("postgres", "16-alpine")
-        .with_env_var("POSTGRES_PASSWORD", "test")
-        .with_env_var("POSTGRES_DB", "test_db")
         .with_wait_for(WaitFor::message_on_stderr(
             "database system is ready to accept connections",
         ))
+        .with_env_var("POSTGRES_PASSWORD", "test")
+        .with_env_var("POSTGRES_DB", "test_db")
         .start()
         .await
         .expect("Failed to start PostgreSQL container");
@@ -73,8 +73,8 @@ async fn test_database_audit_logger_log() {
         .object_id("123".to_string())
         .action(AuditAction::Create)
         .changes(json!({"name": "Alice", "email": "alice@example.com"}))
-        .ip_address(Some("192.168.1.1".parse::<IpAddr>().unwrap()))
-        .user_agent(Some("Mozilla/5.0".to_string()))
+        .ip_address("192.168.1.1".parse::<IpAddr>().unwrap())
+        .user_agent("Mozilla/5.0".to_string())
         .build();
 
     // Log entry
