@@ -94,7 +94,6 @@ impl AdaptiveConfig {
 			stress_threshold,
 		}
 	}
-
 }
 
 impl Default for AdaptiveConfig {
