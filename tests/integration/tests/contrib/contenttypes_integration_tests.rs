@@ -13,7 +13,6 @@ fn init_drivers() {
 	});
 }
 
-#[cfg(feature = "database")]
 mod multi_db_tests {
 	use super::init_drivers;
 	use reinhardt_contenttypes::{CONTENT_TYPE_REGISTRY, MultiDbContentTypeManager};
@@ -146,7 +145,6 @@ mod multi_db_tests {
 	}
 }
 
-#[cfg(feature = "database")]
 mod orm_integration_tests {
 	use super::init_drivers;
 	use reinhardt_contenttypes::{ContentTypeQuery, ContentTypeTransaction};
@@ -324,7 +322,6 @@ mod orm_integration_tests {
 	}
 }
 
-#[cfg(feature = "database")]
 mod combined_tests {
 	use super::init_drivers;
 	use reinhardt_contenttypes::{

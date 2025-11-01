@@ -13,7 +13,7 @@ reinhardt-auth = { workspace = true }
 reinhardt-browsable-api = { workspace = true }
 reinhardt-cache = { workspace = true, features = ["redis-sentinel", "memcached-backend"] }
 reinhardt-contrib = { workspace = true }
-reinhardt-contenttypes = { workspace = true }
+reinhardt-contenttypes = { workspace = true, features = ["database"] }
 reinhardt-di = { workspace = true }
 reinhardt-exception = { workspace = true }
 reinhardt-filters = { workspace = true }
