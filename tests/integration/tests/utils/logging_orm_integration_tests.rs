@@ -9,7 +9,7 @@
 
 use reinhardt_logging::handlers::MemoryHandler;
 use reinhardt_logging::{LogLevel, Logger};
-use reinhardt_orm::{IsolationLevel, Savepoint, Transaction, TransactionState};
+use reinhardt_orm::{IsolationLevel, Savepoint, Transaction};
 use std::sync::Arc;
 
 /// Transaction wrapper that logs all operations
@@ -75,7 +75,7 @@ async fn test_transaction_begin_logged() {
 	let handler = MemoryHandler::new(LogLevel::Debug);
 	let memory = handler.clone();
 
-	logger.add_handler(Box::new(handler)).await;
+	logger.add_handler(Arc::new(handler)).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	let mut txn = LoggingTransaction::new(logger.clone());
@@ -98,7 +98,7 @@ async fn test_transaction_commit_logged() {
 	let handler = MemoryHandler::new(LogLevel::Debug);
 	let memory = handler.clone();
 
-	logger.add_handler(Box::new(handler)).await;
+	logger.add_handler(Arc::new(handler)).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	let mut txn = LoggingTransaction::new(logger.clone());
@@ -122,7 +122,7 @@ async fn test_transaction_rollback_logged() {
 	let handler = MemoryHandler::new(LogLevel::Debug);
 	let memory = handler.clone();
 
-	logger.add_handler(Box::new(handler)).await;
+	logger.add_handler(Arc::new(handler)).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	let mut txn = LoggingTransaction::new(logger.clone());
@@ -147,7 +147,7 @@ async fn test_savepoint_created_logged() {
 	let handler = MemoryHandler::new(LogLevel::Debug);
 	let memory = handler.clone();
 
-	logger.add_handler(Box::new(handler)).await;
+	logger.add_handler(Arc::new(handler)).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	let mut txn = LoggingTransaction::new(logger.clone());
@@ -173,7 +173,7 @@ async fn test_savepoint_rollback_logged() {
 	let handler = MemoryHandler::new(LogLevel::Debug);
 	let memory = handler.clone();
 
-	logger.add_handler(Box::new(handler)).await;
+	logger.add_handler(Arc::new(handler)).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	let mut txn = LoggingTransaction::new(logger.clone());
@@ -196,7 +196,7 @@ async fn test_nested_transaction_logging() {
 	let handler = MemoryHandler::new(LogLevel::Debug);
 	let memory = handler.clone();
 
-	logger.add_handler(Box::new(handler)).await;
+	logger.add_handler(Arc::new(handler)).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	let mut txn = LoggingTransaction::new(logger.clone());
@@ -221,7 +221,7 @@ async fn test_isolation_level_logged() {
 	let handler = MemoryHandler::new(LogLevel::Debug);
 	let memory = handler.clone();
 
-	logger.add_handler(Box::new(handler)).await;
+	logger.add_handler(Arc::new(handler)).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	let mut txn =
@@ -244,7 +244,7 @@ async fn test_transaction_logger_level_filtering() {
 	let handler = MemoryHandler::new(LogLevel::Info);
 	let memory = handler.clone();
 
-	logger.add_handler(Box::new(handler)).await;
+	logger.add_handler(Arc::new(handler)).await;
 	logger.set_level(LogLevel::Info).await; // Set to INFO, so DEBUG messages won't appear
 
 	let mut txn = LoggingTransaction::new(logger.clone());
@@ -276,7 +276,7 @@ async fn test_full_transaction_lifecycle() {
 	let handler = MemoryHandler::new(LogLevel::Debug);
 	let memory = handler.clone();
 
-	logger.add_handler(Box::new(handler)).await;
+	logger.add_handler(Arc::new(handler)).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	let mut txn = LoggingTransaction::new(logger.clone());
@@ -314,13 +314,13 @@ async fn test_multiple_transactions_separate_loggers() {
 	let logger1 = Arc::new(Logger::new("sqlalchemy.engine.connection1".to_string()));
 	let handler1 = MemoryHandler::new(LogLevel::Debug);
 	let memory1 = handler1.clone();
-	logger1.add_handler(Box::new(handler1)).await;
+	logger1.add_handler(Arc::new(handler1)).await;
 	logger1.set_level(LogLevel::Debug).await;
 
 	let logger2 = Arc::new(Logger::new("sqlalchemy.engine.connection2".to_string()));
 	let handler2 = MemoryHandler::new(LogLevel::Debug);
 	let memory2 = handler2.clone();
-	logger2.add_handler(Box::new(handler2)).await;
+	logger2.add_handler(Arc::new(handler2)).await;
 	logger2.set_level(LogLevel::Debug).await;
 
 	let mut txn1 = LoggingTransaction::new(logger1.clone());
