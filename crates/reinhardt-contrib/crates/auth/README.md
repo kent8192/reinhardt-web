@@ -74,6 +74,195 @@ assert!(user.is_authenticated());
 assert!(!user.is_admin());
 ```
 
+### Django-Style User Models
+
+#### BaseUser Trait (AbstractBaseUser equivalent)
+
+- **Minimal Authentication Interface**: Minimal set of fields for user authentication
+- **Automatic Password Hashing**: Argon2id hashing by default, fully customizable
+- **Associated Type Default**: `type Hasher: PasswordHasher + Default = Argon2Hasher`
+- **Password Management**:
+  - `set_password()`: Automatically hashes with configured hasher
+  - `check_password()`: Verifies password against hash
+  - `set_unusable_password()`: Marks password as unusable (for OAuth-only accounts)
+  - `has_usable_password()`: Checks if user can log in with password
+- **Session Authentication**: `get_session_auth_hash()` for session invalidation on password change
+- **Username Normalization**: NFKC Unicode normalization to prevent homograph attacks
+- **Django Compatibility**: Method names and behavior match Django's AbstractBaseUser
+
+```rust
+use reinhardt_auth::BaseUser;
+use uuid::Uuid;
+use chrono::Utc;
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+struct MyUser {
+    id: Uuid,
+    email: String,
+    password_hash: Option<String>,
+    last_login: Option<chrono::DateTime<Utc>>,
+    is_active: bool,
+}
+
+impl BaseUser for MyUser {
+    type PrimaryKey = Uuid;
+    // type Hasher = Argon2Hasher; // Default, can be omitted or customized
+
+    fn get_username_field() -> &'static str { "email" }
+    fn get_username(&self) -> &str { &self.email }
+    fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
+    fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
+    fn last_login(&self) -> Option<chrono::DateTime<Utc>> { self.last_login }
+    fn set_last_login(&mut self, time: chrono::DateTime<Utc>) { self.last_login = Some(time); }
+    fn is_active(&self) -> bool { self.is_active }
+}
+
+let mut user = MyUser {
+    id: Uuid::new_v4(),
+    email: "alice@example.com".to_string(),
+    password_hash: None,
+    last_login: None,
+    is_active: true,
+};
+
+// Password is automatically hashed with Argon2id
+user.set_password("securepass123").unwrap();
+assert!(user.check_password("securepass123").unwrap());
+```
+
+#### FullUser Trait (AbstractUser equivalent)
+
+- **Complete User Model**: Extends BaseUser with additional fields
+- **User Profile Fields**:
+  - `username()`: Unique username for login
+  - `email()`: Email address
+  - `first_name()` / `last_name()`: User's name
+  - `is_staff()`: Can access admin interface
+  - `is_superuser()`: Has all permissions
+  - `date_joined()`: Account creation timestamp
+- **Helper Methods**:
+  - `get_full_name()`: Combines first and last name
+  - `get_short_name()`: Returns first name only
+- **Django Compatibility**: Matches Django's AbstractUser interface
+
+```rust
+use reinhardt_auth::{BaseUser, FullUser, DefaultUser};
+use uuid::Uuid;
+use chrono::Utc;
+
+let mut user = DefaultUser {
+    id: Uuid::new_v4(),
+    username: "alice".to_string(),
+    email: "alice@example.com".to_string(),
+    first_name: "Alice".to_string(),
+    last_name: "Smith".to_string(),
+    password_hash: None,
+    last_login: None,
+    is_active: true,
+    is_staff: false,
+    is_superuser: false,
+    date_joined: Utc::now(),
+    user_permissions: Vec::new(),
+    groups: Vec::new(),
+};
+
+assert_eq!(user.get_full_name(), "Alice Smith");
+assert_eq!(user.get_short_name(), "Alice");
+```
+
+#### PermissionsMixin Trait
+
+- **Authorization Interface**: Permission and group management
+- **Permission Checking**:
+  - `has_perm(perm)`: Check if user has specific permission
+  - `has_module_perms(app_label)`: Check if user has any permission for app
+  - `get_all_permissions()`: Get all user and group permissions
+- **Superuser Bypass**: Superusers automatically pass all permission checks
+- **Group Support**: Users can belong to multiple groups
+- **Django Compatibility**: Permission format `"app_label.permission_name"`
+
+```rust
+use reinhardt_auth::{DefaultUser, PermissionsMixin};
+use uuid::Uuid;
+use chrono::Utc;
+
+let user = DefaultUser {
+    id: Uuid::new_v4(),
+    username: "bob".to_string(),
+    email: "bob@example.com".to_string(),
+    first_name: "Bob".to_string(),
+    last_name: "Johnson".to_string(),
+    password_hash: None,
+    last_login: None,
+    is_active: true,
+    is_staff: true,
+    is_superuser: false,
+    date_joined: Utc::now(),
+    user_permissions: vec![
+        "blog.add_post".to_string(),
+        "blog.change_post".to_string(),
+    ],
+    groups: vec!["editors".to_string()],
+};
+
+assert!(user.has_perm("blog.add_post"));
+assert!(user.has_module_perms("blog"));
+```
+
+#### DefaultUser Struct
+
+- **Ready-to-Use Implementation**: Combines BaseUser, FullUser, and PermissionsMixin
+- **Database Model**: `#[derive(Model)]` for ORM integration
+- **Table Name**: `auth_user` (Django-compatible)
+- **All Fields Included**: Username, email, names, passwords, permissions, groups, flags, timestamps
+- **Zero Configuration**: Works out of the box with automatic Argon2id hashing
+
+```rust
+use reinhardt_auth::{BaseUser, DefaultUser, DefaultUserManager};
+use std::collections::HashMap;
+
+# tokio_test::block_on(async {
+let mut manager = DefaultUserManager::new();
+
+// Create a regular user
+let user = manager.create_user(
+    "alice",
+    Some("securepass123"),
+    HashMap::new()
+).await.unwrap();
+
+assert_eq!(user.username, "alice");
+assert!(user.is_active);
+assert!(!user.is_staff);
+
+// Create a superuser
+let admin = manager.create_superuser(
+    "admin",
+    Some("adminsecret"),
+    HashMap::new()
+).await.unwrap();
+
+assert!(admin.is_staff);
+assert!(admin.is_superuser);
+# })
+```
+
+#### BaseUserManager Trait
+
+- **User Creation Interface**: `create_user()` and `create_superuser()` methods
+- **Async Support**: Full async/await integration
+- **Extra Fields**: Accept arbitrary extra data via HashMap
+- **Email Normalization**: `normalize_email()` static method
+- **Django Compatibility**: Matches Django's UserManager interface
+
+#### DefaultUserManager
+
+- **In-Memory Implementation**: Built-in manager for DefaultUser
+- **Thread-Safe**: Uses `Arc<RwLock<HashMap>>` for concurrent access
+- **User Lookup**: `get_by_id()` and `get_by_username()` methods
+- **Demonstration Purpose**: For testing and prototyping (use ORM-based manager in production)
+
 ### Password Security
 
 #### Password Hashing

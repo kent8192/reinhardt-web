@@ -41,6 +41,8 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 base64 = "0.22"
 sha2 = { workspace = true }
+hmac = { workspace = true }
+unicode-normalization = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
 totp-lite = "2.0"
 data-encoding = "2.6"
@@ -59,5 +61,6 @@ redis = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+tokio-test = { workspace = true }
 hyper = { workspace = true }
 bytes = { workspace = true }

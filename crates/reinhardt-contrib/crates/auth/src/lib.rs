@@ -15,10 +15,15 @@
 
 pub mod advanced_permissions;
 pub mod backend;
+pub mod base_user;
+pub mod base_user_manager;
 pub mod basic;
+pub mod default_user;
+pub mod default_user_manager;
 pub mod di_support;
 pub mod drf_authentication;
 pub mod drf_permissions;
+pub mod full_user;
 pub mod group_management;
 #[cfg(feature = "session")]
 pub mod handlers;
@@ -32,6 +37,7 @@ pub mod object_permissions;
 pub mod oauth2;
 pub mod permission_operators;
 pub mod permissions;
+pub mod permissions_mixin;
 pub mod rate_limit_permission;
 pub mod remote_user;
 #[cfg(feature = "session")]
@@ -48,7 +54,13 @@ pub mod user_management;
 
 pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
 pub use backend::{Argon2Hasher, AuthBackend, CompositeAuthBackend, PasswordHasher};
+pub use base_user::BaseUser;
+pub use base_user_manager::BaseUserManager;
 pub use basic::BasicAuthentication as HttpBasicAuth;
+pub use default_user::DefaultUser;
+pub use default_user_manager::DefaultUserManager;
+pub use full_user::FullUser;
+pub use permissions_mixin::PermissionsMixin;
 pub use drf_authentication::{
     Authentication, BasicAuthConfig, CompositeAuthentication, RemoteUserAuthentication,
     SessionAuthConfig, SessionAuthentication, TokenAuthConfig, TokenAuthentication,
