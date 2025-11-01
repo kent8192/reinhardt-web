@@ -155,8 +155,8 @@ where
 /// });
 ///
 /// let batch = BatchWarmer::new()
-///     .add(Box::new(config_warmer))
-///     .add(Box::new(user_warmer));
+///     .with_warmer(Box::new(config_warmer))
+///     .with_warmer(Box::new(user_warmer));
 ///
 /// batch.warm(cache.clone()).await?;
 ///
@@ -231,8 +231,8 @@ impl<C: Cache> CacheWarmer<C> for BatchWarmer<C> {
 /// });
 ///
 /// let parallel = ParallelWarmer::new()
-///     .add(Box::new(warmer1))
-///     .add(Box::new(warmer2));
+///     .with_warmer(Box::new(warmer1))
+///     .with_warmer(Box::new(warmer2));
 ///
 /// parallel.warm(cache.clone()).await?;
 ///
