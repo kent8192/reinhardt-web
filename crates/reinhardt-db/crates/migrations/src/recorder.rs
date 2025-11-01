@@ -84,15 +84,18 @@ impl DatabaseMigrationRecorder {
     ///
     /// # Examples
     ///
-    /// ```no_run
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// ```
     /// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
     /// use backends::DatabaseConnection;
     ///
-    /// let connection = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await?;
+    /// # async fn example() {
+    /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
+    /// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
     /// let recorder = DatabaseMigrationRecorder::new(connection);
-    /// # Ok(())
+    /// // Verify recorder was created successfully
+    /// recorder.ensure_schema_table().await.unwrap();
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub fn new(connection: DatabaseConnection) -> Self {
         Self { connection }
@@ -195,19 +198,20 @@ impl DatabaseMigrationRecorder {
     ///
     /// # Examples
     ///
-    /// ```no_run
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// ```
     /// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
     /// use backends::DatabaseConnection;
     ///
-    /// let connection = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await?;
+    /// # async fn example() {
+    /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
+    /// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
     /// let recorder = DatabaseMigrationRecorder::new(connection);
-    /// recorder.ensure_schema_table().await?;
+    /// recorder.ensure_schema_table().await.unwrap();
     ///
-    /// let is_applied = recorder.is_applied("myapp", "0001_initial").await?;
-    /// println!("Migration applied: {}", is_applied);
-    /// # Ok(())
+    /// let is_applied = recorder.is_applied("myapp", "0001_initial").await.unwrap();
+    /// assert!(!is_applied); // Initially not applied
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn is_applied(&self, app: &str, name: &str) -> crate::Result<bool> {
         #[cfg(feature = "mongodb")]
@@ -282,18 +286,22 @@ impl DatabaseMigrationRecorder {
     ///
     /// # Examples
     ///
-    /// ```no_run
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// ```
     /// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
     /// use backends::DatabaseConnection;
     ///
-    /// let connection = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await?;
+    /// # async fn example() {
+    /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
+    /// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
     /// let recorder = DatabaseMigrationRecorder::new(connection);
-    /// recorder.ensure_schema_table().await?;
+    /// recorder.ensure_schema_table().await.unwrap();
     ///
-    /// recorder.record_applied("myapp", "0001_initial").await?;
-    /// # Ok(())
+    /// recorder.record_applied("myapp", "0001_initial").await.unwrap();
+    /// // Verify migration was recorded
+    /// let is_applied = recorder.is_applied("myapp", "0001_initial").await.unwrap();
+    /// assert!(is_applied);
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn record_applied(&self, app: &str, name: &str) -> crate::Result<()> {
         #[cfg(feature = "mongodb")]
@@ -356,21 +364,20 @@ impl DatabaseMigrationRecorder {
     ///
     /// # Examples
     ///
-    /// ```no_run
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// ```
     /// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
     /// use backends::DatabaseConnection;
     ///
-    /// let connection = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await?;
+    /// # async fn example() {
+    /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
+    /// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
     /// let recorder = DatabaseMigrationRecorder::new(connection);
-    /// recorder.ensure_schema_table().await?;
+    /// recorder.ensure_schema_table().await.unwrap();
     ///
-    /// let migrations = recorder.get_applied_migrations().await?;
-    /// for migration in migrations {
-    ///     println!("{}.{} applied at {:?}", migration.app, migration.name, migration.applied);
-    /// }
-    /// # Ok(())
+    /// let migrations = recorder.get_applied_migrations().await.unwrap();
+    /// assert!(migrations.is_empty()); // Initially no migrations applied
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn get_applied_migrations(&self) -> crate::Result<Vec<MigrationRecord>> {
         #[cfg(feature = "mongodb")]

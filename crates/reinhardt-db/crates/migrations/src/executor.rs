@@ -39,7 +39,9 @@ impl MigrationExecutor {
     /// # async fn example() {
     /// let pool = SqlitePool::connect(":memory:").await.unwrap();
     /// let executor = MigrationExecutor::new(pool);
+    /// // Executor created successfully
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub fn new(pool: SqlitePool) -> Self {
         Self {
@@ -59,7 +61,9 @@ impl MigrationExecutor {
     /// let pool = SqlitePool::connect(":memory:").await.unwrap();
     /// let executor = MigrationExecutor::new(pool);
     /// let pool_ref = executor.get_pool();
+    /// // Pool reference retrieved successfully
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub fn get_pool(&self) -> &SqlitePool {
         &self.pool
@@ -79,7 +83,9 @@ impl MigrationExecutor {
     ///
     /// let migrations = vec![Migration::new("0001_initial", "myapp")];
     /// let result = executor.apply_migrations(&migrations).await.unwrap();
+    /// // Migrations applied successfully
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn apply_migrations(&mut self, migrations: &[Migration]) -> Result<ExecutionResult> {
         let mut applied = Vec::new();
@@ -145,7 +151,9 @@ impl MigrationExecutor {
     ///
     /// let plan = MigrationPlan::new();
     /// let result = executor.apply(&plan).await.unwrap();
+    /// // Migration plan applied successfully
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn apply(&mut self, plan: &MigrationPlan) -> Result<ExecutionResult> {
         let mut applied = Vec::new();
@@ -190,14 +198,15 @@ impl DatabaseMigrationExecutor {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_migrations::executor::DatabaseMigrationExecutor;
     /// use backends::{DatabaseConnection, DatabaseType};
     ///
-    /// # async fn example() {
-    /// let db = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await.unwrap();
-    /// let executor = DatabaseMigrationExecutor::new(db.clone(), DatabaseType::Postgres);
-    /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
+    /// let db = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
+    /// let executor = DatabaseMigrationExecutor::new(db.clone(), DatabaseType::Sqlite);
+    /// # });
     /// ```
     pub fn new(connection: DatabaseConnection, db_type: DatabaseType) -> Self {
         let recorder = DatabaseMigrationRecorder::new(connection.clone());
@@ -295,17 +304,18 @@ impl DatabaseMigrationExecutor {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_migrations::{MigrationPlan, executor::DatabaseMigrationExecutor};
     /// use backends::{DatabaseConnection, DatabaseType};
     ///
-    /// # async fn example() {
-    /// let db = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await.unwrap();
-    /// let mut executor = DatabaseMigrationExecutor::new(db, DatabaseType::Postgres);
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
+    /// let db = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
+    /// let mut executor = DatabaseMigrationExecutor::new(db, DatabaseType::Sqlite);
     ///
     /// let plan = MigrationPlan::new();
     /// let result = executor.apply(&plan).await.unwrap();
-    /// # }
+    /// # });
     /// ```
     pub async fn apply(&mut self, plan: &MigrationPlan) -> Result<ExecutionResult> {
         let mut applied = Vec::new();

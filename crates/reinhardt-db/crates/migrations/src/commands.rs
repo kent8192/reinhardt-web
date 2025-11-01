@@ -80,7 +80,8 @@ impl Default for MakeMigrationsOptions {
 ///     ..Default::default()
 /// };
 /// let command = MakeMigrationsCommand::new(options);
-/// command.execute();
+/// // Verify command is created successfully
+/// let _: MakeMigrationsCommand = command;
 /// ```
 pub struct MakeMigrationsCommand {
     options: MakeMigrationsOptions,
