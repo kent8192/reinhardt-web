@@ -5,20 +5,20 @@ use tera::Tera;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BrowsableApiError {
-    #[error("Template render error: {0}")]
-    Render(String),
-    #[error("Template error: {0}")]
-    Template(String),
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] serde_json::Error),
-    #[error("{0}")]
-    Other(String),
+	#[error("Template render error: {0}")]
+	Render(String),
+	#[error("Template error: {0}")]
+	Template(String),
+	#[error("Serialization error: {0}")]
+	Serialization(#[from] serde_json::Error),
+	#[error("{0}")]
+	Other(String),
 }
 
 impl From<tera::Error> for BrowsableApiError {
-    fn from(err: tera::Error) -> Self {
-        BrowsableApiError::Render(err.to_string())
-    }
+	fn from(err: tera::Error) -> Self {
+		BrowsableApiError::Render(err.to_string())
+	}
 }
 
 pub type BrowsableApiResult<T> = Result<T, BrowsableApiError>;
@@ -26,102 +26,103 @@ pub type BrowsableApiResult<T> = Result<T, BrowsableApiError>;
 /// Context for rendering browsable API HTML
 #[derive(Debug, Clone, Serialize)]
 pub struct ApiContext {
-    pub title: String,
-    pub description: Option<String>,
-    pub endpoint: String,
-    pub method: String,
-    pub response_data: Value,
-    pub response_status: u16,
-    pub allowed_methods: Vec<String>,
-    pub request_form: Option<FormContext>,
-    pub headers: Vec<(String, String)>,
+	pub title: String,
+	pub description: Option<String>,
+	pub endpoint: String,
+	pub method: String,
+	pub response_data: Value,
+	pub response_status: u16,
+	pub allowed_methods: Vec<String>,
+	pub request_form: Option<FormContext>,
+	pub headers: Vec<(String, String)>,
 }
 
 /// Context for rendering request forms
 #[derive(Debug, Clone, Serialize)]
 pub struct FormContext {
-    pub fields: Vec<FormField>,
-    pub submit_url: String,
-    pub submit_method: String,
+	pub fields: Vec<FormField>,
+	pub submit_url: String,
+	pub submit_method: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FormField {
-    pub name: String,
-    pub label: String,
-    pub field_type: String,
-    pub required: bool,
-    pub help_text: Option<String>,
-    pub initial_value: Option<Value>,
-    pub options: Option<Vec<SelectOption>>,
-    pub initial_label: Option<String>,
+	pub name: String,
+	pub label: String,
+	pub field_type: String,
+	pub required: bool,
+	pub help_text: Option<String>,
+	pub initial_value: Option<Value>,
+	pub options: Option<Vec<SelectOption>>,
+	pub initial_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SelectOption {
-    pub value: String,
-    pub label: String,
+	pub value: String,
+	pub label: String,
 }
 
 /// Renderer for browsable API HTML responses
 pub struct BrowsableApiRenderer {
-    tera: Arc<Tera>,
+	tera: Arc<Tera>,
 }
 
 impl BrowsableApiRenderer {
-    /// Create a new BrowsableApiRenderer with default templates
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_browsable_api::renderer::BrowsableApiRenderer;
-    /// let renderer = BrowsableApiRenderer::new();
-    /// ```
-    pub fn new() -> Self {
-        let mut tera = Tera::default();
+	/// Create a new BrowsableApiRenderer with default templates
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_browsable_api::renderer::BrowsableApiRenderer;
+	/// let renderer = BrowsableApiRenderer::new();
+	/// ```
+	pub fn new() -> Self {
+		let mut tera = Tera::default();
 
-        // Register template from external file
-        let template_path = concat!(env!("CARGO_MANIFEST_DIR"), "/templates/api.tpl");
-        if let Err(e) = tera.add_template_file(template_path, Some("api")) {
-            // Fallback to default template if file cannot be read
-            eprintln!(
-                "Warning: Failed to load template file: {}. Using default template.",
-                e
-            );
-            tera.add_raw_template("api", Self::default_template())
-                .expect("Failed to register default template");
-        }
+		// Register template from external file
+		let template_path = concat!(env!("CARGO_MANIFEST_DIR"), "/templates/api.tpl");
+		if let Err(e) = tera.add_template_file(template_path, Some("api")) {
+			// Fallback to default template if file cannot be read
+			eprintln!(
+				"Warning: Failed to load template file: {}. Using default template.",
+				e
+			);
+			tera.add_raw_template("api", Self::default_template())
+				.expect("Failed to register default template");
+		}
 
-        Self {
-            tera: Arc::new(tera),
-        }
-    }
-    /// Render API context as HTML
-    ///
-    pub fn render(&self, context: &ApiContext) -> BrowsableApiResult<String> {
-        // Convert the context to a Tera Context
-        let mut tera_context = tera::Context::from_serialize(context)?;
+		Self {
+			tera: Arc::new(tera),
+		}
+	}
+	/// Render API context as HTML
+	///
+	pub fn render(&self, context: &ApiContext) -> BrowsableApiResult<String> {
+		// Convert the context to a Tera Context
+		let mut tera_context = tera::Context::from_serialize(context)?;
 
-        // Add formatted JSON
-        let formatted_json = serde_json::to_string_pretty(&context.response_data)?;
-        tera_context.insert("response_data_formatted", &formatted_json);
+		// Add formatted JSON
+		let formatted_json = serde_json::to_string_pretty(&context.response_data)?;
+		tera_context.insert("response_data_formatted", &formatted_json);
 
-        Ok(self.tera.render("api", &tera_context)?)
-    }
-    /// Register a custom template
-    ///
-    pub fn register_template(&mut self, name: &str, template: &str) -> BrowsableApiResult<()> {
-        let tera_mut = Arc::get_mut(&mut self.tera).ok_or_else(|| {
-            BrowsableApiError::Other("Cannot modify shared template registry".to_string())
-        })?;
-        tera_mut.add_raw_template(name, template)
-            .map_err(|e| BrowsableApiError::Template(e.to_string()))?;
-        Ok(())
-    }
+		Ok(self.tera.render("api", &tera_context)?)
+	}
+	/// Register a custom template
+	///
+	pub fn register_template(&mut self, name: &str, template: &str) -> BrowsableApiResult<()> {
+		let tera_mut = Arc::get_mut(&mut self.tera).ok_or_else(|| {
+			BrowsableApiError::Other("Cannot modify shared template registry".to_string())
+		})?;
+		tera_mut
+			.add_raw_template(name, template)
+			.map_err(|e| BrowsableApiError::Template(e.to_string()))?;
+		Ok(())
+	}
 
-    /// Default HTML template
-    fn default_template() -> &'static str {
-        r#"
+	/// Default HTML template
+	fn default_template() -> &'static str {
+		r#"
 <!DOCTYPE html>
 <html>
 <head>
@@ -243,188 +244,188 @@ impl BrowsableApiRenderer {
 </body>
 </html>
 "#
-    }
+	}
 }
 
 impl Default for BrowsableApiRenderer {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_render_basic_context() {
-        let renderer = BrowsableApiRenderer::new();
-        let context = ApiContext {
-            title: "User List".to_string(),
-            description: Some("List all users".to_string()),
-            endpoint: "/api/users/".to_string(),
-            method: "GET".to_string(),
-            response_data: serde_json::json!([
-                {"id": 1, "name": "Alice"},
-                {"id": 2, "name": "Bob"}
-            ]),
-            response_status: 200,
-            allowed_methods: vec!["GET".to_string(), "POST".to_string()],
-            request_form: None,
-            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
-        };
+	#[test]
+	fn test_render_basic_context() {
+		let renderer = BrowsableApiRenderer::new();
+		let context = ApiContext {
+			title: "User List".to_string(),
+			description: Some("List all users".to_string()),
+			endpoint: "/api/users/".to_string(),
+			method: "GET".to_string(),
+			response_data: serde_json::json!([
+				{"id": 1, "name": "Alice"},
+				{"id": 2, "name": "Bob"}
+			]),
+			response_status: 200,
+			allowed_methods: vec!["GET".to_string(), "POST".to_string()],
+			request_form: None,
+			headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+		};
 
-        let html = renderer.render(&context).unwrap();
-        assert!(html.contains("User List"));
-        assert!(html.contains("/api/users/"));
-        assert!(html.contains("Alice"));
-        assert!(html.contains("Bob"));
-    }
+		let html = renderer.render(&context).unwrap();
+		assert!(html.contains("User List"));
+		assert!(html.contains("/api/users/"));
+		assert!(html.contains("Alice"));
+		assert!(html.contains("Bob"));
+	}
 
-    #[test]
-    fn test_render_with_form() {
-        let renderer = BrowsableApiRenderer::new();
-        let context = ApiContext {
-            title: "Create User".to_string(),
-            description: None,
-            endpoint: "/api/users/".to_string(),
-            method: "POST".to_string(),
-            response_data: serde_json::json!({"message": "Success"}),
-            response_status: 201,
-            allowed_methods: vec!["GET".to_string(), "POST".to_string()],
-            request_form: Some(FormContext {
-                fields: vec![FormField {
-                    name: "name".to_string(),
-                    label: "Name".to_string(),
-                    field_type: "text".to_string(),
-                    required: true,
-                    help_text: Some("Enter user name".to_string()),
-                    initial_value: None,
-                    options: None,
-                    initial_label: None,
-                }],
-                submit_url: "/api/users/".to_string(),
-                submit_method: "POST".to_string(),
-            }),
-            headers: vec![],
-        };
+	#[test]
+	fn test_render_with_form() {
+		let renderer = BrowsableApiRenderer::new();
+		let context = ApiContext {
+			title: "Create User".to_string(),
+			description: None,
+			endpoint: "/api/users/".to_string(),
+			method: "POST".to_string(),
+			response_data: serde_json::json!({"message": "Success"}),
+			response_status: 201,
+			allowed_methods: vec!["GET".to_string(), "POST".to_string()],
+			request_form: Some(FormContext {
+				fields: vec![FormField {
+					name: "name".to_string(),
+					label: "Name".to_string(),
+					field_type: "text".to_string(),
+					required: true,
+					help_text: Some("Enter user name".to_string()),
+					initial_value: None,
+					options: None,
+					initial_label: None,
+				}],
+				submit_url: "/api/users/".to_string(),
+				submit_method: "POST".to_string(),
+			}),
+			headers: vec![],
+		};
 
-        let html = renderer.render(&context).unwrap();
-        assert!(html.contains("Make a Request"));
-        assert!(html.contains("name=\"name\""));
-        assert!(html.contains("Enter user name"));
-    }
+		let html = renderer.render(&context).unwrap();
+		assert!(html.contains("Make a Request"));
+		assert!(html.contains("name=\"name\""));
+		assert!(html.contains("Enter user name"));
+	}
 
-    #[test]
-    fn test_render_select_field() {
-        let renderer = BrowsableApiRenderer::new();
-        let context = ApiContext {
-            title: "Create Post".to_string(),
-            description: None,
-            endpoint: "/api/posts/".to_string(),
-            method: "POST".to_string(),
-            response_data: serde_json::json!({}),
-            response_status: 200,
-            allowed_methods: vec!["POST".to_string()],
-            request_form: Some(FormContext {
-                fields: vec![FormField {
-                    name: "category".to_string(),
-                    label: "Category".to_string(),
-                    field_type: "select".to_string(),
-                    required: true,
-                    help_text: Some("Select a category".to_string()),
-                    initial_value: Some(serde_json::json!("tech")),
-                    options: Some(vec![
-                        SelectOption {
-                            value: "tech".to_string(),
-                            label: "Technology".to_string(),
-                        },
-                        SelectOption {
-                            value: "science".to_string(),
-                            label: "Science".to_string(),
-                        },
-                        SelectOption {
-                            value: "art".to_string(),
-                            label: "Art".to_string(),
-                        },
-                    ]),
-                    initial_label: None,
-                }],
-                submit_url: "/api/posts/".to_string(),
-                submit_method: "POST".to_string(),
-            }),
-            headers: vec![],
-        };
+	#[test]
+	fn test_render_select_field() {
+		let renderer = BrowsableApiRenderer::new();
+		let context = ApiContext {
+			title: "Create Post".to_string(),
+			description: None,
+			endpoint: "/api/posts/".to_string(),
+			method: "POST".to_string(),
+			response_data: serde_json::json!({}),
+			response_status: 200,
+			allowed_methods: vec!["POST".to_string()],
+			request_form: Some(FormContext {
+				fields: vec![FormField {
+					name: "category".to_string(),
+					label: "Category".to_string(),
+					field_type: "select".to_string(),
+					required: true,
+					help_text: Some("Select a category".to_string()),
+					initial_value: Some(serde_json::json!("tech")),
+					options: Some(vec![
+						SelectOption {
+							value: "tech".to_string(),
+							label: "Technology".to_string(),
+						},
+						SelectOption {
+							value: "science".to_string(),
+							label: "Science".to_string(),
+						},
+						SelectOption {
+							value: "art".to_string(),
+							label: "Art".to_string(),
+						},
+					]),
+					initial_label: None,
+				}],
+				submit_url: "/api/posts/".to_string(),
+				submit_method: "POST".to_string(),
+			}),
+			headers: vec![],
+		};
 
-        let html = renderer.render(&context).unwrap();
-        assert!(html.contains("<select"));
-        assert!(html.contains("name=\"category\""));
-        assert!(html.contains("Technology"));
-        assert!(html.contains("Science"));
-        assert!(html.contains("Art"));
-        assert!(html.contains("value=\"tech\""));
-        assert!(html.contains("value=\"science\""));
-        assert!(html.contains("value=\"art\""));
-    }
+		let html = renderer.render(&context).unwrap();
+		assert!(html.contains("<select"));
+		assert!(html.contains("name=\"category\""));
+		assert!(html.contains("Technology"));
+		assert!(html.contains("Science"));
+		assert!(html.contains("Art"));
+		assert!(html.contains("value=\"tech\""));
+		assert!(html.contains("value=\"science\""));
+		assert!(html.contains("value=\"art\""));
+	}
 
-    #[test]
-    fn test_render_select_with_initial_label() {
-        // Test: Select field with initial_label displays placeholder option
-        let renderer = BrowsableApiRenderer::new();
-        let context = ApiContext {
-            title: "Create Item".to_string(),
-            description: None,
-            endpoint: "/api/items/".to_string(),
-            method: "POST".to_string(),
-            response_data: serde_json::json!({}),
-            response_status: 200,
-            allowed_methods: vec!["POST".to_string()],
-            request_form: Some(FormContext {
-                fields: vec![FormField {
-                    name: "category".to_string(),
-                    label: "Category".to_string(),
-                    field_type: "select".to_string(),
-                    required: false,
-                    help_text: Some("Choose a category".to_string()),
-                    initial_value: None,
-                    options: Some(vec![
-                        SelectOption {
-                            value: "tech".to_string(),
-                            label: "Technology".to_string(),
-                        },
-                        SelectOption {
-                            value: "science".to_string(),
-                            label: "Science".to_string(),
-                        },
-                    ]),
-                    initial_label: Some("-- Select a category --".to_string()),
-                }],
-                submit_url: "/api/items/".to_string(),
-                submit_method: "POST".to_string(),
-            }),
-            headers: vec![],
-        };
+	#[test]
+	fn test_render_select_with_initial_label() {
+		// Test: Select field with initial_label displays placeholder option
+		let renderer = BrowsableApiRenderer::new();
+		let context = ApiContext {
+			title: "Create Item".to_string(),
+			description: None,
+			endpoint: "/api/items/".to_string(),
+			method: "POST".to_string(),
+			response_data: serde_json::json!({}),
+			response_status: 200,
+			allowed_methods: vec!["POST".to_string()],
+			request_form: Some(FormContext {
+				fields: vec![FormField {
+					name: "category".to_string(),
+					label: "Category".to_string(),
+					field_type: "select".to_string(),
+					required: false,
+					help_text: Some("Choose a category".to_string()),
+					initial_value: None,
+					options: Some(vec![
+						SelectOption {
+							value: "tech".to_string(),
+							label: "Technology".to_string(),
+						},
+						SelectOption {
+							value: "science".to_string(),
+							label: "Science".to_string(),
+						},
+					]),
+					initial_label: Some("-- Select a category --".to_string()),
+				}],
+				submit_url: "/api/items/".to_string(),
+				submit_method: "POST".to_string(),
+			}),
+			headers: vec![],
+		};
 
-        let html = renderer.render(&context).unwrap();
+		let html = renderer.render(&context).unwrap();
 
-        // Verify select element exists
-        assert!(html.contains("<select"));
-        assert!(html.contains("name=\"category\""));
+		// Verify select element exists
+		assert!(html.contains("<select"));
+		assert!(html.contains("name=\"category\""));
 
-        // Verify initial option is rendered with empty value and selected attribute
-        assert!(html.contains("-- Select a category --"));
-        assert!(html.contains(r#"<option value="" selected>-- Select a category --</option>"#));
+		// Verify initial option is rendered with empty value and selected attribute
+		assert!(html.contains("-- Select a category --"));
+		assert!(html.contains(r#"<option value="" selected>-- Select a category --</option>"#));
 
-        // Verify regular options are present
-        assert!(html.contains("Technology"));
-        assert!(html.contains("Science"));
+		// Verify regular options are present
+		assert!(html.contains("Technology"));
+		assert!(html.contains("Science"));
 
-        // Verify initial option appears before regular options
-        let initial_pos = html.find("-- Select a category --").unwrap();
-        let tech_pos = html.find("Technology").unwrap();
-        assert!(
-            initial_pos < tech_pos,
-            "Initial option should appear before regular options"
-        );
-    }
+		// Verify initial option appears before regular options
+		let initial_pos = html.find("-- Select a category --").unwrap();
+		let tech_pos = html.find("Technology").unwrap();
+		assert!(
+			initial_pos < tech_pos,
+			"Initial option should appear before regular options"
+		);
+	}
 }

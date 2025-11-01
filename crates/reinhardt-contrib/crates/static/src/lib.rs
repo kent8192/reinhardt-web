@@ -18,19 +18,19 @@ pub mod dev_server;
 
 pub use caching::{CacheControlConfig, CacheControlMiddleware, CacheDirective, CachePolicy};
 pub use cdn::{CdnConfig, CdnInvalidationRequest, CdnProvider, CdnPurgeHelper, CdnUrlGenerator};
-pub use checks::{check_static_files_config, CheckLevel, CheckMessage};
+pub use checks::{CheckLevel, CheckMessage, check_static_files_config};
 pub use dependency_resolver::DependencyGraph;
 pub use handler::{StaticError, StaticFile, StaticFileHandler, StaticResult};
 pub use health::{
-    CacheHealthCheck, DatabaseHealthCheck, HealthCheck, HealthCheckManager, HealthCheckResult,
-    HealthReport, HealthStatus,
+	CacheHealthCheck, DatabaseHealthCheck, HealthCheck, HealthCheckManager, HealthCheckResult,
+	HealthReport, HealthStatus,
 };
 pub use media::{HasMedia, Media};
 pub use metrics::{Metric, MetricsCollector, RequestMetrics, RequestTimer};
 pub use middleware::StaticFilesMiddleware;
 pub use storage::{
-    FileSystemStorage, HashedFileStorage, Manifest, ManifestStaticFilesStorage, ManifestVersion,
-    MemoryStorage, StaticFilesConfig, StaticFilesFinder, Storage, StorageRegistry,
+	FileSystemStorage, HashedFileStorage, Manifest, ManifestStaticFilesStorage, ManifestVersion,
+	MemoryStorage, StaticFilesConfig, StaticFilesFinder, Storage, StorageRegistry,
 };
 
 #[cfg(feature = "s3")]
@@ -46,13 +46,13 @@ pub use template_integration::TemplateStaticConfig;
 
 #[cfg(feature = "templates-integration")]
 pub use template_integration::{
-    init_template_static_config, init_template_static_config_with_manifest,
+	init_template_static_config, init_template_static_config_with_manifest,
 };
 
 pub use processing::{ProcessingConfig, ProcessingPipeline, ProcessingResult, Processor};
 
 #[cfg(feature = "dev-server")]
 pub use dev_server::{
-    AutoReload, AutoReloadBuilder, DevServerConfig, DevelopmentErrorHandler, FileWatcher,
-    FileWatcherBuilder, ReloadEvent, WatchEvent,
+	AutoReload, AutoReloadBuilder, DevServerConfig, DevelopmentErrorHandler, FileWatcher,
+	FileWatcherBuilder, ReloadEvent, WatchEvent,
 };

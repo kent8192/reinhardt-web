@@ -38,12 +38,12 @@ use serde::Serialize;
 /// assert_eq!(response.status, 200);
 /// ```
 pub fn ok_json<T: Serialize>(data: T) -> Result<Response> {
-    let json = serde_json::to_string(&data)
-        .map_err(|e| Error::Serialization(format!("Failed to serialize data: {}", e)))?;
+	let json = serde_json::to_string(&data)
+		.map_err(|e| Error::Serialization(format!("Failed to serialize data: {}", e)))?;
 
-    Ok(Response::ok()
-        .with_header("Content-Type", "application/json")
-        .with_body(json))
+	Ok(Response::ok()
+		.with_header("Content-Type", "application/json")
+		.with_body(json))
 }
 
 /// Creates a 201 Created response with JSON body.
@@ -77,12 +77,12 @@ pub fn ok_json<T: Serialize>(data: T) -> Result<Response> {
 /// assert_eq!(response.status, 201);
 /// ```
 pub fn created_json<T: Serialize>(data: T) -> Result<Response> {
-    let json = serde_json::to_string(&data)
-        .map_err(|e| Error::Serialization(format!("Failed to serialize data: {}", e)))?;
+	let json = serde_json::to_string(&data)
+		.map_err(|e| Error::Serialization(format!("Failed to serialize data: {}", e)))?;
 
-    Ok(Response::created()
-        .with_header("Content-Type", "application/json")
-        .with_body(json))
+	Ok(Response::created()
+		.with_header("Content-Type", "application/json")
+		.with_body(json))
 }
 
 /// Creates a 204 No Content response.
@@ -100,7 +100,7 @@ pub fn created_json<T: Serialize>(data: T) -> Result<Response> {
 /// assert_eq!(response.status, 204);
 /// ```
 pub fn no_content() -> Response {
-    Response::no_content()
+	Response::no_content()
 }
 
 /// Creates a 400 Bad Request response with an error message.
@@ -122,10 +122,10 @@ pub fn no_content() -> Response {
 /// assert_eq!(response.status, 400);
 /// ```
 pub fn bad_request(message: impl Into<String>) -> Response {
-    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
-    Response::bad_request()
-        .with_header("Content-Type", "application/json")
-        .with_body(error_body)
+	let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+	Response::bad_request()
+		.with_header("Content-Type", "application/json")
+		.with_body(error_body)
 }
 
 /// Creates a 401 Unauthorized response with an error message.
@@ -147,10 +147,10 @@ pub fn bad_request(message: impl Into<String>) -> Response {
 /// assert_eq!(response.status, 401);
 /// ```
 pub fn unauthorized(message: impl Into<String>) -> Response {
-    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
-    Response::unauthorized()
-        .with_header("Content-Type", "application/json")
-        .with_body(error_body)
+	let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+	Response::unauthorized()
+		.with_header("Content-Type", "application/json")
+		.with_body(error_body)
 }
 
 /// Creates a 404 Not Found response with an error message.
@@ -172,10 +172,10 @@ pub fn unauthorized(message: impl Into<String>) -> Response {
 /// assert_eq!(response.status, 404);
 /// ```
 pub fn not_found(message: impl Into<String>) -> Response {
-    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
-    Response::not_found()
-        .with_header("Content-Type", "application/json")
-        .with_body(error_body)
+	let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+	Response::not_found()
+		.with_header("Content-Type", "application/json")
+		.with_body(error_body)
 }
 
 /// Creates a 500 Internal Server Error response with an error message.
@@ -197,10 +197,10 @@ pub fn not_found(message: impl Into<String>) -> Response {
 /// assert_eq!(response.status, 500);
 /// ```
 pub fn internal_error(message: impl Into<String>) -> Response {
-    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
-    Response::internal_server_error()
-        .with_header("Content-Type", "application/json")
-        .with_body(error_body)
+	let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+	Response::internal_server_error()
+		.with_header("Content-Type", "application/json")
+		.with_body(error_body)
 }
 
 /// Creates a 202 Accepted response.
@@ -221,7 +221,7 @@ pub fn internal_error(message: impl Into<String>) -> Response {
 /// assert_eq!(response.status, 202);
 /// ```
 pub fn accepted() -> Response {
-    Response::new(hyper::StatusCode::ACCEPTED)
+	Response::new(hyper::StatusCode::ACCEPTED)
 }
 
 /// Creates a 403 Forbidden response with an error message.
@@ -245,10 +245,10 @@ pub fn accepted() -> Response {
 /// assert_eq!(response.status, 403);
 /// ```
 pub fn forbidden(message: impl Into<String>) -> Response {
-    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
-    Response::forbidden()
-        .with_header("Content-Type", "application/json")
-        .with_body(error_body)
+	let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+	Response::forbidden()
+		.with_header("Content-Type", "application/json")
+		.with_body(error_body)
 }
 
 /// Creates a 409 Conflict response with an error message.
@@ -273,10 +273,10 @@ pub fn forbidden(message: impl Into<String>) -> Response {
 /// assert_eq!(response.status, 409);
 /// ```
 pub fn conflict(message: impl Into<String>) -> Response {
-    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
-    Response::new(hyper::StatusCode::CONFLICT)
-        .with_header("Content-Type", "application/json")
-        .with_body(error_body)
+	let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+	Response::new(hyper::StatusCode::CONFLICT)
+		.with_header("Content-Type", "application/json")
+		.with_body(error_body)
 }
 
 /// Creates a 422 Unprocessable Entity response with an error message.
@@ -301,10 +301,10 @@ pub fn conflict(message: impl Into<String>) -> Response {
 /// assert_eq!(response.status, 422);
 /// ```
 pub fn unprocessable_entity(message: impl Into<String>) -> Response {
-    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
-    Response::new(hyper::StatusCode::UNPROCESSABLE_ENTITY)
-        .with_header("Content-Type", "application/json")
-        .with_body(error_body)
+	let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+	Response::new(hyper::StatusCode::UNPROCESSABLE_ENTITY)
+		.with_header("Content-Type", "application/json")
+		.with_body(error_body)
 }
 
 /// Creates a 503 Service Unavailable response with an error message.
@@ -329,123 +329,123 @@ pub fn unprocessable_entity(message: impl Into<String>) -> Response {
 /// assert_eq!(response.status, 503);
 /// ```
 pub fn service_unavailable(message: impl Into<String>) -> Response {
-    let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
-    Response::new(hyper::StatusCode::SERVICE_UNAVAILABLE)
-        .with_header("Content-Type", "application/json")
-        .with_body(error_body)
+	let error_body = format!(r#"{{"error":"{}"}}"#, message.into());
+	Response::new(hyper::StatusCode::SERVICE_UNAVAILABLE)
+		.with_header("Content-Type", "application/json")
+		.with_body(error_body)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde::Serialize;
+	use super::*;
+	use serde::Serialize;
 
-    #[derive(Serialize)]
-    struct TestData {
-        id: i64,
-        name: String,
-    }
+	#[derive(Serialize)]
+	struct TestData {
+		id: i64,
+		name: String,
+	}
 
-    #[test]
-    fn test_ok_json() {
-        let data = TestData {
-            id: 1,
-            name: "test".to_string(),
-        };
-        let response = ok_json(data).unwrap();
-        assert_eq!(response.status, 200);
-        assert!(String::from_utf8_lossy(&response.body).contains(r#""id":1"#));
-        assert!(String::from_utf8_lossy(&response.body).contains(r#""name":"test""#));
-    }
+	#[test]
+	fn test_ok_json() {
+		let data = TestData {
+			id: 1,
+			name: "test".to_string(),
+		};
+		let response = ok_json(data).unwrap();
+		assert_eq!(response.status, 200);
+		assert!(String::from_utf8_lossy(&response.body).contains(r#""id":1"#));
+		assert!(String::from_utf8_lossy(&response.body).contains(r#""name":"test""#));
+	}
 
-    #[test]
-    fn test_created_json() {
-        let data = TestData {
-            id: 2,
-            name: "created".to_string(),
-        };
-        let response = created_json(data).unwrap();
-        assert_eq!(response.status, 201);
-        assert!(String::from_utf8_lossy(&response.body).contains(r#""id":2"#));
-        assert!(String::from_utf8_lossy(&response.body).contains(r#""name":"created""#));
-    }
+	#[test]
+	fn test_created_json() {
+		let data = TestData {
+			id: 2,
+			name: "created".to_string(),
+		};
+		let response = created_json(data).unwrap();
+		assert_eq!(response.status, 201);
+		assert!(String::from_utf8_lossy(&response.body).contains(r#""id":2"#));
+		assert!(String::from_utf8_lossy(&response.body).contains(r#""name":"created""#));
+	}
 
-    #[test]
-    fn test_no_content() {
-        let response = no_content();
-        assert_eq!(response.status, 204);
-        assert!(response.body.is_empty());
-    }
+	#[test]
+	fn test_no_content() {
+		let response = no_content();
+		assert_eq!(response.status, 204);
+		assert!(response.body.is_empty());
+	}
 
-    #[test]
-    fn test_bad_request() {
-        let response = bad_request("Invalid input");
-        assert_eq!(response.status, 400);
-        assert!(String::from_utf8_lossy(&response.body).contains("Invalid input"));
-    }
+	#[test]
+	fn test_bad_request() {
+		let response = bad_request("Invalid input");
+		assert_eq!(response.status, 400);
+		assert!(String::from_utf8_lossy(&response.body).contains("Invalid input"));
+	}
 
-    #[test]
-    fn test_unauthorized() {
-        let response = unauthorized("Token expired");
-        assert_eq!(response.status, 401);
-        assert!(String::from_utf8_lossy(&response.body).contains("Token expired"));
-    }
+	#[test]
+	fn test_unauthorized() {
+		let response = unauthorized("Token expired");
+		assert_eq!(response.status, 401);
+		assert!(String::from_utf8_lossy(&response.body).contains("Token expired"));
+	}
 
-    #[test]
-    fn test_not_found() {
-        let response = not_found("Resource not found");
-        assert_eq!(response.status, 404);
-        assert!(String::from_utf8_lossy(&response.body).contains("Resource not found"));
-    }
+	#[test]
+	fn test_not_found() {
+		let response = not_found("Resource not found");
+		assert_eq!(response.status, 404);
+		assert!(String::from_utf8_lossy(&response.body).contains("Resource not found"));
+	}
 
-    #[test]
-    fn test_internal_error() {
-        let response = internal_error("Database error");
-        assert_eq!(response.status, 500);
-        assert!(String::from_utf8_lossy(&response.body).contains("Database error"));
-    }
+	#[test]
+	fn test_internal_error() {
+		let response = internal_error("Database error");
+		assert_eq!(response.status, 500);
+		assert!(String::from_utf8_lossy(&response.body).contains("Database error"));
+	}
 
-    #[test]
-    fn test_error_message_into_string() {
-        let response = bad_request("test");
-        assert!(String::from_utf8_lossy(&response.body).contains("test"));
+	#[test]
+	fn test_error_message_into_string() {
+		let response = bad_request("test");
+		assert!(String::from_utf8_lossy(&response.body).contains("test"));
 
-        let response = unauthorized(String::from("auth failed"));
-        assert!(String::from_utf8_lossy(&response.body).contains("auth failed"));
-    }
+		let response = unauthorized(String::from("auth failed"));
+		assert!(String::from_utf8_lossy(&response.body).contains("auth failed"));
+	}
 
-    #[test]
-    fn test_accepted() {
-        let response = accepted();
-        assert_eq!(response.status, 202);
-        assert!(response.body.is_empty());
-    }
+	#[test]
+	fn test_accepted() {
+		let response = accepted();
+		assert_eq!(response.status, 202);
+		assert!(response.body.is_empty());
+	}
 
-    #[test]
-    fn test_forbidden() {
-        let response = forbidden("Access denied");
-        assert_eq!(response.status, 403);
-        assert!(String::from_utf8_lossy(&response.body).contains("Access denied"));
-    }
+	#[test]
+	fn test_forbidden() {
+		let response = forbidden("Access denied");
+		assert_eq!(response.status, 403);
+		assert!(String::from_utf8_lossy(&response.body).contains("Access denied"));
+	}
 
-    #[test]
-    fn test_conflict() {
-        let response = conflict("Resource already exists");
-        assert_eq!(response.status, 409);
-        assert!(String::from_utf8_lossy(&response.body).contains("Resource already exists"));
-    }
+	#[test]
+	fn test_conflict() {
+		let response = conflict("Resource already exists");
+		assert_eq!(response.status, 409);
+		assert!(String::from_utf8_lossy(&response.body).contains("Resource already exists"));
+	}
 
-    #[test]
-    fn test_unprocessable_entity() {
-        let response = unprocessable_entity("Validation failed");
-        assert_eq!(response.status, 422);
-        assert!(String::from_utf8_lossy(&response.body).contains("Validation failed"));
-    }
+	#[test]
+	fn test_unprocessable_entity() {
+		let response = unprocessable_entity("Validation failed");
+		assert_eq!(response.status, 422);
+		assert!(String::from_utf8_lossy(&response.body).contains("Validation failed"));
+	}
 
-    #[test]
-    fn test_service_unavailable() {
-        let response = service_unavailable("Under maintenance");
-        assert_eq!(response.status, 503);
-        assert!(String::from_utf8_lossy(&response.body).contains("Under maintenance"));
-    }
+	#[test]
+	fn test_service_unavailable() {
+		let response = service_unavailable("Under maintenance");
+		assert_eq!(response.status, 503);
+		assert!(String::from_utf8_lossy(&response.body).contains("Under maintenance"));
+	}
 }

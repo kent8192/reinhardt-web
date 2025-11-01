@@ -9,31 +9,31 @@ use crate::{BatchRequest, BatchResponse};
 /// List mixin - provides list() action
 #[async_trait]
 pub trait ListMixin: Send + Sync {
-    async fn list(&self, request: Request) -> Result<Response>;
+	async fn list(&self, request: Request) -> Result<Response>;
 }
 
 /// Retrieve mixin - provides retrieve() action
 #[async_trait]
 pub trait RetrieveMixin: Send + Sync {
-    async fn retrieve(&self, request: Request, id: String) -> Result<Response>;
+	async fn retrieve(&self, request: Request, id: String) -> Result<Response>;
 }
 
 /// Create mixin - provides create() action
 #[async_trait]
 pub trait CreateMixin: Send + Sync {
-    async fn create(&self, request: Request) -> Result<Response>;
+	async fn create(&self, request: Request) -> Result<Response>;
 }
 
 /// Update mixin - provides update() action
 #[async_trait]
 pub trait UpdateMixin: Send + Sync {
-    async fn update(&self, request: Request, id: String) -> Result<Response>;
+	async fn update(&self, request: Request, id: String) -> Result<Response>;
 }
 
 /// Destroy mixin - provides destroy() action
 #[async_trait]
 pub trait DestroyMixin: Send + Sync {
-    async fn destroy(&self, request: Request, id: String) -> Result<Response>;
+	async fn destroy(&self, request: Request, id: String) -> Result<Response>;
 }
 
 /// Composite trait for all CRUD operations
@@ -89,16 +89,16 @@ impl<T> CrudMixin for T where T: ListMixin + RetrieveMixin + CreateMixin + Updat
 /// ```
 #[async_trait]
 pub trait BulkCreateMixin: Send + Sync {
-    /// The type of item to create
-    type Item: Send + Sync;
+	/// The type of item to create
+	type Item: Send + Sync;
 
-    /// Create multiple items in a single request
-    ///
-    /// Implementations should use database transactions to ensure atomicity.
-    async fn bulk_create(
-        &self,
-        request: BatchRequest<Self::Item>,
-    ) -> Result<BatchResponse<Self::Item>>;
+	/// Create multiple items in a single request
+	///
+	/// Implementations should use database transactions to ensure atomicity.
+	async fn bulk_create(
+		&self,
+		request: BatchRequest<Self::Item>,
+	) -> Result<BatchResponse<Self::Item>>;
 }
 
 /// Bulk update mixin - provides bulk_update() action
@@ -145,16 +145,16 @@ pub trait BulkCreateMixin: Send + Sync {
 /// ```
 #[async_trait]
 pub trait BulkUpdateMixin: Send + Sync {
-    /// The type of item to update
-    type Item: Send + Sync;
+	/// The type of item to update
+	type Item: Send + Sync;
 
-    /// Update multiple items in a single request
-    ///
-    /// Implementations should use database transactions to ensure atomicity.
-    async fn bulk_update(
-        &self,
-        request: BatchRequest<Self::Item>,
-    ) -> Result<BatchResponse<Self::Item>>;
+	/// Update multiple items in a single request
+	///
+	/// Implementations should use database transactions to ensure atomicity.
+	async fn bulk_update(
+		&self,
+		request: BatchRequest<Self::Item>,
+	) -> Result<BatchResponse<Self::Item>>;
 }
 
 /// Bulk delete mixin - provides bulk_delete() action
@@ -198,16 +198,16 @@ pub trait BulkUpdateMixin: Send + Sync {
 /// ```
 #[async_trait]
 pub trait BulkDeleteMixin: Send + Sync {
-    /// The type of item to delete
-    type Item: Send + Sync;
+	/// The type of item to delete
+	type Item: Send + Sync;
 
-    /// Delete multiple items in a single request
-    ///
-    /// Implementations should use database transactions to ensure atomicity.
-    async fn bulk_delete(
-        &self,
-        request: BatchRequest<Self::Item>,
-    ) -> Result<BatchResponse<Self::Item>>;
+	/// Delete multiple items in a single request
+	///
+	/// Implementations should use database transactions to ensure atomicity.
+	async fn bulk_delete(
+		&self,
+		request: BatchRequest<Self::Item>,
+	) -> Result<BatchResponse<Self::Item>>;
 }
 
 /// Composite trait for all bulk operations

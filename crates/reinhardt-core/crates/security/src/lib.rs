@@ -44,34 +44,34 @@ pub type SecurityResult<T> = Result<T, SecurityError>;
 /// Security-related errors
 #[derive(Debug, Error)]
 pub enum SecurityError {
-    /// CSRF token validation failed
-    #[error("CSRF validation failed: {0}")]
-    CsrfValidationFailed(String),
+	/// CSRF token validation failed
+	#[error("CSRF validation failed: {0}")]
+	CsrfValidationFailed(String),
 
-    /// Missing CSRF token
-    #[error("Missing CSRF token")]
-    MissingCsrfToken,
+	/// Missing CSRF token
+	#[error("Missing CSRF token")]
+	MissingCsrfToken,
 
-    /// Invalid security configuration
-    #[error("Invalid security configuration: {0}")]
-    InvalidConfiguration(String),
+	/// Invalid security configuration
+	#[error("Invalid security configuration: {0}")]
+	InvalidConfiguration(String),
 
-    /// XSS attempt detected
-    #[error("Potential XSS detected: {0}")]
-    XssDetected(String),
+	/// XSS attempt detected
+	#[error("Potential XSS detected: {0}")]
+	XssDetected(String),
 }
 
 // Re-export CSRF types and constants
 pub use csrf::{
-    RejectRequest, CSRF_SECRET_LENGTH, CSRF_SESSION_KEY, CSRF_TOKEN_LENGTH, REASON_BAD_ORIGIN,
-    REASON_BAD_REFERER, REASON_CSRF_TOKEN_MISSING, REASON_INSECURE_REFERER,
-    REASON_MALFORMED_REFERER, REASON_NO_REFERER,
+	CSRF_SECRET_LENGTH, CSRF_SESSION_KEY, CSRF_TOKEN_LENGTH, REASON_BAD_ORIGIN, REASON_BAD_REFERER,
+	REASON_CSRF_TOKEN_MISSING, REASON_INSECURE_REFERER, REASON_MALFORMED_REFERER,
+	REASON_NO_REFERER, RejectRequest,
 };
 
 // Re-export CSRF utility functions
-pub use csrf::{check_origin, check_referer, is_same_domain, CsrfMeta};
+pub use csrf::{CsrfMeta, check_origin, check_referer, is_same_domain};
 
 // Re-export HMAC-based CSRF functions (primary API)
 pub use csrf::{
-    check_token_hmac, generate_token_hmac, get_secret_bytes, get_token_hmac, verify_token_hmac,
+	check_token_hmac, generate_token_hmac, get_secret_bytes, get_token_hmac, verify_token_hmac,
 };

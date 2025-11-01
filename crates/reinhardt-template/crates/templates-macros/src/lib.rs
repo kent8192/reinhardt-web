@@ -34,11 +34,11 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, LitStr};
+use syn::{LitStr, parse_macro_input};
 
 mod validation;
 
-use validation::{validate_template_path, TemplateValidationError};
+use validation::{TemplateValidationError, validate_template_path};
 
 /// Validates template path syntax at compile time.
 ///
@@ -85,27 +85,27 @@ use validation::{validate_template_path, TemplateValidationError};
 /// ```
 #[proc_macro]
 pub fn template(input: TokenStream) -> TokenStream {
-    let path_str = parse_macro_input!(input as LitStr);
-    let path = path_str.value();
+	let path_str = parse_macro_input!(input as LitStr);
+	let path = path_str.value();
 
-    // Validate template path
-    if let Err(e) = validate_template_path(&path) {
-        let error_msg = format_error_message(&e);
-        return syn::Error::new(path_str.span(), error_msg)
-            .to_compile_error()
-            .into();
-    }
+	// Validate template path
+	if let Err(e) = validate_template_path(&path) {
+		let error_msg = format_error_message(&e);
+		return syn::Error::new(path_str.span(), error_msg)
+			.to_compile_error()
+			.into();
+	}
 
-    // Return the validated path string as-is
-    quote! {
-        #path_str
-    }
-    .into()
+	// Return the validated path string as-is
+	quote! {
+		#path_str
+	}
+	.into()
 }
 
 /// Formats validation errors with helpful context
 fn format_error_message(error: &TemplateValidationError) -> String {
-    match error {
+	match error {
         TemplateValidationError::ContainsParentDirectory => {
             "Template path must not contain parent directory references (..)\n\
              This is a security measure to prevent path traversal attacks.\n\

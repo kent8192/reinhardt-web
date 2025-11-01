@@ -38,35 +38,35 @@ use thiserror::Error;
 /// Session backend errors
 #[derive(Debug, Error)]
 pub enum SessionError {
-    #[error("Cache error: {0}")]
-    CacheError(String),
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
+	#[error("Cache error: {0}")]
+	CacheError(String),
+	#[error("Serialization error: {0}")]
+	SerializationError(String),
 }
 
 /// Session backend trait
 #[async_trait]
 pub trait SessionBackend: Send + Sync + Clone {
-    /// Load session data by key
-    async fn load<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
-    where
-        T: for<'de> Deserialize<'de> + Serialize + Send + Sync;
+	/// Load session data by key
+	async fn load<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
+	where
+		T: for<'de> Deserialize<'de> + Serialize + Send + Sync;
 
-    /// Save session data with optional TTL (in seconds)
-    async fn save<T>(
-        &self,
-        session_key: &str,
-        data: &T,
-        ttl: Option<u64>,
-    ) -> Result<(), SessionError>
-    where
-        T: Serialize + Send + Sync;
+	/// Save session data with optional TTL (in seconds)
+	async fn save<T>(
+		&self,
+		session_key: &str,
+		data: &T,
+		ttl: Option<u64>,
+	) -> Result<(), SessionError>
+	where
+		T: Serialize + Send + Sync;
 
-    /// Delete session by key
-    async fn delete(&self, session_key: &str) -> Result<(), SessionError>;
+	/// Delete session by key
+	async fn delete(&self, session_key: &str) -> Result<(), SessionError>;
 
-    /// Check if session exists
-    async fn exists(&self, session_key: &str) -> Result<bool, SessionError>;
+	/// Check if session exists
+	async fn exists(&self, session_key: &str) -> Result<bool, SessionError>;
 }
 
 /// In-memory session backend
@@ -98,65 +98,65 @@ pub trait SessionBackend: Send + Sync + Clone {
 /// ```
 #[derive(Clone)]
 pub struct InMemorySessionBackend {
-    cache: Arc<InMemoryCache>,
+	cache: Arc<InMemoryCache>,
 }
 
 impl InMemorySessionBackend {
-    /// Create a new in-memory session backend
-    pub fn new() -> Self {
-        Self {
-            cache: Arc::new(InMemoryCache::new()),
-        }
-    }
+	/// Create a new in-memory session backend
+	pub fn new() -> Self {
+		Self {
+			cache: Arc::new(InMemoryCache::new()),
+		}
+	}
 }
 
 impl Default for InMemorySessionBackend {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[async_trait]
 impl SessionBackend for InMemorySessionBackend {
-    async fn load<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
-    where
-        T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
-    {
-        self.cache
-            .get(session_key)
-            .await
-            .map_err(|e| SessionError::CacheError(e.to_string()))
-    }
+	async fn load<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
+	where
+		T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
+	{
+		self.cache
+			.get(session_key)
+			.await
+			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
 
-    async fn save<T>(
-        &self,
-        session_key: &str,
-        data: &T,
-        ttl: Option<u64>,
-    ) -> Result<(), SessionError>
-    where
-        T: Serialize + Send + Sync,
-    {
-        let duration = ttl.map(std::time::Duration::from_secs);
-        self.cache
-            .set(session_key, data, duration)
-            .await
-            .map_err(|e| SessionError::CacheError(e.to_string()))
-    }
+	async fn save<T>(
+		&self,
+		session_key: &str,
+		data: &T,
+		ttl: Option<u64>,
+	) -> Result<(), SessionError>
+	where
+		T: Serialize + Send + Sync,
+	{
+		let duration = ttl.map(std::time::Duration::from_secs);
+		self.cache
+			.set(session_key, data, duration)
+			.await
+			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
 
-    async fn delete(&self, session_key: &str) -> Result<(), SessionError> {
-        self.cache
-            .delete(session_key)
-            .await
-            .map_err(|e| SessionError::CacheError(e.to_string()))
-    }
+	async fn delete(&self, session_key: &str) -> Result<(), SessionError> {
+		self.cache
+			.delete(session_key)
+			.await
+			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
 
-    async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
-        self.cache
-            .has_key(session_key)
-            .await
-            .map_err(|e| SessionError::CacheError(e.to_string()))
-    }
+	async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
+		self.cache
+			.has_key(session_key)
+			.await
+			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
 }
 
 /// Cache-based session backend
@@ -192,55 +192,55 @@ impl SessionBackend for InMemorySessionBackend {
 /// ```
 #[derive(Clone)]
 pub struct CacheSessionBackend<C: Cache + Clone> {
-    cache: Arc<C>,
+	cache: Arc<C>,
 }
 
 impl<C: Cache + Clone> CacheSessionBackend<C> {
-    /// Create a new cache-based session backend
-    pub fn new(cache: Arc<C>) -> Self {
-        Self { cache }
-    }
+	/// Create a new cache-based session backend
+	pub fn new(cache: Arc<C>) -> Self {
+		Self { cache }
+	}
 }
 
 #[async_trait]
 impl<C: Cache + Clone + 'static> SessionBackend for CacheSessionBackend<C> {
-    async fn load<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
-    where
-        T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
-    {
-        self.cache
-            .get(session_key)
-            .await
-            .map_err(|e| SessionError::CacheError(e.to_string()))
-    }
+	async fn load<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
+	where
+		T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
+	{
+		self.cache
+			.get(session_key)
+			.await
+			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
 
-    async fn save<T>(
-        &self,
-        session_key: &str,
-        data: &T,
-        ttl: Option<u64>,
-    ) -> Result<(), SessionError>
-    where
-        T: Serialize + Send + Sync,
-    {
-        let duration = ttl.map(std::time::Duration::from_secs);
-        self.cache
-            .set(session_key, data, duration)
-            .await
-            .map_err(|e| SessionError::CacheError(e.to_string()))
-    }
+	async fn save<T>(
+		&self,
+		session_key: &str,
+		data: &T,
+		ttl: Option<u64>,
+	) -> Result<(), SessionError>
+	where
+		T: Serialize + Send + Sync,
+	{
+		let duration = ttl.map(std::time::Duration::from_secs);
+		self.cache
+			.set(session_key, data, duration)
+			.await
+			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
 
-    async fn delete(&self, session_key: &str) -> Result<(), SessionError> {
-        self.cache
-            .delete(session_key)
-            .await
-            .map_err(|e| SessionError::CacheError(e.to_string()))
-    }
+	async fn delete(&self, session_key: &str) -> Result<(), SessionError> {
+		self.cache
+			.delete(session_key)
+			.await
+			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
 
-    async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
-        self.cache
-            .has_key(session_key)
-            .await
-            .map_err(|e| SessionError::CacheError(e.to_string()))
-    }
+	async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
+		self.cache
+			.has_key(session_key)
+			.await
+			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
 }

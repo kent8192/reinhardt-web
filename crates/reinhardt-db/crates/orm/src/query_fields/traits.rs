@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 /// Marker trait for types that can be compared (=, !=, <, >, <=, >=)
 pub trait Comparable:
-    Clone + Serialize + for<'de> Deserialize<'de> + Send + Sync + Into<LookupValue>
+	Clone + Serialize + for<'de> Deserialize<'de> + Send + Sync + Into<LookupValue>
 {
 }
 
@@ -41,7 +41,7 @@ impl NumericType for f64 {}
 // DateTime type (simplified for now)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DateTime {
-    pub timestamp: i64,
+	pub timestamp: i64,
 }
 
 impl Comparable for DateTime {}
@@ -50,9 +50,9 @@ impl DateTimeType for DateTime {}
 // Date type (simplified for now)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Date {
-    pub year: i32,
-    pub month: u8,
-    pub day: u8,
+	pub year: i32,
+	pub month: u8,
+	pub day: u8,
 }
 
 impl Comparable for Date {}

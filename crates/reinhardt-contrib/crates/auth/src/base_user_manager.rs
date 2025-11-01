@@ -97,105 +97,105 @@ use std::collections::HashMap;
 /// ```
 #[async_trait]
 pub trait BaseUserManager<U: BaseUser>: Send + Sync {
-    /// Creates a new user with the given username and password
-    ///
-    /// This method should:
-    /// 1. Validate the username (check uniqueness, format, etc.)
-    /// 2. Create a new user instance
-    /// 3. Set the password using `set_password()` (which automatically hashes it)
-    /// 4. Apply any additional fields from `extra`
-    /// 5. Save the user to the backing store
-    ///
-    /// # Arguments
-    ///
-    /// * `username` - The username/email for the new user
-    /// * `password` - Optional password (will be hashed automatically)
-    /// * `extra` - Additional fields to set on the user
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let mut manager = MyUserManager::new();
-    /// let user = manager.create_user(
-    ///     "alice@example.com",
-    ///     Some("securepass123"),
-    ///     HashMap::new()
-    /// ).await?;
-    /// ```
-    async fn create_user(
-        &mut self,
-        username: &str,
-        password: Option<&str>,
-        extra: HashMap<String, Value>,
-    ) -> Result<U>;
+	/// Creates a new user with the given username and password
+	///
+	/// This method should:
+	/// 1. Validate the username (check uniqueness, format, etc.)
+	/// 2. Create a new user instance
+	/// 3. Set the password using `set_password()` (which automatically hashes it)
+	/// 4. Apply any additional fields from `extra`
+	/// 5. Save the user to the backing store
+	///
+	/// # Arguments
+	///
+	/// * `username` - The username/email for the new user
+	/// * `password` - Optional password (will be hashed automatically)
+	/// * `extra` - Additional fields to set on the user
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let mut manager = MyUserManager::new();
+	/// let user = manager.create_user(
+	///     "alice@example.com",
+	///     Some("securepass123"),
+	///     HashMap::new()
+	/// ).await?;
+	/// ```
+	async fn create_user(
+		&mut self,
+		username: &str,
+		password: Option<&str>,
+		extra: HashMap<String, Value>,
+	) -> Result<U>;
 
-    /// Creates a new superuser with the given username and password
-    ///
-    /// This method should:
-    /// 1. Call `create_user()` to create the base user
-    /// 2. Set superuser flags (is_staff=true, is_superuser=true, etc.)
-    /// 3. Save the updated user
-    ///
-    /// # Arguments
-    ///
-    /// * `username` - The username/email for the new superuser
-    /// * `password` - Optional password (will be hashed automatically)
-    /// * `extra` - Additional fields to set on the user
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let mut manager = MyUserManager::new();
-    /// let superuser = manager.create_superuser(
-    ///     "admin@example.com",
-    ///     Some("adminsecret"),
-    ///     HashMap::new()
-    /// ).await?;
-    /// ```
-    async fn create_superuser(
-        &mut self,
-        username: &str,
-        password: Option<&str>,
-        extra: HashMap<String, Value>,
-    ) -> Result<U>;
+	/// Creates a new superuser with the given username and password
+	///
+	/// This method should:
+	/// 1. Call `create_user()` to create the base user
+	/// 2. Set superuser flags (is_staff=true, is_superuser=true, etc.)
+	/// 3. Save the updated user
+	///
+	/// # Arguments
+	///
+	/// * `username` - The username/email for the new superuser
+	/// * `password` - Optional password (will be hashed automatically)
+	/// * `extra` - Additional fields to set on the user
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let mut manager = MyUserManager::new();
+	/// let superuser = manager.create_superuser(
+	///     "admin@example.com",
+	///     Some("adminsecret"),
+	///     HashMap::new()
+	/// ).await?;
+	/// ```
+	async fn create_superuser(
+		&mut self,
+		username: &str,
+		password: Option<&str>,
+		extra: HashMap<String, Value>,
+	) -> Result<U>;
 
-    /// Normalizes an email address
-    ///
-    /// Converts the domain part of the email to lowercase to prevent case-sensitivity issues.
-    /// This is the same normalization used by Django.
-    ///
-    /// # Arguments
-    ///
-    /// * `email` - The email address to normalize
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_auth::BaseUserManager;
-    ///
-    /// # struct DummyManager;
-    /// # impl DummyManager {
-    /// #     fn normalize_email(email: &str) -> String {
-    /// #         let parts: Vec<&str> = email.split('@').collect();
-    /// #         if parts.len() == 2 {
-    /// #             format!("{}@{}", parts[0], parts[1].to_lowercase())
-    /// #         } else {
-    /// #             email.to_string()
-    /// #         }
-    /// #     }
-    /// # }
-    /// let normalized = DummyManager::normalize_email("Alice@EXAMPLE.COM");
-    /// assert_eq!(normalized, "Alice@example.com");
-    ///
-    /// let already_normal = DummyManager::normalize_email("bob@example.com");
-    /// assert_eq!(already_normal, "bob@example.com");
-    /// ```
-    fn normalize_email(email: &str) -> String {
-        let parts: Vec<&str> = email.split('@').collect();
-        if parts.len() == 2 {
-            format!("{}@{}", parts[0], parts[1].to_lowercase())
-        } else {
-            email.to_string()
-        }
-    }
+	/// Normalizes an email address
+	///
+	/// Converts the domain part of the email to lowercase to prevent case-sensitivity issues.
+	/// This is the same normalization used by Django.
+	///
+	/// # Arguments
+	///
+	/// * `email` - The email address to normalize
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_auth::BaseUserManager;
+	///
+	/// # struct DummyManager;
+	/// # impl DummyManager {
+	/// #     fn normalize_email(email: &str) -> String {
+	/// #         let parts: Vec<&str> = email.split('@').collect();
+	/// #         if parts.len() == 2 {
+	/// #             format!("{}@{}", parts[0], parts[1].to_lowercase())
+	/// #         } else {
+	/// #             email.to_string()
+	/// #         }
+	/// #     }
+	/// # }
+	/// let normalized = DummyManager::normalize_email("Alice@EXAMPLE.COM");
+	/// assert_eq!(normalized, "Alice@example.com");
+	///
+	/// let already_normal = DummyManager::normalize_email("bob@example.com");
+	/// assert_eq!(already_normal, "bob@example.com");
+	/// ```
+	fn normalize_email(email: &str) -> String {
+		let parts: Vec<&str> = email.split('@').collect();
+		if parts.len() == 2 {
+			format!("{}@{}", parts[0], parts[1].to_lowercase())
+		} else {
+			email.to_string()
+		}
+	}
 }

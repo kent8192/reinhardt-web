@@ -49,416 +49,416 @@ use std::marker::PhantomData;
 /// ```
 pub struct ModelSerializer<M>
 where
-    M: Model,
+	M: Model,
 {
-    meta: MetaConfig,
-    introspector: Option<FieldIntrospector>,
-    nested_config: NestedSerializerConfig,
-    validator_config: ValidatorConfig<M>,
-    _phantom: PhantomData<M>,
+	meta: MetaConfig,
+	introspector: Option<FieldIntrospector>,
+	nested_config: NestedSerializerConfig,
+	validator_config: ValidatorConfig<M>,
+	_phantom: PhantomData<M>,
 }
 
 impl<M> ModelSerializer<M>
 where
-    M: Model,
+	M: Model,
 {
-    /// Create a new ModelSerializer instance
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::ModelSerializer;
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let serializer = ModelSerializer::<DefaultUser>::new();
-    /// ```
-    pub fn new() -> Self {
-        Self {
-            meta: MetaConfig::new(),
-            introspector: None,
-            nested_config: NestedSerializerConfig::new(),
-            validator_config: ValidatorConfig::new(),
-            _phantom: PhantomData,
-        }
-    }
+	/// Create a new ModelSerializer instance
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::ModelSerializer;
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let serializer = ModelSerializer::<DefaultUser>::new();
+	/// ```
+	pub fn new() -> Self {
+		Self {
+			meta: MetaConfig::new(),
+			introspector: None,
+			nested_config: NestedSerializerConfig::new(),
+			validator_config: ValidatorConfig::new(),
+			_phantom: PhantomData,
+		}
+	}
 
-    /// Specify which fields to include in serialization
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::ModelSerializer;
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_fields(vec!["id".to_string(), "username".to_string()]);
-    /// ```
-    pub fn with_fields(mut self, fields: Vec<String>) -> Self {
-        self.meta = self.meta.with_fields(fields);
-        self
-    }
+	/// Specify which fields to include in serialization
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::ModelSerializer;
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_fields(vec!["id".to_string(), "username".to_string()]);
+	/// ```
+	pub fn with_fields(mut self, fields: Vec<String>) -> Self {
+		self.meta = self.meta.with_fields(fields);
+		self
+	}
 
-    /// Specify which fields to exclude from serialization
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::ModelSerializer;
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_exclude(vec!["password_hash".to_string()]);
-    /// ```
-    pub fn with_exclude(mut self, exclude: Vec<String>) -> Self {
-        self.meta = self.meta.with_exclude(exclude);
-        self
-    }
+	/// Specify which fields to exclude from serialization
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::ModelSerializer;
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_exclude(vec!["password_hash".to_string()]);
+	/// ```
+	pub fn with_exclude(mut self, exclude: Vec<String>) -> Self {
+		self.meta = self.meta.with_exclude(exclude);
+		self
+	}
 
-    /// Specify which fields are read-only
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::ModelSerializer;
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_read_only_fields(vec!["id".to_string()]);
-    /// ```
-    pub fn with_read_only_fields(mut self, fields: Vec<String>) -> Self {
-        self.meta = self.meta.with_read_only_fields(fields);
-        self
-    }
+	/// Specify which fields are read-only
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::ModelSerializer;
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_read_only_fields(vec!["id".to_string()]);
+	/// ```
+	pub fn with_read_only_fields(mut self, fields: Vec<String>) -> Self {
+		self.meta = self.meta.with_read_only_fields(fields);
+		self
+	}
 
-    /// Specify which fields are write-only
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::ModelSerializer;
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_write_only_fields(vec!["password_hash".to_string()]);
-    /// ```
-    pub fn with_write_only_fields(mut self, fields: Vec<String>) -> Self {
-        self.meta = self.meta.with_write_only_fields(fields);
-        self
-    }
+	/// Specify which fields are write-only
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::ModelSerializer;
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_write_only_fields(vec!["password_hash".to_string()]);
+	/// ```
+	pub fn with_write_only_fields(mut self, fields: Vec<String>) -> Self {
+		self.meta = self.meta.with_write_only_fields(fields);
+		self
+	}
 
-    /// Get the meta configuration
-    pub fn meta(&self) -> &MetaConfig {
-        &self.meta
-    }
+	/// Get the meta configuration
+	pub fn meta(&self) -> &MetaConfig {
+		&self.meta
+	}
 
-    /// Add a nested field configuration
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, nested_config::NestedFieldConfig};
-    /// # use reinhardt_orm::Model;
-    /// # use serde::{Serialize, Deserialize};
-    /// #
-    /// # #[derive(Debug, Clone, Serialize, Deserialize)]
-    /// # struct Post {
-    /// #     id: Option<i64>,
-    /// #     title: String,
-    /// #     author_id: i64,
-    /// # }
-    /// #
-    /// # impl Model for Post {
-    /// #     type PrimaryKey = i64;
-    /// #     fn table_name() -> &'static str { "posts" }
-    /// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
-    /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
-    /// # }
-    /// let serializer = ModelSerializer::<Post>::new()
-    ///     .with_nested_field(NestedFieldConfig::new("author").depth(2));
-    /// ```
-    pub fn with_nested_field(mut self, field_config: NestedFieldConfig) -> Self {
-        self.nested_config.add_nested_field(field_config);
-        self
-    }
+	/// Add a nested field configuration
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, nested_config::NestedFieldConfig};
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// #
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct Post {
+	/// #     id: Option<i64>,
+	/// #     title: String,
+	/// #     author_id: i64,
+	/// # }
+	/// #
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// let serializer = ModelSerializer::<Post>::new()
+	///     .with_nested_field(NestedFieldConfig::new("author").depth(2));
+	/// ```
+	pub fn with_nested_field(mut self, field_config: NestedFieldConfig) -> Self {
+		self.nested_config.add_nested_field(field_config);
+		self
+	}
 
-    /// Get the nested serializer configuration
-    pub fn nested_config(&self) -> &NestedSerializerConfig {
-        &self.nested_config
-    }
+	/// Get the nested serializer configuration
+	pub fn nested_config(&self) -> &NestedSerializerConfig {
+		&self.nested_config
+	}
 
-    /// Check if a field is configured as nested
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, nested_config::NestedFieldConfig};
-    /// # use reinhardt_orm::Model;
-    /// # use serde::{Serialize, Deserialize};
-    /// #
-    /// # #[derive(Debug, Clone, Serialize, Deserialize)]
-    /// # struct Post {
-    /// #     id: Option<i64>,
-    /// #     title: String,
-    /// # }
-    /// #
-    /// # impl Model for Post {
-    /// #     type PrimaryKey = i64;
-    /// #     fn table_name() -> &'static str { "posts" }
-    /// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
-    /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
-    /// # }
-    /// let serializer = ModelSerializer::<Post>::new()
-    ///     .with_nested_field(NestedFieldConfig::new("author"));
-    ///
-    /// assert!(serializer.is_nested_field("author"));
-    /// assert!(!serializer.is_nested_field("title"));
-    /// ```
-    pub fn is_nested_field(&self, field_name: &str) -> bool {
-        self.nested_config.is_nested_field(field_name)
-    }
+	/// Check if a field is configured as nested
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, nested_config::NestedFieldConfig};
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// #
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct Post {
+	/// #     id: Option<i64>,
+	/// #     title: String,
+	/// # }
+	/// #
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// let serializer = ModelSerializer::<Post>::new()
+	///     .with_nested_field(NestedFieldConfig::new("author"));
+	///
+	/// assert!(serializer.is_nested_field("author"));
+	/// assert!(!serializer.is_nested_field("title"));
+	/// ```
+	pub fn is_nested_field(&self, field_name: &str) -> bool {
+		self.nested_config.is_nested_field(field_name)
+	}
 
-    /// Set a field introspector for automatic field generation
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let mut introspector = FieldIntrospector::new();
-    /// introspector.register_field(FieldInfo::new("id", "Uuid").primary_key());
-    /// introspector.register_field(FieldInfo::new("username", "String"));
-    ///
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_introspector(introspector);
-    /// ```
-    pub fn with_introspector(mut self, introspector: FieldIntrospector) -> Self {
-        self.introspector = Some(introspector);
-        self
-    }
+	/// Set a field introspector for automatic field generation
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let mut introspector = FieldIntrospector::new();
+	/// introspector.register_field(FieldInfo::new("id", "Uuid").primary_key());
+	/// introspector.register_field(FieldInfo::new("username", "String"));
+	///
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_introspector(introspector);
+	/// ```
+	pub fn with_introspector(mut self, introspector: FieldIntrospector) -> Self {
+		self.introspector = Some(introspector);
+		self
+	}
 
-    /// Get the field introspector
-    pub fn introspector(&self) -> Option<&FieldIntrospector> {
-        self.introspector.as_ref()
-    }
+	/// Get the field introspector
+	pub fn introspector(&self) -> Option<&FieldIntrospector> {
+		self.introspector.as_ref()
+	}
 
-    /// Get all field names from introspector or meta configuration
-    ///
-    /// Returns field names from the introspector if available,
-    /// otherwise returns field names from meta configuration.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let mut introspector = FieldIntrospector::new();
-    /// introspector.register_field(FieldInfo::new("id", "Uuid"));
-    /// introspector.register_field(FieldInfo::new("username", "String"));
-    ///
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_introspector(introspector);
-    ///
-    /// let fields = serializer.field_names();
-    /// assert_eq!(fields.len(), 2);
-    /// ```
-    pub fn field_names(&self) -> Vec<String> {
-        if let Some(introspector) = &self.introspector {
-            introspector.field_names()
-        } else if let Some(fields) = self.meta.fields() {
-            fields.clone()
-        } else {
-            vec![]
-        }
-    }
+	/// Get all field names from introspector or meta configuration
+	///
+	/// Returns field names from the introspector if available,
+	/// otherwise returns field names from meta configuration.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let mut introspector = FieldIntrospector::new();
+	/// introspector.register_field(FieldInfo::new("id", "Uuid"));
+	/// introspector.register_field(FieldInfo::new("username", "String"));
+	///
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_introspector(introspector);
+	///
+	/// let fields = serializer.field_names();
+	/// assert_eq!(fields.len(), 2);
+	/// ```
+	pub fn field_names(&self) -> Vec<String> {
+		if let Some(introspector) = &self.introspector {
+			introspector.field_names()
+		} else if let Some(fields) = self.meta.fields() {
+			fields.clone()
+		} else {
+			vec![]
+		}
+	}
 
-    /// Get required fields from introspector
-    ///
-    /// Returns fields that are not optional according to the introspector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let mut introspector = FieldIntrospector::new();
-    /// introspector.register_field(FieldInfo::new("id", "Uuid"));
-    /// introspector.register_field(FieldInfo::new("username", "String"));
-    ///
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_introspector(introspector);
-    ///
-    /// let required = serializer.required_fields();
-    /// assert_eq!(required.len(), 2);
-    /// ```
-    pub fn required_fields(&self) -> Vec<&FieldInfo> {
-        if let Some(introspector) = &self.introspector {
-            introspector.required_fields()
-        } else {
-            vec![]
-        }
-    }
+	/// Get required fields from introspector
+	///
+	/// Returns fields that are not optional according to the introspector.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let mut introspector = FieldIntrospector::new();
+	/// introspector.register_field(FieldInfo::new("id", "Uuid"));
+	/// introspector.register_field(FieldInfo::new("username", "String"));
+	///
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_introspector(introspector);
+	///
+	/// let required = serializer.required_fields();
+	/// assert_eq!(required.len(), 2);
+	/// ```
+	pub fn required_fields(&self) -> Vec<&FieldInfo> {
+		if let Some(introspector) = &self.introspector {
+			introspector.required_fields()
+		} else {
+			vec![]
+		}
+	}
 
-    /// Get optional fields from introspector
-    ///
-    /// Returns fields that are optional according to the introspector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let mut introspector = FieldIntrospector::new();
-    /// introspector.register_field(FieldInfo::new("email", "String").optional());
-    /// introspector.register_field(FieldInfo::new("username", "String"));
-    ///
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_introspector(introspector);
-    ///
-    /// let optional = serializer.optional_fields();
-    /// assert_eq!(optional.len(), 1);
-    /// assert_eq!(optional[0].name, "email");
-    /// ```
-    pub fn optional_fields(&self) -> Vec<&FieldInfo> {
-        if let Some(introspector) = &self.introspector {
-            introspector.optional_fields()
-        } else {
-            vec![]
-        }
-    }
+	/// Get optional fields from introspector
+	///
+	/// Returns fields that are optional according to the introspector.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let mut introspector = FieldIntrospector::new();
+	/// introspector.register_field(FieldInfo::new("email", "String").optional());
+	/// introspector.register_field(FieldInfo::new("username", "String"));
+	///
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_introspector(introspector);
+	///
+	/// let optional = serializer.optional_fields();
+	/// assert_eq!(optional.len(), 1);
+	/// assert_eq!(optional[0].name, "email");
+	/// ```
+	pub fn optional_fields(&self) -> Vec<&FieldInfo> {
+		if let Some(introspector) = &self.introspector {
+			introspector.optional_fields()
+		} else {
+			vec![]
+		}
+	}
 
-    /// Get primary key field from introspector
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let mut introspector = FieldIntrospector::new();
-    /// introspector.register_field(FieldInfo::new("id", "Uuid").primary_key());
-    /// introspector.register_field(FieldInfo::new("username", "String"));
-    ///
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_introspector(introspector);
-    ///
-    /// let pk = serializer.primary_key_field();
-    /// assert!(pk.is_some());
-    /// assert_eq!(pk.unwrap().name, "id");
-    /// ```
-    pub fn primary_key_field(&self) -> Option<&FieldInfo> {
-        self.introspector
-            .as_ref()
-            .and_then(|i| i.primary_key_field())
-    }
+	/// Get primary key field from introspector
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let mut introspector = FieldIntrospector::new();
+	/// introspector.register_field(FieldInfo::new("id", "Uuid").primary_key());
+	/// introspector.register_field(FieldInfo::new("username", "String"));
+	///
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_introspector(introspector);
+	///
+	/// let pk = serializer.primary_key_field();
+	/// assert!(pk.is_some());
+	/// assert_eq!(pk.unwrap().name, "id");
+	/// ```
+	pub fn primary_key_field(&self) -> Option<&FieldInfo> {
+		self.introspector
+			.as_ref()
+			.and_then(|i| i.primary_key_field())
+	}
 
-    /// Add a unique field validator
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, validators::UniqueValidator};
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_unique_validator(UniqueValidator::new("username"));
-    /// ```
-    pub fn with_unique_validator(mut self, validator: UniqueValidator<M>) -> Self {
-        self.validator_config.add_unique_validator(validator);
-        self
-    }
+	/// Add a unique field validator
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, validators::UniqueValidator};
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_unique_validator(UniqueValidator::new("username"));
+	/// ```
+	pub fn with_unique_validator(mut self, validator: UniqueValidator<M>) -> Self {
+		self.validator_config.add_unique_validator(validator);
+		self
+	}
 
-    /// Add a unique together validator
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, validators::UniqueTogetherValidator};
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_unique_together_validator(
-    ///         UniqueTogetherValidator::new(vec!["username", "email"])
-    ///     );
-    /// ```
-    pub fn with_unique_together_validator(mut self, validator: UniqueTogetherValidator<M>) -> Self {
-        self.validator_config
-            .add_unique_together_validator(validator);
-        self
-    }
+	/// Add a unique together validator
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, validators::UniqueTogetherValidator};
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_unique_together_validator(
+	///         UniqueTogetherValidator::new(vec!["username", "email"])
+	///     );
+	/// ```
+	pub fn with_unique_together_validator(mut self, validator: UniqueTogetherValidator<M>) -> Self {
+		self.validator_config
+			.add_unique_together_validator(validator);
+		self
+	}
 
-    /// Get the validator configuration
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::{ModelSerializer, validators::UniqueValidator};
-    /// # use reinhardt_auth::DefaultUser;
-    /// #
-    /// let serializer = ModelSerializer::<DefaultUser>::new()
-    ///     .with_unique_validator(UniqueValidator::new("username"));
-    ///
-    /// let validators = serializer.validators();
-    /// assert!(validators.has_validators());
-    /// ```
-    pub fn validators(&self) -> &ValidatorConfig<M> {
-        &self.validator_config
-    }
+	/// Get the validator configuration
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::{ModelSerializer, validators::UniqueValidator};
+	/// # use reinhardt_auth::DefaultUser;
+	/// #
+	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	///     .with_unique_validator(UniqueValidator::new("username"));
+	///
+	/// let validators = serializer.validators();
+	/// assert!(validators.has_validators());
+	/// ```
+	pub fn validators(&self) -> &ValidatorConfig<M> {
+		&self.validator_config
+	}
 
-    /// Validate a model instance
-    ///
-    /// This method can be extended to support custom validators.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_serializers::ModelSerializer;
-    /// # use reinhardt_auth::DefaultUser;
-    /// # use uuid::Uuid;
-    /// #
-    /// let serializer = ModelSerializer::<DefaultUser>::new();
-    /// let user = DefaultUser {
-    ///     id: Uuid::new_v4(),
-    ///     username: "alice".to_string(),
-    ///     ..Default::default()
-    /// };
-    /// assert!(serializer.validate(&user).is_ok());
-    /// ```
-    pub fn validate(&self, _instance: &M) -> Result<(), SerializerError> {
-        // Base validation - can be extended with validators
-        // For now, just return Ok
-        Ok(())
-    }
+	/// Validate a model instance
+	///
+	/// This method can be extended to support custom validators.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_serializers::ModelSerializer;
+	/// # use reinhardt_auth::DefaultUser;
+	/// # use uuid::Uuid;
+	/// #
+	/// let serializer = ModelSerializer::<DefaultUser>::new();
+	/// let user = DefaultUser {
+	///     id: Uuid::new_v4(),
+	///     username: "alice".to_string(),
+	///     ..Default::default()
+	/// };
+	/// assert!(serializer.validate(&user).is_ok());
+	/// ```
+	pub fn validate(&self, _instance: &M) -> Result<(), SerializerError> {
+		// Base validation - can be extended with validators
+		// For now, just return Ok
+		Ok(())
+	}
 }
 
 impl<M> Default for ModelSerializer<M>
 where
-    M: Model,
+	M: Model,
 {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl<M> Serializer for ModelSerializer<M>
 where
-    M: Model,
+	M: Model,
 {
-    type Input = M;
-    type Output = String;
+	type Input = M;
+	type Output = String;
 
-    fn serialize(&self, input: &Self::Input) -> Result<Self::Output, SerializerError> {
-        serde_json::to_string(input).map_err(|e| SerializerError::Serde {
-            message: format!("Serialization error: {}", e),
-        })
-    }
+	fn serialize(&self, input: &Self::Input) -> Result<Self::Output, SerializerError> {
+		serde_json::to_string(input).map_err(|e| SerializerError::Serde {
+			message: format!("Serialization error: {}", e),
+		})
+	}
 
-    fn deserialize(&self, output: &Self::Output) -> Result<Self::Input, SerializerError> {
-        serde_json::from_str(output).map_err(|e| SerializerError::Serde {
-            message: format!("Deserialization error: {}", e),
-        })
-    }
+	fn deserialize(&self, output: &Self::Output) -> Result<Self::Input, SerializerError> {
+		serde_json::from_str(output).map_err(|e| SerializerError::Serde {
+			message: format!("Deserialization error: {}", e),
+		})
+	}
 }

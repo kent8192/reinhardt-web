@@ -39,45 +39,45 @@ static TERA_ENGINE: OnceLock<Arc<Tera>> = OnceLock::new();
 /// ```
 #[cfg(feature = "templates")]
 pub fn get_tera_engine() -> &'static Arc<Tera> {
-    TERA_ENGINE.get_or_init(|| {
-        let template_dir = env::var("REINHARDT_TEMPLATE_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                // Use CARGO_MANIFEST_DIR to get the crate directory at compile time
-                let manifest_dir = env!("CARGO_MANIFEST_DIR");
-                PathBuf::from(manifest_dir).join("templates")
-            });
+	TERA_ENGINE.get_or_init(|| {
+		let template_dir = env::var("REINHARDT_TEMPLATE_DIR")
+			.map(PathBuf::from)
+			.unwrap_or_else(|_| {
+				// Use CARGO_MANIFEST_DIR to get the crate directory at compile time
+				let manifest_dir = env!("CARGO_MANIFEST_DIR");
+				PathBuf::from(manifest_dir).join("templates")
+			});
 
-        let glob_pattern = format!("{}/**/*", template_dir.display());
+		let glob_pattern = format!("{}/**/*", template_dir.display());
 
-        match Tera::new(&glob_pattern) {
-            Ok(mut tera) => {
-                // Register custom filters
-                register_custom_filters(&mut tera);
+		match Tera::new(&glob_pattern) {
+			Ok(mut tera) => {
+				// Register custom filters
+				register_custom_filters(&mut tera);
 
-                // Register custom functions
-                register_custom_functions(&mut tera);
+				// Register custom functions
+				register_custom_functions(&mut tera);
 
-                eprintln!("Tera initialized successfully");
-                eprintln!("Template directory: {}", template_dir.display());
-                eprintln!("Registered templates:");
-                for name in tera.get_template_names() {
-                    eprintln!("  - {}", name);
-                }
-                Arc::new(tera)
-            }
-            Err(e) => {
-                eprintln!("Warning: Failed to initialize Tera: {}", e);
-                eprintln!("Template directory: {}", template_dir.display());
-                eprintln!("Glob pattern: {}", glob_pattern);
-                // Return empty Tera instance with custom filters/functions
-                let mut tera = Tera::default();
-                register_custom_filters(&mut tera);
-                register_custom_functions(&mut tera);
-                Arc::new(tera)
-            }
-        }
-    })
+				eprintln!("Tera initialized successfully");
+				eprintln!("Template directory: {}", template_dir.display());
+				eprintln!("Registered templates:");
+				for name in tera.get_template_names() {
+					eprintln!("  - {}", name);
+				}
+				Arc::new(tera)
+			}
+			Err(e) => {
+				eprintln!("Warning: Failed to initialize Tera: {}", e);
+				eprintln!("Template directory: {}", template_dir.display());
+				eprintln!("Glob pattern: {}", glob_pattern);
+				// Return empty Tera instance with custom filters/functions
+				let mut tera = Tera::default();
+				register_custom_filters(&mut tera);
+				register_custom_functions(&mut tera);
+				Arc::new(tera)
+			}
+		}
+	})
 }
 
 /// Register custom filters to Tera
@@ -90,13 +90,13 @@ pub fn get_tera_engine() -> &'static Arc<Tera> {
 /// - `add_class`: Add CSS class to HTML elements
 #[cfg(feature = "templates")]
 fn register_custom_filters(tera: &mut Tera) {
-    use crate::tera_filters::*;
+	use crate::tera_filters::*;
 
-    tera.register_filter("truncate_chars", TruncateCharsFilter);
-    tera.register_filter("intcomma", IntCommaFilter);
-    tera.register_filter("pluralize", PluralizeFilter);
-    tera.register_filter("default", DefaultFilter);
-    tera.register_filter("add_class", AddClassFilter);
+	tera.register_filter("truncate_chars", TruncateCharsFilter);
+	tera.register_filter("intcomma", IntCommaFilter);
+	tera.register_filter("pluralize", PluralizeFilter);
+	tera.register_filter("default", DefaultFilter);
+	tera.register_filter("add_class", AddClassFilter);
 }
 
 /// Register custom functions to Tera
@@ -109,17 +109,17 @@ fn register_custom_filters(tera: &mut Tera) {
 /// - `url`: Generate URLs from route names
 #[cfg(feature = "templates")]
 fn register_custom_functions(tera: &mut Tera) {
-    use crate::tera_functions::*;
+	use crate::tera_functions::*;
 
-    tera.register_function("range", RangeFunction);
-    tera.register_function("now", NowFunction);
-    tera.register_function("cycle", CycleFunction);
+	tera.register_function("range", RangeFunction);
+	tera.register_function("now", NowFunction);
+	tera.register_function("cycle", CycleFunction);
 
-    // Static URL function with configurable base path
-    let static_url = env::var("STATIC_URL").unwrap_or_else(|_| "/static".to_string());
-    tera.register_function("static", StaticFunction::new(static_url));
+	// Static URL function with configurable base path
+	let static_url = env::var("STATIC_URL").unwrap_or_else(|_| "/static".to_string());
+	tera.register_function("static", StaticFunction::new(static_url));
 
-    tera.register_function("url", UrlFunction);
+	tera.register_function("url", UrlFunction);
 }
 
 /// Render a template with inheritance support
@@ -161,25 +161,25 @@ fn register_custom_functions(tera: &mut Tera) {
 /// ```
 #[cfg(feature = "templates")]
 pub fn render_with_inheritance<K, V>(
-    template_name: &str,
-    context: &HashMap<K, V>,
+	template_name: &str,
+	context: &HashMap<K, V>,
 ) -> Result<String, tera::Error>
 where
-    K: AsRef<str>,
-    V: Serialize,
+	K: AsRef<str>,
+	V: Serialize,
 {
-    let tera = get_tera_engine();
+	let tera = get_tera_engine();
 
-    // Convert HashMap to Tera Context
-    let mut tera_context = Context::new();
-    for (key, value) in context {
-        // Serialize to serde_json::Value for Tera
-        if let Ok(json_value) = serde_json::to_value(value) {
-            tera_context.insert(key.as_ref(), &json_value);
-        }
-    }
+	// Convert HashMap to Tera Context
+	let mut tera_context = Context::new();
+	for (key, value) in context {
+		// Serialize to serde_json::Value for Tera
+		if let Ok(json_value) = serde_json::to_value(value) {
+			tera_context.insert(key.as_ref(), &json_value);
+		}
+	}
 
-    tera.render(template_name, &tera_context)
+	tera.render(template_name, &tera_context)
 }
 
 /// Render a template string with inheritance support
@@ -219,25 +219,25 @@ where
 /// ```
 #[cfg(feature = "templates")]
 pub fn render_string_with_inheritance<K, V>(
-    template_content: &str,
-    context: &HashMap<K, V>,
+	template_content: &str,
+	context: &HashMap<K, V>,
 ) -> Result<String, tera::Error>
 where
-    K: AsRef<str>,
-    V: Serialize,
+	K: AsRef<str>,
+	V: Serialize,
 {
-    let mut tera = Tera::default();
-    tera.add_raw_template("__dynamic__", template_content)?;
+	let mut tera = Tera::default();
+	tera.add_raw_template("__dynamic__", template_content)?;
 
-    // Convert HashMap to Tera Context
-    let mut tera_context = Context::new();
-    for (key, value) in context {
-        if let Ok(json_value) = serde_json::to_value(value) {
-            tera_context.insert(key.as_ref(), &json_value);
-        }
-    }
+	// Convert HashMap to Tera Context
+	let mut tera_context = Context::new();
+	for (key, value) in context {
+		if let Ok(json_value) = serde_json::to_value(value) {
+			tera_context.insert(key.as_ref(), &json_value);
+		}
+	}
 
-    tera.render("__dynamic__", &tera_context)
+	tera.render("__dynamic__", &tera_context)
 }
 
 /// Check if a template exists in the template directory
@@ -261,109 +261,109 @@ where
 /// ```
 #[cfg(feature = "templates")]
 pub fn template_exists(template_name: &str) -> bool {
-    let tera = get_tera_engine();
-    tera.get_template_names().any(|name| name == template_name)
+	let tera = get_tera_engine();
+	tera.get_template_names().any(|name| name == template_name)
 }
 
 #[cfg(all(test, feature = "templates"))]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_render_string_simple() {
-        let mut context = HashMap::new();
-        context.insert("name", serde_json::json!("Alice"));
-        context.insert("age", serde_json::json!("30"));
+	#[test]
+	fn test_render_string_simple() {
+		let mut context = HashMap::new();
+		context.insert("name", serde_json::json!("Alice"));
+		context.insert("age", serde_json::json!("30"));
 
-        let result =
-            render_string_with_inheritance("Name: {{ name }}, Age: {{ age }}", &context).unwrap();
+		let result =
+			render_string_with_inheritance("Name: {{ name }}, Age: {{ age }}", &context).unwrap();
 
-        assert_eq!(result, "Name: Alice, Age: 30");
-    }
+		assert_eq!(result, "Name: Alice, Age: 30");
+	}
 
-    #[test]
-    fn test_render_string_with_if() {
-        let mut context = HashMap::new();
-        context.insert("show", serde_json::json!(true));
-        context.insert("message", serde_json::json!("Hello!"));
+	#[test]
+	fn test_render_string_with_if() {
+		let mut context = HashMap::new();
+		context.insert("show", serde_json::json!(true));
+		context.insert("message", serde_json::json!("Hello!"));
 
-        let template = "{% if show %}{{ message }}{% endif %}";
-        let result = render_string_with_inheritance(template, &context).unwrap();
+		let template = "{% if show %}{{ message }}{% endif %}";
+		let result = render_string_with_inheritance(template, &context).unwrap();
 
-        assert_eq!(result, "Hello!");
-    }
+		assert_eq!(result, "Hello!");
+	}
 
-    #[test]
-    fn test_render_string_with_for() {
-        let mut context = HashMap::new();
-        context.insert("items", serde_json::json!(vec!["a", "b", "c"]));
+	#[test]
+	fn test_render_string_with_for() {
+		let mut context = HashMap::new();
+		context.insert("items", serde_json::json!(vec!["a", "b", "c"]));
 
-        let template = "{% for item in items %}{{ item }}{% endfor %}";
-        let result = render_string_with_inheritance(template, &context).unwrap();
+		let template = "{% for item in items %}{{ item }}{% endfor %}";
+		let result = render_string_with_inheritance(template, &context).unwrap();
 
-        assert_eq!(result, "abc");
-    }
+		assert_eq!(result, "abc");
+	}
 
-    #[test]
-    fn test_render_string_with_filter() {
-        let mut context = HashMap::new();
-        context.insert("text", serde_json::json!("HELLO"));
+	#[test]
+	fn test_render_string_with_filter() {
+		let mut context = HashMap::new();
+		context.insert("text", serde_json::json!("HELLO"));
 
-        let template = "{{ text | lower }}";
-        let result = render_string_with_inheritance(template, &context).unwrap();
+		let template = "{{ text | lower }}";
+		let result = render_string_with_inheritance(template, &context).unwrap();
 
-        assert_eq!(result, "hello");
-    }
+		assert_eq!(result, "hello");
+	}
 
-    #[test]
-    fn test_render_string_html() {
-        let mut context = HashMap::new();
-        context.insert("title", serde_json::json!("Test Page"));
-        context.insert("content", serde_json::json!("Hello, World!"));
+	#[test]
+	fn test_render_string_html() {
+		let mut context = HashMap::new();
+		context.insert("title", serde_json::json!("Test Page"));
+		context.insert("content", serde_json::json!("Hello, World!"));
 
-        let template =
-            "<html><head><title>{{ title }}</title></head><body>{{ content }}</body></html>";
-        let result = render_string_with_inheritance(template, &context).unwrap();
+		let template =
+			"<html><head><title>{{ title }}</title></head><body>{{ content }}</body></html>";
+		let result = render_string_with_inheritance(template, &context).unwrap();
 
-        assert!(result.contains("<title>Test Page</title>"));
-        assert!(result.contains("<body>Hello, World!</body>"));
-    }
+		assert!(result.contains("<title>Test Page</title>"));
+		assert!(result.contains("<body>Hello, World!</body>"));
+	}
 
-    #[test]
-    fn test_render_string_missing_variable() {
-        let context: HashMap<String, serde_json::Value> = HashMap::new();
+	#[test]
+	fn test_render_string_missing_variable() {
+		let context: HashMap<String, serde_json::Value> = HashMap::new();
 
-        let template = "Hello {{ name }}";
-        let result = render_string_with_inheritance(template, &context);
+		let template = "Hello {{ name }}";
+		let result = render_string_with_inheritance(template, &context);
 
-        // Tera in strict mode returns an error for missing variables
-        assert!(result.is_err(), "Expected an error for missing variable");
-        let error_msg = result.unwrap_err().to_string();
-        // Tera returns "Failed to render" for template errors
-        assert!(
-            error_msg.contains("Failed to render")
-                || error_msg.contains("Variable")
-                || error_msg.contains("not found")
-                || error_msg.contains("Field")
-                || error_msg.contains("name"),
-            "Error message should indicate rendering failure, got: {}",
-            error_msg
-        );
-    }
+		// Tera in strict mode returns an error for missing variables
+		assert!(result.is_err(), "Expected an error for missing variable");
+		let error_msg = result.unwrap_err().to_string();
+		// Tera returns "Failed to render" for template errors
+		assert!(
+			error_msg.contains("Failed to render")
+				|| error_msg.contains("Variable")
+				|| error_msg.contains("not found")
+				|| error_msg.contains("Field")
+				|| error_msg.contains("name"),
+			"Error message should indicate rendering failure, got: {}",
+			error_msg
+		);
+	}
 
-    #[test]
-    fn test_render_string_no_variables() {
-        let context: HashMap<String, serde_json::Value> = HashMap::new();
+	#[test]
+	fn test_render_string_no_variables() {
+		let context: HashMap<String, serde_json::Value> = HashMap::new();
 
-        let template = "<h1>Static Content</h1>";
-        let result = render_string_with_inheritance(template, &context).unwrap();
+		let template = "<h1>Static Content</h1>";
+		let result = render_string_with_inheritance(template, &context).unwrap();
 
-        assert_eq!(result, "<h1>Static Content</h1>");
-    }
+		assert_eq!(result, "<h1>Static Content</h1>");
+	}
 
-    #[test]
-    fn test_template_exists_returns_false_for_nonexistent() {
-        // With no templates loaded, any check should return false
-        assert!(!template_exists("nonexistent.html"));
-    }
+	#[test]
+	fn test_template_exists_returns_false_for_nonexistent() {
+		// With no templates loaded, any check should return false
+		assert!(!template_exists("nonexistent.html"));
+	}
 }

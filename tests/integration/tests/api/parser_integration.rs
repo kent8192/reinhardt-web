@@ -8,9 +8,9 @@
 //! django-rest-framework/tests/test_parsers.py
 
 use bytes::Bytes;
-use hyper::{header::CONTENT_TYPE, HeaderMap, Method, Uri, Version};
+use hyper::{HeaderMap, Method, Uri, Version, header::CONTENT_TYPE};
 use reinhardt_http::Request;
-use reinhardt_parsers::{parser::Parser, FormParser, JSONParser, MultiPartParser};
+use reinhardt_parsers::{FormParser, JSONParser, MultiPartParser, parser::Parser};
 
 /// Test POST data access after parsing with FormParser and MultiPartParser
 ///
@@ -21,40 +21,40 @@ use reinhardt_parsers::{parser::Parser, FormParser, JSONParser, MultiPartParser}
 /// still works correctly with FormParser and MultiPartParser.
 #[tokio::test]
 async fn test_post_accessed_in_post_method() {
-    // Create form data body
-    let body = Bytes::from("foo=bar");
+	// Create form data body
+	let body = Bytes::from("foo=bar");
 
-    // Create headers with form content type
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        CONTENT_TYPE,
-        "application/x-www-form-urlencoded".parse().unwrap(),
-    );
+	// Create headers with form content type
+	let mut headers = HeaderMap::new();
+	headers.insert(
+		CONTENT_TYPE,
+		"application/x-www-form-urlencoded".parse().unwrap(),
+	);
 
-    // Create request with parsers
-    let request = Request::new(
-        Method::POST,
-        "/".parse::<Uri>().unwrap(),
-        Version::HTTP_11,
-        headers,
-        body,
-    )
-    .with_parsers(vec![
-        Box::new(FormParser::new()) as Box<dyn Parser>,
-        Box::new(MultiPartParser::new()) as Box<dyn Parser>,
-    ]);
+	// Create request with parsers
+	let request = Request::new(
+		Method::POST,
+		"/".parse::<Uri>().unwrap(),
+		Version::HTTP_11,
+		headers,
+		body,
+	)
+	.with_parsers(vec![
+		Box::new(FormParser::new()) as Box<dyn Parser>,
+		Box::new(MultiPartParser::new()) as Box<dyn Parser>,
+	]);
 
-    // Access POST data first
-    let post_data = request.post().await.unwrap();
-    assert_eq!(post_data.get("foo"), Some(&vec!["bar".to_string()]));
+	// Access POST data first
+	let post_data = request.post().await.unwrap();
+	assert_eq!(post_data.get("foo"), Some(&vec!["bar".to_string()]));
 
-    // Access data() - should still work due to caching
-    let data = request.data().await.unwrap();
-    if let reinhardt_parsers::parser::ParsedData::Form(form) = data {
-        assert_eq!(form.get("foo"), Some(&"bar".to_string()));
-    } else {
-        panic!("Expected Form data");
-    }
+	// Access data() - should still work due to caching
+	let data = request.data().await.unwrap();
+	if let reinhardt_parsers::parser::ParsedData::Form(form) = data {
+		assert_eq!(form.get("foo"), Some(&"bar".to_string()));
+	} else {
+		panic!("Expected Form data");
+	}
 }
 
 /// Test POST data access with JSONParser
@@ -66,34 +66,34 @@ async fn test_post_accessed_in_post_method() {
 /// interfere with JSON parsing.
 #[tokio::test]
 async fn test_post_accessed_in_post_method_with_json_parser() {
-    // Create JSON data body
-    let body = Bytes::from(r#"{"key": "value"}"#);
+	// Create JSON data body
+	let body = Bytes::from(r#"{"key": "value"}"#);
 
-    // Create headers with JSON content type
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
+	// Create headers with JSON content type
+	let mut headers = HeaderMap::new();
+	headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
 
-    // Create request with JSONParser only
-    let request = Request::new(
-        Method::POST,
-        "/".parse::<Uri>().unwrap(),
-        Version::HTTP_11,
-        headers,
-        body,
-    )
-    .with_parsers(vec![Box::new(JSONParser::new()) as Box<dyn Parser>]);
+	// Create request with JSONParser only
+	let request = Request::new(
+		Method::POST,
+		"/".parse::<Uri>().unwrap(),
+		Version::HTTP_11,
+		headers,
+		body,
+	)
+	.with_parsers(vec![Box::new(JSONParser::new()) as Box<dyn Parser>]);
 
-    // Access POST data - should be empty (no form parser)
-    let post_data = request.post().await.unwrap();
-    assert!(post_data.is_empty());
+	// Access POST data - should be empty (no form parser)
+	let post_data = request.post().await.unwrap();
+	assert!(post_data.is_empty());
 
-    // Access data() - should return JSON
-    let data = request.data().await.unwrap();
-    if let reinhardt_parsers::parser::ParsedData::Json(json) = data {
-        assert_eq!(json.get("key").and_then(|v| v.as_str()), Some("value"));
-    } else {
-        panic!("Expected JSON data");
-    }
+	// Access data() - should return JSON
+	let data = request.data().await.unwrap();
+	if let reinhardt_parsers::parser::ParsedData::Json(json) = data {
+		assert_eq!(json.get("key").and_then(|v| v.as_str()), Some("value"));
+	} else {
+		panic!("Expected JSON data");
+	}
 }
 
 /// Test POST data access in PUT method
@@ -104,40 +104,40 @@ async fn test_post_accessed_in_post_method_with_json_parser() {
 /// This test verifies that PUT requests also handle POST data access correctly.
 #[tokio::test]
 async fn test_post_accessed_in_put_method() {
-    // Create form data body
-    let body = Bytes::from("foo=bar");
+	// Create form data body
+	let body = Bytes::from("foo=bar");
 
-    // Create headers with form content type
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        CONTENT_TYPE,
-        "application/x-www-form-urlencoded".parse().unwrap(),
-    );
+	// Create headers with form content type
+	let mut headers = HeaderMap::new();
+	headers.insert(
+		CONTENT_TYPE,
+		"application/x-www-form-urlencoded".parse().unwrap(),
+	);
 
-    // Create PUT request with parsers
-    let request = Request::new(
-        Method::PUT,
-        "/".parse::<Uri>().unwrap(),
-        Version::HTTP_11,
-        headers,
-        body,
-    )
-    .with_parsers(vec![
-        Box::new(FormParser::new()) as Box<dyn Parser>,
-        Box::new(MultiPartParser::new()) as Box<dyn Parser>,
-    ]);
+	// Create PUT request with parsers
+	let request = Request::new(
+		Method::PUT,
+		"/".parse::<Uri>().unwrap(),
+		Version::HTTP_11,
+		headers,
+		body,
+	)
+	.with_parsers(vec![
+		Box::new(FormParser::new()) as Box<dyn Parser>,
+		Box::new(MultiPartParser::new()) as Box<dyn Parser>,
+	]);
 
-    // Access POST data
-    let post_data = request.post().await.unwrap();
-    assert_eq!(post_data.get("foo"), Some(&vec!["bar".to_string()]));
+	// Access POST data
+	let post_data = request.post().await.unwrap();
+	assert_eq!(post_data.get("foo"), Some(&vec!["bar".to_string()]));
 
-    // Access data() - should still work
-    let data = request.data().await.unwrap();
-    if let reinhardt_parsers::parser::ParsedData::Form(form) = data {
-        assert_eq!(form.get("foo"), Some(&"bar".to_string()));
-    } else {
-        panic!("Expected Form data");
-    }
+	// Access data() - should still work
+	let data = request.data().await.unwrap();
+	if let reinhardt_parsers::parser::ParsedData::Form(form) = data {
+		assert_eq!(form.get("foo"), Some(&"bar".to_string()));
+	} else {
+		panic!("Expected Form data");
+	}
 }
 
 /// Test that body can only be consumed once
@@ -148,36 +148,36 @@ async fn test_post_accessed_in_put_method() {
 /// This test verifies that accessing the body multiple times raises an error.
 #[tokio::test]
 async fn test_request_read_before_parsing() {
-    // Create form data body
-    let body = Bytes::from("foo=bar");
+	// Create form data body
+	let body = Bytes::from("foo=bar");
 
-    // Create headers with form content type
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        CONTENT_TYPE,
-        "application/x-www-form-urlencoded".parse().unwrap(),
-    );
+	// Create headers with form content type
+	let mut headers = HeaderMap::new();
+	headers.insert(
+		CONTENT_TYPE,
+		"application/x-www-form-urlencoded".parse().unwrap(),
+	);
 
-    // Create request with parsers
-    let request = Request::new(
-        Method::PUT,
-        "/".parse::<Uri>().unwrap(),
-        Version::HTTP_11,
-        headers,
-        body,
-    )
-    .with_parsers(vec![
-        Box::new(FormParser::new()) as Box<dyn Parser>,
-        Box::new(MultiPartParser::new()) as Box<dyn Parser>,
-    ]);
+	// Create request with parsers
+	let request = Request::new(
+		Method::PUT,
+		"/".parse::<Uri>().unwrap(),
+		Version::HTTP_11,
+		headers,
+		body,
+	)
+	.with_parsers(vec![
+		Box::new(FormParser::new()) as Box<dyn Parser>,
+		Box::new(MultiPartParser::new()) as Box<dyn Parser>,
+	]);
 
-    // First access - should succeed
-    let _post_data = request.post().await.unwrap();
+	// First access - should succeed
+	let _post_data = request.post().await.unwrap();
 
-    // Second access - body is cached, so this should also succeed
-    let _data = request.data().await.unwrap();
+	// Second access - body is cached, so this should also succeed
+	let _data = request.data().await.unwrap();
 
-    // Note: In the current implementation, the body is cached after first parse,
-    // so multiple accesses succeed. This differs from Django's stream-based approach
-    // but is more efficient for Rust's async model.
+	// Note: In the current implementation, the body is cached after first parse,
+	// so multiple accesses succeed. This differs from Django's stream-based approach
+	// but is more efficient for Rust's async model.
 }

@@ -103,40 +103,40 @@ pub mod routing;
 pub mod throttling;
 
 pub use auth::{
-    AuthError, AuthResult, AuthUser, AuthenticatedConnection, AuthorizationPolicy,
-    PermissionBasedPolicy, SimpleAuthUser, TokenAuthenticator, WebSocketAuthenticator,
+	AuthError, AuthResult, AuthUser, AuthenticatedConnection, AuthorizationPolicy,
+	PermissionBasedPolicy, SimpleAuthUser, TokenAuthenticator, WebSocketAuthenticator,
 };
 pub use channels::{
-    ChannelError, ChannelLayer, ChannelLayerWrapper, ChannelMessage, ChannelResult,
-    InMemoryChannelLayer,
+	ChannelError, ChannelLayer, ChannelLayerWrapper, ChannelMessage, ChannelResult,
+	InMemoryChannelLayer,
 };
 #[cfg(feature = "compression")]
-pub use compression::{compress_message, decompress_message, CompressionCodec};
+pub use compression::{CompressionCodec, compress_message, decompress_message};
 pub use connection::{Message, WebSocketConnection, WebSocketError, WebSocketResult};
 pub use consumers::{
-    BroadcastConsumer, ConsumerChain, ConsumerContext, EchoConsumer, JsonConsumer,
-    WebSocketConsumer,
+	BroadcastConsumer, ConsumerChain, ConsumerContext, EchoConsumer, JsonConsumer,
+	WebSocketConsumer,
 };
 pub use handler::WebSocketHandler;
 #[cfg(feature = "metrics")]
 pub use metrics::MetricsExporter;
 pub use metrics::{MetricsCollector, MetricsSnapshot, PeriodicReporter, WebSocketMetrics};
 pub use middleware::{
-    ConnectionContext, ConnectionMiddleware, IpFilterMiddleware, LoggingMiddleware,
-    MessageMiddleware, MessageSizeLimitMiddleware, MiddlewareChain, MiddlewareError,
-    MiddlewareResult,
+	ConnectionContext, ConnectionMiddleware, IpFilterMiddleware, LoggingMiddleware,
+	MessageMiddleware, MessageSizeLimitMiddleware, MiddlewareChain, MiddlewareError,
+	MiddlewareResult,
 };
 pub use reconnection::{ReconnectionConfig, ReconnectionStrategy};
 #[cfg(feature = "redis-channel")]
 pub use redis_channel::{RedisChannelLayer, RedisConfig};
 pub use room::{Room, RoomError, RoomManager, RoomResult};
 pub use routing::{
-    clear_websocket_router, get_websocket_router, register_websocket_router, reverse_websocket_url,
-    RouteError, RouteResult, WebSocketRoute, WebSocketRouter,
+	RouteError, RouteResult, WebSocketRoute, WebSocketRouter, clear_websocket_router,
+	get_websocket_router, register_websocket_router, reverse_websocket_url,
 };
 pub use throttling::{
-    CombinedThrottler, ConnectionThrottler, RateLimitConfig, RateLimiter, ThrottleError,
-    ThrottleResult,
+	CombinedThrottler, ConnectionThrottler, RateLimitConfig, RateLimiter, ThrottleError,
+	ThrottleResult,
 };
 
 #[cfg(test)]

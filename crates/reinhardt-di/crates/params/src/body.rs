@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use reinhardt_apps::Request;
 
-use crate::{extract::FromRequest, ParamContext, ParamError, ParamResult};
+use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
 
 /// Extract the raw request body as bytes
 ///
@@ -19,11 +19,11 @@ pub struct Body(pub Vec<u8>);
 
 #[async_trait]
 impl FromRequest for Body {
-    async fn from_request(req: &Request, _ctx: &ParamContext) -> ParamResult<Self> {
-        // Extract raw body bytes from request
-        let body_bytes = req
-            .read_body()
-            .map_err(|e| ParamError::BodyError(format!("Failed to read body: {}", e)))?;
-        Ok(Body(body_bytes.to_vec()))
-    }
+	async fn from_request(req: &Request, _ctx: &ParamContext) -> ParamResult<Self> {
+		// Extract raw body bytes from request
+		let body_bytes = req
+			.read_body()
+			.map_err(|e| ParamError::BodyError(format!("Failed to read body: {}", e)))?;
+		Ok(Body(body_bytes.to_vec()))
+	}
 }

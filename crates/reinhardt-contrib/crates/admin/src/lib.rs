@@ -94,104 +94,111 @@
 //! Always ensure proper authentication and authorization.
 
 // Core modules
-pub mod site;
-pub mod model_admin;
 pub mod actions;
 pub mod filters;
-pub mod views;
 pub mod forms;
+pub mod model_admin;
+pub mod site;
+pub mod views;
 
 // Phase 2 modules - Advanced features
-pub mod inline;
-pub mod widgets;
 pub mod bulk_edit;
 pub mod export;
 pub mod import;
+pub mod inline;
+pub mod widgets;
 
 // Phase 3 modules - Integration features
-pub mod templates;
-pub mod auth;
-pub mod database;
 pub mod audit;
+pub mod auth;
 pub mod custom_views;
 pub mod dashboard;
+pub mod database;
+pub mod templates;
 
 // Re-exports
-pub use site::AdminSite;
-pub use model_admin::{ModelAdmin, ModelAdminConfig};
-pub use actions::{AdminAction, ActionResult, DeleteSelectedAction, ActionRegistry};
-pub use filters::{ListFilter, FilterSpec, BooleanFilter, ChoiceFilter, DateRangeFilter, NumberRangeFilter, FilterManager};
-pub use views::{ListView, DetailView, CreateView, UpdateView, DeleteView};
-pub use forms::{AdminForm, FormField, FieldType, FormBuilder};
-pub use inline::{InlineModelAdmin, InlineFormset, InlineForm, InlineType};
-pub use widgets::{
-    Widget, WidgetType, WidgetFactory, RichTextEditorConfig, ImageUploadConfig, EditorType,
-    ImageFormat,
-};
-pub use bulk_edit::{BulkEdit, BulkEditResult, BulkEditForm, BulkEditField, BulkEditConfig};
-pub use export::{ExportFormat, ExportConfig, ExportResult, ExportBuilder, CsvExporter, JsonExporter, TsvExporter};
-pub use import::{ImportFormat, ImportConfig, ImportResult, ImportError, ImportBuilder, CsvImporter, JsonImporter, TsvImporter};
-pub use templates::{
-    AdminContext, AdminTemplateRenderer, ListViewContext, FormViewContext,
-    DeleteConfirmationContext, DashboardContext, UserContext, PaginationContext,
-};
-pub use auth::{AdminAuthBackend, AdminPermissionChecker, AdminAuthMiddleware, PermissionAction};
-pub use database::AdminDatabase;
+pub use actions::{ActionRegistry, ActionResult, AdminAction, DeleteSelectedAction};
 pub use audit::{
-    AuditAction, AuditLog, AuditLogBuilder, AuditLogger, AuditLogQuery, AuditLogQueryBuilder,
-    MemoryAuditLogger, DatabaseAuditLogger,
+	AuditAction, AuditLog, AuditLogBuilder, AuditLogQuery, AuditLogQueryBuilder, AuditLogger,
+	DatabaseAuditLogger, MemoryAuditLogger,
 };
+pub use auth::{AdminAuthBackend, AdminAuthMiddleware, AdminPermissionChecker, PermissionAction};
+pub use bulk_edit::{BulkEdit, BulkEditConfig, BulkEditField, BulkEditForm, BulkEditResult};
 pub use custom_views::{
-    CustomView, ViewConfig, ViewConfigBuilder, CustomViewRegistry, DragDropConfig,
-    DragDropConfigBuilder, ReorderableModel, ReorderResult, ReorderHandler,
+	CustomView, CustomViewRegistry, DragDropConfig, DragDropConfigBuilder, ReorderHandler,
+	ReorderResult, ReorderableModel, ViewConfig, ViewConfigBuilder,
 };
 pub use dashboard::{
-    DashboardWidget, WidgetContext, WidgetConfig, WidgetRegistry, WidgetPosition,
-    StatWidget, ChartWidget, ChartType, ChartData, ChartDataset,
-    RecentActivityWidget, Activity, QuickLinksWidget, QuickLink, TableWidget,
-    UserInfo as DashboardUserInfo,
+	Activity, ChartData, ChartDataset, ChartType, ChartWidget, DashboardWidget, QuickLink,
+	QuickLinksWidget, RecentActivityWidget, StatWidget, TableWidget, UserInfo as DashboardUserInfo,
+	WidgetConfig, WidgetContext, WidgetPosition, WidgetRegistry,
+};
+pub use database::AdminDatabase;
+pub use export::{
+	CsvExporter, ExportBuilder, ExportConfig, ExportFormat, ExportResult, JsonExporter, TsvExporter,
+};
+pub use filters::{
+	BooleanFilter, ChoiceFilter, DateRangeFilter, FilterManager, FilterSpec, ListFilter,
+	NumberRangeFilter,
+};
+pub use forms::{AdminForm, FieldType, FormBuilder, FormField};
+pub use import::{
+	CsvImporter, ImportBuilder, ImportConfig, ImportError, ImportFormat, ImportResult,
+	JsonImporter, TsvImporter,
+};
+pub use inline::{InlineForm, InlineFormset, InlineModelAdmin, InlineType};
+pub use model_admin::{ModelAdmin, ModelAdminConfig};
+pub use site::AdminSite;
+pub use templates::{
+	AdminContext, AdminTemplateRenderer, DashboardContext, DeleteConfirmationContext,
+	FormViewContext, ListViewContext, PaginationContext, UserContext,
+};
+pub use views::{CreateView, DeleteView, DetailView, ListView, UpdateView};
+pub use widgets::{
+	EditorType, ImageFormat, ImageUploadConfig, RichTextEditorConfig, Widget, WidgetFactory,
+	WidgetType,
 };
 
 /// Admin panel error types
 #[derive(Debug, thiserror::Error)]
 pub enum AdminError {
-    /// Model not registered with admin
-    #[error("Model '{0}' is not registered with admin")]
-    ModelNotRegistered(String),
+	/// Model not registered with admin
+	#[error("Model '{0}' is not registered with admin")]
+	ModelNotRegistered(String),
 
-    /// Permission denied
-    #[error("Permission denied: {0}")]
-    PermissionDenied(String),
+	/// Permission denied
+	#[error("Permission denied: {0}")]
+	PermissionDenied(String),
 
-    /// Invalid action
-    #[error("Invalid action: {0}")]
-    InvalidAction(String),
+	/// Invalid action
+	#[error("Invalid action: {0}")]
+	InvalidAction(String),
 
-    /// Database error
-    #[error("Database error: {0}")]
-    DatabaseError(#[from] anyhow::Error),
+	/// Database error
+	#[error("Database error: {0}")]
+	DatabaseError(#[from] anyhow::Error),
 
-    /// Validation error
-    #[error("Validation error: {0}")]
-    ValidationError(String),
+	/// Validation error
+	#[error("Validation error: {0}")]
+	ValidationError(String),
 
-    /// Template rendering error
-    #[error("Template rendering error: {0}")]
-    TemplateError(String),
+	/// Template rendering error
+	#[error("Template rendering error: {0}")]
+	TemplateError(String),
 }
 
 pub type AdminResult<T> = Result<T, AdminError>;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_admin_error_display() {
-        let err = AdminError::ModelNotRegistered("User".to_string());
-        assert_eq!(err.to_string(), "Model 'User' is not registered with admin");
+	#[test]
+	fn test_admin_error_display() {
+		let err = AdminError::ModelNotRegistered("User".to_string());
+		assert_eq!(err.to_string(), "Model 'User' is not registered with admin");
 
-        let err = AdminError::PermissionDenied("Not an admin user".to_string());
-        assert_eq!(err.to_string(), "Permission denied: Not an admin user");
-    }
+		let err = AdminError::PermissionDenied("Not an admin user".to_string());
+		assert_eq!(err.to_string(), "Permission denied: Not an admin user");
+	}
 }

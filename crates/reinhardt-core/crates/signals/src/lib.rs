@@ -92,19 +92,19 @@ pub use model_signals::{post_delete, post_save, pre_delete, pre_save};
 
 // Re-export db events
 pub use db_events::{
-    after_delete, after_insert, after_update, before_delete, before_insert, before_update, DbEvent,
+	DbEvent, after_delete, after_insert, after_update, before_delete, before_insert, before_update,
 };
 
 // Re-export lifecycle events
 pub use lifecycle_events::{
-    class_prepared, m2m_changed, post_init, post_migrate, pre_init, pre_migrate,
-    ClassPreparedEvent, M2MAction, M2MChangeEvent, MigrationEvent, PostInitEvent, PreInitEvent,
+	ClassPreparedEvent, M2MAction, M2MChangeEvent, MigrationEvent, PostInitEvent, PreInitEvent,
+	class_prepared, m2m_changed, post_init, post_migrate, pre_init, pre_migrate,
 };
 
 // Re-export request events
 pub use request_events::{
-    got_request_exception, request_finished, request_started, setting_changed,
-    GotRequestExceptionEvent, RequestFinishedEvent, RequestStartedEvent, SettingChangedEvent,
+	GotRequestExceptionEvent, RequestFinishedEvent, RequestStartedEvent, SettingChangedEvent,
+	got_request_exception, request_finished, request_started, setting_changed,
 };
 
 // Re-export dispatch types
@@ -126,350 +126,350 @@ pub use dispatch::{SyncReceiverFn, SyncSignal};
 /// ```
 #[macro_export]
 macro_rules! connect_receiver {
-    ($signal:expr, $receiver:expr) => {
-        $signal.connect($receiver)
-    };
-    ($signal:expr, $receiver:expr, priority = $priority:expr) => {
-        $signal.connect_with_priority($receiver, $priority)
-    };
-    ($signal:expr, $receiver:expr, dispatch_uid = $uid:expr) => {
-        $signal.connect_with_options($receiver, None, Some($uid.to_string()), 0)
-    };
-    ($signal:expr, $receiver:expr, sender = $sender:ty) => {
-        $signal.connect_with_options($receiver, Some(std::any::TypeId::of::<$sender>()), None, 0)
-    };
-    ($signal:expr, $receiver:expr, priority = $priority:expr, dispatch_uid = $uid:expr) => {
-        $signal.connect_with_options($receiver, None, Some($uid.to_string()), $priority)
-    };
-    ($signal:expr, $receiver:expr, sender = $sender:ty, dispatch_uid = $uid:expr) => {
-        $signal.connect_with_options(
-            $receiver,
-            Some(std::any::TypeId::of::<$sender>()),
-            Some($uid.to_string()),
-            0,
-        )
-    };
-    ($signal:expr, $receiver:expr, sender = $sender:ty, priority = $priority:expr) => {
-        $signal.connect_with_options(
-            $receiver,
-            Some(std::any::TypeId::of::<$sender>()),
-            None,
-            $priority,
-        )
-    };
-    ($signal:expr, $receiver:expr, sender = $sender:ty, dispatch_uid = $uid:expr, priority = $priority:expr) => {
-        $signal.connect_with_options(
-            $receiver,
-            Some(std::any::TypeId::of::<$sender>()),
-            Some($uid.to_string()),
-            $priority,
-        )
-    };
+	($signal:expr, $receiver:expr) => {
+		$signal.connect($receiver)
+	};
+	($signal:expr, $receiver:expr, priority = $priority:expr) => {
+		$signal.connect_with_priority($receiver, $priority)
+	};
+	($signal:expr, $receiver:expr, dispatch_uid = $uid:expr) => {
+		$signal.connect_with_options($receiver, None, Some($uid.to_string()), 0)
+	};
+	($signal:expr, $receiver:expr, sender = $sender:ty) => {
+		$signal.connect_with_options($receiver, Some(std::any::TypeId::of::<$sender>()), None, 0)
+	};
+	($signal:expr, $receiver:expr, priority = $priority:expr, dispatch_uid = $uid:expr) => {
+		$signal.connect_with_options($receiver, None, Some($uid.to_string()), $priority)
+	};
+	($signal:expr, $receiver:expr, sender = $sender:ty, dispatch_uid = $uid:expr) => {
+		$signal.connect_with_options(
+			$receiver,
+			Some(std::any::TypeId::of::<$sender>()),
+			Some($uid.to_string()),
+			0,
+		)
+	};
+	($signal:expr, $receiver:expr, sender = $sender:ty, priority = $priority:expr) => {
+		$signal.connect_with_options(
+			$receiver,
+			Some(std::any::TypeId::of::<$sender>()),
+			None,
+			$priority,
+		)
+	};
+	($signal:expr, $receiver:expr, sender = $sender:ty, dispatch_uid = $uid:expr, priority = $priority:expr) => {
+		$signal.connect_with_options(
+			$receiver,
+			Some(std::any::TypeId::of::<$sender>()),
+			Some($uid.to_string()),
+			$priority,
+		)
+	};
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use parking_lot::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
+	use super::*;
+	use parking_lot::Mutex;
+	use std::sync::Arc;
+	use std::sync::atomic::{AtomicUsize, Ordering};
 
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    struct TestModel {
-        id: i32,
-        name: String,
-    }
+	#[derive(Debug, Clone)]
+	#[allow(dead_code)]
+	struct TestModel {
+		id: i32,
+		name: String,
+	}
 
-    #[tokio::test]
-    async fn test_signal_connect_and_send() {
-        let signal = Signal::new(SignalName::custom("test"));
-        let counter = Arc::new(AtomicUsize::new(0));
+	#[tokio::test]
+	async fn test_signal_connect_and_send() {
+		let signal = Signal::new(SignalName::custom("test"));
+		let counter = Arc::new(AtomicUsize::new(0));
 
-        let counter_clone = Arc::clone(&counter);
-        signal.connect(move |_instance: Arc<TestModel>| {
-            let counter = Arc::clone(&counter_clone);
-            async move {
-                counter.fetch_add(1, Ordering::SeqCst);
-                Ok(())
-            }
-        });
+		let counter_clone = Arc::clone(&counter);
+		signal.connect(move |_instance: Arc<TestModel>| {
+			let counter = Arc::clone(&counter_clone);
+			async move {
+				counter.fetch_add(1, Ordering::SeqCst);
+				Ok(())
+			}
+		});
 
-        let model = TestModel {
-            id: 1,
-            name: "Test".to_string(),
-        };
+		let model = TestModel {
+			id: 1,
+			name: "Test".to_string(),
+		};
 
-        signal.send(model).await.unwrap();
+		signal.send(model).await.unwrap();
 
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-    }
+		assert_eq!(counter.load(Ordering::SeqCst), 1);
+	}
 
-    #[tokio::test]
-    async fn test_signals_multiple_receivers() {
-        let signal = Signal::new(SignalName::custom("test"));
-        let counter = Arc::new(AtomicUsize::new(0));
+	#[tokio::test]
+	async fn test_signals_multiple_receivers() {
+		let signal = Signal::new(SignalName::custom("test"));
+		let counter = Arc::new(AtomicUsize::new(0));
 
-        // Connect multiple receivers
-        for _ in 0..3 {
-            let counter_clone = Arc::clone(&counter);
-            signal.connect(move |_instance: Arc<TestModel>| {
-                let counter = Arc::clone(&counter_clone);
-                async move {
-                    counter.fetch_add(1, Ordering::SeqCst);
-                    Ok(())
-                }
-            });
-        }
+		// Connect multiple receivers
+		for _ in 0..3 {
+			let counter_clone = Arc::clone(&counter);
+			signal.connect(move |_instance: Arc<TestModel>| {
+				let counter = Arc::clone(&counter_clone);
+				async move {
+					counter.fetch_add(1, Ordering::SeqCst);
+					Ok(())
+				}
+			});
+		}
 
-        let model = TestModel {
-            id: 1,
-            name: "Test".to_string(),
-        };
+		let model = TestModel {
+			id: 1,
+			name: "Test".to_string(),
+		};
 
-        signal.send(model).await.unwrap();
+		signal.send(model).await.unwrap();
 
-        assert_eq!(counter.load(Ordering::SeqCst), 3);
-    }
+		assert_eq!(counter.load(Ordering::SeqCst), 3);
+	}
 
-    #[tokio::test]
-    async fn test_signals_pre_post_save() {
-        let pre_counter = Arc::new(AtomicUsize::new(0));
-        let post_counter = Arc::new(AtomicUsize::new(0));
+	#[tokio::test]
+	async fn test_signals_pre_post_save() {
+		let pre_counter = Arc::new(AtomicUsize::new(0));
+		let post_counter = Arc::new(AtomicUsize::new(0));
 
-        // Connect to pre_save
-        let pre_clone = Arc::clone(&pre_counter);
-        pre_save::<TestModel>().connect(move |_instance| {
-            let counter = Arc::clone(&pre_clone);
-            async move {
-                counter.fetch_add(1, Ordering::SeqCst);
-                Ok(())
-            }
-        });
+		// Connect to pre_save
+		let pre_clone = Arc::clone(&pre_counter);
+		pre_save::<TestModel>().connect(move |_instance| {
+			let counter = Arc::clone(&pre_clone);
+			async move {
+				counter.fetch_add(1, Ordering::SeqCst);
+				Ok(())
+			}
+		});
 
-        // Connect to post_save
-        let post_clone = Arc::clone(&post_counter);
-        post_save::<TestModel>().connect(move |_instance| {
-            let counter = Arc::clone(&post_clone);
-            async move {
-                counter.fetch_add(1, Ordering::SeqCst);
-                Ok(())
-            }
-        });
+		// Connect to post_save
+		let post_clone = Arc::clone(&post_counter);
+		post_save::<TestModel>().connect(move |_instance| {
+			let counter = Arc::clone(&post_clone);
+			async move {
+				counter.fetch_add(1, Ordering::SeqCst);
+				Ok(())
+			}
+		});
 
-        let model = TestModel {
-            id: 1,
-            name: "Test".to_string(),
-        };
+		let model = TestModel {
+			id: 1,
+			name: "Test".to_string(),
+		};
 
-        // Simulate save operation
-        pre_save::<TestModel>().send(model.clone()).await.unwrap();
-        // ... actual save would happen here ...
-        post_save::<TestModel>().send(model).await.unwrap();
+		// Simulate save operation
+		pre_save::<TestModel>().send(model.clone()).await.unwrap();
+		// ... actual save would happen here ...
+		post_save::<TestModel>().send(model).await.unwrap();
 
-        assert_eq!(pre_counter.load(Ordering::SeqCst), 1);
-        assert_eq!(post_counter.load(Ordering::SeqCst), 1);
-    }
+		assert_eq!(pre_counter.load(Ordering::SeqCst), 1);
+		assert_eq!(post_counter.load(Ordering::SeqCst), 1);
+	}
 
-    #[tokio::test]
-    async fn test_signals_global_registry() {
-        let signal1 = get_signal::<TestModel>(SignalName::custom("custom_signal"));
-        let signal2 = get_signal::<TestModel>(SignalName::custom("custom_signal"));
+	#[tokio::test]
+	async fn test_signals_global_registry() {
+		let signal1 = get_signal::<TestModel>(SignalName::custom("custom_signal"));
+		let signal2 = get_signal::<TestModel>(SignalName::custom("custom_signal"));
 
-        let counter = Arc::new(AtomicUsize::new(0));
-        let counter_clone = Arc::clone(&counter);
+		let counter = Arc::new(AtomicUsize::new(0));
+		let counter_clone = Arc::clone(&counter);
 
-        // Connect to signal1
-        signal1.connect(move |_instance| {
-            let counter = Arc::clone(&counter_clone);
-            async move {
-                counter.fetch_add(1, Ordering::SeqCst);
-                Ok(())
-            }
-        });
+		// Connect to signal1
+		signal1.connect(move |_instance| {
+			let counter = Arc::clone(&counter_clone);
+			async move {
+				counter.fetch_add(1, Ordering::SeqCst);
+				Ok(())
+			}
+		});
 
-        // Send through signal2 (should be the same signal)
-        let model = TestModel {
-            id: 1,
-            name: "Test".to_string(),
-        };
-        signal2.send(model).await.unwrap();
+		// Send through signal2 (should be the same signal)
+		let model = TestModel {
+			id: 1,
+			name: "Test".to_string(),
+		};
+		signal2.send(model).await.unwrap();
 
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-    }
+		assert_eq!(counter.load(Ordering::SeqCst), 1);
+	}
 
-    #[tokio::test]
-    async fn test_signal_spy() {
-        let signal = Signal::new(SignalName::custom("test"));
-        let spy = SignalSpy::new();
-        signal.add_middleware(spy.clone());
+	#[tokio::test]
+	async fn test_signal_spy() {
+		let signal = Signal::new(SignalName::custom("test"));
+		let spy = SignalSpy::new();
+		signal.add_middleware(spy.clone());
 
-        signal.connect(|_instance: Arc<TestModel>| async move { Ok(()) });
+		signal.connect(|_instance: Arc<TestModel>| async move { Ok(()) });
 
-        assert!(!spy.was_called());
-        assert_eq!(spy.call_count(), 0);
+		assert!(!spy.was_called());
+		assert_eq!(spy.call_count(), 0);
 
-        let model = TestModel {
-            id: 1,
-            name: "Test".to_string(),
-        };
-        signal.send(model).await.unwrap();
+		let model = TestModel {
+			id: 1,
+			name: "Test".to_string(),
+		};
+		signal.send(model).await.unwrap();
 
-        assert!(spy.was_called());
-        assert_eq!(spy.call_count(), 1);
-        assert_eq!(spy.total_receivers_called(), 1);
-        assert!(!spy.has_errors());
-    }
+		assert!(spy.was_called());
+		assert_eq!(spy.call_count(), 1);
+		assert_eq!(spy.total_receivers_called(), 1);
+		assert!(!spy.has_errors());
+	}
 
-    #[tokio::test]
-    async fn test_signal_chain() {
-        let signal_a = Signal::new(SignalName::custom("signal_a"));
-        let signal_b = Signal::new(SignalName::custom("signal_b"));
+	#[tokio::test]
+	async fn test_signal_chain() {
+		let signal_a = Signal::new(SignalName::custom("signal_a"));
+		let signal_b = Signal::new(SignalName::custom("signal_b"));
 
-        let calls = Arc::new(Mutex::new(Vec::new()));
+		let calls = Arc::new(Mutex::new(Vec::new()));
 
-        // Track signal_a calls
-        let calls_a = calls.clone();
-        signal_a.connect(move |instance: Arc<TestModel>| {
-            let calls = calls_a.clone();
-            async move {
-                calls.lock().push(format!("signal_a: {}", instance.id));
-                Ok(())
-            }
-        });
+		// Track signal_a calls
+		let calls_a = calls.clone();
+		signal_a.connect(move |instance: Arc<TestModel>| {
+			let calls = calls_a.clone();
+			async move {
+				calls.lock().push(format!("signal_a: {}", instance.id));
+				Ok(())
+			}
+		});
 
-        // Track signal_b calls
-        let calls_b = calls.clone();
-        signal_b.connect(move |instance: Arc<TestModel>| {
-            let calls = calls_b.clone();
-            async move {
-                calls.lock().push(format!("signal_b: {}", instance.id));
-                Ok(())
-            }
-        });
+		// Track signal_b calls
+		let calls_b = calls.clone();
+		signal_b.connect(move |instance: Arc<TestModel>| {
+			let calls = calls_b.clone();
+			async move {
+				calls.lock().push(format!("signal_b: {}", instance.id));
+				Ok(())
+			}
+		});
 
-        // Chain signal_a to signal_b
-        signal_a.chain(&signal_b);
+		// Chain signal_a to signal_b
+		signal_a.chain(&signal_b);
 
-        // Send to signal_a
-        let model = TestModel {
-            id: 1,
-            name: "Test".to_string(),
-        };
-        signal_a.send(model).await.unwrap();
+		// Send to signal_a
+		let model = TestModel {
+			id: 1,
+			name: "Test".to_string(),
+		};
+		signal_a.send(model).await.unwrap();
 
-        // Wait for async execution
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+		// Wait for async execution
+		tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-        let results = calls.lock();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0], "signal_a: 1");
-        assert_eq!(results[1], "signal_b: 1");
-    }
+		let results = calls.lock();
+		assert_eq!(results.len(), 2);
+		assert_eq!(results[0], "signal_a: 1");
+		assert_eq!(results[1], "signal_b: 1");
+	}
 
-    #[tokio::test]
-    async fn test_signal_filter() {
-        let signal = Signal::new(SignalName::custom("user_signal"));
-        let admin_only = signal.filter(|model: &TestModel| model.id > 100);
+	#[tokio::test]
+	async fn test_signal_filter() {
+		let signal = Signal::new(SignalName::custom("user_signal"));
+		let admin_only = signal.filter(|model: &TestModel| model.id > 100);
 
-        let admin_calls = Arc::new(Mutex::new(Vec::new()));
-        let all_calls = Arc::new(Mutex::new(Vec::new()));
+		let admin_calls = Arc::new(Mutex::new(Vec::new()));
+		let all_calls = Arc::new(Mutex::new(Vec::new()));
 
-        let admin = admin_calls.clone();
-        admin_only.connect(move |instance: Arc<TestModel>| {
-            let admin = admin.clone();
-            async move {
-                admin.lock().push(instance.id);
-                Ok(())
-            }
-        });
+		let admin = admin_calls.clone();
+		admin_only.connect(move |instance: Arc<TestModel>| {
+			let admin = admin.clone();
+			async move {
+				admin.lock().push(instance.id);
+				Ok(())
+			}
+		});
 
-        let all = all_calls.clone();
-        signal.connect(move |instance: Arc<TestModel>| {
-            let all = all.clone();
-            async move {
-                all.lock().push(instance.id);
-                Ok(())
-            }
-        });
+		let all = all_calls.clone();
+		signal.connect(move |instance: Arc<TestModel>| {
+			let all = all.clone();
+			async move {
+				all.lock().push(instance.id);
+				Ok(())
+			}
+		});
 
-        // Send regular user (id <= 100)
-        signal
-            .send(TestModel {
-                id: 50,
-                name: "Regular".to_string(),
-            })
-            .await
-            .unwrap();
+		// Send regular user (id <= 100)
+		signal
+			.send(TestModel {
+				id: 50,
+				name: "Regular".to_string(),
+			})
+			.await
+			.unwrap();
 
-        // Send admin user (id > 100)
-        signal
-            .send(TestModel {
-                id: 101,
-                name: "Admin".to_string(),
-            })
-            .await
-            .unwrap();
+		// Send admin user (id > 100)
+		signal
+			.send(TestModel {
+				id: 101,
+				name: "Admin".to_string(),
+			})
+			.await
+			.unwrap();
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+		tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-        let admin_results = admin_calls.lock();
-        let all_results = all_calls.lock();
+		let admin_results = admin_calls.lock();
+		let all_results = all_calls.lock();
 
-        assert_eq!(admin_results.len(), 1); // Only admin
-        assert_eq!(admin_results[0], 101);
+		assert_eq!(admin_results.len(), 1); // Only admin
+		assert_eq!(admin_results[0], 101);
 
-        assert_eq!(all_results.len(), 2); // Both
-    }
+		assert_eq!(all_results.len(), 2); // Both
+	}
 
-    #[test]
-    fn test_signal_name_validation() {
-        // Valid names
-        assert!(SignalName::custom_validated("my_custom_signal").is_ok());
-        assert!(SignalName::custom_validated("user_created").is_ok());
+	#[test]
+	fn test_signal_name_validation() {
+		// Valid names
+		assert!(SignalName::custom_validated("my_custom_signal").is_ok());
+		assert!(SignalName::custom_validated("user_created").is_ok());
 
-        // Invalid: empty
-        assert!(SignalName::custom_validated("").is_err());
+		// Invalid: empty
+		assert!(SignalName::custom_validated("").is_err());
 
-        // Invalid: not snake_case
-        assert!(SignalName::custom_validated("MySignal").is_err());
+		// Invalid: not snake_case
+		assert!(SignalName::custom_validated("MySignal").is_err());
 
-        // Invalid: reserved name
-        assert!(SignalName::custom_validated("pre_save").is_err());
-    }
+		// Invalid: reserved name
+		assert!(SignalName::custom_validated("pre_save").is_err());
+	}
 
-    #[tokio::test]
-    async fn test_all_signal_types_accessible() {
-        // Model signals
-        let _ = pre_save::<TestModel>();
-        let _ = post_save::<TestModel>();
-        let _ = pre_delete::<TestModel>();
-        let _ = post_delete::<TestModel>();
-        let _ = pre_init::<TestModel>();
-        let _ = post_init::<TestModel>();
-        let _ = m2m_changed::<TestModel, TestModel>();
+	#[tokio::test]
+	async fn test_all_signal_types_accessible() {
+		// Model signals
+		let _ = pre_save::<TestModel>();
+		let _ = post_save::<TestModel>();
+		let _ = pre_delete::<TestModel>();
+		let _ = post_delete::<TestModel>();
+		let _ = pre_init::<TestModel>();
+		let _ = post_init::<TestModel>();
+		let _ = m2m_changed::<TestModel, TestModel>();
 
-        // Migration signals
-        let _ = pre_migrate();
-        let _ = post_migrate();
+		// Migration signals
+		let _ = pre_migrate();
+		let _ = post_migrate();
 
-        // Class signal
-        let _ = class_prepared();
+		// Class signal
+		let _ = class_prepared();
 
-        // Request signals
-        let _ = request_started();
-        let _ = request_finished();
-        let _ = got_request_exception();
+		// Request signals
+		let _ = request_started();
+		let _ = request_finished();
+		let _ = got_request_exception();
 
-        // Management signals
-        let _ = setting_changed();
+		// Management signals
+		let _ = setting_changed();
 
-        // DB events
-        let _ = before_insert();
-        let _ = after_insert();
-        let _ = before_update();
-        let _ = after_update();
-        let _ = before_delete();
-        let _ = after_delete();
-    }
+		// DB events
+		let _ = before_insert();
+		let _ = after_insert();
+		let _ = before_update();
+		let _ = after_update();
+		let _ = before_delete();
+		let _ = after_delete();
+	}
 }

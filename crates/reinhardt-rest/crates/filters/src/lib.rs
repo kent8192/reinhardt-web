@@ -40,8 +40,8 @@ pub use backend::{CustomFilterBackend, SimpleOrderingBackend, SimpleSearchBacken
 pub use caching::{CacheStats, CachedFilterBackend, generate_cache_key};
 
 pub use highlighting::{
-    HighlightedResult, HtmlHighlighter, MultiFieldHighlighter, PlainTextHighlighter,
-    SearchHighlighter,
+	HighlightedResult, HtmlHighlighter, MultiFieldHighlighter, PlainTextHighlighter,
+	SearchHighlighter,
 };
 
 // Type-safe exports
@@ -58,7 +58,7 @@ pub use searchable::SearchableModel;
 // Advanced filtering exports
 pub use index_hint::{IndexHint, IndexHintFilter, IndexStrategy};
 pub use optimizer::{
-    DatabaseType, OptimizationHint, QueryAnalysis, QueryComplexity, QueryOptimizer, QueryPlan,
+	DatabaseType, OptimizationHint, QueryAnalysis, QueryComplexity, QueryOptimizer, QueryPlan,
 };
 pub use relevance::{FieldBoost, RelevanceScorer, ScoredResult, ScoringAlgorithm};
 pub use synonym::{SynonymDictionary, SynonymExpander};

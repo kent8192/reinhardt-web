@@ -61,34 +61,34 @@ use std::time::Duration;
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SameSite {
-    /// Cookies are only sent in a first-party context
-    Strict,
-    /// Cookies are sent on top-level navigation and with GET requests
-    Lax,
-    /// Cookies are sent with both first-party and cross-site requests
-    None,
+	/// Cookies are only sent in a first-party context
+	Strict,
+	/// Cookies are sent on top-level navigation and with GET requests
+	Lax,
+	/// Cookies are sent with both first-party and cross-site requests
+	None,
 }
 
 #[cfg(feature = "middleware")]
 impl SameSite {
-    /// Convert to cookie string value
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_sessions::middleware::SameSite;
-    ///
-    /// assert_eq!(SameSite::Strict.as_str(), "Strict");
-    /// assert_eq!(SameSite::Lax.as_str(), "Lax");
-    /// assert_eq!(SameSite::None.as_str(), "None");
-    /// ```
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            SameSite::Strict => "Strict",
-            SameSite::Lax => "Lax",
-            SameSite::None => "None",
-        }
-    }
+	/// Convert to cookie string value
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_sessions::middleware::SameSite;
+	///
+	/// assert_eq!(SameSite::Strict.as_str(), "Strict");
+	/// assert_eq!(SameSite::Lax.as_str(), "Lax");
+	/// assert_eq!(SameSite::None.as_str(), "None");
+	/// ```
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			SameSite::Strict => "Strict",
+			SameSite::Lax => "Lax",
+			SameSite::None => "None",
+		}
+	}
 }
 
 #[cfg(feature = "middleware")]
@@ -114,47 +114,47 @@ impl SameSite {
 /// ```
 #[derive(Debug, Clone)]
 pub struct HttpSessionConfig {
-    /// Name of the session cookie
-    pub cookie_name: String,
-    /// Path for the cookie
-    pub cookie_path: String,
-    /// Domain for the cookie (None = current domain)
-    pub cookie_domain: Option<String>,
-    /// Whether to set the Secure flag (HTTPS only)
-    pub secure: bool,
-    /// Whether to set the HttpOnly flag (no JavaScript access)
-    pub httponly: bool,
-    /// SameSite attribute
-    pub samesite: SameSite,
-    /// Maximum age for the cookie
-    pub max_age: Option<Duration>,
+	/// Name of the session cookie
+	pub cookie_name: String,
+	/// Path for the cookie
+	pub cookie_path: String,
+	/// Domain for the cookie (None = current domain)
+	pub cookie_domain: Option<String>,
+	/// Whether to set the Secure flag (HTTPS only)
+	pub secure: bool,
+	/// Whether to set the HttpOnly flag (no JavaScript access)
+	pub httponly: bool,
+	/// SameSite attribute
+	pub samesite: SameSite,
+	/// Maximum age for the cookie
+	pub max_age: Option<Duration>,
 }
 
 #[cfg(feature = "middleware")]
 impl Default for HttpSessionConfig {
-    /// Create default session configuration
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_sessions::middleware::{HttpSessionConfig, SameSite};
-    ///
-    /// let config = HttpSessionConfig::default();
-    /// assert_eq!(config.cookie_name, "sessionid");
-    /// assert_eq!(config.cookie_path, "/");
-    /// assert_eq!(config.samesite, SameSite::Lax);
-    /// ```
-    fn default() -> Self {
-        Self {
-            cookie_name: "sessionid".to_string(),
-            cookie_path: "/".to_string(),
-            cookie_domain: None,
-            secure: false,
-            httponly: true,
-            samesite: SameSite::Lax,
-            max_age: None,
-        }
-    }
+	/// Create default session configuration
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_sessions::middleware::{HttpSessionConfig, SameSite};
+	///
+	/// let config = HttpSessionConfig::default();
+	/// assert_eq!(config.cookie_name, "sessionid");
+	/// assert_eq!(config.cookie_path, "/");
+	/// assert_eq!(config.samesite, SameSite::Lax);
+	/// ```
+	fn default() -> Self {
+		Self {
+			cookie_name: "sessionid".to_string(),
+			cookie_path: "/".to_string(),
+			cookie_domain: None,
+			secure: false,
+			httponly: true,
+			samesite: SameSite::Lax,
+			max_age: None,
+		}
+	}
 }
 
 #[cfg(feature = "middleware")]
@@ -173,290 +173,290 @@ impl Default for HttpSessionConfig {
 /// let middleware = SessionMiddleware::new(backend, config);
 /// ```
 pub struct SessionMiddleware<B: SessionBackend> {
-    backend: B,
-    config: HttpSessionConfig,
+	backend: B,
+	config: HttpSessionConfig,
 }
 
 #[cfg(feature = "middleware")]
 impl<B: SessionBackend> SessionMiddleware<B> {
-    /// Create a new session middleware
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_sessions::middleware::{SessionMiddleware, HttpSessionConfig};
-    /// use reinhardt_sessions::backends::InMemorySessionBackend;
-    ///
-    /// let backend = InMemorySessionBackend::new();
-    /// let config = HttpSessionConfig::default();
-    /// let middleware = SessionMiddleware::new(backend, config);
-    /// ```
-    pub fn new(backend: B, config: HttpSessionConfig) -> Self {
-        Self { backend, config }
-    }
+	/// Create a new session middleware
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_sessions::middleware::{SessionMiddleware, HttpSessionConfig};
+	/// use reinhardt_sessions::backends::InMemorySessionBackend;
+	///
+	/// let backend = InMemorySessionBackend::new();
+	/// let config = HttpSessionConfig::default();
+	/// let middleware = SessionMiddleware::new(backend, config);
+	/// ```
+	pub fn new(backend: B, config: HttpSessionConfig) -> Self {
+		Self { backend, config }
+	}
 
-    /// Create with default configuration
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_sessions::middleware::SessionMiddleware;
-    /// use reinhardt_sessions::backends::InMemorySessionBackend;
-    ///
-    /// let backend = InMemorySessionBackend::new();
-    /// let middleware = SessionMiddleware::with_defaults(backend);
-    /// ```
-    pub fn with_defaults(backend: B) -> Self {
-        Self::new(backend, HttpSessionConfig::default())
-    }
+	/// Create with default configuration
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_sessions::middleware::SessionMiddleware;
+	/// use reinhardt_sessions::backends::InMemorySessionBackend;
+	///
+	/// let backend = InMemorySessionBackend::new();
+	/// let middleware = SessionMiddleware::with_defaults(backend);
+	/// ```
+	pub fn with_defaults(backend: B) -> Self {
+		Self::new(backend, HttpSessionConfig::default())
+	}
 
-    /// Extract session key from cookie header
-    fn get_session_key_from_cookie(&self, request: &Request) -> Option<String> {
-        request.get_language_from_cookie(&self.config.cookie_name)
-    }
+	/// Extract session key from cookie header
+	fn get_session_key_from_cookie(&self, request: &Request) -> Option<String> {
+		request.get_language_from_cookie(&self.config.cookie_name)
+	}
 
-    /// Build Set-Cookie header value
-    fn build_set_cookie_header(&self, session_key: &str) -> String {
-        let mut cookie = format!("{}={}", self.config.cookie_name, session_key);
+	/// Build Set-Cookie header value
+	fn build_set_cookie_header(&self, session_key: &str) -> String {
+		let mut cookie = format!("{}={}", self.config.cookie_name, session_key);
 
-        cookie.push_str(&format!("; Path={}", self.config.cookie_path));
+		cookie.push_str(&format!("; Path={}", self.config.cookie_path));
 
-        if let Some(ref domain) = self.config.cookie_domain {
-            cookie.push_str(&format!("; Domain={}", domain));
-        }
+		if let Some(ref domain) = self.config.cookie_domain {
+			cookie.push_str(&format!("; Domain={}", domain));
+		}
 
-        if let Some(max_age) = self.config.max_age {
-            cookie.push_str(&format!("; Max-Age={}", max_age.as_secs()));
-        }
+		if let Some(max_age) = self.config.max_age {
+			cookie.push_str(&format!("; Max-Age={}", max_age.as_secs()));
+		}
 
-        if self.config.secure {
-            cookie.push_str("; Secure");
-        }
+		if self.config.secure {
+			cookie.push_str("; Secure");
+		}
 
-        if self.config.httponly {
-            cookie.push_str("; HttpOnly");
-        }
+		if self.config.httponly {
+			cookie.push_str("; HttpOnly");
+		}
 
-        cookie.push_str(&format!("; SameSite={}", self.config.samesite.as_str()));
+		cookie.push_str(&format!("; SameSite={}", self.config.samesite.as_str()));
 
-        cookie
-    }
+		cookie
+	}
 }
 
 #[cfg(feature = "middleware")]
 #[async_trait]
 impl<B: SessionBackend + 'static> Middleware for SessionMiddleware<B> {
-    async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
-        // Load session from cookie
-        let session_key = self.get_session_key_from_cookie(&request);
+	async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+		// Load session from cookie
+		let session_key = self.get_session_key_from_cookie(&request);
 
-        let mut session: Session<B> = if let Some(key) = session_key {
-            Session::from_key(self.backend.clone(), key)
-                .await
-                .unwrap_or_else(|_| Session::new(self.backend.clone()))
-        } else {
-            Session::new(self.backend.clone())
-        };
+		let mut session: Session<B> = if let Some(key) = session_key {
+			Session::from_key(self.backend.clone(), key)
+				.await
+				.unwrap_or_else(|_| Session::new(self.backend.clone()))
+		} else {
+			Session::new(self.backend.clone())
+		};
 
-        // Store session in request extensions
-        request.extensions.insert(session.clone());
+		// Store session in request extensions
+		request.extensions.insert(session.clone());
 
-        // Process the request
-        let mut response = next.handle(request).await?;
+		// Process the request
+		let mut response = next.handle(request).await?;
 
-        // Save session if modified
-        if session.is_modified() {
-            session.save().await.map_err(|e| {
-                reinhardt_exception::Error::Internal(format!("Failed to save session: {}", e))
-            })?;
+		// Save session if modified
+		if session.is_modified() {
+			session.save().await.map_err(|e| {
+				reinhardt_exception::Error::Internal(format!("Failed to save session: {}", e))
+			})?;
 
-            // Add Set-Cookie header
-            let session_key_str = session.get_or_create_key();
-            let cookie_value = self.build_set_cookie_header(session_key_str);
+			// Add Set-Cookie header
+			let session_key_str = session.get_or_create_key();
+			let cookie_value = self.build_set_cookie_header(session_key_str);
 
-            response = response.with_header("Set-Cookie", &cookie_value);
-        }
+			response = response.with_header("Set-Cookie", &cookie_value);
+		}
 
-        Ok(response)
-    }
+		Ok(response)
+	}
 }
 
 #[cfg(all(test, feature = "middleware"))]
 mod tests {
-    use super::*;
-    use crate::backends::InMemorySessionBackend;
-    use bytes::Bytes;
-    use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-    use std::sync::Arc;
+	use super::*;
+	use crate::backends::InMemorySessionBackend;
+	use bytes::Bytes;
+	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+	use std::sync::Arc;
 
-    // Mock handler for testing
-    struct MockHandler;
+	// Mock handler for testing
+	struct MockHandler;
 
-    #[async_trait]
-    impl Handler for MockHandler {
-        async fn handle(&self, _request: Request) -> Result<Response> {
-            Ok(Response::new(StatusCode::OK))
-        }
-    }
+	#[async_trait]
+	impl Handler for MockHandler {
+		async fn handle(&self, _request: Request) -> Result<Response> {
+			Ok(Response::new(StatusCode::OK))
+		}
+	}
 
-    // Handler that modifies session
-    struct SessionModifyingHandler;
+	// Handler that modifies session
+	struct SessionModifyingHandler;
 
-    #[async_trait]
-    impl Handler for SessionModifyingHandler {
-        async fn handle(&self, request: Request) -> Result<Response> {
-            if let Some(mut session) = request.extensions.get::<Session<InMemorySessionBackend>>() {
-                session.set("user_id", 42).unwrap();
-                // Re-insert the modified session back into extensions
-                request.extensions.insert(session);
-            }
-            Ok(Response::new(StatusCode::OK))
-        }
-    }
+	#[async_trait]
+	impl Handler for SessionModifyingHandler {
+		async fn handle(&self, request: Request) -> Result<Response> {
+			if let Some(mut session) = request.extensions.get::<Session<InMemorySessionBackend>>() {
+				session.set("user_id", 42).unwrap();
+				// Re-insert the modified session back into extensions
+				request.extensions.insert(session);
+			}
+			Ok(Response::new(StatusCode::OK))
+		}
+	}
 
-    fn create_test_request() -> Request {
-        Request::new(
-            Method::GET,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        )
-    }
+	fn create_test_request() -> Request {
+		Request::new(
+			Method::GET,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		)
+	}
 
-    fn create_test_request_with_cookie(cookie_value: &str) -> Request {
-        let mut headers = HeaderMap::new();
-        headers.insert("cookie", cookie_value.parse().unwrap());
+	fn create_test_request_with_cookie(cookie_value: &str) -> Request {
+		let mut headers = HeaderMap::new();
+		headers.insert("cookie", cookie_value.parse().unwrap());
 
-        Request::new(
-            Method::GET,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        )
-    }
+		Request::new(
+			Method::GET,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		)
+	}
 
-    #[tokio::test]
-    async fn test_samesite_as_str() {
-        assert_eq!(SameSite::Strict.as_str(), "Strict");
-        assert_eq!(SameSite::Lax.as_str(), "Lax");
-        assert_eq!(SameSite::None.as_str(), "None");
-    }
+	#[tokio::test]
+	async fn test_samesite_as_str() {
+		assert_eq!(SameSite::Strict.as_str(), "Strict");
+		assert_eq!(SameSite::Lax.as_str(), "Lax");
+		assert_eq!(SameSite::None.as_str(), "None");
+	}
 
-    #[tokio::test]
-    async fn test_http_session_config_default() {
-        let config = HttpSessionConfig::default();
-        assert_eq!(config.cookie_name, "sessionid");
-        assert_eq!(config.cookie_path, "/");
-        assert!(config.cookie_domain.is_none());
-        assert!(!config.secure);
-        assert!(config.httponly);
-        assert_eq!(config.samesite, SameSite::Lax);
-        assert!(config.max_age.is_none());
-    }
+	#[tokio::test]
+	async fn test_http_session_config_default() {
+		let config = HttpSessionConfig::default();
+		assert_eq!(config.cookie_name, "sessionid");
+		assert_eq!(config.cookie_path, "/");
+		assert!(config.cookie_domain.is_none());
+		assert!(!config.secure);
+		assert!(config.httponly);
+		assert_eq!(config.samesite, SameSite::Lax);
+		assert!(config.max_age.is_none());
+	}
 
-    #[tokio::test]
-    async fn test_session_middleware_new() {
-        let backend = InMemorySessionBackend::new();
-        let config = HttpSessionConfig::default();
-        let _middleware = SessionMiddleware::new(backend, config);
-    }
+	#[tokio::test]
+	async fn test_session_middleware_new() {
+		let backend = InMemorySessionBackend::new();
+		let config = HttpSessionConfig::default();
+		let _middleware = SessionMiddleware::new(backend, config);
+	}
 
-    #[tokio::test]
-    async fn test_session_middleware_with_defaults() {
-        let backend = InMemorySessionBackend::new();
-        let _middleware = SessionMiddleware::with_defaults(backend);
-    }
+	#[tokio::test]
+	async fn test_session_middleware_with_defaults() {
+		let backend = InMemorySessionBackend::new();
+		let _middleware = SessionMiddleware::with_defaults(backend);
+	}
 
-    #[tokio::test]
-    async fn test_build_set_cookie_header_basic() {
-        let backend = InMemorySessionBackend::new();
-        let config = HttpSessionConfig::default();
-        let middleware = SessionMiddleware::new(backend, config);
+	#[tokio::test]
+	async fn test_build_set_cookie_header_basic() {
+		let backend = InMemorySessionBackend::new();
+		let config = HttpSessionConfig::default();
+		let middleware = SessionMiddleware::new(backend, config);
 
-        let cookie = middleware.build_set_cookie_header("test_session_key");
+		let cookie = middleware.build_set_cookie_header("test_session_key");
 
-        assert!(cookie.contains("sessionid=test_session_key"));
-        assert!(cookie.contains("Path=/"));
-        assert!(cookie.contains("HttpOnly"));
-        assert!(cookie.contains("SameSite=Lax"));
-        assert!(!cookie.contains("Secure"));
-    }
+		assert!(cookie.contains("sessionid=test_session_key"));
+		assert!(cookie.contains("Path=/"));
+		assert!(cookie.contains("HttpOnly"));
+		assert!(cookie.contains("SameSite=Lax"));
+		assert!(!cookie.contains("Secure"));
+	}
 
-    #[tokio::test]
-    async fn test_build_set_cookie_header_with_all_options() {
-        let backend = InMemorySessionBackend::new();
-        let config = HttpSessionConfig {
-            cookie_name: "custom_session".to_string(),
-            cookie_path: "/api".to_string(),
-            cookie_domain: Some("example.com".to_string()),
-            secure: true,
-            httponly: true,
-            samesite: SameSite::Strict,
-            max_age: Some(Duration::from_secs(3600)),
-        };
-        let middleware = SessionMiddleware::new(backend, config);
+	#[tokio::test]
+	async fn test_build_set_cookie_header_with_all_options() {
+		let backend = InMemorySessionBackend::new();
+		let config = HttpSessionConfig {
+			cookie_name: "custom_session".to_string(),
+			cookie_path: "/api".to_string(),
+			cookie_domain: Some("example.com".to_string()),
+			secure: true,
+			httponly: true,
+			samesite: SameSite::Strict,
+			max_age: Some(Duration::from_secs(3600)),
+		};
+		let middleware = SessionMiddleware::new(backend, config);
 
-        let cookie = middleware.build_set_cookie_header("abc123");
+		let cookie = middleware.build_set_cookie_header("abc123");
 
-        assert!(cookie.contains("custom_session=abc123"));
-        assert!(cookie.contains("Path=/api"));
-        assert!(cookie.contains("Domain=example.com"));
-        assert!(cookie.contains("Max-Age=3600"));
-        assert!(cookie.contains("Secure"));
-        assert!(cookie.contains("HttpOnly"));
-        assert!(cookie.contains("SameSite=Strict"));
-    }
+		assert!(cookie.contains("custom_session=abc123"));
+		assert!(cookie.contains("Path=/api"));
+		assert!(cookie.contains("Domain=example.com"));
+		assert!(cookie.contains("Max-Age=3600"));
+		assert!(cookie.contains("Secure"));
+		assert!(cookie.contains("HttpOnly"));
+		assert!(cookie.contains("SameSite=Strict"));
+	}
 
-    #[tokio::test]
-    async fn test_middleware_creates_new_session_without_cookie() {
-        let backend = InMemorySessionBackend::new();
-        let middleware = SessionMiddleware::with_defaults(backend);
-        let handler = Arc::new(MockHandler);
-        let request = create_test_request();
+	#[tokio::test]
+	async fn test_middleware_creates_new_session_without_cookie() {
+		let backend = InMemorySessionBackend::new();
+		let middleware = SessionMiddleware::with_defaults(backend);
+		let handler = Arc::new(MockHandler);
+		let request = create_test_request();
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        // No session modification, so no Set-Cookie header
-        assert!(response.headers.get("set-cookie").is_none());
-    }
+		// No session modification, so no Set-Cookie header
+		assert!(response.headers.get("set-cookie").is_none());
+	}
 
-    #[tokio::test]
-    async fn test_middleware_sets_cookie_on_session_modification() {
-        let backend = InMemorySessionBackend::new();
-        let middleware = SessionMiddleware::with_defaults(backend);
-        let handler = Arc::new(SessionModifyingHandler);
-        let request = create_test_request();
+	#[tokio::test]
+	async fn test_middleware_sets_cookie_on_session_modification() {
+		let backend = InMemorySessionBackend::new();
+		let middleware = SessionMiddleware::with_defaults(backend);
+		let handler = Arc::new(SessionModifyingHandler);
+		let request = create_test_request();
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        // Session was modified, should have Set-Cookie header
-        let set_cookie = response.headers.get("set-cookie");
-        assert!(set_cookie.is_some());
+		// Session was modified, should have Set-Cookie header
+		let set_cookie = response.headers.get("set-cookie");
+		assert!(set_cookie.is_some());
 
-        let cookie_value = set_cookie.unwrap().to_str().unwrap();
-        assert!(cookie_value.starts_with("sessionid="));
-        assert!(cookie_value.contains("Path=/"));
-    }
+		let cookie_value = set_cookie.unwrap().to_str().unwrap();
+		assert!(cookie_value.starts_with("sessionid="));
+		assert!(cookie_value.contains("Path=/"));
+	}
 
-    #[tokio::test]
-    async fn test_middleware_loads_existing_session() {
-        let backend = InMemorySessionBackend::new();
+	#[tokio::test]
+	async fn test_middleware_loads_existing_session() {
+		let backend = InMemorySessionBackend::new();
 
-        // Pre-create a session
-        let mut session = Session::new(backend.clone());
-        session.set("existing_data", "test_value").unwrap();
-        session.save().await.unwrap();
-        let session_key = session.session_key().unwrap().to_string();
+		// Pre-create a session
+		let mut session = Session::new(backend.clone());
+		session.set("existing_data", "test_value").unwrap();
+		session.save().await.unwrap();
+		let session_key = session.session_key().unwrap().to_string();
 
-        let middleware = SessionMiddleware::with_defaults(backend);
-        let handler = Arc::new(MockHandler);
-        let request = create_test_request_with_cookie(&format!("sessionid={}", session_key));
+		let middleware = SessionMiddleware::with_defaults(backend);
+		let handler = Arc::new(MockHandler);
+		let request = create_test_request_with_cookie(&format!("sessionid={}", session_key));
 
-        let _response = middleware.process(request, handler).await.unwrap();
+		let _response = middleware.process(request, handler).await.unwrap();
 
-        // Session should be loaded (we can't easily verify this without extracting it)
-        // But at minimum, the middleware should not fail
-    }
+		// Session should be loaded (we can't easily verify this without extracting it)
+		// But at minimum, the middleware should not fail
+	}
 }

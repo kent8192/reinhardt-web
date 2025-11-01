@@ -12,83 +12,83 @@ use std::sync::Arc;
 /// ETag configuration
 #[derive(Debug, Clone)]
 pub struct ETagConfig {
-    /// Whether to use weak ETags
-    pub use_weak_etag: bool,
-    /// Paths to exclude
-    pub exclude_paths: Vec<String>,
-    /// Methods to exclude
-    pub exclude_methods: Vec<String>,
+	/// Whether to use weak ETags
+	pub use_weak_etag: bool,
+	/// Paths to exclude
+	pub exclude_paths: Vec<String>,
+	/// Methods to exclude
+	pub exclude_methods: Vec<String>,
 }
 
 impl ETagConfig {
-    /// Create a new configuration
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_middleware::etag::ETagConfig;
-    ///
-    /// let config = ETagConfig::new();
-    /// assert_eq!(config.use_weak_etag, false);
-    /// ```
-    pub fn new() -> Self {
-        Self {
-            use_weak_etag: false,
-            exclude_paths: Vec::new(),
-            exclude_methods: vec!["POST".to_string(), "PUT".to_string(), "PATCH".to_string()],
-        }
-    }
+	/// Create a new configuration
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::etag::ETagConfig;
+	///
+	/// let config = ETagConfig::new();
+	/// assert_eq!(config.use_weak_etag, false);
+	/// ```
+	pub fn new() -> Self {
+		Self {
+			use_weak_etag: false,
+			exclude_paths: Vec::new(),
+			exclude_methods: vec!["POST".to_string(), "PUT".to_string(), "PATCH".to_string()],
+		}
+	}
 
-    /// Use weak ETags
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_middleware::etag::ETagConfig;
-    ///
-    /// let config = ETagConfig::new().with_weak_etag();
-    /// assert_eq!(config.use_weak_etag, true);
-    /// ```
-    pub fn with_weak_etag(mut self) -> Self {
-        self.use_weak_etag = true;
-        self
-    }
+	/// Use weak ETags
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::etag::ETagConfig;
+	///
+	/// let config = ETagConfig::new().with_weak_etag();
+	/// assert_eq!(config.use_weak_etag, true);
+	/// ```
+	pub fn with_weak_etag(mut self) -> Self {
+		self.use_weak_etag = true;
+		self
+	}
 
-    /// Add paths to exclude
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_middleware::etag::ETagConfig;
-    ///
-    /// let config = ETagConfig::new()
-    ///     .with_excluded_paths(vec!["/admin".to_string()]);
-    /// ```
-    pub fn with_excluded_paths(mut self, paths: Vec<String>) -> Self {
-        self.exclude_paths.extend(paths);
-        self
-    }
+	/// Add paths to exclude
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::etag::ETagConfig;
+	///
+	/// let config = ETagConfig::new()
+	///     .with_excluded_paths(vec!["/admin".to_string()]);
+	/// ```
+	pub fn with_excluded_paths(mut self, paths: Vec<String>) -> Self {
+		self.exclude_paths.extend(paths);
+		self
+	}
 
-    /// Set methods to exclude
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_middleware::etag::ETagConfig;
-    ///
-    /// let config = ETagConfig::new()
-    ///     .with_excluded_methods(vec!["POST".to_string()]);
-    /// ```
-    pub fn with_excluded_methods(mut self, methods: Vec<String>) -> Self {
-        self.exclude_methods = methods;
-        self
-    }
+	/// Set methods to exclude
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::etag::ETagConfig;
+	///
+	/// let config = ETagConfig::new()
+	///     .with_excluded_methods(vec!["POST".to_string()]);
+	/// ```
+	pub fn with_excluded_methods(mut self, methods: Vec<String>) -> Self {
+		self.exclude_methods = methods;
+		self
+	}
 }
 
 impl Default for ETagConfig {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 /// ETag Middleware
@@ -130,443 +130,433 @@ impl Default for ETagConfig {
 /// # });
 /// ```
 pub struct ETagMiddleware {
-    config: ETagConfig,
+	config: ETagConfig,
 }
 
 impl ETagMiddleware {
-    /// Create a new ETag middleware
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_middleware::etag::{ETagMiddleware, ETagConfig};
-    ///
-    /// let config = ETagConfig::new();
-    /// let middleware = ETagMiddleware::new(config);
-    /// ```
-    pub fn new(config: ETagConfig) -> Self {
-        Self { config }
-    }
+	/// Create a new ETag middleware
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::etag::{ETagMiddleware, ETagConfig};
+	///
+	/// let config = ETagConfig::new();
+	/// let middleware = ETagMiddleware::new(config);
+	/// ```
+	pub fn new(config: ETagConfig) -> Self {
+		Self { config }
+	}
 
-    /// Create with default configuration
-    pub fn with_defaults() -> Self {
-        Self::new(ETagConfig::default())
-    }
+	/// Create with default configuration
+	pub fn with_defaults() -> Self {
+		Self::new(ETagConfig::default())
+	}
 
-    /// Check if path should be excluded
-    fn should_exclude_path(&self, path: &str) -> bool {
-        self.config
-            .exclude_paths
-            .iter()
-            .any(|p| path.starts_with(p))
-    }
+	/// Check if path should be excluded
+	fn should_exclude_path(&self, path: &str) -> bool {
+		self.config
+			.exclude_paths
+			.iter()
+			.any(|p| path.starts_with(p))
+	}
 
-    /// Check if method should be excluded
-    fn should_exclude_method(&self, method: &str) -> bool {
-        self.config
-            .exclude_methods
-            .iter()
-            .any(|m| m.eq_ignore_ascii_case(method))
-    }
+	/// Check if method should be excluded
+	fn should_exclude_method(&self, method: &str) -> bool {
+		self.config
+			.exclude_methods
+			.iter()
+			.any(|m| m.eq_ignore_ascii_case(method))
+	}
 
-    /// Generate ETag from body
-    fn generate_etag(&self, body: &[u8]) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(body);
-        let result = hasher.finalize();
-        let hash = hex::encode(result);
+	/// Generate ETag from body
+	fn generate_etag(&self, body: &[u8]) -> String {
+		let mut hasher = Sha256::new();
+		hasher.update(body);
+		let result = hasher.finalize();
+		let hash = hex::encode(result);
 
-        // Use first 16 characters (shortened version)
-        let short_hash = &hash[..16];
+		// Use first 16 characters (shortened version)
+		let short_hash = &hash[..16];
 
-        if self.config.use_weak_etag {
-            format!("W/\"{}\"", short_hash)
-        } else {
-            format!("\"{}\"", short_hash)
-        }
-    }
+		if self.config.use_weak_etag {
+			format!("W/\"{}\"", short_hash)
+		} else {
+			format!("\"{}\"", short_hash)
+		}
+	}
 
-    /// Check If-None-Match header
-    fn check_if_none_match(&self, request: &Request, etag: &str) -> bool {
-        if let Some(if_none_match) = request.headers.get("if-none-match") {
-            if let Ok(value) = if_none_match.to_str() {
-                // * matches everything
-                if value == "*" {
-                    return true;
-                }
+	/// Check If-None-Match header
+	fn check_if_none_match(&self, request: &Request, etag: &str) -> bool {
+		if let Some(if_none_match) = request.headers.get("if-none-match") {
+			if let Ok(value) = if_none_match.to_str() {
+				// * matches everything
+				if value == "*" {
+					return true;
+				}
 
-                // Check comma-separated ETag list
-                let etags: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
-                return etags.iter().any(|&e| e == etag);
-            }
-        }
-        false
-    }
+				// Check comma-separated ETag list
+				let etags: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+				return etags.iter().any(|&e| e == etag);
+			}
+		}
+		false
+	}
 
-    /// Check If-Match header
-    fn check_if_match(&self, request: &Request, etag: &str) -> bool {
-        if let Some(if_match) = request.headers.get("if-match") {
-            if let Ok(value) = if_match.to_str() {
-                // * matches everything
-                if value == "*" {
-                    return true;
-                }
+	/// Check If-Match header
+	fn check_if_match(&self, request: &Request, etag: &str) -> bool {
+		if let Some(if_match) = request.headers.get("if-match") {
+			if let Ok(value) = if_match.to_str() {
+				// * matches everything
+				if value == "*" {
+					return true;
+				}
 
-                // Check comma-separated ETag list
-                let etags: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
-                return etags.iter().any(|&e| e == etag);
-            }
-        }
-        // Always true if If-Match header is absent
-        true
-    }
+				// Check comma-separated ETag list
+				let etags: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+				return etags.iter().any(|&e| e == etag);
+			}
+		}
+		// Always true if If-Match header is absent
+		true
+	}
 }
 
 impl Default for ETagMiddleware {
-    fn default() -> Self {
-        Self::with_defaults()
-    }
+	fn default() -> Self {
+		Self::with_defaults()
+	}
 }
 
 #[async_trait]
 impl Middleware for ETagMiddleware {
-    async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
-        let path = request.uri.path().to_string();
-        let method = request.method.as_str().to_string();
+	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
+		let path = request.uri.path().to_string();
+		let method = request.method.as_str().to_string();
 
-        // Skip excluded paths or methods
-        if self.should_exclude_path(&path) || self.should_exclude_method(&method) {
-            return handler.handle(request).await;
-        }
+		// Skip excluded paths or methods
+		if self.should_exclude_path(&path) || self.should_exclude_method(&method) {
+			return handler.handle(request).await;
+		}
 
-        // Extract If-None-Match and If-Match headers before moving request
-        let if_none_match = request
-            .headers
-            .get(hyper::header::IF_NONE_MATCH)
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
+		// Extract If-None-Match and If-Match headers before moving request
+		let if_none_match = request
+			.headers
+			.get(hyper::header::IF_NONE_MATCH)
+			.and_then(|v| v.to_str().ok())
+			.map(|s| s.to_string());
 
-        let if_match = request
-            .headers
-            .get(hyper::header::IF_MATCH)
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
+		let if_match = request
+			.headers
+			.get(hyper::header::IF_MATCH)
+			.and_then(|v| v.to_str().ok())
+			.map(|s| s.to_string());
 
-        // Call handler
-        let response = handler.handle(request).await?;
+		// Call handler
+		let response = handler.handle(request).await?;
 
-        // Generate ETag
-        let etag = self.generate_etag(&response.body);
+		// Generate ETag
+		let etag = self.generate_etag(&response.body);
 
-        // Check If-None-Match header (for GET/HEAD requests)
-        if (method == "GET" || method == "HEAD")
-            && if_none_match.as_ref().map_or(false, |inm| {
-                inm.split(',')
-                    .any(|tag| tag.trim().trim_matches('"') == etag.trim_matches('"'))
-            })
-        {
-            // Return 304 Not Modified
-            let mut not_modified = Response::new(StatusCode::NOT_MODIFIED);
-            not_modified.headers.insert(
-                hyper::header::ETAG,
-                hyper::header::HeaderValue::from_str(&etag)
-                    .unwrap_or_else(|_| hyper::header::HeaderValue::from_static("\"\"")),
-            );
-            return Ok(not_modified);
-        }
+		// Check If-None-Match header (for GET/HEAD requests)
+		if (method == "GET" || method == "HEAD")
+			&& if_none_match.as_ref().map_or(false, |inm| {
+				inm.split(',')
+					.any(|tag| tag.trim().trim_matches('"') == etag.trim_matches('"'))
+			}) {
+			// Return 304 Not Modified
+			let mut not_modified = Response::new(StatusCode::NOT_MODIFIED);
+			not_modified.headers.insert(
+				hyper::header::ETAG,
+				hyper::header::HeaderValue::from_str(&etag)
+					.unwrap_or_else(|_| hyper::header::HeaderValue::from_static("\"\"")),
+			);
+			return Ok(not_modified);
+		}
 
-        // Check If-Match header (for PUT/PATCH/DELETE requests)
-        if (method == "PUT" || method == "PATCH" || method == "DELETE")
-            && if_match
-                .as_ref()
-                .map_or(false, |im| !im.contains(&etag) && im != "*")
-        {
-            // Return 412 Precondition Failed
-            return Ok(Response::new(StatusCode::PRECONDITION_FAILED)
-                .with_body(b"Precondition Failed".to_vec()));
-        }
+		// Check If-Match header (for PUT/PATCH/DELETE requests)
+		if (method == "PUT" || method == "PATCH" || method == "DELETE")
+			&& if_match
+				.as_ref()
+				.map_or(false, |im| !im.contains(&etag) && im != "*")
+		{
+			// Return 412 Precondition Failed
+			return Ok(Response::new(StatusCode::PRECONDITION_FAILED)
+				.with_body(b"Precondition Failed".to_vec()));
+		}
 
-        // Add ETag header to response
-        let mut response = response;
-        response.headers.insert(
-            hyper::header::ETAG,
-            hyper::header::HeaderValue::from_str(&etag)
-                .unwrap_or_else(|_| hyper::header::HeaderValue::from_static("\"\"")),
-        );
+		// Add ETag header to response
+		let mut response = response;
+		response.headers.insert(
+			hyper::header::ETAG,
+			hyper::header::HeaderValue::from_str(&etag)
+				.unwrap_or_else(|_| hyper::header::HeaderValue::from_static("\"\"")),
+		);
 
-        Ok(response)
-    }
+		Ok(response)
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use bytes::Bytes;
-    use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+	use super::*;
+	use bytes::Bytes;
+	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
 
-    struct TestHandler {
-        body: Vec<u8>,
-    }
+	struct TestHandler {
+		body: Vec<u8>,
+	}
 
-    impl TestHandler {
-        fn new(body: Vec<u8>) -> Self {
-            Self { body }
-        }
-    }
+	impl TestHandler {
+		fn new(body: Vec<u8>) -> Self {
+			Self { body }
+		}
+	}
 
-    #[async_trait]
-    impl Handler for TestHandler {
-        async fn handle(&self, _request: Request) -> Result<Response> {
-            Ok(Response::new(StatusCode::OK).with_body(self.body.clone()))
-        }
-    }
+	#[async_trait]
+	impl Handler for TestHandler {
+		async fn handle(&self, _request: Request) -> Result<Response> {
+			Ok(Response::new(StatusCode::OK).with_body(self.body.clone()))
+		}
+	}
 
-    #[tokio::test]
-    async fn test_etag_generation() {
-        let config = ETagConfig::new();
-        let middleware = ETagMiddleware::new(config);
-        let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+	#[tokio::test]
+	async fn test_etag_generation() {
+		let config = ETagConfig::new();
+		let middleware = ETagMiddleware::new(config);
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert!(response.headers.contains_key("etag"));
+		assert_eq!(response.status, StatusCode::OK);
+		assert!(response.headers.contains_key("etag"));
 
-        let etag = response.headers.get("etag").unwrap().to_str().unwrap();
-        assert!(etag.starts_with('"'));
-        assert!(etag.ends_with('"'));
-    }
+		let etag = response.headers.get("etag").unwrap().to_str().unwrap();
+		assert!(etag.starts_with('"'));
+		assert!(etag.ends_with('"'));
+	}
 
-    #[tokio::test]
-    async fn test_weak_etag() {
-        let config = ETagConfig::new().with_weak_etag();
-        let middleware = ETagMiddleware::new(config);
-        let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+	#[tokio::test]
+	async fn test_weak_etag() {
+		let config = ETagConfig::new().with_weak_etag();
+		let middleware = ETagMiddleware::new(config);
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        let etag = response.headers.get("etag").unwrap().to_str().unwrap();
-        assert!(etag.starts_with("W/"));
-    }
+		let etag = response.headers.get("etag").unwrap().to_str().unwrap();
+		assert!(etag.starts_with("W/"));
+	}
 
-    #[tokio::test]
-    async fn test_if_none_match_hit() {
-        let config = ETagConfig::new();
-        let middleware = Arc::new(ETagMiddleware::new(config));
-        let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+	#[tokio::test]
+	async fn test_if_none_match_hit() {
+		let config = ETagConfig::new();
+		let middleware = Arc::new(ETagMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
 
-        // Get ETag from first request
-        let request1 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let response1 = middleware
-            .process(request1, handler.clone())
-            .await
-            .unwrap();
-        let etag = response1.headers.get("etag").unwrap().clone();
+		// Get ETag from first request
+		let request1 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let response1 = middleware.process(request1, handler.clone()).await.unwrap();
+		let etag = response1.headers.get("etag").unwrap().clone();
 
-        // Second request with If-None-Match header
-        let mut headers = HeaderMap::new();
-        headers.insert(hyper::header::IF_NONE_MATCH, etag);
-        let request2 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
-        let response2 = middleware.process(request2, handler).await.unwrap();
+		// Second request with If-None-Match header
+		let mut headers = HeaderMap::new();
+		headers.insert(hyper::header::IF_NONE_MATCH, etag);
+		let request2 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
+		let response2 = middleware.process(request2, handler).await.unwrap();
 
-        assert_eq!(response2.status, StatusCode::NOT_MODIFIED);
-        assert!(response2.headers.contains_key("etag"));
-        assert!(response2.body.is_empty());
-    }
+		assert_eq!(response2.status, StatusCode::NOT_MODIFIED);
+		assert!(response2.headers.contains_key("etag"));
+		assert!(response2.body.is_empty());
+	}
 
-    #[tokio::test]
-    async fn test_if_none_match_miss() {
-        let config = ETagConfig::new();
-        let middleware = ETagMiddleware::new(config);
-        let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+	#[tokio::test]
+	async fn test_if_none_match_miss() {
+		let config = ETagConfig::new();
+		let middleware = ETagMiddleware::new(config);
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
 
-        // Request with different ETag
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            hyper::header::IF_NONE_MATCH,
-            hyper::header::HeaderValue::from_static("\"different-etag\""),
-        );
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
-        let response = middleware.process(request, handler).await.unwrap();
+		// Request with different ETag
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			hyper::header::IF_NONE_MATCH,
+			hyper::header::HeaderValue::from_static("\"different-etag\""),
+		);
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
+		let response = middleware.process(request, handler).await.unwrap();
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert!(response.headers.contains_key("etag"));
-        assert!(!response.body.is_empty());
-    }
+		assert_eq!(response.status, StatusCode::OK);
+		assert!(response.headers.contains_key("etag"));
+		assert!(!response.body.is_empty());
+	}
 
-    #[tokio::test]
-    async fn test_if_match_success() {
-        let config = ETagConfig::new();
-        let middleware = Arc::new(ETagMiddleware::new(config));
-        let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+	#[tokio::test]
+	async fn test_if_match_success() {
+		let config = ETagConfig::new();
+		let middleware = Arc::new(ETagMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
 
-        // Get ETag from first request
-        let request1 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let response1 = middleware
-            .process(request1, handler.clone())
-            .await
-            .unwrap();
-        let etag = response1.headers.get("etag").unwrap().clone();
+		// Get ETag from first request
+		let request1 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let response1 = middleware.process(request1, handler.clone()).await.unwrap();
+		let etag = response1.headers.get("etag").unwrap().clone();
 
-        // PUT request with If-Match header
-        let mut headers = HeaderMap::new();
-        headers.insert(hyper::header::IF_MATCH, etag);
-        let request2 = Request::new(
-            Method::PUT,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
-        let response2 = middleware.process(request2, handler).await.unwrap();
+		// PUT request with If-Match header
+		let mut headers = HeaderMap::new();
+		headers.insert(hyper::header::IF_MATCH, etag);
+		let request2 = Request::new(
+			Method::PUT,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
+		let response2 = middleware.process(request2, handler).await.unwrap();
 
-        // PUT method is excluded, so ETag check is skipped
-        assert_eq!(response2.status, StatusCode::OK);
-    }
+		// PUT method is excluded, so ETag check is skipped
+		assert_eq!(response2.status, StatusCode::OK);
+	}
 
-    #[tokio::test]
-    async fn test_exclude_paths() {
-        let config = ETagConfig::new().with_excluded_paths(vec!["/admin".to_string()]);
-        let middleware = ETagMiddleware::new(config);
-        let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+	#[tokio::test]
+	async fn test_exclude_paths() {
+		let config = ETagConfig::new().with_excluded_paths(vec!["/admin".to_string()]);
+		let middleware = ETagMiddleware::new(config);
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/admin/users"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/admin/users"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert!(!response.headers.contains_key("etag"));
-    }
+		assert_eq!(response.status, StatusCode::OK);
+		assert!(!response.headers.contains_key("etag"));
+	}
 
-    #[tokio::test]
-    async fn test_exclude_methods() {
-        let config = ETagConfig::new().with_excluded_methods(vec!["POST".to_string()]);
-        let middleware = ETagMiddleware::new(config);
-        let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+	#[tokio::test]
+	async fn test_exclude_methods() {
+		let config = ETagConfig::new().with_excluded_methods(vec!["POST".to_string()]);
+		let middleware = ETagMiddleware::new(config);
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
 
-        let request = Request::new(
-            Method::POST,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::POST,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert!(!response.headers.contains_key("etag"));
-    }
+		assert_eq!(response.status, StatusCode::OK);
+		assert!(!response.headers.contains_key("etag"));
+	}
 
-    #[tokio::test]
-    async fn test_same_body_same_etag() {
-        let config = ETagConfig::new();
-        let middleware = Arc::new(ETagMiddleware::new(config));
-        let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
+	#[tokio::test]
+	async fn test_same_body_same_etag() {
+		let config = ETagConfig::new();
+		let middleware = Arc::new(ETagMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(b"test body".to_vec()));
 
-        // Two requests with same body
-        let request1 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let response1 = middleware
-            .process(request1, handler.clone())
-            .await
-            .unwrap();
-        let etag1 = response1.headers.get("etag").unwrap().to_str().unwrap();
+		// Two requests with same body
+		let request1 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let response1 = middleware.process(request1, handler.clone()).await.unwrap();
+		let etag1 = response1.headers.get("etag").unwrap().to_str().unwrap();
 
-        let request2 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let response2 = middleware.process(request2, handler).await.unwrap();
-        let etag2 = response2.headers.get("etag").unwrap().to_str().unwrap();
+		let request2 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let response2 = middleware.process(request2, handler).await.unwrap();
+		let etag2 = response2.headers.get("etag").unwrap().to_str().unwrap();
 
-        assert_eq!(etag1, etag2);
-    }
+		assert_eq!(etag1, etag2);
+	}
 
-    #[tokio::test]
-    async fn test_different_body_different_etag() {
-        let config = ETagConfig::new();
-        let middleware = Arc::new(ETagMiddleware::new(config));
+	#[tokio::test]
+	async fn test_different_body_different_etag() {
+		let config = ETagConfig::new();
+		let middleware = Arc::new(ETagMiddleware::new(config));
 
-        let handler1 = Arc::new(TestHandler::new(b"body1".to_vec()));
-        let request1 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let response1 = middleware
-            .process(request1, handler1.clone())
-            .await
-            .unwrap();
-        let etag1 = response1.headers.get("etag").unwrap().to_str().unwrap();
+		let handler1 = Arc::new(TestHandler::new(b"body1".to_vec()));
+		let request1 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let response1 = middleware
+			.process(request1, handler1.clone())
+			.await
+			.unwrap();
+		let etag1 = response1.headers.get("etag").unwrap().to_str().unwrap();
 
-        let handler2 = Arc::new(TestHandler::new(b"body2".to_vec()));
-        let request2 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let response2 = middleware.process(request2, handler2).await.unwrap();
-        let etag2 = response2.headers.get("etag").unwrap().to_str().unwrap();
+		let handler2 = Arc::new(TestHandler::new(b"body2".to_vec()));
+		let request2 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let response2 = middleware.process(request2, handler2).await.unwrap();
+		let etag2 = response2.headers.get("etag").unwrap().to_str().unwrap();
 
-        assert_ne!(etag1, etag2);
-    }
+		assert_ne!(etag1, etag2);
+	}
 }

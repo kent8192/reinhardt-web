@@ -59,8 +59,8 @@ pub mod webhook;
 pub mod worker;
 
 pub use backend::{
-    DummyBackend, ImmediateBackend, ResultStatus, TaskBackend, TaskBackends, TaskExecutionError,
-    TaskResultStatus,
+	DummyBackend, ImmediateBackend, ResultStatus, TaskBackend, TaskBackends, TaskExecutionError,
+	TaskResultStatus,
 };
 
 #[cfg(feature = "redis-backend")]
@@ -76,7 +76,7 @@ pub use backends::{SqsBackend, SqsConfig};
 pub use backends::{RabbitMQBackend, RabbitMQConfig};
 pub use chain::{ChainStatus, TaskChain, TaskChainBuilder};
 pub use dag::{TaskDAG, TaskNode, TaskNodeStatus};
-pub use load_balancer::{LoadBalancer, LoadBalancingStrategy, WorkerInfo, WorkerId, WorkerMetrics};
+pub use load_balancer::{LoadBalancer, LoadBalancingStrategy, WorkerId, WorkerInfo, WorkerMetrics};
 pub use locking::{MemoryTaskLock, TaskLock};
 
 #[cfg(feature = "redis-backend")]
@@ -86,8 +86,8 @@ pub use priority_queue::{Priority, PriorityTaskQueue};
 pub use queue::{QueueConfig, TaskQueue};
 pub use registry::{SerializedTask, TaskFactory, TaskRegistry};
 pub use result::{
-    MemoryResultBackend, ResultBackend, TaskOutput, TaskResult as TaskResultBackend,
-    TaskResultMetadata,
+	MemoryResultBackend, ResultBackend, TaskOutput, TaskResult as TaskResultBackend,
+	TaskResultMetadata,
 };
 
 #[cfg(feature = "redis-backend")]
@@ -101,12 +101,12 @@ pub use backends::sqs::SqsResultBackend;
 pub use retry::{RetryState, RetryStrategy};
 pub use scheduler::{CronSchedule, Schedule, Scheduler};
 pub use task::{
-    Task, TaskExecutor, TaskId, TaskPriority, TaskStatus, DEFAULT_TASK_QUEUE_NAME,
-    TASK_MAX_PRIORITY, TASK_MIN_PRIORITY,
+	DEFAULT_TASK_QUEUE_NAME, TASK_MAX_PRIORITY, TASK_MIN_PRIORITY, Task, TaskExecutor, TaskId,
+	TaskPriority, TaskStatus,
 };
 pub use webhook::{
-    HttpWebhookSender, RetryConfig, TaskStatus as WebhookTaskStatus, WebhookConfig, WebhookError,
-    WebhookEvent, WebhookSender,
+	HttpWebhookSender, RetryConfig, TaskStatus as WebhookTaskStatus, WebhookConfig, WebhookError,
+	WebhookEvent, WebhookSender,
 };
 pub use worker::{Worker, WorkerConfig};
 
@@ -127,62 +127,62 @@ pub type TaskResult<T> = Result<T, TaskError>;
 /// ```
 #[derive(Debug, Error)]
 pub enum TaskError {
-    /// Task execution failed
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_tasks::TaskError;
-    ///
-    /// let error = TaskError::ExecutionFailed("Network error".to_string());
-    /// ```
-    #[error("Task execution failed: {0}")]
-    ExecutionFailed(String),
+	/// Task execution failed
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskError;
+	///
+	/// let error = TaskError::ExecutionFailed("Network error".to_string());
+	/// ```
+	#[error("Task execution failed: {0}")]
+	ExecutionFailed(String),
 
-    /// Task not found
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_tasks::TaskError;
-    ///
-    /// let error = TaskError::TaskNotFound("task-123".to_string());
-    /// assert_eq!(error.to_string(), "Task not found: task-123");
-    /// ```
-    #[error("Task not found: {0}")]
-    TaskNotFound(String),
+	/// Task not found
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskError;
+	///
+	/// let error = TaskError::TaskNotFound("task-123".to_string());
+	/// assert_eq!(error.to_string(), "Task not found: task-123");
+	/// ```
+	#[error("Task not found: {0}")]
+	TaskNotFound(String),
 
-    /// Queue error
-    #[error("Queue error: {0}")]
-    QueueError(String),
+	/// Queue error
+	#[error("Queue error: {0}")]
+	QueueError(String),
 
-    /// Serialization error
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
+	/// Serialization error
+	#[error("Serialization error: {0}")]
+	SerializationError(String),
 
-    /// Task timeout
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_tasks::TaskError;
-    ///
-    /// let error = TaskError::Timeout;
-    /// assert_eq!(error.to_string(), "Task timeout");
-    /// ```
-    #[error("Task timeout")]
-    Timeout,
+	/// Task timeout
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskError;
+	///
+	/// let error = TaskError::Timeout;
+	/// assert_eq!(error.to_string(), "Task timeout");
+	/// ```
+	#[error("Task timeout")]
+	Timeout,
 
-    /// Max retries exceeded
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_tasks::TaskError;
-    ///
-    /// let error = TaskError::MaxRetriesExceeded;
-    /// assert_eq!(error.to_string(), "Max retries exceeded");
-    /// ```
-    #[error("Max retries exceeded")]
-    MaxRetriesExceeded,
+	/// Max retries exceeded
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskError;
+	///
+	/// let error = TaskError::MaxRetriesExceeded;
+	/// assert_eq!(error.to_string(), "Max retries exceeded");
+	/// ```
+	#[error("Max retries exceeded")]
+	MaxRetriesExceeded,
 }

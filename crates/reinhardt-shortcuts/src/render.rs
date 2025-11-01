@@ -33,15 +33,15 @@ use serde::Serialize;
 ///
 /// A `Response` with HTTP 200 status, JSON content-type, and the serialized data as body.
 pub fn render_json<T: Serialize>(data: &T) -> Response {
-    let json_string = serde_json::to_string(data).unwrap_or_else(|_| "{}".to_string());
+	let json_string = serde_json::to_string(data).unwrap_or_else(|_| "{}".to_string());
 
-    let mut response = Response::ok();
-    response.body = Bytes::from(json_string);
-    response
-        .headers
-        .insert("content-type", "application/json".parse().unwrap());
+	let mut response = Response::ok();
+	response.body = Bytes::from(json_string);
+	response
+		.headers
+		.insert("content-type", "application/json".parse().unwrap());
 
-    response
+	response
 }
 
 /// Render data as JSON with pretty printing and return an HTTP 200 response
@@ -58,15 +58,15 @@ pub fn render_json<T: Serialize>(data: &T) -> Response {
 /// let response = render_json_pretty(&data);
 /// ```
 pub fn render_json_pretty<T: Serialize>(data: &T) -> Response {
-    let json_string = serde_json::to_string_pretty(data).unwrap_or_else(|_| "{}".to_string());
+	let json_string = serde_json::to_string_pretty(data).unwrap_or_else(|_| "{}".to_string());
 
-    let mut response = Response::ok();
-    response.body = Bytes::from(json_string);
-    response
-        .headers
-        .insert("content-type", "application/json".parse().unwrap());
+	let mut response = Response::ok();
+	response.body = Bytes::from(json_string);
+	response
+		.headers
+		.insert("content-type", "application/json".parse().unwrap());
 
-    response
+	response
 }
 
 /// Render a simple HTML string and return an HTTP 200 response
@@ -90,13 +90,13 @@ pub fn render_json_pretty<T: Serialize>(data: &T) -> Response {
 ///
 /// A `Response` with HTTP 200 status, HTML content-type, and the HTML as body.
 pub fn render_html(html: impl Into<String>) -> Response {
-    let mut response = Response::ok();
-    response.body = Bytes::from(html.into());
-    response
-        .headers
-        .insert("content-type", "text/html; charset=utf-8".parse().unwrap());
+	let mut response = Response::ok();
+	response.body = Bytes::from(html.into());
+	response
+		.headers
+		.insert("content-type", "text/html; charset=utf-8".parse().unwrap());
 
-    response
+	response
 }
 
 /// Render a simple text string and return an HTTP 200 response
@@ -120,111 +120,111 @@ pub fn render_html(html: impl Into<String>) -> Response {
 ///
 /// A `Response` with HTTP 200 status, text content-type, and the text as body.
 pub fn render_text(text: impl Into<String>) -> Response {
-    let mut response = Response::ok();
-    response.body = Bytes::from(text.into());
-    response
-        .headers
-        .insert("content-type", "text/plain; charset=utf-8".parse().unwrap());
+	let mut response = Response::ok();
+	response.body = Bytes::from(text.into());
+	response
+		.headers
+		.insert("content-type", "text/plain; charset=utf-8".parse().unwrap());
 
-    response
+	response
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use hyper::StatusCode;
-    use serde_json::json;
+	use super::*;
+	use hyper::StatusCode;
+	use serde_json::json;
 
-    #[test]
-    fn test_render_json() {
-        let data = json!({"name": "test", "value": 123});
-        let response = render_json(&data);
+	#[test]
+	fn test_render_json() {
+		let data = json!({"name": "test", "value": 123});
+		let response = render_json(&data);
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert_eq!(
-            response
-                .headers
-                .get("content-type")
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "application/json"
-        );
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(
+			response
+				.headers
+				.get("content-type")
+				.unwrap()
+				.to_str()
+				.unwrap(),
+			"application/json"
+		);
 
-        let body_str = String::from_utf8(response.body.to_vec()).unwrap();
-        assert!(body_str.contains("test"));
-        assert!(body_str.contains("123"));
-    }
+		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
+		assert!(body_str.contains("test"));
+		assert!(body_str.contains("123"));
+	}
 
-    #[test]
-    fn test_render_json_pretty() {
-        let data = json!({"name": "test"});
-        let response = render_json_pretty(&data);
+	#[test]
+	fn test_render_json_pretty() {
+		let data = json!({"name": "test"});
+		let response = render_json_pretty(&data);
 
-        assert_eq!(response.status, StatusCode::OK);
-        let body_str = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(response.status, StatusCode::OK);
+		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 
-        // Pretty printed JSON should have newlines
-        assert!(body_str.contains('\n'));
-    }
+		// Pretty printed JSON should have newlines
+		assert!(body_str.contains('\n'));
+	}
 
-    #[test]
-    fn test_render_html() {
-        let html = "<h1>Title</h1><p>Content</p>";
-        let response = render_html(html);
+	#[test]
+	fn test_render_html() {
+		let html = "<h1>Title</h1><p>Content</p>";
+		let response = render_html(html);
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert_eq!(
-            response
-                .headers
-                .get("content-type")
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "text/html; charset=utf-8"
-        );
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(
+			response
+				.headers
+				.get("content-type")
+				.unwrap()
+				.to_str()
+				.unwrap(),
+			"text/html; charset=utf-8"
+		);
 
-        let body_str = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body_str, "<h1>Title</h1><p>Content</p>");
-    }
+		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body_str, "<h1>Title</h1><p>Content</p>");
+	}
 
-    #[test]
-    fn test_render_text() {
-        let text = "Plain text content";
-        let response = render_text(text);
+	#[test]
+	fn test_render_text() {
+		let text = "Plain text content";
+		let response = render_text(text);
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert_eq!(
-            response
-                .headers
-                .get("content-type")
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "text/plain; charset=utf-8"
-        );
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(
+			response
+				.headers
+				.get("content-type")
+				.unwrap()
+				.to_str()
+				.unwrap(),
+			"text/plain; charset=utf-8"
+		);
 
-        let body_str = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body_str, "Plain text content");
-    }
+		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body_str, "Plain text content");
+	}
 
-    #[test]
-    fn test_render_json_with_custom_struct() {
-        #[derive(serde::Serialize)]
-        struct User {
-            name: String,
-            age: u32,
-        }
+	#[test]
+	fn test_render_json_with_custom_struct() {
+		#[derive(serde::Serialize)]
+		struct User {
+			name: String,
+			age: u32,
+		}
 
-        let user = User {
-            name: "Alice".to_string(),
-            age: 30,
-        };
+		let user = User {
+			name: "Alice".to_string(),
+			age: 30,
+		};
 
-        let response = render_json(&user);
-        let body_str = String::from_utf8(response.body.to_vec()).unwrap();
+		let response = render_json(&user);
+		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 
-        assert!(body_str.contains("Alice"));
-        assert!(body_str.contains("30"));
-    }
+		assert!(body_str.contains("Alice"));
+		assert!(body_str.contains("30"));
+	}
 }

@@ -1,7 +1,7 @@
+use crate::Argon2Hasher;
 use crate::base_user::BaseUser;
 use crate::full_user::FullUser;
 use crate::permissions_mixin::PermissionsMixin;
-use crate::Argon2Hasher;
 use chrono::{DateTime, Utc};
 use reinhardt_orm::Model;
 use serde::{Deserialize, Serialize};
@@ -108,159 +108,159 @@ use uuid::Uuid;
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DefaultUser {
-    /// Unique identifier (primary key)
-    pub id: Uuid,
+	/// Unique identifier (primary key)
+	pub id: Uuid,
 
-    /// Username (unique, used for login)
-    pub username: String,
+	/// Username (unique, used for login)
+	pub username: String,
 
-    /// Email address
-    pub email: String,
+	/// Email address
+	pub email: String,
 
-    /// First name
-    pub first_name: String,
+	/// First name
+	pub first_name: String,
 
-    /// Last name
-    pub last_name: String,
+	/// Last name
+	pub last_name: String,
 
-    /// Password hash (hashed with Argon2id by default)
-    pub password_hash: Option<String>,
+	/// Password hash (hashed with Argon2id by default)
+	pub password_hash: Option<String>,
 
-    /// Last login timestamp
-    pub last_login: Option<DateTime<Utc>>,
+	/// Last login timestamp
+	pub last_login: Option<DateTime<Utc>>,
 
-    /// Whether this user account is active
-    pub is_active: bool,
+	/// Whether this user account is active
+	pub is_active: bool,
 
-    /// Whether this user can access the admin site
-    pub is_staff: bool,
+	/// Whether this user can access the admin site
+	pub is_staff: bool,
 
-    /// Whether this user has all permissions (superuser)
-    pub is_superuser: bool,
+	/// Whether this user has all permissions (superuser)
+	pub is_superuser: bool,
 
-    /// When this user account was created
-    pub date_joined: DateTime<Utc>,
+	/// When this user account was created
+	pub date_joined: DateTime<Utc>,
 
-    /// List of permissions (format: "app_label.permission_name")
-    pub user_permissions: Vec<String>,
+	/// List of permissions (format: "app_label.permission_name")
+	pub user_permissions: Vec<String>,
 
-    /// List of groups this user belongs to
-    pub groups: Vec<String>,
+	/// List of groups this user belongs to
+	pub groups: Vec<String>,
 }
 
 impl BaseUser for DefaultUser {
-    type PrimaryKey = Uuid;
-    type Hasher = Argon2Hasher;
+	type PrimaryKey = Uuid;
+	type Hasher = Argon2Hasher;
 
-    fn get_username_field() -> &'static str {
-        "username"
-    }
+	fn get_username_field() -> &'static str {
+		"username"
+	}
 
-    fn get_username(&self) -> &str {
-        &self.username
-    }
+	fn get_username(&self) -> &str {
+		&self.username
+	}
 
-    fn password_hash(&self) -> Option<&str> {
-        self.password_hash.as_deref()
-    }
+	fn password_hash(&self) -> Option<&str> {
+		self.password_hash.as_deref()
+	}
 
-    fn set_password_hash(&mut self, hash: String) {
-        self.password_hash = Some(hash);
-    }
+	fn set_password_hash(&mut self, hash: String) {
+		self.password_hash = Some(hash);
+	}
 
-    fn last_login(&self) -> Option<DateTime<Utc>> {
-        self.last_login
-    }
+	fn last_login(&self) -> Option<DateTime<Utc>> {
+		self.last_login
+	}
 
-    fn set_last_login(&mut self, time: DateTime<Utc>) {
-        self.last_login = Some(time);
-    }
+	fn set_last_login(&mut self, time: DateTime<Utc>) {
+		self.last_login = Some(time);
+	}
 
-    fn is_active(&self) -> bool {
-        self.is_active
-    }
+	fn is_active(&self) -> bool {
+		self.is_active
+	}
 }
 
 impl FullUser for DefaultUser {
-    fn username(&self) -> &str {
-        &self.username
-    }
+	fn username(&self) -> &str {
+		&self.username
+	}
 
-    fn email(&self) -> &str {
-        &self.email
-    }
+	fn email(&self) -> &str {
+		&self.email
+	}
 
-    fn first_name(&self) -> &str {
-        &self.first_name
-    }
+	fn first_name(&self) -> &str {
+		&self.first_name
+	}
 
-    fn last_name(&self) -> &str {
-        &self.last_name
-    }
+	fn last_name(&self) -> &str {
+		&self.last_name
+	}
 
-    fn is_staff(&self) -> bool {
-        self.is_staff
-    }
+	fn is_staff(&self) -> bool {
+		self.is_staff
+	}
 
-    fn is_superuser(&self) -> bool {
-        self.is_superuser
-    }
+	fn is_superuser(&self) -> bool {
+		self.is_superuser
+	}
 
-    fn date_joined(&self) -> DateTime<Utc> {
-        self.date_joined
-    }
+	fn date_joined(&self) -> DateTime<Utc> {
+		self.date_joined
+	}
 }
 
 impl PermissionsMixin for DefaultUser {
-    fn is_superuser(&self) -> bool {
-        self.is_superuser
-    }
+	fn is_superuser(&self) -> bool {
+		self.is_superuser
+	}
 
-    fn user_permissions(&self) -> &[String] {
-        &self.user_permissions
-    }
+	fn user_permissions(&self) -> &[String] {
+		&self.user_permissions
+	}
 
-    fn groups(&self) -> &[String] {
-        &self.groups
-    }
+	fn groups(&self) -> &[String] {
+		&self.groups
+	}
 }
 
 impl Model for DefaultUser {
-    type PrimaryKey = Uuid;
+	type PrimaryKey = Uuid;
 
-    fn table_name() -> &'static str {
-        "auth_user"
-    }
+	fn table_name() -> &'static str {
+		"auth_user"
+	}
 
-    fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-        Some(&self.id)
-    }
+	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+		Some(&self.id)
+	}
 
-    fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-        self.id = value;
-    }
+	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+		self.id = value;
+	}
 
-    fn primary_key_field() -> &'static str {
-        "id"
-    }
+	fn primary_key_field() -> &'static str {
+		"id"
+	}
 }
 
 impl Default for DefaultUser {
-    fn default() -> Self {
-        Self {
-            id: Uuid::nil(),
-            username: String::new(),
-            email: String::new(),
-            first_name: String::new(),
-            last_name: String::new(),
-            password_hash: None,
-            last_login: None,
-            is_active: true,
-            is_staff: false,
-            is_superuser: false,
-            date_joined: Utc::now(),
-            user_permissions: Vec::new(),
-            groups: Vec::new(),
-        }
-    }
+	fn default() -> Self {
+		Self {
+			id: Uuid::nil(),
+			username: String::new(),
+			email: String::new(),
+			first_name: String::new(),
+			last_name: String::new(),
+			password_hash: None,
+			last_login: None,
+			is_active: true,
+			is_staff: false,
+			is_superuser: false,
+			date_joined: Utc::now(),
+			user_permissions: Vec::new(),
+			groups: Vec::new(),
+		}
+	}
 }

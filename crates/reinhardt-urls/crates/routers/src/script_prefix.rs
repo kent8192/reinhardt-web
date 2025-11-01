@@ -26,9 +26,9 @@
 use std::cell::RefCell;
 
 thread_local! {
-    /// Thread-local storage for the script prefix.
-    /// Defaults to "/" if not set.
-    static SCRIPT_PREFIX: RefCell<String> = RefCell::new(String::from("/"));
+	/// Thread-local storage for the script prefix.
+	/// Defaults to "/" if not set.
+	static SCRIPT_PREFIX: RefCell<String> = RefCell::new(String::from("/"));
 }
 
 /// Set the script prefix for URL generation.
@@ -48,9 +48,9 @@ thread_local! {
 /// set_script_prefix("/myapp/");
 /// ```
 pub fn set_script_prefix(prefix: &str) {
-    SCRIPT_PREFIX.with(|p| {
-        *p.borrow_mut() = prefix.to_string();
-    });
+	SCRIPT_PREFIX.with(|p| {
+		*p.borrow_mut() = prefix.to_string();
+	});
 }
 
 /// Get the current script prefix.
@@ -66,7 +66,7 @@ pub fn set_script_prefix(prefix: &str) {
 /// assert_eq!(get_script_prefix(), "/myapp/");
 /// ```
 pub fn get_script_prefix() -> String {
-    SCRIPT_PREFIX.with(|p| p.borrow().clone())
+	SCRIPT_PREFIX.with(|p| p.borrow().clone())
 }
 
 /// Clear the script prefix, resetting it to the default "/".
@@ -81,70 +81,70 @@ pub fn get_script_prefix() -> String {
 /// assert_eq!(get_script_prefix(), "/");
 /// ```
 pub fn clear_script_prefix() {
-    SCRIPT_PREFIX.with(|p| {
-        *p.borrow_mut() = String::from("/");
-    });
+	SCRIPT_PREFIX.with(|p| {
+		*p.borrow_mut() = String::from("/");
+	});
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_default_script_prefix() {
-        // Clear any previous state
-        clear_script_prefix();
-        assert_eq!(get_script_prefix(), "/");
-    }
+	#[test]
+	fn test_default_script_prefix() {
+		// Clear any previous state
+		clear_script_prefix();
+		assert_eq!(get_script_prefix(), "/");
+	}
 
-    #[test]
-    fn test_set_and_get_script_prefix() {
-        set_script_prefix("/myapp/");
-        assert_eq!(get_script_prefix(), "/myapp/");
+	#[test]
+	fn test_set_and_get_script_prefix() {
+		set_script_prefix("/myapp/");
+		assert_eq!(get_script_prefix(), "/myapp/");
 
-        // Cleanup
-        clear_script_prefix();
-    }
+		// Cleanup
+		clear_script_prefix();
+	}
 
-    #[test]
-    fn test_clear_script_prefix() {
-        set_script_prefix("/test/");
-        assert_eq!(get_script_prefix(), "/test/");
+	#[test]
+	fn test_clear_script_prefix() {
+		set_script_prefix("/test/");
+		assert_eq!(get_script_prefix(), "/test/");
 
-        clear_script_prefix();
-        assert_eq!(get_script_prefix(), "/");
-    }
+		clear_script_prefix();
+		assert_eq!(get_script_prefix(), "/");
+	}
 
-    #[test]
-    fn test_multiple_set_operations() {
-        set_script_prefix("/app1/");
-        assert_eq!(get_script_prefix(), "/app1/");
+	#[test]
+	fn test_multiple_set_operations() {
+		set_script_prefix("/app1/");
+		assert_eq!(get_script_prefix(), "/app1/");
 
-        set_script_prefix("/app2/");
-        assert_eq!(get_script_prefix(), "/app2/");
+		set_script_prefix("/app2/");
+		assert_eq!(get_script_prefix(), "/app2/");
 
-        set_script_prefix("/");
-        assert_eq!(get_script_prefix(), "/");
+		set_script_prefix("/");
+		assert_eq!(get_script_prefix(), "/");
 
-        // Cleanup
-        clear_script_prefix();
-    }
+		// Cleanup
+		clear_script_prefix();
+	}
 
-    #[test]
-    fn test_empty_prefix() {
-        set_script_prefix("");
-        assert_eq!(get_script_prefix(), "");
+	#[test]
+	fn test_empty_prefix() {
+		set_script_prefix("");
+		assert_eq!(get_script_prefix(), "");
 
-        // Cleanup
-        clear_script_prefix();
-    }
+		// Cleanup
+		clear_script_prefix();
+	}
 
-    #[test]
-    fn test_prefix_without_trailing_slash() {
-        set_script_prefix("/myapp");
-        assert_eq!(get_script_prefix(), "/myapp");
+	#[test]
+	fn test_prefix_without_trailing_slash() {
+		set_script_prefix("/myapp");
+		assert_eq!(get_script_prefix(), "/myapp");
 
-        // Cleanup
-        clear_script_prefix();
-    }
+		// Cleanup
+		clear_script_prefix();
+	}
 }

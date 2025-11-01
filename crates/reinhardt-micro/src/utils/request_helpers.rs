@@ -57,17 +57,17 @@ use serde::de::DeserializeOwned;
 /// assert_eq!(token, None);
 /// ```
 pub fn extract_bearer_token(request: &Request) -> Option<String> {
-    request
-        .headers
-        .get(hyper::header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|auth_str| {
-            if auth_str.starts_with("Bearer ") {
-                Some(auth_str[7..].to_string())
-            } else {
-                None
-            }
-        })
+	request
+		.headers
+		.get(hyper::header::AUTHORIZATION)
+		.and_then(|value| value.to_str().ok())
+		.and_then(|auth_str| {
+			if auth_str.starts_with("Bearer ") {
+				Some(auth_str[7..].to_string())
+			} else {
+				None
+			}
+		})
 }
 
 /// Parse query parameters into a typed structure
@@ -129,15 +129,15 @@ pub fn extract_bearer_token(request: &Request) -> Option<String> {
 /// assert!(result.is_err());
 /// ```
 pub fn parse_query_params<T: DeserializeOwned>(request: &Request) -> Result<T> {
-    // Convert HashMap<String, String> to Vec<(String, String)> for serde_urlencoded
-    let params: Vec<(String, String)> = request
-        .query_params
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+	// Convert HashMap<String, String> to Vec<(String, String)> for serde_urlencoded
+	let params: Vec<(String, String)> = request
+		.query_params
+		.iter()
+		.map(|(k, v)| (k.clone(), v.clone()))
+		.collect();
 
-    serde_urlencoded::from_str(&serde_urlencoded::to_string(&params).unwrap())
-        .map_err(|e| Error::Http(format!("Failed to parse query parameters: {}", e)))
+	serde_urlencoded::from_str(&serde_urlencoded::to_string(&params).unwrap())
+		.map_err(|e| Error::Http(format!("Failed to parse query parameters: {}", e)))
 }
 
 /// Validate Content-Type header
@@ -216,20 +216,20 @@ pub fn parse_query_params<T: DeserializeOwned>(request: &Request) -> Result<T> {
 /// assert!(result.is_err());
 /// ```
 pub fn validate_content_type(request: &Request, expected: &str) -> Result<()> {
-    let content_type = request
-        .headers
-        .get(hyper::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| Error::Http("Missing Content-Type header".to_string()))?;
+	let content_type = request
+		.headers
+		.get(hyper::header::CONTENT_TYPE)
+		.and_then(|value| value.to_str().ok())
+		.ok_or_else(|| Error::Http("Missing Content-Type header".to_string()))?;
 
-    if content_type.starts_with(expected) {
-        Ok(())
-    } else {
-        Err(Error::Http(format!(
-            "Invalid Content-Type: expected '{}', got '{}'",
-            expected, content_type
-        )))
-    }
+	if content_type.starts_with(expected) {
+		Ok(())
+	} else {
+		Err(Error::Http(format!(
+			"Invalid Content-Type: expected '{}', got '{}'",
+			expected, content_type
+		)))
+	}
 }
 
 /// Get a specific header value from the request
@@ -282,11 +282,11 @@ pub fn validate_content_type(request: &Request, expected: &str) -> Result<()> {
 /// assert_eq!(header, None);
 /// ```
 pub fn get_header(request: &Request, name: &str) -> Option<String> {
-    request
-        .headers
-        .get(name)
-        .and_then(|value| value.to_str().ok())
-        .map(|s| s.to_string())
+	request
+		.headers
+		.get(name)
+		.and_then(|value| value.to_str().ok())
+		.map(|s| s.to_string())
 }
 
 /// Extract client IP address from the request
@@ -340,206 +340,203 @@ pub fn get_header(request: &Request, name: &str) -> Option<String> {
 /// assert_eq!(ip, None);
 /// ```
 pub fn get_client_ip(request: &Request) -> Option<std::net::IpAddr> {
-    // Try X-Forwarded-For header first (common in proxy setups)
-    if let Some(forwarded) = request
-        .headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-    {
-        // X-Forwarded-For can contain multiple IPs, take the first one
-        if let Some(first_ip) = forwarded.split(',').next() {
-            if let Ok(ip) = first_ip.trim().parse() {
-                return Some(ip);
-            }
-        }
-    }
+	// Try X-Forwarded-For header first (common in proxy setups)
+	if let Some(forwarded) = request
+		.headers
+		.get("x-forwarded-for")
+		.and_then(|v| v.to_str().ok())
+	{
+		// X-Forwarded-For can contain multiple IPs, take the first one
+		if let Some(first_ip) = forwarded.split(',').next() {
+			if let Ok(ip) = first_ip.trim().parse() {
+				return Some(ip);
+			}
+		}
+	}
 
-    // Try X-Real-IP header
-    if let Some(real_ip) = request
-        .headers
-        .get("x-real-ip")
-        .and_then(|v| v.to_str().ok())
-    {
-        if let Ok(ip) = real_ip.parse() {
-            return Some(ip);
-        }
-    }
+	// Try X-Real-IP header
+	if let Some(real_ip) = request
+		.headers
+		.get("x-real-ip")
+		.and_then(|v| v.to_str().ok())
+	{
+		if let Ok(ip) = real_ip.parse() {
+			return Some(ip);
+		}
+	}
 
-    // If no proxy headers, we'd normally check the socket address,
-    // but since Request doesn't store that, return None
-    None
+	// If no proxy headers, we'd normally check the socket address,
+	// but since Request doesn't store that, return None
+	None
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use bytes::Bytes;
-    use hyper::{header, HeaderMap, Method, Uri, Version};
+	use super::*;
+	use bytes::Bytes;
+	use hyper::{HeaderMap, Method, Uri, Version, header};
 
-    #[test]
-    fn test_extract_bearer_token() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::AUTHORIZATION,
-            "Bearer test_token_123".parse().unwrap(),
-        );
+	#[test]
+	fn test_extract_bearer_token() {
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			header::AUTHORIZATION,
+			"Bearer test_token_123".parse().unwrap(),
+		);
 
-        let request = Request::new(
-            Method::GET,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let token = extract_bearer_token(&request);
-        assert_eq!(token, Some("test_token_123".to_string()));
-    }
+		let token = extract_bearer_token(&request);
+		assert_eq!(token, Some("test_token_123".to_string()));
+	}
 
-    #[test]
-    fn test_extract_bearer_token_missing() {
-        let request = Request::new(
-            Method::GET,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+	#[test]
+	fn test_extract_bearer_token_missing() {
+		let request = Request::new(
+			Method::GET,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let token = extract_bearer_token(&request);
-        assert_eq!(token, None);
-    }
+		let token = extract_bearer_token(&request);
+		assert_eq!(token, None);
+	}
 
-    #[test]
-    fn test_get_header() {
-        let mut headers = HeaderMap::new();
-        headers.insert(header::USER_AGENT, "TestClient/1.0".parse().unwrap());
+	#[test]
+	fn test_get_header() {
+		let mut headers = HeaderMap::new();
+		headers.insert(header::USER_AGENT, "TestClient/1.0".parse().unwrap());
 
-        let request = Request::new(
-            Method::GET,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let user_agent = get_header(&request, "user-agent");
-        assert_eq!(user_agent, Some("TestClient/1.0".to_string()));
-    }
+		let user_agent = get_header(&request, "user-agent");
+		assert_eq!(user_agent, Some("TestClient/1.0".to_string()));
+	}
 
-    #[test]
-    fn test_get_header_missing() {
-        let request = Request::new(
-            Method::GET,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+	#[test]
+	fn test_get_header_missing() {
+		let request = Request::new(
+			Method::GET,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let header = get_header(&request, "x-custom-header");
-        assert_eq!(header, None);
-    }
+		let header = get_header(&request, "x-custom-header");
+		assert_eq!(header, None);
+	}
 
-    #[test]
-    fn test_get_client_ip_forwarded_for() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::HeaderName::from_static("x-forwarded-for"),
-            "192.168.1.1, 10.0.0.1".parse().unwrap(),
-        );
+	#[test]
+	fn test_get_client_ip_forwarded_for() {
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			header::HeaderName::from_static("x-forwarded-for"),
+			"192.168.1.1, 10.0.0.1".parse().unwrap(),
+		);
 
-        let request = Request::new(
-            Method::GET,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let ip = get_client_ip(&request);
-        assert_eq!(ip, Some("192.168.1.1".parse().unwrap()));
-    }
+		let ip = get_client_ip(&request);
+		assert_eq!(ip, Some("192.168.1.1".parse().unwrap()));
+	}
 
-    #[test]
-    fn test_get_client_ip_real_ip() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::HeaderName::from_static("x-real-ip"),
-            "203.0.113.5".parse().unwrap(),
-        );
+	#[test]
+	fn test_get_client_ip_real_ip() {
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			header::HeaderName::from_static("x-real-ip"),
+			"203.0.113.5".parse().unwrap(),
+		);
 
-        let request = Request::new(
-            Method::GET,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let ip = get_client_ip(&request);
-        assert_eq!(ip, Some("203.0.113.5".parse().unwrap()));
-    }
+		let ip = get_client_ip(&request);
+		assert_eq!(ip, Some("203.0.113.5".parse().unwrap()));
+	}
 
-    #[test]
-    fn test_get_client_ip_none() {
-        let request = Request::new(
-            Method::GET,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+	#[test]
+	fn test_get_client_ip_none() {
+		let request = Request::new(
+			Method::GET,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let ip = get_client_ip(&request);
-        assert_eq!(ip, None);
-    }
+		let ip = get_client_ip(&request);
+		assert_eq!(ip, None);
+	}
 
-    #[test]
-    fn test_validate_content_type_valid() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::CONTENT_TYPE,
-            "application/json".parse().unwrap(),
-        );
+	#[test]
+	fn test_validate_content_type_valid() {
+		let mut headers = HeaderMap::new();
+		headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
 
-        let request = Request::new(
-            Method::POST,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::POST,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        assert!(validate_content_type(&request, "application/json").is_ok());
-    }
+		assert!(validate_content_type(&request, "application/json").is_ok());
+	}
 
-    #[test]
-    fn test_validate_content_type_invalid() {
-        let mut headers = HeaderMap::new();
-        headers.insert(header::CONTENT_TYPE, "text/plain".parse().unwrap());
+	#[test]
+	fn test_validate_content_type_invalid() {
+		let mut headers = HeaderMap::new();
+		headers.insert(header::CONTENT_TYPE, "text/plain".parse().unwrap());
 
-        let request = Request::new(
-            Method::POST,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::POST,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        assert!(validate_content_type(&request, "application/json").is_err());
-    }
+		assert!(validate_content_type(&request, "application/json").is_err());
+	}
 
-    #[test]
-    fn test_validate_content_type_missing() {
-        let request = Request::new(
-            Method::POST,
-            "/".parse::<Uri>().unwrap(),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+	#[test]
+	fn test_validate_content_type_missing() {
+		let request = Request::new(
+			Method::POST,
+			"/".parse::<Uri>().unwrap(),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        assert!(validate_content_type(&request, "application/json").is_err());
-    }
+		assert!(validate_content_type(&request, "application/json").is_err());
+	}
 }

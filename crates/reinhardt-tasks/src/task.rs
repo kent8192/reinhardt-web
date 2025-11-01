@@ -24,39 +24,39 @@ pub const TASK_MAX_PRIORITY: i32 = 9;
 pub struct TaskId(pub uuid::Uuid);
 
 impl TaskId {
-    /// Create a new unique task ID
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_tasks::TaskId;
-    ///
-    /// let id = TaskId::new();
-    /// println!("Task ID: {}", id);
-    /// ```
-    pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4())
-    }
+	/// Create a new unique task ID
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskId;
+	///
+	/// let id = TaskId::new();
+	/// println!("Task ID: {}", id);
+	/// ```
+	pub fn new() -> Self {
+		Self(uuid::Uuid::new_v4())
+	}
 }
 
 impl Default for TaskId {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl fmt::Display for TaskId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{}", self.0)
+	}
 }
 
 impl FromStr for TaskId {
-    type Err = uuid::Error;
+	type Err = uuid::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(uuid::Uuid::parse_str(s)?))
-    }
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(Self(uuid::Uuid::parse_str(s)?))
+	}
 }
 
 /// Status of a task
@@ -71,11 +71,11 @@ impl FromStr for TaskId {
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskStatus {
-    Pending,
-    Running,
-    Success,
-    Failure,
-    Retry,
+	Pending,
+	Running,
+	Success,
+	Failure,
+	Retry,
 }
 
 /// Task priority (0-9, where 9 is highest)
@@ -94,57 +94,57 @@ pub enum TaskStatus {
 pub struct TaskPriority(i32);
 
 impl TaskPriority {
-    /// Create a new task priority, clamped to valid range (0-9)
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_tasks::TaskPriority;
-    ///
-    /// let p1 = TaskPriority::new(5);
-    /// assert_eq!(p1.value(), 5);
-    ///
-    // Out of range values are clamped
-    /// let p2 = TaskPriority::new(100);
-    /// assert_eq!(p2.value(), 9);
-    ///
-    /// let p3 = TaskPriority::new(-10);
-    /// assert_eq!(p3.value(), 0);
-    /// ```
-    pub fn new(priority: i32) -> Self {
-        Self(priority.clamp(TASK_MIN_PRIORITY, TASK_MAX_PRIORITY))
-    }
+	/// Create a new task priority, clamped to valid range (0-9)
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskPriority;
+	///
+	/// let p1 = TaskPriority::new(5);
+	/// assert_eq!(p1.value(), 5);
+	///
+	// Out of range values are clamped
+	/// let p2 = TaskPriority::new(100);
+	/// assert_eq!(p2.value(), 9);
+	///
+	/// let p3 = TaskPriority::new(-10);
+	/// assert_eq!(p3.value(), 0);
+	/// ```
+	pub fn new(priority: i32) -> Self {
+		Self(priority.clamp(TASK_MIN_PRIORITY, TASK_MAX_PRIORITY))
+	}
 
-    /// Get the priority value
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_tasks::TaskPriority;
-    ///
-    /// let priority = TaskPriority::new(7);
-    /// assert_eq!(priority.value(), 7);
-    /// ```
-    pub fn value(&self) -> i32 {
-        self.0
-    }
+	/// Get the priority value
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::TaskPriority;
+	///
+	/// let priority = TaskPriority::new(7);
+	/// assert_eq!(priority.value(), 7);
+	/// ```
+	pub fn value(&self) -> i32 {
+		self.0
+	}
 }
 
 impl Default for TaskPriority {
-    fn default() -> Self {
-        Self(5)
-    }
+	fn default() -> Self {
+		Self(5)
+	}
 }
 
 pub trait Task: Send + Sync {
-    fn id(&self) -> TaskId;
-    fn name(&self) -> &str;
-    fn priority(&self) -> TaskPriority {
-        TaskPriority::default()
-    }
+	fn id(&self) -> TaskId;
+	fn name(&self) -> &str;
+	fn priority(&self) -> TaskPriority {
+		TaskPriority::default()
+	}
 }
 
 #[async_trait]
 pub trait TaskExecutor: Task {
-    async fn execute(&self) -> crate::TaskResult<()>;
+	async fn execute(&self) -> crate::TaskResult<()>;
 }

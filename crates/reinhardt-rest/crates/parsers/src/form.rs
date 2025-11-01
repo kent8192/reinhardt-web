@@ -9,131 +9,131 @@ use crate::parser::{ParseError, ParseResult, ParsedData, Parser};
 pub struct FormParser;
 
 impl FormParser {
-    /// Create a new FormParser.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_parsers::form::FormParser;
-    ///
-    /// let parser = FormParser::new();
-    /// ```
-    pub fn new() -> Self {
-        Self::default()
-    }
+	/// Create a new FormParser.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_parsers::form::FormParser;
+	///
+	/// let parser = FormParser::new();
+	/// ```
+	pub fn new() -> Self {
+		Self::default()
+	}
 }
 
 #[async_trait]
 impl Parser for FormParser {
-    fn media_types(&self) -> Vec<String> {
-        vec!["application/x-www-form-urlencoded".to_string()]
-    }
+	fn media_types(&self) -> Vec<String> {
+		vec!["application/x-www-form-urlencoded".to_string()]
+	}
 
-    async fn parse(&self, _content_type: Option<&str>, body: Bytes) -> ParseResult<ParsedData> {
-        if body.is_empty() {
-            return Ok(ParsedData::Form(HashMap::new()));
-        }
+	async fn parse(&self, _content_type: Option<&str>, body: Bytes) -> ParseResult<ParsedData> {
+		if body.is_empty() {
+			return Ok(ParsedData::Form(HashMap::new()));
+		}
 
-        match serde_urlencoded::from_bytes::<HashMap<String, String>>(&body) {
-            Ok(form_data) => Ok(ParsedData::Form(form_data)),
-            Err(e) => Err(ParseError::ParseError(format!("Invalid form data: {}", e))),
-        }
-    }
+		match serde_urlencoded::from_bytes::<HashMap<String, String>>(&body) {
+			Ok(form_data) => Ok(ParsedData::Form(form_data)),
+			Err(e) => Err(ParseError::ParseError(format!("Invalid form data: {}", e))),
+		}
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[tokio::test]
-    async fn test_form_parser_valid() {
-        let parser = FormParser::new();
-        let body = Bytes::from("name=test&value=123&active=true");
+	#[tokio::test]
+	async fn test_form_parser_valid() {
+		let parser = FormParser::new();
+		let body = Bytes::from("name=test&value=123&active=true");
 
-        let result = parser
-            .parse(Some("application/x-www-form-urlencoded"), body)
-            .await
-            .unwrap();
+		let result = parser
+			.parse(Some("application/x-www-form-urlencoded"), body)
+			.await
+			.unwrap();
 
-        match result {
-            ParsedData::Form(form) => {
-                assert_eq!(form.get("name"), Some(&"test".to_string()));
-                assert_eq!(form.get("value"), Some(&"123".to_string()));
-                assert_eq!(form.get("active"), Some(&"true".to_string()));
-            }
-            _ => panic!("Expected form data"),
-        }
-    }
+		match result {
+			ParsedData::Form(form) => {
+				assert_eq!(form.get("name"), Some(&"test".to_string()));
+				assert_eq!(form.get("value"), Some(&"123".to_string()));
+				assert_eq!(form.get("active"), Some(&"true".to_string()));
+			}
+			_ => panic!("Expected form data"),
+		}
+	}
 
-    #[tokio::test]
-    async fn test_form_parser_empty() {
-        let parser = FormParser::new();
-        let body = Bytes::new();
+	#[tokio::test]
+	async fn test_form_parser_empty() {
+		let parser = FormParser::new();
+		let body = Bytes::new();
 
-        let result = parser
-            .parse(Some("application/x-www-form-urlencoded"), body)
-            .await
-            .unwrap();
+		let result = parser
+			.parse(Some("application/x-www-form-urlencoded"), body)
+			.await
+			.unwrap();
 
-        match result {
-            ParsedData::Form(form) => {
-                assert!(form.is_empty());
-            }
-            _ => panic!("Expected form data"),
-        }
-    }
+		match result {
+			ParsedData::Form(form) => {
+				assert!(form.is_empty());
+			}
+			_ => panic!("Expected form data"),
+		}
+	}
 
-    #[tokio::test]
-    async fn test_form_parser_url_encoded() {
-        let parser = FormParser::new();
-        let body = Bytes::from("message=Hello%20World&symbol=%26");
+	#[tokio::test]
+	async fn test_form_parser_url_encoded() {
+		let parser = FormParser::new();
+		let body = Bytes::from("message=Hello%20World&symbol=%26");
 
-        let result = parser
-            .parse(Some("application/x-www-form-urlencoded"), body)
-            .await
-            .unwrap();
+		let result = parser
+			.parse(Some("application/x-www-form-urlencoded"), body)
+			.await
+			.unwrap();
 
-        match result {
-            ParsedData::Form(form) => {
-                assert_eq!(form.get("message"), Some(&"Hello World".to_string()));
-                assert_eq!(form.get("symbol"), Some(&"&".to_string()));
-            }
-            _ => panic!("Expected form data"),
-        }
-    }
+		match result {
+			ParsedData::Form(form) => {
+				assert_eq!(form.get("message"), Some(&"Hello World".to_string()));
+				assert_eq!(form.get("symbol"), Some(&"&".to_string()));
+			}
+			_ => panic!("Expected form data"),
+		}
+	}
 
-    #[test]
-    fn test_form_parser_media_types() {
-        let parser = FormParser::new();
-        let media_types = parser.media_types();
+	#[test]
+	fn test_form_parser_media_types() {
+		let parser = FormParser::new();
+		let media_types = parser.media_types();
 
-        assert!(media_types.contains(&"application/x-www-form-urlencoded".to_string()));
-    }
+		assert!(media_types.contains(&"application/x-www-form-urlencoded".to_string()));
+	}
 
-    // Tests from Django REST Framework
+	// Tests from Django REST Framework
 
-    #[tokio::test]
-    async fn test_form_parse_drf() {
-        // DRF test: Make sure the form parsing works correctly
-        let parser = FormParser::new();
-        let body = Bytes::from("field1=abc&field2=defghijk");
+	#[tokio::test]
+	async fn test_form_parse_drf() {
+		// DRF test: Make sure the form parsing works correctly
+		let parser = FormParser::new();
+		let body = Bytes::from("field1=abc&field2=defghijk");
 
-        let result = parser
-            .parse(Some("application/x-www-form-urlencoded"), body)
-            .await
-            .unwrap();
+		let result = parser
+			.parse(Some("application/x-www-form-urlencoded"), body)
+			.await
+			.unwrap();
 
-        match result {
-            ParsedData::Form(form) => {
-                // Validate the form data can be used for validation
-                assert_eq!(form.get("field1"), Some(&"abc".to_string()));
-                assert_eq!(form.get("field2"), Some(&"defghijk".to_string()));
+		match result {
+			ParsedData::Form(form) => {
+				// Validate the form data can be used for validation
+				assert_eq!(form.get("field1"), Some(&"abc".to_string()));
+				assert_eq!(form.get("field2"), Some(&"defghijk".to_string()));
 
-                // Simulate form validation (field1 max_length=3, field2 any length)
-                let field1_valid = form.get("field1").map(|v| v.len() <= 3).unwrap_or(false);
-                assert!(field1_valid);
-            }
-            _ => panic!("Expected form data"),
-        }
-    }
+				// Simulate form validation (field1 max_length=3, field2 any length)
+				let field1_valid = form.get("field1").map(|v| v.len() <= 3).unwrap_or(false);
+				assert!(field1_valid);
+			}
+			_ => panic!("Expected form data"),
+		}
+	}
 }

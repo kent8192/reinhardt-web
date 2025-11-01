@@ -19,13 +19,13 @@ pub mod error;
 
 // Generated Protobuf code (common types provided by the framework)
 pub mod proto {
-    pub mod common {
-        tonic::include_proto!("reinhardt.common");
-    }
+	pub mod common {
+		tonic::include_proto!("reinhardt.common");
+	}
 
-    pub mod graphql {
-        tonic::include_proto!("reinhardt.graphql");
-    }
+	pub mod graphql {
+		tonic::include_proto!("reinhardt.graphql");
+	}
 }
 
 pub use adapter::{GrpcServiceAdapter, GrpcSubscriptionAdapter};

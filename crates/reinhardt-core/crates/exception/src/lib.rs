@@ -26,201 +26,201 @@ use thiserror::Error;
 /// ```
 #[derive(Error, Debug)]
 pub enum Error {
-    /// HTTP-related errors (status code: 400)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::Http("Malformed request body".to_string());
-    /// assert_eq!(error.status_code(), 400);
-    /// assert!(error.to_string().contains("HTTP error"));
-    /// ```
-    #[error("HTTP error: {0}")]
-    Http(String),
+	/// HTTP-related errors (status code: 400)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::Http("Malformed request body".to_string());
+	/// assert_eq!(error.status_code(), 400);
+	/// assert!(error.to_string().contains("HTTP error"));
+	/// ```
+	#[error("HTTP error: {0}")]
+	Http(String),
 
-    /// Database-related errors (status code: 500)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::Database("Query execution failed".to_string());
-    /// assert_eq!(error.status_code(), 500);
-    /// assert!(error.to_string().contains("Database error"));
-    /// ```
-    #[error("Database error: {0}")]
-    Database(String),
+	/// Database-related errors (status code: 500)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::Database("Query execution failed".to_string());
+	/// assert_eq!(error.status_code(), 500);
+	/// assert!(error.to_string().contains("Database error"));
+	/// ```
+	#[error("Database error: {0}")]
+	Database(String),
 
-    /// Serialization/deserialization errors (status code: 400)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::Serialization("Invalid JSON format".to_string());
-    /// assert_eq!(error.status_code(), 400);
-    /// assert!(error.to_string().contains("Serialization error"));
-    /// ```
-    #[error("Serialization error: {0}")]
-    Serialization(String),
+	/// Serialization/deserialization errors (status code: 400)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::Serialization("Invalid JSON format".to_string());
+	/// assert_eq!(error.status_code(), 400);
+	/// assert!(error.to_string().contains("Serialization error"));
+	/// ```
+	#[error("Serialization error: {0}")]
+	Serialization(String),
 
-    /// Validation errors (status code: 400)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::Validation("Email format is invalid".to_string());
-    /// assert_eq!(error.status_code(), 400);
-    /// assert!(error.to_string().contains("Validation error"));
-    /// ```
-    #[error("Validation error: {0}")]
-    Validation(String),
+	/// Validation errors (status code: 400)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::Validation("Email format is invalid".to_string());
+	/// assert_eq!(error.status_code(), 400);
+	/// assert!(error.to_string().contains("Validation error"));
+	/// ```
+	#[error("Validation error: {0}")]
+	Validation(String),
 
-    /// Authentication errors (status code: 401)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::Authentication("Invalid credentials".to_string());
-    /// assert_eq!(error.status_code(), 401);
-    /// assert!(error.to_string().contains("Authentication error"));
-    /// ```
-    #[error("Authentication error: {0}")]
-    Authentication(String),
+	/// Authentication errors (status code: 401)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::Authentication("Invalid credentials".to_string());
+	/// assert_eq!(error.status_code(), 401);
+	/// assert!(error.to_string().contains("Authentication error"));
+	/// ```
+	#[error("Authentication error: {0}")]
+	Authentication(String),
 
-    /// Authorization errors (status code: 403)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::Authorization("Insufficient permissions".to_string());
-    /// assert_eq!(error.status_code(), 403);
-    /// assert!(error.to_string().contains("Authorization error"));
-    /// ```
-    #[error("Authorization error: {0}")]
-    Authorization(String),
+	/// Authorization errors (status code: 403)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::Authorization("Insufficient permissions".to_string());
+	/// assert_eq!(error.status_code(), 403);
+	/// assert!(error.to_string().contains("Authorization error"));
+	/// ```
+	#[error("Authorization error: {0}")]
+	Authorization(String),
 
-    /// Resource not found errors (status code: 404)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::NotFound("User with ID 123 not found".to_string());
-    /// assert_eq!(error.status_code(), 404);
-    /// assert!(error.to_string().contains("Not found"));
-    /// ```
-    #[error("Not found: {0}")]
-    NotFound(String),
+	/// Resource not found errors (status code: 404)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::NotFound("User with ID 123 not found".to_string());
+	/// assert_eq!(error.status_code(), 404);
+	/// assert!(error.to_string().contains("Not found"));
+	/// ```
+	#[error("Not found: {0}")]
+	NotFound(String),
 
-    /// Template not found errors (status code: 404)
-    #[error("Template not found: {0}")]
-    TemplateNotFound(String),
+	/// Template not found errors (status code: 404)
+	#[error("Template not found: {0}")]
+	TemplateNotFound(String),
 
-    /// Internal server errors (status code: 500)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::Internal("Unexpected server error".to_string());
-    /// assert_eq!(error.status_code(), 500);
-    /// assert!(error.to_string().contains("Internal server error"));
-    /// ```
-    #[error("Internal server error: {0}")]
-    Internal(String),
+	/// Internal server errors (status code: 500)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::Internal("Unexpected server error".to_string());
+	/// assert_eq!(error.status_code(), 500);
+	/// assert!(error.to_string().contains("Internal server error"));
+	/// ```
+	#[error("Internal server error: {0}")]
+	Internal(String),
 
-    /// Configuration errors (status code: 500)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::ImproperlyConfigured("Missing DATABASE_URL".to_string());
-    /// assert_eq!(error.status_code(), 500);
-    /// assert!(error.to_string().contains("Improperly configured"));
-    /// ```
-    #[error("Improperly configured: {0}")]
-    ImproperlyConfigured(String),
+	/// Configuration errors (status code: 500)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::ImproperlyConfigured("Missing DATABASE_URL".to_string());
+	/// assert_eq!(error.status_code(), 500);
+	/// assert!(error.to_string().contains("Improperly configured"));
+	/// ```
+	#[error("Improperly configured: {0}")]
+	ImproperlyConfigured(String),
 
-    /// Body already consumed error (status code: 400)
-    ///
-    /// This error occurs when attempting to read a request body that has already
-    /// been consumed.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::BodyAlreadyConsumed;
-    /// assert_eq!(error.status_code(), 400);
-    /// assert_eq!(error.to_string(), "Body already consumed");
-    /// ```
-    #[error("Body already consumed")]
-    BodyAlreadyConsumed,
+	/// Body already consumed error (status code: 400)
+	///
+	/// This error occurs when attempting to read a request body that has already
+	/// been consumed.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::BodyAlreadyConsumed;
+	/// assert_eq!(error.status_code(), 400);
+	/// assert_eq!(error.to_string(), "Body already consumed");
+	/// ```
+	#[error("Body already consumed")]
+	BodyAlreadyConsumed,
 
-    /// Parse errors (status code: 400)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    /// let error = Error::ParseError("Invalid integer value".to_string());
-    /// assert_eq!(error.status_code(), 400);
-    /// assert!(error.to_string().contains("Parse error"));
-    /// ```
-    #[error("Parse error: {0}")]
-    ParseError(String),
+	/// Parse errors (status code: 400)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::ParseError("Invalid integer value".to_string());
+	/// assert_eq!(error.status_code(), 400);
+	/// assert!(error.to_string().contains("Parse error"));
+	/// ```
+	#[error("Parse error: {0}")]
+	ParseError(String),
 
-    /// Missing Content-Type header
-    #[error("Missing Content-Type header")]
-    MissingContentType,
+	/// Missing Content-Type header
+	#[error("Missing Content-Type header")]
+	MissingContentType,
 
-    /// Invalid page error for pagination (status code: 400)
-    #[error("Invalid page: {0}")]
-    InvalidPage(String),
+	/// Invalid page error for pagination (status code: 400)
+	#[error("Invalid page: {0}")]
+	InvalidPage(String),
 
-    /// Invalid cursor error for pagination (status code: 400)
-    #[error("Invalid cursor: {0}")]
-    InvalidCursor(String),
+	/// Invalid cursor error for pagination (status code: 400)
+	#[error("Invalid cursor: {0}")]
+	InvalidCursor(String),
 
-    /// Invalid limit error for pagination (status code: 400)
-    #[error("Invalid limit: {0}")]
-    InvalidLimit(String),
+	/// Invalid limit error for pagination (status code: 400)
+	#[error("Invalid limit: {0}")]
+	InvalidLimit(String),
 
-    /// Missing parameter error for URL reverse (status code: 400)
-    #[error("Missing parameter: {0}")]
-    MissingParameter(String),
+	/// Missing parameter error for URL reverse (status code: 400)
+	#[error("Missing parameter: {0}")]
+	MissingParameter(String),
 
-    /// Wraps any other error type using `anyhow::Error` (status code: 500)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    /// use anyhow::anyhow;
-    ///
-    /// let other_error = anyhow!("Something went wrong");
-    /// let error: Error = other_error.into();
-    /// assert_eq!(error.status_code(), 500);
-    /// ```
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+	/// Wraps any other error type using `anyhow::Error` (status code: 500)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	/// use anyhow::anyhow;
+	///
+	/// let other_error = anyhow!("Something went wrong");
+	/// let error: Error = other_error.into();
+	/// assert_eq!(error.status_code(), 500);
+	/// ```
+	#[error(transparent)]
+	Other(#[from] anyhow::Error),
 }
 
 /// A convenient `Result` type alias using `reinhardt_exception::Error` as the error type.
@@ -257,320 +257,320 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Categorical classification of `Error` variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
-    Http,
-    Database,
-    Serialization,
-    Validation,
-    Authentication,
-    Authorization,
-    NotFound,
-    Internal,
-    ImproperlyConfigured,
-    BodyAlreadyConsumed,
-    Parse,
-    Other,
+	Http,
+	Database,
+	Serialization,
+	Validation,
+	Authentication,
+	Authorization,
+	NotFound,
+	Internal,
+	ImproperlyConfigured,
+	BodyAlreadyConsumed,
+	Parse,
+	Other,
 }
 
 impl Error {
-    /// Returns the HTTP status code associated with this error.
-    ///
-    /// Each error variant maps to an appropriate HTTP status code that can be
-    /// used when converting errors to HTTP responses.
-    ///
-    /// # Status Code Mapping
-    ///
-    /// - `Http`, `Serialization`, `Validation`, `BodyAlreadyConsumed`, `ParseError`: 400 (Bad Request)
-    /// - `Authentication`: 401 (Unauthorized)
-    /// - `Authorization`: 403 (Forbidden)
-    /// - `NotFound`: 404 (Not Found)
-    /// - `Database`, `Internal`, `ImproperlyConfigured`, `Other`: 500 (Internal Server Error)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    ///
-    // Client errors (4xx)
-    /// assert_eq!(Error::Http("Bad request".to_string()).status_code(), 400);
-    /// assert_eq!(Error::Validation("Invalid input".to_string()).status_code(), 400);
-    /// assert_eq!(Error::Authentication("No token".to_string()).status_code(), 401);
-    /// assert_eq!(Error::Authorization("No access".to_string()).status_code(), 403);
-    /// assert_eq!(Error::NotFound("Resource missing".to_string()).status_code(), 404);
-    ///
-    // Server errors (5xx)
-    /// assert_eq!(Error::Database("Connection failed".to_string()).status_code(), 500);
-    /// assert_eq!(Error::Internal("Crash".to_string()).status_code(), 500);
-    /// assert_eq!(Error::ImproperlyConfigured("Bad config".to_string()).status_code(), 500);
-    ///
-    // Edge cases
-    /// assert_eq!(Error::BodyAlreadyConsumed.status_code(), 400);
-    /// assert_eq!(Error::ParseError("Invalid data".to_string()).status_code(), 400);
-    /// ```
-    ///
-    /// # Using with anyhow errors
-    ///
-    /// ```
-    /// use reinhardt_exception::Error;
-    /// use anyhow::anyhow;
-    ///
-    /// let anyhow_error = anyhow!("Unexpected error");
-    /// let error: Error = anyhow_error.into();
-    /// assert_eq!(error.status_code(), 500);
-    /// ```
-    pub fn status_code(&self) -> u16 {
-        match self {
-            Error::Http(_) => 400,
-            Error::Database(_) => 500,
-            Error::Serialization(_) => 400,
-            Error::Validation(_) => 400,
-            Error::Authentication(_) => 401,
-            Error::Authorization(_) => 403,
-            Error::NotFound(_) => 404,
-            Error::TemplateNotFound(_) => 404,
-            Error::Internal(_) => 500,
-            Error::ImproperlyConfigured(_) => 500,
-            Error::BodyAlreadyConsumed => 400,
-            Error::ParseError(_) => 400,
-            Error::MissingContentType => 400,
-            Error::InvalidPage(_) => 400,
-            Error::InvalidCursor(_) => 400,
-            Error::InvalidLimit(_) => 400,
-            Error::MissingParameter(_) => 400,
-            Error::Other(_) => 500,
-        }
-    }
+	/// Returns the HTTP status code associated with this error.
+	///
+	/// Each error variant maps to an appropriate HTTP status code that can be
+	/// used when converting errors to HTTP responses.
+	///
+	/// # Status Code Mapping
+	///
+	/// - `Http`, `Serialization`, `Validation`, `BodyAlreadyConsumed`, `ParseError`: 400 (Bad Request)
+	/// - `Authentication`: 401 (Unauthorized)
+	/// - `Authorization`: 403 (Forbidden)
+	/// - `NotFound`: 404 (Not Found)
+	/// - `Database`, `Internal`, `ImproperlyConfigured`, `Other`: 500 (Internal Server Error)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	// Client errors (4xx)
+	/// assert_eq!(Error::Http("Bad request".to_string()).status_code(), 400);
+	/// assert_eq!(Error::Validation("Invalid input".to_string()).status_code(), 400);
+	/// assert_eq!(Error::Authentication("No token".to_string()).status_code(), 401);
+	/// assert_eq!(Error::Authorization("No access".to_string()).status_code(), 403);
+	/// assert_eq!(Error::NotFound("Resource missing".to_string()).status_code(), 404);
+	///
+	// Server errors (5xx)
+	/// assert_eq!(Error::Database("Connection failed".to_string()).status_code(), 500);
+	/// assert_eq!(Error::Internal("Crash".to_string()).status_code(), 500);
+	/// assert_eq!(Error::ImproperlyConfigured("Bad config".to_string()).status_code(), 500);
+	///
+	// Edge cases
+	/// assert_eq!(Error::BodyAlreadyConsumed.status_code(), 400);
+	/// assert_eq!(Error::ParseError("Invalid data".to_string()).status_code(), 400);
+	/// ```
+	///
+	/// # Using with anyhow errors
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	/// use anyhow::anyhow;
+	///
+	/// let anyhow_error = anyhow!("Unexpected error");
+	/// let error: Error = anyhow_error.into();
+	/// assert_eq!(error.status_code(), 500);
+	/// ```
+	pub fn status_code(&self) -> u16 {
+		match self {
+			Error::Http(_) => 400,
+			Error::Database(_) => 500,
+			Error::Serialization(_) => 400,
+			Error::Validation(_) => 400,
+			Error::Authentication(_) => 401,
+			Error::Authorization(_) => 403,
+			Error::NotFound(_) => 404,
+			Error::TemplateNotFound(_) => 404,
+			Error::Internal(_) => 500,
+			Error::ImproperlyConfigured(_) => 500,
+			Error::BodyAlreadyConsumed => 400,
+			Error::ParseError(_) => 400,
+			Error::MissingContentType => 400,
+			Error::InvalidPage(_) => 400,
+			Error::InvalidCursor(_) => 400,
+			Error::InvalidLimit(_) => 400,
+			Error::MissingParameter(_) => 400,
+			Error::Other(_) => 500,
+		}
+	}
 
-    /// Returns the categorical `ErrorKind` for this error.
-    pub fn kind(&self) -> ErrorKind {
-        match self {
-            Error::Http(_) => ErrorKind::Http,
-            Error::Database(_) => ErrorKind::Database,
-            Error::Serialization(_) => ErrorKind::Serialization,
-            Error::Validation(_) => ErrorKind::Validation,
-            Error::Authentication(_) => ErrorKind::Authentication,
-            Error::Authorization(_) => ErrorKind::Authorization,
-            Error::NotFound(_) => ErrorKind::NotFound,
-            Error::TemplateNotFound(_) => ErrorKind::NotFound,
-            Error::Internal(_) => ErrorKind::Internal,
-            Error::ImproperlyConfigured(_) => ErrorKind::ImproperlyConfigured,
-            Error::BodyAlreadyConsumed => ErrorKind::BodyAlreadyConsumed,
-            Error::ParseError(_) => ErrorKind::Parse,
-            Error::MissingContentType => ErrorKind::Http,
-            Error::InvalidPage(_) => ErrorKind::Validation,
-            Error::InvalidCursor(_) => ErrorKind::Validation,
-            Error::InvalidLimit(_) => ErrorKind::Validation,
-            Error::MissingParameter(_) => ErrorKind::Validation,
-            Error::Other(_) => ErrorKind::Other,
-        }
-    }
+	/// Returns the categorical `ErrorKind` for this error.
+	pub fn kind(&self) -> ErrorKind {
+		match self {
+			Error::Http(_) => ErrorKind::Http,
+			Error::Database(_) => ErrorKind::Database,
+			Error::Serialization(_) => ErrorKind::Serialization,
+			Error::Validation(_) => ErrorKind::Validation,
+			Error::Authentication(_) => ErrorKind::Authentication,
+			Error::Authorization(_) => ErrorKind::Authorization,
+			Error::NotFound(_) => ErrorKind::NotFound,
+			Error::TemplateNotFound(_) => ErrorKind::NotFound,
+			Error::Internal(_) => ErrorKind::Internal,
+			Error::ImproperlyConfigured(_) => ErrorKind::ImproperlyConfigured,
+			Error::BodyAlreadyConsumed => ErrorKind::BodyAlreadyConsumed,
+			Error::ParseError(_) => ErrorKind::Parse,
+			Error::MissingContentType => ErrorKind::Http,
+			Error::InvalidPage(_) => ErrorKind::Validation,
+			Error::InvalidCursor(_) => ErrorKind::Validation,
+			Error::InvalidLimit(_) => ErrorKind::Validation,
+			Error::MissingParameter(_) => ErrorKind::Validation,
+			Error::Other(_) => ErrorKind::Other,
+		}
+	}
 }
 
 // Common conversions to the unified Error without introducing cross-crate deps.
 impl From<serde_json::Error> for Error {
-    fn from(err: serde_json::Error) -> Self {
-        Error::Serialization(err.to_string())
-    }
+	fn from(err: serde_json::Error) -> Self {
+		Error::Serialization(err.to_string())
+	}
 }
 
 impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Self {
-        Error::Internal(format!("IO error: {}", err))
-    }
+	fn from(err: std::io::Error) -> Self {
+		Error::Internal(format!("IO error: {}", err))
+	}
 }
 
 impl From<http::Error> for Error {
-    fn from(err: http::Error) -> Self {
-        Error::Http(err.to_string())
-    }
+	fn from(err: http::Error) -> Self {
+		Error::Http(err.to_string())
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_error_kind_mapping() {
-        // HTTP errors
-        assert_eq!(Error::Http("test".to_string()).kind(), ErrorKind::Http);
-        assert_eq!(Error::MissingContentType.kind(), ErrorKind::Http);
+	#[test]
+	fn test_error_kind_mapping() {
+		// HTTP errors
+		assert_eq!(Error::Http("test".to_string()).kind(), ErrorKind::Http);
+		assert_eq!(Error::MissingContentType.kind(), ErrorKind::Http);
 
-        // Database errors
-        assert_eq!(
-            Error::Database("test".to_string()).kind(),
-            ErrorKind::Database
-        );
+		// Database errors
+		assert_eq!(
+			Error::Database("test".to_string()).kind(),
+			ErrorKind::Database
+		);
 
-        // Serialization errors
-        assert_eq!(
-            Error::Serialization("test".to_string()).kind(),
-            ErrorKind::Serialization
-        );
+		// Serialization errors
+		assert_eq!(
+			Error::Serialization("test".to_string()).kind(),
+			ErrorKind::Serialization
+		);
 
-        // Validation errors
-        assert_eq!(
-            Error::Validation("test".to_string()).kind(),
-            ErrorKind::Validation
-        );
-        assert_eq!(
-            Error::InvalidPage("test".to_string()).kind(),
-            ErrorKind::Validation
-        );
-        assert_eq!(
-            Error::InvalidCursor("test".to_string()).kind(),
-            ErrorKind::Validation
-        );
-        assert_eq!(
-            Error::InvalidLimit("test".to_string()).kind(),
-            ErrorKind::Validation
-        );
-        assert_eq!(
-            Error::MissingParameter("test".to_string()).kind(),
-            ErrorKind::Validation
-        );
+		// Validation errors
+		assert_eq!(
+			Error::Validation("test".to_string()).kind(),
+			ErrorKind::Validation
+		);
+		assert_eq!(
+			Error::InvalidPage("test".to_string()).kind(),
+			ErrorKind::Validation
+		);
+		assert_eq!(
+			Error::InvalidCursor("test".to_string()).kind(),
+			ErrorKind::Validation
+		);
+		assert_eq!(
+			Error::InvalidLimit("test".to_string()).kind(),
+			ErrorKind::Validation
+		);
+		assert_eq!(
+			Error::MissingParameter("test".to_string()).kind(),
+			ErrorKind::Validation
+		);
 
-        // Authentication errors
-        assert_eq!(
-            Error::Authentication("test".to_string()).kind(),
-            ErrorKind::Authentication
-        );
+		// Authentication errors
+		assert_eq!(
+			Error::Authentication("test".to_string()).kind(),
+			ErrorKind::Authentication
+		);
 
-        // Authorization errors
-        assert_eq!(
-            Error::Authorization("test".to_string()).kind(),
-            ErrorKind::Authorization
-        );
+		// Authorization errors
+		assert_eq!(
+			Error::Authorization("test".to_string()).kind(),
+			ErrorKind::Authorization
+		);
 
-        // NotFound errors
-        assert_eq!(
-            Error::NotFound("test".to_string()).kind(),
-            ErrorKind::NotFound
-        );
-        assert_eq!(
-            Error::TemplateNotFound("test".to_string()).kind(),
-            ErrorKind::NotFound
-        );
+		// NotFound errors
+		assert_eq!(
+			Error::NotFound("test".to_string()).kind(),
+			ErrorKind::NotFound
+		);
+		assert_eq!(
+			Error::TemplateNotFound("test".to_string()).kind(),
+			ErrorKind::NotFound
+		);
 
-        // Internal errors
-        assert_eq!(
-            Error::Internal("test".to_string()).kind(),
-            ErrorKind::Internal
-        );
+		// Internal errors
+		assert_eq!(
+			Error::Internal("test".to_string()).kind(),
+			ErrorKind::Internal
+		);
 
-        // ImproperlyConfigured errors
-        assert_eq!(
-            Error::ImproperlyConfigured("test".to_string()).kind(),
-            ErrorKind::ImproperlyConfigured
-        );
+		// ImproperlyConfigured errors
+		assert_eq!(
+			Error::ImproperlyConfigured("test".to_string()).kind(),
+			ErrorKind::ImproperlyConfigured
+		);
 
-        // BodyAlreadyConsumed errors
-        assert_eq!(
-            Error::BodyAlreadyConsumed.kind(),
-            ErrorKind::BodyAlreadyConsumed
-        );
+		// BodyAlreadyConsumed errors
+		assert_eq!(
+			Error::BodyAlreadyConsumed.kind(),
+			ErrorKind::BodyAlreadyConsumed
+		);
 
-        // Parse errors
-        assert_eq!(
-            Error::ParseError("test".to_string()).kind(),
-            ErrorKind::Parse
-        );
+		// Parse errors
+		assert_eq!(
+			Error::ParseError("test".to_string()).kind(),
+			ErrorKind::Parse
+		);
 
-        // Other errors
-        assert_eq!(
-            Error::Other(anyhow::anyhow!("test")).kind(),
-            ErrorKind::Other
-        );
-    }
+		// Other errors
+		assert_eq!(
+			Error::Other(anyhow::anyhow!("test")).kind(),
+			ErrorKind::Other
+		);
+	}
 
-    #[test]
-    fn test_from_serde_json_error() {
-        let json_error = serde_json::from_str::<i32>("invalid").unwrap_err();
-        let error: Error = json_error.into();
+	#[test]
+	fn test_from_serde_json_error() {
+		let json_error = serde_json::from_str::<i32>("invalid").unwrap_err();
+		let error: Error = json_error.into();
 
-        assert_eq!(error.status_code(), 400);
-        assert_eq!(error.kind(), ErrorKind::Serialization);
-        assert!(error.to_string().contains("Serialization error"));
-    }
+		assert_eq!(error.status_code(), 400);
+		assert_eq!(error.kind(), ErrorKind::Serialization);
+		assert!(error.to_string().contains("Serialization error"));
+	}
 
-    #[test]
-    fn test_from_io_error() {
-        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-        let error: Error = io_error.into();
+	#[test]
+	fn test_from_io_error() {
+		let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+		let error: Error = io_error.into();
 
-        assert_eq!(error.status_code(), 500);
-        assert_eq!(error.kind(), ErrorKind::Internal);
-        assert!(error.to_string().contains("IO error"));
-    }
+		assert_eq!(error.status_code(), 500);
+		assert_eq!(error.kind(), ErrorKind::Internal);
+		assert!(error.to_string().contains("IO error"));
+	}
 
-    #[test]
-    fn test_status_codes_comprehensive() {
-        // 400 errors
-        assert_eq!(Error::Http("test".to_string()).status_code(), 400);
-        assert_eq!(Error::Serialization("test".to_string()).status_code(), 400);
-        assert_eq!(Error::Validation("test".to_string()).status_code(), 400);
-        assert_eq!(Error::BodyAlreadyConsumed.status_code(), 400);
-        assert_eq!(Error::ParseError("test".to_string()).status_code(), 400);
-        assert_eq!(Error::MissingContentType.status_code(), 400);
-        assert_eq!(Error::InvalidPage("test".to_string()).status_code(), 400);
-        assert_eq!(Error::InvalidCursor("test".to_string()).status_code(), 400);
-        assert_eq!(Error::InvalidLimit("test".to_string()).status_code(), 400);
-        assert_eq!(
-            Error::MissingParameter("test".to_string()).status_code(),
-            400
-        );
+	#[test]
+	fn test_status_codes_comprehensive() {
+		// 400 errors
+		assert_eq!(Error::Http("test".to_string()).status_code(), 400);
+		assert_eq!(Error::Serialization("test".to_string()).status_code(), 400);
+		assert_eq!(Error::Validation("test".to_string()).status_code(), 400);
+		assert_eq!(Error::BodyAlreadyConsumed.status_code(), 400);
+		assert_eq!(Error::ParseError("test".to_string()).status_code(), 400);
+		assert_eq!(Error::MissingContentType.status_code(), 400);
+		assert_eq!(Error::InvalidPage("test".to_string()).status_code(), 400);
+		assert_eq!(Error::InvalidCursor("test".to_string()).status_code(), 400);
+		assert_eq!(Error::InvalidLimit("test".to_string()).status_code(), 400);
+		assert_eq!(
+			Error::MissingParameter("test".to_string()).status_code(),
+			400
+		);
 
-        // 401 error
-        assert_eq!(Error::Authentication("test".to_string()).status_code(), 401);
+		// 401 error
+		assert_eq!(Error::Authentication("test".to_string()).status_code(), 401);
 
-        // 403 error
-        assert_eq!(Error::Authorization("test".to_string()).status_code(), 403);
+		// 403 error
+		assert_eq!(Error::Authorization("test".to_string()).status_code(), 403);
 
-        // 404 errors
-        assert_eq!(Error::NotFound("test".to_string()).status_code(), 404);
-        assert_eq!(
-            Error::TemplateNotFound("test".to_string()).status_code(),
-            404
-        );
+		// 404 errors
+		assert_eq!(Error::NotFound("test".to_string()).status_code(), 404);
+		assert_eq!(
+			Error::TemplateNotFound("test".to_string()).status_code(),
+			404
+		);
 
-        // 500 errors
-        assert_eq!(Error::Database("test".to_string()).status_code(), 500);
-        assert_eq!(Error::Internal("test".to_string()).status_code(), 500);
-        assert_eq!(
-            Error::ImproperlyConfigured("test".to_string()).status_code(),
-            500
-        );
-        assert_eq!(Error::Other(anyhow::anyhow!("test")).status_code(), 500);
-    }
+		// 500 errors
+		assert_eq!(Error::Database("test".to_string()).status_code(), 500);
+		assert_eq!(Error::Internal("test".to_string()).status_code(), 500);
+		assert_eq!(
+			Error::ImproperlyConfigured("test".to_string()).status_code(),
+			500
+		);
+		assert_eq!(Error::Other(anyhow::anyhow!("test")).status_code(), 500);
+	}
 
-    #[test]
-    fn test_template_not_found_error() {
-        let error = Error::TemplateNotFound("index.html".to_string());
-        assert_eq!(error.status_code(), 404);
-        assert_eq!(error.kind(), ErrorKind::NotFound);
-        assert!(error.to_string().contains("Template not found"));
-        assert!(error.to_string().contains("index.html"));
-    }
+	#[test]
+	fn test_template_not_found_error() {
+		let error = Error::TemplateNotFound("index.html".to_string());
+		assert_eq!(error.status_code(), 404);
+		assert_eq!(error.kind(), ErrorKind::NotFound);
+		assert!(error.to_string().contains("Template not found"));
+		assert!(error.to_string().contains("index.html"));
+	}
 
-    #[test]
-    fn test_pagination_errors() {
-        let page_error = Error::InvalidPage("page must be positive".to_string());
-        assert_eq!(page_error.status_code(), 400);
-        assert_eq!(page_error.kind(), ErrorKind::Validation);
+	#[test]
+	fn test_pagination_errors() {
+		let page_error = Error::InvalidPage("page must be positive".to_string());
+		assert_eq!(page_error.status_code(), 400);
+		assert_eq!(page_error.kind(), ErrorKind::Validation);
 
-        let cursor_error = Error::InvalidCursor("invalid base64".to_string());
-        assert_eq!(cursor_error.status_code(), 400);
-        assert_eq!(cursor_error.kind(), ErrorKind::Validation);
+		let cursor_error = Error::InvalidCursor("invalid base64".to_string());
+		assert_eq!(cursor_error.status_code(), 400);
+		assert_eq!(cursor_error.kind(), ErrorKind::Validation);
 
-        let limit_error = Error::InvalidLimit("limit too large".to_string());
-        assert_eq!(limit_error.status_code(), 400);
-        assert_eq!(limit_error.kind(), ErrorKind::Validation);
-    }
+		let limit_error = Error::InvalidLimit("limit too large".to_string());
+		assert_eq!(limit_error.status_code(), 400);
+		assert_eq!(limit_error.kind(), ErrorKind::Validation);
+	}
 
-    #[test]
-    fn test_missing_parameter_error() {
-        let error = Error::MissingParameter("user_id".to_string());
-        assert_eq!(error.status_code(), 400);
-        assert_eq!(error.kind(), ErrorKind::Validation);
-        assert!(error.to_string().contains("Missing parameter"));
-        assert!(error.to_string().contains("user_id"));
-    }
+	#[test]
+	fn test_missing_parameter_error() {
+		let error = Error::MissingParameter("user_id".to_string());
+		assert_eq!(error.status_code(), 400);
+		assert_eq!(error.kind(), ErrorKind::Validation);
+		assert!(error.to_string().contains("Missing parameter"));
+		assert!(error.to_string().contains("user_id"));
+	}
 }

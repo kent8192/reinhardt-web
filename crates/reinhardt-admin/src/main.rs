@@ -19,7 +19,7 @@
 
 use clap::{Parser, Subcommand};
 use reinhardt_commands::{
-    BaseCommand, CommandContext, CommandResult, StartAppCommand, StartProjectCommand,
+	BaseCommand, CommandContext, CommandResult, StartAppCommand, StartProjectCommand,
 };
 use std::process;
 
@@ -28,147 +28,147 @@ use std::process;
 #[command(about = "Reinhardt project administration utility", long_about = None)]
 #[command(version)]
 struct Cli {
-    #[command(subcommand)]
-    command: Commands,
+	#[command(subcommand)]
+	command: Commands,
 
-    /// Verbosity level (can be repeated)
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    verbosity: u8,
+	/// Verbosity level (can be repeated)
+	#[arg(short, long, action = clap::ArgAction::Count)]
+	verbosity: u8,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Create a new Reinhardt project
-    Startproject {
-        /// Name of the project
-        #[arg(value_name = "PROJECT_NAME")]
-        name: String,
+	/// Create a new Reinhardt project
+	Startproject {
+		/// Name of the project
+		#[arg(value_name = "PROJECT_NAME")]
+		name: String,
 
-        /// Directory to create the project in (defaults to current directory)
-        #[arg(value_name = "DIRECTORY")]
-        directory: Option<String>,
+		/// Directory to create the project in (defaults to current directory)
+		#[arg(value_name = "DIRECTORY")]
+		directory: Option<String>,
 
-        /// Project template type: mtv (Model-Template-View) or restful (RESTful API)
-        #[arg(short = 't', long, default_value = "restful")]
-        template_type: String,
-    },
+		/// Project template type: mtv (Model-Template-View) or restful (RESTful API)
+		#[arg(short = 't', long, default_value = "restful")]
+		template_type: String,
+	},
 
-    /// Create a new Reinhardt app
-    Startapp {
-        /// Name of the app
-        #[arg(value_name = "APP_NAME")]
-        name: String,
+	/// Create a new Reinhardt app
+	Startapp {
+		/// Name of the app
+		#[arg(value_name = "APP_NAME")]
+		name: String,
 
-        /// Directory to create the app in (defaults to current directory)
-        #[arg(value_name = "DIRECTORY")]
-        directory: Option<String>,
+		/// Directory to create the app in (defaults to current directory)
+		#[arg(value_name = "DIRECTORY")]
+		directory: Option<String>,
 
-        /// App template type: mtv or restful
-        #[arg(short = 't', long, default_value = "restful")]
-        template_type: String,
-    },
+		/// App template type: mtv or restful
+		#[arg(short = 't', long, default_value = "restful")]
+		template_type: String,
+	},
 
-    /// Display help information for a specific command
-    Help {
-        /// Command name to get help for
-        #[arg(value_name = "COMMAND")]
-        command: Option<String>,
-    },
+	/// Display help information for a specific command
+	Help {
+		/// Command name to get help for
+		#[arg(value_name = "COMMAND")]
+		command: Option<String>,
+	},
 
-    /// Display version information
-    Version,
+	/// Display version information
+	Version,
 }
 
 #[tokio::main]
 async fn main() {
-    let cli = Cli::parse();
+	let cli = Cli::parse();
 
-    let result = match cli.command {
-        Commands::Startproject {
-            name,
-            directory,
-            template_type,
-        } => run_startproject(name, directory, template_type, cli.verbosity).await,
-        Commands::Startapp {
-            name,
-            directory,
-            template_type,
-        } => run_startapp(name, directory, template_type, cli.verbosity).await,
-        Commands::Help { command } => {
-            show_help(command);
-            Ok(())
-        }
-        Commands::Version => {
-            show_version();
-            Ok(())
-        }
-    };
+	let result = match cli.command {
+		Commands::Startproject {
+			name,
+			directory,
+			template_type,
+		} => run_startproject(name, directory, template_type, cli.verbosity).await,
+		Commands::Startapp {
+			name,
+			directory,
+			template_type,
+		} => run_startapp(name, directory, template_type, cli.verbosity).await,
+		Commands::Help { command } => {
+			show_help(command);
+			Ok(())
+		}
+		Commands::Version => {
+			show_version();
+			Ok(())
+		}
+	};
 
-    if let Err(e) = result {
-        eprintln!("Error: {}", e);
-        process::exit(1);
-    }
+	if let Err(e) = result {
+		eprintln!("Error: {}", e);
+		process::exit(1);
+	}
 }
 
 async fn run_startproject(
-    name: String,
-    directory: Option<String>,
-    template_type: String,
-    verbosity: u8,
+	name: String,
+	directory: Option<String>,
+	template_type: String,
+	verbosity: u8,
 ) -> CommandResult<()> {
-    let mut ctx = CommandContext::default();
-    ctx.set_verbosity(verbosity);
-    ctx.add_arg(name);
-    if let Some(dir) = directory {
-        ctx.add_arg(dir);
-    }
-    ctx.set_option("type".to_string(), template_type);
+	let mut ctx = CommandContext::default();
+	ctx.set_verbosity(verbosity);
+	ctx.add_arg(name);
+	if let Some(dir) = directory {
+		ctx.add_arg(dir);
+	}
+	ctx.set_option("type".to_string(), template_type);
 
-    let cmd = StartProjectCommand;
-    cmd.execute(&ctx).await
+	let cmd = StartProjectCommand;
+	cmd.execute(&ctx).await
 }
 
 async fn run_startapp(
-    name: String,
-    directory: Option<String>,
-    template_type: String,
-    verbosity: u8,
+	name: String,
+	directory: Option<String>,
+	template_type: String,
+	verbosity: u8,
 ) -> CommandResult<()> {
-    let mut ctx = CommandContext::default();
-    ctx.set_verbosity(verbosity);
-    ctx.add_arg(name);
-    if let Some(dir) = directory {
-        ctx.add_arg(dir);
-    }
-    ctx.set_option("type".to_string(), template_type);
+	let mut ctx = CommandContext::default();
+	ctx.set_verbosity(verbosity);
+	ctx.add_arg(name);
+	if let Some(dir) = directory {
+		ctx.add_arg(dir);
+	}
+	ctx.set_option("type".to_string(), template_type);
 
-    let cmd = StartAppCommand;
-    cmd.execute(&ctx).await
+	let cmd = StartAppCommand;
+	cmd.execute(&ctx).await
 }
 
 fn show_help(command: Option<String>) {
-    if let Some(cmd) = command {
-        println!("Help for command: {}", cmd);
-        println!();
-        println!("Use --help with the command for detailed information:");
-        println!("  reinhardt-admin {} --help", cmd);
-    } else {
-        println!("Reinhardt Admin - Project Management Utility");
-        println!();
-        println!("Usage: reinhardt-admin <COMMAND> [OPTIONS]");
-        println!();
-        println!("Available commands:");
-        println!("  startproject    Create a new Reinhardt project");
-        println!("  startapp        Create a new Reinhardt app");
-        println!("  help            Display help information");
-        println!("  version         Display version information");
-        println!();
-        println!("For more information on a specific command, use:");
-        println!("  reinhardt-admin <COMMAND> --help");
-    }
+	if let Some(cmd) = command {
+		println!("Help for command: {}", cmd);
+		println!();
+		println!("Use --help with the command for detailed information:");
+		println!("  reinhardt-admin {} --help", cmd);
+	} else {
+		println!("Reinhardt Admin - Project Management Utility");
+		println!();
+		println!("Usage: reinhardt-admin <COMMAND> [OPTIONS]");
+		println!();
+		println!("Available commands:");
+		println!("  startproject    Create a new Reinhardt project");
+		println!("  startapp        Create a new Reinhardt app");
+		println!("  help            Display help information");
+		println!("  version         Display version information");
+		println!();
+		println!("For more information on a specific command, use:");
+		println!("  reinhardt-admin <COMMAND> --help");
+	}
 }
 
 fn show_version() {
-    println!("reinhardt-admin {}", env!("CARGO_PKG_VERSION"));
-    println!("Reinhardt Framework");
+	println!("reinhardt-admin {}", env!("CARGO_PKG_VERSION"));
+	println!("Reinhardt Framework");
 }

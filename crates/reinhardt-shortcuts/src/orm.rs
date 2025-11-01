@@ -44,24 +44,27 @@ use reinhardt_http::Response;
 #[cfg(feature = "database")]
 pub async fn get_object_or_404<M>(pk: M::PrimaryKey) -> Result<M, Response>
 where
-    M: Model + serde::de::DeserializeOwned + 'static,
-    M::PrimaryKey: ToString,
+	M: Model + serde::de::DeserializeOwned + 'static,
+	M::PrimaryKey: ToString,
 {
-    use reinhardt_db::prelude::Manager;
-    
-    // Get the manager for this model
-    let manager = Manager::<M>::new();
+	use reinhardt_db::prelude::Manager;
 
-    // Query by primary key
-    let queryset = manager.get(pk);
+	// Get the manager for this model
+	let manager = Manager::<M>::new();
 
-    // Execute the query - await the async result
-    let results = queryset.all().await.map_err(|_| Response::internal_server_error())?;
+	// Query by primary key
+	let queryset = manager.get(pk);
 
-    match results.into_iter().next() {
-        Some(obj) => Ok(obj),
-        None => Err(Response::not_found()),
-    }
+	// Execute the query - await the async result
+	let results = queryset
+		.all()
+		.await
+		.map_err(|_| Response::internal_server_error())?;
+
+	match results.into_iter().next() {
+		Some(obj) => Ok(obj),
+		None => Err(Response::not_found()),
+	}
 }
 
 /// Get a list of objects from the database or return a 404 response if empty
@@ -99,71 +102,76 @@ where
 /// Returns `Err(Response)` with HTTP 404 if the result list is empty,
 /// or HTTP 500 if a database error occurs.
 #[cfg(feature = "database")]
-pub async fn get_list_or_404<M>(queryset: reinhardt_db::prelude::QuerySet<M>) -> Result<Vec<M>, Response>
+pub async fn get_list_or_404<M>(
+	queryset: reinhardt_db::prelude::QuerySet<M>,
+) -> Result<Vec<M>, Response>
 where
-    M: Model + 'static,
+	M: Model + 'static,
 {
-    // Execute the query - await the async result
-    let results = queryset.all().await.map_err(|_| Response::internal_server_error())?;
+	// Execute the query - await the async result
+	let results = queryset
+		.all()
+		.await
+		.map_err(|_| Response::internal_server_error())?;
 
-    if results.is_empty() {
-        Err(Response::not_found())
-    } else {
-        Ok(results)
-    }
+	if results.is_empty() {
+		Err(Response::not_found())
+	} else {
+		Ok(results)
+	}
 }
 
 #[cfg(all(test, feature = "database"))]
 mod tests {
-    use super::*;
-    use reinhardt_db::prelude::{Model, QuerySet};
-    use serde::{Deserialize, Serialize};
+	use super::*;
+	use reinhardt_db::prelude::{Model, QuerySet};
+	use serde::{Deserialize, Serialize};
 
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    struct TestUser {
-        id: Option<i64>,
-        username: String,
-        email: String,
-    }
+	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+	struct TestUser {
+		id: Option<i64>,
+		username: String,
+		email: String,
+	}
 
-    impl Model for TestUser {
-        type PrimaryKey = i64;
+	impl Model for TestUser {
+		type PrimaryKey = i64;
 
-        fn table_name() -> &'static str {
-            "test_users"
-        }
+		fn table_name() -> &'static str {
+			"test_users"
+		}
 
-        fn primary_key_field() -> &'static str {
-            "id"
-        }
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
 
-        fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-            self.id.as_ref()
-        }
+		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+			self.id.as_ref()
+		}
 
-        fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-            self.id = Some(value);
-        }
-    }
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+	}
 
-    #[tokio::test]
-    async fn test_get_object_or_404_not_found() {
-        // Note: Since QuerySet::all() is a stub that returns empty Vec,
-        // this will always return 404
-        let result = get_object_or_404::<TestUser>(999).await;
-        assert!(result.is_err());
+	#[tokio::test]
+	async fn test_get_object_or_404_not_found() {
+		// Note: Since QuerySet::all() is a stub that returns empty Vec,
+		// this will always return 404
+		let result = get_object_or_404::<TestUser>(999).await;
+		assert!(result.is_err());
 
-        let response = result.unwrap_err();
-        assert_eq!(response.status, hyper::StatusCode::NOT_FOUND);
-    }
+		let response = result.unwrap_err();
+		assert_eq!(response.status, hyper::StatusCode::NOT_FOUND);
+	}
 
-    #[tokio::test]
-    async fn test_get_list_or_404_empty() {
-        let queryset = QuerySet::<TestUser>::new();
-        let result = get_list_or_404(queryset).await;
-        assert!(result.is_err());
+	#[tokio::test]
+	async fn test_get_list_or_404_empty() {
+		let queryset = QuerySet::<TestUser>::new();
+		let result = get_list_or_404(queryset).await;
+		assert!(result.is_err());
 
-        let response = result.unwrap_err();
-        assert_eq!(response.status, hyper::StatusCode::NOT_FOUND);
-    }
+		let response = result.unwrap_err();
+		assert_eq!(response.status, hyper::StatusCode::NOT_FOUND);
+	}
 }

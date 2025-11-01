@@ -44,9 +44,9 @@ pub use auto_schema::{SchemaObject, ToSchema};
 pub use enum_schema::{EnumSchemaBuilder, EnumTagging};
 pub use generator::SchemaGenerator;
 pub use openapi::{
-    ComponentsExt, Header, Info, MediaType, OpenApiSchema, OpenApiSchemaExt, Operation,
-    OperationExt, Parameter, ParameterExt, ParameterIn as ParameterLocation, PathItem, PathItemExt,
-    RefOr, RequestBody, Required, Response, ResponsesExt, Schema, SchemaExt, Server,
+	ComponentsExt, Header, Info, MediaType, OpenApiSchema, OpenApiSchemaExt, Operation,
+	OperationExt, Parameter, ParameterExt, ParameterIn as ParameterLocation, PathItem, PathItemExt,
+	RefOr, RequestBody, Required, Response, ResponsesExt, Schema, SchemaExt, Server,
 };
 pub use param_metadata::{CookieParam, HeaderParam, ParameterMetadata, PathParam, QueryParam};
 pub use registry::SchemaRegistry;
@@ -57,17 +57,17 @@ pub use viewset_inspector::{InspectorConfig, ViewSetInspector};
 
 #[derive(Debug, Error)]
 pub enum SchemaError {
-    #[error("Invalid schema: {0}")]
-    InvalidSchema(String),
+	#[error("Invalid schema: {0}")]
+	InvalidSchema(String),
 
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
+	#[error("Serialization error: {0}")]
+	SerializationError(String),
 
-    #[error("Inspector error: {0}")]
-    InspectorError(String),
+	#[error("Inspector error: {0}")]
+	InspectorError(String),
 
-    #[error("JSON error: {0}")]
-    JsonError(#[from] serde_json::Error),
+	#[error("JSON error: {0}")]
+	JsonError(#[from] serde_json::Error),
 }
 
 pub type SchemaResult<T> = std::result::Result<T, SchemaError>;

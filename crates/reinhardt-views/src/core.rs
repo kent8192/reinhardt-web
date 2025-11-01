@@ -8,12 +8,12 @@ use std::collections::HashMap;
 /// Base trait for all generic views
 #[async_trait]
 pub trait View: Send + Sync {
-    async fn dispatch(&self, request: Request) -> Result<Response>;
+	async fn dispatch(&self, request: Request) -> Result<Response>;
 
-    /// Returns the list of HTTP methods allowed by this view
-    fn allowed_methods(&self) -> Vec<&'static str> {
-        vec!["GET", "HEAD", "OPTIONS"]
-    }
+	/// Returns the list of HTTP methods allowed by this view
+	fn allowed_methods(&self) -> Vec<&'static str> {
+		vec!["GET", "HEAD", "OPTIONS"]
+	}
 }
 
 /// Context data for template rendering

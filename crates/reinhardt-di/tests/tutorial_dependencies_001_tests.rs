@@ -13,147 +13,147 @@ use std::sync::Arc;
 // Common query parameters dependency
 #[derive(Clone, Debug, PartialEq)]
 struct CommonQueryParams {
-    q: Option<String>,
-    skip: i32,
-    limit: i32,
+	q: Option<String>,
+	skip: i32,
+	limit: i32,
 }
 
 impl CommonQueryParams {
-    fn new(q: Option<String>, skip: Option<i32>, limit: Option<i32>) -> Self {
-        CommonQueryParams {
-            q,
-            skip: skip.unwrap_or(0),
-            limit: limit.unwrap_or(100),
-        }
-    }
+	fn new(q: Option<String>, skip: Option<i32>, limit: Option<i32>) -> Self {
+		CommonQueryParams {
+			q,
+			skip: skip.unwrap_or(0),
+			limit: limit.unwrap_or(100),
+		}
+	}
 }
 
 #[async_trait::async_trait]
 impl Injectable for CommonQueryParams {
-    async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-        // Check cache first
-        if let Some(cached) = ctx.get_request::<CommonQueryParams>() {
-            return Ok((*cached).clone());
-        }
+	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+		// Check cache first
+		if let Some(cached) = ctx.get_request::<CommonQueryParams>() {
+			return Ok((*cached).clone());
+		}
 
-        // In a real implementation, these would be extracted from query parameters
-        // For testing, we'll use values from context
-        let params = CommonQueryParams::new(None, None, None);
-        ctx.set_request(params.clone());
-        Ok(params)
-    }
+		// In a real implementation, these would be extracted from query parameters
+		// For testing, we'll use values from context
+		let params = CommonQueryParams::new(None, None, None);
+		ctx.set_request(params.clone());
+		Ok(params)
+	}
 }
 
 #[tokio::test]
 async fn test_default_query_params() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Inject with default values
-    let params = CommonQueryParams::inject(&ctx).await.unwrap();
+	// Inject with default values
+	let params = CommonQueryParams::inject(&ctx).await.unwrap();
 
-    assert_eq!(params.q, None);
-    assert_eq!(params.skip, 0);
-    assert_eq!(params.limit, 100);
+	assert_eq!(params.q, None);
+	assert_eq!(params.skip, 0);
+	assert_eq!(params.limit, 100);
 }
 
 #[tokio::test]
 async fn test_query_params_with_q() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Set params with q
-    ctx.set_request(CommonQueryParams::new(Some("foo".to_string()), None, None));
+	// Set params with q
+	ctx.set_request(CommonQueryParams::new(Some("foo".to_string()), None, None));
 
-    let params = CommonQueryParams::inject(&ctx).await.unwrap();
+	let params = CommonQueryParams::inject(&ctx).await.unwrap();
 
-    assert_eq!(params.q, Some("foo".to_string()));
-    assert_eq!(params.skip, 0);
-    assert_eq!(params.limit, 100);
+	assert_eq!(params.q, Some("foo".to_string()));
+	assert_eq!(params.skip, 0);
+	assert_eq!(params.limit, 100);
 }
 
 #[tokio::test]
 async fn test_query_params_with_skip() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Set params with q and skip
-    ctx.set_request(CommonQueryParams::new(
-        Some("foo".to_string()),
-        Some(5),
-        None,
-    ));
+	// Set params with q and skip
+	ctx.set_request(CommonQueryParams::new(
+		Some("foo".to_string()),
+		Some(5),
+		None,
+	));
 
-    let params = CommonQueryParams::inject(&ctx).await.unwrap();
+	let params = CommonQueryParams::inject(&ctx).await.unwrap();
 
-    assert_eq!(params.q, Some("foo".to_string()));
-    assert_eq!(params.skip, 5);
-    assert_eq!(params.limit, 100);
+	assert_eq!(params.q, Some("foo".to_string()));
+	assert_eq!(params.skip, 5);
+	assert_eq!(params.limit, 100);
 }
 
 #[tokio::test]
 async fn test_query_params_with_all() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Set all params
-    ctx.set_request(CommonQueryParams::new(
-        Some("foo".to_string()),
-        Some(5),
-        Some(30),
-    ));
+	// Set all params
+	ctx.set_request(CommonQueryParams::new(
+		Some("foo".to_string()),
+		Some(5),
+		Some(30),
+	));
 
-    let params = CommonQueryParams::inject(&ctx).await.unwrap();
+	let params = CommonQueryParams::inject(&ctx).await.unwrap();
 
-    assert_eq!(params.q, Some("foo".to_string()));
-    assert_eq!(params.skip, 5);
-    assert_eq!(params.limit, 30);
+	assert_eq!(params.q, Some("foo".to_string()));
+	assert_eq!(params.skip, 5);
+	assert_eq!(params.limit, 30);
 }
 
 #[tokio::test]
 async fn test_shared_dependency_across_endpoints() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Set params
-    ctx.set_request(CommonQueryParams::new(
-        Some("test".to_string()),
-        Some(10),
-        Some(50),
-    ));
+	// Set params
+	ctx.set_request(CommonQueryParams::new(
+		Some("test".to_string()),
+		Some(10),
+		Some(50),
+	));
 
-    // Simulate two different endpoints using the same dependency
-    let params1 = CommonQueryParams::inject(&ctx).await.unwrap();
-    let params2 = CommonQueryParams::inject(&ctx).await.unwrap();
+	// Simulate two different endpoints using the same dependency
+	let params1 = CommonQueryParams::inject(&ctx).await.unwrap();
+	let params2 = CommonQueryParams::inject(&ctx).await.unwrap();
 
-    // Both should get the same cached instance
-    assert_eq!(params1, params2);
+	// Both should get the same cached instance
+	assert_eq!(params1, params2);
 }
 
 #[tokio::test]
 async fn test_different_requests_have_different_params() {
-    let singleton = Arc::new(SingletonScope::new());
+	let singleton = Arc::new(SingletonScope::new());
 
-    // Request 1
-    let ctx1 = InjectionContext::new(singleton.clone());
-    ctx1.set_request(CommonQueryParams::new(
-        Some("req1".to_string()),
-        Some(0),
-        Some(10),
-    ));
-    let params1 = CommonQueryParams::inject(&ctx1).await.unwrap();
+	// Request 1
+	let ctx1 = InjectionContext::new(singleton.clone());
+	ctx1.set_request(CommonQueryParams::new(
+		Some("req1".to_string()),
+		Some(0),
+		Some(10),
+	));
+	let params1 = CommonQueryParams::inject(&ctx1).await.unwrap();
 
-    // Request 2
-    let ctx2 = InjectionContext::new(singleton);
-    ctx2.set_request(CommonQueryParams::new(
-        Some("req2".to_string()),
-        Some(5),
-        Some(20),
-    ));
-    let params2 = CommonQueryParams::inject(&ctx2).await.unwrap();
+	// Request 2
+	let ctx2 = InjectionContext::new(singleton);
+	ctx2.set_request(CommonQueryParams::new(
+		Some("req2".to_string()),
+		Some(5),
+		Some(20),
+	));
+	let params2 = CommonQueryParams::inject(&ctx2).await.unwrap();
 
-    // Should be different
-    assert_ne!(params1.q, params2.q);
-    assert_ne!(params1.skip, params2.skip);
-    assert_ne!(params1.limit, params2.limit);
+	// Should be different
+	assert_ne!(params1.q, params2.q);
+	assert_ne!(params1.skip, params2.skip);
+	assert_ne!(params1.limit, params2.limit);
 }

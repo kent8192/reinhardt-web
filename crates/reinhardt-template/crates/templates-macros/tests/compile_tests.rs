@@ -4,16 +4,16 @@
 
 #[test]
 fn test_compile_failures() {
-    let t = trybuild::TestCases::new();
+	let t = trybuild::TestCases::new();
 
-    // Test invalid template paths
-    t.compile_fail("tests/ui/fail/*.rs");
+	// Test invalid template paths
+	t.compile_fail("tests/ui/fail/*.rs");
 }
 
 #[test]
 fn test_compile_success() {
-    let t = trybuild::TestCases::new();
+	let t = trybuild::TestCases::new();
 
-    // Test valid template paths
-    t.pass("tests/ui/pass/*.rs");
+	// Test valid template paths
+	t.pass("tests/ui/pass/*.rs");
 }

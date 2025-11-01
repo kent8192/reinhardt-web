@@ -84,129 +84,129 @@ use uuid::Uuid;
 /// # })
 /// ```
 pub struct DefaultUserManager {
-    users: Arc<RwLock<HashMap<Uuid, DefaultUser>>>,
+	users: Arc<RwLock<HashMap<Uuid, DefaultUser>>>,
 }
 
 impl DefaultUserManager {
-    /// Creates a new DefaultUserManager with empty user storage
-    pub fn new() -> Self {
-        Self {
-            users: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
+	/// Creates a new DefaultUserManager with empty user storage
+	pub fn new() -> Self {
+		Self {
+			users: Arc::new(RwLock::new(HashMap::new())),
+		}
+	}
 
-    /// Gets a user by ID (for internal use)
-    pub fn get_by_id(&self, id: Uuid) -> Option<DefaultUser> {
-        let users = self.users.read().unwrap();
-        users.get(&id).cloned()
-    }
+	/// Gets a user by ID (for internal use)
+	pub fn get_by_id(&self, id: Uuid) -> Option<DefaultUser> {
+		let users = self.users.read().unwrap();
+		users.get(&id).cloned()
+	}
 
-    /// Gets a user by username (for internal use)
-    pub fn get_by_username(&self, username: &str) -> Option<DefaultUser> {
-        let users = self.users.read().unwrap();
-        users.values().find(|u| u.username == username).cloned()
-    }
+	/// Gets a user by username (for internal use)
+	pub fn get_by_username(&self, username: &str) -> Option<DefaultUser> {
+		let users = self.users.read().unwrap();
+		users.values().find(|u| u.username == username).cloned()
+	}
 
-    /// Lists all users (for internal use)
-    pub fn list_all(&self) -> Vec<DefaultUser> {
-        let users = self.users.read().unwrap();
-        users.values().cloned().collect()
-    }
+	/// Lists all users (for internal use)
+	pub fn list_all(&self) -> Vec<DefaultUser> {
+		let users = self.users.read().unwrap();
+		users.values().cloned().collect()
+	}
 }
 
 impl Default for DefaultUserManager {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[async_trait]
 impl BaseUserManager<DefaultUser> for DefaultUserManager {
-    async fn create_user(
-        &mut self,
-        username: &str,
-        password: Option<&str>,
-        extra: HashMap<String, Value>,
-    ) -> Result<DefaultUser> {
-        // Check if username already exists
-        if self.get_by_username(username).is_some() {
-            return Err(reinhardt_exception::Error::Validation(format!(
-                "Username '{}' already exists",
-                username
-            )));
-        }
+	async fn create_user(
+		&mut self,
+		username: &str,
+		password: Option<&str>,
+		extra: HashMap<String, Value>,
+	) -> Result<DefaultUser> {
+		// Check if username already exists
+		if self.get_by_username(username).is_some() {
+			return Err(reinhardt_exception::Error::Validation(format!(
+				"Username '{}' already exists",
+				username
+			)));
+		}
 
-        // Create user with default values
-        let mut user = DefaultUser {
-            id: Uuid::new_v4(),
-            username: username.to_string(),
-            email: String::new(),
-            first_name: String::new(),
-            last_name: String::new(),
-            password_hash: None,
-            last_login: None,
-            is_active: true,
-            is_staff: false,
-            is_superuser: false,
-            date_joined: Utc::now(),
-            user_permissions: Vec::new(),
-            groups: Vec::new(),
-        };
+		// Create user with default values
+		let mut user = DefaultUser {
+			id: Uuid::new_v4(),
+			username: username.to_string(),
+			email: String::new(),
+			first_name: String::new(),
+			last_name: String::new(),
+			password_hash: None,
+			last_login: None,
+			is_active: true,
+			is_staff: false,
+			is_superuser: false,
+			date_joined: Utc::now(),
+			user_permissions: Vec::new(),
+			groups: Vec::new(),
+		};
 
-        // Apply extra fields
-        if let Some(email) = extra.get("email") {
-            if let Some(email_str) = email.as_str() {
-                user.email = Self::normalize_email(email_str);
-            }
-        }
+		// Apply extra fields
+		if let Some(email) = extra.get("email") {
+			if let Some(email_str) = email.as_str() {
+				user.email = Self::normalize_email(email_str);
+			}
+		}
 
-        if let Some(first_name) = extra.get("first_name") {
-            if let Some(name) = first_name.as_str() {
-                user.first_name = name.to_string();
-            }
-        }
+		if let Some(first_name) = extra.get("first_name") {
+			if let Some(name) = first_name.as_str() {
+				user.first_name = name.to_string();
+			}
+		}
 
-        if let Some(last_name) = extra.get("last_name") {
-            if let Some(name) = last_name.as_str() {
-                user.last_name = name.to_string();
-            }
-        }
+		if let Some(last_name) = extra.get("last_name") {
+			if let Some(name) = last_name.as_str() {
+				user.last_name = name.to_string();
+			}
+		}
 
-        if let Some(is_active) = extra.get("is_active") {
-            if let Some(active) = is_active.as_bool() {
-                user.is_active = active;
-            }
-        }
+		if let Some(is_active) = extra.get("is_active") {
+			if let Some(active) = is_active.as_bool() {
+				user.is_active = active;
+			}
+		}
 
-        // Set password if provided (automatically hashed via BaseUser trait)
-        if let Some(pwd) = password {
-            user.set_password(pwd)?;
-        }
+		// Set password if provided (automatically hashed via BaseUser trait)
+		if let Some(pwd) = password {
+			user.set_password(pwd)?;
+		}
 
-        // Store user
-        let mut users = self.users.write().unwrap();
-        users.insert(user.id, user.clone());
+		// Store user
+		let mut users = self.users.write().unwrap();
+		users.insert(user.id, user.clone());
 
-        Ok(user)
-    }
+		Ok(user)
+	}
 
-    async fn create_superuser(
-        &mut self,
-        username: &str,
-        password: Option<&str>,
-        extra: HashMap<String, Value>,
-    ) -> Result<DefaultUser> {
-        // Create base user first
-        let mut user = self.create_user(username, password, extra).await?;
+	async fn create_superuser(
+		&mut self,
+		username: &str,
+		password: Option<&str>,
+		extra: HashMap<String, Value>,
+	) -> Result<DefaultUser> {
+		// Create base user first
+		let mut user = self.create_user(username, password, extra).await?;
 
-        // Promote to superuser
-        user.is_staff = true;
-        user.is_superuser = true;
+		// Promote to superuser
+		user.is_staff = true;
+		user.is_superuser = true;
 
-        // Update storage
-        let mut users = self.users.write().unwrap();
-        users.insert(user.id, user.clone());
+		// Update storage
+		let mut users = self.users.write().unwrap();
+		users.insert(user.id, user.clone());
 
-        Ok(user)
-    }
+		Ok(user)
+	}
 }

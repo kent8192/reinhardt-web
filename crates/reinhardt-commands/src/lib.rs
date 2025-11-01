@@ -92,24 +92,24 @@ pub use mail_commands::SendTestEmailCommand;
 pub use output::OutputWrapper;
 pub use registry::CommandRegistry;
 pub use start_commands::{StartAppCommand, StartProjectCommand};
-pub use template::{generate_secret_key, to_camel_case, TemplateCommand, TemplateContext};
+pub use template::{TemplateCommand, TemplateContext, generate_secret_key, to_camel_case};
 
 #[derive(Debug, Error)]
 pub enum CommandError {
-    #[error("Command not found: {0}")]
-    NotFound(String),
+	#[error("Command not found: {0}")]
+	NotFound(String),
 
-    #[error("Invalid arguments: {0}")]
-    InvalidArguments(String),
+	#[error("Invalid arguments: {0}")]
+	InvalidArguments(String),
 
-    #[error("Execution error: {0}")]
-    ExecutionError(String),
+	#[error("Execution error: {0}")]
+	ExecutionError(String),
 
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
+	#[error("IO error: {0}")]
+	IoError(#[from] std::io::Error),
 
-    #[error("Parse error: {0}")]
-    ParseError(String),
+	#[error("Parse error: {0}")]
+	ParseError(String),
 }
 
 pub type CommandResult<T> = std::result::Result<T, CommandError>;

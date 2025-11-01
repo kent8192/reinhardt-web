@@ -27,147 +27,147 @@ use std::sync::Arc;
 pub struct SignalName(&'static str);
 
 impl SignalName {
-    // Model signals
-    /// Signal sent before saving a model instance
-    pub const PRE_SAVE: Self = Self("pre_save");
-    /// Signal sent after saving a model instance
-    pub const POST_SAVE: Self = Self("post_save");
-    /// Signal sent before deleting a model instance
-    pub const PRE_DELETE: Self = Self("pre_delete");
-    /// Signal sent after deleting a model instance
-    pub const POST_DELETE: Self = Self("post_delete");
-    /// Signal sent at the beginning of a model's initialization
-    pub const PRE_INIT: Self = Self("pre_init");
-    /// Signal sent at the end of a model's initialization
-    pub const POST_INIT: Self = Self("post_init");
-    /// Signal sent when many-to-many relationships change
-    pub const M2M_CHANGED: Self = Self("m2m_changed");
-    /// Signal sent when a model class is prepared
-    pub const CLASS_PREPARED: Self = Self("class_prepared");
+	// Model signals
+	/// Signal sent before saving a model instance
+	pub const PRE_SAVE: Self = Self("pre_save");
+	/// Signal sent after saving a model instance
+	pub const POST_SAVE: Self = Self("post_save");
+	/// Signal sent before deleting a model instance
+	pub const PRE_DELETE: Self = Self("pre_delete");
+	/// Signal sent after deleting a model instance
+	pub const POST_DELETE: Self = Self("post_delete");
+	/// Signal sent at the beginning of a model's initialization
+	pub const PRE_INIT: Self = Self("pre_init");
+	/// Signal sent at the end of a model's initialization
+	pub const POST_INIT: Self = Self("post_init");
+	/// Signal sent when many-to-many relationships change
+	pub const M2M_CHANGED: Self = Self("m2m_changed");
+	/// Signal sent when a model class is prepared
+	pub const CLASS_PREPARED: Self = Self("class_prepared");
 
-    // Migration signals
-    /// Signal sent before running migrations
-    pub const PRE_MIGRATE: Self = Self("pre_migrate");
-    /// Signal sent after running migrations
-    pub const POST_MIGRATE: Self = Self("post_migrate");
+	// Migration signals
+	/// Signal sent before running migrations
+	pub const PRE_MIGRATE: Self = Self("pre_migrate");
+	/// Signal sent after running migrations
+	pub const POST_MIGRATE: Self = Self("post_migrate");
 
-    // Request signals
-    /// Signal sent when an HTTP request starts
-    pub const REQUEST_STARTED: Self = Self("request_started");
-    /// Signal sent when an HTTP request finishes
-    pub const REQUEST_FINISHED: Self = Self("request_finished");
-    /// Signal sent when an exception occurs during request handling
-    pub const GOT_REQUEST_EXCEPTION: Self = Self("got_request_exception");
+	// Request signals
+	/// Signal sent when an HTTP request starts
+	pub const REQUEST_STARTED: Self = Self("request_started");
+	/// Signal sent when an HTTP request finishes
+	pub const REQUEST_FINISHED: Self = Self("request_finished");
+	/// Signal sent when an exception occurs during request handling
+	pub const GOT_REQUEST_EXCEPTION: Self = Self("got_request_exception");
 
-    // Management signals
-    /// Signal sent when a configuration setting is changed
-    pub const SETTING_CHANGED: Self = Self("setting_changed");
+	// Management signals
+	/// Signal sent when a configuration setting is changed
+	pub const SETTING_CHANGED: Self = Self("setting_changed");
 
-    // Database signals
-    /// Signal sent before a database insert operation
-    pub const DB_BEFORE_INSERT: Self = Self("db_before_insert");
-    /// Signal sent after a database insert operation
-    pub const DB_AFTER_INSERT: Self = Self("db_after_insert");
-    /// Signal sent before a database update operation
-    pub const DB_BEFORE_UPDATE: Self = Self("db_before_update");
-    /// Signal sent after a database update operation
-    pub const DB_AFTER_UPDATE: Self = Self("db_after_update");
-    /// Signal sent before a database delete operation
-    pub const DB_BEFORE_DELETE: Self = Self("db_before_delete");
-    /// Signal sent after a database delete operation
-    pub const DB_AFTER_DELETE: Self = Self("db_after_delete");
+	// Database signals
+	/// Signal sent before a database insert operation
+	pub const DB_BEFORE_INSERT: Self = Self("db_before_insert");
+	/// Signal sent after a database insert operation
+	pub const DB_AFTER_INSERT: Self = Self("db_after_insert");
+	/// Signal sent before a database update operation
+	pub const DB_BEFORE_UPDATE: Self = Self("db_before_update");
+	/// Signal sent after a database update operation
+	pub const DB_AFTER_UPDATE: Self = Self("db_after_update");
+	/// Signal sent before a database delete operation
+	pub const DB_BEFORE_DELETE: Self = Self("db_before_delete");
+	/// Signal sent after a database delete operation
+	pub const DB_AFTER_DELETE: Self = Self("db_after_delete");
 
-    /// Create a custom signal name without validation
-    ///
-    /// Note: This requires a `'static` string to ensure the name lives long enough.
-    /// For dynamic names, consider using string literals or leaked strings.
-    ///
-    /// For validated custom signal names, use `custom_validated()` instead.
-    pub const fn custom(name: &'static str) -> Self {
-        Self(name)
-    }
+	/// Create a custom signal name without validation
+	///
+	/// Note: This requires a `'static` string to ensure the name lives long enough.
+	/// For dynamic names, consider using string literals or leaked strings.
+	///
+	/// For validated custom signal names, use `custom_validated()` instead.
+	pub const fn custom(name: &'static str) -> Self {
+		Self(name)
+	}
 
-    /// Create a validated custom signal name
-    ///
-    /// This method validates that the signal name:
-    /// - Is not empty
-    /// - Uses snake_case format
-    /// - Does not conflict with reserved signal names
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_signals::SignalName;
-    ///
-    /// // Valid custom signal names
-    /// let valid = SignalName::custom_validated("my_custom_signal").unwrap();
-    ///
-    /// // Invalid: not snake_case
-    /// assert!(SignalName::custom_validated("MySignal").is_err());
-    ///
-    /// // Invalid: reserved name
-    /// assert!(SignalName::custom_validated("pre_save").is_err());
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns `SignalError` if validation fails.
-    pub fn custom_validated(name: &'static str) -> Result<Self, SignalError> {
-        validate_signal_name(name)?;
-        Ok(Self(name))
-    }
+	/// Create a validated custom signal name
+	///
+	/// This method validates that the signal name:
+	/// - Is not empty
+	/// - Uses snake_case format
+	/// - Does not conflict with reserved signal names
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_signals::SignalName;
+	///
+	/// // Valid custom signal names
+	/// let valid = SignalName::custom_validated("my_custom_signal").unwrap();
+	///
+	/// // Invalid: not snake_case
+	/// assert!(SignalName::custom_validated("MySignal").is_err());
+	///
+	/// // Invalid: reserved name
+	/// assert!(SignalName::custom_validated("pre_save").is_err());
+	/// ```
+	///
+	/// # Errors
+	///
+	/// Returns `SignalError` if validation fails.
+	pub fn custom_validated(name: &'static str) -> Result<Self, SignalError> {
+		validate_signal_name(name)?;
+		Ok(Self(name))
+	}
 
-    /// Get all reserved signal names
-    ///
-    /// Returns a list of all built-in signal names that cannot be used
-    /// for custom signals.
-    pub fn reserved_names() -> &'static [&'static str] {
-        &[
-            "pre_save",
-            "post_save",
-            "pre_delete",
-            "post_delete",
-            "pre_init",
-            "post_init",
-            "m2m_changed",
-            "class_prepared",
-            "pre_migrate",
-            "post_migrate",
-            "request_started",
-            "request_finished",
-            "got_request_exception",
-            "setting_changed",
-            "db_before_insert",
-            "db_after_insert",
-            "db_before_update",
-            "db_after_update",
-            "db_before_delete",
-            "db_after_delete",
-        ]
-    }
+	/// Get all reserved signal names
+	///
+	/// Returns a list of all built-in signal names that cannot be used
+	/// for custom signals.
+	pub fn reserved_names() -> &'static [&'static str] {
+		&[
+			"pre_save",
+			"post_save",
+			"pre_delete",
+			"post_delete",
+			"pre_init",
+			"post_init",
+			"m2m_changed",
+			"class_prepared",
+			"pre_migrate",
+			"post_migrate",
+			"request_started",
+			"request_finished",
+			"got_request_exception",
+			"setting_changed",
+			"db_before_insert",
+			"db_after_insert",
+			"db_before_update",
+			"db_after_update",
+			"db_before_delete",
+			"db_after_delete",
+		]
+	}
 
-    /// Get the string representation of this signal name
-    pub const fn as_str(&self) -> &'static str {
-        self.0
-    }
+	/// Get the string representation of this signal name
+	pub const fn as_str(&self) -> &'static str {
+		self.0
+	}
 }
 
 impl fmt::Display for SignalName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{}", self.0)
+	}
 }
 
 impl From<SignalName> for String {
-    fn from(name: SignalName) -> String {
-        name.0.to_string()
-    }
+	fn from(name: SignalName) -> String {
+		name.0.to_string()
+	}
 }
 
 impl AsRef<str> for SignalName {
-    fn as_ref(&self) -> &str {
-        self.0
-    }
+	fn as_ref(&self) -> &str {
+		self.0
+	}
 }
 
 /// Validate a custom signal name
@@ -181,61 +181,61 @@ impl AsRef<str> for SignalName {
 ///
 /// Returns `SignalError` if validation fails.
 fn validate_signal_name(name: &str) -> Result<(), SignalError> {
-    // Check if empty
-    if name.is_empty() {
-        return Err(SignalError::new("Signal name cannot be empty"));
-    }
+	// Check if empty
+	if name.is_empty() {
+		return Err(SignalError::new("Signal name cannot be empty"));
+	}
 
-    // Check if reserved
-    if SignalName::reserved_names().contains(&name) {
-        return Err(SignalError::new(format!(
-            "Signal name '{}' is reserved and cannot be used for custom signals",
-            name
-        )));
-    }
+	// Check if reserved
+	if SignalName::reserved_names().contains(&name) {
+		return Err(SignalError::new(format!(
+			"Signal name '{}' is reserved and cannot be used for custom signals",
+			name
+		)));
+	}
 
-    // Check snake_case format
-    // Valid: lowercase letters, numbers, underscores
-    // Must start with a letter or underscore
-    // Cannot have consecutive underscores
-    // Cannot end with underscore
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-    {
-        return Err(SignalError::new(format!(
-            "Signal name '{}' must use snake_case format (lowercase letters, numbers, and underscores only)",
-            name
-        )));
-    }
+	// Check snake_case format
+	// Valid: lowercase letters, numbers, underscores
+	// Must start with a letter or underscore
+	// Cannot have consecutive underscores
+	// Cannot end with underscore
+	if !name
+		.chars()
+		.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+	{
+		return Err(SignalError::new(format!(
+			"Signal name '{}' must use snake_case format (lowercase letters, numbers, and underscores only)",
+			name
+		)));
+	}
 
-    // Check first character
-    if let Some(first) = name.chars().next() {
-        if !first.is_ascii_lowercase() && first != '_' {
-            return Err(SignalError::new(format!(
-                "Signal name '{}' must start with a lowercase letter or underscore",
-                name
-            )));
-        }
-    }
+	// Check first character
+	if let Some(first) = name.chars().next() {
+		if !first.is_ascii_lowercase() && first != '_' {
+			return Err(SignalError::new(format!(
+				"Signal name '{}' must start with a lowercase letter or underscore",
+				name
+			)));
+		}
+	}
 
-    // Check for consecutive underscores
-    if name.contains("__") {
-        return Err(SignalError::new(format!(
-            "Signal name '{}' cannot contain consecutive underscores",
-            name
-        )));
-    }
+	// Check for consecutive underscores
+	if name.contains("__") {
+		return Err(SignalError::new(format!(
+			"Signal name '{}' cannot contain consecutive underscores",
+			name
+		)));
+	}
 
-    // Check if ends with underscore
-    if name.ends_with('_') {
-        return Err(SignalError::new(format!(
-            "Signal name '{}' cannot end with an underscore",
-            name
-        )));
-    }
+	// Check if ends with underscore
+	if name.ends_with('_') {
+		return Err(SignalError::new(format!(
+			"Signal name '{}' cannot end with an underscore",
+			name
+		)));
+	}
 
-    Ok(())
+	Ok(())
 }
 
 /// Common trait for all signal dispatchers
@@ -243,14 +243,14 @@ fn validate_signal_name(name: &str) -> Result<(), SignalError> {
 /// This trait provides a unified interface for both async and sync signals,
 /// enabling generic code and easier testing.
 pub trait SignalDispatcher<T: Send + Sync + 'static> {
-    /// Get the number of connected receivers
-    fn receiver_count(&self) -> usize;
+	/// Get the number of connected receivers
+	fn receiver_count(&self) -> usize;
 
-    /// Clear all receivers
-    fn disconnect_all(&self);
+	/// Clear all receivers
+	fn disconnect_all(&self);
 
-    /// Disconnect a receiver by dispatch_uid
-    fn disconnect(&self, dispatch_uid: &str) -> bool;
+	/// Disconnect a receiver by dispatch_uid
+	fn disconnect(&self, dispatch_uid: &str) -> bool;
 }
 
 /// Trait for asynchronous signal dispatchers
@@ -258,25 +258,25 @@ pub trait SignalDispatcher<T: Send + Sync + 'static> {
 /// Extends SignalDispatcher with async-specific methods
 #[async_trait::async_trait]
 pub trait AsyncSignalDispatcher<T: Send + Sync + 'static>: SignalDispatcher<T> {
-    /// Send signal to all connected receivers
-    async fn send(&self, instance: T) -> Result<(), SignalError>;
+	/// Send signal to all connected receivers
+	async fn send(&self, instance: T) -> Result<(), SignalError>;
 
-    /// Send signal with sender type filtering
-    async fn send_with_sender(
-        &self,
-        instance: T,
-        sender_type_id: Option<TypeId>,
-    ) -> Result<(), SignalError>;
+	/// Send signal with sender type filtering
+	async fn send_with_sender(
+		&self,
+		instance: T,
+		sender_type_id: Option<TypeId>,
+	) -> Result<(), SignalError>;
 
-    /// Send signal robustly, catching errors
-    async fn send_robust(
-        &self,
-        instance: T,
-        sender_type_id: Option<TypeId>,
-    ) -> Vec<Result<(), SignalError>>;
+	/// Send signal robustly, catching errors
+	async fn send_robust(
+		&self,
+		instance: T,
+		sender_type_id: Option<TypeId>,
+	) -> Vec<Result<(), SignalError>>;
 }
 
 /// Signal receiver function type
 pub type ReceiverFn<T> = Arc<
-    dyn Fn(Arc<T>) -> Pin<Box<dyn Future<Output = Result<(), SignalError>> + Send>> + Send + Sync,
+	dyn Fn(Arc<T>) -> Pin<Box<dyn Future<Output = Result<(), SignalError>> + Send>> + Send + Sync,
 >;

@@ -14,168 +14,168 @@ use std::sync::{Arc, Mutex};
 // Session that tracks lifecycle
 #[derive(Clone)]
 struct Session {
-    data: Arc<Mutex<Vec<String>>>,
-    open: Arc<AtomicBool>,
+	data: Arc<Mutex<Vec<String>>>,
+	open: Arc<AtomicBool>,
 }
 
 impl Session {
-    fn new() -> Self {
-        let mut data = Vec::new();
-        data.push("foo".to_string());
-        data.push("bar".to_string());
-        data.push("baz".to_string());
+	fn new() -> Self {
+		let mut data = Vec::new();
+		data.push("foo".to_string());
+		data.push("bar".to_string());
+		data.push("baz".to_string());
 
-        Session {
-            data: Arc::new(Mutex::new(data)),
-            open: Arc::new(AtomicBool::new(true)),
-        }
-    }
+		Session {
+			data: Arc::new(Mutex::new(data)),
+			open: Arc::new(AtomicBool::new(true)),
+		}
+	}
 
-    fn iter(&self) -> impl Iterator<Item = String> + '_ {
-        let data = self.data.lock().unwrap().clone();
-        data.into_iter()
-    }
+	fn iter(&self) -> impl Iterator<Item = String> + '_ {
+		let data = self.data.lock().unwrap().clone();
+		data.into_iter()
+	}
 
-    fn is_open(&self) -> bool {
-        self.open.load(Ordering::SeqCst)
-    }
+	fn is_open(&self) -> bool {
+		self.open.load(Ordering::SeqCst)
+	}
 
-    fn close(&self) {
-        self.open.store(false, Ordering::SeqCst);
-    }
+	fn close(&self) {
+		self.open.store(false, Ordering::SeqCst);
+	}
 }
 
 impl Drop for Session {
-    fn drop(&mut self) {
-        // Cleanup: close the session
-        self.close();
-    }
+	fn drop(&mut self) {
+		// Cleanup: close the session
+		self.close();
+	}
 }
 
 // Session dependency
 #[derive(Clone)]
 struct SessionDep {
-    session: Session,
+	session: Session,
 }
 
 #[async_trait::async_trait]
 impl Injectable for SessionDep {
-    async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
-        let session = Session::new();
-        Ok(SessionDep { session })
-    }
+	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+		let session = Session::new();
+		Ok(SessionDep { session })
+	}
 }
 
 // Broken session dependency (session closed before use)
 #[derive(Clone)]
 struct BrokenSessionDep {
-    session: Session,
+	session: Session,
 }
 
 #[async_trait::async_trait]
 impl Injectable for BrokenSessionDep {
-    async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
-        let session = Session::new();
-        session.close(); // Close immediately
-        Ok(BrokenSessionDep { session })
-    }
+	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+		let session = Session::new();
+		session.close(); // Close immediately
+		Ok(BrokenSessionDep { session })
+	}
 }
 
 #[tokio::test]
 async fn test_websocket_dependency_after_yield() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Inject session dependency
-    let dep = SessionDep::inject(&ctx).await.unwrap();
+	// Inject session dependency
+	let dep = SessionDep::inject(&ctx).await.unwrap();
 
-    // Simulate WebSocket message sending
-    let messages: Vec<String> = dep.session.iter().collect();
+	// Simulate WebSocket message sending
+	let messages: Vec<String> = dep.session.iter().collect();
 
-    assert_eq!(messages.len(), 3);
-    assert_eq!(messages[0], "foo");
-    assert_eq!(messages[1], "bar");
-    assert_eq!(messages[2], "baz");
+	assert_eq!(messages.len(), 3);
+	assert_eq!(messages[0], "foo");
+	assert_eq!(messages[1], "bar");
+	assert_eq!(messages[2], "baz");
 
-    // After dropping, session should be closed
-    drop(dep);
+	// After dropping, session should be closed
+	drop(dep);
 }
 
 #[tokio::test]
 async fn test_websocket_dependency_after_yield_broken() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Inject broken session dependency
-    let dep = BrokenSessionDep::inject(&ctx).await.unwrap();
+	// Inject broken session dependency
+	let dep = BrokenSessionDep::inject(&ctx).await.unwrap();
 
-    // Session should be closed
-    assert!(!dep.session.is_open());
+	// Session should be closed
+	assert!(!dep.session.is_open());
 
-    // Can still get data (but in real scenario, this would error)
-    let messages: Vec<String> = dep.session.iter().collect();
-    assert_eq!(messages.len(), 3); // Data still there, but session is marked closed
+	// Can still get data (but in real scenario, this would error)
+	let messages: Vec<String> = dep.session.iter().collect();
+	assert_eq!(messages.len(), 3); // Data still there, but session is marked closed
 }
 
 // Test session cleanup on drop
 #[tokio::test]
 async fn test_session_cleanup_on_drop() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    let dep = SessionDep::inject(&ctx).await.unwrap();
-    let open_flag = dep.session.open.clone();
+	let dep = SessionDep::inject(&ctx).await.unwrap();
+	let open_flag = dep.session.open.clone();
 
-    // Session should be open
-    assert!(open_flag.load(Ordering::SeqCst));
+	// Session should be open
+	assert!(open_flag.load(Ordering::SeqCst));
 
-    // Drop dependency
-    drop(dep);
+	// Drop dependency
+	drop(dep);
 
-    // Session should be closed
-    assert!(!open_flag.load(Ordering::SeqCst));
+	// Session should be closed
+	assert!(!open_flag.load(Ordering::SeqCst));
 }
 
 // Test multiple iterations
 #[tokio::test]
 async fn test_session_data_iteration() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    let dep = SessionDep::inject(&ctx).await.unwrap();
+	let dep = SessionDep::inject(&ctx).await.unwrap();
 
-    // First iteration
-    let messages1: Vec<String> = dep.session.iter().collect();
-    assert_eq!(messages1, vec!["foo", "bar", "baz"]);
+	// First iteration
+	let messages1: Vec<String> = dep.session.iter().collect();
+	assert_eq!(messages1, vec!["foo", "bar", "baz"]);
 
-    // Second iteration (should work because session is still open)
-    let messages2: Vec<String> = dep.session.iter().collect();
-    assert_eq!(messages2, vec!["foo", "bar", "baz"]);
+	// Second iteration (should work because session is still open)
+	let messages2: Vec<String> = dep.session.iter().collect();
+	assert_eq!(messages2, vec!["foo", "bar", "baz"]);
 }
 
 // Test session state across WebSocket lifecycle
 #[tokio::test]
 async fn test_websocket_session_lifecycle() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Accept WebSocket connection
-    let dep = SessionDep::inject(&ctx).await.unwrap();
-    assert!(dep.session.is_open());
+	// Accept WebSocket connection
+	let dep = SessionDep::inject(&ctx).await.unwrap();
+	assert!(dep.session.is_open());
 
-    // Send messages
-    for (i, item) in dep.session.iter().enumerate() {
-        match i {
-            0 => assert_eq!(item, "foo"),
-            1 => assert_eq!(item, "bar"),
-            2 => assert_eq!(item, "baz"),
-            _ => panic!("Unexpected item"),
-        }
-    }
+	// Send messages
+	for (i, item) in dep.session.iter().enumerate() {
+		match i {
+			0 => assert_eq!(item, "foo"),
+			1 => assert_eq!(item, "bar"),
+			2 => assert_eq!(item, "baz"),
+			_ => panic!("Unexpected item"),
+		}
+	}
 
-    // Session still open
-    assert!(dep.session.is_open());
+	// Session still open
+	assert!(dep.session.is_open());
 
-    // Close WebSocket (drop dependency)
-    drop(dep);
+	// Close WebSocket (drop dependency)
+	drop(dep);
 }

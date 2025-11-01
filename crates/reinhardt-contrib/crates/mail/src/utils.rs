@@ -2,7 +2,7 @@
 //!
 //! Helper functions for sending emails quickly.
 
-use crate::{backends::EmailBackend, EmailMessage, EmailResult};
+use crate::{EmailMessage, EmailResult, backends::EmailBackend};
 use reinhardt_settings::EmailSettings;
 
 /// Send a simple email
@@ -24,31 +24,31 @@ use reinhardt_settings::EmailSettings;
 /// ).await?;
 /// ```
 pub async fn send_mail(
-    subject: impl Into<String>,
-    message: impl Into<String>,
-    from_email: impl Into<String>,
-    recipient_list: Vec<impl Into<String>>,
-    html_message: Option<String>,
+	subject: impl Into<String>,
+	message: impl Into<String>,
+	from_email: impl Into<String>,
+	recipient_list: Vec<impl Into<String>>,
+	html_message: Option<String>,
 ) -> EmailResult<()> {
-    let recipients: Vec<String> = recipient_list.into_iter().map(|r| r.into()).collect();
+	let recipients: Vec<String> = recipient_list.into_iter().map(|r| r.into()).collect();
 
-    let mut email = EmailMessage::new()
-        .subject(subject)
-        .body(message)
-        .from(from_email)
-        .to(recipients);
+	let mut email = EmailMessage::new()
+		.subject(subject)
+		.body(message)
+		.from(from_email)
+		.to(recipients);
 
-    if let Some(html) = html_message {
-        email = email.html(html);
-    }
+	if let Some(html) = html_message {
+		email = email.html(html);
+	}
 
-    let email = email.build();
+	let email = email.build();
 
-    // Use console backend as the default for now
-    // In production, this should use backend_from_settings()
-    let backend = crate::backends::ConsoleBackend;
-    backend.send_messages(&[email]).await?;
-    Ok(())
+	// Use console backend as the default for now
+	// In production, this should use backend_from_settings()
+	let backend = crate::backends::ConsoleBackend;
+	backend.send_messages(&[email]).await?;
+	Ok(())
 }
 /// Send a simple email with a specific backend
 ///
@@ -75,28 +75,28 @@ pub async fn send_mail(
 /// # }
 /// ```
 pub async fn send_mail_with_backend(
-    subject: impl Into<String>,
-    message: impl Into<String>,
-    from_email: impl Into<String>,
-    recipient_list: Vec<impl Into<String>>,
-    html_message: Option<String>,
-    backend: &dyn EmailBackend,
+	subject: impl Into<String>,
+	message: impl Into<String>,
+	from_email: impl Into<String>,
+	recipient_list: Vec<impl Into<String>>,
+	html_message: Option<String>,
+	backend: &dyn EmailBackend,
 ) -> EmailResult<()> {
-    let recipients: Vec<String> = recipient_list.into_iter().map(|r| r.into()).collect();
+	let recipients: Vec<String> = recipient_list.into_iter().map(|r| r.into()).collect();
 
-    let mut email = EmailMessage::new()
-        .subject(subject)
-        .body(message)
-        .from(from_email)
-        .to(recipients);
+	let mut email = EmailMessage::new()
+		.subject(subject)
+		.body(message)
+		.from(from_email)
+		.to(recipients);
 
-    if let Some(html) = html_message {
-        email = email.html(html);
-    }
+	if let Some(html) = html_message {
+		email = email.html(html);
+	}
 
-    let email = email.build();
-    backend.send_messages(&[email]).await?;
-    Ok(())
+	let email = email.build();
+	backend.send_messages(&[email]).await?;
+	Ok(())
 }
 /// Send multiple emails using the same connection (bulk send)
 ///
@@ -134,10 +134,10 @@ pub async fn send_mail_with_backend(
 /// # }
 /// ```
 pub async fn send_mass_mail(
-    messages: Vec<EmailMessage>,
-    backend: &dyn EmailBackend,
+	messages: Vec<EmailMessage>,
+	backend: &dyn EmailBackend,
 ) -> EmailResult<usize> {
-    backend.send_messages(&messages).await
+	backend.send_messages(&messages).await
 }
 /// Send an email to administrators
 ///
@@ -176,53 +176,50 @@ pub async fn send_mass_mail(
 /// # }
 /// ```
 pub async fn mail_admins(
-    settings: &EmailSettings,
-    subject: impl Into<String>,
-    message: impl Into<String>,
-    fail_silently: bool,
-    backend: &dyn EmailBackend,
+	settings: &EmailSettings,
+	subject: impl Into<String>,
+	message: impl Into<String>,
+	fail_silently: bool,
+	backend: &dyn EmailBackend,
 ) -> EmailResult<()> {
-    if settings.admins.is_empty() {
-        if fail_silently {
-            return Ok(());
-        } else {
-            return Err(crate::EmailError::MissingField("admins".to_string()));
-        }
-    }
+	if settings.admins.is_empty() {
+		if fail_silently {
+			return Ok(());
+		} else {
+			return Err(crate::EmailError::MissingField("admins".to_string()));
+		}
+	}
 
-    let admin_emails: Vec<String> = settings
-        .admins
-        .iter()
-        .map(|(_, email)| email.clone())
-        .collect();
+	let admin_emails: Vec<String> = settings
+		.admins
+		.iter()
+		.map(|(_, email)| email.clone())
+		.collect();
 
-    let subject_str = subject.into();
-    let final_subject = if !settings.subject_prefix.is_empty() {
-        format!("{} {}", settings.subject_prefix, subject_str)
-    } else {
-        subject_str
-    };
+	let subject_str = subject.into();
+	let final_subject = if !settings.subject_prefix.is_empty() {
+		format!("{} {}", settings.subject_prefix, subject_str)
+	} else {
+		subject_str
+	};
 
-    let from_email = if !settings.server_email.is_empty() {
-        settings.server_email.clone()
-    } else {
-        settings.from_email.clone()
-    };
+	let from_email = if !settings.server_email.is_empty() {
+		settings.server_email.clone()
+	} else {
+		settings.from_email.clone()
+	};
 
-    let result = send_mail_with_backend(
-        final_subject,
-        message,
-        from_email,
-        admin_emails,
-        None,
-        backend,
-    ).await;
+	let result = send_mail_with_backend(
+		final_subject,
+		message,
+		from_email,
+		admin_emails,
+		None,
+		backend,
+	)
+	.await;
 
-    if fail_silently {
-        Ok(())
-    } else {
-        result
-    }
+	if fail_silently { Ok(()) } else { result }
 }
 /// Send an email to managers
 ///
@@ -261,118 +258,117 @@ pub async fn mail_admins(
 /// # }
 /// ```
 pub async fn mail_managers(
-    settings: &EmailSettings,
-    subject: impl Into<String>,
-    message: impl Into<String>,
-    fail_silently: bool,
-    backend: &dyn EmailBackend,
+	settings: &EmailSettings,
+	subject: impl Into<String>,
+	message: impl Into<String>,
+	fail_silently: bool,
+	backend: &dyn EmailBackend,
 ) -> EmailResult<()> {
-    if settings.managers.is_empty() {
-        if fail_silently {
-            return Ok(());
-        } else {
-            return Err(crate::EmailError::MissingField("managers".to_string()));
-        }
-    }
+	if settings.managers.is_empty() {
+		if fail_silently {
+			return Ok(());
+		} else {
+			return Err(crate::EmailError::MissingField("managers".to_string()));
+		}
+	}
 
-    let manager_emails: Vec<String> = settings
-        .managers
-        .iter()
-        .map(|(_, email)| email.clone())
-        .collect();
+	let manager_emails: Vec<String> = settings
+		.managers
+		.iter()
+		.map(|(_, email)| email.clone())
+		.collect();
 
-    let subject_str = subject.into();
-    let final_subject = if !settings.subject_prefix.is_empty() {
-        format!("{} {}", settings.subject_prefix, subject_str)
-    } else {
-        subject_str
-    };
+	let subject_str = subject.into();
+	let final_subject = if !settings.subject_prefix.is_empty() {
+		format!("{} {}", settings.subject_prefix, subject_str)
+	} else {
+		subject_str
+	};
 
-    let from_email = if !settings.server_email.is_empty() {
-        settings.server_email.clone()
-    } else {
-        settings.from_email.clone()
-    };
+	let from_email = if !settings.server_email.is_empty() {
+		settings.server_email.clone()
+	} else {
+		settings.from_email.clone()
+	};
 
-    let result = send_mail_with_backend(
-        final_subject,
-        message,
-        from_email,
-        manager_emails,
-        None,
-        backend,
-    ).await;
+	let result = send_mail_with_backend(
+		final_subject,
+		message,
+		from_email,
+		manager_emails,
+		None,
+		backend,
+	)
+	.await;
 
-    if fail_silently {
-        Ok(())
-    } else {
-        result
-    }
+	if fail_silently { Ok(()) } else { result }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::backends::MemoryBackend;
+	use super::*;
+	use crate::backends::MemoryBackend;
 
-    #[tokio::test]
-    async fn test_send_mail() {
-        let backend = MemoryBackend::new();
+	#[tokio::test]
+	async fn test_send_mail() {
+		let backend = MemoryBackend::new();
 
-        let result = send_mail_with_backend(
-            "Test Subject",
-            "Test Message",
-            "from@example.com",
-            vec!["to@example.com"],
-            None,
-            &backend,
-        ).await;
+		let result = send_mail_with_backend(
+			"Test Subject",
+			"Test Message",
+			"from@example.com",
+			vec!["to@example.com"],
+			None,
+			&backend,
+		)
+		.await;
 
-        assert!(result.is_ok());
-        assert_eq!(backend.count().await, 1);
-    }
+		assert!(result.is_ok());
+		assert_eq!(backend.count().await, 1);
+	}
 
-    #[tokio::test]
-    async fn test_send_mail_with_html() {
-        let backend = MemoryBackend::new();
+	#[tokio::test]
+	async fn test_send_mail_with_html() {
+		let backend = MemoryBackend::new();
 
-        let result = send_mail_with_backend(
-            "Test Subject",
-            "Test Message",
-            "from@example.com",
-            vec!["to@example.com"],
-            Some("<h1>Test HTML</h1>".to_string()),
-            &backend,
-        ).await;
+		let result = send_mail_with_backend(
+			"Test Subject",
+			"Test Message",
+			"from@example.com",
+			vec!["to@example.com"],
+			Some("<h1>Test HTML</h1>".to_string()),
+			&backend,
+		)
+		.await;
 
-        assert!(result.is_ok());
+		assert!(result.is_ok());
 
-        let messages = backend.get_messages().await;
-        assert!(messages[0].html_body.is_some());
-    }
+		let messages = backend.get_messages().await;
+		assert!(messages[0].html_body.is_some());
+	}
 
-    #[tokio::test]
-    async fn test_send_mass_mail() {
-        let backend = MemoryBackend::new();
+	#[tokio::test]
+	async fn test_send_mass_mail() {
+		let backend = MemoryBackend::new();
 
-        let messages = vec![
-            EmailMessage::new()
-                .subject("Test 1")
-                .body("Body 1")
-                .from("from@example.com")
-                .to(vec!["to1@example.com".to_string()])
-                .build(),
-            EmailMessage::new()
-                .subject("Test 2")
-                .body("Body 2")
-                .from("from@example.com")
-                .to(vec!["to2@example.com".to_string()])
-                .build(),
-        ];
+		let messages = vec![
+			EmailMessage::new()
+				.subject("Test 1")
+				.body("Body 1")
+				.from("from@example.com")
+				.to(vec!["to1@example.com".to_string()])
+				.build(),
+			EmailMessage::new()
+				.subject("Test 2")
+				.body("Body 2")
+				.from("from@example.com")
+				.to(vec!["to2@example.com".to_string()])
+				.build(),
+		];
 
-        let results = send_mass_mail(messages, &backend).await.unwrap();
+		let results = send_mass_mail(messages, &backend).await.unwrap();
 
-        assert_eq!(results, 2);
-        assert_eq!(backend.count().await, 2);
-    }
+		assert_eq!(results, 2);
+		assert_eq!(backend.count().await, 2);
+	}
 }

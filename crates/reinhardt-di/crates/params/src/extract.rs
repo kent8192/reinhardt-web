@@ -10,15 +10,15 @@ use reinhardt_apps::Request;
 /// All parameter types (Path, Query, Header, etc.) implement this trait.
 #[async_trait]
 pub trait FromRequest: Sized + Send {
-    /// Extract this type from the request
-    ///
-    /// # Arguments
-    ///
-    /// * `req` - The HTTP request
-    /// * `ctx` - Parameter context with extracted path params, etc.
-    ///
-    /// # Returns
-    ///
-    /// The extracted value or an error if extraction failed
-    async fn from_request(req: &Request, ctx: &ParamContext) -> ParamResult<Self>;
+	/// Extract this type from the request
+	///
+	/// # Arguments
+	///
+	/// * `req` - The HTTP request
+	/// * `ctx` - Parameter context with extracted path params, etc.
+	///
+	/// # Returns
+	///
+	/// The extracted value or an error if extraction failed
+	async fn from_request(req: &Request, ctx: &ParamContext) -> ParamResult<Self>;
 }

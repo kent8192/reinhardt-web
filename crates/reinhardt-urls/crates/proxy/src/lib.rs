@@ -48,18 +48,18 @@ pub mod scalar;
 pub use builder::ProxyBuilder;
 pub use collection::{CollectionAggregations, CollectionOperations, CollectionProxy};
 pub use joins::{
-    extract_through_path, filter_through_path, traverse_and_extract, traverse_relationships,
-    JoinConfig, LoadingStrategy, NestedProxy, RelationshipPath,
+	JoinConfig, LoadingStrategy, NestedProxy, RelationshipPath, extract_through_path,
+	filter_through_path, traverse_and_extract, traverse_relationships,
 };
 pub use loading::{
-    EagerLoadConfig, EagerLoadable, LazyLoadable, LazyLoaded, LoadStrategy, RelationshipCache,
+	EagerLoadConfig, EagerLoadable, LazyLoadable, LazyLoaded, LoadStrategy, RelationshipCache,
 };
 pub use orm_integration::OrmReflectable;
 pub use proxy::{AssociationProxy, ProxyAccessor, ProxyTarget, ScalarValue};
 pub use query::{FilterCondition, FilterOp, QueryFilter};
 pub use reflection::{
-    downcast_relationship, extract_collection_values, AttributeExtractor, ProxyCollection,
-    Reflectable, ReflectableFactory,
+	AttributeExtractor, ProxyCollection, Reflectable, ReflectableFactory, downcast_relationship,
+	extract_collection_values,
 };
 pub use scalar::{ScalarComparison, ScalarProxy};
 
@@ -71,33 +71,33 @@ pub type ProxyResult<T> = Result<T, ProxyError>;
 /// Errors that can occur in association proxy operations
 #[derive(Debug, Error)]
 pub enum ProxyError {
-    /// Target relationship not found
-    #[error("Target relationship '{0}' not found")]
-    RelationshipNotFound(String),
+	/// Target relationship not found
+	#[error("Target relationship '{0}' not found")]
+	RelationshipNotFound(String),
 
-    /// Attribute not found on target object
-    #[error("Attribute '{0}' not found on target")]
-    AttributeNotFound(String),
+	/// Attribute not found on target object
+	#[error("Attribute '{0}' not found on target")]
+	AttributeNotFound(String),
 
-    /// Type mismatch in proxy operation
-    #[error("Type mismatch: expected {expected}, got {actual}")]
-    TypeMismatch { expected: String, actual: String },
+	/// Type mismatch in proxy operation
+	#[error("Type mismatch: expected {expected}, got {actual}")]
+	TypeMismatch { expected: String, actual: String },
 
-    /// Invalid proxy configuration
-    #[error("Invalid proxy configuration: {0}")]
-    InvalidConfiguration(String),
+	/// Invalid proxy configuration
+	#[error("Invalid proxy configuration: {0}")]
+	InvalidConfiguration(String),
 
-    /// Database error during proxy operation
-    #[error("Database error: {0}")]
-    DatabaseError(String),
+	/// Database error during proxy operation
+	#[error("Database error: {0}")]
+	DatabaseError(String),
 
-    /// Serialization error
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
+	/// Serialization error
+	#[error("Serialization error: {0}")]
+	SerializationError(String),
 
-    /// Factory not configured for collection proxy
-    #[error(
-        "Factory not configured for collection proxy - required for creating objects from scalar values"
-    )]
-    FactoryNotConfigured,
+	/// Factory not configured for collection proxy
+	#[error(
+		"Factory not configured for collection proxy - required for creating objects from scalar values"
+	)]
+	FactoryNotConfigured,
 }

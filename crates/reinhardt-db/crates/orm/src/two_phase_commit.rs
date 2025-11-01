@@ -10,8 +10,8 @@ mod tests;
 
 // Re-export core types
 pub use core::{
-    Participant, ParticipantStatus, TransactionState, TwoPhaseCommit,
-    TwoPhaseCoordinator, TwoPhaseError, TwoPhaseParticipant,
+	Participant, ParticipantStatus, TransactionState, TwoPhaseCommit, TwoPhaseCoordinator,
+	TwoPhaseError, TwoPhaseParticipant,
 };
 
 #[cfg(test)]
@@ -26,5 +26,5 @@ pub use core::MySqlParticipantAdapter;
 
 // Re-export transaction log types
 pub use transaction_log::{
-    FileTransactionLog, InMemoryTransactionLog, TransactionLog, TransactionLogEntry,
+	FileTransactionLog, InMemoryTransactionLog, TransactionLog, TransactionLogEntry,
 };

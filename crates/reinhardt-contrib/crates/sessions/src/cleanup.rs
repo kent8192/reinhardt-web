@@ -44,49 +44,52 @@ use std::time::Duration;
 /// ```
 #[derive(Debug, Clone)]
 pub struct CleanupConfig {
-    /// Maximum session age before cleanup
-    pub max_age: Duration,
-    /// Number of sessions to clean up in one batch
-    pub batch_size: usize,
+	/// Maximum session age before cleanup
+	pub max_age: Duration,
+	/// Number of sessions to clean up in one batch
+	pub batch_size: usize,
 }
 
 impl Default for CleanupConfig {
-    /// Create default cleanup configuration
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_sessions::cleanup::CleanupConfig;
-    ///
-    /// let config = CleanupConfig::default();
-    /// assert_eq!(config.max_age.as_secs(), 1209600); // 2 weeks
-    /// assert_eq!(config.batch_size, 1000);
-    /// ```
-    fn default() -> Self {
-        Self {
-            max_age: Duration::from_secs(1209600), // 2 weeks
-            batch_size: 1000,
-        }
-    }
+	/// Create default cleanup configuration
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_sessions::cleanup::CleanupConfig;
+	///
+	/// let config = CleanupConfig::default();
+	/// assert_eq!(config.max_age.as_secs(), 1209600); // 2 weeks
+	/// assert_eq!(config.batch_size, 1000);
+	/// ```
+	fn default() -> Self {
+		Self {
+			max_age: Duration::from_secs(1209600), // 2 weeks
+			batch_size: 1000,
+		}
+	}
 }
 
 /// Trait for session backends that support cleanup
 #[async_trait]
 pub trait CleanupableBackend: SessionBackend {
-    /// Get all session keys
-    async fn get_all_keys(&self) -> Result<Vec<String>, SessionError>;
+	/// Get all session keys
+	async fn get_all_keys(&self) -> Result<Vec<String>, SessionError>;
 
-    /// Get session metadata (creation time, last access time)
-    async fn get_metadata(&self, session_key: &str) -> Result<Option<SessionMetadata>, SessionError>;
+	/// Get session metadata (creation time, last access time)
+	async fn get_metadata(
+		&self,
+		session_key: &str,
+	) -> Result<Option<SessionMetadata>, SessionError>;
 }
 
 /// Session metadata for cleanup
 #[derive(Debug, Clone)]
 pub struct SessionMetadata {
-    /// When the session was created
-    pub created_at: DateTime<Utc>,
-    /// When the session was last accessed
-    pub last_accessed: Option<DateTime<Utc>>,
+	/// When the session was created
+	pub created_at: DateTime<Utc>,
+	/// When the session was last accessed
+	pub last_accessed: Option<DateTime<Utc>>,
 }
 
 /// Session cleanup task
@@ -111,163 +114,163 @@ pub struct SessionMetadata {
 /// # }
 /// ```
 pub struct SessionCleanupTask<B: SessionBackend> {
-    backend: B,
-    config: CleanupConfig,
-    _phantom: PhantomData<B>,
+	backend: B,
+	config: CleanupConfig,
+	_phantom: PhantomData<B>,
 }
 
 impl<B: SessionBackend> SessionCleanupTask<B> {
-    /// Create a new cleanup task with default configuration
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_sessions::cleanup::SessionCleanupTask;
-    /// use reinhardt_sessions::backends::InMemorySessionBackend;
-    /// use std::time::Duration;
-    ///
-    /// let backend = InMemorySessionBackend::new();
-    /// let cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
-    /// ```
-    pub fn new(backend: B, max_age: Duration) -> Self {
-        Self {
-            backend,
-            config: CleanupConfig {
-                max_age,
-                ..Default::default()
-            },
-            _phantom: PhantomData,
-        }
-    }
+	/// Create a new cleanup task with default configuration
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_sessions::cleanup::SessionCleanupTask;
+	/// use reinhardt_sessions::backends::InMemorySessionBackend;
+	/// use std::time::Duration;
+	///
+	/// let backend = InMemorySessionBackend::new();
+	/// let cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
+	/// ```
+	pub fn new(backend: B, max_age: Duration) -> Self {
+		Self {
+			backend,
+			config: CleanupConfig {
+				max_age,
+				..Default::default()
+			},
+			_phantom: PhantomData,
+		}
+	}
 
-    /// Create a new cleanup task with custom configuration
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_sessions::cleanup::{SessionCleanupTask, CleanupConfig};
-    /// use reinhardt_sessions::backends::InMemorySessionBackend;
-    /// use std::time::Duration;
-    ///
-    /// let backend = InMemorySessionBackend::new();
-    /// let config = CleanupConfig {
-    ///     max_age: Duration::from_secs(7200),
-    ///     batch_size: 500,
-    /// };
-    /// let cleanup = SessionCleanupTask::with_config(backend, config);
-    /// ```
-    pub fn with_config(backend: B, config: CleanupConfig) -> Self {
-        Self {
-            backend,
-            config,
-            _phantom: PhantomData,
-        }
-    }
+	/// Create a new cleanup task with custom configuration
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_sessions::cleanup::{SessionCleanupTask, CleanupConfig};
+	/// use reinhardt_sessions::backends::InMemorySessionBackend;
+	/// use std::time::Duration;
+	///
+	/// let backend = InMemorySessionBackend::new();
+	/// let config = CleanupConfig {
+	///     max_age: Duration::from_secs(7200),
+	///     batch_size: 500,
+	/// };
+	/// let cleanup = SessionCleanupTask::with_config(backend, config);
+	/// ```
+	pub fn with_config(backend: B, config: CleanupConfig) -> Self {
+		Self {
+			backend,
+			config,
+			_phantom: PhantomData,
+		}
+	}
 
-    /// Run cleanup operation
-    ///
-    /// Returns the number of sessions that were removed.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_sessions::cleanup::SessionCleanupTask;
-    /// use reinhardt_sessions::backends::InMemorySessionBackend;
-    /// use std::time::Duration;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let backend = InMemorySessionBackend::new();
-    /// let cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
-    ///
-    /// let removed = cleanup.run_cleanup().await?;
-    /// println!("Removed {} expired sessions", removed);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn run_cleanup(&self) -> Result<usize, SessionError> {
-        // For basic backends without metadata support, we can't determine age
-        // This is a simplified implementation that always returns 0
-        // Specific backends (database, file) should implement CleanupableBackend
-        Ok(0)
-    }
+	/// Run cleanup operation
+	///
+	/// Returns the number of sessions that were removed.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_sessions::cleanup::SessionCleanupTask;
+	/// use reinhardt_sessions::backends::InMemorySessionBackend;
+	/// use std::time::Duration;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let backend = InMemorySessionBackend::new();
+	/// let cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
+	///
+	/// let removed = cleanup.run_cleanup().await?;
+	/// println!("Removed {} expired sessions", removed);
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn run_cleanup(&self) -> Result<usize, SessionError> {
+		// For basic backends without metadata support, we can't determine age
+		// This is a simplified implementation that always returns 0
+		// Specific backends (database, file) should implement CleanupableBackend
+		Ok(0)
+	}
 }
 
 impl<B: SessionBackend + CleanupableBackend> SessionCleanupTask<B> {
-    /// Run cleanup operation for backends with metadata support
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use reinhardt_sessions::cleanup::SessionCleanupTask;
-    /// use reinhardt_sessions::backends::DatabaseSessionBackend;
-    /// use std::time::Duration;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let backend = DatabaseSessionBackend::new(/* connection */);
-    /// let cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
-    ///
-    /// let removed = cleanup.run_cleanup_with_metadata().await?;
-    /// println!("Removed {} expired sessions", removed);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn run_cleanup_with_metadata(&self) -> Result<usize, SessionError> {
-        let all_keys = self.backend.get_all_keys().await?;
-        let cutoff_time = Utc::now() - ChronoDuration::from_std(self.config.max_age).unwrap();
+	/// Run cleanup operation for backends with metadata support
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// use reinhardt_sessions::cleanup::SessionCleanupTask;
+	/// use reinhardt_sessions::backends::DatabaseSessionBackend;
+	/// use std::time::Duration;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let backend = DatabaseSessionBackend::new(/* connection */);
+	/// let cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
+	///
+	/// let removed = cleanup.run_cleanup_with_metadata().await?;
+	/// println!("Removed {} expired sessions", removed);
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn run_cleanup_with_metadata(&self) -> Result<usize, SessionError> {
+		let all_keys = self.backend.get_all_keys().await?;
+		let cutoff_time = Utc::now() - ChronoDuration::from_std(self.config.max_age).unwrap();
 
-        let mut removed_count = 0;
+		let mut removed_count = 0;
 
-        for chunk in all_keys.chunks(self.config.batch_size) {
-            for key in chunk {
-                if let Some(metadata) = self.backend.get_metadata(key).await? {
-                    let check_time = metadata.last_accessed.unwrap_or(metadata.created_at);
-                    if check_time < cutoff_time {
-                        self.backend.delete(key).await?;
-                        removed_count += 1;
-                    }
-                }
-            }
-        }
+		for chunk in all_keys.chunks(self.config.batch_size) {
+			for key in chunk {
+				if let Some(metadata) = self.backend.get_metadata(key).await? {
+					let check_time = metadata.last_accessed.unwrap_or(metadata.created_at);
+					if check_time < cutoff_time {
+						self.backend.delete(key).await?;
+						removed_count += 1;
+					}
+				}
+			}
+		}
 
-        Ok(removed_count)
-    }
+		Ok(removed_count)
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::backends::InMemorySessionBackend;
+	use super::*;
+	use crate::backends::InMemorySessionBackend;
 
-    #[tokio::test]
-    async fn test_cleanup_config_default() {
-        let config = CleanupConfig::default();
-        assert_eq!(config.max_age.as_secs(), 1209600); // 2 weeks
-        assert_eq!(config.batch_size, 1000);
-    }
+	#[tokio::test]
+	async fn test_cleanup_config_default() {
+		let config = CleanupConfig::default();
+		assert_eq!(config.max_age.as_secs(), 1209600); // 2 weeks
+		assert_eq!(config.batch_size, 1000);
+	}
 
-    #[tokio::test]
-    async fn test_cleanup_task_creation() {
-        let backend = InMemorySessionBackend::new();
-        let _cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
-    }
+	#[tokio::test]
+	async fn test_cleanup_task_creation() {
+		let backend = InMemorySessionBackend::new();
+		let _cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
+	}
 
-    #[tokio::test]
-    async fn test_cleanup_task_with_config() {
-        let backend = InMemorySessionBackend::new();
-        let config = CleanupConfig {
-            max_age: Duration::from_secs(7200),
-            batch_size: 500,
-        };
-        let _cleanup = SessionCleanupTask::with_config(backend, config);
-    }
+	#[tokio::test]
+	async fn test_cleanup_task_with_config() {
+		let backend = InMemorySessionBackend::new();
+		let config = CleanupConfig {
+			max_age: Duration::from_secs(7200),
+			batch_size: 500,
+		};
+		let _cleanup = SessionCleanupTask::with_config(backend, config);
+	}
 
-    #[tokio::test]
-    async fn test_run_cleanup_basic_backend() {
-        let backend = InMemorySessionBackend::new();
-        let cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
+	#[tokio::test]
+	async fn test_run_cleanup_basic_backend() {
+		let backend = InMemorySessionBackend::new();
+		let cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
 
-        // Basic backend without metadata support returns 0
-        let removed = cleanup.run_cleanup().await.unwrap();
-        assert_eq!(removed, 0);
-    }
+		// Basic backend without metadata support returns 0
+		let removed = cleanup.run_cleanup().await.unwrap();
+		assert_eq!(removed, 0);
+	}
 }

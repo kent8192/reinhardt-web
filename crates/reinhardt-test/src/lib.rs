@@ -29,8 +29,8 @@ pub use debug::{DebugEntry, DebugPanel, DebugToolbar, SqlQuery, TimingInfo};
 pub use factory::{APIRequestFactory, RequestBuilder};
 pub use fixtures::{Factory, FactoryBuilder, FixtureError, FixtureLoader, FixtureResult};
 pub use messages::{
-    assert_message_count, assert_message_exists, assert_message_level, assert_message_tags,
-    assert_messages, MessagesTestMixin,
+	MessagesTestMixin, assert_message_count, assert_message_exists, assert_message_level,
+	assert_message_tags, assert_messages,
 };
 pub use mock::{CallRecord, DummyCache, MockFunction, Spy};
 pub use response::{ResponseExt, TestResponse};
@@ -38,27 +38,27 @@ pub use testcase::APITestCase;
 
 #[cfg(feature = "testcontainers")]
 pub use containers::{
-    with_mysql, with_postgres, with_redis, MySqlContainer, PostgresContainer, RedisContainer,
-    TestDatabase,
+	MySqlContainer, PostgresContainer, RedisContainer, TestDatabase, with_mysql, with_postgres,
+	with_redis,
 };
 
 /// Re-export commonly used testing types
 pub mod prelude {
-    pub use super::assertions::*;
-    pub use super::client::APIClient;
-    pub use super::debug::DebugToolbar;
-    pub use super::factory::APIRequestFactory;
-    pub use super::fixtures::{Factory, FactoryBuilder, FixtureLoader};
-    pub use super::messages::{
-        assert_message_count, assert_message_exists, assert_messages, MessagesTestMixin,
-    };
-    pub use super::mock::{MockFunction, Spy};
-    pub use super::response::TestResponse;
-    pub use super::testcase::APITestCase;
+	pub use super::assertions::*;
+	pub use super::client::APIClient;
+	pub use super::debug::DebugToolbar;
+	pub use super::factory::APIRequestFactory;
+	pub use super::fixtures::{Factory, FactoryBuilder, FixtureLoader};
+	pub use super::messages::{
+		MessagesTestMixin, assert_message_count, assert_message_exists, assert_messages,
+	};
+	pub use super::mock::{MockFunction, Spy};
+	pub use super::response::TestResponse;
+	pub use super::testcase::APITestCase;
 
-    #[cfg(feature = "testcontainers")]
-    pub use super::containers::{
-        with_mysql, with_postgres, with_redis, MySqlContainer, PostgresContainer, RedisContainer,
-        TestDatabase,
-    };
+	#[cfg(feature = "testcontainers")]
+	pub use super::containers::{
+		MySqlContainer, PostgresContainer, RedisContainer, TestDatabase, with_mysql, with_postgres,
+		with_redis,
+	};
 }

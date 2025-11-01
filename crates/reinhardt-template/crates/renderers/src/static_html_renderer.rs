@@ -25,89 +25,89 @@ use serde_json::Value;
 /// ```
 #[derive(Debug, Clone)]
 pub struct StaticHTMLRenderer {
-    content: String,
+	content: String,
 }
 
 impl StaticHTMLRenderer {
-    /// Creates a new static HTML renderer with the given content
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_renderers::StaticHTMLRenderer;
-    ///
-    /// let renderer = StaticHTMLRenderer::new("<h1>Static Content</h1>");
-    /// ```
-    pub fn new(content: impl Into<String>) -> Self {
-        Self {
-            content: content.into(),
-        }
-    }
+	/// Creates a new static HTML renderer with the given content
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_renderers::StaticHTMLRenderer;
+	///
+	/// let renderer = StaticHTMLRenderer::new("<h1>Static Content</h1>");
+	/// ```
+	pub fn new(content: impl Into<String>) -> Self {
+		Self {
+			content: content.into(),
+		}
+	}
 
-    /// Returns the static content
-    pub fn content(&self) -> &str {
-        &self.content
-    }
+	/// Returns the static content
+	pub fn content(&self) -> &str {
+		&self.content
+	}
 }
 
 #[async_trait]
 impl Renderer for StaticHTMLRenderer {
-    fn media_types(&self) -> Vec<String> {
-        vec!["text/html".to_string()]
-    }
+	fn media_types(&self) -> Vec<String> {
+		vec!["text/html".to_string()]
+	}
 
-    fn format(&self) -> Option<&str> {
-        Some("html")
-    }
+	fn format(&self) -> Option<&str> {
+		Some("html")
+	}
 
-    async fn render(
-        &self,
-        _data: &Value,
-        _context: Option<&RendererContext>,
-    ) -> RenderResult<Bytes> {
-        Ok(Bytes::from(self.content.clone()))
-    }
+	async fn render(
+		&self,
+		_data: &Value,
+		_context: Option<&RendererContext>,
+	) -> RenderResult<Bytes> {
+		Ok(Bytes::from(self.content.clone()))
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::json;
+	use super::*;
+	use serde_json::json;
 
-    #[tokio::test]
-    async fn test_static_html_renderer() {
-        let content = "<html><body><h1>Static Content</h1></body></html>";
-        let renderer = StaticHTMLRenderer::new(content);
-        let data = json!({});
+	#[tokio::test]
+	async fn test_static_html_renderer() {
+		let content = "<html><body><h1>Static Content</h1></body></html>";
+		let renderer = StaticHTMLRenderer::new(content);
+		let data = json!({});
 
-        let result = renderer.render(&data, None).await.unwrap();
-        let html = String::from_utf8(result.to_vec()).unwrap();
+		let result = renderer.render(&data, None).await.unwrap();
+		let html = String::from_utf8(result.to_vec()).unwrap();
 
-        assert_eq!(html, content);
-    }
+		assert_eq!(html, content);
+	}
 
-    #[tokio::test]
-    async fn test_static_html_renderer_ignores_data() {
-        let content = "<html><body>Ignore data</body></html>";
-        let renderer = StaticHTMLRenderer::new(content);
-        let data = json!({"some": "data", "to": "ignore"});
+	#[tokio::test]
+	async fn test_static_html_renderer_ignores_data() {
+		let content = "<html><body>Ignore data</body></html>";
+		let renderer = StaticHTMLRenderer::new(content);
+		let data = json!({"some": "data", "to": "ignore"});
 
-        let result = renderer.render(&data, None).await.unwrap();
-        let html = String::from_utf8(result.to_vec()).unwrap();
+		let result = renderer.render(&data, None).await.unwrap();
+		let html = String::from_utf8(result.to_vec()).unwrap();
 
-        assert_eq!(html, content);
-        assert!(!html.contains("some"));
-    }
+		assert_eq!(html, content);
+		assert!(!html.contains("some"));
+	}
 
-    #[tokio::test]
-    async fn test_static_html_renderer_media_types() {
-        let renderer = StaticHTMLRenderer::new("test");
-        assert_eq!(renderer.media_types(), vec!["text/html"]);
-    }
+	#[tokio::test]
+	async fn test_static_html_renderer_media_types() {
+		let renderer = StaticHTMLRenderer::new("test");
+		assert_eq!(renderer.media_types(), vec!["text/html"]);
+	}
 
-    #[tokio::test]
-    async fn test_static_html_renderer_format() {
-        let renderer = StaticHTMLRenderer::new("test");
-        assert_eq!(renderer.format(), Some("html"));
-    }
+	#[tokio::test]
+	async fn test_static_html_renderer_format() {
+		let renderer = StaticHTMLRenderer::new("test");
+		assert_eq!(renderer.format(), Some("html"));
+	}
 }

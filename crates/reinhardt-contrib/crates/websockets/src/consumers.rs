@@ -9,44 +9,44 @@ use std::sync::Arc;
 
 /// Consumer context containing connection and message information
 pub struct ConsumerContext {
-    /// The WebSocket connection
-    pub connection: Arc<WebSocketConnection>,
-    /// Additional metadata
-    pub metadata: std::collections::HashMap<String, String>,
+	/// The WebSocket connection
+	pub connection: Arc<WebSocketConnection>,
+	/// Additional metadata
+	pub metadata: std::collections::HashMap<String, String>,
 }
 
 impl ConsumerContext {
-    /// Create a new consumer context
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_websockets::consumers::ConsumerContext;
-    /// use reinhardt_websockets::WebSocketConnection;
-    /// use tokio::sync::mpsc;
-    /// use std::sync::Arc;
-    ///
-    /// let (tx, _rx) = mpsc::unbounded_channel();
-    /// let conn = Arc::new(WebSocketConnection::new("conn_1".to_string(), tx));
-    /// let context = ConsumerContext::new(conn);
-    /// ```
-    pub fn new(connection: Arc<WebSocketConnection>) -> Self {
-        Self {
-            connection,
-            metadata: std::collections::HashMap::new(),
-        }
-    }
+	/// Create a new consumer context
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::consumers::ConsumerContext;
+	/// use reinhardt_websockets::WebSocketConnection;
+	/// use tokio::sync::mpsc;
+	/// use std::sync::Arc;
+	///
+	/// let (tx, _rx) = mpsc::unbounded_channel();
+	/// let conn = Arc::new(WebSocketConnection::new("conn_1".to_string(), tx));
+	/// let context = ConsumerContext::new(conn);
+	/// ```
+	pub fn new(connection: Arc<WebSocketConnection>) -> Self {
+		Self {
+			connection,
+			metadata: std::collections::HashMap::new(),
+		}
+	}
 
-    /// Add metadata to the context
-    pub fn with_metadata(mut self, key: String, value: String) -> Self {
-        self.metadata.insert(key, value);
-        self
-    }
+	/// Add metadata to the context
+	pub fn with_metadata(mut self, key: String, value: String) -> Self {
+		self.metadata.insert(key, value);
+		self
+	}
 
-    /// Get metadata value
-    pub fn get_metadata(&self, key: &str) -> Option<&String> {
-        self.metadata.get(key)
-    }
+	/// Get metadata value
+	pub fn get_metadata(&self, key: &str) -> Option<&String> {
+		self.metadata.get(key)
+	}
 }
 
 /// WebSocket consumer trait
@@ -54,18 +54,18 @@ impl ConsumerContext {
 /// Consumers handle the lifecycle of WebSocket connections and messages.
 #[async_trait]
 pub trait WebSocketConsumer: Send + Sync {
-    /// Called when a WebSocket connection is established
-    async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()>;
+	/// Called when a WebSocket connection is established
+	async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()>;
 
-    /// Called when a message is received
-    async fn on_message(
-        &self,
-        context: &mut ConsumerContext,
-        message: Message,
-    ) -> WebSocketResult<()>;
+	/// Called when a message is received
+	async fn on_message(
+		&self,
+		context: &mut ConsumerContext,
+		message: Message,
+	) -> WebSocketResult<()>;
 
-    /// Called when a WebSocket connection is closed
-    async fn on_disconnect(&self, context: &mut ConsumerContext) -> WebSocketResult<()>;
+	/// Called when a WebSocket connection is closed
+	async fn on_disconnect(&self, context: &mut ConsumerContext) -> WebSocketResult<()>;
 }
 
 /// Echo consumer that echoes all messages back to the sender
@@ -95,63 +95,63 @@ pub trait WebSocketConsumer: Send + Sync {
 /// # });
 /// ```
 pub struct EchoConsumer {
-    prefix: String,
+	prefix: String,
 }
 
 impl EchoConsumer {
-    /// Create a new echo consumer
-    pub fn new() -> Self {
-        Self {
-            prefix: "Echo".to_string(),
-        }
-    }
+	/// Create a new echo consumer
+	pub fn new() -> Self {
+		Self {
+			prefix: "Echo".to_string(),
+		}
+	}
 
-    /// Create a new echo consumer with custom prefix
-    pub fn with_prefix(prefix: String) -> Self {
-        Self { prefix }
-    }
+	/// Create a new echo consumer with custom prefix
+	pub fn with_prefix(prefix: String) -> Self {
+		Self { prefix }
+	}
 }
 
 impl Default for EchoConsumer {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[async_trait]
 impl WebSocketConsumer for EchoConsumer {
-    async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
-        context
-            .connection
-            .send_text(format!("{}: Connection established", self.prefix))
-            .await
-    }
+	async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
+		context
+			.connection
+			.send_text(format!("{}: Connection established", self.prefix))
+			.await
+	}
 
-    async fn on_message(
-        &self,
-        context: &mut ConsumerContext,
-        message: Message,
-    ) -> WebSocketResult<()> {
-        match message {
-            Message::Text { data } => {
-                context
-                    .connection
-                    .send_text(format!("{}: {}", self.prefix, data))
-                    .await
-            }
-            Message::Binary { data } => {
-                context
-                    .connection
-                    .send_text(format!("{}: {} bytes", self.prefix, data.len()))
-                    .await
-            }
-            _ => Ok(()),
-        }
-    }
+	async fn on_message(
+		&self,
+		context: &mut ConsumerContext,
+		message: Message,
+	) -> WebSocketResult<()> {
+		match message {
+			Message::Text { data } => {
+				context
+					.connection
+					.send_text(format!("{}: {}", self.prefix, data))
+					.await
+			}
+			Message::Binary { data } => {
+				context
+					.connection
+					.send_text(format!("{}: {} bytes", self.prefix, data.len()))
+					.await
+			}
+			_ => Ok(()),
+		}
+	}
 
-    async fn on_disconnect(&self, _context: &mut ConsumerContext) -> WebSocketResult<()> {
-        Ok(())
-    }
+	async fn on_disconnect(&self, _context: &mut ConsumerContext) -> WebSocketResult<()> {
+		Ok(())
+	}
 }
 
 /// Broadcast consumer that broadcasts messages to all connections in a group
@@ -189,51 +189,51 @@ impl WebSocketConsumer for EchoConsumer {
 /// # });
 /// ```
 pub struct BroadcastConsumer {
-    room: Arc<crate::room::Room>,
+	room: Arc<crate::room::Room>,
 }
 
 impl BroadcastConsumer {
-    /// Create a new broadcast consumer
-    pub fn new(room: Arc<crate::room::Room>) -> Self {
-        Self { room }
-    }
+	/// Create a new broadcast consumer
+	pub fn new(room: Arc<crate::room::Room>) -> Self {
+		Self { room }
+	}
 }
 
 #[async_trait]
 impl WebSocketConsumer for BroadcastConsumer {
-    async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
-        let client_id = context.connection.id().to_string();
-        self.room
-            .join(client_id.clone(), context.connection.clone())
-            .await
-            .map_err(|e| crate::connection::WebSocketError::Connection(e.to_string()))?;
+	async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
+		let client_id = context.connection.id().to_string();
+		self.room
+			.join(client_id.clone(), context.connection.clone())
+			.await
+			.map_err(|e| crate::connection::WebSocketError::Connection(e.to_string()))?;
 
-        context
-            .connection
-            .send_text("Joined broadcast room".to_string())
-            .await
-    }
+		context
+			.connection
+			.send_text("Joined broadcast room".to_string())
+			.await
+	}
 
-    async fn on_message(
-        &self,
-        _context: &mut ConsumerContext,
-        message: Message,
-    ) -> WebSocketResult<()> {
-        self.room.broadcast(message).await.map_err(|e| match e {
-            crate::room::RoomError::WebSocket(ws_err) => ws_err,
-            _ => crate::connection::WebSocketError::Send(e.to_string()),
-        })
-    }
+	async fn on_message(
+		&self,
+		_context: &mut ConsumerContext,
+		message: Message,
+	) -> WebSocketResult<()> {
+		self.room.broadcast(message).await.map_err(|e| match e {
+			crate::room::RoomError::WebSocket(ws_err) => ws_err,
+			_ => crate::connection::WebSocketError::Send(e.to_string()),
+		})
+	}
 
-    async fn on_disconnect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
-        let client_id = context.connection.id();
-        self.room
-            .leave(client_id)
-            .await
-            .map_err(|e| crate::connection::WebSocketError::Connection(e.to_string()))?;
+	async fn on_disconnect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
+		let client_id = context.connection.id();
+		self.room
+			.leave(client_id)
+			.await
+			.map_err(|e| crate::connection::WebSocketError::Connection(e.to_string()))?;
 
-        Ok(())
-    }
+		Ok(())
+	}
 }
 
 /// JSON consumer that parses and serializes JSON messages
@@ -271,57 +271,57 @@ impl WebSocketConsumer for BroadcastConsumer {
 pub struct JsonConsumer;
 
 impl JsonConsumer {
-    /// Create a new JSON consumer
-    pub fn new() -> Self {
-        Self
-    }
+	/// Create a new JSON consumer
+	pub fn new() -> Self {
+		Self
+	}
 }
 
 impl Default for JsonConsumer {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[async_trait]
 impl WebSocketConsumer for JsonConsumer {
-    async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
-        context
-            .connection
-            .send_json(&serde_json::json!({
-                "type": "connection",
-                "status": "connected"
-            }))
-            .await
-    }
+	async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
+		context
+			.connection
+			.send_json(&serde_json::json!({
+				"type": "connection",
+				"status": "connected"
+			}))
+			.await
+	}
 
-    async fn on_message(
-        &self,
-        context: &mut ConsumerContext,
-        message: Message,
-    ) -> WebSocketResult<()> {
-        match message {
-            Message::Text { data } => {
-                // Try to parse as JSON
-                let json: serde_json::Value = serde_json::from_str(&data)
-                    .map_err(|e| crate::connection::WebSocketError::Protocol(e.to_string()))?;
+	async fn on_message(
+		&self,
+		context: &mut ConsumerContext,
+		message: Message,
+	) -> WebSocketResult<()> {
+		match message {
+			Message::Text { data } => {
+				// Try to parse as JSON
+				let json: serde_json::Value = serde_json::from_str(&data)
+					.map_err(|e| crate::connection::WebSocketError::Protocol(e.to_string()))?;
 
-                // Echo back with metadata
-                let response = serde_json::json!({
-                    "type": "echo",
-                    "data": json,
-                    "timestamp": chrono::Utc::now().to_rfc3339()
-                });
+				// Echo back with metadata
+				let response = serde_json::json!({
+					"type": "echo",
+					"data": json,
+					"timestamp": chrono::Utc::now().to_rfc3339()
+				});
 
-                context.connection.send_json(&response).await
-            }
-            _ => Ok(()),
-        }
-    }
+				context.connection.send_json(&response).await
+			}
+			_ => Ok(()),
+		}
+	}
 
-    async fn on_disconnect(&self, _context: &mut ConsumerContext) -> WebSocketResult<()> {
-        Ok(())
-    }
+	async fn on_disconnect(&self, _context: &mut ConsumerContext) -> WebSocketResult<()> {
+		Ok(())
+	}
 }
 
 /// Consumer chain for composing multiple consumers
@@ -346,142 +346,142 @@ impl WebSocketConsumer for JsonConsumer {
 /// # });
 /// ```
 pub struct ConsumerChain {
-    consumers: Vec<Box<dyn WebSocketConsumer>>,
+	consumers: Vec<Box<dyn WebSocketConsumer>>,
 }
 
 impl ConsumerChain {
-    /// Create a new consumer chain
-    pub fn new() -> Self {
-        Self {
-            consumers: Vec::new(),
-        }
-    }
+	/// Create a new consumer chain
+	pub fn new() -> Self {
+		Self {
+			consumers: Vec::new(),
+		}
+	}
 
-    /// Add a consumer to the chain
-    pub fn add_consumer(&mut self, consumer: Box<dyn WebSocketConsumer>) {
-        self.consumers.push(consumer);
-    }
+	/// Add a consumer to the chain
+	pub fn add_consumer(&mut self, consumer: Box<dyn WebSocketConsumer>) {
+		self.consumers.push(consumer);
+	}
 }
 
 impl Default for ConsumerChain {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[async_trait]
 impl WebSocketConsumer for ConsumerChain {
-    async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
-        for consumer in &self.consumers {
-            consumer.on_connect(context).await?;
-        }
-        Ok(())
-    }
+	async fn on_connect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
+		for consumer in &self.consumers {
+			consumer.on_connect(context).await?;
+		}
+		Ok(())
+	}
 
-    async fn on_message(
-        &self,
-        context: &mut ConsumerContext,
-        message: Message,
-    ) -> WebSocketResult<()> {
-        for consumer in &self.consumers {
-            consumer.on_message(context, message.clone()).await?;
-        }
-        Ok(())
-    }
+	async fn on_message(
+		&self,
+		context: &mut ConsumerContext,
+		message: Message,
+	) -> WebSocketResult<()> {
+		for consumer in &self.consumers {
+			consumer.on_message(context, message.clone()).await?;
+		}
+		Ok(())
+	}
 
-    async fn on_disconnect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
-        for consumer in &self.consumers {
-            consumer.on_disconnect(context).await?;
-        }
-        Ok(())
-    }
+	async fn on_disconnect(&self, context: &mut ConsumerContext) -> WebSocketResult<()> {
+		for consumer in &self.consumers {
+			consumer.on_disconnect(context).await?;
+		}
+		Ok(())
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use tokio::sync::mpsc;
+	use super::*;
+	use tokio::sync::mpsc;
 
-    #[tokio::test]
-    async fn test_consumer_context_creation() {
-        let (tx, _rx) = mpsc::unbounded_channel();
-        let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
-        let context = ConsumerContext::new(conn);
+	#[tokio::test]
+	async fn test_consumer_context_creation() {
+		let (tx, _rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+		let context = ConsumerContext::new(conn);
 
-        assert_eq!(context.connection.id(), "test");
-    }
+		assert_eq!(context.connection.id(), "test");
+	}
 
-    #[tokio::test]
-    async fn test_consumer_context_metadata() {
-        let (tx, _rx) = mpsc::unbounded_channel();
-        let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
-        let context =
-            ConsumerContext::new(conn).with_metadata("user_id".to_string(), "123".to_string());
+	#[tokio::test]
+	async fn test_consumer_context_metadata() {
+		let (tx, _rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+		let context =
+			ConsumerContext::new(conn).with_metadata("user_id".to_string(), "123".to_string());
 
-        assert_eq!(context.get_metadata("user_id").unwrap(), "123");
-    }
+		assert_eq!(context.get_metadata("user_id").unwrap(), "123");
+	}
 
-    #[tokio::test]
-    async fn test_echo_consumer_connect() {
-        let consumer = EchoConsumer::new();
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
-        let mut context = ConsumerContext::new(conn);
+	#[tokio::test]
+	async fn test_echo_consumer_connect() {
+		let consumer = EchoConsumer::new();
+		let (tx, mut rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+		let mut context = ConsumerContext::new(conn);
 
-        consumer.on_connect(&mut context).await.unwrap();
+		consumer.on_connect(&mut context).await.unwrap();
 
-        let msg = rx.recv().await.unwrap();
-        match msg {
-            Message::Text { data } => assert!(data.contains("Connection established")),
-            _ => panic!("Expected text message"),
-        }
-    }
+		let msg = rx.recv().await.unwrap();
+		match msg {
+			Message::Text { data } => assert!(data.contains("Connection established")),
+			_ => panic!("Expected text message"),
+		}
+	}
 
-    #[tokio::test]
-    async fn test_echo_consumer_message() {
-        let consumer = EchoConsumer::new();
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
-        let mut context = ConsumerContext::new(conn);
+	#[tokio::test]
+	async fn test_echo_consumer_message() {
+		let consumer = EchoConsumer::new();
+		let (tx, mut rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+		let mut context = ConsumerContext::new(conn);
 
-        let msg = Message::text("Hello".to_string());
-        consumer.on_message(&mut context, msg).await.unwrap();
+		let msg = Message::text("Hello".to_string());
+		consumer.on_message(&mut context, msg).await.unwrap();
 
-        let received = rx.recv().await.unwrap();
-        match received {
-            Message::Text { data } => assert_eq!(data, "Echo: Hello"),
-            _ => panic!("Expected text message"),
-        }
-    }
+		let received = rx.recv().await.unwrap();
+		match received {
+			Message::Text { data } => assert_eq!(data, "Echo: Hello"),
+			_ => panic!("Expected text message"),
+		}
+	}
 
-    #[tokio::test]
-    async fn test_json_consumer_connect() {
-        let consumer = JsonConsumer::new();
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
-        let mut context = ConsumerContext::new(conn);
+	#[tokio::test]
+	async fn test_json_consumer_connect() {
+		let consumer = JsonConsumer::new();
+		let (tx, mut rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+		let mut context = ConsumerContext::new(conn);
 
-        consumer.on_connect(&mut context).await.unwrap();
+		consumer.on_connect(&mut context).await.unwrap();
 
-        let msg = rx.recv().await.unwrap();
-        match msg {
-            Message::Text { data } => {
-                let json: serde_json::Value = serde_json::from_str(&data).unwrap();
-                assert_eq!(json["status"], "connected");
-            }
-            _ => panic!("Expected text message"),
-        }
-    }
+		let msg = rx.recv().await.unwrap();
+		match msg {
+			Message::Text { data } => {
+				let json: serde_json::Value = serde_json::from_str(&data).unwrap();
+				assert_eq!(json["status"], "connected");
+			}
+			_ => panic!("Expected text message"),
+		}
+	}
 
-    #[tokio::test]
-    async fn test_consumer_chain() {
-        let mut chain = ConsumerChain::new();
-        chain.add_consumer(Box::new(EchoConsumer::with_prefix("Consumer1".to_string())));
+	#[tokio::test]
+	async fn test_consumer_chain() {
+		let mut chain = ConsumerChain::new();
+		chain.add_consumer(Box::new(EchoConsumer::with_prefix("Consumer1".to_string())));
 
-        let (tx, _rx) = mpsc::unbounded_channel();
-        let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
-        let mut context = ConsumerContext::new(conn);
+		let (tx, _rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+		let mut context = ConsumerContext::new(conn);
 
-        assert!(chain.on_connect(&mut context).await.is_ok());
-    }
+		assert!(chain.on_connect(&mut context).await.is_ok());
+	}
 }

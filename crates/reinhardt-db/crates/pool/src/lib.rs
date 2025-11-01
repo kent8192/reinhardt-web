@@ -19,9 +19,9 @@ pub use pool::{ConnectionPool, PooledConnection};
 
 /// Re-export commonly used types
 pub mod prelude {
-    pub use crate::config::*;
-    pub use crate::errors::*;
-    pub use crate::events::*;
-    pub use crate::manager::*;
-    pub use crate::pool::*;
+	pub use crate::config::*;
+	pub use crate::errors::*;
+	pub use crate::events::*;
+	pub use crate::manager::*;
+	pub use crate::pool::*;
 }

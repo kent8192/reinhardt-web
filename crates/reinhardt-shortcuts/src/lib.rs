@@ -141,7 +141,7 @@ pub mod tera_functions;
 
 // Re-export core functions
 pub use get_or_404::{
-    exists_or_404_response, get_list_or_404_response, get_or_404_response, GetError,
+	GetError, exists_or_404_response, get_list_or_404_response, get_or_404_response,
 };
 pub use redirect::{redirect, redirect_permanent};
 pub use render::{render_html, render_json, render_json_pretty, render_text};
@@ -157,6 +157,6 @@ pub use template::{render_template, render_to_response};
 // Re-export error page functions (feature-gated)
 #[cfg(feature = "templates")]
 pub use error_pages::{
-    bad_request, page_not_found, permission_denied, render_debug_error_page, render_error_page,
-    server_error,
+	bad_request, page_not_found, permission_denied, render_debug_error_page, render_error_page,
+	server_error,
 };

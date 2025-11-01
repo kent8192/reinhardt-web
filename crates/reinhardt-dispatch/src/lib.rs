@@ -139,7 +139,7 @@ pub mod middleware;
 
 // Re-exports
 pub use dispatcher::Dispatcher;
-pub use exception::{convert_exception_to_response, ExceptionHandler};
+pub use exception::{ExceptionHandler, convert_exception_to_response};
 pub use handler::BaseHandler;
 pub use middleware::MiddlewareChain;
 
@@ -148,23 +148,23 @@ use thiserror::Error;
 /// Errors that can occur during request dispatching
 #[derive(Debug, Error)]
 pub enum DispatchError {
-    /// Middleware configuration error
-    #[error("Middleware error: {0}")]
-    Middleware(String),
+	/// Middleware configuration error
+	#[error("Middleware error: {0}")]
+	Middleware(String),
 
-    /// View execution error
-    #[error("View error: {0}")]
-    View(String),
+	/// View execution error
+	#[error("View error: {0}")]
+	View(String),
 
-    /// URL resolution error
-    #[error("URL resolution error: {0}")]
-    UrlResolution(String),
+	/// URL resolution error
+	#[error("URL resolution error: {0}")]
+	UrlResolution(String),
 
-    /// HTTP error
-    #[error("HTTP error: {0}")]
-    Http(String),
+	/// HTTP error
+	#[error("HTTP error: {0}")]
+	Http(String),
 
-    /// Internal error
-    #[error("Internal error: {0}")]
-    Internal(String),
+	/// Internal error
+	#[error("Internal error: {0}")]
+	Internal(String),
 }

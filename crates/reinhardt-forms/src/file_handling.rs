@@ -10,18 +10,18 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
 pub enum FileUploadError {
-    #[error("File too large: {0} bytes (max: {1} bytes)")]
-    FileTooLarge(usize, usize),
-    #[error("Invalid file type: {0}")]
-    InvalidFileType(String),
-    #[error("IO error: {0}")]
-    Io(#[from] io::Error),
-    #[error("Upload error: {0}")]
-    Upload(String),
-    #[error("Checksum verification failed")]
-    ChecksumMismatch,
-    #[error("MIME type detection failed")]
-    MimeDetectionFailed,
+	#[error("File too large: {0} bytes (max: {1} bytes)")]
+	FileTooLarge(usize, usize),
+	#[error("Invalid file type: {0}")]
+	InvalidFileType(String),
+	#[error("IO error: {0}")]
+	Io(#[from] io::Error),
+	#[error("Upload error: {0}")]
+	Upload(String),
+	#[error("Checksum verification failed")]
+	ChecksumMismatch,
+	#[error("MIME type detection failed")]
+	MimeDetectionFailed,
 }
 
 /// FileUploadHandler processes file uploads
@@ -29,468 +29,467 @@ pub enum FileUploadError {
 /// Handles file upload operations including validation, storage,
 /// and cleanup of temporary files.
 pub struct FileUploadHandler {
-    upload_dir: PathBuf,
-    max_size: usize,
-    allowed_extensions: Option<Vec<String>>,
-    verify_checksum: bool,
-    allowed_mime_types: Option<Vec<String>>,
+	upload_dir: PathBuf,
+	max_size: usize,
+	allowed_extensions: Option<Vec<String>>,
+	verify_checksum: bool,
+	allowed_mime_types: Option<Vec<String>>,
 }
 
 impl FileUploadHandler {
-    /// Create a new FileUploadHandler
-    ///
-    /// # Arguments
-    ///
-    /// * `upload_dir` - Directory where uploaded files will be stored
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
-    /// assert_eq!(handler.max_size(), 10 * 1024 * 1024); // 10MB default
-    /// ```
-    pub fn new(upload_dir: PathBuf) -> Self {
-        Self {
-            upload_dir,
-            max_size: 10 * 1024 * 1024, // 10MB default
-            allowed_extensions: None,
-            verify_checksum: false,
-            allowed_mime_types: None,
-        }
-    }
+	/// Create a new FileUploadHandler
+	///
+	/// # Arguments
+	///
+	/// * `upload_dir` - Directory where uploaded files will be stored
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
+	/// assert_eq!(handler.max_size(), 10 * 1024 * 1024); // 10MB default
+	/// ```
+	pub fn new(upload_dir: PathBuf) -> Self {
+		Self {
+			upload_dir,
+			max_size: 10 * 1024 * 1024, // 10MB default
+			allowed_extensions: None,
+			verify_checksum: false,
+			allowed_mime_types: None,
+		}
+	}
 
-    /// Set maximum file size
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
-    ///     .with_max_size(5 * 1024 * 1024); // 5MB
-    /// assert_eq!(handler.max_size(), 5 * 1024 * 1024);
-    /// ```
-    pub fn with_max_size(mut self, max_size: usize) -> Self {
-        self.max_size = max_size;
-        self
-    }
+	/// Set maximum file size
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
+	///     .with_max_size(5 * 1024 * 1024); // 5MB
+	/// assert_eq!(handler.max_size(), 5 * 1024 * 1024);
+	/// ```
+	pub fn with_max_size(mut self, max_size: usize) -> Self {
+		self.max_size = max_size;
+		self
+	}
 
-    /// Set allowed file extensions
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
-    ///     .with_allowed_extensions(vec!["jpg".to_string(), "png".to_string()]);
-    /// ```
-    pub fn with_allowed_extensions(mut self, extensions: Vec<String>) -> Self {
-        self.allowed_extensions = Some(extensions);
-        self
-    }
+	/// Set allowed file extensions
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
+	///     .with_allowed_extensions(vec!["jpg".to_string(), "png".to_string()]);
+	/// ```
+	pub fn with_allowed_extensions(mut self, extensions: Vec<String>) -> Self {
+		self.allowed_extensions = Some(extensions);
+		self
+	}
 
-    /// Enable checksum verification
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
-    ///     .with_checksum_verification(true);
-    /// ```
-    pub fn with_checksum_verification(mut self, enabled: bool) -> Self {
-        self.verify_checksum = enabled;
-        self
-    }
+	/// Enable checksum verification
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
+	///     .with_checksum_verification(true);
+	/// ```
+	pub fn with_checksum_verification(mut self, enabled: bool) -> Self {
+		self.verify_checksum = enabled;
+		self
+	}
 
-    /// Set allowed MIME types
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
-    ///     .with_allowed_mime_types(vec![
-    ///         "image/jpeg".to_string(),
-    ///         "image/png".to_string()
-    ///     ]);
-    /// ```
-    pub fn with_allowed_mime_types(mut self, mime_types: Vec<String>) -> Self {
-        self.allowed_mime_types = Some(mime_types);
-        self
-    }
+	/// Set allowed MIME types
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
+	///     .with_allowed_mime_types(vec![
+	///         "image/jpeg".to_string(),
+	///         "image/png".to_string()
+	///     ]);
+	/// ```
+	pub fn with_allowed_mime_types(mut self, mime_types: Vec<String>) -> Self {
+		self.allowed_mime_types = Some(mime_types);
+		self
+	}
 
-    /// Get the maximum file size
-    pub fn max_size(&self) -> usize {
-        self.max_size
-    }
+	/// Get the maximum file size
+	pub fn max_size(&self) -> usize {
+		self.max_size
+	}
 
-    /// Get the upload directory
-    pub fn upload_dir(&self) -> &Path {
-        &self.upload_dir
-    }
+	/// Get the upload directory
+	pub fn upload_dir(&self) -> &Path {
+		&self.upload_dir
+	}
 
-    /// Calculate SHA-256 checksum of file content
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
-    /// let checksum = handler.calculate_checksum(b"test data");
-    /// assert_eq!(checksum.len(), 64); // SHA-256 produces 64 hex characters
-    /// ```
-    pub fn calculate_checksum(&self, content: &[u8]) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(content);
-        let result = hasher.finalize();
-        // Convert bytes to hex string
-        result.iter().map(|b| format!("{:02x}", b)).collect()
-    }
+	/// Calculate SHA-256 checksum of file content
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
+	/// let checksum = handler.calculate_checksum(b"test data");
+	/// assert_eq!(checksum.len(), 64); // SHA-256 produces 64 hex characters
+	/// ```
+	pub fn calculate_checksum(&self, content: &[u8]) -> String {
+		let mut hasher = Sha256::new();
+		hasher.update(content);
+		let result = hasher.finalize();
+		// Convert bytes to hex string
+		result.iter().map(|b| format!("{:02x}", b)).collect()
+	}
 
-    /// Verify file checksum
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
-    /// let content = b"test data";
-    /// let checksum = handler.calculate_checksum(content);
-    /// assert!(handler.verify_file_checksum(content, &checksum).is_ok());
-    /// ```
-    pub fn verify_file_checksum(
-        &self,
-        content: &[u8],
-        expected_checksum: &str,
-    ) -> Result<(), FileUploadError> {
-        let actual_checksum = self.calculate_checksum(content);
-        if actual_checksum == expected_checksum {
-            Ok(())
-        } else {
-            Err(FileUploadError::ChecksumMismatch)
-        }
-    }
+	/// Verify file checksum
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
+	/// let content = b"test data";
+	/// let checksum = handler.calculate_checksum(content);
+	/// assert!(handler.verify_file_checksum(content, &checksum).is_ok());
+	/// ```
+	pub fn verify_file_checksum(
+		&self,
+		content: &[u8],
+		expected_checksum: &str,
+	) -> Result<(), FileUploadError> {
+		let actual_checksum = self.calculate_checksum(content);
+		if actual_checksum == expected_checksum {
+			Ok(())
+		} else {
+			Err(FileUploadError::ChecksumMismatch)
+		}
+	}
 
-    /// Detect MIME type from file content
-    ///
-    /// Basic MIME type detection based on file signatures (magic numbers).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
-    ///
-    /// // PNG signature
-    /// let png_data = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-    /// assert_eq!(handler.detect_mime_type(&png_data), Some("image/png".to_string()));
-    ///
-    /// // JPEG signature
-    /// let jpeg_data = vec![0xFF, 0xD8, 0xFF];
-    /// assert_eq!(handler.detect_mime_type(&jpeg_data), Some("image/jpeg".to_string()));
-    /// ```
-    pub fn detect_mime_type(&self, content: &[u8]) -> Option<String> {
-        if content.is_empty() {
-            return None;
-        }
+	/// Detect MIME type from file content
+	///
+	/// Basic MIME type detection based on file signatures (magic numbers).
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
+	///
+	/// // PNG signature
+	/// let png_data = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+	/// assert_eq!(handler.detect_mime_type(&png_data), Some("image/png".to_string()));
+	///
+	/// // JPEG signature
+	/// let jpeg_data = vec![0xFF, 0xD8, 0xFF];
+	/// assert_eq!(handler.detect_mime_type(&jpeg_data), Some("image/jpeg".to_string()));
+	/// ```
+	pub fn detect_mime_type(&self, content: &[u8]) -> Option<String> {
+		if content.is_empty() {
+			return None;
+		}
 
-        // Check common file signatures
-        if content.len() >= 8 && content[0..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
-        {
-            return Some("image/png".to_string());
-        }
+		// Check common file signatures
+		if content.len() >= 8 && content[0..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+			return Some("image/png".to_string());
+		}
 
-        if content.len() >= 3 && content[0..3] == [0xFF, 0xD8, 0xFF] {
-            return Some("image/jpeg".to_string());
-        }
+		if content.len() >= 3 && content[0..3] == [0xFF, 0xD8, 0xFF] {
+			return Some("image/jpeg".to_string());
+		}
 
-        if content.len() >= 4 && content[0..4] == [0x47, 0x49, 0x46, 0x38] {
-            return Some("image/gif".to_string());
-        }
+		if content.len() >= 4 && content[0..4] == [0x47, 0x49, 0x46, 0x38] {
+			return Some("image/gif".to_string());
+		}
 
-        if content.len() >= 4 && content[0..4] == [0x25, 0x50, 0x44, 0x46] {
-            return Some("application/pdf".to_string());
-        }
+		if content.len() >= 4 && content[0..4] == [0x25, 0x50, 0x44, 0x46] {
+			return Some("application/pdf".to_string());
+		}
 
-        if content.len() >= 4
-            && (content[0..4] == [0x50, 0x4B, 0x03, 0x04]
-                || content[0..4] == [0x50, 0x4B, 0x05, 0x06])
-        {
-            return Some("application/zip".to_string());
-        }
+		if content.len() >= 4
+			&& (content[0..4] == [0x50, 0x4B, 0x03, 0x04]
+				|| content[0..4] == [0x50, 0x4B, 0x05, 0x06])
+		{
+			return Some("application/zip".to_string());
+		}
 
-        None
-    }
+		None
+	}
 
-    /// Validate MIME type
-    fn validate_mime_type(&self, content: &[u8]) -> Result<(), FileUploadError> {
-        if let Some(ref allowed) = self.allowed_mime_types {
-            let detected_mime = self
-                .detect_mime_type(content)
-                .ok_or(FileUploadError::MimeDetectionFailed)?;
+	/// Validate MIME type
+	fn validate_mime_type(&self, content: &[u8]) -> Result<(), FileUploadError> {
+		if let Some(ref allowed) = self.allowed_mime_types {
+			let detected_mime = self
+				.detect_mime_type(content)
+				.ok_or(FileUploadError::MimeDetectionFailed)?;
 
-            if !allowed.contains(&detected_mime) {
-                return Err(FileUploadError::InvalidFileType(detected_mime));
-            }
-        }
-        Ok(())
-    }
+			if !allowed.contains(&detected_mime) {
+				return Err(FileUploadError::InvalidFileType(detected_mime));
+			}
+		}
+		Ok(())
+	}
 
-    /// Handle a file upload
-    ///
-    /// # Arguments
-    ///
-    /// * `field_name` - Name of the form field
-    /// * `filename` - Original filename
-    /// * `content` - File content as bytes
-    ///
-    /// # Returns
-    ///
-    /// Returns the path to the saved file
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
-    /// let result = handler.handle_upload("avatar", "photo.jpg", b"image data");
-    /// assert!(result.is_ok());
-    /// ```
-    pub fn handle_upload(
-        &self,
-        field_name: &str,
-        filename: &str,
-        content: &[u8],
-    ) -> Result<String, FileUploadError> {
-        // Check file size
-        if content.len() > self.max_size {
-            return Err(FileUploadError::FileTooLarge(content.len(), self.max_size));
-        }
+	/// Handle a file upload
+	///
+	/// # Arguments
+	///
+	/// * `field_name` - Name of the form field
+	/// * `filename` - Original filename
+	/// * `content` - File content as bytes
+	///
+	/// # Returns
+	///
+	/// Returns the path to the saved file
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
+	/// let result = handler.handle_upload("avatar", "photo.jpg", b"image data");
+	/// assert!(result.is_ok());
+	/// ```
+	pub fn handle_upload(
+		&self,
+		field_name: &str,
+		filename: &str,
+		content: &[u8],
+	) -> Result<String, FileUploadError> {
+		// Check file size
+		if content.len() > self.max_size {
+			return Err(FileUploadError::FileTooLarge(content.len(), self.max_size));
+		}
 
-        // Validate file extension
-        if let Some(ref allowed) = self.allowed_extensions {
-            let extension = Path::new(filename)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+		// Validate file extension
+		if let Some(ref allowed) = self.allowed_extensions {
+			let extension = Path::new(filename)
+				.extension()
+				.and_then(|e| e.to_str())
+				.unwrap_or("");
 
-            if !allowed.iter().any(|ext| ext == extension) {
-                return Err(FileUploadError::InvalidFileType(extension.to_string()));
-            }
-        }
+			if !allowed.iter().any(|ext| ext == extension) {
+				return Err(FileUploadError::InvalidFileType(extension.to_string()));
+			}
+		}
 
-        // Validate MIME type
-        self.validate_mime_type(content)?;
+		// Validate MIME type
+		self.validate_mime_type(content)?;
 
-        // Create upload directory if it doesn't exist
-        fs::create_dir_all(&self.upload_dir)?;
+		// Create upload directory if it doesn't exist
+		fs::create_dir_all(&self.upload_dir)?;
 
-        // Generate unique filename
-        let unique_filename = self.generate_unique_filename(field_name, filename);
-        let file_path = self.upload_dir.join(&unique_filename);
+		// Generate unique filename
+		let unique_filename = self.generate_unique_filename(field_name, filename);
+		let file_path = self.upload_dir.join(&unique_filename);
 
-        // Write file
-        let mut file = fs::File::create(&file_path)?;
-        file.write_all(content)?;
+		// Write file
+		let mut file = fs::File::create(&file_path)?;
+		file.write_all(content)?;
 
-        Ok(unique_filename)
-    }
+		Ok(unique_filename)
+	}
 
-    /// Handle upload with checksum verification
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
-    ///     .with_checksum_verification(true);
-    ///
-    /// let content = b"test data";
-    /// let checksum = handler.calculate_checksum(content);
-    /// let result = handler.handle_upload_with_checksum(
-    ///     "file",
-    ///     "test.txt",
-    ///     content,
-    ///     &checksum
-    /// );
-    /// assert!(result.is_ok());
-    /// ```
-    pub fn handle_upload_with_checksum(
-        &self,
-        field_name: &str,
-        filename: &str,
-        content: &[u8],
-        expected_checksum: &str,
-    ) -> Result<String, FileUploadError> {
-        // Verify checksum if enabled
-        if self.verify_checksum {
-            self.verify_file_checksum(content, expected_checksum)?;
-        }
+	/// Handle upload with checksum verification
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
+	///     .with_checksum_verification(true);
+	///
+	/// let content = b"test data";
+	/// let checksum = handler.calculate_checksum(content);
+	/// let result = handler.handle_upload_with_checksum(
+	///     "file",
+	///     "test.txt",
+	///     content,
+	///     &checksum
+	/// );
+	/// assert!(result.is_ok());
+	/// ```
+	pub fn handle_upload_with_checksum(
+		&self,
+		field_name: &str,
+		filename: &str,
+		content: &[u8],
+		expected_checksum: &str,
+	) -> Result<String, FileUploadError> {
+		// Verify checksum if enabled
+		if self.verify_checksum {
+			self.verify_file_checksum(content, expected_checksum)?;
+		}
 
-        // Handle the upload normally
-        self.handle_upload(field_name, filename, content)
-    }
+		// Handle the upload normally
+		self.handle_upload(field_name, filename, content)
+	}
 
-    /// Generate a unique filename
-    fn generate_unique_filename(&self, field_name: &str, original_filename: &str) -> String {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+	/// Generate a unique filename
+	fn generate_unique_filename(&self, field_name: &str, original_filename: &str) -> String {
+		let timestamp = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.unwrap()
+			.as_secs();
 
-        let extension = Path::new(original_filename)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+		let extension = Path::new(original_filename)
+			.extension()
+			.and_then(|e| e.to_str())
+			.unwrap_or("");
 
-        if extension.is_empty() {
-            format!("{}_{}", field_name, timestamp)
-        } else {
-            format!("{}_{}.{}", field_name, timestamp, extension)
-        }
-    }
+		if extension.is_empty() {
+			format!("{}_{}", field_name, timestamp)
+		} else {
+			format!("{}_{}.{}", field_name, timestamp, extension)
+		}
+	}
 
-    /// Delete an uploaded file
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use reinhardt_forms::FileUploadHandler;
-    /// use std::path::PathBuf;
-    ///
-    /// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
-    /// let result = handler.delete_upload("avatar_123456.jpg");
-    /// assert!(result.is_ok());
-    /// ```
-    pub fn delete_upload(&self, filename: &str) -> Result<(), FileUploadError> {
-        let file_path = self.upload_dir.join(filename);
-        fs::remove_file(file_path)?;
-        Ok(())
-    }
+	/// Delete an uploaded file
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_forms::FileUploadHandler;
+	/// use std::path::PathBuf;
+	///
+	/// let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
+	/// let result = handler.delete_upload("avatar_123456.jpg");
+	/// assert!(result.is_ok());
+	/// ```
+	pub fn delete_upload(&self, filename: &str) -> Result<(), FileUploadError> {
+		let file_path = self.upload_dir.join(filename);
+		fs::remove_file(file_path)?;
+		Ok(())
+	}
 }
 
 /// TemporaryFileUpload manages temporary uploaded files
 ///
 /// Automatically cleans up temporary files when dropped.
 pub struct TemporaryFileUpload {
-    path: PathBuf,
-    auto_delete: bool,
+	path: PathBuf,
+	auto_delete: bool,
 }
 
 impl TemporaryFileUpload {
-    /// Create a new temporary file upload
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::TemporaryFileUpload;
-    /// use std::path::PathBuf;
-    ///
-    /// let temp = TemporaryFileUpload::new(PathBuf::from("/tmp/temp_file.dat"));
-    /// assert_eq!(temp.path().to_str().unwrap(), "/tmp/temp_file.dat");
-    /// ```
-    pub fn new(path: PathBuf) -> Self {
-        Self {
-            path,
-            auto_delete: true,
-        }
-    }
+	/// Create a new temporary file upload
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::TemporaryFileUpload;
+	/// use std::path::PathBuf;
+	///
+	/// let temp = TemporaryFileUpload::new(PathBuf::from("/tmp/temp_file.dat"));
+	/// assert_eq!(temp.path().to_str().unwrap(), "/tmp/temp_file.dat");
+	/// ```
+	pub fn new(path: PathBuf) -> Self {
+		Self {
+			path,
+			auto_delete: true,
+		}
+	}
 
-    /// Create a temporary file with content
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use reinhardt_forms::TemporaryFileUpload;
-    /// use std::path::PathBuf;
-    ///
-    /// let temp = TemporaryFileUpload::with_content(
-    ///     PathBuf::from("/tmp/temp.txt"),
-    ///     b"Hello, World!"
-    /// ).unwrap();
-    /// ```
-    pub fn with_content(path: PathBuf, content: &[u8]) -> Result<Self, FileUploadError> {
-        let mut file = fs::File::create(&path)?;
-        file.write_all(content)?;
-        Ok(Self {
-            path,
-            auto_delete: true,
-        })
-    }
+	/// Create a temporary file with content
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_forms::TemporaryFileUpload;
+	/// use std::path::PathBuf;
+	///
+	/// let temp = TemporaryFileUpload::with_content(
+	///     PathBuf::from("/tmp/temp.txt"),
+	///     b"Hello, World!"
+	/// ).unwrap();
+	/// ```
+	pub fn with_content(path: PathBuf, content: &[u8]) -> Result<Self, FileUploadError> {
+		let mut file = fs::File::create(&path)?;
+		file.write_all(content)?;
+		Ok(Self {
+			path,
+			auto_delete: true,
+		})
+	}
 
-    /// Disable automatic deletion
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::TemporaryFileUpload;
-    /// use std::path::PathBuf;
-    ///
-    /// let mut temp = TemporaryFileUpload::new(PathBuf::from("/tmp/keep_me.txt"));
-    /// temp.keep();
-    /// assert!(!temp.auto_delete());
-    /// ```
-    pub fn keep(&mut self) {
-        self.auto_delete = false;
-    }
+	/// Disable automatic deletion
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::TemporaryFileUpload;
+	/// use std::path::PathBuf;
+	///
+	/// let mut temp = TemporaryFileUpload::new(PathBuf::from("/tmp/keep_me.txt"));
+	/// temp.keep();
+	/// assert!(!temp.auto_delete());
+	/// ```
+	pub fn keep(&mut self) {
+		self.auto_delete = false;
+	}
 
-    /// Get the file path
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
+	/// Get the file path
+	pub fn path(&self) -> &Path {
+		&self.path
+	}
 
-    /// Check if auto-delete is enabled
-    pub fn auto_delete(&self) -> bool {
-        self.auto_delete
-    }
+	/// Check if auto-delete is enabled
+	pub fn auto_delete(&self) -> bool {
+		self.auto_delete
+	}
 
-    /// Read file content
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use reinhardt_forms::TemporaryFileUpload;
-    /// use std::path::PathBuf;
-    ///
-    /// let temp = TemporaryFileUpload::with_content(
-    ///     PathBuf::from("/tmp/test.txt"),
-    ///     b"content"
-    /// ).unwrap();
-    /// let content = temp.read_content().unwrap();
-    /// assert_eq!(content, b"content");
-    /// ```
-    pub fn read_content(&self) -> Result<Vec<u8>, FileUploadError> {
-        Ok(fs::read(&self.path)?)
-    }
+	/// Read file content
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_forms::TemporaryFileUpload;
+	/// use std::path::PathBuf;
+	///
+	/// let temp = TemporaryFileUpload::with_content(
+	///     PathBuf::from("/tmp/test.txt"),
+	///     b"content"
+	/// ).unwrap();
+	/// let content = temp.read_content().unwrap();
+	/// assert_eq!(content, b"content");
+	/// ```
+	pub fn read_content(&self) -> Result<Vec<u8>, FileUploadError> {
+		Ok(fs::read(&self.path)?)
+	}
 }
 
 impl Drop for TemporaryFileUpload {
-    fn drop(&mut self) {
-        if self.auto_delete && self.path.exists() {
-            let _ = fs::remove_file(&self.path);
-        }
-    }
+	fn drop(&mut self) {
+		if self.auto_delete && self.path.exists() {
+			let _ = fs::remove_file(&self.path);
+		}
+	}
 }
 
 /// MemoryFileUpload stores uploaded files in memory
@@ -498,259 +497,259 @@ impl Drop for TemporaryFileUpload {
 /// Useful for small files or testing scenarios where
 /// disk I/O should be avoided.
 pub struct MemoryFileUpload {
-    filename: String,
-    content: Vec<u8>,
-    content_type: Option<String>,
+	filename: String,
+	content: Vec<u8>,
+	content_type: Option<String>,
 }
 
 impl MemoryFileUpload {
-    /// Create a new memory-based file upload
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::MemoryFileUpload;
-    ///
-    /// let upload = MemoryFileUpload::new(
-    ///     "document.pdf".to_string(),
-    ///     vec![0x25, 0x50, 0x44, 0x46]
-    /// );
-    /// assert_eq!(upload.filename(), "document.pdf");
-    /// assert_eq!(upload.size(), 4);
-    /// ```
-    pub fn new(filename: String, content: Vec<u8>) -> Self {
-        Self {
-            filename,
-            content,
-            content_type: None,
-        }
-    }
+	/// Create a new memory-based file upload
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::MemoryFileUpload;
+	///
+	/// let upload = MemoryFileUpload::new(
+	///     "document.pdf".to_string(),
+	///     vec![0x25, 0x50, 0x44, 0x46]
+	/// );
+	/// assert_eq!(upload.filename(), "document.pdf");
+	/// assert_eq!(upload.size(), 4);
+	/// ```
+	pub fn new(filename: String, content: Vec<u8>) -> Self {
+		Self {
+			filename,
+			content,
+			content_type: None,
+		}
+	}
 
-    /// Create a memory upload with content type
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::MemoryFileUpload;
-    ///
-    /// let upload = MemoryFileUpload::with_content_type(
-    ///     "image.png".to_string(),
-    ///     vec![0x89, 0x50, 0x4E, 0x47],
-    ///     "image/png".to_string()
-    /// );
-    /// assert_eq!(upload.content_type(), Some("image/png"));
-    /// ```
-    pub fn with_content_type(filename: String, content: Vec<u8>, content_type: String) -> Self {
-        Self {
-            filename,
-            content,
-            content_type: Some(content_type),
-        }
-    }
+	/// Create a memory upload with content type
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::MemoryFileUpload;
+	///
+	/// let upload = MemoryFileUpload::with_content_type(
+	///     "image.png".to_string(),
+	///     vec![0x89, 0x50, 0x4E, 0x47],
+	///     "image/png".to_string()
+	/// );
+	/// assert_eq!(upload.content_type(), Some("image/png"));
+	/// ```
+	pub fn with_content_type(filename: String, content: Vec<u8>, content_type: String) -> Self {
+		Self {
+			filename,
+			content,
+			content_type: Some(content_type),
+		}
+	}
 
-    /// Get the filename
-    pub fn filename(&self) -> &str {
-        &self.filename
-    }
+	/// Get the filename
+	pub fn filename(&self) -> &str {
+		&self.filename
+	}
 
-    /// Get the file content
-    pub fn content(&self) -> &[u8] {
-        &self.content
-    }
+	/// Get the file content
+	pub fn content(&self) -> &[u8] {
+		&self.content
+	}
 
-    /// Get the content type
-    pub fn content_type(&self) -> Option<&str> {
-        self.content_type.as_deref()
-    }
+	/// Get the content type
+	pub fn content_type(&self) -> Option<&str> {
+		self.content_type.as_deref()
+	}
 
-    /// Get the file size in bytes
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::MemoryFileUpload;
-    ///
-    /// let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3, 4, 5]);
-    /// assert_eq!(upload.size(), 5);
-    /// ```
-    pub fn size(&self) -> usize {
-        self.content.len()
-    }
+	/// Get the file size in bytes
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::MemoryFileUpload;
+	///
+	/// let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3, 4, 5]);
+	/// assert_eq!(upload.size(), 5);
+	/// ```
+	pub fn size(&self) -> usize {
+		self.content.len()
+	}
 
-    /// Check if the upload is empty
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::MemoryFileUpload;
-    ///
-    /// let empty = MemoryFileUpload::new("empty.txt".to_string(), vec![]);
-    /// assert!(empty.is_empty());
-    ///
-    /// let non_empty = MemoryFileUpload::new("data.txt".to_string(), vec![1, 2, 3]);
-    /// assert!(!non_empty.is_empty());
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        self.content.is_empty()
-    }
+	/// Check if the upload is empty
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::MemoryFileUpload;
+	///
+	/// let empty = MemoryFileUpload::new("empty.txt".to_string(), vec![]);
+	/// assert!(empty.is_empty());
+	///
+	/// let non_empty = MemoryFileUpload::new("data.txt".to_string(), vec![1, 2, 3]);
+	/// assert!(!non_empty.is_empty());
+	/// ```
+	pub fn is_empty(&self) -> bool {
+		self.content.is_empty()
+	}
 
-    /// Save to disk
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use reinhardt_forms::MemoryFileUpload;
-    /// use std::path::PathBuf;
-    ///
-    /// let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3]);
-    /// let result = upload.save_to_disk(PathBuf::from("/tmp/test.txt"));
-    /// assert!(result.is_ok());
-    /// ```
-    pub fn save_to_disk(&self, path: PathBuf) -> Result<(), FileUploadError> {
-        let mut file = fs::File::create(path)?;
-        file.write_all(&self.content)?;
-        Ok(())
-    }
+	/// Save to disk
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_forms::MemoryFileUpload;
+	/// use std::path::PathBuf;
+	///
+	/// let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3]);
+	/// let result = upload.save_to_disk(PathBuf::from("/tmp/test.txt"));
+	/// assert!(result.is_ok());
+	/// ```
+	pub fn save_to_disk(&self, path: PathBuf) -> Result<(), FileUploadError> {
+		let mut file = fs::File::create(path)?;
+		file.write_all(&self.content)?;
+		Ok(())
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::fs;
+	use super::*;
+	use std::fs;
 
-    #[test]
-    fn test_file_upload_handler_creation() {
-        let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
-        assert_eq!(handler.max_size(), 10 * 1024 * 1024);
-        assert_eq!(handler.upload_dir(), Path::new("/tmp/uploads"));
-    }
+	#[test]
+	fn test_file_upload_handler_creation() {
+		let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
+		assert_eq!(handler.max_size(), 10 * 1024 * 1024);
+		assert_eq!(handler.upload_dir(), Path::new("/tmp/uploads"));
+	}
 
-    #[test]
-    fn test_file_upload_handler_with_max_size() {
-        let handler =
-            FileUploadHandler::new(PathBuf::from("/tmp/uploads")).with_max_size(5 * 1024 * 1024);
-        assert_eq!(handler.max_size(), 5 * 1024 * 1024);
-    }
+	#[test]
+	fn test_file_upload_handler_with_max_size() {
+		let handler =
+			FileUploadHandler::new(PathBuf::from("/tmp/uploads")).with_max_size(5 * 1024 * 1024);
+		assert_eq!(handler.max_size(), 5 * 1024 * 1024);
+	}
 
-    #[test]
-    fn test_file_upload_handler_size_validation() {
-        let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads")).with_max_size(100);
+	#[test]
+	fn test_file_upload_handler_size_validation() {
+		let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads")).with_max_size(100);
 
-        let large_content = vec![0u8; 200];
-        let result = handler.handle_upload("test", "large.txt", &large_content);
+		let large_content = vec![0u8; 200];
+		let result = handler.handle_upload("test", "large.txt", &large_content);
 
-        assert!(result.is_err());
-        if let Err(FileUploadError::FileTooLarge(size, max)) = result {
-            assert_eq!(size, 200);
-            assert_eq!(max, 100);
-        } else {
-            panic!("Expected FileTooLarge error");
-        }
-    }
+		assert!(result.is_err());
+		if let Err(FileUploadError::FileTooLarge(size, max)) = result {
+			assert_eq!(size, 200);
+			assert_eq!(max, 100);
+		} else {
+			panic!("Expected FileTooLarge error");
+		}
+	}
 
-    #[test]
-    fn test_file_upload_handler_extension_validation() {
-        let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
-            .with_allowed_extensions(vec!["jpg".to_string(), "png".to_string()]);
+	#[test]
+	fn test_file_upload_handler_extension_validation() {
+		let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
+			.with_allowed_extensions(vec!["jpg".to_string(), "png".to_string()]);
 
-        let content = b"test content";
-        let result = handler.handle_upload("test", "document.pdf", content);
+		let content = b"test content";
+		let result = handler.handle_upload("test", "document.pdf", content);
 
-        assert!(result.is_err());
-        if let Err(FileUploadError::InvalidFileType(ext)) = result {
-            assert_eq!(ext, "pdf");
-        } else {
-            panic!("Expected InvalidFileType error");
-        }
-    }
+		assert!(result.is_err());
+		if let Err(FileUploadError::InvalidFileType(ext)) = result {
+			assert_eq!(ext, "pdf");
+		} else {
+			panic!("Expected InvalidFileType error");
+		}
+	}
 
-    #[test]
-    fn test_temporary_file_upload_creation() {
-        let temp = TemporaryFileUpload::new(PathBuf::from("/tmp/test_temp.txt"));
-        assert_eq!(temp.path(), Path::new("/tmp/test_temp.txt"));
-        assert!(temp.auto_delete());
-    }
+	#[test]
+	fn test_temporary_file_upload_creation() {
+		let temp = TemporaryFileUpload::new(PathBuf::from("/tmp/test_temp.txt"));
+		assert_eq!(temp.path(), Path::new("/tmp/test_temp.txt"));
+		assert!(temp.auto_delete());
+	}
 
-    #[test]
-    fn test_temporary_file_upload_keep() {
-        let mut temp = TemporaryFileUpload::new(PathBuf::from("/tmp/test_keep.txt"));
-        temp.keep();
-        assert!(!temp.auto_delete());
-    }
+	#[test]
+	fn test_temporary_file_upload_keep() {
+		let mut temp = TemporaryFileUpload::new(PathBuf::from("/tmp/test_keep.txt"));
+		temp.keep();
+		assert!(!temp.auto_delete());
+	}
 
-    #[test]
-    fn test_temporary_file_upload_with_content() {
-        let temp_path = PathBuf::from("/tmp/test_content_temp.txt");
-        let content = b"Test content";
+	#[test]
+	fn test_temporary_file_upload_with_content() {
+		let temp_path = PathBuf::from("/tmp/test_content_temp.txt");
+		let content = b"Test content";
 
-        let temp = TemporaryFileUpload::with_content(temp_path.clone(), content).unwrap();
-        assert!(temp_path.exists());
+		let temp = TemporaryFileUpload::with_content(temp_path.clone(), content).unwrap();
+		assert!(temp_path.exists());
 
-        let read_content = temp.read_content().unwrap();
-        assert_eq!(read_content, content);
+		let read_content = temp.read_content().unwrap();
+		assert_eq!(read_content, content);
 
-        drop(temp);
-        assert!(!temp_path.exists());
-    }
+		drop(temp);
+		assert!(!temp_path.exists());
+	}
 
-    #[test]
-    fn test_temporary_file_upload_auto_delete() {
-        let temp_path = PathBuf::from("/tmp/test_auto_delete.txt");
-        fs::write(&temp_path, b"test").unwrap();
+	#[test]
+	fn test_temporary_file_upload_auto_delete() {
+		let temp_path = PathBuf::from("/tmp/test_auto_delete.txt");
+		fs::write(&temp_path, b"test").unwrap();
 
-        {
-            let _temp = TemporaryFileUpload::new(temp_path.clone());
-            assert!(temp_path.exists());
-        }
+		{
+			let _temp = TemporaryFileUpload::new(temp_path.clone());
+			assert!(temp_path.exists());
+		}
 
-        assert!(!temp_path.exists());
-    }
+		assert!(!temp_path.exists());
+	}
 
-    #[test]
-    fn test_memory_file_upload_creation() {
-        let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3, 4, 5]);
+	#[test]
+	fn test_memory_file_upload_creation() {
+		let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3, 4, 5]);
 
-        assert_eq!(upload.filename(), "test.txt");
-        assert_eq!(upload.content(), &[1, 2, 3, 4, 5]);
-        assert_eq!(upload.size(), 5);
-        assert!(!upload.is_empty());
-    }
+		assert_eq!(upload.filename(), "test.txt");
+		assert_eq!(upload.content(), &[1, 2, 3, 4, 5]);
+		assert_eq!(upload.size(), 5);
+		assert!(!upload.is_empty());
+	}
 
-    #[test]
-    fn test_memory_file_upload_with_content_type() {
-        let upload = MemoryFileUpload::with_content_type(
-            "image.png".to_string(),
-            vec![0x89, 0x50, 0x4E, 0x47],
-            "image/png".to_string(),
-        );
+	#[test]
+	fn test_memory_file_upload_with_content_type() {
+		let upload = MemoryFileUpload::with_content_type(
+			"image.png".to_string(),
+			vec![0x89, 0x50, 0x4E, 0x47],
+			"image/png".to_string(),
+		);
 
-        assert_eq!(upload.filename(), "image.png");
-        assert_eq!(upload.content_type(), Some("image/png"));
-    }
+		assert_eq!(upload.filename(), "image.png");
+		assert_eq!(upload.content_type(), Some("image/png"));
+	}
 
-    #[test]
-    fn test_memory_file_upload_is_empty() {
-        let empty = MemoryFileUpload::new("empty.txt".to_string(), vec![]);
-        assert!(empty.is_empty());
-        assert_eq!(empty.size(), 0);
+	#[test]
+	fn test_memory_file_upload_is_empty() {
+		let empty = MemoryFileUpload::new("empty.txt".to_string(), vec![]);
+		assert!(empty.is_empty());
+		assert_eq!(empty.size(), 0);
 
-        let non_empty = MemoryFileUpload::new("data.txt".to_string(), vec![1, 2, 3]);
-        assert!(!non_empty.is_empty());
-        assert_eq!(non_empty.size(), 3);
-    }
+		let non_empty = MemoryFileUpload::new("data.txt".to_string(), vec![1, 2, 3]);
+		assert!(!non_empty.is_empty());
+		assert_eq!(non_empty.size(), 3);
+	}
 
-    #[test]
-    fn test_memory_file_upload_save_to_disk() {
-        let temp_path = PathBuf::from("/tmp/test_memory_save.txt");
-        let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3, 4, 5]);
+	#[test]
+	fn test_memory_file_upload_save_to_disk() {
+		let temp_path = PathBuf::from("/tmp/test_memory_save.txt");
+		let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3, 4, 5]);
 
-        let result = upload.save_to_disk(temp_path.clone());
-        assert!(result.is_ok());
-        assert!(temp_path.exists());
+		let result = upload.save_to_disk(temp_path.clone());
+		assert!(result.is_ok());
+		assert!(temp_path.exists());
 
-        let content = fs::read(&temp_path).unwrap();
-        assert_eq!(content, vec![1, 2, 3, 4, 5]);
+		let content = fs::read(&temp_path).unwrap();
+		assert_eq!(content, vec![1, 2, 3, 4, 5]);
 
-        fs::remove_file(temp_path).unwrap();
-    }
+		fs::remove_file(temp_path).unwrap();
+	}
 }

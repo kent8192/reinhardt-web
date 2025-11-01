@@ -21,348 +21,350 @@ use pg_escape::quote_identifier;
 
 /// PostgreSQL-specific schema editor
 pub struct PostgreSQLSchemaEditor {
-    /// Connection string or executor (would be added in real implementation)
-    _connection: (),
+	/// Connection string or executor (would be added in real implementation)
+	_connection: (),
 }
 
 impl PostgreSQLSchemaEditor {
-    /// Create a new PostgreSQL schema editor
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-    ///
-    /// let editor = PostgreSQLSchemaEditor::new();
-    /// ```
-    pub fn new() -> Self {
-        Self { _connection: () }
-    }
+	/// Create a new PostgreSQL schema editor
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	///
+	/// let editor = PostgreSQLSchemaEditor::new();
+	/// ```
+	pub fn new() -> Self {
+		Self { _connection: () }
+	}
 
-    /// Generate CREATE INDEX CONCURRENTLY SQL
-    ///
-    /// This allows creating indexes without blocking writes to the table.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-    ///
-    /// let editor = PostgreSQLSchemaEditor::new();
-    /// let sql = editor.create_index_concurrently_sql(
-    ///     "idx_email",
-    ///     "users",
-    ///     &["email"],
-    ///     false,
-    ///     None
-    /// );
-    /// assert!(sql.contains("CREATE INDEX CONCURRENTLY"));
-    /// assert!(sql.contains("idx_email"));
-    /// assert!(sql.contains("users"));
-    /// assert!(sql.contains("email"));
-    /// ```
-    pub fn create_index_concurrently_sql(
-        &self,
-        name: &str,
-        table: &str,
-        columns: &[&str],
-        unique: bool,
-        condition: Option<&str>,
-    ) -> String {
-        let unique_keyword = if unique { "UNIQUE " } else { "" };
-        let quoted_columns: Vec<String> = columns
-            .iter()
-            .map(|c| quote_identifier(c).to_string())
-            .collect();
+	/// Generate CREATE INDEX CONCURRENTLY SQL
+	///
+	/// This allows creating indexes without blocking writes to the table.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	///
+	/// let editor = PostgreSQLSchemaEditor::new();
+	/// let sql = editor.create_index_concurrently_sql(
+	///     "idx_email",
+	///     "users",
+	///     &["email"],
+	///     false,
+	///     None
+	/// );
+	/// assert!(sql.contains("CREATE INDEX CONCURRENTLY"));
+	/// assert!(sql.contains("idx_email"));
+	/// assert!(sql.contains("users"));
+	/// assert!(sql.contains("email"));
+	/// ```
+	pub fn create_index_concurrently_sql(
+		&self,
+		name: &str,
+		table: &str,
+		columns: &[&str],
+		unique: bool,
+		condition: Option<&str>,
+	) -> String {
+		let unique_keyword = if unique { "UNIQUE " } else { "" };
+		let quoted_columns: Vec<String> = columns
+			.iter()
+			.map(|c| quote_identifier(c).to_string())
+			.collect();
 
-        let mut sql = format!(
-            "CREATE {}INDEX CONCURRENTLY {} ON {} ({})",
-            unique_keyword,
-            quote_identifier(name),
-            quote_identifier(table),
-            quoted_columns.join(", ")
-        );
+		let mut sql = format!(
+			"CREATE {}INDEX CONCURRENTLY {} ON {} ({})",
+			unique_keyword,
+			quote_identifier(name),
+			quote_identifier(table),
+			quoted_columns.join(", ")
+		);
 
-        if let Some(cond) = condition {
-            sql.push_str(&format!(" WHERE {}", cond));
-        }
+		if let Some(cond) = condition {
+			sql.push_str(&format!(" WHERE {}", cond));
+		}
 
-        sql
-    }
+		sql
+	}
 
-    /// Generate DROP INDEX CONCURRENTLY SQL
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-    ///
-    /// let editor = PostgreSQLSchemaEditor::new();
-    /// let sql = editor.drop_index_concurrently_sql("idx_email");
-    /// assert!(sql.contains("DROP INDEX CONCURRENTLY IF EXISTS"));
-    /// assert!(sql.contains("idx_email"));
-    /// ```
-    pub fn drop_index_concurrently_sql(&self, name: &str) -> String {
-        format!("DROP INDEX CONCURRENTLY IF EXISTS {}", quote_identifier(name))
-    }
+	/// Generate DROP INDEX CONCURRENTLY SQL
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	///
+	/// let editor = PostgreSQLSchemaEditor::new();
+	/// let sql = editor.drop_index_concurrently_sql("idx_email");
+	/// assert!(sql.contains("DROP INDEX CONCURRENTLY IF EXISTS"));
+	/// assert!(sql.contains("idx_email"));
+	/// ```
+	pub fn drop_index_concurrently_sql(&self, name: &str) -> String {
+		format!(
+			"DROP INDEX CONCURRENTLY IF EXISTS {}",
+			quote_identifier(name)
+		)
+	}
 
-    /// Generate ALTER SEQUENCE SQL
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-    ///
-    /// let editor = PostgreSQLSchemaEditor::new();
-    /// let sql = editor.alter_sequence_type_sql("users_id_seq", "BIGINT");
-    /// assert!(sql.contains("ALTER SEQUENCE IF EXISTS"));
-    /// assert!(sql.contains("users_id_seq"));
-    /// assert!(sql.contains("AS BIGINT"));
-    /// ```
-    pub fn alter_sequence_type_sql(&self, sequence: &str, seq_type: &str) -> String {
-        format!(
-            "ALTER SEQUENCE IF EXISTS {} AS {}",
-            quote_identifier(sequence),
-            seq_type
-        )
-    }
+	/// Generate ALTER SEQUENCE SQL
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	///
+	/// let editor = PostgreSQLSchemaEditor::new();
+	/// let sql = editor.alter_sequence_type_sql("users_id_seq", "BIGINT");
+	/// assert!(sql.contains("ALTER SEQUENCE IF EXISTS"));
+	/// assert!(sql.contains("users_id_seq"));
+	/// assert!(sql.contains("AS BIGINT"));
+	/// ```
+	pub fn alter_sequence_type_sql(&self, sequence: &str, seq_type: &str) -> String {
+		format!(
+			"ALTER SEQUENCE IF EXISTS {} AS {}",
+			quote_identifier(sequence),
+			seq_type
+		)
+	}
 
-    /// Generate DROP SEQUENCE SQL
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-    ///
-    /// let editor = PostgreSQLSchemaEditor::new();
-    /// let sql = editor.drop_sequence_sql("users_id_seq");
-    /// assert!(sql.contains("DROP SEQUENCE IF EXISTS"));
-    /// assert!(sql.contains("users_id_seq"));
-    /// assert!(sql.contains("CASCADE"));
-    /// ```
-    pub fn drop_sequence_sql(&self, sequence: &str) -> String {
-        format!(
-            "DROP SEQUENCE IF EXISTS {} CASCADE",
-            quote_identifier(sequence)
-        )
-    }
+	/// Generate DROP SEQUENCE SQL
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	///
+	/// let editor = PostgreSQLSchemaEditor::new();
+	/// let sql = editor.drop_sequence_sql("users_id_seq");
+	/// assert!(sql.contains("DROP SEQUENCE IF EXISTS"));
+	/// assert!(sql.contains("users_id_seq"));
+	/// assert!(sql.contains("CASCADE"));
+	/// ```
+	pub fn drop_sequence_sql(&self, sequence: &str) -> String {
+		format!(
+			"DROP SEQUENCE IF EXISTS {} CASCADE",
+			quote_identifier(sequence)
+		)
+	}
 
-    /// Generate ADD IDENTITY SQL
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-    ///
-    /// let editor = PostgreSQLSchemaEditor::new();
-    /// let sql = editor.add_identity_sql("users", "id");
-    /// assert!(sql.contains("ALTER TABLE"));
-    /// assert!(sql.contains("users"));
-    /// assert!(sql.contains("ALTER COLUMN"));
-    /// assert!(sql.contains("id"));
-    /// assert!(sql.contains("ADD GENERATED BY DEFAULT AS IDENTITY"));
-    /// ```
-    pub fn add_identity_sql(&self, table: &str, column: &str) -> String {
-        format!(
-            "ALTER TABLE {} ALTER COLUMN {} ADD GENERATED BY DEFAULT AS IDENTITY",
-            quote_identifier(table),
-            quote_identifier(column)
-        )
-    }
+	/// Generate ADD IDENTITY SQL
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	///
+	/// let editor = PostgreSQLSchemaEditor::new();
+	/// let sql = editor.add_identity_sql("users", "id");
+	/// assert!(sql.contains("ALTER TABLE"));
+	/// assert!(sql.contains("users"));
+	/// assert!(sql.contains("ALTER COLUMN"));
+	/// assert!(sql.contains("id"));
+	/// assert!(sql.contains("ADD GENERATED BY DEFAULT AS IDENTITY"));
+	/// ```
+	pub fn add_identity_sql(&self, table: &str, column: &str) -> String {
+		format!(
+			"ALTER TABLE {} ALTER COLUMN {} ADD GENERATED BY DEFAULT AS IDENTITY",
+			quote_identifier(table),
+			quote_identifier(column)
+		)
+	}
 
-    /// Generate DROP IDENTITY SQL
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-    ///
-    /// let editor = PostgreSQLSchemaEditor::new();
-    /// let sql = editor.drop_identity_sql("users", "id");
-    /// assert!(sql.contains("DROP IDENTITY IF EXISTS"));
-    /// ```
-    pub fn drop_identity_sql(&self, table: &str, column: &str) -> String {
-        format!(
-            "ALTER TABLE {} ALTER COLUMN {} DROP IDENTITY IF EXISTS",
-            quote_identifier(table),
-            quote_identifier(column)
-        )
-    }
+	/// Generate DROP IDENTITY SQL
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	///
+	/// let editor = PostgreSQLSchemaEditor::new();
+	/// let sql = editor.drop_identity_sql("users", "id");
+	/// assert!(sql.contains("DROP IDENTITY IF EXISTS"));
+	/// ```
+	pub fn drop_identity_sql(&self, table: &str, column: &str) -> String {
+		format!(
+			"ALTER TABLE {} ALTER COLUMN {} DROP IDENTITY IF EXISTS",
+			quote_identifier(table),
+			quote_identifier(column)
+		)
+	}
 
-    /// Generate LIKE index SQL for varchar/text pattern matching
-    ///
-    /// PostgreSQL requires special indexes for LIKE queries outside the C locale.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-    ///
-    /// let editor = PostgreSQLSchemaEditor::new();
-    /// let sql = editor.create_like_index_sql("users", "email", "varchar");
-    /// assert!(sql.is_some());
-    /// assert!(sql.unwrap().contains("varchar_pattern_ops"));
-    /// ```
-    pub fn create_like_index_sql(
-        &self,
-        table: &str,
-        column: &str,
-        db_type: &str,
-    ) -> Option<String> {
-        // Only create LIKE indexes for varchar and text types
-        if db_type.starts_with("varchar") || db_type == "text" {
-            // Skip array types
-            if db_type.contains('[') {
-                return None;
-            }
+	/// Generate LIKE index SQL for varchar/text pattern matching
+	///
+	/// PostgreSQL requires special indexes for LIKE queries outside the C locale.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	///
+	/// let editor = PostgreSQLSchemaEditor::new();
+	/// let sql = editor.create_like_index_sql("users", "email", "varchar");
+	/// assert!(sql.is_some());
+	/// assert!(sql.unwrap().contains("varchar_pattern_ops"));
+	/// ```
+	pub fn create_like_index_sql(
+		&self,
+		table: &str,
+		column: &str,
+		db_type: &str,
+	) -> Option<String> {
+		// Only create LIKE indexes for varchar and text types
+		if db_type.starts_with("varchar") || db_type == "text" {
+			// Skip array types
+			if db_type.contains('[') {
+				return None;
+			}
 
-            let pattern_ops = if db_type == "text" {
-                "text_pattern_ops"
-            } else {
-                "varchar_pattern_ops"
-            };
+			let pattern_ops = if db_type == "text" {
+				"text_pattern_ops"
+			} else {
+				"varchar_pattern_ops"
+			};
 
-            let index_name = format!("{}_{}_like", table, column);
+			let index_name = format!("{}_{}_like", table, column);
 
-            Some(format!(
-                "CREATE INDEX {} ON {} ({} {})",
-                quote_identifier(&index_name),
-                quote_identifier(table),
-                quote_identifier(column),
-                pattern_ops
-            ))
-        } else {
-            None
-        }
-    }
+			Some(format!(
+				"CREATE INDEX {} ON {} ({} {})",
+				quote_identifier(&index_name),
+				quote_identifier(table),
+				quote_identifier(column),
+				pattern_ops
+			))
+		} else {
+			None
+		}
+	}
 }
 
 impl Default for PostgreSQLSchemaEditor {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[async_trait::async_trait]
 impl BaseDatabaseSchemaEditor for PostgreSQLSchemaEditor {
-    async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
-        // In real implementation, this would execute SQL via sqlx
-        // For now, we just validate that SQL is not empty
-        if _sql.is_empty() {
-            return Err(SchemaEditorError::InvalidOperation(
-                "Cannot execute empty SQL".to_string(),
-            ));
-        }
-        Ok(())
-    }
+	async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
+		// In real implementation, this would execute SQL via sqlx
+		// For now, we just validate that SQL is not empty
+		if _sql.is_empty() {
+			return Err(SchemaEditorError::InvalidOperation(
+				"Cannot execute empty SQL".to_string(),
+			));
+		}
+		Ok(())
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_create_index_concurrently() {
-        let editor = PostgreSQLSchemaEditor::new();
-        let sql =
-            editor.create_index_concurrently_sql("idx_email", "users", &["email"], false, None);
+	#[test]
+	fn test_create_index_concurrently() {
+		let editor = PostgreSQLSchemaEditor::new();
+		let sql =
+			editor.create_index_concurrently_sql("idx_email", "users", &["email"], false, None);
 
-        assert!(sql.contains("CREATE INDEX CONCURRENTLY"));
-        assert!(sql.contains("idx_email"));
-        assert!(sql.contains("ON users"));
-        assert!(sql.contains("(email)"));
-    }
+		assert!(sql.contains("CREATE INDEX CONCURRENTLY"));
+		assert!(sql.contains("idx_email"));
+		assert!(sql.contains("ON users"));
+		assert!(sql.contains("(email)"));
+	}
 
-    #[test]
-    fn test_create_unique_index_concurrently() {
-        let editor = PostgreSQLSchemaEditor::new();
-        let sql =
-            editor.create_index_concurrently_sql("idx_email", "users", &["email"], true, None);
+	#[test]
+	fn test_create_unique_index_concurrently() {
+		let editor = PostgreSQLSchemaEditor::new();
+		let sql =
+			editor.create_index_concurrently_sql("idx_email", "users", &["email"], true, None);
 
-        assert!(sql.contains("CREATE UNIQUE INDEX CONCURRENTLY"));
-    }
+		assert!(sql.contains("CREATE UNIQUE INDEX CONCURRENTLY"));
+	}
 
-    #[test]
-    fn test_create_partial_index_concurrently() {
-        let editor = PostgreSQLSchemaEditor::new();
-        let sql = editor.create_index_concurrently_sql(
-            "idx_active_email",
-            "users",
-            &["email"],
-            false,
-            Some("active = true"),
-        );
+	#[test]
+	fn test_create_partial_index_concurrently() {
+		let editor = PostgreSQLSchemaEditor::new();
+		let sql = editor.create_index_concurrently_sql(
+			"idx_active_email",
+			"users",
+			&["email"],
+			false,
+			Some("active = true"),
+		);
 
-        assert!(sql.contains("WHERE active = true"));
-    }
+		assert!(sql.contains("WHERE active = true"));
+	}
 
-    #[test]
-    fn test_drop_index_concurrently() {
-        let editor = PostgreSQLSchemaEditor::new();
-        let sql = editor.drop_index_concurrently_sql("idx_email");
+	#[test]
+	fn test_drop_index_concurrently() {
+		let editor = PostgreSQLSchemaEditor::new();
+		let sql = editor.drop_index_concurrently_sql("idx_email");
 
-        assert_eq!(sql, "DROP INDEX CONCURRENTLY IF EXISTS idx_email");
-    }
+		assert_eq!(sql, "DROP INDEX CONCURRENTLY IF EXISTS idx_email");
+	}
 
-    #[test]
-    fn test_alter_sequence_type() {
-        let editor = PostgreSQLSchemaEditor::new();
-        let sql = editor.alter_sequence_type_sql("users_id_seq", "BIGINT");
+	#[test]
+	fn test_alter_sequence_type() {
+		let editor = PostgreSQLSchemaEditor::new();
+		let sql = editor.alter_sequence_type_sql("users_id_seq", "BIGINT");
 
-        assert_eq!(sql, "ALTER SEQUENCE IF EXISTS users_id_seq AS BIGINT");
-    }
+		assert_eq!(sql, "ALTER SEQUENCE IF EXISTS users_id_seq AS BIGINT");
+	}
 
-    #[test]
-    fn test_drop_sequence() {
-        let editor = PostgreSQLSchemaEditor::new();
-        let sql = editor.drop_sequence_sql("users_id_seq");
+	#[test]
+	fn test_drop_sequence() {
+		let editor = PostgreSQLSchemaEditor::new();
+		let sql = editor.drop_sequence_sql("users_id_seq");
 
-        assert_eq!(sql, "DROP SEQUENCE IF EXISTS users_id_seq CASCADE");
-    }
+		assert_eq!(sql, "DROP SEQUENCE IF EXISTS users_id_seq CASCADE");
+	}
 
-    #[test]
-    fn test_add_identity() {
-        let editor = PostgreSQLSchemaEditor::new();
-        let sql = editor.add_identity_sql("users", "id");
+	#[test]
+	fn test_add_identity() {
+		let editor = PostgreSQLSchemaEditor::new();
+		let sql = editor.add_identity_sql("users", "id");
 
-        assert!(sql.contains("ALTER TABLE users"));
-        assert!(sql.contains("ALTER COLUMN id"));
-        assert!(sql.contains("ADD GENERATED BY DEFAULT AS IDENTITY"));
-    }
+		assert!(sql.contains("ALTER TABLE users"));
+		assert!(sql.contains("ALTER COLUMN id"));
+		assert!(sql.contains("ADD GENERATED BY DEFAULT AS IDENTITY"));
+	}
 
-    #[test]
-    fn test_drop_identity() {
-        let editor = PostgreSQLSchemaEditor::new();
-        let sql = editor.drop_identity_sql("users", "id");
+	#[test]
+	fn test_drop_identity() {
+		let editor = PostgreSQLSchemaEditor::new();
+		let sql = editor.drop_identity_sql("users", "id");
 
-        assert!(sql.contains("ALTER TABLE users"));
-        assert!(sql.contains("ALTER COLUMN id"));
-        assert!(sql.contains("DROP IDENTITY IF EXISTS"));
-    }
+		assert!(sql.contains("ALTER TABLE users"));
+		assert!(sql.contains("ALTER COLUMN id"));
+		assert!(sql.contains("DROP IDENTITY IF EXISTS"));
+	}
 
-    #[test]
-    fn test_create_like_index() {
-        let editor = PostgreSQLSchemaEditor::new();
+	#[test]
+	fn test_create_like_index() {
+		let editor = PostgreSQLSchemaEditor::new();
 
-        // varchar should create index
-        let varchar_sql = editor.create_like_index_sql("users", "email", "varchar(255)");
-        assert!(varchar_sql.is_some());
-        let sql = varchar_sql.unwrap();
-        assert!(sql.contains("varchar_pattern_ops"));
+		// varchar should create index
+		let varchar_sql = editor.create_like_index_sql("users", "email", "varchar(255)");
+		assert!(varchar_sql.is_some());
+		let sql = varchar_sql.unwrap();
+		assert!(sql.contains("varchar_pattern_ops"));
 
-        // text should create index
-        let text_sql = editor.create_like_index_sql("users", "bio", "text");
-        assert!(text_sql.is_some());
-        let sql = text_sql.unwrap();
-        assert!(sql.contains("text_pattern_ops"));
+		// text should create index
+		let text_sql = editor.create_like_index_sql("users", "bio", "text");
+		assert!(text_sql.is_some());
+		let sql = text_sql.unwrap();
+		assert!(sql.contains("text_pattern_ops"));
 
-        // integer should not create index
-        let int_sql = editor.create_like_index_sql("users", "id", "integer");
-        assert!(int_sql.is_none());
+		// integer should not create index
+		let int_sql = editor.create_like_index_sql("users", "id", "integer");
+		assert!(int_sql.is_none());
 
-        // varchar array should not create index
-        let array_sql = editor.create_like_index_sql("users", "tags", "varchar[100]");
-        assert!(array_sql.is_none());
-    }
-
+		// varchar array should not create index
+		let array_sql = editor.create_like_index_sql("users", "tags", "varchar[100]");
+		assert!(array_sql.is_none());
+	}
 }

@@ -27,36 +27,36 @@ pub mod xss_protection;
 
 pub use bound_field::BoundField;
 pub use chunked_upload::{
-    ChunkedUploadError, ChunkedUploadManager, ChunkedUploadSession, UploadProgress,
+	ChunkedUploadError, ChunkedUploadManager, ChunkedUploadSession, UploadProgress,
 };
 pub use csrf::{CsrfError, CsrfToken, CsrfValidator, SameSite};
 pub use field::{
-    BooleanField,
-    CharField,
-    EmailField,
-    ErrorType,
-    FieldError,
-    FieldResult,
-    FormField as Field, // Alias for compatibility
-    FormField,
-    IntegerField,
-    Widget,
+	BooleanField,
+	CharField,
+	EmailField,
+	ErrorType,
+	FieldError,
+	FieldResult,
+	FormField as Field, // Alias for compatibility
+	FormField,
+	IntegerField,
+	Widget,
 };
 pub use fields::{
-    ChoiceField, ComboField, DateField, DateTimeField, DecimalField, DurationField, FileField,
-    FloatField, GenericIPAddressField, IPProtocol, ImageField, JSONField, ModelChoiceField,
-    ModelMultipleChoiceField, MultiValueField, MultipleChoiceField, RegexField, SlugField,
-    SplitDateTimeField, TimeField, URLField, UUIDField,
+	ChoiceField, ComboField, DateField, DateTimeField, DecimalField, DurationField, FileField,
+	FloatField, GenericIPAddressField, IPProtocol, ImageField, JSONField, ModelChoiceField,
+	ModelMultipleChoiceField, MultiValueField, MultipleChoiceField, RegexField, SlugField,
+	SplitDateTimeField, TimeField, URLField, UUIDField,
 };
 pub use file_handling::{
-    FileUploadError, FileUploadHandler, MemoryFileUpload, TemporaryFileUpload,
+	FileUploadError, FileUploadHandler, MemoryFileUpload, TemporaryFileUpload,
 };
 pub use form::{Form, FormError, FormResult};
 pub use formset::FormSet;
 pub use formsets::{
-    FormSetFactory,
-    InlineFormSet,
-    ModelFormSet as AdvancedModelFormSet, // Renamed to avoid conflict
+	FormSetFactory,
+	InlineFormSet,
+	ModelFormSet as AdvancedModelFormSet, // Renamed to avoid conflict
 };
 pub use media::{Media, MediaDefiningWidget};
 pub use model_form::{FieldType, FormModel, ModelForm, ModelFormBuilder, ModelFormConfig};

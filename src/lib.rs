@@ -130,9 +130,9 @@ pub use reinhardt_apps::{AppConfig, AppError, AppResult, Apps};
 
 // Re-export settings from dedicated crate
 pub use reinhardt_settings::{
-    AdvancedSettings, CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
-    MediaSettings, MiddlewareConfig, SessionSettings, Settings, SettingsError, StaticSettings,
-    TemplateConfig,
+	AdvancedSettings, CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
+	MediaSettings, MiddlewareConfig, SessionSettings, Settings, SettingsError, StaticSettings,
+	TemplateConfig,
 };
 
 // Re-export core types
@@ -140,8 +140,8 @@ pub use reinhardt_apps::{Error, Handler, Middleware, MiddlewareChain, Request, R
 
 // Re-export ORM
 pub use reinhardt_orm::{
-    DatabaseBackend, DatabaseConnection, Model, QuerySet, SoftDeletable, SoftDelete, Timestamped,
-    Timestamps,
+	DatabaseBackend, DatabaseConnection, Model, QuerySet, SoftDeletable, SoftDelete, Timestamped,
+	Timestamps,
 };
 
 // Re-export database pool
@@ -153,26 +153,26 @@ pub use reinhardt_serializers::{Deserializer, JsonSerializer, Serializer};
 
 // Re-export viewsets
 pub use reinhardt_viewsets::{
-    Action, ActionType, CreateMixin, DestroyMixin, GenericViewSet, ListMixin, ModelViewSet,
-    ReadOnlyModelViewSet, RetrieveMixin, UpdateMixin, ViewSet,
+	Action, ActionType, CreateMixin, DestroyMixin, GenericViewSet, ListMixin, ModelViewSet,
+	ReadOnlyModelViewSet, RetrieveMixin, UpdateMixin, ViewSet,
 };
 
 // Re-export routers
 pub use reinhardt_routers::{
-    clear_router, get_router, is_router_registered, register_router, DefaultRouter, PathMatcher,
-    PathPattern, Route, Router, UnifiedRouter,
+	DefaultRouter, PathMatcher, PathPattern, Route, Router, UnifiedRouter, clear_router,
+	get_router, is_router_registered, register_router,
 };
 
 // Re-export auth
 pub use reinhardt_auth::{
-    AllowAny, AnonymousUser, Argon2Hasher, AuthBackend, Claims, IsAdminUser, IsAuthenticated,
-    JwtAuth, PasswordHasher, Permission, SimpleUser, User,
+	AllowAny, AnonymousUser, Argon2Hasher, AuthBackend, Claims, IsAdminUser, IsAuthenticated,
+	JwtAuth, PasswordHasher, Permission, SimpleUser, User,
 };
 
 // Re-export middleware
-pub use reinhardt_middleware::{CorsMiddleware, LoggingMiddleware};
 #[cfg(feature = "sessions")]
 pub use reinhardt_middleware::AuthenticationMiddleware;
+pub use reinhardt_middleware::{CorsMiddleware, LoggingMiddleware};
 
 // Re-export HTTP types (additional commonly used types)
 pub use reinhardt_http::Extensions;
@@ -182,13 +182,13 @@ pub use hyper::StatusCode;
 // Re-export pagination
 #[cfg(any(feature = "standard", feature = "reinhardt-pagination"))]
 pub use reinhardt_pagination::{
-    CursorPagination, LimitOffsetPagination, PageNumberPagination, PaginatedResponse, Paginator,
+	CursorPagination, LimitOffsetPagination, PageNumberPagination, PaginatedResponse, Paginator,
 };
 
 // Re-export filters
 #[cfg(any(feature = "standard", feature = "reinhardt-filters"))]
 pub use reinhardt_filters::{
-    FieldOrderingExt, FilterBackend, FilterError, FilterResult, MultiTermSearch,
+	FieldOrderingExt, FilterBackend, FilterError, FilterResult, MultiTermSearch,
 };
 
 // Re-export throttling
@@ -198,7 +198,7 @@ pub use reinhardt_throttling::{AnonRateThrottle, ScopedRateThrottle, Throttle, U
 // Re-export signals
 #[cfg(any(feature = "standard", feature = "reinhardt-signals"))]
 pub use reinhardt_signals::{
-    m2m_changed, post_delete, post_save, pre_delete, pre_save, M2MAction, M2MChangeEvent, Signal,
+	M2MAction, M2MChangeEvent, Signal, m2m_changed, post_delete, post_save, pre_delete, pre_save,
 };
 
 // Re-export core utilities
@@ -207,20 +207,20 @@ pub use reinhardt_signals::{
 // Re-export validators
 #[cfg(feature = "core")]
 pub use reinhardt_core::validators::{
-    CreditCardValidator, EmailValidator, IBANValidator, IPAddressValidator, PhoneNumberValidator,
-    UrlValidator, Validator, ValidationError as ValidatorError, ValidationResult,
+	CreditCardValidator, EmailValidator, IBANValidator, IPAddressValidator, PhoneNumberValidator,
+	UrlValidator, ValidationError as ValidatorError, ValidationResult, Validator,
 };
 
 // Re-export views
 pub use reinhardt_views::{
-    Context, DetailView, ListView, MultipleObjectMixin, SingleObjectMixin, View,
+	Context, DetailView, ListView, MultipleObjectMixin, SingleObjectMixin, View,
 };
 
 // Re-export parsers
 #[cfg(any(feature = "standard", feature = "reinhardt-parsers"))]
 pub use reinhardt_parsers::{
-    FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
-    Parser,
+	FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
+	Parser,
 };
 
 // Re-export renderers
@@ -230,16 +230,16 @@ pub use reinhardt_renderers::{BrowsableAPIRenderer, JSONRenderer, XMLRenderer};
 // Re-export versioning
 #[cfg(any(feature = "standard", feature = "reinhardt-versioning"))]
 pub use reinhardt_versioning::{
-    AcceptHeaderVersioning, BaseVersioning, HostNameVersioning, NamespaceVersioning,
-    QueryParameterVersioning, RequestVersionExt, URLPathVersioning, VersioningError,
-    VersioningMiddleware,
+	AcceptHeaderVersioning, BaseVersioning, HostNameVersioning, NamespaceVersioning,
+	QueryParameterVersioning, RequestVersionExt, URLPathVersioning, VersioningError,
+	VersioningMiddleware,
 };
 
 // Re-export metadata
 #[cfg(any(feature = "standard", feature = "reinhardt-metadata"))]
 pub use reinhardt_metadata::{
-    ActionMetadata, BaseMetadata, ChoiceInfo, FieldInfo, FieldInfoBuilder, FieldType,
-    MetadataOptions, MetadataResponse, SimpleMetadata,
+	ActionMetadata, BaseMetadata, ChoiceInfo, FieldInfo, FieldInfoBuilder, FieldType,
+	MetadataOptions, MetadataResponse, SimpleMetadata,
 };
 
 // Re-export negotiation
@@ -253,32 +253,32 @@ pub use reinhardt_rest::*;
 // Re-export shortcuts (Django-style convenience functions)
 #[cfg(feature = "shortcuts")]
 pub use reinhardt_shortcuts::{
-    get_list_or_404, get_object_or_404, redirect, render, render_json, render_template,
+	get_list_or_404, get_object_or_404, redirect, render, render_json, render_template,
 };
 
 // Re-export URL utilities
 pub use reinhardt_routers::{
-    include_routes as include, path, re_path, reverse, UrlPattern, UrlPatternWithParams,
-    UrlReverser,
+	UrlPattern, UrlPatternWithParams, UrlReverser, include_routes as include, path, re_path,
+	reverse,
 };
 
 // Re-export database related (database feature)
 #[cfg(feature = "database")]
 pub use reinhardt_contenttypes::{
-    ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable, GenericRelationQuery,
-    ModelType, CONTENT_TYPE_REGISTRY,
+	CONTENT_TYPE_REGISTRY, ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable,
+	GenericRelationQuery, ModelType,
 };
 #[cfg(feature = "database")]
 pub use reinhardt_migrations::{
-    FieldState, MakeMigrationsCommand, MakeMigrationsOptions, Migration, MigrationAutodetector,
-    MigrationError, MigrationExecutor, MigrationLoader, MigrationPlan, MigrationRecorder,
-    MigrationWriter, ModelState, ProjectState,
+	FieldState, MakeMigrationsCommand, MakeMigrationsOptions, Migration, MigrationAutodetector,
+	MigrationError, MigrationExecutor, MigrationLoader, MigrationPlan, MigrationRecorder,
+	MigrationWriter, ModelState, ProjectState,
 };
 
 // Re-export cache (cache feature)
 #[cfg(feature = "cache")]
 pub use reinhardt_cache::{
-    Cache, CacheKeyBuilder, CacheMiddleware, CacheMiddlewareConfig, CacheService, InMemoryCache,
+	Cache, CacheKeyBuilder, CacheMiddleware, CacheMiddlewareConfig, CacheService, InMemoryCache,
 };
 
 #[cfg(all(feature = "cache", feature = "redis-backend"))]
@@ -287,7 +287,7 @@ pub use reinhardt_cache::RedisCache;
 // Re-export sessions (sessions feature)
 #[cfg(feature = "sessions")]
 pub use reinhardt_sessions::{
-    CacheSessionBackend, InMemorySessionBackend, Session, SessionBackend, SessionError,
+	CacheSessionBackend, InMemorySessionBackend, Session, SessionBackend, SessionError,
 };
 
 #[cfg(all(feature = "sessions", feature = "middleware"))]
@@ -300,8 +300,8 @@ pub use reinhardt_sessions::{HttpSessionConfig, SameSite, SessionMiddleware};
 // Re-export forms (forms feature)
 #[cfg(feature = "forms")]
 pub use reinhardt_forms::{
-    BoundField, CharField, EmailField, FieldError, FileField, Form, FormError, FormResult,
-    IntegerField, ModelForm,
+	BoundField, CharField, EmailField, FieldError, FileField, Form, FormError, FormResult,
+	IntegerField, ModelForm,
 };
 
 // Re-export DI and parameters (FastAPI-style parameter extraction)
@@ -334,176 +334,178 @@ pub use tokio;
 
 /// Prelude module for convenient imports
 pub mod prelude {
-    pub use crate::{
-        // External
-        async_trait,
-        clear_router,
-        get_router,
-        is_router_registered,
-        m2m_changed,
+	pub use crate::{
+		// Versioning
+		AcceptHeaderVersioning,
+		Action,
 
-        post_delete,
-        post_save,
-        pre_delete,
-        pre_save,
-        register_router,
-        // Versioning
-        AcceptHeaderVersioning,
-        Action,
+		// Throttling
+		AnonRateThrottle,
+		AppConfig,
+		// App
+		Apps,
+		AuthBackend,
+		// Middleware
+		BrowsableAPIRenderer,
 
-        // Throttling
-        AnonRateThrottle,
-        AppConfig,
-        // App
-        Apps,
-        AuthBackend,
-        // Middleware
-        BrowsableAPIRenderer,
+		CorsMiddleware,
+		CursorPagination,
+		DatabaseConnection,
 
-        CorsMiddleware,
-        CursorPagination,
-        DatabaseConnection,
+		DefaultRouter,
+		Deserialize,
+		Deserializer,
+		DetailView,
+		// Core
+		Error,
 
-        DefaultRouter,
-        Deserialize,
-        Deserializer,
-        DetailView,
-        // Core
-        Error,
+		FieldInfo,
+		FieldOrderingExt,
+		FieldType,
+		FilterBackend,
 
-        FieldInfo,
-        FieldOrderingExt,
-        FieldType,
-        FilterBackend,
+		FormParser,
+		Handler,
+		// Parsers
+		JSONParser,
+		// Renderers
+		JSONRenderer,
+		JsonSerializer,
+		JwtAuth,
+		LimitOffsetPagination,
+		ListView,
+		LoggingMiddleware,
 
-        FormParser,
-        Handler,
-        // Parsers
-        JSONParser,
-        // Renderers
-        JSONRenderer,
-        JsonSerializer,
-        JwtAuth,
-        LimitOffsetPagination,
-        ListView,
-        LoggingMiddleware,
+		Middleware,
+		MiddlewareChain,
 
-        Middleware,
-        MiddlewareChain,
+		// ORM
+		Model,
+		ModelViewSet,
+		MultiPartParser,
+		// Filters
+		MultiTermSearch,
+		MultipleObjectMixin,
+		// Pagination
+		PageNumberPagination,
+		Paginator,
 
-        // ORM
-        Model,
-        ModelViewSet,
-        MultiPartParser,
-        // Filters
-        MultiTermSearch,
-        MultipleObjectMixin,
-        // Pagination
-        PageNumberPagination,
-        Paginator,
+		Parser,
 
-        Parser,
+		PasswordHasher,
+		Permission,
 
-        PasswordHasher,
-        Permission,
+		QueryParameterVersioning,
+		ReadOnlyModelViewSet,
+		Request,
+		Response,
+		Result,
+		Route,
 
-        QueryParameterVersioning,
-        ReadOnlyModelViewSet,
-        Request,
-        Response,
-        Result,
-        Route,
+		// Routers
+		Router,
+		ScopedRateThrottle,
+		Serialize,
+		// Serializers
+		Serializer,
+		Settings,
 
-        // Routers
-        Router,
-        ScopedRateThrottle,
-        Serialize,
-        // Serializers
-        Serializer,
-        Settings,
+		// Signals
+		Signal,
+		// Metadata
+		SimpleMetadata,
+		SimpleUser,
+		SingleObjectMixin,
 
-        // Signals
-        Signal,
-        StatusCode,
-        // Metadata
-        SimpleMetadata,
-        SimpleUser,
-        SingleObjectMixin,
+		SoftDeletable,
+		StatusCode,
+		Throttle,
 
-        SoftDeletable,
-        Throttle,
+		Timestamped,
+		URLPathVersioning,
+		UnifiedRouter,
+		// Auth
+		User,
+		UserRateThrottle,
+		VersioningMiddleware,
 
-        Timestamped,
-        URLPathVersioning,
-        UnifiedRouter,
-        // Auth
-        User,
-        UserRateThrottle,
-        VersioningMiddleware,
+		// Views
+		View,
+		// ViewSets
+		ViewSet,
 
-        // Views
-        View,
-        // ViewSets
-        ViewSet,
+		XMLRenderer,
+		// External
+		async_trait,
+		clear_router,
+		get_router,
+		is_router_registered,
+		m2m_changed,
 
-        XMLRenderer,
-    };
+		post_delete,
+		post_save,
+		pre_delete,
+		pre_save,
+		register_router,
+	};
 
-    // Cache (if enabled)
-    #[cfg(feature = "cache")]
-    pub use crate::{Cache, InMemoryCache};
+	// Cache (if enabled)
+	#[cfg(feature = "cache")]
+	pub use crate::{Cache, InMemoryCache};
 
-    // Sessions (if enabled)
-    #[cfg(feature = "sessions")]
-    pub use crate::{AuthenticationMiddleware, InMemorySessionBackend, Session};
+	// Sessions (if enabled)
+	#[cfg(feature = "sessions")]
+	pub use crate::{AuthenticationMiddleware, InMemorySessionBackend, Session};
 
-    // Forms (if enabled)
-    #[cfg(feature = "forms")]
-    pub use crate::{CharField, EmailField, FieldError, Form, FormError, ModelForm};
+	// Forms (if enabled)
+	#[cfg(feature = "forms")]
+	pub use crate::{CharField, EmailField, FieldError, Form, FormError, ModelForm};
 
-    // Shortcuts (if enabled)
-    #[cfg(feature = "shortcuts")]
-    pub use crate::{get_list_or_404, get_object_or_404, redirect, render};
+	// Shortcuts (if enabled)
+	#[cfg(feature = "shortcuts")]
+	pub use crate::{get_list_or_404, get_object_or_404, redirect, render};
 
-    // DI/Params (if enabled)
-    #[cfg(feature = "minimal")]
-    pub use crate::{Body, Cookie, Header, Json, Path, Query};
+	// DI/Params (if enabled)
+	#[cfg(feature = "minimal")]
+	pub use crate::{Body, Cookie, Header, Json, Path, Query};
 
-    #[cfg(feature = "di")]
-    pub use crate::{Depends, DiError, DiResult, InjectionContext, RequestContext};
+	#[cfg(feature = "di")]
+	pub use crate::{Depends, DiError, DiResult, InjectionContext, RequestContext};
 
-    // Templates (if enabled)
-    #[cfg(feature = "templates")]
-    pub use crate::TemplateError;
+	// Templates (if enabled)
+	#[cfg(feature = "templates")]
+	pub use crate::TemplateError;
 
-    // Tasks (if enabled)
-    #[cfg(feature = "tasks")]
-    pub use crate::{Scheduler, Task, TaskQueue};
+	// Tasks (if enabled)
+	#[cfg(feature = "tasks")]
+	pub use crate::{Scheduler, Task, TaskQueue};
 
-    // URL utilities
-    pub use crate::{include, path, re_path, reverse, UrlPattern, UrlPatternWithParams, UrlReverser};
+	// URL utilities
+	pub use crate::{
+		UrlPattern, UrlPatternWithParams, UrlReverser, include, path, re_path, reverse,
+	};
 
-    // HTTP utilities
-    pub use crate::Extensions;
+	// HTTP utilities
+	pub use crate::Extensions;
 
-    // Storage (if enabled)
-    #[cfg(feature = "storage")]
-    pub use crate::{InMemoryStorage, LocalStorage, Storage};
+	// Storage (if enabled)
+	#[cfg(feature = "storage")]
+	pub use crate::{InMemoryStorage, LocalStorage, Storage};
 
-    // Database pool (if enabled)
-    #[cfg(feature = "database")]
-    pub use crate::{ConnectionPool, PoolConfig, PoolError};
+	// Database pool (if enabled)
+	#[cfg(feature = "database")]
+	pub use crate::{ConnectionPool, PoolConfig, PoolError};
 
-    // Core utilities (if enabled)
-    #[cfg(feature = "core")]
-    pub use crate::{
-        CreditCardValidator, EmailValidator, IBANValidator, IPAddressValidator,
-        PhoneNumberValidator, UrlValidator, ValidationResult, Validator, ValidatorError,
-    };
+	// Core utilities (if enabled)
+	#[cfg(feature = "core")]
+	pub use crate::{
+		CreditCardValidator, EmailValidator, IBANValidator, IPAddressValidator,
+		PhoneNumberValidator, UrlValidator, ValidationResult, Validator, ValidatorError,
+	};
 
-    // Test utilities (if enabled)
-    #[cfg(feature = "test")]
-    pub use crate::{APIClient, TestResponse};
+	// Test utilities (if enabled)
+	#[cfg(feature = "test")]
+	pub use crate::{APIClient, TestResponse};
 
-    pub use std::sync::Arc;
+	pub use std::sync::Arc;
 }

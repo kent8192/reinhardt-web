@@ -1,7 +1,7 @@
 //! Browsable API renderer
 
 use http_body_util::Full;
-use hyper::{body::Bytes, Response, StatusCode};
+use hyper::{Response, StatusCode, body::Bytes};
 use serde_json::Value;
 
 use super::{ColorScheme, FormGenerator, SyntaxHighlighter};
@@ -20,179 +20,179 @@ use super::{ColorScheme, FormGenerator, SyntaxHighlighter};
 /// ```
 #[derive(Debug, Clone)]
 pub struct BrowsableApiRenderer {
-    title: String,
-    highlighter: SyntaxHighlighter,
+	title: String,
+	highlighter: SyntaxHighlighter,
 }
 
 impl BrowsableApiRenderer {
-    /// Create a new browsable API renderer
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_views_core::browsable_api::{BrowsableApiRenderer, ColorScheme};
-    ///
-    /// let renderer = BrowsableApiRenderer::new("My API", ColorScheme::Dark);
-    /// ```
-    pub fn new(title: impl Into<String>, color_scheme: ColorScheme) -> Self {
-        Self {
-            title: title.into(),
-            highlighter: SyntaxHighlighter::new(color_scheme),
-        }
-    }
+	/// Create a new browsable API renderer
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_views_core::browsable_api::{BrowsableApiRenderer, ColorScheme};
+	///
+	/// let renderer = BrowsableApiRenderer::new("My API", ColorScheme::Dark);
+	/// ```
+	pub fn new(title: impl Into<String>, color_scheme: ColorScheme) -> Self {
+		Self {
+			title: title.into(),
+			highlighter: SyntaxHighlighter::new(color_scheme),
+		}
+	}
 
-    /// Render JSON data as HTML
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_views_core::browsable_api::{BrowsableApiRenderer, ColorScheme};
-    /// use serde_json::json;
-    ///
-    /// let renderer = BrowsableApiRenderer::new("API", ColorScheme::Light);
-    /// let data = json!({"message": "Hello"});
-    /// let response = renderer.render_json(&data, 200).unwrap();
-    /// ```
-    pub fn render_json(&self, data: &Value, status_code: u16) -> Result<String, String> {
-        let json_str = serde_json::to_string_pretty(data).map_err(|e| e.to_string())?;
-        let highlighted = self.highlighter.highlight_and_wrap_json(&json_str)?;
+	/// Render JSON data as HTML
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_views_core::browsable_api::{BrowsableApiRenderer, ColorScheme};
+	/// use serde_json::json;
+	///
+	/// let renderer = BrowsableApiRenderer::new("API", ColorScheme::Light);
+	/// let data = json!({"message": "Hello"});
+	/// let response = renderer.render_json(&data, 200).unwrap();
+	/// ```
+	pub fn render_json(&self, data: &Value, status_code: u16) -> Result<String, String> {
+		let json_str = serde_json::to_string_pretty(data).map_err(|e| e.to_string())?;
+		let highlighted = self.highlighter.highlight_and_wrap_json(&json_str)?;
 
-        let (status_class, status_text) = self.get_status_info(status_code);
+		let (status_class, status_text) = self.get_status_info(status_code);
 
-        Ok(self.generate_html(&highlighted, status_code, &status_class, &status_text))
-    }
+		Ok(self.generate_html(&highlighted, status_code, &status_class, &status_text))
+	}
 
-    /// Render JSON with form for POST/PUT/PATCH methods
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_views_core::browsable_api::{BrowsableApiRenderer, ColorScheme, FormGenerator};
-    /// use serde_json::json;
-    ///
-    /// let renderer = BrowsableApiRenderer::new("API", ColorScheme::Dark);
-    /// let data = json!({"id": 1});
-    /// let mut form = FormGenerator::new("/api/items/", "POST");
-    /// form.add_field("name", "text", true);
-    /// let response = renderer.render_with_form(&data, 200, &form).unwrap();
-    /// ```
-    pub fn render_with_form(
-        &self,
-        data: &Value,
-        status_code: u16,
-        form: &FormGenerator,
-    ) -> Result<String, String> {
-        let json_str = serde_json::to_string_pretty(data).map_err(|e| e.to_string())?;
-        let highlighted = self.highlighter.highlight_and_wrap_json(&json_str)?;
+	/// Render JSON with form for POST/PUT/PATCH methods
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_views_core::browsable_api::{BrowsableApiRenderer, ColorScheme, FormGenerator};
+	/// use serde_json::json;
+	///
+	/// let renderer = BrowsableApiRenderer::new("API", ColorScheme::Dark);
+	/// let data = json!({"id": 1});
+	/// let mut form = FormGenerator::new("/api/items/", "POST");
+	/// form.add_field("name", "text", true);
+	/// let response = renderer.render_with_form(&data, 200, &form).unwrap();
+	/// ```
+	pub fn render_with_form(
+		&self,
+		data: &Value,
+		status_code: u16,
+		form: &FormGenerator,
+	) -> Result<String, String> {
+		let json_str = serde_json::to_string_pretty(data).map_err(|e| e.to_string())?;
+		let highlighted = self.highlighter.highlight_and_wrap_json(&json_str)?;
 
-        let form_html = form.generate()?;
-        let (status_class, status_text) = self.get_status_info(status_code);
+		let form_html = form.generate()?;
+		let (status_class, status_text) = self.get_status_info(status_code);
 
-        let mut html = self.generate_html(&highlighted, status_code, &status_class, &status_text);
+		let mut html = self.generate_html(&highlighted, status_code, &status_class, &status_text);
 
-        // Insert form before the closing container div
-        let insert_pos = html.rfind("</div>\n  </body>").unwrap_or(html.len());
-        html.insert_str(
-            insert_pos,
-            &format!(
-                r#"
+		// Insert form before the closing container div
+		let insert_pos = html.rfind("</div>\n  </body>").unwrap_or(html.len());
+		html.insert_str(
+			insert_pos,
+			&format!(
+				r#"
       <div class="form-section">
         <h2>Submit Data</h2>
         {}
       </div>
 "#,
-                form_html
-            ),
-        );
+				form_html
+			),
+		);
 
-        Ok(html)
-    }
+		Ok(html)
+	}
 
-    /// Create an HTTP response with rendered HTML
-    pub fn create_response(
-        &self,
-        data: &Value,
-        status_code: u16,
-    ) -> Result<Response<Full<Bytes>>, String> {
-        let html = self.render_json(data, status_code)?;
-        let status = StatusCode::from_u16(status_code).map_err(|e| e.to_string())?;
+	/// Create an HTTP response with rendered HTML
+	pub fn create_response(
+		&self,
+		data: &Value,
+		status_code: u16,
+	) -> Result<Response<Full<Bytes>>, String> {
+		let html = self.render_json(data, status_code)?;
+		let status = StatusCode::from_u16(status_code).map_err(|e| e.to_string())?;
 
-        Response::builder()
-            .status(status)
-            .header("Content-Type", "text/html; charset=utf-8")
-            .body(Full::new(Bytes::from(html)))
-            .map_err(|e| e.to_string())
-    }
+		Response::builder()
+			.status(status)
+			.header("Content-Type", "text/html; charset=utf-8")
+			.body(Full::new(Bytes::from(html)))
+			.map_err(|e| e.to_string())
+	}
 
-    /// Create an HTTP response with form
-    pub fn create_response_with_form(
-        &self,
-        data: &Value,
-        status_code: u16,
-        form: &FormGenerator,
-    ) -> Result<Response<Full<Bytes>>, String> {
-        let html = self.render_with_form(data, status_code, form)?;
-        let status = StatusCode::from_u16(status_code).map_err(|e| e.to_string())?;
+	/// Create an HTTP response with form
+	pub fn create_response_with_form(
+		&self,
+		data: &Value,
+		status_code: u16,
+		form: &FormGenerator,
+	) -> Result<Response<Full<Bytes>>, String> {
+		let html = self.render_with_form(data, status_code, form)?;
+		let status = StatusCode::from_u16(status_code).map_err(|e| e.to_string())?;
 
-        Response::builder()
-            .status(status)
-            .header("Content-Type", "text/html; charset=utf-8")
-            .body(Full::new(Bytes::from(html)))
-            .map_err(|e| e.to_string())
-    }
+		Response::builder()
+			.status(status)
+			.header("Content-Type", "text/html; charset=utf-8")
+			.body(Full::new(Bytes::from(html)))
+			.map_err(|e| e.to_string())
+	}
 
-    /// Set color scheme
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_views_core::browsable_api::{BrowsableApiRenderer, ColorScheme};
-    ///
-    /// let mut renderer = BrowsableApiRenderer::new("API", ColorScheme::Dark);
-    /// renderer.set_color_scheme(ColorScheme::Light);
-    /// ```
-    pub fn set_color_scheme(&mut self, scheme: ColorScheme) {
-        self.highlighter.set_color_scheme(scheme);
-    }
+	/// Set color scheme
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_views_core::browsable_api::{BrowsableApiRenderer, ColorScheme};
+	///
+	/// let mut renderer = BrowsableApiRenderer::new("API", ColorScheme::Dark);
+	/// renderer.set_color_scheme(ColorScheme::Light);
+	/// ```
+	pub fn set_color_scheme(&mut self, scheme: ColorScheme) {
+		self.highlighter.set_color_scheme(scheme);
+	}
 
-    fn get_status_info(&self, status_code: u16) -> (String, String) {
-        let status_class = if (200..300).contains(&status_code) {
-            "status-success"
-        } else if (400..600).contains(&status_code) {
-            "status-error"
-        } else {
-            "status-info"
-        }
-        .to_string();
+	fn get_status_info(&self, status_code: u16) -> (String, String) {
+		let status_class = if (200..300).contains(&status_code) {
+			"status-success"
+		} else if (400..600).contains(&status_code) {
+			"status-error"
+		} else {
+			"status-info"
+		}
+		.to_string();
 
-        let status_text = format!("{} {}", status_code, self.get_status_message(status_code));
+		let status_text = format!("{} {}", status_code, self.get_status_message(status_code));
 
-        (status_class, status_text)
-    }
+		(status_class, status_text)
+	}
 
-    fn get_status_message(&self, code: u16) -> &'static str {
-        match code {
-            200 => "OK",
-            201 => "Created",
-            204 => "No Content",
-            400 => "Bad Request",
-            401 => "Unauthorized",
-            403 => "Forbidden",
-            404 => "Not Found",
-            500 => "Internal Server Error",
-            _ => "Unknown",
-        }
-    }
+	fn get_status_message(&self, code: u16) -> &'static str {
+		match code {
+			200 => "OK",
+			201 => "Created",
+			204 => "No Content",
+			400 => "Bad Request",
+			401 => "Unauthorized",
+			403 => "Forbidden",
+			404 => "Not Found",
+			500 => "Internal Server Error",
+			_ => "Unknown",
+		}
+	}
 
-    fn generate_html(
-        &self,
-        content: &str,
-        _status_code: u16,
-        status_class: &str,
-        status_text: &str,
-    ) -> String {
-        format!(
-            r#"<!doctype html>
+	fn generate_html(
+		&self,
+		content: &str,
+		_status_code: u16,
+		status_class: &str,
+		status_text: &str,
+	) -> String {
+		format!(
+			r#"<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -316,79 +316,79 @@ impl BrowsableApiRenderer {
   </body>
 </html>
 "#,
-            self.title, self.title, status_class, status_text, content
-        )
-    }
+			self.title, self.title, status_class, status_text, content
+		)
+	}
 }
 
 impl Default for BrowsableApiRenderer {
-    fn default() -> Self {
-        Self::new("Browsable API", ColorScheme::default())
-    }
+	fn default() -> Self {
+		Self::new("Browsable API", ColorScheme::default())
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::json;
+	use super::*;
+	use serde_json::json;
 
-    #[test]
-    fn test_renderer_creation() {
-        let renderer = BrowsableApiRenderer::new("Test API", ColorScheme::Dark);
-        assert_eq!(renderer.title, "Test API");
-    }
+	#[test]
+	fn test_renderer_creation() {
+		let renderer = BrowsableApiRenderer::new("Test API", ColorScheme::Dark);
+		assert_eq!(renderer.title, "Test API");
+	}
 
-    #[test]
-    fn test_render_json() {
-        let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
-        let data = json!({"message": "Hello, world!"});
-        let result = renderer.render_json(&data, 200);
-        assert!(result.is_ok());
-        let html = result.unwrap();
-        assert!(html.contains("Hello, world!"));
-        assert!(html.contains("200"));
-    }
+	#[test]
+	fn test_render_json() {
+		let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
+		let data = json!({"message": "Hello, world!"});
+		let result = renderer.render_json(&data, 200);
+		assert!(result.is_ok());
+		let html = result.unwrap();
+		assert!(html.contains("Hello, world!"));
+		assert!(html.contains("200"));
+	}
 
-    #[test]
-    fn test_render_with_form() {
-        let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Light);
-        let data = json!({"id": 1});
-        let mut form = FormGenerator::new("/api/test/", "POST");
-        form.add_field("name", "text", true);
+	#[test]
+	fn test_render_with_form() {
+		let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Light);
+		let data = json!({"id": 1});
+		let mut form = FormGenerator::new("/api/test/", "POST");
+		form.add_field("name", "text", true);
 
-        let result = renderer.render_with_form(&data, 201, &form);
-        assert!(result.is_ok());
-        let html = result.unwrap();
-        assert!(html.contains("form"));
-        assert!(html.contains("name"));
-    }
+		let result = renderer.render_with_form(&data, 201, &form);
+		assert!(result.is_ok());
+		let html = result.unwrap();
+		assert!(html.contains("form"));
+		assert!(html.contains("name"));
+	}
 
-    #[test]
-    fn test_status_info() {
-        let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
-        let (class, text) = renderer.get_status_info(200);
-        assert_eq!(class, "status-success");
-        assert!(text.contains("200"));
-    }
+	#[test]
+	fn test_status_info() {
+		let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
+		let (class, text) = renderer.get_status_info(200);
+		assert_eq!(class, "status-success");
+		assert!(text.contains("200"));
+	}
 
-    #[test]
-    fn test_status_messages() {
-        let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
-        assert_eq!(renderer.get_status_message(200), "OK");
-        assert_eq!(renderer.get_status_message(404), "Not Found");
-        assert_eq!(renderer.get_status_message(500), "Internal Server Error");
-    }
+	#[test]
+	fn test_status_messages() {
+		let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
+		assert_eq!(renderer.get_status_message(200), "OK");
+		assert_eq!(renderer.get_status_message(404), "Not Found");
+		assert_eq!(renderer.get_status_message(500), "Internal Server Error");
+	}
 
-    #[test]
-    fn test_set_color_scheme() {
-        let mut renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
-        renderer.set_color_scheme(ColorScheme::Light);
-        assert_eq!(renderer.highlighter.color_scheme(), ColorScheme::Light);
-    }
+	#[test]
+	fn test_set_color_scheme() {
+		let mut renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
+		renderer.set_color_scheme(ColorScheme::Light);
+		assert_eq!(renderer.highlighter.color_scheme(), ColorScheme::Light);
+	}
 
-    #[test]
-    fn test_default_renderer() {
-        let renderer = BrowsableApiRenderer::default();
-        assert_eq!(renderer.title, "Browsable API");
-    }
+	#[test]
+	fn test_default_renderer() {
+		let renderer = BrowsableApiRenderer::default();
+		assert_eq!(renderer.title, "Browsable API");
+	}
 }

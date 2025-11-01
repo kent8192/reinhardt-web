@@ -21,15 +21,15 @@ pub mod negotiator;
 
 pub use media_type::MediaType;
 pub use negotiator::{
-    BaseContentNegotiation, BaseNegotiator, ContentNegotiator, NegotiationError, RendererInfo,
+	BaseContentNegotiation, BaseNegotiator, ContentNegotiator, NegotiationError, RendererInfo,
 };
 
 /// Re-export commonly used types
 pub mod prelude {
-    pub use crate::cache::*;
-    pub use crate::detector::*;
-    pub use crate::encoding::*;
-    pub use crate::language::*;
-    pub use crate::media_type::*;
-    pub use crate::negotiator::*;
+	pub use crate::cache::*;
+	pub use crate::detector::*;
+	pub use crate::encoding::*;
+	pub use crate::language::*;
+	pub use crate::media_type::*;
+	pub use crate::negotiator::*;
 }

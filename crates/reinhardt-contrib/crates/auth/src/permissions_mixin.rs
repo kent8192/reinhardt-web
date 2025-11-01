@@ -74,354 +74,354 @@ use std::collections::HashSet;
 /// assert!(user.has_perm("any.permission"));
 /// ```
 pub trait PermissionsMixin: Send + Sync {
-    /// Returns whether this user is a superuser
-    ///
-    /// Superusers automatically have all permissions without explicit assignment.
-    fn is_superuser(&self) -> bool;
+	/// Returns whether this user is a superuser
+	///
+	/// Superusers automatically have all permissions without explicit assignment.
+	fn is_superuser(&self) -> bool;
 
-    /// Returns the list of permissions directly assigned to this user
-    ///
-    /// Permissions are typically in the format `"app_label.permission_name"`.
-    /// For example: `"blog.add_post"`, `"blog.edit_post"`, `"auth.change_user"`.
-    fn user_permissions(&self) -> &[String];
+	/// Returns the list of permissions directly assigned to this user
+	///
+	/// Permissions are typically in the format `"app_label.permission_name"`.
+	/// For example: `"blog.add_post"`, `"blog.edit_post"`, `"auth.change_user"`.
+	fn user_permissions(&self) -> &[String];
 
-    /// Returns the list of groups this user belongs to
-    ///
-    /// Groups are used to assign permissions to multiple users at once.
-    /// This method returns group names or identifiers.
-    fn groups(&self) -> &[String];
+	/// Returns the list of groups this user belongs to
+	///
+	/// Groups are used to assign permissions to multiple users at once.
+	/// This method returns group names or identifiers.
+	fn groups(&self) -> &[String];
 
-    /// Returns all permissions directly assigned to this user
-    ///
-    /// This does not include group permissions. Use `get_all_permissions()` for the complete set.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
-    /// # use uuid::Uuid;
-    /// # use chrono::{DateTime, Utc};
-    /// # use serde::{Serialize, Deserialize};
-    /// # #[derive(Serialize, Deserialize)]
-    /// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
-    /// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
-    /// #   user_permissions: Vec<String>, groups: Vec<String> }
-    /// # impl BaseUser for MyUser {
-    /// #     type PrimaryKey = Uuid;
-    /// #     type Hasher = Argon2Hasher;
-    /// #     fn get_username_field() -> &'static str { "email" }
-    /// #     fn get_username(&self) -> &str { &self.email }
-    /// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
-    /// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
-    /// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-    /// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
-    /// #     fn is_active(&self) -> bool { self.is_active }
-    /// # }
-    /// # impl PermissionsMixin for MyUser {
-    /// #     fn is_superuser(&self) -> bool { self.is_superuser }
-    /// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
-    /// #     fn groups(&self) -> &[String] { &self.groups }
-    /// # }
-    /// let user = MyUser {
-    ///     id: Uuid::new_v4(),
-    ///     email: "alice@example.com".to_string(),
-    ///     password_hash: None,
-    ///     last_login: None,
-    ///     is_active: true,
-    ///     is_superuser: false,
-    ///     user_permissions: vec!["blog.add_post".to_string()],
-    ///     groups: vec![],
-    /// };
-    ///
-    /// let perms = user.get_user_permissions();
-    /// assert!(perms.contains("blog.add_post"));
-    /// assert_eq!(perms.len(), 1);
-    /// ```
-    fn get_user_permissions(&self) -> HashSet<String> {
-        self.user_permissions().iter().cloned().collect()
-    }
+	/// Returns all permissions directly assigned to this user
+	///
+	/// This does not include group permissions. Use `get_all_permissions()` for the complete set.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
+	/// # use uuid::Uuid;
+	/// # use chrono::{DateTime, Utc};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Serialize, Deserialize)]
+	/// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
+	/// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
+	/// #   user_permissions: Vec<String>, groups: Vec<String> }
+	/// # impl BaseUser for MyUser {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Hasher = Argon2Hasher;
+	/// #     fn get_username_field() -> &'static str { "email" }
+	/// #     fn get_username(&self) -> &str { &self.email }
+	/// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
+	/// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
+	/// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
+	/// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
+	/// #     fn is_active(&self) -> bool { self.is_active }
+	/// # }
+	/// # impl PermissionsMixin for MyUser {
+	/// #     fn is_superuser(&self) -> bool { self.is_superuser }
+	/// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
+	/// #     fn groups(&self) -> &[String] { &self.groups }
+	/// # }
+	/// let user = MyUser {
+	///     id: Uuid::new_v4(),
+	///     email: "alice@example.com".to_string(),
+	///     password_hash: None,
+	///     last_login: None,
+	///     is_active: true,
+	///     is_superuser: false,
+	///     user_permissions: vec!["blog.add_post".to_string()],
+	///     groups: vec![],
+	/// };
+	///
+	/// let perms = user.get_user_permissions();
+	/// assert!(perms.contains("blog.add_post"));
+	/// assert_eq!(perms.len(), 1);
+	/// ```
+	fn get_user_permissions(&self) -> HashSet<String> {
+		self.user_permissions().iter().cloned().collect()
+	}
 
-    /// Returns all permissions from groups this user belongs to
-    ///
-    /// In a full implementation, this would query the group permissions from a database.
-    /// Currently returns an empty set as a placeholder.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
-    /// # use uuid::Uuid;
-    /// # use chrono::{DateTime, Utc};
-    /// # use serde::{Serialize, Deserialize};
-    /// # #[derive(Serialize, Deserialize)]
-    /// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
-    /// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
-    /// #   user_permissions: Vec<String>, groups: Vec<String> }
-    /// # impl BaseUser for MyUser {
-    /// #     type PrimaryKey = Uuid;
-    /// #     type Hasher = Argon2Hasher;
-    /// #     fn get_username_field() -> &'static str { "email" }
-    /// #     fn get_username(&self) -> &str { &self.email }
-    /// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
-    /// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
-    /// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-    /// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
-    /// #     fn is_active(&self) -> bool { self.is_active }
-    /// # }
-    /// # impl PermissionsMixin for MyUser {
-    /// #     fn is_superuser(&self) -> bool { self.is_superuser }
-    /// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
-    /// #     fn groups(&self) -> &[String] { &self.groups }
-    /// # }
-    /// let user = MyUser {
-    ///     id: Uuid::new_v4(),
-    ///     email: "bob@example.com".to_string(),
-    ///     password_hash: None,
-    ///     last_login: None,
-    ///     is_active: true,
-    ///     is_superuser: false,
-    ///     user_permissions: vec![],
-    ///     groups: vec!["editors".to_string()],
-    /// };
-    ///
-    /// let group_perms = user.get_group_permissions();
-    /// // Currently returns empty set - would be populated from database in full implementation
-    /// assert!(group_perms.is_empty());
-    /// ```
-    fn get_group_permissions(&self) -> HashSet<String> {
-        // TODO: Implement group permission lookup when Group model is available
-        HashSet::new()
-    }
+	/// Returns all permissions from groups this user belongs to
+	///
+	/// In a full implementation, this would query the group permissions from a database.
+	/// Currently returns an empty set as a placeholder.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
+	/// # use uuid::Uuid;
+	/// # use chrono::{DateTime, Utc};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Serialize, Deserialize)]
+	/// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
+	/// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
+	/// #   user_permissions: Vec<String>, groups: Vec<String> }
+	/// # impl BaseUser for MyUser {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Hasher = Argon2Hasher;
+	/// #     fn get_username_field() -> &'static str { "email" }
+	/// #     fn get_username(&self) -> &str { &self.email }
+	/// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
+	/// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
+	/// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
+	/// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
+	/// #     fn is_active(&self) -> bool { self.is_active }
+	/// # }
+	/// # impl PermissionsMixin for MyUser {
+	/// #     fn is_superuser(&self) -> bool { self.is_superuser }
+	/// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
+	/// #     fn groups(&self) -> &[String] { &self.groups }
+	/// # }
+	/// let user = MyUser {
+	///     id: Uuid::new_v4(),
+	///     email: "bob@example.com".to_string(),
+	///     password_hash: None,
+	///     last_login: None,
+	///     is_active: true,
+	///     is_superuser: false,
+	///     user_permissions: vec![],
+	///     groups: vec!["editors".to_string()],
+	/// };
+	///
+	/// let group_perms = user.get_group_permissions();
+	/// // Currently returns empty set - would be populated from database in full implementation
+	/// assert!(group_perms.is_empty());
+	/// ```
+	fn get_group_permissions(&self) -> HashSet<String> {
+		// TODO: Implement group permission lookup when Group model is available
+		HashSet::new()
+	}
 
-    /// Returns all permissions for this user (user permissions + group permissions)
-    ///
-    /// This is the union of permissions directly assigned to the user and permissions
-    /// inherited from groups.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
-    /// # use uuid::Uuid;
-    /// # use chrono::{DateTime, Utc};
-    /// # use serde::{Serialize, Deserialize};
-    /// # #[derive(Serialize, Deserialize)]
-    /// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
-    /// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
-    /// #   user_permissions: Vec<String>, groups: Vec<String> }
-    /// # impl BaseUser for MyUser {
-    /// #     type PrimaryKey = Uuid;
-    /// #     type Hasher = Argon2Hasher;
-    /// #     fn get_username_field() -> &'static str { "email" }
-    /// #     fn get_username(&self) -> &str { &self.email }
-    /// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
-    /// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
-    /// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-    /// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
-    /// #     fn is_active(&self) -> bool { self.is_active }
-    /// # }
-    /// # impl PermissionsMixin for MyUser {
-    /// #     fn is_superuser(&self) -> bool { self.is_superuser }
-    /// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
-    /// #     fn groups(&self) -> &[String] { &self.groups }
-    /// # }
-    /// let user = MyUser {
-    ///     id: Uuid::new_v4(),
-    ///     email: "charlie@example.com".to_string(),
-    ///     password_hash: None,
-    ///     last_login: None,
-    ///     is_active: true,
-    ///     is_superuser: false,
-    ///     user_permissions: vec!["blog.add_post".to_string(), "blog.edit_post".to_string()],
-    ///     groups: vec!["editors".to_string()],
-    /// };
-    ///
-    /// let all_perms = user.get_all_permissions();
-    /// assert!(all_perms.contains("blog.add_post"));
-    /// assert!(all_perms.contains("blog.edit_post"));
-    /// ```
-    fn get_all_permissions(&self) -> HashSet<String> {
-        let mut perms = self.get_user_permissions();
-        perms.extend(self.get_group_permissions());
-        perms
-    }
+	/// Returns all permissions for this user (user permissions + group permissions)
+	///
+	/// This is the union of permissions directly assigned to the user and permissions
+	/// inherited from groups.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
+	/// # use uuid::Uuid;
+	/// # use chrono::{DateTime, Utc};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Serialize, Deserialize)]
+	/// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
+	/// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
+	/// #   user_permissions: Vec<String>, groups: Vec<String> }
+	/// # impl BaseUser for MyUser {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Hasher = Argon2Hasher;
+	/// #     fn get_username_field() -> &'static str { "email" }
+	/// #     fn get_username(&self) -> &str { &self.email }
+	/// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
+	/// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
+	/// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
+	/// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
+	/// #     fn is_active(&self) -> bool { self.is_active }
+	/// # }
+	/// # impl PermissionsMixin for MyUser {
+	/// #     fn is_superuser(&self) -> bool { self.is_superuser }
+	/// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
+	/// #     fn groups(&self) -> &[String] { &self.groups }
+	/// # }
+	/// let user = MyUser {
+	///     id: Uuid::new_v4(),
+	///     email: "charlie@example.com".to_string(),
+	///     password_hash: None,
+	///     last_login: None,
+	///     is_active: true,
+	///     is_superuser: false,
+	///     user_permissions: vec!["blog.add_post".to_string(), "blog.edit_post".to_string()],
+	///     groups: vec!["editors".to_string()],
+	/// };
+	///
+	/// let all_perms = user.get_all_permissions();
+	/// assert!(all_perms.contains("blog.add_post"));
+	/// assert!(all_perms.contains("blog.edit_post"));
+	/// ```
+	fn get_all_permissions(&self) -> HashSet<String> {
+		let mut perms = self.get_user_permissions();
+		perms.extend(self.get_group_permissions());
+		perms
+	}
 
-    /// Checks if this user has a specific permission
-    ///
-    /// Superusers always return `true` regardless of the permission.
-    /// For other users, checks if the permission exists in their complete permission set.
-    ///
-    /// # Arguments
-    ///
-    /// * `perm` - Permission string in the format `"app_label.permission_name"`
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
-    /// # use uuid::Uuid;
-    /// # use chrono::{DateTime, Utc};
-    /// # use serde::{Serialize, Deserialize};
-    /// # #[derive(Serialize, Deserialize)]
-    /// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
-    /// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
-    /// #   user_permissions: Vec<String>, groups: Vec<String> }
-    /// # impl BaseUser for MyUser {
-    /// #     type PrimaryKey = Uuid;
-    /// #     type Hasher = Argon2Hasher;
-    /// #     fn get_username_field() -> &'static str { "email" }
-    /// #     fn get_username(&self) -> &str { &self.email }
-    /// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
-    /// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
-    /// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-    /// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
-    /// #     fn is_active(&self) -> bool { self.is_active }
-    /// # }
-    /// # impl PermissionsMixin for MyUser {
-    /// #     fn is_superuser(&self) -> bool { self.is_superuser }
-    /// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
-    /// #     fn groups(&self) -> &[String] { &self.groups }
-    /// # }
-    /// let mut user = MyUser {
-    ///     id: Uuid::new_v4(),
-    ///     email: "david@example.com".to_string(),
-    ///     password_hash: None,
-    ///     last_login: None,
-    ///     is_active: true,
-    ///     is_superuser: false,
-    ///     user_permissions: vec!["blog.add_post".to_string()],
-    ///     groups: vec![],
-    /// };
-    ///
-    /// assert!(user.has_perm("blog.add_post"));
-    /// assert!(!user.has_perm("blog.delete_post"));
-    ///
-    /// // Superusers have all permissions
-    /// user.is_superuser = true;
-    /// assert!(user.has_perm("blog.delete_post"));
-    /// assert!(user.has_perm("any.permission.at.all"));
-    /// ```
-    fn has_perm(&self, perm: &str) -> bool {
-        if self.is_superuser() {
-            return true;
-        }
-        self.get_all_permissions().contains(perm)
-    }
+	/// Checks if this user has a specific permission
+	///
+	/// Superusers always return `true` regardless of the permission.
+	/// For other users, checks if the permission exists in their complete permission set.
+	///
+	/// # Arguments
+	///
+	/// * `perm` - Permission string in the format `"app_label.permission_name"`
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
+	/// # use uuid::Uuid;
+	/// # use chrono::{DateTime, Utc};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Serialize, Deserialize)]
+	/// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
+	/// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
+	/// #   user_permissions: Vec<String>, groups: Vec<String> }
+	/// # impl BaseUser for MyUser {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Hasher = Argon2Hasher;
+	/// #     fn get_username_field() -> &'static str { "email" }
+	/// #     fn get_username(&self) -> &str { &self.email }
+	/// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
+	/// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
+	/// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
+	/// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
+	/// #     fn is_active(&self) -> bool { self.is_active }
+	/// # }
+	/// # impl PermissionsMixin for MyUser {
+	/// #     fn is_superuser(&self) -> bool { self.is_superuser }
+	/// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
+	/// #     fn groups(&self) -> &[String] { &self.groups }
+	/// # }
+	/// let mut user = MyUser {
+	///     id: Uuid::new_v4(),
+	///     email: "david@example.com".to_string(),
+	///     password_hash: None,
+	///     last_login: None,
+	///     is_active: true,
+	///     is_superuser: false,
+	///     user_permissions: vec!["blog.add_post".to_string()],
+	///     groups: vec![],
+	/// };
+	///
+	/// assert!(user.has_perm("blog.add_post"));
+	/// assert!(!user.has_perm("blog.delete_post"));
+	///
+	/// // Superusers have all permissions
+	/// user.is_superuser = true;
+	/// assert!(user.has_perm("blog.delete_post"));
+	/// assert!(user.has_perm("any.permission.at.all"));
+	/// ```
+	fn has_perm(&self, perm: &str) -> bool {
+		if self.is_superuser() {
+			return true;
+		}
+		self.get_all_permissions().contains(perm)
+	}
 
-    /// Checks if this user has all of the specified permissions
-    ///
-    /// Superusers always return `true` regardless of the permissions.
-    /// For other users, checks if all permissions exist in their complete permission set.
-    ///
-    /// # Arguments
-    ///
-    /// * `perms` - Slice of permission strings
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
-    /// # use uuid::Uuid;
-    /// # use chrono::{DateTime, Utc};
-    /// # use serde::{Serialize, Deserialize};
-    /// # #[derive(Serialize, Deserialize)]
-    /// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
-    /// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
-    /// #   user_permissions: Vec<String>, groups: Vec<String> }
-    /// # impl BaseUser for MyUser {
-    /// #     type PrimaryKey = Uuid;
-    /// #     type Hasher = Argon2Hasher;
-    /// #     fn get_username_field() -> &'static str { "email" }
-    /// #     fn get_username(&self) -> &str { &self.email }
-    /// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
-    /// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
-    /// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-    /// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
-    /// #     fn is_active(&self) -> bool { self.is_active }
-    /// # }
-    /// # impl PermissionsMixin for MyUser {
-    /// #     fn is_superuser(&self) -> bool { self.is_superuser }
-    /// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
-    /// #     fn groups(&self) -> &[String] { &self.groups }
-    /// # }
-    /// let user = MyUser {
-    ///     id: Uuid::new_v4(),
-    ///     email: "eve@example.com".to_string(),
-    ///     password_hash: None,
-    ///     last_login: None,
-    ///     is_active: true,
-    ///     is_superuser: false,
-    ///     user_permissions: vec!["blog.add_post".to_string(), "blog.edit_post".to_string()],
-    ///     groups: vec![],
-    /// };
-    ///
-    /// assert!(user.has_perms(&["blog.add_post", "blog.edit_post"]));
-    /// assert!(!user.has_perms(&["blog.add_post", "blog.delete_post"]));
-    /// ```
-    fn has_perms(&self, perms: &[&str]) -> bool {
-        if self.is_superuser() {
-            return true;
-        }
-        let all_perms = self.get_all_permissions();
-        perms.iter().all(|p| all_perms.contains(*p))
-    }
+	/// Checks if this user has all of the specified permissions
+	///
+	/// Superusers always return `true` regardless of the permissions.
+	/// For other users, checks if all permissions exist in their complete permission set.
+	///
+	/// # Arguments
+	///
+	/// * `perms` - Slice of permission strings
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
+	/// # use uuid::Uuid;
+	/// # use chrono::{DateTime, Utc};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Serialize, Deserialize)]
+	/// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
+	/// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
+	/// #   user_permissions: Vec<String>, groups: Vec<String> }
+	/// # impl BaseUser for MyUser {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Hasher = Argon2Hasher;
+	/// #     fn get_username_field() -> &'static str { "email" }
+	/// #     fn get_username(&self) -> &str { &self.email }
+	/// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
+	/// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
+	/// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
+	/// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
+	/// #     fn is_active(&self) -> bool { self.is_active }
+	/// # }
+	/// # impl PermissionsMixin for MyUser {
+	/// #     fn is_superuser(&self) -> bool { self.is_superuser }
+	/// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
+	/// #     fn groups(&self) -> &[String] { &self.groups }
+	/// # }
+	/// let user = MyUser {
+	///     id: Uuid::new_v4(),
+	///     email: "eve@example.com".to_string(),
+	///     password_hash: None,
+	///     last_login: None,
+	///     is_active: true,
+	///     is_superuser: false,
+	///     user_permissions: vec!["blog.add_post".to_string(), "blog.edit_post".to_string()],
+	///     groups: vec![],
+	/// };
+	///
+	/// assert!(user.has_perms(&["blog.add_post", "blog.edit_post"]));
+	/// assert!(!user.has_perms(&["blog.add_post", "blog.delete_post"]));
+	/// ```
+	fn has_perms(&self, perms: &[&str]) -> bool {
+		if self.is_superuser() {
+			return true;
+		}
+		let all_perms = self.get_all_permissions();
+		perms.iter().all(|p| all_perms.contains(*p))
+	}
 
-    /// Checks if this user has any permission for a specific app/module
-    ///
-    /// Superusers always return `true`.
-    /// For other users, checks if they have any permission starting with `"app_label."`.
-    ///
-    /// # Arguments
-    ///
-    /// * `app_label` - The application label (e.g., `"blog"`, `"auth"`)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
-    /// # use uuid::Uuid;
-    /// # use chrono::{DateTime, Utc};
-    /// # use serde::{Serialize, Deserialize};
-    /// # #[derive(Serialize, Deserialize)]
-    /// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
-    /// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
-    /// #   user_permissions: Vec<String>, groups: Vec<String> }
-    /// # impl BaseUser for MyUser {
-    /// #     type PrimaryKey = Uuid;
-    /// #     type Hasher = Argon2Hasher;
-    /// #     fn get_username_field() -> &'static str { "email" }
-    /// #     fn get_username(&self) -> &str { &self.email }
-    /// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
-    /// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
-    /// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-    /// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
-    /// #     fn is_active(&self) -> bool { self.is_active }
-    /// # }
-    /// # impl PermissionsMixin for MyUser {
-    /// #     fn is_superuser(&self) -> bool { self.is_superuser }
-    /// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
-    /// #     fn groups(&self) -> &[String] { &self.groups }
-    /// # }
-    /// let user = MyUser {
-    ///     id: Uuid::new_v4(),
-    ///     email: "frank@example.com".to_string(),
-    ///     password_hash: None,
-    ///     last_login: None,
-    ///     is_active: true,
-    ///     is_superuser: false,
-    ///     user_permissions: vec!["blog.add_post".to_string()],
-    ///     groups: vec![],
-    /// };
-    ///
-    /// assert!(user.has_module_perms("blog"));
-    /// assert!(!user.has_module_perms("auth"));
-    /// ```
-    fn has_module_perms(&self, app_label: &str) -> bool {
-        if self.is_superuser() {
-            return true;
-        }
-        self.get_all_permissions()
-            .iter()
-            .any(|p| p.starts_with(&format!("{}.", app_label)))
-    }
+	/// Checks if this user has any permission for a specific app/module
+	///
+	/// Superusers always return `true`.
+	/// For other users, checks if they have any permission starting with `"app_label."`.
+	///
+	/// # Arguments
+	///
+	/// * `app_label` - The application label (e.g., `"blog"`, `"auth"`)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_auth::{BaseUser, PermissionsMixin, Argon2Hasher};
+	/// # use uuid::Uuid;
+	/// # use chrono::{DateTime, Utc};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Serialize, Deserialize)]
+	/// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
+	/// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_superuser: bool,
+	/// #   user_permissions: Vec<String>, groups: Vec<String> }
+	/// # impl BaseUser for MyUser {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Hasher = Argon2Hasher;
+	/// #     fn get_username_field() -> &'static str { "email" }
+	/// #     fn get_username(&self) -> &str { &self.email }
+	/// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
+	/// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
+	/// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
+	/// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
+	/// #     fn is_active(&self) -> bool { self.is_active }
+	/// # }
+	/// # impl PermissionsMixin for MyUser {
+	/// #     fn is_superuser(&self) -> bool { self.is_superuser }
+	/// #     fn user_permissions(&self) -> &[String] { &self.user_permissions }
+	/// #     fn groups(&self) -> &[String] { &self.groups }
+	/// # }
+	/// let user = MyUser {
+	///     id: Uuid::new_v4(),
+	///     email: "frank@example.com".to_string(),
+	///     password_hash: None,
+	///     last_login: None,
+	///     is_active: true,
+	///     is_superuser: false,
+	///     user_permissions: vec!["blog.add_post".to_string()],
+	///     groups: vec![],
+	/// };
+	///
+	/// assert!(user.has_module_perms("blog"));
+	/// assert!(!user.has_module_perms("auth"));
+	/// ```
+	fn has_module_perms(&self, app_label: &str) -> bool {
+		if self.is_superuser() {
+			return true;
+		}
+		self.get_all_permissions()
+			.iter()
+			.any(|p| p.starts_with(&format!("{}.", app_label)))
+	}
 }

@@ -33,17 +33,17 @@ use async_trait::async_trait;
 /// ```
 #[async_trait]
 pub trait GrpcServiceAdapter: Send + Sync {
-    /// Input type (typically corresponds to gRPC request)
-    type Input;
+	/// Input type (typically corresponds to gRPC request)
+	type Input;
 
-    /// Output type (typically corresponds to GraphQL type)
-    type Output;
+	/// Output type (typically corresponds to GraphQL type)
+	type Output;
 
-    /// Error type
-    type Error: std::error::Error + Send + Sync + 'static;
+	/// Error type
+	type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Call gRPC service and convert result to GraphQL type
-    async fn call(&self, input: Self::Input) -> Result<Self::Output, Self::Error>;
+	/// Call gRPC service and convert result to GraphQL type
+	async fn call(&self, input: Self::Input) -> Result<Self::Output, Self::Error>;
 }
 
 /// Trait for integrating gRPC Subscriptions into GraphQL Subscriptions
@@ -75,22 +75,22 @@ pub trait GrpcServiceAdapter: Send + Sync {
 /// }
 /// ```
 pub trait GrpcSubscriptionAdapter: Send + Sync {
-    /// Protobuf event type
-    type Proto;
+	/// Protobuf event type
+	type Proto;
 
-    /// GraphQL event type
-    type GraphQL;
+	/// GraphQL event type
+	type GraphQL;
 
-    /// Error type
-    type Error: std::error::Error + Send + Sync + 'static;
+	/// Error type
+	type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Map Protobuf event to GraphQL type
-    ///
-    /// Returns None to filter out events
-    fn map_event(&self, proto: Self::Proto) -> Option<Self::GraphQL>;
+	/// Map Protobuf event to GraphQL type
+	///
+	/// Returns None to filter out events
+	fn map_event(&self, proto: Self::Proto) -> Option<Self::GraphQL>;
 
-    /// Handle error
-    fn handle_error(&self, error: Self::Error) -> String {
-        error.to_string()
-    }
+	/// Handle error
+	fn handle_error(&self, error: Self::Error) -> String {
+		error.to_string()
+	}
 }

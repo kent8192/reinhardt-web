@@ -2,12 +2,12 @@
 /// Inspired by Django's django.urls.conf module
 use crate::Route;
 use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_while1},
-    character::complete::{anychar, char},
-    combinator::map,
-    multi::many0,
-    IResult, Parser,
+	IResult, Parser,
+	branch::alt,
+	bytes::complete::{tag, take_while1},
+	character::complete::{anychar, char},
+	combinator::map,
+	multi::many0,
 };
 use reinhardt_apps::Handler;
 use std::sync::Arc;
@@ -42,7 +42,7 @@ use std::sync::Arc;
 /// assert_eq!(route.name, Some("user-detail".to_string()));
 /// ```
 pub fn path(pattern: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
-    Route::new(pattern, handler)
+	Route::new(pattern, handler)
 }
 
 /// Create a route using regex syntax
@@ -75,12 +75,12 @@ pub fn path(pattern: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
 /// assert_eq!(route.name, Some("user-detail".to_string()));
 /// ```
 pub fn re_path(regex: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
-    let regex_str = regex.into();
+	let regex_str = regex.into();
 
-    // Convert Django-style regex to our path pattern format
-    let pattern = convert_regex_to_pattern(&regex_str);
+	// Convert Django-style regex to our path pattern format
+	let pattern = convert_regex_to_pattern(&regex_str);
 
-    Route::new(pattern, handler)
+	Route::new(pattern, handler)
 }
 
 /// Convert Django-style regex pattern to our {param} format
@@ -88,117 +88,117 @@ pub fn re_path(regex: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
 /// complex regex patterns including nested groups and escaped characters,
 /// similar to Django's sophisticated implementation
 fn convert_regex_to_pattern(regex: &str) -> String {
-    let mut result = regex.to_string();
+	let mut result = regex.to_string();
 
-    // Remove common regex anchors that are implicit in our system
-    result = result.strip_prefix("^").unwrap_or(&result).to_string();
-    result = result.strip_suffix("$").unwrap_or(&result).to_string();
+	// Remove common regex anchors that are implicit in our system
+	result = result.strip_prefix("^").unwrap_or(&result).to_string();
+	result = result.strip_suffix("$").unwrap_or(&result).to_string();
 
-    // Parse and convert the pattern using nom
-    match parse_regex_pattern(&result) {
-        Ok((_, converted)) => converted,
-        Err(_) => result, // Fallback to original if parsing fails
-    }
+	// Parse and convert the pattern using nom
+	match parse_regex_pattern(&result) {
+		Ok((_, converted)) => converted,
+		Err(_) => result, // Fallback to original if parsing fails
+	}
 }
 
 /// Parse a regex pattern and convert named groups to {param} format
 fn parse_regex_pattern(input: &str) -> IResult<&str, String> {
-    let (input, parts) = many0(alt((
-        map(parse_named_group, |name| format!("{{{}}}", name)),
-        map(parse_escaped_char, String::from),
-        map(parse_non_group_char, |c| c.to_string()),
-    )))
-    .parse(input)?;
+	let (input, parts) = many0(alt((
+		map(parse_named_group, |name| format!("{{{}}}", name)),
+		map(parse_escaped_char, String::from),
+		map(parse_non_group_char, |c| c.to_string()),
+	)))
+	.parse(input)?;
 
-    Ok((input, parts.join("")))
+	Ok((input, parts.join("")))
 }
 
 /// Parse a named group (?P<name>pattern) and extract the name
 fn parse_named_group(input: &str) -> IResult<&str, String> {
-    let (input, _) = tag("(?P<")(input)?;
-    let (input, name) = take_while1(|c: char| c.is_alphanumeric() || c == '_')(input)?;
-    let (input, _) = char('>')(input)?;
+	let (input, _) = tag("(?P<")(input)?;
+	let (input, name) = take_while1(|c: char| c.is_alphanumeric() || c == '_')(input)?;
+	let (input, _) = char('>')(input)?;
 
-    // Parse the group content, handling nested parentheses
-    let (input, _) = parse_group_content(input)?;
+	// Parse the group content, handling nested parentheses
+	let (input, _) = parse_group_content(input)?;
 
-    Ok((input, name.to_string()))
+	Ok((input, name.to_string()))
 }
 
 /// Parse the content of a group, properly handling nested parentheses
 fn parse_group_content(input: &str) -> IResult<&str, String> {
-    let mut depth = 1;
-    let mut chars = Vec::new();
-    let mut remaining = input;
-    let mut escaped = false;
+	let mut depth = 1;
+	let mut chars = Vec::new();
+	let mut remaining = input;
+	let mut escaped = false;
 
-    while !remaining.is_empty() && depth > 0 {
-        let (rest, c) = anychar(remaining)?;
+	while !remaining.is_empty() && depth > 0 {
+		let (rest, c) = anychar(remaining)?;
 
-        if escaped {
-            chars.push(c);
-            escaped = false;
-        } else if c == '\\' {
-            chars.push(c);
-            escaped = true;
-        } else if c == '(' {
-            chars.push(c);
-            depth += 1;
-        } else if c == ')' {
-            depth -= 1;
-            if depth > 0 {
-                chars.push(c);
-            }
-        } else {
-            chars.push(c);
-        }
+		if escaped {
+			chars.push(c);
+			escaped = false;
+		} else if c == '\\' {
+			chars.push(c);
+			escaped = true;
+		} else if c == '(' {
+			chars.push(c);
+			depth += 1;
+		} else if c == ')' {
+			depth -= 1;
+			if depth > 0 {
+				chars.push(c);
+			}
+		} else {
+			chars.push(c);
+		}
 
-        remaining = rest;
-    }
+		remaining = rest;
+	}
 
-    Ok((remaining, chars.into_iter().collect()))
+	Ok((remaining, chars.into_iter().collect()))
 }
 
 /// Parse an escaped character and unescape common ones
 fn parse_escaped_char(input: &str) -> IResult<&str, String> {
-    let (input, _) = char('\\')(input)?;
-    let (input, c) = anychar(input)?;
+	let (input, _) = char('\\')(input)?;
+	let (input, c) = anychar(input)?;
 
-    let result = match c {
-        // Unescape common path characters
-        '/' | '.' | '-' | '_' => c.to_string(),
-        // Keep regex special sequences as-is for potential future use
-        'd' | 'w' | 's' | 'D' | 'W' | 'S' | 'b' | 'B' => format!("\\{}", c),
-        // Keep other escapes
-        _ => format!("\\{}", c),
-    };
+	let result = match c {
+		// Unescape common path characters
+		'/' | '.' | '-' | '_' => c.to_string(),
+		// Keep regex special sequences as-is for potential future use
+		'd' | 'w' | 's' | 'D' | 'W' | 'S' | 'b' | 'B' => format!("\\{}", c),
+		// Keep other escapes
+		_ => format!("\\{}", c),
+	};
 
-    Ok((input, result))
+	Ok((input, result))
 }
 
 /// Parse any character that's not part of a named group or escape sequence
 fn parse_non_group_char(input: &str) -> IResult<&str, char> {
-    // Match any character that doesn't start a named group or escape
-    let (input, c) = anychar(input)?;
+	// Match any character that doesn't start a named group or escape
+	let (input, c) = anychar(input)?;
 
-    if c == '(' {
-        // Check if this is the start of a named group
-        if input.starts_with("?P<") {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Tag,
-            )));
-        }
-    }
+	if c == '(' {
+		// Check if this is the start of a named group
+		if input.starts_with("?P<") {
+			return Err(nom::Err::Error(nom::error::Error::new(
+				input,
+				nom::error::ErrorKind::Tag,
+			)));
+		}
+	}
 
-    if c == '\\' {
-        return Err(nom::Err::Error(nom::error::Error::new(
-            input,
-            nom::error::ErrorKind::Tag,
-        )));
-    }
+	if c == '\\' {
+		return Err(nom::Err::Error(nom::error::Error::new(
+			input,
+			nom::error::ErrorKind::Tag,
+		)));
+	}
 
-    Ok((input, c))
+	Ok((input, c))
 }
 
 /// Include another router's patterns under a prefix
@@ -232,24 +232,24 @@ fn parse_non_group_char(input: &str) -> IResult<&str, char> {
 /// main_router.include("/api/users", users_routes, Some("users".to_string()));
 /// ```
 pub struct IncludedRouter {
-    pub prefix: String,
-    pub routes: Vec<Route>,
-    pub namespace: Option<String>,
+	pub prefix: String,
+	pub routes: Vec<Route>,
+	pub namespace: Option<String>,
 }
 
 impl IncludedRouter {
-    pub fn new(prefix: impl Into<String>, routes: Vec<Route>) -> Self {
-        Self {
-            prefix: prefix.into(),
-            routes,
-            namespace: None,
-        }
-    }
+	pub fn new(prefix: impl Into<String>, routes: Vec<Route>) -> Self {
+		Self {
+			prefix: prefix.into(),
+			routes,
+			namespace: None,
+		}
+	}
 
-    pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
-        self.namespace = Some(namespace.into());
-        self
-    }
+	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
+		self.namespace = Some(namespace.into());
+		self
+	}
 }
 
 /// Create an IncludedRouter from a list of routes
@@ -288,86 +288,86 @@ impl IncludedRouter {
 /// assert_eq!(included.namespace, Some("users".to_string()));
 /// ```
 pub fn include_routes(prefix: impl Into<String>, routes: Vec<Route>) -> IncludedRouter {
-    IncludedRouter::new(prefix, routes)
+	IncludedRouter::new(prefix, routes)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::path;
+	use super::*;
+	use crate::path;
 
-    #[test]
-    fn test_convert_regex_to_pattern() {
-        // Simple regex
-        assert_eq!(convert_regex_to_pattern(r"^users/$"), "users/");
+	#[test]
+	fn test_convert_regex_to_pattern() {
+		// Simple regex
+		assert_eq!(convert_regex_to_pattern(r"^users/$"), "users/");
 
-        // Regex with named group
-        assert_eq!(
-            convert_regex_to_pattern(r"^users/(?P<id>\d+)/$"),
-            "users/{id}/"
-        );
+		// Regex with named group
+		assert_eq!(
+			convert_regex_to_pattern(r"^users/(?P<id>\d+)/$"),
+			"users/{id}/"
+		);
 
-        // Multiple named groups
-        assert_eq!(
-            convert_regex_to_pattern(r"^users/(?P<user_id>\d+)/posts/(?P<post_id>\d+)/$"),
-            "users/{user_id}/posts/{post_id}/"
-        );
+		// Multiple named groups
+		assert_eq!(
+			convert_regex_to_pattern(r"^users/(?P<user_id>\d+)/posts/(?P<post_id>\d+)/$"),
+			"users/{user_id}/posts/{post_id}/"
+		);
 
-        // Named group with complex pattern
-        assert_eq!(
-            convert_regex_to_pattern(r"^articles/(?P<year>\d{4})/(?P<month>\d{2})/$"),
-            "articles/{year}/{month}/"
-        );
+		// Named group with complex pattern
+		assert_eq!(
+			convert_regex_to_pattern(r"^articles/(?P<year>\d{4})/(?P<month>\d{2})/$"),
+			"articles/{year}/{month}/"
+		);
 
-        // Nested parentheses in pattern
-        assert_eq!(
-            convert_regex_to_pattern(r"^data/(?P<slug>[a-z]+(-[a-z]+)*)/$"),
-            "data/{slug}/"
-        );
+		// Nested parentheses in pattern
+		assert_eq!(
+			convert_regex_to_pattern(r"^data/(?P<slug>[a-z]+(-[a-z]+)*)/$"),
+			"data/{slug}/"
+		);
 
-        // Escaped characters
-        assert_eq!(
-            convert_regex_to_pattern(r"^files/(?P<path>[\w\/\-\.]+)/$"),
-            "files/{path}/"
-        );
+		// Escaped characters
+		assert_eq!(
+			convert_regex_to_pattern(r"^files/(?P<path>[\w\/\-\.]+)/$"),
+			"files/{path}/"
+		);
 
-        // Mixed escaped and unescaped slashes
-        assert_eq!(
-            convert_regex_to_pattern(r"^api\/v1/users/(?P<id>\d+)/$"),
-            "api/v1/users/{id}/"
-        );
+		// Mixed escaped and unescaped slashes
+		assert_eq!(
+			convert_regex_to_pattern(r"^api\/v1/users/(?P<id>\d+)/$"),
+			"api/v1/users/{id}/"
+		);
 
-        // Multiple patterns with different regex constructs
-        assert_eq!(
-            convert_regex_to_pattern(r"^(?P<category>\w+)/(?P<slug>[\w-]+)/(?P<id>\d+)/$"),
-            "{category}/{slug}/{id}/"
-        );
+		// Multiple patterns with different regex constructs
+		assert_eq!(
+			convert_regex_to_pattern(r"^(?P<category>\w+)/(?P<slug>[\w-]+)/(?P<id>\d+)/$"),
+			"{category}/{slug}/{id}/"
+		);
 
-        // Pattern without anchors
-        assert_eq!(
-            convert_regex_to_pattern(r"users/(?P<id>\d+)/"),
-            "users/{id}/"
-        );
+		// Pattern without anchors
+		assert_eq!(
+			convert_regex_to_pattern(r"users/(?P<id>\d+)/"),
+			"users/{id}/"
+		);
 
-        // Pattern with only start anchor
-        assert_eq!(
-            convert_regex_to_pattern(r"^users/(?P<id>\d+)/"),
-            "users/{id}/"
-        );
+		// Pattern with only start anchor
+		assert_eq!(
+			convert_regex_to_pattern(r"^users/(?P<id>\d+)/"),
+			"users/{id}/"
+		);
 
-        // Pattern with only end anchor
-        assert_eq!(
-            convert_regex_to_pattern(r"users/(?P<id>\d+)/$"),
-            "users/{id}/"
-        );
-    }
+		// Pattern with only end anchor
+		assert_eq!(
+			convert_regex_to_pattern(r"users/(?P<id>\d+)/$"),
+			"users/{id}/"
+		);
+	}
 
-    #[test]
-    fn test_included_router_namespace() {
-        let routes = vec![];
-        let included = IncludedRouter::new(path!("/api"), routes).with_namespace("api");
+	#[test]
+	fn test_included_router_namespace() {
+		let routes = vec![];
+		let included = IncludedRouter::new(path!("/api"), routes).with_namespace("api");
 
-        assert_eq!(included.prefix, path!("/api"));
-        assert_eq!(included.namespace, Some("api".to_string()));
-    }
+		assert_eq!(included.prefix, path!("/api"));
+		assert_eq!(included.namespace, Some("api".to_string()));
+	}
 }

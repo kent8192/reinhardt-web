@@ -44,8 +44,8 @@
 //! }
 //! ```
 
-pub mod types;
 pub mod memory;
+pub mod types;
 
 #[cfg(feature = "email-smtp")]
 pub mod smtp;
@@ -60,8 +60,8 @@ pub mod ses;
 pub mod mailgun;
 
 // Re-exports
-pub use types::{Attachment, Email, EmailBackend, EmailBody, EmailError, EmailResult};
 pub use memory::MemoryEmailBackend;
+pub use types::{Attachment, Email, EmailBackend, EmailBody, EmailError, EmailResult};
 
 #[cfg(feature = "email-smtp")]
 pub use smtp::SmtpBackend;

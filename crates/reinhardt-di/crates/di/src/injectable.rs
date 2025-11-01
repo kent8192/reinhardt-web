@@ -1,6 +1,6 @@
 //! Injectable trait for dependencies
 
-use crate::{context::InjectionContext, DiResult};
+use crate::{DiResult, context::InjectionContext};
 
 /// Injectable trait for dependencies.
 ///
@@ -49,16 +49,16 @@ use crate::{context::InjectionContext, DiResult};
 /// ```
 #[async_trait::async_trait]
 pub trait Injectable: Sized + Send + Sync + 'static {
-    async fn inject(ctx: &InjectionContext) -> DiResult<Self>;
+	async fn inject(ctx: &InjectionContext) -> DiResult<Self>;
 
-    /// Inject without using cache (for `cache = false` support).
-    ///
-    /// This method creates a new instance without checking or updating any cache.
-    /// By default, it delegates to `inject()`, but types can override this
-    /// to provide cache-free injection.
-    async fn inject_uncached(ctx: &InjectionContext) -> DiResult<Self> {
-        Self::inject(ctx).await
-    }
+	/// Inject without using cache (for `cache = false` support).
+	///
+	/// This method creates a new instance without checking or updating any cache.
+	/// By default, it delegates to `inject()`, but types can override this
+	/// to provide cache-free injection.
+	async fn inject_uncached(ctx: &InjectionContext) -> DiResult<Self> {
+		Self::inject(ctx).await
+	}
 }
 
 /// Automatic Injectable implementation for types with Default + Clone.
@@ -68,32 +68,32 @@ pub trait Injectable: Sized + Send + Sync + 'static {
 #[async_trait::async_trait]
 impl<T> Injectable for T
 where
-    T: Default + Clone + Send + Sync + 'static,
+	T: Default + Clone + Send + Sync + 'static,
 {
-    async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-        use std::sync::Arc;
+	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+		use std::sync::Arc;
 
-        // Try to get from request scope first (cached)
-        if let Some(cached) = ctx.get_request::<Self>() {
-            return Ok(Arc::try_unwrap(cached).unwrap_or_else(|arc| (*arc).clone()));
-        }
+		// Try to get from request scope first (cached)
+		if let Some(cached) = ctx.get_request::<Self>() {
+			return Ok(Arc::try_unwrap(cached).unwrap_or_else(|arc| (*arc).clone()));
+		}
 
-        // Try to get from singleton scope
-        if let Some(singleton) = ctx.get_singleton::<Self>() {
-            return Ok(Arc::try_unwrap(singleton).unwrap_or_else(|arc| (*arc).clone()));
-        }
+		// Try to get from singleton scope
+		if let Some(singleton) = ctx.get_singleton::<Self>() {
+			return Ok(Arc::try_unwrap(singleton).unwrap_or_else(|arc| (*arc).clone()));
+		}
 
-        // Create new instance using Default
-        let instance = Self::default();
+		// Create new instance using Default
+		let instance = Self::default();
 
-        // Cache in request scope
-        ctx.set_request(instance.clone());
+		// Cache in request scope
+		ctx.set_request(instance.clone());
 
-        Ok(instance)
-    }
+		Ok(instance)
+	}
 
-    async fn inject_uncached(_ctx: &InjectionContext) -> DiResult<Self> {
-        // Create new instance without checking or updating cache
-        Ok(Self::default())
-    }
+	async fn inject_uncached(_ctx: &InjectionContext) -> DiResult<Self> {
+		// Create new instance without checking or updating cache
+		Ok(Self::default())
+	}
 }

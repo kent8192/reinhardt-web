@@ -23,56 +23,56 @@ use serde::Deserialize;
 /// - Fragment (#) handled correctly
 #[tokio::test]
 async fn test_query_string_with_fragment() {
-    #[derive(Debug, Deserialize)]
-    struct QueryParams {
-        test: String,
-    }
+	#[derive(Debug, Deserialize)]
+	struct QueryParams {
+		test: String,
+	}
 
-    // URL fragments (#section) are typically handled client-side and not sent to server
-    // But if they are in the query string, they should be parsed
-    let uri = Uri::try_from("/test?test=value#fragment").expect("Invalid URI");
+	// URL fragments (#section) are typically handled client-side and not sent to server
+	// But if they are in the query string, they should be parsed
+	let uri = Uri::try_from("/test?test=value#fragment").expect("Invalid URI");
 
-    let req = Request::new(
-        Method::GET,
-        uri,
-        Version::HTTP_11,
-        HeaderMap::new(),
-        Bytes::new(),
-    );
-    let ctx = ParamContext::new();
+	let req = Request::new(
+		Method::GET,
+		uri,
+		Version::HTTP_11,
+		HeaderMap::new(),
+		Bytes::new(),
+	);
+	let ctx = ParamContext::new();
 
-    let result = Query::<QueryParams>::from_request(&req, &ctx).await;
-    assert!(result.is_ok(), "Failed to parse query string with fragment");
+	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
+	assert!(result.is_ok(), "Failed to parse query string with fragment");
 
-    // The fragment should not be part of the query parameter value
-    // Most HTTP libraries strip fragments before sending
-    let params = result.unwrap();
-    assert_eq!(params.test, "value");
+	// The fragment should not be part of the query parameter value
+	// Most HTTP libraries strip fragments before sending
+	let params = result.unwrap();
+	assert_eq!(params.test, "value");
 }
 
 /// Test: Query string with URL-encoded special characters
 #[tokio::test]
 async fn test_query_string_special_chars() {
-    #[derive(Debug, Deserialize)]
-    struct QueryParams {
-        data: String,
-    }
+	#[derive(Debug, Deserialize)]
+	struct QueryParams {
+		data: String,
+	}
 
-    // Special characters: & = ? # should be URL-encoded
-    let uri = Uri::try_from("/test?data=%26%3D%3F%23").expect("Invalid URI");
+	// Special characters: & = ? # should be URL-encoded
+	let uri = Uri::try_from("/test?data=%26%3D%3F%23").expect("Invalid URI");
 
-    let req = Request::new(
-        Method::GET,
-        uri,
-        Version::HTTP_11,
-        HeaderMap::new(),
-        Bytes::new(),
-    );
-    let ctx = ParamContext::new();
+	let req = Request::new(
+		Method::GET,
+		uri,
+		Version::HTTP_11,
+		HeaderMap::new(),
+		Bytes::new(),
+	);
+	let ctx = ParamContext::new();
 
-    let result = Query::<QueryParams>::from_request(&req, &ctx).await;
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap().data, "&=?#");
+	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
+	assert!(result.is_ok());
+	assert_eq!(result.unwrap().data, "&=?#");
 }
 
 /// Test: Query string encoding changes
@@ -84,165 +84,165 @@ async fn test_query_string_special_chars() {
 /// Test: Query string with Unicode characters
 #[tokio::test]
 async fn test_query_string_unicode() {
-    #[derive(Debug, Deserialize)]
-    struct QueryParams {
-        text: String,
-    }
+	#[derive(Debug, Deserialize)]
+	struct QueryParams {
+		text: String,
+	}
 
-    // Unicode should be URL-encoded
-    // "nihongo" (Japanese) URL-encoded
-    let uri = Uri::try_from("/test?text=%E6%97%A5%E6%9C%AC%E8%AA%9E").expect("Invalid URI");
+	// Unicode should be URL-encoded
+	// "nihongo" (Japanese) URL-encoded
+	let uri = Uri::try_from("/test?text=%E6%97%A5%E6%9C%AC%E8%AA%9E").expect("Invalid URI");
 
-    let req = Request::new(
-        Method::GET,
-        uri,
-        Version::HTTP_11,
-        HeaderMap::new(),
-        Bytes::new(),
-    );
-    let ctx = ParamContext::new();
+	let req = Request::new(
+		Method::GET,
+		uri,
+		Version::HTTP_11,
+		HeaderMap::new(),
+		Bytes::new(),
+	);
+	let ctx = ParamContext::new();
 
-    let result = Query::<QueryParams>::from_request(&req, &ctx).await;
-    assert!(result.is_ok(), "Failed to parse Unicode query parameter");
-    assert_eq!(result.unwrap().text, "日本語"); // Japanese text "nihongo"
+	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
+	assert!(result.is_ok(), "Failed to parse Unicode query parameter");
+	assert_eq!(result.unwrap().text, "日本語"); // Japanese text "nihongo"
 }
 
 /// Test: Query string with emoji
 #[tokio::test]
 async fn test_query_string_emoji() {
-    #[derive(Debug, Deserialize)]
-    struct QueryParams {
-        emoji: String,
-    }
+	#[derive(Debug, Deserialize)]
+	struct QueryParams {
+		emoji: String,
+	}
 
-    // Emoji "🦀" URL-encoded
-    let uri = Uri::try_from("/test?emoji=%F0%9F%A6%80").expect("Invalid URI");
+	// Emoji "🦀" URL-encoded
+	let uri = Uri::try_from("/test?emoji=%F0%9F%A6%80").expect("Invalid URI");
 
-    let req = Request::new(
-        Method::GET,
-        uri,
-        Version::HTTP_11,
-        HeaderMap::new(),
-        Bytes::new(),
-    );
-    let ctx = ParamContext::new();
+	let req = Request::new(
+		Method::GET,
+		uri,
+		Version::HTTP_11,
+		HeaderMap::new(),
+		Bytes::new(),
+	);
+	let ctx = ParamContext::new();
 
-    let result = Query::<QueryParams>::from_request(&req, &ctx).await;
-    assert!(result.is_ok(), "Failed to parse emoji query parameter");
-    assert_eq!(result.unwrap().emoji, "🦀");
+	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
+	assert!(result.is_ok(), "Failed to parse emoji query parameter");
+	assert_eq!(result.unwrap().emoji, "🦀");
 }
 
 /// Test: Query string with multiple values for same parameter
 #[tokio::test]
 async fn test_query_string_repeated_param() {
-    #[derive(Debug, Deserialize)]
-    struct QueryParams {
-        tags: Vec<String>,
-    }
+	#[derive(Debug, Deserialize)]
+	struct QueryParams {
+		tags: Vec<String>,
+	}
 
-    // Note: serde_urlencoded may not handle repeated keys as expected
-    let uri = Uri::try_from("/test?tags=rust&tags=web&tags=framework").expect("Invalid URI");
+	// Note: serde_urlencoded may not handle repeated keys as expected
+	let uri = Uri::try_from("/test?tags=rust&tags=web&tags=framework").expect("Invalid URI");
 
-    let req = Request::new(
-        Method::GET,
-        uri,
-        Version::HTTP_11,
-        HeaderMap::new(),
-        Bytes::new(),
-    );
-    let ctx = ParamContext::new();
+	let req = Request::new(
+		Method::GET,
+		uri,
+		Version::HTTP_11,
+		HeaderMap::new(),
+		Bytes::new(),
+	);
+	let ctx = ParamContext::new();
 
-    let result = Query::<QueryParams>::from_request(&req, &ctx).await;
-    // This is a known limitation of serde_urlencoded
-    // It may only capture the last value or fail to parse
-    // Document the current behavior
-    match result {
-        Ok(params) => {
-            // If it works, verify at least one value present
-            assert!(!params.tags.is_empty(), "Should have at least one tag");
-        }
-        Err(_) => {
-            // Expected limitation with current implementation
-            println!("Note: serde_urlencoded doesn't fully support repeated keys");
-        }
-    }
+	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
+	// This is a known limitation of serde_urlencoded
+	// It may only capture the last value or fail to parse
+	// Document the current behavior
+	match result {
+		Ok(params) => {
+			// If it works, verify at least one value present
+			assert!(!params.tags.is_empty(), "Should have at least one tag");
+		}
+		Err(_) => {
+			// Expected limitation with current implementation
+			println!("Note: serde_urlencoded doesn't fully support repeated keys");
+		}
+	}
 }
 
 /// Test: Empty query string vs no query string
 #[tokio::test]
 async fn test_empty_vs_no_query_string() {
-    #[derive(Debug, Deserialize)]
-    struct QueryParams {
-        #[serde(default)]
-        optional: String,
-    }
+	#[derive(Debug, Deserialize)]
+	struct QueryParams {
+		#[serde(default)]
+		optional: String,
+	}
 
-    // No query string
-    let uri1 = Uri::try_from("/test").expect("Invalid URI");
-    let req1 = Request::new(
-        Method::GET,
-        uri1,
-        Version::HTTP_11,
-        HeaderMap::new(),
-        Bytes::new(),
-    );
-    let ctx1 = ParamContext::new();
+	// No query string
+	let uri1 = Uri::try_from("/test").expect("Invalid URI");
+	let req1 = Request::new(
+		Method::GET,
+		uri1,
+		Version::HTTP_11,
+		HeaderMap::new(),
+		Bytes::new(),
+	);
+	let ctx1 = ParamContext::new();
 
-    // Empty query string
-    let uri2 = Uri::try_from("/test?").expect("Invalid URI");
-    let req2 = Request::new(
-        Method::GET,
-        uri2,
-        Version::HTTP_11,
-        HeaderMap::new(),
-        Bytes::new(),
-    );
-    let ctx2 = ParamContext::new();
+	// Empty query string
+	let uri2 = Uri::try_from("/test?").expect("Invalid URI");
+	let req2 = Request::new(
+		Method::GET,
+		uri2,
+		Version::HTTP_11,
+		HeaderMap::new(),
+		Bytes::new(),
+	);
+	let ctx2 = ParamContext::new();
 
-    let result1 = Query::<QueryParams>::from_request(&req1, &ctx1).await;
-    let result2 = Query::<QueryParams>::from_request(&req2, &ctx2).await;
+	let result1 = Query::<QueryParams>::from_request(&req1, &ctx1).await;
+	let result2 = Query::<QueryParams>::from_request(&req2, &ctx2).await;
 
-    assert!(result1.is_ok(), "No query string should work with defaults");
-    assert!(
-        result2.is_ok(),
-        "Empty query string should work with defaults"
-    );
+	assert!(result1.is_ok(), "No query string should work with defaults");
+	assert!(
+		result2.is_ok(),
+		"Empty query string should work with defaults"
+	);
 
-    assert_eq!(result1.unwrap().optional, "");
-    assert_eq!(result2.unwrap().optional, "");
+	assert_eq!(result1.unwrap().optional, "");
+	assert_eq!(result2.unwrap().optional, "");
 }
 
 /// Test: Malformed query string handling
 #[tokio::test]
 async fn test_malformed_query_string() {
-    #[derive(Debug, Deserialize)]
-    struct QueryParams {
-        key: String,
-    }
+	#[derive(Debug, Deserialize)]
+	struct QueryParams {
+		key: String,
+	}
 
-    // Malformed: missing value
-    let uri = Uri::try_from("/test?key").expect("Invalid URI");
+	// Malformed: missing value
+	let uri = Uri::try_from("/test?key").expect("Invalid URI");
 
-    let req = Request::new(
-        Method::GET,
-        uri,
-        Version::HTTP_11,
-        HeaderMap::new(),
-        Bytes::new(),
-    );
-    let ctx = ParamContext::new();
+	let req = Request::new(
+		Method::GET,
+		uri,
+		Version::HTTP_11,
+		HeaderMap::new(),
+		Bytes::new(),
+	);
+	let ctx = ParamContext::new();
 
-    let result = Query::<QueryParams>::from_request(&req, &ctx).await;
-    // Behavior depends on parser - might treat as empty string or error
-    // Document current behavior
-    match result {
-        Ok(params) => {
-            // Some parsers treat "key" as "key="
-            assert_eq!(params.key, "");
-        }
-        Err(_) => {
-            // Other parsers might reject malformed query strings
-            println!("Malformed query string rejected");
-        }
-    }
+	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
+	// Behavior depends on parser - might treat as empty string or error
+	// Document current behavior
+	match result {
+		Ok(params) => {
+			// Some parsers treat "key" as "key="
+			assert_eq!(params.key, "");
+		}
+		Err(_) => {
+			// Other parsers might reject malformed query strings
+			println!("Malformed query string rejected");
+		}
+	}
 }

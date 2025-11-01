@@ -12,7 +12,7 @@ pub const CSRF_SECRET_LENGTH: usize = 32;
 
 /// Allowed characters for CSRF tokens (alphanumeric)
 pub const CSRF_ALLOWED_CHARS: &str =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 /// CSRF session key
 pub const CSRF_SESSION_KEY: &str = "_csrf_token";
@@ -20,11 +20,11 @@ pub const CSRF_SESSION_KEY: &str = "_csrf_token";
 // Rejection reasons
 pub const REASON_BAD_ORIGIN: &str = "Origin checking failed - does not match any trusted origins.";
 pub const REASON_BAD_REFERER: &str =
-    "Referer checking failed - does not match any trusted origins.";
+	"Referer checking failed - does not match any trusted origins.";
 pub const REASON_CSRF_TOKEN_MISSING: &str = "CSRF token missing.";
 pub const REASON_INCORRECT_LENGTH: &str = "CSRF token has incorrect length.";
 pub const REASON_INSECURE_REFERER: &str =
-    "Referer checking failed - Referer is insecure while host is secure.";
+	"Referer checking failed - Referer is insecure while host is secure.";
 pub const REASON_INVALID_CHARACTERS: &str = "CSRF token has invalid characters.";
 pub const REASON_MALFORMED_REFERER: &str = "Referer checking failed - Referer is malformed.";
 pub const REASON_NO_CSRF_COOKIE: &str = "CSRF cookie not set.";
@@ -33,36 +33,36 @@ pub const REASON_NO_REFERER: &str = "Referer checking failed - no Referer.";
 /// CSRF token validation error
 #[derive(Debug)]
 pub struct RejectRequest {
-    pub reason: String,
+	pub reason: String,
 }
 
 /// Invalid token format error
 #[derive(Debug)]
 pub struct InvalidTokenFormat {
-    pub reason: String,
+	pub reason: String,
 }
 
 /// CSRF metadata
 #[derive(Debug, Clone)]
 pub struct CsrfMeta {
-    pub token: String,
+	pub token: String,
 }
 
 /// SameSite cookie attribute
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SameSite {
-    /// Strict mode - cookie only sent in first-party context
-    Strict,
-    /// Lax mode - cookie sent with top-level navigation
-    Lax,
-    /// None mode - cookie sent in all contexts (requires Secure)
-    None,
+	/// Strict mode - cookie only sent in first-party context
+	Strict,
+	/// Lax mode - cookie sent with top-level navigation
+	Lax,
+	/// None mode - cookie sent in all contexts (requires Secure)
+	None,
 }
 
 impl Default for SameSite {
-    fn default() -> Self {
-        Self::Lax
-    }
+	fn default() -> Self {
+		Self::Lax
+	}
 }
 
 /// CSRF configuration
@@ -70,111 +70,111 @@ impl Default for SameSite {
 /// All tokens are generated using HMAC-SHA256 for cryptographic security.
 #[derive(Debug, Clone)]
 pub struct CsrfConfig {
-    pub cookie_name: String,
-    pub header_name: String,
-    /// CSRF cookie should NOT be HttpOnly (JavaScript needs access)
-    pub cookie_httponly: bool,
-    /// Cookie should be Secure in production (HTTPS only)
-    pub cookie_secure: bool,
-    /// SameSite attribute for CSRF protection
-    pub cookie_samesite: SameSite,
-    /// Cookie domain (None = current domain only)
-    pub cookie_domain: Option<String>,
-    /// Cookie path (default: "/")
-    pub cookie_path: String,
-    /// Cookie max age in seconds (None = session cookie)
-    pub cookie_max_age: Option<i64>,
-    /// Enable token rotation (security enhancement)
-    pub enable_token_rotation: bool,
-    /// Token rotation interval in seconds (None = rotate on every request)
-    pub token_rotation_interval: Option<u64>,
+	pub cookie_name: String,
+	pub header_name: String,
+	/// CSRF cookie should NOT be HttpOnly (JavaScript needs access)
+	pub cookie_httponly: bool,
+	/// Cookie should be Secure in production (HTTPS only)
+	pub cookie_secure: bool,
+	/// SameSite attribute for CSRF protection
+	pub cookie_samesite: SameSite,
+	/// Cookie domain (None = current domain only)
+	pub cookie_domain: Option<String>,
+	/// Cookie path (default: "/")
+	pub cookie_path: String,
+	/// Cookie max age in seconds (None = session cookie)
+	pub cookie_max_age: Option<i64>,
+	/// Enable token rotation (security enhancement)
+	pub enable_token_rotation: bool,
+	/// Token rotation interval in seconds (None = rotate on every request)
+	pub token_rotation_interval: Option<u64>,
 }
 
 impl Default for CsrfConfig {
-    fn default() -> Self {
-        Self {
-            cookie_name: "csrftoken".to_string(),
-            header_name: "X-CSRFToken".to_string(),
-            cookie_httponly: false, // CSRF token needs JavaScript access
-            cookie_secure: false,   // Development default (set to true in production)
-            cookie_samesite: SameSite::Lax,
-            cookie_domain: None,
-            cookie_path: "/".to_string(),
-            cookie_max_age: None, // Session cookie
-            enable_token_rotation: false, // Development default
-            token_rotation_interval: None, // Rotate on every request when enabled
-        }
-    }
+	fn default() -> Self {
+		Self {
+			cookie_name: "csrftoken".to_string(),
+			header_name: "X-CSRFToken".to_string(),
+			cookie_httponly: false, // CSRF token needs JavaScript access
+			cookie_secure: false,   // Development default (set to true in production)
+			cookie_samesite: SameSite::Lax,
+			cookie_domain: None,
+			cookie_path: "/".to_string(),
+			cookie_max_age: None,          // Session cookie
+			enable_token_rotation: false,  // Development default
+			token_rotation_interval: None, // Rotate on every request when enabled
+		}
+	}
 }
 
 impl CsrfConfig {
-    /// Production-ready configuration with security hardening
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_security::csrf::CsrfConfig;
-    ///
-    /// let config = CsrfConfig::production();
-    /// assert!(config.cookie_secure);
-    /// assert_eq!(config.cookie_path, "/");
-    /// assert!(config.enable_token_rotation);
-    /// ```
-    pub fn production() -> Self {
-        Self {
-            cookie_name: "csrftoken".to_string(),
-            header_name: "X-CSRFToken".to_string(),
-            cookie_httponly: false, // CSRF token needs JavaScript access
-            cookie_secure: true,    // HTTPS only in production
-            cookie_samesite: SameSite::Strict,
-            cookie_domain: None,
-            cookie_path: "/".to_string(),
-            cookie_max_age: Some(31449600), // 1 year
-            enable_token_rotation: true,    // Enable rotation in production
-            token_rotation_interval: Some(3600), // Rotate every hour
-        }
-    }
+	/// Production-ready configuration with security hardening
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_security::csrf::CsrfConfig;
+	///
+	/// let config = CsrfConfig::production();
+	/// assert!(config.cookie_secure);
+	/// assert_eq!(config.cookie_path, "/");
+	/// assert!(config.enable_token_rotation);
+	/// ```
+	pub fn production() -> Self {
+		Self {
+			cookie_name: "csrftoken".to_string(),
+			header_name: "X-CSRFToken".to_string(),
+			cookie_httponly: false, // CSRF token needs JavaScript access
+			cookie_secure: true,    // HTTPS only in production
+			cookie_samesite: SameSite::Strict,
+			cookie_domain: None,
+			cookie_path: "/".to_string(),
+			cookie_max_age: Some(31449600),      // 1 year
+			enable_token_rotation: true,         // Enable rotation in production
+			token_rotation_interval: Some(3600), // Rotate every hour
+		}
+	}
 
-    /// Enable token rotation
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_security::csrf::CsrfConfig;
-    ///
-    /// let config = CsrfConfig::default().with_token_rotation(Some(1800));
-    /// assert!(config.enable_token_rotation);
-    /// assert_eq!(config.token_rotation_interval, Some(1800));
-    /// ```
-    pub fn with_token_rotation(mut self, interval: Option<u64>) -> Self {
-        self.enable_token_rotation = true;
-        self.token_rotation_interval = interval;
-        self
-    }
+	/// Enable token rotation
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_security::csrf::CsrfConfig;
+	///
+	/// let config = CsrfConfig::default().with_token_rotation(Some(1800));
+	/// assert!(config.enable_token_rotation);
+	/// assert_eq!(config.token_rotation_interval, Some(1800));
+	/// ```
+	pub fn with_token_rotation(mut self, interval: Option<u64>) -> Self {
+		self.enable_token_rotation = true;
+		self.token_rotation_interval = interval;
+		self
+	}
 }
 
 /// CSRF middleware
 pub struct CsrfMiddleware {
-    #[allow(dead_code)]
-    config: CsrfConfig,
+	#[allow(dead_code)]
+	config: CsrfConfig,
 }
 
 impl CsrfMiddleware {
-    pub fn new() -> Self {
-        Self {
-            config: CsrfConfig::default(),
-        }
-    }
+	pub fn new() -> Self {
+		Self {
+			config: CsrfConfig::default(),
+		}
+	}
 
-    pub fn with_config(config: CsrfConfig) -> Self {
-        Self { config }
-    }
+	pub fn with_config(config: CsrfConfig) -> Self {
+		Self { config }
+	}
 }
 
 impl Default for CsrfMiddleware {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 /// CSRF token
@@ -182,13 +182,13 @@ impl Default for CsrfMiddleware {
 pub struct CsrfToken(pub String);
 
 impl CsrfToken {
-    pub fn new(token: String) -> Self {
-        Self(token)
-    }
+	pub fn new(token: String) -> Self {
+		Self(token)
+	}
 
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
 }
 
 /// HMAC-SHA256 type alias
@@ -219,10 +219,10 @@ type HmacSha256 = Hmac<Sha256>;
 /// assert_eq!(token.len(), 64); // HMAC-SHA256 produces 32 bytes = 64 hex chars
 /// ```
 pub fn generate_token_hmac(secret: &[u8], message: &str) -> String {
-    let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC can take key of any size");
-    mac.update(message.as_bytes());
-    let result = mac.finalize();
-    hex::encode(result.into_bytes())
+	let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC can take key of any size");
+	mac.update(message.as_bytes());
+	let result = mac.finalize();
+	hex::encode(result.into_bytes())
 }
 
 /// Verify HMAC-SHA256 based CSRF token
@@ -254,17 +254,17 @@ pub fn generate_token_hmac(secret: &[u8], message: &str) -> String {
 /// assert!(!verify_token_hmac("invalid-token", secret, message));
 /// ```
 pub fn verify_token_hmac(token: &str, secret: &[u8], message: &str) -> bool {
-    // Decode hex token
-    let Ok(token_bytes) = hex::decode(token) else {
-        return false;
-    };
+	// Decode hex token
+	let Ok(token_bytes) = hex::decode(token) else {
+		return false;
+	};
 
-    // Generate expected HMAC
-    let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC can take key of any size");
-    mac.update(message.as_bytes());
+	// Generate expected HMAC
+	let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC can take key of any size");
+	mac.update(message.as_bytes());
 
-    // Constant-time comparison to prevent timing attacks
-    mac.verify_slice(&token_bytes).is_ok()
+	// Constant-time comparison to prevent timing attacks
+	mac.verify_slice(&token_bytes).is_ok()
 }
 
 /// Get CSRF secret as bytes (32 bytes)
@@ -280,10 +280,10 @@ pub fn verify_token_hmac(token: &str, secret: &[u8], message: &str) -> bool {
 /// assert_eq!(secret.len(), 32);
 /// ```
 pub fn get_secret_bytes() -> Vec<u8> {
-    let mut rng = rand::rng();
-    let mut secret = vec![0u8; 32];
-    rng.fill(&mut secret[..]);
-    secret
+	let mut rng = rand::rng();
+	let mut secret = vec![0u8; 32];
+	rng.fill(&mut secret[..]);
+	secret
 }
 
 /// Get CSRF token using HMAC-SHA256
@@ -311,7 +311,7 @@ pub fn get_secret_bytes() -> Vec<u8> {
 /// assert_eq!(token.len(), 64);
 /// ```
 pub fn get_token_hmac(secret_bytes: &[u8], session_id: &str) -> String {
-    generate_token_hmac(secret_bytes, session_id)
+	generate_token_hmac(secret_bytes, session_id)
 }
 
 /// Check HMAC-based CSRF token validity
@@ -341,62 +341,62 @@ pub fn get_token_hmac(secret_bytes: &[u8], session_id: &str) -> String {
 /// assert!(check_token_hmac("invalid", &secret, session_id).is_err());
 /// ```
 pub fn check_token_hmac(
-    request_token: &str,
-    secret_bytes: &[u8],
-    session_id: &str,
+	request_token: &str,
+	secret_bytes: &[u8],
+	session_id: &str,
 ) -> Result<(), RejectRequest> {
-    if !verify_token_hmac(request_token, secret_bytes, session_id) {
-        return Err(RejectRequest {
-            reason: "CSRF token mismatch (HMAC verification failed)".to_string(),
-        });
-    }
-    Ok(())
+	if !verify_token_hmac(request_token, secret_bytes, session_id) {
+		return Err(RejectRequest {
+			reason: "CSRF token mismatch (HMAC verification failed)".to_string(),
+		});
+	}
+	Ok(())
 }
 
 /// Check origin header
 pub fn check_origin(origin: &str, allowed_origins: &[String]) -> Result<(), RejectRequest> {
-    if !allowed_origins.iter().any(|o| o == origin) {
-        return Err(RejectRequest {
-            reason: REASON_BAD_ORIGIN.to_string(),
-        });
-    }
-    Ok(())
+	if !allowed_origins.iter().any(|o| o == origin) {
+		return Err(RejectRequest {
+			reason: REASON_BAD_ORIGIN.to_string(),
+		});
+	}
+	Ok(())
 }
 
 /// Check referer header
 pub fn check_referer(
-    referer: Option<&str>,
-    allowed_origins: &[String],
-    is_secure: bool,
+	referer: Option<&str>,
+	allowed_origins: &[String],
+	is_secure: bool,
 ) -> Result<(), RejectRequest> {
-    let referer = referer.ok_or_else(|| RejectRequest {
-        reason: REASON_NO_REFERER.to_string(),
-    })?;
+	let referer = referer.ok_or_else(|| RejectRequest {
+		reason: REASON_NO_REFERER.to_string(),
+	})?;
 
-    if referer.is_empty() {
-        return Err(RejectRequest {
-            reason: REASON_MALFORMED_REFERER.to_string(),
-        });
-    }
+	if referer.is_empty() {
+		return Err(RejectRequest {
+			reason: REASON_MALFORMED_REFERER.to_string(),
+		});
+	}
 
-    if is_secure && referer.starts_with("http://") {
-        return Err(RejectRequest {
-            reason: REASON_INSECURE_REFERER.to_string(),
-        });
-    }
+	if is_secure && referer.starts_with("http://") {
+		return Err(RejectRequest {
+			reason: REASON_INSECURE_REFERER.to_string(),
+		});
+	}
 
-    if !allowed_origins.iter().any(|o| referer.starts_with(o)) {
-        return Err(RejectRequest {
-            reason: REASON_BAD_REFERER.to_string(),
-        });
-    }
+	if !allowed_origins.iter().any(|o| referer.starts_with(o)) {
+		return Err(RejectRequest {
+			reason: REASON_BAD_REFERER.to_string(),
+		});
+	}
 
-    Ok(())
+	Ok(())
 }
 
 /// Check if two domains are the same
 pub fn is_same_domain(domain1: &str, domain2: &str) -> bool {
-    domain1 == domain2
+	domain1 == domain2
 }
 
 /// Generate token timestamp
@@ -410,10 +410,10 @@ pub fn is_same_domain(domain1: &str, domain2: &str) -> bool {
 /// assert!(timestamp > 0);
 /// ```
 pub fn get_token_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
+	std::time::SystemTime::now()
+		.duration_since(std::time::UNIX_EPOCH)
+		.unwrap()
+		.as_secs()
 }
 
 /// Check if token rotation is due
@@ -429,14 +429,14 @@ pub fn get_token_timestamp() -> u64 {
 /// assert!(!should_rotate_token(token_time, current_time, None)); // No rotation without interval
 /// ```
 pub fn should_rotate_token(
-    token_timestamp: u64,
-    current_timestamp: u64,
-    rotation_interval: Option<u64>,
+	token_timestamp: u64,
+	current_timestamp: u64,
+	rotation_interval: Option<u64>,
 ) -> bool {
-    match rotation_interval {
-        Some(interval) => current_timestamp - token_timestamp >= interval,
-        None => false, // Always rotate when interval is not specified
-    }
+	match rotation_interval {
+		Some(interval) => current_timestamp - token_timestamp >= interval,
+		None => false, // Always rotate when interval is not specified
+	}
 }
 
 /// Generate token with timestamp
@@ -452,10 +452,10 @@ pub fn should_rotate_token(
 /// assert!(token_data.contains(':'));
 /// ```
 pub fn generate_token_with_timestamp(secret_bytes: &[u8], session_id: &str) -> String {
-    let timestamp = get_token_timestamp();
-    let message = format!("{}:{}", session_id, timestamp);
-    let token = generate_token_hmac(secret_bytes, &message);
-    format!("{}:{}", token, timestamp)
+	let timestamp = get_token_timestamp();
+	let message = format!("{}:{}", session_id, timestamp);
+	let token = generate_token_hmac(secret_bytes, &message);
+	format!("{}:{}", token, timestamp)
 }
 
 /// Verify token with timestamp
@@ -472,28 +472,28 @@ pub fn generate_token_with_timestamp(secret_bytes: &[u8], session_id: &str) -> S
 /// assert!(verify_token_with_timestamp(&token_data, &secret, session_id).is_ok());
 /// ```
 pub fn verify_token_with_timestamp(
-    token_data: &str,
-    secret_bytes: &[u8],
-    session_id: &str,
+	token_data: &str,
+	secret_bytes: &[u8],
+	session_id: &str,
 ) -> Result<u64, RejectRequest> {
-    let parts: Vec<&str> = token_data.split(':').collect();
-    if parts.len() != 2 {
-        return Err(RejectRequest {
-            reason: "Invalid token format (missing timestamp)".to_string(),
-        });
-    }
+	let parts: Vec<&str> = token_data.split(':').collect();
+	if parts.len() != 2 {
+		return Err(RejectRequest {
+			reason: "Invalid token format (missing timestamp)".to_string(),
+		});
+	}
 
-    let token = parts[0];
-    let timestamp: u64 = parts[1].parse().map_err(|_| RejectRequest {
-        reason: "Invalid timestamp format".to_string(),
-    })?;
+	let token = parts[0];
+	let timestamp: u64 = parts[1].parse().map_err(|_| RejectRequest {
+		reason: "Invalid timestamp format".to_string(),
+	})?;
 
-    let message = format!("{}:{}", session_id, timestamp);
-    if !verify_token_hmac(token, secret_bytes, &message) {
-        return Err(RejectRequest {
-            reason: "CSRF token mismatch (HMAC verification failed)".to_string(),
-        });
-    }
+	let message = format!("{}:{}", session_id, timestamp);
+	if !verify_token_hmac(token, secret_bytes, &message) {
+		return Err(RejectRequest {
+			reason: "CSRF token mismatch (HMAC verification failed)".to_string(),
+		});
+	}
 
-    Ok(timestamp)
+	Ok(timestamp)
 }

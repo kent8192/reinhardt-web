@@ -11,71 +11,71 @@ use std::sync::{Arc, RwLock};
 /// Global action registry for manual registration
 /// This is a temporary solution until the procedural macro is fully implemented
 pub struct ManualActionRegistry {
-    actions: RwLock<HashMap<String, Vec<ActionMetadata>>>,
+	actions: RwLock<HashMap<String, Vec<ActionMetadata>>>,
 }
 
 impl ManualActionRegistry {
-    fn new() -> Self {
-        Self {
-            actions: RwLock::new(HashMap::new()),
-        }
-    }
+	fn new() -> Self {
+		Self {
+			actions: RwLock::new(HashMap::new()),
+		}
+	}
 
-    /// Register an action for a ViewSet type
-    pub fn register(&self, viewset_type: &str, action: ActionMetadata) {
-        let mut actions = self.actions.write().unwrap();
-        actions
-            .entry(viewset_type.to_string())
-            .or_insert_with(Vec::new)
-            .push(action);
-    }
+	/// Register an action for a ViewSet type
+	pub fn register(&self, viewset_type: &str, action: ActionMetadata) {
+		let mut actions = self.actions.write().unwrap();
+		actions
+			.entry(viewset_type.to_string())
+			.or_insert_with(Vec::new)
+			.push(action);
+	}
 
-    /// Get actions for a ViewSet type
-    pub fn get_actions(&self, viewset_type: &str) -> Vec<ActionMetadata> {
-        let actions = self.actions.read().unwrap();
-        actions.get(viewset_type).cloned().unwrap_or_else(Vec::new)
-    }
+	/// Get actions for a ViewSet type
+	pub fn get_actions(&self, viewset_type: &str) -> Vec<ActionMetadata> {
+		let actions = self.actions.read().unwrap();
+		actions.get(viewset_type).cloned().unwrap_or_else(Vec::new)
+	}
 
-    /// Clear all registered actions (for testing)
-    pub fn clear(&self) {
-        let mut actions = self.actions.write().unwrap();
-        actions.clear();
-    }
+	/// Clear all registered actions (for testing)
+	pub fn clear(&self) {
+		let mut actions = self.actions.write().unwrap();
+		actions.clear();
+	}
 }
 
 lazy_static::lazy_static! {
-    static ref GLOBAL_REGISTRY: ManualActionRegistry = ManualActionRegistry::new();
+	static ref GLOBAL_REGISTRY: ManualActionRegistry = ManualActionRegistry::new();
 }
 
 /// Register an action manually
 pub fn register_action(viewset_type: &str, action: ActionMetadata) {
-    GLOBAL_REGISTRY.register(viewset_type, action);
+	GLOBAL_REGISTRY.register(viewset_type, action);
 }
 
 /// Get registered actions for a ViewSet type
 pub fn get_registered_actions(viewset_type: &str) -> Vec<ActionMetadata> {
-    GLOBAL_REGISTRY.get_actions(viewset_type)
+	GLOBAL_REGISTRY.get_actions(viewset_type)
 }
 
 /// Clear all registered actions
 #[allow(dead_code)]
 pub fn clear_actions() {
-    GLOBAL_REGISTRY.clear();
+	GLOBAL_REGISTRY.clear();
 }
 
 /// Helper to create an action with a closure
 pub fn action<F, Fut>(name: impl Into<String>, detail: bool, handler: F) -> ActionMetadata
 where
-    F: Fn(Request) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<Response>> + Send + 'static,
+	F: Fn(Request) -> Fut + Send + Sync + 'static,
+	Fut: Future<Output = Result<Response>> + Send + 'static,
 {
-    let handler_fn = Arc::new(handler);
-    ActionMetadata::new(name)
-        .with_detail(detail)
-        .with_handler(FunctionActionHandler::new(move |req| {
-            let h = handler_fn.clone();
-            Box::pin(async move { h(req).await })
-        }))
+	let handler_fn = Arc::new(handler);
+	ActionMetadata::new(name)
+		.with_detail(detail)
+		.with_handler(FunctionActionHandler::new(move |req| {
+			let h = handler_fn.clone();
+			Box::pin(async move { h(req).await })
+		}))
 }
 
 /// Macro to simplify action registration

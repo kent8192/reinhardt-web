@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::broadcast;
 use tokio::sync::Notify;
+use tokio::sync::broadcast;
 use tokio::time::timeout;
 
 /// Shutdown coordinator that manages graceful server shutdown
@@ -28,149 +28,149 @@ use tokio::time::timeout;
 /// ```
 #[derive(Clone)]
 pub struct ShutdownCoordinator {
-    /// Broadcast channel for shutdown signal
-    shutdown_tx: broadcast::Sender<()>,
-    /// Notification for graceful shutdown completion
-    shutdown_complete: Arc<Notify>,
-    /// Shutdown timeout duration
-    timeout_duration: Duration,
+	/// Broadcast channel for shutdown signal
+	shutdown_tx: broadcast::Sender<()>,
+	/// Notification for graceful shutdown completion
+	shutdown_complete: Arc<Notify>,
+	/// Shutdown timeout duration
+	timeout_duration: Duration,
 }
 
 impl ShutdownCoordinator {
-    /// Create a new shutdown coordinator
-    ///
-    /// # Arguments
-    ///
-    /// * `timeout_duration` - Maximum time to wait for graceful shutdown
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
-    /// use std::time::Duration;
-    ///
-    /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
-    /// ```
-    pub fn new(timeout_duration: Duration) -> Self {
-        let (shutdown_tx, _) = broadcast::channel(1);
-        let shutdown_complete = Arc::new(Notify::new());
+	/// Create a new shutdown coordinator
+	///
+	/// # Arguments
+	///
+	/// * `timeout_duration` - Maximum time to wait for graceful shutdown
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_server_core::shutdown::ShutdownCoordinator;
+	/// use std::time::Duration;
+	///
+	/// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
+	/// ```
+	pub fn new(timeout_duration: Duration) -> Self {
+		let (shutdown_tx, _) = broadcast::channel(1);
+		let shutdown_complete = Arc::new(Notify::new());
 
-        Self {
-            shutdown_tx,
-            shutdown_complete,
-            timeout_duration,
-        }
-    }
+		Self {
+			shutdown_tx,
+			shutdown_complete,
+			timeout_duration,
+		}
+	}
 
-    /// Subscribe to shutdown signal
-    ///
-    /// Returns a receiver that will be notified when shutdown is initiated.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
-    /// use std::time::Duration;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
-    /// let mut shutdown_rx = coordinator.subscribe();
-    ///
-    /// // Wait for shutdown signal
-    /// tokio::select! {
-    ///     _ = shutdown_rx.recv() => {
-    ///         println!("Shutdown signal received");
-    ///     }
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn subscribe(&self) -> broadcast::Receiver<()> {
-        self.shutdown_tx.subscribe()
-    }
+	/// Subscribe to shutdown signal
+	///
+	/// Returns a receiver that will be notified when shutdown is initiated.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_server_core::shutdown::ShutdownCoordinator;
+	/// use std::time::Duration;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
+	/// let mut shutdown_rx = coordinator.subscribe();
+	///
+	/// // Wait for shutdown signal
+	/// tokio::select! {
+	///     _ = shutdown_rx.recv() => {
+	///         println!("Shutdown signal received");
+	///     }
+	/// }
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub fn subscribe(&self) -> broadcast::Receiver<()> {
+		self.shutdown_tx.subscribe()
+	}
 
-    /// Initiate graceful shutdown
-    ///
-    /// Sends shutdown signal to all subscribers.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
-    /// use std::time::Duration;
-    ///
-    /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
-    /// coordinator.shutdown();
-    /// ```
-    pub fn shutdown(&self) {
-        let _ = self.shutdown_tx.send(());
-    }
+	/// Initiate graceful shutdown
+	///
+	/// Sends shutdown signal to all subscribers.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_server_core::shutdown::ShutdownCoordinator;
+	/// use std::time::Duration;
+	///
+	/// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
+	/// coordinator.shutdown();
+	/// ```
+	pub fn shutdown(&self) {
+		let _ = self.shutdown_tx.send(());
+	}
 
-    /// Notify that a component has completed shutdown
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
-    /// use std::time::Duration;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
-    ///
-    /// // Component finishes cleanup
-    /// coordinator.notify_shutdown_complete();
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn notify_shutdown_complete(&self) {
-        self.shutdown_complete.notify_one();
-    }
+	/// Notify that a component has completed shutdown
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_server_core::shutdown::ShutdownCoordinator;
+	/// use std::time::Duration;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
+	///
+	/// // Component finishes cleanup
+	/// coordinator.notify_shutdown_complete();
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub fn notify_shutdown_complete(&self) {
+		self.shutdown_complete.notify_one();
+	}
 
-    /// Wait for graceful shutdown to complete
-    ///
-    /// Waits for shutdown notification with timeout.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
-    /// use std::time::Duration;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
-    /// coordinator.shutdown();
-    /// coordinator.wait_for_shutdown().await;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn wait_for_shutdown(&self) {
-        match timeout(self.timeout_duration, self.shutdown_complete.notified()).await {
-            Ok(_) => {
-                println!("Graceful shutdown completed");
-            }
-            Err(_) => {
-                eprintln!(
-                    "Shutdown timeout after {:?}, forcing termination",
-                    self.timeout_duration
-                );
-            }
-        }
-    }
+	/// Wait for graceful shutdown to complete
+	///
+	/// Waits for shutdown notification with timeout.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_server_core::shutdown::ShutdownCoordinator;
+	/// use std::time::Duration;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
+	/// coordinator.shutdown();
+	/// coordinator.wait_for_shutdown().await;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn wait_for_shutdown(&self) {
+		match timeout(self.timeout_duration, self.shutdown_complete.notified()).await {
+			Ok(_) => {
+				println!("Graceful shutdown completed");
+			}
+			Err(_) => {
+				eprintln!(
+					"Shutdown timeout after {:?}, forcing termination",
+					self.timeout_duration
+				);
+			}
+		}
+	}
 
-    /// Get shutdown timeout duration
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_server_core::shutdown::ShutdownCoordinator;
-    /// use std::time::Duration;
-    ///
-    /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
-    /// assert_eq!(coordinator.timeout_duration(), Duration::from_secs(30));
-    /// ```
-    pub fn timeout_duration(&self) -> Duration {
-        self.timeout_duration
-    }
+	/// Get shutdown timeout duration
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_server_core::shutdown::ShutdownCoordinator;
+	/// use std::time::Duration;
+	///
+	/// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
+	/// assert_eq!(coordinator.timeout_duration(), Duration::from_secs(30));
+	/// ```
+	pub fn timeout_duration(&self) -> Duration {
+		self.timeout_duration
+	}
 }
 
 /// Listen for OS shutdown signals (SIGTERM, SIGINT)
@@ -189,33 +189,33 @@ impl ShutdownCoordinator {
 /// # }
 /// ```
 pub async fn shutdown_signal() {
-    use tokio::signal;
+	use tokio::signal;
 
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
-    };
+	let ctrl_c = async {
+		signal::ctrl_c()
+			.await
+			.expect("Failed to install Ctrl+C handler");
+	};
 
-    #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
+	#[cfg(unix)]
+	let terminate = async {
+		signal::unix::signal(signal::unix::SignalKind::terminate())
+			.expect("Failed to install SIGTERM handler")
+			.recv()
+			.await;
+	};
 
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
+	#[cfg(not(unix))]
+	let terminate = std::future::pending::<()>();
 
-    tokio::select! {
-        _ = ctrl_c => {
-            println!("Received Ctrl+C signal");
-        }
-        _ = terminate => {
-            println!("Received SIGTERM signal");
-        }
-    }
+	tokio::select! {
+		_ = ctrl_c => {
+			println!("Received Ctrl+C signal");
+		}
+		_ = terminate => {
+			println!("Received SIGTERM signal");
+		}
+	}
 }
 
 /// Wraps a future with shutdown handling
@@ -242,108 +242,108 @@ pub async fn shutdown_signal() {
 /// # }
 /// ```
 pub async fn with_shutdown<F>(
-    future: F,
-    mut shutdown_rx: broadcast::Receiver<()>,
+	future: F,
+	mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Option<F::Output>
 where
-    F: Future,
+	F: Future,
 {
-    tokio::select! {
-        result = future => Some(result),
-        _ = shutdown_rx.recv() => None,
-    }
+	tokio::select! {
+		result = future => Some(result),
+		_ = shutdown_rx.recv() => None,
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::time::Duration;
+	use super::*;
+	use std::time::Duration;
 
-    #[tokio::test]
-    async fn test_shutdown_coordinator_creation() {
-        let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
-        assert_eq!(coordinator.timeout_duration(), Duration::from_secs(30));
-    }
+	#[tokio::test]
+	async fn test_shutdown_coordinator_creation() {
+		let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
+		assert_eq!(coordinator.timeout_duration(), Duration::from_secs(30));
+	}
 
-    #[tokio::test]
-    async fn test_shutdown_signal_propagation() {
-        let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
-        let mut rx = coordinator.subscribe();
+	#[tokio::test]
+	async fn test_shutdown_signal_propagation() {
+		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
+		let mut rx = coordinator.subscribe();
 
-        coordinator.shutdown();
+		coordinator.shutdown();
 
-        // Should receive shutdown signal
-        let result = rx.recv().await;
-        assert!(result.is_ok());
-    }
+		// Should receive shutdown signal
+		let result = rx.recv().await;
+		assert!(result.is_ok());
+	}
 
-    #[tokio::test]
-    async fn test_multiple_subscribers() {
-        let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
-        let mut rx1 = coordinator.subscribe();
-        let mut rx2 = coordinator.subscribe();
+	#[tokio::test]
+	async fn test_multiple_subscribers() {
+		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
+		let mut rx1 = coordinator.subscribe();
+		let mut rx2 = coordinator.subscribe();
 
-        coordinator.shutdown();
+		coordinator.shutdown();
 
-        // Both should receive the signal
-        assert!(rx1.recv().await.is_ok());
-        assert!(rx2.recv().await.is_ok());
-    }
+		// Both should receive the signal
+		assert!(rx1.recv().await.is_ok());
+		assert!(rx2.recv().await.is_ok());
+	}
 
-    #[tokio::test]
-    async fn test_shutdown_notification() {
-        let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
+	#[tokio::test]
+	async fn test_shutdown_notification() {
+		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
 
-        // Spawn a task to notify shutdown complete
-        let coordinator_clone = coordinator.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            coordinator_clone.notify_shutdown_complete();
-        });
+		// Spawn a task to notify shutdown complete
+		let coordinator_clone = coordinator.clone();
+		tokio::spawn(async move {
+			tokio::time::sleep(Duration::from_millis(100)).await;
+			coordinator_clone.notify_shutdown_complete();
+		});
 
-        // Should complete before timeout
-        coordinator.wait_for_shutdown().await;
-    }
+		// Should complete before timeout
+		coordinator.wait_for_shutdown().await;
+	}
 
-    #[tokio::test]
-    async fn test_shutdown_timeout() {
-        let coordinator = ShutdownCoordinator::new(Duration::from_millis(100));
+	#[tokio::test]
+	async fn test_shutdown_timeout() {
+		let coordinator = ShutdownCoordinator::new(Duration::from_millis(100));
 
-        // Don't notify - should timeout
-        let start = std::time::Instant::now();
-        coordinator.wait_for_shutdown().await;
-        let elapsed = start.elapsed();
+		// Don't notify - should timeout
+		let start = std::time::Instant::now();
+		coordinator.wait_for_shutdown().await;
+		let elapsed = start.elapsed();
 
-        // Should have waited for the timeout duration
-        assert!(elapsed >= Duration::from_millis(100));
-        assert!(elapsed < Duration::from_millis(200));
-    }
+		// Should have waited for the timeout duration
+		assert!(elapsed >= Duration::from_millis(100));
+		assert!(elapsed < Duration::from_millis(200));
+	}
 
-    #[tokio::test]
-    async fn test_with_shutdown_completes_normally() {
-        let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
-        let shutdown_rx = coordinator.subscribe();
+	#[tokio::test]
+	async fn test_with_shutdown_completes_normally() {
+		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
+		let shutdown_rx = coordinator.subscribe();
 
-        let work = async { 42 };
+		let work = async { 42 };
 
-        let result = with_shutdown(work, shutdown_rx).await;
-        assert_eq!(result, Some(42));
-    }
+		let result = with_shutdown(work, shutdown_rx).await;
+		assert_eq!(result, Some(42));
+	}
 
-    #[tokio::test]
-    async fn test_with_shutdown_interrupted() {
-        let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
-        let shutdown_rx = coordinator.subscribe();
+	#[tokio::test]
+	async fn test_with_shutdown_interrupted() {
+		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
+		let shutdown_rx = coordinator.subscribe();
 
-        let work = async {
-            tokio::time::sleep(Duration::from_secs(10)).await;
-            42
-        };
+		let work = async {
+			tokio::time::sleep(Duration::from_secs(10)).await;
+			42
+		};
 
-        // Shutdown immediately
-        coordinator.shutdown();
+		// Shutdown immediately
+		coordinator.shutdown();
 
-        let result = with_shutdown(work, shutdown_rx).await;
-        assert_eq!(result, None);
-    }
+		let result = with_shutdown(work, shutdown_rx).await;
+		assert_eq!(result, None);
+	}
 }

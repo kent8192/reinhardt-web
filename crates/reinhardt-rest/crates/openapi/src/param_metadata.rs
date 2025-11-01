@@ -3,8 +3,8 @@
 //! This module provides utilities to extract OpenAPI parameter metadata from
 //! Reinhardt's parameter types (Path, Query, Header, Cookie).
 
-use crate::openapi::{Parameter, ParameterIn as ParameterLocation, Required};
 use crate::ToSchema;
+use crate::openapi::{Parameter, ParameterIn as ParameterLocation, Required};
 use std::marker::PhantomData;
 
 /// Trait for types that can provide OpenAPI parameter metadata
@@ -32,18 +32,18 @@ use std::marker::PhantomData;
 /// }
 /// ```ignore
 pub trait ParameterMetadata {
-    /// Generate OpenAPI parameter metadata
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The parameter name
-    /// * `include_in_schema` - Whether to include this parameter in the schema
-    ///
-    /// # Returns
-    ///
-    /// `Some(Parameter)` if the parameter should be included in the schema,
-    /// `None` if `include_in_schema` is false or the parameter is hidden.
-    fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter>;
+	/// Generate OpenAPI parameter metadata
+	///
+	/// # Arguments
+	///
+	/// * `name` - The parameter name
+	/// * `include_in_schema` - Whether to include this parameter in the schema
+	///
+	/// # Returns
+	///
+	/// `Some(Parameter)` if the parameter should be included in the schema,
+	/// `None` if `include_in_schema` is false or the parameter is hidden.
+	fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter>;
 }
 
 /// Marker type for Path parameter metadata
@@ -59,164 +59,164 @@ pub struct HeaderParam<T>(PhantomData<T>);
 pub struct CookieParam<T>(PhantomData<T>);
 
 impl<T: ToSchema> ParameterMetadata for PathParam<T> {
-    fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter> {
-        if !include_in_schema {
-            return None;
-        }
+	fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter> {
+		if !include_in_schema {
+			return None;
+		}
 
-        use utoipa::openapi::path::ParameterBuilder;
+		use utoipa::openapi::path::ParameterBuilder;
 
-        Some(
-            ParameterBuilder::new()
+		Some(
+			ParameterBuilder::new()
                 .name(name)
                 .parameter_in(ParameterLocation::Path)
                 .required(Required::True) // Path parameters are always required
                 .schema(Some(T::schema()))
                 .build(),
-        )
-    }
+		)
+	}
 }
 
 impl<T: ToSchema> ParameterMetadata for QueryParam<T> {
-    fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter> {
-        if !include_in_schema {
-            return None;
-        }
+	fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter> {
+		if !include_in_schema {
+			return None;
+		}
 
-        use utoipa::openapi::path::ParameterBuilder;
+		use utoipa::openapi::path::ParameterBuilder;
 
-        Some(
-            ParameterBuilder::new()
+		Some(
+			ParameterBuilder::new()
                 .name(name)
                 .parameter_in(ParameterLocation::Query)
                 .required(Required::False) // Query parameters are optional by default
                 .schema(Some(T::schema()))
                 .build(),
-        )
-    }
+		)
+	}
 }
 
 impl<T: ToSchema> ParameterMetadata for HeaderParam<T> {
-    fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter> {
-        if !include_in_schema {
-            return None;
-        }
+	fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter> {
+		if !include_in_schema {
+			return None;
+		}
 
-        use utoipa::openapi::path::ParameterBuilder;
+		use utoipa::openapi::path::ParameterBuilder;
 
-        Some(
-            ParameterBuilder::new()
+		Some(
+			ParameterBuilder::new()
                 .name(name)
                 .parameter_in(ParameterLocation::Header)
                 .required(Required::False) // Headers are optional by default
                 .schema(Some(T::schema()))
                 .build(),
-        )
-    }
+		)
+	}
 }
 
 impl<T: ToSchema> ParameterMetadata for CookieParam<T> {
-    fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter> {
-        if !include_in_schema {
-            return None;
-        }
+	fn parameter_metadata(name: &str, include_in_schema: bool) -> Option<Parameter> {
+		if !include_in_schema {
+			return None;
+		}
 
-        use utoipa::openapi::path::ParameterBuilder;
+		use utoipa::openapi::path::ParameterBuilder;
 
-        Some(
-            ParameterBuilder::new()
+		Some(
+			ParameterBuilder::new()
                 .name(name)
                 .parameter_in(ParameterLocation::Cookie)
                 .required(Required::False) // Cookies are optional by default
                 .schema(Some(T::schema()))
                 .build(),
-        )
-    }
+		)
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_path_parameter_metadata() {
-        let param = PathParam::<i64>::parameter_metadata("id", true);
-        assert!(param.is_some());
+	#[test]
+	fn test_path_parameter_metadata() {
+		let param = PathParam::<i64>::parameter_metadata("id", true);
+		assert!(param.is_some());
 
-        let param = param.unwrap();
-        assert_eq!(param.name, "id");
-        assert!(matches!(param.parameter_in, ParameterLocation::Path));
-        assert!(matches!(param.required, Required::True));
-        assert!(param.schema.is_some());
-    }
+		let param = param.unwrap();
+		assert_eq!(param.name, "id");
+		assert!(matches!(param.parameter_in, ParameterLocation::Path));
+		assert!(matches!(param.required, Required::True));
+		assert!(param.schema.is_some());
+	}
 
-    #[test]
-    fn test_path_parameter_hidden() {
-        let param = PathParam::<i64>::parameter_metadata("id", false);
-        assert!(param.is_none(), "Hidden parameter should return None");
-    }
+	#[test]
+	fn test_path_parameter_hidden() {
+		let param = PathParam::<i64>::parameter_metadata("id", false);
+		assert!(param.is_none(), "Hidden parameter should return None");
+	}
 
-    #[test]
-    fn test_query_parameter_metadata() {
-        let param = QueryParam::<String>::parameter_metadata("search", true);
-        assert!(param.is_some());
+	#[test]
+	fn test_query_parameter_metadata() {
+		let param = QueryParam::<String>::parameter_metadata("search", true);
+		assert!(param.is_some());
 
-        let param = param.unwrap();
-        assert_eq!(param.name, "search");
-        assert!(matches!(param.parameter_in, ParameterLocation::Query));
-        assert!(matches!(param.required, Required::False));
-    }
+		let param = param.unwrap();
+		assert_eq!(param.name, "search");
+		assert!(matches!(param.parameter_in, ParameterLocation::Query));
+		assert!(matches!(param.required, Required::False));
+	}
 
-    #[test]
-    fn test_query_parameter_hidden() {
-        let param = QueryParam::<String>::parameter_metadata("search", false);
-        assert!(param.is_none());
-    }
+	#[test]
+	fn test_query_parameter_hidden() {
+		let param = QueryParam::<String>::parameter_metadata("search", false);
+		assert!(param.is_none());
+	}
 
-    #[test]
-    fn test_header_parameter_metadata() {
-        let param = HeaderParam::<String>::parameter_metadata("X-API-Key", true);
-        assert!(param.is_some());
+	#[test]
+	fn test_header_parameter_metadata() {
+		let param = HeaderParam::<String>::parameter_metadata("X-API-Key", true);
+		assert!(param.is_some());
 
-        let param = param.unwrap();
-        assert_eq!(param.name, "X-API-Key");
-        assert!(matches!(param.parameter_in, ParameterLocation::Header));
-        assert!(matches!(param.required, Required::False));
-    }
+		let param = param.unwrap();
+		assert_eq!(param.name, "X-API-Key");
+		assert!(matches!(param.parameter_in, ParameterLocation::Header));
+		assert!(matches!(param.required, Required::False));
+	}
 
-    #[test]
-    fn test_header_parameter_hidden() {
-        let param = HeaderParam::<String>::parameter_metadata("X-API-Key", false);
-        assert!(param.is_none());
-    }
+	#[test]
+	fn test_header_parameter_hidden() {
+		let param = HeaderParam::<String>::parameter_metadata("X-API-Key", false);
+		assert!(param.is_none());
+	}
 
-    #[test]
-    fn test_cookie_parameter_metadata() {
-        let param = CookieParam::<String>::parameter_metadata("session_id", true);
-        assert!(param.is_some());
+	#[test]
+	fn test_cookie_parameter_metadata() {
+		let param = CookieParam::<String>::parameter_metadata("session_id", true);
+		assert!(param.is_some());
 
-        let param = param.unwrap();
-        assert_eq!(param.name, "session_id");
-        assert!(matches!(param.parameter_in, ParameterLocation::Cookie));
-        assert!(matches!(param.required, Required::False));
-    }
+		let param = param.unwrap();
+		assert_eq!(param.name, "session_id");
+		assert!(matches!(param.parameter_in, ParameterLocation::Cookie));
+		assert!(matches!(param.required, Required::False));
+	}
 
-    #[test]
-    fn test_cookie_parameter_hidden() {
-        let param = CookieParam::<String>::parameter_metadata("session_id", false);
-        assert!(param.is_none());
-    }
+	#[test]
+	fn test_cookie_parameter_hidden() {
+		let param = CookieParam::<String>::parameter_metadata("session_id", false);
+		assert!(param.is_none());
+	}
 
-    #[test]
-    fn test_multiple_parameter_types() {
-        // Test that we can generate metadata for different types
-        let path_int = PathParam::<i64>::parameter_metadata("id", true).unwrap();
-        let path_str = PathParam::<String>::parameter_metadata("slug", true).unwrap();
-        let query_bool = QueryParam::<bool>::parameter_metadata("active", true).unwrap();
+	#[test]
+	fn test_multiple_parameter_types() {
+		// Test that we can generate metadata for different types
+		let path_int = PathParam::<i64>::parameter_metadata("id", true).unwrap();
+		let path_str = PathParam::<String>::parameter_metadata("slug", true).unwrap();
+		let query_bool = QueryParam::<bool>::parameter_metadata("active", true).unwrap();
 
-        // Verify schema existence
-        assert!(path_int.schema.is_some());
-        assert!(path_str.schema.is_some());
-        assert!(query_bool.schema.is_some());
-    }
+		// Verify schema existence
+		assert!(path_int.schema.is_some());
+		assert!(path_str.schema.is_some());
+		assert!(query_bool.schema.is_some());
+	}
 }

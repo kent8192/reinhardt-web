@@ -21,7 +21,7 @@
 //! ```
 
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, ItemFn};
+use syn::{ItemFn, parse_macro_input};
 
 mod action;
 mod api_view;
@@ -66,11 +66,11 @@ use schema::derive_schema_impl;
 /// ```
 #[proc_macro_attribute]
 pub fn api_view(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    api_view_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	api_view_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Decorator for ViewSet custom actions
@@ -88,11 +88,11 @@ pub fn api_view(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn action(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    action_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	action_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// GET method decorator
@@ -107,51 +107,51 @@ pub fn action(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn get(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    get_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	get_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// POST method decorator
 #[proc_macro_attribute]
 pub fn post(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    post_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	post_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// PUT method decorator
 #[proc_macro_attribute]
 pub fn put(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    put_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	put_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// PATCH method decorator
 #[proc_macro_attribute]
 pub fn patch(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    patch_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	patch_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// DELETE method decorator
 #[proc_macro_attribute]
 pub fn delete(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    delete_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	delete_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Permission required decorator
@@ -166,11 +166,11 @@ pub fn delete(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn permission_required(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    permission_required_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	permission_required_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Define installed applications with compile-time validation
@@ -202,9 +202,9 @@ pub fn permission_required(args: TokenStream, input: TokenStream) -> TokenStream
 ///
 #[proc_macro]
 pub fn installed_apps(input: TokenStream) -> TokenStream {
-    installed_apps_impl(input.into())
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	installed_apps_impl(input.into())
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Validate URL patterns at compile time
@@ -247,9 +247,9 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 ///
 #[proc_macro]
 pub fn path(input: TokenStream) -> TokenStream {
-    path_impl(input.into())
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	path_impl(input.into())
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Connect a receiver function to a signal automatically
@@ -281,7 +281,7 @@ pub fn path(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn receiver(args: TokenStream, input: TokenStream) -> TokenStream {
-    receiver_impl(args, input)
+	receiver_impl(args, input)
 }
 
 /// Automatic dependency injection macro
@@ -345,11 +345,11 @@ pub fn receiver(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 #[proc_macro_attribute]
 pub fn use_injection(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    endpoint_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	endpoint_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Alias for `use_injection` for FastAPI-style naming
@@ -357,11 +357,11 @@ pub fn use_injection(args: TokenStream, input: TokenStream) -> TokenStream {
 /// See [`use_injection`] for documentation.
 #[proc_macro_attribute]
 pub fn endpoint(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
+	let input = parse_macro_input!(input as ItemFn);
 
-    endpoint_impl(args.into(), input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	endpoint_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Derive macro for type-safe field lookups
@@ -407,9 +407,9 @@ pub fn endpoint(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 #[proc_macro_derive(QueryFields)]
 pub fn derive_query_fields(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as syn::DeriveInput);
+	let input = parse_macro_input!(input as syn::DeriveInput);
 
-    derive_query_fields_impl(input).into()
+	derive_query_fields_impl(input).into()
 }
 
 /// Derive macro for automatic OpenAPI schema generation
@@ -456,11 +456,11 @@ pub fn derive_query_fields(input: TokenStream) -> TokenStream {
 ///
 #[proc_macro_derive(Schema)]
 pub fn derive_schema(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as syn::DeriveInput);
+	let input = parse_macro_input!(input as syn::DeriveInput);
 
-    derive_schema_impl(input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	derive_schema_impl(input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Derive macro for automatic Injectable implementation with field injection
@@ -530,11 +530,11 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 ///
 #[proc_macro_derive(Injectable, attributes(inject))]
 pub fn derive_injectable(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as syn::DeriveInput);
+	let input = parse_macro_input!(input as syn::DeriveInput);
 
-    injectable_derive_impl(input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	injectable_derive_impl(input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Derive macro for automatic Model implementation and migration registration
@@ -599,9 +599,9 @@ pub fn derive_injectable(input: TokenStream) -> TokenStream {
 ///
 #[proc_macro_derive(Model, attributes(model, field))]
 pub fn derive_model(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as syn::DeriveInput);
+	let input = parse_macro_input!(input as syn::DeriveInput);
 
-    model_derive_impl(input)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
+	model_derive_impl(input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }

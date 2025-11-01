@@ -1,40 +1,40 @@
 //! Interactive API documentation templates
 
 use http_body_util::Full;
-use hyper::{body::Bytes, Response, StatusCode};
+use hyper::{Response, StatusCode, body::Bytes};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// API endpoint information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiEndpoint {
-    /// HTTP method (GET, POST, etc.)
-    pub method: String,
-    /// Endpoint path
-    pub path: String,
-    /// Description of the endpoint
-    pub description: String,
-    /// Request parameters
-    pub parameters: Vec<Parameter>,
-    /// Response schema
-    pub response_schema: Option<String>,
-    /// Example request
-    pub example_request: Option<String>,
-    /// Example response
-    pub example_response: Option<String>,
+	/// HTTP method (GET, POST, etc.)
+	pub method: String,
+	/// Endpoint path
+	pub path: String,
+	/// Description of the endpoint
+	pub description: String,
+	/// Request parameters
+	pub parameters: Vec<Parameter>,
+	/// Response schema
+	pub response_schema: Option<String>,
+	/// Example request
+	pub example_request: Option<String>,
+	/// Example response
+	pub example_response: Option<String>,
 }
 
 /// API parameter information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Parameter {
-    /// Parameter name
-    pub name: String,
-    /// Parameter type
-    pub param_type: String,
-    /// Whether the parameter is required
-    pub required: bool,
-    /// Parameter description
-    pub description: Option<String>,
+	/// Parameter name
+	pub name: String,
+	/// Parameter type
+	pub param_type: String,
+	/// Whether the parameter is required
+	pub required: bool,
+	/// Parameter description
+	pub description: Option<String>,
 }
 
 /// Interactive API documentation renderer
@@ -60,160 +60,160 @@ pub struct Parameter {
 /// ```
 #[derive(Debug, Clone)]
 pub struct InteractiveDocsRenderer {
-    title: String,
-    description: Option<String>,
-    endpoints: Vec<ApiEndpoint>,
-    base_url: String,
+	title: String,
+	description: Option<String>,
+	endpoints: Vec<ApiEndpoint>,
+	base_url: String,
 }
 
 impl InteractiveDocsRenderer {
-    /// Create a new interactive docs renderer
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_views_core::browsable_api::InteractiveDocsRenderer;
-    ///
-    /// let renderer = InteractiveDocsRenderer::new("API Docs");
-    /// ```
-    pub fn new(title: impl Into<String>) -> Self {
-        Self {
-            title: title.into(),
-            description: None,
-            endpoints: Vec::new(),
-            base_url: String::new(),
-        }
-    }
+	/// Create a new interactive docs renderer
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_views_core::browsable_api::InteractiveDocsRenderer;
+	///
+	/// let renderer = InteractiveDocsRenderer::new("API Docs");
+	/// ```
+	pub fn new(title: impl Into<String>) -> Self {
+		Self {
+			title: title.into(),
+			description: None,
+			endpoints: Vec::new(),
+			base_url: String::new(),
+		}
+	}
 
-    /// Set API description
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_views_core::browsable_api::InteractiveDocsRenderer;
-    ///
-    /// let mut renderer = InteractiveDocsRenderer::new("API");
-    /// renderer.set_description("RESTful API for managing users");
-    /// ```
-    pub fn set_description(&mut self, description: impl Into<String>) -> &mut Self {
-        self.description = Some(description.into());
-        self
-    }
+	/// Set API description
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_views_core::browsable_api::InteractiveDocsRenderer;
+	///
+	/// let mut renderer = InteractiveDocsRenderer::new("API");
+	/// renderer.set_description("RESTful API for managing users");
+	/// ```
+	pub fn set_description(&mut self, description: impl Into<String>) -> &mut Self {
+		self.description = Some(description.into());
+		self
+	}
 
-    /// Set base URL for the API
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_views_core::browsable_api::InteractiveDocsRenderer;
-    ///
-    /// let mut renderer = InteractiveDocsRenderer::new("API");
-    /// renderer.set_base_url("https://api.example.com");
-    /// ```
-    pub fn set_base_url(&mut self, base_url: impl Into<String>) -> &mut Self {
-        self.base_url = base_url.into();
-        self
-    }
+	/// Set base URL for the API
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_views_core::browsable_api::InteractiveDocsRenderer;
+	///
+	/// let mut renderer = InteractiveDocsRenderer::new("API");
+	/// renderer.set_base_url("https://api.example.com");
+	/// ```
+	pub fn set_base_url(&mut self, base_url: impl Into<String>) -> &mut Self {
+		self.base_url = base_url.into();
+		self
+	}
 
-    /// Add an endpoint
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_views_core::browsable_api::templates::{InteractiveDocsRenderer, ApiEndpoint};
-    ///
-    /// let mut renderer = InteractiveDocsRenderer::new("API");
-    /// let endpoint = ApiEndpoint {
-    ///     method: "POST".to_string(),
-    ///     path: "/api/items/".to_string(),
-    ///     description: "Create an item".to_string(),
-    ///     parameters: vec![],
-    ///     response_schema: None,
-    ///     example_request: None,
-    ///     example_response: None,
-    /// };
-    /// renderer.add_endpoint(endpoint);
-    /// ```
-    pub fn add_endpoint(&mut self, endpoint: ApiEndpoint) -> &mut Self {
-        self.endpoints.push(endpoint);
-        self
-    }
+	/// Add an endpoint
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_views_core::browsable_api::templates::{InteractiveDocsRenderer, ApiEndpoint};
+	///
+	/// let mut renderer = InteractiveDocsRenderer::new("API");
+	/// let endpoint = ApiEndpoint {
+	///     method: "POST".to_string(),
+	///     path: "/api/items/".to_string(),
+	///     description: "Create an item".to_string(),
+	///     parameters: vec![],
+	///     response_schema: None,
+	///     example_request: None,
+	///     example_response: None,
+	/// };
+	/// renderer.add_endpoint(endpoint);
+	/// ```
+	pub fn add_endpoint(&mut self, endpoint: ApiEndpoint) -> &mut Self {
+		self.endpoints.push(endpoint);
+		self
+	}
 
-    /// Group endpoints by path prefix
-    fn group_endpoints(&self) -> HashMap<String, Vec<&ApiEndpoint>> {
-        let mut groups: HashMap<String, Vec<&ApiEndpoint>> = HashMap::new();
+	/// Group endpoints by path prefix
+	fn group_endpoints(&self) -> HashMap<String, Vec<&ApiEndpoint>> {
+		let mut groups: HashMap<String, Vec<&ApiEndpoint>> = HashMap::new();
 
-        for endpoint in &self.endpoints {
-            let group = endpoint
-                .path
-                .split('/')
-                .nth(2)
-                .unwrap_or("default")
-                .to_string();
-            groups.entry(group).or_default().push(endpoint);
-        }
+		for endpoint in &self.endpoints {
+			let group = endpoint
+				.path
+				.split('/')
+				.nth(2)
+				.unwrap_or("default")
+				.to_string();
+			groups.entry(group).or_default().push(endpoint);
+		}
 
-        groups
-    }
+		groups
+	}
 
-    /// Render the interactive documentation as HTML
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_views_core::browsable_api::templates::{InteractiveDocsRenderer, ApiEndpoint};
-    ///
-    /// let mut renderer = InteractiveDocsRenderer::new("API Docs");
-    /// let endpoint = ApiEndpoint {
-    ///     method: "GET".to_string(),
-    ///     path: "/api/test/".to_string(),
-    ///     description: "Test endpoint".to_string(),
-    ///     parameters: vec![],
-    ///     response_schema: None,
-    ///     example_request: None,
-    ///     example_response: None,
-    /// };
-    /// renderer.add_endpoint(endpoint);
-    /// let html = renderer.render().unwrap();
-    /// assert!(html.contains("API Docs"));
-    /// ```
-    pub fn render(&self) -> Result<String, String> {
-        let mut html = self.generate_header();
+	/// Render the interactive documentation as HTML
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_views_core::browsable_api::templates::{InteractiveDocsRenderer, ApiEndpoint};
+	///
+	/// let mut renderer = InteractiveDocsRenderer::new("API Docs");
+	/// let endpoint = ApiEndpoint {
+	///     method: "GET".to_string(),
+	///     path: "/api/test/".to_string(),
+	///     description: "Test endpoint".to_string(),
+	///     parameters: vec![],
+	///     response_schema: None,
+	///     example_request: None,
+	///     example_response: None,
+	/// };
+	/// renderer.add_endpoint(endpoint);
+	/// let html = renderer.render().unwrap();
+	/// assert!(html.contains("API Docs"));
+	/// ```
+	pub fn render(&self) -> Result<String, String> {
+		let mut html = self.generate_header();
 
-        // API description
-        if let Some(desc) = &self.description {
-            html.push_str(&format!(r#"      <div class="description">{}</div>"#, desc));
-            html.push('\n');
-        }
+		// API description
+		if let Some(desc) = &self.description {
+			html.push_str(&format!(r#"      <div class="description">{}</div>"#, desc));
+			html.push('\n');
+		}
 
-        // Group endpoints
-        let groups = self.group_endpoints();
+		// Group endpoints
+		let groups = self.group_endpoints();
 
-        for (group_name, endpoints) in groups {
-            html.push_str(&format!(
-                r#"      <div class="endpoint-group">
+		for (group_name, endpoints) in groups {
+			html.push_str(&format!(
+				r#"      <div class="endpoint-group">
         <h2>{}</h2>
 "#,
-                group_name
-            ));
+				group_name
+			));
 
-            for endpoint in endpoints {
-                html.push_str(&self.render_endpoint(endpoint));
-            }
+			for endpoint in endpoints {
+				html.push_str(&self.render_endpoint(endpoint));
+			}
 
-            html.push_str("      </div>\n");
-        }
+			html.push_str("      </div>\n");
+		}
 
-        html.push_str(&self.generate_footer());
+		html.push_str(&self.generate_footer());
 
-        Ok(html)
-    }
+		Ok(html)
+	}
 
-    /// Render a single endpoint
-    fn render_endpoint(&self, endpoint: &ApiEndpoint) -> String {
-        let method_class = endpoint.method.to_lowercase();
-        let mut html = format!(
-            r#"        <div class="endpoint">
+	/// Render a single endpoint
+	fn render_endpoint(&self, endpoint: &ApiEndpoint) -> String {
+		let method_class = endpoint.method.to_lowercase();
+		let mut html = format!(
+			r#"        <div class="endpoint">
           <div class="endpoint-header">
             <span class="method method-{}">{}</span>
             <span class="path">{}</span>
@@ -221,67 +221,67 @@ impl InteractiveDocsRenderer {
           <div class="endpoint-body">
             <p class="description">{}</p>
 "#,
-            method_class, endpoint.method, endpoint.path, endpoint.description
-        );
+			method_class, endpoint.method, endpoint.path, endpoint.description
+		);
 
-        // Parameters
-        if !endpoint.parameters.is_empty() {
-            html.push_str("            <h4>Parameters:</h4>\n");
-            html.push_str("            <table class=\"params-table\">\n");
-            html.push_str("              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>\n");
-            html.push_str("              <tbody>\n");
+		// Parameters
+		if !endpoint.parameters.is_empty() {
+			html.push_str("            <h4>Parameters:</h4>\n");
+			html.push_str("            <table class=\"params-table\">\n");
+			html.push_str("              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>\n");
+			html.push_str("              <tbody>\n");
 
-            for param in &endpoint.parameters {
-                html.push_str(&format!(
-                    "                <tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
-                    param.name,
-                    param.param_type,
-                    if param.required { "Yes" } else { "No" },
-                    param.description.as_deref().unwrap_or("-")
-                ));
-            }
+			for param in &endpoint.parameters {
+				html.push_str(&format!(
+					"                <tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
+					param.name,
+					param.param_type,
+					if param.required { "Yes" } else { "No" },
+					param.description.as_deref().unwrap_or("-")
+				));
+			}
 
-            html.push_str("              </tbody>\n");
-            html.push_str("            </table>\n");
-        }
+			html.push_str("              </tbody>\n");
+			html.push_str("            </table>\n");
+		}
 
-        // Example request
-        if let Some(example_req) = &endpoint.example_request {
-            html.push_str(&format!(
-                r#"            <h4>Example Request:</h4>
+		// Example request
+		if let Some(example_req) = &endpoint.example_request {
+			html.push_str(&format!(
+				r#"            <h4>Example Request:</h4>
             <pre class="example">{}</pre>
 "#,
-                example_req
-            ));
-        }
+				example_req
+			));
+		}
 
-        // Example response
-        if let Some(example_resp) = &endpoint.example_response {
-            html.push_str(&format!(
-                r#"            <h4>Example Response:</h4>
+		// Example response
+		if let Some(example_resp) = &endpoint.example_response {
+			html.push_str(&format!(
+				r#"            <h4>Example Response:</h4>
             <pre class="example">{}</pre>
 "#,
-                example_resp
-            ));
-        }
+				example_resp
+			));
+		}
 
-        // Try it out button
-        html.push_str(&format!(
-            r#"            <button class="try-it-btn" onclick="tryEndpoint('{}', '{}')">Try it out</button>
+		// Try it out button
+		html.push_str(&format!(
+			r#"            <button class="try-it-btn" onclick="tryEndpoint('{}', '{}')">Try it out</button>
 "#,
-            endpoint.method, endpoint.path
-        ));
+			endpoint.method, endpoint.path
+		));
 
-        html.push_str("          </div>\n");
-        html.push_str("        </div>\n");
+		html.push_str("          </div>\n");
+		html.push_str("        </div>\n");
 
-        html
-    }
+		html
+	}
 
-    /// Generate HTML header
-    fn generate_header(&self) -> String {
-        format!(
-            r#"<!doctype html>
+	/// Generate HTML header
+	fn generate_header(&self) -> String {
+		format!(
+			r#"<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -413,124 +413,124 @@ impl InteractiveDocsRenderer {
     <div class="container">
       <h1>{}</h1>
 "#,
-            self.title, self.title
-        )
-    }
+			self.title, self.title
+		)
+	}
 
-    /// Generate HTML footer
-    fn generate_footer(&self) -> String {
-        r#"    </div>
+	/// Generate HTML footer
+	fn generate_footer(&self) -> String {
+		r#"    </div>
   </body>
 </html>
 "#
-        .to_string()
-    }
+		.to_string()
+	}
 
-    /// Create an HTTP response with rendered HTML
-    pub fn create_response(&self) -> Result<Response<Full<Bytes>>, String> {
-        let html = self.render()?;
+	/// Create an HTTP response with rendered HTML
+	pub fn create_response(&self) -> Result<Response<Full<Bytes>>, String> {
+		let html = self.render()?;
 
-        Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "text/html; charset=utf-8")
-            .body(Full::new(Bytes::from(html)))
-            .map_err(|e| e.to_string())
-    }
+		Response::builder()
+			.status(StatusCode::OK)
+			.header("Content-Type", "text/html; charset=utf-8")
+			.body(Full::new(Bytes::from(html)))
+			.map_err(|e| e.to_string())
+	}
 }
 
 impl Default for InteractiveDocsRenderer {
-    fn default() -> Self {
-        Self::new("API Documentation")
-    }
+	fn default() -> Self {
+		Self::new("API Documentation")
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_renderer_creation() {
-        let renderer = InteractiveDocsRenderer::new("Test API");
-        assert_eq!(renderer.title, "Test API");
-        assert!(renderer.endpoints.is_empty());
-    }
+	#[test]
+	fn test_renderer_creation() {
+		let renderer = InteractiveDocsRenderer::new("Test API");
+		assert_eq!(renderer.title, "Test API");
+		assert!(renderer.endpoints.is_empty());
+	}
 
-    #[test]
-    fn test_set_description() {
-        let mut renderer = InteractiveDocsRenderer::new("API");
-        renderer.set_description("Test description");
-        assert_eq!(renderer.description, Some("Test description".to_string()));
-    }
+	#[test]
+	fn test_set_description() {
+		let mut renderer = InteractiveDocsRenderer::new("API");
+		renderer.set_description("Test description");
+		assert_eq!(renderer.description, Some("Test description".to_string()));
+	}
 
-    #[test]
-    fn test_set_base_url() {
-        let mut renderer = InteractiveDocsRenderer::new("API");
-        renderer.set_base_url("https://example.com");
-        assert_eq!(renderer.base_url, "https://example.com");
-    }
+	#[test]
+	fn test_set_base_url() {
+		let mut renderer = InteractiveDocsRenderer::new("API");
+		renderer.set_base_url("https://example.com");
+		assert_eq!(renderer.base_url, "https://example.com");
+	}
 
-    #[test]
-    fn test_add_endpoint() {
-        let mut renderer = InteractiveDocsRenderer::new("API");
-        let endpoint = ApiEndpoint {
-            method: "GET".to_string(),
-            path: "/api/test/".to_string(),
-            description: "Test".to_string(),
-            parameters: vec![],
-            response_schema: None,
-            example_request: None,
-            example_response: None,
-        };
-        renderer.add_endpoint(endpoint);
-        assert_eq!(renderer.endpoints.len(), 1);
-    }
+	#[test]
+	fn test_add_endpoint() {
+		let mut renderer = InteractiveDocsRenderer::new("API");
+		let endpoint = ApiEndpoint {
+			method: "GET".to_string(),
+			path: "/api/test/".to_string(),
+			description: "Test".to_string(),
+			parameters: vec![],
+			response_schema: None,
+			example_request: None,
+			example_response: None,
+		};
+		renderer.add_endpoint(endpoint);
+		assert_eq!(renderer.endpoints.len(), 1);
+	}
 
-    #[test]
-    fn test_render_basic() {
-        let mut renderer = InteractiveDocsRenderer::new("API Docs");
-        let endpoint = ApiEndpoint {
-            method: "GET".to_string(),
-            path: "/api/users/".to_string(),
-            description: "List users".to_string(),
-            parameters: vec![],
-            response_schema: None,
-            example_request: None,
-            example_response: None,
-        };
-        renderer.add_endpoint(endpoint);
-        let result = renderer.render();
-        assert!(result.is_ok());
-        let html = result.unwrap();
-        assert!(html.contains("API Docs"));
-        assert!(html.contains("/api/users/"));
-    }
+	#[test]
+	fn test_render_basic() {
+		let mut renderer = InteractiveDocsRenderer::new("API Docs");
+		let endpoint = ApiEndpoint {
+			method: "GET".to_string(),
+			path: "/api/users/".to_string(),
+			description: "List users".to_string(),
+			parameters: vec![],
+			response_schema: None,
+			example_request: None,
+			example_response: None,
+		};
+		renderer.add_endpoint(endpoint);
+		let result = renderer.render();
+		assert!(result.is_ok());
+		let html = result.unwrap();
+		assert!(html.contains("API Docs"));
+		assert!(html.contains("/api/users/"));
+	}
 
-    #[test]
-    fn test_render_with_parameters() {
-        let mut renderer = InteractiveDocsRenderer::new("API");
-        let endpoint = ApiEndpoint {
-            method: "POST".to_string(),
-            path: "/api/items/".to_string(),
-            description: "Create item".to_string(),
-            parameters: vec![Parameter {
-                name: "name".to_string(),
-                param_type: "string".to_string(),
-                required: true,
-                description: Some("Item name".to_string()),
-            }],
-            response_schema: None,
-            example_request: None,
-            example_response: None,
-        };
-        renderer.add_endpoint(endpoint);
-        let html = renderer.render().unwrap();
-        assert!(html.contains("Parameters"));
-        assert!(html.contains("name"));
-    }
+	#[test]
+	fn test_render_with_parameters() {
+		let mut renderer = InteractiveDocsRenderer::new("API");
+		let endpoint = ApiEndpoint {
+			method: "POST".to_string(),
+			path: "/api/items/".to_string(),
+			description: "Create item".to_string(),
+			parameters: vec![Parameter {
+				name: "name".to_string(),
+				param_type: "string".to_string(),
+				required: true,
+				description: Some("Item name".to_string()),
+			}],
+			response_schema: None,
+			example_request: None,
+			example_response: None,
+		};
+		renderer.add_endpoint(endpoint);
+		let html = renderer.render().unwrap();
+		assert!(html.contains("Parameters"));
+		assert!(html.contains("name"));
+	}
 
-    #[test]
-    fn test_default_renderer() {
-        let renderer = InteractiveDocsRenderer::default();
-        assert_eq!(renderer.title, "API Documentation");
-    }
+	#[test]
+	fn test_default_renderer() {
+		let renderer = InteractiveDocsRenderer::default();
+		assert_eq!(renderer.title, "API Documentation");
+	}
 }

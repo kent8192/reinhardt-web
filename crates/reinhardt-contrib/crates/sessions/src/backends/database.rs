@@ -71,12 +71,12 @@ use sea_query::{Alias, ColumnDef, Expr, ExprTrait, Index, Query, SqliteQueryBuil
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionModel {
-    /// Unique session key (primary key)
-    pub session_key: String,
-    /// Session data stored as JSON
-    pub session_data: serde_json::Value,
-    /// Session expiration timestamp
-    pub expire_date: DateTime<Utc>,
+	/// Unique session key (primary key)
+	pub session_key: String,
+	/// Session data stored as JSON
+	pub session_data: serde_json::Value,
+	/// Session expiration timestamp
+	pub expire_date: DateTime<Utc>,
 }
 
 /// Database-backed session storage
@@ -122,448 +122,454 @@ pub struct SessionModel {
 /// ```
 #[derive(Clone)]
 pub struct DatabaseSessionBackend {
-    pool: Arc<AnyPool>,
+	pool: Arc<AnyPool>,
 }
 
 impl DatabaseSessionBackend {
-    /// Create a new database session backend
-    ///
-    /// Initializes a connection pool to the specified database URL.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use reinhardt_sessions::backends::DatabaseSessionBackend;
-    ///
-    /// # async fn example() {
-    /// // Supports multiple database backends:
-    /// // - PostgreSQL: "postgres://localhost/mydb"
-    /// // - MySQL: "mysql://localhost/mydb"
-    /// // - SQLite (in-memory): "sqlite::memory:"
-    /// // - SQLite (file): "sqlite://sessions.db"
-    ///
-    /// let backend = DatabaseSessionBackend::new("sqlite::memory:").await.unwrap();
-    /// // Backend created successfully
-    /// # }
-    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-    /// ```
-    pub async fn new(database_url: &str) -> Result<Self, SessionError> {
-        let pool = AnyPool::connect(database_url)
-            .await
-            .map_err(|e| SessionError::CacheError(format!("Database connection error: {}", e)))?;
+	/// Create a new database session backend
+	///
+	/// Initializes a connection pool to the specified database URL.
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_sessions::backends::DatabaseSessionBackend;
+	///
+	/// # async fn example() {
+	/// // Supports multiple database backends:
+	/// // - PostgreSQL: "postgres://localhost/mydb"
+	/// // - MySQL: "mysql://localhost/mydb"
+	/// // - SQLite (in-memory): "sqlite::memory:"
+	/// // - SQLite (file): "sqlite://sessions.db"
+	///
+	/// let backend = DatabaseSessionBackend::new("sqlite::memory:").await.unwrap();
+	/// // Backend created successfully
+	/// # }
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+	/// ```
+	pub async fn new(database_url: &str) -> Result<Self, SessionError> {
+		let pool = AnyPool::connect(database_url)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Database connection error: {}", e)))?;
 
-        Ok(Self {
-            pool: Arc::new(pool),
-        })
-    }
+		Ok(Self {
+			pool: Arc::new(pool),
+		})
+	}
 
-    /// Create a new backend from an existing pool
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use reinhardt_sessions::backends::DatabaseSessionBackend;
-    /// use sqlx::AnyPool;
-    /// use std::sync::Arc;
-    ///
-    /// # async fn example() {
-    /// let pool = AnyPool::connect("sqlite::memory:").await.unwrap();
-    /// let backend = DatabaseSessionBackend::from_pool(Arc::new(pool));
-    /// // Backend created from existing pool
-    /// # }
-    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-    /// ```
-    pub fn from_pool(pool: Arc<AnyPool>) -> Self {
-        Self { pool }
-    }
+	/// Create a new backend from an existing pool
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_sessions::backends::DatabaseSessionBackend;
+	/// use sqlx::AnyPool;
+	/// use std::sync::Arc;
+	///
+	/// # async fn example() {
+	/// let pool = AnyPool::connect("sqlite::memory:").await.unwrap();
+	/// let backend = DatabaseSessionBackend::from_pool(Arc::new(pool));
+	/// // Backend created from existing pool
+	/// # }
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+	/// ```
+	pub fn from_pool(pool: Arc<AnyPool>) -> Self {
+		Self { pool }
+	}
 
-    /// Create the sessions table if it doesn't exist
-    ///
-    /// Creates the required database table for session storage.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use reinhardt_sessions::backends::DatabaseSessionBackend;
-    ///
-    /// # async fn example() {
-    /// let backend = DatabaseSessionBackend::new("sqlite::memory:").await.unwrap();
-    /// backend.create_table().await.unwrap();
-    /// // Table created successfully
-    /// # }
-    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-    /// ```
-    pub async fn create_table(&self) -> Result<(), SessionError> {
-        let stmt = Table::create()
-            .table(Alias::new("sessions"))
-            .if_not_exists()
-            .col(
-                ColumnDef::new(Alias::new("session_key"))
-                    .string_len(255)
-                    .not_null()
-                    .primary_key(),
-            )
-            .col(ColumnDef::new(Alias::new("session_data")).text().not_null())
-            .col(
-                ColumnDef::new(Alias::new("expire_date"))
-                    .timestamp()
-                    .not_null(),
-            )
-            .to_owned();
-        let sql = stmt.to_string(SqliteQueryBuilder);
+	/// Create the sessions table if it doesn't exist
+	///
+	/// Creates the required database table for session storage.
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_sessions::backends::DatabaseSessionBackend;
+	///
+	/// # async fn example() {
+	/// let backend = DatabaseSessionBackend::new("sqlite::memory:").await.unwrap();
+	/// backend.create_table().await.unwrap();
+	/// // Table created successfully
+	/// # }
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+	/// ```
+	pub async fn create_table(&self) -> Result<(), SessionError> {
+		let stmt = Table::create()
+			.table(Alias::new("sessions"))
+			.if_not_exists()
+			.col(
+				ColumnDef::new(Alias::new("session_key"))
+					.string_len(255)
+					.not_null()
+					.primary_key(),
+			)
+			.col(ColumnDef::new(Alias::new("session_data")).text().not_null())
+			.col(
+				ColumnDef::new(Alias::new("expire_date"))
+					.timestamp()
+					.not_null(),
+			)
+			.to_owned();
+		let sql = stmt.to_string(SqliteQueryBuilder);
 
-        sqlx::query(&sql)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| SessionError::CacheError(format!("Failed to create table: {}", e)))?;
+		sqlx::query(&sql)
+			.execute(&*self.pool)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to create table: {}", e)))?;
 
-        // Create index on expire_date for efficient cleanup
-        let idx = Index::create()
-            .if_not_exists()
-            .name("idx_sessions_expire_date")
-            .table(Alias::new("sessions"))
-            .col(Alias::new("expire_date"))
-            .to_owned();
-        let sql = idx.to_string(SqliteQueryBuilder);
+		// Create index on expire_date for efficient cleanup
+		let idx = Index::create()
+			.if_not_exists()
+			.name("idx_sessions_expire_date")
+			.table(Alias::new("sessions"))
+			.col(Alias::new("expire_date"))
+			.to_owned();
+		let sql = idx.to_string(SqliteQueryBuilder);
 
-        sqlx::query(&sql)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| SessionError::CacheError(format!("Failed to create index: {}", e)))?;
+		sqlx::query(&sql)
+			.execute(&*self.pool)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to create index: {}", e)))?;
 
-        Ok(())
-    }
+		Ok(())
+	}
 
-    /// Clean up expired sessions
-    ///
-    /// Deletes all sessions that have passed their expiration time.
-    /// This should be called periodically to prevent database bloat.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use reinhardt_sessions::backends::DatabaseSessionBackend;
-    ///
-    /// # async fn example() {
-    /// let backend = DatabaseSessionBackend::new("sqlite::memory:").await.unwrap();
-    /// backend.create_table().await.unwrap();
-    ///
-    /// // Clean up expired sessions
-    /// let deleted_count = backend.cleanup_expired().await.unwrap();
-    /// assert!(deleted_count >= 0); // Returns number of deleted sessions
-    /// # }
-    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-    /// ```
-    pub async fn cleanup_expired(&self) -> Result<u64, SessionError> {
-        let now = Utc::now();
-        let stmt = Query::delete()
-            .from_table(Alias::new("sessions"))
-            .and_where(Expr::col(Alias::new("expire_date")).lt(now.to_rfc3339()))
-            .to_owned();
-        let sql = stmt.to_string(SqliteQueryBuilder);
+	/// Clean up expired sessions
+	///
+	/// Deletes all sessions that have passed their expiration time.
+	/// This should be called periodically to prevent database bloat.
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_sessions::backends::DatabaseSessionBackend;
+	///
+	/// # async fn example() {
+	/// let backend = DatabaseSessionBackend::new("sqlite::memory:").await.unwrap();
+	/// backend.create_table().await.unwrap();
+	///
+	/// // Clean up expired sessions
+	/// let deleted_count = backend.cleanup_expired().await.unwrap();
+	/// assert!(deleted_count >= 0); // Returns number of deleted sessions
+	/// # }
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+	/// ```
+	pub async fn cleanup_expired(&self) -> Result<u64, SessionError> {
+		let now = Utc::now();
+		let stmt = Query::delete()
+			.from_table(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("expire_date")).lt(now.to_rfc3339()))
+			.to_owned();
+		let sql = stmt.to_string(SqliteQueryBuilder);
 
-        let result = sqlx::query(&sql)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| SessionError::CacheError(format!("Failed to cleanup sessions: {}", e)))?;
+		let result = sqlx::query(&sql)
+			.execute(&*self.pool)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to cleanup sessions: {}", e)))?;
 
-        Ok(result.rows_affected())
-    }
+		Ok(result.rows_affected())
+	}
 }
 
 #[async_trait]
 impl SessionBackend for DatabaseSessionBackend {
-    async fn load<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
-    where
-        T: for<'de> Deserialize<'de> + Send,
-    {
-        let stmt = Query::select()
-            .columns([Alias::new("session_data"), Alias::new("expire_date")])
-            .from(Alias::new("sessions"))
-            .and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-            .to_owned();
-        let sql = stmt.to_string(SqliteQueryBuilder);
+	async fn load<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
+	where
+		T: for<'de> Deserialize<'de> + Send,
+	{
+		let stmt = Query::select()
+			.columns([Alias::new("session_data"), Alias::new("expire_date")])
+			.from(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
+			.to_owned();
+		let sql = stmt.to_string(SqliteQueryBuilder);
 
-        let row = sqlx::query(&sql)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(|e| SessionError::CacheError(format!("Failed to load session: {}", e)))?;
+		let row = sqlx::query(&sql)
+			.fetch_optional(&*self.pool)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to load session: {}", e)))?;
 
-        match row {
-            Some(row) => {
-                // Check if session has expired
-                let expire_date_str: String = row
-                    .try_get("expire_date")
-                    .map_err(|e| SessionError::CacheError(format!("Invalid expire_date: {}", e)))?;
+		match row {
+			Some(row) => {
+				// Check if session has expired
+				let expire_date_str: String = row
+					.try_get("expire_date")
+					.map_err(|e| SessionError::CacheError(format!("Invalid expire_date: {}", e)))?;
 
-                let expire_date = DateTime::parse_from_rfc3339(&expire_date_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
+				let expire_date = DateTime::parse_from_rfc3339(&expire_date_str)
+					.map(|dt| dt.with_timezone(&Utc))
+					.unwrap_or_else(|_| Utc::now());
 
-                if expire_date < Utc::now() {
-                    // Session expired, delete it
-                    let _ = self.delete(session_key).await;
-                    return Ok(None);
-                }
+				if expire_date < Utc::now() {
+					// Session expired, delete it
+					let _ = self.delete(session_key).await;
+					return Ok(None);
+				}
 
-                let session_data: String = row.try_get("session_data").map_err(|e| {
-                    SessionError::CacheError(format!("Invalid session_data: {}", e))
-                })?;
+				let session_data: String = row.try_get("session_data").map_err(|e| {
+					SessionError::CacheError(format!("Invalid session_data: {}", e))
+				})?;
 
-                let data: T = serde_json::from_str(&session_data).map_err(|e| {
-                    SessionError::SerializationError(format!("Deserialization error: {}", e))
-                })?;
+				let data: T = serde_json::from_str(&session_data).map_err(|e| {
+					SessionError::SerializationError(format!("Deserialization error: {}", e))
+				})?;
 
-                Ok(Some(data))
-            }
-            None => Ok(None),
-        }
-    }
+				Ok(Some(data))
+			}
+			None => Ok(None),
+		}
+	}
 
-    async fn save<T>(
-        &self,
-        session_key: &str,
-        data: &T,
-        ttl: Option<u64>,
-    ) -> Result<(), SessionError>
-    where
-        T: Serialize + Send + Sync,
-    {
-        let session_data = serde_json::to_string(data)
-            .map_err(|e| SessionError::SerializationError(format!("Serialization error: {}", e)))?;
+	async fn save<T>(
+		&self,
+		session_key: &str,
+		data: &T,
+		ttl: Option<u64>,
+	) -> Result<(), SessionError>
+	where
+		T: Serialize + Send + Sync,
+	{
+		let session_data = serde_json::to_string(data)
+			.map_err(|e| SessionError::SerializationError(format!("Serialization error: {}", e)))?;
 
-        let expire_date = match ttl {
-            Some(seconds) => Utc::now() + Duration::seconds(seconds as i64),
-            None => Utc::now() + Duration::days(14), // Default 14 days
-        };
+		let expire_date = match ttl {
+			Some(seconds) => Utc::now() + Duration::seconds(seconds as i64),
+			None => Utc::now() + Duration::days(14), // Default 14 days
+		};
 
-        // Use REPLACE for SQLite compatibility or INSERT ... ON CONFLICT UPDATE for others
-        // For simplicity, we'll delete then insert
-        let _ = self.delete(session_key).await;
+		// Use REPLACE for SQLite compatibility or INSERT ... ON CONFLICT UPDATE for others
+		// For simplicity, we'll delete then insert
+		let _ = self.delete(session_key).await;
 
-        let stmt = Query::insert()
-            .into_table(Alias::new("sessions"))
-            .columns([
-                Alias::new("session_key"),
-                Alias::new("session_data"),
-                Alias::new("expire_date"),
-            ])
-            .values(
-                [
-                    Expr::val(session_key),
-                    Expr::val(session_data),
-                    Expr::val(expire_date.to_rfc3339()),
-                ]
-                .into_iter()
-                .collect::<Vec<Expr>>(),
-            )
-            .unwrap()
-            .to_owned();
-        let sql = stmt.to_string(SqliteQueryBuilder);
+		let stmt = Query::insert()
+			.into_table(Alias::new("sessions"))
+			.columns([
+				Alias::new("session_key"),
+				Alias::new("session_data"),
+				Alias::new("expire_date"),
+			])
+			.values(
+				[
+					Expr::val(session_key),
+					Expr::val(session_data),
+					Expr::val(expire_date.to_rfc3339()),
+				]
+				.into_iter()
+				.collect::<Vec<Expr>>(),
+			)
+			.unwrap()
+			.to_owned();
+		let sql = stmt.to_string(SqliteQueryBuilder);
 
-        sqlx::query(&sql)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| SessionError::CacheError(format!("Failed to save session: {}", e)))?;
+		sqlx::query(&sql)
+			.execute(&*self.pool)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to save session: {}", e)))?;
 
-        Ok(())
-    }
+		Ok(())
+	}
 
-    async fn delete(&self, session_key: &str) -> Result<(), SessionError> {
-        let stmt = Query::delete()
-            .from_table(Alias::new("sessions"))
-            .and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-            .to_owned();
-        let sql = stmt.to_string(SqliteQueryBuilder);
+	async fn delete(&self, session_key: &str) -> Result<(), SessionError> {
+		let stmt = Query::delete()
+			.from_table(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
+			.to_owned();
+		let sql = stmt.to_string(SqliteQueryBuilder);
 
-        sqlx::query(&sql)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| SessionError::CacheError(format!("Failed to delete session: {}", e)))?;
+		sqlx::query(&sql)
+			.execute(&*self.pool)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to delete session: {}", e)))?;
 
-        Ok(())
-    }
+		Ok(())
+	}
 
-    async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
-        let now = Utc::now();
-        let stmt = Query::select()
-            .expr(Expr::value(1))
-            .from(Alias::new("sessions"))
-            .and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-            .and_where(Expr::col(Alias::new("expire_date")).gt(now.to_rfc3339()))
-            .to_owned();
-        let sql = stmt.to_string(SqliteQueryBuilder);
+	async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
+		let now = Utc::now();
+		let stmt = Query::select()
+			.expr(Expr::value(1))
+			.from(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
+			.and_where(Expr::col(Alias::new("expire_date")).gt(now.to_rfc3339()))
+			.to_owned();
+		let sql = stmt.to_string(SqliteQueryBuilder);
 
-        let row = sqlx::query(&sql)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(|e| {
-                SessionError::CacheError(format!("Failed to check session existence: {}", e))
-            })?;
+		let row = sqlx::query(&sql)
+			.fetch_optional(&*self.pool)
+			.await
+			.map_err(|e| {
+				SessionError::CacheError(format!("Failed to check session existence: {}", e))
+			})?;
 
-        Ok(row.is_some())
-    }
+		Ok(row.is_some())
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::json;
+	use super::*;
+	use serde_json::json;
 
-    async fn create_test_backend() -> DatabaseSessionBackend {
-        let backend = DatabaseSessionBackend::new("sqlite::memory:")
-            .await
-            .expect("Failed to create test backend");
-        backend
-            .create_table()
-            .await
-            .expect("Failed to create table");
-        backend
-    }
+	async fn create_test_backend() -> DatabaseSessionBackend {
+		let backend = DatabaseSessionBackend::new("sqlite::memory:")
+			.await
+			.expect("Failed to create test backend");
+		backend
+			.create_table()
+			.await
+			.expect("Failed to create table");
+		backend
+	}
 
-    #[tokio::test]
-    async fn test_save_and_load_session() {
-        let backend = create_test_backend().await;
-        let session_key = "test_session_1";
-        let data = json!({
-            "user_id": 123,
-            "username": "testuser",
-        });
+	#[tokio::test]
+	async fn test_save_and_load_session() {
+		let backend = create_test_backend().await;
+		let session_key = "test_session_1";
+		let data = json!({
+			"user_id": 123,
+			"username": "testuser",
+		});
 
-        // Save session
-        backend
-            .save(session_key, &data, Some(3600))
-            .await
-            .expect("Failed to save session");
+		// Save session
+		backend
+			.save(session_key, &data, Some(3600))
+			.await
+			.expect("Failed to save session");
 
-        // Load session
-        let loaded: Option<serde_json::Value> = backend
-            .load(session_key)
-            .await
-            .expect("Failed to load session");
+		// Load session
+		let loaded: Option<serde_json::Value> = backend
+			.load(session_key)
+			.await
+			.expect("Failed to load session");
 
-        assert_eq!(loaded, Some(data));
-    }
+		assert_eq!(loaded, Some(data));
+	}
 
-    #[tokio::test]
-    async fn test_session_exists() {
-        let backend = create_test_backend().await;
-        let session_key = "test_session_2";
-        let data = json!({"test": "data"});
+	#[tokio::test]
+	async fn test_session_exists() {
+		let backend = create_test_backend().await;
+		let session_key = "test_session_2";
+		let data = json!({"test": "data"});
 
-        // Session should not exist initially
-        let exists = backend
-            .exists(session_key)
-            .await
-            .expect("Failed to check existence");
-        assert!(!exists);
+		// Session should not exist initially
+		let exists = backend
+			.exists(session_key)
+			.await
+			.expect("Failed to check existence");
+		assert!(!exists);
 
-        // Save session
-        backend
-            .save(session_key, &data, Some(3600))
-            .await
-            .expect("Failed to save session");
+		// Save session
+		backend
+			.save(session_key, &data, Some(3600))
+			.await
+			.expect("Failed to save session");
 
-        // Session should now exist
-        let exists = backend
-            .exists(session_key)
-            .await
-            .expect("Failed to check existence");
-        assert!(exists);
-    }
+		// Session should now exist
+		let exists = backend
+			.exists(session_key)
+			.await
+			.expect("Failed to check existence");
+		assert!(exists);
+	}
 
-    #[tokio::test]
-    async fn test_delete_session() {
-        let backend = create_test_backend().await;
-        let session_key = "test_session_3";
-        let data = json!({"test": "data"});
+	#[tokio::test]
+	async fn test_delete_session() {
+		let backend = create_test_backend().await;
+		let session_key = "test_session_3";
+		let data = json!({"test": "data"});
 
-        // Save session
-        backend
-            .save(session_key, &data, Some(3600))
-            .await
-            .expect("Failed to save session");
+		// Save session
+		backend
+			.save(session_key, &data, Some(3600))
+			.await
+			.expect("Failed to save session");
 
-        // Verify session exists
-        assert!(backend
-            .exists(session_key)
-            .await
-            .expect("Failed to check existence"));
+		// Verify session exists
+		assert!(
+			backend
+				.exists(session_key)
+				.await
+				.expect("Failed to check existence")
+		);
 
-        // Delete session
-        backend
-            .delete(session_key)
-            .await
-            .expect("Failed to delete session");
+		// Delete session
+		backend
+			.delete(session_key)
+			.await
+			.expect("Failed to delete session");
 
-        // Verify session no longer exists
-        assert!(!backend
-            .exists(session_key)
-            .await
-            .expect("Failed to check existence"));
-    }
+		// Verify session no longer exists
+		assert!(
+			!backend
+				.exists(session_key)
+				.await
+				.expect("Failed to check existence")
+		);
+	}
 
-    #[tokio::test]
-    async fn test_expired_session() {
-        let backend = create_test_backend().await;
-        let session_key = "test_session_4";
-        let data = json!({"test": "data"});
+	#[tokio::test]
+	async fn test_expired_session() {
+		let backend = create_test_backend().await;
+		let session_key = "test_session_4";
+		let data = json!({"test": "data"});
 
-        // Save session with 0 second TTL (immediately expired)
-        backend
-            .save(session_key, &data, Some(0))
-            .await
-            .expect("Failed to save session");
+		// Save session with 0 second TTL (immediately expired)
+		backend
+			.save(session_key, &data, Some(0))
+			.await
+			.expect("Failed to save session");
 
-        // Wait a moment to ensure expiration
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+		// Wait a moment to ensure expiration
+		tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-        // Try to load expired session
-        let loaded: Option<serde_json::Value> = backend
-            .load(session_key)
-            .await
-            .expect("Failed to load session");
+		// Try to load expired session
+		let loaded: Option<serde_json::Value> = backend
+			.load(session_key)
+			.await
+			.expect("Failed to load session");
 
-        assert_eq!(loaded, None);
-    }
+		assert_eq!(loaded, None);
+	}
 
-    #[tokio::test]
-    async fn test_cleanup_expired() {
-        let backend = create_test_backend().await;
+	#[tokio::test]
+	async fn test_cleanup_expired() {
+		let backend = create_test_backend().await;
 
-        // Save some expired sessions
-        for i in 0..5 {
-            let key = format!("expired_{}", i);
-            backend
-                .save(&key, &json!({ "test": i }), Some(0))
-                .await
-                .expect("Failed to save session");
-        }
+		// Save some expired sessions
+		for i in 0..5 {
+			let key = format!("expired_{}", i);
+			backend
+				.save(&key, &json!({ "test": i }), Some(0))
+				.await
+				.expect("Failed to save session");
+		}
 
-        // Save some active sessions
-        for i in 0..3 {
-            let key = format!("active_{}", i);
-            backend
-                .save(&key, &json!({ "test": i }), Some(3600))
-                .await
-                .expect("Failed to save session");
-        }
+		// Save some active sessions
+		for i in 0..3 {
+			let key = format!("active_{}", i);
+			backend
+				.save(&key, &json!({ "test": i }), Some(3600))
+				.await
+				.expect("Failed to save session");
+		}
 
-        // Wait for expiration
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+		// Wait for expiration
+		tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-        // Clean up expired sessions
-        let deleted = backend.cleanup_expired().await.expect("Failed to cleanup");
+		// Clean up expired sessions
+		let deleted = backend.cleanup_expired().await.expect("Failed to cleanup");
 
-        assert_eq!(deleted, 5);
+		assert_eq!(deleted, 5);
 
-        // Verify active sessions still exist
-        for i in 0..3 {
-            let key = format!("active_{}", i);
-            assert!(backend
-                .exists(&key)
-                .await
-                .expect("Failed to check existence"));
-        }
-    }
+		// Verify active sessions still exist
+		for i in 0..3 {
+			let key = format!("active_{}", i);
+			assert!(
+				backend
+					.exists(&key)
+					.await
+					.expect("Failed to check existence")
+			);
+		}
+	}
 }

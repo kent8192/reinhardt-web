@@ -6,7 +6,7 @@ use crate::schema::{BaseDatabaseSchemaEditor, SchemaEditorError, SchemaEditorRes
 
 /// Quote MySQL identifier (backtick escaping)
 fn quote_mysql_identifier(name: &str) -> String {
-    format!("`{}`", name.replace('`', "``"))
+	format!("`{}`", name.replace('`', "``"))
 }
 
 /// MySQL schema editor for DDL operations
@@ -27,97 +27,97 @@ fn quote_mysql_identifier(name: &str) -> String {
 pub struct MySQLSchemaEditor;
 
 impl MySQLSchemaEditor {
-    /// Create a new MySQL schema editor
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_db::backends::mysql::schema::MySQLSchemaEditor;
-    ///
-    /// let editor = MySQLSchemaEditor::new();
-    /// ```
-    pub fn new() -> Self {
-        Self
-    }
+	/// Create a new MySQL schema editor
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_db::backends::mysql::schema::MySQLSchemaEditor;
+	///
+	/// let editor = MySQLSchemaEditor::new();
+	/// ```
+	pub fn new() -> Self {
+		Self
+	}
 
-    /// Generate ALTER COLUMN SQL (MySQL-specific)
-    ///
-    /// MySQL uses MODIFY COLUMN for altering columns
-    pub fn alter_column_sql(&self, table_name: &str, column_name: &str, new_type: &str) -> String {
-        format!(
-            "ALTER TABLE {} MODIFY COLUMN {} {}",
-            quote_mysql_identifier(table_name),
-            quote_mysql_identifier(column_name),
-            new_type
-        )
-    }
+	/// Generate ALTER COLUMN SQL (MySQL-specific)
+	///
+	/// MySQL uses MODIFY COLUMN for altering columns
+	pub fn alter_column_sql(&self, table_name: &str, column_name: &str, new_type: &str) -> String {
+		format!(
+			"ALTER TABLE {} MODIFY COLUMN {} {}",
+			quote_mysql_identifier(table_name),
+			quote_mysql_identifier(column_name),
+			new_type
+		)
+	}
 
-    /// Generate RENAME TABLE SQL (MySQL-specific)
-    pub fn rename_table_sql(&self, old_name: &str, new_name: &str) -> String {
-        format!(
-            "ALTER TABLE {} RENAME TO {}",
-            quote_mysql_identifier(old_name),
-            quote_mysql_identifier(new_name)
-        )
-    }
+	/// Generate RENAME TABLE SQL (MySQL-specific)
+	pub fn rename_table_sql(&self, old_name: &str, new_name: &str) -> String {
+		format!(
+			"ALTER TABLE {} RENAME TO {}",
+			quote_mysql_identifier(old_name),
+			quote_mysql_identifier(new_name)
+		)
+	}
 
-    /// Generate ADD CONSTRAINT SQL (MySQL-specific)
-    pub fn add_constraint_sql(&self, table_name: &str, constraint_sql: &str) -> String {
-        format!(
-            "ALTER TABLE {} ADD {}",
-            quote_mysql_identifier(table_name),
-            constraint_sql
-        )
-    }
+	/// Generate ADD CONSTRAINT SQL (MySQL-specific)
+	pub fn add_constraint_sql(&self, table_name: &str, constraint_sql: &str) -> String {
+		format!(
+			"ALTER TABLE {} ADD {}",
+			quote_mysql_identifier(table_name),
+			constraint_sql
+		)
+	}
 
-    /// Generate DROP CONSTRAINT SQL (MySQL-specific)
-    pub fn drop_constraint_sql(&self, table_name: &str, constraint_name: &str) -> String {
-        format!(
-            "ALTER TABLE {} DROP CONSTRAINT {}",
-            quote_mysql_identifier(table_name),
-            quote_mysql_identifier(constraint_name)
-        )
-    }
+	/// Generate DROP CONSTRAINT SQL (MySQL-specific)
+	pub fn drop_constraint_sql(&self, table_name: &str, constraint_name: &str) -> String {
+		format!(
+			"ALTER TABLE {} DROP CONSTRAINT {}",
+			quote_mysql_identifier(table_name),
+			quote_mysql_identifier(constraint_name)
+		)
+	}
 }
 
 #[async_trait::async_trait]
 impl BaseDatabaseSchemaEditor for MySQLSchemaEditor {
-    async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
-        Err(SchemaEditorError::ExecutionError(
-            "Execution not supported in schema editor".to_string(),
-        ))
-    }
+	async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
+		Err(SchemaEditorError::ExecutionError(
+			"Execution not supported in schema editor".to_string(),
+		))
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_alter_column_sql() {
-        let editor = MySQLSchemaEditor::new();
-        let sql = editor.alter_column_sql("users", "email", "TEXT");
-        assert_eq!(sql, "ALTER TABLE `users` MODIFY COLUMN `email` TEXT");
-    }
+	#[test]
+	fn test_alter_column_sql() {
+		let editor = MySQLSchemaEditor::new();
+		let sql = editor.alter_column_sql("users", "email", "TEXT");
+		assert_eq!(sql, "ALTER TABLE `users` MODIFY COLUMN `email` TEXT");
+	}
 
-    #[test]
-    fn test_rename_table_sql() {
-        let editor = MySQLSchemaEditor::new();
-        let sql = editor.rename_table_sql("users", "people");
-        assert_eq!(sql, "ALTER TABLE `users` RENAME TO `people`");
-    }
+	#[test]
+	fn test_rename_table_sql() {
+		let editor = MySQLSchemaEditor::new();
+		let sql = editor.rename_table_sql("users", "people");
+		assert_eq!(sql, "ALTER TABLE `users` RENAME TO `people`");
+	}
 
-    #[test]
-    fn test_add_constraint_sql() {
-        let editor = MySQLSchemaEditor::new();
-        let sql = editor.add_constraint_sql("users", "UNIQUE (email)");
-        assert_eq!(sql, "ALTER TABLE `users` ADD UNIQUE (email)");
-    }
+	#[test]
+	fn test_add_constraint_sql() {
+		let editor = MySQLSchemaEditor::new();
+		let sql = editor.add_constraint_sql("users", "UNIQUE (email)");
+		assert_eq!(sql, "ALTER TABLE `users` ADD UNIQUE (email)");
+	}
 
-    #[test]
-    fn test_drop_constraint_sql() {
-        let editor = MySQLSchemaEditor::new();
-        let sql = editor.drop_constraint_sql("users", "unique_email");
-        assert_eq!(sql, "ALTER TABLE `users` DROP CONSTRAINT `unique_email`");
-    }
+	#[test]
+	fn test_drop_constraint_sql() {
+		let editor = MySQLSchemaEditor::new();
+		let sql = editor.drop_constraint_sql("users", "unique_email");
+		assert_eq!(sql, "ALTER TABLE `users` DROP CONSTRAINT `unique_email`");
+	}
 }

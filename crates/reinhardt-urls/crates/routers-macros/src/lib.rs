@@ -34,11 +34,11 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, LitStr};
+use syn::{LitStr, parse_macro_input};
 
 mod validation;
 
-use validation::{validate_path_syntax, PathValidationError};
+use validation::{PathValidationError, validate_path_syntax};
 
 /// Validates URL path syntax at compile time.
 ///
@@ -77,87 +77,87 @@ use validation::{validate_path_syntax, PathValidationError};
 /// ```
 #[proc_macro]
 pub fn path(input: TokenStream) -> TokenStream {
-    let path_str = parse_macro_input!(input as LitStr);
-    let path = path_str.value();
+	let path_str = parse_macro_input!(input as LitStr);
+	let path = path_str.value();
 
-    // Validate path syntax
-    if let Err(e) = validate_path_syntax(&path) {
-        let error_msg = format_error_message(&e);
-        return syn::Error::new(path_str.span(), error_msg)
-            .to_compile_error()
-            .into();
-    }
+	// Validate path syntax
+	if let Err(e) = validate_path_syntax(&path) {
+		let error_msg = format_error_message(&e);
+		return syn::Error::new(path_str.span(), error_msg)
+			.to_compile_error()
+			.into();
+	}
 
-    // Return the validated path string as-is
-    // The consuming code is expected to handle PathPattern creation
-    quote! {
-        #path_str
-    }
-    .into()
+	// Return the validated path string as-is
+	// The consuming code is expected to handle PathPattern creation
+	quote! {
+		#path_str
+	}
+	.into()
 }
 
 /// Formats validation errors with helpful context
 fn format_error_message(error: &PathValidationError) -> String {
-    match error {
-        PathValidationError::MustStartWithSlash => "URL path must start with '/'\n\
+	match error {
+		PathValidationError::MustStartWithSlash => "URL path must start with '/'\n\
              Example: path!(\"/users/\") instead of path!(\"users/\")"
-            .to_string(),
-        PathValidationError::UnmatchedOpenBrace(pos) => {
-            format!(
-                "Unmatched '{{' at position {}\n\
+			.to_string(),
+		PathValidationError::UnmatchedOpenBrace(pos) => {
+			format!(
+				"Unmatched '{{' at position {}\n\
                  All parameter markers must be properly closed with '}}'",
-                pos
-            )
-        }
-        PathValidationError::UnmatchedCloseBrace(pos) => {
-            format!(
-                "Unmatched '}}' at position {}\n\
+				pos
+			)
+		}
+		PathValidationError::UnmatchedCloseBrace(pos) => {
+			format!(
+				"Unmatched '}}' at position {}\n\
                  Found closing brace without matching opening brace",
-                pos
-            )
-        }
-        PathValidationError::EmptyParameterName(pos) => {
-            format!(
-                "Empty parameter name at position {}\n\
+				pos
+			)
+		}
+		PathValidationError::EmptyParameterName(pos) => {
+			format!(
+				"Empty parameter name at position {}\n\
                  Parameter names must not be empty: use {{param_name}}",
-                pos
-            )
-        }
-        PathValidationError::InvalidParameterName { name, position } => {
-            format!(
-                "Invalid parameter name '{}' at position {}\n\
+				pos
+			)
+		}
+		PathValidationError::InvalidParameterName { name, position } => {
+			format!(
+				"Invalid parameter name '{}' at position {}\n\
                  Parameter names must be valid snake_case identifiers:\n\
                  - Start with lowercase letter or underscore\n\
                  - Contain only lowercase letters, digits, and underscores\n\
                  Example: {{user_id}} instead of {{userId}} or {{user-id}}",
-                name, position
-            )
-        }
-        PathValidationError::DoubleSlash(pos) => {
-            format!(
-                "Double slash '//' found at position {}\n\
+				name, position
+			)
+		}
+		PathValidationError::DoubleSlash(pos) => {
+			format!(
+				"Double slash '//' found at position {}\n\
                  Paths should not contain consecutive slashes",
-                pos
-            )
-        }
-        PathValidationError::InvalidCharacter { ch, position } => {
-            format!(
-                "Invalid character '{}' at position {}\n\
+				pos
+			)
+		}
+		PathValidationError::InvalidCharacter { ch, position } => {
+			format!(
+				"Invalid character '{}' at position {}\n\
                  URL paths may only contain:\n\
                  - Alphanumeric characters (a-z, A-Z, 0-9)\n\
                  - Hyphens (-)\n\
                  - Underscores (_)\n\
                  - Slashes (/)\n\
                  - Curly braces for parameters ({{, }})",
-                ch, position
-            )
-        }
-        PathValidationError::NestedParameters(pos) => {
-            format!(
-                "Nested parameter at position {}\n\
+				ch, position
+			)
+		}
+		PathValidationError::NestedParameters(pos) => {
+			format!(
+				"Nested parameter at position {}\n\
                  Parameters cannot be nested: use {{outer}} instead of {{{{inner}}}}",
-                pos
-            )
-        }
-    }
+				pos
+			)
+		}
+	}
 }

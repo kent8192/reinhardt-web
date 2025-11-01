@@ -65,49 +65,49 @@ use tera::Context;
 /// - Returns HTTP 500 if template rendering fails
 #[cfg(feature = "templates")]
 pub fn render_template<K, V>(
-    _request: &Request,
-    template_name: &str,
-    context: HashMap<K, V>,
+	_request: &Request,
+	template_name: &str,
+	context: HashMap<K, V>,
 ) -> Result<Response, Response>
 where
-    K: AsRef<str>,
-    V: Serialize,
+	K: AsRef<str>,
+	V: Serialize,
 {
-    let tera = get_tera_engine();
+	let tera = get_tera_engine();
 
-    // Convert HashMap to Tera Context
-    let mut tera_context = Context::new();
-    for (key, value) in context {
-        // Serialize to serde_json::Value for Tera
-        if let Ok(json_value) = serde_json::to_value(value) {
-            tera_context.insert(key.as_ref(), &json_value);
-        }
-    }
+	// Convert HashMap to Tera Context
+	let mut tera_context = Context::new();
+	for (key, value) in context {
+		// Serialize to serde_json::Value for Tera
+		if let Ok(json_value) = serde_json::to_value(value) {
+			tera_context.insert(key.as_ref(), &json_value);
+		}
+	}
 
-    // Render template with Tera
-    let html = tera.render(template_name, &tera_context).map_err(|e| {
-        let error_msg = e.to_string();
+	// Render template with Tera
+	let html = tera.render(template_name, &tera_context).map_err(|e| {
+		let error_msg = e.to_string();
 
-        // Check if it's a template not found error
-        if error_msg.contains("not found") || error_msg.contains("doesn't exist") {
-            let mut response = Response::not_found();
-            response.body = bytes::Bytes::from(format!("Template not found: {}", template_name));
-            response
-        } else {
-            let mut response = Response::internal_server_error();
-            response.body = bytes::Bytes::from(format!("Template rendering failed: {}", error_msg));
-            response
-        }
-    })?;
+		// Check if it's a template not found error
+		if error_msg.contains("not found") || error_msg.contains("doesn't exist") {
+			let mut response = Response::not_found();
+			response.body = bytes::Bytes::from(format!("Template not found: {}", template_name));
+			response
+		} else {
+			let mut response = Response::internal_server_error();
+			response.body = bytes::Bytes::from(format!("Template rendering failed: {}", error_msg));
+			response
+		}
+	})?;
 
-    let mut response = Response::ok();
-    response.headers.insert(
-        hyper::header::CONTENT_TYPE,
-        hyper::header::HeaderValue::from_static("text/html; charset=utf-8"),
-    );
-    response.body = bytes::Bytes::from(html);
+	let mut response = Response::ok();
+	response.headers.insert(
+		hyper::header::CONTENT_TYPE,
+		hyper::header::HeaderValue::from_static("text/html; charset=utf-8"),
+	);
+	response.body = bytes::Bytes::from(html);
 
-    Ok(response)
+	Ok(response)
 }
 
 /// Render a template to HTTP response with custom configuration
@@ -157,78 +157,78 @@ where
 /// Returns `Err(Response)` with HTTP 500 if template rendering fails
 #[cfg(feature = "templates")]
 pub fn render_to_response<K, V>(
-    request: &Request,
-    template_name: &str,
-    context: HashMap<K, V>,
+	request: &Request,
+	template_name: &str,
+	context: HashMap<K, V>,
 ) -> Result<Response, Response>
 where
-    K: AsRef<str>,
-    V: Serialize,
+	K: AsRef<str>,
+	V: Serialize,
 {
-    // Use render_template as the base implementation
-    render_template(request, template_name, context)
+	// Use render_template as the base implementation
+	render_template(request, template_name, context)
 }
 
 #[cfg(all(test, feature = "templates"))]
 mod tests {
-    use super::*;
-    use bytes::Bytes;
-    use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-    use reinhardt_http::Request;
+	use super::*;
+	use bytes::Bytes;
+	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+	use reinhardt_http::Request;
 
-    fn create_test_request() -> Request {
-        Request::new(
-            Method::GET,
-            Uri::from_static("/"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        )
-    }
+	fn create_test_request() -> Request {
+		Request::new(
+			Method::GET,
+			Uri::from_static("/"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		)
+	}
 
-    #[test]
-    fn test_render_template_not_found() {
-        // Test that non-existent template returns 404
-        let request = create_test_request();
-        let mut context = HashMap::new();
-        context.insert("title", "Test Page");
+	#[test]
+	fn test_render_template_not_found() {
+		// Test that non-existent template returns 404
+		let request = create_test_request();
+		let mut context = HashMap::new();
+		context.insert("title", "Test Page");
 
-        let result = render_template(&request, "nonexistent.html", context);
-        assert!(result.is_err());
+		let result = render_template(&request, "nonexistent.html", context);
+		assert!(result.is_err());
 
-        if let Err(response) = result {
-            assert_eq!(response.status, StatusCode::NOT_FOUND);
-            let body = String::from_utf8(response.body.to_vec()).unwrap();
-            assert!(body.contains("Template not found"));
-        }
-    }
+		if let Err(response) = result {
+			assert_eq!(response.status, StatusCode::NOT_FOUND);
+			let body = String::from_utf8(response.body.to_vec()).unwrap();
+			assert!(body.contains("Template not found"));
+		}
+	}
 
-    #[test]
-    fn test_render_to_response_customizable() {
-        // Test that response can be customized
-        // Note: This test will fail if template doesn't exist
-        // In a real scenario, you would create a test template file
-        let request = create_test_request();
-        let context: HashMap<String, String> = HashMap::new();
+	#[test]
+	fn test_render_to_response_customizable() {
+		// Test that response can be customized
+		// Note: This test will fail if template doesn't exist
+		// In a real scenario, you would create a test template file
+		let request = create_test_request();
+		let context: HashMap<String, String> = HashMap::new();
 
-        // Test with non-existent template to verify error handling
-        let result = render_to_response(&request, "custom.html", context);
-        // Expecting error since template doesn't exist
-        assert!(result.is_err());
-    }
+		// Test with non-existent template to verify error handling
+		let result = render_to_response(&request, "custom.html", context);
+		// Expecting error since template doesn't exist
+		assert!(result.is_err());
+	}
 
-    #[test]
-    fn test_render_template_with_empty_context() {
-        // Test that empty context works
-        let request = create_test_request();
-        let context: HashMap<String, String> = HashMap::new();
+	#[test]
+	fn test_render_template_with_empty_context() {
+		// Test that empty context works
+		let request = create_test_request();
+		let context: HashMap<String, String> = HashMap::new();
 
-        let result = render_template(&request, "empty.html", context);
-        // Expecting error since template doesn't exist
-        assert!(result.is_err());
+		let result = render_template(&request, "empty.html", context);
+		// Expecting error since template doesn't exist
+		assert!(result.is_err());
 
-        if let Err(response) = result {
-            assert_eq!(response.status, StatusCode::NOT_FOUND);
-        }
-    }
+		if let Err(response) = result {
+			assert_eq!(response.status, StatusCode::NOT_FOUND);
+		}
+	}
 }

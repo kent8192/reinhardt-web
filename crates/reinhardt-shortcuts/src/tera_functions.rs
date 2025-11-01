@@ -44,43 +44,37 @@ pub struct RangeFunction;
 
 #[cfg(feature = "templates")]
 impl Function for RangeFunction {
-    fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
-        let start = args
-            .get("start")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+	fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
+		let start = args.get("start").and_then(|v| v.as_i64()).unwrap_or(0);
 
-        let end = args
-            .get("end")
-            .and_then(|v| v.as_i64())
-            .ok_or_else(|| tera::Error::msg("Function `range` requires `end` argument"))?;
+		let end = args
+			.get("end")
+			.and_then(|v| v.as_i64())
+			.ok_or_else(|| tera::Error::msg("Function `range` requires `end` argument"))?;
 
-        let step = args
-            .get("step")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(1);
+		let step = args.get("step").and_then(|v| v.as_i64()).unwrap_or(1);
 
-        if step == 0 {
-            return Err(tera::Error::msg("Function `range` step cannot be 0"));
-        }
+		if step == 0 {
+			return Err(tera::Error::msg("Function `range` step cannot be 0"));
+		}
 
-        let mut result = Vec::new();
-        let mut current = start;
+		let mut result = Vec::new();
+		let mut current = start;
 
-        if step > 0 {
-            while current < end {
-                result.push(Value::Number(current.into()));
-                current += step;
-            }
-        } else {
-            while current > end {
-                result.push(Value::Number(current.into()));
-                current += step;
-            }
-        }
+		if step > 0 {
+			while current < end {
+				result.push(Value::Number(current.into()));
+				current += step;
+			}
+		} else {
+			while current > end {
+				result.push(Value::Number(current.into()));
+				current += step;
+			}
+		}
 
-        Ok(Value::Array(result))
-    }
+		Ok(Value::Array(result))
+	}
 }
 
 /// Get the current date and time
@@ -98,17 +92,17 @@ pub struct NowFunction;
 
 #[cfg(feature = "templates")]
 impl Function for NowFunction {
-    fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
-        let format = args
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("%Y-%m-%d %H:%M:%S");
+	fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
+		let format = args
+			.get("format")
+			.and_then(|v| v.as_str())
+			.unwrap_or("%Y-%m-%d %H:%M:%S");
 
-        let now = chrono::Local::now();
-        let formatted = now.format(format).to_string();
+		let now = chrono::Local::now();
+		let formatted = now.format(format).to_string();
 
-        Ok(Value::String(formatted))
-    }
+		Ok(Value::String(formatted))
+	}
 }
 
 /// Cycle through values
@@ -151,25 +145,27 @@ pub struct CycleFunction;
 
 #[cfg(feature = "templates")]
 impl Function for CycleFunction {
-    fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
-        let values = args
-            .get("values")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| tera::Error::msg("Function `cycle` requires `values` array argument"))?;
+	fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
+		let values = args
+			.get("values")
+			.and_then(|v| v.as_array())
+			.ok_or_else(|| tera::Error::msg("Function `cycle` requires `values` array argument"))?;
 
-        let index = args
-            .get("index")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| tera::Error::msg("Function `cycle` requires `index` argument"))?
-            as usize;
+		let index = args
+			.get("index")
+			.and_then(|v| v.as_u64())
+			.ok_or_else(|| tera::Error::msg("Function `cycle` requires `index` argument"))?
+			as usize;
 
-        if values.is_empty() {
-            return Err(tera::Error::msg("Function `cycle` requires non-empty `values` array"));
-        }
+		if values.is_empty() {
+			return Err(tera::Error::msg(
+				"Function `cycle` requires non-empty `values` array",
+			));
+		}
 
-        let cycle_index = index % values.len();
-        Ok(values[cycle_index].clone())
-    }
+		let cycle_index = index % values.len();
+		Ok(values[cycle_index].clone())
+	}
 }
 
 /// Generate a static file URL
@@ -184,27 +180,31 @@ impl Function for CycleFunction {
 #[cfg(feature = "templates")]
 #[derive(Debug, Clone)]
 pub struct StaticFunction {
-    pub static_url: String,
+	pub static_url: String,
 }
 
 #[cfg(feature = "templates")]
 impl StaticFunction {
-    pub fn new(static_url: String) -> Self {
-        Self { static_url }
-    }
+	pub fn new(static_url: String) -> Self {
+		Self { static_url }
+	}
 }
 
 #[cfg(feature = "templates")]
 impl Function for StaticFunction {
-    fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
-        let path = args
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| tera::Error::msg("Function `static` requires `path` argument"))?;
+	fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
+		let path = args
+			.get("path")
+			.and_then(|v| v.as_str())
+			.ok_or_else(|| tera::Error::msg("Function `static` requires `path` argument"))?;
 
-        let url = format!("{}/{}", self.static_url.trim_end_matches('/'), path.trim_start_matches('/'));
-        Ok(Value::String(url))
-    }
+		let url = format!(
+			"{}/{}",
+			self.static_url.trim_end_matches('/'),
+			path.trim_start_matches('/')
+		);
+		Ok(Value::String(url))
+	}
 }
 
 /// Generate a URL from a route name
@@ -222,127 +222,127 @@ pub struct UrlFunction;
 
 #[cfg(feature = "templates")]
 impl Function for UrlFunction {
-    fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
-        let name = args
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| tera::Error::msg("Function `url` requires `name` argument"))?;
+	fn call(&self, args: &HashMap<String, Value>) -> TeraResult<Value> {
+		let name = args
+			.get("name")
+			.and_then(|v| v.as_str())
+			.ok_or_else(|| tera::Error::msg("Function `url` requires `name` argument"))?;
 
-        // For now, return a placeholder URL with the route name
-        // In a real implementation, this would use the router to generate URLs
-        let mut url = format!("/{}", name);
+		// For now, return a placeholder URL with the route name
+		// In a real implementation, this would use the router to generate URLs
+		let mut url = format!("/{}", name);
 
-        // Add query parameters if provided
-        for (key, value) in args.iter() {
-            if key != "name" {
-                if let Some(v) = value.as_str() {
-                    url = url.replace(&format!("{{{}}}", key), v);
-                } else if let Some(v) = value.as_i64() {
-                    url = url.replace(&format!("{{{}}}", key), &v.to_string());
-                }
-            }
-        }
+		// Add query parameters if provided
+		for (key, value) in args.iter() {
+			if key != "name" {
+				if let Some(v) = value.as_str() {
+					url = url.replace(&format!("{{{}}}", key), v);
+				} else if let Some(v) = value.as_i64() {
+					url = url.replace(&format!("{{{}}}", key), &v.to_string());
+				}
+			}
+		}
 
-        Ok(Value::String(url))
-    }
+		Ok(Value::String(url))
+	}
 }
 
 #[cfg(all(test, feature = "templates"))]
 mod tests {
-    use super::*;
-    use serde_json::json;
+	use super::*;
+	use serde_json::json;
 
-    #[test]
-    fn test_range_function() {
-        let func = RangeFunction;
-        let mut args = HashMap::new();
-        args.insert("start".to_string(), json!(0));
-        args.insert("end".to_string(), json!(5));
+	#[test]
+	fn test_range_function() {
+		let func = RangeFunction;
+		let mut args = HashMap::new();
+		args.insert("start".to_string(), json!(0));
+		args.insert("end".to_string(), json!(5));
 
-        let result = func.call(&args).unwrap();
-        assert_eq!(result, json!([0, 1, 2, 3, 4]));
-    }
+		let result = func.call(&args).unwrap();
+		assert_eq!(result, json!([0, 1, 2, 3, 4]));
+	}
 
-    #[test]
-    fn test_range_function_with_step() {
-        let func = RangeFunction;
-        let mut args = HashMap::new();
-        args.insert("start".to_string(), json!(0));
-        args.insert("end".to_string(), json!(10));
-        args.insert("step".to_string(), json!(2));
+	#[test]
+	fn test_range_function_with_step() {
+		let func = RangeFunction;
+		let mut args = HashMap::new();
+		args.insert("start".to_string(), json!(0));
+		args.insert("end".to_string(), json!(10));
+		args.insert("step".to_string(), json!(2));
 
-        let result = func.call(&args).unwrap();
-        assert_eq!(result, json!([0, 2, 4, 6, 8]));
-    }
+		let result = func.call(&args).unwrap();
+		assert_eq!(result, json!([0, 2, 4, 6, 8]));
+	}
 
-    #[test]
-    fn test_range_function_negative_step() {
-        let func = RangeFunction;
-        let mut args = HashMap::new();
-        args.insert("start".to_string(), json!(10));
-        args.insert("end".to_string(), json!(0));
-        args.insert("step".to_string(), json!(-2));
+	#[test]
+	fn test_range_function_negative_step() {
+		let func = RangeFunction;
+		let mut args = HashMap::new();
+		args.insert("start".to_string(), json!(10));
+		args.insert("end".to_string(), json!(0));
+		args.insert("step".to_string(), json!(-2));
 
-        let result = func.call(&args).unwrap();
-        assert_eq!(result, json!([10, 8, 6, 4, 2]));
-    }
+		let result = func.call(&args).unwrap();
+		assert_eq!(result, json!([10, 8, 6, 4, 2]));
+	}
 
-    #[test]
-    fn test_cycle_function() {
-        let func = CycleFunction;
-        let mut args = HashMap::new();
-        args.insert("values".to_string(), json!(["odd", "even"]));
+	#[test]
+	fn test_cycle_function() {
+		let func = CycleFunction;
+		let mut args = HashMap::new();
+		args.insert("values".to_string(), json!(["odd", "even"]));
 
-        args.insert("index".to_string(), json!(0));
-        let result = func.call(&args).unwrap();
-        assert_eq!(result, json!("odd"));
+		args.insert("index".to_string(), json!(0));
+		let result = func.call(&args).unwrap();
+		assert_eq!(result, json!("odd"));
 
-        args.insert("index".to_string(), json!(1));
-        let result = func.call(&args).unwrap();
-        assert_eq!(result, json!("even"));
+		args.insert("index".to_string(), json!(1));
+		let result = func.call(&args).unwrap();
+		assert_eq!(result, json!("even"));
 
-        args.insert("index".to_string(), json!(2));
-        let result = func.call(&args).unwrap();
-        assert_eq!(result, json!("odd"));
+		args.insert("index".to_string(), json!(2));
+		let result = func.call(&args).unwrap();
+		assert_eq!(result, json!("odd"));
 
-        args.insert("index".to_string(), json!(3));
-        let result = func.call(&args).unwrap();
-        assert_eq!(result, json!("even"));
-    }
+		args.insert("index".to_string(), json!(3));
+		let result = func.call(&args).unwrap();
+		assert_eq!(result, json!("even"));
+	}
 
-    #[test]
-    fn test_static_function() {
-        let func = StaticFunction::new("/static".to_string());
-        let mut args = HashMap::new();
-        args.insert("path".to_string(), json!("images/logo.png"));
+	#[test]
+	fn test_static_function() {
+		let func = StaticFunction::new("/static".to_string());
+		let mut args = HashMap::new();
+		args.insert("path".to_string(), json!("images/logo.png"));
 
-        let result = func.call(&args).unwrap();
-        assert_eq!(result, json!("/static/images/logo.png"));
-    }
+		let result = func.call(&args).unwrap();
+		assert_eq!(result, json!("/static/images/logo.png"));
+	}
 
-    #[test]
-    fn test_url_function() {
-        let func = UrlFunction;
-        let mut args = HashMap::new();
-        args.insert("name".to_string(), json!("user_profile"));
-        args.insert("id".to_string(), json!(42));
+	#[test]
+	fn test_url_function() {
+		let func = UrlFunction;
+		let mut args = HashMap::new();
+		args.insert("name".to_string(), json!("user_profile"));
+		args.insert("id".to_string(), json!(42));
 
-        let result = func.call(&args).unwrap();
-        // Should replace {id} placeholder
-        assert!(result.as_str().unwrap().contains("user_profile"));
-    }
+		let result = func.call(&args).unwrap();
+		// Should replace {id} placeholder
+		assert!(result.as_str().unwrap().contains("user_profile"));
+	}
 
-    #[test]
-    fn test_now_function() {
-        let func = NowFunction;
-        let mut args = HashMap::new();
-        args.insert("format".to_string(), json!("%Y-%m-%d"));
+	#[test]
+	fn test_now_function() {
+		let func = NowFunction;
+		let mut args = HashMap::new();
+		args.insert("format".to_string(), json!("%Y-%m-%d"));
 
-        let result = func.call(&args).unwrap();
-        let date_str = result.as_str().unwrap();
+		let result = func.call(&args).unwrap();
+		let date_str = result.as_str().unwrap();
 
-        // Check that it matches YYYY-MM-DD format
-        assert!(date_str.len() == 10);
-        assert!(date_str.contains('-'));
-    }
+		// Check that it matches YYYY-MM-DD format
+		assert!(date_str.len() == 10);
+		assert!(date_str.contains('-'));
+	}
 }

@@ -24,27 +24,27 @@ use crate::{LazyString, TRANSLATION_STATE};
 /// assert_eq!(msg, "こんにちは、世界！");
 /// ```
 pub fn gettext(message: &str) -> String {
-    let state = TRANSLATION_STATE.read().unwrap();
-    let locale = state.get_locale();
+	let state = TRANSLATION_STATE.read().unwrap();
+	let locale = state.get_locale();
 
-    if let Some(catalog) = state.get_catalog(locale) {
-        if let Some(translation) = catalog.get(message) {
-            return translation.clone();
-        }
-    }
+	if let Some(catalog) = state.get_catalog(locale) {
+		if let Some(translation) = catalog.get(message) {
+			return translation.clone();
+		}
+	}
 
-    // Try fallback locale
-    let fallback = state.get_fallback_locale();
-    if locale != fallback {
-        if let Some(catalog) = state.get_catalog(fallback) {
-            if let Some(translation) = catalog.get(message) {
-                return translation.clone();
-            }
-        }
-    }
+	// Try fallback locale
+	let fallback = state.get_fallback_locale();
+	if locale != fallback {
+		if let Some(catalog) = state.get_catalog(fallback) {
+			if let Some(translation) = catalog.get(message) {
+				return translation.clone();
+			}
+		}
+	}
 
-    // Return original message if no translation found
-    message.to_string()
+	// Return original message if no translation found
+	message.to_string()
 }
 
 /// Translate a message with plural support
@@ -68,31 +68,31 @@ pub fn gettext(message: &str) -> String {
 /// assert_eq!(msg_plural, "Artikel");
 /// ```
 pub fn ngettext(singular: &str, plural: &str, count: usize) -> String {
-    let state = TRANSLATION_STATE.read().unwrap();
-    let locale = state.get_locale();
+	let state = TRANSLATION_STATE.read().unwrap();
+	let locale = state.get_locale();
 
-    if let Some(catalog) = state.get_catalog(locale) {
-        if let Some(translation) = catalog.get_plural(singular, count) {
-            return translation.clone();
-        }
-    }
+	if let Some(catalog) = state.get_catalog(locale) {
+		if let Some(translation) = catalog.get_plural(singular, count) {
+			return translation.clone();
+		}
+	}
 
-    // Try fallback locale
-    let fallback = state.get_fallback_locale();
-    if locale != fallback {
-        if let Some(catalog) = state.get_catalog(fallback) {
-            if let Some(translation) = catalog.get_plural(singular, count) {
-                return translation.clone();
-            }
-        }
-    }
+	// Try fallback locale
+	let fallback = state.get_fallback_locale();
+	if locale != fallback {
+		if let Some(catalog) = state.get_catalog(fallback) {
+			if let Some(translation) = catalog.get_plural(singular, count) {
+				return translation.clone();
+			}
+		}
+	}
 
-    // Use default English plural rules
-    if count == 1 {
-        singular.to_string()
-    } else {
-        plural.to_string()
-    }
+	// Use default English plural rules
+	if count == 1 {
+		singular.to_string()
+	} else {
+		plural.to_string()
+	}
 }
 
 /// Translate a message with context
@@ -120,27 +120,27 @@ pub fn ngettext(singular: &str, plural: &str, count: usize) -> String {
 /// assert_eq!(verb_file, "提出する");
 /// ```
 pub fn pgettext(context: &str, message: &str) -> String {
-    let state = TRANSLATION_STATE.read().unwrap();
-    let locale = state.get_locale();
+	let state = TRANSLATION_STATE.read().unwrap();
+	let locale = state.get_locale();
 
-    if let Some(catalog) = state.get_catalog(locale) {
-        if let Some(translation) = catalog.get_context(context, message) {
-            return translation.clone();
-        }
-    }
+	if let Some(catalog) = state.get_catalog(locale) {
+		if let Some(translation) = catalog.get_context(context, message) {
+			return translation.clone();
+		}
+	}
 
-    // Try fallback locale
-    let fallback = state.get_fallback_locale();
-    if locale != fallback {
-        if let Some(catalog) = state.get_catalog(fallback) {
-            if let Some(translation) = catalog.get_context(context, message) {
-                return translation.clone();
-            }
-        }
-    }
+	// Try fallback locale
+	let fallback = state.get_fallback_locale();
+	if locale != fallback {
+		if let Some(catalog) = state.get_catalog(fallback) {
+			if let Some(translation) = catalog.get_context(context, message) {
+				return translation.clone();
+			}
+		}
+	}
 
-    // Return original message if no translation found
-    message.to_string()
+	// Return original message if no translation found
+	message.to_string()
 }
 
 /// Translate a message with context and plural support
@@ -169,31 +169,31 @@ pub fn pgettext(context: &str, message: &str) -> String {
 /// assert_eq!(notification_plural, "notificaciones");
 /// ```
 pub fn npgettext(context: &str, singular: &str, plural: &str, count: usize) -> String {
-    let state = TRANSLATION_STATE.read().unwrap();
-    let locale = state.get_locale();
+	let state = TRANSLATION_STATE.read().unwrap();
+	let locale = state.get_locale();
 
-    if let Some(catalog) = state.get_catalog(locale) {
-        if let Some(translation) = catalog.get_context_plural(context, singular, count) {
-            return translation.clone();
-        }
-    }
+	if let Some(catalog) = state.get_catalog(locale) {
+		if let Some(translation) = catalog.get_context_plural(context, singular, count) {
+			return translation.clone();
+		}
+	}
 
-    // Try fallback locale
-    let fallback = state.get_fallback_locale();
-    if locale != fallback {
-        if let Some(catalog) = state.get_catalog(fallback) {
-            if let Some(translation) = catalog.get_context_plural(context, singular, count) {
-                return translation.clone();
-            }
-        }
-    }
+	// Try fallback locale
+	let fallback = state.get_fallback_locale();
+	if locale != fallback {
+		if let Some(catalog) = state.get_catalog(fallback) {
+			if let Some(translation) = catalog.get_context_plural(context, singular, count) {
+				return translation.clone();
+			}
+		}
+	}
 
-    // Use default English plural rules
-    if count == 1 {
-        singular.to_string()
-    } else {
-        plural.to_string()
-    }
+	// Use default English plural rules
+	if count == 1 {
+		singular.to_string()
+	} else {
+		plural.to_string()
+	}
 }
 
 /// Create a lazy translation that is evaluated when converted to string
@@ -215,7 +215,7 @@ pub fn npgettext(context: &str, singular: &str, plural: &str, count: usize) -> S
 /// assert_eq!(lazy_msg.to_string(), "좋은 아침");
 /// ```
 pub fn gettext_lazy(message: &str) -> LazyString {
-    LazyString::new(message.to_string(), None, false)
+	LazyString::new(message.to_string(), None, false)
 }
 
 /// Create a lazy plural translation
@@ -237,31 +237,31 @@ pub fn gettext_lazy(message: &str) -> LazyString {
 /// assert_eq!(lazy_msg.to_string(), "jabłka");
 /// ```
 pub fn ngettext_lazy(singular: &str, plural: &str, count: usize) -> LazyString {
-    LazyString::new_plural(singular.to_string(), plural.to_string(), count, None)
+	LazyString::new_plural(singular.to_string(), plural.to_string(), count, None)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_gettext_no_translation() {
-        let result = gettext("Untranslated message");
-        assert_eq!(result, "Untranslated message");
-    }
+	#[test]
+	fn test_gettext_no_translation() {
+		let result = gettext("Untranslated message");
+		assert_eq!(result, "Untranslated message");
+	}
 
-    #[test]
-    fn test_ngettext_default_rules_unit() {
-        let result_singular = ngettext("There is {} item", "There are {} items", 1);
-        assert_eq!(result_singular, "There is {} item");
+	#[test]
+	fn test_ngettext_default_rules_unit() {
+		let result_singular = ngettext("There is {} item", "There are {} items", 1);
+		assert_eq!(result_singular, "There is {} item");
 
-        let result_plural = ngettext("There is {} item", "There are {} items", 5);
-        assert_eq!(result_plural, "There are {} items");
-    }
+		let result_plural = ngettext("There is {} item", "There are {} items", 5);
+		assert_eq!(result_plural, "There are {} items");
+	}
 
-    #[test]
-    fn test_pgettext_no_translation() {
-        let result = pgettext("menu", "File");
-        assert_eq!(result, "File");
-    }
+	#[test]
+	fn test_pgettext_no_translation() {
+		let result = pgettext("menu", "File");
+		assert_eq!(result, "File");
+	}
 }

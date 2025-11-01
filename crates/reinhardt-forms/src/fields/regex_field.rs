@@ -3,395 +3,397 @@ use regex::Regex;
 
 /// RegexField for pattern-based validation
 pub struct RegexField {
-    pub name: String,
-    pub label: Option<String>,
-    pub required: bool,
-    pub help_text: Option<String>,
-    pub widget: Widget,
-    pub initial: Option<serde_json::Value>,
-    pub regex: Regex,
-    pub error_message: String,
-    pub max_length: Option<usize>,
-    pub min_length: Option<usize>,
+	pub name: String,
+	pub label: Option<String>,
+	pub required: bool,
+	pub help_text: Option<String>,
+	pub widget: Widget,
+	pub initial: Option<serde_json::Value>,
+	pub regex: Regex,
+	pub error_message: String,
+	pub max_length: Option<usize>,
+	pub min_length: Option<usize>,
 }
 
 impl RegexField {
-    /// Create a new RegexField
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_forms::fields::RegexField;
-    ///
-    /// let field = RegexField::new("pattern".to_string(), r"^\d+$").unwrap();
-    /// assert_eq!(field.name, "pattern");
-    /// ```
-    pub fn new(name: String, pattern: &str) -> Result<Self, regex::Error> {
-        Ok(Self {
-            name,
-            label: None,
-            required: true,
-            help_text: None,
-            widget: Widget::TextInput,
-            initial: None,
-            regex: Regex::new(pattern)?,
-            error_message: "Enter a valid value".to_string(),
-            max_length: None,
-            min_length: None,
-        })
-    }
-    pub fn with_error_message(mut self, message: String) -> Self {
-        self.error_message = message;
-        self
-    }
+	/// Create a new RegexField
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::fields::RegexField;
+	///
+	/// let field = RegexField::new("pattern".to_string(), r"^\d+$").unwrap();
+	/// assert_eq!(field.name, "pattern");
+	/// ```
+	pub fn new(name: String, pattern: &str) -> Result<Self, regex::Error> {
+		Ok(Self {
+			name,
+			label: None,
+			required: true,
+			help_text: None,
+			widget: Widget::TextInput,
+			initial: None,
+			regex: Regex::new(pattern)?,
+			error_message: "Enter a valid value".to_string(),
+			max_length: None,
+			min_length: None,
+		})
+	}
+	pub fn with_error_message(mut self, message: String) -> Self {
+		self.error_message = message;
+		self
+	}
 }
 
 impl FormField for RegexField {
-    fn name(&self) -> &str {
-        &self.name
-    }
+	fn name(&self) -> &str {
+		&self.name
+	}
 
-    fn label(&self) -> Option<&str> {
-        self.label.as_deref()
-    }
+	fn label(&self) -> Option<&str> {
+		self.label.as_deref()
+	}
 
-    fn required(&self) -> bool {
-        self.required
-    }
+	fn required(&self) -> bool {
+		self.required
+	}
 
-    fn help_text(&self) -> Option<&str> {
-        self.help_text.as_deref()
-    }
+	fn help_text(&self) -> Option<&str> {
+		self.help_text.as_deref()
+	}
 
-    fn widget(&self) -> &Widget {
-        &self.widget
-    }
+	fn widget(&self) -> &Widget {
+		&self.widget
+	}
 
-    fn initial(&self) -> Option<&serde_json::Value> {
-        self.initial.as_ref()
-    }
+	fn initial(&self) -> Option<&serde_json::Value> {
+		self.initial.as_ref()
+	}
 
-    fn clean(&self, value: Option<&serde_json::Value>) -> FieldResult<serde_json::Value> {
-        match value {
-            None if self.required => Err(FieldError::required(None)),
-            None => Ok(serde_json::Value::Null),
-            Some(v) => {
-                let s = v
-                    .as_str()
-                    .ok_or_else(|| FieldError::invalid(None, "Expected string"))?;
+	fn clean(&self, value: Option<&serde_json::Value>) -> FieldResult<serde_json::Value> {
+		match value {
+			None if self.required => Err(FieldError::required(None)),
+			None => Ok(serde_json::Value::Null),
+			Some(v) => {
+				let s = v
+					.as_str()
+					.ok_or_else(|| FieldError::invalid(None, "Expected string"))?;
 
-                if s.is_empty() {
-                    if self.required {
-                        return Err(FieldError::required(None));
-                    }
-                    return Ok(serde_json::Value::Null);
-                }
+				if s.is_empty() {
+					if self.required {
+						return Err(FieldError::required(None));
+					}
+					return Ok(serde_json::Value::Null);
+				}
 
-                // Length validation
-                if let Some(max) = self.max_length {
-                    if s.len() > max {
-                        return Err(FieldError::validation(
-                            None,
-                            &format!("Ensure this value has at most {} characters", max),
-                        ));
-                    }
-                }
+				// Length validation
+				if let Some(max) = self.max_length {
+					if s.len() > max {
+						return Err(FieldError::validation(
+							None,
+							&format!("Ensure this value has at most {} characters", max),
+						));
+					}
+				}
 
-                if let Some(min) = self.min_length {
-                    if s.len() < min {
-                        return Err(FieldError::validation(
-                            None,
-                            &format!("Ensure this value has at least {} characters", min),
-                        ));
-                    }
-                }
+				if let Some(min) = self.min_length {
+					if s.len() < min {
+						return Err(FieldError::validation(
+							None,
+							&format!("Ensure this value has at least {} characters", min),
+						));
+					}
+				}
 
-                // Regex validation
-                if !self.regex.is_match(s) {
-                    return Err(FieldError::validation(None, &self.error_message));
-                }
+				// Regex validation
+				if !self.regex.is_match(s) {
+					return Err(FieldError::validation(None, &self.error_message));
+				}
 
-                Ok(serde_json::Value::String(s.to_string()))
-            }
-        }
-    }
+				Ok(serde_json::Value::String(s.to_string()))
+			}
+		}
+	}
 }
 
 /// SlugField for URL-safe slugs
 pub struct SlugField {
-    pub name: String,
-    pub label: Option<String>,
-    pub required: bool,
-    pub help_text: Option<String>,
-    pub widget: Widget,
-    pub initial: Option<serde_json::Value>,
-    pub max_length: Option<usize>,
-    pub allow_unicode: bool,
+	pub name: String,
+	pub label: Option<String>,
+	pub required: bool,
+	pub help_text: Option<String>,
+	pub widget: Widget,
+	pub initial: Option<serde_json::Value>,
+	pub max_length: Option<usize>,
+	pub allow_unicode: bool,
 }
 
 impl SlugField {
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            label: None,
-            required: true,
-            help_text: None,
-            widget: Widget::TextInput,
-            initial: None,
-            max_length: Some(50),
-            allow_unicode: false,
-        }
-    }
+	pub fn new(name: String) -> Self {
+		Self {
+			name,
+			label: None,
+			required: true,
+			help_text: None,
+			widget: Widget::TextInput,
+			initial: None,
+			max_length: Some(50),
+			allow_unicode: false,
+		}
+	}
 
-    fn is_valid_slug(&self, s: &str) -> bool {
-        if self.allow_unicode {
-            s.chars().all(|c| {
-                c.is_alphanumeric() || c == '-' || c == '_' || (!c.is_ascii() && c.is_alphabetic())
-            })
-        } else {
-            s.chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        }
-    }
+	fn is_valid_slug(&self, s: &str) -> bool {
+		if self.allow_unicode {
+			s.chars().all(|c| {
+				c.is_alphanumeric() || c == '-' || c == '_' || (!c.is_ascii() && c.is_alphabetic())
+			})
+		} else {
+			s.chars()
+				.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+		}
+	}
 }
 
 impl FormField for SlugField {
-    fn name(&self) -> &str {
-        &self.name
-    }
+	fn name(&self) -> &str {
+		&self.name
+	}
 
-    fn label(&self) -> Option<&str> {
-        self.label.as_deref()
-    }
+	fn label(&self) -> Option<&str> {
+		self.label.as_deref()
+	}
 
-    fn required(&self) -> bool {
-        self.required
-    }
+	fn required(&self) -> bool {
+		self.required
+	}
 
-    fn help_text(&self) -> Option<&str> {
-        self.help_text.as_deref()
-    }
+	fn help_text(&self) -> Option<&str> {
+		self.help_text.as_deref()
+	}
 
-    fn widget(&self) -> &Widget {
-        &self.widget
-    }
+	fn widget(&self) -> &Widget {
+		&self.widget
+	}
 
-    fn initial(&self) -> Option<&serde_json::Value> {
-        self.initial.as_ref()
-    }
+	fn initial(&self) -> Option<&serde_json::Value> {
+		self.initial.as_ref()
+	}
 
-    fn clean(&self, value: Option<&serde_json::Value>) -> FieldResult<serde_json::Value> {
-        match value {
-            None if self.required => Err(FieldError::required(None)),
-            None => Ok(serde_json::Value::Null),
-            Some(v) => {
-                let s = v
-                    .as_str()
-                    .ok_or_else(|| FieldError::invalid(None, "Expected string"))?;
+	fn clean(&self, value: Option<&serde_json::Value>) -> FieldResult<serde_json::Value> {
+		match value {
+			None if self.required => Err(FieldError::required(None)),
+			None => Ok(serde_json::Value::Null),
+			Some(v) => {
+				let s = v
+					.as_str()
+					.ok_or_else(|| FieldError::invalid(None, "Expected string"))?;
 
-                if s.is_empty() {
-                    if self.required {
-                        return Err(FieldError::required(None));
-                    }
-                    return Ok(serde_json::Value::Null);
-                }
+				if s.is_empty() {
+					if self.required {
+						return Err(FieldError::required(None));
+					}
+					return Ok(serde_json::Value::Null);
+				}
 
-                if let Some(max) = self.max_length {
-                    if s.len() > max {
-                        return Err(FieldError::validation(
-                            None,
-                            &format!("Ensure this value has at most {} characters", max),
-                        ));
-                    }
-                }
+				if let Some(max) = self.max_length {
+					if s.len() > max {
+						return Err(FieldError::validation(
+							None,
+							&format!("Ensure this value has at most {} characters", max),
+						));
+					}
+				}
 
-                if !self.is_valid_slug(s) {
-                    let msg = if self.allow_unicode {
-                        "Enter a valid slug consisting of Unicode letters, numbers, underscores, or hyphens"
-                    } else {
-                        "Enter a valid slug consisting of letters, numbers, underscores or hyphens"
-                    };
-                    return Err(FieldError::validation(None, msg));
-                }
+				if !self.is_valid_slug(s) {
+					let msg = if self.allow_unicode {
+						"Enter a valid slug consisting of Unicode letters, numbers, underscores, or hyphens"
+					} else {
+						"Enter a valid slug consisting of letters, numbers, underscores or hyphens"
+					};
+					return Err(FieldError::validation(None, msg));
+				}
 
-                Ok(serde_json::Value::String(s.to_string()))
-            }
-        }
-    }
+				Ok(serde_json::Value::String(s.to_string()))
+			}
+		}
+	}
 }
 
 /// GenericIPAddressField for IPv4 and IPv6 addresses
 pub struct GenericIPAddressField {
-    pub name: String,
-    pub label: Option<String>,
-    pub required: bool,
-    pub help_text: Option<String>,
-    pub widget: Widget,
-    pub initial: Option<serde_json::Value>,
-    pub protocol: IPProtocol,
+	pub name: String,
+	pub label: Option<String>,
+	pub required: bool,
+	pub help_text: Option<String>,
+	pub widget: Widget,
+	pub initial: Option<serde_json::Value>,
+	pub protocol: IPProtocol,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum IPProtocol {
-    Both,
-    IPv4,
-    IPv6,
+	Both,
+	IPv4,
+	IPv6,
 }
 
 impl GenericIPAddressField {
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            label: None,
-            required: true,
-            help_text: None,
-            widget: Widget::TextInput,
-            initial: None,
-            protocol: IPProtocol::Both,
-        }
-    }
+	pub fn new(name: String) -> Self {
+		Self {
+			name,
+			label: None,
+			required: true,
+			help_text: None,
+			widget: Widget::TextInput,
+			initial: None,
+			protocol: IPProtocol::Both,
+		}
+	}
 
-    fn is_valid_ipv4(&self, s: &str) -> bool {
-        let parts: Vec<&str> = s.split('.').collect();
-        if parts.len() != 4 {
-            return false;
-        }
+	fn is_valid_ipv4(&self, s: &str) -> bool {
+		let parts: Vec<&str> = s.split('.').collect();
+		if parts.len() != 4 {
+			return false;
+		}
 
-        parts.iter().all(|part| {
-            part.parse::<u8>()
-                .map(|_| !part.starts_with('0') || part.len() == 1)
-                .unwrap_or(false)
-        })
-    }
+		parts.iter().all(|part| {
+			part.parse::<u8>()
+				.map(|_| !part.starts_with('0') || part.len() == 1)
+				.unwrap_or(false)
+		})
+	}
 
-    fn is_valid_ipv6(&self, s: &str) -> bool {
-        // Basic IPv6 validation (simplified)
-        let parts: Vec<&str> = s.split(':').collect();
-        if parts.is_empty() || parts.len() > 8 {
-            return false;
-        }
+	fn is_valid_ipv6(&self, s: &str) -> bool {
+		// Basic IPv6 validation (simplified)
+		let parts: Vec<&str> = s.split(':').collect();
+		if parts.is_empty() || parts.len() > 8 {
+			return false;
+		}
 
-        let has_double_colon = s.contains("::");
-        if has_double_colon && s.matches("::").count() > 1 {
-            return false;
-        }
+		let has_double_colon = s.contains("::");
+		if has_double_colon && s.matches("::").count() > 1 {
+			return false;
+		}
 
-        parts.iter().all(|part| {
-            if part.is_empty() {
-                has_double_colon
-            } else {
-                part.len() <= 4 && part.chars().all(|c| c.is_ascii_hexdigit())
-            }
-        })
-    }
+		parts.iter().all(|part| {
+			if part.is_empty() {
+				has_double_colon
+			} else {
+				part.len() <= 4 && part.chars().all(|c| c.is_ascii_hexdigit())
+			}
+		})
+	}
 }
 
 impl FormField for GenericIPAddressField {
-    fn name(&self) -> &str {
-        &self.name
-    }
+	fn name(&self) -> &str {
+		&self.name
+	}
 
-    fn label(&self) -> Option<&str> {
-        self.label.as_deref()
-    }
+	fn label(&self) -> Option<&str> {
+		self.label.as_deref()
+	}
 
-    fn required(&self) -> bool {
-        self.required
-    }
+	fn required(&self) -> bool {
+		self.required
+	}
 
-    fn help_text(&self) -> Option<&str> {
-        self.help_text.as_deref()
-    }
+	fn help_text(&self) -> Option<&str> {
+		self.help_text.as_deref()
+	}
 
-    fn widget(&self) -> &Widget {
-        &self.widget
-    }
+	fn widget(&self) -> &Widget {
+		&self.widget
+	}
 
-    fn initial(&self) -> Option<&serde_json::Value> {
-        self.initial.as_ref()
-    }
+	fn initial(&self) -> Option<&serde_json::Value> {
+		self.initial.as_ref()
+	}
 
-    fn clean(&self, value: Option<&serde_json::Value>) -> FieldResult<serde_json::Value> {
-        match value {
-            None if self.required => Err(FieldError::required(None)),
-            None => Ok(serde_json::Value::Null),
-            Some(v) => {
-                let s = v
-                    .as_str()
-                    .ok_or_else(|| FieldError::invalid(None, "Expected string"))?;
+	fn clean(&self, value: Option<&serde_json::Value>) -> FieldResult<serde_json::Value> {
+		match value {
+			None if self.required => Err(FieldError::required(None)),
+			None => Ok(serde_json::Value::Null),
+			Some(v) => {
+				let s = v
+					.as_str()
+					.ok_or_else(|| FieldError::invalid(None, "Expected string"))?;
 
-                if s.is_empty() {
-                    if self.required {
-                        return Err(FieldError::required(None));
-                    }
-                    return Ok(serde_json::Value::Null);
-                }
+				if s.is_empty() {
+					if self.required {
+						return Err(FieldError::required(None));
+					}
+					return Ok(serde_json::Value::Null);
+				}
 
-                let is_valid = match self.protocol {
-                    IPProtocol::IPv4 => self.is_valid_ipv4(s),
-                    IPProtocol::IPv6 => self.is_valid_ipv6(s),
-                    IPProtocol::Both => self.is_valid_ipv4(s) || self.is_valid_ipv6(s),
-                };
+				let is_valid = match self.protocol {
+					IPProtocol::IPv4 => self.is_valid_ipv4(s),
+					IPProtocol::IPv6 => self.is_valid_ipv6(s),
+					IPProtocol::Both => self.is_valid_ipv4(s) || self.is_valid_ipv6(s),
+				};
 
-                if !is_valid {
-                    return Err(FieldError::validation(None, "Enter a valid IP address"));
-                }
+				if !is_valid {
+					return Err(FieldError::validation(None, "Enter a valid IP address"));
+				}
 
-                Ok(serde_json::Value::String(s.to_string()))
-            }
-        }
-    }
+				Ok(serde_json::Value::String(s.to_string()))
+			}
+		}
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_regex_field() {
-        let field = RegexField::new("code".to_string(), r"^[A-Z]{3}\d{3}$").unwrap();
+	#[test]
+	fn test_regex_field() {
+		let field = RegexField::new("code".to_string(), r"^[A-Z]{3}\d{3}$").unwrap();
 
-        assert!(field.clean(Some(&serde_json::json!("ABC123"))).is_ok());
-        assert!(matches!(
-            field.clean(Some(&serde_json::json!("abc123"))),
-            Err(FieldError::Validation(_))
-        ));
-    }
+		assert!(field.clean(Some(&serde_json::json!("ABC123"))).is_ok());
+		assert!(matches!(
+			field.clean(Some(&serde_json::json!("abc123"))),
+			Err(FieldError::Validation(_))
+		));
+	}
 
-    #[test]
-    fn test_forms_regex_field_slug() {
-        let field = SlugField::new("slug".to_string());
+	#[test]
+	fn test_forms_regex_field_slug() {
+		let field = SlugField::new("slug".to_string());
 
-        assert!(field.clean(Some(&serde_json::json!("my-slug"))).is_ok());
-        assert!(field.clean(Some(&serde_json::json!("my_slug"))).is_ok());
-        assert!(matches!(
-            field.clean(Some(&serde_json::json!("my slug"))),
-            Err(FieldError::Validation(_))
-        ));
-    }
+		assert!(field.clean(Some(&serde_json::json!("my-slug"))).is_ok());
+		assert!(field.clean(Some(&serde_json::json!("my_slug"))).is_ok());
+		assert!(matches!(
+			field.clean(Some(&serde_json::json!("my slug"))),
+			Err(FieldError::Validation(_))
+		));
+	}
 
-    #[test]
-    fn test_ip_field_ipv4() {
-        let mut field = GenericIPAddressField::new("ip".to_string());
-        field.protocol = IPProtocol::IPv4;
+	#[test]
+	fn test_ip_field_ipv4() {
+		let mut field = GenericIPAddressField::new("ip".to_string());
+		field.protocol = IPProtocol::IPv4;
 
-        assert!(field.clean(Some(&serde_json::json!("192.168.1.1"))).is_ok());
-        assert!(matches!(
-            field.clean(Some(&serde_json::json!("999.999.999.999"))),
-            Err(FieldError::Validation(_))
-        ));
-    }
+		assert!(field.clean(Some(&serde_json::json!("192.168.1.1"))).is_ok());
+		assert!(matches!(
+			field.clean(Some(&serde_json::json!("999.999.999.999"))),
+			Err(FieldError::Validation(_))
+		));
+	}
 
-    #[test]
-    fn test_ip_field_ipv6() {
-        let mut field = GenericIPAddressField::new("ip".to_string());
-        field.protocol = IPProtocol::IPv6;
+	#[test]
+	fn test_ip_field_ipv6() {
+		let mut field = GenericIPAddressField::new("ip".to_string());
+		field.protocol = IPProtocol::IPv6;
 
-        assert!(field
-            .clean(Some(&serde_json::json!(
-                "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
-            )))
-            .is_ok());
-        assert!(field.clean(Some(&serde_json::json!("::1"))).is_ok());
-    }
+		assert!(
+			field
+				.clean(Some(&serde_json::json!(
+					"2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+				)))
+				.is_ok()
+		);
+		assert!(field.clean(Some(&serde_json::json!("::1"))).is_ok());
+	}
 }

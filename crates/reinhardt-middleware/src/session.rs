@@ -14,270 +14,270 @@ use uuid::Uuid;
 /// Session data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionData {
-    /// Session ID
-    pub id: String,
-    /// Data
-    pub data: HashMap<String, serde_json::Value>,
-    /// Creation timestamp
-    pub created_at: SystemTime,
-    /// Last access timestamp
-    pub last_accessed: SystemTime,
-    /// Expiration timestamp
-    pub expires_at: SystemTime,
+	/// Session ID
+	pub id: String,
+	/// Data
+	pub data: HashMap<String, serde_json::Value>,
+	/// Creation timestamp
+	pub created_at: SystemTime,
+	/// Last access timestamp
+	pub last_accessed: SystemTime,
+	/// Expiration timestamp
+	pub expires_at: SystemTime,
 }
 
 impl SessionData {
-    /// Create a new session
-    fn new(ttl: Duration) -> Self {
-        let now = SystemTime::now();
-        Self {
-            id: Uuid::new_v4().to_string(),
-            data: HashMap::new(),
-            created_at: now,
-            last_accessed: now,
-            expires_at: now + ttl,
-        }
-    }
+	/// Create a new session
+	fn new(ttl: Duration) -> Self {
+		let now = SystemTime::now();
+		Self {
+			id: Uuid::new_v4().to_string(),
+			data: HashMap::new(),
+			created_at: now,
+			last_accessed: now,
+			expires_at: now + ttl,
+		}
+	}
 
-    /// Check if session is valid
-    fn is_valid(&self) -> bool {
-        SystemTime::now() < self.expires_at
-    }
+	/// Check if session is valid
+	fn is_valid(&self) -> bool {
+		SystemTime::now() < self.expires_at
+	}
 
-    /// Update last access timestamp
-    fn touch(&mut self, ttl: Duration) {
-        let now = SystemTime::now();
-        self.last_accessed = now;
-        self.expires_at = now + ttl;
-    }
+	/// Update last access timestamp
+	fn touch(&mut self, ttl: Duration) {
+		let now = SystemTime::now();
+		self.last_accessed = now;
+		self.expires_at = now + ttl;
+	}
 
-    /// Get a value
-    pub fn get<T>(&self, key: &str) -> Option<T>
-    where
-        T: for<'de> Deserialize<'de>,
-    {
-        self.data
-            .get(key)
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
-    }
+	/// Get a value
+	pub fn get<T>(&self, key: &str) -> Option<T>
+	where
+		T: for<'de> Deserialize<'de>,
+	{
+		self.data
+			.get(key)
+			.and_then(|v| serde_json::from_value(v.clone()).ok())
+	}
 
-    /// Set a value
-    pub fn set<T>(&mut self, key: String, value: T) -> Result<()>
-    where
-        T: Serialize,
-    {
-        self.data.insert(
-            key,
-            serde_json::to_value(value)
-                .map_err(|e| reinhardt_apps::Error::Serialization(e.to_string()))?,
-        );
-        Ok(())
-    }
+	/// Set a value
+	pub fn set<T>(&mut self, key: String, value: T) -> Result<()>
+	where
+		T: Serialize,
+	{
+		self.data.insert(
+			key,
+			serde_json::to_value(value)
+				.map_err(|e| reinhardt_apps::Error::Serialization(e.to_string()))?,
+		);
+		Ok(())
+	}
 
-    /// Delete a value
-    pub fn delete(&mut self, key: &str) {
-        self.data.remove(key);
-    }
+	/// Delete a value
+	pub fn delete(&mut self, key: &str) {
+		self.data.remove(key);
+	}
 
-    /// Check if a key exists
-    pub fn contains_key(&self, key: &str) -> bool {
-        self.data.contains_key(key)
-    }
+	/// Check if a key exists
+	pub fn contains_key(&self, key: &str) -> bool {
+		self.data.contains_key(key)
+	}
 
-    /// Clear the session
-    pub fn clear(&mut self) {
-        self.data.clear();
-    }
+	/// Clear the session
+	pub fn clear(&mut self) {
+		self.data.clear();
+	}
 }
 
 /// Session store
 #[derive(Debug, Default)]
 pub struct SessionStore {
-    /// Sessions
-    sessions: RwLock<HashMap<String, SessionData>>,
+	/// Sessions
+	sessions: RwLock<HashMap<String, SessionData>>,
 }
 
 impl SessionStore {
-    /// Create a new store
-    pub fn new() -> Self {
-        Self::default()
-    }
+	/// Create a new store
+	pub fn new() -> Self {
+		Self::default()
+	}
 
-    /// Get a session
-    pub fn get(&self, id: &str) -> Option<SessionData> {
-        let sessions = self.sessions.read().unwrap();
-        sessions.get(id).cloned()
-    }
+	/// Get a session
+	pub fn get(&self, id: &str) -> Option<SessionData> {
+		let sessions = self.sessions.read().unwrap();
+		sessions.get(id).cloned()
+	}
 
-    /// Save a session
-    pub fn save(&self, session: SessionData) {
-        let mut sessions = self.sessions.write().unwrap();
-        sessions.insert(session.id.clone(), session);
-    }
+	/// Save a session
+	pub fn save(&self, session: SessionData) {
+		let mut sessions = self.sessions.write().unwrap();
+		sessions.insert(session.id.clone(), session);
+	}
 
-    /// Delete a session
-    pub fn delete(&self, id: &str) {
-        let mut sessions = self.sessions.write().unwrap();
-        sessions.remove(id);
-    }
+	/// Delete a session
+	pub fn delete(&self, id: &str) {
+		let mut sessions = self.sessions.write().unwrap();
+		sessions.remove(id);
+	}
 
-    /// Clean up expired sessions
-    pub fn cleanup(&self) {
-        let mut sessions = self.sessions.write().unwrap();
-        sessions.retain(|_, session| session.is_valid());
-    }
+	/// Clean up expired sessions
+	pub fn cleanup(&self) {
+		let mut sessions = self.sessions.write().unwrap();
+		sessions.retain(|_, session| session.is_valid());
+	}
 
-    /// Clear the store
-    pub fn clear(&self) {
-        let mut sessions = self.sessions.write().unwrap();
-        sessions.clear();
-    }
+	/// Clear the store
+	pub fn clear(&self) {
+		let mut sessions = self.sessions.write().unwrap();
+		sessions.clear();
+	}
 
-    /// Get the number of sessions
-    pub fn len(&self) -> usize {
-        let sessions = self.sessions.read().unwrap();
-        sessions.len()
-    }
+	/// Get the number of sessions
+	pub fn len(&self) -> usize {
+		let sessions = self.sessions.read().unwrap();
+		sessions.len()
+	}
 
-    /// Check if the store is empty
-    pub fn is_empty(&self) -> bool {
-        let sessions = self.sessions.read().unwrap();
-        sessions.is_empty()
-    }
+	/// Check if the store is empty
+	pub fn is_empty(&self) -> bool {
+		let sessions = self.sessions.read().unwrap();
+		sessions.is_empty()
+	}
 }
 
 /// Session configuration
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
-    /// Cookie name
-    pub cookie_name: String,
-    /// Session TTL
-    pub ttl: Duration,
-    /// HTTPS-only cookie
-    pub secure: bool,
-    /// HttpOnly flag
-    pub http_only: bool,
-    /// SameSite attribute
-    pub same_site: Option<String>,
-    /// Domain
-    pub domain: Option<String>,
-    /// Path
-    pub path: String,
+	/// Cookie name
+	pub cookie_name: String,
+	/// Session TTL
+	pub ttl: Duration,
+	/// HTTPS-only cookie
+	pub secure: bool,
+	/// HttpOnly flag
+	pub http_only: bool,
+	/// SameSite attribute
+	pub same_site: Option<String>,
+	/// Domain
+	pub domain: Option<String>,
+	/// Path
+	pub path: String,
 }
 
 impl SessionConfig {
-    /// Create a new configuration
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::session::SessionConfig;
-    ///
-    /// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
-    /// assert_eq!(config.cookie_name, "sessionid");
-    /// assert_eq!(config.ttl, Duration::from_secs(3600));
-    /// ```
-    pub fn new(cookie_name: String, ttl: Duration) -> Self {
-        Self {
-            cookie_name,
-            ttl,
-            secure: false,
-            http_only: true,
-            same_site: Some("Lax".to_string()),
-            domain: None,
-            path: "/".to_string(),
-        }
-    }
+	/// Create a new configuration
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::session::SessionConfig;
+	///
+	/// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
+	/// assert_eq!(config.cookie_name, "sessionid");
+	/// assert_eq!(config.ttl, Duration::from_secs(3600));
+	/// ```
+	pub fn new(cookie_name: String, ttl: Duration) -> Self {
+		Self {
+			cookie_name,
+			ttl,
+			secure: false,
+			http_only: true,
+			same_site: Some("Lax".to_string()),
+			domain: None,
+			path: "/".to_string(),
+		}
+	}
 
-    /// Enable secure cookie
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::session::SessionConfig;
-    ///
-    /// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
-    ///     .with_secure();
-    /// assert_eq!(config.secure, true);
-    /// ```
-    pub fn with_secure(mut self) -> Self {
-        self.secure = true;
-        self
-    }
+	/// Enable secure cookie
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::session::SessionConfig;
+	///
+	/// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
+	///     .with_secure();
+	/// assert_eq!(config.secure, true);
+	/// ```
+	pub fn with_secure(mut self) -> Self {
+		self.secure = true;
+		self
+	}
 
-    /// Set HttpOnly flag
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::session::SessionConfig;
-    ///
-    /// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
-    ///     .with_http_only(false);
-    /// assert_eq!(config.http_only, false);
-    /// ```
-    pub fn with_http_only(mut self, http_only: bool) -> Self {
-        self.http_only = http_only;
-        self
-    }
+	/// Set HttpOnly flag
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::session::SessionConfig;
+	///
+	/// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
+	///     .with_http_only(false);
+	/// assert_eq!(config.http_only, false);
+	/// ```
+	pub fn with_http_only(mut self, http_only: bool) -> Self {
+		self.http_only = http_only;
+		self
+	}
 
-    /// Set SameSite attribute
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::session::SessionConfig;
-    ///
-    /// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
-    ///     .with_same_site("Strict".to_string());
-    /// ```
-    pub fn with_same_site(mut self, same_site: String) -> Self {
-        self.same_site = Some(same_site);
-        self
-    }
+	/// Set SameSite attribute
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::session::SessionConfig;
+	///
+	/// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
+	///     .with_same_site("Strict".to_string());
+	/// ```
+	pub fn with_same_site(mut self, same_site: String) -> Self {
+		self.same_site = Some(same_site);
+		self
+	}
 
-    /// Set domain
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::session::SessionConfig;
-    ///
-    /// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
-    ///     .with_domain("example.com".to_string());
-    /// ```
-    pub fn with_domain(mut self, domain: String) -> Self {
-        self.domain = Some(domain);
-        self
-    }
+	/// Set domain
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::session::SessionConfig;
+	///
+	/// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
+	///     .with_domain("example.com".to_string());
+	/// ```
+	pub fn with_domain(mut self, domain: String) -> Self {
+		self.domain = Some(domain);
+		self
+	}
 
-    /// Set path
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::session::SessionConfig;
-    ///
-    /// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
-    ///     .with_path("/app".to_string());
-    /// assert_eq!(config.path, "/app");
-    /// ```
-    pub fn with_path(mut self, path: String) -> Self {
-        self.path = path;
-        self
-    }
+	/// Set path
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::session::SessionConfig;
+	///
+	/// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
+	///     .with_path("/app".to_string());
+	/// assert_eq!(config.path, "/app");
+	/// ```
+	pub fn with_path(mut self, path: String) -> Self {
+		self.path = path;
+		self
+	}
 }
 
 impl Default for SessionConfig {
-    fn default() -> Self {
-        Self::new("sessionid".to_string(), Duration::from_secs(3600))
-    }
+	fn default() -> Self {
+		Self::new("sessionid".to_string(), Duration::from_secs(3600))
+	}
 }
 
 /// Session middleware
@@ -319,422 +319,436 @@ impl Default for SessionConfig {
 /// # });
 /// ```
 pub struct SessionMiddleware {
-    config: SessionConfig,
-    pub store: Arc<SessionStore>,
+	config: SessionConfig,
+	pub store: Arc<SessionStore>,
 }
 
 impl SessionMiddleware {
-    /// Create a new session middleware
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::session::{SessionMiddleware, SessionConfig};
-    ///
-    /// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
-    /// let middleware = SessionMiddleware::new(config);
-    /// ```
-    pub fn new(config: SessionConfig) -> Self {
-        Self {
-            config,
-            store: Arc::new(SessionStore::new()),
-        }
-    }
+	/// Create a new session middleware
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::session::{SessionMiddleware, SessionConfig};
+	///
+	/// let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
+	/// let middleware = SessionMiddleware::new(config);
+	/// ```
+	pub fn new(config: SessionConfig) -> Self {
+		Self {
+			config,
+			store: Arc::new(SessionStore::new()),
+		}
+	}
 
-    /// Create with default configuration
-    pub fn with_defaults() -> Self {
-        Self::new(SessionConfig::default())
-    }
+	/// Create with default configuration
+	pub fn with_defaults() -> Self {
+		Self::new(SessionConfig::default())
+	}
 
-    /// Get session ID from request
-    fn get_session_id(&self, request: &Request) -> Option<String> {
-        if let Some(cookie_header) = request.headers.get(hyper::header::COOKIE) {
-            if let Ok(cookie_str) = cookie_header.to_str() {
-                for cookie in cookie_str.split(';') {
-                    let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
-                    if parts.len() == 2 && parts[0] == self.config.cookie_name {
-                        return Some(parts[1].to_string());
-                    }
-                }
-            }
-        }
-        None
-    }
+	/// Get session ID from request
+	fn get_session_id(&self, request: &Request) -> Option<String> {
+		if let Some(cookie_header) = request.headers.get(hyper::header::COOKIE) {
+			if let Ok(cookie_str) = cookie_header.to_str() {
+				for cookie in cookie_str.split(';') {
+					let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
+					if parts.len() == 2 && parts[0] == self.config.cookie_name {
+						return Some(parts[1].to_string());
+					}
+				}
+			}
+		}
+		None
+	}
 
-    /// Build Set-Cookie header
-    fn build_cookie_header(&self, session_id: &str) -> String {
-        let mut parts = vec![format!("{}={}", self.config.cookie_name, session_id)];
+	/// Build Set-Cookie header
+	fn build_cookie_header(&self, session_id: &str) -> String {
+		let mut parts = vec![format!("{}={}", self.config.cookie_name, session_id)];
 
-        parts.push(format!("Path={}", self.config.path));
+		parts.push(format!("Path={}", self.config.path));
 
-        if let Some(domain) = &self.config.domain {
-            parts.push(format!("Domain={}", domain));
-        }
+		if let Some(domain) = &self.config.domain {
+			parts.push(format!("Domain={}", domain));
+		}
 
-        if self.config.http_only {
-            parts.push("HttpOnly".to_string());
-        }
+		if self.config.http_only {
+			parts.push("HttpOnly".to_string());
+		}
 
-        if self.config.secure {
-            parts.push("Secure".to_string());
-        }
+		if self.config.secure {
+			parts.push("Secure".to_string());
+		}
 
-        if let Some(same_site) = &self.config.same_site {
-            parts.push(format!("SameSite={}", same_site));
-        }
+		if let Some(same_site) = &self.config.same_site {
+			parts.push(format!("SameSite={}", same_site));
+		}
 
-        parts.push(format!("Max-Age={}", self.config.ttl.as_secs()));
+		parts.push(format!("Max-Age={}", self.config.ttl.as_secs()));
 
-        parts.join("; ")
-    }
+		parts.join("; ")
+	}
 }
 
 impl Default for SessionMiddleware {
-    fn default() -> Self {
-        Self::with_defaults()
-    }
+	fn default() -> Self {
+		Self::with_defaults()
+	}
 }
 
 #[async_trait]
 impl Middleware for SessionMiddleware {
-    async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
-        // Get or generate session ID
-        let session_id = self.get_session_id(&request);
-        let mut session = if let Some(id) = session_id.clone() {
-            self.store
-                .get(&id)
-                .filter(|s| s.is_valid())
-                .unwrap_or_else(|| SessionData::new(self.config.ttl))
-        } else {
-            SessionData::new(self.config.ttl)
-        };
+	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
+		// Get or generate session ID
+		let session_id = self.get_session_id(&request);
+		let mut session = if let Some(id) = session_id.clone() {
+			self.store
+				.get(&id)
+				.filter(|s| s.is_valid())
+				.unwrap_or_else(|| SessionData::new(self.config.ttl))
+		} else {
+			SessionData::new(self.config.ttl)
+		};
 
-        // Touch the session
-        session.touch(self.config.ttl);
+		// Touch the session
+		session.touch(self.config.ttl);
 
-        // Save the session
-        self.store.save(session.clone());
+		// Save the session
+		self.store.save(session.clone());
 
-        // Call the handler
-        let mut response = handler.handle(request).await?;
+		// Call the handler
+		let mut response = handler.handle(request).await?;
 
-        // Add Set-Cookie header
-        let cookie = self.build_cookie_header(&session.id);
-        response.headers.insert(
-            hyper::header::SET_COOKIE,
-            hyper::header::HeaderValue::from_str(&cookie).map_err(|e| {
-                reinhardt_apps::Error::Internal(format!("Failed to create cookie header: {}", e))
-            })?,
-        );
+		// Add Set-Cookie header
+		let cookie = self.build_cookie_header(&session.id);
+		response.headers.insert(
+			hyper::header::SET_COOKIE,
+			hyper::header::HeaderValue::from_str(&cookie).map_err(|e| {
+				reinhardt_apps::Error::Internal(format!("Failed to create cookie header: {}", e))
+			})?,
+		);
 
-        Ok(response)
-    }
+		Ok(response)
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use bytes::Bytes;
-    use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-    use std::thread;
+	use super::*;
+	use bytes::Bytes;
+	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+	use std::thread;
 
-    struct TestHandler;
+	struct TestHandler;
 
-    #[async_trait]
-    impl Handler for TestHandler {
-        async fn handle(&self, _request: Request) -> Result<Response> {
-            Ok(Response::new(StatusCode::OK).with_body(Bytes::from("OK")))
-        }
-    }
+	#[async_trait]
+	impl Handler for TestHandler {
+		async fn handle(&self, _request: Request) -> Result<Response> {
+			Ok(Response::new(StatusCode::OK).with_body(Bytes::from("OK")))
+		}
+	}
 
-    #[tokio::test]
-    async fn test_session_creation() {
-        let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
-        let middleware = SessionMiddleware::new(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_session_creation() {
+		let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
+		let middleware = SessionMiddleware::new(config);
+		let handler = Arc::new(TestHandler);
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert!(response.headers.contains_key("set-cookie"));
+		assert_eq!(response.status, StatusCode::OK);
+		assert!(response.headers.contains_key("set-cookie"));
 
-        let cookie = response.headers.get("set-cookie").unwrap().to_str().unwrap();
-        assert!(cookie.starts_with("sessionid="));
-    }
+		let cookie = response
+			.headers
+			.get("set-cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		assert!(cookie.starts_with("sessionid="));
+	}
 
-    #[tokio::test]
-    async fn test_session_persistence() {
-        let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
-        let middleware = Arc::new(SessionMiddleware::new(config));
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_session_persistence() {
+		let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
+		let middleware = Arc::new(SessionMiddleware::new(config));
+		let handler = Arc::new(TestHandler);
 
-        // First request
-        let request1 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let response1 = middleware
-            .process(request1, handler.clone())
-            .await
-            .unwrap();
-        let cookie1 = response1
-            .headers
-            .get("set-cookie")
-            .unwrap()
-            .to_str()
-            .unwrap();
+		// First request
+		let request1 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let response1 = middleware.process(request1, handler.clone()).await.unwrap();
+		let cookie1 = response1
+			.headers
+			.get("set-cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
 
-        // Extract session ID
-        let session_id = cookie1
-            .split(';')
-            .next()
-            .unwrap()
-            .split('=')
-            .nth(1)
-            .unwrap();
+		// Extract session ID
+		let session_id = cookie1
+			.split(';')
+			.next()
+			.unwrap()
+			.split('=')
+			.nth(1)
+			.unwrap();
 
-        // Second request (with same session ID)
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            hyper::header::COOKIE,
-            hyper::header::HeaderValue::from_str(&format!("sessionid={}", session_id)).unwrap(),
-        );
-        let request2 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
-        let response2 = middleware.process(request2, handler).await.unwrap();
+		// Second request (with same session ID)
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			hyper::header::COOKIE,
+			hyper::header::HeaderValue::from_str(&format!("sessionid={}", session_id)).unwrap(),
+		);
+		let request2 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
+		let response2 = middleware.process(request2, handler).await.unwrap();
 
-        assert_eq!(response2.status, StatusCode::OK);
+		assert_eq!(response2.status, StatusCode::OK);
 
-        // Same session ID should be returned
-        let cookie2 = response2
-            .headers
-            .get("set-cookie")
-            .unwrap()
-            .to_str()
-            .unwrap();
-        assert!(cookie2.contains(session_id));
-    }
+		// Same session ID should be returned
+		let cookie2 = response2
+			.headers
+			.get("set-cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		assert!(cookie2.contains(session_id));
+	}
 
-    #[tokio::test]
-    async fn test_session_expiration() {
-        let config = SessionConfig::new("sessionid".to_string(), Duration::from_millis(100));
-        let middleware = Arc::new(SessionMiddleware::new(config));
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_session_expiration() {
+		let config = SessionConfig::new("sessionid".to_string(), Duration::from_millis(100));
+		let middleware = Arc::new(SessionMiddleware::new(config));
+		let handler = Arc::new(TestHandler);
 
-        // First request
-        let request1 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let response1 = middleware
-            .process(request1, handler.clone())
-            .await
-            .unwrap();
-        let cookie1 = response1
-            .headers
-            .get("set-cookie")
-            .unwrap()
-            .to_str()
-            .unwrap();
-        let session_id1 = cookie1
-            .split(';')
-            .next()
-            .unwrap()
-            .split('=')
-            .nth(1)
-            .unwrap();
+		// First request
+		let request1 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let response1 = middleware.process(request1, handler.clone()).await.unwrap();
+		let cookie1 = response1
+			.headers
+			.get("set-cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		let session_id1 = cookie1
+			.split(';')
+			.next()
+			.unwrap()
+			.split('=')
+			.nth(1)
+			.unwrap();
 
-        // Wait until expiration
-        thread::sleep(Duration::from_millis(150));
+		// Wait until expiration
+		thread::sleep(Duration::from_millis(150));
 
-        // Request after expiration
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            hyper::header::COOKIE,
-            hyper::header::HeaderValue::from_str(&format!("sessionid={}", session_id1)).unwrap(),
-        );
-        let request2 = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
-        let response2 = middleware.process(request2, handler).await.unwrap();
+		// Request after expiration
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			hyper::header::COOKIE,
+			hyper::header::HeaderValue::from_str(&format!("sessionid={}", session_id1)).unwrap(),
+		);
+		let request2 = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
+		let response2 = middleware.process(request2, handler).await.unwrap();
 
-        // New session ID should be created
-        let cookie2 = response2
-            .headers
-            .get("set-cookie")
-            .unwrap()
-            .to_str()
-            .unwrap();
-        let session_id2 = cookie2
-            .split(';')
-            .next()
-            .unwrap()
-            .split('=')
-            .nth(1)
-            .unwrap();
+		// New session ID should be created
+		let cookie2 = response2
+			.headers
+			.get("set-cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		let session_id2 = cookie2
+			.split(';')
+			.next()
+			.unwrap()
+			.split('=')
+			.nth(1)
+			.unwrap();
 
-        assert_ne!(session_id1, session_id2);
-    }
+		assert_ne!(session_id1, session_id2);
+	}
 
-    #[tokio::test]
-    async fn test_cookie_attributes() {
-        let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
-            .with_secure()
-            .with_http_only(true)
-            .with_same_site("Strict".to_string())
-            .with_path("/app".to_string());
-        let middleware = SessionMiddleware::new(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_cookie_attributes() {
+		let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
+			.with_secure()
+			.with_http_only(true)
+			.with_same_site("Strict".to_string())
+			.with_path("/app".to_string());
+		let middleware = SessionMiddleware::new(config);
+		let handler = Arc::new(TestHandler);
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        let cookie = response.headers.get("set-cookie").unwrap().to_str().unwrap();
-        assert!(cookie.contains("Secure"));
-        assert!(cookie.contains("HttpOnly"));
-        assert!(cookie.contains("SameSite=Strict"));
-        assert!(cookie.contains("Path=/app"));
-    }
+		let cookie = response
+			.headers
+			.get("set-cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		assert!(cookie.contains("Secure"));
+		assert!(cookie.contains("HttpOnly"));
+		assert!(cookie.contains("SameSite=Strict"));
+		assert!(cookie.contains("Path=/app"));
+	}
 
-    #[tokio::test]
-    async fn test_session_data() {
-        let mut session = SessionData::new(Duration::from_secs(3600));
+	#[tokio::test]
+	async fn test_session_data() {
+		let mut session = SessionData::new(Duration::from_secs(3600));
 
-        session.set("user_id".to_string(), 123).unwrap();
-        session
-            .set("username".to_string(), "alice".to_string())
-            .unwrap();
+		session.set("user_id".to_string(), 123).unwrap();
+		session
+			.set("username".to_string(), "alice".to_string())
+			.unwrap();
 
-        let user_id: i32 = session.get("user_id").unwrap();
-        assert_eq!(user_id, 123);
+		let user_id: i32 = session.get("user_id").unwrap();
+		assert_eq!(user_id, 123);
 
-        let username: String = session.get("username").unwrap();
-        assert_eq!(username, "alice");
+		let username: String = session.get("username").unwrap();
+		assert_eq!(username, "alice");
 
-        assert!(session.contains_key("user_id"));
-        assert!(!session.contains_key("email"));
+		assert!(session.contains_key("user_id"));
+		assert!(!session.contains_key("email"));
 
-        session.delete("username");
-        assert!(!session.contains_key("username"));
-    }
+		session.delete("username");
+		assert!(!session.contains_key("username"));
+	}
 
-    #[tokio::test]
-    async fn test_session_store() {
-        let store = SessionStore::new();
+	#[tokio::test]
+	async fn test_session_store() {
+		let store = SessionStore::new();
 
-        let session1 = SessionData::new(Duration::from_secs(3600));
-        let id1 = session1.id.clone();
-        store.save(session1);
+		let session1 = SessionData::new(Duration::from_secs(3600));
+		let id1 = session1.id.clone();
+		store.save(session1);
 
-        let session2 = SessionData::new(Duration::from_secs(3600));
-        let id2 = session2.id.clone();
-        store.save(session2);
+		let session2 = SessionData::new(Duration::from_secs(3600));
+		let id2 = session2.id.clone();
+		store.save(session2);
 
-        assert_eq!(store.len(), 2);
-        assert!(!store.is_empty());
+		assert_eq!(store.len(), 2);
+		assert!(!store.is_empty());
 
-        let retrieved1 = store.get(&id1).unwrap();
-        assert_eq!(retrieved1.id, id1);
+		let retrieved1 = store.get(&id1).unwrap();
+		assert_eq!(retrieved1.id, id1);
 
-        store.delete(&id1);
-        assert_eq!(store.len(), 1);
-        assert!(store.get(&id1).is_none());
-        assert!(store.get(&id2).is_some());
-    }
+		store.delete(&id1);
+		assert_eq!(store.len(), 1);
+		assert!(store.get(&id1).is_none());
+		assert!(store.get(&id2).is_some());
+	}
 
-    #[tokio::test]
-    async fn test_session_cleanup() {
-        let store = SessionStore::new();
+	#[tokio::test]
+	async fn test_session_cleanup() {
+		let store = SessionStore::new();
 
-        let mut session1 = SessionData::new(Duration::from_millis(10));
-        session1.expires_at = SystemTime::now() - Duration::from_millis(20);
-        store.save(session1);
+		let mut session1 = SessionData::new(Duration::from_millis(10));
+		session1.expires_at = SystemTime::now() - Duration::from_millis(20);
+		store.save(session1);
 
-        let session2 = SessionData::new(Duration::from_secs(3600));
-        let id2 = session2.id.clone();
-        store.save(session2);
+		let session2 = SessionData::new(Duration::from_secs(3600));
+		let id2 = session2.id.clone();
+		store.save(session2);
 
-        store.cleanup();
+		store.cleanup();
 
-        assert_eq!(store.len(), 1);
-        assert!(store.get(&id2).is_some());
-    }
+		assert_eq!(store.len(), 1);
+		assert!(store.get(&id2).is_some());
+	}
 
-    #[tokio::test]
-    async fn test_with_defaults_constructor() {
-        let middleware = SessionMiddleware::with_defaults();
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_with_defaults_constructor() {
+		let middleware = SessionMiddleware::with_defaults();
+		let handler = Arc::new(TestHandler);
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/page"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/page"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert!(response.headers.contains_key("set-cookie"));
+		assert_eq!(response.status, StatusCode::OK);
+		assert!(response.headers.contains_key("set-cookie"));
 
-        let cookie = response.headers.get("set-cookie").unwrap().to_str().unwrap();
-        // Default cookie name should be "sessionid"
-        assert!(cookie.starts_with("sessionid="));
-        // Default path should be "/"
-        assert!(cookie.contains("Path=/"));
-    }
+		let cookie = response
+			.headers
+			.get("set-cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		// Default cookie name should be "sessionid"
+		assert!(cookie.starts_with("sessionid="));
+		// Default path should be "/"
+		assert!(cookie.contains("Path=/"));
+	}
 
-    #[tokio::test]
-    async fn test_custom_cookie_name() {
-        let config = SessionConfig::new("my_session".to_string(), Duration::from_secs(3600));
-        let middleware = SessionMiddleware::new(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_custom_cookie_name() {
+		let config = SessionConfig::new("my_session".to_string(), Duration::from_secs(3600));
+		let middleware = SessionMiddleware::new(config);
+		let handler = Arc::new(TestHandler);
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        let cookie = response.headers.get("set-cookie").unwrap().to_str().unwrap();
-        // Custom cookie name should be used
-        assert!(cookie.starts_with("my_session="));
-        assert!(!cookie.starts_with("sessionid="));
-    }
+		let cookie = response
+			.headers
+			.get("set-cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		// Custom cookie name should be used
+		assert!(cookie.starts_with("my_session="));
+		assert!(!cookie.starts_with("sessionid="));
+	}
 }

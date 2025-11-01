@@ -34,105 +34,105 @@ use std::process::Command;
 /// # Ok::<(), reinhardt_commands::CommandError>(())
 /// ```
 pub fn run_formatters(paths: &[&str], formatter_path: Option<&str>) -> Result<(), CommandError> {
-    if paths.is_empty() {
-        return Ok(());
-    }
+	if paths.is_empty() {
+		return Ok(());
+	}
 
-    let formatter = formatter_path.unwrap_or("rustfmt");
+	let formatter = formatter_path.unwrap_or("rustfmt");
 
-    // Check if formatter exists
-    let check_result = Command::new(formatter).arg("--version").output();
+	// Check if formatter exists
+	let check_result = Command::new(formatter).arg("--version").output();
 
-    match check_result {
-        Ok(output) => {
-            if !output.status.success() {
-                return Err(CommandError::ExecutionError(format!(
-                    "Formatter '{}' is not working properly",
-                    formatter
-                )));
-            }
-        }
-        Err(e) => {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                return Err(CommandError::ExecutionError(format!(
-                    "Formatter '{}' not found. Please install rustfmt: rustup component add rustfmt",
-                    formatter
-                )));
-            } else {
-                return Err(CommandError::ExecutionError(format!(
-                    "Failed to check formatter '{}': {}",
-                    formatter, e
-                )));
-            }
-        }
-    }
+	match check_result {
+		Ok(output) => {
+			if !output.status.success() {
+				return Err(CommandError::ExecutionError(format!(
+					"Formatter '{}' is not working properly",
+					formatter
+				)));
+			}
+		}
+		Err(e) => {
+			if e.kind() == std::io::ErrorKind::NotFound {
+				return Err(CommandError::ExecutionError(format!(
+					"Formatter '{}' not found. Please install rustfmt: rustup component add rustfmt",
+					formatter
+				)));
+			} else {
+				return Err(CommandError::ExecutionError(format!(
+					"Failed to check formatter '{}': {}",
+					formatter, e
+				)));
+			}
+		}
+	}
 
-    // Run formatter on each file
-    for path in paths {
-        if !Path::new(path).exists() {
-            return Err(CommandError::ExecutionError(format!(
-                "File not found: {}",
-                path
-            )));
-        }
+	// Run formatter on each file
+	for path in paths {
+		if !Path::new(path).exists() {
+			return Err(CommandError::ExecutionError(format!(
+				"File not found: {}",
+				path
+			)));
+		}
 
-        let result = Command::new(formatter).arg(path).output();
+		let result = Command::new(formatter).arg(path).output();
 
-        match result {
-            Ok(output) => {
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(CommandError::ExecutionError(format!(
-                        "Formatter failed for '{}': {}",
-                        path, stderr
-                    )));
-                }
-            }
-            Err(e) => {
-                return Err(CommandError::ExecutionError(format!(
-                    "Failed to run formatter on '{}': {}",
-                    path, e
-                )));
-            }
-        }
-    }
+		match result {
+			Ok(output) => {
+				if !output.status.success() {
+					let stderr = String::from_utf8_lossy(&output.stderr);
+					return Err(CommandError::ExecutionError(format!(
+						"Formatter failed for '{}': {}",
+						path, stderr
+					)));
+				}
+			}
+			Err(e) => {
+				return Err(CommandError::ExecutionError(format!(
+					"Failed to run formatter on '{}': {}",
+					path, e
+				)));
+			}
+		}
+	}
 
-    Ok(())
+	Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_run_formatters_empty_paths() {
-        let result = run_formatters(&[], None);
-        assert!(result.is_ok(), "Should succeed with empty paths");
-    }
+	#[test]
+	fn test_run_formatters_empty_paths() {
+		let result = run_formatters(&[], None);
+		assert!(result.is_ok(), "Should succeed with empty paths");
+	}
 
-    #[test]
-    fn test_run_formatters_nonexistent_formatter() {
-        let result = run_formatters(&["src/lib.rs"], Some("/nonexistent/path/to/formatter"));
-        assert!(result.is_err(), "Should fail with nonexistent formatter");
-        if let Err(e) = result {
-            let error_msg = format!("{:?}", e);
-            assert!(
-                error_msg.contains("not found"),
-                "Error should mention formatter not found"
-            );
-        }
-    }
+	#[test]
+	fn test_run_formatters_nonexistent_formatter() {
+		let result = run_formatters(&["src/lib.rs"], Some("/nonexistent/path/to/formatter"));
+		assert!(result.is_err(), "Should fail with nonexistent formatter");
+		if let Err(e) = result {
+			let error_msg = format!("{:?}", e);
+			assert!(
+				error_msg.contains("not found"),
+				"Error should mention formatter not found"
+			);
+		}
+	}
 
-    #[test]
-    fn test_run_formatters_nonexistent_file() {
-        let result = run_formatters(&["/nonexistent/file.rs"], None);
-        assert!(result.is_err(), "Should fail with nonexistent file");
-        if let Err(e) = result {
-            let error_msg = format!("{:?}", e);
-            assert!(
-                error_msg.contains("File not found"),
-                "Error should mention file not found"
-            );
-        }
-    }
+	#[test]
+	fn test_run_formatters_nonexistent_file() {
+		let result = run_formatters(&["/nonexistent/file.rs"], None);
+		assert!(result.is_err(), "Should fail with nonexistent file");
+		if let Err(e) = result {
+			let error_msg = format!("{:?}", e);
+			assert!(
+				error_msg.contains("File not found"),
+				"Error should mention file not found"
+			);
+		}
+	}
 }

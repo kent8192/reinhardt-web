@@ -3,7 +3,7 @@
 //! This crate provides derive macros to simplify gRPC ↔ GraphQL integration.
 
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{DeriveInput, parse_macro_input};
 
 mod convert;
 mod subscription;
@@ -30,10 +30,10 @@ mod subscription;
 /// - `From<User> for proto::User`
 #[proc_macro_derive(GrpcGraphQLConvert, attributes(graphql, proto))]
 pub fn derive_grpc_graphql_convert(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    convert::expand_derive(input)
-        .unwrap_or_else(|err| err.to_compile_error())
-        .into()
+	let input = parse_macro_input!(input as DeriveInput);
+	convert::expand_derive(input)
+		.unwrap_or_else(|err| err.to_compile_error())
+		.into()
 }
 
 /// Automatically map gRPC Subscription to GraphQL Subscription
@@ -53,8 +53,8 @@ pub fn derive_grpc_graphql_convert(input: TokenStream) -> TokenStream {
 /// Handles Rust 2024 lifetime issues.
 #[proc_macro_derive(GrpcSubscription, attributes(grpc, graphql))]
 pub fn derive_grpc_subscription(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    subscription::expand_derive(input)
-        .unwrap_or_else(|err| err.to_compile_error())
-        .into()
+	let input = parse_macro_input!(input as DeriveInput);
+	subscription::expand_derive(input)
+		.unwrap_or_else(|err| err.to_compile_error())
+		.into()
 }

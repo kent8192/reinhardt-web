@@ -21,69 +21,69 @@ pub const LOCALE_COOKIE_NAME: &str = "django_language";
 /// Locale middleware configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocaleConfig {
-    /// Default locale to use when none is detected
-    pub default_locale: String,
-    /// List of supported locales (e.g., ["en", "ja", "fr"])
-    pub supported_locales: Vec<String>,
-    /// Check URL path for locale prefix (e.g., /ja/page)
-    pub check_url_path: bool,
-    /// Cookie name for storing locale preference
-    pub cookie_name: String,
+	/// Default locale to use when none is detected
+	pub default_locale: String,
+	/// List of supported locales (e.g., ["en", "ja", "fr"])
+	pub supported_locales: Vec<String>,
+	/// Check URL path for locale prefix (e.g., /ja/page)
+	pub check_url_path: bool,
+	/// Cookie name for storing locale preference
+	pub cookie_name: String,
 }
 
 impl LocaleConfig {
-    /// Create a new LocaleConfig with default settings
-    ///
-    /// Default configuration:
-    /// - `default_locale`: "en"
-    /// - `supported_locales`: ["en"]
-    /// - `check_url_path`: false
-    /// - `cookie_name`: "django_language"
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_middleware::locale::LocaleConfig;
-    ///
-    /// let config = LocaleConfig::new();
-    /// assert_eq!(config.default_locale, "en");
-    /// ```
-    pub fn new() -> Self {
-        Self {
-            default_locale: "en".to_string(),
-            supported_locales: vec!["en".to_string()],
-            check_url_path: false,
-            cookie_name: LOCALE_COOKIE_NAME.to_string(),
-        }
-    }
+	/// Create a new LocaleConfig with default settings
+	///
+	/// Default configuration:
+	/// - `default_locale`: "en"
+	/// - `supported_locales`: ["en"]
+	/// - `check_url_path`: false
+	/// - `cookie_name`: "django_language"
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::locale::LocaleConfig;
+	///
+	/// let config = LocaleConfig::new();
+	/// assert_eq!(config.default_locale, "en");
+	/// ```
+	pub fn new() -> Self {
+		Self {
+			default_locale: "en".to_string(),
+			supported_locales: vec!["en".to_string()],
+			check_url_path: false,
+			cookie_name: LOCALE_COOKIE_NAME.to_string(),
+		}
+	}
 
-    /// Create a new LocaleConfig with multiple supported locales
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_middleware::locale::LocaleConfig;
-    ///
-    /// let config = LocaleConfig::with_locales(
-    ///     "en".to_string(),
-    ///     vec!["en".to_string(), "ja".to_string(), "fr".to_string()]
-    /// );
-    /// assert_eq!(config.supported_locales.len(), 3);
-    /// ```
-    pub fn with_locales(default: String, supported: Vec<String>) -> Self {
-        Self {
-            default_locale: default,
-            supported_locales: supported,
-            check_url_path: false,
-            cookie_name: LOCALE_COOKIE_NAME.to_string(),
-        }
-    }
+	/// Create a new LocaleConfig with multiple supported locales
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::locale::LocaleConfig;
+	///
+	/// let config = LocaleConfig::with_locales(
+	///     "en".to_string(),
+	///     vec!["en".to_string(), "ja".to_string(), "fr".to_string()]
+	/// );
+	/// assert_eq!(config.supported_locales.len(), 3);
+	/// ```
+	pub fn with_locales(default: String, supported: Vec<String>) -> Self {
+		Self {
+			default_locale: default,
+			supported_locales: supported,
+			check_url_path: false,
+			cookie_name: LOCALE_COOKIE_NAME.to_string(),
+		}
+	}
 }
 
 impl Default for LocaleConfig {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 /// Locale detection middleware
@@ -145,416 +145,416 @@ impl Default for LocaleConfig {
 /// # });
 /// ```
 pub struct LocaleMiddleware {
-    config: LocaleConfig,
+	config: LocaleConfig,
 }
 
 impl LocaleMiddleware {
-    /// Create a new LocaleMiddleware with default configuration
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_middleware::LocaleMiddleware;
-    ///
-    /// let middleware = LocaleMiddleware::new();
-    /// ```
-    pub fn new() -> Self {
-        Self {
-            config: LocaleConfig::default(),
-        }
-    }
+	/// Create a new LocaleMiddleware with default configuration
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::LocaleMiddleware;
+	///
+	/// let middleware = LocaleMiddleware::new();
+	/// ```
+	pub fn new() -> Self {
+		Self {
+			config: LocaleConfig::default(),
+		}
+	}
 
-    /// Create a new LocaleMiddleware with custom configuration
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_middleware::{LocaleMiddleware, locale::LocaleConfig};
-    ///
-    /// let config = LocaleConfig::with_locales(
-    ///     "en".to_string(),
-    ///     vec!["en".to_string(), "ja".to_string()]
-    /// );
-    ///
-    /// let middleware = LocaleMiddleware::with_config(config);
-    /// ```
-    pub fn with_config(config: LocaleConfig) -> Self {
-        Self { config }
-    }
+	/// Create a new LocaleMiddleware with custom configuration
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_middleware::{LocaleMiddleware, locale::LocaleConfig};
+	///
+	/// let config = LocaleConfig::with_locales(
+	///     "en".to_string(),
+	///     vec!["en".to_string(), "ja".to_string()]
+	/// );
+	///
+	/// let middleware = LocaleMiddleware::with_config(config);
+	/// ```
+	pub fn with_config(config: LocaleConfig) -> Self {
+		Self { config }
+	}
 
-    /// Extract locale from URL path (e.g., /ja/page -> "ja")
-    fn locale_from_path(&self, path: &str) -> Option<String> {
-        if !self.config.check_url_path {
-            return None;
-        }
+	/// Extract locale from URL path (e.g., /ja/page -> "ja")
+	fn locale_from_path(&self, path: &str) -> Option<String> {
+		if !self.config.check_url_path {
+			return None;
+		}
 
-        // Path format: /locale/... (e.g., /ja/page)
-        let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
-        if parts.is_empty() {
-            return None;
-        }
+		// Path format: /locale/... (e.g., /ja/page)
+		let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+		if parts.is_empty() {
+			return None;
+		}
 
-        let potential_locale = parts[0];
-        if self
-            .config
-            .supported_locales
-            .contains(&potential_locale.to_string())
-        {
-            return Some(potential_locale.to_string());
-        }
+		let potential_locale = parts[0];
+		if self
+			.config
+			.supported_locales
+			.contains(&potential_locale.to_string())
+		{
+			return Some(potential_locale.to_string());
+		}
 
-        None
-    }
+		None
+	}
 
-    /// Extract locale from cookie
-    fn locale_from_cookie(&self, request: &Request) -> Option<String> {
-        let cookie_header = request.headers.get(COOKIE)?.to_str().ok()?;
+	/// Extract locale from cookie
+	fn locale_from_cookie(&self, request: &Request) -> Option<String> {
+		let cookie_header = request.headers.get(COOKIE)?.to_str().ok()?;
 
-        // Parse cookies: "name1=value1; name2=value2"
-        for cookie in cookie_header.split(';') {
-            let cookie = cookie.trim();
-            if let Some((name, value)) = cookie.split_once('=') {
-                if name == self.config.cookie_name {
-                    let locale = value.to_string();
-                    if self.config.supported_locales.contains(&locale) {
-                        return Some(locale);
-                    }
-                }
-            }
-        }
+		// Parse cookies: "name1=value1; name2=value2"
+		for cookie in cookie_header.split(';') {
+			let cookie = cookie.trim();
+			if let Some((name, value)) = cookie.split_once('=') {
+				if name == self.config.cookie_name {
+					let locale = value.to_string();
+					if self.config.supported_locales.contains(&locale) {
+						return Some(locale);
+					}
+				}
+			}
+		}
 
-        None
-    }
+		None
+	}
 
-    /// Extract locale from Accept-Language header
-    fn locale_from_accept_language(&self, request: &Request) -> Option<String> {
-        let accept_lang = request.headers.get(ACCEPT_LANGUAGE)?.to_str().ok()?;
+	/// Extract locale from Accept-Language header
+	fn locale_from_accept_language(&self, request: &Request) -> Option<String> {
+		let accept_lang = request.headers.get(ACCEPT_LANGUAGE)?.to_str().ok()?;
 
-        // Parse Accept-Language: "ja,en-US;q=0.9,en;q=0.8"
-        let mut languages: Vec<(String, f32)> = Vec::new();
+		// Parse Accept-Language: "ja,en-US;q=0.9,en;q=0.8"
+		let mut languages: Vec<(String, f32)> = Vec::new();
 
-        for lang_spec in accept_lang.split(',') {
-            let lang_spec = lang_spec.trim();
-            let (lang, quality) = if let Some((l, q)) = lang_spec.split_once(";q=") {
-                (l.trim(), q.parse::<f32>().unwrap_or(1.0))
-            } else {
-                (lang_spec, 1.0)
-            };
+		for lang_spec in accept_lang.split(',') {
+			let lang_spec = lang_spec.trim();
+			let (lang, quality) = if let Some((l, q)) = lang_spec.split_once(";q=") {
+				(l.trim(), q.parse::<f32>().unwrap_or(1.0))
+			} else {
+				(lang_spec, 1.0)
+			};
 
-            // Extract base language code (ja-JP -> ja, en-US -> en)
-            let base_lang = lang.split('-').next().unwrap_or(lang).to_string();
-            languages.push((base_lang, quality));
-        }
+			// Extract base language code (ja-JP -> ja, en-US -> en)
+			let base_lang = lang.split('-').next().unwrap_or(lang).to_string();
+			languages.push((base_lang, quality));
+		}
 
-        // Sort by quality score (descending)
-        languages.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+		// Sort by quality score (descending)
+		languages.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-        // Find first supported language
-        for (lang, _) in languages {
-            if self.config.supported_locales.contains(&lang) {
-                return Some(lang);
-            }
-        }
+		// Find first supported language
+		for (lang, _) in languages {
+			if self.config.supported_locales.contains(&lang) {
+				return Some(lang);
+			}
+		}
 
-        None
-    }
+		None
+	}
 
-    /// Detect locale from all available sources
-    fn detect_locale(&self, request: &Request) -> String {
-        // Priority: URL path > Cookie > Accept-Language > Default
-        self.locale_from_path(request.uri.path())
-            .or_else(|| self.locale_from_cookie(request))
-            .or_else(|| self.locale_from_accept_language(request))
-            .unwrap_or_else(|| self.config.default_locale.clone())
-    }
+	/// Detect locale from all available sources
+	fn detect_locale(&self, request: &Request) -> String {
+		// Priority: URL path > Cookie > Accept-Language > Default
+		self.locale_from_path(request.uri.path())
+			.or_else(|| self.locale_from_cookie(request))
+			.or_else(|| self.locale_from_accept_language(request))
+			.unwrap_or_else(|| self.config.default_locale.clone())
+	}
 }
 
 impl Default for LocaleMiddleware {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[async_trait]
 impl Middleware for LocaleMiddleware {
-    async fn process(&self, mut request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
-        // Detect locale
-        let locale = self.detect_locale(&request);
+	async fn process(&self, mut request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
+		// Detect locale
+		let locale = self.detect_locale(&request);
 
-        // Add locale to request headers for downstream handlers
-        request
-            .headers
-            .insert(LOCALE_HEADER, locale.parse().unwrap());
+		// Add locale to request headers for downstream handlers
+		request
+			.headers
+			.insert(LOCALE_HEADER, locale.parse().unwrap());
 
-        // Process request with handler
-        handler.handle(request).await
-    }
+		// Process request with handler
+		handler.handle(request).await
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use bytes::Bytes;
-    use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+	use super::*;
+	use bytes::Bytes;
+	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
 
-    struct TestHandler;
+	struct TestHandler;
 
-    #[async_trait]
-    impl Handler for TestHandler {
-        async fn handle(&self, request: Request) -> Result<Response> {
-            // Echo back the detected locale
-            let locale = request
-                .headers
-                .get(LOCALE_HEADER)
-                .and_then(|h| h.to_str().ok())
-                .unwrap_or("unknown")
-                .to_string();
-            Ok(Response::new(StatusCode::OK).with_body(Bytes::from(locale)))
-        }
-    }
+	#[async_trait]
+	impl Handler for TestHandler {
+		async fn handle(&self, request: Request) -> Result<Response> {
+			// Echo back the detected locale
+			let locale = request
+				.headers
+				.get(LOCALE_HEADER)
+				.and_then(|h| h.to_str().ok())
+				.unwrap_or("unknown")
+				.to_string();
+			Ok(Response::new(StatusCode::OK).with_body(Bytes::from(locale)))
+		}
+	}
 
-    #[tokio::test]
-    async fn test_default_locale() {
-        let config = LocaleConfig::new();
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_default_locale() {
+		let config = LocaleConfig::new();
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/page"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/page"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "en");
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "en");
+	}
 
-    #[tokio::test]
-    async fn test_accept_language_detection() {
-        let config = LocaleConfig::with_locales(
-            "en".to_string(),
-            vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
-        );
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_accept_language_detection() {
+		let config = LocaleConfig::with_locales(
+			"en".to_string(),
+			vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
+		);
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let mut headers = HeaderMap::new();
-        headers.insert(ACCEPT_LANGUAGE, "ja,en;q=0.9".parse().unwrap());
+		let mut headers = HeaderMap::new();
+		headers.insert(ACCEPT_LANGUAGE, "ja,en;q=0.9".parse().unwrap());
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/page"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/page"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "ja");
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "ja");
+	}
 
-    #[tokio::test]
-    async fn test_accept_language_with_quality() {
-        let config = LocaleConfig::with_locales(
-            "en".to_string(),
-            vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
-        );
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_accept_language_with_quality() {
+		let config = LocaleConfig::with_locales(
+			"en".to_string(),
+			vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
+		);
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            ACCEPT_LANGUAGE,
-            "fr;q=0.7,ja;q=0.9,en;q=0.8".parse().unwrap(),
-        );
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			ACCEPT_LANGUAGE,
+			"fr;q=0.7,ja;q=0.9,en;q=0.8".parse().unwrap(),
+		);
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/page"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/page"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "ja"); // Highest quality score
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "ja"); // Highest quality score
+	}
 
-    #[tokio::test]
-    async fn test_cookie_detection() {
-        let config = LocaleConfig::with_locales(
-            "en".to_string(),
-            vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
-        );
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_cookie_detection() {
+		let config = LocaleConfig::with_locales(
+			"en".to_string(),
+			vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
+		);
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let mut headers = HeaderMap::new();
-        headers.insert(COOKIE, "django_language=fr; other=value".parse().unwrap());
+		let mut headers = HeaderMap::new();
+		headers.insert(COOKIE, "django_language=fr; other=value".parse().unwrap());
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/page"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/page"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "fr");
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "fr");
+	}
 
-    #[tokio::test]
-    async fn test_cookie_overrides_accept_language() {
-        let config = LocaleConfig::with_locales(
-            "en".to_string(),
-            vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
-        );
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_cookie_overrides_accept_language() {
+		let config = LocaleConfig::with_locales(
+			"en".to_string(),
+			vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
+		);
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let mut headers = HeaderMap::new();
-        headers.insert(ACCEPT_LANGUAGE, "ja".parse().unwrap());
-        headers.insert(COOKIE, "django_language=fr".parse().unwrap());
+		let mut headers = HeaderMap::new();
+		headers.insert(ACCEPT_LANGUAGE, "ja".parse().unwrap());
+		headers.insert(COOKIE, "django_language=fr".parse().unwrap());
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/page"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/page"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "fr"); // Cookie takes precedence
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "fr"); // Cookie takes precedence
+	}
 
-    #[tokio::test]
-    async fn test_url_path_detection() {
-        let mut config = LocaleConfig::with_locales(
-            "en".to_string(),
-            vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
-        );
-        config.check_url_path = true;
+	#[tokio::test]
+	async fn test_url_path_detection() {
+		let mut config = LocaleConfig::with_locales(
+			"en".to_string(),
+			vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
+		);
+		config.check_url_path = true;
 
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/ja/page/subpage"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/ja/page/subpage"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "ja");
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "ja");
+	}
 
-    #[tokio::test]
-    async fn test_url_path_overrides_all() {
-        let mut config = LocaleConfig::with_locales(
-            "en".to_string(),
-            vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
-        );
-        config.check_url_path = true;
+	#[tokio::test]
+	async fn test_url_path_overrides_all() {
+		let mut config = LocaleConfig::with_locales(
+			"en".to_string(),
+			vec!["en".to_string(), "ja".to_string(), "fr".to_string()],
+		);
+		config.check_url_path = true;
 
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let mut headers = HeaderMap::new();
-        headers.insert(ACCEPT_LANGUAGE, "ja".parse().unwrap());
-        headers.insert(COOKIE, "django_language=fr".parse().unwrap());
+		let mut headers = HeaderMap::new();
+		headers.insert(ACCEPT_LANGUAGE, "ja".parse().unwrap());
+		headers.insert(COOKIE, "django_language=fr".parse().unwrap());
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/en/page"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/en/page"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "en"); // URL path takes highest precedence
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "en"); // URL path takes highest precedence
+	}
 
-    #[tokio::test]
-    async fn test_unsupported_locale_fallback() {
-        let config =
-            LocaleConfig::with_locales("en".to_string(), vec!["en".to_string(), "ja".to_string()]);
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_unsupported_locale_fallback() {
+		let config =
+			LocaleConfig::with_locales("en".to_string(), vec!["en".to_string(), "ja".to_string()]);
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let mut headers = HeaderMap::new();
-        headers.insert(ACCEPT_LANGUAGE, "de,fr;q=0.9".parse().unwrap());
+		let mut headers = HeaderMap::new();
+		headers.insert(ACCEPT_LANGUAGE, "de,fr;q=0.9".parse().unwrap());
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/page"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/page"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "en"); // Falls back to default
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "en"); // Falls back to default
+	}
 
-    #[tokio::test]
-    async fn test_accept_language_with_region() {
-        let config =
-            LocaleConfig::with_locales("en".to_string(), vec!["en".to_string(), "ja".to_string()]);
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_accept_language_with_region() {
+		let config =
+			LocaleConfig::with_locales("en".to_string(), vec!["en".to_string(), "ja".to_string()]);
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let mut headers = HeaderMap::new();
-        headers.insert(ACCEPT_LANGUAGE, "ja-JP,en-US;q=0.9".parse().unwrap());
+		let mut headers = HeaderMap::new();
+		headers.insert(ACCEPT_LANGUAGE, "ja-JP,en-US;q=0.9".parse().unwrap());
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/page"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/page"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "ja"); // Extracts base language code
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "ja"); // Extracts base language code
+	}
 
-    #[tokio::test]
-    async fn test_invalid_cookie_value() {
-        let config =
-            LocaleConfig::with_locales("en".to_string(), vec!["en".to_string(), "ja".to_string()]);
-        let middleware = LocaleMiddleware::with_config(config);
-        let handler = Arc::new(TestHandler);
+	#[tokio::test]
+	async fn test_invalid_cookie_value() {
+		let config =
+			LocaleConfig::with_locales("en".to_string(), vec!["en".to_string(), "ja".to_string()]);
+		let middleware = LocaleMiddleware::with_config(config);
+		let handler = Arc::new(TestHandler);
 
-        let mut headers = HeaderMap::new();
-        headers.insert(COOKIE, "django_language=invalid".parse().unwrap());
-        headers.insert(ACCEPT_LANGUAGE, "ja".parse().unwrap());
+		let mut headers = HeaderMap::new();
+		headers.insert(COOKIE, "django_language=invalid".parse().unwrap());
+		headers.insert(ACCEPT_LANGUAGE, "ja".parse().unwrap());
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/page"),
-            Version::HTTP_11,
-            headers,
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/page"),
+			Version::HTTP_11,
+			headers,
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
-        let body = String::from_utf8(response.body.to_vec()).unwrap();
-        assert_eq!(body, "ja"); // Falls back to Accept-Language
-    }
+		let response = middleware.process(request, handler).await.unwrap();
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(body, "ja"); // Falls back to Accept-Language
+	}
 }

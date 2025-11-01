@@ -52,13 +52,13 @@ pub use reinhardt_serializers as serializers_internal;
 
 #[cfg(feature = "serializers")]
 pub mod serializers {
-    //! Data serialization and validation components
-    //!
-    //! Provides Django REST Framework-style serializers for data validation,
-    //! transformation, and model serialization.
+	//! Data serialization and validation components
+	//!
+	//! Provides Django REST Framework-style serializers for data validation,
+	//! transformation, and model serialization.
 
-    // Re-export everything from the internal crate
-    pub use reinhardt_serializers::*;
+	// Re-export everything from the internal crate
+	pub use reinhardt_serializers::*;
 }
 
 // Parsers module - from crates/parsers
@@ -67,37 +67,37 @@ pub use reinhardt_parsers as parsers_internal;
 
 #[cfg(feature = "parsers")]
 pub mod parsers {
-    //! Request body parsers for the Reinhardt framework
-    //!
-    //! Provides parsers for different content types:
-    //! - **JSONParser**: Parse JSON request bodies
-    //! - **FormParser**: Parse HTML form data (application/x-www-form-urlencoded)
-    //! - **MultiPartParser**: Handle file uploads (multipart/form-data)
-    //! - **FileUploadParser**: Raw file upload handling
+	//! Request body parsers for the Reinhardt framework
+	//!
+	//! Provides parsers for different content types:
+	//! - **JSONParser**: Parse JSON request bodies
+	//! - **FormParser**: Parse HTML form data (application/x-www-form-urlencoded)
+	//! - **MultiPartParser**: Handle file uploads (multipart/form-data)
+	//! - **FileUploadParser**: Raw file upload handling
 
-    // Re-export everything from the internal crate
-    pub use reinhardt_parsers::*;
+	// Re-export everything from the internal crate
+	pub use reinhardt_parsers::*;
 }
 
 // Renderers module
 #[cfg(feature = "renderers")]
 pub mod renderers {
-    //! Response renderers for the Reinhardt framework
-    //!
-    //! Provides renderers for different output formats:
-    //! - **JSONRenderer**: Render responses as JSON
-    //! - **XMLRenderer**: Render responses as XML
-    //! - **YAMLRenderer**: Render responses as YAML
-    //! - **CSVRenderer**: Render responses as CSV
-    //! - **BrowsableAPIRenderer**: HTML self-documenting API interface
-    //! - **OpenAPIRenderer**: Generate OpenAPI 3.0 specifications
-    //! - **AdminRenderer**: Django-like admin interface renderer
-    //! - **StaticHTMLRenderer**: Static HTML content renderer
-    //! - **DocumentationRenderer**: Render API documentation from OpenAPI schemas
-    //! - **SchemaJSRenderer**: Render OpenAPI schemas as JavaScript
+	//! Response renderers for the Reinhardt framework
+	//!
+	//! Provides renderers for different output formats:
+	//! - **JSONRenderer**: Render responses as JSON
+	//! - **XMLRenderer**: Render responses as XML
+	//! - **YAMLRenderer**: Render responses as YAML
+	//! - **CSVRenderer**: Render responses as CSV
+	//! - **BrowsableAPIRenderer**: HTML self-documenting API interface
+	//! - **OpenAPIRenderer**: Generate OpenAPI 3.0 specifications
+	//! - **AdminRenderer**: Django-like admin interface renderer
+	//! - **StaticHTMLRenderer**: Static HTML content renderer
+	//! - **DocumentationRenderer**: Render API documentation from OpenAPI schemas
+	//! - **SchemaJSRenderer**: Render OpenAPI schemas as JavaScript
 
-    // Re-export from specialized crates
-    pub use reinhardt_browsable_api::BrowsableApiRenderer as BrowsableAPIRenderer;
+	// Re-export from specialized crates
+	pub use reinhardt_browsable_api::BrowsableApiRenderer as BrowsableAPIRenderer;
 }
 
 // Re-export other internal crates
@@ -115,8 +115,8 @@ pub use rest_core::routers;
 
 // Re-export authentication types
 pub use rest_core::authentication::{
-    AllowAny, AnonymousUser, AuthBackend, AuthResult, IsAdminUser, IsAuthenticated,
-    IsAuthenticatedOrReadOnly, Permission, SimpleUser, User,
+	AllowAny, AnonymousUser, AuthBackend, AuthResult, IsAdminUser, IsAuthenticated,
+	IsAuthenticatedOrReadOnly, Permission, SimpleUser, User,
 };
 
 // Re-export JWT types conditionally
@@ -135,14 +135,14 @@ pub use reinhardt_browsable_api::*;
 // Re-export integrated modules at top level for convenience
 #[cfg(feature = "serializers")]
 pub use serializers::{
-    ContentNegotiator, Deserializer, JsonSerializer, ModelSerializer, Serializer, SerializerError,
-    UniqueTogetherValidator, UniqueValidator,
+	ContentNegotiator, Deserializer, JsonSerializer, ModelSerializer, Serializer, SerializerError,
+	UniqueTogetherValidator, UniqueValidator,
 };
 
 #[cfg(feature = "parsers")]
 pub use parsers::{
-    FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
-    Parser,
+	FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
+	Parser,
 };
 
 #[cfg(feature = "renderers")]
@@ -151,45 +151,45 @@ pub use renderers::BrowsableAPIRenderer;
 // Temporarily disabled - utoipa API compatibility issues
 /*
 pub use schema::{
-    Components, Contact, Info, License, MediaType, OpenApiSchema, Operation, Parameter,
-    ParameterLocation, PathItem, RequestBody, Response, Schema, SecurityRequirement,
-    SecurityScheme, Server, ServerVariable, Tag, OPENAPI_VERSION,
+	Components, Contact, Info, License, MediaType, OpenApiSchema, Operation, Parameter,
+	ParameterLocation, PathItem, RequestBody, Response, Schema, SecurityRequirement,
+	SecurityScheme, Server, ServerVariable, Tag, OPENAPI_VERSION,
 };
 */
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_serializers_module_available() {
-        #[cfg(feature = "serializers")]
-        {
-            use crate::serializers::JsonSerializer;
-            use serde::{Deserialize, Serialize};
+	#[test]
+	fn test_serializers_module_available() {
+		#[cfg(feature = "serializers")]
+		{
+			use crate::serializers::JsonSerializer;
+			use serde::{Deserialize, Serialize};
 
-            #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-            struct TestData {
-                name: String,
-            }
+			#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+			struct TestData {
+				name: String,
+			}
 
-            let _serializer = JsonSerializer::<TestData>::new();
-        }
-    }
+			let _serializer = JsonSerializer::<TestData>::new();
+		}
+	}
 
-    #[test]
-    fn test_parsers_module_available() {
-        #[cfg(feature = "parsers")]
-        {
-            use crate::parsers::JSONParser;
-            let _parser = JSONParser::new();
-        }
-    }
+	#[test]
+	fn test_parsers_module_available() {
+		#[cfg(feature = "parsers")]
+		{
+			use crate::parsers::JSONParser;
+			let _parser = JSONParser::new();
+		}
+	}
 
-    #[test]
-    fn test_renderers_module_available() {
-        #[cfg(feature = "renderers")]
-        {
-            use crate::serializers::content_negotiation::JSONRenderer;
-            let _renderer = JSONRenderer::new();
-        }
-    }
+	#[test]
+	fn test_renderers_module_available() {
+		#[cfg(feature = "renderers")]
+		{
+			use crate::serializers::content_negotiation::JSONRenderer;
+			let _renderer = JSONRenderer::new();
+		}
+	}
 }

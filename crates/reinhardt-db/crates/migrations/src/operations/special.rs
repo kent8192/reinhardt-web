@@ -46,126 +46,126 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunSQL {
-    pub sql: String,
-    pub reverse_sql: Option<String>,
-    pub state_operations: Vec<StateOperation>,
+	pub sql: String,
+	pub reverse_sql: Option<String>,
+	pub state_operations: Vec<StateOperation>,
 }
 
 impl RunSQL {
-    /// Create a new RunSQL operation
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::RunSQL;
-    ///
-    /// let sql = RunSQL::new("INSERT INTO config (key, value) VALUES ('version', '1.0')");
-    /// assert!(sql.reverse_sql.is_none());
-    /// ```
-    pub fn new(sql: impl Into<String>) -> Self {
-        Self {
-            sql: sql.into(),
-            reverse_sql: None,
-            state_operations: vec![],
-        }
-    }
+	/// Create a new RunSQL operation
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::RunSQL;
+	///
+	/// let sql = RunSQL::new("INSERT INTO config (key, value) VALUES ('version', '1.0')");
+	/// assert!(sql.reverse_sql.is_none());
+	/// ```
+	pub fn new(sql: impl Into<String>) -> Self {
+		Self {
+			sql: sql.into(),
+			reverse_sql: None,
+			state_operations: vec![],
+		}
+	}
 
-    /// Create a RunSQL operation with multiple statements
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::RunSQL;
-    ///
-    /// let sql = RunSQL::new_multi(vec![
-    ///     "UPDATE users SET active = true WHERE id = 1".to_string(),
-    ///     "UPDATE users SET active = false WHERE id = 2".to_string(),
-    /// ]);
-    ///
-    /// assert!(sql.sql.contains("UPDATE users SET active = true"));
-    /// assert!(sql.sql.contains("UPDATE users SET active = false"));
-    /// ```
-    pub fn new_multi(statements: Vec<String>) -> Self {
-        Self {
-            sql: statements.join(";\n"),
-            reverse_sql: None,
-            state_operations: vec![],
-        }
-    }
+	/// Create a RunSQL operation with multiple statements
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::RunSQL;
+	///
+	/// let sql = RunSQL::new_multi(vec![
+	///     "UPDATE users SET active = true WHERE id = 1".to_string(),
+	///     "UPDATE users SET active = false WHERE id = 2".to_string(),
+	/// ]);
+	///
+	/// assert!(sql.sql.contains("UPDATE users SET active = true"));
+	/// assert!(sql.sql.contains("UPDATE users SET active = false"));
+	/// ```
+	pub fn new_multi(statements: Vec<String>) -> Self {
+		Self {
+			sql: statements.join(";\n"),
+			reverse_sql: None,
+			state_operations: vec![],
+		}
+	}
 
-    /// Set reverse SQL for rollback
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::RunSQL;
-    ///
-    /// let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)")
-    ///     .with_reverse_sql("DROP INDEX idx_email");
-    ///
-    /// assert!(sql.reverse_sql.is_some());
-    /// assert_eq!(sql.reverse_sql.unwrap(), "DROP INDEX idx_email");
-    /// ```
-    pub fn with_reverse_sql(mut self, reverse_sql: impl Into<String>) -> Self {
-        self.reverse_sql = Some(reverse_sql.into());
-        self
-    }
+	/// Set reverse SQL for rollback
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::RunSQL;
+	///
+	/// let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)")
+	///     .with_reverse_sql("DROP INDEX idx_email");
+	///
+	/// assert!(sql.reverse_sql.is_some());
+	/// assert_eq!(sql.reverse_sql.unwrap(), "DROP INDEX idx_email");
+	/// ```
+	pub fn with_reverse_sql(mut self, reverse_sql: impl Into<String>) -> Self {
+		self.reverse_sql = Some(reverse_sql.into());
+		self
+	}
 
-    /// Add state operations to be applied along with the SQL
-    ///
-    /// This allows you to keep the project state in sync when running custom SQL.
-    pub fn with_state_operations(mut self, operations: Vec<StateOperation>) -> Self {
-        self.state_operations = operations;
-        self
-    }
+	/// Add state operations to be applied along with the SQL
+	///
+	/// This allows you to keep the project state in sync when running custom SQL.
+	pub fn with_state_operations(mut self, operations: Vec<StateOperation>) -> Self {
+		self.state_operations = operations;
+		self
+	}
 
-    /// Apply to project state (forward)
-    ///
-    /// RunSQL doesn't modify state by default unless state_operations are specified
-    pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
-        for op in &self.state_operations {
-            op.apply(app_label, state);
-        }
-    }
+	/// Apply to project state (forward)
+	///
+	/// RunSQL doesn't modify state by default unless state_operations are specified
+	pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
+		for op in &self.state_operations {
+			op.apply(app_label, state);
+		}
+	}
 
-    /// Generate SQL
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::RunSQL;
-    /// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
-    ///
-    /// let sql = RunSQL::new("SELECT 1");
-    /// let factory = SchemaEditorFactory::new();
-    /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
-    ///
-    /// let statements = sql.database_forwards(editor.as_ref());
-    /// assert_eq!(statements.len(), 1);
-    /// assert_eq!(statements[0], "SELECT 1");
-    /// ```
-    pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-        vec![self.sql.clone()]
-    }
+	/// Generate SQL
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::RunSQL;
+	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	///
+	/// let sql = RunSQL::new("SELECT 1");
+	/// let factory = SchemaEditorFactory::new();
+	/// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+	///
+	/// let statements = sql.database_forwards(editor.as_ref());
+	/// assert_eq!(statements.len(), 1);
+	/// assert_eq!(statements[0], "SELECT 1");
+	/// ```
+	pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		vec![self.sql.clone()]
+	}
 
-    /// Get reverse SQL for rollback
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::RunSQL;
-    ///
-    /// let sql = RunSQL::new("CREATE TABLE temp (id INT)")
-    ///     .with_reverse_sql("DROP TABLE temp");
-    ///
-    /// assert_eq!(sql.get_reverse_sql(), Some("DROP TABLE temp"));
-    ///
-    /// let irreversible = RunSQL::new("DROP TABLE important_data");
-    /// assert_eq!(irreversible.get_reverse_sql(), None);
-    /// ```
-    pub fn get_reverse_sql(&self) -> Option<&str> {
-        self.reverse_sql.as_deref()
-    }
+	/// Get reverse SQL for rollback
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::RunSQL;
+	///
+	/// let sql = RunSQL::new("CREATE TABLE temp (id INT)")
+	///     .with_reverse_sql("DROP TABLE temp");
+	///
+	/// assert_eq!(sql.get_reverse_sql(), Some("DROP TABLE temp"));
+	///
+	/// let irreversible = RunSQL::new("DROP TABLE important_data");
+	/// assert_eq!(irreversible.get_reverse_sql(), None);
+	/// ```
+	pub fn get_reverse_sql(&self) -> Option<&str> {
+		self.reverse_sql.as_deref()
+	}
 }
 
 /// State operation to apply alongside SQL
@@ -173,31 +173,31 @@ impl RunSQL {
 /// This allows RunSQL to update the project state appropriately
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StateOperation {
-    AddModel { name: String },
-    RemoveModel { name: String },
-    AddField { model: String, field: String },
-    RemoveField { model: String, field: String },
+	AddModel { name: String },
+	RemoveModel { name: String },
+	AddField { model: String, field: String },
+	RemoveField { model: String, field: String },
 }
 
 impl StateOperation {
-    fn apply(&self, app_label: &str, state: &mut ProjectState) {
-        match self {
-            StateOperation::AddModel { .. } => {
-                // Would need model definition
-            }
-            StateOperation::RemoveModel { name } => {
-                state.remove_model(app_label, name);
-            }
-            StateOperation::AddField { .. } => {
-                // Would need field definition
-            }
-            StateOperation::RemoveField { model, field } => {
-                if let Some(model_state) = state.get_model_mut(app_label, model) {
-                    model_state.remove_field(field);
-                }
-            }
-        }
-    }
+	fn apply(&self, app_label: &str, state: &mut ProjectState) {
+		match self {
+			StateOperation::AddModel { .. } => {
+				// Would need model definition
+			}
+			StateOperation::RemoveModel { name } => {
+				state.remove_model(app_label, name);
+			}
+			StateOperation::AddField { .. } => {
+				// Would need field definition
+			}
+			StateOperation::RemoveField { model, field } => {
+				if let Some(model_state) = state.get_model_mut(app_label, model) {
+					model_state.remove_field(field);
+				}
+			}
+		}
+	}
 }
 
 /// Execute Rust code during migration
@@ -219,187 +219,188 @@ impl StateOperation {
 /// ```
 #[derive(Clone)]
 pub struct RunCode {
-    pub description: String,
-    #[allow(clippy::type_complexity)]
-    pub code: fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>,
-    #[allow(clippy::type_complexity)]
-    pub reverse_code: Option<fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>>,
+	pub description: String,
+	#[allow(clippy::type_complexity)]
+	pub code: fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>,
+	#[allow(clippy::type_complexity)]
+	pub reverse_code: Option<fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>>,
 }
 
 impl std::fmt::Debug for RunCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RunCode")
-            .field("description", &self.description)
-            .field("has_reverse", &self.reverse_code.is_some())
-            .finish()
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("RunCode")
+			.field("description", &self.description)
+			.field("has_reverse", &self.reverse_code.is_some())
+			.finish()
+	}
 }
 
 impl RunCode {
-    /// Create a new RunCode operation
-    pub fn new(
-        description: impl Into<String>,
-        code: fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>,
-    ) -> Self {
-        Self {
-            description: description.into(),
-            code,
-            reverse_code: None,
-        }
-    }
+	/// Create a new RunCode operation
+	pub fn new(
+		description: impl Into<String>,
+		code: fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>,
+	) -> Self {
+		Self {
+			description: description.into(),
+			code,
+			reverse_code: None,
+		}
+	}
 
-    /// Set reverse code for rollback
-    pub fn with_reverse_code(
-        mut self,
-        reverse: fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>,
-    ) -> Self {
-        self.reverse_code = Some(reverse);
-        self
-    }
+	/// Set reverse code for rollback
+	pub fn with_reverse_code(
+		mut self,
+		reverse: fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>,
+	) -> Self {
+		self.reverse_code = Some(reverse);
+		self
+	}
 
-    /// Execute the code
-    pub fn execute(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-        (self.code)(schema_editor)
-    }
+	/// Execute the code
+	pub fn execute(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
+		(self.code)(schema_editor)
+	}
 
-    /// Execute reverse code
-    pub fn execute_reverse(
-        &self,
-        schema_editor: &dyn BaseDatabaseSchemaEditor,
-    ) -> Result<(), String> {
-        if let Some(reverse) = self.reverse_code {
-            reverse(schema_editor)
-        } else {
-            Err("This operation is not reversible".to_string())
-        }
-    }
+	/// Execute reverse code
+	pub fn execute_reverse(
+		&self,
+		schema_editor: &dyn BaseDatabaseSchemaEditor,
+	) -> Result<(), String> {
+		if let Some(reverse) = self.reverse_code {
+			reverse(schema_editor)
+		} else {
+			Err("This operation is not reversible".to_string())
+		}
+	}
 
-    /// Apply to project state (forward)
-    ///
-    /// RunCode doesn't modify state by default
-    pub fn state_forwards(&self, _app_label: &str, _state: &mut ProjectState) {
-        // Custom code operations don't modify state
-    }
+	/// Apply to project state (forward)
+	///
+	/// RunCode doesn't modify state by default
+	pub fn state_forwards(&self, _app_label: &str, _state: &mut ProjectState) {
+		// Custom code operations don't modify state
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_run_sql_basic() {
-        let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)");
-        assert_eq!(sql.sql, "CREATE INDEX idx_email ON users(email)");
-        assert!(sql.reverse_sql.is_none());
-    }
+	#[test]
+	fn test_run_sql_basic() {
+		let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)");
+		assert_eq!(sql.sql, "CREATE INDEX idx_email ON users(email)");
+		assert!(sql.reverse_sql.is_none());
+	}
 
-    #[test]
-    fn test_run_sql_with_reverse() {
-        let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)")
-            .with_reverse_sql("DROP INDEX idx_email");
+	#[test]
+	fn test_run_sql_with_reverse() {
+		let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)")
+			.with_reverse_sql("DROP INDEX idx_email");
 
-        assert_eq!(sql.sql, "CREATE INDEX idx_email ON users(email)");
-        assert_eq!(sql.reverse_sql, Some("DROP INDEX idx_email".to_string()));
-        assert_eq!(sql.get_reverse_sql(), Some("DROP INDEX idx_email"));
-    }
+		assert_eq!(sql.sql, "CREATE INDEX idx_email ON users(email)");
+		assert_eq!(sql.reverse_sql, Some("DROP INDEX idx_email".to_string()));
+		assert_eq!(sql.get_reverse_sql(), Some("DROP INDEX idx_email"));
+	}
 
-    #[test]
-    fn test_run_sql_multi() {
-        let sql = RunSQL::new_multi(vec![
-            "INSERT INTO roles (name) VALUES ('admin')".to_string(),
-            "INSERT INTO roles (name) VALUES ('user')".to_string(),
-        ]);
+	#[test]
+	fn test_run_sql_multi() {
+		let sql = RunSQL::new_multi(vec![
+			"INSERT INTO roles (name) VALUES ('admin')".to_string(),
+			"INSERT INTO roles (name) VALUES ('user')".to_string(),
+		]);
 
-        assert!(sql
-            .sql
-            .contains("INSERT INTO roles (name) VALUES ('admin')"));
-        assert!(sql.sql.contains("INSERT INTO roles (name) VALUES ('user')"));
-    }
+		assert!(
+			sql.sql
+				.contains("INSERT INTO roles (name) VALUES ('admin')")
+		);
+		assert!(sql.sql.contains("INSERT INTO roles (name) VALUES ('user')"));
+	}
 
-    #[cfg(feature = "postgres")]
-    #[test]
-    fn test_run_sql_database_forwards() {
-        use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
+	#[cfg(feature = "postgres")]
+	#[test]
+	fn test_run_sql_database_forwards() {
+		use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
 
-        let sql = RunSQL::new("SELECT COUNT(*) FROM users");
-        let factory = SchemaEditorFactory::new();
-        let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+		let sql = RunSQL::new("SELECT COUNT(*) FROM users");
+		let factory = SchemaEditorFactory::new();
+		let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 
-        let statements = sql.database_forwards(editor.as_ref());
-        assert_eq!(statements.len(), 1);
-        assert_eq!(statements[0], "SELECT COUNT(*) FROM users");
-    }
+		let statements = sql.database_forwards(editor.as_ref());
+		assert_eq!(statements.len(), 1);
+		assert_eq!(statements[0], "SELECT COUNT(*) FROM users");
+	}
 
-    #[test]
-    fn test_run_code_basic() {
-        fn migrate(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-            Ok(())
-        }
+	#[test]
+	fn test_run_code_basic() {
+		fn migrate(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
+			Ok(())
+		}
 
-        let code = RunCode::new("Test migration", migrate);
-        assert_eq!(code.description, "Test migration");
-        assert!(code.reverse_code.is_none());
-    }
+		let code = RunCode::new("Test migration", migrate);
+		assert_eq!(code.description, "Test migration");
+		assert!(code.reverse_code.is_none());
+	}
 
-    #[test]
-    fn test_run_code_with_reverse() {
-        fn migrate(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-            Ok(())
-        }
+	#[test]
+	fn test_run_code_with_reverse() {
+		fn migrate(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
+			Ok(())
+		}
 
-        fn reverse(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-            Ok(())
-        }
+		fn reverse(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
+			Ok(())
+		}
 
-        let code = RunCode::new("Test migration", migrate).with_reverse_code(reverse);
-        assert!(code.reverse_code.is_some());
-    }
+		let code = RunCode::new("Test migration", migrate).with_reverse_code(reverse);
+		assert!(code.reverse_code.is_some());
+	}
 
-    #[cfg(feature = "postgres")]
-    #[test]
-    fn test_run_code_execute() {
-        use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
+	#[cfg(feature = "postgres")]
+	#[test]
+	fn test_run_code_execute() {
+		use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
 
-        fn migrate(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-            Ok(())
-        }
+		fn migrate(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
+			Ok(())
+		}
 
-        let code = RunCode::new("Test migration", migrate);
-        let factory = SchemaEditorFactory::new();
-        let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+		let code = RunCode::new("Test migration", migrate);
+		let factory = SchemaEditorFactory::new();
+		let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 
-        let result = code.execute(editor.as_ref());
-        assert!(result.is_ok());
-    }
+		let result = code.execute(editor.as_ref());
+		assert!(result.is_ok());
+	}
 
-    #[test]
-    fn test_state_operation_remove_model() {
-        use crate::operations::models::CreateModel;
-        use crate::operations::FieldDefinition;
+	#[test]
+	fn test_state_operation_remove_model() {
+		use crate::operations::FieldDefinition;
+		use crate::operations::models::CreateModel;
 
-        let mut state = ProjectState::new();
+		let mut state = ProjectState::new();
 
-        // Create a model first
-        let create = CreateModel::new(
-            "User",
-            vec![FieldDefinition::new(
-                "id",
-                "INTEGER",
-                true,
-                false,
-                None::<String>,
-            )],
-        );
-        create.state_forwards("myapp", &mut state);
-        assert!(state.get_model("myapp", "User").is_some());
+		// Create a model first
+		let create = CreateModel::new(
+			"User",
+			vec![FieldDefinition::new(
+				"id",
+				"INTEGER",
+				true,
+				false,
+				None::<String>,
+			)],
+		);
+		create.state_forwards("myapp", &mut state);
+		assert!(state.get_model("myapp", "User").is_some());
 
-        // Remove it via state operation
-        let op = StateOperation::RemoveModel {
-            name: "User".to_string(),
-        };
-        op.apply("myapp", &mut state);
-        assert!(state.get_model("myapp", "User").is_none());
-    }
+		// Remove it via state operation
+		let op = StateOperation::RemoveModel {
+			name: "User".to_string(),
+		};
+		op.apply("myapp", &mut state);
+		assert!(state.get_model("myapp", "User").is_none());
+	}
 }
 
 /// Complex data migration builder
@@ -419,218 +420,218 @@ mod tests {
 /// ```
 #[derive(Debug, Clone)]
 pub struct DataMigration {
-    /// Table name
-    pub table: String,
-    /// Migration description
-    pub description: String,
-    /// Batch size for processing
-    pub batch_size: usize,
-    /// SQL transformations to apply
-    pub transformations: Vec<String>,
-    /// Whether to use transactions
-    pub use_transactions: bool,
+	/// Table name
+	pub table: String,
+	/// Migration description
+	pub description: String,
+	/// Batch size for processing
+	pub batch_size: usize,
+	/// SQL transformations to apply
+	pub transformations: Vec<String>,
+	/// Whether to use transactions
+	pub use_transactions: bool,
 }
 
 impl DataMigration {
-    /// Create a new data migration
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::DataMigration;
-    ///
-    /// let migration = DataMigration::new("users", "Update user statuses");
-    /// assert_eq!(migration.table, "users");
-    /// assert_eq!(migration.batch_size, 1000);
-    /// ```
-    pub fn new(table: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            table: table.into(),
-            description: description.into(),
-            batch_size: 1000,
-            transformations: Vec::new(),
-            use_transactions: true,
-        }
-    }
+	/// Create a new data migration
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::DataMigration;
+	///
+	/// let migration = DataMigration::new("users", "Update user statuses");
+	/// assert_eq!(migration.table, "users");
+	/// assert_eq!(migration.batch_size, 1000);
+	/// ```
+	pub fn new(table: impl Into<String>, description: impl Into<String>) -> Self {
+		Self {
+			table: table.into(),
+			description: description.into(),
+			batch_size: 1000,
+			transformations: Vec::new(),
+			use_transactions: true,
+		}
+	}
 
-    /// Set batch size for processing
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::DataMigration;
-    ///
-    /// let migration = DataMigration::new("users", "Migrate data")
-    ///     .batch_size(500);
-    /// assert_eq!(migration.batch_size, 500);
-    /// ```
-    pub fn batch_size(mut self, size: usize) -> Self {
-        self.batch_size = size;
-        self
-    }
+	/// Set batch size for processing
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::DataMigration;
+	///
+	/// let migration = DataMigration::new("users", "Migrate data")
+	///     .batch_size(500);
+	/// assert_eq!(migration.batch_size, 500);
+	/// ```
+	pub fn batch_size(mut self, size: usize) -> Self {
+		self.batch_size = size;
+		self
+	}
 
-    /// Add a SQL transformation
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::DataMigration;
-    ///
-    /// let migration = DataMigration::new("users", "Clean data")
-    ///     .add_transformation("UPDATE users SET email = LOWER(email)");
-    /// assert_eq!(migration.transformations.len(), 1);
-    /// ```
-    pub fn add_transformation(mut self, sql: impl Into<String>) -> Self {
-        self.transformations.push(sql.into());
-        self
-    }
+	/// Add a SQL transformation
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::DataMigration;
+	///
+	/// let migration = DataMigration::new("users", "Clean data")
+	///     .add_transformation("UPDATE users SET email = LOWER(email)");
+	/// assert_eq!(migration.transformations.len(), 1);
+	/// ```
+	pub fn add_transformation(mut self, sql: impl Into<String>) -> Self {
+		self.transformations.push(sql.into());
+		self
+	}
 
-    /// Set whether to use transactions
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::DataMigration;
-    ///
-    /// let migration = DataMigration::new("users", "Migrate")
-    ///     .use_transactions(false);
-    /// assert!(!migration.use_transactions);
-    /// ```
-    pub fn use_transactions(mut self, use_tx: bool) -> Self {
-        self.use_transactions = use_tx;
-        self
-    }
+	/// Set whether to use transactions
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::DataMigration;
+	///
+	/// let migration = DataMigration::new("users", "Migrate")
+	///     .use_transactions(false);
+	/// assert!(!migration.use_transactions);
+	/// ```
+	pub fn use_transactions(mut self, use_tx: bool) -> Self {
+		self.use_transactions = use_tx;
+		self
+	}
 
-    /// Generate batched SQL statements
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::DataMigration;
-    ///
-    /// let migration = DataMigration::new("users", "Update emails")
-    ///     .batch_size(100)
-    ///     .add_transformation("UPDATE users SET email = LOWER(email) WHERE id >= {start} AND id < {end}");
-    ///
-    /// let statements = migration.generate_batched_sql(1000);
-    /// assert_eq!(statements.len(), 10); // 1000 / 100 = 10 batches
-    /// ```
-    pub fn generate_batched_sql(&self, total_rows: usize) -> Vec<String> {
-        let mut statements = Vec::new();
-        let num_batches = (total_rows + self.batch_size - 1) / self.batch_size;
+	/// Generate batched SQL statements
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::DataMigration;
+	///
+	/// let migration = DataMigration::new("users", "Update emails")
+	///     .batch_size(100)
+	///     .add_transformation("UPDATE users SET email = LOWER(email) WHERE id >= {start} AND id < {end}");
+	///
+	/// let statements = migration.generate_batched_sql(1000);
+	/// assert_eq!(statements.len(), 10); // 1000 / 100 = 10 batches
+	/// ```
+	pub fn generate_batched_sql(&self, total_rows: usize) -> Vec<String> {
+		let mut statements = Vec::new();
+		let num_batches = (total_rows + self.batch_size - 1) / self.batch_size;
 
-        for batch in 0..num_batches {
-            let start = batch * self.batch_size;
-            let end = ((batch + 1) * self.batch_size).min(total_rows);
+		for batch in 0..num_batches {
+			let start = batch * self.batch_size;
+			let end = ((batch + 1) * self.batch_size).min(total_rows);
 
-            for transformation in &self.transformations {
-                let sql = transformation
-                    .replace("{start}", &start.to_string())
-                    .replace("{end}", &end.to_string())
-                    .replace("{batch_size}", &self.batch_size.to_string())
-                    .replace("{table}", &self.table);
+			for transformation in &self.transformations {
+				let sql = transformation
+					.replace("{start}", &start.to_string())
+					.replace("{end}", &end.to_string())
+					.replace("{batch_size}", &self.batch_size.to_string())
+					.replace("{table}", &self.table);
 
-                statements.push(sql);
-            }
-        }
+				statements.push(sql);
+			}
+		}
 
-        statements
-    }
+		statements
+	}
 
-    /// Convert to RunSQL operation
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::special::DataMigration;
-    ///
-    /// let migration = DataMigration::new("users", "Migrate")
-    ///     .add_transformation("UPDATE users SET status = 'active'");
-    ///
-    /// let run_sql = migration.to_run_sql();
-    /// assert!(run_sql.sql.contains("UPDATE users"));
-    /// ```
-    pub fn to_run_sql(&self) -> RunSQL {
-        let sql = if self.use_transactions {
-            format!("BEGIN;\n{}\nCOMMIT;", self.transformations.join(";\n"))
-        } else {
-            self.transformations.join(";\n")
-        };
+	/// Convert to RunSQL operation
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::DataMigration;
+	///
+	/// let migration = DataMigration::new("users", "Migrate")
+	///     .add_transformation("UPDATE users SET status = 'active'");
+	///
+	/// let run_sql = migration.to_run_sql();
+	/// assert!(run_sql.sql.contains("UPDATE users"));
+	/// ```
+	pub fn to_run_sql(&self) -> RunSQL {
+		let sql = if self.use_transactions {
+			format!("BEGIN;\n{}\nCOMMIT;", self.transformations.join(";\n"))
+		} else {
+			self.transformations.join(";\n")
+		};
 
-        RunSQL::new(sql)
-    }
+		RunSQL::new(sql)
+	}
 }
 
 #[cfg(test)]
 mod data_migration_tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_data_migration_creation() {
-        let migration = DataMigration::new("users", "Migrate user data");
-        assert_eq!(migration.table, "users");
-        assert_eq!(migration.description, "Migrate user data");
-        assert_eq!(migration.batch_size, 1000);
-        assert!(migration.use_transactions);
-    }
+	#[test]
+	fn test_data_migration_creation() {
+		let migration = DataMigration::new("users", "Migrate user data");
+		assert_eq!(migration.table, "users");
+		assert_eq!(migration.description, "Migrate user data");
+		assert_eq!(migration.batch_size, 1000);
+		assert!(migration.use_transactions);
+	}
 
-    #[test]
-    fn test_data_migration_batch_size() {
-        let migration = DataMigration::new("users", "Migrate").batch_size(500);
-        assert_eq!(migration.batch_size, 500);
-    }
+	#[test]
+	fn test_data_migration_batch_size() {
+		let migration = DataMigration::new("users", "Migrate").batch_size(500);
+		assert_eq!(migration.batch_size, 500);
+	}
 
-    #[test]
-    fn test_data_migration_add_transformation() {
-        let migration = DataMigration::new("users", "Clean")
-            .add_transformation("UPDATE users SET email = LOWER(email)")
-            .add_transformation("UPDATE users SET name = TRIM(name)");
+	#[test]
+	fn test_data_migration_add_transformation() {
+		let migration = DataMigration::new("users", "Clean")
+			.add_transformation("UPDATE users SET email = LOWER(email)")
+			.add_transformation("UPDATE users SET name = TRIM(name)");
 
-        assert_eq!(migration.transformations.len(), 2);
-    }
+		assert_eq!(migration.transformations.len(), 2);
+	}
 
-    #[test]
-    fn test_data_migration_use_transactions() {
-        let migration = DataMigration::new("users", "Migrate").use_transactions(false);
-        assert!(!migration.use_transactions);
-    }
+	#[test]
+	fn test_data_migration_use_transactions() {
+		let migration = DataMigration::new("users", "Migrate").use_transactions(false);
+		assert!(!migration.use_transactions);
+	}
 
-    #[test]
-    fn test_generate_batched_sql() {
-        let migration = DataMigration::new("users", "Update")
-            .batch_size(100)
-            .add_transformation(
-                "UPDATE users SET processed = true WHERE id >= {start} AND id < {end}",
-            );
+	#[test]
+	fn test_generate_batched_sql() {
+		let migration = DataMigration::new("users", "Update")
+			.batch_size(100)
+			.add_transformation(
+				"UPDATE users SET processed = true WHERE id >= {start} AND id < {end}",
+			);
 
-        let statements = migration.generate_batched_sql(250);
-        assert_eq!(statements.len(), 3); // 250 / 100 = 3 batches
+		let statements = migration.generate_batched_sql(250);
+		assert_eq!(statements.len(), 3); // 250 / 100 = 3 batches
 
-        assert!(statements[0].contains("id >= 0 AND id < 100"));
-        assert!(statements[1].contains("id >= 100 AND id < 200"));
-        assert!(statements[2].contains("id >= 200 AND id < 250"));
-    }
+		assert!(statements[0].contains("id >= 0 AND id < 100"));
+		assert!(statements[1].contains("id >= 100 AND id < 200"));
+		assert!(statements[2].contains("id >= 200 AND id < 250"));
+	}
 
-    #[test]
-    fn test_to_run_sql_with_transactions() {
-        let migration = DataMigration::new("users", "Migrate")
-            .add_transformation("UPDATE users SET status = 'active'")
-            .add_transformation("UPDATE users SET verified = true");
+	#[test]
+	fn test_to_run_sql_with_transactions() {
+		let migration = DataMigration::new("users", "Migrate")
+			.add_transformation("UPDATE users SET status = 'active'")
+			.add_transformation("UPDATE users SET verified = true");
 
-        let run_sql = migration.to_run_sql();
-        assert!(run_sql.sql.contains("BEGIN"));
-        assert!(run_sql.sql.contains("COMMIT"));
-        assert!(run_sql.sql.contains("UPDATE users"));
-    }
+		let run_sql = migration.to_run_sql();
+		assert!(run_sql.sql.contains("BEGIN"));
+		assert!(run_sql.sql.contains("COMMIT"));
+		assert!(run_sql.sql.contains("UPDATE users"));
+	}
 
-    #[test]
-    fn test_to_run_sql_without_transactions() {
-        let migration = DataMigration::new("users", "Migrate")
-            .use_transactions(false)
-            .add_transformation("UPDATE users SET status = 'active'");
+	#[test]
+	fn test_to_run_sql_without_transactions() {
+		let migration = DataMigration::new("users", "Migrate")
+			.use_transactions(false)
+			.add_transformation("UPDATE users SET status = 'active'");
 
-        let run_sql = migration.to_run_sql();
-        assert!(!run_sql.sql.contains("BEGIN"));
-        assert!(!run_sql.sql.contains("COMMIT"));
-    }
+		let run_sql = migration.to_run_sql();
+		assert!(!run_sql.sql.contains("BEGIN"));
+		assert!(!run_sql.sql.contains("COMMIT"));
+	}
 }

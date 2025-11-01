@@ -241,8 +241,6 @@
 //! ```
 
 pub mod admin_renderer;
-pub mod strategy;
-pub mod tera_renderer;
 pub mod cached;
 pub mod chain;
 pub mod compression;
@@ -255,8 +253,10 @@ pub mod openapi;
 pub mod renderer;
 pub mod schemajs_renderer;
 pub mod static_html_renderer;
+pub mod strategy;
 pub mod streaming;
 pub mod template_html_renderer;
+pub mod tera_renderer;
 pub mod xml;
 pub mod yaml_renderer;
 
@@ -264,9 +264,6 @@ pub mod yaml_renderer;
 mod tests;
 
 pub use admin_renderer::AdminRenderer;
-pub use tera_renderer::{
-    Post, PostListTemplate, TeraRenderer, UserData, UserListTemplate, UserTemplate,
-};
 pub use cached::{CacheConfig, CachedRenderer};
 pub use chain::RendererChain;
 pub use compression::{CompressionAlgorithm, CompressionRenderer};
@@ -280,9 +277,12 @@ pub use schemajs_renderer::SchemaJSRenderer;
 pub use static_html_renderer::StaticHTMLRenderer;
 pub use strategy::{TemplateSource, TemplateStrategy, TemplateStrategySelector};
 pub use streaming::{
-    StreamingConfig, StreamingCSVRenderer, StreamingJSONRenderer, StreamingRenderer,
+	StreamingCSVRenderer, StreamingConfig, StreamingJSONRenderer, StreamingRenderer,
 };
 pub use template_html_renderer::TemplateHTMLRenderer;
+pub use tera_renderer::{
+	Post, PostListTemplate, TeraRenderer, UserData, UserListTemplate, UserTemplate,
+};
 pub use xml::XMLRenderer;
 pub use yaml_renderer::YAMLRenderer;
 

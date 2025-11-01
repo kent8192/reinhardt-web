@@ -21,10 +21,10 @@
 /// assert!(!is_sql_reserved_word("user_profile"));
 /// ```
 pub fn is_sql_reserved_word(word: &str) -> bool {
-    matches!(
-        word,
-        // SQL Standard Keywords
-        "select"
+	matches!(
+		word,
+		// SQL Standard Keywords
+		"select"
             | "from"
             | "where"
             | "insert"
@@ -170,43 +170,43 @@ pub fn is_sql_reserved_word(word: &str) -> bool {
             | "fetch"
             | "open"
             | "close"
-    )
+	)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_common_reserved_words() {
-        assert!(is_sql_reserved_word("select"));
-        assert!(is_sql_reserved_word("from"));
-        assert!(is_sql_reserved_word("where"));
-        assert!(is_sql_reserved_word("table"));
-        assert!(is_sql_reserved_word("create"));
-        assert!(is_sql_reserved_word("drop"));
-    }
+	#[test]
+	fn test_common_reserved_words() {
+		assert!(is_sql_reserved_word("select"));
+		assert!(is_sql_reserved_word("from"));
+		assert!(is_sql_reserved_word("where"));
+		assert!(is_sql_reserved_word("table"));
+		assert!(is_sql_reserved_word("create"));
+		assert!(is_sql_reserved_word("drop"));
+	}
 
-    #[test]
-    fn test_data_types() {
-        assert!(is_sql_reserved_word("integer"));
-        assert!(is_sql_reserved_word("varchar"));
-        assert!(is_sql_reserved_word("timestamp"));
-        assert!(is_sql_reserved_word("boolean"));
-    }
+	#[test]
+	fn test_data_types() {
+		assert!(is_sql_reserved_word("integer"));
+		assert!(is_sql_reserved_word("varchar"));
+		assert!(is_sql_reserved_word("timestamp"));
+		assert!(is_sql_reserved_word("boolean"));
+	}
 
-    #[test]
-    fn test_postgresql_keywords() {
-        assert!(is_sql_reserved_word("serial"));
-        assert!(is_sql_reserved_word("jsonb"));
-        assert!(is_sql_reserved_word("returning"));
-    }
+	#[test]
+	fn test_postgresql_keywords() {
+		assert!(is_sql_reserved_word("serial"));
+		assert!(is_sql_reserved_word("jsonb"));
+		assert!(is_sql_reserved_word("returning"));
+	}
 
-    #[test]
-    fn test_not_reserved() {
-        assert!(!is_sql_reserved_word("user"));
-        assert!(!is_sql_reserved_word("profile"));
-        assert!(!is_sql_reserved_word("user_profile"));
-        assert!(!is_sql_reserved_word("email"));
-    }
+	#[test]
+	fn test_not_reserved() {
+		assert!(!is_sql_reserved_word("user"));
+		assert!(!is_sql_reserved_word("profile"));
+		assert!(!is_sql_reserved_word("user_profile"));
+		assert!(!is_sql_reserved_word("email"));
+	}
 }

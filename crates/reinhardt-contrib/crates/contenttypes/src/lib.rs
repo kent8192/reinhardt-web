@@ -23,8 +23,8 @@ pub mod multi_db;
 pub mod orm_integration;
 
 pub use contenttypes::{
-    ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable, GenericRelationQuery,
-    ModelType, CONTENT_TYPE_REGISTRY,
+	CONTENT_TYPE_REGISTRY, ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable,
+	GenericRelationQuery, ModelType,
 };
 
 pub use generic_fk::GenericForeignKeyField;
@@ -34,7 +34,7 @@ pub use generic_fk::constraints;
 
 #[cfg(feature = "database")]
 pub use persistence::{
-    ContentTypeModel, ContentTypePersistence, ContentTypePersistenceBackend, PersistenceError,
+	ContentTypeModel, ContentTypePersistence, ContentTypePersistenceBackend, PersistenceError,
 };
 
 #[cfg(not(feature = "database"))]

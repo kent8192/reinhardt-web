@@ -54,7 +54,7 @@ pub use parser::{MediaType, ParseError, ParseResult, Parser};
 pub use protobuf::{ProtobufMessage, ProtobufParser};
 pub use streaming::{StreamChunk, StreamingParser};
 pub use validator::{
-    CompositeValidator, ContentTypeValidator, ParserValidator, SizeLimitValidator,
+	CompositeValidator, ContentTypeValidator, ParserValidator, SizeLimitValidator,
 };
 pub use xml::{XMLParser, XmlParserConfig, XmlParserConfigBuilder};
 pub use yaml::YamlParser;

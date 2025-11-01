@@ -4,9 +4,9 @@
 //! and query building capabilities.
 
 pub mod backend;
-pub mod drivers;
 pub mod connection;
 pub mod dialect;
+pub mod drivers;
 pub mod error;
 pub mod optimization;
 pub mod query_builder;
@@ -26,8 +26,8 @@ pub use types::{DatabaseType, QueryResult, QueryValue, Row};
 
 // Re-export optimization features
 pub use optimization::{
-    BatchInsertBuilder, BatchOperations, BatchUpdateBuilder, CachedQuery, OptimizedPoolBuilder,
-    PoolOptimizationConfig, QueryCache, QueryCacheConfig,
+	BatchInsertBuilder, BatchOperations, BatchUpdateBuilder, CachedQuery, OptimizedPoolBuilder,
+	PoolOptimizationConfig, QueryCache, QueryCacheConfig,
 };
 
 // Re-export database-specific schema editors

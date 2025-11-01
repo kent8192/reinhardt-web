@@ -33,7 +33,7 @@ pub mod safedata;
 pub mod storage;
 pub mod utils;
 
-pub use context::{add_message, get_messages_context, MessagesContext};
+pub use context::{MessagesContext, add_message, get_messages_context};
 pub use levels::Level;
 pub use message::{Message, MessageConfig};
 pub use middleware::{MessagesContainer, MessagesMiddleware};
@@ -42,11 +42,11 @@ pub use storage::{CookieStorage, FallbackStorage, MemoryStorage, MessageStorage,
 
 /// Re-export commonly used types
 pub mod prelude {
-    pub use crate::context::*;
-    pub use crate::levels::*;
-    pub use crate::message::*;
-    pub use crate::middleware::*;
-    pub use crate::safedata::*;
-    pub use crate::storage::*;
-    pub use crate::utils::*;
+	pub use crate::context::*;
+	pub use crate::levels::*;
+	pub use crate::message::*;
+	pub use crate::middleware::*;
+	pub use crate::safedata::*;
+	pub use crate::storage::*;
+	pub use crate::utils::*;
 }

@@ -14,47 +14,47 @@ use std::sync::Arc;
 
 #[tokio::test]
 async fn test_translation_key_missing_logged() {
-    // Missing translation keys should be logged at DEBUG level
-    let logger = Arc::new(Logger::new("reinhardt.translation".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Debug);
-    let memory = handler.clone();
+	// Missing translation keys should be logged at DEBUG level
+	let logger = Arc::new(Logger::new("reinhardt.translation".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Debug);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Debug).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Debug).await;
 
-    logger
-        .debug("Translation key 'missing.key' not found in catalog 'en_US'".to_string())
-        .await;
+	logger
+		.debug("Translation key 'missing.key' not found in catalog 'en_US'".to_string())
+		.await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    assert_eq!(records[0].level, LogLevel::Debug);
-    assert!(records[0].message.contains("Translation key"));
-    assert!(records[0].message.contains("missing.key"));
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert_eq!(records[0].level, LogLevel::Debug);
+	assert!(records[0].message.contains("Translation key"));
+	assert!(records[0].message.contains("missing.key"));
 }
 
 #[tokio::test]
 async fn test_translation_locale_fallback_logged() {
-    // Locale fallback should be logged at INFO level
-    let logger = Arc::new(Logger::new("reinhardt.translation".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Info);
-    let memory = handler.clone();
+	// Locale fallback should be logged at INFO level
+	let logger = Arc::new(Logger::new("reinhardt.translation".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Info);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Info).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Info).await;
 
-    logger
-        .info("Locale 'fr_CA' not available, falling back to 'fr'".to_string())
-        .await;
+	logger
+		.info("Locale 'fr_CA' not available, falling back to 'fr'".to_string())
+		.await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].message.contains("falling back"));
-    assert!(records[0].message.contains("fr_CA"));
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert!(records[0].message.contains("falling back"));
+	assert!(records[0].message.contains("fr_CA"));
 }
 
 // ==============================================================================
@@ -63,152 +63,152 @@ async fn test_translation_locale_fallback_logged() {
 
 /// Helper to format exception with traceback
 fn format_exception_with_traceback(
-    error: &str,
-    traceback: &[(&str, u32)], // (file, line)
+	error: &str,
+	traceback: &[(&str, u32)], // (file, line)
 ) -> String {
-    let mut result = format!("Exception: {}\n", error);
-    result.push_str("Traceback (most recent call last):\n");
-    for (file, line) in traceback {
-        result.push_str(&format!("  File \"{}\", line {}\n", file, line));
-    }
-    result
+	let mut result = format!("Exception: {}\n", error);
+	result.push_str("Traceback (most recent call last):\n");
+	for (file, line) in traceback {
+		result.push_str(&format!("  File \"{}\", line {}\n", file, line));
+	}
+	result
 }
 
 #[tokio::test]
 async fn test_format_exception_with_traceback() {
-    // Exceptions with tracebacks should format correctly
-    let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Error);
-    let memory = handler.clone();
+	// Exceptions with tracebacks should format correctly
+	let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Error);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Error).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Error).await;
 
-    let traceback = vec![("views.py", 42), ("middleware.py", 15), ("handlers.py", 8)];
-    let formatted = format_exception_with_traceback("ValueError: Invalid input", &traceback);
+	let traceback = vec![("views.py", 42), ("middleware.py", 15), ("handlers.py", 8)];
+	let formatted = format_exception_with_traceback("ValueError: Invalid input", &traceback);
 
-    logger.error(formatted).await;
+	logger.error(formatted).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].message.contains("ValueError"));
-    assert!(records[0].message.contains("views.py"));
-    assert!(records[0].message.contains("line 42"));
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert!(records[0].message.contains("ValueError"));
+	assert!(records[0].message.contains("views.py"));
+	assert!(records[0].message.contains("line 42"));
 }
 
 #[tokio::test]
 async fn test_format_exception_with_cause_chain() {
-    // Exception cause chains should be logged
-    let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Error);
-    let memory = handler.clone();
+	// Exception cause chains should be logged
+	let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Error);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Error).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Error).await;
 
-    let msg = "RuntimeError: Failed to process\nCaused by: ValueError: Invalid data\nCaused by: TypeError: Wrong type";
-    logger.error(msg.to_string()).await;
+	let msg = "RuntimeError: Failed to process\nCaused by: ValueError: Invalid data\nCaused by: TypeError: Wrong type";
+	logger.error(msg.to_string()).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].message.contains("RuntimeError"));
-    assert!(records[0].message.contains("Caused by: ValueError"));
-    assert!(records[0].message.contains("Caused by: TypeError"));
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert!(records[0].message.contains("RuntimeError"));
+	assert!(records[0].message.contains("Caused by: ValueError"));
+	assert!(records[0].message.contains("Caused by: TypeError"));
 }
 
 #[tokio::test]
 async fn test_format_exception_truncation() {
-    // Very long tracebacks should be truncated
-    let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Error);
-    let memory = handler.clone();
+	// Very long tracebacks should be truncated
+	let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Error);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Error).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Error).await;
 
-    // Create a very long traceback
-    let mut traceback = Vec::new();
-    for i in 0..100 {
-        traceback.push((format!("file{}.py", i), i as u32));
-    }
+	// Create a very long traceback
+	let mut traceback = Vec::new();
+	for i in 0..100 {
+		traceback.push((format!("file{}.py", i), i as u32));
+	}
 
-    let trace_refs: Vec<(&str, u32)> = traceback.iter().map(|(f, l)| (f.as_str(), *l)).collect();
+	let trace_refs: Vec<(&str, u32)> = traceback.iter().map(|(f, l)| (f.as_str(), *l)).collect();
 
-    let formatted = format_exception_with_traceback("Error", &trace_refs);
-    logger.error(formatted).await;
+	let formatted = format_exception_with_traceback("Error", &trace_refs);
+	logger.error(formatted).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    // Message should be very long but finite
-    assert!(records[0].message.len() > 100);
-    assert!(records[0].message.len() < 50000); // Reasonable limit
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	// Message should be very long but finite
+	assert!(records[0].message.len() > 100);
+	assert!(records[0].message.len() < 50000); // Reasonable limit
 }
 
 #[tokio::test]
 async fn test_exception_in_log_record() {
-    // LogRecord should be able to contain exception information
-    let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Error);
-    let memory = handler.clone();
+	// LogRecord should be able to contain exception information
+	let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Error);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Error).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Error).await;
 
-    let mut record = LogRecord::new(
-        LogLevel::Error,
-        "reinhardt.request".to_string(),
-        "An error occurred".to_string(),
-    );
+	let mut record = LogRecord::new(
+		LogLevel::Error,
+		"reinhardt.request".to_string(),
+		"An error occurred".to_string(),
+	);
 
-    // Add exception info as extra field
-    record.extra.insert(
-        "exception_type".to_string(),
-        serde_json::json!("ValueError"),
-    );
-    record.extra.insert(
-        "exception_message".to_string(),
-        serde_json::json!("Invalid"),
-    );
+	// Add exception info as extra field
+	record.extra.insert(
+		"exception_type".to_string(),
+		serde_json::json!("ValueError"),
+	);
+	record.extra.insert(
+		"exception_message".to_string(),
+		serde_json::json!("Invalid"),
+	);
 
-    logger.log_record(&record).await;
+	logger.log_record(&record).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    assert_eq!(
-        records[0].extra.get("exception_type"),
-        Some(&serde_json::json!("ValueError"))
-    );
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert_eq!(
+		records[0].extra.get("exception_type"),
+		Some(&serde_json::json!("ValueError"))
+	);
 }
 
 #[tokio::test]
 async fn test_multiple_nested_exceptions() {
-    // Multiple nested exceptions should all be logged
-    let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Error);
-    let memory = handler.clone();
+	// Multiple nested exceptions should all be logged
+	let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Error);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Error).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Error).await;
 
-    let msg = "Level 1 Error\n  Caused by: Level 2 Error\n    Caused by: Level 3 Error\n      Caused by: Root cause";
-    logger.error(msg.to_string()).await;
+	let msg = "Level 1 Error\n  Caused by: Level 2 Error\n    Caused by: Level 3 Error\n      Caused by: Root cause";
+	logger.error(msg.to_string()).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].message.contains("Level 1"));
-    assert!(records[0].message.contains("Level 2"));
-    assert!(records[0].message.contains("Level 3"));
-    assert!(records[0].message.contains("Root cause"));
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert!(records[0].message.contains("Level 1"));
+	assert!(records[0].message.contains("Level 2"));
+	assert!(records[0].message.contains("Level 3"));
+	assert!(records[0].message.contains("Root cause"));
 }
 
 // ==============================================================================
@@ -218,115 +218,115 @@ async fn test_multiple_nested_exceptions() {
 /// Simple logging configuration structure
 #[derive(Clone)]
 pub struct LoggingConfig {
-    pub handlers: HashMap<String, HandlerConfig>,
-    pub loggers: HashMap<String, LoggerConfig>,
+	pub handlers: HashMap<String, HandlerConfig>,
+	pub loggers: HashMap<String, LoggerConfig>,
 }
 
 #[derive(Clone)]
 pub struct HandlerConfig {
-    pub level: LogLevel,
+	pub level: LogLevel,
 }
 
 #[derive(Clone)]
 pub struct LoggerConfig {
-    pub level: LogLevel,
-    pub handlers: Vec<String>,
+	pub level: LogLevel,
+	pub handlers: Vec<String>,
 }
 
 #[tokio::test]
 async fn test_logging_config_from_dict() {
-    // Logging configuration should be loadable from a config structure
-    let mut config = LoggingConfig {
-        handlers: HashMap::new(),
-        loggers: HashMap::new(),
-    };
+	// Logging configuration should be loadable from a config structure
+	let mut config = LoggingConfig {
+		handlers: HashMap::new(),
+		loggers: HashMap::new(),
+	};
 
-    config.handlers.insert(
-        "console".to_string(),
-        HandlerConfig {
-            level: LogLevel::Info,
-        },
-    );
+	config.handlers.insert(
+		"console".to_string(),
+		HandlerConfig {
+			level: LogLevel::Info,
+		},
+	);
 
-    config.loggers.insert(
-        "myapp".to_string(),
-        LoggerConfig {
-            level: LogLevel::Debug,
-            handlers: vec!["console".to_string()],
-        },
-    );
+	config.loggers.insert(
+		"myapp".to_string(),
+		LoggerConfig {
+			level: LogLevel::Debug,
+			handlers: vec!["console".to_string()],
+		},
+	);
 
-    // Verify config was created correctly
-    assert_eq!(config.handlers.len(), 1);
-    assert_eq!(config.loggers.len(), 1);
-    assert_eq!(
-        config.handlers.get("console").unwrap().level,
-        LogLevel::Info
-    );
+	// Verify config was created correctly
+	assert_eq!(config.handlers.len(), 1);
+	assert_eq!(config.loggers.len(), 1);
+	assert_eq!(
+		config.handlers.get("console").unwrap().level,
+		LogLevel::Info
+	);
 }
 
 #[tokio::test]
 async fn test_multiple_handlers_from_config() {
-    // Configuration should support multiple handlers
-    let mut config = LoggingConfig {
-        handlers: HashMap::new(),
-        loggers: HashMap::new(),
-    };
+	// Configuration should support multiple handlers
+	let mut config = LoggingConfig {
+		handlers: HashMap::new(),
+		loggers: HashMap::new(),
+	};
 
-    config.handlers.insert(
-        "console".to_string(),
-        HandlerConfig {
-            level: LogLevel::Info,
-        },
-    );
+	config.handlers.insert(
+		"console".to_string(),
+		HandlerConfig {
+			level: LogLevel::Info,
+		},
+	);
 
-    config.handlers.insert(
-        "file".to_string(),
-        HandlerConfig {
-            level: LogLevel::Debug,
-        },
-    );
+	config.handlers.insert(
+		"file".to_string(),
+		HandlerConfig {
+			level: LogLevel::Debug,
+		},
+	);
 
-    config.loggers.insert(
-        "myapp".to_string(),
-        LoggerConfig {
-            level: LogLevel::Debug,
-            handlers: vec!["console".to_string(), "file".to_string()],
-        },
-    );
+	config.loggers.insert(
+		"myapp".to_string(),
+		LoggerConfig {
+			level: LogLevel::Debug,
+			handlers: vec!["console".to_string(), "file".to_string()],
+		},
+	);
 
-    // Verify multiple handlers
-    assert_eq!(config.handlers.len(), 2);
-    let logger_config = config.loggers.get("myapp").unwrap();
-    assert_eq!(logger_config.handlers.len(), 2);
+	// Verify multiple handlers
+	assert_eq!(config.handlers.len(), 2);
+	let logger_config = config.loggers.get("myapp").unwrap();
+	assert_eq!(logger_config.handlers.len(), 2);
 }
 
 #[tokio::test]
 async fn test_config_validation() {
-    // Invalid configuration should be detectable
-    let mut config = LoggingConfig {
-        handlers: HashMap::new(),
-        loggers: HashMap::new(),
-    };
+	// Invalid configuration should be detectable
+	let mut config = LoggingConfig {
+		handlers: HashMap::new(),
+		loggers: HashMap::new(),
+	};
 
-    // Logger references non-existent handler
-    config.loggers.insert(
-        "myapp".to_string(),
-        LoggerConfig {
-            level: LogLevel::Debug,
-            handlers: vec!["nonexistent".to_string()],
-        },
-    );
+	// Logger references non-existent handler
+	config.loggers.insert(
+		"myapp".to_string(),
+		LoggerConfig {
+			level: LogLevel::Debug,
+			handlers: vec!["nonexistent".to_string()],
+		},
+	);
 
-    // Validation check
-    let logger_cfg = config.loggers.get("myapp").unwrap();
-    for handler_name in &logger_cfg.handlers {
-        assert!(
-            config.handlers.contains_key(handler_name) || handler_name == "nonexistent" // Expected to be missing
-        );
-    }
+	// Validation check
+	let logger_cfg = config.loggers.get("myapp").unwrap();
+	for handler_name in &logger_cfg.handlers {
+		assert!(
+			config.handlers.contains_key(handler_name) || handler_name == "nonexistent" // Expected to be missing
+		);
+	}
 
-    assert!(!config.handlers.contains_key("nonexistent"));
+	assert!(!config.handlers.contains_key("nonexistent"));
 }
 
 // ==============================================================================
@@ -335,99 +335,99 @@ async fn test_config_validation() {
 
 /// Simulated HTTP request
 pub struct Request {
-    pub method: String,
-    pub path: String,
-    pub timestamp: std::time::Instant,
+	pub method: String,
+	pub path: String,
+	pub timestamp: std::time::Instant,
 }
 
 /// Simulated HTTP response
 pub struct Response {
-    pub status: u16,
+	pub status: u16,
 }
 
 #[tokio::test]
 async fn test_request_logging_middleware() {
-    // Middleware should log incoming requests
-    let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Info);
-    let memory = handler.clone();
+	// Middleware should log incoming requests
+	let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Info);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Info).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Info).await;
 
-    let request = Request {
-        method: "GET".to_string(),
-        path: "/api/users".to_string(),
-        timestamp: std::time::Instant::now(),
-    };
+	let request = Request {
+		method: "GET".to_string(),
+		path: "/api/users".to_string(),
+		timestamp: std::time::Instant::now(),
+	};
 
-    logger
-        .info(format!("{} {}", request.method, request.path))
-        .await;
+	logger
+		.info(format!("{} {}", request.method, request.path))
+		.await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].message.contains("GET"));
-    assert!(records[0].message.contains("/api/users"));
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert!(records[0].message.contains("GET"));
+	assert!(records[0].message.contains("/api/users"));
 }
 
 #[tokio::test]
 async fn test_response_logging_middleware() {
-    // Middleware should log responses
-    let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Info);
-    let memory = handler.clone();
+	// Middleware should log responses
+	let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Info);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Info).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Info).await;
 
-    let response = Response { status: 200 };
+	let response = Response { status: 200 };
 
-    logger.info(format!("Response: {}", response.status)).await;
+	logger.info(format!("Response: {}", response.status)).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].message.contains("200"));
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert!(records[0].message.contains("200"));
 }
 
 #[tokio::test]
 async fn test_request_response_timing_logged() {
-    // Request/response timing should be logged
-    let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
-    let handler = MemoryHandler::new(LogLevel::Info);
-    let memory = handler.clone();
+	// Request/response timing should be logged
+	let logger = Arc::new(Logger::new("reinhardt.request".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Info);
+	let memory = handler.clone();
 
-    logger.add_handler(Box::new(handler)).await;
-    logger.set_level(LogLevel::Info).await;
+	logger.add_handler(Box::new(handler)).await;
+	logger.set_level(LogLevel::Info).await;
 
-    let request = Request {
-        method: "POST".to_string(),
-        path: "/api/data".to_string(),
-        timestamp: std::time::Instant::now(),
-    };
+	let request = Request {
+		method: "POST".to_string(),
+		path: "/api/data".to_string(),
+		timestamp: std::time::Instant::now(),
+	};
 
-    // Simulate some processing time
-    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+	// Simulate some processing time
+	tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-    let duration = request.timestamp.elapsed();
-    logger
-        .info(format!(
-            "{} {} completed in {:.2}ms",
-            request.method,
-            request.path,
-            duration.as_secs_f64() * 1000.0
-        ))
-        .await;
+	let duration = request.timestamp.elapsed();
+	logger
+		.info(format!(
+			"{} {} completed in {:.2}ms",
+			request.method,
+			request.path,
+			duration.as_secs_f64() * 1000.0
+		))
+		.await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
-    let records = memory.get_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].message.contains("POST"));
-    assert!(records[0].message.contains("completed in"));
-    assert!(records[0].message.contains("ms"));
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert!(records[0].message.contains("POST"));
+	assert!(records[0].message.contains("completed in"));
+	assert!(records[0].message.contains("ms"));
 }

@@ -12,22 +12,22 @@ use std::marker::PhantomData;
 /// Different field types represent the same relationship in different ways.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelationField<T> {
-    _phantom: PhantomData<T>,
+	_phantom: PhantomData<T>,
 }
 
 impl<T> RelationField<T> {
-    /// Create a new RelationField
-    pub fn new() -> Self {
-        Self {
-            _phantom: PhantomData,
-        }
-    }
+	/// Create a new RelationField
+	pub fn new() -> Self {
+		Self {
+			_phantom: PhantomData,
+		}
+	}
 }
 
 impl<T> Default for RelationField<T> {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 /// PrimaryKeyRelatedField - Represent relationships by primary key
@@ -173,22 +173,22 @@ pub type HyperlinkedRelatedField<T> = RelationField<T>;
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManyRelatedField<T> {
-    _phantom: PhantomData<T>,
+	_phantom: PhantomData<T>,
 }
 
 impl<T> ManyRelatedField<T> {
-    /// Create a new ManyRelatedField
-    pub fn new() -> Self {
-        Self {
-            _phantom: PhantomData,
-        }
-    }
+	/// Create a new ManyRelatedField
+	pub fn new() -> Self {
+		Self {
+			_phantom: PhantomData,
+		}
+	}
 }
 
 impl<T> Default for ManyRelatedField<T> {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 /// IdentityField - Returns the entire related object
@@ -221,79 +221,79 @@ pub type IdentityField<T> = RelationField<T>;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-    struct TestRelated {
-        id: Option<i64>,
-        name: String,
-    }
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct TestRelated {
+		id: Option<i64>,
+		name: String,
+	}
 
-    #[test]
-    fn test_relation_field_creation() {
-        let field = RelationField::<TestRelated>::new();
-        assert!(std::mem::size_of_val(&field) >= 0);
-    }
+	#[test]
+	fn test_relation_field_creation() {
+		let field = RelationField::<TestRelated>::new();
+		assert!(std::mem::size_of_val(&field) >= 0);
+	}
 
-    #[test]
-    fn test_primary_key_related_field() {
-        let field = PrimaryKeyRelatedField::<TestRelated>::new();
-        assert!(std::mem::size_of_val(&field) >= 0);
-    }
+	#[test]
+	fn test_primary_key_related_field() {
+		let field = PrimaryKeyRelatedField::<TestRelated>::new();
+		assert!(std::mem::size_of_val(&field) >= 0);
+	}
 
-    #[test]
-    fn test_slug_related_field() {
-        let field = SlugRelatedField::<TestRelated>::new();
-        assert!(std::mem::size_of_val(&field) >= 0);
-    }
+	#[test]
+	fn test_slug_related_field() {
+		let field = SlugRelatedField::<TestRelated>::new();
+		assert!(std::mem::size_of_val(&field) >= 0);
+	}
 
-    #[test]
-    fn test_string_related_field() {
-        let field = StringRelatedField::<TestRelated>::new();
-        assert!(std::mem::size_of_val(&field) >= 0);
-    }
+	#[test]
+	fn test_string_related_field() {
+		let field = StringRelatedField::<TestRelated>::new();
+		assert!(std::mem::size_of_val(&field) >= 0);
+	}
 
-    #[test]
-    fn test_hyperlinked_related_field() {
-        let field = HyperlinkedRelatedField::<TestRelated>::new();
-        assert!(std::mem::size_of_val(&field) >= 0);
-    }
+	#[test]
+	fn test_hyperlinked_related_field() {
+		let field = HyperlinkedRelatedField::<TestRelated>::new();
+		assert!(std::mem::size_of_val(&field) >= 0);
+	}
 
-    #[test]
-    fn test_many_related_field() {
-        let field = ManyRelatedField::<TestRelated>::new();
-        assert!(std::mem::size_of_val(&field) >= 0);
-    }
+	#[test]
+	fn test_many_related_field() {
+		let field = ManyRelatedField::<TestRelated>::new();
+		assert!(std::mem::size_of_val(&field) >= 0);
+	}
 
-    #[test]
-    fn test_identity_field() {
-        let field = IdentityField::<TestRelated>::new();
-        assert!(std::mem::size_of_val(&field) >= 0);
-    }
+	#[test]
+	fn test_identity_field() {
+		let field = IdentityField::<TestRelated>::new();
+		assert!(std::mem::size_of_val(&field) >= 0);
+	}
 
-    #[test]
-    fn test_relation_field_default() {
-        let field = RelationField::<TestRelated>::default();
-        assert!(std::mem::size_of_val(&field) >= 0);
-    }
+	#[test]
+	fn test_relation_field_default() {
+		let field = RelationField::<TestRelated>::default();
+		assert!(std::mem::size_of_val(&field) >= 0);
+	}
 
-    #[test]
-    fn test_many_related_field_default() {
-        let field = ManyRelatedField::<TestRelated>::default();
-        assert!(std::mem::size_of_val(&field) >= 0);
-    }
+	#[test]
+	fn test_many_related_field_default() {
+		let field = ManyRelatedField::<TestRelated>::default();
+		assert!(std::mem::size_of_val(&field) >= 0);
+	}
 
-    #[test]
-    fn test_relation_field_serialization() {
-        let field = RelationField::<TestRelated>::new();
-        let json = serde_json::to_string(&field).unwrap();
-        assert!(!json.is_empty());
-    }
+	#[test]
+	fn test_relation_field_serialization() {
+		let field = RelationField::<TestRelated>::new();
+		let json = serde_json::to_string(&field).unwrap();
+		assert!(!json.is_empty());
+	}
 
-    #[test]
-    fn test_many_related_field_serialization() {
-        let field = ManyRelatedField::<TestRelated>::new();
-        let json = serde_json::to_string(&field).unwrap();
-        assert!(!json.is_empty());
-    }
+	#[test]
+	fn test_many_related_field_serialization() {
+		let field = ManyRelatedField::<TestRelated>::new();
+		let json = serde_json::to_string(&field).unwrap();
+		assert!(!json.is_empty());
+	}
 }

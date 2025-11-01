@@ -11,632 +11,632 @@ use std::marker::PhantomData;
 /// Field type metadata for ModelForm field inference
 #[derive(Debug, Clone)]
 pub enum FieldType {
-    Char { max_length: Option<usize> },
-    Text,
-    Integer,
-    Float,
-    Boolean,
-    DateTime,
-    Date,
-    Time,
-    Email,
-    Url,
-    Json,
+	Char { max_length: Option<usize> },
+	Text,
+	Integer,
+	Float,
+	Boolean,
+	DateTime,
+	Date,
+	Time,
+	Email,
+	Url,
+	Json,
 }
 
 /// Trait for models that can be used with ModelForm
 ///
 /// This trait is specifically for form models. For ORM models, use `reinhardt_orm::Model`.
 pub trait FormModel: Send + Sync {
-    /// Get the model's field names
-    fn field_names() -> Vec<String>;
+	/// Get the model's field names
+	fn field_names() -> Vec<String>;
 
-    /// Get field type metadata for form field inference
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// fn field_type(name: &str) -> Option<FieldType> {
-    ///     match name {
-    ///         "name" => Some(FieldType::Char { max_length: Some(100) }),
-    ///         "email" => Some(FieldType::Email),
-    ///         "age" => Some(FieldType::Integer),
-    ///         _ => None,
-    ///     }
-    /// }
-    /// ```
-    fn field_type(_name: &str) -> Option<FieldType> {
-        None
-    }
+	/// Get field type metadata for form field inference
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// fn field_type(name: &str) -> Option<FieldType> {
+	///     match name {
+	///         "name" => Some(FieldType::Char { max_length: Some(100) }),
+	///         "email" => Some(FieldType::Email),
+	///         "age" => Some(FieldType::Integer),
+	///         _ => None,
+	///     }
+	/// }
+	/// ```
+	fn field_type(_name: &str) -> Option<FieldType> {
+		None
+	}
 
-    /// Get a field value by name
-    fn get_field(&self, name: &str) -> Option<Value>;
+	/// Get a field value by name
+	fn get_field(&self, name: &str) -> Option<Value>;
 
-    /// Set a field value by name
-    fn set_field(&mut self, name: &str, value: Value) -> Result<(), String>;
+	/// Set a field value by name
+	fn set_field(&mut self, name: &str, value: Value) -> Result<(), String>;
 
-    /// Save the model to the database
-    fn save(&mut self) -> Result<(), String>;
+	/// Save the model to the database
+	fn save(&mut self) -> Result<(), String>;
 
-    /// Validate the model
-    fn validate(&self) -> Result<(), Vec<String>> {
-        Ok(())
-    }
+	/// Validate the model
+	fn validate(&self) -> Result<(), Vec<String>> {
+		Ok(())
+	}
 
-    /// Convert model instance to a choice label for display in forms
-    ///
-    /// Default implementation returns the string representation of the primary key.
-    /// Override this method to provide custom display labels.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// fn to_choice_label(&self) -> String {
-    ///     format!("{} - {}", self.id, self.name)
-    /// }
-    /// ```
-    fn to_choice_label(&self) -> String {
-        // Default: use the "id" field or empty string
-        self.get_field("id")
-            .and_then(|v| v.as_i64().map(|i| i.to_string()))
-            .or_else(|| {
-                self.get_field("id")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-            })
-            .unwrap_or_else(|| "".to_string())
-    }
+	/// Convert model instance to a choice label for display in forms
+	///
+	/// Default implementation returns the string representation of the primary key.
+	/// Override this method to provide custom display labels.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// fn to_choice_label(&self) -> String {
+	///     format!("{} - {}", self.id, self.name)
+	/// }
+	/// ```
+	fn to_choice_label(&self) -> String {
+		// Default: use the "id" field or empty string
+		self.get_field("id")
+			.and_then(|v| v.as_i64().map(|i| i.to_string()))
+			.or_else(|| {
+				self.get_field("id")
+					.and_then(|v| v.as_str().map(|s| s.to_string()))
+			})
+			.unwrap_or_else(|| "".to_string())
+	}
 
-    /// Get the primary key value as a string for form field validation
-    ///
-    /// Default implementation uses the "id" field.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// fn to_choice_value(&self) -> String {
-    ///     self.id.to_string()
-    /// }
-    /// ```
-    fn to_choice_value(&self) -> String {
-        self.get_field("id")
-            .and_then(|v| v.as_i64().map(|i| i.to_string()))
-            .or_else(|| {
-                self.get_field("id")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-            })
-            .unwrap_or_else(|| "".to_string())
-    }
+	/// Get the primary key value as a string for form field validation
+	///
+	/// Default implementation uses the "id" field.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// fn to_choice_value(&self) -> String {
+	///     self.id.to_string()
+	/// }
+	/// ```
+	fn to_choice_value(&self) -> String {
+		self.get_field("id")
+			.and_then(|v| v.as_i64().map(|i| i.to_string()))
+			.or_else(|| {
+				self.get_field("id")
+					.and_then(|v| v.as_str().map(|s| s.to_string()))
+			})
+			.unwrap_or_else(|| "".to_string())
+	}
 }
 
 /// ModelForm configuration
 #[derive(Debug, Clone)]
 pub struct ModelFormConfig {
-    /// Fields to include in the form (None = all fields)
-    pub fields: Option<Vec<String>>,
-    /// Fields to exclude from the form
-    pub exclude: Vec<String>,
-    /// Custom widgets for specific fields
-    pub widgets: HashMap<String, crate::Widget>,
-    /// Custom labels for specific fields
-    pub labels: HashMap<String, String>,
-    /// Custom help text for specific fields
-    pub help_texts: HashMap<String, String>,
+	/// Fields to include in the form (None = all fields)
+	pub fields: Option<Vec<String>>,
+	/// Fields to exclude from the form
+	pub exclude: Vec<String>,
+	/// Custom widgets for specific fields
+	pub widgets: HashMap<String, crate::Widget>,
+	/// Custom labels for specific fields
+	pub labels: HashMap<String, String>,
+	/// Custom help text for specific fields
+	pub help_texts: HashMap<String, String>,
 }
 
 impl Default for ModelFormConfig {
-    fn default() -> Self {
-        Self {
-            fields: None,
-            exclude: Vec::new(),
-            widgets: HashMap::new(),
-            labels: HashMap::new(),
-            help_texts: HashMap::new(),
-        }
-    }
+	fn default() -> Self {
+		Self {
+			fields: None,
+			exclude: Vec::new(),
+			widgets: HashMap::new(),
+			labels: HashMap::new(),
+			help_texts: HashMap::new(),
+		}
+	}
 }
 
 impl ModelFormConfig {
-    pub fn new() -> Self {
-        Self::default()
-    }
-    pub fn fields(mut self, fields: Vec<String>) -> Self {
-        self.fields = Some(fields);
-        self
-    }
-    pub fn exclude(mut self, exclude: Vec<String>) -> Self {
-        self.exclude = exclude;
-        self
-    }
-    pub fn widget(mut self, field: String, widget: crate::Widget) -> Self {
-        self.widgets.insert(field, widget);
-        self
-    }
-    pub fn label(mut self, field: String, label: String) -> Self {
-        self.labels.insert(field, label);
-        self
-    }
-    pub fn help_text(mut self, field: String, text: String) -> Self {
-        self.help_texts.insert(field, text);
-        self
-    }
+	pub fn new() -> Self {
+		Self::default()
+	}
+	pub fn fields(mut self, fields: Vec<String>) -> Self {
+		self.fields = Some(fields);
+		self
+	}
+	pub fn exclude(mut self, exclude: Vec<String>) -> Self {
+		self.exclude = exclude;
+		self
+	}
+	pub fn widget(mut self, field: String, widget: crate::Widget) -> Self {
+		self.widgets.insert(field, widget);
+		self
+	}
+	pub fn label(mut self, field: String, label: String) -> Self {
+		self.labels.insert(field, label);
+		self
+	}
+	pub fn help_text(mut self, field: String, text: String) -> Self {
+		self.help_texts.insert(field, text);
+		self
+	}
 }
 
 /// A form that is automatically generated from a Model
 pub struct ModelForm<T: FormModel> {
-    form: Form,
-    instance: Option<T>,
-    #[allow(dead_code)]
-    config: ModelFormConfig,
-    _phantom: PhantomData<T>,
+	form: Form,
+	instance: Option<T>,
+	#[allow(dead_code)]
+	config: ModelFormConfig,
+	_phantom: PhantomData<T>,
 }
 
 impl<T: FormModel> ModelForm<T> {
-    /// Create a form field from field type metadata
-    fn create_form_field(
-        name: &str,
-        field_type: FieldType,
-        config: &ModelFormConfig,
-    ) -> Box<dyn FormField> {
-        let label = config.labels.get(name).cloned();
-        let help_text = config.help_texts.get(name).cloned();
-        let widget = config.widgets.get(name).cloned();
+	/// Create a form field from field type metadata
+	fn create_form_field(
+		name: &str,
+		field_type: FieldType,
+		config: &ModelFormConfig,
+	) -> Box<dyn FormField> {
+		let label = config.labels.get(name).cloned();
+		let help_text = config.help_texts.get(name).cloned();
+		let widget = config.widgets.get(name).cloned();
 
-        match field_type {
-            FieldType::Char { max_length } => {
-                let mut field = CharField::new(name.to_string());
-                if let Some(label) = label {
-                    field.label = Some(label);
-                }
-                if let Some(help) = help_text {
-                    field.help_text = Some(help);
-                }
-                if let Some(w) = widget {
-                    field.widget = w;
-                }
-                field.max_length = max_length;
-                Box::new(field)
-            }
-            FieldType::Text => {
-                let mut field = CharField::new(name.to_string());
-                if let Some(label) = label {
-                    field.label = Some(label);
-                }
-                if let Some(help) = help_text {
-                    field.help_text = Some(help);
-                }
-                if let Some(w) = widget {
-                    field.widget = w;
-                } else {
-                    field.widget = Widget::TextArea;
-                }
-                Box::new(field)
-            }
-            FieldType::Email => {
-                let mut field = EmailField::new(name.to_string());
-                if let Some(label) = label {
-                    field.label = Some(label);
-                }
-                if let Some(help) = help_text {
-                    field.help_text = Some(help);
-                }
-                if let Some(w) = widget {
-                    field.widget = w;
-                }
-                Box::new(field)
-            }
-            FieldType::Integer => {
-                let mut field = IntegerField::new(name.to_string());
-                if let Some(label) = label {
-                    field.label = Some(label);
-                }
-                if let Some(help) = help_text {
-                    field.help_text = Some(help);
-                }
-                if let Some(w) = widget {
-                    field.widget = w;
-                }
-                Box::new(field)
-            }
-            FieldType::Float => {
-                let mut field = FloatField::new(name.to_string());
-                if let Some(label) = label {
-                    field.label = Some(label);
-                }
-                if let Some(help) = help_text {
-                    field.help_text = Some(help);
-                }
-                if let Some(w) = widget {
-                    field.widget = w;
-                }
-                Box::new(field)
-            }
-            // For unsupported types, default to CharField
-            _ => {
-                let mut field = CharField::new(name.to_string());
-                if let Some(label) = label {
-                    field.label = Some(label);
-                }
-                if let Some(help) = help_text {
-                    field.help_text = Some(help);
-                }
-                if let Some(w) = widget {
-                    field.widget = w;
-                }
-                Box::new(field)
-            }
-        }
-    }
+		match field_type {
+			FieldType::Char { max_length } => {
+				let mut field = CharField::new(name.to_string());
+				if let Some(label) = label {
+					field.label = Some(label);
+				}
+				if let Some(help) = help_text {
+					field.help_text = Some(help);
+				}
+				if let Some(w) = widget {
+					field.widget = w;
+				}
+				field.max_length = max_length;
+				Box::new(field)
+			}
+			FieldType::Text => {
+				let mut field = CharField::new(name.to_string());
+				if let Some(label) = label {
+					field.label = Some(label);
+				}
+				if let Some(help) = help_text {
+					field.help_text = Some(help);
+				}
+				if let Some(w) = widget {
+					field.widget = w;
+				} else {
+					field.widget = Widget::TextArea;
+				}
+				Box::new(field)
+			}
+			FieldType::Email => {
+				let mut field = EmailField::new(name.to_string());
+				if let Some(label) = label {
+					field.label = Some(label);
+				}
+				if let Some(help) = help_text {
+					field.help_text = Some(help);
+				}
+				if let Some(w) = widget {
+					field.widget = w;
+				}
+				Box::new(field)
+			}
+			FieldType::Integer => {
+				let mut field = IntegerField::new(name.to_string());
+				if let Some(label) = label {
+					field.label = Some(label);
+				}
+				if let Some(help) = help_text {
+					field.help_text = Some(help);
+				}
+				if let Some(w) = widget {
+					field.widget = w;
+				}
+				Box::new(field)
+			}
+			FieldType::Float => {
+				let mut field = FloatField::new(name.to_string());
+				if let Some(label) = label {
+					field.label = Some(label);
+				}
+				if let Some(help) = help_text {
+					field.help_text = Some(help);
+				}
+				if let Some(w) = widget {
+					field.widget = w;
+				}
+				Box::new(field)
+			}
+			// For unsupported types, default to CharField
+			_ => {
+				let mut field = CharField::new(name.to_string());
+				if let Some(label) = label {
+					field.label = Some(label);
+				}
+				if let Some(help) = help_text {
+					field.help_text = Some(help);
+				}
+				if let Some(w) = widget {
+					field.widget = w;
+				}
+				Box::new(field)
+			}
+		}
+	}
 
-    /// Create a new ModelForm from a model instance
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use reinhardt_forms::{ModelForm, ModelFormConfig};
-    ///
-    // Assuming we have a model that implements the Model trait
-    /// let config = ModelFormConfig::new();
-    /// let form = ModelForm::new(Some(instance), config);
-    /// ```
-    pub fn new(instance: Option<T>, config: ModelFormConfig) -> Self {
-        let mut form = Form::new();
+	/// Create a new ModelForm from a model instance
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
+	///
+	// Assuming we have a model that implements the Model trait
+	/// let config = ModelFormConfig::new();
+	/// let form = ModelForm::new(Some(instance), config);
+	/// ```
+	pub fn new(instance: Option<T>, config: ModelFormConfig) -> Self {
+		let mut form = Form::new();
 
-        // Get field names from model
-        let all_fields = T::field_names();
+		// Get field names from model
+		let all_fields = T::field_names();
 
-        // Filter fields based on config
-        let fields_to_include: Vec<String> = if let Some(ref include) = config.fields {
-            include
-                .iter()
-                .filter(|f| !config.exclude.contains(f))
-                .cloned()
-                .collect()
-        } else {
-            all_fields
-                .iter()
-                .filter(|f| !config.exclude.contains(f))
-                .cloned()
-                .collect()
-        };
+		// Filter fields based on config
+		let fields_to_include: Vec<String> = if let Some(ref include) = config.fields {
+			include
+				.iter()
+				.filter(|f| !config.exclude.contains(f))
+				.cloned()
+				.collect()
+		} else {
+			all_fields
+				.iter()
+				.filter(|f| !config.exclude.contains(f))
+				.cloned()
+				.collect()
+		};
 
-        // Infer field types from model metadata and add to form
-        for field_name in &fields_to_include {
-            if let Some(field_type) = T::field_type(field_name) {
-                let form_field = Self::create_form_field(field_name, field_type, &config);
-                form.add_field(form_field);
-            }
-        }
+		// Infer field types from model metadata and add to form
+		for field_name in &fields_to_include {
+			if let Some(field_type) = T::field_type(field_name) {
+				let form_field = Self::create_form_field(field_name, field_type, &config);
+				form.add_field(form_field);
+			}
+		}
 
-        // If instance exists, populate initial data from the instance
-        if let Some(ref inst) = instance {
-            let mut initial = HashMap::new();
-            for field_name in &fields_to_include {
-                if let Some(value) = inst.get_field(field_name) {
-                    initial.insert(field_name.clone(), value);
-                }
-            }
-            form.bind(initial);
-        }
+		// If instance exists, populate initial data from the instance
+		if let Some(ref inst) = instance {
+			let mut initial = HashMap::new();
+			for field_name in &fields_to_include {
+				if let Some(value) = inst.get_field(field_name) {
+					initial.insert(field_name.clone(), value);
+				}
+			}
+			form.bind(initial);
+		}
 
-        Self {
-            form,
-            instance,
-            config,
-            _phantom: PhantomData,
-        }
-    }
-    /// Create a new ModelForm without an instance (for creation)
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use reinhardt_forms::{ModelForm, ModelFormConfig};
-    ///
-    /// let config = ModelFormConfig::new();
-    /// let form = ModelForm::<MyModel>::empty(config);
-    /// ```
-    pub fn empty(config: ModelFormConfig) -> Self {
-        Self::new(None, config)
-    }
-    /// Bind data to the form
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use reinhardt_forms::{ModelForm, ModelFormConfig};
-    /// use std::collections::HashMap;
-    /// use serde_json::json;
-    ///
-    /// let config = ModelFormConfig::new();
-    /// let mut form = ModelForm::<MyModel>::empty(config);
-    /// let mut data = HashMap::new();
-    /// data.insert("field".to_string(), json!("value"));
-    /// form.bind(data);
-    /// ```
-    pub fn bind(&mut self, data: HashMap<String, Value>) -> &mut Self {
-        // Bind data to the underlying form
-        self.form.bind(data);
-        self
-    }
-    /// Check if the form is valid
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use reinhardt_forms::{ModelForm, ModelFormConfig};
-    ///
-    /// let config = ModelFormConfig::new();
-    /// let mut form = ModelForm::<MyModel>::empty(config);
-    /// let is_valid = form.is_valid();
-    /// ```
-    pub fn is_valid(&mut self) -> bool {
-        // Validate the model if instance exists
-        if let Some(ref instance) = self.instance {
-            if let Err(_errors) = instance.validate() {
-                return false;
-            }
-        }
+		Self {
+			form,
+			instance,
+			config,
+			_phantom: PhantomData,
+		}
+	}
+	/// Create a new ModelForm without an instance (for creation)
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
+	///
+	/// let config = ModelFormConfig::new();
+	/// let form = ModelForm::<MyModel>::empty(config);
+	/// ```
+	pub fn empty(config: ModelFormConfig) -> Self {
+		Self::new(None, config)
+	}
+	/// Bind data to the form
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
+	/// use std::collections::HashMap;
+	/// use serde_json::json;
+	///
+	/// let config = ModelFormConfig::new();
+	/// let mut form = ModelForm::<MyModel>::empty(config);
+	/// let mut data = HashMap::new();
+	/// data.insert("field".to_string(), json!("value"));
+	/// form.bind(data);
+	/// ```
+	pub fn bind(&mut self, data: HashMap<String, Value>) -> &mut Self {
+		// Bind data to the underlying form
+		self.form.bind(data);
+		self
+	}
+	/// Check if the form is valid
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
+	///
+	/// let config = ModelFormConfig::new();
+	/// let mut form = ModelForm::<MyModel>::empty(config);
+	/// let is_valid = form.is_valid();
+	/// ```
+	pub fn is_valid(&mut self) -> bool {
+		// Validate the model if instance exists
+		if let Some(ref instance) = self.instance {
+			if let Err(_errors) = instance.validate() {
+				return false;
+			}
+		}
 
-        true
-    }
-    /// Save the form data to the model instance
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use reinhardt_forms::{ModelForm, ModelFormConfig};
-    ///
-    /// let config = ModelFormConfig::new();
-    /// let mut form = ModelForm::<MyModel>::empty(config);
-    // Will panic without an instance, but shows the API
-    // let result = form.save();
-    /// ```
-    pub fn save(&mut self) -> Result<T, FormError> {
-        if !self.is_valid() {
-            return Err(FormError::Validation("Form is not valid".to_string()));
-        }
+		true
+	}
+	/// Save the form data to the model instance
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
+	///
+	/// let config = ModelFormConfig::new();
+	/// let mut form = ModelForm::<MyModel>::empty(config);
+	// Will panic without an instance, but shows the API
+	// let result = form.save();
+	/// ```
+	pub fn save(&mut self) -> Result<T, FormError> {
+		if !self.is_valid() {
+			return Err(FormError::Validation("Form is not valid".to_string()));
+		}
 
-        // Get or create instance
-        let mut instance = self.instance.take().unwrap_or_else(|| {
-            // This would require Model to implement Default or have a constructor
-            panic!("Cannot create new instance without existing instance")
-        });
+		// Get or create instance
+		let mut instance = self.instance.take().unwrap_or_else(|| {
+			// This would require Model to implement Default or have a constructor
+			panic!("Cannot create new instance without existing instance")
+		});
 
-        // Set field values from form's cleaned_data
-        let cleaned_data = self.form.cleaned_data();
-        for (field_name, value) in cleaned_data.iter() {
-            if let Err(e) = instance.set_field(field_name, value.clone()) {
-                return Err(FormError::Validation(format!(
-                    "Failed to set field {}: {}",
-                    field_name, e
-                )));
-            }
-        }
+		// Set field values from form's cleaned_data
+		let cleaned_data = self.form.cleaned_data();
+		for (field_name, value) in cleaned_data.iter() {
+			if let Err(e) = instance.set_field(field_name, value.clone()) {
+				return Err(FormError::Validation(format!(
+					"Failed to set field {}: {}",
+					field_name, e
+				)));
+			}
+		}
 
-        // Save the instance
-        if let Err(e) = instance.save() {
-            return Err(FormError::Validation(format!("Failed to save: {}", e)));
-        }
+		// Save the instance
+		if let Err(e) = instance.save() {
+			return Err(FormError::Validation(format!("Failed to save: {}", e)));
+		}
 
-        Ok(instance)
-    }
-    pub fn form(&self) -> &Form {
-        &self.form
-    }
-    pub fn form_mut(&mut self) -> &mut Form {
-        &mut self.form
-    }
-    pub fn instance(&self) -> Option<&T> {
-        self.instance.as_ref()
-    }
-    /// Render the form as HTML table
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use reinhardt_forms::{ModelForm, ModelFormConfig};
-    ///
-    /// let config = ModelFormConfig::new();
-    /// let form = ModelForm::<MyModel>::empty(config);
-    /// let html = form.as_table();
-    /// assert!(html.contains("<tr>"));
-    /// ```
-    pub fn as_table(&self) -> String {
-        self.form.as_table()
-    }
-    /// Render the form as HTML paragraphs
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use reinhardt_forms::{ModelForm, ModelFormConfig};
-    ///
-    /// let config = ModelFormConfig::new();
-    /// let form = ModelForm::<MyModel>::empty(config);
-    /// let html = form.as_p();
-    /// assert!(html.contains("<p>"));
-    /// ```
-    pub fn as_p(&self) -> String {
-        self.form.as_p()
-    }
-    /// Render the form as HTML list items
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use reinhardt_forms::{ModelForm, ModelFormConfig};
-    ///
-    /// let config = ModelFormConfig::new();
-    /// let form = ModelForm::<MyModel>::empty(config);
-    /// let html = form.as_ul();
-    /// assert!(html.contains("<li>"));
-    /// ```
-    pub fn as_ul(&self) -> String {
-        self.form.as_ul()
-    }
+		Ok(instance)
+	}
+	pub fn form(&self) -> &Form {
+		&self.form
+	}
+	pub fn form_mut(&mut self) -> &mut Form {
+		&mut self.form
+	}
+	pub fn instance(&self) -> Option<&T> {
+		self.instance.as_ref()
+	}
+	/// Render the form as HTML table
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
+	///
+	/// let config = ModelFormConfig::new();
+	/// let form = ModelForm::<MyModel>::empty(config);
+	/// let html = form.as_table();
+	/// assert!(html.contains("<tr>"));
+	/// ```
+	pub fn as_table(&self) -> String {
+		self.form.as_table()
+	}
+	/// Render the form as HTML paragraphs
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
+	///
+	/// let config = ModelFormConfig::new();
+	/// let form = ModelForm::<MyModel>::empty(config);
+	/// let html = form.as_p();
+	/// assert!(html.contains("<p>"));
+	/// ```
+	pub fn as_p(&self) -> String {
+		self.form.as_p()
+	}
+	/// Render the form as HTML list items
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
+	///
+	/// let config = ModelFormConfig::new();
+	/// let form = ModelForm::<MyModel>::empty(config);
+	/// let html = form.as_ul();
+	/// assert!(html.contains("<li>"));
+	/// ```
+	pub fn as_ul(&self) -> String {
+		self.form.as_ul()
+	}
 }
 
 /// Builder for creating ModelForm instances
 pub struct ModelFormBuilder<T: FormModel> {
-    config: ModelFormConfig,
-    _phantom: PhantomData<T>,
+	config: ModelFormConfig,
+	_phantom: PhantomData<T>,
 }
 
 impl<T: FormModel> ModelFormBuilder<T> {
-    pub fn new() -> Self {
-        Self {
-            config: ModelFormConfig::default(),
-            _phantom: PhantomData,
-        }
-    }
-    pub fn fields(mut self, fields: Vec<String>) -> Self {
-        self.config.fields = Some(fields);
-        self
-    }
-    pub fn exclude(mut self, exclude: Vec<String>) -> Self {
-        self.config.exclude = exclude;
-        self
-    }
-    pub fn widget(mut self, field: String, widget: crate::Widget) -> Self {
-        self.config.widgets.insert(field, widget);
-        self
-    }
-    pub fn label(mut self, field: String, label: String) -> Self {
-        self.config.labels.insert(field, label);
-        self
-    }
-    pub fn help_text(mut self, field: String, text: String) -> Self {
-        self.config.help_texts.insert(field, text);
-        self
-    }
-    /// Build the ModelForm with the configured settings
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use reinhardt_forms::{ModelFormBuilder, ModelFormConfig};
-    ///
-    /// let config = ModelFormConfig::new();
-    /// let builder = ModelFormBuilder::<MyModel>::new();
-    /// let form = builder.build(None);
-    /// ```
-    pub fn build(self, instance: Option<T>) -> ModelForm<T> {
-        ModelForm::new(instance, self.config)
-    }
+	pub fn new() -> Self {
+		Self {
+			config: ModelFormConfig::default(),
+			_phantom: PhantomData,
+		}
+	}
+	pub fn fields(mut self, fields: Vec<String>) -> Self {
+		self.config.fields = Some(fields);
+		self
+	}
+	pub fn exclude(mut self, exclude: Vec<String>) -> Self {
+		self.config.exclude = exclude;
+		self
+	}
+	pub fn widget(mut self, field: String, widget: crate::Widget) -> Self {
+		self.config.widgets.insert(field, widget);
+		self
+	}
+	pub fn label(mut self, field: String, label: String) -> Self {
+		self.config.labels.insert(field, label);
+		self
+	}
+	pub fn help_text(mut self, field: String, text: String) -> Self {
+		self.config.help_texts.insert(field, text);
+		self
+	}
+	/// Build the ModelForm with the configured settings
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_forms::{ModelFormBuilder, ModelFormConfig};
+	///
+	/// let config = ModelFormConfig::new();
+	/// let builder = ModelFormBuilder::<MyModel>::new();
+	/// let form = builder.build(None);
+	/// ```
+	pub fn build(self, instance: Option<T>) -> ModelForm<T> {
+		ModelForm::new(instance, self.config)
+	}
 }
 
 impl<T: FormModel> Default for ModelFormBuilder<T> {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    // Mock model for testing
-    struct TestModel {
-        id: i32,
-        name: String,
-        email: String,
-    }
+	// Mock model for testing
+	struct TestModel {
+		id: i32,
+		name: String,
+		email: String,
+	}
 
-    impl FormModel for TestModel {
-        fn field_names() -> Vec<String> {
-            vec!["id".to_string(), "name".to_string(), "email".to_string()]
-        }
+	impl FormModel for TestModel {
+		fn field_names() -> Vec<String> {
+			vec!["id".to_string(), "name".to_string(), "email".to_string()]
+		}
 
-        fn field_type(name: &str) -> Option<FieldType> {
-            match name {
-                "id" => Some(FieldType::Integer),
-                "name" => Some(FieldType::Char {
-                    max_length: Some(100),
-                }),
-                "email" => Some(FieldType::Email),
-                _ => None,
-            }
-        }
+		fn field_type(name: &str) -> Option<FieldType> {
+			match name {
+				"id" => Some(FieldType::Integer),
+				"name" => Some(FieldType::Char {
+					max_length: Some(100),
+				}),
+				"email" => Some(FieldType::Email),
+				_ => None,
+			}
+		}
 
-        fn get_field(&self, name: &str) -> Option<Value> {
-            match name {
-                "id" => Some(Value::Number(self.id.into())),
-                "name" => Some(Value::String(self.name.clone())),
-                "email" => Some(Value::String(self.email.clone())),
-                _ => None,
-            }
-        }
+		fn get_field(&self, name: &str) -> Option<Value> {
+			match name {
+				"id" => Some(Value::Number(self.id.into())),
+				"name" => Some(Value::String(self.name.clone())),
+				"email" => Some(Value::String(self.email.clone())),
+				_ => None,
+			}
+		}
 
-        fn set_field(&mut self, name: &str, value: Value) -> Result<(), String> {
-            match name {
-                "id" => {
-                    if let Value::Number(n) = value {
-                        self.id = n.as_i64().unwrap() as i32;
-                        Ok(())
-                    } else {
-                        Err("Invalid type for id".to_string())
-                    }
-                }
-                "name" => {
-                    if let Value::String(s) = value {
-                        self.name = s;
-                        Ok(())
-                    } else {
-                        Err("Invalid type for name".to_string())
-                    }
-                }
-                "email" => {
-                    if let Value::String(s) = value {
-                        self.email = s;
-                        Ok(())
-                    } else {
-                        Err("Invalid type for email".to_string())
-                    }
-                }
-                _ => Err(format!("Unknown field: {}", name)),
-            }
-        }
+		fn set_field(&mut self, name: &str, value: Value) -> Result<(), String> {
+			match name {
+				"id" => {
+					if let Value::Number(n) = value {
+						self.id = n.as_i64().unwrap() as i32;
+						Ok(())
+					} else {
+						Err("Invalid type for id".to_string())
+					}
+				}
+				"name" => {
+					if let Value::String(s) = value {
+						self.name = s;
+						Ok(())
+					} else {
+						Err("Invalid type for name".to_string())
+					}
+				}
+				"email" => {
+					if let Value::String(s) = value {
+						self.email = s;
+						Ok(())
+					} else {
+						Err("Invalid type for email".to_string())
+					}
+				}
+				_ => Err(format!("Unknown field: {}", name)),
+			}
+		}
 
-        fn save(&mut self) -> Result<(), String> {
-            // Mock save
-            Ok(())
-        }
-    }
+		fn save(&mut self) -> Result<(), String> {
+			// Mock save
+			Ok(())
+		}
+	}
 
-    #[test]
-    fn test_model_form_config() {
-        let config = ModelFormConfig::new()
-            .fields(vec!["name".to_string(), "email".to_string()])
-            .exclude(vec!["id".to_string()]);
+	#[test]
+	fn test_model_form_config() {
+		let config = ModelFormConfig::new()
+			.fields(vec!["name".to_string(), "email".to_string()])
+			.exclude(vec!["id".to_string()]);
 
-        assert_eq!(
-            config.fields,
-            Some(vec!["name".to_string(), "email".to_string()])
-        );
-        assert_eq!(config.exclude, vec!["id".to_string()]);
-    }
+		assert_eq!(
+			config.fields,
+			Some(vec!["name".to_string(), "email".to_string()])
+		);
+		assert_eq!(config.exclude, vec!["id".to_string()]);
+	}
 
-    #[test]
-    fn test_model_form_builder() {
-        let instance = TestModel {
-            id: 1,
-            name: "John".to_string(),
-            email: "john@example.com".to_string(),
-        };
+	#[test]
+	fn test_model_form_builder() {
+		let instance = TestModel {
+			id: 1,
+			name: "John".to_string(),
+			email: "john@example.com".to_string(),
+		};
 
-        let form = ModelFormBuilder::<TestModel>::new()
-            .fields(vec!["name".to_string(), "email".to_string()])
-            .build(Some(instance));
+		let form = ModelFormBuilder::<TestModel>::new()
+			.fields(vec!["name".to_string(), "email".to_string()])
+			.build(Some(instance));
 
-        assert!(form.instance().is_some());
-    }
+		assert!(form.instance().is_some());
+	}
 
-    #[test]
-    fn test_model_field_names() {
-        let fields = TestModel::field_names();
-        assert_eq!(
-            fields,
-            vec!["id".to_string(), "name".to_string(), "email".to_string()]
-        );
-    }
+	#[test]
+	fn test_model_field_names() {
+		let fields = TestModel::field_names();
+		assert_eq!(
+			fields,
+			vec!["id".to_string(), "name".to_string(), "email".to_string()]
+		);
+	}
 }

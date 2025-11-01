@@ -18,20 +18,20 @@ pub use scope::{RequestScope, Scope, SingletonScope};
 
 #[derive(Debug, Error)]
 pub enum DiError {
-    #[error("Dependency not found: {0}")]
-    NotFound(String),
+	#[error("Dependency not found: {0}")]
+	NotFound(String),
 
-    #[error("Circular dependency detected: {0}")]
-    CircularDependency(String),
+	#[error("Circular dependency detected: {0}")]
+	CircularDependency(String),
 
-    #[error("Provider error: {0}")]
-    ProviderError(String),
+	#[error("Provider error: {0}")]
+	ProviderError(String),
 
-    #[error("Type mismatch: expected {expected}, got {actual}")]
-    TypeMismatch { expected: String, actual: String },
+	#[error("Type mismatch: expected {expected}, got {actual}")]
+	TypeMismatch { expected: String, actual: String },
 
-    #[error("Scope error: {0}")]
-    ScopeError(String),
+	#[error("Scope error: {0}")]
+	ScopeError(String),
 }
 
 pub type DiResult<T> = std::result::Result<T, DiError>;

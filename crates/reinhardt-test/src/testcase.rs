@@ -28,94 +28,94 @@ use tokio::sync::RwLock;
 /// }
 /// ```
 pub struct APITestCase {
-    client: Arc<RwLock<APIClient>>,
-    setup_called: Arc<RwLock<bool>>,
-    teardown_called: Arc<RwLock<bool>>,
-    #[cfg(feature = "testcontainers")]
-    database_url: Arc<RwLock<Option<String>>>,
+	client: Arc<RwLock<APIClient>>,
+	setup_called: Arc<RwLock<bool>>,
+	teardown_called: Arc<RwLock<bool>>,
+	#[cfg(feature = "testcontainers")]
+	database_url: Arc<RwLock<Option<String>>>,
 }
 
 impl APITestCase {
-    /// Create a new test case
-    pub fn new() -> Self {
-        Self {
-            client: Arc::new(RwLock::new(APIClient::new())),
-            setup_called: Arc::new(RwLock::new(false)),
-            teardown_called: Arc::new(RwLock::new(false)),
-            #[cfg(feature = "testcontainers")]
-            database_url: Arc::new(RwLock::new(None)),
-        }
-    }
+	/// Create a new test case
+	pub fn new() -> Self {
+		Self {
+			client: Arc::new(RwLock::new(APIClient::new())),
+			setup_called: Arc::new(RwLock::new(false)),
+			teardown_called: Arc::new(RwLock::new(false)),
+			#[cfg(feature = "testcontainers")]
+			database_url: Arc::new(RwLock::new(None)),
+		}
+	}
 
-    /// Create a test case with a custom client
-    pub fn with_client(client: APIClient) -> Self {
-        Self {
-            client: Arc::new(RwLock::new(client)),
-            setup_called: Arc::new(RwLock::new(false)),
-            teardown_called: Arc::new(RwLock::new(false)),
-            #[cfg(feature = "testcontainers")]
-            database_url: Arc::new(RwLock::new(None)),
-        }
-    }
+	/// Create a test case with a custom client
+	pub fn with_client(client: APIClient) -> Self {
+		Self {
+			client: Arc::new(RwLock::new(client)),
+			setup_called: Arc::new(RwLock::new(false)),
+			teardown_called: Arc::new(RwLock::new(false)),
+			#[cfg(feature = "testcontainers")]
+			database_url: Arc::new(RwLock::new(None)),
+		}
+	}
 
-    /// Create a test case with a database connection URL
-    #[cfg(feature = "testcontainers")]
-    pub fn with_database_url(url: String) -> Self {
-        Self {
-            client: Arc::new(RwLock::new(APIClient::new())),
-            setup_called: Arc::new(RwLock::new(false)),
-            teardown_called: Arc::new(RwLock::new(false)),
-            database_url: Arc::new(RwLock::new(Some(url))),
-        }
-    }
+	/// Create a test case with a database connection URL
+	#[cfg(feature = "testcontainers")]
+	pub fn with_database_url(url: String) -> Self {
+		Self {
+			client: Arc::new(RwLock::new(APIClient::new())),
+			setup_called: Arc::new(RwLock::new(false)),
+			teardown_called: Arc::new(RwLock::new(false)),
+			database_url: Arc::new(RwLock::new(Some(url))),
+		}
+	}
 
-    /// Get the database connection URL (if configured)
-    #[cfg(feature = "testcontainers")]
-    pub async fn database_url(&self) -> Option<String> {
-        self.database_url.read().await.clone()
-    }
+	/// Get the database connection URL (if configured)
+	#[cfg(feature = "testcontainers")]
+	pub async fn database_url(&self) -> Option<String> {
+		self.database_url.read().await.clone()
+	}
 
-    /// Get the test client
-    pub async fn client(&self) -> tokio::sync::RwLockReadGuard<'_, APIClient> {
-        self.client.read().await
-    }
+	/// Get the test client
+	pub async fn client(&self) -> tokio::sync::RwLockReadGuard<'_, APIClient> {
+		self.client.read().await
+	}
 
-    /// Get mutable access to the test client
-    pub async fn client_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, APIClient> {
-        self.client.write().await
-    }
+	/// Get mutable access to the test client
+	pub async fn client_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, APIClient> {
+		self.client.write().await
+	}
 
-    /// Setup method called before each test
-    pub async fn setup(&self) {
-        let mut setup = self.setup_called.write().await;
-        *setup = true;
-    }
+	/// Setup method called before each test
+	pub async fn setup(&self) {
+		let mut setup = self.setup_called.write().await;
+		*setup = true;
+	}
 
-    /// Teardown method called after each test
-    pub async fn teardown(&self) {
-        let mut teardown = self.teardown_called.write().await;
-        *teardown = true;
+	/// Teardown method called after each test
+	pub async fn teardown(&self) {
+		let mut teardown = self.teardown_called.write().await;
+		*teardown = true;
 
-        // Clean up client state
-        let client = self.client.read().await;
-        let _ = client.logout().await;
-    }
+		// Clean up client state
+		let client = self.client.read().await;
+		let _ = client.logout().await;
+	}
 
-    /// Check if setup was called
-    pub async fn is_setup_called(&self) -> bool {
-        *self.setup_called.read().await
-    }
+	/// Check if setup was called
+	pub async fn is_setup_called(&self) -> bool {
+		*self.setup_called.read().await
+	}
 
-    /// Check if teardown was called
-    pub async fn is_teardown_called(&self) -> bool {
-        *self.teardown_called.read().await
-    }
+	/// Check if teardown was called
+	pub async fn is_teardown_called(&self) -> bool {
+		*self.teardown_called.read().await
+	}
 }
 
 impl Default for APITestCase {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 /// Helper macro for defining test cases

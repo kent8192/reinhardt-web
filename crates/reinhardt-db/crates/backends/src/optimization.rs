@@ -5,10 +5,10 @@
 //! - Query caching
 //! - Batch operations
 
+pub mod batch_ops;
 pub mod connection_pool;
 pub mod query_cache;
-pub mod batch_ops;
 
-pub use connection_pool::{PoolOptimizationConfig, OptimizedPoolBuilder};
-pub use query_cache::{QueryCache, QueryCacheConfig, CachedQuery};
-pub use batch_ops::{BatchOperations, BatchInsertBuilder, BatchUpdateBuilder};
+pub use batch_ops::{BatchInsertBuilder, BatchOperations, BatchUpdateBuilder};
+pub use connection_pool::{OptimizedPoolBuilder, PoolOptimizationConfig};
+pub use query_cache::{CachedQuery, QueryCache, QueryCacheConfig};

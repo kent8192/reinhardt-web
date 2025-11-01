@@ -12,170 +12,170 @@ use std::time::{Duration, Instant};
 /// Circuit breaker state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircuitState {
-    /// Closed (normal operation)
-    Closed,
-    /// Open (excessive errors)
-    Open,
-    /// Half-open (recovery testing)
-    HalfOpen,
+	/// Closed (normal operation)
+	Closed,
+	/// Open (excessive errors)
+	Open,
+	/// Half-open (recovery testing)
+	HalfOpen,
 }
 
 /// Circuit breaker statistics
 #[derive(Debug, Clone)]
 pub struct CircuitStats {
-    /// Total number of requests
-    total_requests: u64,
-    /// Number of failed requests
-    failed_requests: u64,
-    /// Number of successful requests
-    successful_requests: u64,
-    /// Last failure time
-    last_failure_time: Option<Instant>,
-    /// Last success time
-    last_success_time: Option<Instant>,
+	/// Total number of requests
+	total_requests: u64,
+	/// Number of failed requests
+	failed_requests: u64,
+	/// Number of successful requests
+	successful_requests: u64,
+	/// Last failure time
+	last_failure_time: Option<Instant>,
+	/// Last success time
+	last_success_time: Option<Instant>,
 }
 
 impl CircuitStats {
-    /// Create new statistics
-    fn new() -> Self {
-        Self {
-            total_requests: 0,
-            failed_requests: 0,
-            successful_requests: 0,
-            last_failure_time: None,
-            last_success_time: None,
-        }
-    }
+	/// Create new statistics
+	fn new() -> Self {
+		Self {
+			total_requests: 0,
+			failed_requests: 0,
+			successful_requests: 0,
+			last_failure_time: None,
+			last_success_time: None,
+		}
+	}
 
-    /// Record a success
-    fn record_success(&mut self) {
-        self.total_requests += 1;
-        self.successful_requests += 1;
-        self.last_success_time = Some(Instant::now());
-    }
+	/// Record a success
+	fn record_success(&mut self) {
+		self.total_requests += 1;
+		self.successful_requests += 1;
+		self.last_success_time = Some(Instant::now());
+	}
 
-    /// Record a failure
-    fn record_failure(&mut self) {
-        self.total_requests += 1;
-        self.failed_requests += 1;
-        self.last_failure_time = Some(Instant::now());
-    }
+	/// Record a failure
+	fn record_failure(&mut self) {
+		self.total_requests += 1;
+		self.failed_requests += 1;
+		self.last_failure_time = Some(Instant::now());
+	}
 
-    /// Calculate error rate
-    fn error_rate(&self) -> f64 {
-        if self.total_requests == 0 {
-            0.0
-        } else {
-            self.failed_requests as f64 / self.total_requests as f64
-        }
-    }
+	/// Calculate error rate
+	fn error_rate(&self) -> f64 {
+		if self.total_requests == 0 {
+			0.0
+		} else {
+			self.failed_requests as f64 / self.total_requests as f64
+		}
+	}
 
-    /// Reset statistics
-    fn reset(&mut self) {
-        self.total_requests = 0;
-        self.failed_requests = 0;
-        self.successful_requests = 0;
-    }
+	/// Reset statistics
+	fn reset(&mut self) {
+		self.total_requests = 0;
+		self.failed_requests = 0;
+		self.successful_requests = 0;
+	}
 }
 
 /// Circuit breaker state management
 #[derive(Debug)]
 struct CircuitBreakerState {
-    /// Current state
-    state: CircuitState,
-    /// Statistics
-    stats: CircuitStats,
-    /// Time when state was opened
-    opened_at: Option<Instant>,
+	/// Current state
+	state: CircuitState,
+	/// Statistics
+	stats: CircuitStats,
+	/// Time when state was opened
+	opened_at: Option<Instant>,
 }
 
 impl CircuitBreakerState {
-    /// Create new state
-    fn new() -> Self {
-        Self {
-            state: CircuitState::Closed,
-            stats: CircuitStats::new(),
-            opened_at: None,
-        }
-    }
+	/// Create new state
+	fn new() -> Self {
+		Self {
+			state: CircuitState::Closed,
+			stats: CircuitStats::new(),
+			opened_at: None,
+		}
+	}
 }
 
 /// Circuit breaker configuration
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
-    /// Error rate threshold (0.0 - 1.0)
-    pub error_threshold: f64,
-    /// Minimum number of requests required to open the circuit
-    pub min_requests: u64,
-    /// Duration for which the circuit remains open
-    pub timeout: Duration,
-    /// Success count threshold in half-open state
-    pub half_open_success_threshold: u64,
-    /// Custom error message
-    pub error_message: Option<String>,
+	/// Error rate threshold (0.0 - 1.0)
+	pub error_threshold: f64,
+	/// Minimum number of requests required to open the circuit
+	pub min_requests: u64,
+	/// Duration for which the circuit remains open
+	pub timeout: Duration,
+	/// Success count threshold in half-open state
+	pub half_open_success_threshold: u64,
+	/// Custom error message
+	pub error_message: Option<String>,
 }
 
 impl CircuitBreakerConfig {
-    /// Create a new configuration
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::circuit_breaker::CircuitBreakerConfig;
-    ///
-    /// let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30));
-    /// assert_eq!(config.error_threshold, 0.5);
-    /// assert_eq!(config.min_requests, 10);
-    /// ```
-    pub fn new(error_threshold: f64, min_requests: u64, timeout: Duration) -> Self {
-        Self {
-            error_threshold,
-            min_requests,
-            timeout,
-            half_open_success_threshold: 5,
-            error_message: None,
-        }
-    }
+	/// Create a new configuration
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::circuit_breaker::CircuitBreakerConfig;
+	///
+	/// let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30));
+	/// assert_eq!(config.error_threshold, 0.5);
+	/// assert_eq!(config.min_requests, 10);
+	/// ```
+	pub fn new(error_threshold: f64, min_requests: u64, timeout: Duration) -> Self {
+		Self {
+			error_threshold,
+			min_requests,
+			timeout,
+			half_open_success_threshold: 5,
+			error_message: None,
+		}
+	}
 
-    /// Set the success count threshold in half-open state
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::circuit_breaker::CircuitBreakerConfig;
-    ///
-    /// let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30))
-    ///     .with_half_open_success_threshold(10);
-    /// assert_eq!(config.half_open_success_threshold, 10);
-    /// ```
-    pub fn with_half_open_success_threshold(mut self, threshold: u64) -> Self {
-        self.half_open_success_threshold = threshold;
-        self
-    }
+	/// Set the success count threshold in half-open state
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::circuit_breaker::CircuitBreakerConfig;
+	///
+	/// let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30))
+	///     .with_half_open_success_threshold(10);
+	/// assert_eq!(config.half_open_success_threshold, 10);
+	/// ```
+	pub fn with_half_open_success_threshold(mut self, threshold: u64) -> Self {
+		self.half_open_success_threshold = threshold;
+		self
+	}
 
-    /// Set a custom error message
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::circuit_breaker::CircuitBreakerConfig;
-    ///
-    /// let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30))
-    ///     .with_error_message("Service temporarily unavailable".to_string());
-    /// ```
-    pub fn with_error_message(mut self, message: String) -> Self {
-        self.error_message = Some(message);
-        self
-    }
+	/// Set a custom error message
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::circuit_breaker::CircuitBreakerConfig;
+	///
+	/// let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30))
+	///     .with_error_message("Service temporarily unavailable".to_string());
+	/// ```
+	pub fn with_error_message(mut self, message: String) -> Self {
+		self.error_message = Some(message);
+		self
+	}
 }
 
 impl Default for CircuitBreakerConfig {
-    fn default() -> Self {
-        Self::new(0.5, 10, Duration::from_secs(30))
-    }
+	fn default() -> Self {
+		Self::new(0.5, 10, Duration::from_secs(30))
+	}
 }
 
 /// Circuit breaker middleware
@@ -217,455 +217,457 @@ impl Default for CircuitBreakerConfig {
 /// # });
 /// ```
 pub struct CircuitBreakerMiddleware {
-    config: CircuitBreakerConfig,
-    state: Arc<RwLock<CircuitBreakerState>>,
+	config: CircuitBreakerConfig,
+	state: Arc<RwLock<CircuitBreakerState>>,
 }
 
 impl CircuitBreakerMiddleware {
-    /// Create a new circuit breaker middleware
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use reinhardt_middleware::circuit_breaker::{CircuitBreakerMiddleware, CircuitBreakerConfig};
-    ///
-    /// let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30));
-    /// let middleware = CircuitBreakerMiddleware::new(config);
-    /// ```
-    pub fn new(config: CircuitBreakerConfig) -> Self {
-        Self {
-            config,
-            state: Arc::new(RwLock::new(CircuitBreakerState::new())),
-        }
-    }
+	/// Create a new circuit breaker middleware
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::Duration;
+	/// use reinhardt_middleware::circuit_breaker::{CircuitBreakerMiddleware, CircuitBreakerConfig};
+	///
+	/// let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30));
+	/// let middleware = CircuitBreakerMiddleware::new(config);
+	/// ```
+	pub fn new(config: CircuitBreakerConfig) -> Self {
+		Self {
+			config,
+			state: Arc::new(RwLock::new(CircuitBreakerState::new())),
+		}
+	}
 
-    /// Create with default configuration
-    pub fn with_defaults() -> Self {
-        Self::new(CircuitBreakerConfig::default())
-    }
+	/// Create with default configuration
+	pub fn with_defaults() -> Self {
+		Self::new(CircuitBreakerConfig::default())
+	}
 
-    /// Get the current state
-    pub fn get_state(&self) -> CircuitState {
-        self.state.read().unwrap().state
-    }
+	/// Get the current state
+	pub fn get_state(&self) -> CircuitState {
+		self.state.read().unwrap().state
+	}
 
-    /// Get statistics
-    pub fn get_stats(&self) -> CircuitStats {
-        self.state.read().unwrap().stats.clone()
-    }
+	/// Get statistics
+	pub fn get_stats(&self) -> CircuitStats {
+		self.state.read().unwrap().stats.clone()
+	}
 
-    /// Reset the circuit breaker
-    pub fn reset(&self) {
-        let mut state = self.state.write().unwrap();
-        state.state = CircuitState::Closed;
-        state.stats.reset();
-        state.opened_at = None;
-    }
+	/// Reset the circuit breaker
+	pub fn reset(&self) {
+		let mut state = self.state.write().unwrap();
+		state.state = CircuitState::Closed;
+		state.stats.reset();
+		state.opened_at = None;
+	}
 
-    /// Open the circuit
-    fn open_circuit(&self) {
-        let mut state = self.state.write().unwrap();
-        state.state = CircuitState::Open;
-        state.opened_at = Some(Instant::now());
-    }
+	/// Open the circuit
+	fn open_circuit(&self) {
+		let mut state = self.state.write().unwrap();
+		state.state = CircuitState::Open;
+		state.opened_at = Some(Instant::now());
+	}
 
-    /// Close the circuit
-    fn close_circuit(&self) {
-        let mut state = self.state.write().unwrap();
-        state.state = CircuitState::Closed;
-        state.stats.reset();
-        state.opened_at = None;
-    }
+	/// Close the circuit
+	fn close_circuit(&self) {
+		let mut state = self.state.write().unwrap();
+		state.state = CircuitState::Closed;
+		state.stats.reset();
+		state.opened_at = None;
+	}
 
-    /// Transition to half-open state
-    fn transition_to_half_open(&self) {
-        let mut state = self.state.write().unwrap();
-        state.state = CircuitState::HalfOpen;
-        state.stats.reset();
-    }
+	/// Transition to half-open state
+	fn transition_to_half_open(&self) {
+		let mut state = self.state.write().unwrap();
+		state.state = CircuitState::HalfOpen;
+		state.stats.reset();
+	}
 
-    /// Check if the response is a failure
-    fn is_failure_response(&self, status: StatusCode) -> bool {
-        status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS
-    }
+	/// Check if the response is a failure
+	fn is_failure_response(&self, status: StatusCode) -> bool {
+		status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS
+	}
 
-    /// Create a circuit breaker error response
-    fn circuit_breaker_error(&self) -> Response {
-        let message = self
-            .config
-            .error_message
-            .clone()
-            .unwrap_or_else(|| "Service temporarily unavailable".to_string());
+	/// Create a circuit breaker error response
+	fn circuit_breaker_error(&self) -> Response {
+		let message = self
+			.config
+			.error_message
+			.clone()
+			.unwrap_or_else(|| "Service temporarily unavailable".to_string());
 
-        Response::new(StatusCode::SERVICE_UNAVAILABLE)
-            .with_header("X-Circuit-Breaker", "open")
-            .with_body(message.into_bytes())
-    }
+		Response::new(StatusCode::SERVICE_UNAVAILABLE)
+			.with_header("X-Circuit-Breaker", "open")
+			.with_body(message.into_bytes())
+	}
 
-    /// Check and execute state transitions
-    fn check_and_update_state(&self) {
-        let state = self.state.read().unwrap();
-        let current_state = state.state;
-        let stats = &state.stats;
+	/// Check and execute state transitions
+	fn check_and_update_state(&self) {
+		let state = self.state.read().unwrap();
+		let current_state = state.state;
+		let stats = &state.stats;
 
-        match current_state {
-            CircuitState::Closed => {
-                // Open the circuit if error rate exceeds threshold
-                if stats.total_requests >= self.config.min_requests
-                    && stats.error_rate() >= self.config.error_threshold
-                {
-                    drop(state);
-                    self.open_circuit();
-                }
-            }
-            CircuitState::Open => {
-                // Transition to half-open state after timeout
-                if let Some(opened_at) = state.opened_at {
-                    if opened_at.elapsed() >= self.config.timeout {
-                        drop(state);
-                        self.transition_to_half_open();
-                    }
-                }
-            }
-            CircuitState::HalfOpen => {
-                // Close the circuit if successes exceed threshold
-                if stats.successful_requests >= self.config.half_open_success_threshold {
-                    drop(state);
-                    self.close_circuit();
-                }
-                // Re-open the circuit if there are failures
-                else if stats.failed_requests > 0 {
-                    drop(state);
-                    self.open_circuit();
-                }
-            }
-        }
-    }
+		match current_state {
+			CircuitState::Closed => {
+				// Open the circuit if error rate exceeds threshold
+				if stats.total_requests >= self.config.min_requests
+					&& stats.error_rate() >= self.config.error_threshold
+				{
+					drop(state);
+					self.open_circuit();
+				}
+			}
+			CircuitState::Open => {
+				// Transition to half-open state after timeout
+				if let Some(opened_at) = state.opened_at {
+					if opened_at.elapsed() >= self.config.timeout {
+						drop(state);
+						self.transition_to_half_open();
+					}
+				}
+			}
+			CircuitState::HalfOpen => {
+				// Close the circuit if successes exceed threshold
+				if stats.successful_requests >= self.config.half_open_success_threshold {
+					drop(state);
+					self.close_circuit();
+				}
+				// Re-open the circuit if there are failures
+				else if stats.failed_requests > 0 {
+					drop(state);
+					self.open_circuit();
+				}
+			}
+		}
+	}
 }
 
 impl Default for CircuitBreakerMiddleware {
-    fn default() -> Self {
-        Self::with_defaults()
-    }
+	fn default() -> Self {
+		Self::with_defaults()
+	}
 }
 
 #[async_trait]
 impl Middleware for CircuitBreakerMiddleware {
-    async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
-        // Check state
-        let current_state = self.get_state();
+	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
+		// Check state
+		let current_state = self.get_state();
 
-        match current_state {
-            CircuitState::Open => {
-                // If circuit is open, check timeout
-                self.check_and_update_state();
+		match current_state {
+			CircuitState::Open => {
+				// If circuit is open, check timeout
+				self.check_and_update_state();
 
-                // If still open, return error
-                if self.get_state() == CircuitState::Open {
-                    return Ok(self.circuit_breaker_error());
-                }
-            }
-            CircuitState::HalfOpen | CircuitState::Closed => {
-                // Process normally
-            }
-        }
+				// If still open, return error
+				if self.get_state() == CircuitState::Open {
+					return Ok(self.circuit_breaker_error());
+				}
+			}
+			CircuitState::HalfOpen | CircuitState::Closed => {
+				// Process normally
+			}
+		}
 
-        // Call handler
-        let response = handler.handle(request).await?;
+		// Call handler
+		let response = handler.handle(request).await?;
 
-        // Record response
-        let is_failure = self.is_failure_response(response.status);
-        {
-            let mut state = self.state.write().unwrap();
-            if is_failure {
-                state.stats.record_failure();
-            } else {
-                state.stats.record_success();
-            }
-        }
+		// Record response
+		let is_failure = self.is_failure_response(response.status);
+		{
+			let mut state = self.state.write().unwrap();
+			if is_failure {
+				state.stats.record_failure();
+			} else {
+				state.stats.record_success();
+			}
+		}
 
-        // Check state transitions
-        self.check_and_update_state();
+		// Check state transitions
+		self.check_and_update_state();
 
-        Ok(response)
-    }
+		Ok(response)
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use bytes::Bytes;
-    use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::thread;
+	use super::*;
+	use bytes::Bytes;
+	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+	use std::sync::atomic::{AtomicU64, Ordering};
+	use std::thread;
 
-    struct TestHandler {
-        fail_count: Arc<AtomicU64>,
-        max_failures: u64,
-    }
+	struct TestHandler {
+		fail_count: Arc<AtomicU64>,
+		max_failures: u64,
+	}
 
-    impl TestHandler {
-        fn new(max_failures: u64) -> Self {
-            Self {
-                fail_count: Arc::new(AtomicU64::new(0)),
-                max_failures,
-            }
-        }
-    }
+	impl TestHandler {
+		fn new(max_failures: u64) -> Self {
+			Self {
+				fail_count: Arc::new(AtomicU64::new(0)),
+				max_failures,
+			}
+		}
+	}
 
-    #[async_trait]
-    impl Handler for TestHandler {
-        async fn handle(&self, _request: Request) -> Result<Response> {
-            let count = self.fail_count.fetch_add(1, Ordering::SeqCst);
-            if count < self.max_failures {
-                Ok(Response::new(StatusCode::INTERNAL_SERVER_ERROR)
-                    .with_body(Bytes::from("Error")))
-            } else {
-                Ok(Response::new(StatusCode::OK).with_body(Bytes::from("OK")))
-            }
-        }
-    }
+	#[async_trait]
+	impl Handler for TestHandler {
+		async fn handle(&self, _request: Request) -> Result<Response> {
+			let count = self.fail_count.fetch_add(1, Ordering::SeqCst);
+			if count < self.max_failures {
+				Ok(
+					Response::new(StatusCode::INTERNAL_SERVER_ERROR)
+						.with_body(Bytes::from("Error")),
+				)
+			} else {
+				Ok(Response::new(StatusCode::OK).with_body(Bytes::from("OK")))
+			}
+		}
+	}
 
-    #[tokio::test]
-    async fn test_circuit_closed_state() {
-        let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
-        let middleware = CircuitBreakerMiddleware::new(config);
-        let handler = Arc::new(TestHandler::new(0));
+	#[tokio::test]
+	async fn test_circuit_closed_state() {
+		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
+		let middleware = CircuitBreakerMiddleware::new(config);
+		let handler = Arc::new(TestHandler::new(0));
 
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let response = middleware.process(request, handler).await.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
 
-        assert_eq!(response.status, StatusCode::OK);
-        assert_eq!(middleware.get_state(), CircuitState::Closed);
-    }
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(middleware.get_state(), CircuitState::Closed);
+	}
 
-    #[tokio::test]
-    async fn test_circuit_opens_on_errors() {
-        let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
-        let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
-        let handler = Arc::new(TestHandler::new(10)); // Always error
+	#[tokio::test]
+	async fn test_circuit_opens_on_errors() {
+		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
+		let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(10)); // Always error
 
-        // Generate errors
-        for _ in 0..5 {
-            let request = Request::new(
-                Method::GET,
-                Uri::from_static("/test"),
-                Version::HTTP_11,
-                HeaderMap::new(),
-                Bytes::new(),
-            );
-            let _response = middleware.process(request, handler.clone()).await.unwrap();
-        }
+		// Generate errors
+		for _ in 0..5 {
+			let request = Request::new(
+				Method::GET,
+				Uri::from_static("/test"),
+				Version::HTTP_11,
+				HeaderMap::new(),
+				Bytes::new(),
+			);
+			let _response = middleware.process(request, handler.clone()).await.unwrap();
+		}
 
-        // Circuit should be open
-        assert_eq!(middleware.get_state(), CircuitState::Open);
-    }
+		// Circuit should be open
+		assert_eq!(middleware.get_state(), CircuitState::Open);
+	}
 
-    #[tokio::test]
-    async fn test_circuit_open_rejects_requests() {
-        let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
-        let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
-        let handler = Arc::new(TestHandler::new(10));
+	#[tokio::test]
+	async fn test_circuit_open_rejects_requests() {
+		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
+		let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(10));
 
-        // Open the circuit
-        for _ in 0..5 {
-            let request = Request::new(
-                Method::GET,
-                Uri::from_static("/test"),
-                Version::HTTP_11,
-                HeaderMap::new(),
-                Bytes::new(),
-            );
-            let _response = middleware.process(request, handler.clone()).await.unwrap();
-        }
+		// Open the circuit
+		for _ in 0..5 {
+			let request = Request::new(
+				Method::GET,
+				Uri::from_static("/test"),
+				Version::HTTP_11,
+				HeaderMap::new(),
+				Bytes::new(),
+			);
+			let _response = middleware.process(request, handler.clone()).await.unwrap();
+		}
 
-        // Request while circuit is open
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let response = middleware.process(request, handler).await.unwrap();
+		// Request while circuit is open
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let response = middleware.process(request, handler).await.unwrap();
 
-        assert_eq!(response.status, StatusCode::SERVICE_UNAVAILABLE);
-        assert!(response.headers.contains_key("x-circuit-breaker"));
-    }
+		assert_eq!(response.status, StatusCode::SERVICE_UNAVAILABLE);
+		assert!(response.headers.contains_key("x-circuit-breaker"));
+	}
 
-    #[tokio::test]
-    async fn test_circuit_half_open_transition() {
-        let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_millis(100));
-        let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
-        let handler = Arc::new(TestHandler::new(5));
+	#[tokio::test]
+	async fn test_circuit_half_open_transition() {
+		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_millis(100));
+		let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(5));
 
-        // Open the circuit
-        for _ in 0..5 {
-            let request = Request::new(
-                Method::GET,
-                Uri::from_static("/test"),
-                Version::HTTP_11,
-                HeaderMap::new(),
-                Bytes::new(),
-            );
-            let _response = middleware.process(request, handler.clone()).await.unwrap();
-        }
+		// Open the circuit
+		for _ in 0..5 {
+			let request = Request::new(
+				Method::GET,
+				Uri::from_static("/test"),
+				Version::HTTP_11,
+				HeaderMap::new(),
+				Bytes::new(),
+			);
+			let _response = middleware.process(request, handler.clone()).await.unwrap();
+		}
 
-        assert_eq!(middleware.get_state(), CircuitState::Open);
+		assert_eq!(middleware.get_state(), CircuitState::Open);
 
-        // After timeout
-        thread::sleep(Duration::from_millis(150));
+		// After timeout
+		thread::sleep(Duration::from_millis(150));
 
-        // Transition to half-open state on next request
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let _response = middleware.process(request, handler).await.unwrap();
+		// Transition to half-open state on next request
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let _response = middleware.process(request, handler).await.unwrap();
 
-        assert_eq!(middleware.get_state(), CircuitState::HalfOpen);
-    }
+		assert_eq!(middleware.get_state(), CircuitState::HalfOpen);
+	}
 
-    #[tokio::test]
-    async fn test_circuit_closes_after_recovery() {
-        let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_millis(100))
-            .with_half_open_success_threshold(3);
-        let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
-        let handler = Arc::new(TestHandler::new(10));
+	#[tokio::test]
+	async fn test_circuit_closes_after_recovery() {
+		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_millis(100))
+			.with_half_open_success_threshold(3);
+		let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(10));
 
-        // Open the circuit
-        for _ in 0..5 {
-            let request = Request::new(
-                Method::GET,
-                Uri::from_static("/test"),
-                Version::HTTP_11,
-                HeaderMap::new(),
-                Bytes::new(),
-            );
-            let _response = middleware.process(request, handler.clone()).await.unwrap();
-        }
+		// Open the circuit
+		for _ in 0..5 {
+			let request = Request::new(
+				Method::GET,
+				Uri::from_static("/test"),
+				Version::HTTP_11,
+				HeaderMap::new(),
+				Bytes::new(),
+			);
+			let _response = middleware.process(request, handler.clone()).await.unwrap();
+		}
 
-        // After timeout
-        thread::sleep(Duration::from_millis(150));
+		// After timeout
+		thread::sleep(Duration::from_millis(150));
 
-        // Switch to success handler
-        let success_handler = Arc::new(TestHandler::new(0));
+		// Switch to success handler
+		let success_handler = Arc::new(TestHandler::new(0));
 
-        // Request in half-open state
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
-        let _response = middleware
-            .process(request, success_handler.clone())
-            .await
-            .unwrap();
+		// Request in half-open state
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
+		let _response = middleware
+			.process(request, success_handler.clone())
+			.await
+			.unwrap();
 
-        assert_eq!(middleware.get_state(), CircuitState::HalfOpen);
+		assert_eq!(middleware.get_state(), CircuitState::HalfOpen);
 
-        // Continue with successes
-        for _ in 0..3 {
-            let request = Request::new(
-                Method::GET,
-                Uri::from_static("/test"),
-                Version::HTTP_11,
-                HeaderMap::new(),
-                Bytes::new(),
-            );
-            let _response = middleware
-                .process(request, success_handler.clone())
-                .await
-                .unwrap();
-        }
+		// Continue with successes
+		for _ in 0..3 {
+			let request = Request::new(
+				Method::GET,
+				Uri::from_static("/test"),
+				Version::HTTP_11,
+				HeaderMap::new(),
+				Bytes::new(),
+			);
+			let _response = middleware
+				.process(request, success_handler.clone())
+				.await
+				.unwrap();
+		}
 
-        // Circuit should be closed
-        assert_eq!(middleware.get_state(), CircuitState::Closed);
-    }
+		// Circuit should be closed
+		assert_eq!(middleware.get_state(), CircuitState::Closed);
+	}
 
-    #[tokio::test]
-    async fn test_circuit_stats() {
-        let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30));
-        let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
+	#[tokio::test]
+	async fn test_circuit_stats() {
+		let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30));
+		let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
 
-        let success_handler = Arc::new(TestHandler::new(0));
-        let fail_handler = Arc::new(TestHandler::new(10));
+		let success_handler = Arc::new(TestHandler::new(0));
+		let fail_handler = Arc::new(TestHandler::new(10));
 
-        // Successful requests
-        for _ in 0..3 {
-            let request = Request::new(
-                Method::GET,
-                Uri::from_static("/test"),
-                Version::HTTP_11,
-                HeaderMap::new(),
-                Bytes::new(),
-            );
-            let _response = middleware
-                .process(request, success_handler.clone())
-                .await
-                .unwrap();
-        }
+		// Successful requests
+		for _ in 0..3 {
+			let request = Request::new(
+				Method::GET,
+				Uri::from_static("/test"),
+				Version::HTTP_11,
+				HeaderMap::new(),
+				Bytes::new(),
+			);
+			let _response = middleware
+				.process(request, success_handler.clone())
+				.await
+				.unwrap();
+		}
 
-        // Failed requests
-        for _ in 0..2 {
-            let request = Request::new(
-                Method::GET,
-                Uri::from_static("/test"),
-                Version::HTTP_11,
-                HeaderMap::new(),
-                Bytes::new(),
-            );
-            let _response = middleware
-                .process(request, fail_handler.clone())
-                .await
-                .unwrap();
-        }
+		// Failed requests
+		for _ in 0..2 {
+			let request = Request::new(
+				Method::GET,
+				Uri::from_static("/test"),
+				Version::HTTP_11,
+				HeaderMap::new(),
+				Bytes::new(),
+			);
+			let _response = middleware
+				.process(request, fail_handler.clone())
+				.await
+				.unwrap();
+		}
 
-        let stats = middleware.get_stats();
-        assert_eq!(stats.total_requests, 5);
-        assert_eq!(stats.successful_requests, 3);
-        assert_eq!(stats.failed_requests, 2);
-        assert_eq!(stats.error_rate(), 0.4);
-    }
+		let stats = middleware.get_stats();
+		assert_eq!(stats.total_requests, 5);
+		assert_eq!(stats.successful_requests, 3);
+		assert_eq!(stats.failed_requests, 2);
+		assert_eq!(stats.error_rate(), 0.4);
+	}
 
-    #[tokio::test]
-    async fn test_reset_circuit() {
-        let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
-        let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
-        let handler = Arc::new(TestHandler::new(10));
+	#[tokio::test]
+	async fn test_reset_circuit() {
+		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
+		let middleware = Arc::new(CircuitBreakerMiddleware::new(config));
+		let handler = Arc::new(TestHandler::new(10));
 
-        // Open the circuit
-        for _ in 0..5 {
-            let request = Request::new(
-                Method::GET,
-                Uri::from_static("/test"),
-                Version::HTTP_11,
-                HeaderMap::new(),
-                Bytes::new(),
-            );
-            let _response = middleware.process(request, handler.clone()).await.unwrap();
-        }
+		// Open the circuit
+		for _ in 0..5 {
+			let request = Request::new(
+				Method::GET,
+				Uri::from_static("/test"),
+				Version::HTTP_11,
+				HeaderMap::new(),
+				Bytes::new(),
+			);
+			let _response = middleware.process(request, handler.clone()).await.unwrap();
+		}
 
-        assert_eq!(middleware.get_state(), CircuitState::Open);
+		assert_eq!(middleware.get_state(), CircuitState::Open);
 
-        // Reset
-        middleware.reset();
+		// Reset
+		middleware.reset();
 
-        assert_eq!(middleware.get_state(), CircuitState::Closed);
-        let stats = middleware.get_stats();
-        assert_eq!(stats.total_requests, 0);
-    }
+		assert_eq!(middleware.get_state(), CircuitState::Closed);
+		let stats = middleware.get_stats();
+		assert_eq!(stats.total_requests, 0);
+	}
 }

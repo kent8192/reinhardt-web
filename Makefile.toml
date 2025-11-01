@@ -62,6 +62,20 @@ args = [
     "warnings",
 ]
 
+[tasks.clippy-fix]
+description = "Run clippy linter and automatically fix found errors."
+command = "cargo"
+args = [
+    "clippy",
+    "--fix",
+    "--workspace",
+    "--all",
+    "--all-features",
+    "--",
+    "-D",
+    "warnings",
+]
+
 # ============================================================================
 # Testing Tasks
 # ============================================================================

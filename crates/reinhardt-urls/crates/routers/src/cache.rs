@@ -64,149 +64,149 @@ pub type RouteCacheEntry = (String, HashMap<String, String>);
 /// ```
 #[derive(Clone)]
 pub struct RouteCache {
-    inner: Arc<Mutex<LruCache>>,
+	inner: Arc<Mutex<LruCache>>,
 }
 
 impl RouteCache {
-    /// Create a new route cache with the specified capacity
-    ///
-    /// # Arguments
-    ///
-    /// * `capacity` - Maximum number of entries to cache
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_routers::cache::RouteCache;
-    ///
-    /// let cache = RouteCache::new(100);
-    /// assert_eq!(cache.capacity(), 100);
-    /// ```
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(LruCache::new(capacity))),
-        }
-    }
+	/// Create a new route cache with the specified capacity
+	///
+	/// # Arguments
+	///
+	/// * `capacity` - Maximum number of entries to cache
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_routers::cache::RouteCache;
+	///
+	/// let cache = RouteCache::new(100);
+	/// assert_eq!(cache.capacity(), 100);
+	/// ```
+	pub fn new(capacity: usize) -> Self {
+		Self {
+			inner: Arc::new(Mutex::new(LruCache::new(capacity))),
+		}
+	}
 
-    /// Get a cached route match result
-    ///
-    /// Returns `None` if the path is not in the cache.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_routers::cache::RouteCache;
-    /// use std::collections::HashMap;
-    ///
-    /// let cache = RouteCache::new(100);
-    /// assert!(cache.get("/users/").is_none());
-    ///
-    /// cache.put("/users/", ("users".to_string(), HashMap::new()));
-    /// assert!(cache.get("/users/").is_some());
-    /// ```
-    pub fn get(&self, path: &str) -> Option<RouteCacheEntry> {
-        let mut inner = self.inner.lock().unwrap();
-        inner.get(path)
-    }
+	/// Get a cached route match result
+	///
+	/// Returns `None` if the path is not in the cache.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_routers::cache::RouteCache;
+	/// use std::collections::HashMap;
+	///
+	/// let cache = RouteCache::new(100);
+	/// assert!(cache.get("/users/").is_none());
+	///
+	/// cache.put("/users/", ("users".to_string(), HashMap::new()));
+	/// assert!(cache.get("/users/").is_some());
+	/// ```
+	pub fn get(&self, path: &str) -> Option<RouteCacheEntry> {
+		let mut inner = self.inner.lock().unwrap();
+		inner.get(path)
+	}
 
-    /// Cache a route match result
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The request path
-    /// * `entry` - The route match result (handler_id, params)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_routers::cache::RouteCache;
-    /// use std::collections::HashMap;
-    ///
-    /// let cache = RouteCache::new(100);
-    /// cache.put("/users/", ("users".to_string(), HashMap::new()));
-    /// ```
-    pub fn put(&self, path: &str, entry: RouteCacheEntry) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.put(path.to_string(), entry);
-    }
+	/// Cache a route match result
+	///
+	/// # Arguments
+	///
+	/// * `path` - The request path
+	/// * `entry` - The route match result (handler_id, params)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_routers::cache::RouteCache;
+	/// use std::collections::HashMap;
+	///
+	/// let cache = RouteCache::new(100);
+	/// cache.put("/users/", ("users".to_string(), HashMap::new()));
+	/// ```
+	pub fn put(&self, path: &str, entry: RouteCacheEntry) {
+		let mut inner = self.inner.lock().unwrap();
+		inner.put(path.to_string(), entry);
+	}
 
-    /// Clear all cached entries
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_routers::cache::RouteCache;
-    /// use std::collections::HashMap;
-    ///
-    /// let cache = RouteCache::new(100);
-    /// cache.put("/users/", ("users".to_string(), HashMap::new()));
-    /// assert_eq!(cache.len(), 1);
-    ///
-    /// cache.clear();
-    /// assert_eq!(cache.len(), 0);
-    /// ```
-    pub fn clear(&self) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.clear();
-    }
+	/// Clear all cached entries
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_routers::cache::RouteCache;
+	/// use std::collections::HashMap;
+	///
+	/// let cache = RouteCache::new(100);
+	/// cache.put("/users/", ("users".to_string(), HashMap::new()));
+	/// assert_eq!(cache.len(), 1);
+	///
+	/// cache.clear();
+	/// assert_eq!(cache.len(), 0);
+	/// ```
+	pub fn clear(&self) {
+		let mut inner = self.inner.lock().unwrap();
+		inner.clear();
+	}
 
-    /// Get the number of cached entries
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_routers::cache::RouteCache;
-    /// use std::collections::HashMap;
-    ///
-    /// let cache = RouteCache::new(100);
-    /// assert_eq!(cache.len(), 0);
-    ///
-    /// cache.put("/users/", ("users".to_string(), HashMap::new()));
-    /// assert_eq!(cache.len(), 1);
-    /// ```
-    pub fn len(&self) -> usize {
-        let inner = self.inner.lock().unwrap();
-        inner.len()
-    }
+	/// Get the number of cached entries
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_routers::cache::RouteCache;
+	/// use std::collections::HashMap;
+	///
+	/// let cache = RouteCache::new(100);
+	/// assert_eq!(cache.len(), 0);
+	///
+	/// cache.put("/users/", ("users".to_string(), HashMap::new()));
+	/// assert_eq!(cache.len(), 1);
+	/// ```
+	pub fn len(&self) -> usize {
+		let inner = self.inner.lock().unwrap();
+		inner.len()
+	}
 
-    /// Check if the cache is empty
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_routers::cache::RouteCache;
-    ///
-    /// let cache = RouteCache::new(100);
-    /// assert!(cache.is_empty());
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        let inner = self.inner.lock().unwrap();
-        inner.is_empty()
-    }
+	/// Check if the cache is empty
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_routers::cache::RouteCache;
+	///
+	/// let cache = RouteCache::new(100);
+	/// assert!(cache.is_empty());
+	/// ```
+	pub fn is_empty(&self) -> bool {
+		let inner = self.inner.lock().unwrap();
+		inner.is_empty()
+	}
 
-    /// Get the cache capacity
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_routers::cache::RouteCache;
-    ///
-    /// let cache = RouteCache::new(100);
-    /// assert_eq!(cache.capacity(), 100);
-    /// ```
-    pub fn capacity(&self) -> usize {
-        let inner = self.inner.lock().unwrap();
-        inner.capacity()
-    }
+	/// Get the cache capacity
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_routers::cache::RouteCache;
+	///
+	/// let cache = RouteCache::new(100);
+	/// assert_eq!(cache.capacity(), 100);
+	/// ```
+	pub fn capacity(&self) -> usize {
+		let inner = self.inner.lock().unwrap();
+		inner.capacity()
+	}
 }
 
 impl std::fmt::Debug for RouteCache {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RouteCache")
-            .field("capacity", &self.capacity())
-            .field("len", &self.len())
-            .finish()
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("RouteCache")
+			.field("capacity", &self.capacity())
+			.field("len", &self.len())
+			.finish()
+	}
 }
 
 /// Internal LRU cache implementation
@@ -214,201 +214,201 @@ impl std::fmt::Debug for RouteCache {
 /// This uses a HashMap for O(1) lookups combined with a min-heap (BinaryHeap)
 /// for efficient O(log n) LRU eviction tracking.
 struct LruCache {
-    capacity: usize,
-    map: HashMap<String, (RouteCacheEntry, usize)>, // (entry, access_order)
-    heap: BinaryHeap<Reverse<(usize, String)>>,     // min-heap of (access_order, key)
-    access_counter: usize,
+	capacity: usize,
+	map: HashMap<String, (RouteCacheEntry, usize)>, // (entry, access_order)
+	heap: BinaryHeap<Reverse<(usize, String)>>,     // min-heap of (access_order, key)
+	access_counter: usize,
 }
 
 impl LruCache {
-    fn new(capacity: usize) -> Self {
-        Self {
-            capacity,
-            map: HashMap::new(),
-            heap: BinaryHeap::new(),
-            access_counter: 0,
-        }
-    }
+	fn new(capacity: usize) -> Self {
+		Self {
+			capacity,
+			map: HashMap::new(),
+			heap: BinaryHeap::new(),
+			access_counter: 0,
+		}
+	}
 
-    fn get(&mut self, path: &str) -> Option<RouteCacheEntry> {
-        if let Some((entry, order)) = self.map.get_mut(path) {
-            // Update access order
-            self.access_counter += 1;
-            *order = self.access_counter;
-            // Add new access time to heap (old entries will be cleaned up lazily)
-            self.heap
-                .push(Reverse((self.access_counter, path.to_string())));
-            Some(entry.clone())
-        } else {
-            None
-        }
-    }
+	fn get(&mut self, path: &str) -> Option<RouteCacheEntry> {
+		if let Some((entry, order)) = self.map.get_mut(path) {
+			// Update access order
+			self.access_counter += 1;
+			*order = self.access_counter;
+			// Add new access time to heap (old entries will be cleaned up lazily)
+			self.heap
+				.push(Reverse((self.access_counter, path.to_string())));
+			Some(entry.clone())
+		} else {
+			None
+		}
+	}
 
-    fn put(&mut self, path: String, entry: RouteCacheEntry) {
-        // If we're at capacity, evict the least recently used entry
-        if self.map.len() >= self.capacity && !self.map.contains_key(&path) {
-            self.evict_lru();
-        }
+	fn put(&mut self, path: String, entry: RouteCacheEntry) {
+		// If we're at capacity, evict the least recently used entry
+		if self.map.len() >= self.capacity && !self.map.contains_key(&path) {
+			self.evict_lru();
+		}
 
-        self.access_counter += 1;
-        self.heap.push(Reverse((self.access_counter, path.clone())));
-        self.map.insert(path, (entry, self.access_counter));
-    }
+		self.access_counter += 1;
+		self.heap.push(Reverse((self.access_counter, path.clone())));
+		self.map.insert(path, (entry, self.access_counter));
+	}
 
-    /// Evict the least recently used entry
-    ///
-    /// Uses a min-heap for O(log n) performance instead of O(n) linear scan.
-    /// Lazy cleanup is used to handle stale heap entries.
-    fn evict_lru(&mut self) {
-        // Pop from heap until we find a valid LRU entry
-        while let Some(Reverse((access_time, key))) = self.heap.pop() {
-            // Check if this entry is still valid (not updated since)
-            if let Some((_, current_access_time)) = self.map.get(&key) {
-                if *current_access_time == access_time {
-                    // This is the true LRU entry
-                    self.map.remove(&key);
-                    return;
-                }
-                // Otherwise, this is a stale heap entry, continue to next
-            }
-        }
-    }
+	/// Evict the least recently used entry
+	///
+	/// Uses a min-heap for O(log n) performance instead of O(n) linear scan.
+	/// Lazy cleanup is used to handle stale heap entries.
+	fn evict_lru(&mut self) {
+		// Pop from heap until we find a valid LRU entry
+		while let Some(Reverse((access_time, key))) = self.heap.pop() {
+			// Check if this entry is still valid (not updated since)
+			if let Some((_, current_access_time)) = self.map.get(&key) {
+				if *current_access_time == access_time {
+					// This is the true LRU entry
+					self.map.remove(&key);
+					return;
+				}
+				// Otherwise, this is a stale heap entry, continue to next
+			}
+		}
+	}
 
-    fn clear(&mut self) {
-        self.map.clear();
-        self.heap.clear();
-        self.access_counter = 0;
-    }
+	fn clear(&mut self) {
+		self.map.clear();
+		self.heap.clear();
+		self.access_counter = 0;
+	}
 
-    fn len(&self) -> usize {
-        self.map.len()
-    }
+	fn len(&self) -> usize {
+		self.map.len()
+	}
 
-    fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
+	fn is_empty(&self) -> bool {
+		self.map.is_empty()
+	}
 
-    fn capacity(&self) -> usize {
-        self.capacity
-    }
+	fn capacity(&self) -> usize {
+		self.capacity
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_route_cache_new() {
-        let cache = RouteCache::new(100);
-        assert_eq!(cache.capacity(), 100);
-        assert_eq!(cache.len(), 0);
-        assert!(cache.is_empty());
-    }
+	#[test]
+	fn test_route_cache_new() {
+		let cache = RouteCache::new(100);
+		assert_eq!(cache.capacity(), 100);
+		assert_eq!(cache.len(), 0);
+		assert!(cache.is_empty());
+	}
 
-    #[test]
-    fn test_route_cache_put_and_get() {
-        let cache = RouteCache::new(100);
+	#[test]
+	fn test_route_cache_put_and_get() {
+		let cache = RouteCache::new(100);
 
-        let mut params = HashMap::new();
-        params.insert("id".to_string(), "123".to_string());
+		let mut params = HashMap::new();
+		params.insert("id".to_string(), "123".to_string());
 
-        cache.put("/users/123/", ("user-detail".to_string(), params.clone()));
+		cache.put("/users/123/", ("user-detail".to_string(), params.clone()));
 
-        let result = cache.get("/users/123/");
-        assert!(result.is_some());
+		let result = cache.get("/users/123/");
+		assert!(result.is_some());
 
-        let (handler_id, cached_params) = result.unwrap();
-        assert_eq!(handler_id, "user-detail");
-        assert_eq!(cached_params.get("id"), Some(&"123".to_string()));
-    }
+		let (handler_id, cached_params) = result.unwrap();
+		assert_eq!(handler_id, "user-detail");
+		assert_eq!(cached_params.get("id"), Some(&"123".to_string()));
+	}
 
-    #[test]
-    fn test_route_cache_miss() {
-        let cache = RouteCache::new(100);
-        assert!(cache.get("/nonexistent/").is_none());
-    }
+	#[test]
+	fn test_route_cache_miss() {
+		let cache = RouteCache::new(100);
+		assert!(cache.get("/nonexistent/").is_none());
+	}
 
-    #[test]
-    fn test_route_cache_clear() {
-        let cache = RouteCache::new(100);
+	#[test]
+	fn test_route_cache_clear() {
+		let cache = RouteCache::new(100);
 
-        cache.put("/users/", ("users".to_string(), HashMap::new()));
-        assert_eq!(cache.len(), 1);
+		cache.put("/users/", ("users".to_string(), HashMap::new()));
+		assert_eq!(cache.len(), 1);
 
-        cache.clear();
-        assert_eq!(cache.len(), 0);
-        assert!(cache.is_empty());
-    }
+		cache.clear();
+		assert_eq!(cache.len(), 0);
+		assert!(cache.is_empty());
+	}
 
-    #[test]
-    fn test_route_cache_lru_eviction() {
-        let cache = RouteCache::new(2);
+	#[test]
+	fn test_route_cache_lru_eviction() {
+		let cache = RouteCache::new(2);
 
-        cache.put("/route1/", ("handler1".to_string(), HashMap::new()));
-        cache.put("/route2/", ("handler2".to_string(), HashMap::new()));
-        assert_eq!(cache.len(), 2);
+		cache.put("/route1/", ("handler1".to_string(), HashMap::new()));
+		cache.put("/route2/", ("handler2".to_string(), HashMap::new()));
+		assert_eq!(cache.len(), 2);
 
-        // This should evict /route1/ (least recently used)
-        cache.put("/route3/", ("handler3".to_string(), HashMap::new()));
-        assert_eq!(cache.len(), 2);
+		// This should evict /route1/ (least recently used)
+		cache.put("/route3/", ("handler3".to_string(), HashMap::new()));
+		assert_eq!(cache.len(), 2);
 
-        assert!(cache.get("/route1/").is_none());
-        assert!(cache.get("/route2/").is_some());
-        assert!(cache.get("/route3/").is_some());
-    }
+		assert!(cache.get("/route1/").is_none());
+		assert!(cache.get("/route2/").is_some());
+		assert!(cache.get("/route3/").is_some());
+	}
 
-    #[test]
-    fn test_route_cache_lru_access_order() {
-        let cache = RouteCache::new(2);
+	#[test]
+	fn test_route_cache_lru_access_order() {
+		let cache = RouteCache::new(2);
 
-        cache.put("/route1/", ("handler1".to_string(), HashMap::new()));
-        cache.put("/route2/", ("handler2".to_string(), HashMap::new()));
+		cache.put("/route1/", ("handler1".to_string(), HashMap::new()));
+		cache.put("/route2/", ("handler2".to_string(), HashMap::new()));
 
-        // Access route1 to update its order
-        let _ = cache.get("/route1/");
+		// Access route1 to update its order
+		let _ = cache.get("/route1/");
 
-        // This should evict /route2/ (now least recently used)
-        cache.put("/route3/", ("handler3".to_string(), HashMap::new()));
+		// This should evict /route2/ (now least recently used)
+		cache.put("/route3/", ("handler3".to_string(), HashMap::new()));
 
-        assert!(cache.get("/route1/").is_some());
-        assert!(cache.get("/route2/").is_none());
-        assert!(cache.get("/route3/").is_some());
-    }
+		assert!(cache.get("/route1/").is_some());
+		assert!(cache.get("/route2/").is_none());
+		assert!(cache.get("/route3/").is_some());
+	}
 
-    #[test]
-    fn test_route_cache_update_existing() {
-        let cache = RouteCache::new(2);
+	#[test]
+	fn test_route_cache_update_existing() {
+		let cache = RouteCache::new(2);
 
-        cache.put("/users/", ("handler1".to_string(), HashMap::new()));
-        cache.put("/posts/", ("handler2".to_string(), HashMap::new()));
+		cache.put("/users/", ("handler1".to_string(), HashMap::new()));
+		cache.put("/posts/", ("handler2".to_string(), HashMap::new()));
 
-        // Update existing entry should not evict anything
-        let mut new_params = HashMap::new();
-        new_params.insert("new".to_string(), "param".to_string());
-        cache.put("/users/", ("handler1_updated".to_string(), new_params));
+		// Update existing entry should not evict anything
+		let mut new_params = HashMap::new();
+		new_params.insert("new".to_string(), "param".to_string());
+		cache.put("/users/", ("handler1_updated".to_string(), new_params));
 
-        assert_eq!(cache.len(), 2);
-        assert!(cache.get("/users/").is_some());
-        assert!(cache.get("/posts/").is_some());
-    }
+		assert_eq!(cache.len(), 2);
+		assert!(cache.get("/users/").is_some());
+		assert!(cache.get("/posts/").is_some());
+	}
 
-    #[test]
-    fn test_route_cache_thread_safety() {
-        use std::thread;
+	#[test]
+	fn test_route_cache_thread_safety() {
+		use std::thread;
 
-        let cache = RouteCache::new(100);
-        let cache_clone = cache.clone();
+		let cache = RouteCache::new(100);
+		let cache_clone = cache.clone();
 
-        let handle = thread::spawn(move || {
-            cache_clone.put("/thread1/", ("handler1".to_string(), HashMap::new()));
-        });
+		let handle = thread::spawn(move || {
+			cache_clone.put("/thread1/", ("handler1".to_string(), HashMap::new()));
+		});
 
-        cache.put("/main/", ("handler_main".to_string(), HashMap::new()));
+		cache.put("/main/", ("handler_main".to_string(), HashMap::new()));
 
-        handle.join().unwrap();
+		handle.join().unwrap();
 
-        // Both entries should be present
-        assert!(cache.get("/main/").is_some());
-        assert!(cache.get("/thread1/").is_some());
-    }
+		// Both entries should be present
+		assert!(cache.get("/main/").is_some());
+		assert!(cache.get("/thread1/").is_some());
+	}
 }

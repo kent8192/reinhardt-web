@@ -32,9 +32,9 @@ pub mod ip_permission;
 pub mod jwt;
 pub mod mfa;
 pub mod model_permissions;
-pub mod object_permissions;
 #[cfg(feature = "oauth")]
 pub mod oauth2;
+pub mod object_permissions;
 pub mod permission_operators;
 pub mod permissions;
 pub mod permissions_mixin;
@@ -59,17 +59,16 @@ pub use base_user_manager::BaseUserManager;
 pub use basic::BasicAuthentication as HttpBasicAuth;
 pub use default_user::DefaultUser;
 pub use default_user_manager::DefaultUserManager;
-pub use full_user::FullUser;
-pub use permissions_mixin::PermissionsMixin;
 pub use drf_authentication::{
-    Authentication, BasicAuthConfig, CompositeAuthentication, RemoteUserAuthentication,
-    SessionAuthConfig, SessionAuthentication, TokenAuthConfig, TokenAuthentication,
+	Authentication, BasicAuthConfig, CompositeAuthentication, RemoteUserAuthentication,
+	SessionAuthConfig, SessionAuthentication, TokenAuthConfig, TokenAuthentication,
 };
 pub use drf_permissions::{
-    DrfAllowAny, DrfIsAdminUser, DrfIsAuthenticated, DrfIsAuthenticatedOrReadOnly,
+	DrfAllowAny, DrfIsAdminUser, DrfIsAuthenticated, DrfIsAuthenticatedOrReadOnly,
 };
+pub use full_user::FullUser;
 pub use group_management::{
-    CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,
+	CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,
 };
 #[cfg(feature = "session")]
 pub use handlers::{LoginCredentials, LoginHandler, LogoutHandler, SESSION_COOKIE_NAME};
@@ -78,63 +77,64 @@ pub use ip_permission::{CidrRange, IpBlacklistPermission, IpWhitelistPermission}
 pub use jwt::{Claims, JwtAuth};
 pub use mfa::MFAAuthentication as MfaManager;
 pub use model_permissions::{
-    DjangoModelPermissions, DjangoModelPermissionsOrAnonReadOnly, ModelPermission,
+	DjangoModelPermissions, DjangoModelPermissionsOrAnonReadOnly, ModelPermission,
 };
-pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPermissionManager};
 #[cfg(feature = "oauth")]
 pub use oauth2::{
-    AccessToken, AuthorizationCode, GrantType, InMemoryOAuth2Store, OAuth2Application,
-    OAuth2Authentication, OAuth2TokenStore,
+	AccessToken, AuthorizationCode, GrantType, InMemoryOAuth2Store, OAuth2Application,
+	OAuth2Authentication, OAuth2TokenStore,
 };
+pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPermissionManager};
 pub use permission_operators::{AndPermission, NotPermission, OrPermission};
 pub use permissions::{
-    AllowAny, IsActiveUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
-    PermissionContext,
+	AllowAny, IsActiveUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
+	PermissionContext,
 };
+pub use permissions_mixin::PermissionsMixin;
 pub use rate_limit_permission::{
-    RateLimitConfig, RateLimitConfigBuilder, RateLimitKeyStrategy, RateLimitPermission,
-    RateLimitPermissionBuilder,
+	RateLimitConfig, RateLimitConfigBuilder, RateLimitKeyStrategy, RateLimitPermission,
+	RateLimitPermissionBuilder,
 };
 pub use remote_user::RemoteUserAuthentication as RemoteUserAuth;
 #[cfg(feature = "session")]
-pub use session::{InMemorySessionStore, Session, SessionId, SessionStore, SESSION_KEY_USER_ID};
+pub use session::{InMemorySessionStore, SESSION_KEY_USER_ID, Session, SessionId, SessionStore};
 pub use time_based_permission::{DateRange, TimeBasedPermission, TimeWindow};
 #[cfg(any(feature = "jwt", feature = "token"))]
 pub use token_blacklist::{
-    BlacklistReason, BlacklistStats, BlacklistedToken, InMemoryRefreshTokenStore,
-    InMemoryTokenBlacklist, RefreshToken, RefreshTokenStore, TokenBlacklist, TokenRotationManager,
+	BlacklistReason, BlacklistStats, BlacklistedToken, InMemoryRefreshTokenStore,
+	InMemoryTokenBlacklist, RefreshToken, RefreshTokenStore, TokenBlacklist, TokenRotationManager,
 };
 #[cfg(any(feature = "jwt", feature = "token"))]
 pub use token_rotation::{AutoTokenRotationManager, TokenRotationConfig, TokenRotationRecord};
 #[cfg(any(feature = "jwt", feature = "token"))]
 pub use token_storage::{
-    InMemoryTokenStorage, StoredToken, TokenStorage, TokenStorageError, TokenStorageResult,
+	InMemoryTokenStorage, StoredToken, TokenStorage, TokenStorageError, TokenStorageResult,
 };
 pub use user::{AnonymousUser, SimpleUser, User};
 pub use user_management::{
-    CreateUserData, UpdateUserData, UserManagementError, UserManagementResult, UserManager,
+	CreateUserData, UpdateUserData, UserManagementError, UserManagementResult, UserManager,
 };
 
 /// Authentication errors
 #[derive(Debug, Clone)]
 pub enum AuthenticationError {
-    InvalidCredentials,
-    UserNotFound,
-    SessionExpired,
-    InvalidToken,
-    Unknown(String),
+	InvalidCredentials,
+	UserNotFound,
+	SessionExpired,
+	InvalidToken,
+	Unknown(String),
 }
 
 impl std::fmt::Display for AuthenticationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AuthenticationError::InvalidCredentials => write!(f, "Invalid credentials"),
-            AuthenticationError::UserNotFound => write!(f, "User not found"),
-            AuthenticationError::SessionExpired => write!(f, "Session expired"),
-            AuthenticationError::InvalidToken => write!(f, "Invalid token"),
-            AuthenticationError::Unknown(msg) => write!(f, "Authentication error: {}", msg),
-        }
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			AuthenticationError::InvalidCredentials => write!(f, "Invalid credentials"),
+			AuthenticationError::UserNotFound => write!(f, "User not found"),
+			AuthenticationError::SessionExpired => write!(f, "Session expired"),
+			AuthenticationError::InvalidToken => write!(f, "Invalid token"),
+			AuthenticationError::Unknown(msg) => write!(f, "Authentication error: {}", msg),
+		}
+	}
 }
 
 impl std::error::Error for AuthenticationError {}
@@ -145,292 +145,292 @@ impl std::error::Error for AuthenticationError {}
 /// including database lookups, external API calls, and distributed systems.
 #[async_trait::async_trait]
 pub trait AuthenticationBackend: Send + Sync {
-    /// Authenticate a request and return a user if successful
-    ///
-    /// # Arguments
-    ///
-    /// * `request` - The incoming HTTP request
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(Some(user))` if authentication succeeded
-    /// - `Ok(None)` if authentication failed but should try next backend
-    /// - `Err(error)` if a fatal error occurred
-    async fn authenticate(
-        &self,
-        request: &reinhardt_apps::Request,
-    ) -> Result<Option<Box<dyn User>>, AuthenticationError>;
+	/// Authenticate a request and return a user if successful
+	///
+	/// # Arguments
+	///
+	/// * `request` - The incoming HTTP request
+	///
+	/// # Returns
+	///
+	/// - `Ok(Some(user))` if authentication succeeded
+	/// - `Ok(None)` if authentication failed but should try next backend
+	/// - `Err(error)` if a fatal error occurred
+	async fn authenticate(
+		&self,
+		request: &reinhardt_apps::Request,
+	) -> Result<Option<Box<dyn User>>, AuthenticationError>;
 
-    /// Get a user by their ID
-    ///
-    /// # Arguments
-    ///
-    /// * `user_id` - The user's unique identifier
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(Some(user))` if user was found
-    /// - `Ok(None)` if user doesn't exist
-    /// - `Err(error)` if an error occurred
-    async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError>;
+	/// Get a user by their ID
+	///
+	/// # Arguments
+	///
+	/// * `user_id` - The user's unique identifier
+	///
+	/// # Returns
+	///
+	/// - `Ok(Some(user))` if user was found
+	/// - `Ok(None)` if user doesn't exist
+	/// - `Err(error)` if an error occurred
+	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError>;
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use uuid::Uuid;
+	use super::*;
+	use uuid::Uuid;
 
-    #[test]
-    #[cfg(feature = "jwt")]
-    fn test_auth_jwt_generate_unit() {
-        let jwt_auth = JwtAuth::new(b"test_secret_key");
-        let user_id = "user123".to_string();
-        let username = "testuser".to_string();
+	#[test]
+	#[cfg(feature = "jwt")]
+	fn test_auth_jwt_generate_unit() {
+		let jwt_auth = JwtAuth::new(b"test_secret_key");
+		let user_id = "user123".to_string();
+		let username = "testuser".to_string();
 
-        let token = jwt_auth.generate_token(user_id, username).unwrap();
+		let token = jwt_auth.generate_token(user_id, username).unwrap();
 
-        assert!(!token.is_empty());
-    }
+		assert!(!token.is_empty());
+	}
 
-    #[tokio::test]
-    async fn test_permission_allow_any() {
-        use bytes::Bytes;
-        use hyper::{HeaderMap, Method, Uri, Version};
-        use reinhardt_types::Request;
+	#[tokio::test]
+	async fn test_permission_allow_any() {
+		use bytes::Bytes;
+		use hyper::{HeaderMap, Method, Uri, Version};
+		use reinhardt_types::Request;
 
-        let permission = AllowAny;
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let permission = AllowAny;
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: false,
-            is_admin: false,
-            is_active: false,
-            user: None,
-        };
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: false,
+			is_admin: false,
+			is_active: false,
+			user: None,
+		};
 
-        assert!(permission.has_permission(&context).await);
-    }
+		assert!(permission.has_permission(&context).await);
+	}
 
-    #[tokio::test]
-    async fn test_permission_is_authenticated_with_auth() {
-        use bytes::Bytes;
-        use hyper::{HeaderMap, Method, Uri, Version};
-        use reinhardt_types::Request;
+	#[tokio::test]
+	async fn test_permission_is_authenticated_with_auth() {
+		use bytes::Bytes;
+		use hyper::{HeaderMap, Method, Uri, Version};
+		use reinhardt_types::Request;
 
-        let permission = IsAuthenticated;
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let permission = IsAuthenticated;
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: true,
-            is_admin: false,
-            is_active: true,
-            user: None,
-        };
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: true,
+			is_admin: false,
+			is_active: true,
+			user: None,
+		};
 
-        assert!(permission.has_permission(&context).await);
-    }
+		assert!(permission.has_permission(&context).await);
+	}
 
-    #[tokio::test]
-    async fn test_permission_is_authenticated_without_auth() {
-        use bytes::Bytes;
-        use hyper::{HeaderMap, Method, Uri, Version};
-        use reinhardt_types::Request;
+	#[tokio::test]
+	async fn test_permission_is_authenticated_without_auth() {
+		use bytes::Bytes;
+		use hyper::{HeaderMap, Method, Uri, Version};
+		use reinhardt_types::Request;
 
-        let permission = IsAuthenticated;
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let permission = IsAuthenticated;
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: false,
-            is_admin: false,
-            is_active: false,
-            user: None,
-        };
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: false,
+			is_admin: false,
+			is_active: false,
+			user: None,
+		};
 
-        assert!(!permission.has_permission(&context).await);
-    }
+		assert!(!permission.has_permission(&context).await);
+	}
 
-    #[tokio::test]
-    async fn test_permission_is_admin_user() {
-        use bytes::Bytes;
-        use hyper::{HeaderMap, Method, Uri, Version};
-        use reinhardt_types::Request;
+	#[tokio::test]
+	async fn test_permission_is_admin_user() {
+		use bytes::Bytes;
+		use hyper::{HeaderMap, Method, Uri, Version};
+		use reinhardt_types::Request;
 
-        let permission = IsAdminUser;
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let permission = IsAdminUser;
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        // Admin user
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: true,
-            is_admin: true,
-            is_active: true,
-            user: None,
-        };
-        assert!(permission.has_permission(&context).await);
+		// Admin user
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: true,
+			is_admin: true,
+			is_active: true,
+			user: None,
+		};
+		assert!(permission.has_permission(&context).await);
 
-        // Non-admin user
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: true,
-            is_admin: false,
-            is_active: true,
-            user: None,
-        };
-        assert!(!permission.has_permission(&context).await);
-    }
+		// Non-admin user
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: true,
+			is_admin: false,
+			is_active: true,
+			user: None,
+		};
+		assert!(!permission.has_permission(&context).await);
+	}
 
-    #[tokio::test]
-    async fn test_permission_is_active_user() {
-        use bytes::Bytes;
-        use hyper::{HeaderMap, Method, Uri, Version};
-        use reinhardt_types::Request;
+	#[tokio::test]
+	async fn test_permission_is_active_user() {
+		use bytes::Bytes;
+		use hyper::{HeaderMap, Method, Uri, Version};
+		use reinhardt_types::Request;
 
-        let permission = IsActiveUser;
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let permission = IsActiveUser;
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        // Active user
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: true,
-            is_admin: false,
-            is_active: true,
-            user: None,
-        };
-        assert!(permission.has_permission(&context).await);
+		// Active user
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: true,
+			is_admin: false,
+			is_active: true,
+			user: None,
+		};
+		assert!(permission.has_permission(&context).await);
 
-        // Inactive user
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: true,
-            is_admin: false,
-            is_active: false,
-            user: None,
-        };
-        assert!(!permission.has_permission(&context).await);
-    }
+		// Inactive user
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: true,
+			is_admin: false,
+			is_active: false,
+			user: None,
+		};
+		assert!(!permission.has_permission(&context).await);
+	}
 
-    #[tokio::test]
-    async fn test_permission_is_authenticated_or_read_only_get() {
-        use bytes::Bytes;
-        use hyper::{HeaderMap, Method, Uri, Version};
-        use reinhardt_types::Request;
+	#[tokio::test]
+	async fn test_permission_is_authenticated_or_read_only_get() {
+		use bytes::Bytes;
+		use hyper::{HeaderMap, Method, Uri, Version};
+		use reinhardt_types::Request;
 
-        let permission = IsAuthenticatedOrReadOnly;
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let permission = IsAuthenticatedOrReadOnly;
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        // Unauthenticated GET should be allowed
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: false,
-            is_admin: false,
-            is_active: false,
-            user: None,
-        };
-        assert!(permission.has_permission(&context).await);
-    }
+		// Unauthenticated GET should be allowed
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: false,
+			is_admin: false,
+			is_active: false,
+			user: None,
+		};
+		assert!(permission.has_permission(&context).await);
+	}
 
-    #[tokio::test]
-    async fn test_permission_is_authenticated_or_read_only_post() {
-        use bytes::Bytes;
-        use hyper::{HeaderMap, Method, Uri, Version};
-        use reinhardt_types::Request;
+	#[tokio::test]
+	async fn test_permission_is_authenticated_or_read_only_post() {
+		use bytes::Bytes;
+		use hyper::{HeaderMap, Method, Uri, Version};
+		use reinhardt_types::Request;
 
-        let permission = IsAuthenticatedOrReadOnly;
-        let request = Request::new(
-            Method::POST,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+		let permission = IsAuthenticatedOrReadOnly;
+		let request = Request::new(
+			Method::POST,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        // Unauthenticated POST should be denied
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: false,
-            is_admin: false,
-            is_active: false,
-            user: None,
-        };
-        assert!(!permission.has_permission(&context).await);
+		// Unauthenticated POST should be denied
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: false,
+			is_admin: false,
+			is_active: false,
+			user: None,
+		};
+		assert!(!permission.has_permission(&context).await);
 
-        // Authenticated POST should be allowed
-        let context = PermissionContext {
-            request: &request,
-            is_authenticated: true,
-            is_admin: false,
-            is_active: true,
-            user: None,
-        };
-        assert!(permission.has_permission(&context).await);
-    }
+		// Authenticated POST should be allowed
+		let context = PermissionContext {
+			request: &request,
+			is_authenticated: true,
+			is_admin: false,
+			is_active: true,
+			user: None,
+		};
+		assert!(permission.has_permission(&context).await);
+	}
 
-    #[test]
-    fn test_simple_user_implementation() {
-        let user = SimpleUser {
-            id: Uuid::new_v4(),
-            username: "testuser".to_string(),
-            email: "test@example.com".to_string(),
-            is_active: true,
-            is_admin: false,
-            is_staff: false,
-            is_superuser: false,
-        };
+	#[test]
+	fn test_simple_user_implementation() {
+		let user = SimpleUser {
+			id: Uuid::new_v4(),
+			username: "testuser".to_string(),
+			email: "test@example.com".to_string(),
+			is_active: true,
+			is_admin: false,
+			is_staff: false,
+			is_superuser: false,
+		};
 
-        assert!(!user.id().is_empty());
-        assert_eq!(user.username(), "testuser");
-        assert!(user.is_authenticated());
-        assert!(user.is_active());
-        assert!(!user.is_admin());
-    }
+		assert!(!user.id().is_empty());
+		assert_eq!(user.username(), "testuser");
+		assert!(user.is_authenticated());
+		assert!(user.is_active());
+		assert!(!user.is_admin());
+	}
 
-    #[test]
-    fn test_anonymous_user() {
-        let user = AnonymousUser;
+	#[test]
+	fn test_anonymous_user() {
+		let user = AnonymousUser;
 
-        assert_eq!(user.id(), "");
-        assert_eq!(user.username(), "");
-        assert!(!user.is_authenticated());
-        assert!(!user.is_active());
-        assert!(!user.is_admin());
-    }
+		assert_eq!(user.id(), "");
+		assert_eq!(user.username(), "");
+		assert!(!user.is_authenticated());
+		assert!(!user.is_active());
+		assert!(!user.is_admin());
+	}
 }

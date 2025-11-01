@@ -144,9 +144,7 @@ pub use redis_cluster::RedisClusterCache;
 pub use redis_sentinel::{RedisSentinelCache, RedisSentinelConfig};
 
 #[cfg(feature = "redis-backend")]
-pub use pubsub::{
-    CacheInvalidationChannel, CacheInvalidationMessage, CacheInvalidationSubscriber,
-};
+pub use pubsub::{CacheInvalidationChannel, CacheInvalidationMessage, CacheInvalidationSubscriber};
 
 // Re-export DI support
 pub use di_support::CacheService;

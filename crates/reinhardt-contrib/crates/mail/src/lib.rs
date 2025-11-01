@@ -168,40 +168,40 @@ pub mod validation;
 use thiserror::Error;
 
 pub use backends::{
-    backend_from_settings, ConsoleBackend, EmailBackend, FileBackend, MemoryBackend, SmtpAuthMechanism,
-    SmtpBackend, SmtpConfig, SmtpSecurity,
+	ConsoleBackend, EmailBackend, FileBackend, MemoryBackend, SmtpAuthMechanism, SmtpBackend,
+	SmtpConfig, SmtpSecurity, backend_from_settings,
 };
 pub use message::{Alternative, Attachment, EmailMessage, EmailMessageBuilder};
 pub use utils::{mail_admins, mail_managers, send_mail, send_mail_with_backend, send_mass_mail};
 
 #[derive(Debug, Error)]
 pub enum EmailError {
-    #[error("Invalid email address: {0}")]
-    InvalidAddress(String),
+	#[error("Invalid email address: {0}")]
+	InvalidAddress(String),
 
-    #[error("Missing required field: {0}")]
-    MissingField(String),
+	#[error("Missing required field: {0}")]
+	MissingField(String),
 
-    #[error("Backend error: {0}")]
-    BackendError(String),
+	#[error("Backend error: {0}")]
+	BackendError(String),
 
-    #[error("SMTP error: {0}")]
-    SmtpError(String),
+	#[error("SMTP error: {0}")]
+	SmtpError(String),
 
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
+	#[error("IO error: {0}")]
+	IoError(#[from] std::io::Error),
 
-    #[error("Template error: {0}")]
-    TemplateError(String),
+	#[error("Template error: {0}")]
+	TemplateError(String),
 
-    #[error("Attachment error: {0}")]
-    AttachmentError(String),
+	#[error("Attachment error: {0}")]
+	AttachmentError(String),
 
-    #[error("Invalid header: {0}")]
-    InvalidHeader(String),
+	#[error("Invalid header: {0}")]
+	InvalidHeader(String),
 
-    #[error("Header injection attempt detected: {0}")]
-    HeaderInjection(String),
+	#[error("Header injection attempt detected: {0}")]
+	HeaderInjection(String),
 }
 
 pub type EmailResult<T> = std::result::Result<T, EmailError>;

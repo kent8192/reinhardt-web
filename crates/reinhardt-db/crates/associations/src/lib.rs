@@ -80,19 +80,19 @@ pub use one_to_one::OneToOne;
 pub use polymorphic::{PolymorphicAssociation, PolymorphicManyToMany};
 pub use proxy::AssociationProxy;
 pub use reverse::{
-    generate_reverse_accessor, generate_reverse_accessor_singular, to_snake_case,
-    ReverseRelationship,
+	ReverseRelationship, generate_reverse_accessor, generate_reverse_accessor_singular,
+	to_snake_case,
 };
 
 /// Re-export commonly used types
 pub mod prelude {
-    pub use crate::collection::*;
-    pub use crate::foreign_key::*;
-    pub use crate::loading::*;
-    pub use crate::many_to_many::*;
-    pub use crate::one_to_many::*;
-    pub use crate::one_to_one::*;
-    pub use crate::polymorphic::*;
-    pub use crate::proxy::*;
-    pub use crate::reverse::*;
+	pub use crate::collection::*;
+	pub use crate::foreign_key::*;
+	pub use crate::loading::*;
+	pub use crate::many_to_many::*;
+	pub use crate::one_to_many::*;
+	pub use crate::one_to_one::*;
+	pub use crate::polymorphic::*;
+	pub use crate::proxy::*;
+	pub use crate::reverse::*;
 }

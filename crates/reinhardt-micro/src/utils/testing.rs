@@ -36,10 +36,10 @@ use std::fmt::Debug;
 /// assert_eq!(request.body().len(), body.len());
 /// ```
 pub fn test_request(method: Method, path: &str, body: Option<String>) -> Request {
-    let uri = path.parse::<Uri>().expect("Invalid URI");
-    let body_bytes = body.map(|b| Bytes::from(b)).unwrap_or_else(Bytes::new);
+	let uri = path.parse::<Uri>().expect("Invalid URI");
+	let body_bytes = body.map(|b| Bytes::from(b)).unwrap_or_else(Bytes::new);
 
-    Request::new(method, uri, Version::HTTP_11, HeaderMap::new(), body_bytes)
+	Request::new(method, uri, Version::HTTP_11, HeaderMap::new(), body_bytes)
 }
 
 /// Assert that the response contains the expected JSON data
@@ -92,20 +92,20 @@ pub fn test_request(method: Method, path: &str, body: Option<String>) -> Request
 /// assert!(assert_json_response(response, expected).is_err());
 /// ```
 pub fn assert_json_response<T: DeserializeOwned + PartialEq + Debug>(
-    response: Response,
-    expected: T,
+	response: Response,
+	expected: T,
 ) -> Result<()> {
-    let actual: T = serde_json::from_slice(&response.body)
-        .map_err(|e| Error::Serialization(format!("Failed to deserialize response: {}", e)))?;
+	let actual: T = serde_json::from_slice(&response.body)
+		.map_err(|e| Error::Serialization(format!("Failed to deserialize response: {}", e)))?;
 
-    if actual == expected {
-        Ok(())
-    } else {
-        Err(Error::Internal(format!(
-            "Response body mismatch: expected {:?}, got {:?}",
-            expected, actual
-        )))
-    }
+	if actual == expected {
+		Ok(())
+	} else {
+		Err(Error::Internal(format!(
+			"Response body mismatch: expected {:?}, got {:?}",
+			expected, actual
+		)))
+	}
 }
 
 /// Assert that the response has the expected status code
@@ -134,14 +134,14 @@ pub fn assert_json_response<T: DeserializeOwned + PartialEq + Debug>(
 /// assert!(assert_status(&response, StatusCode::NOT_FOUND).is_err());
 /// ```
 pub fn assert_status(response: &Response, expected: StatusCode) -> Result<()> {
-    if response.status == expected {
-        Ok(())
-    } else {
-        Err(Error::Internal(format!(
-            "Status code mismatch: expected {}, got {}",
-            expected, response.status
-        )))
-    }
+	if response.status == expected {
+		Ok(())
+	} else {
+		Err(Error::Internal(format!(
+			"Status code mismatch: expected {}, got {}",
+			expected, response.status
+		)))
+	}
 }
 
 /// Extract and deserialize JSON from a response
@@ -193,108 +193,108 @@ pub fn assert_status(response: &Response, expected: StatusCode) -> Result<()> {
 /// assert!(result.is_err());
 /// ```
 pub fn extract_json<T: DeserializeOwned>(response: Response) -> Result<T> {
-    serde_json::from_slice(&response.body)
-        .map_err(|e| Error::Serialization(format!("Failed to deserialize response: {}", e)))
+	serde_json::from_slice(&response.body)
+		.map_err(|e| Error::Serialization(format!("Failed to deserialize response: {}", e)))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde::{Deserialize, Serialize};
+	use super::*;
+	use serde::{Deserialize, Serialize};
 
-    #[derive(Serialize, Deserialize, PartialEq, Debug)]
-    struct TestData {
-        id: i64,
-        name: String,
-    }
+	#[derive(Serialize, Deserialize, PartialEq, Debug)]
+	struct TestData {
+		id: i64,
+		name: String,
+	}
 
-    #[test]
-    fn test_test_request_without_body() {
-        let request = test_request(Method::GET, "/test", None);
-        assert_eq!(request.method, Method::GET);
-        assert_eq!(request.uri.path(), "/test");
-        assert!(request.body().is_empty());
-    }
+	#[test]
+	fn test_test_request_without_body() {
+		let request = test_request(Method::GET, "/test", None);
+		assert_eq!(request.method, Method::GET);
+		assert_eq!(request.uri.path(), "/test");
+		assert!(request.body().is_empty());
+	}
 
-    #[test]
-    fn test_test_request_with_body() {
-        let body = "test body";
-        let request = test_request(Method::POST, "/test", Some(body.to_string()));
-        assert_eq!(request.method, Method::POST);
-        assert_eq!(*request.body(), Bytes::from(body));
-    }
+	#[test]
+	fn test_test_request_with_body() {
+		let body = "test body";
+		let request = test_request(Method::POST, "/test", Some(body.to_string()));
+		assert_eq!(request.method, Method::POST);
+		assert_eq!(*request.body(), Bytes::from(body));
+	}
 
-    #[test]
-    fn test_assert_json_response_success() {
-        let data = TestData {
-            id: 1,
-            name: "test".to_string(),
-        };
-        let json = serde_json::to_string(&data).unwrap();
-        let response = Response::ok()
-            .with_header("Content-Type", "application/json")
-            .with_body(json);
+	#[test]
+	fn test_assert_json_response_success() {
+		let data = TestData {
+			id: 1,
+			name: "test".to_string(),
+		};
+		let json = serde_json::to_string(&data).unwrap();
+		let response = Response::ok()
+			.with_header("Content-Type", "application/json")
+			.with_body(json);
 
-        let expected = TestData {
-            id: 1,
-            name: "test".to_string(),
-        };
-        assert!(assert_json_response(response, expected).is_ok());
-    }
+		let expected = TestData {
+			id: 1,
+			name: "test".to_string(),
+		};
+		assert!(assert_json_response(response, expected).is_ok());
+	}
 
-    #[test]
-    fn test_assert_json_response_mismatch() {
-        let data = TestData {
-            id: 1,
-            name: "test".to_string(),
-        };
-        let json = serde_json::to_string(&data).unwrap();
-        let response = Response::ok()
-            .with_header("Content-Type", "application/json")
-            .with_body(json);
+	#[test]
+	fn test_assert_json_response_mismatch() {
+		let data = TestData {
+			id: 1,
+			name: "test".to_string(),
+		};
+		let json = serde_json::to_string(&data).unwrap();
+		let response = Response::ok()
+			.with_header("Content-Type", "application/json")
+			.with_body(json);
 
-        let expected = TestData {
-            id: 2,
-            name: "different".to_string(),
-        };
-        assert!(assert_json_response(response, expected).is_err());
-    }
+		let expected = TestData {
+			id: 2,
+			name: "different".to_string(),
+		};
+		assert!(assert_json_response(response, expected).is_err());
+	}
 
-    #[test]
-    fn test_assert_status_success() {
-        let response = Response::ok();
-        assert!(assert_status(&response, StatusCode::OK).is_ok());
-    }
+	#[test]
+	fn test_assert_status_success() {
+		let response = Response::ok();
+		assert!(assert_status(&response, StatusCode::OK).is_ok());
+	}
 
-    #[test]
-    fn test_assert_status_mismatch() {
-        let response = Response::ok();
-        assert!(assert_status(&response, StatusCode::NOT_FOUND).is_err());
-    }
+	#[test]
+	fn test_assert_status_mismatch() {
+		let response = Response::ok();
+		assert!(assert_status(&response, StatusCode::NOT_FOUND).is_err());
+	}
 
-    #[test]
-    fn test_extract_json_success() {
-        let data = TestData {
-            id: 1,
-            name: "test".to_string(),
-        };
-        let json = serde_json::to_string(&data).unwrap();
-        let response = Response::ok()
-            .with_header("Content-Type", "application/json")
-            .with_body(json);
+	#[test]
+	fn test_extract_json_success() {
+		let data = TestData {
+			id: 1,
+			name: "test".to_string(),
+		};
+		let json = serde_json::to_string(&data).unwrap();
+		let response = Response::ok()
+			.with_header("Content-Type", "application/json")
+			.with_body(json);
 
-        let extracted: TestData = extract_json(response).unwrap();
-        assert_eq!(extracted.id, 1);
-        assert_eq!(extracted.name, "test");
-    }
+		let extracted: TestData = extract_json(response).unwrap();
+		assert_eq!(extracted.id, 1);
+		assert_eq!(extracted.name, "test");
+	}
 
-    #[test]
-    fn test_extract_json_invalid() {
-        let response = Response::ok()
-            .with_header("Content-Type", "application/json")
-            .with_body("invalid json");
+	#[test]
+	fn test_extract_json_invalid() {
+		let response = Response::ok()
+			.with_header("Content-Type", "application/json")
+			.with_body("invalid json");
 
-        let result: Result<TestData> = extract_json(response);
-        assert!(result.is_err());
-    }
+		let result: Result<TestData> = extract_json(response);
+		assert!(result.is_err());
+	}
 }

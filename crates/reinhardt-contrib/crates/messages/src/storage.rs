@@ -9,17 +9,17 @@ use crate::message::Message;
 
 /// Trait for message storage backends
 pub trait MessageStorage: Send + Sync {
-    /// Add a message
-    fn add(&mut self, message: Message);
+	/// Add a message
+	fn add(&mut self, message: Message);
 
-    /// Get all messages and clear storage
-    fn get_all(&mut self) -> Vec<Message>;
+	/// Get all messages and clear storage
+	fn get_all(&mut self) -> Vec<Message>;
 
-    /// Get messages without clearing
-    fn peek(&self) -> Vec<Message>;
+	/// Get messages without clearing
+	fn peek(&self) -> Vec<Message>;
 
-    /// Clear all messages
-    fn clear(&mut self);
+	/// Clear all messages
+	fn clear(&mut self);
 }
 
 pub use cookie::CookieStorage;

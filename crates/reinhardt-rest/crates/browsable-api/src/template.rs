@@ -4,11 +4,11 @@
 pub struct ApiTemplate;
 
 impl ApiTemplate {
-    /// Generate HTML for browsable API
-    ///
-    pub fn render(title: &str, data: &str, method: &str, path: &str) -> String {
-        format!(
-            r#"<!DOCTYPE html>
+	/// Generate HTML for browsable API
+	///
+	pub fn render(title: &str, data: &str, method: &str, path: &str) -> String {
+		format!(
+			r#"<!DOCTYPE html>
 <html>
 <head>
     <title>{}</title>
@@ -32,14 +32,14 @@ impl ApiTemplate {
     </div>
 </body>
 </html>"#,
-            title, title, method, path, data
-        )
-    }
-    /// Generate error page
-    ///
-    pub fn render_error(status: u16, message: &str) -> String {
-        format!(
-            r#"<!DOCTYPE html>
+			title, title, method, path, data
+		)
+	}
+	/// Generate error page
+	///
+	pub fn render_error(status: u16, message: &str) -> String {
+		format!(
+			r#"<!DOCTYPE html>
 <html>
 <head>
     <title>Error {}</title>
@@ -55,7 +55,7 @@ impl ApiTemplate {
     </div>
 </body>
 </html>"#,
-            status, status, message
-        )
-    }
+			status, status, message
+		)
+	}
 }

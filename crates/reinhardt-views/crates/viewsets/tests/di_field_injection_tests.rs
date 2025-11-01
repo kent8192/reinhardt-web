@@ -12,165 +12,165 @@ use std::sync::Arc;
 /// Mock database dependency
 #[derive(Clone)]
 struct Database {
-    connection_string: String,
+	connection_string: String,
 }
 
 impl Default for Database {
-    fn default() -> Self {
-        Self {
-            connection_string: "postgres://localhost/testdb".to_string(),
-        }
-    }
+	fn default() -> Self {
+		Self {
+			connection_string: "postgres://localhost/testdb".to_string(),
+		}
+	}
 }
 
 /// Mock cache dependency
 #[derive(Clone)]
 struct RedisCache {
-    host: String,
+	host: String,
 }
 
 impl Default for RedisCache {
-    fn default() -> Self {
-        Self {
-            host: "redis://localhost:6379".to_string(),
-        }
-    }
+	fn default() -> Self {
+		Self {
+			host: "redis://localhost:6379".to_string(),
+		}
+	}
 }
 
 /// ViewSet with field-level dependency injection
 #[derive(Clone, Injectable)]
 struct UserViewSet {
-    #[inject]
-    db: Database,
-    #[inject]
-    cache: RedisCache,
-    #[allow(dead_code)]
-    name: String,
+	#[inject]
+	db: Database,
+	#[inject]
+	cache: RedisCache,
+	#[allow(dead_code)]
+	name: String,
 }
 
 #[async_trait]
 impl ViewSet for UserViewSet {
-    fn get_basename(&self) -> &str {
-        "users"
-    }
+	fn get_basename(&self) -> &str {
+		"users"
+	}
 
-    async fn dispatch(&self, _request: Request, action: Action) -> Result<Response> {
-        use reinhardt_viewsets::ActionType;
+	async fn dispatch(&self, _request: Request, action: Action) -> Result<Response> {
+		use reinhardt_viewsets::ActionType;
 
-        match action.action_type {
-            ActionType::List => {
-                let body = format!(
-                    r#"{{"db":"{}","cache":"{}"}}"#,
-                    self.db.connection_string, self.cache.host
-                );
-                Ok(Response::ok().with_body(body))
-            }
-            _ => Err(reinhardt_apps::Error::NotFound(
-                "Action not found".to_string(),
-            )),
-        }
-    }
+		match action.action_type {
+			ActionType::List => {
+				let body = format!(
+					r#"{{"db":"{}","cache":"{}"}}"#,
+					self.db.connection_string, self.cache.host
+				);
+				Ok(Response::ok().with_body(body))
+			}
+			_ => Err(reinhardt_apps::Error::NotFound(
+				"Action not found".to_string(),
+			)),
+		}
+	}
 }
 
 #[tokio::test]
 async fn test_field_injection_basic() {
-    // Create DI context
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	// Create DI context
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Inject dependencies into ViewSet
-    let viewset = UserViewSet::inject(&ctx).await.unwrap();
+	// Inject dependencies into ViewSet
+	let viewset = UserViewSet::inject(&ctx).await.unwrap();
 
-    // Verify dependencies were injected
-    assert_eq!(viewset.db.connection_string, "postgres://localhost/testdb");
-    assert_eq!(viewset.cache.host, "redis://localhost:6379");
-    assert_eq!(viewset.name, ""); // Default::default()
+	// Verify dependencies were injected
+	assert_eq!(viewset.db.connection_string, "postgres://localhost/testdb");
+	assert_eq!(viewset.cache.host, "redis://localhost:6379");
+	assert_eq!(viewset.name, ""); // Default::default()
 }
 
 #[tokio::test]
 async fn test_field_injection_with_viewset_dispatch() {
-    // Create DI context
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	// Create DI context
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Inject dependencies into ViewSet
-    let viewset = UserViewSet::inject(&ctx).await.unwrap();
+	// Inject dependencies into ViewSet
+	let viewset = UserViewSet::inject(&ctx).await.unwrap();
 
-    // Create request
-    let request = Request::new(
-        Method::GET,
-        Uri::from_static("/users/"),
-        Version::HTTP_11,
-        HeaderMap::new(),
-        Bytes::new(),
-    );
+	// Create request
+	let request = Request::new(
+		Method::GET,
+		Uri::from_static("/users/"),
+		Version::HTTP_11,
+		HeaderMap::new(),
+		Bytes::new(),
+	);
 
-    let action = Action::list();
+	let action = Action::list();
 
-    // Dispatch request
-    let response = viewset.dispatch(request, action).await.unwrap();
+	// Dispatch request
+	let response = viewset.dispatch(request, action).await.unwrap();
 
-    // Verify response
-    assert_eq!(response.status, StatusCode::OK);
+	// Verify response
+	assert_eq!(response.status, StatusCode::OK);
 
-    let body = String::from_utf8(response.body.to_vec()).unwrap();
-    assert!(body.contains("postgres://localhost/testdb"));
-    assert!(body.contains("redis://localhost:6379"));
+	let body = String::from_utf8(response.body.to_vec()).unwrap();
+	assert!(body.contains("postgres://localhost/testdb"));
+	assert!(body.contains("redis://localhost:6379"));
 }
 
 /// ViewSet with cache control on field injection
 #[derive(Clone, Injectable)]
 struct ServiceViewSet {
-    #[inject]
-    cached_db: Database,
-    #[inject(cache = false)]
-    fresh_db: Database,
+	#[inject]
+	cached_db: Database,
+	#[inject(cache = false)]
+	fresh_db: Database,
 }
 
 #[async_trait]
 impl ViewSet for ServiceViewSet {
-    fn get_basename(&self) -> &str {
-        "services"
-    }
+	fn get_basename(&self) -> &str {
+		"services"
+	}
 
-    async fn dispatch(&self, _request: Request, _action: Action) -> Result<Response> {
-        Ok(Response::ok())
-    }
+	async fn dispatch(&self, _request: Request, _action: Action) -> Result<Response> {
+		Ok(Response::ok())
+	}
 }
 
 #[tokio::test]
 async fn test_field_injection_with_cache_control() {
-    // Create DI context
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton);
+	// Create DI context
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton);
 
-    // Inject dependencies into ViewSet
-    let viewset = ServiceViewSet::inject(&ctx).await.unwrap();
+	// Inject dependencies into ViewSet
+	let viewset = ServiceViewSet::inject(&ctx).await.unwrap();
 
-    // Both should be injected successfully
-    assert_eq!(
-        viewset.cached_db.connection_string,
-        "postgres://localhost/testdb"
-    );
-    assert_eq!(
-        viewset.fresh_db.connection_string,
-        "postgres://localhost/testdb"
-    );
+	// Both should be injected successfully
+	assert_eq!(
+		viewset.cached_db.connection_string,
+		"postgres://localhost/testdb"
+	);
+	assert_eq!(
+		viewset.fresh_db.connection_string,
+		"postgres://localhost/testdb"
+	);
 }
 
 #[tokio::test]
 async fn test_field_injection_caching_behavior() {
-    // Create DI context
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::new(singleton.clone());
+	// Create DI context
+	let singleton = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::new(singleton.clone());
 
-    // Inject first ViewSet
-    let viewset1 = UserViewSet::inject(&ctx).await.unwrap();
+	// Inject first ViewSet
+	let viewset1 = UserViewSet::inject(&ctx).await.unwrap();
 
-    // Inject second ViewSet - should reuse cached dependencies
-    let viewset2 = UserViewSet::inject(&ctx).await.unwrap();
+	// Inject second ViewSet - should reuse cached dependencies
+	let viewset2 = UserViewSet::inject(&ctx).await.unwrap();
 
-    // Both should have the same dependency values (cached)
-    assert_eq!(viewset1.db.connection_string, viewset2.db.connection_string);
-    assert_eq!(viewset1.cache.host, viewset2.cache.host);
+	// Both should have the same dependency values (cached)
+	assert_eq!(viewset1.db.connection_string, viewset2.db.connection_string);
+	assert_eq!(viewset1.cache.host, viewset2.cache.host);
 }

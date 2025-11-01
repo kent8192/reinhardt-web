@@ -27,7 +27,7 @@ use crate::csp::CspNonce;
 /// }
 /// ```
 pub fn get_csp_nonce(request: &Request) -> Option<String> {
-    request.extensions.get::<CspNonce>().map(|n| n.0.clone())
+	request.extensions.get::<CspNonce>().map(|n| n.0.clone())
 }
 
 /// Get CSP nonce attribute for HTML tags
@@ -48,78 +48,78 @@ pub fn get_csp_nonce(request: &Request) -> Option<String> {
 /// // Or:     <script>alert('Hello');</script> (if nonce not enabled)
 /// ```
 pub fn csp_nonce_attr(request: &Request) -> String {
-    if let Some(nonce) = get_csp_nonce(request) {
-        format!("nonce=\"{}\"", nonce)
-    } else {
-        String::new()
-    }
+	if let Some(nonce) = get_csp_nonce(request) {
+		format!("nonce=\"{}\"", nonce)
+	} else {
+		String::new()
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use bytes::Bytes;
-    use hyper::{HeaderMap, Method, Uri, Version};
+	use super::*;
+	use bytes::Bytes;
+	use hyper::{HeaderMap, Method, Uri, Version};
 
-    #[test]
-    fn test_get_csp_nonce_exists() {
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+	#[test]
+	fn test_get_csp_nonce_exists() {
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        request
-            .extensions
-            .insert(CspNonce("test-nonce-123".to_string()));
+		request
+			.extensions
+			.insert(CspNonce("test-nonce-123".to_string()));
 
-        let nonce = get_csp_nonce(&request);
-        assert_eq!(nonce, Some("test-nonce-123".to_string()));
-    }
+		let nonce = get_csp_nonce(&request);
+		assert_eq!(nonce, Some("test-nonce-123".to_string()));
+	}
 
-    #[test]
-    fn test_get_csp_nonce_not_exists() {
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+	#[test]
+	fn test_get_csp_nonce_not_exists() {
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let nonce = get_csp_nonce(&request);
-        assert_eq!(nonce, None);
-    }
+		let nonce = get_csp_nonce(&request);
+		assert_eq!(nonce, None);
+	}
 
-    #[test]
-    fn test_csp_nonce_attr_exists() {
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+	#[test]
+	fn test_csp_nonce_attr_exists() {
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        request.extensions.insert(CspNonce("abc123".to_string()));
+		request.extensions.insert(CspNonce("abc123".to_string()));
 
-        let attr = csp_nonce_attr(&request);
-        assert_eq!(attr, "nonce=\"abc123\"");
-    }
+		let attr = csp_nonce_attr(&request);
+		assert_eq!(attr, "nonce=\"abc123\"");
+	}
 
-    #[test]
-    fn test_csp_nonce_attr_not_exists() {
-        let request = Request::new(
-            Method::GET,
-            Uri::from_static("/test"),
-            Version::HTTP_11,
-            HeaderMap::new(),
-            Bytes::new(),
-        );
+	#[test]
+	fn test_csp_nonce_attr_not_exists() {
+		let request = Request::new(
+			Method::GET,
+			Uri::from_static("/test"),
+			Version::HTTP_11,
+			HeaderMap::new(),
+			Bytes::new(),
+		);
 
-        let attr = csp_nonce_attr(&request);
-        assert_eq!(attr, "");
-    }
+		let attr = csp_nonce_attr(&request);
+		assert_eq!(attr, "");
+	}
 }

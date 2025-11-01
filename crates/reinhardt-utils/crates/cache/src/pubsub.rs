@@ -27,7 +27,7 @@
 //! ```
 
 use futures::StreamExt;
-use redis::{aio::PubSub, AsyncCommands, Client};
+use redis::{AsyncCommands, Client, aio::PubSub};
 use reinhardt_exception::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -36,162 +36,162 @@ use tokio::sync::Mutex;
 /// Cache invalidation message types.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CacheInvalidationMessage {
-    /// Invalidate a specific key
-    InvalidateKey { key: String },
-    /// Invalidate all keys matching a pattern
-    InvalidatePattern { pattern: String },
-    /// Clear all cache
-    ClearAll,
+	/// Invalidate a specific key
+	InvalidateKey { key: String },
+	/// Invalidate all keys matching a pattern
+	InvalidatePattern { pattern: String },
+	/// Clear all cache
+	ClearAll,
 }
 
 /// Cache invalidation pub/sub channel.
 pub struct CacheInvalidationChannel {
-    client: Client,
-    channel_name: String,
+	client: Client,
+	channel_name: String,
 }
 
 impl CacheInvalidationChannel {
-    /// Create a new pub/sub channel.
-    pub async fn new(redis_url: &str) -> Result<Self> {
-        let client =
-            Client::open(redis_url).map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
+	/// Create a new pub/sub channel.
+	pub async fn new(redis_url: &str) -> Result<Self> {
+		let client =
+			Client::open(redis_url).map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
 
-        Ok(Self {
-            client,
-            channel_name: "cache:invalidation".to_string(),
-        })
-    }
+		Ok(Self {
+			client,
+			channel_name: "cache:invalidation".to_string(),
+		})
+	}
 
-    /// Create with custom channel name.
-    pub async fn with_channel_name(redis_url: &str, channel_name: String) -> Result<Self> {
-        let client =
-            Client::open(redis_url).map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
+	/// Create with custom channel name.
+	pub async fn with_channel_name(redis_url: &str, channel_name: String) -> Result<Self> {
+		let client =
+			Client::open(redis_url).map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
 
-        Ok(Self {
-            client,
-            channel_name,
-        })
-    }
+		Ok(Self {
+			client,
+			channel_name,
+		})
+	}
 
-    /// Publish a cache invalidation message for a specific key.
-    pub async fn invalidate(&self, key: &str) -> Result<()> {
-        let msg = CacheInvalidationMessage::InvalidateKey {
-            key: key.to_string(),
-        };
+	/// Publish a cache invalidation message for a specific key.
+	pub async fn invalidate(&self, key: &str) -> Result<()> {
+		let msg = CacheInvalidationMessage::InvalidateKey {
+			key: key.to_string(),
+		};
 
-        self.publish(msg).await
-    }
+		self.publish(msg).await
+	}
 
-    /// Publish a cache invalidation message for a pattern.
-    pub async fn invalidate_pattern(&self, pattern: &str) -> Result<()> {
-        let msg = CacheInvalidationMessage::InvalidatePattern {
-            pattern: pattern.to_string(),
-        };
+	/// Publish a cache invalidation message for a pattern.
+	pub async fn invalidate_pattern(&self, pattern: &str) -> Result<()> {
+		let msg = CacheInvalidationMessage::InvalidatePattern {
+			pattern: pattern.to_string(),
+		};
 
-        self.publish(msg).await
-    }
+		self.publish(msg).await
+	}
 
-    /// Publish a clear all message.
-    pub async fn clear_all(&self) -> Result<()> {
-        let msg = CacheInvalidationMessage::ClearAll;
-        self.publish(msg).await
-    }
+	/// Publish a clear all message.
+	pub async fn clear_all(&self) -> Result<()> {
+		let msg = CacheInvalidationMessage::ClearAll;
+		self.publish(msg).await
+	}
 
-    /// Publish a message to the channel.
-    async fn publish(&self, message: CacheInvalidationMessage) -> Result<()> {
-        let mut conn = self
-            .client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
+	/// Publish a message to the channel.
+	async fn publish(&self, message: CacheInvalidationMessage) -> Result<()> {
+		let mut conn = self
+			.client
+			.get_multiplexed_async_connection()
+			.await
+			.map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
 
-        let json = serde_json::to_string(&message)
-            .map_err(|e| Error::Serialization(format!("Serialization error: {}", e)))?;
+		let json = serde_json::to_string(&message)
+			.map_err(|e| Error::Serialization(format!("Serialization error: {}", e)))?;
 
-        let _: () = conn
-            .publish(&self.channel_name, json)
-            .await
-            .map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
+		let _: () = conn
+			.publish(&self.channel_name, json)
+			.await
+			.map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
 
-        Ok(())
-    }
+		Ok(())
+	}
 
-    /// Subscribe to invalidation messages.
-    pub async fn subscribe(&self) -> Result<CacheInvalidationSubscriber> {
-        let mut pubsub = self
-            .client
-            .get_async_pubsub()
-            .await
-            .map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
+	/// Subscribe to invalidation messages.
+	pub async fn subscribe(&self) -> Result<CacheInvalidationSubscriber> {
+		let mut pubsub = self
+			.client
+			.get_async_pubsub()
+			.await
+			.map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
 
-        pubsub
-            .subscribe(&self.channel_name)
-            .await
-            .map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
+		pubsub
+			.subscribe(&self.channel_name)
+			.await
+			.map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
 
-        Ok(CacheInvalidationSubscriber {
-            pubsub: Arc::new(Mutex::new(pubsub)),
-        })
-    }
+		Ok(CacheInvalidationSubscriber {
+			pubsub: Arc::new(Mutex::new(pubsub)),
+		})
+	}
 }
 
 /// Subscriber for cache invalidation messages.
 pub struct CacheInvalidationSubscriber {
-    pubsub: Arc<Mutex<PubSub>>,
+	pubsub: Arc<Mutex<PubSub>>,
 }
 
 impl CacheInvalidationSubscriber {
-    /// Get the next invalidation message.
-    pub async fn next_message(&mut self) -> Result<Option<CacheInvalidationMessage>> {
-        let mut pubsub = self.pubsub.lock().await;
+	/// Get the next invalidation message.
+	pub async fn next_message(&mut self) -> Result<Option<CacheInvalidationMessage>> {
+		let mut pubsub = self.pubsub.lock().await;
 
-        match pubsub.on_message().next().await {
-            Some(msg) => {
-                let payload: String = msg
-                    .get_payload()
-                    .map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
+		match pubsub.on_message().next().await {
+			Some(msg) => {
+				let payload: String = msg
+					.get_payload()
+					.map_err(|e| Error::Http(format!("Redis error: {}", e)))?;
 
-                let message: CacheInvalidationMessage = serde_json::from_str(&payload)
-                    .map_err(|e| Error::Serialization(format!("Deserialization error: {}", e)))?;
+				let message: CacheInvalidationMessage = serde_json::from_str(&payload)
+					.map_err(|e| Error::Serialization(format!("Deserialization error: {}", e)))?;
 
-                Ok(Some(message))
-            }
-            None => Ok(None),
-        }
-    }
+				Ok(Some(message))
+			}
+			None => Ok(None),
+		}
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[tokio::test]
-    #[ignore] // Requires running Redis server
-    async fn test_pubsub_invalidation() {
-        let channel = CacheInvalidationChannel::new("redis://127.0.0.1:6379")
-            .await
-            .expect("Failed to create channel");
+	#[tokio::test]
+	#[ignore] // Requires running Redis server
+	async fn test_pubsub_invalidation() {
+		let channel = CacheInvalidationChannel::new("redis://127.0.0.1:6379")
+			.await
+			.expect("Failed to create channel");
 
-        let mut subscriber = channel.subscribe().await.expect("Failed to subscribe");
+		let mut subscriber = channel.subscribe().await.expect("Failed to subscribe");
 
-        // Publish in background task
-        let channel_clone = CacheInvalidationChannel::new("redis://127.0.0.1:6379")
-            .await
-            .expect("Failed to create channel");
+		// Publish in background task
+		let channel_clone = CacheInvalidationChannel::new("redis://127.0.0.1:6379")
+			.await
+			.expect("Failed to create channel");
 
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            channel_clone.invalidate("test_key").await.ok();
-        });
+		tokio::spawn(async move {
+			tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+			channel_clone.invalidate("test_key").await.ok();
+		});
 
-        // Receive message
-        let msg = subscriber.next_message().await.expect("Failed to receive");
+		// Receive message
+		let msg = subscriber.next_message().await.expect("Failed to receive");
 
-        match msg {
-            Some(CacheInvalidationMessage::InvalidateKey { key }) => {
-                assert_eq!(key, "test_key");
-            }
-            _ => panic!("Expected InvalidateKey message"),
-        }
-    }
+		match msg {
+			Some(CacheInvalidationMessage::InvalidateKey { key }) => {
+				assert_eq!(key, "test_key");
+			}
+			_ => panic!("Expected InvalidateKey message"),
+		}
+	}
 }

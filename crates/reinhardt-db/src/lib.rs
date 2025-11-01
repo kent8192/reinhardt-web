@@ -110,53 +110,53 @@
 // Re-export backends with convenient module structure
 #[cfg(feature = "backends")]
 pub mod backends {
-    //! Database backend abstractions and schema editors
-    //!
-    //! This module provides low-level database operations, schema editing,
-    //! and query building capabilities.
+	//! Database backend abstractions and schema editors
+	//!
+	//! This module provides low-level database operations, schema editing,
+	//! and query building capabilities.
 
-    // Re-export all types and modules from backends crate
-    pub use ::backends::*;
-    
-    // Re-export drivers module and its submodules for documentation tests
-    pub use ::backends::drivers;
-    
-    // Re-export database-specific driver modules at backends level
-    #[cfg(feature = "postgres")]
-    pub use ::backends::drivers::postgresql;
-    
-    #[cfg(feature = "mysql")]
-    pub use ::backends::drivers::mysql;
-    
-    #[cfg(feature = "sqlite")]
-    pub use ::backends::drivers::sqlite;
-    
-    #[cfg(feature = "mongodb-backend")]
-    pub use ::backends::drivers::mongodb;
-    
-    #[cfg(feature = "cockroachdb-backend")]
-    pub use ::backends::drivers::cockroachdb;
+	// Re-export all types and modules from backends crate
+	pub use ::backends::*;
+
+	// Re-export drivers module and its submodules for documentation tests
+	pub use ::backends::drivers;
+
+	// Re-export database-specific driver modules at backends level
+	#[cfg(feature = "postgres")]
+	pub use ::backends::drivers::postgresql;
+
+	#[cfg(feature = "mysql")]
+	pub use ::backends::drivers::mysql;
+
+	#[cfg(feature = "sqlite")]
+	pub use ::backends::drivers::sqlite;
+
+	#[cfg(feature = "mongodb-backend")]
+	pub use ::backends::drivers::mongodb;
+
+	#[cfg(feature = "cockroachdb-backend")]
+	pub use ::backends::drivers::cockroachdb;
 }
 
 // Re-export pool with convenient module structure
 #[cfg(feature = "pool")]
 pub mod pool {
-    //! Connection pooling with advanced lifecycle management
-    //!
-    //! This module provides SQLAlchemy-inspired connection pooling with
-    //! dependency injection support and event-driven lifecycle hooks.
+	//! Connection pooling with advanced lifecycle management
+	//!
+	//! This module provides SQLAlchemy-inspired connection pooling with
+	//! dependency injection support and event-driven lifecycle hooks.
 
-    // Re-export all backends-pool types (includes DI support)
-    pub use ::backends_pool::*;
+	// Re-export all backends-pool types (includes DI support)
+	pub use ::backends_pool::*;
 
-    // Also re-export pool-specific types
-    pub use reinhardt_pool::{
-        config::{PoolConfig, PoolOptions},
-        errors::{PoolError, PoolResult},
-        events::{PoolEvent, PoolEventListener},
-        manager::PoolManager,
-        pool::{ConnectionPool, PooledConnection},
-    };
+	// Also re-export pool-specific types
+	pub use reinhardt_pool::{
+		config::{PoolConfig, PoolOptions},
+		errors::{PoolError, PoolResult},
+		events::{PoolEvent, PoolEventListener},
+		manager::PoolManager,
+		pool::{ConnectionPool, PooledConnection},
+	};
 }
 
 // Re-export internal crates
@@ -177,23 +177,23 @@ pub use reinhardt_associations as associations;
 /// Imports commonly used types from all modules.
 #[allow(ambiguous_glob_reexports)]
 pub mod prelude {
-    #[cfg(feature = "backends")]
-    pub use crate::backends::*;
+	#[cfg(feature = "backends")]
+	pub use crate::backends::*;
 
-    #[cfg(feature = "pool")]
-    pub use crate::pool::*;
+	#[cfg(feature = "pool")]
+	pub use crate::pool::*;
 
-    #[cfg(feature = "orm")]
-    pub use crate::orm::*;
+	#[cfg(feature = "orm")]
+	pub use crate::orm::*;
 
-    #[cfg(feature = "migrations")]
-    pub use crate::migrations::*;
+	#[cfg(feature = "migrations")]
+	pub use crate::migrations::*;
 
-    #[cfg(feature = "hybrid")]
-    pub use crate::hybrid::*;
+	#[cfg(feature = "hybrid")]
+	pub use crate::hybrid::*;
 
-    #[cfg(feature = "associations")]
-    pub use crate::associations::*;
+	#[cfg(feature = "associations")]
+	pub use crate::associations::*;
 }
 
 // Re-export top-level commonly used types

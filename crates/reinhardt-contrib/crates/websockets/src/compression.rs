@@ -31,61 +31,61 @@ use crate::{Message, WebSocketError, WebSocketResult};
 /// Compression algorithm
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CompressionCodec {
-    /// Gzip compression
-    Gzip,
-    /// Deflate compression
-    Deflate,
-    /// Brotli compression
-    Brotli,
+	/// Gzip compression
+	Gzip,
+	/// Deflate compression
+	Deflate,
+	/// Brotli compression
+	Brotli,
 }
 
 impl CompressionCodec {
-    /// Parses a compression codec from a string.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_websockets::compression::CompressionCodec;
-    ///
-    /// let codec = CompressionCodec::from_str("gzip").unwrap();
-    /// assert_eq!(codec, CompressionCodec::Gzip);
-    ///
-    /// let codec = CompressionCodec::from_str("deflate").unwrap();
-    /// assert_eq!(codec, CompressionCodec::Deflate);
-    ///
-    /// let codec = CompressionCodec::from_str("br").unwrap();
-    /// assert_eq!(codec, CompressionCodec::Brotli);
-    /// ```
-    pub fn from_str(s: &str) -> WebSocketResult<Self> {
-        match s.to_lowercase().as_str() {
-            "gzip" => Ok(Self::Gzip),
-            "deflate" => Ok(Self::Deflate),
-            "br" | "brotli" => Ok(Self::Brotli),
-            _ => Err(WebSocketError::Protocol(format!(
-                "Unknown compression codec: {}",
-                s
-            ))),
-        }
-    }
+	/// Parses a compression codec from a string.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::compression::CompressionCodec;
+	///
+	/// let codec = CompressionCodec::from_str("gzip").unwrap();
+	/// assert_eq!(codec, CompressionCodec::Gzip);
+	///
+	/// let codec = CompressionCodec::from_str("deflate").unwrap();
+	/// assert_eq!(codec, CompressionCodec::Deflate);
+	///
+	/// let codec = CompressionCodec::from_str("br").unwrap();
+	/// assert_eq!(codec, CompressionCodec::Brotli);
+	/// ```
+	pub fn from_str(s: &str) -> WebSocketResult<Self> {
+		match s.to_lowercase().as_str() {
+			"gzip" => Ok(Self::Gzip),
+			"deflate" => Ok(Self::Deflate),
+			"br" | "brotli" => Ok(Self::Brotli),
+			_ => Err(WebSocketError::Protocol(format!(
+				"Unknown compression codec: {}",
+				s
+			))),
+		}
+	}
 
-    /// Converts a compression codec to a string.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use reinhardt_websockets::compression::CompressionCodec;
-    ///
-    /// assert_eq!(CompressionCodec::Gzip.as_str(), "gzip");
-    /// assert_eq!(CompressionCodec::Deflate.as_str(), "deflate");
-    /// assert_eq!(CompressionCodec::Brotli.as_str(), "br");
-    /// ```
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Gzip => "gzip",
-            Self::Deflate => "deflate",
-            Self::Brotli => "br",
-        }
-    }
+	/// Converts a compression codec to a string.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::compression::CompressionCodec;
+	///
+	/// assert_eq!(CompressionCodec::Gzip.as_str(), "gzip");
+	/// assert_eq!(CompressionCodec::Deflate.as_str(), "deflate");
+	/// assert_eq!(CompressionCodec::Brotli.as_str(), "br");
+	/// ```
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			Self::Gzip => "gzip",
+			Self::Deflate => "deflate",
+			Self::Brotli => "br",
+		}
+	}
 }
 
 /// Compresses a message.
@@ -109,23 +109,23 @@ impl CompressionCodec {
 /// ```
 #[cfg(feature = "compression")]
 pub fn compress_message(message: &Message, codec: CompressionCodec) -> WebSocketResult<Message> {
-    let data = match message {
-        Message::Text { data } => data.as_bytes(),
-        Message::Binary { data } => data.as_slice(),
-        _ => {
-            return Err(WebSocketError::Protocol(
-                "Cannot compress non-data messages".to_string(),
-            ))
-        }
-    };
+	let data = match message {
+		Message::Text { data } => data.as_bytes(),
+		Message::Binary { data } => data.as_slice(),
+		_ => {
+			return Err(WebSocketError::Protocol(
+				"Cannot compress non-data messages".to_string(),
+			));
+		}
+	};
 
-    let compressed = match codec {
-        CompressionCodec::Gzip => compress_gzip(data)?,
-        CompressionCodec::Deflate => compress_deflate(data)?,
-        CompressionCodec::Brotli => compress_brotli(data)?,
-    };
+	let compressed = match codec {
+		CompressionCodec::Gzip => compress_gzip(data)?,
+		CompressionCodec::Deflate => compress_deflate(data)?,
+		CompressionCodec::Brotli => compress_brotli(data)?,
+	};
 
-    Ok(Message::Binary { data: compressed })
+	Ok(Message::Binary { data: compressed })
 }
 
 /// Decompresses a compressed message.
@@ -153,249 +153,249 @@ pub fn compress_message(message: &Message, codec: CompressionCodec) -> WebSocket
 /// ```
 #[cfg(feature = "compression")]
 pub fn decompress_message(message: &Message, codec: CompressionCodec) -> WebSocketResult<Message> {
-    let data = match message {
-        Message::Binary { data } => data.as_slice(),
-        _ => {
-            return Err(WebSocketError::Protocol(
-                "Can only decompress binary messages".to_string(),
-            ))
-        }
-    };
+	let data = match message {
+		Message::Binary { data } => data.as_slice(),
+		_ => {
+			return Err(WebSocketError::Protocol(
+				"Can only decompress binary messages".to_string(),
+			));
+		}
+	};
 
-    let decompressed = match codec {
-        CompressionCodec::Gzip => decompress_gzip(data)?,
-        CompressionCodec::Deflate => decompress_deflate(data)?,
-        CompressionCodec::Brotli => decompress_brotli(data)?,
-    };
+	let decompressed = match codec {
+		CompressionCodec::Gzip => decompress_gzip(data)?,
+		CompressionCodec::Deflate => decompress_deflate(data)?,
+		CompressionCodec::Brotli => decompress_brotli(data)?,
+	};
 
-    // Return as binary message (original type information is not preserved)
-    Ok(Message::Binary { data: decompressed })
+	// Return as binary message (original type information is not preserved)
+	Ok(Message::Binary { data: decompressed })
 }
 
 #[cfg(feature = "compression")]
 fn compress_gzip(data: &[u8]) -> WebSocketResult<Vec<u8>> {
-    use flate2::write::GzEncoder;
-    use flate2::Compression;
-    use std::io::Write;
+	use flate2::Compression;
+	use flate2::write::GzEncoder;
+	use std::io::Write;
 
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    encoder
-        .write_all(data)
-        .map_err(|e| WebSocketError::Protocol(format!("Gzip compression failed: {}", e)))?;
-    encoder
-        .finish()
-        .map_err(|e| WebSocketError::Protocol(format!("Gzip compression failed: {}", e)))
+	let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+	encoder
+		.write_all(data)
+		.map_err(|e| WebSocketError::Protocol(format!("Gzip compression failed: {}", e)))?;
+	encoder
+		.finish()
+		.map_err(|e| WebSocketError::Protocol(format!("Gzip compression failed: {}", e)))
 }
 
 #[cfg(feature = "compression")]
 fn decompress_gzip(data: &[u8]) -> WebSocketResult<Vec<u8>> {
-    use flate2::read::GzDecoder;
-    use std::io::Read;
+	use flate2::read::GzDecoder;
+	use std::io::Read;
 
-    let mut decoder = GzDecoder::new(data);
-    let mut decompressed = Vec::new();
-    decoder
-        .read_to_end(&mut decompressed)
-        .map_err(|e| WebSocketError::Protocol(format!("Gzip decompression failed: {}", e)))?;
-    Ok(decompressed)
+	let mut decoder = GzDecoder::new(data);
+	let mut decompressed = Vec::new();
+	decoder
+		.read_to_end(&mut decompressed)
+		.map_err(|e| WebSocketError::Protocol(format!("Gzip decompression failed: {}", e)))?;
+	Ok(decompressed)
 }
 
 #[cfg(feature = "compression")]
 fn compress_deflate(data: &[u8]) -> WebSocketResult<Vec<u8>> {
-    use flate2::write::DeflateEncoder;
-    use flate2::Compression;
-    use std::io::Write;
+	use flate2::Compression;
+	use flate2::write::DeflateEncoder;
+	use std::io::Write;
 
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
-    encoder
-        .write_all(data)
-        .map_err(|e| WebSocketError::Protocol(format!("Deflate compression failed: {}", e)))?;
-    encoder
-        .finish()
-        .map_err(|e| WebSocketError::Protocol(format!("Deflate compression failed: {}", e)))
+	let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+	encoder
+		.write_all(data)
+		.map_err(|e| WebSocketError::Protocol(format!("Deflate compression failed: {}", e)))?;
+	encoder
+		.finish()
+		.map_err(|e| WebSocketError::Protocol(format!("Deflate compression failed: {}", e)))
 }
 
 #[cfg(feature = "compression")]
 fn decompress_deflate(data: &[u8]) -> WebSocketResult<Vec<u8>> {
-    use flate2::read::DeflateDecoder;
-    use std::io::Read;
+	use flate2::read::DeflateDecoder;
+	use std::io::Read;
 
-    let mut decoder = DeflateDecoder::new(data);
-    let mut decompressed = Vec::new();
-    decoder
-        .read_to_end(&mut decompressed)
-        .map_err(|e| WebSocketError::Protocol(format!("Deflate decompression failed: {}", e)))?;
-    Ok(decompressed)
+	let mut decoder = DeflateDecoder::new(data);
+	let mut decompressed = Vec::new();
+	decoder
+		.read_to_end(&mut decompressed)
+		.map_err(|e| WebSocketError::Protocol(format!("Deflate decompression failed: {}", e)))?;
+	Ok(decompressed)
 }
 
 #[cfg(feature = "compression")]
 fn compress_brotli(data: &[u8]) -> WebSocketResult<Vec<u8>> {
-    use std::io::Write;
+	use std::io::Write;
 
-    let mut compressed = Vec::new();
-    let mut compressor = brotli::CompressorWriter::new(&mut compressed, 4096, 11, 22);
-    compressor
-        .write_all(data)
-        .map_err(|e| WebSocketError::Protocol(format!("Brotli compression failed: {}", e)))?;
-    compressor
-        .flush()
-        .map_err(|e| WebSocketError::Protocol(format!("Brotli compression failed: {}", e)))?;
-    drop(compressor);
-    Ok(compressed)
+	let mut compressed = Vec::new();
+	let mut compressor = brotli::CompressorWriter::new(&mut compressed, 4096, 11, 22);
+	compressor
+		.write_all(data)
+		.map_err(|e| WebSocketError::Protocol(format!("Brotli compression failed: {}", e)))?;
+	compressor
+		.flush()
+		.map_err(|e| WebSocketError::Protocol(format!("Brotli compression failed: {}", e)))?;
+	drop(compressor);
+	Ok(compressed)
 }
 
 #[cfg(feature = "compression")]
 fn decompress_brotli(data: &[u8]) -> WebSocketResult<Vec<u8>> {
-    use std::io::Read;
+	use std::io::Read;
 
-    let mut decompressor = brotli::Decompressor::new(data, 4096);
-    let mut decompressed = Vec::new();
-    decompressor
-        .read_to_end(&mut decompressed)
-        .map_err(|e| WebSocketError::Protocol(format!("Brotli decompression failed: {}", e)))?;
-    Ok(decompressed)
+	let mut decompressor = brotli::Decompressor::new(data, 4096);
+	let mut decompressed = Vec::new();
+	decompressor
+		.read_to_end(&mut decompressed)
+		.map_err(|e| WebSocketError::Protocol(format!("Brotli decompression failed: {}", e)))?;
+	Ok(decompressed)
 }
 
 // Stub implementation when compression feature is disabled
 #[cfg(not(feature = "compression"))]
 pub fn compress_message(_message: &Message, _codec: CompressionCodec) -> WebSocketResult<Message> {
-    Err(WebSocketError::Protocol(
-        "Compression feature is not enabled".to_string(),
-    ))
+	Err(WebSocketError::Protocol(
+		"Compression feature is not enabled".to_string(),
+	))
 }
 
 #[cfg(not(feature = "compression"))]
 pub fn decompress_message(
-    _message: &Message,
-    _codec: CompressionCodec,
+	_message: &Message,
+	_codec: CompressionCodec,
 ) -> WebSocketResult<Message> {
-    Err(WebSocketError::Protocol(
-        "Compression feature is not enabled".to_string(),
-    ))
+	Err(WebSocketError::Protocol(
+		"Compression feature is not enabled".to_string(),
+	))
 }
 
 #[cfg(all(test, feature = "compression"))]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_compression_codec_from_str() {
-        assert_eq!(
-            CompressionCodec::from_str("gzip").unwrap(),
-            CompressionCodec::Gzip
-        );
-        assert_eq!(
-            CompressionCodec::from_str("deflate").unwrap(),
-            CompressionCodec::Deflate
-        );
-        assert_eq!(
-            CompressionCodec::from_str("br").unwrap(),
-            CompressionCodec::Brotli
-        );
-        assert_eq!(
-            CompressionCodec::from_str("brotli").unwrap(),
-            CompressionCodec::Brotli
-        );
-        assert!(CompressionCodec::from_str("unknown").is_err());
-    }
+	#[test]
+	fn test_compression_codec_from_str() {
+		assert_eq!(
+			CompressionCodec::from_str("gzip").unwrap(),
+			CompressionCodec::Gzip
+		);
+		assert_eq!(
+			CompressionCodec::from_str("deflate").unwrap(),
+			CompressionCodec::Deflate
+		);
+		assert_eq!(
+			CompressionCodec::from_str("br").unwrap(),
+			CompressionCodec::Brotli
+		);
+		assert_eq!(
+			CompressionCodec::from_str("brotli").unwrap(),
+			CompressionCodec::Brotli
+		);
+		assert!(CompressionCodec::from_str("unknown").is_err());
+	}
 
-    #[test]
-    fn test_compression_codec_as_str() {
-        assert_eq!(CompressionCodec::Gzip.as_str(), "gzip");
-        assert_eq!(CompressionCodec::Deflate.as_str(), "deflate");
-        assert_eq!(CompressionCodec::Brotli.as_str(), "br");
-    }
+	#[test]
+	fn test_compression_codec_as_str() {
+		assert_eq!(CompressionCodec::Gzip.as_str(), "gzip");
+		assert_eq!(CompressionCodec::Deflate.as_str(), "deflate");
+		assert_eq!(CompressionCodec::Brotli.as_str(), "br");
+	}
 
-    #[test]
-    fn test_gzip_compression_text_message() {
-        let text = "Hello, World!".to_string();
-        let message = Message::text(text.clone());
-        let compressed = compress_message(&message, CompressionCodec::Gzip).unwrap();
-        let decompressed = decompress_message(&compressed, CompressionCodec::Gzip).unwrap();
+	#[test]
+	fn test_gzip_compression_text_message() {
+		let text = "Hello, World!".to_string();
+		let message = Message::text(text.clone());
+		let compressed = compress_message(&message, CompressionCodec::Gzip).unwrap();
+		let decompressed = decompress_message(&compressed, CompressionCodec::Gzip).unwrap();
 
-        // After decompression, it becomes a binary message
-        match decompressed {
-            Message::Binary { data } => {
-                assert_eq!(String::from_utf8(data).unwrap(), text);
-            }
-            _ => panic!("Expected binary message"),
-        }
-    }
+		// After decompression, it becomes a binary message
+		match decompressed {
+			Message::Binary { data } => {
+				assert_eq!(String::from_utf8(data).unwrap(), text);
+			}
+			_ => panic!("Expected binary message"),
+		}
+	}
 
-    #[test]
-    fn test_deflate_compression_text_message() {
-        let text = "Hello, World!".to_string();
-        let message = Message::text(text.clone());
-        let compressed = compress_message(&message, CompressionCodec::Deflate).unwrap();
-        let decompressed = decompress_message(&compressed, CompressionCodec::Deflate).unwrap();
+	#[test]
+	fn test_deflate_compression_text_message() {
+		let text = "Hello, World!".to_string();
+		let message = Message::text(text.clone());
+		let compressed = compress_message(&message, CompressionCodec::Deflate).unwrap();
+		let decompressed = decompress_message(&compressed, CompressionCodec::Deflate).unwrap();
 
-        match decompressed {
-            Message::Binary { data } => {
-                assert_eq!(String::from_utf8(data).unwrap(), text);
-            }
-            _ => panic!("Expected binary message"),
-        }
-    }
+		match decompressed {
+			Message::Binary { data } => {
+				assert_eq!(String::from_utf8(data).unwrap(), text);
+			}
+			_ => panic!("Expected binary message"),
+		}
+	}
 
-    #[test]
-    fn test_brotli_compression_text_message() {
-        let text = "Hello, World!".to_string();
-        let message = Message::text(text.clone());
-        let compressed = compress_message(&message, CompressionCodec::Brotli).unwrap();
-        let decompressed = decompress_message(&compressed, CompressionCodec::Brotli).unwrap();
+	#[test]
+	fn test_brotli_compression_text_message() {
+		let text = "Hello, World!".to_string();
+		let message = Message::text(text.clone());
+		let compressed = compress_message(&message, CompressionCodec::Brotli).unwrap();
+		let decompressed = decompress_message(&compressed, CompressionCodec::Brotli).unwrap();
 
-        match decompressed {
-            Message::Binary { data } => {
-                assert_eq!(String::from_utf8(data).unwrap(), text);
-            }
-            _ => panic!("Expected binary message"),
-        }
-    }
+		match decompressed {
+			Message::Binary { data } => {
+				assert_eq!(String::from_utf8(data).unwrap(), text);
+			}
+			_ => panic!("Expected binary message"),
+		}
+	}
 
-    #[test]
-    fn test_gzip_compression_binary_message() {
-        let data = vec![1, 2, 3, 4, 5];
-        let message = Message::binary(data.clone());
-        let compressed = compress_message(&message, CompressionCodec::Gzip).unwrap();
-        let decompressed = decompress_message(&compressed, CompressionCodec::Gzip).unwrap();
+	#[test]
+	fn test_gzip_compression_binary_message() {
+		let data = vec![1, 2, 3, 4, 5];
+		let message = Message::binary(data.clone());
+		let compressed = compress_message(&message, CompressionCodec::Gzip).unwrap();
+		let decompressed = decompress_message(&compressed, CompressionCodec::Gzip).unwrap();
 
-        match decompressed {
-            Message::Binary {
-                data: decompressed_data,
-            } => {
-                assert_eq!(decompressed_data, data);
-            }
-            _ => panic!("Expected binary message"),
-        }
-    }
+		match decompressed {
+			Message::Binary {
+				data: decompressed_data,
+			} => {
+				assert_eq!(decompressed_data, data);
+			}
+			_ => panic!("Expected binary message"),
+		}
+	}
 
-    #[test]
-    fn test_compression_reduces_size() {
-        // Long repeated text has high compression efficiency
-        let long_text = "Hello, World! ".repeat(100);
-        let message = Message::text(long_text.clone());
-        let compressed = compress_message(&message, CompressionCodec::Gzip).unwrap();
+	#[test]
+	fn test_compression_reduces_size() {
+		// Long repeated text has high compression efficiency
+		let long_text = "Hello, World! ".repeat(100);
+		let message = Message::text(long_text.clone());
+		let compressed = compress_message(&message, CompressionCodec::Gzip).unwrap();
 
-        match compressed {
-            Message::Binary { data } => {
-                // Compressed data should be smaller than the original text
-                assert!(data.len() < long_text.len());
-            }
-            _ => panic!("Expected binary message"),
-        }
-    }
+		match compressed {
+			Message::Binary { data } => {
+				// Compressed data should be smaller than the original text
+				assert!(data.len() < long_text.len());
+			}
+			_ => panic!("Expected binary message"),
+		}
+	}
 
-    #[test]
-    fn test_compress_non_data_message_fails() {
-        let message = Message::Ping;
-        let result = compress_message(&message, CompressionCodec::Gzip);
-        assert!(result.is_err());
-    }
+	#[test]
+	fn test_compress_non_data_message_fails() {
+		let message = Message::Ping;
+		let result = compress_message(&message, CompressionCodec::Gzip);
+		assert!(result.is_err());
+	}
 
-    #[test]
-    fn test_decompress_text_message_fails() {
-        let message = Message::text("Not compressed".to_string());
-        let result = decompress_message(&message, CompressionCodec::Gzip);
-        assert!(result.is_err());
-    }
+	#[test]
+	fn test_decompress_text_message_fails() {
+		let message = Message::text("Not compressed".to_string());
+		let result = decompress_message(&message, CompressionCodec::Gzip);
+		assert!(result.is_err());
+	}
 }

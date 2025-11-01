@@ -15,18 +15,18 @@ pub use property::{HybridMethod, HybridProperty};
 
 /// Re-export commonly used types
 pub mod prelude {
-    pub use crate::comparator::*;
-    pub use crate::expression::*;
-    pub use crate::override_property::*;
-    pub use crate::property::*;
+	pub use crate::comparator::*;
+	pub use crate::expression::*;
+	pub use crate::override_property::*;
+	pub use crate::property::*;
 }
 
 /// Macro for defining hybrid properties
 #[macro_export]
 macro_rules! hybrid_property {
-    ($name:ident, $getter:expr) => {
-        pub fn $name(&self) -> impl Fn() -> String {
-            $getter
-        }
-    };
+	($name:ident, $getter:expr) => {
+		pub fn $name(&self) -> impl Fn() -> String {
+			$getter
+		}
+	};
 }

@@ -43,102 +43,102 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateExtension {
-    pub name: String,
-    pub schema: Option<String>,
-    pub version: Option<String>,
+	pub name: String,
+	pub schema: Option<String>,
+	pub version: Option<String>,
 }
 
 impl CreateExtension {
-    /// Create a new CreateExtension operation
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::postgres::CreateExtension;
-    ///
-    /// let ext = CreateExtension::new("hstore");
-    /// assert_eq!(ext.name, "hstore");
-    /// assert!(ext.schema.is_none());
-    /// ```
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            schema: None,
-            version: None,
-        }
-    }
+	/// Create a new CreateExtension operation
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::postgres::CreateExtension;
+	///
+	/// let ext = CreateExtension::new("hstore");
+	/// assert_eq!(ext.name, "hstore");
+	/// assert!(ext.schema.is_none());
+	/// ```
+	pub fn new(name: impl Into<String>) -> Self {
+		Self {
+			name: name.into(),
+			schema: None,
+			version: None,
+		}
+	}
 
-    /// Set the schema where the extension should be created
-    pub fn with_schema(mut self, schema: impl Into<String>) -> Self {
-        self.schema = Some(schema.into());
-        self
-    }
+	/// Set the schema where the extension should be created
+	pub fn with_schema(mut self, schema: impl Into<String>) -> Self {
+		self.schema = Some(schema.into());
+		self
+	}
 
-    /// Set a specific version of the extension
-    pub fn with_version(mut self, version: impl Into<String>) -> Self {
-        self.version = Some(version.into());
-        self
-    }
+	/// Set a specific version of the extension
+	pub fn with_version(mut self, version: impl Into<String>) -> Self {
+		self.version = Some(version.into());
+		self
+	}
 
-    /// Apply to project state (extensions don't modify state)
-    pub fn state_forwards(&self, _app_label: &str, _state: &mut ProjectState) {
-        // Extensions are database-level and don't affect the application schema
-    }
+	/// Apply to project state (extensions don't modify state)
+	pub fn state_forwards(&self, _app_label: &str, _state: &mut ProjectState) {
+		// Extensions are database-level and don't affect the application schema
+	}
 
-    /// Generate SQL using schema editor
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::postgres::CreateExtension;
-    /// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
-    ///
-    /// let ext = CreateExtension::new("hstore").with_schema("public");
-    /// let factory = SchemaEditorFactory::new();
-    /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
-    ///
-    /// let sql = ext.database_forwards(editor.as_ref());
-    /// assert_eq!(sql.len(), 1);
-    /// assert!(sql[0].contains("CREATE EXTENSION"));
-    /// assert!(sql[0].contains("hstore"));
-    /// ```
-    pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-        let mut parts = vec!["CREATE EXTENSION IF NOT EXISTS".to_string()];
-        // Always use double quotes for PostgreSQL identifier safety
-        parts.push(format!("\"{}\"", self.name));
+	/// Generate SQL using schema editor
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::postgres::CreateExtension;
+	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	///
+	/// let ext = CreateExtension::new("hstore").with_schema("public");
+	/// let factory = SchemaEditorFactory::new();
+	/// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+	///
+	/// let sql = ext.database_forwards(editor.as_ref());
+	/// assert_eq!(sql.len(), 1);
+	/// assert!(sql[0].contains("CREATE EXTENSION"));
+	/// assert!(sql[0].contains("hstore"));
+	/// ```
+	pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		let mut parts = vec!["CREATE EXTENSION IF NOT EXISTS".to_string()];
+		// Always use double quotes for PostgreSQL identifier safety
+		parts.push(format!("\"{}\"", self.name));
 
-        if let Some(ref schema) = self.schema {
-            parts.push("SCHEMA".to_string());
-            parts.push(format!("\"{}\"", schema));
-        }
+		if let Some(ref schema) = self.schema {
+			parts.push("SCHEMA".to_string());
+			parts.push(format!("\"{}\"", schema));
+		}
 
-        if let Some(ref version) = self.version {
-            parts.push("VERSION".to_string());
-            parts.push(quote_literal(version).to_string());
-        }
+		if let Some(ref version) = self.version {
+			parts.push("VERSION".to_string());
+			parts.push(quote_literal(version).to_string());
+		}
 
-        vec![format!("{};", parts.join(" "))]
-    }
+		vec![format!("{};", parts.join(" "))]
+	}
 
-    /// Generate reverse SQL
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::postgres::CreateExtension;
-    /// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
-    ///
-    /// let ext = CreateExtension::new("hstore");
-    /// let factory = SchemaEditorFactory::new();
-    /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
-    ///
-    /// let sql = ext.database_backwards(editor.as_ref());
-    /// assert_eq!(sql.len(), 1);
-    /// assert!(sql[0].contains("DROP EXTENSION"));
-    /// ```
-    pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-        vec![format!("DROP EXTENSION IF EXISTS \"{}\";", self.name)]
-    }
+	/// Generate reverse SQL
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::postgres::CreateExtension;
+	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	///
+	/// let ext = CreateExtension::new("hstore");
+	/// let factory = SchemaEditorFactory::new();
+	/// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+	///
+	/// let sql = ext.database_backwards(editor.as_ref());
+	/// assert_eq!(sql.len(), 1);
+	/// assert!(sql[0].contains("DROP EXTENSION"));
+	/// ```
+	pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		vec![format!("DROP EXTENSION IF EXISTS \"{}\";", self.name)]
+	}
 }
 
 /// Drop a PostgreSQL extension
@@ -152,42 +152,42 @@ impl CreateExtension {
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropExtension {
-    pub name: String,
+	pub name: String,
 }
 
 impl DropExtension {
-    /// Create a new DropExtension operation
-    pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into() }
-    }
+	/// Create a new DropExtension operation
+	pub fn new(name: impl Into<String>) -> Self {
+		Self { name: name.into() }
+	}
 
-    /// Apply to project state (extensions don't modify state)
-    pub fn state_forwards(&self, _app_label: &str, _state: &mut ProjectState) {}
+	/// Apply to project state (extensions don't modify state)
+	pub fn state_forwards(&self, _app_label: &str, _state: &mut ProjectState) {}
 
-    /// Generate SQL
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::postgres::DropExtension;
-    /// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
-    ///
-    /// let drop = DropExtension::new("hstore");
-    /// let factory = SchemaEditorFactory::new();
-    /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
-    ///
-    /// let sql = drop.database_forwards(editor.as_ref());
-    /// assert_eq!(sql.len(), 1);
-    /// assert!(sql[0].contains("DROP EXTENSION"));
-    /// ```
-    pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-        vec![format!("DROP EXTENSION IF EXISTS \"{}\";", self.name)]
-    }
+	/// Generate SQL
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::postgres::DropExtension;
+	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	///
+	/// let drop = DropExtension::new("hstore");
+	/// let factory = SchemaEditorFactory::new();
+	/// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+	///
+	/// let sql = drop.database_forwards(editor.as_ref());
+	/// assert_eq!(sql.len(), 1);
+	/// assert!(sql[0].contains("DROP EXTENSION"));
+	/// ```
+	pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		vec![format!("DROP EXTENSION IF EXISTS \"{}\";", self.name)]
+	}
 
-    /// Generate reverse SQL (recreate extension)
-    pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-        vec![format!("CREATE EXTENSION IF NOT EXISTS \"{}\";", self.name)]
-    }
+	/// Generate reverse SQL (recreate extension)
+	pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		vec![format!("CREATE EXTENSION IF NOT EXISTS \"{}\";", self.name)]
+	}
 }
 
 /// Create a PostgreSQL collation
@@ -203,227 +203,227 @@ impl DropExtension {
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCollation {
-    pub name: String,
-    pub locale: String,
-    pub provider: Option<String>,
+	pub name: String,
+	pub locale: String,
+	pub provider: Option<String>,
 }
 
 impl CreateCollation {
-    /// Create a new collation
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::postgres::CreateCollation;
-    ///
-    /// let collation = CreateCollation::new("german", "de_DE");
-    /// assert_eq!(collation.name, "german");
-    /// assert_eq!(collation.locale, "de_DE");
-    /// ```
-    pub fn new(name: impl Into<String>, locale: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            locale: locale.into(),
-            provider: None,
-        }
-    }
+	/// Create a new collation
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::postgres::CreateCollation;
+	///
+	/// let collation = CreateCollation::new("german", "de_DE");
+	/// assert_eq!(collation.name, "german");
+	/// assert_eq!(collation.locale, "de_DE");
+	/// ```
+	pub fn new(name: impl Into<String>, locale: impl Into<String>) -> Self {
+		Self {
+			name: name.into(),
+			locale: locale.into(),
+			provider: None,
+		}
+	}
 
-    /// Set the collation provider (icu or libc)
-    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
-        self.provider = Some(provider.into());
-        self
-    }
+	/// Set the collation provider (icu or libc)
+	pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
+		self.provider = Some(provider.into());
+		self
+	}
 
-    /// Apply to project state
-    pub fn state_forwards(&self, _app_label: &str, _state: &mut ProjectState) {}
+	/// Apply to project state
+	pub fn state_forwards(&self, _app_label: &str, _state: &mut ProjectState) {}
 
-    /// Generate SQL
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::postgres::CreateCollation;
-    /// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
-    ///
-    /// let collation = CreateCollation::new("german", "de_DE");
-    /// let factory = SchemaEditorFactory::new();
-    /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
-    ///
-    /// let sql = collation.database_forwards(editor.as_ref());
-    /// assert_eq!(sql.len(), 1);
-    /// assert!(sql[0].contains("CREATE COLLATION"));
-    /// assert!(sql[0].contains("german"));
-    /// ```
-    pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-        // Always use double quotes for PostgreSQL identifier safety
-        let mut sql = format!(
-            "CREATE COLLATION IF NOT EXISTS \"{}\" (LOCALE = {}",
-            self.name,
-            quote_literal(&self.locale)
-        );
+	/// Generate SQL
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::postgres::CreateCollation;
+	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	///
+	/// let collation = CreateCollation::new("german", "de_DE");
+	/// let factory = SchemaEditorFactory::new();
+	/// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+	///
+	/// let sql = collation.database_forwards(editor.as_ref());
+	/// assert_eq!(sql.len(), 1);
+	/// assert!(sql[0].contains("CREATE COLLATION"));
+	/// assert!(sql[0].contains("german"));
+	/// ```
+	pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		// Always use double quotes for PostgreSQL identifier safety
+		let mut sql = format!(
+			"CREATE COLLATION IF NOT EXISTS \"{}\" (LOCALE = {}",
+			self.name,
+			quote_literal(&self.locale)
+		);
 
-        if let Some(ref provider) = self.provider {
-            sql.push_str(&format!(", PROVIDER = {}", quote_literal(provider)));
-        }
+		if let Some(ref provider) = self.provider {
+			sql.push_str(&format!(", PROVIDER = {}", quote_literal(provider)));
+		}
 
-        sql.push_str(");");
-        vec![sql]
-    }
+		sql.push_str(");");
+		vec![sql]
+	}
 
-    /// Generate reverse SQL
-    pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-        vec![format!("DROP COLLATION IF EXISTS \"{}\";", self.name)]
-    }
+	/// Generate reverse SQL
+	pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		vec![format!("DROP COLLATION IF EXISTS \"{}\";", self.name)]
+	}
 }
 
 /// Commonly used PostgreSQL extensions
 pub mod extensions {
-    use super::CreateExtension;
+	use super::CreateExtension;
 
-    /// Create the hstore extension for key-value storage
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use reinhardt_migrations::operations::postgres::extensions::hstore;
-    ///
-    /// let ext = hstore();
-    /// assert_eq!(ext.name, "hstore");
-    /// ```
-    pub fn hstore() -> CreateExtension {
-        CreateExtension::new("hstore")
-    }
+	/// Create the hstore extension for key-value storage
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::postgres::extensions::hstore;
+	///
+	/// let ext = hstore();
+	/// assert_eq!(ext.name, "hstore");
+	/// ```
+	pub fn hstore() -> CreateExtension {
+		CreateExtension::new("hstore")
+	}
 
-    /// Create the pg_trgm extension for trigram matching
-    pub fn pg_trgm() -> CreateExtension {
-        CreateExtension::new("pg_trgm")
-    }
+	/// Create the pg_trgm extension for trigram matching
+	pub fn pg_trgm() -> CreateExtension {
+		CreateExtension::new("pg_trgm")
+	}
 
-    /// Create the uuid-ossp extension for UUID generation
-    pub fn uuid_ossp() -> CreateExtension {
-        CreateExtension::new("uuid-ossp")
-    }
+	/// Create the uuid-ossp extension for UUID generation
+	pub fn uuid_ossp() -> CreateExtension {
+		CreateExtension::new("uuid-ossp")
+	}
 
-    /// Create the postgis extension for geographic data
-    pub fn postgis() -> CreateExtension {
-        CreateExtension::new("postgis")
-    }
+	/// Create the postgis extension for geographic data
+	pub fn postgis() -> CreateExtension {
+		CreateExtension::new("postgis")
+	}
 
-    /// Create the btree_gin extension for B-tree GIN indexes
-    pub fn btree_gin() -> CreateExtension {
-        CreateExtension::new("btree_gin")
-    }
+	/// Create the btree_gin extension for B-tree GIN indexes
+	pub fn btree_gin() -> CreateExtension {
+		CreateExtension::new("btree_gin")
+	}
 
-    /// Create the btree_gist extension for B-tree GiST indexes
-    pub fn btree_gist() -> CreateExtension {
-        CreateExtension::new("btree_gist")
-    }
+	/// Create the btree_gist extension for B-tree GiST indexes
+	pub fn btree_gist() -> CreateExtension {
+		CreateExtension::new("btree_gist")
+	}
 
-    /// Create the citext extension for case-insensitive text
-    pub fn citext() -> CreateExtension {
-        CreateExtension::new("citext")
-    }
+	/// Create the citext extension for case-insensitive text
+	pub fn citext() -> CreateExtension {
+		CreateExtension::new("citext")
+	}
 
-    /// Create the unaccent extension for removing accents
-    pub fn unaccent() -> CreateExtension {
-        CreateExtension::new("unaccent")
-    }
+	/// Create the unaccent extension for removing accents
+	pub fn unaccent() -> CreateExtension {
+		CreateExtension::new("unaccent")
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_create_extension_basic() {
-        let ext = CreateExtension::new("hstore");
-        assert_eq!(ext.name, "hstore");
-        assert!(ext.schema.is_none());
-        assert!(ext.version.is_none());
-    }
+	#[test]
+	fn test_create_extension_basic() {
+		let ext = CreateExtension::new("hstore");
+		assert_eq!(ext.name, "hstore");
+		assert!(ext.schema.is_none());
+		assert!(ext.version.is_none());
+	}
 
-    #[test]
-    fn test_create_extension_with_schema() {
-        let ext = CreateExtension::new("hstore").with_schema("public");
-        assert_eq!(ext.name, "hstore");
-        assert_eq!(ext.schema, Some("public".to_string()));
-    }
+	#[test]
+	fn test_create_extension_with_schema() {
+		let ext = CreateExtension::new("hstore").with_schema("public");
+		assert_eq!(ext.name, "hstore");
+		assert_eq!(ext.schema, Some("public".to_string()));
+	}
 
-    #[test]
-    fn test_create_extension_with_version() {
-        let ext = CreateExtension::new("postgis").with_version("3.0.0");
-        assert_eq!(ext.version, Some("3.0.0".to_string()));
-    }
+	#[test]
+	fn test_create_extension_with_version() {
+		let ext = CreateExtension::new("postgis").with_version("3.0.0");
+		assert_eq!(ext.version, Some("3.0.0".to_string()));
+	}
 
-    #[cfg(feature = "postgres")]
-    #[test]
-    fn test_create_extension_database_forwards() {
-        use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
+	#[cfg(feature = "postgres")]
+	#[test]
+	fn test_create_extension_database_forwards() {
+		use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
 
-        let ext = CreateExtension::new("hstore");
-        let factory = SchemaEditorFactory::new();
-        let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+		let ext = CreateExtension::new("hstore");
+		let factory = SchemaEditorFactory::new();
+		let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 
-        let sql = ext.database_forwards(editor.as_ref());
-        assert_eq!(sql.len(), 1);
-        assert!(sql[0].contains("CREATE EXTENSION IF NOT EXISTS"));
-        assert!(sql[0].contains("\"hstore\""));
-    }
+		let sql = ext.database_forwards(editor.as_ref());
+		assert_eq!(sql.len(), 1);
+		assert!(sql[0].contains("CREATE EXTENSION IF NOT EXISTS"));
+		assert!(sql[0].contains("\"hstore\""));
+	}
 
-    #[cfg(feature = "postgres")]
-    #[test]
-    fn test_create_extension_with_schema_sql() {
-        use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
+	#[cfg(feature = "postgres")]
+	#[test]
+	fn test_create_extension_with_schema_sql() {
+		use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
 
-        let ext = CreateExtension::new("hstore").with_schema("public");
-        let factory = SchemaEditorFactory::new();
-        let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+		let ext = CreateExtension::new("hstore").with_schema("public");
+		let factory = SchemaEditorFactory::new();
+		let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 
-        let sql = ext.database_forwards(editor.as_ref());
-        assert!(sql[0].contains("SCHEMA"));
-        assert!(sql[0].contains("\"public\""));
-    }
+		let sql = ext.database_forwards(editor.as_ref());
+		assert!(sql[0].contains("SCHEMA"));
+		assert!(sql[0].contains("\"public\""));
+	}
 
-    #[cfg(feature = "postgres")]
-    #[test]
-    fn test_drop_extension() {
-        use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
+	#[cfg(feature = "postgres")]
+	#[test]
+	fn test_drop_extension() {
+		use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
 
-        let drop = DropExtension::new("hstore");
-        let factory = SchemaEditorFactory::new();
-        let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+		let drop = DropExtension::new("hstore");
+		let factory = SchemaEditorFactory::new();
+		let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 
-        let sql = drop.database_forwards(editor.as_ref());
-        assert_eq!(sql.len(), 1);
-        assert!(sql[0].contains("DROP EXTENSION IF EXISTS"));
-        assert!(sql[0].contains("\"hstore\""));
-    }
+		let sql = drop.database_forwards(editor.as_ref());
+		assert_eq!(sql.len(), 1);
+		assert!(sql[0].contains("DROP EXTENSION IF EXISTS"));
+		assert!(sql[0].contains("\"hstore\""));
+	}
 
-    #[cfg(feature = "postgres")]
-    #[test]
-    fn test_create_collation() {
-        use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
+	#[cfg(feature = "postgres")]
+	#[test]
+	fn test_create_collation() {
+		use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
 
-        let collation = CreateCollation::new("german", "de_DE");
-        let factory = SchemaEditorFactory::new();
-        let editor = factory.create_for_database(DatabaseType::PostgreSQL);
+		let collation = CreateCollation::new("german", "de_DE");
+		let factory = SchemaEditorFactory::new();
+		let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 
-        let sql = collation.database_forwards(editor.as_ref());
-        assert_eq!(sql.len(), 1);
-        assert!(sql[0].contains("CREATE COLLATION IF NOT EXISTS"));
-        assert!(sql[0].contains("\"german\""));
-        assert!(sql[0].contains("de_DE"));
-    }
+		let sql = collation.database_forwards(editor.as_ref());
+		assert_eq!(sql.len(), 1);
+		assert!(sql[0].contains("CREATE COLLATION IF NOT EXISTS"));
+		assert!(sql[0].contains("\"german\""));
+		assert!(sql[0].contains("de_DE"));
+	}
 
-    #[test]
-    fn test_extension_helpers() {
-        let hstore = extensions::hstore();
-        assert_eq!(hstore.name, "hstore");
+	#[test]
+	fn test_extension_helpers() {
+		let hstore = extensions::hstore();
+		assert_eq!(hstore.name, "hstore");
 
-        let pg_trgm = extensions::pg_trgm();
-        assert_eq!(pg_trgm.name, "pg_trgm");
+		let pg_trgm = extensions::pg_trgm();
+		assert_eq!(pg_trgm.name, "pg_trgm");
 
-        let postgis = extensions::postgis();
-        assert_eq!(postgis.name, "postgis");
-    }
+		let postgis = extensions::postgis();
+		assert_eq!(postgis.name, "postgis");
+	}
 }

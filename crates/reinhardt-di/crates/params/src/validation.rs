@@ -117,56 +117,56 @@ use std::ops::Deref;
 /// ```
 #[cfg(feature = "validation")]
 pub struct Validated<T, V> {
-    inner: T,
-    _validator: std::marker::PhantomData<V>,
+	inner: T,
+	_validator: std::marker::PhantomData<V>,
 }
 
 #[cfg(feature = "validation")]
 impl<T, V> Validated<T, V> {
-    /// Create a new validated value
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if validation fails
-    pub fn new<U>(inner: T, validator: &V) -> Result<Self, crate::ParamError>
-    where
-        V: Validator<U>,
-        T: AsRef<U>,
-        U: ?Sized,
-    {
-        validator
-            .validate(inner.as_ref())
-            .map_err(|e| crate::ParamError::ValidationError {
-                name: "parameter".to_string(),
-                message: e.to_string(),
-            })?;
+	/// Create a new validated value
+	///
+	/// # Errors
+	///
+	/// Returns an error if validation fails
+	pub fn new<U>(inner: T, validator: &V) -> Result<Self, crate::ParamError>
+	where
+		V: Validator<U>,
+		T: AsRef<U>,
+		U: ?Sized,
+	{
+		validator
+			.validate(inner.as_ref())
+			.map_err(|e| crate::ParamError::ValidationError {
+				name: "parameter".to_string(),
+				message: e.to_string(),
+			})?;
 
-        Ok(Self {
-            inner,
-            _validator: std::marker::PhantomData,
-        })
-    }
+		Ok(Self {
+			inner,
+			_validator: std::marker::PhantomData,
+		})
+	}
 
-    /// Unwrap the validated value
-    pub fn into_inner(self) -> T {
-        self.inner
-    }
+	/// Unwrap the validated value
+	pub fn into_inner(self) -> T {
+		self.inner
+	}
 }
 
 #[cfg(feature = "validation")]
 impl<T, V> Deref for Validated<T, V> {
-    type Target = T;
+	type Target = T;
 
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
 }
 
 #[cfg(feature = "validation")]
 impl<T: Debug, V> Debug for Validated<T, V> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.inner.fmt(f)
-    }
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.inner.fmt(f)
+	}
 }
 
 // Feature-gated trait is defined at the end of the file for non-validation builds
@@ -174,127 +174,127 @@ impl<T: Debug, V> Debug for Validated<T, V> {
 /// Validation constraints for a parameter
 #[cfg(feature = "validation")]
 pub struct ValidationConstraints<T> {
-    inner: T,
-    min_length: Option<usize>,
-    max_length: Option<usize>,
-    min_value: Option<String>,
-    max_value: Option<String>,
-    regex: Option<String>,
-    email: bool,
-    url: bool,
+	inner: T,
+	min_length: Option<usize>,
+	max_length: Option<usize>,
+	min_value: Option<String>,
+	max_value: Option<String>,
+	regex: Option<String>,
+	email: bool,
+	url: bool,
 }
 
 #[cfg(feature = "validation")]
 impl<T> ValidationConstraints<T> {
-    /// Add another min_length constraint
-    pub fn min_length(mut self, min: usize) -> Self {
-        self.min_length = Some(min);
-        self
-    }
+	/// Add another min_length constraint
+	pub fn min_length(mut self, min: usize) -> Self {
+		self.min_length = Some(min);
+		self
+	}
 
-    /// Add another max_length constraint
-    pub fn max_length(mut self, max: usize) -> Self {
-        self.max_length = Some(max);
-        self
-    }
+	/// Add another max_length constraint
+	pub fn max_length(mut self, max: usize) -> Self {
+		self.max_length = Some(max);
+		self
+	}
 
-    /// Add another min_value constraint
-    pub fn min_value<V: ToString>(mut self, min: V) -> Self {
-        self.min_value = Some(min.to_string());
-        self
-    }
+	/// Add another min_value constraint
+	pub fn min_value<V: ToString>(mut self, min: V) -> Self {
+		self.min_value = Some(min.to_string());
+		self
+	}
 
-    /// Add another max_value constraint
-    pub fn max_value<V: ToString>(mut self, max: V) -> Self {
-        self.max_value = Some(max.to_string());
-        self
-    }
+	/// Add another max_value constraint
+	pub fn max_value<V: ToString>(mut self, max: V) -> Self {
+		self.max_value = Some(max.to_string());
+		self
+	}
 
-    /// Add regex constraint
-    pub fn regex(mut self, pattern: impl Into<String>) -> Self {
-        self.regex = Some(pattern.into());
-        self
-    }
+	/// Add regex constraint
+	pub fn regex(mut self, pattern: impl Into<String>) -> Self {
+		self.regex = Some(pattern.into());
+		self
+	}
 
-    /// Add email validation
-    pub fn email(mut self) -> Self {
-        self.email = true;
-        self
-    }
+	/// Add email validation
+	pub fn email(mut self) -> Self {
+		self.email = true;
+		self
+	}
 
-    /// Add URL validation
-    pub fn url(mut self) -> Self {
-        self.url = true;
-        self
-    }
+	/// Add URL validation
+	pub fn url(mut self) -> Self {
+		self.url = true;
+		self
+	}
 
-    /// Validate a string value against the constraints
-    pub fn validate_string(&self, value: &str) -> ValidationResult<()> {
-        // Length constraints
-        if let Some(min) = self.min_length {
-            reinhardt_validators::MinLengthValidator::new(min).validate(value)?;
-        }
-        if let Some(max) = self.max_length {
-            reinhardt_validators::MaxLengthValidator::new(max).validate(value)?;
-        }
+	/// Validate a string value against the constraints
+	pub fn validate_string(&self, value: &str) -> ValidationResult<()> {
+		// Length constraints
+		if let Some(min) = self.min_length {
+			reinhardt_validators::MinLengthValidator::new(min).validate(value)?;
+		}
+		if let Some(max) = self.max_length {
+			reinhardt_validators::MaxLengthValidator::new(max).validate(value)?;
+		}
 
-        // Regex constraint
-        if let Some(ref pattern) = self.regex {
-            reinhardt_validators::RegexValidator::new(pattern)
-                .map_err(|e| {
-                    reinhardt_validators::ValidationError::Custom(format!(
-                        "Invalid regex pattern: {}",
-                        e
-                    ))
-                })?
-                .validate(value)?;
-        }
+		// Regex constraint
+		if let Some(ref pattern) = self.regex {
+			reinhardt_validators::RegexValidator::new(pattern)
+				.map_err(|e| {
+					reinhardt_validators::ValidationError::Custom(format!(
+						"Invalid regex pattern: {}",
+						e
+					))
+				})?
+				.validate(value)?;
+		}
 
-        // Email constraint
-        if self.email {
-            reinhardt_validators::EmailValidator::new().validate(value)?;
-        }
+		// Email constraint
+		if self.email {
+			reinhardt_validators::EmailValidator::new().validate(value)?;
+		}
 
-        // URL constraint
-        if self.url {
-            reinhardt_validators::UrlValidator::new().validate(value)?;
-        }
+		// URL constraint
+		if self.url {
+			reinhardt_validators::UrlValidator::new().validate(value)?;
+		}
 
-        Ok(())
-    }
+		Ok(())
+	}
 
-    /// Validate a numeric value against the constraints
-    pub fn validate_number<N>(&self, value: &N) -> ValidationResult<()>
-    where
-        N: PartialOrd + std::fmt::Display + Clone + std::str::FromStr,
-        <N as std::str::FromStr>::Err: std::fmt::Display,
-    {
-        if let Some(ref min_str) = self.min_value {
-            if let Ok(min) = min_str.parse::<N>() {
-                reinhardt_validators::MinValueValidator::new(min).validate(value)?;
-            }
-        }
-        if let Some(ref max_str) = self.max_value {
-            if let Ok(max) = max_str.parse::<N>() {
-                reinhardt_validators::MaxValueValidator::new(max).validate(value)?;
-            }
-        }
-        Ok(())
-    }
+	/// Validate a numeric value against the constraints
+	pub fn validate_number<N>(&self, value: &N) -> ValidationResult<()>
+	where
+		N: PartialOrd + std::fmt::Display + Clone + std::str::FromStr,
+		<N as std::str::FromStr>::Err: std::fmt::Display,
+	{
+		if let Some(ref min_str) = self.min_value {
+			if let Ok(min) = min_str.parse::<N>() {
+				reinhardt_validators::MinValueValidator::new(min).validate(value)?;
+			}
+		}
+		if let Some(ref max_str) = self.max_value {
+			if let Ok(max) = max_str.parse::<N>() {
+				reinhardt_validators::MaxValueValidator::new(max).validate(value)?;
+			}
+		}
+		Ok(())
+	}
 
-    /// Get the inner value
-    pub fn into_inner(self) -> T {
-        self.inner
-    }
+	/// Get the inner value
+	pub fn into_inner(self) -> T {
+		self.inner
+	}
 }
 
 #[cfg(feature = "validation")]
 impl<T> Deref for ValidationConstraints<T> {
-    type Target = T;
+	type Target = T;
 
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
 }
 
 // ============================================================================
@@ -306,103 +306,103 @@ impl<T> Deref for ValidationConstraints<T> {
 /// This trait is enabled with the `validation` feature flag.
 #[cfg(feature = "validation")]
 pub trait WithValidation: Sized {
-    /// Add minimum length constraint
-    fn min_length(self, min: usize) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: Some(min),
-            max_length: None,
-            min_value: None,
-            max_value: None,
-            regex: None,
-            email: false,
-            url: false,
-        }
-    }
+	/// Add minimum length constraint
+	fn min_length(self, min: usize) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: Some(min),
+			max_length: None,
+			min_value: None,
+			max_value: None,
+			regex: None,
+			email: false,
+			url: false,
+		}
+	}
 
-    /// Add maximum length constraint
-    fn max_length(self, max: usize) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: Some(max),
-            min_value: None,
-            max_value: None,
-            regex: None,
-            email: false,
-            url: false,
-        }
-    }
+	/// Add maximum length constraint
+	fn max_length(self, max: usize) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: Some(max),
+			min_value: None,
+			max_value: None,
+			regex: None,
+			email: false,
+			url: false,
+		}
+	}
 
-    /// Add minimum value constraint
-    fn min_value<V: ToString>(self, min: V) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: Some(min.to_string()),
-            max_value: None,
-            regex: None,
-            email: false,
-            url: false,
-        }
-    }
+	/// Add minimum value constraint
+	fn min_value<V: ToString>(self, min: V) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: Some(min.to_string()),
+			max_value: None,
+			regex: None,
+			email: false,
+			url: false,
+		}
+	}
 
-    /// Add maximum value constraint
-    fn max_value<V: ToString>(self, max: V) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: None,
-            max_value: Some(max.to_string()),
-            regex: None,
-            email: false,
-            url: false,
-        }
-    }
+	/// Add maximum value constraint
+	fn max_value<V: ToString>(self, max: V) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: None,
+			max_value: Some(max.to_string()),
+			regex: None,
+			email: false,
+			url: false,
+		}
+	}
 
-    /// Add regex pattern constraint
-    fn regex(self, pattern: impl Into<String>) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: None,
-            max_value: None,
-            regex: Some(pattern.into()),
-            email: false,
-            url: false,
-        }
-    }
+	/// Add regex pattern constraint
+	fn regex(self, pattern: impl Into<String>) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: None,
+			max_value: None,
+			regex: Some(pattern.into()),
+			email: false,
+			url: false,
+		}
+	}
 
-    /// Add email validation
-    fn email(self) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: None,
-            max_value: None,
-            regex: None,
-            email: true,
-            url: false,
-        }
-    }
+	/// Add email validation
+	fn email(self) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: None,
+			max_value: None,
+			regex: None,
+			email: true,
+			url: false,
+		}
+	}
 
-    /// Add URL validation
-    fn url(self) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: None,
-            max_value: None,
-            regex: None,
-            email: false,
-            url: true,
-        }
-    }
+	/// Add URL validation
+	fn url(self) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: None,
+			max_value: None,
+			regex: None,
+			email: false,
+			url: true,
+		}
+	}
 }
 
 // WithValidation implementations are provided in their respective modules:
@@ -461,130 +461,130 @@ pub type ValidatedForm<T> = ValidationConstraints<crate::Form<T>>;
 
 #[cfg(not(feature = "validation"))]
 pub struct ValidationConstraints<T> {
-    pub inner: T,
-    pub min_length: Option<usize>,
-    pub max_length: Option<usize>,
-    pub min_value: Option<String>,
-    pub max_value: Option<String>,
-    pub regex: Option<String>,
-    pub email: bool,
-    pub url: bool,
+	pub inner: T,
+	pub min_length: Option<usize>,
+	pub max_length: Option<usize>,
+	pub min_value: Option<String>,
+	pub max_value: Option<String>,
+	pub regex: Option<String>,
+	pub email: bool,
+	pub url: bool,
 }
 
 #[cfg(not(feature = "validation"))]
 impl<T> ValidationConstraints<T> {
-    pub fn min_length(mut self, min: usize) -> Self {
-        self.min_length = Some(min);
-        self
-    }
+	pub fn min_length(mut self, min: usize) -> Self {
+		self.min_length = Some(min);
+		self
+	}
 
-    pub fn max_length(mut self, max: usize) -> Self {
-        self.max_length = Some(max);
-        self
-    }
+	pub fn max_length(mut self, max: usize) -> Self {
+		self.max_length = Some(max);
+		self
+	}
 
-    pub fn min_value<V: ToString>(mut self, min: V) -> Self {
-        self.min_value = Some(min.to_string());
-        self
-    }
+	pub fn min_value<V: ToString>(mut self, min: V) -> Self {
+		self.min_value = Some(min.to_string());
+		self
+	}
 
-    pub fn max_value<V: ToString>(mut self, max: V) -> Self {
-        self.max_value = Some(max.to_string());
-        self
-    }
+	pub fn max_value<V: ToString>(mut self, max: V) -> Self {
+		self.max_value = Some(max.to_string());
+		self
+	}
 
-    pub fn regex(mut self, pattern: impl Into<String>) -> Self {
-        self.regex = Some(pattern.into());
-        self
-    }
+	pub fn regex(mut self, pattern: impl Into<String>) -> Self {
+		self.regex = Some(pattern.into());
+		self
+	}
 
-    pub fn email(mut self) -> Self {
-        self.email = true;
-        self
-    }
+	pub fn email(mut self) -> Self {
+		self.email = true;
+		self
+	}
 
-    pub fn url(mut self) -> Self {
-        self.url = true;
-        self
-    }
+	pub fn url(mut self) -> Self {
+		self.url = true;
+		self
+	}
 
-    pub fn validate_string(&self, value: &str) -> Result<(), String> {
-        if let Some(min) = self.min_length {
-            if value.len() < min {
-                return Err(format!(
-                    "String length {} is less than minimum {}",
-                    value.len(),
-                    min
-                ));
-            }
-        }
-        if let Some(max) = self.max_length {
-            if value.len() > max {
-                return Err(format!(
-                    "String length {} exceeds maximum {}",
-                    value.len(),
-                    max
-                ));
-            }
-        }
-        if let Some(ref pattern) = self.regex {
-            use regex::Regex;
-            let regex = Regex::new(pattern).map_err(|e| format!("Invalid regex: {}", e))?;
-            if !regex.is_match(value) {
-                return Err(format!("String does not match pattern: {}", pattern));
-            }
-        }
-        if self.email {
-            if !value.contains('@') || !value.contains('.') {
-                return Err("Invalid email format".to_string());
-            }
-            let parts: Vec<&str> = value.split('@').collect();
-            if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
-                return Err("Invalid email format".to_string());
-            }
-        }
-        if self.url {
-            if !value.starts_with("http://") && !value.starts_with("https://") {
-                return Err("URL must start with http:// or https://".to_string());
-            }
-        }
-        Ok(())
-    }
+	pub fn validate_string(&self, value: &str) -> Result<(), String> {
+		if let Some(min) = self.min_length {
+			if value.len() < min {
+				return Err(format!(
+					"String length {} is less than minimum {}",
+					value.len(),
+					min
+				));
+			}
+		}
+		if let Some(max) = self.max_length {
+			if value.len() > max {
+				return Err(format!(
+					"String length {} exceeds maximum {}",
+					value.len(),
+					max
+				));
+			}
+		}
+		if let Some(ref pattern) = self.regex {
+			use regex::Regex;
+			let regex = Regex::new(pattern).map_err(|e| format!("Invalid regex: {}", e))?;
+			if !regex.is_match(value) {
+				return Err(format!("String does not match pattern: {}", pattern));
+			}
+		}
+		if self.email {
+			if !value.contains('@') || !value.contains('.') {
+				return Err("Invalid email format".to_string());
+			}
+			let parts: Vec<&str> = value.split('@').collect();
+			if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+				return Err("Invalid email format".to_string());
+			}
+		}
+		if self.url {
+			if !value.starts_with("http://") && !value.starts_with("https://") {
+				return Err("URL must start with http:// or https://".to_string());
+			}
+		}
+		Ok(())
+	}
 
-    pub fn validate_number<N>(&self, value: &N) -> Result<(), String>
-    where
-        N: PartialOrd + std::fmt::Display + Clone + std::str::FromStr,
-        <N as std::str::FromStr>::Err: std::fmt::Display,
-    {
-        if let Some(ref min_str) = self.min_value {
-            if let Ok(min) = min_str.parse::<N>() {
-                if value < &min {
-                    return Err(format!("Value {} is less than minimum {}", value, min));
-                }
-            }
-        }
-        if let Some(ref max_str) = self.max_value {
-            if let Ok(max) = max_str.parse::<N>() {
-                if value > &max {
-                    return Err(format!("Value {} exceeds maximum {}", value, max));
-                }
-            }
-        }
-        Ok(())
-    }
+	pub fn validate_number<N>(&self, value: &N) -> Result<(), String>
+	where
+		N: PartialOrd + std::fmt::Display + Clone + std::str::FromStr,
+		<N as std::str::FromStr>::Err: std::fmt::Display,
+	{
+		if let Some(ref min_str) = self.min_value {
+			if let Ok(min) = min_str.parse::<N>() {
+				if value < &min {
+					return Err(format!("Value {} is less than minimum {}", value, min));
+				}
+			}
+		}
+		if let Some(ref max_str) = self.max_value {
+			if let Ok(max) = max_str.parse::<N>() {
+				if value > &max {
+					return Err(format!("Value {} exceeds maximum {}", value, max));
+				}
+			}
+		}
+		Ok(())
+	}
 
-    pub fn into_inner(self) -> T {
-        self.inner
-    }
+	pub fn into_inner(self) -> T {
+		self.inner
+	}
 }
 
 #[cfg(not(feature = "validation"))]
 impl<T> Deref for ValidationConstraints<T> {
-    type Target = T;
+	type Target = T;
 
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
 }
 
 #[cfg(not(feature = "validation"))]
@@ -606,121 +606,121 @@ impl<T> WithValidation for crate::Query<T> {}
 // Implement non-feature-gated WithValidation trait
 #[cfg(not(feature = "validation"))]
 pub trait WithValidation: Sized {
-    fn min_length(self, min: usize) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: Some(min),
-            max_length: None,
-            min_value: None,
-            max_value: None,
-            regex: None,
-            email: false,
-            url: false,
-        }
-    }
+	fn min_length(self, min: usize) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: Some(min),
+			max_length: None,
+			min_value: None,
+			max_value: None,
+			regex: None,
+			email: false,
+			url: false,
+		}
+	}
 
-    fn max_length(self, max: usize) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: Some(max),
-            min_value: None,
-            max_value: None,
-            regex: None,
-            email: false,
-            url: false,
-        }
-    }
+	fn max_length(self, max: usize) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: Some(max),
+			min_value: None,
+			max_value: None,
+			regex: None,
+			email: false,
+			url: false,
+		}
+	}
 
-    fn min_value<V: ToString>(self, min: V) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: Some(min.to_string()),
-            max_value: None,
-            regex: None,
-            email: false,
-            url: false,
-        }
-    }
+	fn min_value<V: ToString>(self, min: V) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: Some(min.to_string()),
+			max_value: None,
+			regex: None,
+			email: false,
+			url: false,
+		}
+	}
 
-    fn max_value<V: ToString>(self, max: V) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: None,
-            max_value: Some(max.to_string()),
-            regex: None,
-            email: false,
-            url: false,
-        }
-    }
+	fn max_value<V: ToString>(self, max: V) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: None,
+			max_value: Some(max.to_string()),
+			regex: None,
+			email: false,
+			url: false,
+		}
+	}
 
-    fn regex(self, pattern: impl Into<String>) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: None,
-            max_value: None,
-            regex: Some(pattern.into()),
-            email: false,
-            url: false,
-        }
-    }
+	fn regex(self, pattern: impl Into<String>) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: None,
+			max_value: None,
+			regex: Some(pattern.into()),
+			email: false,
+			url: false,
+		}
+	}
 
-    fn email(self) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: None,
-            max_value: None,
-            regex: None,
-            email: true,
-            url: false,
-        }
-    }
+	fn email(self) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: None,
+			max_value: None,
+			regex: None,
+			email: true,
+			url: false,
+		}
+	}
 
-    fn url(self) -> ValidationConstraints<Self> {
-        ValidationConstraints {
-            inner: self,
-            min_length: None,
-            max_length: None,
-            min_value: None,
-            max_value: None,
-            regex: None,
-            email: false,
-            url: true,
-        }
-    }
+	fn url(self) -> ValidationConstraints<Self> {
+		ValidationConstraints {
+			inner: self,
+			min_length: None,
+			max_length: None,
+			min_value: None,
+			max_value: None,
+			regex: None,
+			email: false,
+			url: true,
+		}
+	}
 }
 
 #[cfg(test)]
 #[cfg(feature = "validation")]
 mod tests {
-    use super::*;
-    use crate::Path;
+	use super::*;
+	use crate::Path;
 
-    #[test]
-    fn test_validation_constraints_builder() {
-        let path = Path(42i32);
-        let constrained = path.min_value(0).max_value(100);
+	#[test]
+	fn test_validation_constraints_builder() {
+		let path = Path(42i32);
+		let constrained = path.min_value(0).max_value(100);
 
-        assert!(constrained.validate_number(&42).is_ok());
-        assert!(constrained.validate_number(&-1).is_err());
-        assert!(constrained.validate_number(&101).is_err());
-    }
+		assert!(constrained.validate_number(&42).is_ok());
+		assert!(constrained.validate_number(&-1).is_err());
+		assert!(constrained.validate_number(&101).is_err());
+	}
 
-    #[test]
-    fn test_string_validation_constraints() {
-        let path = Path("test".to_string());
-        let constrained = path.min_length(2).max_length(10);
+	#[test]
+	fn test_string_validation_constraints() {
+		let path = Path("test".to_string());
+		let constrained = path.min_length(2).max_length(10);
 
-        assert!(constrained.validate_string("test").is_ok());
-        assert!(constrained.validate_string("a").is_err());
-        assert!(constrained.validate_string("this is too long").is_err());
-    }
+		assert!(constrained.validate_string("test").is_ok());
+		assert!(constrained.validate_string("a").is_err());
+		assert!(constrained.validate_string("this is too long").is_err());
+	}
 }

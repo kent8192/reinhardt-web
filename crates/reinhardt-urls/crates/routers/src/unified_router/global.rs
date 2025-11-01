@@ -24,9 +24,9 @@ static GLOBAL_ROUTER: OnceCell<StdRwLock<Option<Arc<UnifiedRouter>>>> = OnceCell
 /// register_router(Arc::new(router));
 /// ```
 pub fn register_router(router: Arc<UnifiedRouter>) {
-    let cell = GLOBAL_ROUTER.get_or_init(|| StdRwLock::new(None));
-    let mut guard = cell.write().unwrap();
-    *guard = Some(router);
+	let cell = GLOBAL_ROUTER.get_or_init(|| StdRwLock::new(None));
+	let mut guard = cell.write().unwrap();
+	*guard = Some(router);
 }
 
 /// Get a reference to the globally registered router
@@ -44,9 +44,9 @@ pub fn register_router(router: Arc<UnifiedRouter>) {
 /// }
 /// ```
 pub fn get_router() -> Option<Arc<UnifiedRouter>> {
-    GLOBAL_ROUTER
-        .get()
-        .and_then(|cell| cell.read().unwrap().clone())
+	GLOBAL_ROUTER
+		.get()
+		.and_then(|cell| cell.read().unwrap().clone())
 }
 
 /// Check if a router has been registered
@@ -61,10 +61,10 @@ pub fn get_router() -> Option<Arc<UnifiedRouter>> {
 /// }
 /// ```
 pub fn is_router_registered() -> bool {
-    GLOBAL_ROUTER
-        .get()
-        .map(|cell| cell.read().unwrap().is_some())
-        .unwrap_or(false)
+	GLOBAL_ROUTER
+		.get()
+		.map(|cell| cell.read().unwrap().is_some())
+		.unwrap_or(false)
 }
 
 /// Clear the registered router (useful for tests)
@@ -78,8 +78,8 @@ pub fn is_router_registered() -> bool {
 /// assert!(!is_router_registered());
 /// ```
 pub fn clear_router() {
-    if let Some(cell) = GLOBAL_ROUTER.get() {
-        let mut guard = cell.write().unwrap();
-        *guard = None;
-    }
+	if let Some(cell) = GLOBAL_ROUTER.get() {
+		let mut guard = cell.write().unwrap();
+		*guard = None;
+	}
 }
