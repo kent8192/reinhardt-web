@@ -68,14 +68,15 @@ impl DatabaseConnection {
     /// # Examples
     ///
     /// ```
-    /// # use reinhardt_orm::connection::DatabaseConnection;
-    /// # async fn example() -> Result<(), anyhow::Error> {
-    /// let conn = DatabaseConnection::connect("postgres://...").await?;
-    /// conn.begin_transaction().await?;
-    /// // ... perform operations ...
-    /// conn.commit_transaction().await?;
-    /// # Ok(())
+    /// # async fn example() {
+    /// use reinhardt_orm::connection::DatabaseConnection;
+    ///
+    /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
+    /// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+    /// let result = conn.begin_transaction().await;
+    /// assert!(result.is_ok());
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn begin_transaction(&self) -> Result<(), anyhow::Error> {
         self.execute("BEGIN TRANSACTION").await?;
@@ -87,13 +88,16 @@ impl DatabaseConnection {
     /// # Examples
     ///
     /// ```
-    /// # use reinhardt_orm::connection::DatabaseConnection;
-    /// # use reinhardt_orm::transaction::IsolationLevel;
-    /// # async fn example() -> Result<(), anyhow::Error> {
-    /// let conn = DatabaseConnection::connect("postgres://...").await?;
-    /// conn.begin_transaction_with_isolation(IsolationLevel::Serializable).await?;
-    /// # Ok(())
+    /// # async fn example() {
+    /// use reinhardt_orm::connection::DatabaseConnection;
+    /// use reinhardt_orm::transaction::IsolationLevel;
+    ///
+    /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
+    /// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+    /// let result = conn.begin_transaction_with_isolation(IsolationLevel::Serializable).await;
+    /// assert!(result.is_ok());
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn begin_transaction_with_isolation(
         &self,
@@ -109,14 +113,17 @@ impl DatabaseConnection {
     /// # Examples
     ///
     /// ```
-    /// # use reinhardt_orm::connection::DatabaseConnection;
-    /// # async fn example() -> Result<(), anyhow::Error> {
-    /// let conn = DatabaseConnection::connect("postgres://...").await?;
-    /// conn.begin_transaction().await?;
+    /// # async fn example() {
+    /// use reinhardt_orm::connection::DatabaseConnection;
+    ///
+    /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
+    /// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+    /// conn.begin_transaction().await.unwrap();
     /// // ... perform operations ...
-    /// conn.commit_transaction().await?;
-    /// # Ok(())
+    /// let result = conn.commit_transaction().await;
+    /// assert!(result.is_ok());
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn commit_transaction(&self) -> Result<(), anyhow::Error> {
         self.execute("COMMIT").await?;
@@ -128,14 +135,17 @@ impl DatabaseConnection {
     /// # Examples
     ///
     /// ```
-    /// # use reinhardt_orm::connection::DatabaseConnection;
-    /// # async fn example() -> Result<(), anyhow::Error> {
-    /// let conn = DatabaseConnection::connect("postgres://...").await?;
-    /// conn.begin_transaction().await?;
+    /// # async fn example() {
+    /// use reinhardt_orm::connection::DatabaseConnection;
+    ///
+    /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
+    /// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+    /// conn.begin_transaction().await.unwrap();
     /// // ... error occurs ...
-    /// conn.rollback_transaction().await?;
-    /// # Ok(())
+    /// let result = conn.rollback_transaction().await;
+    /// assert!(result.is_ok());
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn rollback_transaction(&self) -> Result<(), anyhow::Error> {
         self.execute("ROLLBACK").await?;
@@ -147,15 +157,18 @@ impl DatabaseConnection {
     /// # Examples
     ///
     /// ```
-    /// # use reinhardt_orm::connection::DatabaseConnection;
-    /// # async fn example() -> Result<(), anyhow::Error> {
-    /// let conn = DatabaseConnection::connect("postgres://...").await?;
-    /// conn.begin_transaction().await?;
-    /// conn.savepoint("sp1").await?;
+    /// # async fn example() {
+    /// use reinhardt_orm::connection::DatabaseConnection;
+    ///
+    /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
+    /// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+    /// conn.begin_transaction().await.unwrap();
+    /// let result = conn.savepoint("sp1").await;
+    /// assert!(result.is_ok());
     /// // ... nested operations ...
-    /// conn.release_savepoint("sp1").await?;
-    /// # Ok(())
+    /// conn.release_savepoint("sp1").await.unwrap();
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn savepoint(&self, name: &str) -> Result<(), anyhow::Error> {
         let sql = format!("SAVEPOINT {}", name);
