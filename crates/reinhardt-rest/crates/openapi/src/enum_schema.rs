@@ -210,6 +210,7 @@ impl EnumSchemaBuilder {
 
         let mut one_of = utoipa::openapi::schema::OneOf::new();
         one_of.items = variant_schemas;
+        one_of.title = Some(self.name);
 
         if let Some(desc) = self.description {
             one_of.description = Some(desc);
@@ -283,6 +284,7 @@ impl EnumSchemaBuilder {
 
         let mut one_of = utoipa::openapi::schema::OneOf::new();
         one_of.items = variant_schemas;
+        one_of.title = Some(self.name.clone());
         one_of.discriminator = Some(utoipa::openapi::schema::Discriminator::new(tag));
 
         if let Some(desc) = self.description {
@@ -320,6 +322,7 @@ impl EnumSchemaBuilder {
 
         let mut one_of = utoipa::openapi::schema::OneOf::new();
         one_of.items = variant_schemas;
+        one_of.title = Some(self.name);
         one_of.discriminator = Some(utoipa::openapi::schema::Discriminator::new(tag));
 
         if let Some(desc) = self.description {
@@ -339,6 +342,7 @@ impl EnumSchemaBuilder {
 
         let mut one_of = utoipa::openapi::schema::OneOf::new();
         one_of.items = variant_schemas;
+        one_of.title = Some(self.name);
 
         if let Some(desc) = self.description {
             one_of.description = Some(desc);
