@@ -415,3 +415,8 @@ path = "tests/admin/admin_actions_integration.rs"
 [[test]]
 name = "admin_audit_integration"
 path = "tests/admin/admin_audit_integration.rs"
+
+
+[[test]]
+name = "e2e_graphql_tests"
+path = "tests/server/e2e_graphql_tests.rs"

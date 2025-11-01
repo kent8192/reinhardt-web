@@ -1,13 +1,12 @@
 #![cfg(feature = "graphql")]
 
-mod test_helpers;
-
 use async_graphql::*;
 use reinhardt_server::graphql_handler;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use test_helpers::*;
+
+use crate::test_helpers::{shutdown_test_server, spawn_test_server};
 
 // GraphQL Schema for a simple book library
 
