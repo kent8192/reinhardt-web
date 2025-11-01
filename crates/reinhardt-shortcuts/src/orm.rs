@@ -137,12 +137,12 @@ mod tests {
             "id"
         }
 
-        fn primary_key(&self) -> Option<Self::PrimaryKey> {
-            self.id
+        fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+            self.id.as_ref()
         }
 
-        fn objects() -> reinhardt_db::Manager<Self> {
-            reinhardt_db::Manager::new()
+        fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+            self.id = Some(value);
         }
     }
 

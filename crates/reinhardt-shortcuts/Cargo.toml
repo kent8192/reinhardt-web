@@ -18,14 +18,13 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tera = { version = "1.20", optional = true }
-askama = { workspace = true, optional = true }
 chrono = { version = "0.4", optional = true }
 hyper = { workspace = true }
 lru = { version = "0.12", optional = true }
 
 [features]
 default = ["templates"]
-templates = ["reinhardt-template", "lru", "tera", "askama", "chrono"]
+templates = ["reinhardt-template", "lru", "tera", "chrono"]
 database = ["reinhardt-db"]
 
 [dev-dependencies]
