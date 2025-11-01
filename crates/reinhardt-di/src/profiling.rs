@@ -20,6 +20,8 @@
 #[cfg(feature = "dev-tools")]
 use std::collections::HashMap;
 #[cfg(feature = "dev-tools")]
+use std::fmt;
+#[cfg(feature = "dev-tools")]
 use std::time::{Duration, Instant};
 
 /// A profiler for tracking dependency injection performance
@@ -276,45 +278,6 @@ impl ProfileReport {
 	///
 	/// let mut profiler = DependencyProfiler::new();
 	/// profiler.record("Database", Duration::from_millis(10), false);
-	///
-	/// let report = profiler.generate_report();
-	/// let output = report.to_string();
-	/// assert!(output.contains("Database"));
-	/// ```
-	pub fn to_string(&self) -> String {
-		let mut output = String::from("=== Dependency Injection Profile Report ===\n\n");
-		output.push_str(&format!("Total Resolutions: {}\n", self.total_resolutions));
-		output.push_str(&format!(
-			"Total Time: {:.2}ms\n\n",
-			self.total_duration.as_secs_f64() * 1000.0
-		));
-
-		let mut deps: Vec<_> = self.dependencies.values().collect();
-		deps.sort_by(|a, b| b.total_duration.cmp(&a.total_duration));
-
-		output.push_str("Per-Dependency Statistics:\n");
-		output.push_str(&format!(
-			"{:<30} {:>10} {:>10} {:>10} {:>10} {:>10}\n",
-			"Name", "Count", "Cache Hits", "Avg (ms)", "Min (ms)", "Max (ms)"
-		));
-		output.push_str(&"-".repeat(90));
-		output.push('\n');
-
-		for stats in deps {
-			output.push_str(&format!(
-				"{:<30} {:>10} {:>10} {:>10.2} {:>10.2} {:>10.2}\n",
-				stats.name,
-				stats.count,
-				stats.cache_hits,
-				stats.avg_duration.as_secs_f64() * 1000.0,
-				stats.min_duration.as_secs_f64() * 1000.0,
-				stats.max_duration.as_secs_f64() * 1000.0,
-			));
-		}
-
-		output
-	}
-
 	/// Get the slowest dependencies
 	///
 	/// # Example
@@ -366,5 +329,44 @@ impl ProfileReport {
 				}
 			})
 			.collect()
+	}
+}
+
+#[cfg(feature = "dev-tools")]
+impl fmt::Display for ProfileReport {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		writeln!(f, "=== Dependency Injection Profile Report ===\n")?;
+		writeln!(f, "Total Resolutions: {}", self.total_resolutions)?;
+		writeln!(
+			f,
+			"Total Time: {:.2}ms\n",
+			self.total_duration.as_secs_f64() * 1000.0
+		)?;
+
+		let mut deps: Vec<_> = self.dependencies.values().collect();
+		deps.sort_by(|a, b| b.total_duration.cmp(&a.total_duration));
+
+		writeln!(f, "Per-Dependency Statistics:")?;
+		writeln!(
+			f,
+			"{:<30} {:>10} {:>10} {:>10} {:>10} {:>10}",
+			"Name", "Count", "Cache Hits", "Avg (ms)", "Min (ms)", "Max (ms)"
+		)?;
+		writeln!(f, "{}", "-".repeat(90))?;
+
+		for stats in deps {
+			writeln!(
+				f,
+				"{:<30} {:>10} {:>10} {:>10.2} {:>10.2} {:>10.2}",
+				stats.name,
+				stats.count,
+				stats.cache_hits,
+				stats.avg_duration.as_secs_f64() * 1000.0,
+				stats.min_duration.as_secs_f64() * 1000.0,
+				stats.max_duration.as_secs_f64() * 1000.0,
+			)?;
+		}
+
+		Ok(())
 	}
 }
