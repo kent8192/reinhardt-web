@@ -1,6 +1,7 @@
 //! Message level definitions
 
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 /// Message levels (similar to Django)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -38,28 +39,6 @@ impl Level {
 			Level::Warning => "warning",
 			Level::Error => "error",
 			Level::Custom(_) => "custom",
-		}
-	}
-	/// Parses a level from a string (case-insensitive)
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_messages::Level;
-	///
-	/// assert_eq!(Level::from_str("debug"), Some(Level::Debug));
-	/// assert_eq!(Level::from_str("INFO"), Some(Level::Info));
-	/// assert_eq!(Level::from_str("Success"), Some(Level::Success));
-	/// assert_eq!(Level::from_str("invalid"), None);
-	/// ```
-	pub fn from_str(s: &str) -> Option<Self> {
-		match s.to_lowercase().as_str() {
-			"debug" => Some(Level::Debug),
-			"info" => Some(Level::Info),
-			"success" => Some(Level::Success),
-			"warning" => Some(Level::Warning),
-			"error" => Some(Level::Error),
-			_ => None,
 		}
 	}
 
@@ -120,6 +99,34 @@ impl Ord for Level {
 	}
 }
 
+impl FromStr for Level {
+	type Err = String;
+
+	/// Parses a level from a string (case-insensitive)
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::str::FromStr;
+	/// use reinhardt_messages::Level;
+	///
+	/// assert_eq!(Level::from_str("debug"), Ok(Level::Debug));
+	/// assert_eq!(Level::from_str("INFO"), Ok(Level::Info));
+	/// assert_eq!(Level::from_str("Success"), Ok(Level::Success));
+	/// assert!(Level::from_str("invalid").is_err());
+	/// ```
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s.to_lowercase().as_str() {
+			"debug" => Ok(Level::Debug),
+			"info" => Ok(Level::Info),
+			"success" => Ok(Level::Success),
+			"warning" => Ok(Level::Warning),
+			"error" => Ok(Level::Error),
+			_ => Err(format!("Unknown message level: {}", s)),
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -149,20 +156,20 @@ mod tests {
 
 	#[test]
 	fn test_messages_level_from_str() {
-		assert_eq!(Level::from_str("debug"), Some(Level::Debug));
-		assert_eq!(Level::from_str("info"), Some(Level::Info));
-		assert_eq!(Level::from_str("success"), Some(Level::Success));
-		assert_eq!(Level::from_str("warning"), Some(Level::Warning));
-		assert_eq!(Level::from_str("error"), Some(Level::Error));
+		assert_eq!(Level::from_str("debug"), Ok(Level::Debug));
+		assert_eq!(Level::from_str("info"), Ok(Level::Info));
+		assert_eq!(Level::from_str("success"), Ok(Level::Success));
+		assert_eq!(Level::from_str("warning"), Ok(Level::Warning));
+		assert_eq!(Level::from_str("error"), Ok(Level::Error));
 
 		// Test case insensitivity
-		assert_eq!(Level::from_str("DEBUG"), Some(Level::Debug));
-		assert_eq!(Level::from_str("INFO"), Some(Level::Info));
-		assert_eq!(Level::from_str("WARNING"), Some(Level::Warning));
+		assert_eq!(Level::from_str("DEBUG"), Ok(Level::Debug));
+		assert_eq!(Level::from_str("INFO"), Ok(Level::Info));
+		assert_eq!(Level::from_str("WARNING"), Ok(Level::Warning));
 
 		// Test invalid input
-		assert_eq!(Level::from_str("invalid"), None);
-		assert_eq!(Level::from_str(""), None);
+		assert!(Level::from_str("invalid").is_err());
+		assert!(Level::from_str("").is_err());
 	}
 
 	#[test]
