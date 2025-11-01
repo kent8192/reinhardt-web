@@ -13,6 +13,7 @@ reinhardt-auth = { workspace = true }
 reinhardt-browsable-api = { workspace = true }
 reinhardt-cache = { workspace = true, features = ["redis-sentinel", "memcached-backend"] }
 reinhardt-contrib = { workspace = true }
+reinhardt-contenttypes = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-exception = { workspace = true }
 reinhardt-filters = { workspace = true }
@@ -304,3 +305,7 @@ path = "bench/template_compile_time_vs_runtime.rs"
 [[test]]
 name = "cache_pubsub_integration"
 path = "integration/tests/cache_pubsub_integration.rs"
+
+[[test]]
+name = "contrib_contenttypes_integration_tests"
+path = "integration/tests/contrib/contenttypes_integration_tests.rs"
