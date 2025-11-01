@@ -16,9 +16,9 @@ use std::sync::Arc;
 fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
     match v {
         FilterValue::String(s) => s.clone().into(),
-        FilterValue::Integer(i) => (*i).into(),
+        FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
         FilterValue::Float(f) => (*f).into(),
-        FilterValue::Boolean(b) => (*b).into(),
+        FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
         FilterValue::Null => sea_query::Value::Int(None),
         FilterValue::Array(_) => sea_query::Value::String(None),
     }
@@ -593,7 +593,7 @@ mod tests {
     use reinhardt_orm::DatabaseBackend;
 
     // Mock User model for testing
-    #[derive(Clone)]
+    #[derive(Clone, serde::Serialize, serde::Deserialize)]
     struct User {
         id: i64,
         name: String,
@@ -606,8 +606,12 @@ mod tests {
             "users"
         }
 
-        fn primary_key(&self) -> &Self::PrimaryKey {
-            &self.id
+        fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+            Some(&self.id)
+        }
+
+        fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+            self.id = value;
         }
     }
 

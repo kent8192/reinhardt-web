@@ -51,16 +51,16 @@ impl PermissionAction {
 /// # }
 /// ```
 pub struct AdminAuthBackend {
-    model_permissions: Arc<DjangoModelPermissions>,
-    admin_checker: Arc<IsAdminUser>,
+    _model_permissions: Arc<DjangoModelPermissions>,
+    _admin_checker: Arc<IsAdminUser>,
 }
 
 impl AdminAuthBackend {
     /// Create a new admin auth backend
     pub fn new() -> Self {
         Self {
-            model_permissions: Arc::new(DjangoModelPermissions::new()),
-            admin_checker: Arc::new(IsAdminUser),
+            _model_permissions: Arc::new(DjangoModelPermissions::new()),
+            _admin_checker: Arc::new(IsAdminUser),
         }
     }
 
@@ -260,7 +260,7 @@ mod tests {
             is_staff: true,
             is_superuser: false,
             is_active: true,
-            is_admin: false,
+            is_admin: true,
         }
     }
 
