@@ -206,22 +206,22 @@
 //! # }
 //! ```
 //!
-//! ## Compile-time Template Rendering (Phase 3)
+//! ## Runtime Template Rendering (Phase 3)
 //!
-//! Askama integration for 100-1000x performance improvement on static templates:
+//! Tera integration for flexible runtime template rendering:
 //!
-//! ```rust,ignore
-//! use reinhardt_renderers::{AskamaRenderer, UserTemplate};
+//! ```rust
+//! use reinhardt_renderers::TeraRenderer;
+//! use serde_json::json;
 //!
-//! // Define template at compile-time
-//! let template = UserTemplate {
-//!     name: "Alice".to_string(),
-//!     email: "alice@example.com".to_string(),
-//!     age: 25,
-//! };
+//! let renderer = TeraRenderer::new();
+//! let context = json!({
+//!     "name": "Alice",
+//!     "email": "alice@example.com",
+//!     "age": 25
+//! });
 //!
-//! let renderer = AskamaRenderer::new();
-//! let html = renderer.render(&template).unwrap();
+//! let html = renderer.render_template("user.tpl", &context).unwrap();
 //! ```
 //!
 //! Choose the right template strategy:
@@ -229,7 +229,7 @@
 //! ```rust
 //! use reinhardt_renderers::strategy::{TemplateStrategy, TemplateStrategySelector, TemplateSource};
 //!
-//! // Static templates → Compile-time (100-1000x faster)
+//! // Static templates → CompileTime (embedded)
 //! let source = TemplateSource::Static("user.html");
 //! let strategy = TemplateStrategySelector::select(&source);
 //! assert_eq!(strategy, TemplateStrategy::CompileTime);
@@ -241,8 +241,8 @@
 //! ```
 
 pub mod admin_renderer;
-pub mod askama_renderer;
 pub mod strategy;
+pub mod tera_renderer;
 pub mod cached;
 pub mod chain;
 pub mod compression;
@@ -264,8 +264,8 @@ pub mod yaml_renderer;
 mod tests;
 
 pub use admin_renderer::AdminRenderer;
-pub use askama_renderer::{
-    AskamaRenderer, Post, PostListTemplate, UserData, UserListTemplate, UserTemplate,
+pub use tera_renderer::{
+    Post, PostListTemplate, TeraRenderer, UserData, UserListTemplate, UserTemplate,
 };
 pub use cached::{CacheConfig, CachedRenderer};
 pub use chain::RendererChain;

@@ -1,6 +1,6 @@
 //! Template HTML Renderer
 //!
-//! Renders HTML responses using Askama templates.
+//! Renders HTML responses using Tera templates.
 //! Supports Django-style template rendering with context data.
 
 use async_trait::async_trait;
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use crate::renderer::{RenderResult, Renderer, RendererContext};
 
-/// HTML renderer that uses Askama templates
+/// HTML renderer that uses Tera templates
 ///
 /// This renderer integrates with the `reinhardt-templates` crate to provide
 /// Django-style template rendering for HTML responses.

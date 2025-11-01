@@ -5,13 +5,13 @@
 //!
 //! # Strategy Overview
 //!
-//! ## Compile-time (Askama)
+//! ## Compile-time (Tera with include_str!)
 //!
 //! **Pros:**
-//! - 100-1000x faster rendering
-//! - Type-safe variable substitution
-//! - Compile-time syntax validation
-//! - Zero runtime overhead
+//! - Templates embedded at compile time
+//! - Fast template loading (no file I/O at runtime)
+//! - Compile-time template validation
+//! - Reduced runtime overhead
 //!
 //! **Cons:**
 //! - Templates must be known at compile time
@@ -64,11 +64,11 @@
 /// Determines whether to use compile-time or runtime template rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TemplateStrategy {
-    /// Compile-time rendering using Askama
+    /// Compile-time rendering using Tera with include_str!
     ///
-    /// - **Time Complexity**: O(1) - Templates compiled to native code
-    /// - **Performance**: 100-1000x faster than runtime
-    /// - **Type Safety**: Variables validated at compile time
+    /// - **Time Complexity**: O(n) - Templates embedded at compile time
+    /// - **Performance**: Faster than file-based loading
+    /// - **Type Safety**: Runtime type validation
     /// - **Flexibility**: Templates must be known at compile time
     ///
     /// # Use Cases
@@ -124,7 +124,7 @@ pub enum TemplateSource {
     /// Example: `TemplateSource::File("/path/to/template.html".to_string())`
     ///
     /// The file extension determines the rendering strategy:
-    /// - `.askama.html` or `.jinja` → Compile-time (if compiled)
+    /// - `.tera` or `.jinja` → Compile-time (if compiled)
     /// - Other extensions → Runtime
     File(String),
 }
@@ -139,16 +139,16 @@ impl TemplateStrategySelector {
     ///
     /// # Selection Logic
     ///
-    /// 1. **Static templates** → Compile-time (Askama)
+    /// 1. **Static templates** → Compile-time (Tera with include_str!)
     ///    - Templates known at compile time
-    ///    - Best performance
+    ///    - Embedded templates for fast loading
     ///
     /// 2. **Dynamic templates** → Runtime (TemplateHTMLRenderer)
     ///    - Templates provided at runtime
     ///    - Maximum flexibility
     ///
     /// 3. **File-based templates** → Based on extension
-    ///    - `.askama.html`, `.jinja` → Compile-time (if pre-compiled)
+    ///    - `.tera`, `.jinja`, `.tpl` → Compile-time (if pre-compiled)
     ///    - Other extensions → Runtime
     ///
     /// # Examples
@@ -166,8 +166,8 @@ impl TemplateStrategySelector {
     /// let strategy = TemplateStrategySelector::select(&source);
     /// assert_eq!(strategy, TemplateStrategy::Runtime);
     ///
-    /// // File-based with Askama extension
-    /// let source = TemplateSource::File("template.askama.html".to_string());
+    /// // File-based with Tera extension
+    /// let source = TemplateSource::File("template.tera".to_string());
     /// let strategy = TemplateStrategySelector::select(&source);
     /// assert_eq!(strategy, TemplateStrategy::CompileTime);
     ///
@@ -178,7 +178,7 @@ impl TemplateStrategySelector {
     /// ```
     pub fn select(template_source: &TemplateSource) -> TemplateStrategy {
         match template_source {
-            // Static templates known at compile time → Use Askama
+            // Static templates known at compile time → Use Tera with include_str!
             TemplateSource::Static(_) => TemplateStrategy::CompileTime,
 
             // Dynamic templates provided at runtime → Use TemplateHTMLRenderer
@@ -186,11 +186,11 @@ impl TemplateStrategySelector {
 
             // File-based: Check extension
             TemplateSource::File(path) => {
-                if path.ends_with(".askama.html")
+                if path.ends_with(".tera")
                     || path.ends_with(".jinja")
-                    || path.ends_with(".askama")
+                    || path.ends_with(".tpl")
                 {
-                    // Askama-specific extensions → Compile-time (if pre-compiled)
+                    // Template-specific extensions → Compile-time (if pre-compiled)
                     TemplateStrategy::CompileTime
                 } else {
                     // Regular extensions → Runtime for flexibility
@@ -334,8 +334,8 @@ mod tests {
     }
 
     #[test]
-    fn test_strategy_selection_file_askama() {
-        let source = TemplateSource::File("template.askama.html".to_string());
+    fn test_strategy_selection_file_tera() {
+        let source = TemplateSource::File("template.tera".to_string());
         let strategy = TemplateStrategySelector::select(&source);
         assert_eq!(strategy, TemplateStrategy::CompileTime);
     }
@@ -343,6 +343,13 @@ mod tests {
     #[test]
     fn test_strategy_selection_file_jinja() {
         let source = TemplateSource::File("template.jinja".to_string());
+        let strategy = TemplateStrategySelector::select(&source);
+        assert_eq!(strategy, TemplateStrategy::CompileTime);
+    }
+
+    #[test]
+    fn test_strategy_selection_file_tpl() {
+        let source = TemplateSource::File("template.tpl".to_string());
         let strategy = TemplateStrategySelector::select(&source);
         assert_eq!(strategy, TemplateStrategy::CompileTime);
     }
@@ -456,7 +463,7 @@ mod tests {
     #[test]
     fn test_file_extension_edge_cases() {
         // Multiple dots in filename
-        let source = TemplateSource::File("my.template.askama.html".to_string());
+        let source = TemplateSource::File("my.template.tera".to_string());
         let strategy = TemplateStrategySelector::select(&source);
         assert_eq!(strategy, TemplateStrategy::CompileTime);
 

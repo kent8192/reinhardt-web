@@ -1,13 +1,13 @@
-//! Performance comparison tests between Runtime and Compile-time template rendering
+//! Performance comparison tests between Runtime and Tera template rendering
 //!
 //! These tests demonstrate the performance characteristics of both approaches:
 //!
 //! - **Runtime (Phase 2)**: O(n + m) single-pass variable substitution
-//! - **Compile-time (Askama)**: O(1) - templates compiled to native code
+//! - **Tera (Embedded)**: Templates embedded at compile time with runtime rendering
 //!
-//! Expected results: Compile-time is 100-1000x faster for static templates.
+//! Expected results: Tera provides good balance between flexibility and performance.
 
-use crate::askama_renderer::{UserData, UserListTemplate, UserTemplate};
+use crate::tera_renderer::{UserData, UserListTemplate, UserTemplate};
 use crate::template_html_renderer::TemplateHTMLRenderer;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -19,7 +19,7 @@ use std::time::Instant;
 fn test_performance_simple_template() {
     const ITERATIONS: usize = 1000;
 
-    // Compile-time (Askama)
+    // Compile-time (Tera)
     let template = UserTemplate::new(
         "Test User".to_string(),
         "test@example.com".to_string(),
@@ -47,12 +47,12 @@ fn test_performance_simple_template() {
     let runtime_duration = start.elapsed();
 
     println!("\n=== Simple Template Performance (10 variables, {} iterations) ===", ITERATIONS);
-    println!("Compile-time (Askama):  {:?}", compile_time_duration);
-    println!("Runtime (Phase 2):      {:?}", runtime_duration);
+    println!("Tera (Embedded):   {:?}", compile_time_duration);
+    println!("Runtime (Phase 2): {:?}", runtime_duration);
 
     if runtime_duration > compile_time_duration {
         let speedup = runtime_duration.as_nanos() as f64 / compile_time_duration.as_nanos() as f64;
-        println!("Speedup: {:.1}x faster with compile-time", speedup);
+        println!("Speedup: {:.1}x faster with Tera", speedup);
     }
 }
 
@@ -64,7 +64,7 @@ fn test_performance_list_template() {
     const LIST_SIZE: usize = 100;
     const ITERATIONS: usize = 100;
 
-    // Compile-time (Askama)
+    // Compile-time (Tera)
     let users: Vec<UserData> = (0..LIST_SIZE)
         .map(|i| UserData::new(format!("User {}", i), format!("user{}@test.com", i)))
         .collect();
@@ -100,26 +100,25 @@ fn test_performance_list_template() {
     let runtime_duration = start.elapsed();
 
     println!("\n=== List Template Performance ({} items, {} iterations) ===", LIST_SIZE, ITERATIONS);
-    println!("Compile-time (Askama):  {:?}", compile_time_duration);
-    println!("Runtime (Phase 2):      {:?}", runtime_duration);
+    println!("Tera (Embedded):   {:?}", compile_time_duration);
+    println!("Runtime (Phase 2): {:?}", runtime_duration);
 
     if runtime_duration > compile_time_duration {
         let speedup = runtime_duration.as_nanos() as f64 / compile_time_duration.as_nanos() as f64;
-        println!("Speedup: {:.1}x faster with compile-time", speedup);
+        println!("Speedup: {:.1}x faster with Tera", speedup);
     }
 }
 
-/// Benchmark: Compile-time rendering scalability
+/// Benchmark: Tera rendering scalability
 ///
-/// Demonstrates O(1) complexity - rendering time is constant regardless of template complexity
+/// Demonstrates Tera's performance with embedded templates
 #[test]
-fn test_compile_time_scalability() {
+fn test_tera_scalability() {
     const ITERATIONS: usize = 1000;
 
-    // Test with different list sizes
     let sizes = vec![10, 50, 100, 500, 1000];
 
-    println!("\n=== Compile-time Scalability Test ===");
+    println!("\n=== Tera Scalability Test ===");
 
     for size in sizes {
         let users: Vec<UserData> = (0..size)
@@ -136,9 +135,6 @@ fn test_compile_time_scalability() {
 
         println!("  {} items: {:?}", size, duration);
     }
-
-    // Compile-time rendering should show relatively constant time
-    // because templates are compiled to native code
 }
 
 /// Benchmark: Runtime rendering scalability
@@ -183,18 +179,17 @@ fn test_runtime_scalability() {
 /// This test demonstrates memory characteristics of both approaches
 #[test]
 fn test_memory_characteristics() {
-    // Compile-time: Template code is compiled into binary
-    // - No runtime memory for template parsing
-    // - Template structure is part of the executable
+    // Tera: Templates embedded at compile time
+    // - Template string embedded in binary
+    // - Runtime parsing and rendering
 
-    let compile_time_template = UserTemplate::new(
+    let tera_template = UserTemplate::new(
         "Memory Test".to_string(),
         "memory@test.com".to_string(),
         30,
     );
 
-    // This struct is lightweight - just the data fields
-    let compile_time_size = std::mem::size_of_val(&compile_time_template);
+    let tera_size = std::mem::size_of_val(&tera_template);
 
     // Runtime: Template string needs to be stored and parsed
     let runtime_template = "<h1>{{ name }}</h1><p>Email: {{ email }}</p><p>Age: {{ age }}</p>";
@@ -210,14 +205,11 @@ fn test_memory_characteristics() {
     let runtime_context_size = std::mem::size_of_val(&runtime_context);
 
     println!("\n=== Memory Characteristics ===");
-    println!("Compile-time template data: {} bytes", compile_time_size);
+    println!("Tera template data:      {} bytes", tera_size);
+    println!("Runtime template string: {} bytes", runtime_template_size);
+    println!("Runtime context:         {} bytes", runtime_context_size);
     println!(
-        "Runtime template string:    {} bytes",
-        runtime_template_size
-    );
-    println!("Runtime context:            {} bytes", runtime_context_size);
-    println!(
-        "Runtime total:              {} bytes",
+        "Runtime total:           {} bytes",
         runtime_template_size + runtime_context_size
     );
 }
@@ -231,7 +223,7 @@ fn test_end_to_end_comparison() {
 
     println!("\n=== End-to-End Rendering Comparison ({} iterations) ===", ITERATIONS);
 
-    // Compile-time
+    // Tera
     let template = UserTemplate::new(
         "John Doe".to_string(),
         "john@example.com".to_string(),
@@ -242,7 +234,7 @@ fn test_end_to_end_comparison() {
     for _ in 0..ITERATIONS {
         let _ = template.render_user().expect("Failed to render");
     }
-    let compile_time_duration = start.elapsed();
+    let tera_duration = start.elapsed();
 
     // Runtime
     let mut context = HashMap::new();
@@ -264,18 +256,11 @@ fn test_end_to_end_comparison() {
     }
     let runtime_duration = start.elapsed();
 
-    println!("Compile-time (Askama):  {:?}", compile_time_duration);
-    println!("Runtime (Phase 2):      {:?}", runtime_duration);
+    println!("Tera (Embedded):   {:?}", tera_duration);
+    println!("Runtime (Phase 2): {:?}", runtime_duration);
 
-    if runtime_duration > compile_time_duration {
-        let speedup = runtime_duration.as_nanos() as f64 / compile_time_duration.as_nanos() as f64;
-        println!("Speedup: {:.1}x faster with compile-time", speedup);
-
-        // Compile-time should be significantly faster
-        // but both should complete in reasonable time
-        assert!(
-            compile_time_duration < runtime_duration,
-            "Compile-time should be faster than runtime"
-        );
+    if runtime_duration > tera_duration {
+        let speedup = runtime_duration.as_nanos() as f64 / tera_duration.as_nanos() as f64;
+        println!("Speedup: {:.1}x faster with Tera", speedup);
     }
 }
