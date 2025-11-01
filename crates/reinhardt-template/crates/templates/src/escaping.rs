@@ -10,7 +10,8 @@
 //! - `"` → `&quot;`
 //! - `'` → `&#x27;`
 
-use askama::Result as AskamaResult;
+use std::collections::HashMap;
+use tera::{Result as TeraResult, Value};
 
 /// Escape HTML special characters
 ///
@@ -38,17 +39,20 @@ pub fn escape_html(s: &str) -> String {
         .collect()
 }
 
-/// Askama filter for HTML escaping
+/// Tera filter for HTML escaping
 ///
-/// This filter can be used in Askama templates to escape HTML content.
+/// This filter can be used in Tera templates to escape HTML content.
 ///
 /// # Examples
 ///
-/// ```askama
+/// ```tera
 /// {{ user_input|escape }}
 /// ```
-pub fn escape(s: &str) -> AskamaResult<String> {
-    Ok(escape_html(s))
+pub fn escape(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let s = value.as_str().ok_or_else(|| {
+        tera::Error::msg("escape filter requires a string")
+    })?;
+    Ok(Value::String(escape_html(s)))
 }
 
 /// Unescape HTML entities
@@ -63,7 +67,7 @@ pub fn escape(s: &str) -> AskamaResult<String> {
 ///
 /// assert_eq!(unescape_html("&lt;div&gt;"), "<div>");
 /// assert_eq!(unescape_html("&quot;quoted&quot;"), r#""quoted""#);
-/// assert_eq!(unescape_html("&#x27;single&#x27;"), "''");
+/// assert_eq!(unescape_html("&#x27;single&#x27;"), "'single'");
 /// ```
 pub fn unescape_html(s: &str) -> String {
     s.replace("&lt;", "<")
@@ -74,9 +78,12 @@ pub fn unescape_html(s: &str) -> String {
         .replace("&#39;", "'")
 }
 
-/// Askama filter for HTML unescaping
-pub fn unescape(s: &str) -> AskamaResult<String> {
-    Ok(unescape_html(s))
+/// Tera filter for HTML unescaping
+pub fn unescape(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let s = value.as_str().ok_or_else(|| {
+        tera::Error::msg("unescape filter requires a string")
+    })?;
+    Ok(Value::String(unescape_html(s)))
 }
 
 /// Mark a string as safe (already escaped)

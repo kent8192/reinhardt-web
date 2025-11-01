@@ -3,42 +3,28 @@
 //! Tests for template filters inspired by Django's filter tests
 
 use crate::{static_filter, static_path_join, StaticConfig};
-use askama::Template;
 use std::collections::HashMap;
-
-#[derive(Template)]
-#[template(source = "{{ value }}", ext = "txt")]
-struct SimpleTemplate {
-    value: String,
-}
+use tera::{Context, Tera};
 
 #[test]
 fn test_filter_basic_rendering() {
     // Test basic rendering
-    let tmpl = SimpleTemplate {
-        value: "hello".to_string(),
-    };
+    let mut context = Context::new();
+    context.insert("value", "hello");
 
-    let result = tmpl.render().unwrap();
+    let result = Tera::one_off("{{ value }}", &context, false).unwrap();
     assert_eq!(result, "hello");
 }
 
 #[test]
 fn test_filter_escape() {
-    // Test HTML escaping (built-in Askama feature)
-    #[derive(Template)]
-    #[template(source = "{{ value|e }}", ext = "html")]
-    struct EscapeTemplate {
-        value: String,
-    }
+    // Test HTML escaping (built-in Tera feature)
+    let mut context = Context::new();
+    context.insert("value", "<script>alert('xss')</script>");
 
-    let tmpl = EscapeTemplate {
-        value: "<script>alert('xss')</script>".to_string(),
-    };
-
-    let result = tmpl.render().unwrap();
-    // Askama escapes HTML
-    // Test that template renders (escaping is handled by Askama)
+    let result = Tera::one_off("{{ value | escape }}", &context, false).unwrap();
+    // Tera escapes HTML
+    // Test that template renders (escaping is handled by Tera)
     assert!(!result.is_empty());
 }
 
@@ -110,22 +96,20 @@ fn test_static_path_join_nested() {
 #[test]
 fn test_filter_with_empty_string() {
     // Test filters with empty string
-    let tmpl = SimpleTemplate {
-        value: String::new(),
-    };
+    let mut context = Context::new();
+    context.insert("value", "");
 
-    let result = tmpl.render().unwrap();
+    let result = Tera::one_off("{{ value }}", &context, false).unwrap();
     assert_eq!(result, "");
 }
 
 #[test]
 fn test_filter_with_unicode() {
     // Test filters with unicode characters
-    let tmpl = SimpleTemplate {
-        value: "こんにちは 世界".to_string(),
-    };
+    let mut context = Context::new();
+    context.insert("value", "こんにちは 世界");
 
-    let result = tmpl.render().unwrap();
+    let result = Tera::one_off("{{ value }}", &context, false).unwrap();
     assert_eq!(result, "こんにちは 世界");
 }
 

@@ -8,7 +8,7 @@ authors.workspace = true
 description = "Template engine for Reinhardt framework (optional feature)"
 
 [dependencies]
-askama = "0.14.0"
+tera = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 reinhardt-i18n = { workspace = true }

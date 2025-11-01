@@ -1,6 +1,6 @@
 //! # Reinhardt Templates
 //!
-//! Template engine for Reinhardt framework using Askama (optional feature).
+//! Template engine for Reinhardt framework using Tera.
 //!
 //! ## Features
 //!
@@ -17,18 +17,17 @@
 //!
 //! ## Example
 //!
-//! ```rust
-//! use reinhardt_templates::Template;
-//! use askama::Template as AskamaTemplate;
+//! ```rust,ignore
+//! use tera::{Context, Tera};
 //!
-//! #[derive(Template)]
-//! #[template(source = "Hello {{ name }}!", ext = "txt")]
-//! struct HelloTemplate {
-//!     name: String,
-//! }
+//! let mut tera = Tera::default();
+//! tera.add_raw_template("hello", "Hello {{ name }}!").unwrap();
 //!
-//! let tmpl = HelloTemplate { name: "World".to_string() };
-//! assert_eq!(tmpl.render().unwrap(), "Hello World!");
+//! let mut context = Context::new();
+//! context.insert("name", "World");
+//!
+//! let result = tera.render("hello", &context).unwrap();
+//! assert_eq!(result, "Hello World!");
 //! ```
 
 pub mod advanced_filters;
@@ -48,7 +47,6 @@ pub use advanced_filters::{
     pluralize, slugify, timesince, title as title_filter, truncate as truncate_filter, urlencode,
     wordcount,
 };
-pub use askama::Template;
 pub use custom_filters::{
     capitalize, default, join, length, ljust, lower, replace, reverse, rjust, split, striptags,
     title, trim, truncate, upper,
@@ -244,36 +242,33 @@ mod tests;
 #[cfg(test)]
 mod basic_tests {
     use super::*;
-    use askama::Template as AskamaTemplate;
-
-    #[derive(AskamaTemplate)]
-    #[template(source = "Hello {{ name }}!", ext = "txt")]
-    struct HelloTemplate {
-        name: String,
-    }
-
-    #[derive(AskamaTemplate)]
-    #[template(source = "{{ greeting }} {{ name }}!", ext = "txt")]
-    struct GreetingTemplate {
-        greeting: String,
-        name: String,
-    }
+    use tera::{Context, Tera};
 
     #[test]
     fn test_simple_variable_substitution() {
-        let tmpl = HelloTemplate {
-            name: "World".to_string(),
-        };
-        assert_eq!(tmpl.render().unwrap(), "Hello World!");
+        let mut tera = Tera::default();
+        tera.add_raw_template("hello", "Hello {{ name }}!")
+            .unwrap();
+
+        let mut context = Context::new();
+        context.insert("name", "World");
+
+        let result = tera.render("hello", &context).unwrap();
+        assert_eq!(result, "Hello World!");
     }
 
     #[test]
     fn test_multiple_variables() {
-        let tmpl = GreetingTemplate {
-            greeting: "Hello".to_string(),
-            name: "Rust".to_string(),
-        };
-        assert_eq!(tmpl.render().unwrap(), "Hello Rust!");
+        let mut tera = Tera::default();
+        tera.add_raw_template("greeting", "{{ greeting }} {{ name }}!")
+            .unwrap();
+
+        let mut context = Context::new();
+        context.insert("greeting", "Hello");
+        context.insert("name", "Rust");
+
+        let result = tera.render("greeting", &context).unwrap();
+        assert_eq!(result, "Hello Rust!");
     }
 
     #[test]

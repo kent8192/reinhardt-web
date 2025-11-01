@@ -4,7 +4,7 @@ Template system for Reinhardt framework
 
 ## Overview
 
-`reinhardt-template` provides a comprehensive template system for Reinhardt applications, including template engines, response renderers, and template macros. It integrates Askama (Jinja-like template engine) with Django-inspired features for flexible HTML rendering and content negotiation.
+`reinhardt-template` provides a comprehensive template system for Reinhardt applications, including template engines, response renderers, and template macros. It integrates Tera (Jinja2-like template engine) with Django-inspired features for flexible HTML rendering and content negotiation.
 
 This crate serves as a parent crate that integrates multiple template-related sub-crates to provide a unified templating experience.
 
@@ -14,7 +14,7 @@ This crate serves as a parent crate that integrates multiple template-related su
 
 This parent crate re-exports functionality from the following sub-crates:
 
-- **Templates** (`reinhardt-templates`): Template engine with Askama integration
+- **Templates** (`reinhardt-templates`): Template engine with Tera integration
   - Variable substitution with `{{ variable }}` syntax
   - Control structures: `{% if %}`, `{% for %}` tags
   - Template inheritance: `{% extends %}` and `{% block %}`
@@ -76,24 +76,19 @@ Available features:
 
 ### Template Rendering
 
-```rust
-use reinhardt_template::{Template, TemplateLoader};
+```rust,ignore
+use tera::{Context, Tera};
 
-// Define a template
-#[derive(Template)]
-#[template(path = "index.html")]
-struct IndexTemplate {
-    title: String,
-    user: String,
-}
+// Create Tera instance
+let mut tera = Tera::default();
+tera.add_raw_template("index.html", "Hello {{ user }}!")?;
+
+// Create context
+let mut context = Context::new();
+context.insert("user", "John");
 
 // Render template
-let tmpl = IndexTemplate {
-    title: "Welcome".to_string(),
-    user: "John".to_string(),
-};
-
-let html = tmpl.render()?;
+let html = tera.render("index.html", &context)?;
 ```
 
 ### File System Templates

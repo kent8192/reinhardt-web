@@ -1,4 +1,4 @@
-//! Static files filters for Askama templates
+//! Static files filters for Tera templates
 //!
 //! Provides filters for generating URLs to static files, similar to Django's
 //! `{% static %}` template tag.
@@ -57,7 +57,7 @@ fn get_static_config() -> StaticConfig {
 
 /// Generate a URL for a static file
 ///
-/// This is the main filter function that can be used in Askama templates.
+/// This is the main filter function that can be used in Tera templates.
 /// It handles both regular and hashed static file URLs.
 ///
 /// # Arguments
@@ -69,14 +69,14 @@ fn get_static_config() -> StaticConfig {
 /// The full URL to the static file (e.g., "/static/css/style.css" or
 /// "/static/css/style.abc123.css" if using hashed filenames)
 ///
-/// # Example in Askama template
+/// # Example in Tera template
 ///
 /// ```html
 /// <link rel="stylesheet" href="{{ "css/style.css"|static }}">
 /// <script src="{{ "js/app.js"|static }}"></script>
 /// <img src="{{ "images/logo.png"|static }}" alt="Logo">
 /// ```
-pub fn static_filter(path: &str) -> askama::Result<String> {
+pub fn static_filter(path: &str) -> Result<String, String> {
     let config = get_static_config();
 
     // Normalize the path (remove leading slash if present)
@@ -102,14 +102,14 @@ pub fn static_filter(path: &str) -> askama::Result<String> {
 ///
 /// Useful for dynamically constructing static file paths.
 ///
-/// # Example in Askama template
+/// # Example in Tera template
 ///
 /// ```html
 /// {# Construct path dynamically #}
-/// {% let image_path = "images/" ~ image_name %}
+/// {% set image_path = "images/" ~ image_name %}
 /// <img src="{{ image_path|static }}" alt="Dynamic image">
 /// ```
-pub fn static_path_join(base: &str, path: &str) -> askama::Result<String> {
+pub fn static_path_join(base: &str, path: &str) -> Result<String, String> {
     let joined = Path::new(base).join(path);
     Ok(joined.to_string_lossy().to_string())
 }

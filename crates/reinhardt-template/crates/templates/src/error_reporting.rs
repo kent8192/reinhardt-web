@@ -619,7 +619,7 @@ impl ErrorReporter {
     /// reporter.add_error(EnhancedError::new(ErrorSeverity::Error, context));
     ///
     /// let summary = reporter.summary();
-    /// assert!(summary.contains("1 error"));
+    /// assert!(summary.contains("Errors: 1"));
     /// ```
     pub fn summary(&self) -> String {
         let mut output = String::from("=== Error Report ===\n\n");

@@ -7,7 +7,8 @@
 //! - Date formatting (date, time, timesince)
 //! - URL operations (urlencode, urlize)
 
-use askama::Result as AskamaResult;
+use std::collections::HashMap;
+use tera::{Result as TeraResult, Value};
 use chrono::{DateTime, Duration, Utc};
 
 /// Truncate a string to a specified length
@@ -20,15 +21,24 @@ use chrono::{DateTime, Duration, Utc};
 /// assert_eq!(truncate_filter("Hello World", 5).unwrap(), "He...");
 /// assert_eq!(truncate_filter("Hi", 5).unwrap(), "Hi");
 /// ```
-pub fn truncate(s: &str, length: usize) -> AskamaResult<String> {
-    if s.len() <= length {
-        Ok(s.to_string())
+pub fn truncate(value: &Value, args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let s = value.as_str().ok_or_else(|| {
+        tera::Error::msg("truncate filter requires a string")
+    })?;
+    let length = args
+        .get("length")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| tera::Error::msg("truncate filter requires a 'length' parameter"))? as usize;
+
+    let result = if s.len() <= length {
+        s.to_string()
     } else {
         // Reserve 3 characters for "..."
         let actual_length = if length >= 3 { length - 3 } else { 0 };
         let truncated = s.chars().take(actual_length).collect::<String>();
-        Ok(format!("{}...", truncated))
-    }
+        format!("{}...", truncated)
+    };
+    Ok(Value::String(result))
 }
 
 /// Convert a string to a URL-friendly slug
@@ -41,7 +51,10 @@ pub fn truncate(s: &str, length: usize) -> AskamaResult<String> {
 /// assert_eq!(slugify("Hello World!").unwrap(), "hello-world");
 /// assert_eq!(slugify("Django REST Framework").unwrap(), "django-rest-framework");
 /// ```
-pub fn slugify(s: &str) -> AskamaResult<String> {
+pub fn slugify(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let s = value.as_str().ok_or_else(|| {
+        tera::Error::msg("slugify filter requires a string")
+    })?;
     let slug = s
         .to_lowercase()
         .chars()
@@ -64,7 +77,7 @@ pub fn slugify(s: &str) -> AskamaResult<String> {
         .collect::<Vec<_>>()
         .join("-");
 
-    Ok(slug)
+    Ok(Value::String(slug))
 }
 
 /// Convert a string to title case
@@ -72,12 +85,15 @@ pub fn slugify(s: &str) -> AskamaResult<String> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_templates::title;
+/// use reinhardt_templates::title_filter;
 ///
-/// assert_eq!(title("hello world").unwrap(), "Hello World");
-/// assert_eq!(title("django-rest-framework").unwrap(), "Django-Rest-Framework");
+/// assert_eq!(title_filter("hello world").unwrap(), "Hello World");
+/// assert_eq!(title_filter("django-rest-framework").unwrap(), "Django Rest Framework");
 /// ```
-pub fn title(s: &str) -> AskamaResult<String> {
+pub fn title(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let s = value.as_str().ok_or_else(|| {
+        tera::Error::msg("title filter requires a string")
+    })?;
     let result = s
         .split(|c: char| c.is_whitespace() || c == '-' || c == '_')
         .map(|word| {
@@ -89,7 +105,7 @@ pub fn title(s: &str) -> AskamaResult<String> {
         })
         .collect::<Vec<_>>()
         .join(" ");
-    Ok(result)
+    Ok(Value::String(result))
 }
 
 /// Format a file size in human-readable format
@@ -102,7 +118,10 @@ pub fn title(s: &str) -> AskamaResult<String> {
 /// assert_eq!(filesizeformat(1024).unwrap(), "1.00 KB");
 /// assert_eq!(filesizeformat(1048576).unwrap(), "1.00 MB");
 /// ```
-pub fn filesizeformat(bytes: i64) -> AskamaResult<String> {
+pub fn filesizeformat(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let bytes = value.as_i64().ok_or_else(|| {
+        tera::Error::msg("filesizeformat filter requires a number")
+    })?;
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB", "PB"];
     let mut size = bytes as f64;
     let mut unit_index = 0;
@@ -112,11 +131,12 @@ pub fn filesizeformat(bytes: i64) -> AskamaResult<String> {
         unit_index += 1;
     }
 
-    if unit_index == 0 {
-        Ok(format!("{} {}", bytes, UNITS[0]))
+    let result = if unit_index == 0 {
+        format!("{} {}", bytes, UNITS[0])
     } else {
-        Ok(format!("{:.2} {}", size, UNITS[unit_index]))
-    }
+        format!("{:.2} {}", size, UNITS[unit_index])
+    };
+    Ok(Value::String(result))
 }
 
 /// Format a float with specified decimal places
@@ -129,8 +149,16 @@ pub fn filesizeformat(bytes: i64) -> AskamaResult<String> {
 /// assert_eq!(floatformat(3.14159, 2).unwrap(), "3.14");
 /// assert_eq!(floatformat(2.0, 2).unwrap(), "2.00");
 /// ```
-pub fn floatformat(value: f64, places: usize) -> AskamaResult<String> {
-    Ok(format!("{:.prec$}", value, prec = places))
+pub fn floatformat(value: &Value, args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let num = value.as_f64().ok_or_else(|| {
+        tera::Error::msg("floatformat filter requires a number")
+    })?;
+    let places = args
+        .get("places")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| tera::Error::msg("floatformat filter requires a 'places' parameter"))? as usize;
+
+    Ok(Value::String(format!("{:.prec$}", num, prec = places)))
 }
 
 /// Get the first element of a list
@@ -143,10 +171,13 @@ pub fn floatformat(value: f64, places: usize) -> AskamaResult<String> {
 /// let items = vec!["a", "b", "c"];
 /// assert_eq!(first(&items).unwrap(), "a");
 /// ```
-pub fn first<T: std::fmt::Display>(list: &[T]) -> AskamaResult<String> {
+pub fn first(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let list = value.as_array().ok_or_else(|| {
+        tera::Error::msg("first filter requires an array")
+    })?;
     list.first()
-        .map(|item| item.to_string())
-        .ok_or_else(|| askama::Error::Custom("List is empty".into()))
+        .cloned()
+        .ok_or_else(|| tera::Error::msg("List is empty"))
 }
 
 /// Get the last element of a list
@@ -159,10 +190,13 @@ pub fn first<T: std::fmt::Display>(list: &[T]) -> AskamaResult<String> {
 /// let items = vec!["a", "b", "c"];
 /// assert_eq!(last(&items).unwrap(), "c");
 /// ```
-pub fn last<T: std::fmt::Display>(list: &[T]) -> AskamaResult<String> {
+pub fn last(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let list = value.as_array().ok_or_else(|| {
+        tera::Error::msg("last filter requires an array")
+    })?;
     list.last()
-        .map(|item| item.to_string())
-        .ok_or_else(|| askama::Error::Custom("List is empty".into()))
+        .cloned()
+        .ok_or_else(|| tera::Error::msg("List is empty"))
 }
 
 /// Join list elements with a separator
@@ -172,15 +206,30 @@ pub fn last<T: std::fmt::Display>(list: &[T]) -> AskamaResult<String> {
 /// ```
 /// use reinhardt_templates::join;
 ///
-/// let items = vec!["a", "b", "c"];
+/// let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
 /// assert_eq!(join(&items, ", ").unwrap(), "a, b, c");
 /// ```
-pub fn join<T: std::fmt::Display>(list: &[T], separator: &str) -> AskamaResult<String> {
-    Ok(list
+pub fn join(value: &Value, args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let list = value.as_array().ok_or_else(|| {
+        tera::Error::msg("join filter requires an array")
+    })?;
+    let separator = args
+        .get("sep")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| tera::Error::msg("join filter requires a 'sep' parameter"))?;
+
+    let strings: Result<Vec<String>, tera::Error> = list
         .iter()
-        .map(|item| item.to_string())
-        .collect::<Vec<_>>()
-        .join(separator))
+        .map(|v| {
+            if let Some(s) = v.as_str() {
+                Ok(s.to_string())
+            } else {
+                Ok(v.to_string())
+            }
+        })
+        .collect();
+
+    Ok(Value::String(strings?.join(separator)))
 }
 
 /// URL-encode a string
@@ -193,8 +242,11 @@ pub fn join<T: std::fmt::Display>(list: &[T], separator: &str) -> AskamaResult<S
 /// assert_eq!(urlencode("hello world").unwrap(), "hello%20world");
 /// assert_eq!(urlencode("a+b=c").unwrap(), "a%2Bb%3Dc");
 /// ```
-pub fn urlencode(s: &str) -> AskamaResult<String> {
-    Ok(urlencoding::encode(s).to_string())
+pub fn urlencode(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let s = value.as_str().ok_or_else(|| {
+        tera::Error::msg("urlencode filter requires a string")
+    })?;
+    Ok(Value::String(urlencoding::encode(s).to_string()))
 }
 
 /// Calculate time difference from now
@@ -209,12 +261,20 @@ pub fn urlencode(s: &str) -> AskamaResult<String> {
 /// let result = timesince(&past).unwrap();
 /// assert!(result.contains("hour"));
 /// ```
-pub fn timesince(dt: &DateTime<Utc>) -> AskamaResult<String> {
+pub fn timesince(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    // Assume value is a UTC timestamp string (ISO 8601 format)
+    let dt_str = value.as_str().ok_or_else(|| {
+        tera::Error::msg("timesince filter requires a string datetime")
+    })?;
+    let dt = DateTime::parse_from_rfc3339(dt_str)
+        .map_err(|e| tera::Error::msg(format!("Invalid datetime format: {}", e)))?
+        .with_timezone(&Utc);
+
     let now = Utc::now();
-    let duration = now.signed_duration_since(*dt);
+    let duration = now.signed_duration_since(dt);
 
     if duration < Duration::zero() {
-        return Ok("in the future".to_string());
+        return Ok(Value::String("in the future".to_string()));
     }
 
     let seconds = duration.num_seconds();
@@ -222,41 +282,42 @@ pub fn timesince(dt: &DateTime<Utc>) -> AskamaResult<String> {
     let hours = duration.num_hours();
     let days = duration.num_days();
 
-    if days > 365 {
+    let result = if days > 365 {
         let years = days / 365;
-        Ok(format!(
+        format!(
             "{} year{}",
             years,
             if years != 1 { "s" } else { "" }
-        ))
+        )
     } else if days > 30 {
         let months = days / 30;
-        Ok(format!(
+        format!(
             "{} month{}",
             months,
             if months != 1 { "s" } else { "" }
-        ))
+        )
     } else if days > 0 {
-        Ok(format!("{} day{}", days, if days != 1 { "s" } else { "" }))
+        format!("{} day{}", days, if days != 1 { "s" } else { "" })
     } else if hours > 0 {
-        Ok(format!(
+        format!(
             "{} hour{}",
             hours,
             if hours != 1 { "s" } else { "" }
-        ))
+        )
     } else if minutes > 0 {
-        Ok(format!(
+        format!(
             "{} minute{}",
             minutes,
             if minutes != 1 { "s" } else { "" }
-        ))
+        )
     } else {
-        Ok(format!(
+        format!(
             "{} second{}",
             seconds,
             if seconds != 1 { "s" } else { "" }
-        ))
-    }
+        )
+    };
+    Ok(Value::String(result))
 }
 
 /// Default value if variable is empty or None
@@ -269,12 +330,19 @@ pub fn timesince(dt: &DateTime<Utc>) -> AskamaResult<String> {
 /// assert_eq!(default("", "N/A").unwrap(), "N/A");
 /// assert_eq!(default("Hello", "N/A").unwrap(), "Hello");
 /// ```
-pub fn default(s: &str, default_value: &str) -> AskamaResult<String> {
-    if s.is_empty() {
-        Ok(default_value.to_string())
+pub fn default(value: &Value, args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let s = value.as_str().unwrap_or("");
+    let default_value = args
+        .get("value")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| tera::Error::msg("default filter requires a 'value' parameter"))?;
+
+    let result = if s.is_empty() {
+        default_value.to_string()
     } else {
-        Ok(s.to_string())
-    }
+        s.to_string()
+    };
+    Ok(Value::String(result))
 }
 
 /// Word count
@@ -287,9 +355,12 @@ pub fn default(s: &str, default_value: &str) -> AskamaResult<String> {
 /// assert_eq!(wordcount("hello world").unwrap(), "2");
 /// assert_eq!(wordcount("one two three").unwrap(), "3");
 /// ```
-pub fn wordcount(s: &str) -> AskamaResult<String> {
+pub fn wordcount(value: &Value, _args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let s = value.as_str().ok_or_else(|| {
+        tera::Error::msg("wordcount filter requires a string")
+    })?;
     let count = s.split_whitespace().count();
-    Ok(count.to_string())
+    Ok(Value::Number((count as u64).into()))
 }
 
 /// Add a value to a number
@@ -302,8 +373,16 @@ pub fn wordcount(s: &str) -> AskamaResult<String> {
 /// assert_eq!(add(5, 3).unwrap(), 8);
 /// assert_eq!(add(10, -5).unwrap(), 5);
 /// ```
-pub fn add(value: i64, arg: i64) -> AskamaResult<i64> {
-    Ok(value + arg)
+pub fn add(value: &Value, args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let num = value.as_i64().ok_or_else(|| {
+        tera::Error::msg("add filter requires a number")
+    })?;
+    let arg = args
+        .get("value")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| tera::Error::msg("add filter requires a 'value' parameter"))?;
+
+    Ok(Value::Number((num + arg).into()))
 }
 
 /// Pluralize a word based on count
@@ -317,12 +396,21 @@ pub fn add(value: i64, arg: i64) -> AskamaResult<i64> {
 /// assert_eq!(pluralize(2, "s").unwrap(), "s");
 /// assert_eq!(pluralize(0, "s").unwrap(), "s");
 /// ```
-pub fn pluralize(count: i64, suffix: &str) -> AskamaResult<String> {
-    if count == 1 {
-        Ok(String::new())
+pub fn pluralize(value: &Value, args: &HashMap<String, Value>) -> TeraResult<Value> {
+    let count = value.as_i64().ok_or_else(|| {
+        tera::Error::msg("pluralize filter requires a number")
+    })?;
+    let suffix = args
+        .get("suffix")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| tera::Error::msg("pluralize filter requires a 'suffix' parameter"))?;
+
+    let result = if count == 1 {
+        String::new()
     } else {
-        Ok(suffix.to_string())
-    }
+        suffix.to_string()
+    };
+    Ok(Value::String(result))
 }
 
 #[cfg(test)]

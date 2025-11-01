@@ -6,7 +6,7 @@
 //! - Breaking down large templates into smaller, manageable pieces
 //! - Sharing template components across multiple pages
 //!
-//! Note: Askama already provides `{% include %}` syntax. This module provides
+//! Note: Tera already provides `{% include %}` syntax. This module provides
 //! additional helpers for dynamic template inclusion and context management.
 
 use reinhardt_exception::{Error, Result};
@@ -117,7 +117,7 @@ impl TemplateIncludeManager {
 /// Include a template snippet
 ///
 /// This is a helper function for including template snippets.
-/// In practice, Askama's built-in `{% include %}` should be preferred.
+/// In practice, Tera's built-in `{% include %}` should be preferred.
 ///
 /// # Examples
 ///

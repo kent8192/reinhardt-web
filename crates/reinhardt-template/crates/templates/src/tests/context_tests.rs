@@ -2,227 +2,184 @@
 //!
 //! Tests for template context management inspired by Django's test_context.py
 
-use askama::Template;
-
-#[derive(Template)]
-#[template(source = "Value: {{ value }}", ext = "txt")]
-struct SimpleTemplate {
-    value: String,
-}
-
-#[derive(Template)]
-#[template(source = "{{ key1 }} - {{ key2 }}", ext = "txt")]
-struct MultiValueTemplate {
-    key1: String,
-    key2: String,
-}
-
-#[derive(Template)]
-#[template(
-    source = "{% for item in items %}{{ item }}{% if !loop.last %}, {% endif %}{% endfor %}",
-    ext = "txt"
-)]
-struct LoopTemplate {
-    items: Vec<String>,
-}
-
-#[derive(Template)]
-#[template(
-    source = "{% if show %}{{ content }}{% else %}Hidden{% endif %}",
-    ext = "txt"
-)]
-struct ConditionalTemplate {
-    show: bool,
-    content: String,
-}
+use serde::Serialize;
+use tera::{Context, Tera};
 
 #[test]
 fn test_simple_context() {
     // Test basic context rendering (similar to Django's test_context)
-    let tmpl = SimpleTemplate {
-        value: "Test".to_string(),
-    };
+    let mut context = Context::new();
+    context.insert("value", "Test");
 
-    let result = tmpl.render().unwrap();
+    let result = Tera::one_off("Value: {{ value }}", &context, false).unwrap();
     assert_eq!(result, "Value: Test");
 }
 
 #[test]
 fn test_multi_value_context() {
     // Test context with multiple values
-    let tmpl = MultiValueTemplate {
-        key1: "Hello".to_string(),
-        key2: "World".to_string(),
-    };
+    let mut context = Context::new();
+    context.insert("key1", "Hello");
+    context.insert("key2", "World");
 
-    let result = tmpl.render().unwrap();
+    let result = Tera::one_off("{{ key1 }} - {{ key2 }}", &context, false).unwrap();
     assert_eq!(result, "Hello - World");
 }
 
 #[test]
 fn test_context_with_empty_string() {
     // Test context with empty string value
-    let tmpl = SimpleTemplate {
-        value: String::new(),
-    };
+    let mut context = Context::new();
+    context.insert("value", "");
 
-    let result = tmpl.render().unwrap();
+    let result = Tera::one_off("Value: {{ value }}", &context, false).unwrap();
     assert_eq!(result, "Value: ");
 }
 
 #[test]
 fn test_context_with_special_characters() {
     // Test context with special characters
-    let tmpl = SimpleTemplate {
-        value: "Special: <>&\"'".to_string(),
-    };
+    let mut context = Context::new();
+    context.insert("value", "Special: <>&\"'");
 
-    let result = tmpl.render();
+    let result = Tera::one_off("Value: {{ value }}", &context, false);
     assert!(result.is_ok());
-    // Askama automatically escapes HTML by default
+    // Tera automatically escapes HTML by default
     assert!(result.unwrap().contains("Special"));
 }
 
 #[test]
 fn test_loop_context() {
     // Test context with loop (similar to Django's context iteration)
-    let tmpl = LoopTemplate {
-        items: vec![
-            "first".to_string(),
-            "second".to_string(),
-            "third".to_string(),
-        ],
-    };
+    let mut context = Context::new();
+    context.insert("items", &vec!["first", "second", "third"]);
 
-    let result = tmpl.render().unwrap();
+    let template = "{% for item in items %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}";
+    let result = Tera::one_off(template, &context, false).unwrap();
     assert_eq!(result, "first, second, third");
 }
 
 #[test]
 fn test_loop_context_empty() {
     // Test loop with empty list
-    let tmpl = LoopTemplate { items: vec![] };
+    let mut context = Context::new();
+    context.insert("items", &Vec::<String>::new());
 
-    let result = tmpl.render().unwrap();
+    let template = "{% for item in items %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}";
+    let result = Tera::one_off(template, &context, false).unwrap();
     assert_eq!(result, "");
 }
 
 #[test]
 fn test_loop_context_single_item() {
     // Test loop with single item
-    let tmpl = LoopTemplate {
-        items: vec!["only".to_string()],
-    };
+    let mut context = Context::new();
+    context.insert("items", &vec!["only"]);
 
-    let result = tmpl.render().unwrap();
+    let template = "{% for item in items %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}";
+    let result = Tera::one_off(template, &context, false).unwrap();
     assert_eq!(result, "only");
 }
 
 #[test]
 fn test_conditional_context_true() {
     // Test conditional rendering when condition is true
-    let tmpl = ConditionalTemplate {
-        show: true,
-        content: "Visible".to_string(),
-    };
+    let mut context = Context::new();
+    context.insert("show", &true);
+    context.insert("content", "Visible");
 
-    let result = tmpl.render().unwrap();
+    let template = "{% if show %}{{ content }}{% else %}Hidden{% endif %}";
+    let result = Tera::one_off(template, &context, false).unwrap();
     assert_eq!(result, "Visible");
 }
 
 #[test]
 fn test_conditional_context_false() {
     // Test conditional rendering when condition is false
-    let tmpl = ConditionalTemplate {
-        show: false,
-        content: "Should not appear".to_string(),
-    };
+    let mut context = Context::new();
+    context.insert("show", &false);
+    context.insert("content", "Should not appear");
 
-    let result = tmpl.render().unwrap();
+    let template = "{% if show %}{{ content }}{% else %}Hidden{% endif %}";
+    let result = Tera::one_off(template, &context, false).unwrap();
     assert_eq!(result, "Hidden");
 }
 
 #[test]
 fn test_context_comparable() {
     // Test that we can compare context values (similar to Django's test_context_comparable)
-    let tmpl1 = SimpleTemplate {
-        value: "Same".to_string(),
-    };
-    let tmpl2 = SimpleTemplate {
-        value: "Same".to_string(),
-    };
+    let mut context1 = Context::new();
+    context1.insert("value", "Same");
 
-    assert_eq!(tmpl1.render().unwrap(), tmpl2.render().unwrap());
+    let mut context2 = Context::new();
+    context2.insert("value", "Same");
+
+    let result1 = Tera::one_off("Value: {{ value }}", &context1, false).unwrap();
+    let result2 = Tera::one_off("Value: {{ value }}", &context2, false).unwrap();
+
+    assert_eq!(result1, result2);
 }
 
 #[test]
 fn test_context_with_numbers() {
-    #[derive(Template)]
-    #[template(source = "Number: {{ num }}", ext = "txt")]
-    struct NumberTemplate {
-        num: i32,
-    }
+    let mut context = Context::new();
+    context.insert("num", &42);
 
-    let tmpl = NumberTemplate { num: 42 };
-    let result = tmpl.render().unwrap();
+    let result = Tera::one_off("Number: {{ num }}", &context, false).unwrap();
     assert_eq!(result, "Number: 42");
 }
 
 #[test]
 fn test_context_with_boolean() {
-    #[derive(Template)]
-    #[template(source = "{% if flag %}yes{% else %}no{% endif %}", ext = "txt")]
-    struct BoolTemplate {
-        flag: bool,
-    }
+    let mut context_true = Context::new();
+    context_true.insert("flag", &true);
 
-    let tmpl_true = BoolTemplate { flag: true };
-    assert_eq!(tmpl_true.render().unwrap(), "yes");
+    let template = "{% if flag %}yes{% else %}no{% endif %}";
+    assert_eq!(Tera::one_off(template, &context_true, false).unwrap(), "yes");
 
-    let tmpl_false = BoolTemplate { flag: false };
-    assert_eq!(tmpl_false.render().unwrap(), "no");
+    let mut context_false = Context::new();
+    context_false.insert("flag", &false);
+
+    assert_eq!(Tera::one_off(template, &context_false, false).unwrap(), "no");
 }
 
 #[test]
 fn test_context_with_nested_struct() {
-    #[derive(Template)]
-    #[template(source = "{{ user.name }} ({{ user.age }})", ext = "txt")]
-    struct UserTemplate {
-        user: User,
-    }
-
+    #[derive(Serialize)]
     struct User {
         name: String,
         age: u32,
     }
 
-    let tmpl = UserTemplate {
-        user: User {
+    let mut context = Context::new();
+    context.insert(
+        "user",
+        &User {
             name: "Alice".to_string(),
             age: 30,
         },
-    };
+    );
 
-    let result = tmpl.render().unwrap();
+    let result = Tera::one_off("{{ user.name }} ({{ user.age }})", &context, false).unwrap();
     assert_eq!(result, "Alice (30)");
 }
 
 #[test]
 fn test_context_with_option() {
-    #[derive(Template)]
-    #[template(
-        source = "{% if let Some(val) = opt %}{{ val }}{% else %}None{% endif %}",
-        ext = "txt"
-    )]
-    struct OptionTemplate {
-        opt: Option<String>,
-    }
+    let mut context_some = Context::new();
+    context_some.insert("opt", &Some("Value".to_string()));
 
-    let tmpl_some = OptionTemplate {
-        opt: Some("Value".to_string()),
-    };
-    assert_eq!(tmpl_some.render().unwrap(), "Value");
+    let template = "{% if opt %}{{ opt }}{% else %}None{% endif %}";
+    assert_eq!(
+        Tera::one_off(template, &context_some, false).unwrap(),
+        "Value"
+    );
 
-    let tmpl_none = OptionTemplate { opt: None };
-    assert_eq!(tmpl_none.render().unwrap(), "None");
+    let mut context_none = Context::new();
+    context_none.insert("opt", &Option::<String>::None);
+
+    assert_eq!(
+        Tera::one_off(template, &context_none, false).unwrap(),
+        "None"
+    );
 }

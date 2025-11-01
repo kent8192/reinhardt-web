@@ -2,20 +2,8 @@
 //!
 //! Tests for template loading functionality inspired by Django's test_loaders.py
 
-use crate::{Template as AskamaTemplate, TemplateError, TemplateId, TemplateLoader};
-use askama::Template;
-
-#[derive(Template)]
-#[template(source = "Test template {{ value }}", ext = "txt")]
-struct TestTemplate {
-    value: String,
-}
-
-#[derive(Template)]
-#[template(source = "Another template {{ data }}", ext = "txt")]
-struct AnotherTemplate {
-    data: String,
-}
+use crate::{TemplateError, TemplateId, TemplateLoader};
+use tera::{Context, Tera};
 
 struct HomeTemplateId;
 impl TemplateId for HomeTemplateId {
@@ -32,10 +20,11 @@ fn test_template_loader_get_template() {
     // Test basic template loading similar to Django's test_get_template
     let mut loader = TemplateLoader::new();
     loader.register("test.html", || {
-        let tmpl = TestTemplate {
-            value: "Hello".to_string(),
-        };
-        tmpl.render().unwrap()
+        let mut context = Context::new();
+        context.insert("value", "Hello");
+
+        let template = "Test template {{ value }}";
+        Tera::one_off(template, &context, false).unwrap()
     });
 
     let result = loader.render("test.html");
@@ -70,17 +59,19 @@ fn test_template_loader_multiple_templates() {
     let mut loader = TemplateLoader::new();
 
     loader.register("template1.html", || {
-        let tmpl = TestTemplate {
-            value: "First".to_string(),
-        };
-        tmpl.render().unwrap()
+        let mut context = Context::new();
+        context.insert("value", "First");
+
+        let template = "Test template {{ value }}";
+        Tera::one_off(template, &context, false).unwrap()
     });
 
     loader.register("template2.html", || {
-        let tmpl = AnotherTemplate {
-            data: "Second".to_string(),
-        };
-        tmpl.render().unwrap()
+        let mut context = Context::new();
+        context.insert("data", "Second");
+
+        let template = "Another template {{ data }}";
+        Tera::one_off(template, &context, false).unwrap()
     });
 
     assert_eq!(
@@ -99,10 +90,11 @@ fn test_typed_template_loading() {
     let mut loader = TemplateLoader::new();
 
     loader.register_typed::<HomeTemplateId, _>(|| {
-        let tmpl = TestTemplate {
-            value: "Home Page".to_string(),
-        };
-        tmpl.render().unwrap()
+        let mut context = Context::new();
+        context.insert("value", "Home Page");
+
+        let template = "Test template {{ value }}";
+        Tera::one_off(template, &context, false).unwrap()
     });
 
     let result = loader.render_typed::<HomeTemplateId>();

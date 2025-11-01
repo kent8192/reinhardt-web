@@ -1,12 +1,12 @@
 //! # Reinhardt Template System
 //!
 //! This crate provides a comprehensive template system for the Reinhardt framework,
-//! including template engines, renderers, and compile-time template validation macros.
+//! including template engines, renderers, and runtime template processing.
 //!
 //! ## Features
 //!
-//! - **templates**: Template engine with Askama integration
-//! - **templates-macros**: Compile-time template path validation
+//! - **templates**: Template engine with Tera integration
+//! - **templates-macros**: Template macros for compile-time validation
 //! - **renderers**: Response renderers (JSON, XML, YAML, CSV, etc.)
 //!
 //! ## Re-exports
@@ -33,7 +33,7 @@ pub use reinhardt_renderers as renderers;
 
 // Convenience re-exports for common types
 #[cfg(feature = "templates")]
-pub use reinhardt_templates::{Template, TemplateError};
+pub use reinhardt_templates::TemplateError;
 
 #[cfg(feature = "renderers")]
 pub use reinhardt_renderers::{BrowsableAPIRenderer, JSONRenderer, TemplateHTMLRenderer};

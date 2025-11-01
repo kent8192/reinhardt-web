@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 /// use reinhardt_templates::debug_filter;
 ///
 /// let value = "test";
-/// let result = debug_filter(value);
+/// let result = debug_filter(&value);
 /// assert!(result.contains("test"));
 /// ```
 pub fn debug_filter<T: fmt::Debug>(value: &T) -> String {

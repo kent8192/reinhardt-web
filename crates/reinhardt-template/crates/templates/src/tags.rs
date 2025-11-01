@@ -1,4 +1,4 @@
-//! Custom template tags for Askama
+//! Custom template tags for Tera
 //!
 //! Provides a system for registering and using custom template tags beyond
 //! the standard filters. Template tags can:
@@ -7,8 +7,7 @@
 //! - Loop over data
 //! - Include other templates
 //!
-//! Note: Askama's compile-time template system has limitations on dynamic tag
-//! registration. This module provides helpers for common tag patterns.
+//! This module provides helpers for common tag patterns and custom tag registration.
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
