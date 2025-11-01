@@ -93,17 +93,11 @@ impl PoolConfig {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct PoolOptions {
 	pub config: PoolConfig,
 }
 
-impl Default for PoolOptions {
-	fn default() -> Self {
-		Self {
-			config: PoolConfig::default(),
-		}
-	}
-}
 
 impl PoolOptions {
 	pub fn new() -> Self {

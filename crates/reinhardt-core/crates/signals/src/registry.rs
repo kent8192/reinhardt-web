@@ -26,11 +26,10 @@ impl SignalRegistry {
 		// Try to get existing signal
 		{
 			let signals = self.signals.read();
-			if let Some(signal_any) = signals.get(&key) {
-				if let Some(signal) = signal_any.downcast_ref::<Signal<T>>() {
+			if let Some(signal_any) = signals.get(&key)
+				&& let Some(signal) = signal_any.downcast_ref::<Signal<T>>() {
 					return signal.clone();
 				}
-			}
 		}
 
 		// Create new signal
@@ -52,11 +51,10 @@ impl SignalRegistry {
 		// Try to get existing signal
 		{
 			let signals = self.signals.read();
-			if let Some(signal_any) = signals.get(&key) {
-				if let Some(signal) = signal_any.downcast_ref::<Signal<T>>() {
+			if let Some(signal_any) = signals.get(&key)
+				&& let Some(signal) = signal_any.downcast_ref::<Signal<T>>() {
 					return signal.clone();
 				}
-			}
 		}
 
 		// Create new signal (need to leak string for SignalName)
@@ -69,7 +67,7 @@ impl SignalRegistry {
 
 // Global registry instance
 static GLOBAL_REGISTRY: once_cell::sync::Lazy<SignalRegistry> =
-	once_cell::sync::Lazy::new(|| SignalRegistry::new());
+	once_cell::sync::Lazy::new(SignalRegistry::new);
 
 /// Get a signal from the global registry with type-safe name
 pub fn get_signal<T: Send + Sync + 'static>(name: SignalName) -> Signal<T> {

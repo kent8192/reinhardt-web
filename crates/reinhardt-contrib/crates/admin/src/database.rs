@@ -8,7 +8,6 @@ use reinhardt_orm::{DatabaseConnection, Filter, FilterOperator, FilterValue, Mod
 use sea_query::{
 	Alias, Asterisk, Condition, Expr, ExprTrait, PostgresQueryBuilder, Query as SeaQuery,
 };
-use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -177,7 +176,7 @@ impl AdminDatabase {
 			.connection
 			.query(&sql)
 			.await
-			.map_err(|e| AdminError::DatabaseError(e))?;
+			.map_err(AdminError::DatabaseError)?;
 
 		// Convert QueryRow to HashMap
 		Ok(rows
@@ -240,7 +239,7 @@ impl AdminDatabase {
 			.connection
 			.query_optional(&sql)
 			.await
-			.map_err(|e| AdminError::DatabaseError(e))?;
+			.map_err(AdminError::DatabaseError)?;
 
 		Ok(row.map(|r| {
 			let mut map = HashMap::new();
@@ -329,7 +328,7 @@ impl AdminDatabase {
 			.connection
 			.execute(&sql)
 			.await
-			.map_err(|e| AdminError::DatabaseError(e))?;
+			.map_err(AdminError::DatabaseError)?;
 
 		Ok(affected)
 	}
@@ -405,7 +404,7 @@ impl AdminDatabase {
 			.connection
 			.execute(&sql)
 			.await
-			.map_err(|e| AdminError::DatabaseError(e))?;
+			.map_err(AdminError::DatabaseError)?;
 
 		Ok(affected)
 	}
@@ -457,7 +456,7 @@ impl AdminDatabase {
 			.connection
 			.execute(&sql)
 			.await
-			.map_err(|e| AdminError::DatabaseError(e))?;
+			.map_err(AdminError::DatabaseError)?;
 
 		Ok(affected)
 	}
@@ -514,7 +513,7 @@ impl AdminDatabase {
 			.connection
 			.execute(&sql)
 			.await
-			.map_err(|e| AdminError::DatabaseError(e))?;
+			.map_err(AdminError::DatabaseError)?;
 
 		Ok(affected)
 	}
@@ -574,7 +573,7 @@ impl AdminDatabase {
 			.connection
 			.query_one(&sql)
 			.await
-			.map_err(|e| AdminError::DatabaseError(e))?;
+			.map_err(AdminError::DatabaseError)?;
 
 		// Extract count from result
 		// Note: In a real implementation, we would parse the actual count value

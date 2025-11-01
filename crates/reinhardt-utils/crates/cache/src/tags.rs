@@ -210,14 +210,13 @@ impl<C: Cache> TaggedCache for TaggedCacheWrapper<C> {
 				if let Some(tags) = index.key_to_tags.remove(key) {
 					// Remove this key from all other tags
 					for other_tag in tags {
-						if other_tag != tag {
-							if let Some(tag_keys) = index.tag_to_keys.get_mut(&other_tag) {
+						if other_tag != tag
+							&& let Some(tag_keys) = index.tag_to_keys.get_mut(&other_tag) {
 								tag_keys.remove(key);
 								if tag_keys.is_empty() {
 									index.tag_to_keys.remove(&other_tag);
 								}
 							}
-						}
 					}
 				}
 			}

@@ -19,7 +19,7 @@ pub trait ThrottleBackend: Send + Sync {
 	) -> Result<usize, ThrottleError> {
 		self.increment(key, window.as_secs())
 			.await
-			.map_err(|e| ThrottleError::ThrottleError(e))
+			.map_err(ThrottleError::ThrottleError)
 	}
 
 	/// Get wait time for rate limit

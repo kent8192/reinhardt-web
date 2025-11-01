@@ -199,7 +199,7 @@ impl<C: Cache> CacheMiddleware<C> {
 	fn should_cache_response(&self, response: &Response) -> bool {
 		if self.config.cache_success_only {
 			let status = response.status.as_u16();
-			status >= 200 && status < 300
+			(200..300).contains(&status)
 		} else {
 			true
 		}
@@ -218,11 +218,10 @@ impl<C: Cache> CacheMiddleware<C> {
 		for directive in cache_control.split(',') {
 			let directive = directive.trim();
 			if directive.starts_with("max-age=") {
-				if let Some(age_str) = directive.strip_prefix("max-age=") {
-					if let Ok(seconds) = age_str.parse::<u64>() {
+				if let Some(age_str) = directive.strip_prefix("max-age=")
+					&& let Ok(seconds) = age_str.parse::<u64>() {
 						return Some(Duration::from_secs(seconds));
 					}
-				}
 			} else if directive == "no-cache" || directive == "no-store" {
 				// If no-cache or no-store is set, return None to indicate
 				// that this response should not be cached

@@ -101,7 +101,7 @@ impl SyncSignal {
 		let original_len = receivers.len();
 
 		if let Some(uid) = dispatch_uid {
-			receivers.retain(|r| r.dispatch_uid.as_ref().map(|s| s.as_str()) != Some(uid));
+			receivers.retain(|r| r.dispatch_uid.as_deref() != Some(uid));
 		} else {
 			// If no dispatch_uid provided, clear all receivers
 			receivers.clear();

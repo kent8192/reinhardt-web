@@ -138,7 +138,7 @@ pub fn parse_and_validate(permission: &str) -> std::result::Result<PermissionAst
 				Err("App label cannot be empty. Use format 'app.permission'".to_string())
 			} else if error_pos == permission.len() {
 				Err("Permission codename cannot be empty after the dot".to_string())
-			} else if remaining.chars().next().map_or(false, |c| c.is_numeric()) {
+			} else if remaining.chars().next().is_some_and(|c| c.is_numeric()) {
 				Err(format!(
 					"Invalid identifier at position {}: cannot start with a number",
 					error_pos

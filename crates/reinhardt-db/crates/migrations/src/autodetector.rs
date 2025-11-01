@@ -201,6 +201,12 @@ pub struct ProjectState {
 	pub models: std::collections::HashMap<(String, String), ModelState>,
 }
 
+impl Default for ProjectState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProjectState {
 	/// Create a new empty ProjectState
 	///
@@ -467,13 +473,13 @@ impl SimilarityConfig {
 		levenshtein_weight: f64,
 	) -> Result<Self, String> {
 		// Validate thresholds are in reasonable range
-		if model_threshold < 0.5 || model_threshold > 0.95 {
+		if !(0.5..=0.95).contains(&model_threshold) {
 			return Err(format!(
 				"model_threshold must be between 0.5 and 0.95, got {}",
 				model_threshold
 			));
 		}
-		if field_threshold < 0.5 || field_threshold > 0.95 {
+		if !(0.5..=0.95).contains(&field_threshold) {
 			return Err(format!(
 				"field_threshold must be between 0.5 and 0.95, got {}",
 				field_threshold
@@ -481,13 +487,13 @@ impl SimilarityConfig {
 		}
 
 		// Validate weights are in valid range
-		if jaro_winkler_weight < 0.0 || jaro_winkler_weight > 1.0 {
+		if !(0.0..=1.0).contains(&jaro_winkler_weight) {
 			return Err(format!(
 				"jaro_winkler_weight must be between 0.0 and 1.0, got {}",
 				jaro_winkler_weight
 			));
 		}
-		if levenshtein_weight < 0.0 || levenshtein_weight > 1.0 {
+		if !(0.0..=1.0).contains(&levenshtein_weight) {
 			return Err(format!(
 				"levenshtein_weight must be between 0.0 and 1.0, got {}",
 				levenshtein_weight
@@ -687,14 +693,13 @@ impl DetectedChanges {
 			// model_dependencies maps dependent -> dependencies
 			// So we need to find all models that have `model` in their dependencies
 			for (dependent, dependencies) in &self.model_dependencies {
-				if dependencies.contains(&model) {
-					if let Some(degree) = in_degree.get_mut(dependent) {
+				if dependencies.contains(&model)
+					&& let Some(degree) = in_degree.get_mut(dependent) {
 						*degree -= 1;
 						if *degree == 0 {
 							queue.push_back(dependent.clone());
 						}
 					}
-				}
 			}
 		}
 
@@ -793,8 +798,8 @@ impl DetectedChanges {
 		}
 
 		for model in self.model_dependencies.keys() {
-			if !visited.contains(model) {
-				if let Some(cycle) = dfs(
+			if !visited.contains(model)
+				&& let Some(cycle) = dfs(
 					model,
 					&self.model_dependencies,
 					&mut visited,
@@ -803,7 +808,6 @@ impl DetectedChanges {
 				) {
 					return Err(cycle);
 				}
-			}
 		}
 
 		Ok(())
@@ -1092,8 +1096,7 @@ impl ChangeTracker {
 				if let Ok(diff) = self.history[j]
 					.timestamp
 					.duration_since(self.history[i].timestamp)
-				{
-					if diff <= window {
+					&& diff <= window {
 						let pattern1 = format!(
 							"{}:{}",
 							self.history[i].change_type, self.history[i].model_name
@@ -1109,7 +1112,6 @@ impl ChangeTracker {
 						};
 						*cooccurrences.entry(key).or_insert(0) += 1;
 					}
-				}
 			}
 		}
 
@@ -1444,6 +1446,12 @@ pub struct InferenceEngine {
 	/// let _cooccurrences = engine.analyze_cooccurrence(std::time::Duration::from_secs(60));
 	/// ```
 	change_tracker: ChangeTracker,
+}
+
+impl Default for InferenceEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InferenceEngine {
@@ -2378,7 +2386,7 @@ impl MigrationAutodetector {
 	///
 	/// Django reference: `generate_created_models()` in django/db/migrations/autodetector.py:800
 	fn detect_created_models(&self, changes: &mut DetectedChanges) {
-		for ((app_label, model_name), _model) in &self.to_state.models {
+		for (app_label, model_name) in self.to_state.models.keys() {
 			if !self
 				.from_state
 				.models
@@ -2395,7 +2403,7 @@ impl MigrationAutodetector {
 	///
 	/// Django reference: `generate_deleted_models()` in django/db/migrations/autodetector.py:900
 	fn detect_deleted_models(&self, changes: &mut DetectedChanges) {
-		for ((app_label, model_name), _model) in &self.from_state.models {
+		for (app_label, model_name) in self.from_state.models.keys() {
 			if !self
 				.to_state
 				.models
@@ -2415,7 +2423,7 @@ impl MigrationAutodetector {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
 			// Only check models that exist in both states
 			if let Some(from_model) = self.from_state.get_model(app_label, model_name) {
-				for (field_name, _field) in &to_model.fields {
+				for field_name in to_model.fields.keys() {
 					if !from_model.fields.contains_key(field_name) {
 						changes.added_fields.push((
 							app_label.clone(),
@@ -2435,7 +2443,7 @@ impl MigrationAutodetector {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
 			// Only check models that exist in both states
 			if let Some(to_model) = self.to_state.get_model(app_label, model_name) {
-				for (field_name, _field) in &from_model.fields {
+				for field_name in from_model.fields.keys() {
 					if !to_model.fields.contains_key(field_name) {
 						changes.removed_fields.push((
 							app_label.clone(),
@@ -2896,13 +2904,12 @@ impl MigrationAutodetector {
 			let source_idx = deleted_nodes.iter().position(|&n| n == source);
 			let target_idx = created_nodes.iter().position(|&n| n == target);
 
-			if let (Some(i), Some(j)) = (source_idx, target_idx) {
-				if !used_deleted.contains(&i) && !used_created.contains(&j) {
+			if let (Some(i), Some(j)) = (source_idx, target_idx)
+				&& !used_deleted.contains(&i) && !used_created.contains(&j) {
 					matches.push((deleted[i].clone(), created[j].clone(), weight));
 					used_deleted.insert(i);
 					used_created.insert(j);
 				}
-			}
 		}
 
 		matches
@@ -3073,8 +3080,8 @@ impl MigrationAutodetector {
 
 		// Generate AddColumn operations for new fields
 		for (app_label, model_name, field_name) in &changes.added_fields {
-			if let Some(model) = self.to_state.get_model(app_label, model_name) {
-				if let Some(field) = model.get_field(field_name) {
+			if let Some(model) = self.to_state.get_model(app_label, model_name)
+				&& let Some(field) = model.get_field(field_name) {
 					operations.push(crate::Operation::AddColumn {
 						table: model.name.clone(),
 						column: crate::ColumnDefinition::new(
@@ -3083,13 +3090,12 @@ impl MigrationAutodetector {
 						),
 					});
 				}
-			}
 		}
 
 		// Generate AlterColumn operations for changed fields
 		for (app_label, model_name, field_name) in &changes.altered_fields {
-			if let Some(model) = self.to_state.get_model(app_label, model_name) {
-				if let Some(field) = model.get_field(field_name) {
+			if let Some(model) = self.to_state.get_model(app_label, model_name)
+				&& let Some(field) = model.get_field(field_name) {
 					operations.push(crate::Operation::AlterColumn {
 						table: model.name.clone(),
 						column: field_name.clone(),
@@ -3099,7 +3105,6 @@ impl MigrationAutodetector {
 						),
 					});
 				}
-			}
 		}
 
 		// Generate DropColumn operations for removed fields
@@ -3203,8 +3208,8 @@ impl MigrationAutodetector {
 
 		// Group added fields by app
 		for (app_label, model_name, field_name) in &changes.added_fields {
-			if let Some(model) = self.to_state.get_model(app_label, model_name) {
-				if let Some(field) = model.get_field(field_name) {
+			if let Some(model) = self.to_state.get_model(app_label, model_name)
+				&& let Some(field) = model.get_field(field_name) {
 					migrations_by_app
 						.entry(app_label.clone())
 						.or_default()
@@ -3216,13 +3221,12 @@ impl MigrationAutodetector {
 							),
 						});
 				}
-			}
 		}
 
 		// Group altered fields by app
 		for (app_label, model_name, field_name) in &changes.altered_fields {
-			if let Some(model) = self.to_state.get_model(app_label, model_name) {
-				if let Some(field) = model.get_field(field_name) {
+			if let Some(model) = self.to_state.get_model(app_label, model_name)
+				&& let Some(field) = model.get_field(field_name) {
 					migrations_by_app
 						.entry(app_label.clone())
 						.or_default()
@@ -3235,7 +3239,6 @@ impl MigrationAutodetector {
 							),
 						});
 				}
-			}
 		}
 
 		// Group removed fields by app
@@ -3358,7 +3361,7 @@ impl MigrationAutodetector {
 			let mut dependencies = Vec::new();
 
 			// Check each field for foreign key relationships
-			for (_field_name, field) in &model.fields {
+			for field in model.fields.values() {
 				// Detect ForeignKey fields by checking field type
 				// Format: "ForeignKey(app.Model)" or "ManyToManyField(app.Model)"
 				if let Some(referenced_model) =

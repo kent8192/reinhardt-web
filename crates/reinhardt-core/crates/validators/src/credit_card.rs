@@ -169,8 +169,8 @@ impl CreditCardValidator {
 			.ok_or_else(|| ValidationError::InvalidCreditCard("Unknown card type".to_string()))?;
 
 		// Check if card type is allowed
-		if let Some(ref allowed) = self.allowed_types {
-			if !allowed.contains(&card_type) {
+		if let Some(ref allowed) = self.allowed_types
+			&& !allowed.contains(&card_type) {
 				let allowed_str = allowed
 					.iter()
 					.map(|t| t.as_str())
@@ -181,7 +181,6 @@ impl CreditCardValidator {
 					allowed_types: allowed_str,
 				});
 			}
-		}
 
 		Ok(card_type)
 	}

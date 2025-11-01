@@ -65,6 +65,7 @@ impl FilterConfig {
 
 /// Ordering configuration for ViewSets
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct OrderingConfig {
 	/// Fields that can be used for ordering
 	pub ordering_fields: Vec<String>,
@@ -72,14 +73,6 @@ pub struct OrderingConfig {
 	pub default_ordering: Vec<String>,
 }
 
-impl Default for OrderingConfig {
-	fn default() -> Self {
-		Self {
-			ordering_fields: Vec::new(),
-			default_ordering: Vec::new(),
-		}
-	}
-}
 
 impl OrderingConfig {
 	/// Create a new ordering configuration
@@ -156,11 +149,10 @@ pub trait FilterableViewSet: Send + Sync {
 		}
 
 		// Validate against filterable fields if configured
-		if let Some(config) = self.get_filter_config() {
-			if !config.filterable_fields.is_empty() {
+		if let Some(config) = self.get_filter_config()
+			&& !config.filterable_fields.is_empty() {
 				filters.retain(|key, _| config.filterable_fields.contains(key));
 			}
-		}
 
 		filters
 	}
@@ -170,13 +162,11 @@ pub trait FilterableViewSet: Send + Sync {
 		let query_string = request.uri.query().unwrap_or("");
 
 		for pair in query_string.split('&') {
-			if let Some((key, value)) = pair.split_once('=') {
-				if key == "search" {
-					if let Ok(decoded_value) = urlencoding::decode(value) {
+			if let Some((key, value)) = pair.split_once('=')
+				&& key == "search"
+					&& let Ok(decoded_value) = urlencoding::decode(value) {
 						return Some(decoded_value.into_owned());
 					}
-				}
-			}
 		}
 
 		None
@@ -190,9 +180,9 @@ pub trait FilterableViewSet: Send + Sync {
 		let query_string = request.uri.query().unwrap_or("");
 
 		for pair in query_string.split('&') {
-			if let Some((key, value)) = pair.split_once('=') {
-				if key == "ordering" {
-					if let Ok(decoded_value) = urlencoding::decode(value) {
+			if let Some((key, value)) = pair.split_once('=')
+				&& key == "ordering"
+					&& let Ok(decoded_value) = urlencoding::decode(value) {
 						let requested_fields: Vec<String> = decoded_value
 							.split(',')
 							.map(|s| s.trim().to_string())
@@ -219,16 +209,13 @@ pub trait FilterableViewSet: Send + Sync {
 							return requested_fields;
 						}
 					}
-				}
-			}
 		}
 
 		// Return default ordering if configured
-		if let Some(config) = self.get_ordering_config() {
-			if !config.default_ordering.is_empty() {
+		if let Some(config) = self.get_ordering_config()
+			&& !config.default_ordering.is_empty() {
 				return config.default_ordering.clone();
 			}
-		}
 
 		Vec::new()
 	}

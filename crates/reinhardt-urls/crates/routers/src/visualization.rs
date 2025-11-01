@@ -333,14 +333,13 @@ impl NamespaceTree {
 		// Build parent-child relationships
 		let all_paths: Vec<String> = nodes.keys().cloned().collect();
 		for path in all_paths {
-			if let Some(ns) = nodes.get(&path).map(|n| Namespace::new(&n.full_path)) {
-				if let Some(parent) = ns.parent() {
+			if let Some(ns) = nodes.get(&path).map(|n| Namespace::new(&n.full_path))
+				&& let Some(parent) = ns.parent() {
 					let parent_path = parent.full_path().to_string();
 					if let Some(parent_node) = nodes.get_mut(&parent_path) {
 						parent_node.children.insert(path.clone());
 					}
 				}
-			}
 		}
 
 		Self { nodes }

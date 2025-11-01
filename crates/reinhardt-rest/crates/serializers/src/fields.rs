@@ -197,23 +197,20 @@ impl CharField {
 	/// assert!(field.validate("hello world").is_err()); // Too long
 	/// ```
 	pub fn validate(&self, value: &str) -> Result<(), FieldError> {
-		if value.is_empty() {
-			if !self.allow_blank {
+		if value.is_empty()
+			&& !self.allow_blank {
 				return Err(FieldError::Required);
 			}
-		}
 
-		if let Some(min) = self.min_length {
-			if value.len() < min {
+		if let Some(min) = self.min_length
+			&& value.len() < min {
 				return Err(FieldError::TooShort(min));
 			}
-		}
 
-		if let Some(max) = self.max_length {
-			if value.len() > max {
+		if let Some(max) = self.max_length
+			&& value.len() > max {
 				return Err(FieldError::TooLong(max));
 			}
-		}
 
 		Ok(())
 	}
@@ -336,17 +333,15 @@ impl IntegerField {
 	/// assert!(field.validate(101).is_err());
 	/// ```
 	pub fn validate(&self, value: i64) -> Result<(), FieldError> {
-		if let Some(min) = self.min_value {
-			if value < min {
+		if let Some(min) = self.min_value
+			&& value < min {
 				return Err(FieldError::TooSmall(min));
 			}
-		}
 
-		if let Some(max) = self.max_value {
-			if value > max {
+		if let Some(max) = self.max_value
+			&& value > max {
 				return Err(FieldError::TooLarge(max));
 			}
-		}
 
 		Ok(())
 	}
@@ -469,17 +464,15 @@ impl FloatField {
 	/// assert!(field.validate(1.1).is_err());
 	/// ```
 	pub fn validate(&self, value: f64) -> Result<(), FieldError> {
-		if let Some(min) = self.min_value {
-			if value < min {
+		if let Some(min) = self.min_value
+			&& value < min {
 				return Err(FieldError::TooSmallFloat(min));
 			}
-		}
 
-		if let Some(max) = self.max_value {
-			if value > max {
+		if let Some(max) = self.max_value
+			&& value > max {
 				return Err(FieldError::TooLargeFloat(max));
 			}
-		}
 
 		Ok(())
 	}
@@ -974,11 +967,10 @@ impl DateField {
 	/// ```
 	pub fn parse(&self, value: &str) -> Result<NaiveDate, FieldError> {
 		if value.is_empty() {
-			if !self.required {
-				if let Some(default) = self.default {
+			if !self.required
+				&& let Some(default) = self.default {
 					return Ok(default);
 				}
-			}
 			return Err(FieldError::Required);
 		}
 
@@ -1101,11 +1093,10 @@ impl DateTimeField {
 	/// ```
 	pub fn parse(&self, value: &str) -> Result<NaiveDateTime, FieldError> {
 		if value.is_empty() {
-			if !self.required {
-				if let Some(default) = self.default {
+			if !self.required
+				&& let Some(default) = self.default {
 					return Ok(default);
 				}
-			}
 			return Err(FieldError::Required);
 		}
 

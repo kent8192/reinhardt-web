@@ -44,7 +44,7 @@ pub fn truncate(value: &Value, args: &HashMap<String, Value>) -> TeraResult<Valu
 		s.to_string()
 	} else {
 		// Reserve 3 characters for "..."
-		let actual_length = if length >= 3 { length - 3 } else { 0 };
+		let actual_length = length.saturating_sub(3);
 		let truncated = s.chars().take(actual_length).collect::<String>();
 		format!("{}...", truncated)
 	};

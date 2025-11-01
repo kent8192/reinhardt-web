@@ -130,11 +130,10 @@ impl TaskLock for MemoryTaskLock {
 		let now = chrono::Utc::now().timestamp();
 		let expiry = now + ttl.as_secs() as i64;
 
-		if let Some(&existing_expiry) = locks.get(&task_id) {
-			if existing_expiry > now {
+		if let Some(&existing_expiry) = locks.get(&task_id)
+			&& existing_expiry > now {
 				return Ok(false);
 			}
-		}
 
 		locks.insert(task_id, expiry);
 		Ok(true)

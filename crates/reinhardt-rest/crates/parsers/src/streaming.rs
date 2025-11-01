@@ -112,14 +112,13 @@ impl StreamingParser {
 				let chunk_data = buffer.split_to(self.chunk_size).freeze();
 
 				// Check max size limit
-				if let Some(max_size) = self.max_size {
-					if offset + chunk_data.len() > max_size {
+				if let Some(max_size) = self.max_size
+					&& offset + chunk_data.len() > max_size {
 						return Err(Error::Validation(format!(
 							"Stream size exceeds maximum allowed size of {} bytes",
 							max_size
 						)));
 					}
-				}
 
 				chunks.push(StreamChunk {
 					data: chunk_data,
@@ -135,14 +134,13 @@ impl StreamingParser {
 		if !buffer.is_empty() {
 			let chunk_data = buffer.freeze();
 
-			if let Some(max_size) = self.max_size {
-				if offset + chunk_data.len() > max_size {
+			if let Some(max_size) = self.max_size
+				&& offset + chunk_data.len() > max_size {
 					return Err(Error::Validation(format!(
 						"Stream size exceeds maximum allowed size of {} bytes",
 						max_size
 					)));
 				}
-			}
 
 			chunks.push(StreamChunk {
 				data: chunk_data,
@@ -166,14 +164,13 @@ impl Parser for StreamingParser {
 		let total_size = body.len();
 
 		// Check max size limit
-		if let Some(max_size) = self.max_size {
-			if total_size > max_size {
+		if let Some(max_size) = self.max_size
+			&& total_size > max_size {
 				return Err(Error::Validation(format!(
 					"Body size {} exceeds maximum allowed size {}",
 					total_size, max_size
 				)));
 			}
-		}
 
 		// Convert to a file representation
 		let file = UploadedFile::new("stream".to_string(), body)

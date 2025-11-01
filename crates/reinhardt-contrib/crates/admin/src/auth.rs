@@ -4,7 +4,7 @@
 //! for admin operations.
 
 use crate::{AdminError, AdminResult};
-use reinhardt_auth::{DjangoModelPermissions, IsAdminUser, Permission, SimpleUser, User};
+use reinhardt_auth::{DjangoModelPermissions, IsAdminUser, SimpleUser, User};
 use std::any::Any;
 use std::sync::Arc;
 

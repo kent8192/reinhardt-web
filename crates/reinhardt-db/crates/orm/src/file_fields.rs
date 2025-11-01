@@ -406,23 +406,21 @@ impl ImageField {
 		max_width: Option<u32>,
 		max_height: Option<u32>,
 	) -> Result<(), FileFieldError> {
-		if let Some(max_w) = max_width {
-			if width > max_w {
+		if let Some(max_w) = max_width
+			&& width > max_w {
 				return Err(FileFieldError::InvalidDimensions {
 					expected: (max_w, max_height.unwrap_or(u32::MAX)),
 					actual: (width, height),
 				});
 			}
-		}
 
-		if let Some(max_h) = max_height {
-			if height > max_h {
+		if let Some(max_h) = max_height
+			&& height > max_h {
 				return Err(FileFieldError::InvalidDimensions {
 					expected: (max_width.unwrap_or(u32::MAX), max_h),
 					actual: (width, height),
 				});
 			}
-		}
 
 		Ok(())
 	}

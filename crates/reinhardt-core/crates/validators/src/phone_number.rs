@@ -132,18 +132,17 @@ impl PhoneNumberValidator {
 		let country_code = self.extract_country_code(base_number)?;
 
 		// Validate country code if whitelist exists
-		if let Some(ref allowed_codes) = self.country_codes {
-			if !allowed_codes.contains(&country_code) {
+		if let Some(ref allowed_codes) = self.country_codes
+			&& !allowed_codes.contains(&country_code) {
 				return Err(ValidationError::CountryCodeNotAllowed {
 					country_code,
 					allowed_countries: allowed_codes.join(", "),
 				});
 			}
-		}
 
 		// Validate total length (E.164 allows max 15 digits including country code)
 		let digit_count = base_number.chars().filter(|c| c.is_ascii_digit()).count();
-		if digit_count < 5 || digit_count > 15 {
+		if !(5..=15).contains(&digit_count) {
 			return Err(ValidationError::InvalidPhoneNumber(format!(
 				"Phone number must contain 5-15 digits, got {}",
 				digit_count
@@ -190,7 +189,7 @@ impl PhoneNumberValidator {
 		];
 
 		// Try 1-digit codes first
-		if country_code_digits.len() >= 1 {
+		if !country_code_digits.is_empty() {
 			let first_digit = &country_code_digits[0..1];
 			if SINGLE_DIGIT_CODES.contains(&first_digit) {
 				return Ok(first_digit.to_string());

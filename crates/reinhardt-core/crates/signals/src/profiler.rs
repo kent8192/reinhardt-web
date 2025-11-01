@@ -375,14 +375,13 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 		// Recommendations
 		report.push_str("\nRecommendations:\n");
 
-		if let Some(slowest) = self.slowest_receivers(1).first() {
-			if slowest.avg_duration.as_millis() > 100 {
+		if let Some(slowest) = self.slowest_receivers(1).first()
+			&& slowest.avg_duration.as_millis() > 100 {
 				report.push_str(&format!(
 					"  ⚠ Receiver '{}' is slow (avg: {:?}). Consider optimization.\n",
 					slowest.dispatch_uid, slowest.avg_duration
 				));
 			}
-		}
 
 		let unreliable = self.most_unreliable_receivers(3);
 		for profile in unreliable {
@@ -470,8 +469,8 @@ impl<T: Send + Sync + 'static> SignalMiddleware<T> for SignalProfiler<T> {
 		dispatch_uid: Option<&str>,
 		result: &Result<(), SignalError>,
 	) -> Result<(), SignalError> {
-		if let Some(uid) = dispatch_uid {
-			if let Some(start) = self.current_receiver_start.write().remove(uid) {
+		if let Some(uid) = dispatch_uid
+			&& let Some(start) = self.current_receiver_start.write().remove(uid) {
 				let duration = start.elapsed();
 				let success = result.is_ok();
 
@@ -482,7 +481,6 @@ impl<T: Send + Sync + 'static> SignalMiddleware<T> for SignalProfiler<T> {
 
 				profile.record_execution(duration, success);
 			}
-		}
 
 		Ok(())
 	}

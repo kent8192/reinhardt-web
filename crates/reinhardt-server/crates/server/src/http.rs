@@ -314,7 +314,7 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				parts.uri,
 				parts.version,
 				parts.headers,
-				Bytes::from(body_bytes),
+				body_bytes,
 			);
 			request.remote_addr = Some(remote_addr);
 

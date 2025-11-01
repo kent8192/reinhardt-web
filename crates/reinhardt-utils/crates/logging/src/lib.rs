@@ -29,7 +29,7 @@ pub fn init_global_logging(config: LoggingConfig) {
 }
 
 fn global_manager() -> &'static LoggingManager {
-	GLOBAL_MANAGER.get_or_init(|| LoggingManager::new(LoggingConfig::default()))
+	GLOBAL_MANAGER.get_or_init(|| LoggingManager::new(LoggingConfig))
 }
 
 /// Get a logger by name from the global manager.

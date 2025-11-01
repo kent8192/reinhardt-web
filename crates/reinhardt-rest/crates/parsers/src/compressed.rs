@@ -127,12 +127,11 @@ impl CompressedParser {
 		content_encoding: Option<&str>,
 		body: Bytes,
 	) -> ParseResult<Bytes> {
-		if let Some(encoding_str) = content_encoding {
-			if let Some(encoding) = CompressionEncoding::from_header(encoding_str) {
+		if let Some(encoding_str) = content_encoding
+			&& let Some(encoding) = CompressionEncoding::from_header(encoding_str) {
 				let decompressed = encoding.decompress(&body)?;
 				return Ok(Bytes::from(decompressed));
 			}
-		}
 		Ok(body)
 	}
 }

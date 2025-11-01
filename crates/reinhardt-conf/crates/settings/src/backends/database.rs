@@ -238,15 +238,13 @@ impl DatabaseBackend {
 				// Check if setting has expired
 				let expire_date_str: Option<String> = row.try_get("expire_date").ok();
 
-				if let Some(expire_date_str) = expire_date_str {
-					if let Ok(expire_date) = DateTime::parse_from_rfc3339(&expire_date_str) {
-						if expire_date.with_timezone(&Utc) < Utc::now() {
+				if let Some(expire_date_str) = expire_date_str
+					&& let Ok(expire_date) = DateTime::parse_from_rfc3339(&expire_date_str)
+						&& expire_date.with_timezone(&Utc) < Utc::now() {
 							// Setting expired, delete it
 							let _ = self.delete(key).await;
 							return Ok(None);
 						}
-					}
-				}
 
 				let value: String = row
 					.try_get("value")

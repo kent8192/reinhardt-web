@@ -179,13 +179,11 @@ impl RequestIdMiddleware {
 		}
 
 		// Try to get from existing header
-		if let Some(existing_id) = request.headers.get(&self.config.header_name) {
-			if let Ok(id_str) = existing_id.to_str() {
-				if !id_str.is_empty() {
+		if let Some(existing_id) = request.headers.get(&self.config.header_name)
+			&& let Ok(id_str) = existing_id.to_str()
+				&& !id_str.is_empty() {
 					return id_str.to_string();
 				}
-			}
-		}
 
 		// Generate if missing and configured to do so
 		if self.config.generate_if_missing {

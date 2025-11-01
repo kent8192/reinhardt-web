@@ -52,7 +52,7 @@ impl MessagePackParser {
 	/// let parser = MessagePackParser::new();
 	/// ```
 	pub fn new() -> Self {
-		Self::default()
+		Self
 	}
 }
 

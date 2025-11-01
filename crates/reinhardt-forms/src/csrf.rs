@@ -65,7 +65,7 @@ impl CsrfToken {
 
 		// Hash the random bytes with SHA-256
 		let mut hasher = Sha256::new();
-		hasher.update(&random_bytes);
+		hasher.update(random_bytes);
 		let hash_result = hasher.finalize();
 
 		// Encode as base64

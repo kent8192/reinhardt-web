@@ -315,8 +315,8 @@ where
 		let trimmed = s.trim();
 
 		// Try parsing as JSON array first
-		if trimmed.starts_with('[') && trimmed.ends_with(']') {
-			if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(trimmed) {
+		if trimmed.starts_with('[') && trimmed.ends_with(']')
+			&& let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(trimmed) {
 				return arr
 					.iter()
 					.map(|v| match v {
@@ -335,7 +335,6 @@ where
 					})
 					.collect();
 			}
-		}
 
 		// Fallback to comma-separated parsing
 		trimmed
@@ -466,8 +465,8 @@ where
 		for related_field in &self.select_related_fields {
 			// Convention: related_field is the field name in the model
 			// We assume FK field is "{related_field}_id" and join to "{related_field}s" table
-			let fk_field = Alias::new(&format!("{}_id", related_field));
-			let related_table = Alias::new(&format!("{}s", related_field));
+			let fk_field = Alias::new(format!("{}_id", related_field));
+			let related_table = Alias::new(format!("{}s", related_field));
 			let related_alias = Alias::new(related_field);
 
 			// LEFT JOIN related_table AS related_field ON table.fk_field = related_field.id
@@ -608,8 +607,8 @@ where
 		pk_values: &[i64],
 	) -> SelectStatement {
 		let table_name = T::table_name();
-		let related_table = Alias::new(&format!("{}s", related_field));
-		let fk_field = Alias::new(&format!("{}_id", table_name.trim_end_matches('s')));
+		let related_table = Alias::new(format!("{}s", related_field));
+		let fk_field = Alias::new(format!("{}_id", table_name.trim_end_matches('s')));
 
 		let mut stmt = SeaQuery::select();
 		stmt.from(related_table).column(Asterisk);
@@ -632,10 +631,10 @@ where
 		pk_values: &[i64],
 	) -> SelectStatement {
 		let table_name = T::table_name();
-		let junction_table = Alias::new(&format!("{}_{}", table_name, related_field));
-		let related_table = Alias::new(&format!("{}s", related_field));
-		let junction_main_fk = Alias::new(&format!("{}_id", table_name.trim_end_matches('s')));
-		let junction_related_fk = Alias::new(&format!("{}_id", related_field));
+		let junction_table = Alias::new(format!("{}_{}", table_name, related_field));
+		let related_table = Alias::new(format!("{}s", related_field));
+		let junction_main_fk = Alias::new(format!("{}_id", table_name.trim_end_matches('s')));
+		let junction_related_fk = Alias::new(format!("{}_id", related_field));
 
 		let mut stmt = SeaQuery::select();
 		stmt.from(related_table.clone())
@@ -845,11 +844,10 @@ where
 		let rows = conn.query(&sql).await?;
 		if let Some(row) = rows.first() {
 			// Extract count from first row
-			if let Some(count_value) = row.data.get("count") {
-				if let Some(count) = count_value.as_i64() {
+			if let Some(count_value) = row.data.get("count")
+				&& let Some(count) = count_value.as_i64() {
 					return Ok(count as usize);
 				}
-			}
 		}
 
 		Ok(0)
@@ -1077,7 +1075,7 @@ where
 				crate::composite_pk::PkValue::String(v) => {
 					let condition = Expr::col(col_alias).binary(
 						BinOper::Equal,
-						Expr::value(Value::String(Some(v.clone().into()))),
+						Expr::value(Value::String(Some(v.clone()))),
 					);
 					query.and_where(condition);
 				}

@@ -17,10 +17,10 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 		QueryValue::Bool(b) => Value::Bool(Some(*b)),
 		QueryValue::Int(i) => Value::BigInt(Some(*i)),
 		QueryValue::Float(f) => Value::Double(Some(*f)),
-		QueryValue::String(s) => Value::String(Some(s.clone().into())),
-		QueryValue::Bytes(b) => Value::Bytes(Some(b.clone().into())),
+		QueryValue::String(s) => Value::String(Some(s.clone())),
+		QueryValue::Bytes(b) => Value::Bytes(Some(b.clone())),
 		// Convert timestamp to string representation for now
-		QueryValue::Timestamp(dt) => Value::String(Some(dt.to_rfc3339().into())),
+		QueryValue::Timestamp(dt) => Value::String(Some(dt.to_rfc3339())),
 	}
 }
 
@@ -66,7 +66,7 @@ impl InsertBuilder {
 			.to_owned();
 
 		// Add columns
-		let column_refs: Vec<Alias> = self.columns.iter().map(|c| Alias::new(c)).collect();
+		let column_refs: Vec<Alias> = self.columns.iter().map(Alias::new).collect();
 		stmt.columns(column_refs);
 
 		// Add values
@@ -152,12 +152,11 @@ impl UpdateBuilder {
 
 		// Add SET clauses
 		for (col, val) in &self.sets {
-			if let QueryValue::String(s) = val {
-				if s == "__NOW__" {
+			if let QueryValue::String(s) = val
+				&& s == "__NOW__" {
 					stmt.value(Alias::new(col), Expr::cust("NOW()"));
 					continue;
 				}
-			}
 			stmt.value(Alias::new(col), query_value_to_sea_value(val));
 		}
 

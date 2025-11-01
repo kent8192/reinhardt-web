@@ -92,7 +92,7 @@ pub trait BaseVersioning: Send + Sync {
 				return true;
 			}
 			return allowed.contains(version)
-				|| self.default_version().map_or(false, |v| v == version);
+				|| (self.default_version() == Some(version));
 		}
 		true
 	}
@@ -201,8 +201,8 @@ impl BaseVersioning for AcceptHeaderVersioning {
 				let params = &accept_str[params_start + 1..];
 				for param in params.split(';') {
 					let param = param.trim();
-					if let Some((key, value)) = param.split_once('=') {
-						if key.trim() == self.version_param {
+					if let Some((key, value)) = param.split_once('=')
+						&& key.trim() == self.version_param {
 							let version = value.trim().trim_matches('"');
 							if self.is_allowed_version(version) {
 								return Ok(version.to_string());
@@ -213,7 +213,6 @@ impl BaseVersioning for AcceptHeaderVersioning {
 								));
 							}
 						}
-					}
 				}
 			}
 		}
@@ -367,8 +366,8 @@ impl BaseVersioning for URLPathVersioning {
 		let path = request.uri.path();
 
 		// Try to extract version from path using regex
-		if let Some(captures) = self.path_regex.captures(path) {
-			if let Some(version_match) = captures.get(1) {
+		if let Some(captures) = self.path_regex.captures(path)
+			&& let Some(version_match) = captures.get(1) {
 				let version = version_match.as_str();
 				if self.is_allowed_version(version) {
 					return Ok(version.to_string());
@@ -378,7 +377,6 @@ impl BaseVersioning for URLPathVersioning {
 					));
 				}
 			}
-		}
 
 		// Return default version if no version in path
 		Ok(self
@@ -540,14 +538,13 @@ impl BaseVersioning for HostNameVersioning {
 			let hostname = host_str.split(':').next().unwrap_or(host_str);
 
 			// Try to extract version from hostname
-			if let Some(captures) = self.hostname_regex.captures(hostname) {
-				if let Some(version_match) = captures.get(1) {
+			if let Some(captures) = self.hostname_regex.captures(hostname)
+				&& let Some(version_match) = captures.get(1) {
 					let version = version_match.as_str();
 					if self.is_allowed_version(version) {
 						return Ok(version.to_string());
 					}
 				}
-			}
 		}
 
 		// Return default version if no version in hostname
@@ -656,8 +653,8 @@ impl BaseVersioning for QueryParameterVersioning {
 		// Parse query string for version parameter
 		if let Some(query) = request.uri.query() {
 			for param in query.split('&') {
-				if let Some((key, value)) = param.split_once('=') {
-					if key == self.version_param {
+				if let Some((key, value)) = param.split_once('=')
+					&& key == self.version_param {
 						if self.is_allowed_version(value) {
 							return Ok(value.to_string());
 						} else {
@@ -666,7 +663,6 @@ impl BaseVersioning for QueryParameterVersioning {
 							));
 						}
 					}
-				}
 			}
 		}
 
@@ -807,11 +803,10 @@ impl BaseVersioning for NamespaceVersioning {
 		let path = request.uri.path();
 
 		// Use the configured pattern to extract version
-		if let Some(version) = self.extract_version_from_path(path) {
-			if self.is_allowed_version(&version) {
+		if let Some(version) = self.extract_version_from_path(path)
+			&& self.is_allowed_version(&version) {
 				return Ok(version);
 			}
-		}
 
 		// Fallback to default version
 		Ok(self
@@ -839,13 +834,11 @@ impl NamespaceVersioning {
 			.replace("/", r"\/");
 		let full_pattern = format!("^{}", regex_pattern);
 
-		if let Ok(regex) = regex::Regex::new(&full_pattern) {
-			if let Some(captures) = regex.captures(path) {
-				if let Some(version_match) = captures.get(1) {
+		if let Ok(regex) = regex::Regex::new(&full_pattern)
+			&& let Some(captures) = regex.captures(path)
+				&& let Some(version_match) = captures.get(1) {
 					return Some(version_match.as_str().to_string());
 				}
-			}
-		}
 		None
 	}
 

@@ -153,7 +153,7 @@ impl ChunkedUploadSession {
 		chunk_size: usize,
 		temp_dir: PathBuf,
 	) -> Self {
-		let total_chunks = (total_size + chunk_size - 1) / chunk_size;
+		let total_chunks = total_size.div_ceil(chunk_size);
 		Self {
 			session_id,
 			filename,
@@ -385,11 +385,10 @@ impl ChunkedUploadManager {
 	/// ```
 	pub fn cleanup_session(&self, session_id: &str) -> Result<(), ChunkedUploadError> {
 		let mut sessions = self.sessions.lock().unwrap();
-		if let Some(session) = sessions.remove(session_id) {
-			if session.temp_dir.exists() {
+		if let Some(session) = sessions.remove(session_id)
+			&& session.temp_dir.exists() {
 				fs::remove_dir_all(session.temp_dir)?;
 			}
-		}
 		Ok(())
 	}
 

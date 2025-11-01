@@ -232,7 +232,7 @@ impl BatchValidator {
 			};
 			checks_by_table
 				.entry(table.clone())
-				.or_insert_with(Vec::new)
+				.or_default()
 				.push(query);
 		}
 
@@ -246,7 +246,7 @@ impl BatchValidator {
 			};
 			checks_by_table
 				.entry(table.clone())
-				.or_insert_with(Vec::new)
+				.or_default()
 				.push(query);
 		}
 
@@ -448,13 +448,11 @@ impl QueryCache {
 	///
 	/// Returns `None` if not cached or expired.
 	pub fn get(&self, key: &str) -> Option<serde_json::Value> {
-		if let Ok(cache) = self.cache.read() {
-			if let Some(entry) = cache.get(key) {
-				if entry.inserted_at.elapsed() < self.ttl {
+		if let Ok(cache) = self.cache.read()
+			&& let Some(entry) = cache.get(key)
+				&& entry.inserted_at.elapsed() < self.ttl {
 					return Some(entry.data.clone());
 				}
-			}
-		}
 		None
 	}
 

@@ -147,11 +147,11 @@ impl Form {
 		}
 	}
 	pub fn media(&self) -> Media {
-		let media = Media::new();
+		
 		// Collect media from all fields' widgets
 		// This is a simplified implementation
 		// In a full implementation, widgets would define their own media
-		media
+		Media::new()
 	}
 	/// Add a field to the form
 	///
@@ -229,7 +229,7 @@ impl Form {
 							Err(e) => {
 								self.errors
 									.entry(field.name().to_string())
-									.or_insert_with(Vec::new)
+									.or_default()
 									.push(e.to_string());
 								continue;
 							}
@@ -240,7 +240,7 @@ impl Form {
 				Err(e) => {
 					self.errors
 						.entry(field.name().to_string())
-						.or_insert_with(Vec::new)
+						.or_default()
 						.push(e.to_string());
 				}
 			}
@@ -253,13 +253,13 @@ impl Form {
 					FormError::Field { field, error } => {
 						self.errors
 							.entry(field)
-							.or_insert_with(Vec::new)
+							.or_default()
 							.push(error.to_string());
 					}
 					FormError::Validation(msg) => {
 						self.errors
 							.entry("__all__".to_string())
-							.or_insert_with(Vec::new)
+							.or_default()
 							.push(msg);
 					}
 				}

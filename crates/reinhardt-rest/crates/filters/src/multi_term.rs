@@ -127,7 +127,7 @@ impl MultiTermSearch {
 		let mut in_quotes = false;
 		let mut chars = search.chars().peekable();
 
-		while let Some(c) = chars.next() {
+		for c in chars {
 			match c {
 				'"' => {
 					in_quotes = !in_quotes;
@@ -278,7 +278,7 @@ impl MultiTermSearch {
 					}
 
 					// Get the value after ':'
-					while let Some(next_ch) = chars.next() {
+					for next_ch in chars.by_ref() {
 						if field_in_quotes {
 							if next_ch == '"' {
 								// End of quoted value
@@ -286,14 +286,12 @@ impl MultiTermSearch {
 							} else {
 								current_term.push(next_ch);
 							}
-						} else {
-							if next_ch == ' ' {
-								// End of unquoted value
-								break;
-							} else {
-								current_term.push(next_ch);
-							}
-						}
+						} else if next_ch == ' ' {
+      								// End of unquoted value
+      								break;
+      							} else {
+      								current_term.push(next_ch);
+      							}
 					}
 
 					terms.push(SearchTerm {

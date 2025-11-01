@@ -17,21 +17,17 @@ fn has_inject_attr(field: &syn::Field) -> bool {
 /// Check if #[inject] has cache = false
 fn should_use_cache(field: &syn::Field) -> bool {
 	for attr in &field.attrs {
-		if attr.path().is_ident("inject") {
-			if let Ok(meta) = attr.parse_args::<syn::Meta>() {
-				if let syn::Meta::NameValue(nv) = meta {
-					if nv.path.is_ident("cache") {
-						if let syn::Expr::Lit(syn::ExprLit {
+		if attr.path().is_ident("inject")
+			&& let Ok(meta) = attr.parse_args::<syn::Meta>()
+				&& let syn::Meta::NameValue(nv) = meta
+					&& nv.path.is_ident("cache")
+						&& let syn::Expr::Lit(syn::ExprLit {
 							lit: syn::Lit::Bool(lit_bool),
 							..
 						}) = &nv.value
 						{
 							return lit_bool.value;
 						}
-					}
-				}
-			}
-		}
 	}
 	true // Default: use cache
 }

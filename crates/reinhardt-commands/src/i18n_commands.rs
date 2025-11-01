@@ -231,17 +231,15 @@ impl MakeMessagesCommand {
 
 		let mut locales = Vec::new();
 
-		for entry in std::fs::read_dir(locale_dir).map_err(|e| CommandError::IoError(e))? {
-			let entry = entry.map_err(|e| CommandError::IoError(e))?;
+		for entry in std::fs::read_dir(locale_dir).map_err(CommandError::IoError)? {
+			let entry = entry.map_err(CommandError::IoError)?;
 			let path = entry.path();
 
-			if path.is_dir() {
-				if let Some(name) = path.file_name() {
-					if let Some(name_str) = name.to_str() {
+			if path.is_dir()
+				&& let Some(name) = path.file_name()
+					&& let Some(name_str) = name.to_str() {
 						locales.push(name_str.to_string());
 					}
-				}
-			}
 		}
 
 		Ok(locales)
@@ -369,11 +367,10 @@ impl MakeMessagesCommand {
 
 	fn extract_po_header(content: &str) -> String {
 		// Extract header (everything up to the first real msgid)
-		if let Some(pos) = content.find("\nmsgid \"") {
-			if pos > 0 {
+		if let Some(pos) = content.find("\nmsgid \"")
+			&& pos > 0 {
 				return content[..pos].to_string() + "\n";
 			}
-		}
 
 		// Default header if not found
 		String::new()
@@ -680,20 +677,18 @@ impl CompileMessagesCommand {
 
 		let mut locales = Vec::new();
 
-		for entry in std::fs::read_dir(locale_dir).map_err(|e| CommandError::IoError(e))? {
-			let entry = entry.map_err(|e| CommandError::IoError(e))?;
+		for entry in std::fs::read_dir(locale_dir).map_err(CommandError::IoError)? {
+			let entry = entry.map_err(CommandError::IoError)?;
 			let path = entry.path();
 
 			if path.is_dir() {
 				// Check if LC_MESSAGES/reinhardt.po exists
 				let po_file = path.join("LC_MESSAGES").join("reinhardt.po");
-				if po_file.exists() {
-					if let Some(name) = path.file_name() {
-						if let Some(name_str) = name.to_str() {
+				if po_file.exists()
+					&& let Some(name) = path.file_name()
+						&& let Some(name_str) = name.to_str() {
 							locales.push(name_str.to_string());
 						}
-					}
-				}
 			}
 		}
 

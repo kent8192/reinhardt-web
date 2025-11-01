@@ -315,7 +315,7 @@ impl Transaction {
 	pub async fn begin_db(&mut self) -> reinhardt_apps::Result<()> {
 		let sql = self
 			.begin()
-			.map_err(|e| reinhardt_apps::Error::Database(e))?;
+			.map_err(reinhardt_apps::Error::Database)?;
 		let conn = crate::manager::get_connection().await?;
 		conn.execute(&sql).await?;
 		Ok(())
@@ -328,7 +328,7 @@ impl Transaction {
 	pub async fn commit_db(&mut self) -> reinhardt_apps::Result<()> {
 		let sql = self
 			.commit()
-			.map_err(|e| reinhardt_apps::Error::Database(e))?;
+			.map_err(reinhardt_apps::Error::Database)?;
 		let conn = crate::manager::get_connection().await?;
 		conn.execute(&sql).await?;
 		Ok(())
@@ -341,7 +341,7 @@ impl Transaction {
 	pub async fn rollback_db(&mut self) -> reinhardt_apps::Result<()> {
 		let sql = self
 			.rollback()
-			.map_err(|e| reinhardt_apps::Error::Database(e))?;
+			.map_err(reinhardt_apps::Error::Database)?;
 		let conn = crate::manager::get_connection().await?;
 		conn.execute(&sql).await?;
 		Ok(())

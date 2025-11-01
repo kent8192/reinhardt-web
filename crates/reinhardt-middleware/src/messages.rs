@@ -117,7 +117,7 @@ impl MessageStorage for SessionStorage {
 		let mut messages = self.messages.write().unwrap();
 		messages
 			.entry(session_id.to_string())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(message);
 	}
 
@@ -168,7 +168,7 @@ impl MessageStorage for CookieStorage {
 		let mut messages = self.messages.write().unwrap();
 		messages
 			.entry(session_id.to_string())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(message);
 	}
 
@@ -264,11 +264,10 @@ impl MessageMiddleware {
 			.and_then(|cookies| {
 				for cookie in cookies.split(';') {
 					let cookie = cookie.trim();
-					if let Some((name, value)) = cookie.split_once('=') {
-						if name == "sessionid" {
+					if let Some((name, value)) = cookie.split_once('=')
+						&& name == "sessionid" {
 							return Some(value.to_string());
 						}
-					}
 				}
 				None
 			})

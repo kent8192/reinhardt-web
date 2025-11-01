@@ -154,29 +154,25 @@ impl BaseUserManager<DefaultUser> for DefaultUserManager {
 		};
 
 		// Apply extra fields
-		if let Some(email) = extra.get("email") {
-			if let Some(email_str) = email.as_str() {
+		if let Some(email) = extra.get("email")
+			&& let Some(email_str) = email.as_str() {
 				user.email = Self::normalize_email(email_str);
 			}
-		}
 
-		if let Some(first_name) = extra.get("first_name") {
-			if let Some(name) = first_name.as_str() {
+		if let Some(first_name) = extra.get("first_name")
+			&& let Some(name) = first_name.as_str() {
 				user.first_name = name.to_string();
 			}
-		}
 
-		if let Some(last_name) = extra.get("last_name") {
-			if let Some(name) = last_name.as_str() {
+		if let Some(last_name) = extra.get("last_name")
+			&& let Some(name) = last_name.as_str() {
 				user.last_name = name.to_string();
 			}
-		}
 
-		if let Some(is_active) = extra.get("is_active") {
-			if let Some(active) = is_active.as_bool() {
+		if let Some(is_active) = extra.get("is_active")
+			&& let Some(active) = is_active.as_bool() {
 				user.is_active = active;
 			}
-		}
 
 		// Set password if provided (automatically hashed via BaseUser trait)
 		if let Some(pwd) = password {

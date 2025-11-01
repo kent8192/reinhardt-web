@@ -73,7 +73,7 @@ impl CollectionOperations {
 		F: Fn(&ScalarValue) -> U,
 	{
 		let values = self.proxy.get_values(source).await?;
-		Ok(values.iter().map(|v| mapper(v)).collect())
+		Ok(values.iter().map(mapper).collect())
 	}
 	/// Sort collection values
 	///

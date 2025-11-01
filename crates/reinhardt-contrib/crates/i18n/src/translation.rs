@@ -27,21 +27,18 @@ pub fn gettext(message: &str) -> String {
 	let state = TRANSLATION_STATE.read().unwrap();
 	let locale = state.get_locale();
 
-	if let Some(catalog) = state.get_catalog(locale) {
-		if let Some(translation) = catalog.get(message) {
+	if let Some(catalog) = state.get_catalog(locale)
+		&& let Some(translation) = catalog.get(message) {
 			return translation.clone();
 		}
-	}
 
 	// Try fallback locale
 	let fallback = state.get_fallback_locale();
-	if locale != fallback {
-		if let Some(catalog) = state.get_catalog(fallback) {
-			if let Some(translation) = catalog.get(message) {
+	if locale != fallback
+		&& let Some(catalog) = state.get_catalog(fallback)
+			&& let Some(translation) = catalog.get(message) {
 				return translation.clone();
 			}
-		}
-	}
 
 	// Return original message if no translation found
 	message.to_string()
@@ -71,21 +68,18 @@ pub fn ngettext(singular: &str, plural: &str, count: usize) -> String {
 	let state = TRANSLATION_STATE.read().unwrap();
 	let locale = state.get_locale();
 
-	if let Some(catalog) = state.get_catalog(locale) {
-		if let Some(translation) = catalog.get_plural(singular, count) {
+	if let Some(catalog) = state.get_catalog(locale)
+		&& let Some(translation) = catalog.get_plural(singular, count) {
 			return translation.clone();
 		}
-	}
 
 	// Try fallback locale
 	let fallback = state.get_fallback_locale();
-	if locale != fallback {
-		if let Some(catalog) = state.get_catalog(fallback) {
-			if let Some(translation) = catalog.get_plural(singular, count) {
+	if locale != fallback
+		&& let Some(catalog) = state.get_catalog(fallback)
+			&& let Some(translation) = catalog.get_plural(singular, count) {
 				return translation.clone();
 			}
-		}
-	}
 
 	// Use default English plural rules
 	if count == 1 {
@@ -123,21 +117,18 @@ pub fn pgettext(context: &str, message: &str) -> String {
 	let state = TRANSLATION_STATE.read().unwrap();
 	let locale = state.get_locale();
 
-	if let Some(catalog) = state.get_catalog(locale) {
-		if let Some(translation) = catalog.get_context(context, message) {
+	if let Some(catalog) = state.get_catalog(locale)
+		&& let Some(translation) = catalog.get_context(context, message) {
 			return translation.clone();
 		}
-	}
 
 	// Try fallback locale
 	let fallback = state.get_fallback_locale();
-	if locale != fallback {
-		if let Some(catalog) = state.get_catalog(fallback) {
-			if let Some(translation) = catalog.get_context(context, message) {
+	if locale != fallback
+		&& let Some(catalog) = state.get_catalog(fallback)
+			&& let Some(translation) = catalog.get_context(context, message) {
 				return translation.clone();
 			}
-		}
-	}
 
 	// Return original message if no translation found
 	message.to_string()
@@ -172,21 +163,18 @@ pub fn npgettext(context: &str, singular: &str, plural: &str, count: usize) -> S
 	let state = TRANSLATION_STATE.read().unwrap();
 	let locale = state.get_locale();
 
-	if let Some(catalog) = state.get_catalog(locale) {
-		if let Some(translation) = catalog.get_context_plural(context, singular, count) {
+	if let Some(catalog) = state.get_catalog(locale)
+		&& let Some(translation) = catalog.get_context_plural(context, singular, count) {
 			return translation.clone();
 		}
-	}
 
 	// Try fallback locale
 	let fallback = state.get_fallback_locale();
-	if locale != fallback {
-		if let Some(catalog) = state.get_catalog(fallback) {
-			if let Some(translation) = catalog.get_context_plural(context, singular, count) {
+	if locale != fallback
+		&& let Some(catalog) = state.get_catalog(fallback)
+			&& let Some(translation) = catalog.get_context_plural(context, singular, count) {
 				return translation.clone();
 			}
-		}
-	}
 
 	// Use default English plural rules
 	if count == 1 {

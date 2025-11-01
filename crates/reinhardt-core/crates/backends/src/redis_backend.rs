@@ -115,7 +115,7 @@ impl Backend for RedisBackend {
 
 		if let Some(duration) = ttl {
 			// SET with EX (seconds) option
-			conn.set_ex::<_, _, ()>(key, serialized, duration.as_secs() as u64)
+			conn.set_ex::<_, _, ()>(key, serialized, duration.as_secs())
 				.await
 				.map_err(|e| BackendError::Internal(format!("Redis SET error: {}", e)))?;
 		} else {
@@ -178,13 +178,12 @@ impl Backend for RedisBackend {
 			.map_err(|e| BackendError::Internal(format!("Redis INCR error: {}", e)))?;
 
 		// Set TTL if provided and this is the first increment
-		if let Some(duration) = ttl {
-			if new_value == 1 {
+		if let Some(duration) = ttl
+			&& new_value == 1 {
 				conn.expire::<_, ()>(key, duration.as_secs() as i64)
 					.await
 					.map_err(|e| BackendError::Internal(format!("Redis EXPIRE error: {}", e)))?;
 			}
-		}
 
 		Ok(new_value)
 	}

@@ -99,23 +99,21 @@ impl FormField for FloatField {
 				}
 
 				// Validate range
-				if let Some(max) = self.max_value {
-					if num > max {
+				if let Some(max) = self.max_value
+					&& num > max {
 						return Err(FieldError::Validation(format!(
 							"Ensure this value is less than or equal to {}",
 							max
 						)));
 					}
-				}
 
-				if let Some(min) = self.min_value {
-					if num < min {
+				if let Some(min) = self.min_value
+					&& num < min {
 						return Err(FieldError::Validation(format!(
 							"Ensure this value is greater than or equal to {}",
 							min
 						)));
 					}
-				}
 
 				Ok(serde_json::json!(num))
 			}

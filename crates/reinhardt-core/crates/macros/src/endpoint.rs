@@ -36,19 +36,16 @@ impl ProcessedArg {
 						inject = true;
 
 						// Parse arguments like #[inject(cache = false)]
-						if let Ok(meta) = attr.parse_args::<syn::Meta>() {
-							if let syn::Meta::NameValue(nv) = meta {
-								if nv.path.is_ident("cache") {
-									if let syn::Expr::Lit(syn::ExprLit {
+						if let Ok(meta) = attr.parse_args::<syn::Meta>()
+							&& let syn::Meta::NameValue(nv) = meta
+								&& nv.path.is_ident("cache")
+									&& let syn::Expr::Lit(syn::ExprLit {
 										lit: syn::Lit::Bool(lit_bool),
 										..
 									}) = &nv.value
 									{
 										use_cache = lit_bool.value;
 									}
-								}
-							}
-						}
 					}
 				}
 

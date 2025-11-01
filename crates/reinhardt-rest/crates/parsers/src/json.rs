@@ -101,13 +101,12 @@ impl JSONParser {
 	fn validate_strict_json(value: &Value) -> ParseResult<()> {
 		match value {
 			Value::Number(n) => {
-				if let Some(f) = n.as_f64() {
-					if !f.is_finite() {
+				if let Some(f) = n.as_f64()
+					&& !f.is_finite() {
 						return Err(ParseError::ParseError(
                             "Non-finite float values (Infinity, -Infinity, NaN) are not allowed in strict mode".to_string()
                         ));
 					}
-				}
 			}
 			Value::Array(arr) => {
 				for item in arr {

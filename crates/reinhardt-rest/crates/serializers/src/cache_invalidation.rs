@@ -141,13 +141,11 @@ impl CacheInvalidator {
 
 	/// Check if a cache key has expired based on TTL
 	pub fn check_expired(&self, cache_key: &str) -> bool {
-		if let InvalidationStrategy::TimeBased(ttl) = &self.strategy {
-			if let Ok(timestamps) = self.timestamps.read() {
-				if let Some(timestamp) = timestamps.get(cache_key) {
+		if let InvalidationStrategy::TimeBased(ttl) = &self.strategy
+			&& let Ok(timestamps) = self.timestamps.read()
+				&& let Some(timestamp) = timestamps.get(cache_key) {
 					return timestamp.elapsed().as_secs() > *ttl;
 				}
-			}
-		}
 		false
 	}
 
@@ -179,8 +177,8 @@ impl CacheInvalidator {
 	// Private helper methods
 
 	fn immediate_invalidate(&self, key: &(String, String)) -> Vec<String> {
-		if let Ok(mut deps) = self.dependencies.write() {
-			if let Some(cache_keys) = deps.remove(key) {
+		if let Ok(mut deps) = self.dependencies.write()
+			&& let Some(cache_keys) = deps.remove(key) {
 				// Also remove timestamps
 				if let Ok(mut timestamps) = self.timestamps.write() {
 					for cache_key in &cache_keys {
@@ -189,15 +187,14 @@ impl CacheInvalidator {
 				}
 				return cache_keys.into_iter().collect();
 			}
-		}
 		Vec::new()
 	}
 
 	fn delayed_invalidate(&self, key: &(String, String), _seconds: u64) -> Vec<String> {
 		// In a real implementation, would schedule invalidation after delay
 		// For now, just mark timestamps for delayed processing
-		if let Ok(deps) = self.dependencies.read() {
-			if let Some(cache_keys) = deps.get(key) {
+		if let Ok(deps) = self.dependencies.read()
+			&& let Some(cache_keys) = deps.get(key) {
 				if let Ok(mut timestamps) = self.timestamps.write() {
 					let now = Instant::now();
 					for cache_key in cache_keys {
@@ -206,17 +203,15 @@ impl CacheInvalidator {
 				}
 				return cache_keys.iter().cloned().collect();
 			}
-		}
 		Vec::new()
 	}
 
 	fn lazy_invalidate(&self, key: &(String, String)) -> Vec<String> {
 		// Mark cache keys as stale but don't remove yet
-		if let Ok(deps) = self.dependencies.read() {
-			if let Some(cache_keys) = deps.get(key) {
+		if let Ok(deps) = self.dependencies.read()
+			&& let Some(cache_keys) = deps.get(key) {
 				return cache_keys.iter().cloned().collect();
 			}
-		}
 		Vec::new()
 	}
 }

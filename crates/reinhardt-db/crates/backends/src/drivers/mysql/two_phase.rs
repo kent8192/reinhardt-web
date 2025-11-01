@@ -97,7 +97,7 @@ impl MySqlTwoPhaseParticipant {
 	/// ```
 	pub async fn begin(&self, xid: &str) -> Result<()> {
 		let sql = format!("XA START '{}'", Self::escape_xid(xid));
-		sqlx::query(&*sql)
+		sqlx::query(&sql)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(DatabaseError::from)?;
@@ -124,7 +124,7 @@ impl MySqlTwoPhaseParticipant {
 	/// ```
 	pub async fn end(&self, xid: &str) -> Result<()> {
 		let sql = format!("XA END '{}'", Self::escape_xid(xid));
-		sqlx::query(&*sql)
+		sqlx::query(&sql)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(DatabaseError::from)?;
@@ -158,7 +158,7 @@ impl MySqlTwoPhaseParticipant {
 	/// ```
 	pub async fn prepare(&self, xid: &str) -> Result<()> {
 		let sql = format!("XA PREPARE '{}'", Self::escape_xid(xid));
-		sqlx::query(&*sql)
+		sqlx::query(&sql)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(DatabaseError::from)?;
@@ -187,7 +187,7 @@ impl MySqlTwoPhaseParticipant {
 	/// ```
 	pub async fn commit(&self, xid: &str) -> Result<()> {
 		let sql = format!("XA COMMIT '{}'", Self::escape_xid(xid));
-		sqlx::query(&*sql)
+		sqlx::query(&sql)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(DatabaseError::from)?;
@@ -216,7 +216,7 @@ impl MySqlTwoPhaseParticipant {
 	/// ```
 	pub async fn commit_one_phase(&self, xid: &str) -> Result<()> {
 		let sql = format!("XA COMMIT '{}' ONE PHASE", Self::escape_xid(xid));
-		sqlx::query(&*sql)
+		sqlx::query(&sql)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(DatabaseError::from)?;
@@ -241,7 +241,7 @@ impl MySqlTwoPhaseParticipant {
 	/// ```
 	pub async fn rollback(&self, xid: &str) -> Result<()> {
 		let sql = format!("XA ROLLBACK '{}'", Self::escape_xid(xid));
-		sqlx::query(&*sql)
+		sqlx::query(&sql)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(DatabaseError::from)?;
@@ -342,11 +342,10 @@ impl MySqlTwoPhaseParticipant {
 		let mut cleaned = 0;
 
 		for txn in all_txns {
-			if txn.xid.starts_with(prefix) {
-				if self.rollback(&txn.xid).await.is_ok() {
+			if txn.xid.starts_with(prefix)
+				&& self.rollback(&txn.xid).await.is_ok() {
 					cleaned += 1;
 				}
-			}
 		}
 
 		Ok(cleaned)

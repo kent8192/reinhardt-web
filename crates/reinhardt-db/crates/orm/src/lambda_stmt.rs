@@ -205,7 +205,7 @@ impl Default for QueryCache {
 
 use once_cell::sync::Lazy;
 
-pub static QUERY_CACHE: Lazy<QueryCache> = Lazy::new(|| QueryCache::new());
+pub static QUERY_CACHE: Lazy<QueryCache> = Lazy::new(QueryCache::new);
 pub static CACHE_STATS: Lazy<Arc<RwLock<CacheStatistics>>> =
 	Lazy::new(|| Arc::new(RwLock::new(CacheStatistics::new())));
 
@@ -213,6 +213,12 @@ pub static CACHE_STATS: Lazy<Arc<RwLock<CacheStatistics>>> =
 pub struct LambdaRegistry {
 	#[allow(dead_code)]
 	functions: Arc<RwLock<HashMap<String, Box<dyn Fn() -> String + Send + Sync>>>>,
+}
+
+impl Default for LambdaRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LambdaRegistry {

@@ -228,11 +228,10 @@ pub trait Parser: Send + Sync {
 
 	/// Check if this parser can handle the given content type
 	fn can_parse(&self, content_type: Option<&str>) -> bool {
-		if let Some(ct) = content_type {
-			if let Ok(media_type) = MediaType::parse(ct) {
+		if let Some(ct) = content_type
+			&& let Ok(media_type) = MediaType::parse(ct) {
 				return self.media_types().iter().any(|mt| media_type.matches(mt));
 			}
-		}
 		false
 	}
 }

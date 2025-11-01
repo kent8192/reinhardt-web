@@ -18,9 +18,11 @@ use crate::reverse::{ReverseRelationship, generate_reverse_accessor};
 /// let action = CascadeAction::Cascade;
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum CascadeAction {
 	/// Do nothing (default behavior, may cause constraint violations)
-	NoAction,
+	#[default]
+ NoAction,
 	/// Restrict deletion/update if dependent objects exist
 	Restrict,
 	/// Set foreign key to NULL when referenced object is deleted/updated
@@ -31,11 +33,6 @@ pub enum CascadeAction {
 	Cascade,
 }
 
-impl Default for CascadeAction {
-	fn default() -> Self {
-		CascadeAction::NoAction
-	}
-}
 
 /// Foreign key field configuration
 ///

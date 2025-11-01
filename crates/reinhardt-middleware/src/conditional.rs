@@ -144,7 +144,7 @@ impl ConditionalGetMiddleware {
 	fn parse_http_date(&self, value: &str) -> Option<DateTime<Utc>> {
 		httpdate::parse_http_date(value)
 			.ok()
-			.map(|st| DateTime::from(st))
+			.map(DateTime::from)
 	}
 
 	/// Format HTTP date
@@ -204,8 +204,8 @@ impl Middleware for ConditionalGetMiddleware {
 			.and_then(|s| self.parse_http_date(s));
 
 		// Check If-None-Match (ETag)
-		if let Some(if_none_match) = if_none_match {
-			if let (Ok(inm_str), Some(ref etag_value)) = (if_none_match.to_str(), etag.as_ref()) {
+		if let Some(if_none_match) = if_none_match
+			&& let (Ok(inm_str), Some(etag_value)) = (if_none_match.to_str(), etag.as_ref()) {
 				let inm_list = self.parse_if_none_match(inm_str);
 				if self.etag_matches(etag_value, &inm_list) {
 					// Return 304 Not Modified
@@ -224,12 +224,11 @@ impl Middleware for ConditionalGetMiddleware {
 					return Ok(not_modified);
 				}
 			}
-		}
 
 		// Check If-Modified-Since (Last-Modified)
-		if let Some(if_modified_since) = if_modified_since {
-			if let (Ok(ims_str), Some(lm)) = (if_modified_since.to_str(), last_modified) {
-				if let Some(ims) = self.parse_http_date(ims_str) {
+		if let Some(if_modified_since) = if_modified_since
+			&& let (Ok(ims_str), Some(lm)) = (if_modified_since.to_str(), last_modified)
+				&& let Some(ims) = self.parse_http_date(ims_str) {
 					// If resource hasn't been modified since the given date
 					if lm <= ims {
 						// Return 304 Not Modified
@@ -248,12 +247,10 @@ impl Middleware for ConditionalGetMiddleware {
 						return Ok(not_modified);
 					}
 				}
-			}
-		}
 
 		// Check If-Match (for safe methods, should match)
-		if let Some(if_match) = if_match {
-			if let (Ok(im_str), Some(ref etag_value)) = (if_match.to_str(), etag.as_ref()) {
+		if let Some(if_match) = if_match
+			&& let (Ok(im_str), Some(etag_value)) = (if_match.to_str(), etag.as_ref()) {
 				let im_list = self.parse_if_none_match(im_str);
 				if !self.etag_matches(etag_value, &im_list) && !im_list.contains(&"*".to_string()) {
 					// Return 412 Precondition Failed
@@ -261,12 +258,11 @@ impl Middleware for ConditionalGetMiddleware {
 						.with_body(Bytes::from(&b"Precondition Failed"[..])));
 				}
 			}
-		}
 
 		// Check If-Unmodified-Since
-		if let Some(if_unmodified_since) = if_unmodified_since {
-			if let (Ok(ius_str), Some(lm)) = (if_unmodified_since.to_str(), last_modified) {
-				if let Some(ius) = self.parse_http_date(ius_str) {
+		if let Some(if_unmodified_since) = if_unmodified_since
+			&& let (Ok(ius_str), Some(lm)) = (if_unmodified_since.to_str(), last_modified)
+				&& let Some(ius) = self.parse_http_date(ius_str) {
 					// If resource has been modified since the given date
 					if lm > ius {
 						// Return 412 Precondition Failed
@@ -274,8 +270,6 @@ impl Middleware for ConditionalGetMiddleware {
 							.with_body(Bytes::from(&b"Precondition Failed"[..])));
 					}
 				}
-			}
-		}
 
 		Ok(response)
 	}

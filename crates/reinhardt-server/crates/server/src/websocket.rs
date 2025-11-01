@@ -339,12 +339,11 @@ impl WebSocketServer {
 									Ok(response) => {
 										if use_broadcast {
 											// Broadcast mode: send through broadcast manager
-											if let Some(ref manager) = broadcast_manager {
-												if let Some(clients) = manager.clients.read().await.get(&peer_addr) {
+											if let Some(ref manager) = broadcast_manager
+												&& let Some(clients) = manager.clients.read().await.get(&peer_addr) {
 													let mut sender = clients.sender.lock().await;
 													sender.send(Message::Text(response)).await?;
 												}
-											}
 										} else if let Some(ref mut w) = direct_write {
 											// Normal mode: send directly
 											w.send(Message::Text(response)).await?;
@@ -352,12 +351,11 @@ impl WebSocketServer {
 									}
 									Err(error) => {
 										if use_broadcast {
-											if let Some(ref manager) = broadcast_manager {
-												if let Some(clients) = manager.clients.read().await.get(&peer_addr) {
+											if let Some(ref manager) = broadcast_manager
+												&& let Some(clients) = manager.clients.read().await.get(&peer_addr) {
 													let mut sender = clients.sender.lock().await;
 													sender.send(Message::Text(error)).await?;
 												}
-											}
 										} else if let Some(ref mut w) = direct_write {
 											w.send(Message::Text(error)).await?;
 										}
@@ -382,17 +380,15 @@ impl WebSocketServer {
 						None => std::future::pending().await,
 					}
 				} => {
-					if let Some(msg) = broadcast_msg {
-						if let Some(ref manager) = broadcast_manager {
-							if let Some(client) = manager.clients.read().await.get(&peer_addr) {
+					if let Some(msg) = broadcast_msg
+						&& let Some(ref manager) = broadcast_manager
+							&& let Some(client) = manager.clients.read().await.get(&peer_addr) {
 								let mut sender = client.sender.lock().await;
 								if let Err(e) = sender.send(Message::Text(msg)).await {
 									eprintln!("Failed to send broadcast to {}: {}", peer_addr, e);
 									break;
 								}
 							}
-						}
-					}
 				}
 			}
 		}

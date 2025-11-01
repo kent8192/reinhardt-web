@@ -82,10 +82,10 @@ impl CssMinifier {
 					&& result
 						.chars()
 						.last()
-						.map_or(false, |c| c.is_alphanumeric() || c == ')' || c == ']')
+						.is_some_and(|c| c.is_alphanumeric() || c == ')' || c == ']')
 					&& chars
 						.peek()
-						.map_or(false, |&next| next.is_alphanumeric() || next == '(')
+						.is_some_and(|&next| next.is_alphanumeric() || next == '(')
 				{
 					result.push(' ');
 				}
@@ -218,9 +218,9 @@ impl JsMinifier {
 				if ch == '\n' && !result.ends_with('\n') {
 					result.push('\n');
 				} else if !prev_char.is_whitespace()
-					&& result.chars().last().map_or(false, |c| {
+					&& result.chars().last().is_some_and(|c| {
 						c.is_alphanumeric() || c == ')' || c == ']' || c == '}'
-					}) && chars.peek().map_or(false, |&next| {
+					}) && chars.peek().is_some_and(|&next| {
 					next.is_alphanumeric() || next == '(' || next == '{'
 				}) {
 					result.push(' ');

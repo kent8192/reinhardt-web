@@ -247,7 +247,7 @@ pub fn extract_collection_values<T>(
 ) -> ProxyResult<Vec<ScalarValue>> {
 	collection
 		.iter()
-		.map(|item| attribute_extractor(item))
+		.map(attribute_extractor)
 		.collect()
 }
 

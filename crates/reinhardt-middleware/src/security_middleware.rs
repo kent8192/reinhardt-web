@@ -161,11 +161,10 @@ impl SecurityMiddleware {
 	/// Check if request is secure (HTTPS)
 	fn is_secure(&self, request: &Request) -> bool {
 		// Check X-Forwarded-Proto header
-		if let Some(proto) = request.headers.get("x-forwarded-proto") {
-			if let Ok(proto_str) = proto.to_str() {
+		if let Some(proto) = request.headers.get("x-forwarded-proto")
+			&& let Ok(proto_str) = proto.to_str() {
 				return proto_str.eq_ignore_ascii_case("https");
 			}
-		}
 
 		// Check if URI scheme is https
 		request.uri.scheme_str() == Some("https")

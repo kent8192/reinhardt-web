@@ -46,7 +46,7 @@ impl DependencyGraph {
 	/// ```
 	pub fn add_file(&mut self, file: String) {
 		self.files.insert(file.clone());
-		self.dependencies.entry(file).or_insert_with(HashSet::new);
+		self.dependencies.entry(file).or_default();
 	}
 
 	/// Add a dependency between two files
@@ -69,7 +69,7 @@ impl DependencyGraph {
 		self.add_file(to.clone());
 		self.dependencies
 			.entry(from)
-			.or_insert_with(HashSet::new)
+			.or_default()
 			.insert(to);
 	}
 

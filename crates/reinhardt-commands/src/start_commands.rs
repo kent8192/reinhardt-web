@@ -62,7 +62,7 @@ impl BaseCommand for StartProjectCommand {
 			})?
 			.clone();
 
-		let target = ctx.arg(1).map(|s| PathBuf::from(s));
+		let target = ctx.arg(1).map(PathBuf::from);
 
 		// Determine project type
 		let is_mtv = ctx.has_option("mtv");
@@ -85,7 +85,7 @@ impl BaseCommand for StartProjectCommand {
 		let mut context = TemplateContext::new();
 		context.insert("project_name", &project_name);
 		context.insert("secret_key", &secret_key);
-		context.insert("camel_case_project_name", &to_camel_case(&project_name));
+		context.insert("camel_case_project_name", to_camel_case(&project_name));
 		context.insert("reinhardt_version", env!("CARGO_PKG_VERSION"));
 		context.insert("is_mtv", if is_mtv { "true" } else { "false" });
 		context.insert("is_restful", if is_restful { "true" } else { "false" });
@@ -176,7 +176,7 @@ impl BaseCommand for StartAppCommand {
 			})?
 			.clone();
 
-		let target = ctx.arg(1).map(|s| PathBuf::from(s));
+		let target = ctx.arg(1).map(PathBuf::from);
 
 		// Determine app type and structure
 		let is_mtv = ctx.has_option("mtv");
@@ -231,7 +231,7 @@ impl BaseCommand for StartAppCommand {
 			// Prepare template context
 			let mut context = TemplateContext::new();
 			context.insert("app_name", &app_name);
-			context.insert("camel_case_app_name", &to_camel_case(&app_name));
+			context.insert("camel_case_app_name", to_camel_case(&app_name));
 			context.insert("is_mtv", if is_mtv { "true" } else { "false" });
 			context.insert("is_restful", if is_restful { "true" } else { "false" });
 
@@ -334,7 +334,7 @@ async fn create_workspace_app(
 	// Prepare template context
 	let mut context = TemplateContext::new();
 	context.insert("app_name", app_name);
-	context.insert("camel_case_app_name", &to_camel_case(app_name));
+	context.insert("camel_case_app_name", to_camel_case(app_name));
 	context.insert("is_mtv", if is_mtv { "true" } else { "false" });
 	context.insert("is_restful", if !is_mtv { "true" } else { "false" });
 
@@ -416,13 +416,12 @@ fn update_workspace_members(app_name: &str) -> CommandResult<()> {
 				continue;
 			}
 
-			if in_members_array {
-				if trimmed == "]" {
+			if in_members_array
+				&& trimmed == "]" {
 					// Found end of members array, insert before this line
 					insert_index = Some(i);
 					break;
 				}
-			}
 		}
 	}
 
@@ -478,7 +477,7 @@ fn update_apps_export(app_name: &str) -> CommandResult<()> {
 	if !app_name
 		.chars()
 		.next()
-		.map_or(false, |c| c.is_alphabetic() || c == '_')
+		.is_some_and(|c| c.is_alphabetic() || c == '_')
 	{
 		return Err(CommandError::InvalidArguments(format!(
 			"App name '{}' is not a valid Rust identifier (must start with a letter or underscore)",

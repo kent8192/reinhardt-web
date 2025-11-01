@@ -193,7 +193,7 @@ impl Storage for S3Storage {
 			.body(body)
 			.send()
 			.await
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		Ok(self.url(name))
 	}
@@ -234,7 +234,7 @@ impl Storage for S3Storage {
 			.body
 			.collect()
 			.await
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		Ok(data.into_bytes().to_vec())
 	}
@@ -248,7 +248,7 @@ impl Storage for S3Storage {
 			.key(&key)
 			.send()
 			.await
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		Ok(())
 	}

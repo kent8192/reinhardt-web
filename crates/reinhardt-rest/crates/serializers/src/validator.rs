@@ -220,11 +220,10 @@ pub fn validate_fields(
 	let mut errors = Vec::new();
 
 	for (field_name, validator) in validators {
-		if let Some(value) = data.get(field_name) {
-			if let Err(e) = validator.validate(value) {
+		if let Some(value) = data.get(field_name)
+			&& let Err(e) = validator.validate(value) {
 				errors.push(e);
 			}
-		}
 	}
 
 	if errors.is_empty() {

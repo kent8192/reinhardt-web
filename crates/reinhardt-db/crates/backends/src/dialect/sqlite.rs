@@ -66,7 +66,7 @@ impl SqliteBackend {
 				sqlite_row.try_get::<chrono::DateTime<chrono::Utc>, _>(column_name)
 			{
 				row.insert(column_name.to_string(), QueryValue::Timestamp(value));
-			} else if let Ok(_) = sqlite_row.try_get::<Option<i32>, _>(column_name) {
+			} else if sqlite_row.try_get::<Option<i32>, _>(column_name).is_ok() {
 				row.insert(column_name.to_string(), QueryValue::Null);
 			}
 		}

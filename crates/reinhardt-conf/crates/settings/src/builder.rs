@@ -155,7 +155,7 @@ impl SettingsBuilder {
 	/// ```
 	pub fn build(mut self) -> Result<MergedSettings, BuildError> {
 		// Sort sources by priority (lowest first, so highest priority overwrites)
-		self.sources.sort_by(|a, b| a.priority().cmp(&b.priority()));
+		self.sources.sort_by_key(|a| a.priority());
 
 		let mut merged = IndexMap::new();
 

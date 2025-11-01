@@ -10,9 +10,11 @@ use std::fmt;
 /// Application profile/environment
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Profile {
 	/// Development environment (default)
-	Development,
+	#[default]
+ Development,
 	/// Staging/testing environment
 	Staging,
 	/// Production environment
@@ -154,11 +156,6 @@ impl Profile {
 	}
 }
 
-impl Default for Profile {
-	fn default() -> Self {
-		Profile::Development
-	}
-}
 
 impl fmt::Display for Profile {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

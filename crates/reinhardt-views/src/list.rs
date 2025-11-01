@@ -25,6 +25,16 @@ where
 	_serializer: PhantomData<S>,
 }
 
+impl<T, S> Default for ListView<T, S>
+where
+	T: Model + Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
+	S: Serializer<Input = T, Output = String> + Send + Sync,
+ {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T, S> ListView<T, S>
 where
 	T: Model + Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
@@ -369,7 +379,7 @@ where
 				};
 
 				// Build pagination metadata
-				let total_pages = (total_count + page_size - 1) / page_size; // Ceiling division
+				let total_pages = total_count.div_ceil(page_size); // Ceiling division
 				let has_next = page < total_pages;
 				let has_previous = page > 1;
 

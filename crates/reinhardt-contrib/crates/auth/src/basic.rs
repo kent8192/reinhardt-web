@@ -120,10 +120,10 @@ impl AuthenticationBackend for BasicAuthentication {
 			.get("Authorization")
 			.and_then(|h| h.to_str().ok());
 
-		if let Some(header) = auth_header {
-			if let Some((username, password)) = self.parse_auth_header(header) {
-				if let Some(stored_password) = self.users.get(&username) {
-					if stored_password == &password {
+		if let Some(header) = auth_header
+			&& let Some((username, password)) = self.parse_auth_header(header) {
+				if let Some(stored_password) = self.users.get(&username)
+					&& stored_password == &password {
 						return Ok(Some(Box::new(SimpleUser {
 							id: Uuid::new_v4(),
 							username: username.clone(),
@@ -134,10 +134,8 @@ impl AuthenticationBackend for BasicAuthentication {
 							is_superuser: false,
 						})));
 					}
-				}
 				return Err(AuthenticationError::InvalidCredentials);
 			}
-		}
 
 		Ok(None)
 	}

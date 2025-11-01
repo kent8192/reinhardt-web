@@ -158,8 +158,8 @@ impl DocumentationRenderer {
 								path
 							));
 
-							if let Some(op_obj) = operation.as_object() {
-								if let Some(desc) =
+							if let Some(op_obj) = operation.as_object()
+								&& let Some(desc) =
 									op_obj.get("description").and_then(|d| d.as_str())
 								{
 									html.push_str(&format!(
@@ -167,7 +167,6 @@ impl DocumentationRenderer {
 										desc
 									));
 								}
-							}
 							html.push_str("</div>\n");
 						}
 					}
@@ -202,13 +201,12 @@ impl DocumentationRenderer {
 						for (method, operation) in methods_obj {
 							md.push_str(&format!("### {} {}\n\n", method.to_uppercase(), path));
 
-							if let Some(op_obj) = operation.as_object() {
-								if let Some(desc) =
+							if let Some(op_obj) = operation.as_object()
+								&& let Some(desc) =
 									op_obj.get("description").and_then(|d| d.as_str())
 								{
 									md.push_str(&format!("{}\n\n", desc));
 								}
-							}
 						}
 					}
 				}

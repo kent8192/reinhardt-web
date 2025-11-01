@@ -338,7 +338,7 @@ impl<R: Renderer> CompressionRenderer<R> {
 				use flate2::write::GzEncoder;
 
 				let mut encoder =
-					GzEncoder::new(Vec::new(), Compression::new(*level.min(&9) as u32));
+					GzEncoder::new(Vec::new(), Compression::new((*level.min(&9))));
 				encoder.write_all(data)?;
 				encoder
 					.finish()

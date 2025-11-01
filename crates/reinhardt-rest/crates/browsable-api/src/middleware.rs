@@ -85,22 +85,20 @@ impl BrowsableApiMiddleware {
 
 	/// Check if the request prefers HTML response
 	fn prefers_html(request: &Request) -> bool {
-		if let Some(accept) = request.headers.get("Accept") {
-			if let Ok(accept_str) = accept.to_str() {
+		if let Some(accept) = request.headers.get("Accept")
+			&& let Ok(accept_str) = accept.to_str() {
 				// Check if Accept header contains text/html
 				return accept_str.contains("text/html");
 			}
-		}
 		false
 	}
 
 	/// Check if the response is JSON
 	fn is_json_response(response: &Response) -> bool {
-		if let Some(content_type) = response.headers.get("content-type") {
-			if let Ok(content_type_str) = content_type.to_str() {
+		if let Some(content_type) = response.headers.get("content-type")
+			&& let Ok(content_type_str) = content_type.to_str() {
 				return content_type_str.contains("application/json");
 			}
-		}
 		false
 	}
 

@@ -19,7 +19,7 @@ impl FormParser {
 	/// let parser = FormParser::new();
 	/// ```
 	pub fn new() -> Self {
-		Self::default()
+		Self
 	}
 }
 

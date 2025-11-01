@@ -364,14 +364,13 @@ impl SignalGraph {
 		let mut signal_to_receivers: HashMap<String, Vec<String>> = HashMap::new();
 
 		for edge in &self.edges {
-			if let Some(from_node) = self.nodes.get(&edge.from) {
-				if from_node.node_type == NodeType::Signal {
+			if let Some(from_node) = self.nodes.get(&edge.from)
+				&& from_node.node_type == NodeType::Signal {
 					signal_to_receivers
 						.entry(edge.from.clone())
 						.or_default()
 						.push(edge.to.clone());
 				}
-			}
 		}
 
 		// Generate ASCII representation

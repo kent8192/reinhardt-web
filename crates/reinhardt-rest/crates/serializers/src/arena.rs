@@ -299,12 +299,12 @@ impl<'a> SerializationArena<'a> {
 			SerializedValue::Object(map) => {
 				let mut json_map = serde_json::Map::new();
 				for (k, v) in map.iter() {
-					json_map.insert(k.clone(), self.to_json(*v));
+					json_map.insert(k.clone(), self.to_json(v));
 				}
 				JsonValue::Object(json_map)
 			}
 			SerializedValue::Array(arr) => {
-				JsonValue::Array(arr.iter().map(|v| self.to_json(*v)).collect())
+				JsonValue::Array(arr.iter().map(|v| self.to_json(v)).collect())
 			}
 			SerializedValue::String(s) => JsonValue::String((*s).to_string()),
 			SerializedValue::Integer(i) => JsonValue::Number(JsonNumber::from(*i)),

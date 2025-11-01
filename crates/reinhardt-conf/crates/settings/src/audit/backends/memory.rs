@@ -169,32 +169,28 @@ impl AuditBackend for MemoryAuditBackend {
 				.iter()
 				.filter(|event| {
 					// Filter by event type
-					if let Some(ref event_type) = filter.event_type {
-						if &event.event_type != event_type {
+					if let Some(ref event_type) = filter.event_type
+						&& &event.event_type != event_type {
 							return false;
 						}
-					}
 
 					// Filter by user
-					if let Some(ref user) = filter.user {
-						if event.user.as_ref() != Some(user) {
+					if let Some(ref user) = filter.user
+						&& event.user.as_ref() != Some(user) {
 							return false;
 						}
-					}
 
 					// Filter by start time
-					if let Some(start_time) = filter.start_time {
-						if event.timestamp < start_time {
+					if let Some(start_time) = filter.start_time
+						&& event.timestamp < start_time {
 							return false;
 						}
-					}
 
 					// Filter by end time
-					if let Some(end_time) = filter.end_time {
-						if event.timestamp > end_time {
+					if let Some(end_time) = filter.end_time
+						&& event.timestamp > end_time {
 							return false;
 						}
-					}
 
 					true
 				})

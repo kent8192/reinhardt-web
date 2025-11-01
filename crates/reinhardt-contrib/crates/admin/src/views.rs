@@ -3,7 +3,6 @@
 //! This module provides view classes for displaying and manipulating model instances
 //! in the admin interface.
 
-use crate::{AdminError, AdminResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

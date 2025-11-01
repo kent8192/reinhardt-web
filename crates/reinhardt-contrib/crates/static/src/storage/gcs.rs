@@ -133,8 +133,7 @@ impl GcsStorage {
 
 			// Write service account key to temporary file
 			std::fs::write(&key_file_path, key_json).map_err(|e| {
-				io::Error::new(
-					io::ErrorKind::Other,
+				io::Error::other(
 					format!("Failed to write service account key file: {}", e),
 				)
 			})?;
@@ -205,7 +204,7 @@ impl Storage for GcsStorage {
 				"application/octet-stream",
 			)
 			.await
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		Ok(self.url(name))
 	}
@@ -241,7 +240,7 @@ impl Storage for GcsStorage {
 			.object()
 			.delete(&self.config.bucket, &object_name)
 			.await
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		Ok(())
 	}

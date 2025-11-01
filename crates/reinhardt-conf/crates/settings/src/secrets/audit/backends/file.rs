@@ -142,39 +142,34 @@ impl SecretAuditBackend for FileSecretAuditBackend {
 				.into_iter()
 				.filter(|event| {
 					// Filter by secret name
-					if let Some(ref secret_name) = filter.secret_name {
-						if &event.secret_name != secret_name {
+					if let Some(ref secret_name) = filter.secret_name
+						&& &event.secret_name != secret_name {
 							return false;
 						}
-					}
 
 					// Filter by accessor
-					if let Some(ref accessor) = filter.accessor {
-						if &event.accessor != accessor {
+					if let Some(ref accessor) = filter.accessor
+						&& &event.accessor != accessor {
 							return false;
 						}
-					}
 
 					// Filter by success
-					if let Some(success_only) = filter.success_only {
-						if event.success != success_only {
+					if let Some(success_only) = filter.success_only
+						&& event.success != success_only {
 							return false;
 						}
-					}
 
 					// Filter by start time
-					if let Some(start_time) = filter.start_time {
-						if event.timestamp < start_time {
+					if let Some(start_time) = filter.start_time
+						&& event.timestamp < start_time {
 							return false;
 						}
-					}
 
 					// Filter by end time
-					if let Some(end_time) = filter.end_time {
-						if event.timestamp > end_time {
+					if let Some(end_time) = filter.end_time
+						&& event.timestamp > end_time {
 							return false;
 						}
-					}
 
 					true
 				})

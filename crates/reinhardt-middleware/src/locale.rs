@@ -213,14 +213,13 @@ impl LocaleMiddleware {
 		// Parse cookies: "name1=value1; name2=value2"
 		for cookie in cookie_header.split(';') {
 			let cookie = cookie.trim();
-			if let Some((name, value)) = cookie.split_once('=') {
-				if name == self.config.cookie_name {
+			if let Some((name, value)) = cookie.split_once('=')
+				&& name == self.config.cookie_name {
 					let locale = value.to_string();
 					if self.config.supported_locales.contains(&locale) {
 						return Some(locale);
 					}
 				}
-			}
 		}
 
 		None

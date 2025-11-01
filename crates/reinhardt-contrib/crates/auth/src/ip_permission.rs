@@ -118,24 +118,19 @@ impl IpWhitelistPermission {
 
 	fn extract_client_ip(&self, context: &PermissionContext) -> Option<IpAddr> {
 		// Try X-Forwarded-For header first
-		if let Some(forwarded) = context.request.headers.get("x-forwarded-for") {
-			if let Ok(forwarded_str) = forwarded.to_str() {
-				if let Some(first_ip) = forwarded_str.split(',').next() {
-					if let Ok(ip) = IpAddr::from_str(first_ip.trim()) {
+		if let Some(forwarded) = context.request.headers.get("x-forwarded-for")
+			&& let Ok(forwarded_str) = forwarded.to_str()
+				&& let Some(first_ip) = forwarded_str.split(',').next()
+					&& let Ok(ip) = IpAddr::from_str(first_ip.trim()) {
 						return Some(ip);
 					}
-				}
-			}
-		}
 
 		// Try X-Real-IP header
-		if let Some(real_ip) = context.request.headers.get("x-real-ip") {
-			if let Ok(real_ip_str) = real_ip.to_str() {
-				if let Ok(ip) = IpAddr::from_str(real_ip_str.trim()) {
+		if let Some(real_ip) = context.request.headers.get("x-real-ip")
+			&& let Ok(real_ip_str) = real_ip.to_str()
+				&& let Ok(ip) = IpAddr::from_str(real_ip_str.trim()) {
 					return Some(ip);
 				}
-			}
-		}
 
 		// Extract from socket address if available
 		if let Some(remote_addr) = context.request.remote_addr {
@@ -273,24 +268,19 @@ impl IpBlacklistPermission {
 
 	fn extract_client_ip(&self, context: &PermissionContext) -> Option<IpAddr> {
 		// Try X-Forwarded-For header first
-		if let Some(forwarded) = context.request.headers.get("x-forwarded-for") {
-			if let Ok(forwarded_str) = forwarded.to_str() {
-				if let Some(first_ip) = forwarded_str.split(',').next() {
-					if let Ok(ip) = IpAddr::from_str(first_ip.trim()) {
+		if let Some(forwarded) = context.request.headers.get("x-forwarded-for")
+			&& let Ok(forwarded_str) = forwarded.to_str()
+				&& let Some(first_ip) = forwarded_str.split(',').next()
+					&& let Ok(ip) = IpAddr::from_str(first_ip.trim()) {
 						return Some(ip);
 					}
-				}
-			}
-		}
 
 		// Try X-Real-IP header
-		if let Some(real_ip) = context.request.headers.get("x-real-ip") {
-			if let Ok(real_ip_str) = real_ip.to_str() {
-				if let Ok(ip) = IpAddr::from_str(real_ip_str.trim()) {
+		if let Some(real_ip) = context.request.headers.get("x-real-ip")
+			&& let Ok(real_ip_str) = real_ip.to_str()
+				&& let Ok(ip) = IpAddr::from_str(real_ip_str.trim()) {
 					return Some(ip);
 				}
-			}
-		}
 
 		// Extract from socket address if available
 		if let Some(remote_addr) = context.request.remote_addr {

@@ -163,7 +163,7 @@ impl Storage for AzureBlobStorage {
 			.blob_client(blob_name)
 			.put_block_blob(content_vec)
 			.await
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		Ok(self.url(name))
 	}
@@ -198,7 +198,7 @@ impl Storage for AzureBlobStorage {
 			.blob_client(blob_name)
 			.delete()
 			.await
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		Ok(())
 	}

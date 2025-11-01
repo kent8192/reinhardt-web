@@ -104,7 +104,7 @@ fn parse_query_multi_value(query_string: &str) -> HashMap<String, Vec<String>> {
 	for (key, value) in form_urlencoded::parse(query_string.as_bytes()) {
 		result
 			.entry(key.into_owned())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(value.into_owned());
 	}
 
@@ -120,11 +120,10 @@ fn string_to_json_value(s: &str) -> serde_json::Value {
 		return serde_json::Value::Number(i.into());
 	}
 	// Try parsing as float
-	if let Ok(f) = s.parse::<f64>() {
-		if let Some(num) = serde_json::Number::from_f64(f) {
+	if let Ok(f) = s.parse::<f64>()
+		&& let Some(num) = serde_json::Number::from_f64(f) {
 			return serde_json::Value::Number(num);
 		}
-	}
 	// Try parsing as boolean
 	if let Ok(b) = s.parse::<bool>() {
 		return serde_json::Value::Bool(b);

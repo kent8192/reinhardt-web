@@ -187,11 +187,10 @@ impl BrotliMiddleware {
 
 	/// Check if the request accepts Brotli encoding
 	fn accepts_brotli(&self, request: &Request) -> bool {
-		if let Some(accept_encoding) = request.headers.get(ACCEPT_ENCODING) {
-			if let Ok(value) = accept_encoding.to_str() {
+		if let Some(accept_encoding) = request.headers.get(ACCEPT_ENCODING)
+			&& let Ok(value) = accept_encoding.to_str() {
 				return value.to_lowercase().contains("br");
 			}
-		}
 		false
 	}
 

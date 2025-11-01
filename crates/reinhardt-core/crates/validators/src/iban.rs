@@ -186,14 +186,13 @@ impl IBANValidator {
 		}
 
 		// Check if country code is in allowed list (if specified)
-		if let Some(allowed) = &self.country_codes {
-			if !allowed.contains(&country_code.to_string()) {
+		if let Some(allowed) = &self.country_codes
+			&& !allowed.contains(&country_code.to_string()) {
 				return Err(ValidationError::IBANCountryNotAllowed {
 					country_code: country_code.to_string(),
 					allowed_codes: allowed.join(", "),
 				});
 			}
-		}
 
 		// Check country-specific length
 		if let Some(&expected_length) = self.country_lengths.get(country_code) {

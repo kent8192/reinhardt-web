@@ -158,11 +158,10 @@ impl GZipMiddleware {
 
 	/// Check if the client accepts gzip encoding
 	fn accepts_gzip(&self, request: &Request) -> bool {
-		if let Some(accept_encoding) = request.headers.get(ACCEPT_ENCODING) {
-			if let Ok(encoding_str) = accept_encoding.to_str() {
+		if let Some(accept_encoding) = request.headers.get(ACCEPT_ENCODING)
+			&& let Ok(encoding_str) = accept_encoding.to_str() {
 				return encoding_str.contains("gzip");
 			}
-		}
 		false
 	}
 

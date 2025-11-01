@@ -518,7 +518,7 @@ impl DataMigration {
 	/// ```
 	pub fn generate_batched_sql(&self, total_rows: usize) -> Vec<String> {
 		let mut statements = Vec::new();
-		let num_batches = (total_rows + self.batch_size - 1) / self.batch_size;
+		let num_batches = total_rows.div_ceil(self.batch_size);
 
 		for batch in 0..num_batches {
 			let start = batch * self.batch_size;

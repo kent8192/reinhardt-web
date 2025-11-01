@@ -5,9 +5,11 @@ use serde::{Deserialize, Serialize};
 /// Message levels (similar to Django)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(i32)]
+#[derive(Default)]
 pub enum Level {
 	Debug = 10,
-	Info = 20,
+	#[default]
+ Info = 20,
 	Success = 25,
 	Warning = 30,
 	Error = 40,
@@ -118,11 +120,6 @@ impl Ord for Level {
 	}
 }
 
-impl Default for Level {
-	fn default() -> Self {
-		Level::Info
-	}
-}
 
 #[cfg(test)]
 mod tests {

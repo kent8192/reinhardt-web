@@ -287,7 +287,7 @@ impl<B: ThrottleBackend, T: TimeProvider> Throttle for AdaptiveThrottle<B, T> {
 			.backend
 			.increment(key, period)
 			.await
-			.map_err(|e| ThrottleError::ThrottleError(e))?;
+			.map_err(ThrottleError::ThrottleError)?;
 
 		Ok(count <= rate)
 	}
@@ -299,7 +299,7 @@ impl<B: ThrottleBackend, T: TimeProvider> Throttle for AdaptiveThrottle<B, T> {
 			.backend
 			.get_count(key)
 			.await
-			.map_err(|e| ThrottleError::ThrottleError(e))?;
+			.map_err(ThrottleError::ThrottleError)?;
 
 		if count > rate {
 			Ok(Some(period))

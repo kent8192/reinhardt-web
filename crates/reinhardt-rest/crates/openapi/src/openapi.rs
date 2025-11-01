@@ -249,7 +249,7 @@ impl OperationExt for Operation {
 			self.parameters = Some(Vec::new());
 		}
 		if let Some(params) = &mut self.parameters {
-			params.push(parameter.into());
+			params.push(parameter);
 		}
 	}
 

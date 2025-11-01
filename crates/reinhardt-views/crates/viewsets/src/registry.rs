@@ -26,7 +26,7 @@ impl ManualActionRegistry {
 		let mut actions = self.actions.write().unwrap();
 		actions
 			.entry(viewset_type.to_string())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(action);
 	}
 

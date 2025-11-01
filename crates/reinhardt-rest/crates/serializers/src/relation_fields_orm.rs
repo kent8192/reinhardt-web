@@ -480,7 +480,7 @@ where
 		let mut queryset = QuerySet::<T>::new();
 
 		// Filter by slug field IN (slugs)
-		let slug_values: Vec<String> = slugs.iter().map(|s| s.clone()).collect();
+		let slug_values: Vec<String> = slugs.iter().cloned().collect();
 
 		let filter = Filter::new(
 			self.slug_field.clone(),

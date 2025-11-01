@@ -263,14 +263,13 @@ impl LruCache {
 		// Pop from heap until we find a valid LRU entry
 		while let Some(Reverse((access_time, key))) = self.heap.pop() {
 			// Check if this entry is still valid (not updated since)
-			if let Some((_, current_access_time)) = self.map.get(&key) {
-				if *current_access_time == access_time {
+			if let Some((_, current_access_time)) = self.map.get(&key)
+				&& *current_access_time == access_time {
 					// This is the true LRU entry
 					self.map.remove(&key);
 					return;
 				}
 				// Otherwise, this is a stale heap entry, continue to next
-			}
 		}
 	}
 

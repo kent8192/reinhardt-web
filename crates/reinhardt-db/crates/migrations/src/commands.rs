@@ -245,16 +245,14 @@ impl MakeMigrationsCommand {
 		let mut max_number = 0;
 		if let Ok(entries) = fs::read_dir(&dir_path) {
 			for entry in entries.flatten() {
-				if let Some(file_name) = entry.file_name().to_str() {
-					if file_name.ends_with(".rs") {
+				if let Some(file_name) = entry.file_name().to_str()
+					&& file_name.ends_with(".rs") {
 						// Extract number from filename (e.g., "0001_initial.rs" -> "0001")
-						if let Some(number_str) = file_name.split('_').next() {
-							if let Ok(number) = number_str.parse::<u32>() {
+						if let Some(number_str) = file_name.split('_').next()
+							&& let Ok(number) = number_str.parse::<u32>() {
 								max_number = max_number.max(number);
 							}
-						}
 					}
-				}
 			}
 		}
 
@@ -393,19 +391,18 @@ impl MakeMigrationsCommand {
 		let mut migration_modules = Vec::new();
 		if let Ok(entries) = fs::read_dir(&app_dir) {
 			for entry in entries.flatten() {
-				if let Some(file_name) = entry.file_name().to_str() {
-					if file_name.ends_with(".rs")
+				if let Some(file_name) = entry.file_name().to_str()
+					&& file_name.ends_with(".rs")
 						&& file_name
 							.chars()
 							.next()
-							.map_or(false, |c| c.is_ascii_digit())
+							.is_some_and(|c| c.is_ascii_digit())
 					{
 						// Convert filename to valid module name (prefix with _ and replace - with _)
 						let module_name =
 							format!("_{}", file_name.trim_end_matches(".rs").replace('-', "_"));
 						migration_modules.push(module_name);
 					}
-				}
 			}
 		}
 

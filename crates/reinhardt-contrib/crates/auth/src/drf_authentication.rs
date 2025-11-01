@@ -228,8 +228,8 @@ impl Authentication for TokenAuthentication {
 
 		if let Some(header) = auth_header {
 			let prefix = format!("{} ", self.config.prefix);
-			if let Some(token) = header.strip_prefix(&prefix) {
-				if let Some(user_id) = self.tokens.get(token) {
+			if let Some(token) = header.strip_prefix(&prefix)
+				&& let Some(user_id) = self.tokens.get(token) {
 					return Ok(Some(Box::new(SimpleUser {
 						id: uuid::Uuid::new_v4(),
 						username: user_id.clone(),
@@ -240,7 +240,6 @@ impl Authentication for TokenAuthentication {
 						is_superuser: false,
 					})));
 				}
-			}
 		}
 
 		Ok(None)
@@ -311,8 +310,8 @@ impl Authentication for RemoteUserAuthentication {
 			.get(&self.header_name)
 			.and_then(|v| v.to_str().ok());
 
-		if let Some(username) = header_value {
-			if !username.is_empty() {
+		if let Some(username) = header_value
+			&& !username.is_empty() {
 				return Ok(Some(Box::new(SimpleUser {
 					id: uuid::Uuid::new_v4(),
 					username: username.to_string(),
@@ -323,7 +322,6 @@ impl Authentication for RemoteUserAuthentication {
 					is_superuser: false,
 				})));
 			}
-		}
 
 		Ok(None)
 	}

@@ -334,7 +334,7 @@ impl Session {
 
 		// Commit transaction if active
 		if let Some(mut tx) = self.transaction.take() {
-			tx.commit().map_err(|e| SessionError::TransactionError(e))?;
+			tx.commit().map_err(SessionError::TransactionError)?;
 		}
 
 		Ok(())
@@ -368,7 +368,7 @@ impl Session {
 		// Rollback transaction if active
 		if let Some(mut tx) = self.transaction.take() {
 			tx.rollback()
-				.map_err(|e| SessionError::TransactionError(e))?;
+				.map_err(SessionError::TransactionError)?;
 		}
 
 		Ok(())
@@ -432,7 +432,7 @@ impl Session {
 		}
 
 		let mut tx = Transaction::new();
-		tx.begin().map_err(|e| SessionError::TransactionError(e))?;
+		tx.begin().map_err(SessionError::TransactionError)?;
 
 		self.transaction = Some(tx);
 

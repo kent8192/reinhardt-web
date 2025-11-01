@@ -67,7 +67,7 @@ impl PostgresBackend {
 			{
 				// PostgreSQL TIMESTAMP WITH TIME ZONE
 				row.insert(column_name.to_string(), QueryValue::Timestamp(value));
-			} else if let Ok(_) = pg_row.try_get::<Option<i32>, _>(column_name) {
+			} else if pg_row.try_get::<Option<i32>, _>(column_name).is_ok() {
 				row.insert(column_name.to_string(), QueryValue::Null);
 			}
 		}

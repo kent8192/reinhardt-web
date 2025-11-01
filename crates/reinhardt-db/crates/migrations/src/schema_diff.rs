@@ -120,14 +120,14 @@ impl SchemaDiff {
 		};
 
 		// Detect table additions
-		for (table_name, _) in &self.target_schema.tables {
+		for table_name in self.target_schema.tables.keys() {
 			if !self.current_schema.tables.contains_key(table_name) {
 				result.tables_to_add.push(table_name.clone());
 			}
 		}
 
 		// Detect table removals
-		for (table_name, _) in &self.current_schema.tables {
+		for table_name in self.current_schema.tables.keys() {
 			if !self.target_schema.tables.contains_key(table_name) {
 				result.tables_to_remove.push(table_name.clone());
 			}
@@ -137,7 +137,7 @@ impl SchemaDiff {
 		for (table_name, target_table) in &self.target_schema.tables {
 			if let Some(current_table) = self.current_schema.tables.get(table_name) {
 				// Column additions
-				for (col_name, _) in &target_table.columns {
+				for col_name in target_table.columns.keys() {
 					if !current_table.columns.contains_key(col_name) {
 						result
 							.columns_to_add
@@ -146,7 +146,7 @@ impl SchemaDiff {
 				}
 
 				// Column removals
-				for (col_name, _) in &current_table.columns {
+				for col_name in current_table.columns.keys() {
 					if !target_table.columns.contains_key(col_name) {
 						result
 							.columns_to_remove
@@ -156,8 +156,8 @@ impl SchemaDiff {
 
 				// Column modifications
 				for (col_name, target_col) in &target_table.columns {
-					if let Some(current_col) = current_table.columns.get(col_name) {
-						if current_col != target_col {
+					if let Some(current_col) = current_table.columns.get(col_name)
+						&& current_col != target_col {
 							result.columns_to_modify.push((
 								table_name.clone(),
 								col_name.clone(),
@@ -165,7 +165,6 @@ impl SchemaDiff {
 								target_col.clone(),
 							));
 						}
-					}
 				}
 
 				// Index changes
@@ -240,8 +239,8 @@ impl SchemaDiff {
 
 		// Add columns
 		for (table_name, col_name) in diff.columns_to_add {
-			if let Some(table_schema) = self.target_schema.tables.get(&table_name) {
-				if let Some(col_schema) = table_schema.columns.get(&col_name) {
+			if let Some(table_schema) = self.target_schema.tables.get(&table_name)
+				&& let Some(col_schema) = table_schema.columns.get(&col_name) {
 					let unique = self.extract_column_constraints(&table_name, &col_name);
 					let auto_increment = Self::is_auto_increment(col_schema);
 					let max_length = Self::extract_max_length(&col_schema.data_type);
@@ -260,7 +259,6 @@ impl SchemaDiff {
 						},
 					});
 				}
-			}
 		}
 
 		// Remove columns
@@ -308,29 +306,22 @@ impl SchemaDiff {
 		let upper_type = data_type.to_uppercase();
 
 		// Match VARCHAR(N), CHAR(N) patterns
-		if upper_type.contains("VARCHAR") || upper_type.contains("CHAR") {
-			if let Some(start) = data_type.find('(') {
-				if let Some(end) = data_type.find(')') {
-					if let Ok(length) = data_type[start + 1..end].parse::<u32>() {
+		if (upper_type.contains("VARCHAR") || upper_type.contains("CHAR"))
+			&& let Some(start) = data_type.find('(')
+				&& let Some(end) = data_type.find(')')
+					&& let Ok(length) = data_type[start + 1..end].parse::<u32>() {
 						return Some(length);
 					}
-				}
-			}
-		}
 
 		// Match DECIMAL(P, S), NUMERIC(P, S) patterns - extract precision (P)
-		if upper_type.contains("DECIMAL") || upper_type.contains("NUMERIC") {
-			if let Some(start) = data_type.find('(') {
-				if let Some(comma_pos) = data_type.find(',') {
-					if comma_pos > start + 1 {
-						if let Ok(precision) = data_type[start + 1..comma_pos].trim().parse::<u32>()
+		if (upper_type.contains("DECIMAL") || upper_type.contains("NUMERIC"))
+			&& let Some(start) = data_type.find('(')
+				&& let Some(comma_pos) = data_type.find(',')
+					&& comma_pos > start + 1
+						&& let Ok(precision) = data_type[start + 1..comma_pos].trim().parse::<u32>()
 						{
 							return Some(precision);
 						}
-					}
-				}
-			}
-		}
 
 		None
 	}

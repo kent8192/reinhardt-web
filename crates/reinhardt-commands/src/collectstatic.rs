@@ -187,13 +187,11 @@ impl CollectStaticCommand {
 
 	fn should_ignore(&self, file_path: &str) -> bool {
 		// Check if file is hidden (starts with dot)
-		if let Some(file_name) = std::path::Path::new(file_path).file_name() {
-			if let Some(name_str) = file_name.to_str() {
-				if name_str.starts_with('.') {
+		if let Some(file_name) = std::path::Path::new(file_path).file_name()
+			&& let Some(name_str) = file_name.to_str()
+				&& name_str.starts_with('.') {
 					return true;
 				}
-			}
-		}
 
 		// Check ignore patterns
 		for pattern in &self.options.ignore_patterns {
@@ -216,14 +214,13 @@ impl CollectStaticCommand {
 		let dest_path = self.config.static_root.join(relative_path);
 
 		// Check if file already exists and is identical
-		if dest_path.exists() && !self.options.clear {
-			if self.files_identical(&source_path, &dest_path)? {
+		if dest_path.exists() && !self.options.clear
+			&& self.files_identical(&source_path, &dest_path)? {
 				if self.options.verbosity > 1 {
 					println!("Unmodified: {}", relative_path);
 				}
 				return Ok(CopyResult::Unmodified);
 			}
-		}
 
 		if self.options.verbosity > 1 {
 			println!(

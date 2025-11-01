@@ -189,7 +189,7 @@ impl DatabaseMigrationRecorder {
 		self.connection
 			.execute(&sql, vec![])
 			.await
-			.map_err(|e| crate::MigrationError::DatabaseError(e))?;
+			.map_err(crate::MigrationError::DatabaseError)?;
 
 		Ok(())
 	}
@@ -262,7 +262,7 @@ impl DatabaseMigrationRecorder {
 					.connection
 					.fetch_all(sql, params)
 					.await
-					.map_err(|e| crate::MigrationError::DatabaseError(e))?;
+					.map_err(crate::MigrationError::DatabaseError)?;
 
 				if rows.is_empty() {
 					return Ok(false);
@@ -353,7 +353,7 @@ impl DatabaseMigrationRecorder {
 				self.connection
 					.execute(sql, params)
 					.await
-					.map_err(|e| crate::MigrationError::DatabaseError(e))?;
+					.map_err(crate::MigrationError::DatabaseError)?;
 
 				Ok(())
 			}
@@ -472,21 +472,21 @@ impl DatabaseMigrationRecorder {
 					.connection
 					.fetch_all(sql, vec![])
 					.await
-					.map_err(|e| crate::MigrationError::DatabaseError(e))?;
+					.map_err(crate::MigrationError::DatabaseError)?;
 
 				let mut records = Vec::new();
 				for row in rows {
 					let app: String = row
 						.get("app")
-						.map_err(|e| crate::MigrationError::DatabaseError(e))?;
+						.map_err(crate::MigrationError::DatabaseError)?;
 					let name: String = row
 						.get("name")
-						.map_err(|e| crate::MigrationError::DatabaseError(e))?;
+						.map_err(crate::MigrationError::DatabaseError)?;
 
 					// Parse timestamp from database
 					let applied: DateTime<Utc> = row
 						.get("applied")
-						.map_err(|e| crate::MigrationError::DatabaseError(e))?;
+						.map_err(crate::MigrationError::DatabaseError)?;
 
 					records.push(MigrationRecord { app, name, applied });
 				}
@@ -547,7 +547,7 @@ impl DatabaseMigrationRecorder {
 				self.connection
 					.execute(sql, params)
 					.await
-					.map_err(|e| crate::MigrationError::DatabaseError(e))?;
+					.map_err(crate::MigrationError::DatabaseError)?;
 
 				Ok(())
 			}

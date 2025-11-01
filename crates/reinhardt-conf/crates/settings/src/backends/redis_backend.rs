@@ -179,7 +179,7 @@ impl RedisBackend {
 
 		if let Some(seconds) = ttl {
 			let _: () = conn
-				.set_ex(&prefixed_key, value, seconds as u64)
+				.set_ex(&prefixed_key, value, seconds)
 				.await
 				.map_err(|e| format!("Failed to set setting with TTL: {}", e))?;
 		} else {
@@ -300,7 +300,7 @@ impl DynamicBackend for RedisBackend {
 		// Call existing method and convert result
 		let result = RedisBackend::get(self, key)
 			.await
-			.map_err(|e| DynamicError::Backend(e))?;
+			.map_err(DynamicError::Backend)?;
 
 		// Convert String to serde_json::Value if present
 		match result {
@@ -324,25 +324,25 @@ impl DynamicBackend for RedisBackend {
 		// Call existing method
 		RedisBackend::set(self, key, &value_str, ttl)
 			.await
-			.map_err(|e| DynamicError::Backend(e))
+			.map_err(DynamicError::Backend)
 	}
 
 	async fn delete(&self, key: &str) -> DynamicResult<()> {
 		RedisBackend::delete(self, key)
 			.await
-			.map_err(|e| DynamicError::Backend(e))
+			.map_err(DynamicError::Backend)
 	}
 
 	async fn exists(&self, key: &str) -> DynamicResult<bool> {
 		RedisBackend::exists(self, key)
 			.await
-			.map_err(|e| DynamicError::Backend(e))
+			.map_err(DynamicError::Backend)
 	}
 
 	async fn keys(&self) -> DynamicResult<Vec<String>> {
 		RedisBackend::keys(self)
 			.await
-			.map_err(|e| DynamicError::Backend(e))
+			.map_err(DynamicError::Backend)
 	}
 }
 

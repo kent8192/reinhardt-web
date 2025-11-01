@@ -518,6 +518,12 @@ pub struct PoolStatistics {
 	pub failed_requests: usize,
 }
 
+impl Default for PoolStatistics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PoolStatistics {
 	/// Create a new PoolStatistics instance for tracking connection pool metrics
 	///

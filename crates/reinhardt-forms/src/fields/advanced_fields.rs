@@ -296,8 +296,7 @@ impl DurationField {
 		}
 
 		// Week format: P[n]W
-		if s.ends_with('W') {
-			let num_part = &s[..s.len() - 1];
+		if let Some(num_part) = s.strip_suffix('W') {
 			return num_part.chars().all(|c| c.is_ascii_digit());
 		}
 

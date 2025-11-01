@@ -337,8 +337,8 @@ impl DynamicSettings {
 	pub async fn get<T: DeserializeOwned>(&self, key: &str) -> DynamicResult<Option<T>> {
 		// Check cache first
 		#[cfg(feature = "caching")]
-		if let Some(cache) = &self.cache {
-			if let Some(cached) = cache.get(key).await {
+		if let Some(cache) = &self.cache
+			&& let Some(cached) = cache.get(key).await {
 				if !cached.is_expired() {
 					return serde_json::from_value(cached.value.clone())
 						.map(Some)
@@ -348,7 +348,6 @@ impl DynamicSettings {
 					cache.invalidate(key).await;
 				}
 			}
-		}
 
 		// Fetch from backend
 		let value = self.backend.get(key).await?;
@@ -402,7 +401,7 @@ impl DynamicSettings {
 		#[cfg(feature = "caching")]
 		if let Some(cache) = &self.cache {
 			let cached_value =
-				CachedValue::new(json_value.clone(), ttl.map(|s| Duration::from_secs(s)));
+				CachedValue::new(json_value.clone(), ttl.map(Duration::from_secs));
 			cache.insert(key.to_string(), cached_value).await;
 		}
 
@@ -631,7 +630,7 @@ impl DynamicSettings {
 				.lock()
 				.watch(path)
 				.await
-				.map_err(|e| DynamicError::Backend(e))?;
+				.map_err(DynamicError::Backend)?;
 		}
 		Ok(())
 	}
@@ -665,7 +664,7 @@ impl DynamicSettings {
 				.lock()
 				.unwatch(path)
 				.await
-				.map_err(|e| DynamicError::Backend(e))?;
+				.map_err(DynamicError::Backend)?;
 		}
 		Ok(())
 	}
@@ -693,7 +692,7 @@ impl DynamicSettings {
 				.lock()
 				.stop()
 				.await
-				.map_err(|e| DynamicError::Backend(e))?;
+				.map_err(DynamicError::Backend)?;
 		}
 		Ok(())
 	}

@@ -347,11 +347,10 @@ pub fn get_client_ip(request: &Request) -> Option<std::net::IpAddr> {
 		.and_then(|v| v.to_str().ok())
 	{
 		// X-Forwarded-For can contain multiple IPs, take the first one
-		if let Some(first_ip) = forwarded.split(',').next() {
-			if let Ok(ip) = first_ip.trim().parse() {
+		if let Some(first_ip) = forwarded.split(',').next()
+			&& let Ok(ip) = first_ip.trim().parse() {
 				return Some(ip);
 			}
-		}
 	}
 
 	// Try X-Real-IP header
@@ -359,11 +358,9 @@ pub fn get_client_ip(request: &Request) -> Option<std::net::IpAddr> {
 		.headers
 		.get("x-real-ip")
 		.and_then(|v| v.to_str().ok())
-	{
-		if let Ok(ip) = real_ip.parse() {
+		&& let Ok(ip) = real_ip.parse() {
 			return Some(ip);
 		}
-	}
 
 	// If no proxy headers, we'd normally check the socket address,
 	// but since Request doesn't store that, return None

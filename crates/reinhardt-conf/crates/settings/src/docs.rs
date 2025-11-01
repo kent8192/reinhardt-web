@@ -200,7 +200,7 @@ impl DocsGenerator {
 					setting.key, setting.type_name, required, default, desc
 				));
 			}
-			output.push_str("\n");
+			output.push('\n');
 
 			// Detailed documentation for each setting
 			for setting in &group.settings {
@@ -249,7 +249,7 @@ impl DocsGenerator {
 			output.push_str(&format!("- **⚠️ Deprecated**: since {}\n", deprecated));
 		}
 
-		output.push_str("\n");
+		output.push('\n');
 	}
 	/// Generate JSON Schema
 	///

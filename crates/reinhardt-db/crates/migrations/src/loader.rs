@@ -120,7 +120,7 @@ impl MigrationLoader {
 			if !file_name
 				.chars()
 				.next()
-				.map_or(false, |c| c.is_ascii_digit())
+				.is_some_and(|c| c.is_ascii_digit())
 			{
 				continue;
 			}

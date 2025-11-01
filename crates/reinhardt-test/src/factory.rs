@@ -216,7 +216,7 @@ impl RequestBuilder {
 	pub fn header(mut self, name: &str, value: &str) -> Self {
 		let header_name: http::header::HeaderName = name
 			.parse()
-			.expect(&format!("Invalid header name: {}", name));
+			.unwrap_or_else(|_| panic!("Invalid header name: {}", name));
 		self.headers.insert(
 			header_name,
 			HeaderValue::from_str(value).expect("Invalid header value"),
@@ -372,7 +372,7 @@ impl RequestBuilder {
 		}
 
 		// Build request with body
-		let body = self.body.unwrap_or_else(|| Bytes::new());
+		let body = self.body.unwrap_or_else(Bytes::new);
 		let req = request.body(Full::new(body))?;
 
 		Ok(req)

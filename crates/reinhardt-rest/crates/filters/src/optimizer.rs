@@ -371,14 +371,13 @@ impl QueryPlan {
 		}
 
 		// Check for large row estimates
-		if let Some(rows) = self.estimated_rows {
-			if rows > 10000 {
+		if let Some(rows) = self.estimated_rows
+			&& rows > 10000 {
 				self.suggestions.push(format!(
 					"Large result set ({} rows) - consider adding LIMIT clause or filtering",
 					rows
 				));
 			}
-		}
 
 		// Check for nested loops with large outer tables
 		if self.raw_plan.contains("Nested Loop") {
@@ -388,15 +387,13 @@ impl QueryPlan {
 		}
 
 		// Check for hash join memory concerns
-		if self.raw_plan.contains("Hash Join") {
-			if let Some(rows) = self.estimated_rows {
-				if rows > 100000 {
+		if self.raw_plan.contains("Hash Join")
+			&& let Some(rows) = self.estimated_rows
+				&& rows > 100000 {
 					self.suggestions.push(
 						"Large hash join detected - may require significant memory".to_string(),
 					);
 				}
-			}
-		}
 
 		// Check for missing statistics
 		if self.raw_plan.contains("rows=1 ") && !self.raw_plan.contains("LIMIT") {
@@ -412,15 +409,13 @@ impl QueryPlan {
 		}
 
 		// Check for sort operations
-		if self.raw_plan.contains("Sort") {
-			if let Some(rows) = self.estimated_rows {
-				if rows > 10000 {
+		if self.raw_plan.contains("Sort")
+			&& let Some(rows) = self.estimated_rows
+				&& rows > 10000 {
 					self.suggestions.push(
 						"Large sort operation - consider adding index on sort columns".to_string(),
 					);
 				}
-			}
-		}
 
 		self
 	}

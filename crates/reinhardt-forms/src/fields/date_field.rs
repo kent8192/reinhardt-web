@@ -86,7 +86,7 @@ impl DateField {
 				return Ok(date);
 			}
 		}
-		Err(format!("Enter a valid date"))
+		Err("Enter a valid date".to_string())
 	}
 }
 
@@ -133,7 +133,7 @@ impl FormField for DateField {
 					return Ok(serde_json::Value::Null);
 				}
 
-				let date = self.parse_date(s).map_err(|e| FieldError::Validation(e))?;
+				let date = self.parse_date(s).map_err(FieldError::Validation)?;
 
 				// Return in ISO 8601 format
 				Ok(serde_json::json!(date.format("%Y-%m-%d").to_string()))

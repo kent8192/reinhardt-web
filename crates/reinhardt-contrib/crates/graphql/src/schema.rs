@@ -108,7 +108,7 @@ pub struct Query;
 impl Query {
 	async fn user(&self, ctx: &Context<'_>, id: ID) -> GqlResult<Option<User>> {
 		let storage = ctx.data::<UserStorage>()?;
-		Ok(storage.get_user(&id.to_string()).await)
+		Ok(storage.get_user(id.as_ref()).await)
 	}
 
 	async fn users(&self, ctx: &Context<'_>) -> GqlResult<Vec<User>> {
@@ -155,7 +155,7 @@ impl Mutation {
 	) -> GqlResult<Option<User>> {
 		let storage = ctx.data::<UserStorage>()?;
 
-		if let Some(mut user) = storage.get_user(&id.to_string()).await {
+		if let Some(mut user) = storage.get_user(id.as_ref()).await {
 			user.active = active;
 			storage.add_user(user.clone()).await;
 			Ok(Some(user))

@@ -234,12 +234,11 @@ impl AdminForm {
 				if value.is_none() || value == Some(&serde_json::Value::Null) {
 					field.add_error(format!("{} is required", field.label));
 					is_valid = false;
-				} else if let Some(serde_json::Value::String(s)) = value {
-					if s.trim().is_empty() {
+				} else if let Some(serde_json::Value::String(s)) = value
+					&& s.trim().is_empty() {
 						field.add_error(format!("{} cannot be empty", field.label));
 						is_valid = false;
 					}
-				}
 			}
 		}
 

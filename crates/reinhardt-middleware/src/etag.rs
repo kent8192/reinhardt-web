@@ -188,8 +188,8 @@ impl ETagMiddleware {
 
 	/// Check If-None-Match header
 	fn check_if_none_match(&self, request: &Request, etag: &str) -> bool {
-		if let Some(if_none_match) = request.headers.get("if-none-match") {
-			if let Ok(value) = if_none_match.to_str() {
+		if let Some(if_none_match) = request.headers.get("if-none-match")
+			&& let Ok(value) = if_none_match.to_str() {
 				// * matches everything
 				if value == "*" {
 					return true;
@@ -197,16 +197,15 @@ impl ETagMiddleware {
 
 				// Check comma-separated ETag list
 				let etags: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
-				return etags.iter().any(|&e| e == etag);
+				return etags.contains(&etag);
 			}
-		}
 		false
 	}
 
 	/// Check If-Match header
 	fn check_if_match(&self, request: &Request, etag: &str) -> bool {
-		if let Some(if_match) = request.headers.get("if-match") {
-			if let Ok(value) = if_match.to_str() {
+		if let Some(if_match) = request.headers.get("if-match")
+			&& let Ok(value) = if_match.to_str() {
 				// * matches everything
 				if value == "*" {
 					return true;
@@ -214,9 +213,8 @@ impl ETagMiddleware {
 
 				// Check comma-separated ETag list
 				let etags: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
-				return etags.iter().any(|&e| e == etag);
+				return etags.contains(&etag);
 			}
-		}
 		// Always true if If-Match header is absent
 		true
 	}
@@ -260,7 +258,7 @@ impl Middleware for ETagMiddleware {
 
 		// Check If-None-Match header (for GET/HEAD requests)
 		if (method == "GET" || method == "HEAD")
-			&& if_none_match.as_ref().map_or(false, |inm| {
+			&& if_none_match.as_ref().is_some_and(|inm| {
 				inm.split(',')
 					.any(|tag| tag.trim().trim_matches('"') == etag.trim_matches('"'))
 			}) {
@@ -278,7 +276,7 @@ impl Middleware for ETagMiddleware {
 		if (method == "PUT" || method == "PATCH" || method == "DELETE")
 			&& if_match
 				.as_ref()
-				.map_or(false, |im| !im.contains(&etag) && im != "*")
+				.is_some_and(|im| !im.contains(&etag) && im != "*")
 		{
 			// Return 412 Precondition Failed
 			return Ok(Response::new(StatusCode::PRECONDITION_FAILED)

@@ -218,7 +218,7 @@ pub async fn make_request_with_headers(
 		);
 	}
 
-	let body_bytes = body.map(|b| Bytes::from(b)).unwrap_or_else(|| Bytes::new());
+	let body_bytes = body.map(Bytes::from).unwrap_or_else(Bytes::new);
 
 	let request = Request::new(method, uri, hyper::Version::HTTP_11, header_map, body_bytes);
 

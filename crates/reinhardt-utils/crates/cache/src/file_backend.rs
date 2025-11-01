@@ -124,13 +124,11 @@ impl FileCache {
 		let mut to_remove = Vec::new();
 
 		for (key, path) in index.iter() {
-			if let Ok(data) = fs::read(path).await {
-				if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&data) {
-					if entry.is_expired() {
+			if let Ok(data) = fs::read(path).await
+				&& let Ok(entry) = serde_json::from_slice::<CacheEntry>(&data)
+					&& entry.is_expired() {
 						to_remove.push((key.clone(), path.clone()));
 					}
-				}
-			}
 		}
 
 		for (key, path) in to_remove {
@@ -164,15 +162,12 @@ impl FileCache {
 			.map_err(|e| Error::Internal(format!("Failed to read directory entry: {}", e)))?
 		{
 			let path = entry.path();
-			if path.is_file() {
-				if let Ok(data) = fs::read(&path).await {
-					if let Ok(cache_entry) = serde_json::from_slice::<StoredEntry>(&data) {
-						if !cache_entry.entry.is_expired() {
+			if path.is_file()
+				&& let Ok(data) = fs::read(&path).await
+					&& let Ok(cache_entry) = serde_json::from_slice::<StoredEntry>(&data)
+						&& !cache_entry.entry.is_expired() {
 							index.insert(cache_entry.key.clone(), path);
 						}
-					}
-				}
-			}
 		}
 
 		Ok(())

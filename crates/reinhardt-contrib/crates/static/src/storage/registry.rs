@@ -68,7 +68,7 @@ impl StorageRegistry {
 		let mut backends = self
 			.backends
 			.write()
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		if backends.contains_key(name) {
 			return Err(io::Error::new(
@@ -90,7 +90,7 @@ impl StorageRegistry {
 		let mut backends = self
 			.backends
 			.write()
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		if backends.remove(name).is_none() {
 			return Err(io::Error::new(
@@ -142,7 +142,7 @@ impl StorageRegistry {
 		let mut backends = self
 			.backends
 			.write()
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+			.map_err(|e| io::Error::other(e.to_string()))?;
 
 		backends.clear();
 		Ok(())

@@ -104,7 +104,7 @@ impl RateLimitStore {
 		let mut history = self.history.write().unwrap();
 		history
 			.entry(key.to_string())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(Utc::now());
 	}
 
@@ -342,11 +342,7 @@ impl RateLimitMiddleware {
 		// The user ID might be stored as String or i64
 		if let Some(user_id) = request.extensions.get::<String>() {
 			Some(user_id)
-		} else if let Some(user_id) = request.extensions.get::<i64>() {
-			Some(user_id.to_string())
-		} else {
-			None
-		}
+		} else { request.extensions.get::<i64>().map(|user_id| user_id.to_string()) }
 	}
 
 	/// Extract client IP address from request
@@ -358,8 +354,8 @@ impl RateLimitMiddleware {
 	/// 4. Falls back to 127.0.0.1 if none available
 	fn extract_client_ip(&self, request: &Request) -> String {
 		// 1. Check X-Forwarded-For header
-		if let Some(xff) = request.headers.get("X-Forwarded-For") {
-			if let Ok(xff_str) = xff.to_str() {
+		if let Some(xff) = request.headers.get("X-Forwarded-For")
+			&& let Ok(xff_str) = xff.to_str() {
 				// X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
 				// Take the first (leftmost) IP as the original client IP
 				if let Some(first_ip) = xff_str.split(',').next() {
@@ -370,18 +366,16 @@ impl RateLimitMiddleware {
 					}
 				}
 			}
-		}
 
 		// 2. Check X-Real-IP header
-		if let Some(xri) = request.headers.get("X-Real-IP") {
-			if let Ok(ip_str) = xri.to_str() {
+		if let Some(xri) = request.headers.get("X-Real-IP")
+			&& let Ok(ip_str) = xri.to_str() {
 				let trimmed = ip_str.trim();
 				// Validate IP format
 				if trimmed.parse::<std::net::IpAddr>().is_ok() {
 					return trimmed.to_string();
 				}
 			}
-		}
 
 		// 3. Check remote_addr field
 		if let Some(addr) = request.remote_addr {

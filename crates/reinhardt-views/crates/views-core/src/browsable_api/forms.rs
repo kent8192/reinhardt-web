@@ -139,7 +139,7 @@ impl FormGenerator {
 	pub fn add_error(&mut self, field: impl Into<String>, error: impl Into<String>) -> &mut Self {
 		self.errors
 			.entry(field.into())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(error.into());
 		self
 	}

@@ -93,7 +93,7 @@ impl FormField for TimeField {
 					return Ok(serde_json::Value::Null);
 				}
 
-				let time = self.parse_time(s).map_err(|e| FieldError::Validation(e))?;
+				let time = self.parse_time(s).map_err(FieldError::Validation)?;
 
 				Ok(serde_json::Value::String(
 					time.format("%H:%M:%S").to_string(),

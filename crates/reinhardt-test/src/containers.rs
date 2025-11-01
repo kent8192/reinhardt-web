@@ -33,6 +33,12 @@ pub struct PostgresContainer {
 	password: String,
 }
 
+impl Default for PostgresContainer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PostgresContainer {
 	/// Create a new PostgreSQL container with default settings
 	pub fn new() -> Self {
@@ -97,6 +103,12 @@ pub struct MySqlContainer {
 	password: String,
 }
 
+impl Default for MySqlContainer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MySqlContainer {
 	/// Create a new MySQL container with default settings
 	pub fn new() -> Self {
@@ -155,6 +167,12 @@ pub struct RedisContainer {
 	container: Container<RedisImage>,
 	host: String,
 	port: u16,
+}
+
+impl Default for RedisContainer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RedisContainer {

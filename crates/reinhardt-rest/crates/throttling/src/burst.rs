@@ -72,7 +72,7 @@ impl<B: ThrottleBackend> Throttle for BurstRateThrottle<B> {
 		let burst_count = backend
 			.get_count(&burst_key)
 			.await
-			.map_err(|e| ThrottleError::ThrottleError(e))?;
+			.map_err(ThrottleError::ThrottleError)?;
 		if burst_count >= self.burst_rate {
 			return Ok(false);
 		}
@@ -81,7 +81,7 @@ impl<B: ThrottleBackend> Throttle for BurstRateThrottle<B> {
 		let sustained_count = backend
 			.get_count(&sustained_key)
 			.await
-			.map_err(|e| ThrottleError::ThrottleError(e))?;
+			.map_err(ThrottleError::ThrottleError)?;
 		if sustained_count >= self.sustained_rate {
 			return Ok(false);
 		}

@@ -325,9 +325,7 @@ impl CacheMiddleware {
 	/// Check if status code is cacheable
 	fn is_cacheable_status(&self, status: u16) -> bool {
 		self.config
-			.cacheable_status_codes
-			.iter()
-			.any(|&s| s == status)
+			.cacheable_status_codes.contains(&status)
 	}
 
 	/// Generate cache key
@@ -417,11 +415,10 @@ impl Middleware for CacheMiddleware {
 			self.store.set(cache_key, entry);
 
 			// Clean up expired entries if max entries exceeded
-			if let Some(max_entries) = self.config.max_entries {
-				if self.store.len() > max_entries {
+			if let Some(max_entries) = self.config.max_entries
+				&& self.store.len() > max_entries {
 					self.store.cleanup();
 				}
-			}
 		}
 
 		// Add X-Cache header

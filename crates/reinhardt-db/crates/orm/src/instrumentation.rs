@@ -367,7 +367,7 @@ impl Instrumentation {
 
 		self.query_metrics
 			.entry(query.to_string())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(metrics);
 
 		for entry in self.listeners.iter() {
@@ -401,7 +401,7 @@ impl Instrumentation {
 
 		self.query_metrics
 			.entry(query.to_string())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(metrics);
 
 		for entry in self.listeners.iter() {
@@ -482,7 +482,7 @@ impl Instrumentation {
 
 		self.transaction_metrics
 			.entry(transaction_id.to_string())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(metrics);
 
 		self.transaction_end(committed).await;

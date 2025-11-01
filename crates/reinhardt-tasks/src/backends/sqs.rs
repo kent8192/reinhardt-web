@@ -283,12 +283,12 @@ impl crate::backend::TaskBackend for SqsBackend {
 			.await
 			.map_err(|e| TaskExecutionError::BackendError(format!("SQS receive error: {}", e)))?;
 
-		if let Some(messages) = result.messages {
-			if let Some(message) = messages.into_iter().next() {
+		if let Some(messages) = result.messages
+			&& let Some(message) = messages.into_iter().next() {
 				// Extract task_id from message attributes
-				if let Some(attributes) = message.message_attributes {
-					if let Some(task_id_attr) = attributes.get("task_id") {
-						if let Some(task_id_str) = task_id_attr.string_value() {
+				if let Some(attributes) = message.message_attributes
+					&& let Some(task_id_attr) = attributes.get("task_id")
+						&& let Some(task_id_str) = task_id_attr.string_value() {
 							let task_id = task_id_str.parse().map_err(|e: uuid::Error| {
 								TaskExecutionError::BackendError(e.to_string())
 							})?;
@@ -304,10 +304,7 @@ impl crate::backend::TaskBackend for SqsBackend {
 
 							return Ok(Some(task_id));
 						}
-					}
-				}
 			}
-		}
 
 		Ok(None)
 	}

@@ -31,7 +31,7 @@ impl ImportFormat {
 
 	/// Detect format from filename
 	pub fn from_filename(filename: &str) -> Option<Self> {
-		let ext = filename.split('.').last()?.to_lowercase();
+		let ext = filename.split('.').next_back()?.to_lowercase();
 		match ext.as_str() {
 			"csv" => Some(ImportFormat::CSV),
 			"json" => Some(ImportFormat::JSON),

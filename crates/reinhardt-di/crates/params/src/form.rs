@@ -107,7 +107,7 @@ impl<T> Form<T> {
 
 		// Deserialize the fields map into T
 		let data: T = serde_json::from_value(Value::Object(fields))
-			.map_err(|e| ParamError::DeserializationError(e))?;
+			.map_err(ParamError::DeserializationError)?;
 
 		Ok(Form(data))
 	}

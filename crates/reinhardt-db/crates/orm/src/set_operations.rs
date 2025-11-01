@@ -132,18 +132,18 @@ impl CombinedQuery {
 		let mut sql = String::new();
 
 		// Add first query in parentheses
-		sql.push_str("(");
+		sql.push('(');
 		sql.push_str(&self.queries[0]);
-		sql.push_str(")");
+		sql.push(')');
 
 		// Add remaining queries with operations
 		for (i, query) in self.queries.iter().enumerate().skip(1) {
 			if let Some(operation) = self.operations.get(i - 1) {
 				sql.push_str(&format!("\n{}\n", operation.to_sql()));
 			}
-			sql.push_str("(");
+			sql.push('(');
 			sql.push_str(query);
-			sql.push_str(")");
+			sql.push(')');
 		}
 
 		// Add ORDER BY

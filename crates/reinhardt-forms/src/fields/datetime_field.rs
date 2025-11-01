@@ -99,7 +99,7 @@ impl FormField for DateTimeField {
 
 				let dt = self
 					.parse_datetime(s)
-					.map_err(|e| FieldError::Validation(e))?;
+					.map_err(FieldError::Validation)?;
 
 				Ok(serde_json::Value::String(
 					dt.format("%Y-%m-%d %H:%M:%S").to_string(),

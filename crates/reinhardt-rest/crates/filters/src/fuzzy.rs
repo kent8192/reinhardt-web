@@ -18,13 +18,15 @@ use std::marker::PhantomData;
 /// let trigram = FuzzyAlgorithm::Trigram;
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum FuzzyAlgorithm {
 	/// Levenshtein distance
 	///
 	/// Measures the minimum number of single-character edits
 	/// (insertions, deletions, or substitutions) required to
 	/// change one string into another.
-	Levenshtein,
+	#[default]
+ Levenshtein,
 
 	/// Damerau-Levenshtein distance
 	///
@@ -58,11 +60,6 @@ pub enum FuzzyAlgorithm {
 	Metaphone,
 }
 
-impl Default for FuzzyAlgorithm {
-	fn default() -> Self {
-		FuzzyAlgorithm::Levenshtein
-	}
-}
 
 /// Fuzzy search filter
 ///

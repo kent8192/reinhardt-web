@@ -4,8 +4,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	// Compile .proto files under tests/proto/
 	let file_descriptors = protox::compile(
-		&["proto/user.proto", "proto/user_events.proto"],
-		&["proto", grpc_proto_path],
+		["proto/user.proto", "proto/user_events.proto"],
+		["proto", grpc_proto_path],
 	)?;
 
 	tonic_build::configure()

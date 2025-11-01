@@ -243,11 +243,10 @@ impl StaticFilesFinder {
 
 			if path.is_file() {
 				// Get relative path from base directory
-				if let Ok(relative) = path.strip_prefix(base_dir) {
-					if let Some(path_str) = relative.to_str() {
+				if let Ok(relative) = path.strip_prefix(base_dir)
+					&& let Some(path_str) = relative.to_str() {
 						files.push(path_str.to_string());
 					}
-				}
 			} else if path.is_dir() {
 				// Recursively walk subdirectories
 				if let Ok(sub_files) = self.walk_directory(base_dir, &path) {
@@ -521,7 +520,7 @@ impl ManifestStaticFilesStorage {
 		let manifest_path = self.normalize_path(&self.manifest_name);
 
 		let manifest_json = serde_json::to_string_pretty(&*hashed_files)
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+			.map_err(|e| io::Error::other(e))?;
 
 		tokio::fs::write(manifest_path, manifest_json).await
 	}

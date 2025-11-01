@@ -151,14 +151,13 @@ impl Parser for FileUploadParser {
 		let size = body.len();
 
 		// Check file size limit
-		if let Some(max_size) = self.max_file_size {
-			if size > max_size {
+		if let Some(max_size) = self.max_file_size
+			&& size > max_size {
 				return Err(ParseError::ParseError(format!(
 					"File exceeds maximum size of {} bytes",
 					max_size
 				)));
 			}
-		}
 
 		let mut file = UploadedFile::new(self.field_name.clone(), body);
 

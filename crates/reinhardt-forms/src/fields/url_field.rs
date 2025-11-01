@@ -88,15 +88,14 @@ impl FormField for URLField {
 				}
 
 				// Check length
-				if let Some(max) = self.max_length {
-					if s.len() > max {
+				if let Some(max) = self.max_length
+					&& s.len() > max {
 						return Err(FieldError::Validation(format!(
 							"Ensure this value has at most {} characters (it has {})",
 							max,
 							s.len()
 						)));
 					}
-				}
 
 				// Validate URL format
 				if !Self::validate_url(s) {

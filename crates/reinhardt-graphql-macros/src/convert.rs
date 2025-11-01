@@ -74,7 +74,7 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 	// Parse field configurations
 	let field_configs: Vec<_> = fields
 		.iter()
-		.map(|f| FieldConfig::from_field(f))
+		.map(FieldConfig::from_field)
 		.collect::<Result<_>>()?;
 
 	// Get list of field names with their configs

@@ -176,11 +176,10 @@ impl<B: ThrottleBackend> GeoRateThrottle<B> {
 
 	/// Get rate limit for the given key
 	async fn get_rate_for_key(&self, key: &str) -> (usize, u64) {
-		if let Some(ip) = self.extract_ip(key) {
-			if let Some(country_code) = self.get_country_code(ip) {
+		if let Some(ip) = self.extract_ip(key)
+			&& let Some(country_code) = self.get_country_code(ip) {
 				return self.config.get_rate(&country_code);
 			}
-		}
 		self.config.default_rate
 	}
 }
@@ -194,7 +193,7 @@ impl<B: ThrottleBackend> Throttle for GeoRateThrottle<B> {
 			.backend
 			.increment(key, period)
 			.await
-			.map_err(|e| ThrottleError::ThrottleError(e))?;
+			.map_err(ThrottleError::ThrottleError)?;
 
 		Ok(count <= rate)
 	}
@@ -206,7 +205,7 @@ impl<B: ThrottleBackend> Throttle for GeoRateThrottle<B> {
 			.backend
 			.get_count(key)
 			.await
-			.map_err(|e| ThrottleError::ThrottleError(e))?;
+			.map_err(ThrottleError::ThrottleError)?;
 
 		if count > rate {
 			Ok(Some(period))

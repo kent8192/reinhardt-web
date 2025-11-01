@@ -85,25 +85,22 @@ impl FormField for FileField {
 				}
 
 				// Check filename length
-				if let Some(max) = self.max_length {
-					if filename.len() > max {
+				if let Some(max) = self.max_length
+					&& filename.len() > max {
 						return Err(FieldError::Validation(format!(
 							"Filename is too long (max {} characters)",
 							max
 						)));
 					}
-				}
 
 				// Check for empty file
-				if !self.allow_empty_file {
-					if let Some(size) = obj.get("size").and_then(|s| s.as_u64()) {
-						if size == 0 {
+				if !self.allow_empty_file
+					&& let Some(size) = obj.get("size").and_then(|s| s.as_u64())
+						&& size == 0 {
 							return Err(FieldError::Validation(
 								"The submitted file is empty".to_string(),
 							));
 						}
-					}
-				}
 
 				Ok(v.clone())
 			}
@@ -201,25 +198,22 @@ impl FormField for ImageField {
 				}
 
 				// Check filename length
-				if let Some(max) = self.max_length {
-					if filename.len() > max {
+				if let Some(max) = self.max_length
+					&& filename.len() > max {
 						return Err(FieldError::Validation(format!(
 							"Filename is too long (max {} characters)",
 							max
 						)));
 					}
-				}
 
 				// Check for empty file
-				if !self.allow_empty_file {
-					if let Some(size) = obj.get("size").and_then(|s| s.as_u64()) {
-						if size == 0 {
+				if !self.allow_empty_file
+					&& let Some(size) = obj.get("size").and_then(|s| s.as_u64())
+						&& size == 0 {
 							return Err(FieldError::Validation(
 								"The submitted file is empty".to_string(),
 							));
 						}
-					}
-				}
 
 				Ok(v.clone())
 			}

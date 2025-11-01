@@ -363,7 +363,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	pub fn disconnect(&self, dispatch_uid: &str) -> bool {
 		let mut receivers = self.receivers.write();
 		let original_len = receivers.len();
-		receivers.retain(|r| r.dispatch_uid.as_ref().map(|s| s.as_str()) != Some(dispatch_uid));
+		receivers.retain(|r| r.dispatch_uid.as_deref() != Some(dispatch_uid));
 		receivers.len() < original_len
 	}
 
@@ -407,11 +407,10 @@ impl<T: Send + Sync + 'static> Signal<T> {
 			}
 
 			// Check predicate condition
-			if let Some(ref predicate) = receiver_info.predicate {
-				if !predicate(&instance) {
+			if let Some(ref predicate) = receiver_info.predicate
+				&& !predicate(&instance) {
 					continue; // Predicate failed, skip this receiver
 				}
-			}
 
 			// Execute before_receiver middleware hooks
 			let dispatch_uid_ref = receiver_info.dispatch_uid.as_deref();
@@ -480,11 +479,10 @@ impl<T: Send + Sync + 'static> Signal<T> {
 
 		// Execute before_send middleware hooks (ignore errors in robust mode)
 		for middleware in &middlewares {
-			if let Ok(should_continue) = middleware.before_send(&instance).await {
-				if !should_continue {
+			if let Ok(should_continue) = middleware.before_send(&instance).await
+				&& !should_continue {
 					return results; // Middleware stopped signal propagation
 				}
-			}
 		}
 
 		for receiver_info in receivers {
@@ -500,11 +498,10 @@ impl<T: Send + Sync + 'static> Signal<T> {
 			}
 
 			// Check predicate condition
-			if let Some(ref predicate) = receiver_info.predicate {
-				if !predicate(&instance) {
+			if let Some(ref predicate) = receiver_info.predicate
+				&& !predicate(&instance) {
 					continue; // Predicate failed, skip this receiver
 				}
-			}
 
 			// Execute before_receiver middleware hooks
 			let dispatch_uid_ref = receiver_info.dispatch_uid.as_deref();
@@ -513,12 +510,10 @@ impl<T: Send + Sync + 'static> Signal<T> {
 				if let Ok(can_execute) = middleware
 					.before_receiver(&instance, dispatch_uid_ref)
 					.await
-				{
-					if !can_execute {
+					&& !can_execute {
 						should_execute = false;
 						break;
 					}
-				}
 			}
 
 			if !should_execute {

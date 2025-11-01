@@ -176,15 +176,12 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
 
 	/// Get user from session
 	async fn get_user_from_session(&self, session_id: &String) -> Option<Box<dyn User>> {
-		if let Some(session) = self.session_store.load(session_id).await {
-			if let Some(user_id_value) = session.get(SESSION_KEY_USER_ID) {
-				if let Some(user_id) = user_id_value.as_str() {
-					if let Ok(Some(user)) = self.auth_backend.get_user(user_id).await {
+		if let Some(session) = self.session_store.load(session_id).await
+			&& let Some(user_id_value) = session.get(SESSION_KEY_USER_ID)
+				&& let Some(user_id) = user_id_value.as_str()
+					&& let Ok(Some(user)) = self.auth_backend.get_user(user_id).await {
 						return Some(user);
 					}
-				}
-			}
-		}
 		None
 	}
 }

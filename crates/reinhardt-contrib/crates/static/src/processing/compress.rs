@@ -149,7 +149,7 @@ impl BrotliCompressor {
 		params.lgwin = self.window_size as i32;
 
 		brotli::BrotliCompress(&mut std::io::Cursor::new(input), &mut output, &params)
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+			.map_err(|e| io::Error::other(e))?;
 
 		Ok(output)
 	}

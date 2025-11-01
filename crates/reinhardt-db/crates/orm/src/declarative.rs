@@ -62,7 +62,7 @@ impl FieldMetadata {
 	pub fn from_field(field: &dyn Field) -> Self {
 		let deconstruction = field.deconstruct();
 		let name = deconstruction.name.unwrap_or_default();
-		let field_type = deconstruction.path.split('.').last().unwrap_or("Unknown");
+		let field_type = deconstruction.path.split('.').next_back().unwrap_or("Unknown");
 
 		let mut metadata = Self::new(name, field_type);
 		metadata.nullable = field.is_null();

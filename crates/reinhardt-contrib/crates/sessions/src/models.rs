@@ -253,7 +253,7 @@ impl SessionModel {
 	/// assert!(session.expire_date() > &old_expire);
 	/// ```
 	pub fn extend(&mut self, seconds: i64) {
-		self.expire_date = self.expire_date + Duration::seconds(seconds);
+		self.expire_date += Duration::seconds(seconds);
 	}
 
 	/// Refresh the session with a new TTL from now

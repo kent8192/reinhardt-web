@@ -245,7 +245,7 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				parts.uri,
 				parts.version,
 				parts.headers,
-				Bytes::from(body_bytes),
+				body_bytes,
 			);
 
 			// Handle request

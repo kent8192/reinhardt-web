@@ -186,7 +186,7 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 
 		let mut report = String::from("=== Signal Debug Report ===\n\n");
 
-		report.push_str(&format!("Statistics:\n"));
+		report.push_str(&"Statistics:\n".to_string());
 		report.push_str(&format!("  total_sends: {}\n", stats.total_sends));
 		report.push_str(&format!(
 			"  total_receiver_calls: {}\n",
@@ -202,7 +202,7 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 		));
 
 		if !stats.receiver_call_counts.is_empty() {
-			report.push_str(&format!("\nReceiver Call Counts:\n"));
+			report.push_str(&"\nReceiver Call Counts:\n".to_string());
 			for (uid, count) in &stats.receiver_call_counts {
 				report.push_str(&format!("  {}: {} calls\n", uid, count));
 			}

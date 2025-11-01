@@ -69,7 +69,7 @@ impl DatabaseAuditBackend {
 			.col(ColumnDef::new(Alias::new("changes")).text().not_null())
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);
-		sqlx::query(&*sql)
+		sqlx::query(&sql)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| format!("Failed to create audit_events table: {}", e))?;
@@ -82,7 +82,7 @@ impl DatabaseAuditBackend {
 			.col(Alias::new("timestamp"))
 			.to_owned();
 		let idx_sql = idx.to_string(SqliteQueryBuilder);
-		let _ = sqlx::query(&*idx_sql).execute(&self.pool).await;
+		let _ = sqlx::query(&idx_sql).execute(&self.pool).await;
 
 		let idx = Index::create()
 			.if_not_exists()
@@ -91,7 +91,7 @@ impl DatabaseAuditBackend {
 			.col(Alias::new("event_type"))
 			.to_owned();
 		let idx_sql = idx.to_string(SqliteQueryBuilder);
-		let _ = sqlx::query(&*idx_sql).execute(&self.pool).await;
+		let _ = sqlx::query(&idx_sql).execute(&self.pool).await;
 
 		let idx = Index::create()
 			.if_not_exists()
@@ -100,7 +100,7 @@ impl DatabaseAuditBackend {
 			.col(Alias::new("user"))
 			.to_owned();
 		let idx_sql = idx.to_string(SqliteQueryBuilder);
-		let _ = sqlx::query(&*idx_sql).execute(&self.pool).await;
+		let _ = sqlx::query(&idx_sql).execute(&self.pool).await;
 
 		Ok(())
 	}
@@ -135,7 +135,7 @@ impl AuditBackend for DatabaseAuditBackend {
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);
 
-		sqlx::query(&*sql)
+		sqlx::query(&sql)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| format!("Failed to log event: {}", e))?;
@@ -174,7 +174,7 @@ impl AuditBackend for DatabaseAuditBackend {
 
 		let sql = query.to_string(SqliteQueryBuilder);
 
-		let rows = sqlx::query(&*sql)
+		let rows = sqlx::query(&sql)
 			.fetch_all(&self.pool)
 			.await
 			.map_err(|e| format!("Failed to fetch events: {}", e))?;

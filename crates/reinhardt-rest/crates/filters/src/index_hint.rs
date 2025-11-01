@@ -399,7 +399,7 @@ impl IndexHintFilter {
 			if let Some(ref table_name) = hint.table_name {
 				table_hints
 					.entry(table_name.clone())
-					.or_insert_with(Vec::new)
+					.or_default()
 					.push(hint_sql);
 			} else {
 				unassigned_hints.push(hint_sql);

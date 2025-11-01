@@ -83,7 +83,7 @@ pub trait FormModel: Send + Sync {
 				self.get_field("id")
 					.and_then(|v| v.as_str().map(|s| s.to_string()))
 			})
-			.unwrap_or_else(|| "".to_string())
+			.unwrap_or_default()
 	}
 
 	/// Get the primary key value as a string for form field validation
@@ -104,12 +104,13 @@ pub trait FormModel: Send + Sync {
 				self.get_field("id")
 					.and_then(|v| v.as_str().map(|s| s.to_string()))
 			})
-			.unwrap_or_else(|| "".to_string())
+			.unwrap_or_default()
 	}
 }
 
 /// ModelForm configuration
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct ModelFormConfig {
 	/// Fields to include in the form (None = all fields)
 	pub fields: Option<Vec<String>>,
@@ -123,17 +124,6 @@ pub struct ModelFormConfig {
 	pub help_texts: HashMap<String, String>,
 }
 
-impl Default for ModelFormConfig {
-	fn default() -> Self {
-		Self {
-			fields: None,
-			exclude: Vec::new(),
-			widgets: HashMap::new(),
-			labels: HashMap::new(),
-			help_texts: HashMap::new(),
-		}
-	}
-}
 
 impl ModelFormConfig {
 	pub fn new() -> Self {
@@ -371,11 +361,10 @@ impl<T: FormModel> ModelForm<T> {
 	/// ```
 	pub fn is_valid(&mut self) -> bool {
 		// Validate the model if instance exists
-		if let Some(ref instance) = self.instance {
-			if let Err(_errors) = instance.validate() {
+		if let Some(ref instance) = self.instance
+			&& let Err(_errors) = instance.validate() {
 				return false;
 			}
-		}
 
 		true
 	}

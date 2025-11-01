@@ -90,6 +90,6 @@ where
 		// Deserialize JSON from body bytes
 		serde_json::from_slice(&body_bytes)
 			.map(Json)
-			.map_err(|e| ParamError::DeserializationError(e))
+			.map_err(ParamError::DeserializationError)
 	}
 }

@@ -210,14 +210,13 @@ fn validate_signal_name(name: &str) -> Result<(), SignalError> {
 	}
 
 	// Check first character
-	if let Some(first) = name.chars().next() {
-		if !first.is_ascii_lowercase() && first != '_' {
+	if let Some(first) = name.chars().next()
+		&& !first.is_ascii_lowercase() && first != '_' {
 			return Err(SignalError::new(format!(
 				"Signal name '{}' must start with a lowercase letter or underscore",
 				name
 			)));
 		}
-	}
 
 	// Check for consecutive underscores
 	if name.contains("__") {

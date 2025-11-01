@@ -240,25 +240,21 @@ impl<B: ThrottleBackend> RateLimitPermission<B> {
 	/// Extract IP address from request
 	fn extract_ip(&self, context: &PermissionContext) -> Option<String> {
 		// Try X-Forwarded-For header first
-		if let Some(forwarded) = context.request.headers.get("X-Forwarded-For") {
-			if let Ok(forwarded_str) = forwarded.to_str() {
+		if let Some(forwarded) = context.request.headers.get("X-Forwarded-For")
+			&& let Ok(forwarded_str) = forwarded.to_str() {
 				// Take the first IP in the chain
-				if let Some(first_ip) = forwarded_str.split(',').next() {
-					if let Ok(ip) = IpAddr::from_str(first_ip.trim()) {
+				if let Some(first_ip) = forwarded_str.split(',').next()
+					&& let Ok(ip) = IpAddr::from_str(first_ip.trim()) {
 						return Some(ip.to_string());
 					}
-				}
 			}
-		}
 
 		// Try X-Real-IP header
-		if let Some(real_ip) = context.request.headers.get("X-Real-IP") {
-			if let Ok(ip_str) = real_ip.to_str() {
-				if let Ok(ip) = IpAddr::from_str(ip_str.trim()) {
+		if let Some(real_ip) = context.request.headers.get("X-Real-IP")
+			&& let Ok(ip_str) = real_ip.to_str()
+				&& let Ok(ip) = IpAddr::from_str(ip_str.trim()) {
 					return Some(ip.to_string());
 				}
-			}
-		}
 
 		// Extract from socket address if available
 		if let Some(remote_addr) = context.request.remote_addr {
@@ -270,11 +266,7 @@ impl<B: ThrottleBackend> RateLimitPermission<B> {
 
 	/// Extract user ID from context
 	fn extract_user_id(&self, context: &PermissionContext) -> Option<String> {
-		if let Some(user) = context.user {
-			Some(user.id())
-		} else {
-			None
-		}
+		context.user.map(|user| user.id())
 	}
 
 	/// Generate rate limit key based on strategy

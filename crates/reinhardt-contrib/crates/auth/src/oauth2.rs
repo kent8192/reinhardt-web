@@ -292,8 +292,8 @@ impl AuthenticationBackend for OAuth2Authentication {
 			.get("Authorization")
 			.and_then(|h| h.to_str().ok());
 
-		if let Some(header) = auth_header {
-			if let Some(token) = header.strip_prefix("Bearer ") {
+		if let Some(header) = auth_header
+			&& let Some(token) = header.strip_prefix("Bearer ") {
 				// Query the token store asynchronously
 				match self.token_store.get_token(token).await {
 					Ok(Some(user_id)) => {
@@ -313,7 +313,6 @@ impl AuthenticationBackend for OAuth2Authentication {
 					}
 				}
 			}
-		}
 
 		Ok(None)
 	}

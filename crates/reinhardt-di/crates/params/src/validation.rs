@@ -269,16 +269,14 @@ impl<T> ValidationConstraints<T> {
 		N: PartialOrd + std::fmt::Display + Clone + std::str::FromStr,
 		<N as std::str::FromStr>::Err: std::fmt::Display,
 	{
-		if let Some(ref min_str) = self.min_value {
-			if let Ok(min) = min_str.parse::<N>() {
+		if let Some(ref min_str) = self.min_value
+			&& let Ok(min) = min_str.parse::<N>() {
 				reinhardt_validators::MinValueValidator::new(min).validate(value)?;
 			}
-		}
-		if let Some(ref max_str) = self.max_value {
-			if let Ok(max) = max_str.parse::<N>() {
+		if let Some(ref max_str) = self.max_value
+			&& let Ok(max) = max_str.parse::<N>() {
 				reinhardt_validators::MaxValueValidator::new(max).validate(value)?;
 			}
-		}
 		Ok(())
 	}
 

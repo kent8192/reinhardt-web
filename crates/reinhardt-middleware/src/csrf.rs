@@ -97,8 +97,8 @@ impl CsrfMiddleware {
 		}
 
 		// Try to get session ID from cookie
-		if let Some(cookie_header) = request.headers.get("Cookie") {
-			if let Ok(cookie_str) = cookie_header.to_str() {
+		if let Some(cookie_header) = request.headers.get("Cookie")
+			&& let Ok(cookie_str) = cookie_header.to_str() {
 				for cookie in cookie_str.split(';') {
 					let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
 					if parts.len() == 2 && parts[0] == "sessionid" {
@@ -106,7 +106,6 @@ impl CsrfMiddleware {
 					}
 				}
 			}
-		}
 
 		// Fallback: generate from request metadata
 		// This is not ideal but ensures CSRF protection works without sessions
@@ -185,15 +184,14 @@ impl CsrfMiddleware {
 	/// Extract CSRF token from request
 	fn extract_token(&self, request: &Request) -> Option<String> {
 		// Try header first
-		if let Some(header_value) = request.headers.get(&self.config.csrf_config.header_name) {
-			if let Ok(token) = header_value.to_str() {
+		if let Some(header_value) = request.headers.get(&self.config.csrf_config.header_name)
+			&& let Ok(token) = header_value.to_str() {
 				return Some(token.to_string());
 			}
-		}
 
 		// Try cookie
-		if let Some(cookie_header) = request.headers.get("Cookie") {
-			if let Ok(cookies) = cookie_header.to_str() {
+		if let Some(cookie_header) = request.headers.get("Cookie")
+			&& let Ok(cookies) = cookie_header.to_str() {
 				for cookie in cookies.split(';') {
 					let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
 					if parts.len() == 2 && parts[0] == self.config.csrf_config.cookie_name {
@@ -201,7 +199,6 @@ impl CsrfMiddleware {
 					}
 				}
 			}
-		}
 
 		None
 	}

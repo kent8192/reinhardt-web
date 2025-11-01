@@ -123,13 +123,12 @@ impl FormSet {
 		}
 
 		// Check maximum number
-		if let Some(max) = self.max_num {
-			if self.forms.len() > max {
+		if let Some(max) = self.max_num
+			&& self.forms.len() > max {
 				self.errors
 					.push(format!("Please submit no more than {} forms", max));
 				all_valid = false;
 			}
-		}
 
 		all_valid && self.errors.is_empty()
 	}

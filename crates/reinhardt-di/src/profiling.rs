@@ -151,7 +151,7 @@ impl DependencyProfiler {
 
 			self.records
 				.entry(name)
-				.or_insert_with(Vec::new)
+				.or_default()
 				.push(record);
 		}
 	}
@@ -178,7 +178,7 @@ impl DependencyProfiler {
 
 		self.records
 			.entry(name)
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(record);
 	}
 

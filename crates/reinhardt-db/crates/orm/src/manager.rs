@@ -253,10 +253,7 @@ impl<M: Model> Manager<M> {
 		}
 
 		// Get field names from first model
-		let first_obj = match json_values[0].as_object() {
-			Some(obj) => obj,
-			None => return None,
-		};
+		let first_obj = json_values[0].as_object()?;
 
 		let fields: Vec<_> = first_obj.keys().map(|k| Alias::new(k.as_str())).collect();
 

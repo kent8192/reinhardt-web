@@ -386,7 +386,7 @@ impl InlineForm {
 	pub fn changed_fields(&self) -> Vec<String> {
 		self.data
 			.iter()
-			.filter(|(key, value)| self.initial_data.get(*key).map_or(true, |v| v != *value))
+			.filter(|(key, value)| self.initial_data.get(*key) != Some(*value))
 			.map(|(key, _)| key.clone())
 			.collect()
 	}

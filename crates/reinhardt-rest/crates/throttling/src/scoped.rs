@@ -86,7 +86,7 @@ impl<B: ThrottleBackend> Throttle for ScopedRateThrottle<B> {
 				.backend
 				.increment(&key, window)
 				.await
-				.map_err(|e| crate::throttle::ThrottleError::ThrottleError(e))?;
+				.map_err(crate::throttle::ThrottleError::ThrottleError)?;
 			Ok(count <= rate)
 		} else {
 			Ok(true)
@@ -104,7 +104,7 @@ impl<B: ThrottleBackend> Throttle for ScopedRateThrottle<B> {
 				.backend
 				.get_count(&key)
 				.await
-				.map_err(|e| crate::throttle::ThrottleError::ThrottleError(e))?;
+				.map_err(crate::throttle::ThrottleError::ThrottleError)?;
 			if count > rate {
 				Ok(Some(window))
 			} else {

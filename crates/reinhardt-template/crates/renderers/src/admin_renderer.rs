@@ -238,15 +238,14 @@ impl AdminRenderer {
 				html.push_str("</tbody>\n");
 			}
 			Value::Array(arr) => {
-				if let Some(first) = arr.first() {
-					if let Value::Object(obj) = first {
+				if let Some(first) = arr.first()
+					&& let Value::Object(obj) = first {
 						html.push_str("<thead><tr>");
 						for key in obj.keys() {
 							html.push_str(&format!("<th>{}</th>", key));
 						}
 						html.push_str("</tr></thead>\n<tbody>\n");
 					}
-				}
 
 				for item in arr {
 					if let Value::Object(obj) = item {

@@ -284,11 +284,10 @@ impl Middleware for BrokenLinkEmailsMiddleware {
 		}
 
 		// Check if user agent should be ignored
-		if let Some(ua) = user_agent {
-			if self.is_ignored_user_agent(&ua) {
+		if let Some(ua) = user_agent
+			&& self.is_ignored_user_agent(&ua) {
 				return Ok(response);
 			}
-		}
 
 		// Check if there's a referrer and host
 		if let (Some(referer_str), Some(host_str)) = (referer, host) {

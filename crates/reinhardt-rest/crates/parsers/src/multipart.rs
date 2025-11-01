@@ -85,25 +85,23 @@ impl MultiPartParser {
 			let size = data.len();
 
 			// Check file size limit
-			if let Some(max_size) = self.max_file_size {
-				if size > max_size {
+			if let Some(max_size) = self.max_file_size
+				&& size > max_size {
 					return Err(ParseError::ParseError(format!(
 						"File '{}' exceeds maximum size of {} bytes",
 						name, max_size
 					)));
 				}
-			}
 
 			// Check total size limit
 			total_size += size;
-			if let Some(max_total) = self.max_total_size {
-				if total_size > max_total {
+			if let Some(max_total) = self.max_total_size
+				&& total_size > max_total {
 					return Err(ParseError::ParseError(format!(
 						"Total upload size exceeds maximum of {} bytes",
 						max_total
 					)));
 				}
-			}
 
 			if filename.is_some() {
 				// This is a file field

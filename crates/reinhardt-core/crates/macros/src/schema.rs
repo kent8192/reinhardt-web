@@ -191,11 +191,10 @@ fn generate_struct_schema(fields: &Fields, _attrs: &[Attribute]) -> syn::Result<
 
 /// Check if a type is `Option<T>`
 fn is_option_type(ty: &Type) -> bool {
-	if let Type::Path(type_path) = ty {
-		if let Some(segment) = type_path.path.segments.last() {
+	if let Type::Path(type_path) = ty
+		&& let Some(segment) = type_path.path.segments.last() {
 			return segment.ident == "Option";
 		}
-	}
 	false
 }
 
@@ -204,18 +203,15 @@ fn extract_doc_comment(attrs: &[Attribute]) -> Option<String> {
 	let mut docs = Vec::new();
 
 	for attr in attrs {
-		if attr.path().is_ident("doc") {
-			if let Ok(meta) = attr.meta.require_name_value() {
-				if let syn::Expr::Lit(expr_lit) = &meta.value {
-					if let syn::Lit::Str(lit_str) = &expr_lit.lit {
+		if attr.path().is_ident("doc")
+			&& let Ok(meta) = attr.meta.require_name_value()
+				&& let syn::Expr::Lit(expr_lit) = &meta.value
+					&& let syn::Lit::Str(lit_str) = &expr_lit.lit {
 						let doc = lit_str.value().trim().to_string();
 						if !doc.is_empty() {
 							docs.push(doc);
 						}
 					}
-				}
-			}
-		}
 	}
 
 	if docs.is_empty() {

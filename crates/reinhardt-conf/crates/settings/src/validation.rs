@@ -149,35 +149,31 @@ impl SettingsValidator for SecurityValidator {
 		let mut errors = Vec::new();
 
 		// Check DEBUG is false in production
-		if let Some(debug) = settings.get("debug") {
-			if debug.as_bool() == Some(true) {
+		if let Some(debug) = settings.get("debug")
+			&& debug.as_bool() == Some(true) {
 				errors.push(ValidationError::Security(
 					"DEBUG must be false in production".to_string(),
 				));
 			}
-		}
 
 		// Check SECRET_KEY is not default value
-		if let Some(secret_key) = settings.get("secret_key") {
-			if let Some(key_str) = secret_key.as_str() {
-				if key_str.contains("insecure") || key_str == "change-this" || key_str.len() < 32 {
+		if let Some(secret_key) = settings.get("secret_key")
+			&& let Some(key_str) = secret_key.as_str()
+				&& (key_str.contains("insecure") || key_str == "change-this" || key_str.len() < 32) {
 					errors.push(ValidationError::Security(
 						"SECRET_KEY must be a strong random value in production".to_string(),
 					));
 				}
-			}
-		}
 
 		// Check ALLOWED_HOSTS is set
 		if let Some(allowed_hosts) = settings.get("allowed_hosts") {
-			if let Some(hosts) = allowed_hosts.as_array() {
-				if hosts.is_empty() || hosts.iter().any(|h| h.as_str() == Some("*")) {
+			if let Some(hosts) = allowed_hosts.as_array()
+				&& (hosts.is_empty() || hosts.iter().any(|h| h.as_str() == Some("*"))) {
 					errors.push(ValidationError::Security(
 						"ALLOWED_HOSTS must be properly configured in production (no wildcards)"
 							.to_string(),
 					));
 				}
-			}
 		} else {
 			errors.push(ValidationError::Security(
 				"ALLOWED_HOSTS must be set in production".to_string(),
@@ -185,13 +181,12 @@ impl SettingsValidator for SecurityValidator {
 		}
 
 		// Check HTTPS settings
-		if let Some(secure_ssl) = settings.get("secure_ssl_redirect") {
-			if secure_ssl.as_bool() != Some(true) {
+		if let Some(secure_ssl) = settings.get("secure_ssl_redirect")
+			&& secure_ssl.as_bool() != Some(true) {
 				errors.push(ValidationError::Security(
 					"SECURE_SSL_REDIRECT should be true in production".to_string(),
 				));
 			}
-		}
 
 		if errors.is_empty() {
 			Ok(())
@@ -224,16 +219,15 @@ impl BaseSettingsValidator for SecurityValidator {
 				}
 			}
 			"secret_key" => {
-				if let Some(key_str) = value.as_str() {
-					if key_str.contains("insecure")
+				if let Some(key_str) = value.as_str()
+					&& (key_str.contains("insecure")
 						|| key_str == "change-this"
-						|| key_str.len() < 32
+						|| key_str.len() < 32)
 					{
 						return Err(reinhardt_validators::ValidationError::Custom(
 							"SECRET_KEY must be a strong random value in production".to_string(),
 						));
 					}
-				}
 			}
 			"allowed_hosts" => {
 				if let Some(hosts) = value.as_array() {
@@ -339,23 +333,21 @@ impl RangeValidator {
 impl Validator for RangeValidator {
 	fn validate(&self, key: &str, value: &Value) -> ValidationResult {
 		if let Some(num) = value.as_f64() {
-			if let Some(min) = self.min {
-				if num < min {
+			if let Some(min) = self.min
+				&& num < min {
 					return Err(ValidationError::InvalidValue {
 						key: key.to_string(),
 						message: format!("Value {} is less than minimum {}", num, min),
 					});
 				}
-			}
 
-			if let Some(max) = self.max {
-				if num > max {
+			if let Some(max) = self.max
+				&& num > max {
 					return Err(ValidationError::InvalidValue {
 						key: key.to_string(),
 						message: format!("Value {} is greater than maximum {}", num, max),
 					});
 				}
-			}
 
 			Ok(())
 		} else {
@@ -383,23 +375,21 @@ impl BaseSettingsValidator for RangeValidator {
 		value: &Value,
 	) -> reinhardt_validators::ValidationResult<()> {
 		if let Some(num) = value.as_f64() {
-			if let Some(min) = self.min {
-				if num < min {
+			if let Some(min) = self.min
+				&& num < min {
 					return Err(reinhardt_validators::ValidationError::Custom(format!(
 						"Value {} for '{}' is less than minimum {}",
 						num, key, min
 					)));
 				}
-			}
 
-			if let Some(max) = self.max {
-				if num > max {
+			if let Some(max) = self.max
+				&& num > max {
 					return Err(reinhardt_validators::ValidationError::Custom(format!(
 						"Value {} for '{}' is greater than maximum {}",
 						num, key, max
 					)));
 				}
-			}
 
 			Ok(())
 		} else {

@@ -230,13 +230,11 @@ impl CacheBackend for DynamoDbCache {
 
 		if let Some(item) = result.item {
 			// Check TTL expiration
-			if let Some(AttributeValue::N(ttl_str)) = item.get(&self.config.ttl_attribute) {
-				if let Ok(ttl) = ttl_str.parse::<i64>() {
-					if self.is_expired(ttl) {
+			if let Some(AttributeValue::N(ttl_str)) = item.get(&self.config.ttl_attribute)
+				&& let Ok(ttl) = ttl_str.parse::<i64>()
+					&& self.is_expired(ttl) {
 						return Ok(None);
 					}
-				}
-			}
 
 			// Extract value
 			if let Some(AttributeValue::B(value)) = item.get(&self.config.value_attribute) {
@@ -361,8 +359,8 @@ impl CacheBackend for DynamoDbCache {
 					CacheError::Internal(format!("DynamoDB batch get error: {}", e))
 				})?;
 
-			if let Some(responses) = result.responses {
-				if let Some(items) = responses.get(&self.config.table_name) {
+			if let Some(responses) = result.responses
+				&& let Some(items) = responses.get(&self.config.table_name) {
 					for item in items {
 						if let Some(AttributeValue::S(key)) = item.get(&self.config.key_attribute) {
 							// Check TTL
@@ -378,17 +376,15 @@ impl CacheBackend for DynamoDbCache {
 								true
 							};
 
-							if is_valid {
-								if let Some(AttributeValue::B(value)) =
+							if is_valid
+								&& let Some(AttributeValue::B(value)) =
 									item.get(&self.config.value_attribute)
 								{
 									all_results.insert(key.clone(), value.clone().into_inner());
 								}
-							}
 						}
 					}
 				}
-			}
 		}
 
 		// Preserve order - map results back to original key order

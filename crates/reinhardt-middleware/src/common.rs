@@ -144,11 +144,10 @@ impl CommonMiddleware {
 		}
 
 		// Check if path looks like a file (has extension)
-		if let Some(last_segment) = path.rsplit('/').next() {
-			if last_segment.contains('.') {
+		if let Some(last_segment) = path.rsplit('/').next()
+			&& last_segment.contains('.') {
 				return false;
 			}
-		}
 
 		true
 	}

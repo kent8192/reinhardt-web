@@ -24,16 +24,12 @@ use serde_json::Value;
 /// # });
 /// ```
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct YamlParser {
 	/// Whether to allow empty bodies (returns null)
 	pub allow_empty: bool,
 }
 
-impl Default for YamlParser {
-	fn default() -> Self {
-		Self { allow_empty: false }
-	}
-}
 
 impl YamlParser {
 	/// Create a new YamlParser with default settings (empty not allowed).

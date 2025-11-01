@@ -375,13 +375,11 @@ impl DefaultRouter {
 		let regex_pattern = pattern.replace("{version}", r"([^/]+)").replace("/", r"\/");
 		let full_pattern = format!("^{}", regex_pattern);
 
-		if let Ok(regex) = regex::Regex::new(&full_pattern) {
-			if let Some(captures) = regex.captures(path) {
-				if let Some(version_match) = captures.get(1) {
+		if let Ok(regex) = regex::Regex::new(&full_pattern)
+			&& let Some(captures) = regex.captures(path)
+				&& let Some(version_match) = captures.get(1) {
 					return Some(version_match.as_str());
 				}
-			}
-		}
 		None
 	}
 

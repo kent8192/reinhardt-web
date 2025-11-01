@@ -42,7 +42,7 @@ impl MetricsStore {
 		let mut buckets = self.response_time_buckets.write().unwrap();
 		buckets
 			.entry(key)
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(duration_ms);
 	}
 

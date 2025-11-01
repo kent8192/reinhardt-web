@@ -140,7 +140,7 @@ impl Request {
 		self.headers
 			.get(ACCEPT_LANGUAGE)
 			.and_then(|h| h.to_str().ok())
-			.map(|header_value| Self::parse_accept_language(header_value))
+			.map(Self::parse_accept_language)
 			.unwrap_or_default()
 	}
 

@@ -144,27 +144,22 @@ impl FileSessionBackend {
 
 	/// Check if a session file has expired based on TTL
 	fn is_expired(&self, file_path: &Path) -> bool {
-		if let Ok(metadata) = fs::metadata(file_path) {
-			if let Ok(modified) = metadata.modified() {
-				if let Ok(duration) = SystemTime::now().duration_since(modified) {
+		if let Ok(metadata) = fs::metadata(file_path)
+			&& let Ok(modified) = metadata.modified()
+				&& let Ok(duration) = SystemTime::now().duration_since(modified) {
 					// Read the stored TTL from the file
 					if let Ok(mut file) = File::open(file_path) {
 						let _ = file.lock_shared();
 						let mut contents = String::new();
-						if file.read_to_string(&mut contents).is_ok() {
-							if let Ok(stored_data) =
+						if file.read_to_string(&mut contents).is_ok()
+							&& let Ok(stored_data) =
 								serde_json::from_str::<StoredSession>(&contents)
-							{
-								if let Some(ttl) = stored_data.ttl {
+								&& let Some(ttl) = stored_data.ttl {
 									return duration.as_secs() > ttl;
 								}
-							}
-						}
 						let _ = file.unlock();
 					}
 				}
-			}
-		}
 		false
 	}
 }

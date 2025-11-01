@@ -357,7 +357,7 @@ impl BulkEditConfig {
 
 	/// Check if item count is within limits
 	pub fn is_item_count_valid(&self, count: usize) -> bool {
-		self.max_items.map_or(true, |max| count <= max)
+		self.max_items.is_none_or(|max| count <= max)
 	}
 }
 

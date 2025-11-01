@@ -260,11 +260,10 @@ impl Response {
 	/// );
 	/// ```
 	pub fn with_header(mut self, name: &str, value: &str) -> Self {
-		if let Ok(header_name) = hyper::header::HeaderName::from_bytes(name.as_bytes()) {
-			if let Ok(header_value) = hyper::header::HeaderValue::from_str(value) {
+		if let Ok(header_name) = hyper::header::HeaderName::from_bytes(name.as_bytes())
+			&& let Ok(header_value) = hyper::header::HeaderValue::from_str(value) {
 				self.headers.insert(header_name, header_value);
 			}
-		}
 		self
 	}
 	/// Add a Location header to the response (typically used for redirects)

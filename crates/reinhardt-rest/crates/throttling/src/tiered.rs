@@ -150,7 +150,7 @@ impl<B: ThrottleBackend> Throttle for TieredRateThrottle<B> {
 		let count = backend
 			.get_count(key)
 			.await
-			.map_err(|e| ThrottleError::ThrottleError(e))?;
+			.map_err(ThrottleError::ThrottleError)?;
 
 		if count >= tier.rate {
 			return Ok(false);

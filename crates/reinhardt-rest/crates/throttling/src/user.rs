@@ -71,7 +71,7 @@ impl<B: ThrottleBackend> Throttle for UserRateThrottle<B> {
 			.backend
 			.increment(&key, self.window_secs)
 			.await
-			.map_err(|e| crate::throttle::ThrottleError::ThrottleError(e))?;
+			.map_err(crate::throttle::ThrottleError::ThrottleError)?;
 		Ok(count <= self.rate)
 	}
 	async fn wait_time(&self, user_id: &str) -> ThrottleResult<Option<u64>> {
@@ -80,7 +80,7 @@ impl<B: ThrottleBackend> Throttle for UserRateThrottle<B> {
 			.backend
 			.get_count(&key)
 			.await
-			.map_err(|e| crate::throttle::ThrottleError::ThrottleError(e))?;
+			.map_err(crate::throttle::ThrottleError::ThrottleError)?;
 		if count > self.rate {
 			Ok(Some(self.window_secs))
 		} else {

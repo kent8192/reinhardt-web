@@ -207,11 +207,10 @@ impl SecretRotation {
 			let elapsed_duration = Duration::from_secs(elapsed.num_seconds() as u64);
 
 			// Check against max age first
-			if let Some(max_age) = self.policy.max_age {
-				if elapsed_duration >= max_age {
+			if let Some(max_age) = self.policy.max_age
+				&& elapsed_duration >= max_age {
 					return Ok(true);
 				}
-			}
 
 			// Check against interval
 			Ok(elapsed_duration >= self.policy.interval)

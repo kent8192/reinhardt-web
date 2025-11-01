@@ -171,39 +171,34 @@ impl ColorValidator {
 		let trimmed = value.trim();
 
 		// Check hex format
-		if self.hex_regex.is_match(trimmed) {
-			if self.is_format_allowed(ColorFormat::Hex) {
+		if self.hex_regex.is_match(trimmed)
+			&& self.is_format_allowed(ColorFormat::Hex) {
 				return Ok(ColorFormat::Hex);
 			}
-		}
 
 		// Check RGBA format (before RGB to avoid partial match)
-		if self.rgba_regex.is_match(trimmed) {
-			if self.is_format_allowed(ColorFormat::RGBA) {
+		if self.rgba_regex.is_match(trimmed)
+			&& self.is_format_allowed(ColorFormat::RGBA) {
 				return Ok(ColorFormat::RGBA);
 			}
-		}
 
 		// Check RGB format
-		if self.rgb_regex.is_match(trimmed) {
-			if self.is_format_allowed(ColorFormat::RGB) {
+		if self.rgb_regex.is_match(trimmed)
+			&& self.is_format_allowed(ColorFormat::RGB) {
 				return Ok(ColorFormat::RGB);
 			}
-		}
 
 		// Check HSLA format (before HSL to avoid partial match)
-		if self.hsla_regex.is_match(trimmed) {
-			if self.is_format_allowed(ColorFormat::HSLA) {
+		if self.hsla_regex.is_match(trimmed)
+			&& self.is_format_allowed(ColorFormat::HSLA) {
 				return Ok(ColorFormat::HSLA);
 			}
-		}
 
 		// Check HSL format
-		if self.hsl_regex.is_match(trimmed) {
-			if self.is_format_allowed(ColorFormat::HSL) {
+		if self.hsl_regex.is_match(trimmed)
+			&& self.is_format_allowed(ColorFormat::HSL) {
 				return Ok(ColorFormat::HSL);
 			}
-		}
 
 		Err(ValidationError::Custom(
 			self.message

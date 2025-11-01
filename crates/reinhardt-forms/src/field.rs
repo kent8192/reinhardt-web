@@ -177,7 +177,7 @@ impl Widget {
 				if !attrs.contains_key("id") {
 					html.push_str(&format!(" id=\"id_{}\"", name));
 				}
-				html.push_str(">");
+				html.push('>');
 				html.push_str(value.unwrap_or(""));
 				html.push_str("</textarea>");
 			}
@@ -186,7 +186,7 @@ impl Widget {
 				if !attrs.contains_key("id") {
 					html.push_str(&format!(" id=\"id_{}\"", name));
 				}
-				html.push_str(">");
+				html.push('>');
 				for (choice_value, choice_label) in choices {
 					let selected = if Some(choice_value.as_str()) == value {
 						" selected"
@@ -428,25 +428,23 @@ impl FormField for CharField {
 				}
 
 				// Validate length constraints
-				if let Some(max) = self.max_length {
-					if s.len() > max {
+				if let Some(max) = self.max_length
+					&& s.len() > max {
 						return Err(FieldError::Validation(format!(
 							"Ensure this value has at most {} characters (it has {})",
 							max,
 							s.len()
 						)));
 					}
-				}
 
-				if let Some(min) = self.min_length {
-					if s.len() < min {
+				if let Some(min) = self.min_length
+					&& s.len() < min {
 						return Err(FieldError::Validation(format!(
 							"Ensure this value has at least {} characters (it has {})",
 							min,
 							s.len()
 						)));
 					}
-				}
 
 				Ok(serde_json::Value::String(s.to_string()))
 			}
@@ -552,23 +550,21 @@ impl FormField for IntegerField {
 				};
 
 				// Validate range
-				if let Some(max) = self.max_value {
-					if num > max {
+				if let Some(max) = self.max_value
+					&& num > max {
 						return Err(FieldError::Validation(format!(
 							"Ensure this value is less than or equal to {}",
 							max
 						)));
 					}
-				}
 
-				if let Some(min) = self.min_value {
-					if num < min {
+				if let Some(min) = self.min_value
+					&& num < min {
 						return Err(FieldError::Validation(format!(
 							"Ensure this value is greater than or equal to {}",
 							min
 						)));
 					}
-				}
 
 				Ok(serde_json::Value::Number(num.into()))
 			}
@@ -782,25 +778,23 @@ impl FormField for EmailField {
 				}
 
 				// Check length constraints
-				if let Some(max) = self.max_length {
-					if s.len() > max {
+				if let Some(max) = self.max_length
+					&& s.len() > max {
 						return Err(FieldError::Validation(format!(
 							"Ensure this value has at most {} characters (it has {})",
 							max,
 							s.len()
 						)));
 					}
-				}
 
-				if let Some(min) = self.min_length {
-					if s.len() < min {
+				if let Some(min) = self.min_length
+					&& s.len() < min {
 						return Err(FieldError::Validation(format!(
 							"Ensure this value has at least {} characters (it has {})",
 							min,
 							s.len()
 						)));
 					}
-				}
 
 				// Validate email format
 				if !Self::validate_email(s) {

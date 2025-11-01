@@ -153,8 +153,8 @@ impl FormSecurityMiddleware {
 		&self,
 		data: &HashMap<String, serde_json::Value>,
 	) -> Result<(), SecurityError> {
-		if let Some(ref field) = self.honeypot_field {
-			if let Some(value) = data.get(field) {
+		if let Some(ref field) = self.honeypot_field
+			&& let Some(value) = data.get(field) {
 				// Honeypot should be empty
 				if !value.is_null()
 					&& !(value.is_string() && value.as_str().unwrap_or("").is_empty())
@@ -164,7 +164,6 @@ impl FormSecurityMiddleware {
 					));
 				}
 			}
-		}
 		Ok(())
 	}
 
@@ -373,7 +372,7 @@ impl RateLimiter {
 		// Get or create request history for this identifier
 		let history = requests
 			.entry(identifier.to_string())
-			.or_insert_with(Vec::new);
+			.or_default();
 
 		// Remove old requests outside the window
 		history.retain(|&time| now.duration_since(time) < self.window);

@@ -851,7 +851,7 @@ impl UnifiedRouter {
 		}
 
 		// Collect ViewSet routes
-		for (prefix, _viewset) in &self.viewsets {
+		for prefix in self.viewsets.keys() {
 			let base_path = if self.prefix.is_empty() {
 				format!("/{}", prefix)
 			} else {
@@ -1002,7 +1002,7 @@ impl UnifiedRouter {
 		}
 
 		// Register ViewSet routes with standard names
-		for (prefix, _viewset) in &self.viewsets {
+		for prefix in self.viewsets.keys() {
 			let base_path = if self.prefix.is_empty() {
 				format!("/{}", prefix)
 			} else {

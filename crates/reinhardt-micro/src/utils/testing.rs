@@ -37,7 +37,7 @@ use std::fmt::Debug;
 /// ```
 pub fn test_request(method: Method, path: &str, body: Option<String>) -> Request {
 	let uri = path.parse::<Uri>().expect("Invalid URI");
-	let body_bytes = body.map(|b| Bytes::from(b)).unwrap_or_else(Bytes::new);
+	let body_bytes = body.map(Bytes::from).unwrap_or_default();
 
 	Request::new(method, uri, Version::HTTP_11, HeaderMap::new(), body_bytes)
 }

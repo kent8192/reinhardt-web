@@ -379,7 +379,7 @@ impl RunServerCommand {
 		_insecure: bool,
 	) -> CommandResult<()> {
 		use reinhardt_server::{HttpServer, ShutdownCoordinator};
-		use std::sync::Arc;
+		
 		use std::time::Duration;
 
 		// Get registered router
@@ -703,14 +703,12 @@ impl BaseCommand for CheckCommand {
 		if std::env::var("STATIC_ROOT").is_ok() {
 			ctx.success("  ✓ STATIC_ROOT configured");
 			checks_passed += 1;
-		} else {
-			if is_deploy {
-				ctx.warning("  ✗ STATIC_ROOT not set (required for deployment)");
-				checks_failed += 1;
-			} else {
-				ctx.info("  ⚠ STATIC_ROOT not set (optional for development)");
-			}
-		}
+		} else if is_deploy {
+  				ctx.warning("  ✗ STATIC_ROOT not set (required for deployment)");
+  				checks_failed += 1;
+  			} else {
+  				ctx.info("  ⚠ STATIC_ROOT not set (optional for development)");
+  			}
 
 		// 5. Security settings check (if --deploy)
 		if is_deploy {
@@ -799,12 +797,11 @@ impl CheckCommand {
 		}
 
 		// Check SECURE_SSL_REDIRECT
-		if let Ok(ssl_redirect) = std::env::var("SECURE_SSL_REDIRECT") {
-			if ssl_redirect == "true" {
+		if let Ok(ssl_redirect) = std::env::var("SECURE_SSL_REDIRECT")
+			&& ssl_redirect == "true" {
 				ctx.success("  ✓ SECURE_SSL_REDIRECT enabled");
 				passed += 1;
 			}
-		}
 
 		passed
 	}

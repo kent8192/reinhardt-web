@@ -138,7 +138,7 @@ pub mod assertions {
 	pub fn assert_cookie_value(response: &MockResponse, cookie_name: &str, expected: &str) {
 		let value = response
 			.get_cookie(cookie_name)
-			.expect(&format!("Cookie '{}' not found", cookie_name));
+			.unwrap_or_else(|| panic!("Cookie '{}' not found", cookie_name));
 		assert_eq!(value, expected, "Cookie '{}' value mismatch", cookie_name);
 	}
 
@@ -153,7 +153,7 @@ pub mod assertions {
 	pub fn assert_session_value(session: &MockSession, key: &str, expected: &str) {
 		let value = session
 			.get(key)
-			.expect(&format!("Session key '{}' not found", key));
+			.unwrap_or_else(|| panic!("Session key '{}' not found", key));
 		assert_eq!(value, expected, "Session key '{}' value mismatch", key);
 	}
 }

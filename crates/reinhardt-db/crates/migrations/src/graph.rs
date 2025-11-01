@@ -328,14 +328,13 @@ impl MigrationGraph {
 
 			// Reduce in-degree for all dependents
 			for (other_key, node) in &self.nodes {
-				if node.dependencies.contains(&key) {
-					if let Some(degree) = in_degree.get_mut(other_key) {
+				if node.dependencies.contains(&key)
+					&& let Some(degree) = in_degree.get_mut(other_key) {
 						*degree -= 1;
 						if *degree == 0 {
 							queue.push_back(other_key.clone());
 						}
 					}
-				}
 			}
 		}
 

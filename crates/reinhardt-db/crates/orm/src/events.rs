@@ -287,7 +287,7 @@ impl EventRegistry {
 	pub fn register_mapper_listener(&self, model: String, listener: Arc<dyn MapperEvents>) {
 		self.mapper_listeners
 			.entry(model)
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(listener);
 	}
 	/// Register a session event listener for a specific session
@@ -316,7 +316,7 @@ impl EventRegistry {
 	pub fn register_session_listener(&self, session_id: String, listener: Arc<dyn SessionEvents>) {
 		self.session_listeners
 			.entry(session_id)
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(listener);
 	}
 	/// Register an attribute event listener for a specific model attribute
@@ -351,7 +351,7 @@ impl EventRegistry {
 	) {
 		self.attribute_listeners
 			.entry(model_attr)
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(listener);
 	}
 	/// Register an instance event listener for a specific instance
@@ -385,7 +385,7 @@ impl EventRegistry {
 	) {
 		self.instance_listeners
 			.entry(instance_id)
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(listener);
 	}
 	/// Dispatch before_insert event to all registered listeners for a model
@@ -758,7 +758,7 @@ impl Default for EventRegistry {
 
 /// Global event registry singleton
 static EVENT_REGISTRY: once_cell::sync::Lazy<EventRegistry> =
-	once_cell::sync::Lazy::new(|| EventRegistry::new());
+	once_cell::sync::Lazy::new(EventRegistry::new);
 /// Get the global event registry singleton
 ///
 /// # Examples

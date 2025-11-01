@@ -143,16 +143,14 @@ impl FileSystemTemplateLoader {
 
 		// Canonicalize both paths to ensure the template path is within base_dir
 		// Note: This requires the base_dir to exist
-		if let Ok(canonical_full) = full_path.canonicalize() {
-			if let Ok(canonical_base) = self.base_dir.canonicalize() {
-				if !canonical_full.starts_with(&canonical_base) {
+		if let Ok(canonical_full) = full_path.canonicalize()
+			&& let Ok(canonical_base) = self.base_dir.canonicalize()
+				&& !canonical_full.starts_with(&canonical_base) {
 					return Err(TemplateError::TemplateNotFound(format!(
 						"Path escapes base directory: {}",
 						name
 					)));
 				}
-			}
-		}
 
 		Ok(full_path)
 	}

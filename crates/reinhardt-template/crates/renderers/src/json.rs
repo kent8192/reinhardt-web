@@ -7,6 +7,7 @@ use crate::renderer::{RenderResult, Renderer, RendererContext};
 
 /// JSON renderer with pretty printing support
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct JSONRenderer {
 	/// Whether to pretty print the output
 	pub pretty: bool,
@@ -14,14 +15,6 @@ pub struct JSONRenderer {
 	pub ensure_ascii: bool,
 }
 
-impl Default for JSONRenderer {
-	fn default() -> Self {
-		Self {
-			pretty: false,
-			ensure_ascii: false,
-		}
-	}
-}
 
 impl JSONRenderer {
 	/// Creates a new JSON renderer with default settings

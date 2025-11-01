@@ -88,7 +88,7 @@ where
 		F: FnOnce(Co<T>) -> Pin<Box<dyn Future<Output = R> + Send + 'static>> + Send + 'static,
 	{
 		Self {
-			generator: Gen::new(|co| producer(co)),
+			generator: Gen::new(producer),
 			_phantom: PhantomData,
 		}
 	}
@@ -137,7 +137,7 @@ where
 		F: FnOnce(Co<T>) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static,
 	{
 		Self {
-			generator: Gen::new(|co| producer(co)),
+			generator: Gen::new(producer),
 			_phantom: PhantomData,
 		}
 	}

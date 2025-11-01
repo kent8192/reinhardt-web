@@ -90,7 +90,7 @@ impl StaticFileHandler {
 		let canonical_file = file_path
 			.canonicalize()
 			.map_err(|_| StaticError::NotFound(path.to_string()))?;
-		let canonical_root = self.root.canonicalize().map_err(|e| StaticError::Io(e))?;
+		let canonical_root = self.root.canonicalize().map_err(StaticError::Io)?;
 
 		// Ensure file is within root directory
 		if !canonical_file.starts_with(&canonical_root) {

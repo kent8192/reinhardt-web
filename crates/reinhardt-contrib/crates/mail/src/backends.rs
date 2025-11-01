@@ -61,7 +61,7 @@ impl EmailBackend for FileBackend {
 	async fn send_messages(&self, messages: &[EmailMessage]) -> EmailResult<usize> {
 		std::fs::create_dir_all(&self.directory)?;
 
-		for (_i, msg) in messages.iter().enumerate() {
+		for msg in messages.iter() {
 			let filename = format!(
 				"email_{}.eml",
 				chrono::Utc::now().format("%Y%m%d_%H%M%S_%f")

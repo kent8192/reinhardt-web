@@ -206,7 +206,7 @@ impl SecretProvider for AzureKeyVaultProvider {
 			match result {
 				Ok(response) => {
 					for item in response.value {
-						let name = item.id.split('/').last().unwrap_or("");
+						let name = item.id.split('/').next_back().unwrap_or("");
 						if !name.is_empty() {
 							secrets.push(name.to_string());
 						}

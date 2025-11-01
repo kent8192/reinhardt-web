@@ -100,15 +100,12 @@ impl AwsSecretsProvider {
 		// Try to parse as JSON first
 		if let Ok(json_value) = serde_json::from_str::<Value>(secret_string) {
 			// If it's a JSON object with a single key, return that value
-			if let Some(obj) = json_value.as_object() {
-				if obj.len() == 1 {
-					if let Some(value) = obj.values().next() {
-						if let Some(string_value) = value.as_str() {
+			if let Some(obj) = json_value.as_object()
+				&& obj.len() == 1
+					&& let Some(value) = obj.values().next()
+						&& let Some(string_value) = value.as_str() {
 							return Ok(string_value.to_string());
 						}
-					}
-				}
-			}
 		}
 
 		// Otherwise, return the raw string
@@ -186,7 +183,7 @@ impl SecretProvider for AwsSecretsProvider {
 					let metadata = SecretMetadata {
 						created_at: output.created_date().map(|dt| {
 							chrono::DateTime::from_timestamp(dt.secs(), dt.subsec_nanos())
-								.unwrap_or_else(|| Utc::now())
+								.unwrap_or_else(Utc::now)
 						}),
 						updated_at: Some(Utc::now()),
 					};

@@ -253,8 +253,8 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 		// If depth > 0, check if relationship data is already loaded in the parent JSON
 		// This follows Django REST Framework's approach where related data is loaded
 		// by the ORM layer (e.g., using select_related/prefetch_related) before serialization
-		if self.depth > 0 {
-			if let Some(obj) = parent_value.as_object_mut() {
+		if self.depth > 0
+			&& let Some(obj) = parent_value.as_object_mut() {
 				// Check if the relationship field already has data
 				if let Some(related_data) = obj.get(&self.relationship_field) {
 					// If the data is not null, it means the relationship was already loaded
@@ -267,7 +267,6 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 					}
 				}
 			}
-		}
 
 		// Convert the value back to string
 		serde_json::to_string(&parent_value)
@@ -518,13 +517,11 @@ impl<M: Model, R: Model> WritableNestedSerializer<M, R> {
 		let value: Value = serde_json::from_str(json)
 			.map_err(|e| SerializerError::new(format!("JSON parsing error: {}", e)))?;
 
-		if let Value::Object(ref map) = value {
-			if let Some(nested_value) = map.get(&self.relationship_field) {
-				if !nested_value.is_null() {
+		if let Value::Object(ref map) = value
+			&& let Some(nested_value) = map.get(&self.relationship_field)
+				&& !nested_value.is_null() {
 					return Ok(Some(nested_value.clone()));
 				}
-			}
-		}
 
 		Ok(None)
 	}
@@ -568,8 +565,8 @@ impl<M: Model, R: Model> Serializer for WritableNestedSerializer<M, R> {
 			.map_err(|e| SerializerError::new(format!("JSON parsing error: {}", e)))?;
 
 		// Check for nested data at relationship_field
-		if let Value::Object(ref map) = value {
-			if let Some(nested_value) = map.get(&self.relationship_field) {
+		if let Value::Object(ref map) = value
+			&& let Some(nested_value) = map.get(&self.relationship_field) {
 				// Validate permissions
 				if nested_value.is_object() {
 					// Single related object
@@ -624,7 +621,6 @@ impl<M: Model, R: Model> Serializer for WritableNestedSerializer<M, R> {
 				// tx.commit()?;
 				// ```
 			}
-		}
 
 		// For now, deserialize parent model only
 		serde_json::from_str(output)

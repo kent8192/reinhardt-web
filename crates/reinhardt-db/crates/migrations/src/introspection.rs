@@ -570,7 +570,7 @@ impl SQLiteIntrospector {
 		// Group by FK ID to handle multi-column foreign keys
 		let mut fk_map: HashMap<i64, Vec<ForeignKeyRow>> = HashMap::new();
 		for row in rows {
-			fk_map.entry(row.id).or_insert_with(Vec::new).push(row);
+			fk_map.entry(row.id).or_default().push(row);
 		}
 
 		// Convert to ForeignKeyInfo

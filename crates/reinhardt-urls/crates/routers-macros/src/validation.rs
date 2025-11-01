@@ -76,11 +76,10 @@ pub fn validate_path_syntax(path: &str) -> Result<(), PathValidationError> {
 	}
 
 	// Check for unclosed braces
-	if brace_depth > 0 {
-		if let Some(start) = param_start {
+	if brace_depth > 0
+		&& let Some(start) = param_start {
 			return Err(PathValidationError::UnmatchedOpenBrace(start));
 		}
-	}
 
 	Ok(())
 }
@@ -102,14 +101,13 @@ fn validate_parameter_name(name: &str, position: usize) -> Result<(), PathValida
 	let mut chars = name.chars();
 
 	// First character must be lowercase letter or underscore
-	if let Some(first) = chars.next() {
-		if !matches!(first, 'a'..='z' | '_') {
+	if let Some(first) = chars.next()
+		&& !matches!(first, 'a'..='z' | '_') {
 			return Err(PathValidationError::InvalidParameterName {
 				name: name.to_string(),
 				position,
 			});
 		}
-	}
 
 	// Remaining characters must be lowercase letter, digit, or underscore
 	for ch in chars {

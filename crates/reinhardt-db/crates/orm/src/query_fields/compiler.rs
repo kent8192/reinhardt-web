@@ -32,8 +32,8 @@ impl QueryFieldCompiler {
 			_ => Self::compile_field_path(lookup.field_path()),
 		};
 
-		let operator = Self::lookup_type_to_operator_sqlite(&lookup_type);
-		let value_sql = Self::compile_value_sqlite(&lookup.value(), &lookup_type);
+		let operator = Self::lookup_type_to_operator_sqlite(lookup_type);
+		let value_sql = Self::compile_value_sqlite(lookup.value(), lookup_type);
 
 		match lookup_type {
 			LookupType::IsNull | LookupType::IsNotNull => {
@@ -74,8 +74,7 @@ impl QueryFieldCompiler {
 	/// Compile field path without transforms (raw)
 	fn compile_field_path_raw(path: &[&str]) -> String {
 		path.iter()
-			.filter(|&&segment| !Self::is_transform(segment))
-			.map(|&s| s)
+			.filter(|&&segment| !Self::is_transform(segment)).copied()
 			.collect::<Vec<_>>()
 			.join(".")
 	}
@@ -253,7 +252,7 @@ impl QueryFieldCompiler {
 				if let LookupValue::Array(items) = value {
 					items
 						.iter()
-						.map(|v| Self::value_to_sql(v))
+						.map(Self::value_to_sql)
 						.collect::<Vec<_>>()
 						.join(", ")
 				} else {
@@ -300,7 +299,7 @@ impl QueryFieldCompiler {
 				if let LookupValue::Array(items) = value {
 					items
 						.iter()
-						.map(|v| Self::value_to_sql(v))
+						.map(Self::value_to_sql)
 						.collect::<Vec<_>>()
 						.join(", ")
 				} else {
@@ -319,7 +318,7 @@ impl QueryFieldCompiler {
 			LookupValue::Float(f) => f.to_string(),
 			LookupValue::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
 			LookupValue::Array(items) => {
-				let values: Vec<String> = items.iter().map(|v| Self::value_to_sql(v)).collect();
+				let values: Vec<String> = items.iter().map(Self::value_to_sql).collect();
 				values.join(", ")
 			}
 			LookupValue::Range(_, _) => {

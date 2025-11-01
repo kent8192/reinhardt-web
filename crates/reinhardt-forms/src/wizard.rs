@@ -296,7 +296,7 @@ impl FormWizard {
 				self.save_step_data(data)?;
 
 				if !self.is_last_step() {
-					self.next_step().map_err(|e| FormError::Validation(e))?;
+					self.next_step().map_err(FormError::Validation)?;
 					Ok(false) // Not done yet
 				} else {
 					Ok(true) // Wizard complete

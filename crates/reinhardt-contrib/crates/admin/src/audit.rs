@@ -3,11 +3,11 @@
 //! This module provides audit logging functionality for tracking all admin actions
 //! for compliance and security purposes.
 
-use crate::{AdminDatabase, AdminError, AdminResult};
+use crate::AdminDatabase;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_query::{
-	Alias, Asterisk, Expr, ExprTrait, PostgresQueryBuilder, Query as SeaQuery, SelectStatement,
+	ExprTrait, Query as SeaQuery,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -630,19 +630,19 @@ impl AuditLogger for MemoryAuditLogger {
 		self.user_index
 			.lock()
 			.entry(entry.user_id.clone())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(index);
 
 		self.model_index
 			.lock()
 			.entry(entry.model_name.clone())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(index);
 
 		self.action_index
 			.lock()
 			.entry(entry.action)
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(index);
 
 		Ok(entry)
@@ -672,41 +672,35 @@ impl AuditLogger for MemoryAuditLogger {
 				.filter_map(|idx| logs.get(idx))
 				.filter(|log| {
 					// Apply remaining filters
-					if let Some(ref user_id) = query.user_id {
-						if log.user_id != *user_id {
+					if let Some(ref user_id) = query.user_id
+						&& log.user_id != *user_id {
 							return false;
 						}
-					}
 
-					if let Some(ref model_name) = query.model_name {
-						if log.model_name != *model_name {
+					if let Some(ref model_name) = query.model_name
+						&& log.model_name != *model_name {
 							return false;
 						}
-					}
 
-					if let Some(ref object_id) = query.object_id {
-						if log.object_id != *object_id {
+					if let Some(ref object_id) = query.object_id
+						&& log.object_id != *object_id {
 							return false;
 						}
-					}
 
-					if let Some(action) = query.action {
-						if log.action != action {
+					if let Some(action) = query.action
+						&& log.action != action {
 							return false;
 						}
-					}
 
-					if let Some(start_date) = query.start_date {
-						if log.timestamp < start_date {
+					if let Some(start_date) = query.start_date
+						&& log.timestamp < start_date {
 							return false;
 						}
-					}
 
-					if let Some(end_date) = query.end_date {
-						if log.timestamp > end_date {
+					if let Some(end_date) = query.end_date
+						&& log.timestamp > end_date {
 							return false;
 						}
-					}
 
 					true
 				})
@@ -716,41 +710,35 @@ impl AuditLogger for MemoryAuditLogger {
 				.iter()
 				.filter(|log| {
 					// Apply all filters
-					if let Some(ref user_id) = query.user_id {
-						if log.user_id != *user_id {
+					if let Some(ref user_id) = query.user_id
+						&& log.user_id != *user_id {
 							return false;
 						}
-					}
 
-					if let Some(ref model_name) = query.model_name {
-						if log.model_name != *model_name {
+					if let Some(ref model_name) = query.model_name
+						&& log.model_name != *model_name {
 							return false;
 						}
-					}
 
-					if let Some(ref object_id) = query.object_id {
-						if log.object_id != *object_id {
+					if let Some(ref object_id) = query.object_id
+						&& log.object_id != *object_id {
 							return false;
 						}
-					}
 
-					if let Some(action) = query.action {
-						if log.action != action {
+					if let Some(action) = query.action
+						&& log.action != action {
 							return false;
 						}
-					}
 
-					if let Some(start_date) = query.start_date {
-						if log.timestamp < start_date {
+					if let Some(start_date) = query.start_date
+						&& log.timestamp < start_date {
 							return false;
 						}
-					}
 
-					if let Some(end_date) = query.end_date {
-						if log.timestamp > end_date {
+					if let Some(end_date) = query.end_date
+						&& log.timestamp > end_date {
 							return false;
 						}
-					}
 
 					true
 				})
@@ -780,41 +768,35 @@ impl AuditLogger for MemoryAuditLogger {
 			.iter()
 			.filter(|log| {
 				// Same filtering logic as query()
-				if let Some(ref user_id) = query.user_id {
-					if log.user_id != *user_id {
+				if let Some(ref user_id) = query.user_id
+					&& log.user_id != *user_id {
 						return false;
 					}
-				}
 
-				if let Some(ref model_name) = query.model_name {
-					if log.model_name != *model_name {
+				if let Some(ref model_name) = query.model_name
+					&& log.model_name != *model_name {
 						return false;
 					}
-				}
 
-				if let Some(ref object_id) = query.object_id {
-					if log.object_id != *object_id {
+				if let Some(ref object_id) = query.object_id
+					&& log.object_id != *object_id {
 						return false;
 					}
-				}
 
-				if let Some(action) = query.action {
-					if log.action != action {
+				if let Some(action) = query.action
+					&& log.action != action {
 						return false;
 					}
-				}
 
-				if let Some(start_date) = query.start_date {
-					if log.timestamp < start_date {
+				if let Some(start_date) = query.start_date
+					&& log.timestamp < start_date {
 						return false;
 					}
-				}
 
-				if let Some(end_date) = query.end_date {
-					if log.timestamp > end_date {
+				if let Some(end_date) = query.end_date
+					&& log.timestamp > end_date {
 						return false;
 					}
-				}
 
 				true
 			})
@@ -931,11 +913,10 @@ impl AuditLogger for DatabaseAuditLogger {
 		// Parse returned row data to extract ID
 		// Note: In a real implementation, we would properly parse the row data
 		// For now, we'll use a placeholder approach
-		if let Some(id_value) = row.data.get("id") {
-			if let Some(id) = id_value.as_i64() {
+		if let Some(id_value) = row.data.get("id")
+			&& let Some(id) = id_value.as_i64() {
 				entry.set_id(id);
 			}
-		}
 
 		Ok(entry)
 	}
@@ -1127,7 +1108,7 @@ impl AuditLogger for DatabaseAuditLogger {
 		&self,
 		query: &AuditLogQuery,
 	) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
-		use sea_query::{Alias, Asterisk, Condition, Expr, PostgresQueryBuilder, Query};
+		use sea_query::{Alias, Asterisk, Condition, Expr, PostgresQueryBuilder};
 
 		// Build SELECT COUNT(*) query
 		let mut select = SeaQuery::select();

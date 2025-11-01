@@ -375,7 +375,7 @@ impl ViewSetSchema {
 	) -> Self {
 		self.response_schemas
 			.entry(action.into())
-			.or_insert_with(Vec::new)
+			.or_default()
 			.push(schema);
 		self
 	}

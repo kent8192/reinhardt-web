@@ -455,11 +455,10 @@ impl<T: Send + Sync + Clone + 'static> DeadLetterQueue<T> {
 				// Find a message ready for retry
 				{
 					let mut queue_guard = queue.lock();
-					if let Some(msg) = queue_guard.front() {
-						if msg.next_retry_at <= now {
+					if let Some(msg) = queue_guard.front()
+						&& msg.next_retry_at <= now {
 							message_to_retry = queue_guard.pop_front();
 						}
-					}
 				}
 
 				if let Some(mut msg) = message_to_retry {

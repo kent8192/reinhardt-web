@@ -11,13 +11,15 @@ use serde::{Deserialize, Serialize};
 
 /// Storage type for generated columns
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum StorageType {
 	/// Column value is computed and stored on disk (persistent)
 	/// Provides better read performance but uses more disk space
 	Stored,
 	/// Column value is computed on-the-fly when queried (ephemeral)
 	/// Saves disk space but requires computation on every read
-	Virtual,
+	#[default]
+ Virtual,
 }
 
 impl StorageType {
@@ -39,11 +41,6 @@ impl StorageType {
 	}
 }
 
-impl Default for StorageType {
-	fn default() -> Self {
-		StorageType::Virtual
-	}
-}
 
 /// GeneratedField - a database column with auto-computed value
 ///

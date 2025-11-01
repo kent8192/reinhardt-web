@@ -185,6 +185,12 @@ pub struct AutoField {
 	pub base: BaseField,
 }
 
+impl Default for AutoField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AutoField {
 	/// Create a new auto-incrementing primary key field
 	///
@@ -236,6 +242,12 @@ pub struct BigIntegerField {
 	pub base: BaseField,
 }
 
+impl Default for BigIntegerField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BigIntegerField {
 	/// Create a new big integer field
 	///
@@ -279,6 +291,12 @@ impl Field for BigIntegerField {
 #[derive(Debug, Clone)]
 pub struct BooleanField {
 	pub base: BaseField,
+}
+
+impl Default for BooleanField {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BooleanField {
@@ -426,6 +444,12 @@ pub struct IntegerField {
 	pub base: BaseField,
 }
 
+impl Default for IntegerField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IntegerField {
 	/// Create a new IntegerField
 	///
@@ -472,9 +496,9 @@ impl IntegerField {
 	/// ```
 	pub fn with_callable_choices(_callable_name: &str) -> Self {
 		// Store callable as a special marker in base
-		let field = Self::new();
+		
 		// We'll handle callable differently in deconstruct
-		field
+		Self::new()
 	}
 }
 
@@ -503,6 +527,12 @@ pub struct DateField {
 	pub base: BaseField,
 	pub auto_now: bool,
 	pub auto_now_add: bool,
+}
+
+impl Default for DateField {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DateField {
@@ -577,6 +607,12 @@ pub struct DateTimeField {
 	pub base: BaseField,
 	pub auto_now: bool,
 	pub auto_now_add: bool,
+}
+
+impl Default for DateTimeField {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DateTimeField {
@@ -729,6 +765,12 @@ pub struct EmailField {
 	pub max_length: u64,
 }
 
+impl Default for EmailField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EmailField {
 	/// Create a new EmailField with Django's default max_length (254)
 	///
@@ -792,6 +834,12 @@ pub struct FloatField {
 	pub base: BaseField,
 }
 
+impl Default for FloatField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FloatField {
 	/// Create a new FloatField for storing floating-point numbers
 	///
@@ -833,6 +881,12 @@ impl Field for FloatField {
 #[derive(Debug, Clone)]
 pub struct TextField {
 	pub base: BaseField,
+}
+
+impl Default for TextField {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TextField {
@@ -879,6 +933,12 @@ pub struct TimeField {
 	pub base: BaseField,
 	pub auto_now: bool,
 	pub auto_now_add: bool,
+}
+
+impl Default for TimeField {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TimeField {
@@ -952,6 +1012,12 @@ pub struct URLField {
 	pub max_length: u64,
 }
 
+impl Default for URLField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl URLField {
 	/// Create a new URLField for storing and validating URLs
 	///
@@ -1007,6 +1073,12 @@ impl Field for URLField {
 #[derive(Debug, Clone)]
 pub struct BinaryField {
 	pub base: BaseField,
+}
+
+impl Default for BinaryField {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BinaryField {
@@ -1077,6 +1149,12 @@ pub struct SlugField {
 	pub db_index: bool,
 }
 
+impl Default for SlugField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SlugField {
 	/// Create a new SlugField for URL-friendly strings
 	///
@@ -1140,6 +1218,12 @@ pub struct SmallIntegerField {
 	pub base: BaseField,
 }
 
+impl Default for SmallIntegerField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SmallIntegerField {
 	/// Create a new SmallIntegerField for small integers (-32768 to 32767)
 	///
@@ -1181,6 +1265,12 @@ impl Field for SmallIntegerField {
 #[derive(Debug, Clone)]
 pub struct PositiveIntegerField {
 	pub base: BaseField,
+}
+
+impl Default for PositiveIntegerField {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PositiveIntegerField {
@@ -1226,6 +1316,12 @@ pub struct PositiveSmallIntegerField {
 	pub base: BaseField,
 }
 
+impl Default for PositiveSmallIntegerField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PositiveSmallIntegerField {
 	/// Create a new PositiveSmallIntegerField for small positive integers (0 to 32767)
 	///
@@ -1267,6 +1363,12 @@ impl Field for PositiveSmallIntegerField {
 #[derive(Debug, Clone)]
 pub struct PositiveBigIntegerField {
 	pub base: BaseField,
+}
+
+impl Default for PositiveBigIntegerField {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PositiveBigIntegerField {
@@ -1312,6 +1414,12 @@ pub struct GenericIPAddressField {
 	pub base: BaseField,
 	pub protocol: String, // "both", "IPv4", "IPv6"
 	pub unpack_ipv4: bool,
+}
+
+impl Default for GenericIPAddressField {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GenericIPAddressField {

@@ -120,11 +120,10 @@ impl CachedResponse {
 		response.body = self.body.clone().into();
 
 		for (key, value) in &self.headers {
-			if let Ok(header_name) = hyper::header::HeaderName::from_bytes(key.as_bytes()) {
-				if let Ok(header_value) = hyper::header::HeaderValue::from_str(value) {
+			if let Ok(header_name) = hyper::header::HeaderName::from_bytes(key.as_bytes())
+				&& let Ok(header_value) = hyper::header::HeaderValue::from_str(value) {
 					response.headers.insert(header_name, header_value);
 				}
-			}
 		}
 
 		response

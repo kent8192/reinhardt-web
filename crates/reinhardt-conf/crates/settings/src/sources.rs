@@ -114,11 +114,10 @@ impl ConfigSource for EnvSource {
 		// Get all environment variables
 		for (key, value) in std::env::vars() {
 			// Skip if prefix is set and key doesn't start with it
-			if let Some(prefix) = &self.prefix {
-				if !key.starts_with(prefix) {
+			if let Some(prefix) = &self.prefix
+				&& !key.starts_with(prefix) {
 					continue;
 				}
-			}
 
 			// Remove prefix if present
 			let clean_key = if let Some(prefix) = &self.prefix {

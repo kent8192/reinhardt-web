@@ -43,7 +43,7 @@ where
 	let mut right = items.len();
 
 	while left < right {
-		let mid = (left + right + 1) / 2;
+		let mid = (left + right).div_ceil(2);
 		let slice = &items[..mid];
 		let serialized = serializer(slice);
 
@@ -97,7 +97,7 @@ where
 	let mut right = items.len();
 
 	while left < right {
-		let mid = (left + right + 1) / 2;
+		let mid = (left + right).div_ceil(2);
 		let slice = &items[items.len() - mid..];
 		let serialized = serializer(slice);
 

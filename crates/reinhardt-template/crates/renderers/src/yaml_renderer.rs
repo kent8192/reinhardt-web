@@ -9,16 +9,12 @@ use crate::renderer::{RenderResult, Renderer, RendererContext};
 ///
 /// Renders JSON data as YAML format.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct YAMLRenderer {
 	/// Whether to use compact format
 	pub compact: bool,
 }
 
-impl Default for YAMLRenderer {
-	fn default() -> Self {
-		Self { compact: false }
-	}
-}
 
 impl YAMLRenderer {
 	/// Creates a new YAML renderer with default settings

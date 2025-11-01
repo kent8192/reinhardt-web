@@ -434,7 +434,7 @@ impl EmailValidator {
 
 	/// Check if character is valid qtext (RFC 5322)
 	fn is_qtext(ch: char) -> bool {
-		ch == ' ' || ch == '\t' || (ch >= '!' && ch <= '~' && ch != '"' && ch != '\\')
+		ch == ' ' || ch == '\t' || (('!'..='~').contains(&ch) && ch != '"' && ch != '\\')
 	}
 
 	/// Validate dot-atom format (RFC 5322)
@@ -449,7 +449,7 @@ impl EmailValidator {
 		}
 
 		// Each atom must be valid
-		s.split('.').all(|atom| Self::validate_atom(atom))
+		s.split('.').all(Self::validate_atom)
 	}
 
 	/// Validate atom characters (RFC 5322)
@@ -458,7 +458,7 @@ impl EmailValidator {
 			return false;
 		}
 
-		atom.chars().all(|ch| Self::is_atext(ch))
+		atom.chars().all(Self::is_atext)
 	}
 
 	/// Check if character is valid atext (RFC 5322)
@@ -831,17 +831,15 @@ impl Validator for RangeValidator {
 			.parse()
 			.map_err(|_| reinhardt_apps::Error::Validation("Invalid number".to_string()))?;
 
-		if let Some(min) = self.min {
-			if num < min {
+		if let Some(min) = self.min
+			&& num < min {
 				return Err(reinhardt_apps::Error::Validation(self.message.clone()));
 			}
-		}
 
-		if let Some(max) = self.max {
-			if num > max {
+		if let Some(max) = self.max
+			&& num > max {
 				return Err(reinhardt_apps::Error::Validation(self.message.clone()));
 			}
-		}
 
 		Ok(())
 	}
@@ -857,17 +855,15 @@ impl validators_crate::Validator<str> for RangeValidator {
 			.parse()
 			.map_err(|_| BaseValidationError::Custom("Invalid number".to_string()))?;
 
-		if let Some(min) = self.min {
-			if num < min {
+		if let Some(min) = self.min
+			&& num < min {
 				return Err(BaseValidationError::Custom(self.message.clone()));
 			}
-		}
 
-		if let Some(max) = self.max {
-			if num > max {
+		if let Some(max) = self.max
+			&& num > max {
 				return Err(BaseValidationError::Custom(self.message.clone()));
 			}
-		}
 
 		Ok(())
 	}
@@ -1037,15 +1033,14 @@ impl ModelValidators {
 		let mut errors = Vec::new();
 
 		for (field, validators) in &self.field_validators {
-			if let Some(value) = data.get(field) {
-				if let Err(e) = validators.validate(value) {
+			if let Some(value) = data.get(field)
+				&& let Err(e) = validators.validate(value) {
 					errors.push(ValidationError::new(
 						field,
 						e.to_string(),
 						"validation_error",
 					));
 				}
-			}
 		}
 
 		errors

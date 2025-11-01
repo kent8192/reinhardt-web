@@ -286,11 +286,10 @@ impl WebSocketSignalBridge {
 		let mut errors = Vec::new();
 
 		for client in clients.values() {
-			if client.is_connected() {
-				if let Err(e) = client.send_message(message.clone()) {
+			if client.is_connected()
+				&& let Err(e) = client.send_message(message.clone()) {
 					errors.push(e);
 				}
-			}
 		}
 
 		if !errors.is_empty() {

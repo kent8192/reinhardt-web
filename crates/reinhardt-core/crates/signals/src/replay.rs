@@ -389,14 +389,13 @@ impl<T: Send + Sync + Clone + 'static> SignalReplayer<T> {
 
 		for stored_signal in signals {
 			// Calculate delay based on timestamp difference
-			if let Some(prev) = prev_timestamp {
-				if let Ok(diff) = stored_signal.timestamp.duration_since(prev) {
+			if let Some(prev) = prev_timestamp
+				&& let Ok(diff) = stored_signal.timestamp.duration_since(prev) {
 					let delay = config.speed.calculate_delay(diff);
 					if delay > Duration::from_millis(0) {
 						sleep(delay).await;
 					}
 				}
-			}
 
 			prev_timestamp = Some(stored_signal.timestamp);
 

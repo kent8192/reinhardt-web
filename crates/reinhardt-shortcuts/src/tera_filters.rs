@@ -153,7 +153,7 @@ impl Filter for IntCommaFilter {
 		for (i, c) in chars.iter().enumerate() {
 			result.push(*c);
 			let remaining = len - i - 1;
-			if remaining > 0 && remaining % 3 == 0 && c.is_ascii_digit() {
+			if remaining > 0 && remaining.is_multiple_of(3) && c.is_ascii_digit() {
 				result.push(',');
 			}
 		}
@@ -210,13 +210,11 @@ impl Filter for PluralizeFilter {
 			} else {
 				Ok(Value::String(String::new()))
 			}
-		} else {
-			if let Some(plural) = args.get("plural").and_then(|v| v.as_str()) {
-				Ok(Value::String(plural.to_string()))
-			} else {
-				Ok(Value::String("s".to_string()))
-			}
-		}
+		} else if let Some(plural) = args.get("plural").and_then(|v| v.as_str()) {
+  				Ok(Value::String(plural.to_string()))
+  			} else {
+  				Ok(Value::String("s".to_string()))
+  			}
 	}
 }
 

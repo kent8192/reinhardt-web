@@ -178,7 +178,7 @@ impl crate::router::Router for SimpleRouter {
 		if let Some((handler_id, params)) = self.matcher.match_path(&path) {
 			// Find the route by matching handler_id with route name or index
 			for (idx, route) in self.routes.iter().enumerate() {
-				let route_id = route.name.as_ref().map(|n| n.as_str()).unwrap_or_else(|| {
+				let route_id = route.name.as_deref().unwrap_or_else(|| {
 					// Use a temporary owned string for comparison
 					""
 				});

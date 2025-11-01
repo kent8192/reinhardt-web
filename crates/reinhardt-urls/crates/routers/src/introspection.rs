@@ -161,7 +161,7 @@ impl RouteInfo {
 
 	/// Get the namespace as a Namespace object
 	pub fn namespace_object(&self) -> Option<Namespace> {
-		self.namespace.as_ref().map(|ns| Namespace::new(ns))
+		self.namespace.as_ref().map(Namespace::new)
 	}
 }
 
