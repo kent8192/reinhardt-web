@@ -1,94 +1,47 @@
-//! Benchmark tests for Compile-time (Askama) vs Runtime (TemplateHTMLRenderer)
+//! Benchmark tests for Compile-time (Tera AOT) vs Runtime Template Rendering
 //!
-//! This test suite verifies the performance improvement of compile-time
-//! template rendering over runtime template rendering.
+//! This test suite verifies the performance characteristics of:
+//! - Tera template engine (runtime rendering)
+//! - TemplateHTMLRenderer (single-pass substitution)
 //!
 //! # Performance Characteristics
 //!
-//! - **Compile-time (Askama)**: O(1) - Templates compiled to native code
-//! - **Runtime (TemplateHTMLRenderer)**: O(n + m) - Single-pass substitution
+//! - **Tera Runtime**: O(n + m) - Template parsing + rendering
+//! - **TemplateHTMLRenderer**: O(n + m) - Single-pass substitution
 //!
-//! Expected speedup: 3-10x in realistic scenarios
-//!
-//! Note: The actual speedup depends on:
-//! - Template complexity
-//! - Number of variables
-//! - Compiler optimizations
-//! - Debug vs Release build (Release shows 10-100x+ improvement)
+//! Expected performance: Comparable for simple templates, Tera more powerful for complex logic
 
-use askama::Template;
-use reinhardt_renderers::{AskamaRenderer, Post, PostListTemplate, TemplateHTMLRenderer};
+use reinhardt_renderers::{Post, PostListTemplate, TemplateHTMLRenderer};
 use std::collections::HashMap;
 use std::time::Instant;
-
-// Define templates outside test functions for proper compile-time compilation
-#[derive(Template)]
-#[template(source = "<h1>{{ title }}</h1>", ext = "html")]
-struct SimpleTemplate {
-    title: String,
-}
-
-#[derive(Template)]
-#[template(
-    source = "<div>{{ v1 }}{{ v2 }}{{ v3 }}{{ v4 }}{{ v5 }}{{ v6 }}{{ v7 }}{{ v8 }}{{ v9 }}{{ v10 }}</div>",
-    ext = "html"
-)]
-struct ComplexTemplate {
-    v1: String,
-    v2: String,
-    v3: String,
-    v4: String,
-    v5: String,
-    v6: String,
-    v7: String,
-    v8: String,
-    v9: String,
-    v10: String,
-}
-
-#[derive(Template)]
-#[template(
-    source = r#"
-<div class="profile">
-    <h1>{{ name }}</h1>
-    <p>Email: {{ email }}</p>
-    <p>Age: {{ age }}</p>
-    <span class="adult">Adult</span>
-</div>
-"#,
-    ext = "html"
-)]
-struct UserProfileTemplate {
-    name: String,
-    email: String,
-    age: u32,
-}
+use tera::{Context, Tera};
 
 /// Benchmark: Simple template with single variable
 ///
-/// Expected: 3-5x speedup in debug, 10-50x in release
+/// Expected: Comparable performance for simple substitution
 #[test]
-fn bench_simple_template_compile_time_vs_runtime() {
+fn bench_simple_template_tera_vs_runtime() {
     let iterations = 10_000;
 
-    // Compile-time (Askama) - Pre-create template instances
-    let templates: Vec<_> = (0..iterations)
-        .map(|_| SimpleTemplate {
-            title: "Hello World".to_string(),
+    // Tera - Pre-create contexts
+    let contexts: Vec<_> = (0..iterations)
+        .map(|_| {
+            let mut context = Context::new();
+            context.insert("title", "Hello World");
+            context
         })
         .collect();
 
-    let askama_renderer = AskamaRenderer::new();
     let start = Instant::now();
 
-    for template in &templates {
-        let _ = askama_renderer.render(template).unwrap();
+    for context in &contexts {
+        let _ = Tera::one_off("<h1>{{ title }}</h1>", context, true).unwrap();
     }
 
-    let compile_time_duration = start.elapsed();
+    let tera_duration = start.elapsed();
 
     // Runtime (TemplateHTMLRenderer) - Pre-create contexts
-    let contexts: Vec<_> = (0..iterations)
+    let runtime_contexts: Vec<_> = (0..iterations)
         .map(|_| {
             let mut context = HashMap::new();
             context.insert("title".to_string(), "Hello World".to_string());
@@ -98,7 +51,7 @@ fn bench_simple_template_compile_time_vs_runtime() {
 
     let start = Instant::now();
 
-    for context in &contexts {
+    for context in &runtime_contexts {
         let _ = TemplateHTMLRenderer::substitute_variables_single_pass(
             "<h1>{{ title }}</h1>",
             context,
@@ -107,59 +60,48 @@ fn bench_simple_template_compile_time_vs_runtime() {
 
     let runtime_duration = start.elapsed();
 
-    // Calculate speedup
-    let speedup = runtime_duration.as_micros() as f64 / compile_time_duration.as_micros() as f64;
-
     println!("\nSimple Template Benchmark:");
-    println!("  Compile-time (Askama): {:?}", compile_time_duration);
+    println!("  Tera: {:?}", tera_duration);
     println!("  Runtime (TemplateHTMLRenderer): {:?}", runtime_duration);
-    println!("  Speedup: {:.2}x", speedup);
     println!(
-        "  Note: Debug build. Release build shows 10-100x+ improvement"
-    );
-
-    // Verify at least 2x speedup (conservative for debug builds)
-    assert!(
-        speedup >= 2.0,
-        "Expected at least 2x speedup, got {:.2}x",
-        speedup
+        "  Ratio (Tera/Runtime): {:.2}x",
+        tera_duration.as_micros() as f64 / runtime_duration.as_micros() as f64
     );
 }
 
 /// Benchmark: Complex template with 10 variables
 ///
-/// Expected: 5-10x speedup in debug, 50-200x in release
+/// Expected: Tera slightly slower due to parsing overhead
 #[test]
-fn bench_complex_template_compile_time_vs_runtime() {
+fn bench_complex_template_tera_vs_runtime() {
     let iterations = 10_000;
 
-    // Compile-time (Askama) - Pre-create template instances
-    let templates: Vec<_> = (0..iterations)
-        .map(|_| ComplexTemplate {
-            v1: "val1".to_string(),
-            v2: "val2".to_string(),
-            v3: "val3".to_string(),
-            v4: "val4".to_string(),
-            v5: "val5".to_string(),
-            v6: "val6".to_string(),
-            v7: "val7".to_string(),
-            v8: "val8".to_string(),
-            v9: "val9".to_string(),
-            v10: "val10".to_string(),
+    // Tera - Pre-create contexts
+    let contexts: Vec<_> = (0..iterations)
+        .map(|_| {
+            let mut context = Context::new();
+            for i in 1..=10 {
+                context.insert(&format!("v{}", i), &format!("val{}", i));
+            }
+            context
         })
         .collect();
 
-    let askama_renderer = AskamaRenderer::new();
     let start = Instant::now();
 
-    for template in &templates {
-        let _ = askama_renderer.render(template).unwrap();
+    for context in &contexts {
+        let _ = Tera::one_off(
+            "<div>{{ v1 }}{{ v2 }}{{ v3 }}{{ v4 }}{{ v5 }}{{ v6 }}{{ v7 }}{{ v8 }}{{ v9 }}{{ v10 }}</div>",
+            context,
+            true,
+        )
+        .unwrap();
     }
 
-    let compile_time_duration = start.elapsed();
+    let tera_duration = start.elapsed();
 
     // Runtime (TemplateHTMLRenderer) - Pre-create contexts
-    let contexts: Vec<_> = (0..iterations)
+    let runtime_contexts: Vec<_> = (0..iterations)
         .map(|_| {
             let mut context = HashMap::new();
             for i in 1..=10 {
@@ -171,7 +113,7 @@ fn bench_complex_template_compile_time_vs_runtime() {
 
     let start = Instant::now();
 
-    for context in &contexts {
+    for context in &runtime_contexts {
         let _ = TemplateHTMLRenderer::substitute_variables_single_pass(
             "<div>{{ v1 }}{{ v2 }}{{ v3 }}{{ v4 }}{{ v5 }}{{ v6 }}{{ v7 }}{{ v8 }}{{ v9 }}{{ v10 }}</div>",
             context,
@@ -180,30 +122,20 @@ fn bench_complex_template_compile_time_vs_runtime() {
 
     let runtime_duration = start.elapsed();
 
-    // Calculate speedup
-    let speedup = runtime_duration.as_micros() as f64 / compile_time_duration.as_micros() as f64;
-
     println!("\nComplex Template (10 variables) Benchmark:");
-    println!("  Compile-time (Askama): {:?}", compile_time_duration);
+    println!("  Tera: {:?}", tera_duration);
     println!("  Runtime (TemplateHTMLRenderer): {:?}", runtime_duration);
-    println!("  Speedup: {:.2}x", speedup);
     println!(
-        "  Note: Debug build. Release build shows 50-200x+ improvement"
-    );
-
-    // Verify at least 2x speedup (conservative for debug builds)
-    assert!(
-        speedup >= 2.0,
-        "Expected at least 2x speedup, got {:.2}x",
-        speedup
+        "  Ratio (Tera/Runtime): {:.2}x",
+        tera_duration.as_micros() as f64 / runtime_duration.as_micros() as f64
     );
 }
 
 /// Benchmark: List rendering with 100 items
 ///
-/// Expected: 2-5x speedup in debug, 10-50x in release
+/// Expected: Comparable performance for list iteration
 #[test]
-fn bench_list_template_compile_time_vs_runtime() {
+fn bench_list_template_tera_vs_runtime() {
     let iterations = 1_000;
 
     // Create 100 posts
@@ -218,18 +150,34 @@ fn bench_list_template_compile_time_vs_runtime() {
         })
         .collect();
 
-    // Compile-time (Askama) - Pre-create template instances
-    let templates: Vec<_> = (0..iterations)
-        .map(|_| PostListTemplate::new(posts.clone()))
+    // Tera - Pre-create contexts with posts
+    let contexts: Vec<_> = (0..iterations)
+        .map(|_| {
+            let mut context = Context::new();
+            let post_data: Vec<_> = posts
+                .iter()
+                .map(|p| {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("title", p.title.clone());
+                    map.insert("content", p.content.clone());
+                    map.insert("author", p.author.clone());
+                    map
+                })
+                .collect();
+            context.insert("posts", &post_data);
+            context
+        })
         .collect();
+
+    let template = r#"<h1>All Posts</h1><ul>{% for post in posts %}<li><h2>{{ post.title }}</h2><p>{{ post.content }}</p><small>by {{ post.author }}</small></li>{% endfor %}</ul>"#;
 
     let start = Instant::now();
 
-    for template in &templates {
-        let _ = template.render_posts().unwrap();
+    for context in &contexts {
+        let _ = Tera::one_off(template, context, true).unwrap();
     }
 
-    let compile_time_duration = start.elapsed();
+    let tera_duration = start.elapsed();
 
     // Runtime (TemplateHTMLRenderer) - Pre-build template strings
     let template_strings: Vec<_> = (0..iterations)
@@ -256,52 +204,54 @@ fn bench_list_template_compile_time_vs_runtime() {
 
     let runtime_duration = start.elapsed();
 
-    // Calculate speedup
-    let speedup = runtime_duration.as_micros() as f64 / compile_time_duration.as_micros() as f64;
-
     println!("\nList Template (100 items) Benchmark:");
-    println!("  Compile-time (Askama): {:?}", compile_time_duration);
+    println!("  Tera: {:?}", tera_duration);
     println!("  Runtime (TemplateHTMLRenderer): {:?}", runtime_duration);
-    println!("  Speedup: {:.2}x", speedup);
     println!(
-        "  Note: Debug build. Release build shows 10-50x+ improvement"
-    );
-
-    // Verify at least 1.5x speedup (conservative for debug builds with large templates)
-    assert!(
-        speedup >= 1.5,
-        "Expected at least 1.5x speedup, got {:.2}x",
-        speedup
+        "  Ratio (Tera/Runtime): {:.2}x",
+        tera_duration.as_micros() as f64 / runtime_duration.as_micros() as f64
     );
 }
 
 /// Benchmark: Real-world user profile template
 ///
-/// Expected: 3-5x speedup in debug, 20-100x in release
+/// Expected: Tera provides better structure for complex templates
 #[test]
-fn bench_user_profile_compile_time_vs_runtime() {
+fn bench_user_profile_tera_vs_runtime() {
     let iterations = 10_000;
 
-    // Compile-time (Askama) - Pre-create template instances
-    let templates: Vec<_> = (0..iterations)
-        .map(|_| UserProfileTemplate {
-            name: "Alice".to_string(),
-            email: "alice@example.com".to_string(),
-            age: 25,
+    // Tera - Pre-create contexts
+    let contexts: Vec<_> = (0..iterations)
+        .map(|_| {
+            let mut context = Context::new();
+            context.insert("name", "Alice");
+            context.insert("email", "alice@example.com");
+            context.insert("age", &25);
+            context
         })
         .collect();
 
-    let askama_renderer = AskamaRenderer::new();
+    let template = r#"
+<div class="profile">
+    <h1>{{ name }}</h1>
+    <p>Email: {{ email }}</p>
+    <p>Age: {{ age }}</p>
+    {% if age >= 18 %}
+    <span class="adult">Adult</span>
+    {% endif %}
+</div>
+"#;
+
     let start = Instant::now();
 
-    for template in &templates {
-        let _ = askama_renderer.render(template).unwrap();
+    for context in &contexts {
+        let _ = Tera::one_off(template, context, true).unwrap();
     }
 
-    let compile_time_duration = start.elapsed();
+    let tera_duration = start.elapsed();
 
     // Runtime (TemplateHTMLRenderer) - Pre-create contexts
-    let contexts: Vec<_> = (0..iterations)
+    let runtime_contexts: Vec<_> = (0..iterations)
         .map(|_| {
             let mut context = HashMap::new();
             context.insert("name".to_string(), "Alice".to_string());
@@ -324,28 +274,18 @@ fn bench_user_profile_compile_time_vs_runtime() {
 
     let start = Instant::now();
 
-    for context in &contexts {
+    for context in &runtime_contexts {
         let _ = TemplateHTMLRenderer::substitute_variables_single_pass(template_str, context);
     }
 
     let runtime_duration = start.elapsed();
 
-    // Calculate speedup
-    let speedup = runtime_duration.as_micros() as f64 / compile_time_duration.as_micros() as f64;
-
     println!("\nUser Profile Template Benchmark:");
-    println!("  Compile-time (Askama): {:?}", compile_time_duration);
+    println!("  Tera: {:?}", tera_duration);
     println!("  Runtime (TemplateHTMLRenderer): {:?}", runtime_duration);
-    println!("  Speedup: {:.2}x", speedup);
     println!(
-        "  Note: Debug build. Release build shows 20-100x+ improvement"
-    );
-
-    // Verify at least 2x speedup (conservative for debug builds)
-    assert!(
-        speedup >= 2.0,
-        "Expected at least 2x speedup, got {:.2}x",
-        speedup
+        "  Ratio (Tera/Runtime): {:.2}x",
+        tera_duration.as_micros() as f64 / runtime_duration.as_micros() as f64
     );
 }
 
@@ -356,46 +296,36 @@ fn bench_user_profile_compile_time_vs_runtime() {
 fn bench_summary_report() {
     println!("\n=== Template Rendering Performance Summary ===\n");
 
-    println!("Compile-time (Askama):");
-    println!("  - Time Complexity: O(1) - Templates compiled to native code");
-    println!("  - Space Complexity: O(1) - No runtime parsing");
-    println!("  - Type Safety: Full compile-time validation");
-    println!("  - Flexibility: Static templates only\n");
+    println!("Tera (Runtime):");
+    println!("  - Time Complexity: O(n + m) - Template parsing + rendering");
+    println!("  - Space Complexity: O(n) - Template AST storage");
+    println!("  - Type Safety: Runtime validation");
+    println!("  - Flexibility: Full template language support (conditionals, loops, filters)\n");
 
-    println!("Runtime (TemplateHTMLRenderer):");
+    println!("TemplateHTMLRenderer:");
     println!("  - Time Complexity: O(n + m) - Single-pass substitution");
     println!("  - Space Complexity: O(n) - Template string storage");
     println!("  - Type Safety: Runtime validation");
-    println!("  - Flexibility: Dynamic templates supported\n");
+    println!("  - Flexibility: Simple variable substitution only\n");
 
-    println!("Performance Gains (Debug vs Release):");
-    println!("  Debug Build:");
-    println!("    - Simple templates (1-5 vars): 2-5x");
-    println!("    - Complex templates (10+ vars): 2-10x");
-    println!("    - List rendering (100 items): 1.5-5x");
-    println!("    - Real-world templates: 2-5x");
-    println!("\n  Release Build (--release):");
-    println!("    - Simple templates (1-5 vars): 10-50x");
-    println!("    - Complex templates (10+ vars): 50-200x");
-    println!("    - List rendering (100 items): 10-50x");
-    println!("    - Real-world templates: 20-100x");
-    println!("\n  Why the difference?");
-    println!("    - Debug builds include debug symbols and minimal optimization");
-    println!("    - Release builds enable full compiler optimizations");
-    println!("    - Askama's compile-time code benefits heavily from optimization\n");
+    println!("Performance Characteristics:");
+    println!("  - Simple templates: Comparable performance");
+    println!("  - Complex templates with logic: Tera provides richer features");
+    println!("  - List rendering: Comparable for simple iteration");
+    println!("  - Real-world templates: Tera better for maintainability\n");
 
     println!("Use Cases:");
-    println!("  Compile-time (Askama) - Choose when:");
-    println!("    - Templates are known at compile time");
-    println!("    - Maximum performance is required");
-    println!("    - Type safety is critical");
-    println!("    - Examples: View templates, email templates, static pages\n");
+    println!("  Tera - Choose when:");
+    println!("    - Complex template logic required (if/else, loops, filters)");
+    println!("    - Template inheritance and includes needed");
+    println!("    - Better error messages and debugging desired");
+    println!("    - Examples: View templates, email templates, complex pages\n");
 
-    println!("  Runtime (TemplateHTMLRenderer) - Choose when:");
-    println!("    - Templates are provided at runtime");
-    println!("    - Flexibility is more important than speed");
-    println!("    - Templates come from users or database");
-    println!("    - Examples: User templates, config files, dynamic content\n");
+    println!("  TemplateHTMLRenderer - Choose when:");
+    println!("    - Only simple variable substitution needed");
+    println!("    - Minimal dependencies desired");
+    println!("    - Very simple use cases");
+    println!("    - Examples: Simple string formatting, basic templating\n");
 
-    println!("=== Run with --release for maximum performance ===\n");
+    println!("=== Tera provides powerful template features at runtime ===\n");
 }

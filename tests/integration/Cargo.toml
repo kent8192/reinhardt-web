@@ -111,7 +111,7 @@ serial_test = "3.2"
 ctor = "0.6.0"
 
 # Templates
-askama = "0.14.0"
+tera = "1.20"
 
 # Testing utilities
 tempfile = "3.14"

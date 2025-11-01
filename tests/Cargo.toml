@@ -66,7 +66,7 @@ chrono = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
-askama = "0.12"
+tera = "1.20"
 async-graphql = "7.0"
 base64 = "0.22"
 percent-encoding = "2.3"
@@ -75,6 +75,7 @@ testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 serial_test = { workspace = true }
 sqlx = { workspace = true }
+sea-query = { workspace = true }
 
 # gRPC integration dependencies
 reinhardt-grpc = { workspace = true }
