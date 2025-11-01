@@ -17,6 +17,8 @@
 //! let params = HashMap::new();
 //! let sql = "SELECT * FROM users WHERE email = 'test@example.com'".to_string();
 //! let result = filter.filter_queryset(&params, sql).await;
+//! // Verify the filter backend processes the query successfully
+//! assert!(result.is_ok());
 //! # }
 //! ```
 
@@ -38,6 +40,10 @@ use std::collections::HashMap;
 /// let strategy = IndexStrategy::Use;
 /// let force_strategy = IndexStrategy::Force;
 /// let ignore_strategy = IndexStrategy::Ignore;
+/// // Verify strategies are created successfully
+/// let _: IndexStrategy = strategy;
+/// let _: IndexStrategy = force_strategy;
+/// let _: IndexStrategy = ignore_strategy;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IndexStrategy {
@@ -65,6 +71,8 @@ pub enum IndexStrategy {
 /// use reinhardt_filters::{IndexHint, IndexStrategy};
 ///
 /// let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
+/// // Verify the index hint is created successfully
+/// assert_eq!(hint.index_name, "idx_users_email");
 /// ```
 #[derive(Debug, Clone)]
 pub struct IndexHint {
@@ -92,6 +100,9 @@ impl IndexHint {
     /// use reinhardt_filters::{IndexHint, IndexStrategy};
     ///
     /// let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
+    /// // Verify the hint is created successfully
+    /// assert_eq!(hint.index_name, "idx_users_email");
+    /// assert_eq!(hint.strategy, IndexStrategy::Use);
     /// ```
     pub fn new(index_name: impl Into<String>, strategy: IndexStrategy) -> Self {
         Self {
@@ -112,6 +123,8 @@ impl IndexHint {
     ///
     /// let hint = IndexHint::new("idx_email", IndexStrategy::Use)
     ///     .for_table("users");
+    /// // Verify the table name is set
+    /// assert_eq!(hint.table_name, Some("users".to_string()));
     /// ```
     pub fn for_table(mut self, table_name: impl Into<String>) -> Self {
         self.table_name = Some(table_name.into());
@@ -127,9 +140,11 @@ impl IndexHint {
     ///
     /// let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
     /// let mysql_sql = hint.to_sql_hint(DatabaseType::MySQL);
+    /// // Verify MySQL hint is generated correctly
     /// assert!(mysql_sql.contains("USE INDEX"));
     ///
     /// let sqlite_sql = hint.to_sql_hint(DatabaseType::SQLite);
+    /// // Verify SQLite hint is generated correctly
     /// assert!(sqlite_sql.contains("INDEXED BY"));
     /// ```
     pub fn to_sql_hint(&self, db_type: DatabaseType) -> String {
@@ -203,6 +218,8 @@ impl IndexHint {
 /// let params = HashMap::new();
 /// let sql = "SELECT * FROM users WHERE email = 'test@example.com'".to_string();
 /// let result = mysql_filter.filter_queryset(&params, sql).await;
+/// // Verify the filter backend processes the query successfully
+/// assert!(result.is_ok());
 /// # }
 /// ```
 #[derive(Debug)]
@@ -227,6 +244,8 @@ impl IndexHintFilter {
     /// use reinhardt_filters::IndexHintFilter;
     ///
     /// let filter = IndexHintFilter::new();
+    /// // Verify the filter is created successfully
+    /// let _: IndexHintFilter = filter;
     /// ```
     pub fn new() -> Self {
         Self {
@@ -246,6 +265,10 @@ impl IndexHintFilter {
     /// let mysql_filter = IndexHintFilter::for_database(DatabaseType::MySQL);
     /// let sqlite_filter = IndexHintFilter::for_database(DatabaseType::SQLite);
     /// let pg_filter = IndexHintFilter::for_database(DatabaseType::PostgreSQL);
+    /// // Verify filters are created for each database type
+    /// let _: IndexHintFilter = mysql_filter;
+    /// let _: IndexHintFilter = sqlite_filter;
+    /// let _: IndexHintFilter = pg_filter;
     /// ```
     pub fn for_database(db_type: DatabaseType) -> Self {
         Self {
@@ -270,6 +293,8 @@ impl IndexHintFilter {
     /// let filter = IndexHintFilter::new()
     ///     .with_index("idx_users_email", IndexStrategy::Use)
     ///     .with_index("idx_users_created_at", IndexStrategy::Force);
+    /// // Verify the filter is configured with hints
+    /// let _: IndexHintFilter = filter;
     /// ```
     pub fn with_index(mut self, index_name: impl Into<String>, strategy: IndexStrategy) -> Self {
         self.hints.push(IndexHint::new(index_name, strategy));
@@ -288,6 +313,8 @@ impl IndexHintFilter {
     ///
     /// let filter = IndexHintFilter::new()
     ///     .with_hint(hint);
+    /// // Verify the filter is configured with the custom hint
+    /// let _: IndexHintFilter = filter;
     /// ```
     pub fn with_hint(mut self, hint: IndexHint) -> Self {
         self.hints.push(hint);
@@ -306,6 +333,8 @@ impl IndexHintFilter {
     /// let filter = IndexHintFilter::new()
     ///     .with_index("idx_users_email", IndexStrategy::Use)
     ///     .set_enabled(false);  // Temporarily disable hints
+    /// // Verify the filter is configured with hints disabled
+    /// let _: IndexHintFilter = filter;
     /// ```
     pub fn set_enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;

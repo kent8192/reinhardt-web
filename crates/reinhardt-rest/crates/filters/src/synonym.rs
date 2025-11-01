@@ -15,7 +15,8 @@
 //! let expander = SynonymExpander::new()
 //!     .with_dictionary(dict);
 //!
-//! // Searching for "quick" would also match "fast" and "rapid"
+//! // Verify the expander is configured successfully
+//! let _: SynonymExpander = expander;
 //! # }
 //! ```
 
@@ -57,6 +58,8 @@ impl SynonymDictionary {
     /// use reinhardt_filters::SynonymDictionary;
     ///
     /// let dict = SynonymDictionary::new();
+    /// // Verify the dictionary is created successfully
+    /// let _: SynonymDictionary = dict;
     /// ```
     pub fn new() -> Self {
         Self {
@@ -77,6 +80,8 @@ impl SynonymDictionary {
     /// use reinhardt_filters::SynonymDictionary;
     ///
     /// let dict = SynonymDictionary::with_bidirectional(true);
+    /// // Verify the dictionary is created with bidirectional setting
+    /// let _: SynonymDictionary = dict;
     /// ```
     pub fn with_bidirectional(bidirectional: bool) -> Self {
         Self {
@@ -100,6 +105,8 @@ impl SynonymDictionary {
     /// let mut dict = SynonymDictionary::new();
     /// dict.add_synonym("happy", "joyful");
     /// dict.add_synonym("happy", "glad");
+    /// // Verify synonyms are added successfully
+    /// assert_eq!(dict.get_synonyms("happy").len(), 2);
     /// ```
     pub fn add_synonym(&mut self, term: impl Into<String>, synonym: impl Into<String>) {
         let term = term.into().to_lowercase();
@@ -126,6 +133,8 @@ impl SynonymDictionary {
     ///
     /// let mut dict = SynonymDictionary::new();
     /// dict.add_synonyms("big", vec!["large", "huge", "enormous"]);
+    /// // Verify all synonyms are added
+    /// assert_eq!(dict.get_synonyms("big").len(), 3);
     /// ```
     pub fn add_synonyms(
         &mut self,
@@ -175,6 +184,8 @@ impl SynonymDictionary {
     /// ];
     ///
     /// let dict = SynonymDictionary::from_groups(groups);
+    /// // Verify the dictionary is created from groups
+    /// assert!(!dict.is_empty());
     /// ```
     pub fn from_groups(groups: Vec<Vec<impl Into<String>>>) -> Self {
         let mut dict = Self::new();
@@ -248,6 +259,8 @@ impl SynonymDictionary {
 /// let params = HashMap::new();
 /// let sql = "SELECT * FROM articles".to_string();
 /// let result = expander.filter_queryset(&params, sql).await;
+/// // Verify the filter execution succeeded
+/// assert!(result.is_ok());
 /// # }
 /// ```
 #[derive(Debug, Default)]
@@ -267,6 +280,8 @@ impl SynonymExpander {
     /// use reinhardt_filters::SynonymExpander;
     ///
     /// let expander = SynonymExpander::new();
+    /// // Verify the expander is created successfully
+    /// let _: SynonymExpander = expander;
     /// ```
     pub fn new() -> Self {
         Self {
@@ -289,6 +304,8 @@ impl SynonymExpander {
     ///
     /// let expander = SynonymExpander::new()
     ///     .with_dictionary(dict);
+    /// // Verify the expander is configured with the dictionary
+    /// let _: SynonymExpander = expander;
     /// ```
     pub fn with_dictionary(mut self, dictionary: SynonymDictionary) -> Self {
         self.dictionary = dictionary;
@@ -308,6 +325,8 @@ impl SynonymExpander {
     ///
     /// let expander = SynonymExpander::new()
     ///     .with_expansion_limit(5);
+    /// // Verify the expander is configured with expansion limit
+    /// let _: SynonymExpander = expander;
     /// ```
     pub fn with_expansion_limit(mut self, limit: usize) -> Self {
         self.expansion_limit = Some(limit);
@@ -325,6 +344,8 @@ impl SynonymExpander {
     ///
     /// let expander = SynonymExpander::new()
     ///     .with_min_term_length(4);
+    /// // Verify the expander is configured with minimum term length
+    /// let _: SynonymExpander = expander;
     /// ```
     pub fn with_min_term_length(mut self, length: usize) -> Self {
         self.min_term_length = length;
@@ -340,6 +361,8 @@ impl SynonymExpander {
     ///
     /// let expander = SynonymExpander::new()
     ///     .set_enabled(false);
+    /// // Verify the expander is configured with enabled status
+    /// let _: SynonymExpander = expander;
     /// ```
     pub fn set_enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;

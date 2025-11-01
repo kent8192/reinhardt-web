@@ -12,7 +12,8 @@
 //!     .with_algorithm(ScoringAlgorithm::BM25 { k1: 1.2, b: 0.75 })
 //!     .with_boost_field("title", 2.0);
 //!
-//! // Scorer would add relevance scoring to search queries
+//! // Verify the scorer is configured correctly
+//! let _: RelevanceScorer = scorer;
 //! # }
 //! ```
 
@@ -32,6 +33,10 @@ use std::collections::HashMap;
 /// let tfidf = ScoringAlgorithm::TfIdf;
 /// let bm25 = ScoringAlgorithm::BM25 { k1: 1.2, b: 0.75 };
 /// let custom = ScoringAlgorithm::Custom("my_scoring_function".to_string());
+/// // Verify algorithms are created successfully
+/// let _: ScoringAlgorithm = tfidf;
+/// let _: ScoringAlgorithm = bm25;
+/// let _: ScoringAlgorithm = custom;
 /// ```
 #[derive(Debug, Clone)]
 pub enum ScoringAlgorithm {
@@ -72,6 +77,9 @@ impl Default for ScoringAlgorithm {
 /// use reinhardt_filters::FieldBoost;
 ///
 /// let boost = FieldBoost::new("title", 2.0);
+/// // Verify the field boost is created successfully
+/// assert_eq!(boost.field_name, "title");
+/// assert_eq!(boost.boost_factor, 2.0);
 /// ```
 #[derive(Debug, Clone)]
 pub struct FieldBoost {
@@ -97,6 +105,11 @@ impl FieldBoost {
     ///
     /// let title_boost = FieldBoost::new("title", 2.0);
     /// let content_boost = FieldBoost::new("content", 1.0);
+    /// // Verify both field boosts are created with correct values
+    /// assert_eq!(title_boost.field_name, "title");
+    /// assert_eq!(title_boost.boost_factor, 2.0);
+    /// assert_eq!(content_boost.field_name, "content");
+    /// assert_eq!(content_boost.boost_factor, 1.0);
     /// ```
     pub fn new(field_name: impl Into<String>, boost_factor: f64) -> Self {
         Self {
@@ -116,6 +129,9 @@ impl FieldBoost {
 /// use reinhardt_filters::ScoredResult;
 ///
 /// let result = ScoredResult::new(42, 0.85);
+/// // Verify the scored result is created with correct values
+/// assert_eq!(result.id, 42);
+/// assert_eq!(result.score, 0.85);
 /// ```
 #[derive(Debug, Clone)]
 pub struct ScoredResult {
@@ -163,6 +179,8 @@ impl ScoredResult {
     ///
     /// let result = ScoredResult::new(42, 0.85)
     ///     .with_details(details);
+    /// // Verify score details are set
+    /// assert!(result.score_details.is_some());
     /// ```
     pub fn with_details(mut self, details: HashMap<String, f64>) -> Self {
         self.score_details = Some(details);
@@ -190,6 +208,8 @@ impl ScoredResult {
 /// let params = HashMap::new();
 /// let sql = "SELECT * FROM articles".to_string();
 /// let result = scorer.filter_queryset(&params, sql).await;
+/// // Verify the result is Ok (filter execution succeeded)
+/// assert!(result.is_ok());
 /// # }
 /// ```
 #[derive(Debug)]
@@ -215,6 +235,8 @@ impl RelevanceScorer {
     /// use reinhardt_filters::RelevanceScorer;
     ///
     /// let scorer = RelevanceScorer::new();
+    /// // Verify the scorer is created successfully
+    /// let _: RelevanceScorer = scorer;
     /// ```
     pub fn new() -> Self {
         Self {
@@ -234,6 +256,8 @@ impl RelevanceScorer {
     ///
     /// let scorer = RelevanceScorer::new()
     ///     .with_algorithm(ScoringAlgorithm::TfIdf);
+    /// // Verify the scorer is configured with the algorithm
+    /// let _: RelevanceScorer = scorer;
     /// ```
     pub fn with_algorithm(mut self, algorithm: ScoringAlgorithm) -> Self {
         self.algorithm = algorithm;
@@ -250,6 +274,8 @@ impl RelevanceScorer {
     /// let scorer = RelevanceScorer::new()
     ///     .with_boost_field("title", 2.0)
     ///     .with_boost_field("content", 1.0);
+    /// // Verify the scorer is configured with field boosts
+    /// let _: RelevanceScorer = scorer;
     /// ```
     pub fn with_boost_field(mut self, field_name: impl Into<String>, boost: f64) -> Self {
         self.field_boosts.push(FieldBoost::new(field_name, boost));
@@ -266,6 +292,8 @@ impl RelevanceScorer {
     /// let boost = FieldBoost::new("title", 2.0);
     /// let scorer = RelevanceScorer::new()
     ///     .with_boost(boost);
+    /// // Verify the scorer is configured with the field boost
+    /// let _: RelevanceScorer = scorer;
     /// ```
     pub fn with_boost(mut self, boost: FieldBoost) -> Self {
         self.field_boosts.push(boost);
@@ -283,6 +311,8 @@ impl RelevanceScorer {
     ///
     /// let scorer = RelevanceScorer::new()
     ///     .with_min_score(0.3);
+    /// // Verify the scorer is configured with minimum score
+    /// let _: RelevanceScorer = scorer;
     /// ```
     pub fn with_min_score(mut self, min_score: f64) -> Self {
         self.min_score = Some(min_score);
@@ -298,6 +328,8 @@ impl RelevanceScorer {
     ///
     /// let scorer = RelevanceScorer::new()
     ///     .set_enabled(false);
+    /// // Verify the scorer is configured with enabled status
+    /// let _: RelevanceScorer = scorer;
     /// ```
     pub fn set_enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;

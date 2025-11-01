@@ -29,12 +29,12 @@ impl<B: ThrottleBackend> BurstRateThrottle<B> {
     ///
     /// ```
     /// use reinhardt_throttling::burst::BurstRateThrottle;
-    /// use reinhardt_throttling::backend::InMemoryBackend;
+    /// use reinhardt_throttling::backend::MemoryBackend;
     /// use std::sync::Arc;
     /// use tokio::sync::Mutex;
     /// use std::time::Duration;
     ///
-    /// let backend = Arc::new(Mutex::new(InMemoryBackend::new()));
+    /// let backend = Arc::new(Mutex::new(MemoryBackend::new()));
     /// let throttle = BurstRateThrottle::new(
     ///     backend,
     ///     10,  // 10 requests burst

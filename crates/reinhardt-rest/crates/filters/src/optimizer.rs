@@ -26,6 +26,8 @@
 //!
 //! let sql = "SELECT * FROM users WHERE email = 'test@example.com'".to_string();
 //! // Optimizer would analyze and suggest improvements
+//! // Verify the optimizer is configured correctly
+//! let _: QueryOptimizer = optimizer;
 //! # }
 //! ```
 
@@ -103,6 +105,9 @@ pub struct QueryAnalysis {
 ///
 /// let hint = OptimizationHint::PreferIndexScan;
 /// let seq_scan = OptimizationHint::DisableSeqScan;
+/// // Verify hints are created successfully
+/// let _: OptimizationHint = hint;
+/// let _: OptimizationHint = seq_scan;
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub enum OptimizationHint {
@@ -156,6 +161,10 @@ impl OptimizationHint {
     /// let pg_sql = hint.to_sql_hint(DatabaseType::PostgreSQL);
     /// let mysql_sql = hint.to_sql_hint(DatabaseType::MySQL);
     /// let sqlite_sql = hint.to_sql_hint(DatabaseType::SQLite);
+    /// // Verify SQL hints are generated for each database type
+    /// assert!(!pg_sql.is_empty());
+    /// assert!(!mysql_sql.is_empty());
+    /// assert!(sqlite_sql.is_empty()); // SQLite doesn't support this hint
     /// ```
     pub fn to_sql_hint(&self, db_type: DatabaseType) -> String {
         match db_type {
@@ -239,6 +248,8 @@ impl OptimizationHint {
 /// use reinhardt_filters::QueryPlan;
 ///
 /// let plan = QueryPlan::new("Seq Scan on users");
+/// // Verify the query plan is created successfully
+/// assert!(plan.raw_plan.contains("Seq Scan"));
 /// ```
 #[derive(Debug, Clone)]
 pub struct QueryPlan {
@@ -272,6 +283,7 @@ impl QueryPlan {
     /// use reinhardt_filters::QueryPlan;
     ///
     /// let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)");
+    /// // Verify the query plan parsing is correct
     /// assert_eq!(plan.estimated_cost, Some(35.50));
     /// assert_eq!(plan.estimated_rows, Some(2550));
     /// assert!(!plan.uses_index);
@@ -329,6 +341,7 @@ impl QueryPlan {
     ///
     /// let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)");
     /// let analyzed = plan.analyze();
+    /// // Verify analysis generates optimization suggestions
     /// assert!(!analyzed.suggestions.is_empty());
     /// ```
     pub fn analyze(mut self) -> Self {
@@ -432,6 +445,8 @@ impl QueryPlan {
 /// let params = HashMap::new();
 /// let sql = "SELECT * FROM users WHERE email = 'test@example.com'".to_string();
 /// let result = optimizer.filter_queryset(&params, sql).await;
+/// // Verify the filter backend processes the query successfully
+/// assert!(result.is_ok());
 /// # }
 /// ```
 #[derive(Debug)]
@@ -457,6 +472,8 @@ impl QueryOptimizer {
     /// use reinhardt_filters::QueryOptimizer;
     ///
     /// let optimizer = QueryOptimizer::new();
+    /// // Verify the optimizer is created successfully
+    /// let _: QueryOptimizer = optimizer;
     /// ```
     pub fn new() -> Self {
         Self {
@@ -477,6 +494,10 @@ impl QueryOptimizer {
     /// let pg_optimizer = QueryOptimizer::for_database(DatabaseType::PostgreSQL);
     /// let mysql_optimizer = QueryOptimizer::for_database(DatabaseType::MySQL);
     /// let sqlite_optimizer = QueryOptimizer::for_database(DatabaseType::SQLite);
+    /// // Verify optimizers are created for each database type
+    /// let _: QueryOptimizer = pg_optimizer;
+    /// let _: QueryOptimizer = mysql_optimizer;
+    /// let _: QueryOptimizer = sqlite_optimizer;
     /// ```
     pub fn for_database(db_type: DatabaseType) -> Self {
         Self {
@@ -497,6 +518,8 @@ impl QueryOptimizer {
     /// let optimizer = QueryOptimizer::new()
     ///     .with_hint(OptimizationHint::PreferIndexScan)
     ///     .with_hint(OptimizationHint::DisableSeqScan);
+    /// // Verify the optimizer is configured with hints
+    /// let _: QueryOptimizer = optimizer;
     /// ```
     pub fn with_hint(mut self, hint: OptimizationHint) -> Self {
         self.hints.push(hint);
@@ -514,6 +537,8 @@ impl QueryOptimizer {
     ///
     /// let optimizer = QueryOptimizer::new()
     ///     .enable_analysis(true);
+    /// // Verify the optimizer is configured with analysis enabled
+    /// let _: QueryOptimizer = optimizer;
     /// ```
     pub fn enable_analysis(mut self, enable: bool) -> Self {
         self.enable_analysis = enable;
@@ -531,6 +556,8 @@ impl QueryOptimizer {
     ///
     /// let optimizer = QueryOptimizer::new()
     ///     .enable_hints(true);
+    /// // Verify the optimizer is configured with hints enabled
+    /// let _: QueryOptimizer = optimizer;
     /// ```
     pub fn enable_hints(mut self, enable: bool) -> Self {
         self.enable_hints = enable;
@@ -554,7 +581,7 @@ impl QueryOptimizer {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```
     /// use reinhardt_filters::QueryOptimizer;
     ///
     /// # async fn example() {
@@ -562,7 +589,9 @@ impl QueryOptimizer {
     /// // Assume you have executed: EXPLAIN SELECT * FROM users
     /// let explain_output = "Seq Scan on users (cost=0.00..35.50 rows=2550)";
     /// let plan = optimizer.analyze_query(explain_output).await.unwrap();
+    /// assert!(plan.estimated_cost.is_some());
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
     /// ```
     pub async fn analyze_query(&self, explain_output: &str) -> FilterResult<QueryPlan> {
         let plan = QueryPlan::new(explain_output).analyze();

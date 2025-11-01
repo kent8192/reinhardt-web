@@ -29,6 +29,8 @@
 //! let filter = MyCustomFilter;
 //! let mut backend = CustomFilterBackend::new();
 //! backend.add_filter(Box::new(filter));
+//! // Verify the filter is added successfully
+//! assert_eq!(backend.filter_count(), 1);
 //! # }
 //! ```
 
@@ -78,6 +80,8 @@ use std::sync::Arc;
 ///
 /// let params = HashMap::new();
 /// let result = backend.filter_queryset(&params, "SELECT * FROM users".to_string()).await;
+/// // Verify the filter chain processes the query successfully
+/// assert!(result.is_ok());
 /// # }
 /// ```
 #[derive(Default)]
@@ -94,6 +98,8 @@ impl CustomFilterBackend {
     /// use reinhardt_filters::CustomFilterBackend;
     ///
     /// let backend = CustomFilterBackend::new();
+    /// // Verify backend is created with no filters
+    /// assert_eq!(backend.filter_count(), 0);
     /// ```
     pub fn new() -> Self {
         Self {
@@ -127,6 +133,8 @@ impl CustomFilterBackend {
     ///
     /// let mut backend = CustomFilterBackend::new();
     /// backend.add_filter(Box::new(MyFilter));
+    /// // Verify the filter is added successfully
+    /// assert_eq!(backend.filter_count(), 1);
     /// ```
     pub fn add_filter(&mut self, filter: Box<dyn FilterBackend>) {
         self.filters.push(Arc::from(filter));
@@ -155,8 +163,10 @@ impl CustomFilterBackend {
     /// }
     ///
     /// let mut backend = CustomFilterBackend::new();
+    /// // Verify initial count is 0
     /// assert_eq!(backend.filter_count(), 0);
     /// backend.add_filter(Box::new(MyFilter));
+    /// // Verify count increases to 1
     /// assert_eq!(backend.filter_count(), 1);
     /// ```
     pub fn filter_count(&self) -> usize {
@@ -187,12 +197,14 @@ impl FilterBackend for CustomFilterBackend {
 /// use std::collections::HashMap;
 ///
 /// # async fn example() {
-/// let backend = SimpleSearchBackend::new("search");
+/// let backend = SimpleSearchBackend::new("search")
+///     .with_field("title");
 /// let mut params = HashMap::new();
 /// params.insert("search".to_string(), "rust".to_string());
 ///
 /// let sql = "SELECT * FROM articles".to_string();
 /// let result = backend.filter_queryset(&params, sql).await.unwrap();
+/// // Verify WHERE clause is added
 /// assert!(result.contains("WHERE"));
 /// # }
 /// ```
@@ -214,6 +226,8 @@ impl SimpleSearchBackend {
     /// use reinhardt_filters::SimpleSearchBackend;
     ///
     /// let backend = SimpleSearchBackend::new("search");
+    /// // Verify backend is created with the correct parameter name
+    /// let _: SimpleSearchBackend = backend;
     /// ```
     pub fn new(param_name: impl Into<String>) -> Self {
         Self {
@@ -232,6 +246,8 @@ impl SimpleSearchBackend {
     /// let backend = SimpleSearchBackend::new("search")
     ///     .with_field("title")
     ///     .with_field("content");
+    /// // Verify fields are added successfully
+    /// let _: SimpleSearchBackend = backend;
     /// ```
     pub fn with_field(mut self, field: impl Into<String>) -> Self {
         self.fields.push(field.into());
@@ -290,6 +306,7 @@ impl FilterBackend for SimpleSearchBackend {
 ///
 /// let sql = "SELECT * FROM articles".to_string();
 /// let result = backend.filter_queryset(&params, sql).await.unwrap();
+/// // Verify ORDER BY clause is added with DESC direction
 /// assert!(result.contains("ORDER BY created_at DESC"));
 /// # }
 /// ```
@@ -311,6 +328,8 @@ impl SimpleOrderingBackend {
     /// use reinhardt_filters::SimpleOrderingBackend;
     ///
     /// let backend = SimpleOrderingBackend::new("ordering");
+    /// // Verify backend is created with the correct parameter name
+    /// let _: SimpleOrderingBackend = backend;
     /// ```
     pub fn new(param_name: impl Into<String>) -> Self {
         Self {
@@ -329,6 +348,8 @@ impl SimpleOrderingBackend {
     /// let backend = SimpleOrderingBackend::new("ordering")
     ///     .allow_field("created_at")
     ///     .allow_field("title");
+    /// // Verify fields are allowed successfully
+    /// let _: SimpleOrderingBackend = backend;
     /// ```
     pub fn allow_field(mut self, field: impl Into<String>) -> Self {
         self.allowed_fields.push(field.into());

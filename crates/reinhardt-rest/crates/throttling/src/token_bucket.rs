@@ -199,7 +199,7 @@ struct BucketState {
 ///
 /// ```
 /// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
-/// use reinhardt_throttling::MemoryBackend;
+/// use reinhardt_throttling::{MemoryBackend, Throttle};
 /// use std::sync::Arc;
 ///
 /// # tokio_test::block_on(async {

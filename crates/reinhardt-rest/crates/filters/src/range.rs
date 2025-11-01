@@ -27,6 +27,9 @@ use std::fmt::Debug;
 /// let date_filter: RangeFilter<String> = RangeFilter::new("created_at")
 ///     .gte("2024-01-01".to_string())
 ///     .lt("2024-12-31".to_string());
+/// // Verify filters are created successfully
+/// assert!(price_filter.has_bounds());
+/// assert!(date_filter.has_bounds());
 /// ```
 #[derive(Debug, Clone)]
 pub struct RangeFilter<T> {
@@ -58,6 +61,7 @@ where
     /// use reinhardt_filters::RangeFilter;
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("age");
+    /// // Verify the filter is created successfully
     /// assert_eq!(filter.field_name(), "age");
     /// ```
     pub fn new(field_name: impl Into<String>) -> Self {
@@ -79,6 +83,7 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .gte(100);
+    /// // Verify the lower bound is set correctly
     /// assert_eq!(filter.get_gte(), Some(&100));
     /// ```
     pub fn gte(mut self, value: T) -> Self {
@@ -95,6 +100,7 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .gt(100);
+    /// // Verify the exclusive lower bound is set correctly
     /// assert_eq!(filter.get_gt(), Some(&100));
     /// ```
     pub fn gt(mut self, value: T) -> Self {
@@ -111,6 +117,7 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .lte(500);
+    /// // Verify the inclusive upper bound is set correctly
     /// assert_eq!(filter.get_lte(), Some(&500));
     /// ```
     pub fn lte(mut self, value: T) -> Self {
@@ -127,6 +134,7 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .lt(500);
+    /// // Verify the exclusive upper bound is set correctly
     /// assert_eq!(filter.get_lt(), Some(&500));
     /// ```
     pub fn lt(mut self, value: T) -> Self {
@@ -143,6 +151,7 @@ where
     ///
     /// let filter: RangeFilter<i32> = RangeFilter::new("price")
     ///     .between(100, 500);
+    /// // Verify both bounds are set correctly
     /// assert_eq!(filter.get_gte(), Some(&100));
     /// assert_eq!(filter.get_lte(), Some(&500));
     /// ```
@@ -207,6 +216,9 @@ where
 /// let filter = DateRangeFilter::new("created_at")
 ///     .after("2024-01-01")
 ///     .before("2024-12-31");
+/// // Verify date range is configured correctly
+/// assert_eq!(filter.inner().get_gte(), Some(&"2024-01-01".to_string()));
+/// assert_eq!(filter.inner().get_lte(), Some(&"2024-12-31".to_string()));
 /// ```
 #[derive(Debug, Clone)]
 pub struct DateRangeFilter {
@@ -303,6 +315,9 @@ impl DateRangeFilter {
 /// let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("price")
 ///     .min(100)
 ///     .max(500);
+/// // Verify numeric range is configured correctly
+/// assert_eq!(filter.inner().get_gte(), Some(&100));
+/// assert_eq!(filter.inner().get_lte(), Some(&500));
 /// ```
 #[derive(Debug, Clone)]
 pub struct NumericRangeFilter<T> {
