@@ -5,7 +5,6 @@
 //!
 //! Run with: cargo test --test loading_strategy_integration_tests --features integration-tests
 
-#[cfg(feature = "integration-tests")]
 mod integration_tests {
 	use reinhardt_orm::{
 		LoadContext, LoadOptionBuilder, LoadingStrategy, Model, joinedload, lazyload, selectinload,
@@ -202,7 +201,6 @@ mod integration_tests {
 
 	// Test 1: Joinedload generates LEFT JOIN
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_joinedload_generates_left_join() {
 		let counter = setup_test_db().await;
 
@@ -231,7 +229,6 @@ mod integration_tests {
 
 	// Test 2: Selectinload generates IN clause
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_selectinload_generates_in_clause() {
 		let counter = setup_test_db().await;
 
@@ -254,7 +251,6 @@ mod integration_tests {
 
 	// Test 3: Subqueryload generates subquery
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_subqueryload_generates_subquery() {
 		let counter = setup_test_db().await;
 
@@ -276,7 +272,6 @@ mod integration_tests {
 
 	// Test 4: Real N+1 detection with lazy loading
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_real_n_plus_one_detection() {
 		let counter = setup_test_db().await;
 
@@ -301,7 +296,6 @@ mod integration_tests {
 
 	// Test 5: Joinedload uses single query
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_joinedload_query_count() {
 		let counter = setup_test_db().await;
 
@@ -320,7 +314,6 @@ mod integration_tests {
 
 	// Test 6: Selectinload uses parent + one SELECT IN query
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_selectinload_query_count() {
 		let counter = setup_test_db().await;
 
@@ -342,7 +335,6 @@ mod integration_tests {
 
 	// Test 7: Lazy loading creates N queries
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_lazy_load_creates_n_queries() {
 		let counter = setup_test_db().await;
 
@@ -371,7 +363,6 @@ mod integration_tests {
 
 	// Test 8: Joinedload with multiple collections creates cartesian product
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_joinedload_cartesian_product_with_multiple_collections() {
 		let counter = setup_test_db().await;
 
@@ -396,7 +387,6 @@ mod integration_tests {
 
 	// Test 9: Selectinload avoids cartesian product
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_selectinload_avoids_cartesian_product() {
 		let counter = setup_test_db().await;
 
@@ -426,7 +416,6 @@ mod integration_tests {
 
 	// Test 10: LoadContext integration with database
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_loading_strategy_with_load_context() {
 		let counter = setup_test_db().await;
 		let mut ctx = LoadContext::new();
@@ -450,7 +439,6 @@ mod integration_tests {
 
 	// Test 11: Multiple relationships loading
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_multiple_relationships_loading() {
 		let counter = setup_test_db().await;
 
@@ -489,7 +477,6 @@ mod integration_tests {
 
 	// Test 12: Performance comparison - eager vs lazy
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_loading_strategy_performance_comparison() {
 		let counter = setup_test_db().await;
 
@@ -544,7 +531,6 @@ mod integration_tests {
 
 	// Test 13: Empty results handling
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_loading_strategy_with_empty_results() {
 		let counter = setup_test_db().await;
 
@@ -565,7 +551,6 @@ mod integration_tests {
 
 	// Test 14: Nested loading with NULL values
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_nested_loading_with_nulls() {
 		let counter = setup_test_db().await;
 
@@ -595,7 +580,6 @@ mod integration_tests {
 
 	// Test 15: Large dataset simulation
 	#[tokio::test]
-	#[cfg(feature = "integration-tests")]
 	async fn test_loading_strategy_with_large_dataset() {
 		let counter = setup_test_db().await;
 
