@@ -14,18 +14,21 @@ pub fn init_test_logging() {
 #[cfg(feature = "dynamic-redis")]
 pub mod redis_helpers {
 	use reinhardt_settings::backends::RedisBackend;
-	use testcontainers::{Container, GenericImage, clients::Cli};
+	use testcontainers::{Container, GenericImage, ImageExt, runners::SyncRunner};
 
-	pub struct RedisContainer<'a> {
-		pub container: Container<'a, GenericImage>,
+	pub struct RedisContainer {
+		pub container: Container<GenericImage>,
 		pub url: String,
 	}
 
 	/// Start a Redis container for testing
-	pub fn start_redis(docker: &Cli) -> RedisContainer {
-		let container = docker.run(GenericImage::new("redis", "7-alpine").with_wait_for(
-			testcontainers::core::WaitFor::message_on_stdout("Ready to accept connections"),
-		));
+	pub fn start_redis() -> RedisContainer {
+		let container = GenericImage::new("redis", "7-alpine")
+			.with_wait_for(testcontainers::core::WaitFor::message_on_stdout(
+				"Ready to accept connections",
+			))
+			.start()
+			.expect("Failed to start Redis container");
 
 		let port = container.get_host_port_ipv4(6379);
 		let url = format!("redis://127.0.0.1:{}", port);
@@ -34,32 +37,34 @@ pub mod redis_helpers {
 	}
 
 	/// Create a Redis backend for testing
-	pub fn create_redis_backend(url: &str) -> RedisBackend {
-		RedisBackend::new(url).expect("Failed to create Redis backend")
+	pub async fn create_redis_backend(url: &str) -> RedisBackend {
+		RedisBackend::new(url)
+			.await
+			.expect("Failed to create Redis backend")
 	}
 }
 
 #[cfg(feature = "dynamic-database")]
 pub mod database_helpers {
 	use reinhardt_settings::backends::DatabaseBackend;
-	use testcontainers::{Container, GenericImage, clients::Cli};
+	use testcontainers::{Container, GenericImage, ImageExt, runners::SyncRunner};
 
-	pub struct PostgresContainer<'a> {
-		pub container: Container<'a, GenericImage>,
+	pub struct PostgresContainer {
+		pub container: Container<GenericImage>,
 		pub url: String,
 	}
 
 	/// Start a PostgreSQL container for testing
-	pub fn start_postgres(docker: &Cli) -> PostgresContainer {
-		let container = docker.run(
-			GenericImage::new("postgres", "16-alpine")
-				.with_env_var("POSTGRES_PASSWORD", "test")
-				.with_env_var("POSTGRES_USER", "test")
-				.with_env_var("POSTGRES_DB", "test")
-				.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
-					"database system is ready to accept connections",
-				)),
-		);
+	pub fn start_postgres() -> PostgresContainer {
+		let container = GenericImage::new("postgres", "16-alpine")
+			.with_env_var("POSTGRES_PASSWORD", "test")
+			.with_env_var("POSTGRES_USER", "test")
+			.with_env_var("POSTGRES_DB", "test")
+			.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
+				"database system is ready to accept connections",
+			))
+			.start()
+			.expect("Failed to start PostgreSQL container");
 
 		let port = container.get_host_port_ipv4(5432);
 		let url = format!("postgres://test:test@127.0.0.1:{}/test", port);
