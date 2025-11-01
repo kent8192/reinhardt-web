@@ -131,11 +131,16 @@ mod anonymous_user_tests {
         );
 
         // Verify no allowed methods are shown (empty vec)
-        let allowed_section = html.split("Allowed methods:").nth(1).unwrap_or("");
+        // Extract only the allowed-methods section (up to the next div)
+        let allowed_section = html
+            .split(r#"<div class="allowed-methods">"#)
+            .nth(1)
+            .and_then(|s| s.split("</div>").next())
+            .unwrap_or("");
         assert_eq!(
-            allowed_section.matches("method-badge method-get").count(),
+            allowed_section.matches("method-badge").count(),
             0,
-            "Should not show GET badge when no methods are allowed"
+            "Should not show any method badges when no methods are allowed"
         );
 
         cleanup_test_output(&test_dir);
