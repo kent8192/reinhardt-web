@@ -51,7 +51,7 @@
 <body>
     <h1>{{ title }}</h1>
 
-    {% if users.len() > 0 %}
+    {% if users %}
         <ul class="user-list">
         {% for user in users %}
             <li class="user-item">

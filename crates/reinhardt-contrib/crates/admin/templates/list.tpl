@@ -221,7 +221,7 @@
 </a>
 
 <!-- Actions -->
-{% if !actions.is_empty() %}
+{% if actions %}
 <form method="post" class="actions">
     <label for="action">Action:</label>
     <select name="action" id="action">
@@ -237,19 +237,17 @@
 <!-- Search and filters -->
 <div class="toolbar">
     <!-- Search -->
-    {% match search_query %}
-        {% when Some with (query) %}
-        <form method="get" class="search-form">
-            <input type="text" name="q" value="{{ query }}" placeholder="Search...">
-            <button type="submit" class="btn btn-secondary">Search</button>
-        </form>
-        {% when None %}
-        {% endmatch %}
+    {% if search_query %}
+    <form method="get" class="search-form">
+        <input type="text" name="q" value="{{ search_query }}" placeholder="Search...">
+        <button type="submit" class="btn btn-secondary">Search</button>
+    </form>
+    {% endif %}
 
     <div style="flex: 1;"></div>
 
     <!-- Filter toggle (could be expanded) -->
-    {% if !filters.is_empty() %}
+    {% if filters %}
     <button class="btn btn-secondary" onclick="document.querySelector('.filters').style.display = document.querySelector('.filters').style.display === 'none' ? 'block' : 'none'">
         Filters
     </button>
@@ -257,7 +255,7 @@
 </div>
 
 <!-- Filters panel -->
-{% if !filters.is_empty() %}
+{% if filters %}
 <div class="filters" style="display: none;">
     {% for filter in filters %}
     <div class="filter-group">
@@ -277,12 +275,12 @@
 {% endif %}
 
 <!-- Results table -->
-{% if !items.is_empty() %}
+{% if items %}
 <div class="results">
     <table>
         <thead>
             <tr>
-                {% if !actions.is_empty() %}
+                {% if actions %}
                 <th class="action-checkbox-column">
                     <input type="checkbox" id="action-toggle">
                 </th>
@@ -297,19 +295,20 @@
         <tbody>
             {% for item in items %}
             <tr>
-                {% if !actions.is_empty() %}
+                {% if actions %}
                 <td class="action-checkbox-column">
-                    {% if let Some(id_val) = item.get("id") %}
-                    <input type="checkbox" name="_selected_action" value="{{ id_val }}">
+                    {% if item.id %}
+                    <input type="checkbox" name="_selected_action" value="{{ item.id }}">
                     {% endif %}
                 </td>
                 {% endif %}
                 {% for field in list_display %}
                 <td>
-                    {% if let Some(val) = item.get(field) %}
+                    {% set val = item[field] %}
+                    {% if val %}
                         {% if loop.first %}
-                            {% if let Some(id_val) = item.get("id") %}
-                            <a href="/admin/{{ model_name|lower }}/{{ id_val }}/change/">
+                            {% if item.id %}
+                            <a href="/admin/{{ model_name|lower }}/{{ item.id }}/change/">
                                 {{ val }}
                             </a>
                             {% else %}
@@ -336,23 +335,21 @@
     </div>
     <div class="pagination-links">
         {% if pagination.has_previous %}
-            {% match pagination.previous_url %}
-                {% when Some with (url) %}
-                    <a href="{{ url }}">Previous</a>
-                {% when None %}
-                    <span>Previous</span>
-            {% endmatch %}
+            {% if pagination.previous_url %}
+                <a href="{{ pagination.previous_url }}">Previous</a>
+            {% else %}
+                <span>Previous</span>
+            {% endif %}
         {% else %}
             <span>Previous</span>
         {% endif %}
 
         {% if pagination.has_next %}
-            {% match pagination.next_url %}
-                {% when Some with (url) %}
-                    <a href="{{ url }}">Next</a>
-                {% when None %}
-                    <span>Next</span>
-            {% endmatch %}
+            {% if pagination.next_url %}
+                <a href="{{ pagination.next_url }}">Next</a>
+            {% else %}
+                <span>Next</span>
+            {% endif %}
         {% else %}
             <span>Next</span>
         {% endif %}

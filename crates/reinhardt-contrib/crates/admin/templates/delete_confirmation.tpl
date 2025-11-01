@@ -153,7 +153,7 @@
         </p>
     </div>
 
-    {% if !related_objects.is_empty() %}
+    {% if related_objects %}
     <div class="related-objects">
         <h3>Related objects to be deleted:</h3>
         <ul class="related-list">
@@ -162,15 +162,15 @@
                 <span class="related-model">{{ related.model_name }}</span>
                 <span class="related-count">{{ related.count }} object{% if related.count != 1 %}s{% endif %}</span>
             </li>
-            {% if !related.items.is_empty() %}
+            {% if related.items %}
             <ul class="related-items">
                 {% for item in related.items %}
                     {% if loop.index <= 5 %}
                     <li>{{ item }}</li>
                     {% endif %}
                 {% endfor %}
-                {% if related.items.len() > 5 %}
-                <li><em>... and {{ related.items.len() - 5 }} more</em></li>
+                {% if related.items | length > 5 %}
+                <li><em>... and {{ related.items | length - 5 }} more</em></li>
                 {% endif %}
             </ul>
             {% endif %}

@@ -286,22 +286,21 @@
         <div class="header-inner">
             <a href="/admin/" class="site-name">{{ site_header }}</a>
             <div class="user-tools">
-                {% match user %}
-                    {% when Some with (u) %}
-                        <span>Welcome, {{ u.username }}</span>
-                        {% if u.is_superuser %}
-                            <span class="badge">Superuser</span>
-                        {% endif %}
-                        <a href="/admin/logout/">Log out</a>
-                    {% when None %}
-                        <a href="/admin/login/">Log in</a>
-                {% endmatch %}
+                {% if user %}
+                    <span>Welcome, {{ user.username }}</span>
+                    {% if user.is_superuser %}
+                        <span class="badge">Superuser</span>
+                    {% endif %}
+                    <a href="/admin/logout/">Log out</a>
+                {% else %}
+                    <a href="/admin/login/">Log in</a>
+                {% endif %}
             </div>
         </div>
     </header>
 
     <!-- Navigation -->
-    {% if !available_apps.is_empty() %}
+    {% if available_apps %}
     <nav class="nav">
         <div class="nav-inner">
             <a href="/admin/">Home</a>

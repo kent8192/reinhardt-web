@@ -225,7 +225,7 @@
     {% endfor %}
 
     <!-- Applications list -->
-    {% if !available_apps.is_empty() %}
+    {% if available_apps %}
     <div class="widget" style="grid-column: 1 / -1;">
         <div class="widget-header">
             Applications
@@ -237,17 +237,15 @@
                     <a href="/admin/{{ app.label }}/" class="app-name">
                         {{ app.name }}
                     </a>
-                    {% if !app.models.is_empty() %}
+                    {% if app.models %}
                     <ul class="model-list">
                         {% for model in app.models %}
                         <li class="model-item">
                             <a href="{{ model.url }}">{{ model.label }}</a>
-                            {% match model.add_url %}
-                                {% when Some with (url) %}
-                                    <span style="color: #ddd;">|</span>
-                                    <a href="{{ url }}">Add</a>
-                                {% when None %}
-                            {% endmatch %}
+                            {% if model.add_url %}
+                                <span style="color: #ddd;">|</span>
+                                <a href="{{ model.add_url }}">Add</a>
+                            {% endif %}
                         </li>
                         {% endfor %}
                     </ul>
@@ -260,7 +258,7 @@
     {% endif %}
 
     <!-- Recent actions -->
-    {% if !recent_actions.is_empty() %}
+    {% if recent_actions %}
     <div class="widget">
         <div class="widget-header">
             Recent Actions
@@ -314,7 +312,7 @@
 </div>
 
 <!-- Empty state if no widgets -->
-{% if widgets.is_empty() && available_apps.is_empty() %}
+{% if not widgets and not available_apps %}
 <div class="empty-state">
     <h3>Welcome to Reinhardt Admin</h3>
     <p>No applications registered yet.</p>

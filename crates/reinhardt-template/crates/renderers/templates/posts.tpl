@@ -73,7 +73,7 @@
 <body>
     <h1>All Posts <span class="post-count">({{ total }} post{% if total != 1 %}s{% endif %})</span></h1>
 
-    {% if posts.len() > 0 %}
+    {% if posts %}
         <ul class="post-list">
         {% for post in posts %}
             <li class="post-item">

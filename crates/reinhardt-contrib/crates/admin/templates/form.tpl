@@ -9,12 +9,11 @@
         &rsaquo;
         <a href="/admin/{{ model_name|lower }}/">{{ model_name }}</a>
         &rsaquo;
-        {% match object_id %}
-            {% when Some with (id) %}
-                <a href="/admin/{{ model_name|lower }}/{{ id }}/change/">{{ id }}</a>
-            {% when None %}
-                Add
-        {% endmatch %}
+        {% if object_id %}
+            <a href="/admin/{{ model_name|lower }}/{{ object_id }}/change/">{{ object_id }}</a>
+        {% else %}
+            Add
+        {% endif %}
     </div>
     <h1>{{ title }}</h1>
 </div>
@@ -213,7 +212,7 @@
 
 {% block content %}
 <!-- Form errors summary -->
-{% if !errors.is_empty() %}
+{% if errors %}
 <div class="form-errors">
     <strong>Please correct the following errors:</strong>
     <ul>
@@ -241,14 +240,12 @@
                 </div>
 
                 <!-- Help text -->
-                {% match field.help_text %}
-                    {% when Some with (text) %}
-                        <span class="form-help">{{ text }}</span>
-                    {% when None %}
-                {% endmatch %}
+                {% if field.help_text %}
+                    <span class="form-help">{{ field.help_text }}</span>
+                {% endif %}
 
                 <!-- Field errors -->
-                {% if !field.errors.is_empty() %}
+                {% if field.errors %}
                     {% for error in field.errors %}
                     <span class="field-error">{{ error }}</span>
                     {% endfor %}
@@ -259,7 +256,7 @@
     </div>
 
     <!-- Inline formsets -->
-    {% if !inlines.is_empty() %}
+    {% if inlines %}
         {% for inline in inlines %}
         <div class="inline-group">
             <h2>{{ inline.verbose_name }}</h2>
@@ -277,13 +274,11 @@
                             {{ field.widget_html|safe }}
                         </div>
 
-                        {% match field.help_text %}
-                            {% when Some with (text) %}
-                                <span class="form-help">{{ text }}</span>
-                            {% when None %}
-                        {% endmatch %}
+                        {% if field.help_text %}
+                            <span class="form-help">{{ field.help_text }}</span>
+                        {% endif %}
 
-                        {% if !field.errors.is_empty() %}
+                        {% if field.errors %}
                             {% for error in field.errors %}
                             <span class="field-error">{{ error }}</span>
                             {% endfor %}
@@ -317,13 +312,11 @@
         <a href="/admin/{{ model_name|lower }}/" class="btn btn-secondary">
             Cancel
         </a>
-        {% match object_id %}
-            {% when Some with (id) %}
-                <a href="/admin/{{ model_name|lower }}/{{ id }}/delete/" class="btn btn-danger" style="margin-left: auto;">
-                    Delete
-                </a>
-            {% when None %}
-        {% endmatch %}
+        {% if object_id %}
+            <a href="/admin/{{ model_name|lower }}/{{ object_id }}/delete/" class="btn btn-danger" style="margin-left: auto;">
+                Delete
+            </a>
+        {% endif %}
     </div>
 </form>
 {% endblock %}
