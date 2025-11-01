@@ -68,7 +68,9 @@ pub fn get_or_404_response<T>(result: Result<Option<T>, String>) -> Result<T, Bo
 /// # Returns
 ///
 /// Either the list of objects or a 404 Response if the list is empty
-pub fn get_list_or_404_response<T>(result: Result<Vec<T>, String>) -> Result<Vec<T>, Box<Response>> {
+pub fn get_list_or_404_response<T>(
+	result: Result<Vec<T>, String>,
+) -> Result<Vec<T>, Box<Response>> {
 	match result {
 		Ok(list) if !list.is_empty() => Ok(list),
 		Ok(_) => Err(Box::new(Response::not_found())),

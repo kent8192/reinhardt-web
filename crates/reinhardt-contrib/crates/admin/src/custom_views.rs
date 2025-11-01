@@ -195,7 +195,10 @@ impl CustomViewRegistry {
 
 	/// Find a view by path
 	pub fn find_by_path(&self, path: &str) -> Option<&dyn CustomView> {
-		self.views.iter().find(|v| v.config().path == path).map(|b| &**b)
+		self.views
+			.iter()
+			.find(|v| v.config().path == path)
+			.map(|b| &**b)
 	}
 }
 

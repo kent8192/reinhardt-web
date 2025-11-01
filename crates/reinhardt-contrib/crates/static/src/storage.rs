@@ -367,7 +367,9 @@ impl HashedFileStorage {
 			let hashed_files = self.hashed_files.read().unwrap();
 			hashed_files
 				.get(name)
-				.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "File not found in mapping"))?
+				.ok_or_else(|| {
+					io::Error::new(io::ErrorKind::NotFound, "File not found in mapping")
+				})?
 				.clone()
 		};
 

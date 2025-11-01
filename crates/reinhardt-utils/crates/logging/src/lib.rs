@@ -47,6 +47,8 @@ pub fn emit_warning(logger_name: &str, message: impl Into<String>) {
 pub async fn attach_memory_handler(logger_name: &str, level: LogLevel) -> handlers::MemoryHandler {
 	let handler = handlers::MemoryHandler::new(level);
 	let logger = get_logger(logger_name);
-	logger.add_handler(std::sync::Arc::new(handler.clone())).await;
+	logger
+		.add_handler(std::sync::Arc::new(handler.clone()))
+		.await;
 	handler
 }

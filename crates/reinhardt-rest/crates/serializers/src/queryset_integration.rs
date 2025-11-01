@@ -97,10 +97,9 @@ where
 
 		// Deserialize to model
 		#[cfg(feature = "django-compat")]
-		let model: Self::Model =
-			serde_json::from_value(data).map_err(|e| SerializerError::Serde {
-				message: format!("Failed to deserialize: {}", e),
-			})?;
+		let model: Self::Model = serde_json::from_value(data).map_err(|e| SerializerError::Serde {
+			message: format!("Failed to deserialize: {}", e),
+		})?;
 
 		// Save to database
 		#[cfg(feature = "django-compat")]

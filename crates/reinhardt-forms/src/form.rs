@@ -335,7 +335,10 @@ impl Form {
 		false
 	}
 	pub fn get_field(&self, name: &str) -> Option<&dyn FormField> {
-		self.fields.iter().find(|f| f.name() == name).map(|f| f.as_ref())
+		self.fields
+			.iter()
+			.find(|f| f.name() == name)
+			.map(|f| f.as_ref())
 	}
 	pub fn remove_field(&mut self, name: &str) -> Option<Box<dyn FormField>> {
 		let pos = self.fields.iter().position(|f| f.name() == name)?;

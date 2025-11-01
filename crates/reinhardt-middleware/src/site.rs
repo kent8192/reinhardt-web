@@ -92,9 +92,10 @@ impl SiteRegistry {
 
 		// Try without www prefix
 		if let Some(without_www) = domain.strip_prefix("www.")
-			&& let Some(site) = self.sites.read().unwrap().get(without_www) {
-				return Some(site.clone());
-			}
+			&& let Some(site) = self.sites.read().unwrap().get(without_www)
+		{
+			return Some(site.clone());
+		}
 
 		// Not found
 		None
