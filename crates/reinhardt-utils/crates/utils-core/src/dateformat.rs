@@ -39,7 +39,7 @@ use chrono::{DateTime, Datelike, Timelike, Utc, Weekday};
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::dateformat::format;
+/// use reinhardt_utils_core::dateformat::format;
 /// use chrono::{TimeZone, Utc};
 ///
 /// let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
@@ -193,7 +193,7 @@ pub mod shortcuts {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::dateformat::shortcuts::iso_date;
+    /// use reinhardt_utils_core::dateformat::shortcuts::iso_date;
     /// use chrono::{TimeZone, Utc};
     ///
     /// let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
@@ -207,7 +207,7 @@ pub mod shortcuts {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::dateformat::shortcuts::iso_datetime;
+    /// use reinhardt_utils_core::dateformat::shortcuts::iso_datetime;
     /// use chrono::{TimeZone, Utc};
     ///
     /// let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
@@ -221,7 +221,7 @@ pub mod shortcuts {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::dateformat::shortcuts::us_date;
+    /// use reinhardt_utils_core::dateformat::shortcuts::us_date;
     /// use chrono::{TimeZone, Utc};
     ///
     /// let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
@@ -235,7 +235,7 @@ pub mod shortcuts {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::dateformat::shortcuts::eu_date;
+    /// use reinhardt_utils_core::dateformat::shortcuts::eu_date;
     /// use chrono::{TimeZone, Utc};
     ///
     /// let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
@@ -249,7 +249,7 @@ pub mod shortcuts {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::dateformat::shortcuts::full_date;
+    /// use reinhardt_utils_core::dateformat::shortcuts::full_date;
     /// use chrono::{TimeZone, Utc};
     ///
     /// let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
@@ -267,7 +267,7 @@ pub mod shortcuts {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::dateformat::shortcuts::short_date;
+    /// use reinhardt_utils_core::dateformat::shortcuts::short_date;
     /// use chrono::{TimeZone, Utc};
     ///
     /// let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
@@ -284,7 +284,7 @@ pub mod shortcuts {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::dateformat::shortcuts::time_24;
+    /// use reinhardt_utils_core::dateformat::shortcuts::time_24;
     /// use chrono::{TimeZone, Utc};
     ///
     /// let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
@@ -298,7 +298,7 @@ pub mod shortcuts {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::dateformat::shortcuts::time_12;
+    /// use reinhardt_utils_core::dateformat::shortcuts::time_12;
     /// use chrono::{TimeZone, Utc};
     ///
     /// let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();

@@ -222,7 +222,7 @@ impl TaskChain {
     ///
     /// # Examples
     ///
-    /// ```rust,no_run
+    /// ```
     /// use reinhardt_tasks::{TaskChain, DummyBackend};
     /// use std::sync::Arc;
     ///
@@ -231,8 +231,10 @@ impl TaskChain {
     /// let backend = Arc::new(DummyBackend::new());
     ///
     /// chain.execute(backend).await?;
+    /// assert!(chain.is_complete());
     /// # Ok(())
     /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(example()).unwrap();
     /// ```
     pub async fn execute(
         &mut self,

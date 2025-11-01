@@ -228,7 +228,7 @@ impl TaskResultMetadata {
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```
 /// use reinhardt_tasks::{ResultBackend, TaskResultMetadata, TaskId, TaskStatus};
 /// use async_trait::async_trait;
 ///
@@ -260,6 +260,22 @@ impl TaskResultMetadata {
 ///         Ok(())
 ///     }
 /// }
+///
+/// # async fn test_backend() {
+/// let backend = MyResultBackend;
+/// let task_id = TaskId::new();
+/// let metadata = TaskResultMetadata::new(
+///     task_id,
+///     TaskStatus::Success,
+///     Some("Task completed".to_string()),
+/// );
+///
+/// // Test store and retrieve
+/// assert!(backend.store_result(metadata.clone()).await.is_ok());
+/// let result = backend.get_result(task_id).await.unwrap();
+/// assert!(result.is_none()); // Our implementation returns None
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(test_backend());
 /// ```
 #[async_trait]
 pub trait ResultBackend: Send + Sync {

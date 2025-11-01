@@ -24,6 +24,7 @@ pub trait TestDatabase: Send + Sync {
 
 /// PostgreSQL test container
 pub struct PostgresContainer {
+    #[allow(dead_code)]
     container: Container<Postgres>,
     host: String,
     port: u16,
@@ -91,6 +92,7 @@ impl TestDatabase for PostgresContainer {
 
 /// MySQL test container
 pub struct MySqlContainer {
+    #[allow(dead_code)]
     container: Container<Mysql>,
     host: String,
     port: u16,
@@ -157,6 +159,7 @@ impl TestDatabase for MySqlContainer {
 
 /// Redis test container
 pub struct RedisContainer {
+    #[allow(dead_code)]
     container: Container<RedisImage>,
     host: String,
     port: u16,

@@ -4,7 +4,7 @@
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::capfirst;
+/// use reinhardt_utils_core::text::capfirst;
 ///
 /// assert_eq!(capfirst("hello world"), "Hello World");
 /// assert_eq!(capfirst("test"), "Test");
@@ -32,7 +32,7 @@ pub fn capfirst(text: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::title;
+/// use reinhardt_utils_core::text::title;
 ///
 /// assert_eq!(title("hello world"), "Hello World");
 /// assert_eq!(title("HELLO WORLD"), "Hello World");
@@ -57,7 +57,7 @@ pub fn title(text: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::pluralize;
+/// use reinhardt_utils_core::text::pluralize;
 ///
 /// assert_eq!(pluralize(1, "apple", None), "apple");
 /// assert_eq!(pluralize(2, "apple", None), "apples");
@@ -77,7 +77,7 @@ pub fn pluralize(count: i64, singular: &str, plural: Option<&str>) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::ordinal;
+/// use reinhardt_utils_core::text::ordinal;
 ///
 /// assert_eq!(ordinal(1), "1st");
 /// assert_eq!(ordinal(2), "2nd");
@@ -103,7 +103,7 @@ pub fn ordinal(n: i64) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::intcomma;
+/// use reinhardt_utils_core::text::intcomma;
 ///
 /// assert_eq!(intcomma(1000), "1,000");
 /// assert_eq!(intcomma(1000000), "1,000,000");
@@ -139,7 +139,7 @@ pub fn intcomma(n: i64) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::floatcomma;
+/// use reinhardt_utils_core::text::floatcomma;
 ///
 /// assert_eq!(floatcomma(1000.5, 2), "1,000.50");
 /// assert_eq!(floatcomma(1234567.89, 2), "1,234,567.89");
@@ -170,7 +170,7 @@ pub fn floatcomma(n: f64, decimals: usize) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::ljust;
+/// use reinhardt_utils_core::text::ljust;
 ///
 /// assert_eq!(ljust("test", 10, ' '), "test      ");
 /// assert_eq!(ljust("test", 10, '-'), "test------");
@@ -190,7 +190,7 @@ pub fn ljust(text: &str, width: usize, fillchar: char) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::rjust;
+/// use reinhardt_utils_core::text::rjust;
 ///
 /// assert_eq!(rjust("test", 10, ' '), "      test");
 /// assert_eq!(rjust("test", 10, '-'), "------test");
@@ -210,7 +210,7 @@ pub fn rjust(text: &str, width: usize, fillchar: char) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::center;
+/// use reinhardt_utils_core::text::center;
 ///
 /// assert_eq!(center("test", 10, ' '), "   test   ");
 /// assert_eq!(center("test", 10, '-'), "---test---");
@@ -238,7 +238,7 @@ pub fn center(text: &str, width: usize, fillchar: char) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::text::phone_format;
+/// use reinhardt_utils_core::text::phone_format;
 ///
 /// assert_eq!(phone_format("1234567890"), "(123) 456-7890");
 /// assert_eq!(phone_format("11234567890"), "+1 (123) 456-7890");

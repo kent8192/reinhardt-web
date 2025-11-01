@@ -11,7 +11,7 @@ use chrono_tz::Tz;
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::now;
+/// use reinhardt_utils_core::timezone::now;
 ///
 /// let dt = now();
 /// assert_eq!(dt.timezone(), chrono::Utc);
@@ -24,7 +24,7 @@ pub fn now() -> DateTime<Utc> {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::localtime;
+/// use reinhardt_utils_core::timezone::localtime;
 /// use chrono::{DateTime, Local};
 ///
 /// let local_dt = localtime();
@@ -39,7 +39,7 @@ pub fn localtime() -> DateTime<Local> {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::{now, to_local};
+/// use reinhardt_utils_core::timezone::{now, to_local};
 ///
 /// let utc_now = now();
 /// let local = to_local(utc_now);
@@ -54,7 +54,7 @@ pub fn to_local(dt: DateTime<Utc>) -> DateTime<Local> {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::{localtime, to_utc, to_local};
+/// use reinhardt_utils_core::timezone::{localtime, to_utc, to_local};
 ///
 /// let local = localtime();
 /// let utc = to_utc(local);
@@ -70,7 +70,7 @@ pub fn to_utc(dt: DateTime<Local>) -> DateTime<Utc> {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::{now, is_aware};
+/// use reinhardt_utils_core::timezone::{now, is_aware};
 ///
 /// let utc_dt = now();
 /// assert!(is_aware(&utc_dt));
@@ -83,7 +83,7 @@ pub fn is_aware<Tz: TimeZone>(_dt: &DateTime<Tz>) -> bool {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::{make_aware_utc, is_aware};
+/// use reinhardt_utils_core::timezone::{make_aware_utc, is_aware};
 /// use chrono::NaiveDateTime;
 /// use std::str::FromStr;
 ///
@@ -99,7 +99,7 @@ pub fn make_aware_utc(dt: NaiveDateTime) -> DateTime<Utc> {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::make_aware_local;
+/// use reinhardt_utils_core::timezone::make_aware_local;
 /// use chrono::{NaiveDateTime, DateTime, Local};
 /// use std::str::FromStr;
 ///
@@ -116,7 +116,7 @@ pub fn make_aware_local(dt: NaiveDateTime) -> DateTime<Local> {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::{now, to_timezone};
+/// use reinhardt_utils_core::timezone::{now, to_timezone};
 ///
 /// let dt = now();
 /// let result = to_timezone(dt, "UTC");
@@ -156,7 +156,7 @@ pub fn to_timezone(dt: DateTime<Utc>, tz_name: &str) -> Result<DateTime<Utc>, St
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::{now, get_timezone_name_utc};
+/// use reinhardt_utils_core::timezone::{now, get_timezone_name_utc};
 ///
 /// let dt = now();
 /// let tz_name = get_timezone_name_utc(&dt);
@@ -170,7 +170,7 @@ pub fn get_timezone_name_utc(_dt: &DateTime<Utc>) -> &'static str {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::{localtime, get_timezone_name_local};
+/// use reinhardt_utils_core::timezone::{localtime, get_timezone_name_local};
 ///
 /// let dt = localtime();
 /// let tz_name = get_timezone_name_local(&dt);
@@ -198,7 +198,7 @@ pub fn get_timezone_name_local(_dt: &DateTime<Local>) -> Cow<'static, str> {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::parse_datetime;
+/// use reinhardt_utils_core::timezone::parse_datetime;
 /// use chrono::Datelike;
 ///
 /// let dt_str = "2025-01-01T12:00:00Z";
@@ -218,7 +218,7 @@ pub fn parse_datetime(s: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
 /// # Examples
 ///
 /// ```
-/// use utils_core::timezone::{parse_datetime, format_datetime};
+/// use reinhardt_utils_core::timezone::{parse_datetime, format_datetime};
 ///
 /// let dt_str = "2025-01-01T12:00:00Z";
 /// let dt = parse_datetime(dt_str).unwrap();

@@ -116,7 +116,7 @@ impl TemplateEmailBuilder {
     /// Build the email message with rendered templates using simple string replacement
     ///
     /// This is a simple implementation that replaces `{{key}}` with values from context.
-    /// For more advanced template rendering, integrate with a template engine like Askama or Tera.
+    /// For more advanced template rendering, integrate with a template engine like Tera.
     pub fn build(self) -> EmailResult<EmailMessage> {
         let subject = self.render_simple(&self.subject_template)?;
         let body = self.render_simple(&self.body_template)?;

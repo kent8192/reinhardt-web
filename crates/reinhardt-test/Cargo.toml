@@ -21,6 +21,7 @@ reinhardt-auth = { workspace = true }
 reinhardt-parsers = { workspace = true }
 reinhardt-renderers = { workspace = true }
 reinhardt-messages = { workspace = true }
+reinhardt-backends = { workspace = true }
 
 hyper = { workspace = true }
 tokio = { workspace = true }

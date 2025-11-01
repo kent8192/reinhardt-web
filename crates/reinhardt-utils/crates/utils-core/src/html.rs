@@ -6,7 +6,7 @@ use std::borrow::Cow;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::html::escape;
+/// use reinhardt_utils_core::html::escape;
 ///
 /// assert_eq!(escape("Hello, World!"), "Hello, World!");
 /// assert_eq!(escape("<script>alert('XSS')</script>"),
@@ -32,7 +32,7 @@ pub fn escape(text: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::html::unescape;
+/// use reinhardt_utils_core::html::unescape;
 ///
 /// assert_eq!(unescape("&lt;div&gt;"), "<div>");
 /// assert_eq!(unescape("&amp;"), "&");
@@ -82,7 +82,7 @@ pub fn unescape(text: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::html::strip_tags;
+/// use reinhardt_utils_core::html::strip_tags;
 ///
 /// assert_eq!(strip_tags("<p>Hello <b>World</b></p>"), "Hello World");
 /// assert_eq!(strip_tags("<a href=\"#\">Link</a>"), "Link");
@@ -107,7 +107,7 @@ pub fn strip_tags(html: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::html::strip_spaces_between_tags;
+/// use reinhardt_utils_core::html::strip_spaces_between_tags;
 ///
 /// assert_eq!(
 ///     strip_spaces_between_tags("<div>  <span>Test</span>  </div>"),
@@ -153,7 +153,7 @@ pub fn strip_spaces_between_tags(html: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::html::escape_attr;
+/// use reinhardt_utils_core::html::escape_attr;
 ///
 /// assert_eq!(escape_attr("value"), "value");
 /// assert_eq!(escape_attr("value with \"quotes\""),
@@ -183,7 +183,7 @@ pub fn escape_attr(text: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::html::format_html;
+/// use reinhardt_utils_core::html::format_html;
 ///
 /// let template = "<div class=\"{class}\">{content}</div>";
 /// let args = [("class", "container"), ("content", "Hello")];
@@ -205,7 +205,7 @@ pub fn format_html(template: &str, args: &[(&str, &str)]) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::html::conditional_escape;
+/// use reinhardt_utils_core::html::conditional_escape;
 ///
 /// assert_eq!(conditional_escape("<script>", true), "&lt;script&gt;");
 /// assert_eq!(conditional_escape("<script>", false), "<script>");
@@ -229,7 +229,7 @@ impl SafeString {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::html::SafeString;
+    /// use reinhardt_utils_core::html::SafeString;
     ///
     /// let safe = SafeString::new("<b>Bold</b>");
     /// assert_eq!(safe.as_str(), "<b>Bold</b>");
@@ -242,7 +242,7 @@ impl SafeString {
     /// # Examples
     ///
     /// ```
-    /// use reinhardt_utils::html::SafeString;
+    /// use reinhardt_utils_core::html::SafeString;
     ///
     /// let safe = SafeString::new("<i>Italic</i>");
     /// assert_eq!(safe.as_str(), "<i>Italic</i>");
@@ -268,7 +268,7 @@ impl From<&str> for SafeString {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::html::truncate_html_words;
+/// use reinhardt_utils_core::html::truncate_html_words;
 ///
 /// let html = "<p>This is a <b>test</b> sentence with many words.</p>";
 /// let truncated = truncate_html_words(html, 5);

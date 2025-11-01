@@ -32,7 +32,7 @@ pub use messages::{
     assert_message_count, assert_message_exists, assert_message_level, assert_message_tags,
     assert_messages, MessagesTestMixin,
 };
-pub use mock::{CallRecord, MockFunction, Spy};
+pub use mock::{CallRecord, DummyCache, MockFunction, Spy};
 pub use response::{ResponseExt, TestResponse};
 pub use testcase::APITestCase;
 

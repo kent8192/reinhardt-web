@@ -6,9 +6,6 @@ use crate::client::APIClient;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-#[cfg(feature = "testcontainers")]
-use crate::containers::{MySqlContainer, PostgresContainer, TestDatabase};
-
 /// Base test case for API testing
 ///
 /// Provides:

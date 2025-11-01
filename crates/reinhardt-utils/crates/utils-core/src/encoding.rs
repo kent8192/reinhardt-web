@@ -6,7 +6,7 @@ use std::borrow::Cow;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::urlencode;
+/// use reinhardt_utils_core::encoding::urlencode;
 ///
 /// assert_eq!(urlencode("hello world"), "hello+world");
 /// assert_eq!(urlencode("hello@world.com"), "hello%40world.com");
@@ -33,7 +33,7 @@ pub fn urlencode(text: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::urldecode;
+/// use reinhardt_utils_core::encoding::urldecode;
 ///
 /// assert_eq!(urldecode("hello+world").unwrap(), "hello world");
 /// assert_eq!(urldecode("hello%40world.com").unwrap(), "hello@world.com");
@@ -73,7 +73,7 @@ pub fn urldecode(text: &str) -> Result<String, String> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::escapejs;
+/// use reinhardt_utils_core::encoding::escapejs;
 ///
 /// assert_eq!(escapejs("Hello"), "Hello");
 /// assert_eq!(escapejs("It's \"quoted\""), "It\\'s \\\"quoted\\\"");
@@ -108,7 +108,7 @@ pub fn escapejs(text: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::slugify;
+/// use reinhardt_utils_core::encoding::slugify;
 ///
 /// assert_eq!(slugify("Hello World"), "hello-world");
 /// assert_eq!(slugify("Hello  World"), "hello-world");
@@ -134,7 +134,7 @@ pub fn slugify(text: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::force_str;
+/// use reinhardt_utils_core::encoding::force_str;
 ///
 /// let bytes = b"Hello, World!";
 /// assert_eq!(force_str(bytes), "Hello, World!");
@@ -152,7 +152,7 @@ pub fn force_str(bytes: &[u8]) -> Cow<'_, str> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::force_bytes;
+/// use reinhardt_utils_core::encoding::force_bytes;
 ///
 /// let text = "Hello, World!";
 /// assert_eq!(force_bytes(text), b"Hello, World!");
@@ -165,7 +165,7 @@ pub fn force_bytes(text: &str) -> Vec<u8> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::truncate_chars;
+/// use reinhardt_utils_core::encoding::truncate_chars;
 ///
 /// assert_eq!(truncate_chars("Hello World", 20), "Hello World");
 /// assert_eq!(truncate_chars("Hello World", 8), "Hello...");
@@ -195,7 +195,7 @@ pub fn truncate_chars(text: &str, max_length: usize) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::truncate_words;
+/// use reinhardt_utils_core::encoding::truncate_words;
 ///
 /// assert_eq!(truncate_words("Hello World Test", 2), "Hello World...");
 /// assert_eq!(truncate_words("One", 5), "One");
@@ -216,7 +216,7 @@ pub fn truncate_words(text: &str, max_words: usize) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::wrap_text;
+/// use reinhardt_utils_core::encoding::wrap_text;
 ///
 /// let text = "This is a long line that needs to be wrapped";
 /// let wrapped = wrap_text(text, 20);
@@ -257,7 +257,7 @@ pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::linebreaks;
+/// use reinhardt_utils_core::encoding::linebreaks;
 ///
 /// assert_eq!(
 ///     linebreaks("Line 1\nLine 2\n\nLine 3"),
@@ -281,7 +281,7 @@ pub fn linebreaks(text: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::encoding::linebreaksbr;
+/// use reinhardt_utils_core::encoding::linebreaksbr;
 ///
 /// assert_eq!(linebreaksbr("Line 1\nLine 2"), "Line 1<br>\nLine 2");
 /// assert_eq!(linebreaksbr("Single"), "Single");

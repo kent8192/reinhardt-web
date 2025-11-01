@@ -375,6 +375,108 @@ impl<T> Default for Spy<T> {
     }
 }
 
+/// Dummy cache implementation for testing
+///
+/// A simple in-memory cache backend that implements the `CacheBackend` trait.
+/// Useful for testing cache-dependent code without external dependencies.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::mock::DummyCache;
+/// use reinhardt_backends::cache::CacheBackend;
+/// use std::time::Duration;
+///
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let cache = DummyCache::new();
+/// cache.set("key", b"value", Some(Duration::from_secs(60))).await.unwrap();
+/// let value = cache.get("key").await.unwrap();
+/// assert_eq!(value, Some(b"value".to_vec()));
+/// # });
+/// ```
+pub struct DummyCache {
+    storage: Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<u8>>>>,
+}
+
+impl DummyCache {
+    /// Create a new DummyCache instance
+    pub fn new() -> Self {
+        Self {
+            storage: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        }
+    }
+}
+
+impl Default for DummyCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait::async_trait]
+impl reinhardt_backends::cache::CacheBackend for DummyCache {
+    async fn get(&self, key: &str) -> reinhardt_backends::cache::CacheResult<Option<Vec<u8>>> {
+        Ok(self.storage.lock().unwrap().get(key).cloned())
+    }
+
+    async fn set(
+        &self,
+        key: &str,
+        value: &[u8],
+        _ttl: Option<std::time::Duration>,
+    ) -> reinhardt_backends::cache::CacheResult<()> {
+        self.storage.lock().unwrap().insert(key.to_string(), value.to_vec());
+        Ok(())
+    }
+
+    async fn delete(&self, key: &str) -> reinhardt_backends::cache::CacheResult<bool> {
+        Ok(self.storage.lock().unwrap().remove(key).is_some())
+    }
+
+    async fn exists(&self, key: &str) -> reinhardt_backends::cache::CacheResult<bool> {
+        Ok(self.storage.lock().unwrap().contains_key(key))
+    }
+
+    async fn clear(&self) -> reinhardt_backends::cache::CacheResult<()> {
+        self.storage.lock().unwrap().clear();
+        Ok(())
+    }
+
+    async fn get_many(
+        &self,
+        keys: &[String],
+    ) -> reinhardt_backends::cache::CacheResult<Vec<Option<Vec<u8>>>> {
+        let storage = self.storage.lock().unwrap();
+        Ok(keys.iter().map(|k| storage.get(k).cloned()).collect())
+    }
+
+    async fn set_many(
+        &self,
+        items: &[(String, Vec<u8>)],
+        _ttl: Option<std::time::Duration>,
+    ) -> reinhardt_backends::cache::CacheResult<()> {
+        let mut storage = self.storage.lock().unwrap();
+        for (key, value) in items {
+            storage.insert(key.clone(), value.clone());
+        }
+        Ok(())
+    }
+
+    async fn delete_many(
+        &self,
+        keys: &[String],
+    ) -> reinhardt_backends::cache::CacheResult<usize> {
+        let mut storage = self.storage.lock().unwrap();
+        let mut count = 0;
+        for key in keys {
+            if storage.remove(key).is_some() {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
