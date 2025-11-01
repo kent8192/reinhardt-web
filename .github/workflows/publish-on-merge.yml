@@ -1,0 +1,139 @@
+name: Auto-tag on Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  create-tags:
+    name: Create release tags
+    runs-on: ubuntu-latest
+    # Only run when PR is merged and has 'release' label
+    if: |
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'release')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-workspaces
+        run: cargo install cargo-workspaces
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Detect changed crates and create tags
+        id: create-tags
+        run: |
+          echo "Detecting changed crates..."
+
+          # Get list of changed Cargo.toml files
+          CHANGED_TOMLS=$(git diff --name-only HEAD~1 HEAD | grep 'Cargo.toml$' || true)
+
+          if [ -z "$CHANGED_TOMLS" ]; then
+            echo "No Cargo.toml files changed."
+            echo "new_tags=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Changed Cargo.toml files:"
+          echo "$CHANGED_TOMLS"
+
+          # Extract crate names and versions
+          NEW_TAGS=""
+          for toml in $CHANGED_TOMLS; do
+            # Skip workspace root Cargo.toml (only has [workspace] section)
+            if [ "$toml" == "Cargo.toml" ]; then
+              continue
+            fi
+
+            # Extract crate name and version using cargo metadata
+            CRATE_INFO=$(cargo metadata --manifest-path "$toml" --no-deps --format-version 1 2>/dev/null || true)
+
+            if [ -z "$CRATE_INFO" ]; then
+              continue
+            fi
+
+            CRATE_NAME=$(echo "$CRATE_INFO" | jq -r '.packages[0].name')
+            VERSION=$(echo "$CRATE_INFO" | jq -r '.packages[0].version')
+
+            if [ -z "$CRATE_NAME" ] || [ "$CRATE_NAME" == "null" ] || [ -z "$VERSION" ] || [ "$VERSION" == "null" ]; then
+              continue
+            fi
+
+            TAG_NAME="$CRATE_NAME-v$VERSION"
+
+            # Check if tag already exists
+            if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+              echo "Tag $TAG_NAME already exists, skipping."
+              continue
+            fi
+
+            echo "Creating tag: $TAG_NAME"
+            git tag "$TAG_NAME" -m "Release $CRATE_NAME v$VERSION"
+
+            if [ -z "$NEW_TAGS" ]; then
+              NEW_TAGS="$TAG_NAME"
+            else
+              NEW_TAGS="$NEW_TAGS $TAG_NAME"
+            fi
+          done
+
+          echo "new_tags=$NEW_TAGS" >> $GITHUB_OUTPUT
+          echo "New tags to push: $NEW_TAGS"
+
+      - name: Push tags sequentially
+        if: steps.create-tags.outputs.new_tags != ''
+        env:
+          NEW_TAGS: ${{ steps.create-tags.outputs.new_tags }}
+        run: |
+          echo "Pushing tags sequentially with 30s interval..."
+
+          for tag in $NEW_TAGS; do
+            echo "Pushing tag: $tag"
+            git push origin "$tag"
+
+            echo "Tag $tag pushed successfully."
+
+            # Wait 30 seconds before pushing next tag
+            # This allows crates.io index to update
+            if [ "$tag" != "${NEW_TAGS##* }" ]; then
+              echo "Waiting 30 seconds before next tag..."
+              sleep 30
+            fi
+          done
+
+          echo "All tags pushed successfully!"
+
+      - name: Summary
+        if: steps.create-tags.outputs.new_tags != ''
+        env:
+          NEW_TAGS: ${{ steps.create-tags.outputs.new_tags }}
+        run: |
+          echo "## Release Tags Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following tags were created and pushed:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for tag in $NEW_TAGS; do
+            echo "- \`$tag\`" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The publish-on-tag workflow will now automatically publish these crates to crates.io." >> $GITHUB_STEP_SUMMARY
