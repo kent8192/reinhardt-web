@@ -111,23 +111,15 @@ impl MediaType {
 		(parts[0] == "*" || parts[0] == self.main_type)
 			&& (parts[1] == "*" || parts[1] == self.sub_type)
 	}
-	/// Convert the media type back to a content-type string.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_parsers::parser::MediaType;
-	///
-	/// let media_type = MediaType::new("text", "html")
-	///     .with_param("charset", "utf-8");
-	/// assert_eq!(media_type.to_string(), "text/html; charset=utf-8");
-	/// ```
-	pub fn to_string(&self) -> String {
-		let mut result = format!("{}/{}", self.main_type, self.sub_type);
+}
+
+impl std::fmt::Display for MediaType {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}/{}", self.main_type, self.sub_type)?;
 		for (key, value) in &self.parameters {
-			result.push_str(&format!("; {}={}", key, value));
+			write!(f, "; {}={}", key, value)?;
 		}
-		result
+		Ok(())
 	}
 }
 
