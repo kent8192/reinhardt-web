@@ -434,12 +434,20 @@ impl ContentTypeTransaction {
         let sql = stmt.to_string(SqliteQueryBuilder);
         let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        let result = sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
+        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
             PersistenceError::DatabaseError(format!("Failed to create content type: {}", e))
         })?;
 
-        let id = result.last_insert_id().ok_or_else(|| {
-            PersistenceError::DatabaseError("Failed to get last insert ID".to_string())
+        // Get the last inserted ID using SQLite's last_insert_rowid()
+        let id_row = sqlx::query("SELECT last_insert_rowid() as id")
+            .fetch_one(&*self.pool)
+            .await
+            .map_err(|e| {
+                PersistenceError::DatabaseError(format!("Failed to get last insert ID: {}", e))
+            })?;
+
+        let id: i64 = id_row.try_get("id").map_err(|e| {
+            PersistenceError::DatabaseError(format!("Failed to extract ID: {}", e))
         })?;
 
         Ok(ContentType {
@@ -470,9 +478,28 @@ impl ContentTypeTransaction {
 mod tests {
     use super::*;
     use crate::persistence::ContentTypePersistence;
+    use std::sync::Once;
+
+    static INIT_DRIVERS: Once = Once::new();
+
+    fn init_drivers() {
+        INIT_DRIVERS.call_once(|| {
+            sqlx::any::install_default_drivers();
+        });
+    }
 
     async fn setup_test_db() -> Arc<AnyPool> {
-        let pool = AnyPool::connect("sqlite::memory:")
+        init_drivers();
+
+        // Use in-memory SQLite with shared cache mode and single connection
+        let db_url = "sqlite::memory:?mode=rwc&cache=shared";
+
+        // Create pool with single connection
+        use sqlx::pool::PoolOptions;
+        let pool = PoolOptions::new()
+            .min_connections(1)
+            .max_connections(1)
+            .connect(db_url)
             .await
             .expect("Failed to connect");
 

@@ -99,7 +99,7 @@ impl MultiDbContentTypeManager {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut manager = MultiDbContentTypeManager::new();
-    /// manager.add_database("primary", "sqlite::memory:").await?;
+    /// manager.add_database("primary", "sqlite::memory:?cache=shared").await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -137,7 +137,7 @@ impl MultiDbContentTypeManager {
     /// use reinhardt_contenttypes::persistence::ContentTypePersistence;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let persistence = ContentTypePersistence::new("sqlite::memory:").await?;
+    /// let persistence = ContentTypePersistence::new("sqlite::memory:?cache=shared").await?;
     /// persistence.create_table().await?;
     ///
     /// let mut manager = MultiDbContentTypeManager::new();
@@ -170,7 +170,7 @@ impl MultiDbContentTypeManager {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut manager = MultiDbContentTypeManager::new();
-    /// manager.add_database("primary", "sqlite::memory:").await?;
+    /// manager.add_database("primary", "sqlite::memory:?cache=shared").await?;
     ///
     /// let persistence = manager.get_database("primary");
     /// assert!(persistence.is_some());
@@ -195,7 +195,7 @@ impl MultiDbContentTypeManager {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut manager = MultiDbContentTypeManager::new();
-    /// manager.add_database("primary", "sqlite::memory:").await?;
+    /// manager.add_database("primary", "sqlite::memory:?cache=shared").await?;
     ///
     /// let ct = manager.get_or_create("primary", "auth", "User").await?;
     /// assert_eq!(ct.app_label, "auth");
@@ -240,7 +240,7 @@ impl MultiDbContentTypeManager {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut manager = MultiDbContentTypeManager::new();
-    /// manager.add_database("primary", "sqlite::memory:").await?;
+    /// manager.add_database("primary", "sqlite::memory:?cache=shared").await?;
     ///
     /// manager.get_or_create("primary", "blog", "Post").await?;
     ///
@@ -288,7 +288,7 @@ impl MultiDbContentTypeManager {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut manager = MultiDbContentTypeManager::new();
-    /// manager.add_database("primary", "sqlite::memory:").await?;
+    /// manager.add_database("primary", "sqlite::memory:?cache=shared").await?;
     ///
     /// let ct = manager.get_or_create("primary", "auth", "User").await?;
     /// let id = ct.id.unwrap();
@@ -338,8 +338,8 @@ impl MultiDbContentTypeManager {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut manager = MultiDbContentTypeManager::new();
-    /// manager.add_database("primary", "sqlite::memory:").await?;
-    /// manager.add_database("analytics", "sqlite::memory:").await?;
+    /// manager.add_database("primary", "sqlite::memory:?cache=shared").await?;
+    /// manager.add_database("analytics", "sqlite::memory:?cache=shared").await?;
     ///
     /// manager.get_or_create("primary", "auth", "User").await?;
     /// manager.get_or_create("analytics", "logs", "AccessLog").await?;
@@ -375,8 +375,8 @@ impl MultiDbContentTypeManager {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut manager = MultiDbContentTypeManager::new();
-    /// manager.add_database("primary", "sqlite::memory:").await?;
-    /// manager.add_database("replica", "sqlite::memory:").await?;
+    /// manager.add_database("primary", "sqlite::memory:?cache=shared").await?;
+    /// manager.add_database("replica", "sqlite::memory:?cache=shared").await?;
     ///
     /// let databases = manager.list_databases();
     /// assert_eq!(databases.len(), 2);
@@ -396,7 +396,7 @@ impl MultiDbContentTypeManager {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut manager = MultiDbContentTypeManager::new();
-    /// manager.add_database("primary", "sqlite::memory:").await?;
+    /// manager.add_database("primary", "sqlite::memory:?cache=shared").await?;
     ///
     /// let content_types = manager.load_all("primary").await?;
     /// # Ok(())
@@ -430,9 +430,19 @@ impl Default for MultiDbContentTypeManager {
 #[cfg(all(test, feature = "database"))]
 mod tests {
     use super::*;
+    use std::sync::Once;
+
+    static INIT_DRIVERS: Once = Once::new();
+
+    fn init_drivers() {
+        INIT_DRIVERS.call_once(|| {
+            sqlx::any::install_default_drivers();
+        });
+    }
 
     #[tokio::test]
     async fn test_multi_db_manager_creation() {
+        init_drivers();
         let manager = MultiDbContentTypeManager::new();
         assert!(manager.default_db().is_none());
         assert_eq!(manager.list_databases().len(), 0);
@@ -440,9 +450,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_add_database() {
+        init_drivers();
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add database");
 
@@ -452,13 +463,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_multiple_databases() {
+        init_drivers();
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add primary");
         manager
-            .add_database("analytics", "sqlite::memory:")
+            .add_database("analytics", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add analytics");
 
@@ -470,9 +482,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_get_or_create() {
+        init_drivers();
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add database");
 
@@ -488,9 +501,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_get() {
+        init_drivers();
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add database");
 
@@ -512,9 +526,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_get_by_id() {
+        init_drivers();
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add database");
 
@@ -535,13 +550,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_search_all_databases() {
+        init_drivers();
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("db1", "sqlite::memory:")
+            .add_database("db1", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add db1");
         manager
-            .add_database("db2", "sqlite::memory:")
+            .add_database("db2", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add db2");
 
@@ -565,9 +581,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_load_all() {
+        init_drivers();
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add database");
 
@@ -591,9 +608,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_registry_caching() {
+        init_drivers();
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add database");
 
@@ -614,6 +632,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_default_db() {
+        init_drivers();
         let manager = MultiDbContentTypeManager::new().with_default_db("main");
 
         assert_eq!(manager.default_db(), Some("main"));
@@ -621,6 +640,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_nonexistent_database() {
+        init_drivers();
         let manager = MultiDbContentTypeManager::new();
 
         let result = manager.get("nonexistent", "app", "Model").await;
@@ -629,13 +649,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_db_isolated_registries() {
+        init_drivers();
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("db1", "sqlite::memory:")
+            .add_database("db1", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add db1");
         manager
-            .add_database("db2", "sqlite::memory:")
+            .add_database("db2", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add db2");
 

@@ -218,9 +218,24 @@ impl ContentTypePersistence {
     /// # }
     /// ```
     pub async fn new(database_url: &str) -> Result<Self, PersistenceError> {
-        let pool = AnyPool::connect(database_url).await.map_err(|e| {
-            PersistenceError::DatabaseError(format!("Database connection error: {}", e))
-        })?;
+        use sqlx::pool::PoolOptions;
+
+        // For in-memory SQLite with shared cache, use single connection pool
+        // to ensure all operations see the same database
+        let (min_conn, max_conn) = if database_url.contains(":memory:") && database_url.contains("cache=shared") {
+            (1, 1)
+        } else {
+            (0, 5)
+        };
+
+        let pool = PoolOptions::new()
+            .min_connections(min_conn)
+            .max_connections(max_conn)
+            .connect(database_url)
+            .await
+            .map_err(|e| {
+                PersistenceError::DatabaseError(format!("Database connection error: {}", e))
+            })?;
 
         Ok(Self {
             pool: Arc::new(pool),
@@ -263,6 +278,11 @@ impl ContentTypePersistence {
     /// # }
     /// ```
     pub async fn create_table(&self) -> Result<(), PersistenceError> {
+        // Get a single connection from the pool to ensure all operations use the same connection
+        let mut conn = self.pool.acquire().await.map_err(|e| {
+            PersistenceError::DatabaseError(format!("Failed to acquire connection: {}", e))
+        })?;
+
         let stmt = Table::create()
             .table(Alias::new("django_content_type"))
             .if_not_exists()
@@ -283,9 +303,12 @@ impl ContentTypePersistence {
         let sql = stmt.to_string(SqliteQueryBuilder);
         let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
-            PersistenceError::DatabaseError(format!("Failed to create table: {}", e))
-        })?;
+        sqlx::query(sql_leaked)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                PersistenceError::DatabaseError(format!("Failed to create table: {}", e))
+            })?;
 
         // Create unique index on (app_label, model)
         let idx = Index::create()
@@ -299,9 +322,12 @@ impl ContentTypePersistence {
         let sql = idx.to_string(SqliteQueryBuilder);
         let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
-            PersistenceError::DatabaseError(format!("Failed to create unique index: {}", e))
-        })?;
+        sqlx::query(sql_leaked)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                PersistenceError::DatabaseError(format!("Failed to create unique index: {}", e))
+            })?;
 
         // Create index on app_label
         let idx = Index::create()
@@ -313,9 +339,12 @@ impl ContentTypePersistence {
         let sql = idx.to_string(SqliteQueryBuilder);
         let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
-            PersistenceError::DatabaseError(format!("Failed to create app_label index: {}", e))
-        })?;
+        sqlx::query(sql_leaked)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                PersistenceError::DatabaseError(format!("Failed to create app_label index: {}", e))
+            })?;
 
         // Create index on model
         let idx = Index::create()
@@ -327,9 +356,12 @@ impl ContentTypePersistence {
         let sql = idx.to_string(SqliteQueryBuilder);
         let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-        sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
-            PersistenceError::DatabaseError(format!("Failed to create model index: {}", e))
-        })?;
+        sqlx::query(sql_leaked)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                PersistenceError::DatabaseError(format!("Failed to create model index: {}", e))
+            })?;
 
         Ok(())
     }
@@ -494,12 +526,20 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
             let sql = stmt.to_string(SqliteQueryBuilder);
             let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-            let result = sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
+            sqlx::query(sql_leaked).execute(&*self.pool).await.map_err(|e| {
                 PersistenceError::DatabaseError(format!("Failed to insert content type: {}", e))
             })?;
 
-            let id = result.last_insert_id().ok_or_else(|| {
-                PersistenceError::DatabaseError("Failed to get last insert ID".to_string())
+            // Get the last inserted ID using SQLite's last_insert_rowid()
+            let id_row = sqlx::query("SELECT last_insert_rowid() as id")
+                .fetch_one(&*self.pool)
+                .await
+                .map_err(|e| {
+                    PersistenceError::DatabaseError(format!("Failed to get last insert ID: {}", e))
+                })?;
+
+            let id: i64 = id_row.try_get("id").map_err(|e| {
+                PersistenceError::DatabaseError(format!("Failed to extract ID: {}", e))
             })?;
 
             Ok(ContentType {
@@ -552,11 +592,34 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 #[cfg(all(test, feature = "database"))]
 mod tests {
     use super::*;
+    use std::sync::Once;
+
+    static INIT_DRIVERS: Once = Once::new();
+
+    fn init_drivers() {
+        INIT_DRIVERS.call_once(|| {
+            sqlx::any::install_default_drivers();
+        });
+    }
 
     async fn create_test_persistence() -> ContentTypePersistence {
-        let persistence = ContentTypePersistence::new("sqlite::memory:")
+        init_drivers();
+
+        // Use in-memory SQLite with shared cache mode
+        // This allows multiple connections from the pool to share the same in-memory database
+        let db_url = "sqlite::memory:?mode=rwc&cache=shared";
+
+        // Create persistence with minimal connection pool for tests
+        use sqlx::pool::PoolOptions;
+        let pool = PoolOptions::new()
+            .min_connections(1)
+            .max_connections(1)
+            .connect(db_url)
             .await
-            .expect("Failed to create test persistence");
+            .expect("Failed to connect to test database");
+
+        let persistence = ContentTypePersistence::from_pool(Arc::new(pool));
+
         persistence
             .create_table()
             .await
@@ -566,7 +629,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table() {
-        let persistence = ContentTypePersistence::new("sqlite::memory:")
+        init_drivers();
+        let persistence = ContentTypePersistence::new("sqlite::memory:?cache=shared")
             .await
             .expect("Failed to create persistence");
 

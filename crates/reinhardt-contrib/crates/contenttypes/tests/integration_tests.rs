@@ -2,18 +2,32 @@
 //!
 //! This test provides integration testing for multi_db and orm_integration modules.
 
+// Initialize SQLx drivers for all tests
+use std::sync::Once;
+
+static INIT: Once = Once::new();
+
+fn init_drivers() {
+    INIT.call_once(|| {
+        sqlx::any::install_default_drivers();
+    });
+}
+
 #[cfg(feature = "database")]
 mod multi_db_tests {
+    use super::init_drivers;
     use reinhardt_contenttypes::{MultiDbContentTypeManager, CONTENT_TYPE_REGISTRY};
 
     #[tokio::test]
     async fn test_multi_db_with_global_registry() {
+        init_drivers();
+
         // Clear global registry
         CONTENT_TYPE_REGISTRY.clear();
 
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("db1", "sqlite::memory:")
+            .add_database("db1", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add db1");
 
@@ -34,13 +48,15 @@ mod multi_db_tests {
 
     #[tokio::test]
     async fn test_multi_db_cross_database_search() {
+        init_drivers();
+
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add primary");
         manager
-            .add_database("secondary", "sqlite::memory:")
+            .add_database("secondary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add secondary");
 
@@ -68,13 +84,15 @@ mod multi_db_tests {
 
     #[tokio::test]
     async fn test_multi_db_isolated_caches() {
+        init_drivers();
+
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("db1", "sqlite::memory:")
+            .add_database("db1", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add db1");
         manager
-            .add_database("db2", "sqlite::memory:")
+            .add_database("db2", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add db2");
 
@@ -93,9 +111,11 @@ mod multi_db_tests {
 
     #[tokio::test]
     async fn test_multi_db_load_all_with_cache() {
+        init_drivers();
+
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add database");
 
@@ -122,12 +142,20 @@ mod multi_db_tests {
 
 #[cfg(feature = "database")]
 mod orm_integration_tests {
+    use super::init_drivers;
     use reinhardt_contenttypes::{ContentTypeQuery, ContentTypeTransaction};
     use sqlx::AnyPool;
     use std::sync::Arc;
 
     async fn setup_test_pool() -> Arc<AnyPool> {
-        let pool = AnyPool::connect("sqlite::memory:")
+        init_drivers();
+
+        // Use single connection pool for in-memory SQLite with shared cache
+        use sqlx::pool::PoolOptions;
+        let pool = PoolOptions::new()
+            .min_connections(1)
+            .max_connections(1)
+            .connect("sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to connect");
 
@@ -286,6 +314,7 @@ mod orm_integration_tests {
 
 #[cfg(feature = "database")]
 mod combined_tests {
+    use super::init_drivers;
     use reinhardt_contenttypes::{
         ContentTypeQuery, ContentTypeTransaction, MultiDbContentTypeManager,
     };
@@ -294,9 +323,11 @@ mod combined_tests {
 
     #[tokio::test]
     async fn test_multi_db_with_orm_query() {
+        init_drivers();
+
         let mut manager = MultiDbContentTypeManager::new();
         manager
-            .add_database("primary", "sqlite::memory:")
+            .add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to add database");
 
@@ -309,7 +340,7 @@ mod combined_tests {
         // Retrieve with ORM query
         let _pool = manager.get_database("primary").unwrap();
         let _pool_arc: Arc<AnyPool> = Arc::new(
-            AnyPool::connect("sqlite::memory:")
+            AnyPool::connect("sqlite::memory:?mode=rwc&cache=shared")
                 .await
                 .expect("Failed to connect"),
         );
@@ -320,7 +351,14 @@ mod combined_tests {
 
     #[tokio::test]
     async fn test_transaction_with_multi_db() {
-        let pool = AnyPool::connect("sqlite::memory:")
+        init_drivers();
+
+        // Use single connection pool for in-memory SQLite with shared cache
+        use sqlx::pool::PoolOptions;
+        let pool = PoolOptions::new()
+            .min_connections(1)
+            .max_connections(1)
+            .connect("sqlite::memory:?mode=rwc&cache=shared")
             .await
             .expect("Failed to connect");
 

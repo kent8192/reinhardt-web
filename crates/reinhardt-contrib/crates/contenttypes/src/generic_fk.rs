@@ -415,11 +415,33 @@ mod database_tests {
     use super::*;
     use crate::persistence::{ContentTypePersistence, ContentTypePersistenceBackend};
     use constraints::GenericForeignKeyConstraints;
+    use std::sync::{Arc, Once};
+
+    static INIT_DRIVERS: Once = Once::new();
+
+    fn init_drivers() {
+        INIT_DRIVERS.call_once(|| {
+            sqlx::any::install_default_drivers();
+        });
+    }
 
     async fn create_test_persistence() -> ContentTypePersistence {
-        let persistence = ContentTypePersistence::new("sqlite::memory:")
+        init_drivers();
+
+        // Use in-memory SQLite with shared cache mode and single connection
+        let db_url = "sqlite::memory:?mode=rwc&cache=shared";
+
+        // Create persistence with minimal connection pool for tests
+        use sqlx::pool::PoolOptions;
+        let pool = PoolOptions::new()
+            .min_connections(1)
+            .max_connections(1)
+            .connect(db_url)
             .await
-            .expect("Failed to create test persistence");
+            .expect("Failed to connect to test database");
+
+        let persistence = ContentTypePersistence::from_pool(Arc::new(pool));
+
         persistence
             .create_table()
             .await
