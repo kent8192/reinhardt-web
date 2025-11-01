@@ -472,7 +472,7 @@ mod tests {
 
 	#[test]
 	fn test_openapi_schema_new() {
-		let schema = <OpenApiSchema as OpenApiSchemaExt>::new("Test API", "1.0.0");
+		let schema = <OpenApiSchema as OpenApiSchemaExt>::create("Test API", "1.0.0");
 
 		assert_eq!(
 			schema.info.title, "Test API",
@@ -508,7 +508,7 @@ mod tests {
 
 	#[test]
 	fn test_operation_ext() {
-		let mut operation = <Operation as OperationExt>::new();
+		let mut operation = <Operation as OperationExt>::create();
 		let param = ParameterBuilder::new()
 			.name("id")
 			.parameter_in(ParameterIn::Path)
@@ -592,7 +592,7 @@ mod tests {
 
 	#[test]
 	fn test_openapi_schema_json_structure() {
-		let mut schema = <OpenApiSchema as OpenApiSchemaExt>::new("Test API", "1.0.0");
+		let mut schema = <OpenApiSchema as OpenApiSchemaExt>::create("Test API", "1.0.0");
 
 		// Add a path
 		let path_item = PathItemBuilder::new().build();
@@ -747,7 +747,7 @@ mod tests {
 
 	#[test]
 	fn test_operation_json_structure() {
-		let mut operation = <Operation as OperationExt>::new();
+		let mut operation = <Operation as OperationExt>::create();
 
 		// Add parameter
 		let param = Parameter::new_simple("id", ParameterIn::Path, Schema::integer(), true);
