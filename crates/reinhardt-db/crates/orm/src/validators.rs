@@ -1279,7 +1279,8 @@ mod tests {
 			.with_validator(Box::new(MinLengthValidator::new(3)))
 			.with_validator(Box::new(MaxLengthValidator::new(20)));
 
-		let email_validators = FieldValidators::new().add(Box::new(EmailValidator::new()));
+		let email_validators =
+			FieldValidators::new().with_validator(Box::new(EmailValidator::new()));
 
 		model_validators.add_field_validator("username".to_string(), username_validators);
 		model_validators.add_field_validator("email".to_string(), email_validators);
