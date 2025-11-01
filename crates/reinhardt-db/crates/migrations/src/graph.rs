@@ -657,9 +657,12 @@ impl MigrationGraph {
     pub fn resolve_execution_order_with_replaces(&self) -> Result<Vec<MigrationKey>> {
         // Find all migrations that are replaced by others
         let mut replaced: HashSet<MigrationKey> = HashSet::new();
-        for node in self.nodes.values() {
+        let mut replacement_map: HashMap<MigrationKey, MigrationKey> = HashMap::new();
+        
+        for (key, node) in &self.nodes {
             for replaced_key in &node.replaces {
                 replaced.insert(replaced_key.clone());
+                replacement_map.insert(replaced_key.clone(), key.clone());
             }
         }
 
@@ -667,15 +670,21 @@ impl MigrationGraph {
         let mut filtered_graph = MigrationGraph::new();
         for (key, node) in &self.nodes {
             if !replaced.contains(key) {
-                // Filter out dependencies that are replaced
-                let filtered_deps: Vec<MigrationKey> = node
-                    .dependencies
-                    .iter()
-                    .filter(|dep| !replaced.contains(dep))
-                    .cloned()
-                    .collect();
+                // Transform dependencies: replace old migrations with their replacements
+                let mut filtered_deps: HashSet<MigrationKey> = HashSet::new();
+                
+                for dep in &node.dependencies {
+                    if let Some(replacement) = replacement_map.get(dep) {
+                        // This dependency is replaced, use the replacement instead
+                        filtered_deps.insert(replacement.clone());
+                    } else if !replaced.contains(dep) {
+                        // This dependency is not replaced, keep it
+                        filtered_deps.insert(dep.clone());
+                    }
+                    // If dependency is replaced but not in map, skip it
+                }
 
-                filtered_graph.add_migration(key.clone(), filtered_deps);
+                filtered_graph.add_migration(key.clone(), filtered_deps.into_iter().collect());
             }
         }
 
