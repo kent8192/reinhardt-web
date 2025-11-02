@@ -14,131 +14,131 @@ Supports task scheduling, retries, task priorities, and multiple worker processe
 
 #### Core Task System
 
-- **Task Trait**: 基本的なタスクインターフェース
-  - タスクID (`TaskId`): UUID ベースの一意識別子
-  - タスク名とタスク優先度の管理
-  - 優先度範囲: 0-9 (デフォルト: 5)
-- **TaskExecutor Trait**: 非同期タスク実行インターフェース
-- **TaskStatus**: タスクのライフサイクル管理
-  - `Pending`: 待機中
-  - `Running`: 実行中
-  - `Success`: 成功
-  - `Failure`: 失敗
-  - `Retry`: リトライ中
+- **Task Trait**: Basic task interface
+  - Task ID (`TaskId`): UUID-based unique identifier
+  - Task name and priority management
+  - Priority range: 0-9 (default: 5)
+- **TaskExecutor Trait**: Asynchronous task execution interface
+- **TaskStatus**: Task lifecycle management
+  - `Pending`: Waiting
+  - `Running`: Executing
+  - `Success`: Completed successfully
+  - `Failure`: Failed
+  - `Retry`: Retrying
 
 #### Task Backends
 
-- **TaskBackend Trait**: タスクバックエンドの抽象化インターフェース
-  - タスクのエンキュー (`enqueue`)
-  - タスクのデキュー (`dequeue`)
-  - タスクステータスの取得 (`get_status`)
-  - タスクステータスの更新 (`update_status`)
-- **DummyBackend**: テスト用ダミーバックエンド
-  - 常に成功を返すシンプルな実装
-- **ImmediateBackend**: 即座に実行するバックエンド
-  - 同期的なタスク実行用
-- **RedisBackend** (feature: `redis-backend`): Redis ベースの分散タスクキュー
-  - Redis を使用したタスクメタデータの保存
-  - キューベースのタスク配布
-  - カスタマイズ可能なキープレフィックス
-- **SqliteBackend** (feature: `database-backend`): SQLite ベースのタスク永続化
-  - SQLite データベースでのタスク保存
-  - 自動テーブル作成
-  - FIFO ベースのタスク取得
+- **TaskBackend Trait**: Task backend abstraction interface
+  - Task enqueuing (`enqueue`)
+  - Task dequeuing (`dequeue`)
+  - Status retrieval (`get_status`)
+  - Status update (`update_status`)
+- **DummyBackend**: Dummy backend for testing
+  - Simple implementation that always succeeds
+- **ImmediateBackend**: Backend for immediate execution
+  - For synchronous task execution
+- **RedisBackend** (feature: `redis-backend`): Redis-based distributed task queue
+  - Task metadata storage using Redis
+  - Queue-based task distribution
+  - Customizable key prefix
+- **SqliteBackend** (feature: `database-backend`): SQLite-based task persistence
+  - Task storage in SQLite database
+  - Automatic table creation
+  - FIFO-based task retrieval
 
 #### Task Queue
 
-- **TaskQueue**: タスクキュー管理
-  - 設定可能なキュー名
-  - リトライ回数の設定 (デフォルト: 3回)
-  - バックエンドを介したタスクのエンキュー
-- **QueueConfig**: キュー設定
-  - カスタマイズ可能なキュー名
-  - 最大リトライ回数の設定
+- **TaskQueue**: Task queue management
+  - Configurable queue name
+  - Retry count configuration (default: 3)
+  - Task enqueuing via backend
+- **QueueConfig**: Queue configuration
+  - Customizable queue name
+  - Maximum retry count setting
 
 #### Task Scheduling
 
-- **Scheduler**: タスクスケジューラー
-  - タスクとスケジュールの登録
-  - スケジュールに基づいたタスク実行の基盤
-- **Schedule Trait**: スケジュールインターフェース
-  - 次回実行時刻の計算
-- **CronSchedule**: Cron式ベースのスケジュール
-  - Cron式の保持と管理
+- **Scheduler**: Task scheduler
+  - Task and schedule registration
+  - Foundation for schedule-based task execution
+- **Schedule Trait**: Schedule interface
+  - Next execution time calculation
+- **CronSchedule**: Cron expression-based scheduling
+  - Cron expression storage and management
 
 #### Worker System
 
-- **Worker**: タスクワーカー
-  - 並行実行数の設定 (デフォルト: 4)
-  - バックエンドからのタスク取得と実行
-  - グレースフルシャットダウン
-  - タスク処理ループ（ポーリングベース）
-  - エラーハンドリングとステータス更新
-  - ブロードキャストチャンネルによるシャットダウンシグナル
-- **WorkerConfig**: ワーカー設定
-  - ワーカー名の設定
-  - 並行実行数のカスタマイズ
-  - ポーリング間隔の設定 (デフォルト: 1秒)
+- **Worker**: Task worker
+  - Concurrent execution count configuration (default: 4)
+  - Task retrieval and execution from backend
+  - Graceful shutdown
+  - Task processing loop (polling-based)
+  - Error handling and status updates
+  - Shutdown signaling via broadcast channel
+- **WorkerConfig**: Worker configuration
+  - Worker name setting
+  - Concurrent execution count customization
+  - Polling interval configuration (default: 1 second)
 
 #### Task Chains
 
-- **TaskChain**: タスクチェーン管理
-  - 複数タスクの順次実行
-  - チェーンステータス管理（Pending, Running, Completed, Failed）
-  - タスクの追加とチェーンの進行制御
-- **TaskChainBuilder**: ビルダーパターンによるチェーン構築
-  - 流暢なインターフェースでタスクを追加
-  - 複数タスクの一括追加
-- **ChainStatus**: チェーンのライフサイクル管理
+- **TaskChain**: Task chain management
+  - Sequential execution of multiple tasks
+  - Chain status management (Pending, Running, Completed, Failed)
+  - Task addition and chain progression control
+- **TaskChainBuilder**: Builder pattern for chain construction
+  - Fluent interface for adding tasks
+  - Bulk task addition
+- **ChainStatus**: Chain lifecycle management
 
 #### Result Handling
 
-- **TaskOutput**: タスク実行結果
-  - タスクIDと結果の文字列表現
-- **TaskResult**: タスク結果型
-  - Result型によるエラーハンドリング
-- **TaskResultMetadata**: ステータス付き結果メタデータ
-  - ステータス、結果、エラー、タイムスタンプの管理
-- **ResultBackend Trait**: 結果の永続化インターフェース
-  - 結果の保存 (`store_result`)
-  - 結果の取得 (`get_result`)
-  - 結果の削除 (`delete_result`)
-- **MemoryResultBackend**: インメモリ結果バックエンド
-  - テスト用の結果ストレージ
-  - RwLock による並行アクセス制御
+- **TaskOutput**: Task execution result
+  - Task ID and string representation of result
+- **TaskResult**: Task result type
+  - Error handling via Result type
+- **TaskResultMetadata**: Result metadata with status
+  - Management of status, result, error, and timestamp
+- **ResultBackend Trait**: Result persistence interface
+  - Result storage (`store_result`)
+  - Result retrieval (`get_result`)
+  - Result deletion (`delete_result`)
+- **MemoryResultBackend**: In-memory result backend
+  - Result storage for testing
+  - Concurrent access control via RwLock
 
 #### Retry & Backoff
 
-- **RetryStrategy**: リトライ戦略の設定
-  - エクスポネンシャルバックオフ (`exponential_backoff`)
-  - 固定遅延 (`fixed_delay`)
-  - リトライなし (`no_retry`)
-  - 最大リトライ回数、初期遅延、最大遅延、倍率の設定
-  - ジッター（Thundering Herd Problem 対策）のサポート
-- **RetryState**: リトライ状態の追跡
-  - リトライ試行回数の記録
-  - 次回リトライまでの遅延計算
-  - リトライ可否の判定
-  - 状態のリセット
+- **RetryStrategy**: Retry strategy configuration
+  - Exponential backoff (`exponential_backoff`)
+  - Fixed delay (`fixed_delay`)
+  - No retry (`no_retry`)
+  - Configuration for max retries, initial delay, max delay, multiplier
+  - Jitter support (Thundering Herd Problem mitigation)
+- **RetryState**: Retry state tracking
+  - Retry attempt count recording
+  - Next retry delay calculation
+  - Retry eligibility determination
+  - State reset
 
 #### Error Handling
 
-- **TaskError**: タスク関連エラー
-  - 実行失敗 (`ExecutionFailed`)
-  - タスク未発見 (`TaskNotFound`)
-  - キューエラー (`QueueError`)
-  - シリアライゼーションエラー (`SerializationFailed`)
-  - タイムアウト (`Timeout`)
-  - 最大リトライ超過 (`MaxRetriesExceeded`)
-- **TaskExecutionError**: バックエンド実行エラー
-  - 実行失敗、タスク未発見、バックエンドエラー
+- **TaskError**: Task-related errors
+  - Execution failure (`ExecutionFailed`)
+  - Task not found (`TaskNotFound`)
+  - Queue error (`QueueError`)
+  - Serialization failure (`SerializationFailed`)
+  - Timeout (`Timeout`)
+  - Max retries exceeded (`MaxRetriesExceeded`)
+- **TaskExecutionError**: Backend execution errors
+  - Execution failure, task not found, backend error
 
 ## Testing
 
-Redis バックエンドのテストは TestContainers を使用して実行されます:
+Redis backend tests are executed using TestContainers:
 
 ```bash
 cargo test --package reinhardt-tasks --features all-backends
 ```
 
-テストは `#[serial(redis)]` 属性により直列実行され、Redis コンテナの競合を防ぎます。
+Tests run serially with `#[serial(redis)]` attribute to prevent Redis container conflicts.
