@@ -233,10 +233,42 @@ impl AuditBackend for DatabaseAuditBackend {
 mod tests {
 	use super::*;
 	use serde_json::json;
+	use std::sync::Once;
+
+	static INIT_DRIVERS: Once = Once::new();
+
+	fn init_drivers() {
+		INIT_DRIVERS.call_once(|| {
+			sqlx::any::install_default_drivers();
+		});
+	}
+
+	async fn create_test_backend() -> DatabaseAuditBackend {
+		init_drivers();
+		// Use in-memory SQLite with shared cache mode
+		// This allows multiple connections from the pool to share the same in-memory database
+		let db_url = "sqlite::memory:?mode=rwc&cache=shared";
+
+		// Create backend with minimal connection pool for tests
+		use sqlx::any::AnyPoolOptions;
+		let pool = AnyPoolOptions::new()
+			.min_connections(1)
+			.max_connections(1)
+			.connect(db_url)
+			.await
+			.expect("Failed to connect to test database");
+
+		let backend = DatabaseAuditBackend { pool };
+		backend
+			.init_tables()
+			.await
+			.expect("Failed to initialize tables");
+		backend
+	}
 
 	#[tokio::test]
 	async fn test_database_backend_init() {
-		let backend = DatabaseAuditBackend::new("sqlite::memory:").await.unwrap();
+		let backend = create_test_backend().await;
 
 		// Verify tables were created
 		let stmt = Query::select()
@@ -253,7 +285,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_database_backend_log_event() {
-		let backend = DatabaseAuditBackend::new("sqlite::memory:").await.unwrap();
+		let backend = create_test_backend().await;
 
 		let mut changes = HashMap::new();
 		changes.insert(
@@ -279,7 +311,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_database_backend_filter_by_type() {
-		let backend = DatabaseAuditBackend::new("sqlite::memory:").await.unwrap();
+		let backend = create_test_backend().await;
 
 		for i in 0..5 {
 			let event_type = if i % 2 == 0 {
@@ -314,7 +346,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_database_backend_filter_by_user() {
-		let backend = DatabaseAuditBackend::new("sqlite::memory:").await.unwrap();
+		let backend = create_test_backend().await;
 
 		for i in 0..5 {
 			let user = if i % 2 == 0 { "alice" } else { "bob" };
