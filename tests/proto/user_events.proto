@@ -4,7 +4,7 @@ package reinhardt.user_events;
 import "user.proto";
 import "common.proto";
 
-// イベント型
+// Event type
 message UserEvent {
   enum EventType {
     CREATED = 0;
@@ -13,19 +13,19 @@ message UserEvent {
   }
 
   EventType type = 1;
-  reinhardt.user.User user = 2;  // DELETED以外の場合
-  string user_id = 3;             // DELETEDの場合のID
+  reinhardt.user.User user = 2;  // For non-DELETED events
+  string user_id = 3;             // User ID for DELETED events
   reinhardt.common.Timestamp timestamp = 4;
 }
 
-// Subscription用リクエスト
+// Subscription request
 message SubscribeUserEventsRequest {
-  repeated string event_types = 1;  // フィルタ（空=全て）
-  optional string user_id = 2;       // 特定ユーザーのみ（空=全て）
+  repeated string event_types = 1;  // Filter (empty = all)
+  optional string user_id = 2;       // Specific user only (empty = all)
 }
 
-// UserEventsService定義（Server Streaming）
+// UserEventsService definition (Server Streaming)
 service UserEventsService {
-  // ユーザーイベントをストリーミング
+  // Stream user events
   rpc SubscribeUserEvents(SubscribeUserEventsRequest) returns (stream UserEvent);
 }

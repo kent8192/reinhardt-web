@@ -3,7 +3,7 @@ package reinhardt.user;
 
 import "common.proto";
 
-// User型定義
+// User type definition
 message User {
   string id = 1;
   string name = 2;
@@ -13,7 +13,7 @@ message User {
   reinhardt.common.Timestamp updated_at = 6;
 }
 
-// リクエスト/レスポンス型
+// Request/Response types
 message CreateUserRequest {
   string name = 1;
   string email = 2;
@@ -44,7 +44,7 @@ message DeleteUserRequest {
   string id = 1;
 }
 
-// UserService定義（Unary RPCs）
+// UserService definition (Unary RPCs)
 service UserService {
   rpc CreateUser(CreateUserRequest) returns (User);
   rpc GetUser(GetUserRequest) returns (User);

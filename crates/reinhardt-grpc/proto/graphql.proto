@@ -4,40 +4,40 @@ package reinhardt.graphql;
 
 import "common.proto";
 
-// GraphQL リクエスト
+// GraphQL request
 message GraphQLRequest {
-  // GraphQL クエリ文字列
+  // GraphQL query string
   string query = 1;
 
-  // 変数（JSON形式の文字列）
+  // Variables (JSON-formatted string)
   optional string variables = 2;
 
-  // オペレーション名（複数のオペレーションがある場合に指定）
+  // Operation name (specified when multiple operations exist)
   optional string operation_name = 3;
 }
 
-// GraphQL エラー
+// GraphQL error
 message GraphQLError {
-  // エラーメッセージ
+  // Error message
   string message = 1;
 
-  // エラー位置情報
+  // Error location information
   repeated GraphQLLocation locations = 2;
 
-  // エラーパス
+  // Error path
   repeated PathSegment path = 3;
 
-  // 拡張情報（JSON形式の文字列）
+  // Extension information (JSON-formatted string)
   optional string extensions = 4;
 }
 
-// GraphQL エラーの位置情報
+// GraphQL error location
 message GraphQLLocation {
   int32 line = 1;
   int32 column = 2;
 }
 
-// エラーパスのセグメント
+// Error path segment
 message PathSegment {
   oneof segment {
     string field = 1;
@@ -45,41 +45,41 @@ message PathSegment {
   }
 }
 
-// GraphQL レスポンス
+// GraphQL response
 message GraphQLResponse {
-  // レスポンスデータ（JSON形式の文字列）
+  // Response data (JSON-formatted string)
   optional string data = 1;
 
-  // エラーリスト
+  // Error list
   repeated GraphQLError errors = 2;
 
-  // 拡張情報（JSON形式の文字列）
+  // Extension information (JSON-formatted string)
   optional string extensions = 3;
 }
 
-// サブスクリプションイベント
+// Subscription event
 message SubscriptionEvent {
-  // イベントID
+  // Event ID
   string id = 1;
 
-  // イベントタイプ
+  // Event type
   string event_type = 2;
 
-  // ペイロード（GraphQLResponse）
+  // Payload (GraphQLResponse)
   GraphQLResponse payload = 3;
 
-  // タイムスタンプ
+  // Timestamp
   reinhardt.common.Timestamp timestamp = 4;
 }
 
-// GraphQL サービス
+// GraphQL service
 service GraphQLService {
-  // Query オペレーション（unary RPC）
+  // Query operation (unary RPC)
   rpc ExecuteQuery(GraphQLRequest) returns (GraphQLResponse);
 
-  // Mutation オペレーション（unary RPC）
+  // Mutation operation (unary RPC)
   rpc ExecuteMutation(GraphQLRequest) returns (GraphQLResponse);
 
-  // Subscription オペレーション（server streaming RPC）
+  // Subscription operation (server streaming RPC)
   rpc ExecuteSubscription(GraphQLRequest) returns (stream SubscriptionEvent);
 }
