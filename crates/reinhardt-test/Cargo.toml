@@ -11,6 +11,8 @@ testcontainers = [
   "dep:testcontainers",
   "dep:testcontainers-modules",
   "dep:sqlx",
+  "dep:memcache-async",
+  "dep:tokio-util",
 ]
 static = ["reinhardt-static"]
 
@@ -51,6 +53,8 @@ env_logger = "0.11"
 testcontainers = { workspace = true, optional = true, features = ["blocking"] }
 testcontainers-modules = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
+memcache-async = { version = "0.5", optional = true }
+tokio-util = { version = "0.7", features = ["compat"], optional = true }
 
 # Optional dependencies for static feature
 reinhardt-static = { path = "../reinhardt-contrib/crates/static", optional = true }
