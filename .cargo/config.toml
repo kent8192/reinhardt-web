@@ -3,13 +3,10 @@
 # This file configures environment variables for TestContainers to work with Podman.
 
 [env]
-# Podman socket configuration for Docker-compatible API
-# TestContainers will connect to Podman instead of Docker Desktop
-DOCKER_HOST = "unix:///var/run/podman/podman.sock"
-
 # Override TestContainers Docker socket detection
-TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = "/var/run/podman/podman.sock"
+# TestContainers expects this to be set to /var/run/docker.sock
+TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = "/var/run/docker.sock"
 
-# Disable Ryuk container for Podman compatibility
-# Ryuk is a cleanup container that may have issues with Podman
+# Disable Ryuk container for Podman rootless mode compatibility
+# Ryuk is a cleanup container that doesn't work properly with Podman rootless mode
 TESTCONTAINERS_RYUK_DISABLED = "true"

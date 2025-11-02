@@ -79,6 +79,27 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Setup Podman
+        run: |
+          # Ubuntu runners come with Podman pre-installed
+          podman --version
+
+          # Start Podman socket for TestContainers
+          systemctl --user start podman.socket
+          systemctl --user enable podman.socket
+
+          # Wait for socket to be ready
+          sleep 2
+
+          # Verify socket is accessible
+          ls -la /run/user/$(id -u)/podman/podman.sock
+
+      - name: Configure TestContainers for Podman
+        run: |
+          echo "DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock" >> $GITHUB_ENV
+          echo "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock" >> $GITHUB_ENV
+          echo "TESTCONTAINERS_RYUK_DISABLED=true" >> $GITHUB_ENV
+
       - name: Run unit tests
         run: cargo test --workspace --lib --all-features
 
@@ -90,48 +111,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
-    services:
-      postgres:
-        image: postgres:latest
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      mysql:
-        image: mysql:latest
-        env:
-          MYSQL_ROOT_PASSWORD: mysql
-          MYSQL_DATABASE: test_db
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd "mysqladmin ping -h localhost"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:latest
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/test_db
-      MYSQL_DATABASE_URL: mysql://root:mysql@localhost:3306/test_db
-      REDIS_URL: redis://localhost:6379
+    # Note: TestContainers will manage database services dynamically
+    # No need for static services configuration
 
     steps:
       - name: Checkout repository
@@ -142,6 +123,27 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
+
+      - name: Setup Podman
+        run: |
+          # Ubuntu runners come with Podman pre-installed
+          podman --version
+
+          # Start Podman socket for TestContainers
+          systemctl --user start podman.socket
+          systemctl --user enable podman.socket
+
+          # Wait for socket to be ready
+          sleep 2
+
+          # Verify socket is accessible
+          ls -la /run/user/$(id -u)/podman/podman.sock
+
+      - name: Configure TestContainers for Podman
+        run: |
+          echo "DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock" >> $GITHUB_ENV
+          echo "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock" >> $GITHUB_ENV
+          echo "TESTCONTAINERS_RYUK_DISABLED=true" >> $GITHUB_ENV
 
       - name: Run integration tests
         run: cargo test --package reinhardt-integration-tests --all-features
