@@ -41,11 +41,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use tera::{Context, Tera};
 
-// グローバル Tera インスタンス（遅延初期化）
+// Global Tera instance (lazily initialized)
 static TERA: Lazy<Tera> = Lazy::new(|| {
 	let mut tera = Tera::default();
 
-	// テンプレートを include_str! で読み込み、登録
+	// Load and register templates using include_str!
 	tera.add_raw_template("user.tpl", include_str!("../templates/user.tpl"))
 		.expect("Failed to add user.tpl template");
 
