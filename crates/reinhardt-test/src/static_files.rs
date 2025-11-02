@@ -1,6 +1,6 @@
-//! Common test helpers for the reinhardt-static crate
+//! Common test helpers for static file functionality
 //!
-//! Provides helper functions to consolidate duplicate tests.
+//! Provides helper functions to consolidate duplicate tests for static file handling.
 
 use std::fs;
 use std::path::PathBuf;
@@ -147,6 +147,12 @@ pub mod integration_helpers {
 		pub handler: StaticFileHandler,
 	}
 
+	impl Default for IntegrationTestSetup {
+		fn default() -> Self {
+			Self::new()
+		}
+	}
+
 	impl IntegrationTestSetup {
 		/// Creates a new integration test setup
 		pub fn new() -> Self {
@@ -204,38 +210,5 @@ pub mod integration_helpers {
 			fs::write(&file_path, content).unwrap();
 			file_path
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::integration_helpers::IntegrationTestSetup;
-	use super::*;
-
-	#[test]
-	fn test_file_setup_creation() {
-		let setup = TestFileSetup::new("test.txt", b"Hello, World!");
-		assert!(setup.temp_dir.path().join("test.txt").exists());
-	}
-
-	#[test]
-	fn test_nested_file_setup() {
-		let setup = TestFileSetup::with_nested_path("nested/path", "test.txt", b"Content");
-		assert!(setup.file_path.exists());
-	}
-
-	#[test]
-	fn test_multiple_files_setup() {
-		let files: &[(&str, &[u8])] = &[("file1.txt", b"Content 1"), ("file2.txt", b"Content 2")];
-		let setup = TestFileSetup::with_multiple_files(files);
-		assert!(setup.temp_dir.path().join("file1.txt").exists());
-		assert!(setup.temp_dir.path().join("file2.txt").exists());
-	}
-
-	#[test]
-	fn test_integration_setup() {
-		let setup = IntegrationTestSetup::new();
-		assert_eq!(setup.temp_dirs.len(), 1);
-		assert_eq!(setup.config.static_url, "/static/");
 	}
 }

@@ -1,14 +1,17 @@
-//! Test utilities for reinhardt-views
+//! View test utilities for Reinhardt framework
 //!
-//! Common helper functions and test models for view testing
+//! Provides test models, request builders, and test views for view testing.
 
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_apps::{Error, Request, Response, Result};
 use reinhardt_orm::Model;
-// use reinhardt_serializers::{JsonSerializer, Serializer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+// ============================================================================
+// Test Models
+// ============================================================================
 
 /// Test model for view tests
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -58,6 +61,10 @@ impl Model for ApiTestModel {
 		self.id = Some(value);
 	}
 }
+
+// ============================================================================
+// Request Creation Functions
+// ============================================================================
 
 /// Create a test request with the given parameters
 pub fn create_request(
@@ -134,52 +141,9 @@ pub fn create_json_request(method: Method, path: &str, json_data: &serde_json::V
 	create_request(method, path, None, Some(headers), Some(body))
 }
 
-/// Assert response status code
-pub fn assert_response_status(response: &Response, expected: StatusCode) {
-	assert_eq!(
-		response.status, expected,
-		"Expected status {:?}, got {:?}",
-		expected, response.status
-	);
-}
-
-/// Assert response body contains expected text
-pub fn assert_response_body_contains(response: &Response, expected: &str) {
-	let body_str = String::from_utf8_lossy(&response.body);
-	assert!(
-		body_str.contains(expected),
-		"Expected body to contain '{}', got '{}'",
-		expected,
-		body_str
-	);
-}
-
-/// Assert response body equals expected bytes
-pub fn assert_response_body_equals(response: &Response, expected: &[u8]) {
-	assert_eq!(
-		response.body, expected,
-		"Expected body {:?}, got {:?}",
-		expected, response.body
-	);
-}
-
-/// Assert response is JSON and contains expected data
-pub fn assert_json_response_contains(
-	response: &Response,
-	expected_key: &str,
-	expected_value: &serde_json::Value,
-) {
-	let body_str = String::from_utf8_lossy(&response.body);
-	let json: serde_json::Value =
-		serde_json::from_str(&body_str).expect("Response body should be valid JSON");
-
-	assert!(
-		json.get(expected_key).is_some(),
-		"JSON should contain key '{}'",
-		expected_key
-	);
-	assert_eq!(json.get(expected_key).unwrap(), expected_value);
-}
+// ============================================================================
+// Test Data Generation
+// ============================================================================
 
 /// Create test objects for list views
 pub fn create_test_objects() -> Vec<TestModel> {
@@ -238,55 +202,9 @@ pub fn create_large_test_objects(count: usize) -> Vec<TestModel> {
 		.collect()
 }
 
-/// Assert that a result is an error with the expected error type
-pub fn assert_error<T>(result: Result<T>, _expected_error: fn(String) -> Error) {
-	match result {
-		Ok(_) => panic!("Expected error, got Ok"),
-		Err(error) => {
-			// Check if the error is of the expected type by pattern matching
-			match error {
-				Error::NotFound(_)
-					if std::any::TypeId::of::<Error>() == std::any::TypeId::of::<Error>() => {}
-				Error::Validation(_)
-					if std::any::TypeId::of::<Error>() == std::any::TypeId::of::<Error>() => {}
-				Error::Internal(_)
-					if std::any::TypeId::of::<Error>() == std::any::TypeId::of::<Error>() => {}
-				Error::Authentication(_)
-					if std::any::TypeId::of::<Error>() == std::any::TypeId::of::<Error>() => {}
-				Error::Authorization(_)
-					if std::any::TypeId::of::<Error>() == std::any::TypeId::of::<Error>() => {}
-				_ => panic!("Expected specific error type, got {:?}", error),
-			}
-		}
-	}
-}
-
-/// Assert that a result is a NotFound error
-pub fn assert_not_found_error<T>(result: Result<T>) {
-	match result {
-		Ok(_) => panic!("Expected NotFound error, got Ok"),
-		Err(Error::NotFound(_)) => {}
-		Err(error) => panic!("Expected NotFound error, got {:?}", error),
-	}
-}
-
-/// Assert that a result is a Validation error
-pub fn assert_validation_error<T>(result: Result<T>) {
-	match result {
-		Ok(_) => panic!("Expected Validation error, got Ok"),
-		Err(Error::Validation(_)) => {}
-		Err(error) => panic!("Expected Validation error, got {:?}", error),
-	}
-}
-
-/// Assert that a result is an Internal error
-pub fn assert_internal_error<T>(result: Result<T>) {
-	match result {
-		Ok(_) => panic!("Expected Internal error, got Ok"),
-		Err(Error::Internal(_)) => {}
-		Err(error) => panic!("Expected Internal error, got {:?}", error),
-	}
-}
+// ============================================================================
+// Test Views
+// ============================================================================
 
 /// Create a simple view for testing basic functionality
 pub struct SimpleTestView {
@@ -309,7 +227,7 @@ impl SimpleTestView {
 }
 
 #[async_trait::async_trait]
-impl crate::View for SimpleTestView {
+impl reinhardt_views::View for SimpleTestView {
 	async fn dispatch(&self, request: Request) -> Result<Response> {
 		if !self.allowed_methods.contains(&request.method) {
 			return Err(Error::Validation(format!(
@@ -354,7 +272,7 @@ impl ErrorTestView {
 }
 
 #[async_trait::async_trait]
-impl crate::View for ErrorTestView {
+impl reinhardt_views::View for ErrorTestView {
 	async fn dispatch(&self, _request: Request) -> Result<Response> {
 		match self.error_kind {
 			ErrorKind::NotFound => Err(Error::NotFound(self.error_message.clone())),

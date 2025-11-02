@@ -321,6 +321,278 @@ pub fn assert_status_redirect(status: StatusCode) {
 	);
 }
 
+// ========== HTTP Response Assertions ==========
+
+/// Assert that response has expected status code
+///
+/// This is a unified function combining `assert_status()` from micro
+/// and `assert_response_status()` from views.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::assertions::assert_status;
+/// use reinhardt_apps::Response;
+/// use http::StatusCode;
+///
+/// let response = Response::ok();
+/// assert_status(&response, StatusCode::OK);
+/// ```
+///
+/// # Panics
+///
+/// Panics if status codes don't match.
+pub fn assert_status(response: &reinhardt_apps::Response, expected: StatusCode) {
+	assert_eq!(
+		response.status, expected,
+		"Expected status {}, got {}",
+		expected, response.status
+	);
+}
+
+// ========== Response Body Assertions ==========
+
+/// Assert that response body contains expected text
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::assertions::assert_response_body_contains;
+/// use reinhardt_apps::Response;
+///
+/// let response = Response::ok().with_body(b"Hello, World!".to_vec());
+/// assert_response_body_contains(&response, "World");
+/// ```
+///
+/// # Panics
+///
+/// Panics if body doesn't contain the expected text.
+pub fn assert_response_body_contains(response: &reinhardt_apps::Response, expected: &str) {
+	let body_str = String::from_utf8_lossy(&response.body);
+	assert!(
+		body_str.contains(expected),
+		"Expected body to contain '{}', got '{}'",
+		expected,
+		body_str
+	);
+}
+
+/// Assert that response body equals expected bytes
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::assertions::assert_response_body_equals;
+/// use reinhardt_apps::Response;
+///
+/// let expected = b"exact content";
+/// let response = Response::ok().with_body(expected.to_vec());
+/// assert_response_body_equals(&response, expected);
+/// ```
+///
+/// # Panics
+///
+/// Panics if body doesn't match expected bytes.
+pub fn assert_response_body_equals(response: &reinhardt_apps::Response, expected: &[u8]) {
+	assert_eq!(
+		response.body, expected,
+		"Expected body {:?}, got {:?}",
+		expected, response.body
+	);
+}
+
+// ========== JSON Response Assertions ==========
+
+/// Assert that response contains expected JSON data (exact match)
+///
+/// This function deserializes the response body and compares it with the expected value.
+/// For subset matching, use `assert_json_response_contains` instead.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::assertions::assert_json_response;
+/// use reinhardt_apps::Response;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Serialize, Deserialize, PartialEq, Debug)]
+/// struct User {
+///     id: i64,
+///     name: String,
+/// }
+///
+/// let user = User { id: 1, name: "Alice".to_string() };
+/// let json = serde_json::to_vec(&user).unwrap();
+/// let response = Response::ok()
+///     .with_header("Content-Type", "application/json")
+///     .with_body(json);
+///
+/// let expected = User { id: 1, name: "Alice".to_string() };
+/// assert_json_response(response, expected);
+/// ```
+///
+/// # Panics
+///
+/// Panics if:
+/// - Response body is not valid JSON
+/// - Deserialized value doesn't match expected
+pub fn assert_json_response<T>(response: reinhardt_apps::Response, expected: T)
+where
+	T: serde::de::DeserializeOwned + PartialEq + std::fmt::Debug,
+{
+	let actual: T = serde_json::from_slice(&response.body)
+		.expect("Failed to deserialize response body as JSON");
+
+	assert_eq!(
+		actual, expected,
+		"Response body mismatch: expected {:?}, got {:?}",
+		expected, actual
+	);
+}
+
+/// Assert that response is JSON and contains expected field with value
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::assertions::assert_json_response_contains;
+/// use reinhardt_apps::Response;
+/// use serde_json::json;
+///
+/// let json = json!({"name": "Alice", "age": 30, "city": "NYC"});
+/// let response = Response::ok()
+///     .with_header("Content-Type", "application/json")
+///     .with_body(serde_json::to_vec(&json).unwrap());
+///
+/// assert_json_response_contains(&response, "name", &json!("Alice"));
+/// ```
+///
+/// # Panics
+///
+/// Panics if:
+/// - Response body is not valid JSON
+/// - JSON doesn't contain the expected field
+/// - Field value doesn't match expected
+pub fn assert_json_response_contains(
+	response: &reinhardt_apps::Response,
+	expected_key: &str,
+	expected_value: &serde_json::Value,
+) {
+	let body_str = String::from_utf8_lossy(&response.body);
+	let json: serde_json::Value =
+		serde_json::from_str(&body_str).expect("Response body should be valid JSON");
+
+	assert!(
+		json.get(expected_key).is_some(),
+		"JSON should contain key '{}'",
+		expected_key
+	);
+	assert_eq!(
+		json.get(expected_key).unwrap(),
+		expected_value,
+		"Expected field '{}' to equal {:?}, got {:?}",
+		expected_key,
+		expected_value,
+		json.get(expected_key).unwrap()
+	);
+}
+
+// ========== Error Type Assertions ==========
+
+/// Assert that a result is an error (generic error assertion)
+///
+/// This function checks if the result is an error without checking the specific error type.
+/// Use specific error assertions (like `assert_not_found_error`) for type-specific checks.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::assertions::assert_error;
+/// use reinhardt_apps::{Error, Result};
+///
+/// let result: Result<()> = Err(Error::NotFound("Item not found".to_string()));
+/// assert_error(result);
+/// ```
+///
+/// # Panics
+///
+/// Panics if result is `Ok`.
+pub fn assert_error<T>(result: reinhardt_apps::Result<T>) {
+	if result.is_ok() {
+		panic!("Expected error, got Ok");
+	}
+	// Any error is acceptable
+}
+
+/// Assert that a result is a NotFound error
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::assertions::assert_not_found_error;
+/// use reinhardt_apps::{Error, Result};
+///
+/// let result: Result<()> = Err(Error::NotFound("User not found".to_string()));
+/// assert_not_found_error(result);
+/// ```
+///
+/// # Panics
+///
+/// Panics if result is `Ok` or a different error type.
+pub fn assert_not_found_error<T>(result: reinhardt_apps::Result<T>) {
+	match result {
+		Ok(_) => panic!("Expected NotFound error, got Ok"),
+		Err(reinhardt_apps::Error::NotFound(_)) => {}
+		Err(error) => panic!("Expected NotFound error, got {:?}", error),
+	}
+}
+
+/// Assert that a result is a Validation error
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::assertions::assert_validation_error;
+/// use reinhardt_apps::{Error, Result};
+///
+/// let result: Result<()> = Err(Error::Validation("Invalid email".to_string()));
+/// assert_validation_error(result);
+/// ```
+///
+/// # Panics
+///
+/// Panics if result is `Ok` or a different error type.
+pub fn assert_validation_error<T>(result: reinhardt_apps::Result<T>) {
+	match result {
+		Ok(_) => panic!("Expected Validation error, got Ok"),
+		Err(reinhardt_apps::Error::Validation(_)) => {}
+		Err(error) => panic!("Expected Validation error, got {:?}", error),
+	}
+}
+
+/// Assert that a result is an Internal error
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::assertions::assert_internal_error;
+/// use reinhardt_apps::{Error, Result};
+///
+/// let result: Result<()> = Err(Error::Internal("Database connection failed".to_string()));
+/// assert_internal_error(result);
+/// ```
+///
+/// # Panics
+///
+/// Panics if result is `Ok` or a different error type.
+pub fn assert_internal_error<T>(result: reinhardt_apps::Result<T>) {
+	match result {
+		Ok(_) => panic!("Expected Internal error, got Ok"),
+		Err(reinhardt_apps::Error::Internal(_)) => {}
+		Err(error) => panic!("Expected Internal error, got {:?}", error),
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -381,5 +653,92 @@ mod tests {
 	fn test_assert_not_contains() {
 		let text = "Hello, world!";
 		assert_not_contains(text, "foo");
+	}
+
+	#[test]
+	fn test_assert_status() {
+		let response = reinhardt_apps::Response::ok();
+		assert_status(&response, StatusCode::OK);
+	}
+
+	#[test]
+	fn test_assert_response_body_contains() {
+		let response = reinhardt_apps::Response::ok().with_body(b"Hello, World!".to_vec());
+		assert_response_body_contains(&response, "World");
+	}
+
+	#[test]
+	fn test_assert_response_body_equals() {
+		let expected = b"exact content";
+		let response = reinhardt_apps::Response::ok().with_body(expected.to_vec());
+		assert_response_body_equals(&response, expected);
+	}
+
+	#[test]
+	fn test_assert_json_response() {
+		use serde::{Deserialize, Serialize};
+
+		#[derive(Serialize, Deserialize, PartialEq, Debug)]
+		struct TestData {
+			id: i64,
+			name: String,
+		}
+
+		let data = TestData {
+			id: 1,
+			name: "test".to_string(),
+		};
+		let json = serde_json::to_vec(&data).unwrap();
+		let response = reinhardt_apps::Response::ok()
+			.with_header("Content-Type", "application/json")
+			.with_body(json);
+
+		let expected = TestData {
+			id: 1,
+			name: "test".to_string(),
+		};
+		assert_json_response(response, expected);
+	}
+
+	#[test]
+	fn test_assert_json_response_contains() {
+		let json = json!({"name": "Alice", "age": 30});
+		let response = reinhardt_apps::Response::ok()
+			.with_header("Content-Type", "application/json")
+			.with_body(serde_json::to_vec(&json).unwrap());
+
+		assert_json_response_contains(&response, "name", &json!("Alice"));
+		assert_json_response_contains(&response, "age", &json!(30));
+	}
+
+	#[test]
+	fn test_assert_error() {
+		let result: reinhardt_apps::Result<()> =
+			Err(reinhardt_apps::Error::NotFound("Not found".to_string()));
+		assert_error(result);
+	}
+
+	#[test]
+	fn test_assert_not_found_error() {
+		let result: reinhardt_apps::Result<()> = Err(reinhardt_apps::Error::NotFound(
+			"User not found".to_string(),
+		));
+		assert_not_found_error(result);
+	}
+
+	#[test]
+	fn test_assert_validation_error() {
+		let result: reinhardt_apps::Result<()> = Err(reinhardt_apps::Error::Validation(
+			"Invalid input".to_string(),
+		));
+		assert_validation_error(result);
+	}
+
+	#[test]
+	fn test_assert_internal_error() {
+		let result: reinhardt_apps::Result<()> = Err(reinhardt_apps::Error::Internal(
+			"Database error".to_string(),
+		));
+		assert_internal_error(result);
 	}
 }

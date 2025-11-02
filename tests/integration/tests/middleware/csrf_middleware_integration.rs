@@ -5,9 +5,9 @@
 
 use hyper::header::{COOKIE, HeaderName, HeaderValue, SET_COOKIE};
 use reinhardt_apps::{Handler, Request, Response, Result};
-use reinhardt_integration_tests::security_test_helpers::*;
 use reinhardt_security::csrf::SameSite;
 use reinhardt_security::{CsrfConfig, generate_token_hmac, verify_token_hmac};
+use reinhardt_test::http::*;
 
 // Mock handler for testing
 struct MockHandler;

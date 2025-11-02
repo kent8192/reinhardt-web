@@ -1,0 +1,28 @@
+#!/bin/sh
+# Reinhardt pre-commit hook
+# Runs fmt and clippy checks before allowing commit
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# Run cargo make fmt (check mode)
+echo "📝 Checking code formatting..."
+if ! cargo make fmt; then
+    echo ""
+    echo "❌ Code formatting check failed!"
+    echo "💡 Run `cargo make fmt-fix` to fix formatting issues"
+    exit 1
+fi
+
+# Run cargo make clippy
+echo "🔧 Running clippy linter..."
+if ! cargo make clippy; then
+    echo ""
+    echo "❌ Clippy check failed!"
+    echo "💡 Fix the warnings above before committing by `cargo make clippy-fix`"
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"
+exit 0

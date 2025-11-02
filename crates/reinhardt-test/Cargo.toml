@@ -12,16 +12,23 @@ testcontainers = [
   "dep:testcontainers-modules",
   "dep:sqlx",
 ]
+static = ["reinhardt-static"]
 
 [dependencies]
 reinhardt-apps = { workspace = true }
+reinhardt-orm = { workspace = true }
 reinhardt-serializers = { workspace = true }
 reinhardt-views = { workspace = true }
+reinhardt-viewsets = { workspace = true }
 reinhardt-auth = { workspace = true }
 reinhardt-parsers = { workspace = true }
 reinhardt-renderers = { workspace = true }
 reinhardt-messages = { workspace = true }
 reinhardt-backends = { workspace = true }
+reinhardt-http = { workspace = true }
+reinhardt-server = { workspace = true }
+reinhardt-types = { workspace = true }
+reinhardt-exception = { workspace = true }
 
 hyper = { workspace = true }
 tokio = { workspace = true }
@@ -36,11 +43,18 @@ url = "2.5"
 cookie = "0.18"
 mime = "0.3"
 base64-simd = "0.8"
+uuid = { workspace = true }
+chrono = { workspace = true }
+env_logger = "0.11"
 
 # Optional dependencies for testcontainers feature
 testcontainers = { workspace = true, optional = true, features = ["blocking"] }
 testcontainers-modules = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
+
+# Optional dependencies for static feature
+reinhardt-static = { path = "../reinhardt-contrib/crates/static", optional = true }
+tempfile = "3.8"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

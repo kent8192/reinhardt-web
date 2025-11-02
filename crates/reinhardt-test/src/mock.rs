@@ -477,6 +477,117 @@ impl reinhardt_backends::cache::CacheBackend for DummyCache {
 	}
 }
 
+// ============================================================================
+// Handler Mocks
+// ============================================================================
+
+/// Simple handler wrapper for testing
+///
+/// Provides a convenient way to create handlers from closures for testing purposes.
+/// The handler function can be any closure that takes a [`Request`] and returns a
+/// [`Result<Response>`].
+///
+/// # Examples
+///
+/// ## Basic usage
+///
+/// ```no_run
+/// use reinhardt_test::mock::SimpleHandler;
+/// use reinhardt_apps::{Request, Response};
+/// use reinhardt_types::Handler;
+///
+/// let handler = SimpleHandler::new(|req: Request| {
+///     Ok(Response::ok().with_body("Hello, World!"))
+/// });
+///
+/// // Use handler in tests
+/// ```
+///
+/// ## With path-based routing
+///
+/// ```no_run
+/// use reinhardt_test::mock::SimpleHandler;
+/// use reinhardt_apps::{Request, Response};
+///
+/// let handler = SimpleHandler::new(|req: Request| {
+///     match req.path() {
+///         "/" => Ok(Response::ok().with_body("Home")),
+///         "/api" => Ok(Response::ok().with_body(r#"{"status": "ok"}"#)),
+///         _ => Ok(Response::not_found().with_body("Not Found")),
+///     }
+/// });
+/// ```
+///
+/// ## With custom logic
+///
+/// ```no_run
+/// use reinhardt_test::mock::SimpleHandler;
+/// use reinhardt_apps::{Request, Response};
+/// use std::sync::{Arc, Mutex};
+///
+/// let call_count = Arc::new(Mutex::new(0));
+/// let call_count_clone = call_count.clone();
+///
+/// let handler = SimpleHandler::new(move |req: Request| {
+///     let mut count = call_count_clone.lock().unwrap();
+///     *count += 1;
+///     Ok(Response::ok().with_body(format!("Call count: {}", *count)))
+/// });
+/// ```
+pub struct SimpleHandler<F>
+where
+	F: Fn(reinhardt_apps::Request) -> reinhardt_apps::Result<reinhardt_apps::Response>
+		+ Send
+		+ Sync
+		+ 'static,
+{
+	handler_fn: F,
+}
+
+impl<F> SimpleHandler<F>
+where
+	F: Fn(reinhardt_apps::Request) -> reinhardt_apps::Result<reinhardt_apps::Response>
+		+ Send
+		+ Sync
+		+ 'static,
+{
+	/// Create a new SimpleHandler with the given handler function
+	///
+	/// # Arguments
+	///
+	/// * `handler_fn` - A closure that processes requests and returns responses
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_test::mock::SimpleHandler;
+	/// use reinhardt_apps::{Request, Response};
+	///
+	/// let handler = SimpleHandler::new(|req| {
+	///     Ok(Response::ok().with_body("Success"))
+	/// });
+	/// ```
+	pub fn new(handler_fn: F) -> Self {
+		Self { handler_fn }
+	}
+}
+
+#[async_trait::async_trait]
+impl<F> reinhardt_types::Handler for SimpleHandler<F>
+where
+	F: Fn(reinhardt_apps::Request) -> reinhardt_apps::Result<reinhardt_apps::Response>
+		+ Send
+		+ Sync
+		+ 'static,
+{
+	async fn handle(
+		&self,
+		request: reinhardt_apps::Request,
+	) -> reinhardt_apps::Result<reinhardt_apps::Response> {
+		(self.handler_fn)(request)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

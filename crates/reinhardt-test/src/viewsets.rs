@@ -1,9 +1,13 @@
-//! Test ViewSet implementations for middleware testing
+//! Test ViewSet implementations for testing
+//!
+//! This module provides reusable ViewSet implementations for testing purposes.
+//! These ViewSets are part of the reinhardt-test crate and can be used across
+//! different test scenarios in the Reinhardt framework.
 
-use crate::middleware::{CompositeMiddleware, ViewSetMiddleware};
-use crate::{Action, ViewSet};
 use async_trait::async_trait;
 use reinhardt_apps::{Request, Response, Result};
+use reinhardt_viewsets::middleware::{CompositeMiddleware, ViewSetMiddleware};
+use reinhardt_viewsets::{Action, ViewSet};
 use std::sync::Arc;
 
 /// Test ViewSet with configurable middleware support
@@ -34,8 +38,8 @@ impl TestViewSet {
 	}
 
 	/// Convert ViewSet to Handler with action mapping
-	pub fn as_view(self) -> crate::builder::ViewSetBuilder<Self> {
-		crate::builder::ViewSetBuilder::new(self)
+	pub fn as_view(self) -> reinhardt_viewsets::builder::ViewSetBuilder<Self> {
+		reinhardt_viewsets::builder::ViewSetBuilder::new(self)
 	}
 }
 
@@ -103,54 +107,5 @@ impl ViewSet for SimpleViewSet {
 		let mut response = Response::new(hyper::StatusCode::OK);
 		response.body = "Simple response".into();
 		Ok(response)
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use hyper::{HeaderMap, Method, Uri, Version};
-
-	fn create_test_request() -> Request {
-		Request::new(
-			Method::GET,
-			Uri::from_static("/test/"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			bytes::Bytes::new(),
-		)
-	}
-
-	#[tokio::test]
-	async fn test_viewset_without_middleware() {
-		let viewset = TestViewSet::new("test");
-		assert!(!viewset.requires_login());
-		assert!(viewset.get_required_permissions().is_empty());
-		assert!(viewset.get_middleware().is_none());
-
-		let request = create_test_request();
-		let action = Action::list();
-		let response = viewset.dispatch(request, action).await;
-		assert!(response.is_ok());
-	}
-
-	#[tokio::test]
-	async fn test_viewset_with_login_required() {
-		let viewset = TestViewSet::new("test").with_login_required(true);
-		assert!(viewset.requires_login());
-		assert!(viewset.get_middleware().is_some());
-
-		let request = create_test_request();
-		let action = Action::list();
-		let response = viewset.dispatch(request, action).await;
-		assert!(response.is_ok());
-	}
-
-	#[tokio::test]
-	async fn test_viewset_with_permissions() {
-		let permissions = vec!["read".to_string(), "write".to_string()];
-		let viewset = TestViewSet::new("test").with_permissions(permissions.clone());
-		assert_eq!(viewset.get_required_permissions(), permissions);
-		assert!(viewset.get_middleware().is_some());
 	}
 }

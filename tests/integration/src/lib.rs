@@ -3,9 +3,8 @@
 //! This crate provides common utilities for integration testing
 //! across multiple Reinhardt crates with HTTP framework integration.
 
-use async_trait::async_trait;
 use bytes::Bytes;
-use reinhardt_apps::{Handler, Request, Response, Result};
+use reinhardt_apps::{Handler, Request};
 use sqlx::{Pool, Postgres};
 // NOTE: AssertSqlSafe trait was removed in newer sqlx versions (v0.6+)
 // This import is no longer needed as the trait is not used in tests
@@ -17,12 +16,10 @@ use std::sync::Arc;
 // pub mod flatpages_app;
 pub mod message_middleware_mock;
 pub mod messages_helpers;
-pub mod security_test_helpers;
 
 // New shared modules
 // pub mod flatpages_common;
 pub mod proxy;
-pub mod test_helpers;
 pub mod validator_test_common;
 
 /// Test database setup
@@ -156,32 +153,7 @@ impl Drop for TestServer {
 	}
 }
 
-/// Simple handler wrapper for testing
-pub struct SimpleHandler<F>
-where
-	F: Fn(Request) -> Result<Response> + Send + Sync + 'static,
-{
-	handler_fn: F,
-}
-
-impl<F> SimpleHandler<F>
-where
-	F: Fn(Request) -> Result<Response> + Send + Sync + 'static,
-{
-	pub fn new(handler_fn: F) -> Self {
-		Self { handler_fn }
-	}
-}
-
-#[async_trait]
-impl<F> Handler for SimpleHandler<F>
-where
-	F: Fn(Request) -> Result<Response> + Send + Sync + 'static,
-{
-	async fn handle(&self, request: Request) -> Result<Response> {
-		(self.handler_fn)(request)
-	}
-}
+pub use reinhardt_test::mock::SimpleHandler;
 
 /// Helper to make HTTP requests in tests
 pub async fn make_request(

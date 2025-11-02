@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::test_helpers::{shutdown_test_server, spawn_test_server};
+use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
 
 // GraphQL Schema for a simple book library
 

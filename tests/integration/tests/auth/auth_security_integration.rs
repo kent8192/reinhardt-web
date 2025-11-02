@@ -3,7 +3,7 @@
 //! Tests HTTP authentication mechanisms
 //! Based on FastAPI's test_security_*.py tests
 
-use reinhardt_integration_tests::security_test_helpers::*;
+use reinhardt_test::http::*;
 
 use base64::{Engine as _, engine::general_purpose};
 use hyper::StatusCode;

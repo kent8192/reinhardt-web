@@ -2,6 +2,78 @@
 //!
 //! Provides automatic Docker container management for testing with real databases.
 //! Containers are automatically started and cleaned up during tests.
+//!
+//! # Features
+//!
+//! - **PostgreSQL**: Full-featured PostgreSQL container with customizable credentials
+//! - **MySQL**: MySQL container with customizable credentials
+//! - **Redis**: Redis container for cache/session testing
+//! - **SQLite**: In-memory and temporary file database URLs
+//!
+//! # Container Types
+//!
+//! ## PostgresContainer
+//!
+//! ```ignore
+//! use reinhardt_test::containers::PostgresContainer;
+//!
+//! let container = PostgresContainer::new();
+//! let url = container.connection_url();
+//! // Use url for database connection
+//! ```
+//!
+//! ## MySqlContainer
+//!
+//! ```ignore
+//! use reinhardt_test::containers::MySqlContainer;
+//!
+//! let container = MySqlContainer::new();
+//! let url = container.connection_url();
+//! ```
+//!
+//! ## RedisContainer
+//!
+//! ```ignore
+//! use reinhardt_test::containers::RedisContainer;
+//!
+//! let container = RedisContainer::new();
+//! let url = container.connection_url();
+//! ```
+//!
+//! # Helper Functions
+//!
+//! ## Quick Start Functions
+//!
+//! ```ignore
+//! use reinhardt_test::containers::{start_postgres, start_redis};
+//!
+//! let (pg_container, pg_url) = start_postgres();
+//! let (redis_container, redis_url) = start_redis();
+//! ```
+//!
+//! ## Test Wrapper Functions
+//!
+//! ```ignore
+//! use reinhardt_test::containers::with_postgres;
+//!
+//! #[tokio::test]
+//! async fn my_test() {
+//!     with_postgres(|db| async move {
+//!         let url = db.connection_url();
+//!         // Use database...
+//!         Ok(())
+//!     }).await.unwrap();
+//! }
+//! ```
+//!
+//! ## SQLite Helpers
+//!
+//! ```ignore
+//! use reinhardt_test::containers::sqlite;
+//!
+//! let memory_url = sqlite::memory_url();
+//! let temp_url = sqlite::temp_file_url("my_test");
+//! ```
 
 use testcontainers::runners::SyncRunner;
 use testcontainers::{Container, ImageExt};
@@ -31,6 +103,34 @@ pub struct PostgresContainer {
 	database: String,
 	username: String,
 	password: String,
+}
+
+/// Helper function to start a PostgreSQL container with default credentials
+///
+/// This is provided for compatibility with existing test code.
+/// Returns a tuple of (container, connection_url).
+///
+/// Default credentials:
+/// - Username: postgres
+/// - Password: postgres
+/// - Database: test
+pub fn start_postgres() -> (PostgresContainer, String) {
+	let container = PostgresContainer::new();
+	let url = container.connection_url();
+	(container, url)
+}
+
+/// Helper function to start a PostgreSQL container with custom credentials
+///
+/// Returns a tuple of (container, connection_url).
+pub fn start_postgres_with_credentials(
+	username: &str,
+	password: &str,
+	database: &str,
+) -> (PostgresContainer, String) {
+	let container = PostgresContainer::with_credentials(username, password, database);
+	let url = container.connection_url();
+	(container, url)
 }
 
 impl Default for PostgresContainer {
@@ -169,6 +269,16 @@ pub struct RedisContainer {
 	port: u16,
 }
 
+/// Helper function to start a Redis container (alias for RedisContainer::new)
+///
+/// This is provided for compatibility with existing test code.
+/// Returns a tuple of (container, connection_url).
+pub fn start_redis() -> (RedisContainer, String) {
+	let container = RedisContainer::new();
+	let url = container.connection_url();
+	(container, url)
+}
+
 impl Default for RedisContainer {
 	fn default() -> Self {
 		Self::new()
@@ -240,6 +350,41 @@ where
 {
 	let container = RedisContainer::new();
 	f(container).await
+}
+
+/// SQLite test helpers
+pub mod sqlite {
+	/// Get a SQLite in-memory database URL for testing
+	///
+	/// This returns a connection URL for an in-memory SQLite database,
+	/// which is useful for fast tests that don't require a real database container.
+	///
+	/// # Example
+	/// ```ignore
+	/// use reinhardt_test::containers::sqlite::memory_url;
+	///
+	/// let url = memory_url();
+	/// assert_eq!(url, "sqlite::memory:");
+	/// ```
+	pub fn memory_url() -> &'static str {
+		"sqlite::memory:"
+	}
+
+	/// Get a SQLite temporary file database URL for testing
+	///
+	/// Creates a temporary file-based SQLite database. The file is automatically
+	/// cleaned up when the test completes (if using proper cleanup).
+	///
+	/// # Example
+	/// ```ignore
+	/// use reinhardt_test::containers::sqlite::temp_file_url;
+	///
+	/// let url = temp_file_url("test_db");
+	/// // Use the database...
+	/// ```
+	pub fn temp_file_url(name: &str) -> String {
+		format!("sqlite:/tmp/{}.db", name)
+	}
 }
 
 #[cfg(test)]

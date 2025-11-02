@@ -3,7 +3,7 @@
 //! Tests session cookie security settings
 //! Based on Django's check_framework/test_security.py session tests
 
-use reinhardt_integration_tests::security_test_helpers::*;
+use reinhardt_test::http::*;
 
 use hyper::header::{HeaderValue, SET_COOKIE};
 

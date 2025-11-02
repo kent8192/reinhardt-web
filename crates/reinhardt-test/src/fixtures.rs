@@ -189,6 +189,38 @@ where
 	_phantom: std::marker::PhantomData<T>,
 }
 
+/// Generate a random test key using UUID
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::fixtures::random_test_key;
+///
+/// let key = random_test_key();
+/// assert!(key.starts_with("test_key_"));
+/// ```
+pub fn random_test_key() -> String {
+	use uuid::Uuid;
+	format!("test_key_{}", Uuid::new_v4().simple())
+}
+
+/// Generate test configuration data with timestamp
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::fixtures::test_config_value;
+///
+/// let value = test_config_value("my_value");
+/// assert_eq!(value["value"], "my_value");
+/// ```
+pub fn test_config_value(value: &str) -> serde_json::Value {
+	serde_json::json!({
+		"value": value,
+		"timestamp": chrono::Utc::now().to_rfc3339(),
+	})
+}
+
 impl<T, F> FactoryBuilder<T, F>
 where
 	F: Fn() -> T + Send + Sync,
