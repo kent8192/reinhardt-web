@@ -147,6 +147,10 @@ path = "tests/auth/auth_security_integration.rs"
 name = "session_security_integration"
 path = "tests/sessions/session_security_integration.rs"
 
+[[test]]
+name = "sessions_database_backend_integration"
+path = "tests/sessions/database_backend_integration.rs"
+
 
 # Temporarily disabled due to reinhardt-contrib View import error
 # [[test]]
