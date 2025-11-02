@@ -1,13 +1,13 @@
 # Reinhardt Examples Tests
 
-このディレクトリには、**crates.io から公開された reinhardt** を使用した実際のアプリケーション例が含まれています。
+This directory contains practical application examples using **reinhardt published from crates.io**.
 
 ## 🎯 Purpose
 
-- **crates.io からの取得**: ローカルの実装ではなく、公開版を使用
-- **バージョン検証**: 各 example が特定のバージョンで動作することを保証
-- **エンドツーエンドテスト**: 実際のユーザー環境での動作を検証
-- **インフラストラクチャ**: Podman + docker-compose で再現可能な環境
+- **Fetch from crates.io**: Uses published version, not local implementation
+- **Version validation**: Ensures each example works with specific versions
+- **End-to-end testing**: Validates functionality in actual user environments
+- **Infrastructure**: Reproducible environment with Podman + docker-compose
 
 ## 📋 Prerequisites
 
@@ -119,21 +119,21 @@ fn test_latest() { }  // Latest version
 ### Example Features
 
 #### hello-world
-- 最小限の構成
-- シンプルなエントリーポイント
-- Reinhardtの基本的な使い方
+- Minimal configuration
+- Simple entry point
+- Basic Reinhardt usage
 
-#### rest-api ([詳細](rest-api/README.md))
-- **Django風のプロジェクト構造**: config/, settings/, apps.rs
-- **環境別設定**: local, staging, production
-- **manage CLI**: `cargo run --bin manage` でDjango風の管理コマンド
+#### rest-api ([Details](rest-api/README.md))
+- **Django-style project structure**: config/, settings/, apps.rs
+- **Environment-specific settings**: local, staging, production
+- **manage CLI**: Django-style management commands via `cargo run --bin manage`
 - **URL routing**: RESTful API endpoints
 
-#### database-integration ([詳細](database-integration/README.md))
-- **Django風のプロジェクト構造**: config/, settings/, apps.rs
-- **データベース設定管理**: 環境別のDB接続設定
-- **マイグレーションシステム**: スキーマのバージョン管理
-- **manage CLI**: makemigrations, migrateコマンド
+#### database-integration ([Details](database-integration/README.md))
+- **Django-style project structure**: config/, settings/, apps.rs
+- **Database configuration management**: Environment-specific DB connection settings
+- **Migration system**: Schema version control
+- **manage CLI**: makemigrations, migrate commands
 
 ## 🏗️ Workspace Structure
 
@@ -143,7 +143,7 @@ examples/                    # Independent workspace
 ├── test-macros/            # Custom test macros
 ├── common/                 # Common utilities
 │   └── src/
-│       └── manage_cli.rs   # 共通manage CLI実装
+│       └── manage_cli.rs   # Shared manage CLI implementation
 ├── hello-world/            # Example 1 (minimal structure)
 ├── rest-api/               # Example 2 (full structure)
 │   └── src/
@@ -168,47 +168,47 @@ Examples (`rest-api`, `database-integration`) use **Django-style project structu
 ```
 src/
 ├── config/
-│   ├── apps.rs              # インストール済みアプリの定義
-│   ├── settings.rs          # 環境に応じた設定ローダー
+│   ├── apps.rs              # Installed apps definition
+│   ├── settings.rs          # Environment-based settings loader
 │   ├── settings/
-│   │   ├── base.rs          # 全環境共通の基本設定
-│   │   ├── local.rs         # ローカル開発環境設定
-│   │   ├── staging.rs       # ステージング環境設定
-│   │   └── production.rs    # 本番環境設定
-│   └── urls.rs              # URLルーティング設定
-├── apps.rs                  # アプリレジストリ
-├── config.rs                # configモジュール宣言
-├── main.rs                  # アプリケーションエントリーポイント
+│   │   ├── base.rs          # Common settings for all environments
+│   │   ├── local.rs         # Local development settings
+│   │   ├── staging.rs       # Staging environment settings
+│   │   └── production.rs    # Production environment settings
+│   └── urls.rs              # URL routing configuration
+├── apps.rs                  # App registry
+├── config.rs                # config module declaration
+├── main.rs                  # Application entry point
 └── bin/
-    └── manage.rs            # 管理CLIツール (Django's manage.py)
+    └── manage.rs            # Management CLI tool (Django's manage.py)
 ```
 
 ### manage CLI
 
-Django風の管理コマンドツール:
+Django-style management command tool:
 
 ```bash
-# 開発サーバー起動
+# Start development server
 cargo run --bin manage runserver [address]
 
-# データベースマイグレーション
+# Database migrations
 cargo run --bin manage makemigrations [app_labels...]
 cargo run --bin manage migrate [app_label] [migration_name]
 
-# 対話型シェル
+# Interactive shell
 cargo run --bin manage shell [-c command]
 
-# プロジェクトチェック
+# Project check
 cargo run --bin manage check [app_label]
 
-# 静的ファイル収集
+# Collect static files
 cargo run --bin manage collectstatic [options]
 
-# URL一覧表示
+# Show URL list
 cargo run --bin manage showurls [--names]
 ```
 
-詳細は各exampleのREADMEを参照してください。
+See each example's README for details.
 
 ## 🐳 Infrastructure
 
@@ -258,7 +258,7 @@ URL: redis://localhost:6379
 
 Examples using databases utilize **reinhardt-migrations** for schema management:
 
-- **No SQL Scripts**: Database initialization is handled through migrations
+- **No SQL Scripts**: Database initialization handled through migrations
 - **Automatic Application**: Migrations run on application startup
 - **Version Control**: Migration history tracked in code
 

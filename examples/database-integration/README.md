@@ -1,51 +1,51 @@
 # Database Integration Example
 
-このexampleは、ReinhardtフレームワークでのデータベースORM、マイグレーション、データベース接続の統合方法を示します。
+This example demonstrates database ORM, migrations, and database connection integration in the Reinhardt framework.
 
-## 特徴
+## Features
 
-- **Django風のプロジェクト構造**: config/, settings/, apps.rsを使用
-- **データベース設定管理**: 環境別のデータベース接続設定
-- **マイグレーションシステム**: データベーススキーマのバージョン管理
-- **manage CLI**: データベース管理コマンド（makemigrations, migrate）
+- **Django-style project structure**: Uses config/, settings/, apps.rs
+- **Database configuration management**: Environment-specific database connection settings
+- **Migration system**: Database schema version control
+- **manage CLI**: Database management commands (makemigrations, migrate)
 
-## プロジェクト構造
+## Project Structure
 
 ```
 src/
 ├── config/
-│   ├── apps.rs              # インストール済みアプリの定義
-│   ├── settings.rs          # 環境に応じた設定ローダー
+│   ├── apps.rs              # Installed apps definition
+│   ├── settings.rs          # Environment-based settings loader
 │   ├── settings/
-│   │   ├── base.rs          # 全環境共通の基本設定
-│   │   ├── local.rs         # ローカル開発環境設定（DB設定含む）
-│   │   ├── staging.rs       # ステージング環境設定
-│   │   └── production.rs    # 本番環境設定
-│   └── urls.rs              # URLルーティング設定
-├── migrations.rs            # マイグレーション定義
-├── migrations/              # マイグレーションファイル
-│   └── 0001_initial.rs      # 初期マイグレーション
-├── apps.rs                  # アプリレジストリ
-├── config.rs                # configモジュール宣言
-├── main.rs                  # アプリケーションエントリーポイント
+│   │   ├── base.rs          # Common settings for all environments
+│   │   ├── local.rs         # Local development settings (including DB config)
+│   │   ├── staging.rs       # Staging environment settings
+│   │   └── production.rs    # Production environment settings
+│   └── urls.rs              # URL routing configuration
+├── migrations.rs            # Migration definitions
+├── migrations/              # Migration files
+│   └── 0001_initial.rs      # Initial migration
+├── apps.rs                  # App registry
+├── config.rs                # config module declaration
+├── main.rs                  # Application entry point
 └── bin/
-    └── manage.rs            # 管理CLIツール
+    └── manage.rs            # Management CLI tool
 ```
 
-## セットアップ
+## Setup
 
-### 前提条件
+### Prerequisites
 
-- Rust 2024 edition以降
-- PostgreSQL, MySQL, またはSQLite
+- Rust 2024 edition or later
+- PostgreSQL, MySQL, or SQLite
 - Cargo
 
-### データベースのセットアップ
+### Database Setup
 
-#### PostgreSQL (推奨)
+#### PostgreSQL (Recommended)
 
 ```bash
-# PostgreSQLサーバーの起動
+# Start PostgreSQL server
 podman run -d \
   --name reinhardt-postgres \
   -e POSTGRES_USER=reinhardt \
@@ -58,7 +58,7 @@ podman run -d \
 #### MySQL
 
 ```bash
-# MySQLサーバーの起動
+# Start MySQL server
 podman run -d \
   --name reinhardt-mysql \
   -e MYSQL_ROOT_PASSWORD=rootpass \
@@ -71,23 +71,23 @@ podman run -d \
 
 #### SQLite
 
-SQLiteを使用する場合は追加のセットアップは不要です。
+No additional setup required for SQLite.
 
-### ビルド
+### Build
 
 ```bash
-# プロジェクトルートから
+# From project root
 cargo build --package example-database-integration
 ```
 
-**注**: このexampleはreinhardtが crates.ioに公開された後にビルド可能になります（version ^0.1）。
+**Note**: This example will be buildable after reinhardt is published to crates.io (version ^0.1).
 
-## 使用方法
+## Usage
 
-### 環境変数の設定
+### Environment Variables
 
 ```bash
-# PostgreSQL（デフォルト）
+# PostgreSQL (default)
 export DATABASE_URL="postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_examples"
 
 # MySQL
@@ -97,29 +97,29 @@ export DATABASE_URL="mysql://reinhardt:reinhardt_dev@localhost:3306/reinhardt_ex
 export DATABASE_URL="sqlite://./db.sqlite3"
 ```
 
-### マイグレーション管理
+### Migration Management
 
 ```bash
-# 新しいマイグレーションの作成
+# Create new migration
 cargo run --bin manage makemigrations
 
-# マイグレーションの適用
+# Apply migrations
 cargo run --bin manage migrate
 
-# マイグレーション計画の確認（dry-run）
+# View migration plan (dry-run)
 cargo run --bin manage migrate --plan
 
-# 特定のマイグレーションまで適用
+# Apply up to specific migration
 cargo run --bin manage migrate app_name migration_name
 ```
 
-### アプリケーションの実行
+### Running Application
 
 ```bash
 cargo run --package example-database-integration
 ```
 
-出力例:
+Output example:
 ```
 Database Integration Example
 ✅ Application initialized
@@ -128,9 +128,9 @@ Database URL: postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_exampl
 ✅ Application started successfully
 ```
 
-## データベース設定
+## Database Configuration
 
-### local.rs での設定
+### Configuration in local.rs
 
 ```rust
 use reinhardt_core::DatabaseConfig;
@@ -144,23 +144,23 @@ settings.database = Some(DatabaseConfig {
 });
 ```
 
-### 環境別の設定
+### Environment-Specific Settings
 
-| 環境 | ファイル | データベースURL | 接続プール |
-|------|---------|----------------|-----------|
-| local | local.rs | 環境変数 or デフォルト | 10 connections |
-| staging | staging.rs | 環境変数必須 | 20 connections |
-| production | production.rs | 環境変数必須 | 50 connections |
+| Environment | File | Database URL | Connection Pool |
+|-------------|------|--------------|-----------------|
+| local | local.rs | Env var or default | 10 connections |
+| staging | staging.rs | Env var required | 20 connections |
+| production | production.rs | Env var required | 50 connections |
 
-## マイグレーションの作成
+## Creating Migrations
 
-### 1. マイグレーションファイルの作成
+### 1. Create Migration File
 
 ```bash
 cargo run --bin manage makemigrations --name create_users_table
 ```
 
-### 2. migrations/ディレクトリにファイルを作成
+### 2. Create File in migrations/ Directory
 
 ```rust
 // migrations/0002_create_users_table.rs
@@ -192,7 +192,7 @@ impl MigrationTrait for Migration {
 }
 ```
 
-### 3. migrations.rsに登録
+### 3. Register in migrations.rs
 
 ```rust
 // src/migrations.rs
@@ -207,40 +207,40 @@ pub fn all_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 ```
 
-## トラブルシューティング
+## Troubleshooting
 
-### 接続エラー
+### Connection Errors
 
 ```
 Error: Database connection failed
 ```
 
-**解決方法:**
-1. データベースサーバーが起動していることを確認
-2. DATABASE_URL環境変数が正しく設定されているか確認
-3. 認証情報（ユーザー名、パスワード）が正しいか確認
+**Solutions:**
+1. Verify database server is running
+2. Check DATABASE_URL environment variable is set correctly
+3. Verify credentials (username, password) are correct
 
-### マイグレーションエラー
+### Migration Errors
 
 ```
 Error: Migration failed: table already exists
 ```
 
-**解決方法:**
-1. `--fake` オプションでマイグレーションを適用済みとしてマーク
-2. または `--fake-initial` で初期マイグレーションのみスキップ
+**Solutions:**
+1. Mark migration as applied using `--fake` option
+2. Or skip initial migration only with `--fake-initial`
 
 ```bash
 cargo run --bin manage migrate --fake-initial
 ```
 
-## 参考
+## References
 
 - [Reinhardt ORM Documentation](https://docs.rs/reinhardt-orm)
 - [Reinhardt Migrations Guide](https://docs.rs/reinhardt-migrations)
 - [Django Migrations](https://docs.djangoproject.com/en/stable/topics/migrations/)
 - [SQLAlchemy](https://www.sqlalchemy.org/)
 
-## ライセンス
+## License
 
-このexampleはReinhardtプロジェクトの一部として、MIT/Apache-2.0ライセンスの下で提供されています。
+This example is provided as part of the Reinhardt project under MIT/Apache-2.0 license.
