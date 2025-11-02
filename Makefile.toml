@@ -76,6 +76,10 @@ args = [
     "warnings",
 ]
 
+[tasks.auto-fix]
+description = "Run all tests"
+dependencies = ["fmt-fix", "clippy-fix"]
+
 # ============================================================================
 # Testing Tasks
 # ============================================================================
@@ -106,10 +110,6 @@ dependencies = ["doc-test", "unit-test", "integration-test"]
 [tasks.ci]
 description = "Run all CI checks (check, fmt, clippy, tests)"
 dependencies = ["check", "fmt", "clippy", "test"]
-
-[tasks.ci-local]
-description = "Run CI checks suitable for local development (excludes integration tests)"
-dependencies = ["check", "fmt", "clippy", "unit-test"]
 
 # ============================================================================
 # Documentation Tasks

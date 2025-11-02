@@ -171,7 +171,17 @@ my-api/
 └── README.md
 ```
 
-### 3. Run the Development Server
+### 3. Setup Git Hooks (Recommended)
+
+Run the setup script to install pre-commit hooks:
+
+```bash
+./scripts/setup-hooks.sh
+```
+
+This will automatically check code formatting and linting before each commit.
+
+### 4. Run the Development Server
 
 ```bash
 # Using the runserver binary (recommended)
@@ -183,7 +193,7 @@ cargo run --bin manage runserver
 # Server will start at http://127.0.0.1:8000
 ```
 
-### 4. Create Your First App
+### 5. Create Your First App
 
 ```bash
 # Create a new app
@@ -206,7 +216,7 @@ users/
 └── tests.rs
 ```
 
-### 5. Register Routes
+### 6. Register Routes
 
 Edit your app's `urls.rs`:
 
