@@ -6,82 +6,95 @@ use reinhardt_i18n::{
 	MessageCatalog, activate, deactivate, get_language, gettext, load_catalog, ngettext, npgettext,
 	pgettext,
 };
+use reinhardt_test::resource::{TeardownGuard, TestResource};
+use rstest::*;
 use serial_test::serial;
-use std::sync::Mutex;
 
-// Global lock to serialize tests that modify global state
-static TEST_LOCK: Mutex<()> = Mutex::new(());
+/// Test environment for i18n tests with automatic setup/teardown
+struct I18nTestEnv;
 
-fn setup_test_catalogs() {
-	// Setup French catalog
-	let mut fr_catalog = MessageCatalog::new("fr-FR");
+impl TestResource for I18nTestEnv {
+	fn setup() -> Self {
+		// Setup French catalog
+		let mut fr_catalog = MessageCatalog::new("fr-FR");
 
-	// Add simple translations
-	fr_catalog.add("Hello".to_string(), "Bonjour".to_string());
-	fr_catalog.add("Goodbye".to_string(), "Au revoir".to_string());
+		// Add simple translations
+		fr_catalog.add("Hello".to_string(), "Bonjour".to_string());
+		fr_catalog.add("Goodbye".to_string(), "Au revoir".to_string());
 
-	// Add plural translations (French: 0 is singular, >1 is plural)
-	fr_catalog.add_plural(
-		"%(num)d year".to_string(),
-		vec!["%(num)d année".to_string(), "%(num)d ans".to_string()],
-	);
-	fr_catalog.add_plural(
-		"%(size)d byte".to_string(),
-		vec!["%(size)d octet".to_string(), "%(size)d octets".to_string()],
-	);
+		// Add plural translations (French: 0 is singular, >1 is plural)
+		fr_catalog.add_plural(
+			"%(num)d year".to_string(),
+			vec!["%(num)d année".to_string(), "%(num)d ans".to_string()],
+		);
+		fr_catalog.add_plural(
+			"%(size)d byte".to_string(),
+			vec!["%(size)d octet".to_string(), "%(size)d octets".to_string()],
+		);
 
-	// Add context translations
-	fr_catalog.add_context(
-		"month name".to_string(),
-		"May".to_string(),
-		"Mai".to_string(),
-	);
-	fr_catalog.add_context("verb".to_string(), "May".to_string(), "Kann".to_string());
+		// Add context translations
+		fr_catalog.add_context(
+			"month name".to_string(),
+			"May".to_string(),
+			"Mai".to_string(),
+		);
+		fr_catalog.add_context("verb".to_string(), "May".to_string(), "Kann".to_string());
 
-	// Add contextual plural
-	fr_catalog.add_plural(
-		"search:%(num)d result".to_string(),
-		vec![
-			"%(num)d Resultat".to_string(),
-			"%(num)d Resultate".to_string(),
-		],
-	);
+		// Add contextual plural
+		fr_catalog.add_plural(
+			"search:%(num)d result".to_string(),
+			vec![
+				"%(num)d Resultat".to_string(),
+				"%(num)d Resultate".to_string(),
+			],
+		);
 
-	load_catalog("fr-FR", fr_catalog).unwrap();
+		load_catalog("fr-FR", fr_catalog).unwrap();
 
-	// Setup German catalog
-	let mut de_catalog = MessageCatalog::new("de-DE");
-	de_catalog.add("Password".to_string(), "Passwort".to_string());
-	de_catalog.add_context(
-		"month name".to_string(),
-		"May".to_string(),
-		"Mai".to_string(),
-	);
-	de_catalog.add_context("verb".to_string(), "May".to_string(), "Kann".to_string());
-	de_catalog.add_plural(
-		"search:%(num)d result".to_string(),
-		vec![
-			"%(num)d Resultat".to_string(),
-			"%(num)d Resultate".to_string(),
-		],
-	);
+		// Setup German catalog
+		let mut de_catalog = MessageCatalog::new("de-DE");
+		de_catalog.add("Password".to_string(), "Passwort".to_string());
+		de_catalog.add_context(
+			"month name".to_string(),
+			"May".to_string(),
+			"Mai".to_string(),
+		);
+		de_catalog.add_context("verb".to_string(), "May".to_string(), "Kann".to_string());
+		de_catalog.add_plural(
+			"search:%(num)d result".to_string(),
+			vec![
+				"%(num)d Resultat".to_string(),
+				"%(num)d Resultate".to_string(),
+			],
+		);
 
-	load_catalog("de-DE", de_catalog).unwrap();
+		load_catalog("de-DE", de_catalog).unwrap();
 
-	// Setup Polish catalog
-	let mut pl_catalog = MessageCatalog::new("pl-PL");
-	pl_catalog.add("Hello".to_string(), "Witaj".to_string());
-	pl_catalog.add("Add %(name)s".to_string(), "Dodaj %(name)s".to_string());
+		// Setup Polish catalog
+		let mut pl_catalog = MessageCatalog::new("pl-PL");
+		pl_catalog.add("Hello".to_string(), "Witaj".to_string());
+		pl_catalog.add("Add %(name)s".to_string(), "Dodaj %(name)s".to_string());
 
-	load_catalog("pl-PL", pl_catalog).unwrap();
+		load_catalog("pl-PL", pl_catalog).unwrap();
+
+		Self
+	}
+
+	fn teardown(&mut self) {
+		// Deactivate any active language
+		deactivate();
+	}
 }
 
-#[test]
-#[serial(i18n)]
-fn test_plural_french() {
-	let _lock = TEST_LOCK.lock().unwrap();
-	setup_test_catalogs();
+/// Fixture providing i18n test environment with automatic cleanup
+#[fixture]
+fn i18n_ctx() -> TeardownGuard<I18nTestEnv> {
+	TeardownGuard::new()
+}
 
+#[rstest]
+#[serial(i18n)]
+fn test_plural_french(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	activate("fr-FR").unwrap();
 
 	// French: 0 is singular
@@ -99,16 +112,14 @@ fn test_plural_french() {
 	let result = ngettext("%(size)d byte", "%(size)d bytes", 2);
 	assert_eq!(result.replace("%(size)d", "2"), "2 octets");
 
-	deactivate();
+	// teardown() is automatically called
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_plural_null() {
-	let _lock = TEST_LOCK.lock().unwrap();
-
+fn test_plural_null(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	// When no translation is available, use default English rules
-	deactivate();
+	// (deactivate is called in teardown)
 
 	let result = ngettext("%(num)d year", "%(num)d years", 0);
 	assert_eq!(result.replace("%(num)d", "0"), "0 years");
@@ -120,12 +131,9 @@ fn test_plural_null() {
 	assert_eq!(result.replace("%(num)d", "2"), "2 years");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_gettext_simple() {
-	let _lock = TEST_LOCK.lock().unwrap();
-	setup_test_catalogs();
-
+fn test_gettext_simple(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	activate("fr-FR").unwrap();
 
 	let result = gettext("Hello");
@@ -133,27 +141,20 @@ fn test_gettext_simple() {
 
 	let result = gettext("Goodbye");
 	assert_eq!(result, "Au revoir");
-
-	deactivate();
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_gettext_untranslated() {
-	let _lock = TEST_LOCK.lock().unwrap();
-
-	deactivate();
+fn test_gettext_untranslated(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
+	// No activation - should use untranslated message
 
 	let result = gettext("Untranslated message");
 	assert_eq!(result, "Untranslated message");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_pgettext() {
-	let _lock = TEST_LOCK.lock().unwrap();
-	setup_test_catalogs();
-
+fn test_pgettext(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	activate("de-DE").unwrap();
 
 	// Unexisting context returns original message
@@ -167,16 +168,11 @@ fn test_pgettext() {
 	// Context "verb"
 	let result = pgettext("verb", "May");
 	assert_eq!(result, "Kann");
-
-	deactivate();
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_npgettext() {
-	let _lock = TEST_LOCK.lock().unwrap();
-	setup_test_catalogs();
-
+fn test_npgettext(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	activate("de-DE").unwrap();
 
 	let result = npgettext("search", "%(num)d result", "%(num)d results", 4);
@@ -184,32 +180,22 @@ fn test_npgettext() {
 
 	let result = npgettext("search", "%(num)d result", "%(num)d results", 1);
 	assert_eq!(result.replace("%(num)d", "1"), "1 Resultat");
-
-	deactivate();
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_empty_value() {
-	let _lock = TEST_LOCK.lock().unwrap();
-	setup_test_catalogs();
-
+fn test_empty_value(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	activate("de-DE").unwrap();
 
 	// Empty value must stay empty after being translated
 	let result = gettext("");
 	assert_eq!(result, "");
-
-	deactivate();
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_activate_deactivate() {
-	let _lock = TEST_LOCK.lock().unwrap();
-
-	// Initially should be fallback locale
-	deactivate();
+fn test_activate_deactivate(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
+	// Initially should be fallback locale (teardown calls deactivate)
 	assert_eq!(get_language(), "en-US");
 
 	// Activate German
@@ -225,11 +211,9 @@ fn test_activate_deactivate() {
 	assert_eq!(get_language(), "en-US");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_override_behavior() {
-	let _lock = TEST_LOCK.lock().unwrap();
-
+fn test_override_behavior(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	// Activate German
 	activate("de-DE").unwrap();
 	assert_eq!(get_language(), "de-DE");
@@ -247,22 +231,18 @@ fn test_override_behavior() {
 	assert_eq!(get_language(), "en-US");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_translation_invalid_locale() {
-	let _lock = TEST_LOCK.lock().unwrap();
-
+fn test_translation_invalid_locale(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	// Invalid locale should return error
 	let result = activate("123-@#$-invalid");
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_translation_ngettext_defaults() {
-	let _lock = TEST_LOCK.lock().unwrap();
-
-	deactivate();
+fn test_translation_ngettext_defaults(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
+	// Use default English rules (no activation)
 
 	// Test default English plural rules
 	let result_singular = ngettext("There is {} item", "There are {} items", 1);
@@ -275,27 +255,20 @@ fn test_translation_ngettext_defaults() {
 	assert_eq!(result_plural, "There are {} items");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_fallback_to_english() {
-	let _lock = TEST_LOCK.lock().unwrap();
-
+fn test_fallback_to_english(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	// Activate a locale without catalog
 	activate("ja-JP").unwrap();
 
 	// Should fallback to untranslated message
 	let result = gettext("Untranslated");
 	assert_eq!(result, "Untranslated");
-
-	deactivate();
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
-fn test_get_language() {
-	let _lock = TEST_LOCK.lock().unwrap();
-
-	deactivate();
+fn test_get_language(_i18n_ctx: TeardownGuard<I18nTestEnv>) {
 	assert_eq!(get_language(), "en-US");
 
 	activate("fr-FR").unwrap();
