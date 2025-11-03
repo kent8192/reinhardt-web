@@ -60,6 +60,10 @@ tokio-util = { version = "0.7", features = ["compat"], optional = true }
 reinhardt-static = { path = "../reinhardt-contrib/crates/static", optional = true }
 tempfile = "3.8"
 
+# Testing framework dependencies
+rstest = "0.24"
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
 tokio-test = "0.4"
+scopeguard = "1.2"
