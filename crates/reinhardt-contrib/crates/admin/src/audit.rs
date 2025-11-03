@@ -927,8 +927,6 @@ impl AuditLogger for DatabaseAuditLogger {
 			.map_err(|e| format!("{}", e))?;
 
 		// Parse returned row data to extract ID
-		// Note: In a real implementation, we would properly parse the row data
-		// For now, we'll use a placeholder approach
 		if let Some(id_value) = row.data.get("id")
 			&& let Some(id) = id_value.as_i64()
 		{

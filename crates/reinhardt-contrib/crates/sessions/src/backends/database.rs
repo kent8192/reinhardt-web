@@ -51,7 +51,9 @@ use std::sync::Arc;
 use super::cache::{SessionBackend, SessionError};
 
 #[cfg(feature = "database")]
-use sea_query::{Alias, ColumnDef, Expr, ExprTrait, Index, Query, SqliteQueryBuilder, Table};
+use sea_query::{
+	Alias, ColumnDef, Expr, ExprTrait, Index, OnConflict, Query, SqliteQueryBuilder, Table,
+};
 
 /// Database session model
 ///
@@ -148,6 +150,9 @@ impl DatabaseSessionBackend {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn new(database_url: &str) -> Result<Self, SessionError> {
+		// Install default drivers for AnyPool (required for sqlx v0.8)
+		sqlx::any::install_default_drivers();
+
 		let pool = AnyPool::connect(database_url)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Database connection error: {}", e)))?;
@@ -194,42 +199,55 @@ impl DatabaseSessionBackend {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn create_table(&self) -> Result<(), SessionError> {
-		let stmt = Table::create()
+		// Use a transaction to ensure both CREATE TABLE and CREATE INDEX
+		// execute on the same connection (important for SQLite in-memory databases)
+		let mut tx =
+			self.pool.begin().await.map_err(|e| {
+				SessionError::CacheError(format!("Failed to begin transaction: {}", e))
+			})?;
+
+		// Use sea-query for CREATE TABLE
+		// Note: Using INTEGER for expire_date to store Unix timestamp (compatible with AnyPool)
+		let create_table_stmt = Table::create()
 			.table(Alias::new("sessions"))
 			.if_not_exists()
 			.col(
 				ColumnDef::new(Alias::new("session_key"))
-					.string_len(255)
+					.text()
 					.not_null()
 					.primary_key(),
 			)
 			.col(ColumnDef::new(Alias::new("session_data")).text().not_null())
 			.col(
 				ColumnDef::new(Alias::new("expire_date"))
-					.timestamp()
+					.integer()
 					.not_null(),
 			)
 			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
+		let create_table_sql = create_table_stmt.to_string(SqliteQueryBuilder);
 
-		sqlx::query(&sql)
-			.execute(&*self.pool)
+		sqlx::query(&create_table_sql)
+			.execute(&mut *tx)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to create table: {}", e)))?;
 
 		// Create index on expire_date for efficient cleanup
-		let idx = Index::create()
+		let create_index_stmt = Index::create()
 			.if_not_exists()
 			.name("idx_sessions_expire_date")
 			.table(Alias::new("sessions"))
 			.col(Alias::new("expire_date"))
 			.to_owned();
-		let sql = idx.to_string(SqliteQueryBuilder);
+		let create_index_sql = create_index_stmt.to_string(SqliteQueryBuilder);
 
-		sqlx::query(&sql)
-			.execute(&*self.pool)
+		sqlx::query(&create_index_sql)
+			.execute(&mut *tx)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to create index: {}", e)))?;
+
+		tx.commit().await.map_err(|e| {
+			SessionError::CacheError(format!("Failed to commit transaction: {}", e))
+		})?;
 
 		Ok(())
 	}
@@ -255,10 +273,13 @@ impl DatabaseSessionBackend {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn cleanup_expired(&self) -> Result<u64, SessionError> {
-		let now = Utc::now();
+		// Use RFC3339 string for TEXT column compatibility
+		let now_str = Utc::now().to_rfc3339();
+
+		// Use sea-query for DELETE
 		let stmt = Query::delete()
 			.from_table(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("expire_date")).lt(now.to_rfc3339()))
+			.and_where(Expr::col(Alias::new("expire_date")).lt(&now_str))
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);
 
@@ -277,6 +298,7 @@ impl SessionBackend for DatabaseSessionBackend {
 	where
 		T: for<'de> Deserialize<'de> + Send,
 	{
+		// Use sea-query for SELECT
 		let stmt = Query::select()
 			.columns([Alias::new("session_data"), Alias::new("expire_date")])
 			.from(Alias::new("sessions"))
@@ -337,10 +359,10 @@ impl SessionBackend for DatabaseSessionBackend {
 			None => Utc::now() + Duration::days(14), // Default 14 days
 		};
 
-		// Use REPLACE for SQLite compatibility or INSERT ... ON CONFLICT UPDATE for others
-		// For simplicity, we'll delete then insert
-		let _ = self.delete(session_key).await;
+		// Convert to RFC3339 string for TEXT column compatibility
+		let expire_date_str = expire_date.to_rfc3339();
 
+		// Use sea-query for INSERT with ON CONFLICT (upsert, SQLite compatible)
 		let stmt = Query::insert()
 			.into_table(Alias::new("sessions"))
 			.columns([
@@ -348,16 +370,16 @@ impl SessionBackend for DatabaseSessionBackend {
 				Alias::new("session_data"),
 				Alias::new("expire_date"),
 			])
-			.values(
-				[
-					Expr::val(session_key),
-					Expr::val(session_data),
-					Expr::val(expire_date.to_rfc3339()),
-				]
-				.into_iter()
-				.collect::<Vec<Expr>>(),
+			.values_panic(vec![
+				session_key.into(),
+				session_data.into(),
+				expire_date_str.into(),
+			])
+			.on_conflict(
+				OnConflict::column(Alias::new("session_key"))
+					.update_columns([Alias::new("session_data"), Alias::new("expire_date")])
+					.to_owned(),
 			)
-			.unwrap()
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);
 
@@ -385,12 +407,15 @@ impl SessionBackend for DatabaseSessionBackend {
 	}
 
 	async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
-		let now = Utc::now();
+		// Use RFC3339 string for TEXT column compatibility
+		let now_str = Utc::now().to_rfc3339();
+
+		// Use sea-query for SELECT
 		let stmt = Query::select()
 			.expr(Expr::value(1))
 			.from(Alias::new("sessions"))
 			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-			.and_where(Expr::col(Alias::new("expire_date")).gt(now.to_rfc3339()))
+			.and_where(Expr::col(Alias::new("expire_date")).gt(&now_str))
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);
 

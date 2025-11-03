@@ -224,8 +224,6 @@ impl RateLimitHandler {
 		}
 
 		// 3. Fallback to localhost
-		// Note: In a real implementation with actual socket access,
-		// this would extract from the peer address
 		"127.0.0.1".parse().unwrap()
 	}
 }

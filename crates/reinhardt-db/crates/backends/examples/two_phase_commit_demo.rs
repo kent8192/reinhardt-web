@@ -64,7 +64,7 @@ async fn main() {
 
 #[cfg(feature = "postgres")]
 async fn run_postgres_demo() {
-	use sqlx::PgPool;
+	use sqlx::{PgPool, Row};
 
 	println!("=== PostgreSQL Two-Phase Commit Demo ===\n");
 
@@ -169,7 +169,7 @@ async fn run_postgres_demo() {
 
 #[cfg(feature = "mysql")]
 async fn run_mysql_demo() {
-	use sqlx::MySqlPool;
+	use sqlx::{MySqlPool, Row};
 
 	println!("=== MySQL Two-Phase Commit Demo ===\n");
 

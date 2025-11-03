@@ -33,9 +33,11 @@
 
 use crate::filter::{FilterBackend, FilterResult};
 use async_trait::async_trait;
+use backends::connection::DatabaseConnection as BackendsConnection;
 use log::{debug, info, warn};
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Database type for query optimization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -445,12 +447,29 @@ impl QueryPlan {
 /// assert!(result.is_ok());
 /// # }
 /// ```
-#[derive(Debug)]
 pub struct QueryOptimizer {
 	hints: Vec<OptimizationHint>,
 	enable_analysis: bool,
 	enable_hints: bool,
 	db_type: DatabaseType,
+	connection: Option<Arc<BackendsConnection>>,
+}
+
+impl std::fmt::Debug for QueryOptimizer {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let mut debug_struct = f.debug_struct("QueryOptimizer");
+		debug_struct
+			.field("hints", &self.hints)
+			.field("enable_analysis", &self.enable_analysis)
+			.field("enable_hints", &self.enable_hints)
+			.field("db_type", &self.db_type)
+			.field(
+				"connection",
+				&self.connection.as_ref().map(|_| "<BackendsConnection>"),
+			);
+
+		debug_struct.finish()
+	}
 }
 
 impl Default for QueryOptimizer {
@@ -477,6 +496,7 @@ impl QueryOptimizer {
 			enable_analysis: false,
 			enable_hints: false,
 			db_type: DatabaseType::PostgreSQL,
+			connection: None,
 		}
 	}
 
@@ -501,6 +521,7 @@ impl QueryOptimizer {
 			enable_analysis: false,
 			enable_hints: false,
 			db_type,
+			connection: None,
 		}
 	}
 
@@ -557,6 +578,30 @@ impl QueryOptimizer {
 	/// ```
 	pub fn enable_hints(mut self, enable: bool) -> Self {
 		self.enable_hints = enable;
+		self
+	}
+
+	/// Set the database connection for EXPLAIN execution
+	///
+	/// When a connection is provided, the optimizer can execute EXPLAIN queries
+	/// directly on the database to get actual query plans instead of using mock data.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_filters::QueryOptimizer;
+	/// use backends::connection::DatabaseConnection;
+	/// use std::sync::Arc;
+	///
+	/// # async fn example() {
+	/// let conn = DatabaseConnection::connect_postgres("postgres://localhost/db").await.unwrap();
+	/// let optimizer = QueryOptimizer::new()
+	///     .with_connection(Arc::new(conn))
+	///     .enable_analysis(true);
+	/// # }
+	/// ```
+	pub fn with_connection(mut self, connection: Arc<BackendsConnection>) -> Self {
+		self.connection = Some(connection);
 		self
 	}
 
@@ -710,6 +755,59 @@ impl QueryOptimizer {
 			table_name: query_plan.table_name.clone(),
 		}
 	}
+
+	/// Convert database Row results to EXPLAIN output string
+	///
+	/// Different databases return EXPLAIN results in different formats.
+	/// This method converts them to a unified string format for analysis.
+	fn rows_to_explain_output(rows: &[backends::types::Row], db_type: DatabaseType) -> String {
+		let mut output = String::new();
+
+		for row in rows {
+			match db_type {
+				DatabaseType::PostgreSQL => {
+					// PostgreSQL: EXPLAIN returns a single "QUERY PLAN" column
+					if let Some(plan) = row.data.get("QUERY PLAN")
+						&& let backends::types::QueryValue::String(plan_str) = plan
+					{
+						output.push_str(plan_str);
+						output.push('\n');
+					}
+				}
+				DatabaseType::MySQL => {
+					// MySQL: EXPLAIN returns multiple columns (id, select_type, table, type, etc.)
+					let mut line = String::new();
+					for (key, value) in &row.data {
+						if let backends::types::QueryValue::String(val_str) = value {
+							if !line.is_empty() {
+								line.push_str(" | ");
+							}
+							line.push_str(&format!("{}: {}", key, val_str));
+						}
+					}
+					if !line.is_empty() {
+						output.push_str(&line);
+						output.push('\n');
+					}
+				}
+				DatabaseType::SQLite => {
+					// SQLite: EXPLAIN QUERY PLAN returns columns (detail)
+					if let Some(detail) = row.data.get("detail")
+						&& let backends::types::QueryValue::String(detail_str) = detail
+					{
+						output.push_str(detail_str);
+						output.push('\n');
+					}
+				}
+			}
+		}
+
+		if output.is_empty() {
+			output = "No EXPLAIN output available".to_string();
+		}
+
+		output
+	}
 }
 
 #[async_trait]
@@ -721,10 +819,34 @@ impl FilterBackend for QueryOptimizer {
 	) -> FilterResult<String> {
 		// If analysis is enabled, analyze the query and log suggestions
 		if self.enable_analysis {
-			// Note: In a real implementation, this would execute EXPLAIN on the database
-			// For now, we analyze the SQL query structure itself
-			let mock_explain = format!("Seq Scan on table (cost=0.00..35.50 rows=2550)\n{}", sql);
-			let query_plan = self.analyze_query(&mock_explain).await?;
+			let explain_output = if let Some(conn) = &self.connection {
+				// Execute actual EXPLAIN query on the database
+				let explain_sql = match self.db_type {
+					DatabaseType::PostgreSQL => format!("EXPLAIN {}", sql),
+					DatabaseType::MySQL => format!("EXPLAIN FORMAT=TRADITIONAL {}", sql),
+					DatabaseType::SQLite => format!("EXPLAIN QUERY PLAN {}", sql),
+				};
+
+				match conn.fetch_all(&explain_sql, vec![]).await {
+					Ok(rows) => {
+						// Convert rows to EXPLAIN output string
+						Self::rows_to_explain_output(&rows, self.db_type)
+					}
+					Err(e) => {
+						warn!(
+							"Failed to execute EXPLAIN: {}. Using query analysis only.",
+							e
+						);
+						// Fallback to mock EXPLAIN
+						format!("Seq Scan on table (cost=0.00..35.50 rows=2550)\n{}", sql)
+					}
+				}
+			} else {
+				// No connection available, use mock EXPLAIN
+				format!("Seq Scan on table (cost=0.00..35.50 rows=2550)\n{}", sql)
+			};
+
+			let query_plan = self.analyze_query(&explain_output).await?;
 			let analysis = self.analyze_query_plan(&query_plan);
 
 			// Log suggestions if any
@@ -1216,5 +1338,91 @@ mod tests {
 		// Should have hints applied
 		assert!(result.contains("SET enable_indexscan = on"));
 		assert!(result.contains("SELECT * FROM users"));
+	}
+
+	#[test]
+	fn test_rows_to_explain_output_postgresql() {
+		use backends::types::{QueryValue, Row};
+		use std::collections::HashMap;
+
+		let mut data = HashMap::new();
+		data.insert(
+			"QUERY PLAN".to_string(),
+			QueryValue::String("Seq Scan on users (cost=0.00..35.50 rows=2550)".to_string()),
+		);
+		let row = Row { data };
+
+		let output = QueryOptimizer::rows_to_explain_output(&[row], DatabaseType::PostgreSQL);
+
+		assert!(output.contains("Seq Scan on users"));
+		assert!(output.contains("cost=0.00..35.50"));
+	}
+
+	#[test]
+	fn test_rows_to_explain_output_mysql() {
+		use backends::types::{QueryValue, Row};
+		use std::collections::HashMap;
+
+		let mut data = HashMap::new();
+		data.insert("id".to_string(), QueryValue::String("1".to_string()));
+		data.insert(
+			"select_type".to_string(),
+			QueryValue::String("SIMPLE".to_string()),
+		);
+		data.insert("table".to_string(), QueryValue::String("users".to_string()));
+		let row = Row { data };
+
+		let output = QueryOptimizer::rows_to_explain_output(&[row], DatabaseType::MySQL);
+
+		assert!(output.contains("id: 1"));
+		assert!(output.contains("select_type: SIMPLE"));
+		assert!(output.contains("table: users"));
+	}
+
+	#[test]
+	fn test_rows_to_explain_output_sqlite() {
+		use backends::types::{QueryValue, Row};
+		use std::collections::HashMap;
+
+		let mut data = HashMap::new();
+		data.insert(
+			"detail".to_string(),
+			QueryValue::String("SCAN TABLE users".to_string()),
+		);
+		let row = Row { data };
+
+		let output = QueryOptimizer::rows_to_explain_output(&[row], DatabaseType::SQLite);
+
+		assert!(output.contains("SCAN TABLE users"));
+	}
+
+	#[test]
+	fn test_rows_to_explain_output_empty() {
+		use backends::types::Row;
+		use std::collections::HashMap;
+
+		let row = Row {
+			data: HashMap::new(),
+		};
+
+		let output = QueryOptimizer::rows_to_explain_output(&[row], DatabaseType::PostgreSQL);
+
+		assert_eq!(output, "No EXPLAIN output available");
+	}
+
+	#[test]
+	fn test_with_connection_builder() {
+		use backends::connection::DatabaseConnection as BackendsConnection;
+		use std::sync::Arc;
+
+		// Create a mock connection (in real scenarios, this would be a real connection)
+		// For this test, we just verify the builder pattern works
+		let optimizer = QueryOptimizer::new();
+
+		// Verify that optimizer can be created without connection
+		assert!(format!("{:?}", optimizer).contains("QueryOptimizer"));
+
+		// Note: We cannot test with a real connection here as it requires database setup
+		// Integration tests in tests/ crate should cover actual database connection scenarios
 	}
 }

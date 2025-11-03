@@ -77,7 +77,7 @@ pub struct QueryResult {
 /// Row from query result
 #[derive(Debug, Clone)]
 pub struct Row {
-	pub(crate) data: HashMap<String, QueryValue>,
+	pub data: HashMap<String, QueryValue>,
 }
 
 impl Row {

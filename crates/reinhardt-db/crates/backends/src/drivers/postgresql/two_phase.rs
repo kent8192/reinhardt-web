@@ -68,6 +68,14 @@ impl PostgresTwoPhaseParticipant {
 		Self { pool }
 	}
 
+	/// Get a reference to the underlying PgPool
+	///
+	/// This method is useful for tests and advanced use cases where direct
+	/// access to the pool is required.
+	pub fn pool(&self) -> &PgPool {
+		self.pool.as_ref()
+	}
+
 	/// Begin a transaction
 	///
 	/// # Examples

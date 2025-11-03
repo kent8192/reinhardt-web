@@ -119,10 +119,31 @@ impl CompressedParser {
 
 	/// Decompress body if Content-Encoding header is present
 	///
-	/// This method is intended for future use when Content-Encoding can be explicitly passed.
-	/// Currently unused but kept for API completeness.
-	#[allow(dead_code)]
-	fn decompress_if_needed(
+	/// This method provides explicit decompression control when the Content-Encoding
+	/// header value is available from the request context.
+	///
+	/// # Arguments
+	///
+	/// * `content_encoding` - Optional Content-Encoding header value (e.g., "gzip", "br", "deflate")
+	/// * `body` - Request body bytes (potentially compressed)
+	///
+	/// # Returns
+	///
+	/// Returns decompressed body if Content-Encoding is recognized, otherwise returns the original body.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_parsers::compressed::CompressedParser;
+	/// use reinhardt_parsers::json::JSONParser;
+	/// use bytes::Bytes;
+	/// use std::sync::Arc;
+	///
+	/// let parser = CompressedParser::new(Arc::new(JSONParser::new()));
+	/// let body = Bytes::from(vec![/* gzip compressed data */]);
+	/// let decompressed = parser.decompress_if_needed(Some("gzip"), body).unwrap();
+	/// ```
+	pub fn decompress_if_needed(
 		&self,
 		content_encoding: Option<&str>,
 		body: Bytes,
@@ -370,5 +391,107 @@ mod tests {
 		let invalid_data = b"not brotli data";
 		let result = CompressionEncoding::Brotli.decompress(invalid_data);
 		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_decompress_if_needed_gzip() {
+		let original = b"Hello, World!";
+
+		// Compress with gzip
+		let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+		encoder.write_all(original).unwrap();
+		let compressed = encoder.finish().unwrap();
+
+		let parser = CompressedParser::new(Arc::new(JSONParser::new()));
+		let result = parser
+			.decompress_if_needed(Some("gzip"), Bytes::from(compressed))
+			.unwrap();
+
+		assert_eq!(result.as_ref(), original);
+	}
+
+	#[test]
+	fn test_decompress_if_needed_deflate() {
+		let original = b"Test data for deflate";
+
+		// Compress with deflate
+		let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+		encoder.write_all(original).unwrap();
+		let compressed = encoder.finish().unwrap();
+
+		let parser = CompressedParser::new(Arc::new(JSONParser::new()));
+		let result = parser
+			.decompress_if_needed(Some("deflate"), Bytes::from(compressed))
+			.unwrap();
+
+		assert_eq!(result.as_ref(), original);
+	}
+
+	#[test]
+	fn test_decompress_if_needed_brotli() {
+		let original = b"Brotli compressed content";
+
+		// Compress with brotli
+		let mut compressed = Vec::new();
+		{
+			let mut encoder = brotli::CompressorWriter::new(&mut compressed, 4096, 11, 22);
+			encoder.write_all(original).unwrap();
+		}
+
+		let parser = CompressedParser::new(Arc::new(JSONParser::new()));
+		let result = parser
+			.decompress_if_needed(Some("br"), Bytes::from(compressed))
+			.unwrap();
+
+		assert_eq!(result.as_ref(), original);
+	}
+
+	#[test]
+	fn test_decompress_if_needed_no_encoding() {
+		let original = b"Uncompressed data";
+
+		let parser = CompressedParser::new(Arc::new(JSONParser::new()));
+		let result = parser
+			.decompress_if_needed(None, Bytes::from(original.as_slice()))
+			.unwrap();
+
+		assert_eq!(result.as_ref(), original);
+	}
+
+	#[test]
+	fn test_decompress_if_needed_unknown_encoding() {
+		let original = b"Unknown encoding";
+
+		let parser = CompressedParser::new(Arc::new(JSONParser::new()));
+		let result = parser
+			.decompress_if_needed(Some("unknown"), Bytes::from(original.as_slice()))
+			.unwrap();
+
+		// Should return original data unchanged
+		assert_eq!(result.as_ref(), original);
+	}
+
+	#[test]
+	fn test_decompress_if_needed_case_insensitive() {
+		let original = b"Case test";
+
+		// Compress with gzip
+		let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+		encoder.write_all(original).unwrap();
+		let compressed = encoder.finish().unwrap();
+
+		let parser = CompressedParser::new(Arc::new(JSONParser::new()));
+
+		// Test with uppercase
+		let result = parser
+			.decompress_if_needed(Some("GZIP"), Bytes::from(compressed.clone()))
+			.unwrap();
+		assert_eq!(result.as_ref(), original);
+
+		// Test with mixed case
+		let result = parser
+			.decompress_if_needed(Some("GzIp"), Bytes::from(compressed))
+			.unwrap();
+		assert_eq!(result.as_ref(), original);
 	}
 }

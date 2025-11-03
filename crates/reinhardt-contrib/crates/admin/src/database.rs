@@ -569,15 +569,23 @@ impl AdminDatabase {
 		}
 
 		let sql = query.to_string(PostgresQueryBuilder);
-		let _row = self
+		let row = self
 			.connection
 			.query_one(&sql)
 			.await
 			.map_err(AdminError::DatabaseError)?;
 
 		// Extract count from result
-		// Note: In a real implementation, we would parse the actual count value
-		Ok(0) // Placeholder
+		let count = if let Some(count_value) = row.data.get("count") {
+			count_value.as_i64().unwrap_or(0) as u64
+		} else if let Some(obj) = row.data.as_object() {
+			// COUNT(*) result may be in the first column
+			obj.values().next().and_then(|v| v.as_i64()).unwrap_or(0) as u64
+		} else {
+			0
+		};
+
+		Ok(count)
 	}
 }
 

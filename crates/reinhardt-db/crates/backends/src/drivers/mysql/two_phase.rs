@@ -79,6 +79,14 @@ impl MySqlTwoPhaseParticipant {
 		Self { pool }
 	}
 
+	/// Get a reference to the underlying MySqlPool
+	///
+	/// This method is useful for tests and advanced use cases where direct
+	/// access to the pool is required.
+	pub fn pool(&self) -> &MySqlPool {
+		self.pool.as_ref()
+	}
+
 	/// Start an XA transaction
 	///
 	/// This executes `XA START 'xid'` in MySQL.
