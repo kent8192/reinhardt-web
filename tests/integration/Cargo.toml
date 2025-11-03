@@ -22,10 +22,7 @@ reinhardt-openapi = { path = "../../crates/reinhardt-rest/crates/openapi" }
 reinhardt-graphql = { path = "../../crates/reinhardt-contrib/crates/graphql" }
 reinhardt-orm = { path = "../../crates/reinhardt-db/crates/orm" }
 reinhardt-migrations = { path = "../../crates/reinhardt-db/crates/migrations" }
-backends = { path = "../../crates/reinhardt-db/crates/backends", package = "reinhardt-db-backends", features = [
-  "postgres",
-  "sqlite",
-] }
+backends = { path = "../../crates/reinhardt-db/crates/backends", package = "reinhardt-db-backends" }
 reinhardt-metadata = { path = "../../crates/reinhardt-rest/crates/metadata" }
 reinhardt-versioning = { path = "../../crates/reinhardt-rest/crates/versioning" }
 reinhardt-messages = { path = "../../crates/reinhardt-contrib/crates/messages" }
@@ -65,7 +62,7 @@ reinhardt-forms = { path = "../../crates/reinhardt-forms" }
 reinhardt-throttling = { path = "../../crates/reinhardt-rest/crates/throttling" }
 reinhardt-utils = { path = "../../crates/reinhardt-utils" }
 reinhardt-storage = { path = "../../crates/reinhardt-utils/crates/storage" }
-reinhardt-test = { path = "../../crates/reinhardt-test" }
+reinhardt-test = { path = "../../crates/reinhardt-test", features = ["testcontainers"] }
 reinhardt-sessions = { path = "../../crates/reinhardt-contrib/crates/sessions", features = [
   "database",
 ] }
@@ -77,7 +74,8 @@ http = "1.0"
 async-trait = "0.1"
 
 # Database
-sqlx = { version = "0.9.0-alpha.1", features = [
+sqlx = { version = "0.8", features = [
+  "any",
   "postgres",
   "sqlite",
   "runtime-tokio",
@@ -107,6 +105,8 @@ unic-langid = "0.9"
 once_cell = "1.20"
 serial_test = "3.2"
 ctor = "0.6.0"
+rstest = "0.24"
+scopeguard = "1.2"
 
 # Templates
 tera = "1.20"
@@ -117,7 +117,10 @@ testcontainers = "0.25.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [features]
+default = ["postgres", "sqlite"]
 testcontainers = []
+postgres = ["reinhardt-orm/postgres", "backends/postgres"]
+sqlite = ["reinhardt-orm/sqlite", "backends/sqlite"]
 
 [dev-dependencies]
 # Test utilities
@@ -148,7 +151,7 @@ name = "session_security_integration"
 path = "tests/sessions/session_security_integration.rs"
 
 [[test]]
-name = "sessions_database_backend_integration"
+name = "database_backend_integration"
 path = "tests/sessions/database_backend_integration.rs"
 
 
@@ -420,5 +423,26 @@ path = "tests/admin/admin_audit_integration.rs"
 
 
 [[test]]
+name = "admin_database_audit_logger"
+path = "tests/admin_database_audit_logger.rs"
+
+
+[[test]]
 name = "e2e_graphql_tests"
 path = "tests/server/e2e_graphql_tests.rs"
+
+
+[[test]]
+name = "admin_crud_integration"
+path = "tests/admin_crud_integration.rs"
+
+
+# ORM loading strategy integration tests
+[[test]]
+name = "loading_strategy_integration_tests"
+path = "tests/orm/loading_strategy_integration_tests.rs"
+
+# ORM composite primary key query tests
+[[test]]
+name = "composite_pk_query_tests"
+path = "tests/orm/composite_pk_query_tests.rs"
