@@ -14,7 +14,7 @@ thiserror = "2.0"
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 hyper = { workspace = true }
-reinhardt-apps = { version = "0.1.0-alpha.1", path = "../../../reinhardt-apps" }
+reinhardt-apps = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

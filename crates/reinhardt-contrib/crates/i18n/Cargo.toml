@@ -25,3 +25,6 @@ chrono = { workspace = true }
 tokio = { workspace = true }
 tempfile = "3.8"
 serial_test = { workspace = true }
+rstest = { workspace = true }
+scopeguard = { workspace = true }
+reinhardt-test = { workspace = true }

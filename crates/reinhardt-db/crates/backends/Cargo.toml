@@ -37,9 +37,9 @@ reinhardt-db = { workspace = true, features = ["backends", "postgres"] }
 
 [features]
 default = ["postgres"]
-postgres = []
-mysql = []
-sqlite = []
+postgres = ["sqlx/postgres"]
+mysql = ["sqlx/mysql"]
+sqlite = ["sqlx/sqlite"]
 mongodb-backend = ["mongodb", "bson"]
 cockroachdb-backend = ["postgres"]
 all-databases = ["postgres", "mysql", "sqlite", "mongodb-backend", "cockroachdb-backend"]

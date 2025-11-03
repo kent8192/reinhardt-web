@@ -91,4 +91,4 @@ dev-server = ["dep:notify"]
 tokio-test = "0.4"
 tempfile = "3.8"
 serial_test = { workspace = true }
-reinhardt-test = { path = "../../../reinhardt-test", features = ["static"] }
+reinhardt-test = { workspace = true, features = ["static"] }
