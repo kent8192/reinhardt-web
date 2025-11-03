@@ -147,10 +147,14 @@ fn test_json_parser_media_types() {
 	let parser = JSONParser::new();
 	let media_types = parser.media_types();
 
+	// JSONParser supports both standard application/json and RFC 6839 compliant +json suffix
 	assert_eq!(
 		media_types,
-		vec!["application/json".to_string()],
-		"JSONParser should support exactly 'application/json' media type"
+		vec![
+			"application/json".to_string(),
+			"application/*+json".to_string()
+		],
+		"JSONParser should support 'application/json' and 'application/*+json' media types"
 	);
 }
 

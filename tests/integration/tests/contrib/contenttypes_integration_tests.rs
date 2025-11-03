@@ -2,28 +2,58 @@
 //!
 //! This test provides integration testing for multi_db and orm_integration modules.
 
-// Initialize SQLx drivers for all tests
+use reinhardt_test::resource::{TeardownGuard, TestResource};
+use rstest::*;
+use serial_test::serial;
 use std::sync::Once;
 
 static INIT: Once = Once::new();
 
+/// Initialize SQLx drivers (idempotent)
+#[fixture]
 fn init_drivers() {
 	INIT.call_once(|| {
 		sqlx::any::install_default_drivers();
 	});
 }
 
+/// Guard for ContentTypeRegistry cleanup
+///
+/// Ensures CONTENT_TYPE_REGISTRY is cleared before and after each test,
+/// even if the test panics.
+struct ContentTypeRegistryGuard;
+
+impl TestResource for ContentTypeRegistryGuard {
+	fn setup() -> Self {
+		// Clear registry before test
+		use reinhardt_contenttypes::CONTENT_TYPE_REGISTRY;
+		CONTENT_TYPE_REGISTRY.clear();
+		Self
+	}
+
+	fn teardown(&mut self) {
+		// Clear registry after test (guaranteed even on panic)
+		use reinhardt_contenttypes::CONTENT_TYPE_REGISTRY;
+		CONTENT_TYPE_REGISTRY.clear();
+	}
+}
+
+#[fixture]
+fn registry_guard() -> TeardownGuard<ContentTypeRegistryGuard> {
+	TeardownGuard::new()
+}
+
 mod multi_db_tests {
-	use super::init_drivers;
+	use super::*;
 	use reinhardt_contenttypes::{CONTENT_TYPE_REGISTRY, MultiDbContentTypeManager};
 
+	#[rstest]
+	#[serial(content_type_registry)]
 	#[tokio::test]
-	async fn test_multi_db_with_global_registry() {
-		init_drivers();
-
-		// Clear global registry
-		CONTENT_TYPE_REGISTRY.clear();
-
+	async fn test_multi_db_with_global_registry(
+		_init_drivers: (),
+		_registry_guard: TeardownGuard<ContentTypeRegistryGuard>,
+	) {
 		let mut manager = MultiDbContentTypeManager::new();
 		manager
 			.add_database("db1", "sqlite::memory:?mode=rwc&cache=shared")
@@ -41,14 +71,16 @@ mod multi_db_tests {
 		let global_ct = CONTENT_TYPE_REGISTRY.get("integration", "Test");
 		assert!(global_ct.is_some());
 
-		// Cleanup
-		CONTENT_TYPE_REGISTRY.clear();
+		// Cleanup is handled by TeardownGuard automatically
 	}
 
+	#[rstest]
+	#[serial(content_type_registry)]
 	#[tokio::test]
-	async fn test_multi_db_cross_database_search() {
-		init_drivers();
-
+	async fn test_multi_db_cross_database_search(
+		_init_drivers: (),
+		_registry_guard: TeardownGuard<ContentTypeRegistryGuard>,
+	) {
 		let mut manager = MultiDbContentTypeManager::new();
 		manager
 			.add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
@@ -81,10 +113,13 @@ mod multi_db_tests {
 		assert!(db_names.contains(&"secondary".to_string()));
 	}
 
+	#[rstest]
+	#[serial(content_type_registry)]
 	#[tokio::test]
-	async fn test_multi_db_isolated_caches() {
-		init_drivers();
-
+	async fn test_multi_db_isolated_caches(
+		_init_drivers: (),
+		_registry_guard: TeardownGuard<ContentTypeRegistryGuard>,
+	) {
 		let mut manager = MultiDbContentTypeManager::new();
 		manager
 			.add_database("db1", "sqlite::memory:?mode=rwc&cache=shared")
@@ -111,10 +146,13 @@ mod multi_db_tests {
 		assert!(ct1.id.is_some());
 	}
 
+	#[rstest]
+	#[serial(content_type_registry)]
 	#[tokio::test]
-	async fn test_multi_db_load_all_with_cache() {
-		init_drivers();
-
+	async fn test_multi_db_load_all_with_cache(
+		_init_drivers: (),
+		_registry_guard: TeardownGuard<ContentTypeRegistryGuard>,
+	) {
 		let mut manager = MultiDbContentTypeManager::new();
 		manager
 			.add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
@@ -146,14 +184,14 @@ mod multi_db_tests {
 }
 
 mod orm_integration_tests {
-	use super::init_drivers;
+	use super::*;
 	use reinhardt_contenttypes::{ContentTypeQuery, ContentTypeTransaction};
 	use sqlx::AnyPool;
 	use std::sync::Arc;
 
-	async fn setup_test_pool() -> Arc<AnyPool> {
-		init_drivers();
-
+	/// Setup test pool fixture with table creation
+	#[fixture]
+	async fn setup_test_pool(_init_drivers: ()) -> Arc<AnyPool> {
 		// Use single connection pool for in-memory SQLite with shared cache
 		use sqlx::pool::PoolOptions;
 		let pool = PoolOptions::new()
@@ -174,9 +212,10 @@ mod orm_integration_tests {
 		pool.into()
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_query_with_transaction() {
-		let pool = setup_test_pool().await;
+	async fn test_query_with_transaction(#[future] setup_test_pool: Arc<AnyPool>) {
+		let pool = setup_test_pool.await;
 
 		// Create ContentType within transaction
 		let tx = ContentTypeTransaction::new(pool.clone());
@@ -201,9 +240,10 @@ mod orm_integration_tests {
 		assert_eq!(results[1].model, "Model2");
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_query_chaining() {
-		let pool = setup_test_pool().await;
+	async fn test_query_chaining(#[future] setup_test_pool: Arc<AnyPool>) {
+		let pool = setup_test_pool.await;
 
 		// Create test data
 		let tx = ContentTypeTransaction::new(pool.clone());
@@ -229,9 +269,10 @@ mod orm_integration_tests {
 		assert_eq!(results[2].model, "Model4");
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_query_count_and_exists() {
-		let pool = setup_test_pool().await;
+	async fn test_query_count_and_exists(#[future] setup_test_pool: Arc<AnyPool>) {
+		let pool = setup_test_pool.await;
 
 		let tx = ContentTypeTransaction::new(pool.clone());
 		tx.create("count_test", "A")
@@ -274,9 +315,10 @@ mod orm_integration_tests {
 		assert!(!not_exists);
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_delete() {
-		let pool = setup_test_pool().await;
+	async fn test_transaction_delete(#[future] setup_test_pool: Arc<AnyPool>) {
+		let pool = setup_test_pool.await;
 
 		// Create
 		let tx = ContentTypeTransaction::new(pool.clone());
@@ -295,9 +337,10 @@ mod orm_integration_tests {
 		assert!(result.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_query_multiple_order_by() {
-		let pool = setup_test_pool().await;
+	async fn test_query_multiple_order_by(#[future] setup_test_pool: Arc<AnyPool>) {
+		let pool = setup_test_pool.await;
 
 		let tx = ContentTypeTransaction::new(pool.clone());
 		tx.create("app1", "Z").await.expect("Failed to create");
@@ -323,17 +366,20 @@ mod orm_integration_tests {
 }
 
 mod combined_tests {
-	use super::init_drivers;
+	use super::*;
 	use reinhardt_contenttypes::{
 		ContentTypeQuery, ContentTypeTransaction, MultiDbContentTypeManager,
 	};
 	use sqlx::AnyPool;
 	use std::sync::Arc;
 
+	#[rstest]
+	#[serial(content_type_registry)]
 	#[tokio::test]
-	async fn test_multi_db_with_orm_query() {
-		init_drivers();
-
+	async fn test_multi_db_with_orm_query(
+		_init_drivers: (),
+		_registry_guard: TeardownGuard<ContentTypeRegistryGuard>,
+	) {
 		let mut manager = MultiDbContentTypeManager::new();
 		manager
 			.add_database("primary", "sqlite::memory:?mode=rwc&cache=shared")
@@ -358,10 +404,13 @@ mod combined_tests {
 		// This is written as a conceptual test
 	}
 
+	#[rstest]
+	#[serial(content_type_registry)]
 	#[tokio::test]
-	async fn test_transaction_with_multi_db() {
-		init_drivers();
-
+	async fn test_transaction_with_multi_db(
+		_init_drivers: (),
+		_registry_guard: TeardownGuard<ContentTypeRegistryGuard>,
+	) {
 		// Use single connection pool for in-memory SQLite with shared cache
 		use sqlx::pool::PoolOptions;
 		let pool = PoolOptions::new()
