@@ -15,19 +15,19 @@ if [ ! -d ".git" ]; then
     exit 1
 fi
 
-# Create symlink for pre-commit hook
-if [ -f "$HOOKS_DIR/pre-commit" ]; then
-    echo "⚠️  Existing pre-commit hook found, creating backup..."
-    mv "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-commit.backup"
+# Create symlink for pre-push hook
+if [ -f "$HOOKS_DIR/pre-push" ]; then
+    echo "⚠️  Existing pre-push hook found, creating backup..."
+    mv "$HOOKS_DIR/pre-push" "$HOOKS_DIR/pre-push.backup"
 fi
 
-ln -sf "../../$SCRIPT_DIR/pre-commit" "$HOOKS_DIR/pre-commit"
-chmod +x "$SCRIPT_DIR/pre-commit"
+ln -sf "../../$SCRIPT_DIR/pre-push" "$HOOKS_DIR/pre-push"
+chmod +x "$SCRIPT_DIR/pre-push"
 
 echo "✅ Git hooks installed successfully!"
 echo ""
-echo "Pre-commit hook will now run 'cargo make fmt' and 'cargo make clippy'"
-echo "before each commit."
+echo "Pre-push hook will now run 'cargo make fmt' and 'cargo make clippy'"
+echo "before each push."
 echo ""
 echo "To bypass the hook (emergency only), use:"
-echo "  git commit --no-verify -m \"message\""
+echo "  git push --no-verify"
