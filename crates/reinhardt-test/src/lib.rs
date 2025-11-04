@@ -57,7 +57,10 @@ pub use messages::{
 	assert_message_tags, assert_messages,
 };
 pub use mock::{CallRecord, DummyCache, MockFunction, SimpleHandler, Spy};
-pub use resource::{SuiteGuard, SuiteResource, TeardownGuard, TestResource, acquire_suite};
+pub use resource::{
+	AsyncTeardownGuard, AsyncTestResource, SuiteGuard, SuiteResource, TeardownGuard, TestResource,
+	acquire_suite,
+};
 pub use response::{ResponseExt, TestResponse};
 pub use server::{
 	BodyEchoHandler, DelayedHandler, EchoPathHandler, LargeResponseHandler, MethodEchoHandler,
@@ -106,7 +109,8 @@ pub mod prelude {
 	};
 	pub use super::mock::{MockFunction, SimpleHandler, Spy};
 	pub use super::resource::{
-		SuiteGuard, SuiteResource, TeardownGuard, TestResource, acquire_suite,
+		AsyncTeardownGuard, AsyncTestResource, SuiteGuard, SuiteResource, TeardownGuard,
+		TestResource, acquire_suite,
 	};
 	pub use super::response::TestResponse;
 	pub use super::server::{

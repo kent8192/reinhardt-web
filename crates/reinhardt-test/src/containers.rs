@@ -517,7 +517,6 @@ mod tests {
 	use super::*;
 
 	#[tokio::test]
-	#[ignore] // Requires Docker
 	async fn test_postgres_container() {
 		with_postgres(|db| async move {
 			let url = db.connection_url();
@@ -530,7 +529,6 @@ mod tests {
 	}
 
 	#[tokio::test]
-	#[ignore] // Requires Docker
 	async fn test_mysql_container() {
 		with_mysql(|db| async move {
 			let url = db.connection_url();
@@ -543,7 +541,6 @@ mod tests {
 	}
 
 	#[tokio::test]
-	#[ignore] // Requires Docker
 	async fn test_redis_container() {
 		with_redis(|redis| async move {
 			let url = redis.connection_url();
