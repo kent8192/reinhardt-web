@@ -93,12 +93,12 @@ args = ["test", "--workspace", "--doc", "--all-features"]
 [tasks.unit-test]
 description = "Run unit tests and doc tests"
 command = "cargo"
-args = ["test", "--workspace", "--lib", "--all-features"]
+args = ["nextest", "run", "--workspace", "--lib", "--all-features", "--no-fail-fast"]
 
 [tasks.integration-test]
 description = "Run integration tests (requires PostgreSQL, MySQL, Redis)"
 command = "cargo"
-args = ["test", "--package", "reinhardt-integration-tests", "--all-features"]
+args = ["nextest", "run", "--package", "reinhardt-integration-tests", "--all-features", "--no-fail-fast"]
 
 [tasks.test]
 description = "Run all tests"
@@ -203,7 +203,7 @@ dependencies = ["examples-up"]
 cwd = "examples"
 script = '''
 echo "🧪 Running examples tests..."
-cargo test --workspace --verbose || (cd .. && cargo make examples-down && exit 1)
+cargo nextest run --workspace --verbose || (cd .. && cargo make examples-down && exit 1)
 cd ..
 cargo make examples-down
 echo "✅ Examples tests completed"
@@ -214,7 +214,7 @@ description = "Test examples and keep infrastructure running"
 dependencies = ["examples-up"]
 cwd = "examples"
 command = "cargo"
-args = ["test", "--workspace", "--verbose"]
+args = ["nextest", "run", "--workspace", "--verbose"]
 
 [tasks.examples-check-published]
 description = "Check if reinhardt is published to crates.io"

@@ -76,6 +76,11 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
       - name: Setup environment
         run: |
           cd examples
@@ -105,7 +110,7 @@ jobs:
         if: needs.check-availability.outputs.available == 'true'
         run: |
           cd examples
-          cargo test --workspace --verbose
+          cargo nextest run --workspace --verbose
         env:
           DATABASE_URL: postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_examples
 
