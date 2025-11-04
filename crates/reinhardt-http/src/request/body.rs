@@ -240,7 +240,10 @@ impl Request {
 		// Try each parser
 		for parser in &self.parsers {
 			if parser.can_parse(content_type) {
-				match parser.parse(content_type, self.body.clone()).await {
+				match parser
+					.parse(content_type, self.body.clone(), &self.headers)
+					.await
+				{
 					Ok(data) => {
 						// Cache the result
 						let mut cache = self.parsed_data.lock().unwrap();

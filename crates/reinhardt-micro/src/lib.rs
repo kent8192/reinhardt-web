@@ -141,7 +141,7 @@ pub mod prelude {
 }
 
 use reinhardt_middleware::Middleware;
-use reinhardt_routers::{DefaultRouter, Router, path as route_path};
+use reinhardt_routers::{DefaultRouter, Route, Router};
 use reinhardt_server::serve as http_serve;
 use reinhardt_types::Handler;
 use std::net::SocketAddr;
@@ -304,7 +304,7 @@ impl App {
 	/// // Routes are now registered with the app
 	/// ```
 	pub fn route_handler(mut self, path: &str, handler: Arc<dyn Handler>) -> Self {
-		self.router.add_route(route_path(path, handler));
+		self.router.add_route(Route::new(path, handler));
 		self
 	}
 
