@@ -10,17 +10,18 @@ use nom::{
 	multi::many0,
 };
 use reinhardt_apps::Handler;
-use std::sync::Arc;
 
 /// Create a route using simple path syntax
 /// Similar to Django's path() function
+///
+/// This function accepts a handler directly without requiring `Arc` wrapping.
+/// The `Arc` is created internally for you.
 ///
 /// # Examples
 ///
 /// ```
 /// use reinhardt_routers::path;
 /// use reinhardt_apps::Handler;
-/// use std::sync::Arc;
 ///
 /// # use async_trait::async_trait;
 /// # use reinhardt_apps::{Request, Response, Result};
@@ -31,18 +32,20 @@ use std::sync::Arc;
 /// #         Ok(Response::ok())
 /// #     }
 /// # }
-// Simple path without parameters
-/// let my_handler = Arc::new(DummyHandler);
-/// let route = path("/users/", my_handler.clone());
+/// // Simple path without parameters - no Arc::new() needed!
+/// let route = path("/users/", DummyHandler);
 /// assert_eq!(route.path, "/users/");
 ///
-// Path with parameters
-/// let route = path("/users/{id}/", my_handler)
+/// // Path with parameters
+/// let route = path("/users/{id}/", DummyHandler)
 ///     .with_name("user-detail");
 /// assert_eq!(route.name, Some("user-detail".to_string()));
 /// ```
-pub fn path(pattern: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
-	Route::new(pattern, handler)
+pub fn path<H>(pattern: impl Into<String>, handler: H) -> Route
+where
+	H: Handler + 'static,
+{
+	Route::from_handler(pattern, handler)
 }
 
 /// Create a route using regex syntax
@@ -51,12 +54,14 @@ pub fn path(pattern: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
 /// Converts Django-style regex patterns to Reinhardt's pattern format.
 /// Named groups (?P<name>...) are converted to {name} format.
 ///
+/// This function accepts a handler directly without requiring `Arc` wrapping.
+/// The `Arc` is created internally for you.
+///
 /// # Examples
 ///
 /// ```
 /// use reinhardt_routers::re_path;
 /// use reinhardt_apps::Handler;
-/// use std::sync::Arc;
 ///
 /// # use async_trait::async_trait;
 /// # use reinhardt_apps::{Request, Response, Result};
@@ -67,20 +72,22 @@ pub fn path(pattern: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
 /// #         Ok(Response::ok())
 /// #     }
 /// # }
-// Regex with named groups
-/// let handler = Arc::new(DummyHandler);
-/// let route = re_path(r"^users/(?P<id>\d+)/$", handler)
+/// // Regex with named groups - no Arc::new() needed!
+/// let route = re_path(r"^users/(?P<id>\d+)/$", DummyHandler)
 ///     .with_name("user-detail");
 /// assert_eq!(route.path, "users/{id}/");
 /// assert_eq!(route.name, Some("user-detail".to_string()));
 /// ```
-pub fn re_path(regex: impl Into<String>, handler: Arc<dyn Handler>) -> Route {
+pub fn re_path<H>(regex: impl Into<String>, handler: H) -> Route
+where
+	H: Handler + 'static,
+{
 	let regex_str = regex.into();
 
 	// Convert Django-style regex to our path pattern format
 	let pattern = convert_regex_to_pattern(&regex_str);
 
-	Route::new(pattern, handler)
+	Route::from_handler(pattern, handler)
 }
 
 /// Convert Django-style regex pattern to our {param} format

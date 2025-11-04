@@ -8,7 +8,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct Route {
 	pub path: String,
-	pub handler: Arc<dyn Handler>,
+	handler: Arc<dyn Handler>,
 	pub name: Option<String>,
 	/// Namespace for this route (e.g., "users", "api")
 	/// When combined with name, forms "namespace:name"
@@ -51,6 +51,44 @@ impl Route {
 			middleware: Vec::new(),
 		}
 	}
+
+	/// Create a new route from a concrete handler (preferred method)
+	///
+	/// This method allows you to pass a handler directly without wrapping it in `Arc`.
+	/// The `Arc` wrapping is handled internally for you.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_routers::Route;
+	/// use reinhardt_apps::Handler;
+	///
+	/// # use async_trait::async_trait;
+	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # struct DummyHandler;
+	/// # #[async_trait]
+	/// # impl Handler for DummyHandler {
+	/// #     async fn handle(&self, _req: Request) -> Result<Response> {
+	/// #         Ok(Response::ok())
+	/// #     }
+	/// # }
+	/// // No Arc::new() needed!
+	/// let route = Route::from_handler("/users/", DummyHandler);
+	/// assert_eq!(route.path, "/users/");
+	/// ```
+	pub fn from_handler<H>(path: impl Into<String>, handler: H) -> Self
+	where
+		H: Handler + 'static,
+	{
+		Self {
+			path: path.into(),
+			handler: Arc::new(handler),
+			name: None,
+			namespace: None,
+			middleware: Vec::new(),
+		}
+	}
+
 	/// Set the name of the route
 	///
 	/// # Examples
@@ -255,6 +293,40 @@ impl Route {
 			return Some(version_match.as_str());
 		}
 		None
+	}
+
+	/// Get a reference to the route's handler
+	///
+	/// This method provides access to the handler without exposing the `Arc` wrapper.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_routers::Route;
+	/// use reinhardt_apps::Handler;
+	///
+	/// # use async_trait::async_trait;
+	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # struct DummyHandler;
+	/// # #[async_trait]
+	/// # impl Handler for DummyHandler {
+	/// #     async fn handle(&self, _req: Request) -> Result<Response> {
+	/// #         Ok(Response::ok())
+	/// #     }
+	/// # }
+	/// let route = Route::from_handler("/users/", DummyHandler);
+	/// let handler = route.handler();
+	/// // Use handler as &dyn Handler
+	/// ```
+	pub fn handler(&self) -> &dyn Handler {
+		&*self.handler
+	}
+
+	/// Get a cloned Arc of the handler (for cases where you need ownership)
+	///
+	/// In most cases, you should use `handler()` instead to get a reference.
+	pub fn handler_arc(&self) -> Arc<dyn Handler> {
+		Arc::clone(&self.handler)
 	}
 }
 

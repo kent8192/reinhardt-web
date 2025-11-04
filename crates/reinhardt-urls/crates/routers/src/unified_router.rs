@@ -540,13 +540,47 @@ impl UnifiedRouter {
 		self
 	}
 
-	/// Register a raw handler (low-level API)
+	/// Register a handler directly (recommended method)
+	///
+	/// This method allows you to pass a handler directly without wrapping it in `Arc`.
+	/// The `Arc` wrapping is handled internally for you.
 	///
 	/// # Examples
 	///
 	/// ```rust,no_run
 	/// use reinhardt_routers::UnifiedRouter;
-	/// use hyper::Method;
+	/// # use reinhardt_apps::{Handler, Request, Response, Result};
+	/// # use async_trait::async_trait;
+	/// # struct CustomHandler;
+	/// # #[async_trait]
+	/// # impl Handler for CustomHandler {
+	/// #     async fn handle(&self, _req: Request) -> Result<Response> {
+	/// #         Ok(Response::ok())
+	/// #     }
+	/// # }
+	///
+	/// // No Arc::new() needed!
+	/// let router = UnifiedRouter::new()
+	///     .handler("/custom", CustomHandler);
+	/// ```
+	pub fn handler<H>(mut self, path: &str, handler: H) -> Self
+	where
+		H: Handler + 'static,
+	{
+		let route = Route::from_handler(path, handler);
+		self.routes.push(route);
+		self
+	}
+
+	/// Register a handler that is already wrapped in Arc (low-level API)
+	///
+	/// This is provided for cases where you already have an `Arc<dyn Handler>`.
+	/// In most cases, you should use `handler()` instead.
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_routers::UnifiedRouter;
 	/// # use reinhardt_apps::{Handler, Request, Response, Result};
 	/// # use async_trait::async_trait;
 	/// # use std::sync::Arc;
@@ -560,9 +594,9 @@ impl UnifiedRouter {
 	///
 	/// let handler = Arc::new(CustomHandler);
 	/// let router = UnifiedRouter::new()
-	///     .handler("/custom", Method::POST, handler);
+	///     .handler_arc("/custom", handler);
 	/// ```
-	pub fn handler(mut self, path: &str, _method: Method, handler: Arc<dyn Handler>) -> Self {
+	pub fn handler_arc(mut self, path: &str, handler: Arc<dyn Handler>) -> Self {
 		let route = Route::new(path, handler);
 		self.routes.push(route);
 		self
@@ -660,7 +694,7 @@ impl UnifiedRouter {
 		// Compile raw routes (routes handle all methods internally)
 		for route in &self.routes {
 			let route_handler = RouteHandler {
-				handler: route.handler.clone(),
+				handler: route.handler_arc(),
 				middleware: route.middleware.clone(),
 			};
 

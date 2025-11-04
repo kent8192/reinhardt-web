@@ -11,19 +11,30 @@ static GLOBAL_ROUTER: OnceCell<StdRwLock<Option<Arc<UnifiedRouter>>>> = OnceCell
 /// Register the application's main router globally
 ///
 /// This allows commands like `showurls` to inspect registered routes.
+/// The router is automatically wrapped in `Arc` internally.
 ///
 /// # Examples
 ///
 /// ```ignore
 /// use reinhardt_routers::{UnifiedRouter, register_router};
+/// use hyper::Method;
 ///
 /// let router = UnifiedRouter::new()
 ///     .with_prefix("/api/v1")
 ///     .function("/health", Method::GET, health_handler);
 ///
-/// register_router(Arc::new(router));
+/// // No Arc::new() needed!
+/// register_router(router);
 /// ```
-pub fn register_router(router: Arc<UnifiedRouter>) {
+pub fn register_router(router: UnifiedRouter) {
+	register_router_arc(Arc::new(router));
+}
+
+/// Register a router that is already wrapped in Arc
+///
+/// This is provided for cases where you already have an `Arc<UnifiedRouter>`.
+/// In most cases, you should use `register_router()` instead.
+pub fn register_router_arc(router: Arc<UnifiedRouter>) {
 	let cell = GLOBAL_ROUTER.get_or_init(|| StdRwLock::new(None));
 	let mut guard = cell.write().unwrap();
 	*guard = Some(router);
