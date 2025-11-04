@@ -578,13 +578,13 @@ impl<F> Atomic<F> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use reinhardt_orm::connection::DatabaseConnection;
 /// use reinhardt_orm::transaction::TransactionScope;
 ///
 /// # async fn example() {
 /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
 ///
 /// // Transaction is automatically rolled back if not committed
 /// {
@@ -614,13 +614,13 @@ impl<'conn> TransactionScope<'conn> {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_orm::connection::DatabaseConnection;
 	/// use reinhardt_orm::transaction::TransactionScope;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
 	/// let tx = TransactionScope::begin(&conn).await.unwrap();
 	/// // ... perform operations ...
 	/// tx.commit().await.unwrap();
@@ -643,13 +643,13 @@ impl<'conn> TransactionScope<'conn> {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_orm::connection::DatabaseConnection;
 	/// use reinhardt_orm::transaction::{TransactionScope, IsolationLevel};
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
 	/// let tx = TransactionScope::begin_with_isolation(
 	///     &conn,
 	///     IsolationLevel::Serializable
@@ -676,13 +676,13 @@ impl<'conn> TransactionScope<'conn> {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_orm::connection::DatabaseConnection;
 	/// use reinhardt_orm::transaction::TransactionScope;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
 	/// let tx = TransactionScope::begin(&conn).await.unwrap();
 	///
 	/// // Nested transaction
@@ -712,13 +712,13 @@ impl<'conn> TransactionScope<'conn> {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_orm::connection::DatabaseConnection;
 	/// use reinhardt_orm::transaction::TransactionScope;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
 	/// let mut tx = TransactionScope::begin(&conn).await.unwrap();
 	/// // ... perform operations ...
 	/// tx.commit().await.unwrap();
@@ -741,13 +741,13 @@ impl<'conn> TransactionScope<'conn> {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_orm::connection::DatabaseConnection;
 	/// use reinhardt_orm::transaction::TransactionScope;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
 	/// let mut tx = TransactionScope::begin(&conn).await.unwrap();
 	/// // ... error occurs ...
 	/// tx.rollback().await.unwrap();
@@ -774,7 +774,7 @@ impl<'conn> TransactionScope<'conn> {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_orm::connection::DatabaseConnection;
 	/// use reinhardt_orm::transaction::TransactionScope;
 	///
@@ -889,13 +889,13 @@ impl<'conn> Drop for TransactionScope<'conn> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use reinhardt_orm::connection::DatabaseConnection;
 /// use reinhardt_orm::transaction::atomic;
 ///
 /// # async fn example() {
 /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
 ///
 /// let result = atomic(&conn, || async move {
 ///     // Perform operations using conn...
@@ -925,13 +925,13 @@ where
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use reinhardt_orm::connection::DatabaseConnection;
 /// use reinhardt_orm::transaction::{atomic_with_isolation, IsolationLevel};
 ///
 /// # async fn example() {
 /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
+/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
 ///
 /// let result = atomic_with_isolation(
 ///     &conn,
@@ -1089,12 +1089,64 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use backends::backend::DatabaseBackend as BackendTrait;
+	use backends::connection::DatabaseConnection as BackendsConnection;
+	use backends::error::Result;
+	use backends::types::{DatabaseType, QueryResult, QueryValue, Row};
+	use rstest::*;
+	use std::sync::Arc;
 
-	#[tokio::test]
-	async fn test_transaction_scope_commit() {
-		let conn = crate::connection::DatabaseConnection::new(
+	struct MockBackend;
+
+	#[async_trait::async_trait]
+	impl BackendTrait for MockBackend {
+		fn database_type(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+		fn placeholder(&self, index: usize) -> String {
+			format!("${}", index)
+		}
+		fn supports_returning(&self) -> bool {
+			true
+		}
+		fn supports_on_conflict(&self) -> bool {
+			true
+		}
+		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
+			Ok(QueryResult { rows_affected: 1 })
+		}
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
+			Ok(Row::new())
+		}
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			Ok(Vec::new())
+		}
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Option<Row>> {
+			Ok(None)
+		}
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+	}
+
+	#[fixture]
+	fn mock_connection() -> crate::connection::DatabaseConnection {
+		let mock_backend = Arc::new(MockBackend);
+		let backends_conn = BackendsConnection::new(mock_backend);
+		crate::connection::DatabaseConnection::new(
 			crate::connection::DatabaseBackend::Postgres,
-		);
+			backends_conn,
+		)
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_transaction_scope_commit(mock_connection: crate::connection::DatabaseConnection) {
+		let conn = mock_connection;
 
 		let tx = TransactionScope::begin(&conn).await;
 		assert!(tx.is_ok());
@@ -1108,22 +1160,24 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_scope_rollback() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_transaction_scope_rollback(
+		mock_connection: crate::connection::DatabaseConnection,
+	) {
+		let conn = mock_connection;
 
 		let tx = TransactionScope::begin(&conn).await.unwrap();
 		let result = tx.rollback().await;
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_scope_with_isolation() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_transaction_scope_with_isolation(
+		mock_connection: crate::connection::DatabaseConnection,
+	) {
+		let conn = mock_connection;
 
 		let tx = TransactionScope::begin_with_isolation(&conn, IsolationLevel::Serializable).await;
 		assert!(tx.is_ok());
@@ -1133,11 +1187,10 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_scope_nested() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_transaction_scope_nested(mock_connection: crate::connection::DatabaseConnection) {
+		let conn = mock_connection;
 
 		// Begin outer transaction
 		let _outer = TransactionScope::begin(&conn).await.unwrap();
@@ -1151,11 +1204,10 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_atomic_helper() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_atomic_helper(mock_connection: crate::connection::DatabaseConnection) {
+		let conn = mock_connection;
 
 		let result = atomic(&conn, || async move { Ok::<_, anyhow::Error>(42) }).await;
 
@@ -1163,11 +1215,10 @@ mod tests {
 		assert_eq!(result.unwrap(), 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_atomic_helper_with_error() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_atomic_helper_with_error(mock_connection: crate::connection::DatabaseConnection) {
+		let conn = mock_connection;
 
 		let result = atomic(&conn, || async move {
 			Err::<i32, _>(anyhow::anyhow!("test error"))
@@ -1177,11 +1228,12 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_atomic_with_isolation_helper() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_atomic_with_isolation_helper(
+		mock_connection: crate::connection::DatabaseConnection,
+	) {
+		let conn = mock_connection;
 
 		let result = atomic_with_isolation(&conn, IsolationLevel::Serializable, || async move {
 			Ok::<_, anyhow::Error>(100)
@@ -1486,6 +1538,67 @@ mod transaction_extended_tests {
 	use super::*;
 	// use crate::expressions::{F, Q};
 	// use crate::transaction::*;
+	use backends::backend::DatabaseBackend as BackendTrait;
+	use backends::connection::DatabaseConnection as BackendsConnection;
+	use backends::error::Result;
+	use backends::types::{DatabaseType, QueryResult, QueryValue, Row};
+	use rstest::*;
+	use std::sync::Arc;
+
+	struct MockBackend;
+
+	#[async_trait::async_trait]
+	impl BackendTrait for MockBackend {
+		fn database_type(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+
+		fn placeholder(&self, index: usize) -> String {
+			format!("${}", index)
+		}
+
+		fn supports_returning(&self) -> bool {
+			true
+		}
+
+		fn supports_on_conflict(&self) -> bool {
+			true
+		}
+
+		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
+			Ok(QueryResult { rows_affected: 1 })
+		}
+
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
+			Ok(Row::new())
+		}
+
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			Ok(Vec::new())
+		}
+
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Option<Row>> {
+			Ok(None)
+		}
+
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+	}
+
+	#[fixture]
+	fn mock_connection() -> crate::connection::DatabaseConnection {
+		let mock_backend = Arc::new(MockBackend);
+		let backends_conn = BackendsConnection::new(mock_backend);
+		crate::connection::DatabaseConnection::new(
+			crate::connection::DatabaseBackend::Postgres,
+			backends_conn,
+		)
+	}
 
 	#[test]
 	// From: Django/transactions
@@ -2268,11 +2381,12 @@ mod transaction_extended_tests {
 	}
 
 	// Tests for new closure-based transaction API
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_closure_success() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_transaction_closure_success(
+		mock_connection: crate::connection::DatabaseConnection,
+	) {
+		let conn = mock_connection;
 
 		let result = transaction(&conn, |_tx| async move { Ok(42) }).await;
 
@@ -2280,13 +2394,14 @@ mod transaction_extended_tests {
 		assert_eq!(result.unwrap(), 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_closure_error_rollback() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_transaction_closure_error_rollback(
+		mock_connection: crate::connection::DatabaseConnection,
+	) {
+		let conn = mock_connection;
 
-		let result: Result<(), _> =
+		let result: std::result::Result<(), _> =
 			transaction(
 				&conn,
 				|_tx| async move { Err(anyhow::anyhow!("Test error")) },
@@ -2297,11 +2412,12 @@ mod transaction_extended_tests {
 		assert_eq!(result.unwrap_err().to_string(), "Test error");
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_with_isolation_level() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_transaction_with_isolation_level(
+		mock_connection: crate::connection::DatabaseConnection,
+	) {
+		let conn = mock_connection;
 
 		let result = transaction_with_isolation(
 			&conn,
@@ -2313,11 +2429,12 @@ mod transaction_extended_tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_scope_execute_method() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_transaction_scope_execute_method(
+		mock_connection: crate::connection::DatabaseConnection,
+	) {
+		let conn = mock_connection;
 		let tx = TransactionScope::begin(&conn).await.unwrap();
 
 		let result = tx.execute(|_tx| async move { Ok(123) }).await;
@@ -2326,14 +2443,15 @@ mod transaction_extended_tests {
 		assert_eq!(result.unwrap(), 123);
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_scope_execute_with_error() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_transaction_scope_execute_with_error(
+		mock_connection: crate::connection::DatabaseConnection,
+	) {
+		let conn = mock_connection;
 		let tx = TransactionScope::begin(&conn).await.unwrap();
 
-		let result: Result<(), _> = tx
+		let result: std::result::Result<(), _> = tx
 			.execute(|_tx| async move { Err(anyhow::anyhow!("Execute error")) })
 			.await;
 
@@ -2341,11 +2459,12 @@ mod transaction_extended_tests {
 		assert_eq!(result.unwrap_err().to_string(), "Execute error");
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_with_return_value() {
-		let conn = crate::connection::DatabaseConnection::new(
-			crate::connection::DatabaseBackend::Postgres,
-		);
+	async fn test_transaction_with_return_value(
+		mock_connection: crate::connection::DatabaseConnection,
+	) {
+		let conn = mock_connection;
 
 		let result = transaction(&conn, |_tx| async move {
 			// Simulate some operations

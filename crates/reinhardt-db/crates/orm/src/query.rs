@@ -701,8 +701,10 @@ where
 			self.select_related_query()
 		};
 
-		// Convert SeaQuery statement to SQL
-		let (sql, _values) = stmt.build(PostgresQueryBuilder);
+		// Convert SeaQuery statement to SQL with inline parameters
+		// Note: Using to_string() embeds parameters directly in SQL (safe with SeaQuery's escaping)
+		// This is necessary because DatabaseConnection::query() doesn't support parameter binding
+		let sql = stmt.to_string(PostgresQueryBuilder);
 
 		// Execute query and deserialize results
 		let rows = conn.query(&sql).await?;

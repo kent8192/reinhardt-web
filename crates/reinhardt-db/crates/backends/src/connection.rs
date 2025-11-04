@@ -30,8 +30,24 @@ impl DatabaseConnection {
 
 	#[cfg(feature = "postgres")]
 	pub async fn connect_postgres(url: &str) -> Result<Self> {
-		use sqlx::PgPool;
-		let pool = PgPool::connect(url).await?;
+		use sqlx::postgres::PgPoolOptions;
+		use std::time::Duration;
+
+		// Allow configuring pool size via environment variable (useful for tests)
+		let max_connections = std::env::var("DATABASE_POOL_MAX_CONNECTIONS")
+			.ok()
+			.and_then(|v| v.parse::<u32>().ok())
+			.unwrap_or(10); // Default to 10 connections
+
+		let pool = PgPoolOptions::new()
+			.max_connections(max_connections)
+			.min_connections(1) // Maintain at least 1 connection
+			.acquire_timeout(Duration::from_secs(3)) // Shorter timeout for faster error detection
+			.idle_timeout(Some(Duration::from_secs(10))) // Close idle connections after 10s
+			.max_lifetime(Some(Duration::from_secs(30 * 60))) // Close connections after 30 minutes
+			.connect(url)
+			.await?;
+
 		Ok(Self {
 			backend: Arc::new(PostgresBackend::new(pool)),
 		})

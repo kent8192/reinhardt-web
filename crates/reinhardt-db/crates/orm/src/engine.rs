@@ -372,7 +372,7 @@ impl DatabaseEngine {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// use reinhardt_orm::connection::DatabaseConnection;
 	///

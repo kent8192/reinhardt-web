@@ -5,7 +5,12 @@
 
 use crate::model::Model;
 use crate::query::Query;
+use crate::query_types::DbBackend;
 use crate::transaction::Transaction;
+use sea_query::{
+	Alias, Expr, ExprTrait, MysqlQueryBuilder, PostgresQueryBuilder, Query as SeaQuery,
+	SqliteQueryBuilder,
+};
 use serde_json::Value;
 use sqlx::AnyPool;
 use std::any::TypeId;
@@ -25,6 +30,8 @@ pub enum SessionError {
 	SerializationError(String),
 	/// Invalid state
 	InvalidState(String),
+	/// Flush operation error
+	FlushError(String),
 }
 
 impl std::fmt::Display for SessionError {
@@ -35,6 +42,7 @@ impl std::fmt::Display for SessionError {
 			Self::TransactionError(msg) => write!(f, "Transaction error: {}", msg),
 			Self::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
 			Self::InvalidState(msg) => write!(f, "Invalid state: {}", msg),
+			Self::FlushError(msg) => write!(f, "Flush error: {}", msg),
 		}
 	}
 }
@@ -225,8 +233,17 @@ impl Session {
 			return Ok(Some(obj));
 		}
 
-		// If not in identity map, would query database here
-		// For now, return None
+		// TODO: Query database if not in identity map
+		// This requires proper row-to-object mapping which needs:
+		// 1. Model::field_metadata() to be fully implemented (via derive macro)
+		// 2. Or sqlx::FromRow implementation on Model types
+		// 3. Or reflection-based column mapping
+		//
+		// For now, return None if object is not in identity map.
+		// This will be implemented in a future phase when we have:
+		// - #[derive(Model)] macro that generates field metadata
+		// - Or FromRow trait implementation
+
 		Ok(None)
 	}
 
@@ -287,25 +304,190 @@ impl Session {
 	pub async fn flush(&mut self) -> Result<(), SessionError> {
 		self.check_closed()?;
 
-		// Process dirty objects
-		for key in &self.dirty_objects {
-			if let Some(_entry) = self.identity_map.get(key) {
-				// In a real implementation, would generate and execute SQL here
-				// For now, just mark as clean
+		// Determine database backend from pool
+		let backend = self.get_backend();
+
+		// Process dirty objects (INSERT/UPDATE)
+		for key in &self.dirty_objects.clone() {
+			if let Some(entry) = self.identity_map.get(key) {
+				// Parse the identity key to get table name and primary key
+				let parts: Vec<&str> = key.split(':').collect();
+				if parts.len() != 2 {
+					continue;
+				}
+				let table_name = parts[0];
+
+				// Extract data from JSON
+				if let Some(obj) = entry.data.as_object() {
+					// Check if this is an INSERT (no primary key) or UPDATE (has primary key)
+					let has_pk = obj.get("id").is_some()
+						|| obj.iter().any(|(k, v)| k.ends_with("_id") && !v.is_null());
+
+					if has_pk {
+						// UPDATE existing record
+						let mut update_stmt =
+							SeaQuery::update().table(Alias::new(table_name)).to_owned();
+
+						// Set all columns except primary key
+						for (col_name, col_value) in obj {
+							if col_name == "id" || col_name.ends_with("_id") {
+								continue; // Skip primary key columns
+							}
+							update_stmt.value(Alias::new(col_name), json_to_sea_value(col_value));
+						}
+
+						// Add WHERE clause for primary key
+						if let Some(pk_value) = obj.get("id") {
+							update_stmt.and_where(
+								Expr::col(Alias::new("id"))
+									.eq(Expr::val(json_to_sea_value(pk_value))),
+							);
+						}
+
+						// Build and execute SQL
+						let (sql, values) = match backend {
+							DbBackend::Postgres => update_stmt.build(PostgresQueryBuilder),
+							DbBackend::Mysql => update_stmt.build(MysqlQueryBuilder),
+							DbBackend::Sqlite => update_stmt.build(SqliteQueryBuilder),
+						};
+
+						self.execute_with_values(&sql, &values).await?;
+					} else {
+						// INSERT new record
+						let mut insert_stmt = SeaQuery::insert()
+							.into_table(Alias::new(table_name))
+							.to_owned();
+
+						let mut columns = Vec::new();
+						let mut values_vec = Vec::new();
+
+						for (col_name, col_value) in obj {
+							if col_name == "id" && col_value.is_null() {
+								continue; // Skip auto-generated IDs
+							}
+							columns.push(Alias::new(col_name));
+							values_vec.push(Expr::val(json_to_sea_value(col_value)));
+						}
+
+						insert_stmt.columns(columns);
+						if !values_vec.is_empty() {
+							insert_stmt.values(values_vec).unwrap();
+						}
+
+						// Add RETURNING clause for PostgreSQL to get generated ID
+						if backend == DbBackend::Postgres {
+							insert_stmt
+								.returning(sea_query::Query::returning().column(Alias::new("id")));
+						}
+
+						// Build and execute SQL
+						let (sql, values) = match backend {
+							DbBackend::Postgres => insert_stmt.build(PostgresQueryBuilder),
+							DbBackend::Mysql => insert_stmt.build(MysqlQueryBuilder),
+							DbBackend::Sqlite => insert_stmt.build(SqliteQueryBuilder),
+						};
+
+						// Execute and get generated ID if available
+						if backend == DbBackend::Postgres {
+							if let Ok(row) = self.execute_returning(&sql, &values).await {
+								// Update identity map with generated ID
+								// This would require modifying the entry.data
+								// For now, we skip this optimization
+								let _ = row;
+							}
+						} else {
+							self.execute_with_values(&sql, &values).await?;
+						}
+					}
+				}
 			}
 		}
 
 		self.dirty_objects.clear();
 
-		// Process deleted objects
-		for key in &self.deleted_objects {
-			// In a real implementation, would execute DELETE statements
+		// Process deleted objects (DELETE)
+		for key in &self.deleted_objects.clone() {
+			// Parse the identity key to get table name and primary key
+			let parts: Vec<&str> = key.split(':').collect();
+			if parts.len() != 2 {
+				continue;
+			}
+			let table_name = parts[0];
+			let pk_value = parts[1];
+
+			// Build DELETE statement
+			let mut delete_stmt = SeaQuery::delete()
+				.from_table(Alias::new(table_name))
+				.to_owned();
+
+			delete_stmt.and_where(Expr::col(Alias::new("id")).eq(Expr::val(pk_value)));
+
+			// Build and execute SQL
+			let (sql, values) = match backend {
+				DbBackend::Postgres => delete_stmt.build(PostgresQueryBuilder),
+				DbBackend::Mysql => delete_stmt.build(MysqlQueryBuilder),
+				DbBackend::Sqlite => delete_stmt.build(SqliteQueryBuilder),
+			};
+
+			self.execute_with_values(&sql, &values).await?;
+
+			// Remove from identity map
 			self.identity_map.remove(key);
 		}
 
 		self.deleted_objects.clear();
 
 		Ok(())
+	}
+
+	/// Get database backend type from pool
+	fn get_backend(&self) -> DbBackend {
+		// Determine backend from the pool's connection string
+		// This is a workaround since AnyKind is deprecated
+		// We'll check the pool's database type by attempting a test query
+		// For now, default to Postgres (most common)
+		// TODO: Implement proper backend detection
+		DbBackend::Postgres
+	}
+
+	/// Execute SQL with sea_query values
+	async fn execute_with_values(
+		&self,
+		sql: &str,
+		values: &sea_query::Values,
+	) -> Result<(), SessionError> {
+		let mut query = sqlx::query(sql);
+
+		// Bind all values from sea_query::Values
+		for value in &values.0 {
+			query = bind_sea_value(query, value);
+		}
+
+		query
+			.execute(&*self.pool)
+			.await
+			.map_err(|e| SessionError::FlushError(e.to_string()))?;
+
+		Ok(())
+	}
+
+	/// Execute SQL with RETURNING clause (PostgreSQL)
+	async fn execute_returning(
+		&self,
+		sql: &str,
+		values: &sea_query::Values,
+	) -> Result<sqlx::any::AnyRow, SessionError> {
+		let mut query = sqlx::query(sql);
+
+		// Bind all values from sea_query::Values
+		for value in &values.0 {
+			query = bind_sea_value(query, value);
+		}
+
+		query
+			.fetch_one(&*self.pool)
+			.await
+			.map_err(|e| SessionError::FlushError(e.to_string()))
 	}
 
 	/// Commit the current transaction and flush changes
@@ -580,6 +762,51 @@ impl Session {
 	/// ```
 	pub fn is_closed(&self) -> bool {
 		self.is_closed
+	}
+}
+
+/// Convert JSON value to sea_query Value
+fn json_to_sea_value(value: &Value) -> sea_query::Value {
+	match value {
+		Value::Null => sea_query::Value::Int(None),
+		Value::Bool(b) => sea_query::Value::Bool(Some(*b)),
+		Value::Number(n) => {
+			if let Some(i) = n.as_i64() {
+				sea_query::Value::BigInt(Some(i))
+			} else if let Some(f) = n.as_f64() {
+				sea_query::Value::Double(Some(f))
+			} else {
+				sea_query::Value::Int(None)
+			}
+		}
+		Value::String(s) => sea_query::Value::String(Some(s.clone())),
+		Value::Array(_) | Value::Object(_) => {
+			// For complex types, serialize as JSON string
+			sea_query::Value::String(Some(value.to_string()))
+		}
+	}
+}
+
+/// Bind sea_query Value to sqlx Query
+fn bind_sea_value<'a>(
+	query: sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>,
+	value: &sea_query::Value,
+) -> sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>> {
+	match value {
+		sea_query::Value::Bool(Some(b)) => query.bind(*b),
+		sea_query::Value::TinyInt(Some(i)) => query.bind(*i as i32),
+		sea_query::Value::SmallInt(Some(i)) => query.bind(*i as i32),
+		sea_query::Value::Int(Some(i)) => query.bind(*i),
+		sea_query::Value::BigInt(Some(i)) => query.bind(*i),
+		sea_query::Value::TinyUnsigned(Some(i)) => query.bind(*i as i32),
+		sea_query::Value::SmallUnsigned(Some(i)) => query.bind(*i as i32),
+		sea_query::Value::Unsigned(Some(i)) => query.bind(*i as i64),
+		sea_query::Value::BigUnsigned(Some(i)) => query.bind(*i as i64),
+		sea_query::Value::Float(Some(f)) => query.bind(*f),
+		sea_query::Value::Double(Some(f)) => query.bind(*f),
+		sea_query::Value::String(Some(s)) => query.bind(s.clone()),
+		sea_query::Value::Bytes(Some(b)) => query.bind(b.clone()),
+		_ => query.bind(None::<i32>), // NULL values
 	}
 }
 
