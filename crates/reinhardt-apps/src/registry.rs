@@ -206,7 +206,7 @@ pub fn find_model(qualified_name: &str) -> Option<&'static ModelMetadata> {
 /// This function clears the internal cache used for model lookups.
 /// It should primarily be used in test scenarios.
 pub fn clear_model_cache() {
-	let mut cache = MODEL_CACHE.write().unwrap();
+	let mut cache = MODEL_CACHE.write().unwrap_or_else(|e| e.into_inner());
 	*cache = None;
 }
 
@@ -443,7 +443,9 @@ pub fn get_relationships_to_model(target_model: &str) -> Vec<&'static Relationsh
 /// This function clears the internal cache used for relationship lookups.
 /// It should primarily be used in test scenarios.
 pub fn clear_relationship_cache() {
-	let mut cache = RELATIONSHIP_CACHE.write().unwrap();
+	let mut cache = RELATIONSHIP_CACHE
+		.write()
+		.unwrap_or_else(|e| e.into_inner());
 	*cache = None;
 }
 
@@ -555,14 +557,74 @@ pub fn get_reverse_relations_for_model(model_name: &str) -> Vec<ReverseRelationM
 /// This function clears all registered reverse relations.
 /// It should primarily be used in test scenarios.
 pub fn clear_reverse_relations() {
-	let mut relations = REVERSE_RELATIONS.write().unwrap();
+	let mut relations = REVERSE_RELATIONS.write().unwrap_or_else(|e| e.into_inner());
 	relations.clear();
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_test::resource::{TeardownGuard, TestResource};
+	use rstest::*;
+	use serial_test::serial;
 	use std::collections::HashSet;
+
+	// TeardownGuard for model cache cleanup
+	struct ModelCacheGuard;
+
+	impl TestResource for ModelCacheGuard {
+		fn setup() -> Self {
+			Self
+		}
+
+		fn teardown(&mut self) {
+			clear_model_cache();
+		}
+	}
+
+	#[fixture]
+	fn model_cache() -> TeardownGuard<ModelCacheGuard> {
+		clear_model_cache();
+		TeardownGuard::new()
+	}
+
+	// TeardownGuard for relationship cache cleanup
+	struct RelationshipCacheGuard;
+
+	impl TestResource for RelationshipCacheGuard {
+		fn setup() -> Self {
+			Self
+		}
+
+		fn teardown(&mut self) {
+			clear_relationship_cache();
+		}
+	}
+
+	#[fixture]
+	fn relationship_cache() -> TeardownGuard<RelationshipCacheGuard> {
+		clear_relationship_cache();
+		TeardownGuard::new()
+	}
+
+	// TeardownGuard for reverse relations cleanup
+	struct ReverseRelationGuard;
+
+	impl TestResource for ReverseRelationGuard {
+		fn setup() -> Self {
+			Self
+		}
+
+		fn teardown(&mut self) {
+			clear_reverse_relations();
+		}
+	}
+
+	#[fixture]
+	fn reverse_relation() -> TeardownGuard<ReverseRelationGuard> {
+		clear_reverse_relations();
+		TeardownGuard::new()
+	}
 
 	// Test model registrations
 	#[distributed_slice(MODELS)]
@@ -612,11 +674,9 @@ mod tests {
 		assert!(models.iter().any(|m| m.model_name == "Comment"));
 	}
 
-	#[test]
-	fn test_get_models_for_app() {
-		// Clear cache before test
-		clear_model_cache();
-
+	#[rstest]
+	#[serial(model_cache)]
+	fn test_get_models_for_app(_model_cache: TeardownGuard<ModelCacheGuard>) {
 		let blog_models = get_models_for_app("blog");
 		assert_eq!(blog_models.len(), 2);
 
@@ -628,11 +688,9 @@ mod tests {
 		assert_eq!(auth_models[0].model_name, "User");
 	}
 
-	#[test]
-	fn test_get_models_for_app_cached() {
-		// Clear cache before test
-		clear_model_cache();
-
+	#[rstest]
+	#[serial(model_cache)]
+	fn test_get_models_for_app_cached(_model_cache: TeardownGuard<ModelCacheGuard>) {
 		// First call - populates cache
 		let models1 = get_models_for_app("blog");
 		assert_eq!(models1.len(), 2);
@@ -721,11 +779,11 @@ mod tests {
 		assert_eq!(relation.through_field, "author");
 	}
 
-	#[test]
-	#[serial_test::serial(reverse_relations)]
-	fn test_register_and_get_reverse_relations() {
-		clear_reverse_relations();
-
+	#[rstest]
+	#[serial(reverse_relations)]
+	fn test_register_and_get_reverse_relations(
+		_reverse_relation: TeardownGuard<ReverseRelationGuard>,
+	) {
 		let relation1 = ReverseRelationMetadata::new(
 			"User",
 			"posts".to_string(),
@@ -755,11 +813,11 @@ mod tests {
 		);
 	}
 
-	#[test]
-	#[serial_test::serial(reverse_relations)]
-	fn test_get_reverse_relations_for_nonexistent_model() {
-		clear_reverse_relations();
-
+	#[rstest]
+	#[serial(reverse_relations)]
+	fn test_get_reverse_relations_for_nonexistent_model(
+		_reverse_relation: TeardownGuard<ReverseRelationGuard>,
+	) {
 		let relations = get_reverse_relations_for_model("NonExistent");
 		assert_eq!(relations.len(), 0);
 	}
@@ -879,10 +937,11 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_get_relationships_for_model() {
-		clear_relationship_cache();
-
+	#[rstest]
+	#[serial(relationship_cache)]
+	fn test_get_relationships_for_model(
+		_relationship_cache: TeardownGuard<RelationshipCacheGuard>,
+	) {
 		let post_rels = get_relationships_for_model("blog.Post");
 		assert_eq!(post_rels.len(), 2);
 
@@ -890,10 +949,11 @@ mod tests {
 		assert_eq!(field_names, HashSet::from(["author", "tags"]));
 	}
 
-	#[test]
-	fn test_get_relationships_for_nonexistent_model() {
-		clear_relationship_cache();
-
+	#[rstest]
+	#[serial(relationship_cache)]
+	fn test_get_relationships_for_nonexistent_model(
+		_relationship_cache: TeardownGuard<RelationshipCacheGuard>,
+	) {
 		let rels = get_relationships_for_model("nonexistent.Model");
 		assert_eq!(rels.len(), 0);
 	}
