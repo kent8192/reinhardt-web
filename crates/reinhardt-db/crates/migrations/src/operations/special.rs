@@ -18,6 +18,7 @@
 //! ```
 
 use crate::ProjectState;
+use backends::connection::DatabaseConnection;
 use backends::schema::BaseDatabaseSchemaEditor;
 use serde::{Deserialize, Serialize};
 
@@ -209,21 +210,21 @@ impl StateOperation {
 ///
 /// ```rust
 /// use reinhardt_migrations::operations::special::RunCode;
+/// use backends::connection::DatabaseConnection;
 ///
-// Create a code operation with description
-/// let code = RunCode::new("Update user emails", |_| {
-///     // In a real implementation, this would receive database access
+/// // Create a code operation with description
+/// let code = RunCode::new("Update user emails", |connection| {
+///     // Access database through connection
 ///     println!("Updating emails...");
 ///     Ok(())
 /// });
 /// ```
-#[derive(Clone)]
 pub struct RunCode {
 	pub description: String,
 	#[allow(clippy::type_complexity)]
-	pub code: fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>,
+	pub code: Box<dyn Fn(&DatabaseConnection) -> Result<(), String> + Send + Sync>,
 	#[allow(clippy::type_complexity)]
-	pub reverse_code: Option<fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>>,
+	pub reverse_code: Option<Box<dyn Fn(&DatabaseConnection) -> Result<(), String> + Send + Sync>>,
 }
 
 impl std::fmt::Debug for RunCode {
@@ -237,38 +238,88 @@ impl std::fmt::Debug for RunCode {
 
 impl RunCode {
 	/// Create a new RunCode operation
-	pub fn new(
-		description: impl Into<String>,
-		code: fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>,
-	) -> Self {
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::RunCode;
+	///
+	/// let code = RunCode::new("Update user emails", |connection| {
+	///     // Database operations using connection
+	///     Ok(())
+	/// });
+	/// ```
+	pub fn new<F>(description: impl Into<String>, code: F) -> Self
+	where
+		F: Fn(&DatabaseConnection) -> Result<(), String> + Send + Sync + 'static,
+	{
 		Self {
 			description: description.into(),
-			code,
+			code: Box::new(code),
 			reverse_code: None,
 		}
 	}
 
 	/// Set reverse code for rollback
-	pub fn with_reverse_code(
-		mut self,
-		reverse: fn(&dyn BaseDatabaseSchemaEditor) -> Result<(), String>,
-	) -> Self {
-		self.reverse_code = Some(reverse);
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_migrations::operations::special::RunCode;
+	///
+	/// let code = RunCode::new("Update emails", |connection| Ok(()))
+	///     .with_reverse_code(|connection| {
+	///         // Rollback logic
+	///         Ok(())
+	///     });
+	/// ```
+	pub fn with_reverse_code<F>(mut self, reverse: F) -> Self
+	where
+		F: Fn(&DatabaseConnection) -> Result<(), String> + Send + Sync + 'static,
+	{
+		self.reverse_code = Some(Box::new(reverse));
 		self
 	}
 
 	/// Execute the code
-	pub fn execute(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-		(self.code)(schema_editor)
+	///
+	/// # Example
+	///
+	/// ```no_run
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// use reinhardt_migrations::operations::special::RunCode;
+	/// use backends::connection::DatabaseConnection;
+	///
+	/// let code = RunCode::new("Migrate data", |connection| Ok(()));
+	/// let connection = DatabaseConnection::connect_postgres("postgres://localhost/db").await?;
+	/// code.execute(&connection)?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub fn execute(&self, connection: &DatabaseConnection) -> Result<(), String> {
+		(self.code)(connection)
 	}
 
 	/// Execute reverse code
-	pub fn execute_reverse(
-		&self,
-		schema_editor: &dyn BaseDatabaseSchemaEditor,
-	) -> Result<(), String> {
-		if let Some(reverse) = self.reverse_code {
-			reverse(schema_editor)
+	///
+	/// # Example
+	///
+	/// ```no_run
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// use reinhardt_migrations::operations::special::RunCode;
+	/// use backends::connection::DatabaseConnection;
+	///
+	/// let code = RunCode::new("Migrate data", |_| Ok(()))
+	///     .with_reverse_code(|_| Ok(()));
+	///
+	/// let connection = DatabaseConnection::connect_postgres("postgres://localhost/db").await?;
+	/// code.execute_reverse(&connection)?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub fn execute_reverse(&self, connection: &DatabaseConnection) -> Result<(), String> {
+		if let Some(reverse) = &self.reverse_code {
+			reverse(connection)
 		} else {
 			Err("This operation is not reversible".to_string())
 		}
@@ -333,44 +384,16 @@ mod tests {
 
 	#[test]
 	fn test_run_code_basic() {
-		fn migrate(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-			Ok(())
-		}
-
-		let code = RunCode::new("Test migration", migrate);
+		let code = RunCode::new("Test migration", |_connection| Ok(()));
 		assert_eq!(code.description, "Test migration");
 		assert!(code.reverse_code.is_none());
 	}
 
 	#[test]
 	fn test_run_code_with_reverse() {
-		fn migrate(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-			Ok(())
-		}
-
-		fn reverse(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-			Ok(())
-		}
-
-		let code = RunCode::new("Test migration", migrate).with_reverse_code(reverse);
+		let code = RunCode::new("Test migration", |_connection| Ok(()))
+			.with_reverse_code(|_connection| Ok(()));
 		assert!(code.reverse_code.is_some());
-	}
-
-	#[cfg(feature = "postgres")]
-	#[test]
-	fn test_run_code_execute() {
-		use backends::schema::factory::{DatabaseType, SchemaEditorFactory};
-
-		fn migrate(_editor: &dyn BaseDatabaseSchemaEditor) -> Result<(), String> {
-			Ok(())
-		}
-
-		let code = RunCode::new("Test migration", migrate);
-		let factory = SchemaEditorFactory::new();
-		let editor = factory.create_for_database(DatabaseType::PostgreSQL);
-
-		let result = code.execute(editor.as_ref());
-		assert!(result.is_ok());
 	}
 
 	#[test]

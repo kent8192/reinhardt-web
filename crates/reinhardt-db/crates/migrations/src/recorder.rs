@@ -111,80 +111,87 @@ impl DatabaseMigrationRecorder {
 			Alias, ColumnDef, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder, Table,
 		};
 
-		let stmt = Table::create()
-			.table(Alias::new("reinhardt_migrations"))
-			.if_not_exists()
-			.col(
-				ColumnDef::new(Alias::new("id"))
-					.integer()
-					.not_null()
-					.auto_increment()
-					.primary_key(),
-			)
-			.col(ColumnDef::new(Alias::new("app")).string_len(255).not_null())
-			.col(
-				ColumnDef::new(Alias::new("name"))
-					.string_len(255)
-					.not_null(),
-			)
-			.col(
-				ColumnDef::new(Alias::new("applied"))
-					.timestamp()
-					.not_null()
-					.default("CURRENT_TIMESTAMP"),
-			)
-			.to_owned();
+		// Handle MongoDB separately (early return)
+		#[cfg(feature = "mongodb")]
+		if self.connection.database_type() == DatabaseType::MongoDB {
+			use bson::doc;
 
-		// Build SQL using appropriate query builder based on database type
-		let sql = match self.connection.database_type() {
-			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
-			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
-			#[cfg(feature = "mongodb")]
-			DatabaseType::MongoDB => {
-				use bson::doc;
+			let backend = self.connection.backend();
+			let backend_any = backend.as_any();
 
-				let backend = self.connection.backend();
-				let backend_any = backend.as_any();
+			if let Some(mongo_backend) =
+				backend_any.downcast_ref::<backends::drivers::mongodb::MongoDBBackend>()
+			{
+				let db = mongo_backend.database();
+				let collection = db.collection::<bson::Document>("_reinhardt_migrations");
 
-				if let Some(mongo_backend) =
-					backend_any.downcast_ref::<backends::drivers::mongodb::MongoDBBackend>()
-				{
-					let db = mongo_backend.database();
-					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
+				let indexes = collection.list_index_names().await.map_err(|e| {
+					crate::MigrationError::DatabaseError(backends::DatabaseError::ConnectionError(
+						e.to_string(),
+					))
+				})?;
 
-					let indexes = collection.list_index_names().await.map_err(|e| {
+				if indexes.is_empty() {
+					use mongodb::IndexModel;
+					use mongodb::options::IndexOptions;
+
+					let index = IndexModel::builder()
+						.keys(doc! { "app": 1, "name": 1 })
+						.options(IndexOptions::builder().unique(true).build())
+						.build();
+
+					collection.create_index(index).await.map_err(|e| {
 						crate::MigrationError::DatabaseError(
 							backends::DatabaseError::ConnectionError(e.to_string()),
 						)
 					})?;
-
-					if indexes.is_empty() {
-						use mongodb::IndexModel;
-						use mongodb::options::IndexOptions;
-
-						let index = IndexModel::builder()
-							.keys(doc! { "app": 1, "name": 1 })
-							.options(IndexOptions::builder().unique(true).build())
-							.build();
-
-						collection.create_index(index).await.map_err(|e| {
-							crate::MigrationError::DatabaseError(
-								backends::DatabaseError::ConnectionError(e.to_string()),
-							)
-						})?;
-					}
-
-					return Ok(());
-				} else {
-					return Err(crate::MigrationError::DatabaseError(
-						backends::DatabaseError::ConnectionError(
-							"Failed to downcast to MongoDBBackend".to_string(),
-						),
-					));
 				}
+
+				return Ok(());
+			} else {
+				return Err(crate::MigrationError::DatabaseError(
+					backends::DatabaseError::ConnectionError(
+						"Failed to downcast to MongoDBBackend".to_string(),
+					),
+				));
 			}
-		};
+		}
+
+		// Build SQL using appropriate query builder based on database type
+		// Scope stmt to ensure it's dropped before await
+		let sql = {
+			let stmt = Table::create()
+				.table(Alias::new("reinhardt_migrations"))
+				.if_not_exists()
+				.col(
+					ColumnDef::new(Alias::new("id"))
+						.integer()
+						.not_null()
+						.auto_increment()
+						.primary_key(),
+				)
+				.col(ColumnDef::new(Alias::new("app")).string_len(255).not_null())
+				.col(
+					ColumnDef::new(Alias::new("name"))
+						.string_len(255)
+						.not_null(),
+				)
+				.col(
+					ColumnDef::new(Alias::new("applied"))
+						.timestamp()
+						.not_null()
+						.default("CURRENT_TIMESTAMP"),
+				)
+				.to_owned();
+
+			match self.connection.database_type() {
+				DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+				DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+				#[cfg(feature = "mongodb")]
+				DatabaseType::MongoDB => unreachable!("MongoDB handled above"),
+			}
+		}; // stmt is dropped here, before await
 
 		self.connection
 			.execute(&sql, vec![])
