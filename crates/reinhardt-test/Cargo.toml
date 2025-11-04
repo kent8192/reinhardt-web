@@ -34,12 +34,14 @@ reinhardt-exception = { workspace = true }
 
 hyper = { workspace = true }
 tokio = { workspace = true }
+futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bytes = { workspace = true }
 http = "1.0"
 http-body-util = { workspace = true }
 async-trait = { workspace = true }
+async-dropper = { version = "0.3", features = ["tokio", "simple"] }
 thiserror = { workspace = true }
 url = "2.5"
 cookie = "0.18"
@@ -53,7 +55,7 @@ env_logger = "0.11"
 testcontainers = { workspace = true, optional = true, features = ["blocking"] }
 testcontainers-modules = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
-memcache-async = { version = "0.5", optional = true }
+memcache-async = { version = "0.9.0", optional = true }
 tokio-util = { version = "0.7", features = ["compat"], optional = true }
 
 # Optional dependencies for static feature
@@ -61,7 +63,7 @@ reinhardt-static = { path = "../reinhardt-contrib/crates/static", optional = tru
 tempfile = "3.8"
 
 # Testing framework dependencies
-rstest = "0.24"
+rstest = "0.26.1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
