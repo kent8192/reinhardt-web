@@ -337,19 +337,7 @@ impl<T, K> ReverseRelationship for OneToOne<T, K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	#[derive(Clone)]
-	struct User {
-		id: i64,
-		name: String,
-	}
-
-	#[derive(Clone)]
-	struct UserProfile {
-		id: i64,
-		user_id: i64,
-		bio: String,
-	}
+	use reinhardt_test::fixtures::{User, UserProfile};
 
 	#[test]
 	fn test_one_to_one_creation() {

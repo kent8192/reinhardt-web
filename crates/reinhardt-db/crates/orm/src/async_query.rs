@@ -639,6 +639,9 @@ mod tests {
 		#[tokio::test]
 		async fn test_mysql_async_session() {
 			let mysql_image = GenericImage::new("mysql", "8.0")
+				.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
+					"ready for connections",
+				))
 				.with_exposed_port(testcontainers::core::ContainerPort::Tcp(3306))
 				.with_env_var("MYSQL_ROOT_PASSWORD", "test")
 				.with_env_var("MYSQL_DATABASE", "test");

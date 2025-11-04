@@ -103,18 +103,7 @@ impl<S, C, T> AssociationCollection<S, C, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	#[derive(Clone)]
-	struct Order {
-		id: u32,
-		product_name: String,
-	}
-
-	#[derive(Clone)]
-	struct User {
-		id: u32,
-		orders: Vec<Order>,
-	}
+	use reinhardt_test::fixtures::{Order, UserWithOrders as User};
 
 	#[test]
 	fn test_association_collection_basic() {

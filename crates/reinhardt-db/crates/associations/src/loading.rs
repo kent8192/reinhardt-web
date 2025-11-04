@@ -359,12 +359,7 @@ impl<T> Default for JoinedLoader<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	#[derive(Clone)]
-	struct Post {
-		id: i64,
-		title: String,
-	}
+	use reinhardt_test::fixtures::Post;
 
 	#[test]
 	fn test_loading_strategy_default() {

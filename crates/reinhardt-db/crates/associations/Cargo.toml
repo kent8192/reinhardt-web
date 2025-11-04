@@ -8,3 +8,8 @@ repository.workspace = true
 
 [dependencies]
 serde = { workspace = true }
+
+[dev-dependencies]
+reinhardt-test = { workspace = true }
+rstest = { workspace = true }
+serial_test = { workspace = true }

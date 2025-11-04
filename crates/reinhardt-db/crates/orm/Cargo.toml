@@ -68,3 +68,4 @@ smallvec = "1.13"
 serial_test = { workspace = true }
 tokio-test = "0.4"
 testcontainers = { workspace = true }
+rstest = { workspace = true }

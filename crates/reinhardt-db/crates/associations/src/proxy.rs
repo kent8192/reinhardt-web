@@ -66,18 +66,7 @@ impl<S, A, T> AssociationProxy<S, A, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	#[derive(Clone)]
-	struct Address {
-		city: String,
-		country: String,
-	}
-
-	#[derive(Clone)]
-	struct User {
-		id: u32,
-		address: Address,
-	}
+	use reinhardt_test::fixtures::{Address, UserWithAddress as User};
 
 	#[test]
 	fn test_association_proxy_basic() {
