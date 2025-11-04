@@ -524,6 +524,18 @@ fn update_apps_export(app_name: &str) -> CommandResult<()> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::*;
+	use tempfile::{TempDir, tempdir};
+
+	#[fixture]
+	fn template_dir() -> TempDir {
+		tempdir().unwrap()
+	}
+
+	#[fixture]
+	fn output_dir() -> TempDir {
+		tempdir().unwrap()
+	}
 
 	#[test]
 	fn test_startproject_command_name() {
@@ -537,15 +549,10 @@ mod tests {
 		assert_eq!(cmd.name(), "startapp");
 	}
 
-	#[test]
-	fn test_example_file_duplication() {
+	#[rstest]
+	fn test_example_file_duplication(template_dir: TempDir, output_dir: TempDir) {
 		use crate::template::TemplateCommand;
 		use std::fs;
-		use tempfile::tempdir;
-
-		// Create temporary directories
-		let template_dir = tempdir().unwrap();
-		let output_dir = tempdir().unwrap();
 
 		// Create a mock template file with .example.toml
 		let settings_dir = template_dir.path().join("settings");
@@ -588,15 +595,10 @@ mod tests {
 		assert_eq!(content_without_example, "debug = true\n");
 	}
 
-	#[test]
-	fn test_tpl_and_example_file_duplication() {
+	#[rstest]
+	fn test_tpl_and_example_file_duplication(template_dir: TempDir, output_dir: TempDir) {
 		use crate::template::TemplateCommand;
 		use std::fs;
-		use tempfile::tempdir;
-
-		// Create temporary directories
-		let template_dir = tempdir().unwrap();
-		let output_dir = tempdir().unwrap();
 
 		// Create a mock template file with both .example and .tpl
 		let settings_dir = template_dir.path().join("settings");
