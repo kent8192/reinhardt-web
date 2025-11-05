@@ -215,10 +215,10 @@ impl SecretProvider for VaultSecretProvider {
 		// Check cache first
 		{
 			let cache = self.cache.read().unwrap();
-			if let Some(cached) = cache.get(key) {
-				if cached.is_valid() {
-					return Ok(cached.value.clone());
-				}
+			if let Some(cached) = cache.get(key)
+				&& cached.is_valid()
+			{
+				return Ok(cached.value.clone());
 			}
 		}
 
