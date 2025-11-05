@@ -60,4 +60,7 @@ all-backends = [
 [dev-dependencies]
 tokio = { workspace = true }
 bytes = { workspace = true }
+rstest = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
