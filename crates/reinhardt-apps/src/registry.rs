@@ -566,7 +566,6 @@ mod tests {
 	use super::*;
 	use reinhardt_test::resource::{TeardownGuard, TestResource};
 	use rstest::*;
-	use serial_test::serial;
 	use std::collections::HashSet;
 
 	// TeardownGuard for model cache cleanup
@@ -663,6 +662,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_get_registered_models() {
 		let models = get_registered_models();
 		// Should have at least our test models
@@ -675,7 +675,7 @@ mod tests {
 	}
 
 	#[rstest]
-	#[serial(model_cache)]
+	#[serial_test::serial(app_registry)]
 	fn test_get_models_for_app(_model_cache: TeardownGuard<ModelCacheGuard>) {
 		let blog_models = get_models_for_app("blog");
 		assert_eq!(blog_models.len(), 2);
@@ -689,7 +689,7 @@ mod tests {
 	}
 
 	#[rstest]
-	#[serial(model_cache)]
+	#[serial_test::serial(app_registry)]
 	fn test_get_models_for_app_cached(_model_cache: TeardownGuard<ModelCacheGuard>) {
 		// First call - populates cache
 		let models1 = get_models_for_app("blog");
@@ -704,12 +704,14 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_get_models_for_nonexistent_app() {
 		let models = get_models_for_app("nonexistent");
 		assert_eq!(models.len(), 0);
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_find_model() {
 		let model = find_model("auth.User");
 		assert!(model.is_some());
@@ -731,12 +733,14 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_find_nonexistent_model() {
 		let model = find_model("nonexistent.Model");
 		assert!(model.is_none());
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_clear_model_cache() {
 		// Populate cache
 		let _ = get_models_for_app("blog");
@@ -780,7 +784,7 @@ mod tests {
 	}
 
 	#[rstest]
-	#[serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_register_and_get_reverse_relations(
 		_reverse_relation: TeardownGuard<ReverseRelationGuard>,
 	) {
@@ -814,7 +818,7 @@ mod tests {
 	}
 
 	#[rstest]
-	#[serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_get_reverse_relations_for_nonexistent_model(
 		_reverse_relation: TeardownGuard<ReverseRelationGuard>,
 	) {
@@ -823,7 +827,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_clear_reverse_relations() {
 		clear_reverse_relations();
 
@@ -919,6 +923,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_get_registered_relationships() {
 		let relationships = get_registered_relationships();
 		// Should have at least our test relationships
@@ -938,7 +943,7 @@ mod tests {
 	}
 
 	#[rstest]
-	#[serial(relationship_cache)]
+	#[serial_test::serial(app_registry)]
 	fn test_get_relationships_for_model(
 		_relationship_cache: TeardownGuard<RelationshipCacheGuard>,
 	) {
@@ -950,7 +955,7 @@ mod tests {
 	}
 
 	#[rstest]
-	#[serial(relationship_cache)]
+	#[serial_test::serial(app_registry)]
 	fn test_get_relationships_for_nonexistent_model(
 		_relationship_cache: TeardownGuard<RelationshipCacheGuard>,
 	) {
@@ -959,6 +964,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_get_relationships_to_model() {
 		let user_rels = get_relationships_to_model("auth.User");
 		assert!(user_rels.len() >= 1);
@@ -975,6 +981,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_clear_relationship_cache() {
 		// Populate cache
 		let _ = get_relationships_for_model("blog.Post");

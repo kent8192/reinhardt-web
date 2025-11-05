@@ -549,6 +549,7 @@ mod tests {
 	};
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_discover_models() {
 		use std::collections::HashSet;
 
@@ -560,6 +561,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_discover_all_models() {
 		let models = discover_all_models();
 		// Should have at least our test models
@@ -573,6 +575,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_discover_models_empty() {
 		let models = discover_models("nonexistent_app");
 		assert_eq!(models.len(), 0);
@@ -715,7 +718,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_build_reverse_relations_basic() {
 		use crate::registry::clear_reverse_relations;
 
@@ -725,6 +728,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(app_registry)]
 	fn test_extract_model_relations_with_registry() {
 		use crate::registry::clear_relationship_cache;
 
@@ -753,7 +757,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(relationship_cache)]
+	#[serial_test::serial(app_registry)]
 	fn test_extract_model_relations_no_relationships() {
 		use crate::registry::clear_relationship_cache;
 
@@ -766,7 +770,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(relationship_cache)]
+	#[serial_test::serial(app_registry)]
 	fn test_extract_model_relations_different_models() {
 		use crate::registry::clear_relationship_cache;
 
@@ -788,7 +792,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(relationship_cache)]
+	#[serial_test::serial(app_registry)]
 	fn test_extract_model_relations_no_panic() {
 		use crate::registry::clear_relationship_cache;
 
@@ -801,7 +805,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_create_reverse_relation_default_naming() {
 		use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
 
@@ -827,7 +831,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_create_reverse_relation_with_related_name() {
 		use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
 
@@ -852,7 +856,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_create_reverse_relation_many_to_many() {
 		use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
 
@@ -880,7 +884,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_create_reverse_relation_one_to_one() {
 		use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
 
@@ -908,7 +912,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_create_reverse_relation_multiple_relations() {
 		use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
 
@@ -948,7 +952,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial_test::serial(reverse_relations)]
+	#[serial_test::serial(app_registry)]
 	fn test_create_reverse_relation_type_mapping() {
 		use crate::registry::{clear_reverse_relations, get_reverse_relations_for_model};
 
