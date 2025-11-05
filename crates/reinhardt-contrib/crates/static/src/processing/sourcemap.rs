@@ -245,14 +245,22 @@ impl SourceMapGenerator {
 
 		// Set source root if configured
 		if let Some(ref root) = self.source_root {
-			builder.set_source_root(Some(root));
+			builder.set_source_root(Some(root.as_str()));
 		}
 
 		// Generate line-by-line identity mappings for basic transformation
 		// Each line in the output maps to the corresponding line in the source
 		for (line_num, _line) in source_content.lines().enumerate() {
-			// Map line start: (output_line, output_col, source_id, source_line, source_col)
-			builder.add_raw(line_num as u32, 0, source_id, line_num as u32, 0, None);
+			// Map line start: (output_line, output_col, source_id, source_line, source_col, name_id, needs_recompute)
+			builder.add_raw(
+				line_num as u32,
+				0,
+				source_id,
+				line_num as u32,
+				Some(0),
+				None,
+				false,
+			);
 		}
 
 		// Build the source map and extract mappings
@@ -330,7 +338,7 @@ impl SourceMapMerger {
 
 		// Convert our source maps to sourcemap crate format and merge
 		let mut builder = sourcemap::SourceMapBuilder::new(None);
-		builder.set_file(Some(&output_file));
+		builder.set_file(Some(output_file.as_str()));
 
 		let mut current_line = 0u32;
 
@@ -354,8 +362,9 @@ impl SourceMapMerger {
 						token.get_dst_col(),
 						token.get_src_id(),
 						token.get_src_line(),
-						token.get_src_col(),
-						token.get_name_id(),
+						Some(token.get_src_col()),
+						Some(token.get_name_id()),
+						false, // needs_recompute: false for existing tokens
 					);
 				}
 
