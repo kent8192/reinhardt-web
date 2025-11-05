@@ -459,20 +459,25 @@ impl ShellCommand {
 	fn eval_python(ctx: &CommandContext, code: &str) -> CommandResult<()> {
 		use pyo3::prelude::*;
 		use pyo3::types::PyDict;
+		use std::ffi::CString;
 
-		Python::with_gil(|py| {
+		Python::attach(|py| {
 			// Create a locals dictionary to maintain state between evaluations
-			let locals = PyDict::new_bound(py);
+			let locals = PyDict::new(py);
+
+			// Convert code to CString for PyO3 0.27+
+			let code_cstr = CString::new(code).map_err(|e| {
+				crate::CommandError::ExecutionError(format!("Invalid Python code: {}", e))
+			})?;
 
 			// Execute the code
-			match py.eval_bound(code, None, Some(&locals)) {
+			match py.eval(&code_cstr, None, Some(&locals)) {
 				Ok(result) => {
 					// Convert result to string and display
 					if let Ok(result_str) = result.str() {
-						if let Ok(s) = result_str.to_string() {
-							if s != "()" && !s.is_empty() {
-								ctx.info(&format!("=> {}", s));
-							}
+						let s = result_str.to_string();
+						if s != "()" && !s.is_empty() {
+							ctx.info(&format!("=> {}", s));
 						}
 					}
 					Ok(())
@@ -529,8 +534,8 @@ impl BaseCommand for RunServerCommand {
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
 		let address = ctx.arg(0).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000");
 		let noreload = ctx.has_option("noreload");
-		let clear = ctx.has_option("clear");
-		let watch_delay = ctx
+		let _clear = ctx.has_option("clear");
+		let _watch_delay = ctx
 			.option("watch-delay")
 			.and_then(|v| v.parse::<u64>().ok())
 			.unwrap_or(500);
