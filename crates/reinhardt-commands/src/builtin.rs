@@ -314,11 +314,7 @@ impl BaseCommand for ShellCommand {
 
 	fn options(&self) -> Vec<CommandOption> {
 		vec![
-			CommandOption::option(
-				Some('c'),
-				"command",
-				"Execute a command and exit",
-			),
+			CommandOption::option(Some('c'), "command", "Execute a command and exit"),
 			CommandOption::option(
 				Some('e'),
 				"engine",
@@ -360,10 +356,7 @@ impl BaseCommand for ShellCommand {
 							let _ = rl.add_history_entry(line.as_str());
 
 							// Evaluate code using selected engine
-							let engine = ctx
-								.option("engine")
-								.map(|s| s.as_str())
-								.unwrap_or("rhai");
+							let engine = ctx.option("engine").map(|s| s.as_str()).unwrap_or("rhai");
 
 							match engine {
 								"rhai" => {
@@ -517,9 +510,17 @@ impl BaseCommand for RunServerCommand {
 	fn options(&self) -> Vec<CommandOption> {
 		vec![
 			CommandOption::flag(None, "noreload", "Disable auto-reload"),
-			CommandOption::flag(None, "clear", "Clear screen before each rebuild (requires cargo-watch)"),
-			CommandOption::option(None, "watch-delay", "Watch delay in milliseconds for file change debouncing")
-				.with_default("500"),
+			CommandOption::flag(
+				None,
+				"clear",
+				"Clear screen before each rebuild (requires cargo-watch)",
+			),
+			CommandOption::option(
+				None,
+				"watch-delay",
+				"Watch delay in milliseconds for file change debouncing",
+			)
+			.with_default("500"),
 			CommandOption::flag(None, "nothreading", "Disable threading"),
 			CommandOption::flag(None, "insecure", "Serve static files in production mode"),
 		]
@@ -552,7 +553,11 @@ impl BaseCommand for RunServerCommand {
 			{
 				ctx.verbose("Auto-reload enabled (notify-based)");
 			}
-			#[cfg(all(feature = "server", not(feature = "autoreload"), not(feature = "cargo-watch-reload")))]
+			#[cfg(all(
+				feature = "server",
+				not(feature = "autoreload"),
+				not(feature = "cargo-watch-reload")
+			))]
 			{
 				ctx.warning(
 					"Auto-reload disabled: Enable 'autoreload' or 'cargo-watch-reload' feature to use this functionality",
@@ -769,7 +774,7 @@ impl RunServerCommand {
 			ctx.info("  cargo install cargo-watch");
 			ctx.info("");
 			return Err(crate::CommandError::ExecutionError(
-				"cargo-watch not installed".to_string()
+				"cargo-watch not installed".to_string(),
 			));
 		}
 
@@ -782,8 +787,10 @@ impl RunServerCommand {
 		let mut args = vec![
 			"watch",
 			// Watch paths
-			"-w", "src",
-			"-w", "Cargo.toml",
+			"-w",
+			"src",
+			"-w",
+			"Cargo.toml",
 		];
 
 		// Add optional watch paths if they exist
@@ -795,12 +802,7 @@ impl RunServerCommand {
 		}
 
 		// Ignore paths
-		args.extend_from_slice(&[
-			"-i", "target/",
-			"-i", ".git/",
-			"-i", "*.swp",
-			"-i", "*~",
-		]);
+		args.extend_from_slice(&["-i", "target/", "-i", ".git/", "-i", "*.swp", "-i", "*~"]);
 
 		// Clear screen before each rebuild
 		if clear {
@@ -820,11 +822,13 @@ impl RunServerCommand {
 			.stdout(Stdio::inherit())
 			.stderr(Stdio::inherit())
 			.status()
-			.map_err(|e| crate::CommandError::ExecutionError(format!("Failed to run cargo-watch: {}", e)))?;
+			.map_err(|e| {
+				crate::CommandError::ExecutionError(format!("Failed to run cargo-watch: {}", e))
+			})?;
 
 		if !status.success() {
 			return Err(crate::CommandError::ExecutionError(
-				"cargo-watch exited with non-zero status".to_string()
+				"cargo-watch exited with non-zero status".to_string(),
 			));
 		}
 

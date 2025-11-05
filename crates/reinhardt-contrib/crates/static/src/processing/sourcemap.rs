@@ -336,8 +336,7 @@ impl SourceMapMerger {
 
 		for map in &self.maps {
 			// Parse each source map's mappings
-			if let Ok(sm) = sourcemap::SourceMap::from_reader(map.to_json().unwrap().as_bytes())
-			{
+			if let Ok(sm) = sourcemap::SourceMap::from_reader(map.to_json().unwrap().as_bytes()) {
 				// Add sources from this map
 				for (source_idx, source) in sm.sources().enumerate() {
 					let source_id = builder.add_source(source);
