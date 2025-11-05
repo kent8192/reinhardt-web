@@ -167,14 +167,14 @@ mod tests {
 	use reinhardt_test::fixtures::*;
 	use rstest::*;
 	use testcontainers::ContainerAsync;
-	use testcontainers::core::ImageExt;
+	use testcontainers_modules::redis::Redis;
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_pubsub_invalidation(
-		#[future] redis_fixture: (ContainerAsync<testcontainers::GenericImage>, String),
+		#[future] redis_container: (ContainerAsync<Redis>, String),
 	) {
-		let (_container, redis_url) = redis_fixture.await;
+		let (_container, redis_url) = redis_container.await;
 
 		let channel = CacheInvalidationChannel::new(&redis_url)
 			.await
