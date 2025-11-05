@@ -12,7 +12,7 @@ use sea_query::{
 	SqliteQueryBuilder,
 };
 use serde_json::Value;
-use sqlx::AnyPool;
+use sqlx::{AnyPool, Row};
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -66,12 +66,13 @@ struct IdentityEntry {
 ///
 /// ```no_run
 /// use reinhardt_orm::session::Session;
+/// use reinhardt_orm::query_types::DbBackend;
 /// use sqlx::AnyPool;
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let pool = AnyPool::connect("sqlite::memory:").await?;
-/// let session = Session::new(Arc::new(pool)).await?;
+/// let session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 ///
 /// // Session is ready for use
 /// # Ok(())
@@ -81,6 +82,8 @@ pub struct Session {
 	/// Connection pool
 	#[allow(dead_code)]
 	pool: Arc<AnyPool>,
+	/// Database backend type
+	db_backend: DbBackend,
 	/// Active transaction (if any)
 	transaction: Option<Transaction>,
 	/// Identity map: tracks objects by type and primary key
@@ -94,24 +97,26 @@ pub struct Session {
 }
 
 impl Session {
-	/// Create a new session with the given connection pool
+	/// Create a new session with the given connection pool and database backend
 	///
 	/// # Examples
 	///
 	/// ```no_run
 	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_orm::query_types::DbBackend;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let session = Session::new(Arc::new(pool)).await?;
+	/// let session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn new(pool: Arc<AnyPool>) -> Result<Self, SessionError> {
+	pub async fn new(pool: Arc<AnyPool>, db_backend: DbBackend) -> Result<Self, SessionError> {
 		Ok(Self {
 			pool,
+			db_backend,
 			transaction: None,
 			identity_map: HashMap::new(),
 			dirty_objects: HashSet::new(),
@@ -130,6 +135,7 @@ impl Session {
 	/// use serde::{Serialize, Deserialize};
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// #[derive(Serialize, Deserialize, Clone)]
 	/// struct User {
@@ -146,7 +152,7 @@ impl Session {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool)).await?;
+	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// let user = User { id: Some(1), name: "Alice".to_string() };
 	/// session.add(user).await?;
@@ -189,6 +195,7 @@ impl Session {
 	/// use serde::{Serialize, Deserialize};
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// #[derive(Serialize, Deserialize, Clone)]
 	/// struct User {
@@ -205,14 +212,14 @@ impl Session {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let session = Session::new(Arc::new(pool)).await?;
+	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// let user: Option<User> = session.get(1).await?;
 	/// # Ok(())
 	/// # }
 	/// ```
 	pub async fn get<T: Model + 'static>(
-		&self,
+		&mut self,
 		id: T::PrimaryKey,
 	) -> Result<Option<T>, SessionError> {
 		self.check_closed()?;
@@ -233,18 +240,138 @@ impl Session {
 			return Ok(Some(obj));
 		}
 
-		// TODO: Query database if not in identity map
-		// This requires proper row-to-object mapping which needs:
-		// 1. Model::field_metadata() to be fully implemented (via derive macro)
-		// 2. Or sqlx::FromRow implementation on Model types
-		// 3. Or reflection-based column mapping
-		//
-		// For now, return None if object is not in identity map.
-		// This will be implemented in a future phase when we have:
-		// - #[derive(Model)] macro that generates field metadata
-		// - Or FromRow trait implementation
+		// Query database if not in identity map
+		// Use field_metadata() to build the query and map results
+		let field_metadata = T::field_metadata();
+		if field_metadata.is_empty() {
+			// No field metadata available - model might not use derive(Model) macro
+			// Return None as we cannot query without field information
+			return Ok(None);
+		}
 
-		Ok(None)
+		// Build SELECT query using sea-query
+		let pk_field = T::primary_key_field();
+		let mut select_query = SeaQuery::select();
+		select_query.from(Alias::new(T::table_name()));
+
+		// Add all fields to SELECT
+		for field in &field_metadata {
+			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
+			select_query.column(Alias::new(column_name));
+		}
+
+		// Add WHERE clause for primary key
+		select_query.and_where(Expr::col(Alias::new(pk_field)).eq(id.to_string()));
+
+		// Build SQL query based on backend
+		let sql = match self.db_backend {
+			DbBackend::Postgres => select_query.to_string(PostgresQueryBuilder),
+			DbBackend::Mysql => select_query.to_string(MysqlQueryBuilder),
+			DbBackend::Sqlite => select_query.to_string(SqliteQueryBuilder),
+		};
+
+		// Execute query
+		let row = match sqlx::query(&sql).fetch_optional(&*self.pool).await {
+			Ok(Some(row)) => row,
+			Ok(None) => return Ok(None),
+			Err(e) => {
+				return Err(SessionError::DatabaseError(format!(
+					"Failed to query database: {}",
+					e
+				)))
+			}
+		};
+
+		// Build JSON object from row data
+		let mut json_map = serde_json::Map::new();
+		for field in &field_metadata {
+			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
+
+			// Extract value from row based on field type
+			let value: serde_json::Value = match field.field_type.as_str() {
+				typ if typ.contains("IntegerField") => {
+					if field.nullable {
+						row.try_get::<Option<i32>, _>(column_name)
+							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.unwrap_or(serde_json::Value::Null)
+					} else {
+						row.try_get::<i32, _>(column_name)
+							.map(serde_json::Value::from)
+							.unwrap_or(serde_json::Value::Null)
+					}
+				}
+				typ if typ.contains("BigIntegerField") => {
+					if field.nullable {
+						row.try_get::<Option<i64>, _>(column_name)
+							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.unwrap_or(serde_json::Value::Null)
+					} else {
+						row.try_get::<i64, _>(column_name)
+							.map(serde_json::Value::from)
+							.unwrap_or(serde_json::Value::Null)
+					}
+				}
+				typ if typ.contains("CharField") => {
+					if field.nullable {
+						row.try_get::<Option<String>, _>(column_name)
+							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.unwrap_or(serde_json::Value::Null)
+					} else {
+						row.try_get::<String, _>(column_name)
+							.map(serde_json::Value::from)
+							.unwrap_or(serde_json::Value::Null)
+					}
+				}
+				typ if typ.contains("BooleanField") => {
+					if field.nullable {
+						row.try_get::<Option<bool>, _>(column_name)
+							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.unwrap_or(serde_json::Value::Null)
+					} else {
+						row.try_get::<bool, _>(column_name)
+							.map(serde_json::Value::from)
+							.unwrap_or(serde_json::Value::Null)
+					}
+				}
+				typ if typ.contains("FloatField") => {
+					if field.nullable {
+						row.try_get::<Option<f64>, _>(column_name)
+							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.unwrap_or(serde_json::Value::Null)
+					} else {
+						row.try_get::<f64, _>(column_name)
+							.map(serde_json::Value::from)
+							.unwrap_or(serde_json::Value::Null)
+					}
+				}
+				// Add more type mappings as needed
+				_ => serde_json::Value::Null,
+			};
+
+			json_map.insert(field.name.clone(), value);
+		}
+
+		// Deserialize JSON to model object
+		let obj: T = serde_json::from_value(serde_json::Value::Object(json_map))
+			.map_err(|e| SessionError::SerializationError(format!(
+				"Failed to deserialize query result: {}",
+				e
+			)))?;
+
+		// Add to identity map
+		let obj_data = serde_json::to_value(&obj)
+			.map_err(|e| SessionError::SerializationError(e.to_string()))?;
+
+		self.identity_map.insert(
+			key.clone(),
+			IdentityEntry {
+				data: obj_data,
+				type_id: TypeId::of::<T>(),
+				is_dirty: false,
+			},
+		);
+
+		Ok(Some(obj))
 	}
 
 	/// Create a query for the given model type
@@ -257,6 +384,7 @@ impl Session {
 	/// use serde::{Serialize, Deserialize};
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// #[derive(Serialize, Deserialize, Clone)]
 	/// struct User {
@@ -273,7 +401,7 @@ impl Session {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let session = Session::new(Arc::new(pool)).await?;
+	/// let session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// let query = session.query::<User>();
 	/// # Ok(())
@@ -291,10 +419,11 @@ impl Session {
 	/// use reinhardt_orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool)).await?;
+	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// // Add/modify objects...
 	/// session.flush().await?;
@@ -498,10 +627,11 @@ impl Session {
 	/// use reinhardt_orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool)).await?;
+	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// // Add/modify objects...
 	/// session.commit().await?;
@@ -530,10 +660,11 @@ impl Session {
 	/// use reinhardt_orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool)).await?;
+	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// // Operations...
 	/// session.rollback().await?;
@@ -563,10 +694,11 @@ impl Session {
 	/// use reinhardt_orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool)).await?;
+	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// session.close().await?;
 	/// # Ok(())
@@ -594,10 +726,11 @@ impl Session {
 	/// use reinhardt_orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool)).await?;
+	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// session.begin().await?;
 	/// # Ok(())
@@ -630,6 +763,7 @@ impl Session {
 	/// use serde::{Serialize, Deserialize};
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// #[derive(Serialize, Deserialize, Clone)]
 	/// struct User {
@@ -646,7 +780,7 @@ impl Session {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool)).await?;
+	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// let user = User { id: Some(1), name: "Alice".to_string() };
 	/// session.delete(user).await?;
@@ -688,10 +822,11 @@ impl Session {
 	/// use reinhardt_orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let session = Session::new(Arc::new(pool)).await?;
+	/// let session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// let count = session.identity_count();
 	/// # Ok(())
@@ -709,10 +844,11 @@ impl Session {
 	/// use reinhardt_orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let session = Session::new(Arc::new(pool)).await?;
+	/// let session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// let count = session.dirty_count();
 	/// # Ok(())
@@ -730,10 +866,11 @@ impl Session {
 	/// use reinhardt_orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let session = Session::new(Arc::new(pool)).await?;
+	/// let session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// let has_tx = session.has_transaction();
 	/// # Ok(())
@@ -751,10 +888,11 @@ impl Session {
 	/// use reinhardt_orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
+	/// use reinhardt_orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let session = Session::new(Arc::new(pool)).await?;
+	/// let session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
 	///
 	/// let closed = session.is_closed();
 	/// # Ok(())
@@ -813,7 +951,9 @@ fn bind_sea_value<'a>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::*;
 	use serde::{Deserialize, Serialize};
+	use serial_test::serial;
 	use sqlx::Any;
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -843,21 +983,44 @@ mod tests {
 	async fn create_test_pool() -> Arc<AnyPool> {
 		use sqlx::pool::PoolOptions;
 
-		// For in-memory databases, use connect_lazy to avoid pool initialization issues
+		// Initialize SQLx drivers (idempotent operation)
+		sqlx::any::install_default_drivers();
+
+		// Use shared in-memory database so all connections see the same data
+		// The "mode=memory" and "cache=shared" ensure the database persists across connections
 		let pool = PoolOptions::<Any>::new()
-			.min_connections(0)
+			.min_connections(1)
 			.max_connections(5)
-			.connect_lazy("sqlite::memory:")
+			.connect("sqlite:file:test_session_db?mode=memory&cache=shared")
+			.await
 			.expect("Failed to create test pool");
 
+		// Create the users table for testing
+		sqlx::query(
+			"CREATE TABLE IF NOT EXISTS users (
+				id INTEGER PRIMARY KEY,
+				name TEXT NOT NULL,
+				email TEXT NOT NULL
+			)"
+		)
+		.execute(&pool)
+		.await
+		.expect("Failed to create users table");
+
 		Arc::new(pool)
+	}
+
+	/// Initialize SQLx drivers (required for AnyPool)
+	#[fixture]
+	fn init_drivers() {
+		sqlx::any::install_default_drivers();
 	}
 
 	#[tokio::test]
 
 	async fn test_session_creation() {
 		let pool = create_test_pool().await;
-		let session = Session::new(pool).await;
+		let session = Session::new(pool, DbBackend::Sqlite).await;
 
 		assert!(session.is_ok());
 		let session = session.unwrap();
@@ -870,7 +1033,7 @@ mod tests {
 
 	async fn test_session_add_object() {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		let user = TestUser {
 			id: Some(1),
@@ -888,7 +1051,7 @@ mod tests {
 
 	async fn test_session_get_from_identity_map() {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		let user = TestUser {
 			id: Some(1),
@@ -903,11 +1066,12 @@ mod tests {
 		assert_eq!(retrieved.unwrap(), user);
 	}
 
+	#[rstest]
+	#[serial(sqlx_drivers)]
 	#[tokio::test]
-
-	async fn test_session_flush_clears_dirty() {
+	async fn test_session_flush_clears_dirty(_init_drivers: ()) {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		let user = TestUser {
 			id: Some(1),
@@ -923,11 +1087,12 @@ mod tests {
 		assert_eq!(session.identity_count(), 1);
 	}
 
+	#[rstest]
+	#[serial(sqlx_drivers)]
 	#[tokio::test]
-
-	async fn test_session_delete_object() {
+	async fn test_session_delete_object(_init_drivers: ()) {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		let user = TestUser {
 			id: Some(1),
@@ -949,7 +1114,7 @@ mod tests {
 
 	async fn test_session_transaction_begin() {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		assert!(!session.has_transaction());
 
@@ -957,11 +1122,12 @@ mod tests {
 		assert!(session.has_transaction());
 	}
 
+	#[rstest]
+	#[serial(sqlx_drivers)]
 	#[tokio::test]
-
-	async fn test_session_transaction_commit() {
+	async fn test_session_transaction_commit(_init_drivers: ()) {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		session.begin().await.unwrap();
 
@@ -982,7 +1148,7 @@ mod tests {
 
 	async fn test_session_transaction_rollback() {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		session.begin().await.unwrap();
 
@@ -1005,7 +1171,7 @@ mod tests {
 
 	async fn test_session_close() {
 		let pool = create_test_pool().await;
-		let session = Session::new(pool).await.unwrap();
+		let session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		assert!(!session.is_closed());
 
@@ -1016,7 +1182,7 @@ mod tests {
 
 	async fn test_session_operations_after_close() {
 		let pool = create_test_pool().await;
-		let session = Session::new(pool).await.unwrap();
+		let session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		let _user = TestUser {
 			id: Some(1),
@@ -1034,7 +1200,7 @@ mod tests {
 
 	async fn test_session_multiple_objects() {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		for i in 1..=5 {
 			let user = TestUser {
@@ -1053,7 +1219,7 @@ mod tests {
 
 	async fn test_session_delete_removes_from_dirty() {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		let user = TestUser {
 			id: Some(1),
@@ -1072,7 +1238,7 @@ mod tests {
 
 	async fn test_session_query_creation() {
 		let pool = create_test_pool().await;
-		let session = Session::new(pool).await.unwrap();
+		let session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		let _query = session.query::<TestUser>();
 	}
@@ -1081,7 +1247,7 @@ mod tests {
 
 	async fn test_session_double_begin_fails() {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		session.begin().await.unwrap();
 		let result = session.begin().await;
@@ -1093,7 +1259,7 @@ mod tests {
 
 	async fn test_session_add_without_pk_fails() {
 		let pool = create_test_pool().await;
-		let mut session = Session::new(pool).await.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		let user = TestUser {
 			id: None,

@@ -6,7 +6,7 @@ use hyper::Method;
 use reinhardt_apps::{Handler, Request, Response, Result};
 use reinhardt_auth::permissions::{Permission, PermissionContext};
 use reinhardt_filters::FilterBackend;
-use reinhardt_orm::Model;
+use reinhardt_orm::{query_types::DbBackend, Model};
 // use reinhardt_pagination::{PaginatedResponse, Paginator};
 use reinhardt_serializers::{ModelSerializer, Serializer};
 use serde::Serialize;
@@ -228,6 +228,8 @@ where
 	filter_backends: Vec<Arc<dyn FilterBackend>>,
 	pagination_class: Option<reinhardt_pagination::PaginatorImpl>,
 	pool: Option<Arc<sqlx::AnyPool>>,
+	/// Database backend type (default: PostgreSQL)
+	db_backend: DbBackend,
 	_phantom: PhantomData<T>,
 }
 
@@ -266,6 +268,7 @@ where
 			filter_backends: Vec::new(),
 			pagination_class: None,
 			pool: None,
+			db_backend: DbBackend::Postgres,  // Default to PostgreSQL
 			_phantom: PhantomData,
 		}
 	}
@@ -370,6 +373,35 @@ where
 	/// ```
 	pub fn with_pool(mut self, pool: Arc<sqlx::AnyPool>) -> Self {
 		self.pool = Some(pool);
+		self
+	}
+
+	/// Set the database backend type for this handler
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # use reinhardt_viewsets::ModelViewSetHandler;
+	/// # use reinhardt_orm::{Model, query_types::DbBackend};
+	/// # use serde::{Serialize, Deserialize};
+	/// #
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Option<i64>,
+	/// #     username: String,
+	/// # }
+	/// #
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// let handler = ModelViewSetHandler::<User>::new()
+	///     .with_db_backend(DbBackend::Sqlite);
+	/// ```
+	pub fn with_db_backend(mut self, db_backend: DbBackend) -> Self {
+		self.db_backend = db_backend;
 		self
 	}
 
@@ -634,7 +666,7 @@ where
 		// Save to database if pool is available
 		if let Some(pool) = &self.pool {
 			// Create a new session for this request
-			let mut session = reinhardt_orm::session::Session::new(pool.clone())
+			let mut session = reinhardt_orm::session::Session::new(pool.clone(), self.db_backend)
 				.await
 				.map_err(|e| {
 					ViewError::DatabaseError(format!("Failed to create session: {}", e))
@@ -731,7 +763,7 @@ where
 		// Update database if pool is available
 		if let Some(pool) = &self.pool {
 			// Create a new session for this request
-			let mut session = reinhardt_orm::session::Session::new(pool.clone())
+			let mut session = reinhardt_orm::session::Session::new(pool.clone(), self.db_backend)
 				.await
 				.map_err(|e| {
 					ViewError::DatabaseError(format!("Failed to create session: {}", e))
@@ -828,7 +860,7 @@ where
 		// Delete from database if pool is available
 		if let Some(pool) = &self.pool {
 			// Create a new session for this request
-			let mut session = reinhardt_orm::session::Session::new(pool.clone())
+			let mut session = reinhardt_orm::session::Session::new(pool.clone(), self.db_backend)
 				.await
 				.map_err(|e| {
 					ViewError::DatabaseError(format!("Failed to create session: {}", e))
