@@ -51,7 +51,7 @@ impl CharField {
 	/// ```
 	/// use reinhardt_forms::fields::CharField;
 	///
-	/// let field = CharField::new().required();
+	/// let field = CharField::new("username".to_string()).required();
 	/// assert!(field.required);
 	/// ```
 	pub fn required(mut self) -> Self {
@@ -65,7 +65,7 @@ impl CharField {
 	/// ```
 	/// use reinhardt_forms::fields::CharField;
 	///
-	/// let field = CharField::new().with_max_length(100);
+	/// let field = CharField::new("username".to_string()).with_max_length(100);
 	/// assert_eq!(field.max_length, Some(100));
 	/// ```
 	pub fn with_max_length(mut self, max_length: usize) -> Self {
@@ -79,7 +79,7 @@ impl CharField {
 	/// ```
 	/// use reinhardt_forms::fields::CharField;
 	///
-	/// let field = CharField::new().with_min_length(5);
+	/// let field = CharField::new("username".to_string()).with_min_length(5);
 	/// assert_eq!(field.min_length, Some(5));
 	/// ```
 	pub fn with_min_length(mut self, min_length: usize) -> Self {
@@ -93,7 +93,7 @@ impl CharField {
 	/// ```
 	/// use reinhardt_forms::fields::CharField;
 	///
-	/// let field = CharField::new().with_label("Username");
+	/// let field = CharField::new("username".to_string()).with_label("Username");
 	/// assert_eq!(field.label, Some("Username".to_string()));
 	/// ```
 	pub fn with_label(mut self, label: impl Into<String>) -> Self {
@@ -107,7 +107,7 @@ impl CharField {
 	/// ```
 	/// use reinhardt_forms::fields::CharField;
 	///
-	/// let field = CharField::new().with_help_text("Enter your username");
+	/// let field = CharField::new("username".to_string()).with_help_text("Enter your username");
 	/// assert_eq!(field.help_text, Some("Enter your username".to_string()));
 	/// ```
 	pub fn with_help_text(mut self, help_text: impl Into<String>) -> Self {
@@ -135,7 +135,7 @@ impl CharField {
 	/// ```
 	/// use reinhardt_forms::fields::CharField;
 	///
-	/// let field = CharField::new().no_strip();
+	/// let field = CharField::new("description".to_string()).no_strip();
 	/// assert!(!field.strip);
 	/// ```
 	pub fn no_strip(mut self) -> Self {
@@ -238,26 +238,27 @@ impl FormField for CharField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use serde_json::json;
 
 	#[test]
 	fn test_char_field_required() {
 		let field = CharField::new("test".to_string()).required();
 		assert!(field.clean(None).is_err());
-		assert!(field.clean(Some("")).is_err());
-		assert!(field.clean(Some("  ")).is_err());
+		assert!(field.clean(Some(&json!(""))).is_err());
+		assert!(field.clean(Some(&json!("  "))).is_err());
 	}
 
 	#[test]
 	fn test_char_field_max_length() {
 		let field = CharField::new("test".to_string()).with_max_length(5);
-		assert!(field.clean(Some("12345")).is_ok());
-		assert!(field.clean(Some("123456")).is_err());
+		assert!(field.clean(Some(&json!("12345"))).is_ok());
+		assert!(field.clean(Some(&json!("123456"))).is_err());
 	}
 
 	#[test]
 	fn test_char_field_min_length() {
 		let field = CharField::new("test".to_string()).with_min_length(3);
-		assert!(field.clean(Some("123")).is_ok());
-		assert!(field.clean(Some("12")).is_err());
+		assert!(field.clean(Some(&json!("123"))).is_ok());
+		assert!(field.clean(Some(&json!("12"))).is_err());
 	}
 }

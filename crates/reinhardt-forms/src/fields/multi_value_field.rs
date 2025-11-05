@@ -20,7 +20,7 @@ impl MultiValueField {
 	///
 	/// ```
 	/// use reinhardt_forms::fields::MultiValueField;
-	/// use reinhardt_forms::field::{CharField, IntegerField};
+	/// use reinhardt_forms::fields::{CharField, IntegerField};
 	/// use reinhardt_forms::FormField;
 	/// use serde_json::json;
 	///

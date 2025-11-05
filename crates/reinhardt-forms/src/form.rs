@@ -709,8 +709,8 @@ mod tests {
 		use crate::fields::CharField;
 
 		let mut form = Form::new();
-		form.add_field(Box::new(CharField::new("username".to_string())));
-		form.add_field(Box::new(CharField::new("email".to_string())));
+		form.add_field(Box::new(CharField::new("username".to_string()).required()));
+		form.add_field(Box::new(CharField::new("email".to_string()).required()));
 
 		let data = HashMap::new(); // Empty data
 
@@ -876,7 +876,7 @@ mod tests {
 		let name_field = CharField::new("name".to_string());
 		form.add_field(Box::new(name_field));
 
-		let age_field = crate::field::IntegerField::new("age".to_string());
+		let age_field = crate::IntegerField::new("age".to_string());
 		form.add_field(Box::new(age_field));
 
 		assert_eq!(

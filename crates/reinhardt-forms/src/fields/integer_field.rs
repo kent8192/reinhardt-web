@@ -47,7 +47,7 @@ impl IntegerField {
 	/// ```
 	/// use reinhardt_forms::fields::IntegerField;
 	///
-	/// let field = IntegerField::new().required();
+	/// let field = IntegerField::new("age".to_string()).required();
 	/// assert!(field.required);
 	/// ```
 	pub fn required(mut self) -> Self {
@@ -61,7 +61,7 @@ impl IntegerField {
 	/// ```
 	/// use reinhardt_forms::fields::IntegerField;
 	///
-	/// let field = IntegerField::new().with_min_value(0);
+	/// let field = IntegerField::new("age".to_string()).with_min_value(0);
 	/// assert_eq!(field.min_value, Some(0));
 	/// ```
 	pub fn with_min_value(mut self, min_value: i64) -> Self {

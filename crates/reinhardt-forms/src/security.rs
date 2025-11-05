@@ -496,10 +496,23 @@ mod tests {
 
 	#[test]
 	fn test_csrf_validation() {
+		use base64::Engine;
+		use hmac::{Hmac, Mac};
+		use sha2::Sha256;
+
 		let middleware = FormSecurityMiddleware::new().with_csrf(Some("secret-key".to_string()));
 
-		assert!(middleware.validate_csrf("valid-token").is_ok());
+		// Generate a valid CSRF token: value:signature
+		let value = "test-random-value";
+		let secret = "secret-key";
+		let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+		mac.update(value.as_bytes());
+		let signature = base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
+		let valid_token = format!("{}:{}", value, signature);
+
+		assert!(middleware.validate_csrf(&valid_token).is_ok());
 		assert!(middleware.validate_csrf("").is_err());
+		assert!(middleware.validate_csrf("invalid-format").is_err());
 	}
 
 	#[test]
