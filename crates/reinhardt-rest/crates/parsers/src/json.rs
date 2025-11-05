@@ -141,7 +141,10 @@ mod tests {
 		let body = Bytes::from(r#"{"name": "test", "value": 123}"#);
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/json"), body, &headers).await.unwrap();
+		let result = parser
+			.parse(Some("application/json"), body, &headers)
+			.await
+			.unwrap();
 
 		match result {
 			ParsedData::Json(value) => {
@@ -178,7 +181,10 @@ mod tests {
 		let body = Bytes::new();
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/json"), body, &headers).await.unwrap();
+		let result = parser
+			.parse(Some("application/json"), body, &headers)
+			.await
+			.unwrap();
 
 		match result {
 			ParsedData::Json(Value::Null) => {}

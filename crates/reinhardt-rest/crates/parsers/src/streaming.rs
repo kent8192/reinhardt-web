@@ -249,7 +249,9 @@ mod tests {
 		let body = Bytes::from("this is too large");
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/octet-stream"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/octet-stream"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -259,7 +261,9 @@ mod tests {
 		let body = Bytes::from("small");
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/octet-stream"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/octet-stream"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 	}
 

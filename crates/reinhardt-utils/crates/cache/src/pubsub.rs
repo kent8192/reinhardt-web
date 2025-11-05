@@ -171,9 +171,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_pubsub_invalidation(
-		#[future] redis_container: (ContainerAsync<Redis>, String),
-	) {
+	async fn test_pubsub_invalidation(#[future] redis_container: (ContainerAsync<Redis>, String)) {
 		let (_container, redis_url) = redis_container.await;
 
 		let channel = CacheInvalidationChannel::new(&redis_url)

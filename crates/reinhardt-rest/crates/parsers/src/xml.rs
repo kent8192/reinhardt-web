@@ -403,7 +403,10 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
+		let result = parser
+			.parse(Some("application/xml"), xml, &headers)
+			.await
+			.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				assert!(value.is_object());
@@ -438,7 +441,10 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
+		let result = parser
+			.parse(Some("application/xml"), xml, &headers)
+			.await
+			.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -458,7 +464,10 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
+		let result = parser
+			.parse(Some("application/xml"), xml, &headers)
+			.await
+			.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -478,7 +487,10 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
+		let result = parser
+			.parse(Some("application/xml"), xml, &headers)
+			.await
+			.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -496,7 +508,10 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
+		let result = parser
+			.parse(Some("application/xml"), xml, &headers)
+			.await
+			.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -515,7 +530,10 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
+		let result = parser
+			.parse(Some("application/xml"), xml, &headers)
+			.await
+			.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -535,7 +553,10 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
+		let result = parser
+			.parse(Some("application/xml"), xml, &headers)
+			.await
+			.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();

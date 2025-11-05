@@ -323,7 +323,9 @@ mod tests {
 		let body = Bytes::from(vec![0x08, 0x96, 0x01]);
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -340,7 +342,9 @@ mod tests {
 
 		let body = Bytes::new();
 		let headers = HeaderMap::new();
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -350,7 +354,9 @@ mod tests {
 
 		let body = Bytes::from(vec![0x08, 0x96, 0x01]);
 		let headers = HeaderMap::new();
-		let result = parser.parse(Some("application/x-protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/x-protobuf"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 	}
 
@@ -381,7 +387,9 @@ mod tests {
 		]);
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -404,7 +412,9 @@ mod tests {
 		]);
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -427,7 +437,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -451,7 +463,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -477,7 +491,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -504,7 +520,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -526,7 +544,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -539,7 +559,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -552,7 +574,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -568,7 +592,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -584,7 +610,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -600,7 +628,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -616,7 +646,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -643,7 +675,9 @@ mod tests {
 
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {

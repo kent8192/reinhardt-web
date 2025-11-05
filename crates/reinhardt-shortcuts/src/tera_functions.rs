@@ -375,9 +375,9 @@ mod tests {
 
 	#[test]
 	fn test_url_function() {
-		use reinhardt_routers::{register_router, UnifiedRouter};
-		use reinhardt_http::{Request, Response};
 		use hyper::Method;
+		use reinhardt_http::{Request, Response};
+		use reinhardt_routers::{UnifiedRouter, register_router};
 
 		// Setup router with a named route
 		let mut router = UnifiedRouter::new().function_named(

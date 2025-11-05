@@ -116,7 +116,9 @@ mod tests {
 		let body = Bytes::from(msgpack_bytes);
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/msgpack"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -143,7 +145,9 @@ mod tests {
 		let body = Bytes::from(msgpack_bytes);
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/msgpack"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -166,7 +170,9 @@ mod tests {
 		let body = Bytes::from(msgpack_bytes);
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/msgpack"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -188,7 +194,9 @@ mod tests {
 		let body = Bytes::from(vec![0xDA, 0xFF, 0xFF]); // fixstr marker followed by incomplete length
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/msgpack"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -198,7 +206,9 @@ mod tests {
 
 		let body = Bytes::new();
 		let headers = HeaderMap::new();
-		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/msgpack"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 
@@ -211,7 +221,9 @@ mod tests {
 		let body = Bytes::from(msgpack_bytes);
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/x-msgpack"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/x-msgpack"), body, &headers)
+			.await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {

@@ -6,7 +6,7 @@ use hyper::Method;
 use reinhardt_apps::{Handler, Request, Response, Result};
 use reinhardt_auth::permissions::{Permission, PermissionContext};
 use reinhardt_filters::FilterBackend;
-use reinhardt_orm::{query_types::DbBackend, Model};
+use reinhardt_orm::{Model, query_types::DbBackend};
 // use reinhardt_pagination::{PaginatedResponse, Paginator};
 use reinhardt_serializers::{ModelSerializer, Serializer};
 use serde::Serialize;
@@ -268,7 +268,7 @@ where
 			filter_backends: Vec::new(),
 			pagination_class: None,
 			pool: None,
-			db_backend: DbBackend::Postgres,  // Default to PostgreSQL
+			db_backend: DbBackend::Postgres, // Default to PostgreSQL
 			_phantom: PhantomData,
 		}
 	}

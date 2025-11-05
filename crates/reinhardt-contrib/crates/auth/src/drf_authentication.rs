@@ -4,7 +4,7 @@
 
 use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
 use reinhardt_apps::Request;
-use reinhardt_sessions::{backends::SessionBackend, Session};
+use reinhardt_sessions::{Session, backends::SessionBackend};
 use std::sync::Arc;
 
 /// DRF-style authentication trait wrapper
@@ -405,9 +405,10 @@ impl<B: SessionBackend> Authentication for SessionAuthentication<B> {
 					let session_key = parts[1];
 
 					// Load session from backend
-					let mut session = Session::from_key(self.session_backend.clone(), session_key.to_string())
-						.await
-						.map_err(|_| AuthenticationError::SessionExpired)?;
+					let mut session =
+						Session::from_key(self.session_backend.clone(), session_key.to_string())
+							.await
+							.map_err(|_| AuthenticationError::SessionExpired)?;
 
 					// Get user ID from session
 					let user_id: String = match session.get("_auth_user_id") {
@@ -417,16 +418,41 @@ impl<B: SessionBackend> Authentication for SessionAuthentication<B> {
 					};
 
 					// Get additional user fields from session
-					let username: String = session.get("_auth_user_name").ok().flatten().unwrap_or_else(|| user_id.clone());
-					let email: String = session.get("_auth_user_email").ok().flatten().unwrap_or_default();
-					let is_active: bool = session.get("_auth_user_is_active").ok().flatten().unwrap_or(true);
-					let is_admin: bool = session.get("_auth_user_is_admin").ok().flatten().unwrap_or(false);
-					let is_staff: bool = session.get("_auth_user_is_staff").ok().flatten().unwrap_or(false);
-					let is_superuser: bool = session.get("_auth_user_is_superuser").ok().flatten().unwrap_or(false);
+					let username: String = session
+						.get("_auth_user_name")
+						.ok()
+						.flatten()
+						.unwrap_or_else(|| user_id.clone());
+					let email: String = session
+						.get("_auth_user_email")
+						.ok()
+						.flatten()
+						.unwrap_or_default();
+					let is_active: bool = session
+						.get("_auth_user_is_active")
+						.ok()
+						.flatten()
+						.unwrap_or(true);
+					let is_admin: bool = session
+						.get("_auth_user_is_admin")
+						.ok()
+						.flatten()
+						.unwrap_or(false);
+					let is_staff: bool = session
+						.get("_auth_user_is_staff")
+						.ok()
+						.flatten()
+						.unwrap_or(false);
+					let is_superuser: bool = session
+						.get("_auth_user_is_superuser")
+						.ok()
+						.flatten()
+						.unwrap_or(false);
 
 					// Create user from session data
 					let user = SimpleUser {
-						id: uuid::Uuid::parse_str(&user_id).map_err(|_| AuthenticationError::InvalidCredentials)?,
+						id: uuid::Uuid::parse_str(&user_id)
+							.map_err(|_| AuthenticationError::InvalidCredentials)?,
 						username,
 						email,
 						is_active,
@@ -460,7 +486,8 @@ impl<B: SessionBackend> AuthenticationBackend for SessionAuthentication<B> {
 		//
 		// For now, we construct a SimpleUser with minimal information
 		// In a real implementation, this would query a user database
-		let id = uuid::Uuid::parse_str(user_id).map_err(|_| AuthenticationError::InvalidCredentials)?;
+		let id =
+			uuid::Uuid::parse_str(user_id).map_err(|_| AuthenticationError::InvalidCredentials)?;
 		Ok(Some(Box::new(SimpleUser {
 			id,
 			username: user_id.to_string(),
@@ -554,14 +581,16 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_session_authentication() {
-		use reinhardt_sessions::backends::InMemorySessionBackend;
 		use reinhardt_sessions::Session;
+		use reinhardt_sessions::backends::InMemorySessionBackend;
 
 		let session_backend = InMemorySessionBackend::new();
 
 		// Create a session with user data
 		let mut session = Session::new(session_backend.clone());
-		session.set("_auth_user_id", "550e8400-e29b-41d4-a716-446655440000").unwrap();
+		session
+			.set("_auth_user_id", "550e8400-e29b-41d4-a716-446655440000")
+			.unwrap();
 		session.set("_auth_user_name", "testuser").unwrap();
 		session.set("_auth_user_email", "test@example.com").unwrap();
 		session.set("_auth_user_is_active", true).unwrap();

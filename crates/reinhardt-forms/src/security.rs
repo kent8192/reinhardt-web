@@ -507,7 +507,8 @@ mod tests {
 		let secret = "secret-key";
 		let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
 		mac.update(value.as_bytes());
-		let signature = base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
+		let signature =
+			base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
 		let valid_token = format!("{}:{}", value, signature);
 
 		assert!(middleware.validate_csrf(&valid_token).is_ok());

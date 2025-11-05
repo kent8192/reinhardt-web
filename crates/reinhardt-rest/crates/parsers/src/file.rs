@@ -211,7 +211,9 @@ mod tests {
 		let body = Bytes::from("this is a very long file content that exceeds the limit");
 		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/octet-stream"), body, &headers).await;
+		let result = parser
+			.parse(Some("application/octet-stream"), body, &headers)
+			.await;
 		assert!(result.is_err());
 	}
 

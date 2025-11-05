@@ -278,7 +278,7 @@ impl Session {
 				return Err(SessionError::DatabaseError(format!(
 					"Failed to query database: {}",
 					e
-				)))
+				)));
 			}
 		};
 
@@ -292,7 +292,10 @@ impl Session {
 				typ if typ.contains("IntegerField") => {
 					if field.nullable {
 						row.try_get::<Option<i32>, _>(column_name)
-							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.map(|v| {
+								v.map(serde_json::Value::from)
+									.unwrap_or(serde_json::Value::Null)
+							})
 							.unwrap_or(serde_json::Value::Null)
 					} else {
 						row.try_get::<i32, _>(column_name)
@@ -303,7 +306,10 @@ impl Session {
 				typ if typ.contains("BigIntegerField") => {
 					if field.nullable {
 						row.try_get::<Option<i64>, _>(column_name)
-							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.map(|v| {
+								v.map(serde_json::Value::from)
+									.unwrap_or(serde_json::Value::Null)
+							})
 							.unwrap_or(serde_json::Value::Null)
 					} else {
 						row.try_get::<i64, _>(column_name)
@@ -314,7 +320,10 @@ impl Session {
 				typ if typ.contains("CharField") => {
 					if field.nullable {
 						row.try_get::<Option<String>, _>(column_name)
-							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.map(|v| {
+								v.map(serde_json::Value::from)
+									.unwrap_or(serde_json::Value::Null)
+							})
 							.unwrap_or(serde_json::Value::Null)
 					} else {
 						row.try_get::<String, _>(column_name)
@@ -325,7 +334,10 @@ impl Session {
 				typ if typ.contains("BooleanField") => {
 					if field.nullable {
 						row.try_get::<Option<bool>, _>(column_name)
-							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.map(|v| {
+								v.map(serde_json::Value::from)
+									.unwrap_or(serde_json::Value::Null)
+							})
 							.unwrap_or(serde_json::Value::Null)
 					} else {
 						row.try_get::<bool, _>(column_name)
@@ -336,7 +348,10 @@ impl Session {
 				typ if typ.contains("FloatField") => {
 					if field.nullable {
 						row.try_get::<Option<f64>, _>(column_name)
-							.map(|v| v.map(serde_json::Value::from).unwrap_or(serde_json::Value::Null))
+							.map(|v| {
+								v.map(serde_json::Value::from)
+									.unwrap_or(serde_json::Value::Null)
+							})
 							.unwrap_or(serde_json::Value::Null)
 					} else {
 						row.try_get::<f64, _>(column_name)
@@ -352,11 +367,9 @@ impl Session {
 		}
 
 		// Deserialize JSON to model object
-		let obj: T = serde_json::from_value(serde_json::Value::Object(json_map))
-			.map_err(|e| SessionError::SerializationError(format!(
-				"Failed to deserialize query result: {}",
-				e
-			)))?;
+		let obj: T = serde_json::from_value(serde_json::Value::Object(json_map)).map_err(|e| {
+			SessionError::SerializationError(format!("Failed to deserialize query result: {}", e))
+		})?;
 
 		// Add to identity map
 		let obj_data = serde_json::to_value(&obj)
@@ -1001,7 +1014,7 @@ mod tests {
 				id INTEGER PRIMARY KEY,
 				name TEXT NOT NULL,
 				email TEXT NOT NULL
-			)"
+			)",
 		)
 		.execute(&pool)
 		.await
