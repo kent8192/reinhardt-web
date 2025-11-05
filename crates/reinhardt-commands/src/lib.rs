@@ -11,6 +11,7 @@
 //! - **Interactive Mode**: Support for interactive prompts
 //! - **Colored Output**: Rich terminal output
 //! - **AST-Based Code Generation**: Robust code generation using Abstract Syntax Trees
+//! - **Auto-Reload**: Development server auto-reload with cargo-watch integration
 //!
 //! ## Example
 //!
@@ -67,6 +68,66 @@
 //!
 //! This is more reliable than string-based approaches that can be confused by
 //! comments, unusual formatting, or complex code patterns.
+//!
+//! ## Auto-Reload for Development Server
+//!
+//! The `runserver` command supports automatic reloading when code changes are detected,
+//! using cargo-watch for complete rebuild and restart functionality.
+//!
+//! ### Feature Flags
+//!
+//! - `cargo-watch-reload`: Uses cargo-watch for automatic rebuild and restart (recommended)
+//! - `autoreload`: Uses notify for file watching only (legacy, requires manual restart)
+//!
+//! ### Using cargo-watch Integration
+//!
+//! Enable the `cargo-watch-reload` feature in your `Cargo.toml`:
+//!
+//! ```toml
+//! [dependencies]
+//! reinhardt-commands = { version = "0.1.0-alpha.1", features = ["cargo-watch-reload"] }
+//! ```
+//!
+//! Install cargo-watch:
+//!
+//! ```bash
+//! cargo install cargo-watch
+//! ```
+//!
+//! Run the development server with auto-reload:
+//!
+//! ```bash
+//! cargo run --bin runserver
+//! # Or explicitly disable auto-reload:
+//! cargo run --bin runserver -- --noreload
+//! ```
+//!
+//! ### CLI Options
+//!
+//! - `--noreload`: Disable auto-reload
+//! - `--clear`: Clear screen before each rebuild
+//! - `--watch-delay <ms>`: File change debounce delay (default: 500ms)
+//!
+//! ### Example
+//!
+//! ```bash
+//! # Start server with auto-reload and screen clearing
+//! cargo run --bin runserver -- --clear
+//!
+//! # Start with custom watch delay
+//! cargo run --bin runserver -- --watch-delay 1000
+//! ```
+//!
+//! ### How It Works
+//!
+//! When `cargo-watch-reload` feature is enabled:
+//! 1. Detects file changes in `src/`, `Cargo.toml`, `templates/`, `settings/`
+//! 2. Automatically runs `cargo build` to recompile
+//! 3. Restarts the server with the new binary
+//! 4. Displays build output and errors
+//!
+//! Watched files: `.rs`, `.toml`, template files
+//! Ignored: `target/`, `.git/`, temporary files
 
 pub mod base;
 pub mod builtin;

@@ -32,6 +32,14 @@ struct Args {
 	#[arg(long)]
 	noreload: bool,
 
+	/// Clear screen before each rebuild (requires cargo-watch)
+	#[arg(long)]
+	clear: bool,
+
+	/// Watch delay in milliseconds for file change debouncing (default: 500)
+	#[arg(long, default_value = "500")]
+	watch_delay: u64,
+
 	/// Disable threading
 	#[arg(long)]
 	nothreading: bool,

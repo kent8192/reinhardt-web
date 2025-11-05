@@ -195,6 +195,30 @@ cargo run --bin manage runserver
 # Server will start at http://127.0.0.1:8000
 ```
 
+**Auto-Reload Support:**
+
+For automatic reloading on code changes (like Django's runserver):
+
+```bash
+# Install cargo-watch
+cargo install cargo-watch
+
+# Enable cargo-watch-reload feature in Cargo.toml
+# [dependencies]
+# reinhardt-commands = { version = "0.1.0-alpha.1", features = ["cargo-watch-reload"] }
+
+# Run with auto-reload (detects changes, rebuilds, and restarts automatically)
+cargo run --bin runserver
+
+# Optional: Clear screen before each rebuild
+cargo run --bin runserver -- --clear
+
+# Optional: Disable auto-reload
+cargo run --bin runserver -- --noreload
+```
+
+See [Feature Flags Guide](docs/FEATURE_FLAGS.md) for more auto-reload options.
+
 ### 5. Create Your First App
 
 ```bash
