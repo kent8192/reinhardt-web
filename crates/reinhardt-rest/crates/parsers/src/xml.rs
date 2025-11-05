@@ -401,7 +401,9 @@ mod tests {
 		let parser = XMLParser::new();
 		let xml = Bytes::from("<root><name>John</name><age>30</age></root>");
 
-		let result = parser.parse(Some("application/xml"), xml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				assert!(value.is_object());
@@ -417,7 +419,9 @@ mod tests {
 		let parser = XMLParser::new();
 		let xml = Bytes::from(r#"<root id="123"><name lang="en">John</name></root>"#);
 
-		let result = parser.parse(Some("text/xml"), xml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("text/xml"), xml, &headers).await.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -432,7 +436,9 @@ mod tests {
 		let parser = XMLParser::new();
 		let xml = Bytes::from("<root><![CDATA[<html>content</html>]]></root>");
 
-		let result = parser.parse(Some("application/xml"), xml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -450,7 +456,9 @@ mod tests {
 		let parser = XMLParser::with_config(config);
 		let xml = Bytes::from("<root><count>42</count><price>19.99</price></root>");
 
-		let result = parser.parse(Some("application/xml"), xml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -468,7 +476,9 @@ mod tests {
 		let parser = XMLParser::with_config(config);
 		let xml = Bytes::from("<root><active>true</active><enabled>false</enabled></root>");
 
-		let result = parser.parse(Some("application/xml"), xml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -484,7 +494,9 @@ mod tests {
 		let parser = XMLParser::new();
 		let xml = Bytes::from("<root><item>1</item><item>2</item><item>3</item></root>");
 
-		let result = parser.parse(Some("application/xml"), xml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -501,7 +513,9 @@ mod tests {
 		let parser = XMLParser::new();
 		let xml = Bytes::from(r#"<root><empty /><empty id="test" /></root>"#);
 
-		let result = parser.parse(Some("application/xml"), xml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -519,7 +533,9 @@ mod tests {
 			"<root><person><name>John</name><address><city>NYC</city></address></person></root>",
 		);
 
-		let result = parser.parse(Some("application/xml"), xml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/xml"), xml, &headers).await.unwrap();
 		match result {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
@@ -579,7 +595,9 @@ mod tests {
 		// Mismatched tags should cause an error
 		let xml = Bytes::from("<root><item></root></item>");
 
-		let result = parser.parse(Some("application/xml"), xml).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/xml"), xml, &headers).await;
 		// Note: quick-xml may be lenient with some errors
 		// This test ensures we handle malformed XML gracefully
 		let _ = result;

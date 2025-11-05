@@ -95,9 +95,10 @@ mod tests {
 	async fn test_form_parser_url_encoded() {
 		let parser = FormParser::new();
 		let body = Bytes::from("message=Hello%20World&symbol=%26");
+		let headers = HeaderMap::new();
 
 		let result = parser
-			.parse(Some("application/x-www-form-urlencoded"), body)
+			.parse(Some("application/x-www-form-urlencoded"), body, &headers)
 			.await
 			.unwrap();
 
@@ -125,9 +126,10 @@ mod tests {
 		// DRF test: Make sure the form parsing works correctly
 		let parser = FormParser::new();
 		let body = Bytes::from("field1=abc&field2=defghijk");
+		let headers = HeaderMap::new();
 
 		let result = parser
-			.parse(Some("application/x-www-form-urlencoded"), body)
+			.parse(Some("application/x-www-form-urlencoded"), body, &headers)
 			.await
 			.unwrap();
 

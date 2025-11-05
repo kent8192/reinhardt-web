@@ -17,11 +17,13 @@ use serde_json::Value;
 /// use reinhardt_parsers::yaml::YamlParser;
 /// use reinhardt_parsers::parser::Parser;
 /// use bytes::Bytes;
+/// use http::HeaderMap;
 ///
 /// # tokio_test::block_on(async {
 /// let parser = YamlParser::new();
 /// let yaml = Bytes::from("name: John\nage: 30\n");
-/// let result = parser.parse(Some("application/yaml"), yaml).await.unwrap();
+/// let headers = HeaderMap::new();
+/// let result = parser.parse(Some("application/yaml"), yaml, &headers).await.unwrap();
 /// # });
 /// ```
 #[derive(Debug, Clone, Default)]
@@ -100,7 +102,9 @@ mod tests {
 		let parser = YamlParser::new();
 		let yaml = Bytes::from("name: John\nage: 30\n");
 
-		let result = parser.parse(Some("application/yaml"), yaml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), yaml, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Yaml(value) => {
@@ -116,7 +120,9 @@ mod tests {
 		let parser = YamlParser::new();
 		let yaml = Bytes::from("person:\n  name: John\n  address:\n    city: NYC\n");
 
-		let result = parser.parse(Some("application/yaml"), yaml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), yaml, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Yaml(value) => {
@@ -132,7 +138,9 @@ mod tests {
 		let parser = YamlParser::new();
 		let yaml = Bytes::from("items:\n  - apple\n  - banana\n  - orange\n");
 
-		let result = parser.parse(Some("application/yaml"), yaml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), yaml, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Yaml(value) => {
@@ -151,7 +159,9 @@ mod tests {
 		let parser = YamlParser::new();
 		let yaml = Bytes::from("invalid: [unclosed array");
 
-		let result = parser.parse(Some("application/yaml"), yaml).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), yaml, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -160,7 +170,9 @@ mod tests {
 		let parser = YamlParser::new();
 		let body = Bytes::new();
 
-		let result = parser.parse(Some("application/yaml"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -169,7 +181,9 @@ mod tests {
 		let parser = YamlParser::new().allow_empty(true);
 		let body = Bytes::new();
 
-		let result = parser.parse(Some("application/yaml"), body).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), body, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Yaml(Value::Null) => {}
@@ -201,7 +215,9 @@ mod tests {
 		let parser = YamlParser::new();
 		let yaml = Bytes::from("active: true\ndisabled: false\n");
 
-		let result = parser.parse(Some("application/yaml"), yaml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), yaml, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Yaml(value) => {
@@ -217,7 +233,9 @@ mod tests {
 		let parser = YamlParser::new();
 		let yaml = Bytes::from("integer: 42\nfloat: 3.14\n");
 
-		let result = parser.parse(Some("application/yaml"), yaml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), yaml, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Yaml(value) => {
@@ -233,7 +251,9 @@ mod tests {
 		let parser = YamlParser::new();
 		let yaml = Bytes::from("value: null\n");
 
-		let result = parser.parse(Some("application/yaml"), yaml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), yaml, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Yaml(value) => {
@@ -248,7 +268,9 @@ mod tests {
 		let parser = YamlParser::new();
 		let yaml = Bytes::from("description: |\n  This is a\n  multiline string\n");
 
-		let result = parser.parse(Some("application/yaml"), yaml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), yaml, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Yaml(value) => {
@@ -277,7 +299,9 @@ user:
 "#,
 		);
 
-		let result = parser.parse(Some("application/yaml"), yaml).await.unwrap();
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/yaml"), yaml, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Yaml(value) => {

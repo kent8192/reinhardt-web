@@ -183,8 +183,9 @@ mod tests {
 		let boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
 		let body = create_multipart_body(boundary);
 		let content_type = format!("multipart/form-data; boundary={}", boundary);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some(&content_type), body).await.unwrap();
+		let result = parser.parse(Some(&content_type), body, &headers).await.unwrap();
 
 		match result {
 			ParsedData::MultiPart { fields, files } => {
@@ -205,8 +206,9 @@ mod tests {
 		let boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
 		let body = create_multipart_body(boundary);
 		let content_type = format!("multipart/form-data; boundary={}", boundary);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some(&content_type), body).await;
+		let result = parser.parse(Some(&content_type), body, &headers).await;
 		assert!(result.is_err());
 	}
 

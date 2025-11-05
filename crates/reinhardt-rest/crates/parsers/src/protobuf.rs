@@ -321,8 +321,9 @@ mod tests {
 		// 0x08 = field 1, wire type 0 (varint)
 		// 0x96 0x01 = varint 150 (base-128 encoding: 0x96 = 150 - 128 = 22, 0x01 = 1 * 128 = 128, total = 22 + 128 = 150)
 		let body = Bytes::from(vec![0x08, 0x96, 0x01]);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -338,7 +339,8 @@ mod tests {
 		let parser = ProtobufParser::new();
 
 		let body = Bytes::new();
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -347,7 +349,8 @@ mod tests {
 		let parser = ProtobufParser::new();
 
 		let body = Bytes::from(vec![0x08, 0x96, 0x01]);
-		let result = parser.parse(Some("application/x-protobuf"), body).await;
+		let headers = HeaderMap::new();
+		let result = parser.parse(Some("application/x-protobuf"), body, &headers).await;
 		assert!(result.is_ok());
 	}
 
@@ -376,8 +379,9 @@ mod tests {
 			0x12, 0x04, 0x74, 0x65, 0x73,
 			0x74, // field 2, wire type 2 (length-delimited), length 4, "test"
 		]);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -398,8 +402,9 @@ mod tests {
 			0x09, // field 1, wire type 1 (64-bit)
 			0xF0, 0xDE, 0xBC, 0x9A, 0x78, 0x56, 0x34, 0x12, // little-endian 64-bit value
 		]);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -420,7 +425,9 @@ mod tests {
 			0x78, 0x56, 0x34, 0x12, // little-endian 32-bit value
 		]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -442,7 +449,9 @@ mod tests {
 			0x12, 0x02, 0x08, 0x64, // field 2, length 2, nested message (field 1, varint 100)
 		]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -466,7 +475,9 @@ mod tests {
 			0x08, 0x1E, // field 1, varint 30
 		]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -491,7 +502,9 @@ mod tests {
 			0x0A, 0x03, 0xFF, 0xFE, 0xFD, // field 1, length 3, bytes
 		]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -511,7 +524,9 @@ mod tests {
 		// Invalid wire type 6
 		let body = Bytes::from(vec![0x0E]); // field 1, wire type 6
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -522,7 +537,9 @@ mod tests {
 		// Wire type 3 (start group) - deprecated
 		let body = Bytes::from(vec![0x0B]); // field 1, wire type 3
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -533,7 +550,9 @@ mod tests {
 		// Incomplete varint (all bytes have MSB set)
 		let body = Bytes::from(vec![0x08, 0xFF, 0xFF]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -547,7 +566,9 @@ mod tests {
 			0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 		]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -561,7 +582,9 @@ mod tests {
 			0x01, 0x02, 0x03,
 		]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -575,7 +598,9 @@ mod tests {
 			0x01, 0x02, 0x03, 0x04, 0x05,
 		]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -589,7 +614,9 @@ mod tests {
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -614,7 +641,9 @@ mod tests {
 			0x28, 0x03, // field 5, varint 3
 		]);
 
-		let result = parser.parse(Some("application/protobuf"), body).await;
+		let headers = HeaderMap::new();
+
+		let result = parser.parse(Some("application/protobuf"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {

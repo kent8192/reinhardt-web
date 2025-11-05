@@ -35,13 +35,15 @@ pub struct StreamChunk {
 /// use reinhardt_parsers::streaming::StreamingParser;
 /// use reinhardt_parsers::parser::Parser;
 /// use bytes::Bytes;
+/// use http::HeaderMap;
 ///
 /// # tokio_test::block_on(async {
 /// // Set chunk size to 1MB for efficient processing
 /// let parser = StreamingParser::new(1024 * 1024);
 ///
 /// let body = Bytes::from("large file content...");
-/// let result = parser.parse(Some("application/octet-stream"), body).await;
+/// let headers = HeaderMap::new();
+/// let result = parser.parse(Some("application/octet-stream"), body, &headers).await;
 /// # });
 /// ```
 #[derive(Debug, Clone)]
@@ -224,9 +226,10 @@ mod tests {
 	async fn test_streaming_parser_small_body() {
 		let parser = StreamingParser::new(1024);
 		let body = Bytes::from("small file");
+		let headers = HeaderMap::new();
 
 		let result = parser
-			.parse(Some("application/octet-stream"), body.clone())
+			.parse(Some("application/octet-stream"), body.clone(), &headers)
 			.await;
 		assert!(result.is_ok());
 
@@ -244,8 +247,9 @@ mod tests {
 	async fn test_streaming_parser_with_max_size() {
 		let parser = StreamingParser::new(1024).with_max_size(10);
 		let body = Bytes::from("this is too large");
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/octet-stream"), body).await;
+		let result = parser.parse(Some("application/octet-stream"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -253,8 +257,9 @@ mod tests {
 	async fn test_streaming_parser_within_max_size() {
 		let parser = StreamingParser::new(1024).with_max_size(100);
 		let body = Bytes::from("small");
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/octet-stream"), body).await;
+		let result = parser.parse(Some("application/octet-stream"), body, &headers).await;
 		assert!(result.is_ok());
 	}
 

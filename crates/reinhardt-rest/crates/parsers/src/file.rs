@@ -184,9 +184,10 @@ mod tests {
 	async fn test_file_upload_parser_valid() {
 		let parser = FileUploadParser::new("upload");
 		let body = Bytes::from("binary file content here");
+		let headers = HeaderMap::new();
 
 		let result = parser
-			.parse(Some("application/octet-stream"), body.clone())
+			.parse(Some("application/octet-stream"), body.clone(), &headers)
 			.await
 			.unwrap();
 
@@ -208,8 +209,9 @@ mod tests {
 	async fn test_file_upload_parser_max_size() {
 		let parser = FileUploadParser::new("upload").max_file_size(10);
 		let body = Bytes::from("this is a very long file content that exceeds the limit");
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/octet-stream"), body).await;
+		let result = parser.parse(Some("application/octet-stream"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -217,8 +219,9 @@ mod tests {
 	async fn test_file_upload_parser_no_content_type() {
 		let parser = FileUploadParser::new("upload");
 		let body = Bytes::from("file content");
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(None, body.clone()).await.unwrap();
+		let result = parser.parse(None, body.clone(), &headers).await.unwrap();
 
 		match result {
 			ParsedData::File(file) => {
@@ -246,12 +249,13 @@ mod tests {
 		// DRF test: Parse raw file upload
 		let parser = FileUploadParser::new("file");
 		let body = Bytes::from("Test text file");
+		let headers = HeaderMap::new();
 
 		let content_disposition = "Content-Disposition: inline; filename=file.txt";
 		let filename = parser.get_filename(Some(content_disposition)).unwrap();
 
 		let result = parser
-			.parse(Some("application/octet-stream"), body.clone())
+			.parse(Some("application/octet-stream"), body.clone(), &headers)
 			.await
 			.unwrap();
 

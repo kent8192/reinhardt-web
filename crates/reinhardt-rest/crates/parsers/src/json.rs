@@ -139,8 +139,9 @@ mod tests {
 	async fn test_json_parser_valid() {
 		let parser = JSONParser::new();
 		let body = Bytes::from(r#"{"name": "test", "value": 123}"#);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/json"), body).await.unwrap();
+		let result = parser.parse(Some("application/json"), body, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Json(value) => {
@@ -155,8 +156,9 @@ mod tests {
 	async fn test_json_parser_invalid() {
 		let parser = JSONParser::new();
 		let body = Bytes::from(r#"{"invalid": json}"#);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/json"), body).await;
+		let result = parser.parse(Some("application/json"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -164,8 +166,9 @@ mod tests {
 	async fn test_json_parser_empty_not_allowed() {
 		let parser = JSONParser::new();
 		let body = Bytes::new();
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/json"), body).await;
+		let result = parser.parse(Some("application/json"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -173,8 +176,9 @@ mod tests {
 	async fn test_json_parser_empty_allowed() {
 		let parser = JSONParser::new().allow_empty(true);
 		let body = Bytes::new();
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/json"), body).await.unwrap();
+		let result = parser.parse(Some("application/json"), body, &headers).await.unwrap();
 
 		match result {
 			ParsedData::Json(Value::Null) => {}
@@ -197,11 +201,12 @@ mod tests {
 	async fn test_json_float_strictness() {
 		// DRF test: Test Infinity, -Infinity, NaN handling with strict mode
 		let parser = JSONParser::new(); // Default strict = true
+		let headers = HeaderMap::new();
 
 		// In strict mode, these should fail
 		for value in ["Infinity", "-Infinity", "NaN"] {
 			let body = Bytes::from(value);
-			let result = parser.parse(Some("application/json"), body).await;
+			let result = parser.parse(Some("application/json"), body, &headers).await;
 			assert!(
 				result.is_err(),
 				"Expected error for {} in strict mode",
@@ -215,7 +220,7 @@ mod tests {
 		let parser_non_strict = JSONParser::new().strict(false);
 		let valid_json = Bytes::from(r#"{"value": 1.0}"#);
 		let result = parser_non_strict
-			.parse(Some("application/json"), valid_json)
+			.parse(Some("application/json"), valid_json, &headers)
 			.await;
 		assert!(result.is_ok());
 	}

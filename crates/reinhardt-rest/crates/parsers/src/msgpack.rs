@@ -27,6 +27,7 @@ use crate::parser::{ParseResult, ParsedData, Parser};
 /// use reinhardt_parsers::msgpack::MessagePackParser;
 /// use reinhardt_parsers::parser::Parser;
 /// use bytes::Bytes;
+/// use http::HeaderMap;
 ///
 /// # tokio_test::block_on(async {
 /// let parser = MessagePackParser::new();
@@ -34,8 +35,9 @@ use crate::parser::{ParseResult, ParsedData, Parser};
 /// // Example MessagePack data (serialized from {"key": "value"})
 /// let msgpack_data = vec![0x81, 0xa3, 0x6b, 0x65, 0x79, 0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65];
 /// let body = Bytes::from(msgpack_data);
+/// let headers = HeaderMap::new();
 ///
-/// let result = parser.parse(Some("application/msgpack"), body).await;
+/// let result = parser.parse(Some("application/msgpack"), body, &headers).await;
 /// assert!(result.is_ok());
 /// # });
 /// ```
@@ -112,8 +114,9 @@ mod tests {
 		let data = json!({"key": "value"});
 		let msgpack_bytes = rmp_serde::to_vec(&data).unwrap();
 		let body = Bytes::from(msgpack_bytes);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/msgpack"), body).await;
+		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -138,8 +141,9 @@ mod tests {
 		});
 		let msgpack_bytes = rmp_serde::to_vec(&data).unwrap();
 		let body = Bytes::from(msgpack_bytes);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/msgpack"), body).await;
+		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -160,8 +164,9 @@ mod tests {
 		let data = json!([1, 2, 3, 4, 5]);
 		let msgpack_bytes = rmp_serde::to_vec(&data).unwrap();
 		let body = Bytes::from(msgpack_bytes);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/msgpack"), body).await;
+		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
@@ -181,8 +186,9 @@ mod tests {
 
 		// Invalid MessagePack data - incomplete string marker without data
 		let body = Bytes::from(vec![0xDA, 0xFF, 0xFF]); // fixstr marker followed by incomplete length
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/msgpack"), body).await;
+		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -191,7 +197,8 @@ mod tests {
 		let parser = MessagePackParser::new();
 
 		let body = Bytes::new();
-		let result = parser.parse(Some("application/msgpack"), body).await;
+		let headers = HeaderMap::new();
+		let result = parser.parse(Some("application/msgpack"), body, &headers).await;
 		assert!(result.is_err());
 	}
 
@@ -202,8 +209,9 @@ mod tests {
 		let data = json!({"test": "data"});
 		let msgpack_bytes = rmp_serde::to_vec(&data).unwrap();
 		let body = Bytes::from(msgpack_bytes);
+		let headers = HeaderMap::new();
 
-		let result = parser.parse(Some("application/x-msgpack"), body).await;
+		let result = parser.parse(Some("application/x-msgpack"), body, &headers).await;
 		assert!(result.is_ok());
 
 		match result.unwrap() {
