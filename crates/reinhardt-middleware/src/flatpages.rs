@@ -221,7 +221,7 @@ impl Default for FlatpagesConfig {
 ///     "About Us".to_string(),
 ///     "<h1>About Us</h1>".to_string(),
 /// );
-/// middleware.store.register(page);
+/// middleware.store().register(page);
 /// ```
 pub struct FlatpagesMiddleware {
 	config: FlatpagesConfig,

@@ -292,7 +292,7 @@ impl Default for MetricsConfig {
 /// assert_eq!(response.status, StatusCode::OK);
 ///
 /// // Check that metrics were recorded
-/// assert_eq!(middleware.store.total_requests(), 1);
+/// assert_eq!(middleware.store().total_requests(), 1);
 /// # });
 /// ```
 pub struct MetricsMiddleware {
