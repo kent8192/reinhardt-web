@@ -30,5 +30,5 @@ initial_prompt: |
   - Check: cargo check --workspace --all --all-features
   - Build: cargo build --workspace --all --all-features
   - Test: cargo test --workspace --all --all-features
-  - Format: trunk fmt
-  - Lint: trunk lint
+  - Format: cargo make fmt
+  - Lint: cargo make clippy
