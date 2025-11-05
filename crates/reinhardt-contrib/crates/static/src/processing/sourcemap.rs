@@ -266,17 +266,13 @@ impl SourceMapGenerator {
 		// Build the source map and extract mappings
 		let generated = builder.into_sourcemap();
 		let mut writer = Vec::new();
-		if generated.to_writer(&mut writer).is_ok() {
-			if let Ok(json_str) = String::from_utf8(writer) {
-				// Parse the generated JSON and extract just the mappings field
-				if let Ok(json_map) = serde_json::from_str::<serde_json::Value>(&json_str) {
-					if let Some(mappings_value) = json_map.get("mappings") {
-						if let Some(mappings_str) = mappings_value.as_str() {
-							map.set_mappings(mappings_str.to_string());
-						}
-					}
-				}
-			}
+		if generated.to_writer(&mut writer).is_ok()
+			&& let Ok(json_str) = String::from_utf8(writer)
+			&& let Ok(json_map) = serde_json::from_str::<serde_json::Value>(&json_str)
+			&& let Some(mappings_value) = json_map.get("mappings")
+			&& let Some(mappings_str) = mappings_value.as_str()
+		{
+			map.set_mappings(mappings_str.to_string());
 		}
 
 		map
@@ -389,17 +385,13 @@ impl SourceMapMerger {
 		// Build merged source map and extract mappings
 		let generated = builder.into_sourcemap();
 		let mut writer = Vec::new();
-		if generated.to_writer(&mut writer).is_ok() {
-			if let Ok(json_str) = String::from_utf8(writer) {
-				// Parse the generated JSON and extract just the mappings field
-				if let Ok(json_map) = serde_json::from_str::<serde_json::Value>(&json_str) {
-					if let Some(mappings_value) = json_map.get("mappings") {
-						if let Some(mappings_str) = mappings_value.as_str() {
-							merged.set_mappings(mappings_str.to_string());
-						}
-					}
-				}
-			}
+		if generated.to_writer(&mut writer).is_ok()
+			&& let Ok(json_str) = String::from_utf8(writer)
+			&& let Ok(json_map) = serde_json::from_str::<serde_json::Value>(&json_str)
+			&& let Some(mappings_value) = json_map.get("mappings")
+			&& let Some(mappings_str) = mappings_value.as_str()
+		{
+			merged.set_mappings(mappings_str.to_string());
 		}
 
 		merged
