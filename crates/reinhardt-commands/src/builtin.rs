@@ -757,7 +757,7 @@ impl RunServerCommand {
 		use std::process::{Command, Stdio};
 
 		Command::new("cargo")
-			.args(&["watch", "--version"])
+			.args(["watch", "--version"])
 			.stdout(Stdio::null())
 			.stderr(Stdio::null())
 			.status()
@@ -779,7 +779,7 @@ impl RunServerCommand {
 		if !Self::is_cargo_watch_installed() {
 			eprintln!("cargo-watch not found. Install with:");
 			eprintln!("  cargo install cargo-watch");
-			eprintln!("");
+			eprintln!();
 			return Err(crate::CommandError::ExecutionError(
 				"cargo-watch not installed".to_string(),
 			));
