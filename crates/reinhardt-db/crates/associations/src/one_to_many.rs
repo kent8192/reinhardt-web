@@ -212,12 +212,14 @@ impl<T, K> ReverseRelationship for OneToMany<T, K> {
 mod tests {
 	use super::*;
 
+	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct User {
 		id: i64,
 		name: String,
 	}
 
+	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct Post {
 		id: i64,
