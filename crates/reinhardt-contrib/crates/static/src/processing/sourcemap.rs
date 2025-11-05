@@ -365,7 +365,7 @@ impl SourceMapMerger {
 				}
 
 				// Update line offset for next map (approximate based on sources count)
-				current_line += sm.get_source_count() as u32;
+				current_line += sm.get_source_count();
 			}
 
 			// Collect sources and names for metadata
