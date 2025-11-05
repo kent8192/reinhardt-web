@@ -800,9 +800,9 @@ mod tests {
 
 				// Verify required fields
 				assert_eq!(obj.required.len(), 3);
-				assert!(obj.required.contains("id"));
-				assert!(obj.required.contains("username"));
-				assert!(obj.required.contains("email"));
+				assert!(obj.required.contains(&"id".to_string()));
+				assert!(obj.required.contains(&"username".to_string()));
+				assert!(obj.required.contains(&"email".to_string()));
 			}
 			_ => panic!("Expected Object schema"),
 		}
