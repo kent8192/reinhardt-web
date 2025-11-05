@@ -173,8 +173,8 @@ Before starting the release process, verify:
 
 - [ ] All tests pass: `cargo test --workspace --all --all-features`
 - [ ] Code builds without warnings: `cargo build --workspace --all --all-features`
-- [ ] Linting passes: `trunk lint`
-- [ ] Code formatting applied: `trunk fmt`
+- [ ] Linting passes: `cargo make clippy`
+- [ ] Code formatting applied: `cargo make fmt`
 - [ ] Documentation builds: `cargo doc --no-deps --all-features`
 
 ### Documentation
@@ -295,8 +295,8 @@ cargo test --doc -p <crate-name>
 cargo doc --no-deps --all-features -p <crate-name>
 
 # Lint and format
-trunk fmt
-trunk lint
+cargo make fmt
+cargo make clippy
 ```
 
 #### Step 5: Commit Version Changes
