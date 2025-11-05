@@ -79,7 +79,7 @@ fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-/// let db = AdminDatabase::new(Arc::new(conn));
+/// let db = AdminDatabase::new(conn);
 ///
 /// // List items with filters
 /// let items = db.list::<User>("users", vec![], 0, 50).await?;
@@ -147,7 +147,7 @@ impl AdminDatabase {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let db = AdminDatabase::new(Arc::new(conn));
+	/// let db = AdminDatabase::new(conn);
 	///
 	/// let filters = vec![
 	///     Filter::new("is_active".to_string(), FilterOperator::Eq, FilterValue::Boolean(true))
@@ -227,7 +227,7 @@ impl AdminDatabase {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let db = AdminDatabase::new(Arc::new(conn));
+	/// let db = AdminDatabase::new(conn);
 	///
 	/// let item = db.get::<User>("users", "id", "1").await?;
 	/// # Ok(())
@@ -291,7 +291,7 @@ impl AdminDatabase {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let db = AdminDatabase::new(Arc::new(conn));
+	/// let db = AdminDatabase::new(conn);
 	///
 	/// let mut data = HashMap::new();
 	/// data.insert("name".to_string(), serde_json::json!("Alice"));
@@ -376,7 +376,7 @@ impl AdminDatabase {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let db = AdminDatabase::new(Arc::new(conn));
+	/// let db = AdminDatabase::new(conn);
 	///
 	/// let mut data = HashMap::new();
 	/// data.insert("name".to_string(), serde_json::json!("Alice Updated"));
@@ -451,7 +451,7 @@ impl AdminDatabase {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let db = AdminDatabase::new(Arc::new(conn));
+	/// let db = AdminDatabase::new(conn);
 	///
 	/// db.delete::<User>("users", "id", "1").await?;
 	/// # Ok(())
@@ -503,7 +503,7 @@ impl AdminDatabase {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let db = AdminDatabase::new(Arc::new(conn));
+	/// let db = AdminDatabase::new(conn);
 	///
 	/// let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
 	/// db.bulk_delete::<User>("users", "id", ids).await?;
@@ -560,7 +560,7 @@ impl AdminDatabase {
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let db = AdminDatabase::new(Arc::new(conn));
+	/// let db = AdminDatabase::new(conn);
 	///
 	/// let filters = vec![
 	///     Filter::new("is_active".to_string(), FilterOperator::Eq, FilterValue::Boolean(true))
@@ -709,7 +709,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_admin_database_new(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(Arc::new(mock_connection));
+		let db = AdminDatabase::new(mock_connection);
 
 		assert_eq!(db.connection().backend(), DatabaseBackend::Postgres);
 	}
@@ -717,7 +717,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_bulk_delete_empty(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(Arc::new(mock_connection));
+		let db = AdminDatabase::new(mock_connection);
 
 		let result = db.bulk_delete::<User>("users", "id", vec![]).await;
 
@@ -728,7 +728,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_list_with_filters(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(Arc::new(mock_connection));
+		let db = AdminDatabase::new(mock_connection);
 
 		let filters = vec![Filter::new(
 			"is_active".to_string(),
@@ -743,7 +743,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_get_by_id(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(Arc::new(mock_connection));
+		let db = AdminDatabase::new(mock_connection);
 
 		let result = db.get::<User>("users", "id", "1").await;
 		assert!(result.is_ok());
@@ -752,7 +752,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_create(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(Arc::new(mock_connection));
+		let db = AdminDatabase::new(mock_connection);
 
 		let mut data = HashMap::new();
 		data.insert("name".to_string(), serde_json::json!("Alice"));
@@ -765,7 +765,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_update(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(Arc::new(mock_connection));
+		let db = AdminDatabase::new(mock_connection);
 
 		let mut data = HashMap::new();
 		data.insert("name".to_string(), serde_json::json!("Alice Updated"));
@@ -777,7 +777,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_delete(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(Arc::new(mock_connection));
+		let db = AdminDatabase::new(mock_connection);
 
 		let result = db.delete::<User>("users", "id", "1").await;
 		assert!(result.is_ok());
@@ -786,7 +786,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_count(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(Arc::new(mock_connection));
+		let db = AdminDatabase::new(mock_connection);
 
 		let filters = vec![];
 		let result = db.count::<User>("users", filters).await;
@@ -796,7 +796,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_bulk_delete_multiple_ids(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(Arc::new(mock_connection));
+		let db = AdminDatabase::new(mock_connection);
 
 		let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
 		let result = db.bulk_delete::<User>("users", "id", ids).await;

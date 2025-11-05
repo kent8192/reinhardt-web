@@ -1548,7 +1548,7 @@ mod tests {
 	#[test]
 	fn test_database_audit_logger_creation(mock_connection: DatabaseConnection) {
 		// Create a dummy database for testing
-		let db = Arc::new(AdminDatabase::new(Arc::new(mock_connection)));
+		let db = Arc::new(AdminDatabase::new(mock_connection));
 		let logger = DatabaseAuditLogger::new(db, "audit_logs".to_string());
 
 		assert_eq!(logger.table_name(), "audit_logs");
