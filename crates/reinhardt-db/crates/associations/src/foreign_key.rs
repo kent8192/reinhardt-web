@@ -348,7 +348,7 @@ impl<T, K> ReverseRelationship for ForeignKey<T, K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_test::fixtures::{Post, User};
+	use reinhardt_test::fixtures::User;
 
 	#[test]
 	fn test_foreign_key_creation() {

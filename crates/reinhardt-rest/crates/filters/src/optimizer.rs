@@ -1412,9 +1412,6 @@ mod tests {
 
 	#[test]
 	fn test_with_connection_builder() {
-		use backends::connection::DatabaseConnection as BackendsConnection;
-		use std::sync::Arc;
-
 		// Create a mock connection (in real scenarios, this would be a real connection)
 		// For this test, we just verify the builder pattern works
 		let optimizer = QueryOptimizer::new();

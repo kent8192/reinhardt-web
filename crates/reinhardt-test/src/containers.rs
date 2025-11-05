@@ -75,8 +75,8 @@
 //! let temp_url = sqlite::temp_file_url("my_test");
 //! ```
 
-use testcontainers::runners::{AsyncRunner, SyncRunner};
-use testcontainers::{Container, ContainerAsync, GenericImage, ImageExt};
+use testcontainers::runners::AsyncRunner;
+use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::postgres::Postgres;
 use testcontainers_modules::redis::Redis as RedisImage;
@@ -97,7 +97,7 @@ pub trait TestDatabase: Send + Sync {
 /// PostgreSQL test container
 pub struct PostgresContainer {
 	#[allow(dead_code)]
-	container: Container<Postgres>,
+	container: ContainerAsync<Postgres>,
 	host: String,
 	port: u16,
 	database: String,
@@ -114,8 +114,8 @@ pub struct PostgresContainer {
 /// - Username: postgres
 /// - Password: postgres
 /// - Database: test
-pub fn start_postgres() -> (PostgresContainer, String) {
-	let container = PostgresContainer::new();
+pub async fn start_postgres() -> (PostgresContainer, String) {
+	let container = PostgresContainer::new().await;
 	let url = container.connection_url();
 	(container, url)
 }
@@ -123,36 +123,32 @@ pub fn start_postgres() -> (PostgresContainer, String) {
 /// Helper function to start a PostgreSQL container with custom credentials
 ///
 /// Returns a tuple of (container, connection_url).
-pub fn start_postgres_with_credentials(
+pub async fn start_postgres_with_credentials(
 	username: &str,
 	password: &str,
 	database: &str,
 ) -> (PostgresContainer, String) {
-	let container = PostgresContainer::with_credentials(username, password, database);
+	let container = PostgresContainer::with_credentials(username, password, database).await;
 	let url = container.connection_url();
 	(container, url)
 }
 
-impl Default for PostgresContainer {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl PostgresContainer {
 	/// Create a new PostgreSQL container with default settings
-	pub fn new() -> Self {
-		Self::with_credentials("postgres", "postgres", "test")
+	pub async fn new() -> Self {
+		Self::with_credentials("postgres", "postgres", "test").await
 	}
 	/// Create a PostgreSQL container with custom credentials
-	pub fn with_credentials(username: &str, password: &str, database: &str) -> Self {
+	pub async fn with_credentials(username: &str, password: &str, database: &str) -> Self {
 		let image = Postgres::default()
 			.with_env_var("POSTGRES_USER", username)
 			.with_env_var("POSTGRES_PASSWORD", password)
 			.with_env_var("POSTGRES_DB", database);
 
-		let container = SyncRunner::start(image).expect("Failed to start PostgreSQL container");
-		let port = container.get_host_port_ipv4(5432).unwrap();
+		let container = AsyncRunner::start(image)
+			.await
+			.expect("Failed to start PostgreSQL container");
+		let port = container.get_host_port_ipv4(5432).await.unwrap();
 
 		Self {
 			container,
@@ -195,7 +191,7 @@ impl TestDatabase for PostgresContainer {
 /// MySQL test container
 pub struct MySqlContainer {
 	#[allow(dead_code)]
-	container: Container<Mysql>,
+	container: ContainerAsync<Mysql>,
 	host: String,
 	port: u16,
 	database: String,
@@ -203,25 +199,21 @@ pub struct MySqlContainer {
 	password: String,
 }
 
-impl Default for MySqlContainer {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl MySqlContainer {
 	/// Create a new MySQL container with default settings
-	pub fn new() -> Self {
-		Self::with_credentials("root", "test", "test")
+	pub async fn new() -> Self {
+		Self::with_credentials("root", "test", "test").await
 	}
 	/// Create a MySQL container with custom credentials
-	pub fn with_credentials(username: &str, password: &str, database: &str) -> Self {
+	pub async fn with_credentials(username: &str, password: &str, database: &str) -> Self {
 		let image = Mysql::default()
 			.with_env_var("MYSQL_ROOT_PASSWORD", password)
 			.with_env_var("MYSQL_DATABASE", database);
 
-		let container = SyncRunner::start(image).expect("Failed to start MySQL container");
-		let port = container.get_host_port_ipv4(3306).unwrap();
+		let container = AsyncRunner::start(image)
+			.await
+			.expect("Failed to start MySQL container");
+		let port = container.get_host_port_ipv4(3306).await.unwrap();
 
 		Self {
 			container,
@@ -453,7 +445,7 @@ where
 	F: FnOnce(PostgresContainer) -> Fut,
 	Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error>>>,
 {
-	let container = PostgresContainer::new();
+	let container = PostgresContainer::new().await;
 	container.wait_ready().await?;
 	f(container).await
 }
@@ -463,7 +455,7 @@ where
 	F: FnOnce(MySqlContainer) -> Fut,
 	Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error>>>,
 {
-	let container = MySqlContainer::new();
+	let container = MySqlContainer::new().await;
 	container.wait_ready().await?;
 	f(container).await
 }

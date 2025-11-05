@@ -337,7 +337,7 @@ impl<T, K> ReverseRelationship for OneToOne<T, K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_test::fixtures::{User, UserProfile};
+	use reinhardt_test::fixtures::User;
 
 	#[test]
 	fn test_one_to_one_creation() {
