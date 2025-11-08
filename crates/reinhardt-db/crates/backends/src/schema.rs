@@ -235,6 +235,25 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
 		)
 	}
 
+	/// Generate ALTER TABLE ALTER COLUMN TYPE SQL
+	///
+	/// Returns database-specific SQL for changing a column's type.
+	/// Note: SeaQuery doesn't support ALTER COLUMN TYPE, so we use raw SQL.
+	///
+	/// Default implementation uses PostgreSQL syntax:
+	/// `ALTER TABLE table ALTER COLUMN column TYPE new_type`
+	///
+	/// Override this method in database-specific schema editors for:
+	/// - MySQL: `ALTER TABLE table MODIFY COLUMN column new_type`
+	/// - SQLite: Requires table recreation (complex multi-step process)
+	/// - CockroachDB: Same as PostgreSQL
+	fn alter_column_statement(&self, table: &str, column: &str, new_type: &str) -> String {
+		format!(
+			"ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE {}",
+			table, column, new_type
+		)
+	}
+
 	/// Generate CREATE INDEX statement using SeaQuery (or pg_escape for partial indexes)
 	///
 	/// Note: SeaQuery doesn't support partial indexes (WHERE clause), so we use raw SQL with pg_escape for those cases
@@ -410,6 +429,23 @@ mod tests {
 		let error_msg = partial_result.unwrap_err();
 		assert!(error_msg.contains("Partial indexes not supported"));
 		assert!(error_msg.contains("WHERE active = true"));
+	}
+
+	#[test]
+	fn test_alter_column_statement() {
+		let editor = TestSchemaEditor;
+
+		// Test default PostgreSQL syntax
+		let sql = editor.alter_column_statement("users", "email", "TEXT");
+		assert_eq!(
+			sql,
+			"ALTER TABLE \"users\" ALTER COLUMN \"email\" TYPE TEXT"
+		);
+
+		// Verify identifier quoting
+		assert!(sql.contains("\"users\""));
+		assert!(sql.contains("\"email\""));
+		assert!(sql.contains("TYPE TEXT"));
 	}
 
 	#[test]

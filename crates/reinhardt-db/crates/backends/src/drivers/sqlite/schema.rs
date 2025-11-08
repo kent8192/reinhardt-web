@@ -96,6 +96,25 @@ impl BaseDatabaseSchemaEditor for SQLiteSchemaEditor {
 			"Execution not supported in schema editor".to_string(),
 		))
 	}
+
+	/// Override ALTER COLUMN statement for SQLite
+	///
+	/// SQLite does not support `ALTER COLUMN TYPE` directly. Column type changes
+	/// require a complex table recreation process:
+	///
+	/// 1. Create temporary table with new schema
+	/// 2. Copy data from old table to temporary table
+	/// 3. Drop old table
+	/// 4. Rename temporary table to original name
+	///
+	/// This method returns a comment indicating that table recreation is required.
+	/// The actual implementation of table recreation should be handled by the
+	/// migration system in a future update.
+	///
+	/// For now, this serves as a clear indicator that SQLite requires special handling.
+	fn alter_column_statement(&self, table: &str, _column: &str, _new_type: &str) -> String {
+		self.alter_column_note(table)
+	}
 }
 
 #[cfg(test)]
@@ -107,6 +126,18 @@ mod tests {
 		let editor = SQLiteSchemaEditor::new();
 		let sql = editor.alter_column_note("users");
 		assert!(sql.contains("SQLite does not support ALTER COLUMN"));
+		assert!(sql.contains("\"users\""));
+	}
+
+	#[test]
+	fn test_alter_column_statement() {
+		use crate::schema::BaseDatabaseSchemaEditor;
+
+		let editor = SQLiteSchemaEditor::new();
+		// Test trait method override (returns SQL comment for SQLite)
+		let sql = editor.alter_column_statement("users", "email", "TEXT");
+		assert!(sql.contains("SQLite does not support ALTER COLUMN"));
+		assert!(sql.contains("table recreation required"));
 		assert!(sql.contains("\"users\""));
 	}
 

@@ -87,6 +87,16 @@ impl BaseDatabaseSchemaEditor for MySQLSchemaEditor {
 			"Execution not supported in schema editor".to_string(),
 		))
 	}
+
+	/// Override ALTER COLUMN statement for MySQL syntax
+	///
+	/// MySQL uses `ALTER TABLE table MODIFY COLUMN column type` instead of
+	/// PostgreSQL's `ALTER TABLE table ALTER COLUMN column TYPE type`.
+	///
+	/// Uses backtick (`) for identifier quoting instead of double quotes.
+	fn alter_column_statement(&self, table: &str, column: &str, new_type: &str) -> String {
+		self.alter_column_sql(table, column, new_type)
+	}
 }
 
 #[cfg(test)]
@@ -98,6 +108,20 @@ mod tests {
 		let editor = MySQLSchemaEditor::new();
 		let sql = editor.alter_column_sql("users", "email", "TEXT");
 		assert_eq!(sql, "ALTER TABLE `users` MODIFY COLUMN `email` TEXT");
+	}
+
+	#[test]
+	fn test_alter_column_statement() {
+		use crate::schema::BaseDatabaseSchemaEditor;
+
+		let editor = MySQLSchemaEditor::new();
+		// Test trait method override
+		let sql = editor.alter_column_statement("users", "email", "TEXT");
+		assert_eq!(sql, "ALTER TABLE `users` MODIFY COLUMN `email` TEXT");
+
+		// Verify MySQL-specific syntax (MODIFY COLUMN, not ALTER COLUMN)
+		assert!(sql.contains("MODIFY COLUMN"));
+		assert!(!sql.contains("ALTER COLUMN"));
 	}
 
 	#[test]
