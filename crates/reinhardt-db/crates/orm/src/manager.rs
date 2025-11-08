@@ -11,8 +11,48 @@ static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DatabaseConnection>>>> =
 	once_cell::sync::OnceCell::new();
 
 /// Initialize the global database connection
+///
+/// # Arguments
+///
+/// * `url` - Database connection URL
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() {
+/// use reinhardt_orm::manager::init_database;
+///
+/// init_database("postgres://localhost/mydb").await.unwrap();
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+/// ```
 pub async fn init_database(url: &str) -> reinhardt_apps::Result<()> {
-	let conn = DatabaseConnection::connect(url).await?;
+	init_database_with_pool_size(url, None).await
+}
+
+/// Initialize the global database connection with a specific pool size
+///
+/// # Arguments
+///
+/// * `url` - Database connection URL
+/// * `pool_size` - Maximum number of connections in the pool (None = use default)
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() {
+/// use reinhardt_orm::manager::init_database_with_pool_size;
+///
+/// // Use larger pool for high-concurrency tests
+/// init_database_with_pool_size("postgres://localhost/mydb", Some(50)).await.unwrap();
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+/// ```
+pub async fn init_database_with_pool_size(
+	url: &str,
+	pool_size: Option<u32>,
+) -> reinhardt_apps::Result<()> {
+	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
 	DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
 	Ok(())
 }
@@ -21,8 +61,48 @@ pub async fn init_database(url: &str) -> reinhardt_apps::Result<()> {
 ///
 /// This function replaces the existing database connection with a new one.
 /// Useful for test scenarios where each test needs a fresh connection pool.
+///
+/// # Arguments
+///
+/// * `url` - Database connection URL
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() {
+/// use reinhardt_orm::manager::reinitialize_database;
+///
+/// reinitialize_database("postgres://localhost/mydb").await.unwrap();
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+/// ```
 pub async fn reinitialize_database(url: &str) -> reinhardt_apps::Result<()> {
-	let conn = DatabaseConnection::connect(url).await?;
+	reinitialize_database_with_pool_size(url, None).await
+}
+
+/// Reinitialize the global database connection with a specific pool size (for testing)
+///
+/// # Arguments
+///
+/// * `url` - Database connection URL
+/// * `pool_size` - Maximum number of connections in the pool (None = use default)
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() {
+/// use reinhardt_orm::manager::reinitialize_database_with_pool_size;
+///
+/// // Use larger pool for concurrent tests
+/// reinitialize_database_with_pool_size("postgres://localhost/mydb", Some(30)).await.unwrap();
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+/// ```
+pub async fn reinitialize_database_with_pool_size(
+	url: &str,
+	pool_size: Option<u32>,
+) -> reinhardt_apps::Result<()> {
+	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
 
 	if let Some(db_cell) = DB.get() {
 		// Replace existing connection

@@ -101,6 +101,34 @@ impl DatabaseConnection {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn connect(url: &str) -> Result<Self, anyhow::Error> {
+		Self::connect_with_pool_size(url, None).await
+	}
+
+	/// Connect to a database with a specific connection pool size
+	///
+	/// # Arguments
+	///
+	/// * `url` - Database connection URL
+	/// * `pool_size` - Maximum number of connections in the pool (None = use default)
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # async fn example() {
+	/// use reinhardt_orm::connection::DatabaseConnection;
+	///
+	/// // Use larger pool for high-concurrency scenarios
+	/// let conn = DatabaseConnection::connect_with_pool_size(
+	///     "postgres://localhost/mydb",
+	///     Some(50)
+	/// ).await.unwrap();
+	/// # }
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+	/// ```
+	pub async fn connect_with_pool_size(
+		url: &str,
+		pool_size: Option<u32>,
+	) -> Result<Self, anyhow::Error> {
 		let backend_type = if url.starts_with("postgres://") || url.starts_with("postgresql://") {
 			DatabaseBackend::Postgres
 		} else if url.starts_with("mysql://") {
@@ -113,7 +141,7 @@ impl DatabaseConnection {
 
 		#[cfg(feature = "postgres")]
 		if backend_type == DatabaseBackend::Postgres {
-			let inner = BackendsConnection::connect_postgres(url).await?;
+			let inner = BackendsConnection::connect_postgres_with_pool_size(url, pool_size).await?;
 			return Ok(Self {
 				backend: backend_type,
 				inner,
