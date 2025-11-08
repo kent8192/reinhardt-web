@@ -65,6 +65,7 @@ mod middleware;
 mod model_signals;
 pub mod persistence;
 pub mod profiler;
+pub mod receiver_registry;
 mod registry;
 pub mod replay;
 mod request_events;
@@ -84,6 +85,7 @@ pub use context::{SignalContext, SignalMetrics};
 pub use core::{AsyncSignalDispatcher, ReceiverFn, SignalDispatcher, SignalName};
 pub use error::SignalError;
 pub use middleware::{MiddlewareFn, SignalCall, SignalMiddleware, SignalSpy};
+pub use receiver_registry::{ReceiverRegistryEntry, auto_connect_receivers};
 pub use registry::{get_signal, get_signal_with_string};
 pub use signal::Signal;
 
