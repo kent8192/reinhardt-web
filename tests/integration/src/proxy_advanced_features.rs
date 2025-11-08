@@ -90,7 +90,7 @@ async fn test_proxy_chain_basic() {
 		.attribute("name");
 
 	assert_eq!(chain.path().len(), 3);
-	assert_eq!(chain.attribute(), "name");
+	assert_eq!(chain.get_attribute(), "name");
 
 	test_case.cleanup().await;
 }
@@ -139,21 +139,36 @@ async fn test_proxy_chain_with_transform() {
 }
 
 /// Test circular reference detection in chains
+///
+/// IMPLEMENTED: RelationshipPath now detects circular references using HashSet
+/// to track visited relationships. Use try_through() for error-based detection,
+/// or contains() to check if a relationship is already in the path.
 #[tokio::test]
 async fn test_proxy_chain_circular_detection() {
 	let mut test_case = TestCase::new();
 
-	// Test circular reference detection
-	let chain = RelationshipPath::new()
+	// Test 1: Using through() - allows cycles (backwards compatible)
+	let chain_unchecked = RelationshipPath::new()
 		.through("posts")
 		.through("author")
-		.through("posts"); // This should be detected as circular
+		.through("posts"); // No error with through()
 
-	// TODO: Implement circular reference detection in RelationshipPath
-	// Current: Chain is created successfully (length = 3) without validation
-	// Required: Add cycle detection to identify "posts" appearing twice in path
-	// Expected: Should return error or warning when circular reference detected
-	assert_eq!(chain.path().len(), 3);
+	assert_eq!(chain_unchecked.path().len(), 3);
+	assert!(chain_unchecked.contains("posts")); // But we can detect it
+
+	// Test 2: Using try_through() - detects and rejects cycles
+	let chain = RelationshipPath::new()
+		.through("posts")
+		.through("author");
+
+	let result = chain.try_through("posts"); // This creates a cycle
+	assert!(result.is_err());
+
+	if let Err(err) = result {
+		assert_eq!(err.relationship, "posts");
+		assert_eq!(err.path, vec!["posts", "author"]);
+		assert!(err.to_string().contains("Circular reference detected"));
+	}
 
 	test_case.cleanup().await;
 }

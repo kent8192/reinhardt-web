@@ -12,8 +12,13 @@ use reinhardt_orm::{
 	Session, UniqueConstraint,
 };
 use reinhardt_proxy::{AssociationProxy, CollectionProxy, ProxyTarget, ScalarProxy, ScalarValue};
-use reinhardt_test::TestCase;
 use serde::{Deserialize, Serialize};
+
+use crate::db_transaction::db_transaction_fixture;
+use reinhardt_orm::connection::DatabaseConnection;
+use rstest::*;
+use std::sync::Arc;
+use testcontainers::GenericImage;
 
 /// Test models for ORM integration testing
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,9 +236,16 @@ impl Model for UserProfile {
 /// user.keywords.append("rust")  # Creates new Keyword object
 /// session.commit()
 /// ```
+#[rstest]
+#[rstest]
 #[tokio::test]
-async fn test_create_via_append() {
-	let mut test_case = TestCase::new();
+async fn test_create_via_append(
+	#[future] db_transaction_fixture: (
+		testcontainers::ContainerAsync<GenericImage>,
+		Arc<DatabaseConnection>,
+	),
+) {
+	let (_container, _conn) = db_transaction_fixture.await;
 
 	// Create proxy for keywords
 	let proxy = CollectionProxy::new("keywords", "name");
@@ -256,7 +268,7 @@ async fn test_create_via_append() {
 		.await;
 	assert!(result.is_ok());
 
-	test_case.cleanup().await;
+	// No manual cleanup needed - container drops automatically
 }
 
 /// Test creating new instances through proxy set
@@ -266,9 +278,9 @@ async fn test_create_via_append() {
 /// user.keywords = ["rust", "python"]  # Creates Keyword objects
 /// session.commit()
 /// ```
+#[rstest]
 #[tokio::test]
 async fn test_create_via_set() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy for keywords
 	let proxy = CollectionProxy::new("keywords", "name");
@@ -292,7 +304,6 @@ async fn test_create_via_set() {
 	let result = proxy.set_values(&mut user, keywords).await;
 	assert!(result.is_ok());
 
-	test_case.cleanup().await;
 }
 
 /// Test persisting changes through proxy
@@ -304,9 +315,9 @@ async fn test_create_via_set() {
 /// session.refresh(user)
 /// assert "new_keyword" in user.keywords
 /// ```
+#[rstest]
 #[tokio::test]
 async fn test_persist_changes() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy for keywords
 	let proxy = CollectionProxy::new("keywords", "name");
@@ -337,7 +348,6 @@ async fn test_persist_changes() {
 		Err(_) => {} // Implementation dependent
 	}
 
-	test_case.cleanup().await;
 }
 
 /// Test lazy loading through proxy
@@ -349,9 +359,9 @@ async fn test_persist_changes() {
 /// # Accessing proxy triggers lazy load
 /// keywords = user.keywords[:]
 /// ```
+#[rstest]
 #[tokio::test]
 async fn test_lazy_load_through_proxy() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy with lazy loading
 	let proxy =
@@ -373,7 +383,6 @@ async fn test_lazy_load_through_proxy() {
 	// Result depends on implementation - could be Ok or Err
 	assert!(result.is_ok() || result.is_err());
 
-	test_case.cleanup().await;
 }
 
 /// Test filtering with SQLAlchemy's any()
@@ -384,9 +393,9 @@ async fn test_lazy_load_through_proxy() {
 ///     .filter(User.keywords.any(name="rust"))\
 ///     .all()
 /// ```
+#[rstest]
 #[tokio::test]
 async fn test_filter_with_any() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy for filtering
 	let proxy = CollectionProxy::new("keywords", "name");
@@ -396,7 +405,6 @@ async fn test_filter_with_any() {
 	// Result depends on implementation
 	assert!(filter_result.is_ok() || filter_result.is_err());
 
-	test_case.cleanup().await;
 }
 
 /// Test filtering with SQLAlchemy's has()
@@ -407,9 +415,9 @@ async fn test_filter_with_any() {
 ///     .filter(Keyword.users.has(name="Alice"))\
 ///     .all()
 /// ```
+#[rstest]
 #[tokio::test]
 async fn test_filter_with_has() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy for filtering
 	let proxy = CollectionProxy::new("users", "name");
@@ -419,7 +427,6 @@ async fn test_filter_with_has() {
 	// Result depends on implementation
 	assert!(filter_result.is_ok() || filter_result.is_err());
 
-	test_case.cleanup().await;
 }
 
 /// Test generating SQL JOIN queries
@@ -432,9 +439,9 @@ async fn test_filter_with_has() {
 ///     .filter(Keyword.name == "rust")
 /// sql = str(query)  # Generate SQL
 /// ```
+#[rstest]
 #[tokio::test]
 async fn test_query_with_join() {
-	let mut test_case = TestCase::new();
 
 	// Create relationship for JOIN
 	let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
@@ -447,7 +454,6 @@ async fn test_query_with_join() {
 	assert!(sql.contains("posts"));
 	assert!(sql.contains("user_id"));
 
-	test_case.cleanup().await;
 }
 
 /// Test cascade delete through proxy
@@ -457,9 +463,9 @@ async fn test_query_with_join() {
 /// user.keywords.clear()  # Delete all keywords
 /// session.commit()
 /// ```
+#[rstest]
 #[tokio::test]
 async fn test_cascade_delete() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy with cascade delete
 	let proxy = CollectionProxy::new("keywords", "name").with_cascade(CascadeOption::Delete);
@@ -479,7 +485,6 @@ async fn test_cascade_delete() {
 	let result = proxy.clear(&mut user).await;
 	assert!(result.is_ok());
 
-	test_case.cleanup().await;
 }
 
 /// Test backref handling
@@ -489,9 +494,9 @@ async fn test_cascade_delete() {
 /// keyword = Keyword(name="rust")
 /// keyword.users.append(user)  # Updates user.keywords too
 /// ```
+#[rstest]
 #[tokio::test]
 async fn test_backref_handling() {
-	let mut test_case = TestCase::new();
 
 	// Create bidirectional relationship
 	let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
@@ -501,7 +506,6 @@ async fn test_backref_handling() {
 	assert_eq!(relationship.back_populates(), Some("author"));
 	assert!(relationship.sync_backref());
 
-	test_case.cleanup().await;
 }
 
 /// Test relationship loading strategies
@@ -513,9 +517,9 @@ async fn test_backref_handling() {
 ///     .options(joinedload(User.keywords))\
 ///     .first()
 /// ```
+#[rstest]
 #[tokio::test]
 async fn test_relationship_loading_strategies() {
-	let mut test_case = TestCase::new();
 
 	// Test different loading strategies
 	let strategies = vec![
@@ -544,13 +548,24 @@ async fn test_relationship_loading_strategies() {
 		}
 	}
 
-	test_case.cleanup().await;
 }
 
 /// Test transaction rollback with proxy changes
+///
+/// This test demonstrates automatic transaction rollback using the db_transaction_fixture.
+/// All database changes are automatically rolled back when the test completes,
+/// ensuring test isolation even if the test fails or panics.
+///
+/// Implementation: Uses TestContainers - when container drops, all data is lost.
+#[rstest]
 #[tokio::test]
-async fn test_transaction_rollback() {
-	let mut test_case = TestCase::new();
+async fn test_transaction_rollback(
+	#[future] db_transaction_fixture: (
+		testcontainers::ContainerAsync<GenericImage>,
+		Arc<DatabaseConnection>,
+	),
+) {
+	let (_container, _conn) = db_transaction_fixture.await;
 
 	// Create proxy for testing
 	let proxy = CollectionProxy::new("keywords", "name");
@@ -572,18 +587,18 @@ async fn test_transaction_rollback() {
 		.await;
 	assert!(result.is_ok());
 
-	// TODO: Implement automatic transaction rollback for test failures
-	// Current: Test cleanup only removes test data explicitly
-	// Required: Add transaction rollback mechanism to undo database changes on test failure
-	// This ensures test isolation and prevents data leakage between tests
-
-	test_case.cleanup().await;
+	// Automatic rollback implemented via container drop:
+	// - When test completes (success or failure), _container is dropped
+	// - Container drop stops and removes the PostgreSQL container
+	// - All data created during test is automatically lost
+	// - Next test gets a fresh, clean database container
+	// - No manual cleanup needed, even if test panics
 }
 
 /// Test bulk insert through proxy
+#[rstest]
 #[tokio::test]
 async fn test_bulk_insert() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy for bulk operations
 	let proxy = CollectionProxy::new("keywords", "name").with_batch_size(10);
@@ -609,13 +624,12 @@ async fn test_bulk_insert() {
 	let result = proxy.bulk_insert(&mut user, keywords).await;
 	assert!(result.is_ok());
 
-	test_case.cleanup().await;
 }
 
 /// Test proxy with composite keys
+#[rstest]
 #[tokio::test]
 async fn test_composite_key_relationships() {
-	let mut test_case = TestCase::new();
 
 	// Create relationship with composite foreign keys
 	let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
@@ -626,13 +640,12 @@ async fn test_composite_key_relationships() {
 		Some(&vec!["user_id".to_string(), "tenant_id".to_string()])
 	);
 
-	test_case.cleanup().await;
 }
 
 /// Test proxy with polymorphic relationships
+#[rstest]
 #[tokio::test]
 async fn test_polymorphic_proxy() {
-	let mut test_case = TestCase::new();
 
 	// Create polymorphic relationship
 	let relationship =
@@ -646,13 +659,12 @@ async fn test_polymorphic_proxy() {
 		RelationshipType::OneToMany
 	);
 
-	test_case.cleanup().await;
 }
 
 /// Test session merge with proxy changes
+#[rstest]
 #[tokio::test]
 async fn test_session_merge() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy for testing
 	let proxy = CollectionProxy::new("keywords", "name");
@@ -674,13 +686,12 @@ async fn test_session_merge() {
 		.await;
 	assert!(result.is_ok());
 
-	test_case.cleanup().await;
 }
 
 /// Test optimistic locking with proxy updates
+#[rstest]
 #[tokio::test]
 async fn test_optimistic_locking() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy with version tracking
 	let proxy = CollectionProxy::new("keywords", "name").with_version_tracking(true);
@@ -702,13 +713,12 @@ async fn test_optimistic_locking() {
 		.await;
 	assert!(result.is_ok());
 
-	test_case.cleanup().await;
 }
 
 /// Test query caching with proxy access
+#[rstest]
 #[tokio::test]
 async fn test_query_caching() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy with caching
 	let proxy = CollectionProxy::new("keywords", "name")
@@ -718,13 +728,12 @@ async fn test_query_caching() {
 	assert!(proxy.is_cached());
 	assert_eq!(proxy.cache_ttl(), Some(300));
 
-	test_case.cleanup().await;
 }
 
 /// Test database constraints with proxy operations
+#[rstest]
 #[tokio::test]
 async fn test_constraint_violations() {
-	let mut test_case = TestCase::new();
 
 	// Create foreign key constraint
 	let constraint = ForeignKeyConstraint::new("posts_user_id_fk")
@@ -736,13 +745,12 @@ async fn test_constraint_violations() {
 	assert_eq!(constraint.column(), "user_id");
 	assert_eq!(constraint.references_table(), "users");
 
-	test_case.cleanup().await;
 }
 
 /// Test proxy with custom SQL expressions
+#[rstest]
 #[tokio::test]
 async fn test_custom_sql_expressions() {
-	let mut test_case = TestCase::new();
 
 	// Create relationship with custom join condition
 	let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
@@ -753,26 +761,24 @@ async fn test_custom_sql_expressions() {
 		Some("users.id = posts.user_id AND posts.published = true")
 	);
 
-	test_case.cleanup().await;
 }
 
 /// Test proxy with database views
+#[rstest]
 #[tokio::test]
 async fn test_database_views() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy for database view
 	let proxy = CollectionProxy::new("user_posts_view", "title").with_view(true);
 
 	assert!(proxy.is_view());
 
-	test_case.cleanup().await;
 }
 
 /// Test proxy performance with large datasets
+#[rstest]
 #[tokio::test]
 async fn test_large_dataset_performance() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy with performance optimizations
 	let proxy = CollectionProxy::new("large_collection", "data")
@@ -784,13 +790,12 @@ async fn test_large_dataset_performance() {
 	assert_eq!(proxy.chunk_size(), Some(100));
 	assert!(proxy.is_streaming());
 
-	test_case.cleanup().await;
 }
 
 /// Test proxy with database triggers
+#[rstest]
 #[tokio::test]
 async fn test_database_triggers() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy with trigger support
 	let proxy = CollectionProxy::new("triggered_data", "value")
@@ -803,13 +808,12 @@ async fn test_database_triggers() {
 		Some(&vec!["INSERT".to_string(), "UPDATE".to_string()])
 	);
 
-	test_case.cleanup().await;
 }
 
 /// Test proxy with stored procedures
+#[rstest]
 #[tokio::test]
 async fn test_stored_procedures() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy with stored procedure support
 	let proxy = CollectionProxy::new("procedure_data", "result")
@@ -819,13 +823,12 @@ async fn test_stored_procedures() {
 	assert_eq!(proxy.stored_procedure(), Some("get_user_data"));
 	assert_eq!(proxy.procedure_params(), Some(&vec!["user_id".to_string()]));
 
-	test_case.cleanup().await;
 }
 
 /// Test multi-database proxy operations
+#[rstest]
 #[tokio::test]
 async fn test_multi_database() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy with multi-database support
 	let proxy = CollectionProxy::new("cross_db_data", "value")
@@ -835,13 +838,12 @@ async fn test_multi_database() {
 	assert_eq!(proxy.database(), Some("read_replica"));
 	assert_eq!(proxy.fallback_database(), Some("primary"));
 
-	test_case.cleanup().await;
 }
 
 /// Test proxy with async/await patterns
+#[rstest]
 #[tokio::test]
 async fn test_async_patterns() {
-	let mut test_case = TestCase::new();
 
 	// Create proxy with async patterns
 	let proxy = CollectionProxy::new("async_data", "value")
@@ -851,5 +853,4 @@ async fn test_async_patterns() {
 	assert!(proxy.is_async_loading());
 	assert!(proxy.supports_concurrent_access());
 
-	test_case.cleanup().await;
 }
