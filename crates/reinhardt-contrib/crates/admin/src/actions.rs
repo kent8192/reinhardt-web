@@ -5,7 +5,6 @@
 
 use crate::{AdminDatabase, AdminError, AdminResult};
 use async_trait::async_trait;
-use reinhardt_orm::Model;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -269,10 +268,9 @@ impl AdminAction for DeleteSelectedAction {
 		let pk_field = self.pk_field.as_deref().unwrap_or("id");
 
 		// Perform bulk deletion using AdminDatabase
-		// Note: We use a dummy Model type here since we only need the interface
-		// TODO: Future enhancement - parameterize with actual model type instead of DummyModel
+		// Use the new type-safe bulk_delete_by_table method that doesn't require Model type
 		match database
-			.bulk_delete::<DummyModel>(table_name, pk_field, item_ids.clone())
+			.bulk_delete_by_table(table_name, pk_field, item_ids.clone())
 			.await
 		{
 			Ok(affected) => ActionResult::Success {
@@ -284,29 +282,6 @@ impl AdminAction for DeleteSelectedAction {
 				errors: vec![e.to_string()],
 			},
 		}
-	}
-}
-
-// Dummy model type for generic database operations
-// TODO: Replace with actual model type parameter when implementing type-parameterized actions
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct DummyModel {
-	id: Option<i64>,
-}
-
-impl Model for DummyModel {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"dummy"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, key: Self::PrimaryKey) {
-		self.id = Some(key);
 	}
 }
 

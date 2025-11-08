@@ -194,7 +194,7 @@ impl AdminDatabase {
 		let sql = query.to_string(PostgresQueryBuilder);
 		let rows = self
 			.connection
-			.query(&sql)
+			.query(&sql, vec![])
 			.await
 			.map_err(AdminError::DatabaseError)?;
 
@@ -261,7 +261,7 @@ impl AdminDatabase {
 		let sql = query.to_string(PostgresQueryBuilder);
 		let row = self
 			.connection
-			.query_optional(&sql)
+			.query_optional(&sql, vec![])
 			.await
 			.map_err(AdminError::DatabaseError)?;
 
@@ -356,7 +356,7 @@ impl AdminDatabase {
 		let sql = query.to_string(PostgresQueryBuilder);
 		let affected = self
 			.connection
-			.execute(&sql)
+			.execute(&sql, vec![])
 			.await
 			.map_err(AdminError::DatabaseError)?;
 
@@ -432,7 +432,7 @@ impl AdminDatabase {
 		let sql = query.to_string(PostgresQueryBuilder);
 		let affected = self
 			.connection
-			.execute(&sql)
+			.execute(&sql, vec![])
 			.await
 			.map_err(AdminError::DatabaseError)?;
 
@@ -484,7 +484,7 @@ impl AdminDatabase {
 		let sql = query.to_string(PostgresQueryBuilder);
 		let affected = self
 			.connection
-			.execute(&sql)
+			.execute(&sql, vec![])
 			.await
 			.map_err(AdminError::DatabaseError)?;
 
@@ -529,6 +529,36 @@ impl AdminDatabase {
 		pk_field: &str,
 		ids: Vec<String>,
 	) -> AdminResult<u64> {
+		self.bulk_delete_by_table(table_name, pk_field, ids).await
+	}
+
+	/// Delete multiple items by IDs without requiring Model type parameter
+	///
+	/// This method provides a type-safe way to perform bulk deletions without
+	/// requiring a Model type parameter. It's particularly useful for admin actions
+	/// where the model type may not be known at compile time.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_admin::AdminDatabase;
+	/// use reinhardt_orm::DatabaseConnection;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+	/// let db = AdminDatabase::new(conn);
+	///
+	/// let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
+	/// db.bulk_delete_by_table("users", "id", ids).await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn bulk_delete_by_table(
+		&self,
+		table_name: &str,
+		pk_field: &str,
+		ids: Vec<String>,
+	) -> AdminResult<u64> {
 		if ids.is_empty() {
 			return Ok(0);
 		}
@@ -541,7 +571,7 @@ impl AdminDatabase {
 		let sql = query.to_string(PostgresQueryBuilder);
 		let affected = self
 			.connection
-			.execute(&sql)
+			.execute(&sql, vec![])
 			.await
 			.map_err(AdminError::DatabaseError)?;
 
@@ -601,7 +631,7 @@ impl AdminDatabase {
 		let sql = query.to_string(PostgresQueryBuilder);
 		let row = self
 			.connection
-			.query_one(&sql)
+			.query_one(&sql, vec![])
 			.await
 			.map_err(AdminError::DatabaseError)?;
 
@@ -622,66 +652,9 @@ impl AdminDatabase {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_db::backends::backend::DatabaseBackend as BackendTrait;
-	use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
-	use reinhardt_db::backends::error::Result;
-	use reinhardt_db::backends::types::{DatabaseType, QueryResult, QueryValue, Row};
 	use reinhardt_orm::DatabaseBackend;
+	use reinhardt_test::fixtures::mock_connection;
 	use rstest::*;
-
-	// Mock backend for testing
-	struct MockBackend;
-
-	#[async_trait::async_trait]
-	impl BackendTrait for MockBackend {
-		fn database_type(&self) -> DatabaseType {
-			DatabaseType::Postgres
-		}
-
-		fn placeholder(&self, index: usize) -> String {
-			format!("${}", index)
-		}
-
-		fn supports_returning(&self) -> bool {
-			true
-		}
-
-		fn supports_on_conflict(&self) -> bool {
-			true
-		}
-
-		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 0 })
-		}
-
-		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
-			Ok(Row::new())
-		}
-
-		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
-			Ok(Vec::new())
-		}
-
-		async fn fetch_optional(
-			&self,
-			_sql: &str,
-			_params: Vec<QueryValue>,
-		) -> Result<Option<Row>> {
-			Ok(None)
-		}
-
-		fn as_any(&self) -> &dyn std::any::Any {
-			self
-		}
-	}
-
-	// Fixture for creating a mock database connection
-	#[fixture]
-	fn mock_connection() -> DatabaseConnection {
-		let mock_backend = Arc::new(MockBackend);
-		let backends_conn = BackendsConnection::new(mock_backend);
-		DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn)
-	}
 
 	// Mock User model for testing
 	#[derive(Clone, serde::Serialize, serde::Deserialize)]
