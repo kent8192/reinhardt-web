@@ -10,11 +10,12 @@ repository.workspace = true
 reinhardt-apps = { workspace = true }
 reinhardt-orm = { workspace = true }
 reinhardt-cache = { workspace = true, optional = true }
-backends = { path = "../../../reinhardt-db/crates/backends", package = "reinhardt-db-backends", optional = true }
+reinhardt-db = { workspace = true, optional = true }
+reinhardt-db-backends = { workspace = true, optional = true }
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "1.0"
+thiserror = "2.0.17"
 regex = "1.10"
 geo-types = "0.7"
 sha2 = "0.10"
@@ -25,7 +26,7 @@ log = "0.4"
 [features]
 default = ["database-optimization"]
 caching = ["dep:reinhardt-cache"]
-database-optimization = ["dep:backends"]
+database-optimization = ["dep:reinhardt-db", "dep:reinhardt-db-backends"]
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util"] }

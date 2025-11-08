@@ -65,6 +65,9 @@ regex = "1.10"
 smallvec = "1.13"
 
 [dev-dependencies]
+reinhardt-macros = { workspace = true }
+reinhardt-migrations = { path = "../migrations", version = "0.1.0-alpha.1" }
+ctor = "0.2"
 serial_test = { workspace = true }
 tokio-test = "0.4"
 testcontainers = { workspace = true }

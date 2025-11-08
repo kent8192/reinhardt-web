@@ -32,6 +32,7 @@ futures = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 serial_test = { workspace = true }
+rstest = { workspace = true }
 testcontainers = "0.25.0"
 reinhardt-db = { workspace = true, features = ["backends", "postgres"] }
 

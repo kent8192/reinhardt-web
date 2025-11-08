@@ -67,6 +67,11 @@ azure_storage = { version = "0.20", optional = true }
 azure_storage_blobs = { version = "0.20", optional = true }
 cloud-storage = { version = "0.11", optional = true }
 
+# Image optimization
+oxipng = { version = "9.0", optional = true }
+image = { version = "0.25", optional = true }
+webp = { version = "0.3", optional = true }
+
 [features]
 default = []
 s3 = ["dep:aws-config", "dep:aws-sdk-s3"]
@@ -74,7 +79,7 @@ azure = ["dep:azure_storage", "dep:azure_storage_blobs"]
 gcs = ["dep:cloud-storage"]
 templates-integration = ["dep:reinhardt-templates"]
 processing = []
-image-optimization = ["processing"]
+image-optimization = ["processing", "dep:oxipng", "dep:image", "dep:webp"]
 source-maps = ["processing"]
 compression = ["processing"]
 advanced-minification = [

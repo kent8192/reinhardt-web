@@ -61,6 +61,7 @@ prettyplease = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
+reinhardt-test = { workspace = true }
 
 [features]
 default = ["sqlite", "postgres", "mysql"]
