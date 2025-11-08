@@ -26,6 +26,8 @@ impl MockAuthBackend {
 			email: format!("{}@example.com", username),
 			is_active,
 			is_admin,
+			is_staff: is_admin,  // Staff access follows admin status
+			is_superuser: false, // Regular users are not superusers
 		});
 	}
 }
@@ -226,6 +228,8 @@ fn test_simple_user_properties() {
 		email: "test@example.com".to_string(),
 		is_active: true,
 		is_admin: false,
+		is_staff: false,
+		is_superuser: false,
 	};
 
 	assert!(!user.id().is_empty());
@@ -244,6 +248,8 @@ fn test_simple_user_admin() {
 		email: "admin@example.com".to_string(),
 		is_active: true,
 		is_admin: true,
+		is_staff: true,
+		is_superuser: false,
 	};
 
 	assert!(user.is_admin());
@@ -258,6 +264,8 @@ fn test_simple_user_inactive() {
 		email: "inactive@example.com".to_string(),
 		is_active: false,
 		is_admin: false,
+		is_staff: false,
+		is_superuser: false,
 	};
 
 	assert!(!user.is_active());
@@ -297,6 +305,8 @@ fn test_superuser_has_all_flags() {
 		email: "super@example.com".to_string(),
 		is_active: true,
 		is_admin: true,
+		is_staff: true,
+		is_superuser: true,
 	};
 
 	assert!(superuser.is_active());
