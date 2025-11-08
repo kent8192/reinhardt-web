@@ -319,7 +319,3 @@ impl BaseDatabaseSchemaEditor for CockroachDBSchemaEditor {
 		self.pg_editor.execute(sql).await
 	}
 }
-
-// TODO: Implement integration tests with actual CockroachDB connection pool
-// These tests require PostgreSQLSchemaEditor with a real database pool.
-// See tests/integration/ for examples of proper database testing.

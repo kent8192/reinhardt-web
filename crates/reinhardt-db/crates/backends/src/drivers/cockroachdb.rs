@@ -193,7 +193,3 @@ impl CockroachDBBackend {
 		]
 	}
 }
-
-// TODO: Implement integration tests with actual CockroachDB connection pool
-// These tests require PostgreSQLSchemaEditor with a real database pool.
-// See tests/integration/ for examples of proper database testing.
