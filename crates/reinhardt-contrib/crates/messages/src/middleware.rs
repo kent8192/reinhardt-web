@@ -86,10 +86,26 @@ impl<S: MessageStorage + 'static> Middleware for MessagesMiddleware<S> {
 		};
 
 		// Store messages in request extensions for access during request processing
-		request.extensions.insert(MessagesContainer::new(messages));
+		let container = MessagesContainer::new(messages);
+		request.extensions.insert(container.clone());
 
 		// Process the request
 		let response = next.handle(request).await?;
+
+		// Save messages back to storage after request processing
+		{
+			// Extract messages from container (we have a clone)
+			let messages_to_save = container.get_messages();
+
+			// Persist messages to storage
+			let mut storage = self.storage.lock().unwrap();
+			// Clear old messages first
+			storage.clear();
+			// Add new messages
+			for message in messages_to_save {
+				storage.add(message);
+			}
+		}
 
 		Ok(response)
 	}
@@ -235,10 +251,11 @@ mod tests {
 
 		let _response = middleware.process(request, handler).await.unwrap();
 
-		// Verify that storage had the message initially
+		// Verify that storage still contains the message (persisted after request)
 		let storage_ref = middleware.storage();
 		let storage = storage_ref.lock().unwrap();
-		assert!(storage.peek().is_empty());
+		assert_eq!(storage.peek().len(), 1);
+		assert_eq!(storage.peek()[0].text, "Pre-existing message");
 	}
 
 	#[tokio::test]
