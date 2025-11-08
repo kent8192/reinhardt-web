@@ -376,9 +376,10 @@ impl<P: Model, C: Model> Relationship<P, C> {
 				Some(stmt.to_owned())
 			}
 			LoadingStrategy::Subquery => {
-				// TODO: Implement proper subquery loading strategy with parent query context
-				// Current implementation generates basic SELECT without parent context integration
-				// Required: Use build_subquery() method to properly correlate with parent query
+				// Basic subquery generation for standalone use.
+				// For proper parent query correlation, use build_subquery() method instead,
+				// which accepts the parent SelectStatement and generates an optimized
+				// IN-subquery that incorporates the parent's WHERE clause.
 				let mut stmt = Query::select();
 				stmt.from(Alias::new(child_table))
 					.column(sea_query::Asterisk);
@@ -443,7 +444,7 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	///
 	/// Accepts parent SelectStatement and builds a subquery that incorporates
 	/// the parent's WHERE clause to efficiently load related records.
-	pub fn build_subquery(&self, _parent_stmt: &SelectStatement) -> Option<String> {
+	pub fn build_subquery(&self, parent_stmt: &SelectStatement) -> Option<String> {
 		if self.loading_strategy != LoadingStrategy::Subquery {
 			return None;
 		}
@@ -451,17 +452,20 @@ impl<P: Model, C: Model> Relationship<P, C> {
 		let child_table = C::table_name();
 		let fk = self.foreign_key.as_deref().unwrap_or("id");
 
+		// Build subquery that extracts parent IDs: SELECT id FROM parent_table WHERE ...
+		let mut parent_subquery = parent_stmt.clone();
+		parent_subquery.clear_selects();
+		parent_subquery.column(Alias::new("id"));
+
+		// Build main query: SELECT * FROM child_table WHERE foreign_key IN (subquery)
 		let mut stmt = Query::select();
 		stmt.from(Alias::new(child_table))
-			.column(sea_query::Asterisk);
+			.column(sea_query::Asterisk)
+			.and_where(sea_query::Expr::col(Alias::new(fk)).in_subquery(parent_subquery));
 
-		// In a full implementation, we would extract the parent query's WHERE clause
-		// and incorporate it here using IN subquery pattern
-		// For now, return a basic subquery template
-		Some(format!(
-			"SELECT * FROM {} WHERE {} IN (SELECT id FROM parent_query)",
-			child_table, fk
-		))
+		// Convert to SQL string using PostgreSQL dialect (can be adjusted based on context)
+		use sea_query::PostgresQueryBuilder;
+		Some(stmt.to_string(PostgresQueryBuilder))
 	}
 
 	/// Generate SQL string for loading (convenience method)
