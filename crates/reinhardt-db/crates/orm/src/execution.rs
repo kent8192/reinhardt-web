@@ -513,11 +513,11 @@ where
 			Some(row) => {
 				// Get the first column value
 				let json = serde_json::to_value(row)?;
-				if let Some(obj) = json.as_object() {
-					if let Some((_, value)) = obj.iter().next() {
-						let result = serde_json::from_value(value.clone())?;
-						return Ok(Some(result));
-					}
+				if let Some(obj) = json.as_object()
+					&& let Some((_, value)) = obj.iter().next()
+				{
+					let result = serde_json::from_value(value.clone())?;
+					return Ok(Some(result));
 				}
 				Ok(None)
 			}
@@ -537,11 +537,11 @@ where
 		let json = serde_json::to_value(&row)?;
 
 		// Extract count from the result (usually the first column)
-		if let Some(obj) = json.as_object() {
-			if let Some((_, value)) = obj.iter().next() {
-				let count: i64 = serde_json::from_value(value.clone())?;
-				return Ok(count);
-			}
+		if let Some(obj) = json.as_object()
+			&& let Some((_, value)) = obj.iter().next()
+		{
+			let count: i64 = serde_json::from_value(value.clone())?;
+			return Ok(count);
 		}
 
 		Err(ExecutionError::QueryBuild(
@@ -561,11 +561,11 @@ where
 		let json = serde_json::to_value(&row)?;
 
 		// Extract exists from the result (usually the first column)
-		if let Some(obj) = json.as_object() {
-			if let Some((_, value)) = obj.iter().next() {
-				let exists: bool = serde_json::from_value(value.clone())?;
-				return Ok(exists);
-			}
+		if let Some(obj) = json.as_object()
+			&& let Some((_, value)) = obj.iter().next()
+		{
+			let exists: bool = serde_json::from_value(value.clone())?;
+			return Ok(exists);
 		}
 
 		Err(ExecutionError::QueryBuild(
