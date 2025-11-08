@@ -7,15 +7,23 @@
 //! 2. Dependencies with default values work correctly
 //! 3. Multiple endpoints can share the same dependencies
 
-use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_params::Query;
+use reinhardt_params::extract::FromRequest;
 use std::sync::Arc;
 
 // Common query parameters dependency
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
 struct CommonQueryParams {
 	q: Option<String>,
+	#[serde(default)]
 	skip: i32,
+	#[serde(default = "default_limit")]
 	limit: i32,
+}
+
+fn default_limit() -> i32 {
+	100
 }
 
 impl CommonQueryParams {
@@ -36,9 +44,20 @@ impl Injectable for CommonQueryParams {
 			return Ok((*cached).clone());
 		}
 
-		// TODO: Implement query parameter extraction from HTTP request
-		// Current: Uses default values (q=None, skip=0, limit=100) for test purposes
-		// Required: Extract q, skip, limit from request query string (e.g., ?q=foo&skip=10&limit=50)
+		// Extract from HTTP request if available
+		if let (Some(request), Some(param_ctx)) = (ctx.get_http_request(), ctx.get_param_context())
+		{
+			let query_params = Query::<CommonQueryParams>::from_request(request, param_ctx)
+				.await
+				.map_err(|e| {
+					DiError::ProviderError(format!("Failed to extract query parameters: {}", e))
+				})?;
+			let params = query_params.0;
+			ctx.set_request(params.clone());
+			return Ok(params);
+		}
+
+		// Fallback for tests without HTTP context (backward compatible)
 		let params = CommonQueryParams::new(None, None, None);
 		ctx.set_request(params.clone());
 		Ok(params)

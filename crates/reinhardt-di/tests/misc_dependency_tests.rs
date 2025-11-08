@@ -10,7 +10,9 @@
 //! 2. Security dependencies can be overridden
 //! 3. Repeated dependencies are handled correctly
 
-use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_params::Path;
+use reinhardt_params::extract::FromRequest;
 use std::sync::Arc;
 
 // Path parameter dependency
@@ -26,9 +28,19 @@ impl Injectable for UserIdParam {
 		if let Some(override_param) = ctx.get_request::<UserIdParam>() {
 			return Ok((*override_param).clone());
 		}
-		// TODO: Implement path parameter extraction from HTTP request
-		// Current: Returns hardcoded user_id = 42 for test purposes
-		// Required: Extract user_id from request path (e.g., /users/{user_id})
+
+		// Extract from HTTP request if available
+		if let (Some(request), Some(param_ctx)) = (ctx.get_http_request(), ctx.get_param_context())
+		{
+			let path_param = Path::<i32>::from_request(request, param_ctx)
+				.await
+				.map_err(|e| DiError::ProviderError(format!("Failed to extract user_id: {}", e)))?;
+			return Ok(UserIdParam {
+				user_id: path_param.0,
+			});
+		}
+
+		// Fallback for tests without HTTP context (backward compatible)
 		Ok(UserIdParam { user_id: 42 })
 	}
 }

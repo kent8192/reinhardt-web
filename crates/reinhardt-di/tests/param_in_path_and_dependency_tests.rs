@@ -6,7 +6,9 @@
 //! 1. Path parameters can be used in both the endpoint and its dependencies
 //! 2. Dependencies can access path parameters without duplication
 
-use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_params::Path;
+use reinhardt_params::extract::FromRequest;
 use std::sync::Arc;
 
 // Path parameter wrapper
@@ -16,14 +18,23 @@ struct UserId(i32);
 #[async_trait::async_trait]
 impl Injectable for UserId {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		// TODO: Implement path parameter extraction from HTTP request
-		// Current: Uses cached test value or mock value (UserId(42))
-		// Required: Extract user_id from request path (e.g., /users/{user_id})
+		// Check cache first
 		if let Some(cached) = ctx.get_request::<UserId>() {
 			return Ok((*cached).clone());
 		}
 
-		// For testing, we'll use a mock value
+		// Extract from HTTP request if available
+		if let (Some(request), Some(param_ctx)) = (ctx.get_http_request(), ctx.get_param_context())
+		{
+			let path_param = Path::<i32>::from_request(request, param_ctx)
+				.await
+				.map_err(|e| DiError::ProviderError(format!("Failed to extract user_id: {}", e)))?;
+			let user_id = UserId(path_param.0);
+			ctx.set_request(user_id.clone());
+			return Ok(user_id);
+		}
+
+		// Fallback for tests without HTTP context (backward compatible)
 		let user_id = UserId(42);
 		ctx.set_request(user_id.clone());
 		Ok(user_id)

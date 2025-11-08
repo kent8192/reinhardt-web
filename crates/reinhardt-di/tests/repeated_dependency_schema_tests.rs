@@ -7,7 +7,7 @@
 //!    it should only appear once in the schema
 //! 2. Shared dependencies are properly cached and reused
 
-use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
 use std::sync::Arc;
 
 // Simulates Header extraction
@@ -22,9 +22,23 @@ impl Injectable for SomeHeader {
 			return Ok((*cached).clone());
 		}
 
-		// TODO: Implement HTTP header extraction from request
-		// Current: Returns hardcoded test value "test-value"
-		// Required: Extract header value from HTTP request headers
+		// Extract from HTTP request if available
+		if let Some(request) = ctx.get_http_request() {
+			// Directly read from request headers (fixed header name: "X-Some-Header")
+			if let Some(value) = request.headers.get("X-Some-Header") {
+				if let Ok(header_str) = value.to_str() {
+					let header = SomeHeader(header_str.to_string());
+					ctx.set_request(header.clone());
+					return Ok(header);
+				}
+			}
+			// Header not found, return error
+			return Err(DiError::ProviderError(
+				"Header 'X-Some-Header' not found in request".to_string(),
+			));
+		}
+
+		// Fallback for tests without HTTP context (backward compatible)
 		let header = SomeHeader("test-value".to_string());
 		ctx.set_request(header.clone());
 		Ok(header)
