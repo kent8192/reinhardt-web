@@ -3,8 +3,8 @@
 use reinhardt_macros::installed_apps;
 
 fn main() {
-    // This should fail because path is missing
-    installed_apps! {
-        auth:,
-    }
+	// This should fail because path is missing
+	installed_apps! {
+		auth:,
+	}
 }

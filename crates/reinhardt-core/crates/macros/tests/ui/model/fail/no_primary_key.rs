@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, Model)]
 #[model(app_label = "test", table_name = "users")]
 struct User {
-    #[field]
-    id: i32,
+	#[field]
+	id: i32,
 
-    #[field]
-    username: String,
+	#[field]
+	username: String,
 }
 
 fn main() {}

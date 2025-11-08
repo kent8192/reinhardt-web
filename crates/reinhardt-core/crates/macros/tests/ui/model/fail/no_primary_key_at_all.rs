@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Model, Serialize, Deserialize)]
 #[model(app_label = "test", table_name = "invalid_model")]
 struct InvalidModel {
-    #[field(max_length = 100)]
-    name: String,
+	#[field(max_length = 100)]
+	name: String,
 
-    age: i32,
+	age: i32,
 }
 
 fn main() {}
