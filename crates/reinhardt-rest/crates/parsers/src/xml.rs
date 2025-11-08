@@ -247,8 +247,8 @@ impl XMLParser {
 
 				Ok(Event::Text(e)) => {
 					let text = e
-						.unescape()
-						.map_err(|e| Error::Validation(format!("XML unescape error: {}", e)))?;
+						.xml_content()
+						.map_err(|e| Error::Validation(format!("XML decode error: {}", e)))?;
 
 					if self.config.trim_text {
 						let trimmed = text.trim();
