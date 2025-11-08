@@ -5,7 +5,7 @@ struct Response;
 
 #[api_view(methods = "GET, POST, PUT")]
 async fn handler(_req: Request) -> Result<Response, ()> {
-    Ok(Response)
+	Ok(Response)
 }
 
 fn main() {}
