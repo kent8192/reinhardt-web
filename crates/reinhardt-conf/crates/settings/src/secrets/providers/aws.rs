@@ -86,6 +86,20 @@ impl AwsSecretsProvider {
 		Ok(Self { client, prefix })
 	}
 
+	/// Create a provider with custom endpoint (for LocalStack testing)
+	#[cfg(feature = "aws-secrets")]
+	pub async fn with_endpoint(endpoint_url: String, prefix: Option<String>) -> SecretResult<Self> {
+		let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+		let client = Client::from_conf(
+			aws_sdk_secretsmanager::config::Builder::from(&config)
+				.endpoint_url(endpoint_url)
+				// LocalStack requires region to be set
+				.region(aws_config::Region::new("us-east-1"))
+				.build(),
+		);
+		Ok(Self { client, prefix })
+	}
+
 	/// Get the full secret name with prefix
 	fn get_full_name(&self, key: &str) -> String {
 		match &self.prefix {
@@ -355,21 +369,68 @@ impl SecretProvider for AwsSecretsProvider {
 #[cfg(all(test, feature = "aws-secrets"))]
 mod tests {
 	use super::*;
+	use rstest::*;
 
-	// Note: These tests require AWS credentials and won't run in CI
-	// They are here for local testing purposes
+	// LocalStack fixture for AWS services testing
+	// This fixture is defined in reinhardt-test crate
+	#[fixture]
+	async fn localstack_endpoint() -> String {
+		use std::time::Duration;
+		use testcontainers::{GenericImage, ImageExt, runners::AsyncRunner};
 
+		// LocalStack community image - minimal configuration for faster startup
+		// No wait condition - rely on port mapping and sleep instead
+		let localstack = GenericImage::new("localstack/localstack", "latest")
+			.with_env_var("SERVICES", "secretsmanager")
+			.with_env_var("EDGE_PORT", "4566")
+			.start()
+			.await
+			.expect("Failed to start LocalStack container");
+
+		let port = localstack
+			.get_host_port_ipv4(4566)
+			.await
+			.expect("Failed to get LocalStack port");
+
+		// Wait for LocalStack to fully initialize (no log watching, just sleep)
+		tokio::time::sleep(Duration::from_secs(5)).await;
+
+		format!("http://localhost:{}", port)
+	}
+
+	/// Test: AWS provider creation with LocalStack
+	///
+	/// This test verifies that AwsSecretsProvider can be created successfully
+	/// using LocalStack as a mock AWS Secrets Manager service.
+	///
+	/// TODO: This test is currently ignored due to LocalStack startup issues:
+	/// - Container startup timeout with WaitFor conditions
+	/// - Port binding conflicts in CI/CD environments
+	/// - TestContainers cleanup issues
+	/// - Investigate LocalStack alternatives or implement HTTP mock server
+	#[rstest]
 	#[tokio::test]
-	#[ignore] // Ignore by default as it requires AWS credentials
-	async fn test_aws_provider_creation() {
-		let result = AwsSecretsProvider::new(None).await;
+	#[ignore]
+	async fn test_aws_provider_creation(#[future] localstack_endpoint: String) {
+		let endpoint = localstack_endpoint.await;
+		let result = AwsSecretsProvider::with_endpoint(endpoint, None).await;
 		assert!(result.is_ok());
 	}
 
+	/// Test: Getting a non-existent secret returns NotFound error
+	///
+	/// This test verifies that attempting to retrieve a non-existent secret
+	/// from AWS Secrets Manager (via LocalStack) returns the appropriate
+	/// SecretError::NotFound error.
+	///
+	/// TODO: This test is currently ignored due to LocalStack startup issues.
+	/// See test_aws_provider_creation for details.
+	#[rstest]
 	#[tokio::test]
 	#[ignore]
-	async fn test_aws_get_nonexistent_secret() {
-		let provider = AwsSecretsProvider::new(Some("test/".to_string()))
+	async fn test_aws_get_nonexistent_secret(#[future] localstack_endpoint: String) {
+		let endpoint = localstack_endpoint.await;
+		let provider = AwsSecretsProvider::with_endpoint(endpoint, Some("test/".to_string()))
 			.await
 			.unwrap();
 
@@ -377,9 +438,9 @@ mod tests {
 
 		assert!(result.is_err());
 		if let Err(SecretError::NotFound(_)) = result {
-			// Expected
+			// Expected error type
 		} else {
-			panic!("Expected NotFound error");
+			panic!("Expected NotFound error, got: {:?}", result);
 		}
 	}
 }
