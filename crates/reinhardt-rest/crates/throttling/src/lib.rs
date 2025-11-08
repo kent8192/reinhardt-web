@@ -15,7 +15,6 @@
 //!
 //! - **Memory**: In-memory storage (default)
 //! - **Redis**: Distributed rate limiting with Redis (feature: `redis-backend`)
-//! - **Memcached**: Distributed rate limiting with Memcached (feature: `memcached-backend`)
 
 pub mod adaptive;
 pub mod anon;
@@ -47,6 +46,3 @@ pub use user::UserRateThrottle;
 
 #[cfg(feature = "redis-backend")]
 pub use backend::RedisThrottleBackend;
-
-#[cfg(feature = "memcached-backend")]
-pub use backend::MemcachedBackend;
