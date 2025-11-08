@@ -94,6 +94,7 @@ async fn postgres_fixture() -> (
             age INTEGER,
             is_active BOOLEAN NOT NULL DEFAULT TRUE
         )",
+		vec![],
 	)
 	.await
 	.expect("Failed to create test_users table");

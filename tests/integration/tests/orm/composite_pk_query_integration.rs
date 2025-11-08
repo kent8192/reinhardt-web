@@ -137,6 +137,7 @@ async fn postgres_fixture() -> String {
                 description VARCHAR(200) NOT NULL,
                 PRIMARY KEY (post_id, tag_id)
             )",
+			vec![],
 		)
 		.await
 		.expect("Failed to create post_tags table");
@@ -148,15 +149,16 @@ async fn postgres_fixture() -> String {
                 granted_by VARCHAR(100),
                 PRIMARY KEY (user_id, role_id)
             )",
+			vec![],
 		)
 		.await
 		.expect("Failed to create user_roles table");
 
 		// Truncate tables to clear data from previous tests
-		conn.execute("TRUNCATE TABLE post_tags")
+		conn.execute("TRUNCATE TABLE post_tags", vec![])
 			.await
 			.expect("Failed to truncate post_tags table");
-		conn.execute("TRUNCATE TABLE user_roles")
+		conn.execute("TRUNCATE TABLE user_roles", vec![])
 			.await
 			.expect("Failed to truncate user_roles table");
 
@@ -180,6 +182,7 @@ async fn test_get_composite_success(#[future] postgres_fixture: String) {
 
 		conn.execute(
 			"INSERT INTO post_tags (post_id, tag_id, description) VALUES (1, 10, 'First tag')",
+			vec![],
 		)
 		.await
 		.expect("Failed to insert test data");
@@ -260,13 +263,17 @@ async fn test_get_composite_with_optional_field(#[future] postgres_fixture: Stri
 
 		conn.execute(
 			"INSERT INTO user_roles (user_id, role_id, granted_by) VALUES (1, 5, 'admin')",
+			vec![],
 		)
 		.await
 		.expect("Failed to insert test data");
 
-		conn.execute("INSERT INTO user_roles (user_id, role_id, granted_by) VALUES (2, 5, NULL)")
-			.await
-			.expect("Failed to insert test data with NULL");
+		conn.execute(
+			"INSERT INTO user_roles (user_id, role_id, granted_by) VALUES (2, 5, NULL)",
+			vec![],
+		)
+		.await
+		.expect("Failed to insert test data with NULL");
 		// Connection returned to pool here
 	}
 
@@ -313,12 +320,14 @@ async fn test_get_composite_multiple_records(#[future] postgres_fixture: String)
 
 		conn.execute(
 			"INSERT INTO post_tags (post_id, tag_id, description) VALUES (10, 20, 'First')",
+			vec![],
 		)
 		.await
 		.expect("Failed to insert test data");
 
 		conn.execute(
 			"INSERT INTO post_tags (post_id, tag_id, description) VALUES (10, 21, 'Second')",
+			vec![],
 		)
 		.await
 		.expect("Failed to insert test data");
@@ -362,12 +371,14 @@ async fn test_get_composite_string_pk(#[future] postgres_fixture: String) {
                 value TEXT,
                 PRIMARY KEY (category, item_id)
             )",
+			vec![],
 		)
 		.await
 		.expect("Failed to create string_composite table");
 
 		conn.execute(
 			"INSERT INTO string_composite (category, item_id, value) VALUES ('electronics', 100, 'Laptop')",
+			vec![],
 		)
 		.await
 		.expect("Failed to insert test data");
