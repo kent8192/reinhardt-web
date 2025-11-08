@@ -536,26 +536,192 @@ impl OperationOptimizer {
 		grouped
 	}
 
-	/// Remove redundant operations
+	/// Remove redundant operations by detecting cancellations and merging similar operations
 	fn remove_redundant_operations(&self, operations: Vec<Operation>) -> Vec<Operation> {
-		let mut optimized = Vec::new();
-		let mut seen_tables = HashSet::new();
+		use std::collections::HashMap;
 
-		for operation in operations {
+		let mut optimized = Vec::new();
+		let mut removed_indices = HashSet::new();
+
+		// Pass 1: Detect and remove operation cancellations
+		for i in 0..operations.len() {
+			if removed_indices.contains(&i) {
+				continue;
+			}
+
+			let op = &operations[i];
+			let mut found_cancellation = false;
+
+			// Search forward for cancelling operations
+			for j in (i + 1)..operations.len() {
+				if removed_indices.contains(&j) {
+					continue;
+				}
+
+				let next_op = &operations[j];
+
+				// Check for cancellation patterns
+				let cancels = match (op, next_op) {
+					// CreateTable + DropTable
+					(
+						Operation::CreateTable { name: n1, .. },
+						Operation::DropTable { name: n2 },
+					) if n1 == n2 => true,
+					// AddColumn + DropColumn
+					(
+						Operation::AddColumn {
+							table: t1,
+							column: col1,
+						},
+						Operation::DropColumn {
+							table: t2,
+							column: col2,
+						},
+					) if t1 == t2 && col1.name == *col2 => true,
+					// CreateIndex + DropIndex
+					(
+						Operation::CreateIndex {
+							table: t1,
+							columns: c1,
+							..
+						},
+						Operation::DropIndex {
+							table: t2,
+							columns: c2,
+						},
+					) if t1 == t2 && c1 == c2 => true,
+					// AddConstraint + DropConstraint (approximate match by table)
+					(
+						Operation::AddConstraint {
+							table: t1,
+							constraint_sql: _,
+						},
+						Operation::DropConstraint {
+							table: t2,
+							constraint_name: _,
+						},
+					) if t1 == t2 => {
+						// NOTE: Perfect matching requires parsing constraint SQL to extract name
+						// This is approximate optimization - matches by table only
+						true
+					}
+					_ => false,
+				};
+
+				if cancels {
+					removed_indices.insert(i);
+					removed_indices.insert(j);
+					found_cancellation = true;
+					break;
+				}
+			}
+
+			if !found_cancellation {
+				optimized.push(op.clone());
+			}
+		}
+
+		// Pass 1.5: Remove duplicate CreateTable operations (keep last occurrence)
+		let mut deduped = Vec::new();
+		let mut create_table_map: HashMap<String, Operation> = HashMap::new();
+
+		for operation in optimized {
 			match &operation {
 				Operation::CreateTable { name, .. } => {
-					if !seen_tables.contains(name) {
-						seen_tables.insert(name.clone());
-						optimized.push(operation);
-					}
+					// Last CreateTable for same table wins
+					create_table_map.insert(name.clone(), operation.clone());
 				}
 				_ => {
-					optimized.push(operation);
+					// Flush accumulated CreateTable operations before non-CreateTable operation
+					for (_, create_op) in create_table_map.drain() {
+						deduped.push(create_op);
+					}
+					deduped.push(operation);
 				}
 			}
 		}
 
-		optimized
+		// Flush remaining CreateTable operations
+		for (_, create_op) in create_table_map {
+			deduped.push(create_op);
+		}
+
+		// Pass 2: Merge consecutive AlterColumn operations on same column
+		let mut merged = Vec::new();
+		let mut alter_column_map: HashMap<(String, String), Operation> = HashMap::new();
+
+		for operation in deduped {
+			match &operation {
+				Operation::AlterColumn {
+					table,
+					column,
+					new_definition: _,
+				} => {
+					let key = (table.clone(), column.clone());
+					// Last AlterColumn wins (overwrites previous)
+					alter_column_map.insert(key, operation.clone());
+				}
+				_ => {
+					// Flush accumulated AlterColumn operations before non-AlterColumn operation
+					for (_, alter_op) in alter_column_map.drain() {
+						merged.push(alter_op);
+					}
+					merged.push(operation);
+				}
+			}
+		}
+
+		// Flush remaining AlterColumn operations
+		for (_, alter_op) in alter_column_map {
+			merged.push(alter_op);
+		}
+
+		// Pass 3: Chain consecutive RenameTable operations
+		let mut chained = Vec::new();
+		let mut rename_chain: HashMap<String, String> = HashMap::new(); // original_name -> current_name
+
+		for operation in merged {
+			match &operation {
+				Operation::RenameTable { old_name, new_name } => {
+					// Find if any existing chain ends with this old_name
+					let mut found_chain = None;
+					for (original, current) in &rename_chain {
+						if current == old_name {
+							found_chain = Some(original.clone());
+							break;
+						}
+					}
+
+					if let Some(original) = found_chain {
+						// Extend existing chain: original -> new_name
+						rename_chain.insert(original, new_name.clone());
+					} else {
+						// Start new chain: old_name -> new_name
+						rename_chain.insert(old_name.clone(), new_name.clone());
+					}
+				}
+				_ => {
+					// Flush accumulated RenameTable chains before non-RenameTable operation
+					for (original_name, final_name) in rename_chain.drain() {
+						chained.push(Operation::RenameTable {
+							old_name: original_name,
+							new_name: final_name,
+						});
+					}
+					chained.push(operation);
+				}
+			}
+		}
+
+		// Flush remaining RenameTable chains
+		for (original_name, final_name) in rename_chain {
+			chained.push(Operation::RenameTable {
+				old_name: original_name,
+				new_name: final_name,
+			});
+		}
+
+		chained
 	}
 }
 
