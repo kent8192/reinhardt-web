@@ -66,12 +66,8 @@ impl ImageOptimizer {
 
 			let options = Options::from_preset(level);
 
-			optimize_from_memory(input, &options).map_err(|e| {
-				io::Error::new(
-					io::ErrorKind::Other,
-					format!("PNG optimization failed: {}", e),
-				)
-			})
+			optimize_from_memory(input, &options)
+				.map_err(|e| io::Error::other(format!("PNG optimization failed: {}", e)))
 		}
 
 		#[cfg(not(feature = "image-optimization"))]
@@ -116,9 +112,7 @@ impl ImageOptimizer {
 					img.height(),
 					img.color().into(),
 				)
-				.map_err(|e| {
-					io::Error::new(io::ErrorKind::Other, format!("JPEG encoding failed: {}", e))
-				})?;
+				.map_err(|e| io::Error::other(format!("JPEG encoding failed: {}", e)))?;
 
 			Ok(output)
 		}
@@ -155,12 +149,8 @@ impl ImageOptimizer {
 				})?;
 
 			// Encode to WebP
-			let encoder = webp::Encoder::from_image(&img).map_err(|e| {
-				io::Error::new(
-					io::ErrorKind::Other,
-					format!("Failed to create WebP encoder: {}", e),
-				)
-			})?;
+			let encoder = webp::Encoder::from_image(&img)
+				.map_err(|e| io::Error::other(format!("Failed to create WebP encoder: {}", e)))?;
 
 			let webp_data = if self.lossy {
 				// Lossy compression with quality setting
