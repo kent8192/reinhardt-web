@@ -96,8 +96,7 @@ pub fn injectable_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 			let resolve_call = if field_info.use_cache {
 				quote! {
 					{
-						let __depends = ::reinhardt_di::Depends::<#ty>::new()
-							.resolve(__di_ctx)
+						let __depends = ::reinhardt_di::Depends::<#ty>::resolve(__di_ctx, true)
 							.await
 							.map_err(|e| {
 								eprintln!("Dependency injection failed for {} in {}: {:?}",
@@ -110,8 +109,7 @@ pub fn injectable_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 			} else {
 				quote! {
 					{
-						let __depends = ::reinhardt_di::Depends::<#ty>::no_cache()
-							.resolve(__di_ctx)
+						let __depends = ::reinhardt_di::Depends::<#ty>::resolve(__di_ctx, false)
 							.await
 							.map_err(|e| {
 								eprintln!("Dependency injection failed for {} in {}: {:?}",
@@ -198,7 +196,8 @@ mod tests {
 		assert!(result.is_ok());
 
 		let output = result.unwrap().to_string();
-		assert!(output.contains("no_cache"));
+		assert!(output.contains("resolve"));
+		assert!(output.contains("false"));
 	}
 
 	#[test]
