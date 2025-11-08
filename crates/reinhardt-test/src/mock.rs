@@ -481,6 +481,263 @@ impl reinhardt_backends::cache::CacheBackend for DummyCache {
 }
 
 // ============================================================================
+// Mock Redis Cluster Cache
+// ============================================================================
+
+/// Mock Redis Cluster cache implementation for testing
+///
+/// Simulates a 3-node Redis Cluster with CRC16-based key sharding.
+/// This mock backend provides a lightweight alternative to TestContainers
+/// for testing Redis Cluster functionality without requiring actual Redis instances.
+///
+/// # Features
+///
+/// - **3-node cluster simulation**: Keys are distributed across 3 nodes based on hash slots
+/// - **CRC16 hash slot calculation**: Uses the same algorithm as real Redis Cluster (0-16383)
+/// - **Key prefix support**: Namespace isolation similar to RedisClusterCache
+/// - **In-memory storage**: Fast, no external dependencies
+///
+/// # Slot Distribution
+///
+/// - Node 0: slots 0-5460
+/// - Node 1: slots 5461-10922
+/// - Node 2: slots 10923-16383
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_test::mock::MockRedisClusterCache;
+/// use reinhardt_cache::Cache;
+///
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let cache = MockRedisClusterCache::new();
+/// cache.set("user:123", &"John Doe", None).await.unwrap();
+/// let value: Option<String> = cache.get("user:123").await.unwrap();
+/// assert_eq!(value, Some("John Doe".to_string()));
+/// # });
+/// ```
+///
+/// # Limitations
+///
+/// - TTL is accepted but not enforced (keys don't expire)
+/// - No actual network communication or cluster topology management
+/// - Failover and replica functionality are not simulated
+pub struct MockRedisClusterCache {
+	/// Storage for each of the 3 cluster nodes
+	/// Index 0: Node 0 (slots 0-5460)
+	/// Index 1: Node 1 (slots 5461-10922)
+	/// Index 2: Node 2 (slots 10923-16383)
+	nodes: Arc<std::sync::Mutex<[std::collections::HashMap<String, Vec<u8>>; 3]>>,
+	/// Key prefix for namespacing
+	key_prefix: String,
+}
+
+impl MockRedisClusterCache {
+	/// Create a new MockRedisClusterCache instance
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_test::mock::MockRedisClusterCache;
+	///
+	/// let cache = MockRedisClusterCache::new();
+	/// ```
+	pub fn new() -> Self {
+		Self {
+			nodes: Arc::new(std::sync::Mutex::new([
+				std::collections::HashMap::new(),
+				std::collections::HashMap::new(),
+				std::collections::HashMap::new(),
+			])),
+			key_prefix: String::new(),
+		}
+	}
+
+	/// Create a new instance with a key prefix
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_test::mock::MockRedisClusterCache;
+	///
+	/// let cache = MockRedisClusterCache::with_prefix("myapp");
+	/// ```
+	pub fn with_prefix(prefix: impl Into<String>) -> Self {
+		Self {
+			nodes: Arc::new(std::sync::Mutex::new([
+				std::collections::HashMap::new(),
+				std::collections::HashMap::new(),
+				std::collections::HashMap::new(),
+			])),
+			key_prefix: prefix.into(),
+		}
+	}
+
+	/// Build the full key with prefix
+	fn build_key(&self, key: &str) -> String {
+		if self.key_prefix.is_empty() {
+			key.to_string()
+		} else {
+			format!("{}:{}", self.key_prefix, key)
+		}
+	}
+
+	/// Calculate CRC16 hash slot for a key (0-16383)
+	///
+	/// Uses the same algorithm as Redis Cluster for key distribution.
+	fn calculate_slot(key: &str) -> u16 {
+		// Extract hash tag if present (e.g., "user:{123}" -> "123")
+		let hash_key = if let Some(start) = key.find('{') {
+			if let Some(end) = key[start + 1..].find('}') {
+				let tag_end = start + 1 + end;
+				if tag_end > start + 1 {
+					&key[start + 1..tag_end]
+				} else {
+					key
+				}
+			} else {
+				key
+			}
+		} else {
+			key
+		};
+
+		// CRC16 calculation (XMODEM variant used by Redis)
+		let mut crc: u16 = 0;
+		for &byte in hash_key.as_bytes() {
+			crc ^= (byte as u16) << 8;
+			for _ in 0..8 {
+				if (crc & 0x8000) != 0 {
+					crc = (crc << 1) ^ 0x1021;
+				} else {
+					crc <<= 1;
+				}
+			}
+		}
+		crc % 16384 // Redis uses 16384 slots (0-16383)
+	}
+
+	/// Determine which node (0-2) should handle a given slot
+	fn slot_to_node(slot: u16) -> usize {
+		match slot {
+			0..=5460 => 0,      // Node 0
+			5461..=10922 => 1,  // Node 1
+			10923..=16383 => 2, // Node 2
+			_ => unreachable!("Invalid slot number"),
+		}
+	}
+
+	/// Get the storage node for a given key
+	fn get_node(&self, key: &str) -> usize {
+		let slot = Self::calculate_slot(key);
+		Self::slot_to_node(slot)
+	}
+}
+
+impl Default for MockRedisClusterCache {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+#[async_trait::async_trait]
+impl reinhardt_backends::cache::CacheBackend for MockRedisClusterCache {
+	async fn get(&self, key: &str) -> reinhardt_backends::cache::CacheResult<Option<Vec<u8>>> {
+		let full_key = self.build_key(key);
+		let node_idx = self.get_node(&full_key);
+		let nodes = self.nodes.lock().unwrap();
+		Ok(nodes[node_idx].get(&full_key).cloned())
+	}
+
+	async fn set(
+		&self,
+		key: &str,
+		value: &[u8],
+		_ttl: Option<std::time::Duration>,
+	) -> reinhardt_backends::cache::CacheResult<()> {
+		let full_key = self.build_key(key);
+		let node_idx = self.get_node(&full_key);
+		let mut nodes = self.nodes.lock().unwrap();
+		nodes[node_idx].insert(full_key, value.to_vec());
+		Ok(())
+	}
+
+	async fn delete(&self, key: &str) -> reinhardt_backends::cache::CacheResult<bool> {
+		let full_key = self.build_key(key);
+		let node_idx = self.get_node(&full_key);
+		let mut nodes = self.nodes.lock().unwrap();
+		Ok(nodes[node_idx].remove(&full_key).is_some())
+	}
+
+	async fn exists(&self, key: &str) -> reinhardt_backends::cache::CacheResult<bool> {
+		let full_key = self.build_key(key);
+		let node_idx = self.get_node(&full_key);
+		let nodes = self.nodes.lock().unwrap();
+		Ok(nodes[node_idx].contains_key(&full_key))
+	}
+
+	async fn clear(&self) -> reinhardt_backends::cache::CacheResult<()> {
+		let mut nodes = self.nodes.lock().unwrap();
+		if self.key_prefix.is_empty() {
+			// Clear all nodes if no prefix
+			for node in nodes.iter_mut() {
+				node.clear();
+			}
+		} else {
+			// Clear only keys with the prefix
+			let prefix_pattern = format!("{}:", self.key_prefix);
+			for node in nodes.iter_mut() {
+				node.retain(|k, _| !k.starts_with(&prefix_pattern));
+			}
+		}
+		Ok(())
+	}
+
+	async fn get_many(
+		&self,
+		keys: &[String],
+	) -> reinhardt_backends::cache::CacheResult<Vec<Option<Vec<u8>>>> {
+		let nodes = self.nodes.lock().unwrap();
+		let results: Vec<Option<Vec<u8>>> = keys
+			.iter()
+			.map(|k| {
+				let full_key = self.build_key(k);
+				let node_idx = self.get_node(&full_key);
+				nodes[node_idx].get(&full_key).cloned()
+			})
+			.collect();
+		Ok(results)
+	}
+
+	async fn set_many(
+		&self,
+		items: &[(String, Vec<u8>)],
+		_ttl: Option<std::time::Duration>,
+	) -> reinhardt_backends::cache::CacheResult<()> {
+		let mut nodes = self.nodes.lock().unwrap();
+		for (key, value) in items {
+			let full_key = self.build_key(key);
+			let node_idx = self.get_node(&full_key);
+			nodes[node_idx].insert(full_key, value.clone());
+		}
+		Ok(())
+	}
+
+	async fn delete_many(&self, keys: &[String]) -> reinhardt_backends::cache::CacheResult<usize> {
+		let mut nodes = self.nodes.lock().unwrap();
+		let mut count = 0;
+		for key in keys {
+			let full_key = self.build_key(key);
+			let node_idx = self.get_node(&full_key);
+			if nodes[node_idx].remove(&full_key).is_some() {
+				count += 1;
+			}
+		}
+		Ok(count)
+	}
+}
+
+// ============================================================================
 // Handler Mocks
 // ============================================================================
 
