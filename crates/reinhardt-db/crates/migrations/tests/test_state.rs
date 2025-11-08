@@ -286,8 +286,8 @@ fn test_model_with_table_name() {
 	let mut model = ModelState::new("myapp", "User");
 	model.add_field(create_field("id", "INTEGER", false));
 
-	// In a real implementation, this would set table_name
-	// For now, we just ensure the model is created correctly
+	// NOTE: Test verifies basic ModelState creation without custom table_name support
+	// Production ModelState would accept table_name parameter for custom table naming
 	assert_eq!(model.name, "User");
 }
 
