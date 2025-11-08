@@ -86,11 +86,12 @@ async fn postgres_fixture() -> (
             email TEXT NOT NULL,
             is_active BOOLEAN NOT NULL DEFAULT TRUE
         )",
+		vec![],
 	)
 	.await
 	.expect("Failed to create test_users table");
 
-	let admin_db = Arc::new(AdminDatabase::new(Arc::new(conn)));
+	let admin_db = Arc::new(AdminDatabase::new(conn));
 
 	(postgres, admin_db)
 }
