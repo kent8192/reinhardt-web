@@ -33,7 +33,6 @@
 
 use crate::{FieldState, ProjectState};
 use backends::schema::BaseDatabaseSchemaEditor;
-use pg_escape::quote_identifier;
 use sea_query::PostgresQueryBuilder;
 use serde::{Deserialize, Serialize};
 
@@ -280,19 +279,14 @@ impl AlterField {
 	/// let sql = alter.database_forwards(editor.as_ref());
 	/// assert!(!sql.is_empty());
 	/// ```
-	pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-		// PostgreSQL: ALTER TABLE table ALTER COLUMN column TYPE type
-		// MySQL: ALTER TABLE table MODIFY COLUMN column type
-		// SQLite: Requires table recreation
-
-		// TODO: Implement database-specific SQL generation for ALTER COLUMN
-		// Currently generates PostgreSQL-style SQL only
-		// Required: Add database type detection and generate appropriate SQL for MySQL, SQLite, etc.
-		vec![format!(
-			"ALTER TABLE {} ALTER COLUMN {} TYPE {}",
-			quote_identifier(&self.model_name),
-			quote_identifier(&self.field.name),
-			self.field.field_type
+	pub fn database_forwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		// Use database-specific ALTER COLUMN statement from schema editor
+		// Each database backend (PostgreSQL, MySQL, SQLite, CockroachDB) provides
+		// its own implementation via the alter_column_statement() method
+		vec![schema_editor.alter_column_statement(
+			&self.model_name,
+			&self.field.name,
+			&self.field.field_type,
 		)]
 	}
 }

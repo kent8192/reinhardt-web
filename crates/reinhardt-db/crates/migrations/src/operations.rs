@@ -287,7 +287,7 @@ impl Operation {
 				column,
 				new_definition,
 			} => match dialect {
-				SqlDialect::Postgres => {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => {
 					format!(
 						"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
 						table, column, new_definition.type_definition
@@ -348,7 +348,14 @@ impl Operation {
 			}
 			Operation::DropIndex { table, columns } => {
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
-				format!("DROP INDEX {};", idx_name)
+				match dialect {
+					SqlDialect::Mysql => {
+						format!("DROP INDEX {} ON {};", idx_name, table)
+					}
+					SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
+						format!("DROP INDEX {};", idx_name)
+					}
+				}
 			}
 			Operation::RunSQL { sql, .. } => sql.clone(),
 			Operation::RunRust { code, .. } => {
@@ -356,7 +363,7 @@ impl Operation {
 				format!("-- RunRust: {}", code.lines().next().unwrap_or(""))
 			}
 			Operation::AlterTableComment { table, comment } => match dialect {
-				SqlDialect::Postgres => {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => {
 					if let Some(comment_text) = comment {
 						format!("COMMENT ON TABLE {} IS '{}';", table, comment_text)
 					} else {
@@ -479,6 +486,7 @@ pub enum SqlDialect {
 	Sqlite,
 	Postgres,
 	Mysql,
+	Cockroachdb,
 }
 
 // Re-export for convenience (legacy)
