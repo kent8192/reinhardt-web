@@ -48,8 +48,8 @@ pub mod scalar;
 pub use builder::ProxyBuilder;
 pub use collection::{CollectionAggregations, CollectionOperations, CollectionProxy};
 pub use joins::{
-	JoinConfig, LoadingStrategy, NestedProxy, RelationshipPath, extract_through_path,
-	filter_through_path, traverse_and_extract, traverse_relationships,
+	CircularReferenceError, JoinConfig, LoadingStrategy, NestedProxy, RelationshipPath,
+	extract_through_path, filter_through_path, traverse_and_extract, traverse_relationships,
 };
 pub use loading::{
 	EagerLoadConfig, EagerLoadable, LazyLoadable, LazyLoaded, LoadStrategy, RelationshipCache,

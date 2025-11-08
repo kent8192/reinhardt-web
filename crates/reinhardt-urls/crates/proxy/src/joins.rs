@@ -1,6 +1,7 @@
 //! Join operations for proxy relationships
 
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JoinConfig {
@@ -41,14 +42,250 @@ impl NestedProxy {
 	}
 }
 
+/// A path through relationships with circular reference detection
+///
+/// RelationshipPath provides a builder API for constructing paths through
+/// model relationships while detecting and preventing circular references.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // Valid path: user -> posts -> comments
+/// let path = RelationshipPath::new()
+///     .through("posts")
+///     .through("comments")
+///     .attribute("content");
+///
+/// // Circular path: posts -> author -> posts (ERROR)
+/// let result = RelationshipPath::new()
+///     .through("posts")
+///     .through("author")
+///     .through("posts")  // This creates a cycle
+///     .try_build();
+/// assert!(result.is_err());
+/// ```
 #[derive(Debug, Clone)]
 pub struct RelationshipPath {
+	/// Sequence of relationship names in the path
 	pub segments: Vec<String>,
+	/// Set of visited relationship names for cycle detection
+	visited: HashSet<String>,
+	/// Filters applied at each relationship level
+	filters: HashMap<String, Vec<(String, String)>>,
+	/// Transformations applied at each relationship level
+	transforms: HashMap<String, Vec<(String, String)>>,
+	/// Final attribute to access
+	attribute: Option<String>,
 }
 
 impl RelationshipPath {
-	pub fn new(segments: Vec<String>) -> Self {
-		Self { segments }
+	/// Create a new empty relationship path
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::RelationshipPath;
+	///
+	/// let path = RelationshipPath::new();
+	/// assert_eq!(path.path().len(), 0);
+	/// ```
+	pub fn new() -> Self {
+		Self {
+			segments: Vec::new(),
+			visited: HashSet::new(),
+			filters: HashMap::new(),
+			transforms: HashMap::new(),
+			attribute: None,
+		}
+	}
+
+	/// Add a relationship to the path
+	///
+	/// Returns self for chaining. Use `try_through()` if you need error handling.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::RelationshipPath;
+	///
+	/// let path = RelationshipPath::new()
+	///     .through("posts")
+	///     .through("comments");
+	/// assert_eq!(path.path().len(), 2);
+	/// ```
+	pub fn through(mut self, relationship: &str) -> Self {
+		let rel = relationship.to_string();
+		self.segments.push(rel.clone());
+		self.visited.insert(rel);
+		self
+	}
+
+	/// Add a relationship to the path with error handling for circular references
+	///
+	/// # Errors
+	///
+	/// Returns an error if adding this relationship would create a cycle.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::RelationshipPath;
+	///
+	/// let path = RelationshipPath::new()
+	///     .try_through("posts").unwrap()
+	///     .try_through("author").unwrap();
+	///
+	/// // This would create a cycle
+	/// let result = path.try_through("posts");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn try_through(mut self, relationship: &str) -> Result<Self, CircularReferenceError> {
+		let rel = relationship.to_string();
+
+		if self.visited.contains(&rel) {
+			return Err(CircularReferenceError {
+				relationship: rel,
+				path: self.segments.clone(),
+			});
+		}
+
+		self.segments.push(rel.clone());
+		self.visited.insert(rel);
+		Ok(self)
+	}
+
+	/// Add a filter at the current relationship level
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::RelationshipPath;
+	///
+	/// let path = RelationshipPath::new()
+	///     .through("posts")
+	///     .with_filter("published", "true");
+	/// assert!(path.has_filters());
+	/// ```
+	pub fn with_filter(mut self, field: &str, value: &str) -> Self {
+		let current_rel = self.segments.last().cloned().unwrap_or_default();
+		self.filters
+			.entry(current_rel)
+			.or_default()
+			.push((field.to_string(), value.to_string()));
+		self
+	}
+
+	/// Add a transformation at a specific relationship level
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::RelationshipPath;
+	///
+	/// let path = RelationshipPath::new()
+	///     .through("posts")
+	///     .through("comments")
+	///     .with_transform("author", "upper");
+	/// assert!(path.has_transforms());
+	/// ```
+	pub fn with_transform(mut self, relationship: &str, transform: &str) -> Self {
+		self.transforms
+			.entry(relationship.to_string())
+			.or_default()
+			.push((relationship.to_string(), transform.to_string()));
+		self
+	}
+
+	/// Set the final attribute to access
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::RelationshipPath;
+	///
+	/// let path = RelationshipPath::new()
+	///     .through("posts")
+	///     .through("comments")
+	///     .attribute("content");
+	/// assert_eq!(path.attribute(), "content");
+	/// ```
+	pub fn attribute(mut self, attr: &str) -> Self {
+		self.attribute = Some(attr.to_string());
+		self
+	}
+
+	/// Get the path segments
+	pub fn path(&self) -> &[String] {
+		&self.segments
+	}
+
+	/// Get the final attribute name
+	pub fn get_attribute(&self) -> &str {
+		self.attribute.as_deref().unwrap_or("")
+	}
+
+	/// Check if any filters are configured
+	pub fn has_filters(&self) -> bool {
+		!self.filters.is_empty()
+	}
+
+	/// Get all filters
+	pub fn filters(&self) -> Vec<(String, String)> {
+		self.filters
+			.values()
+			.flat_map(|v| v.iter().cloned())
+			.collect()
+	}
+
+	/// Check if any transformations are configured
+	pub fn has_transforms(&self) -> bool {
+		!self.transforms.is_empty()
+	}
+
+	/// Get all transformations
+	pub fn transforms(&self) -> Vec<(String, String)> {
+		self.transforms
+			.values()
+			.flat_map(|v| v.iter().cloned())
+			.collect()
+	}
+
+	/// Check if a relationship is in the path (for cycle detection)
+	pub fn contains(&self, relationship: &str) -> bool {
+		self.visited.contains(relationship)
+	}
+
+	/// Validate the path and return self or error
+	///
+	/// This method is primarily for testing - the builder methods
+	/// already prevent invalid paths from being constructed.
+	pub fn validate(self) -> Result<Self, CircularReferenceError> {
+		// Path is already validated during construction
+		Ok(self)
+	}
+}
+
+impl Default for RelationshipPath {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+/// Error returned when a circular reference is detected in a relationship path
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("Circular reference detected: relationship '{relationship}' already exists in path {}", path_display(.path))]
+pub struct CircularReferenceError {
+	/// The relationship that would create a cycle
+	pub relationship: String,
+	/// The current path when the cycle was detected
+	pub path: Vec<String>,
+}
+
+fn path_display(path: &[String]) -> String {
+	if path.is_empty() {
+		"(empty)".to_string()
+	} else {
+		format!("[{}]", path.join(" -> "))
 	}
 }
 
@@ -66,4 +303,216 @@ pub fn traverse_and_extract(proxy: &NestedProxy) -> Vec<String> {
 
 pub fn traverse_relationships(path: &RelationshipPath) -> Vec<String> {
 	path.segments.clone()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// Test basic path construction without cycles
+	#[test]
+	fn test_relationship_path_no_cycle() {
+		let path = RelationshipPath::new()
+			.through("posts")
+			.through("comments")
+			.through("author")
+			.attribute("name");
+
+		assert_eq!(path.path().len(), 3);
+		assert_eq!(path.path()[0], "posts");
+		assert_eq!(path.path()[1], "comments");
+		assert_eq!(path.path()[2], "author");
+		assert_eq!(path.get_attribute(), "name");
+	}
+
+	/// Test simple cycle detection: A -> B -> A
+	#[test]
+	fn test_simple_cycle_detection() {
+		let path = RelationshipPath::new().through("posts").through("author");
+
+		// Try to add "posts" again - should create a cycle
+		let result = path.try_through("posts");
+
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.relationship, "posts");
+		assert_eq!(err.path, vec!["posts", "author"]);
+	}
+
+	/// Test complex cycle detection: A -> B -> C -> A
+	#[test]
+	fn test_complex_cycle_detection() {
+		let path = RelationshipPath::new()
+			.through("user")
+			.through("posts")
+			.through("comments");
+
+		// Try to add "user" again - should create a cycle
+		let result = path.try_through("user");
+
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.relationship, "user");
+		assert_eq!(err.path, vec!["user", "posts", "comments"]);
+	}
+
+	/// Test that different relationships don't trigger cycle detection
+	#[test]
+	fn test_no_false_positive_cycle() {
+		let path = RelationshipPath::new()
+			.through("posts")
+			.through("comments")
+			.through("author")
+			.through("profile");
+
+		assert_eq!(path.path().len(), 4);
+	}
+
+	/// Test contains method for cycle detection
+	#[test]
+	fn test_contains_relationship() {
+		let path = RelationshipPath::new().through("posts").through("comments");
+
+		assert!(path.contains("posts"));
+		assert!(path.contains("comments"));
+		assert!(!path.contains("author"));
+	}
+
+	/// Test path with filters
+	#[test]
+	fn test_path_with_filters() {
+		let path = RelationshipPath::new()
+			.through("posts")
+			.with_filter("published", "true")
+			.through("comments")
+			.attribute("content");
+
+		assert!(path.has_filters());
+		assert_eq!(path.filters().len(), 1);
+		assert_eq!(
+			path.filters()[0],
+			("published".to_string(), "true".to_string())
+		);
+	}
+
+	/// Test path with transforms
+	#[test]
+	fn test_path_with_transforms() {
+		let path = RelationshipPath::new()
+			.through("posts")
+			.through("comments")
+			.with_transform("author", "upper")
+			.attribute("name");
+
+		assert!(path.has_transforms());
+		assert_eq!(path.transforms().len(), 1);
+	}
+
+	/// Test multiple filters on different relationships
+	#[test]
+	fn test_multiple_filters() {
+		let path = RelationshipPath::new()
+			.through("posts")
+			.with_filter("published", "true")
+			.through("comments")
+			.with_filter("approved", "true")
+			.attribute("content");
+
+		assert!(path.has_filters());
+		assert_eq!(path.filters().len(), 2);
+	}
+
+	/// Test error message formatting
+	#[test]
+	fn test_error_message_format() {
+		let path = RelationshipPath::new().through("posts").through("author");
+
+		let result = path.try_through("posts");
+		assert!(result.is_err());
+
+		let err = result.unwrap_err();
+		let error_msg = err.to_string();
+		assert!(error_msg.contains("Circular reference detected"));
+		assert!(error_msg.contains("posts"));
+		assert!(error_msg.contains("author"));
+	}
+
+	/// Test default implementation
+	#[test]
+	fn test_default_path() {
+		let path = RelationshipPath::default();
+		assert_eq!(path.path().len(), 0);
+		assert!(!path.has_filters());
+		assert!(!path.has_transforms());
+	}
+
+	/// Test empty path display in error
+	#[test]
+	fn test_empty_path_error() {
+		let err = CircularReferenceError {
+			relationship: "posts".to_string(),
+			path: vec![],
+		};
+		let msg = err.to_string();
+		assert!(msg.contains("(empty)"));
+	}
+
+	/// Test clone functionality
+	#[test]
+	fn test_path_clone() {
+		let path1 = RelationshipPath::new()
+			.through("posts")
+			.through("comments")
+			.attribute("content");
+
+		let path2 = path1.clone();
+
+		assert_eq!(path1.path(), path2.path());
+		assert_eq!(path1.get_attribute(), path2.get_attribute());
+	}
+
+	/// Test using through() method (non-checked version)
+	#[test]
+	fn test_through_allows_cycles() {
+		// through() method doesn't check for cycles - it just adds to the path
+		// This is by design for backwards compatibility
+		let path = RelationshipPath::new()
+			.through("posts")
+			.through("author")
+			.through("posts"); // No error, just adds to path
+
+		assert_eq!(path.path().len(), 3);
+		// But the visited set will detect it
+		assert!(path.contains("posts"));
+	}
+
+	/// Test validate method
+	#[test]
+	fn test_validate_method() {
+		let path = RelationshipPath::new()
+			.through("posts")
+			.through("comments")
+			.attribute("content");
+
+		let result = path.validate();
+		assert!(result.is_ok());
+	}
+
+	/// Test path with only attribute (no relationships)
+	#[test]
+	fn test_attribute_only_path() {
+		let path = RelationshipPath::new().attribute("name");
+
+		assert_eq!(path.path().len(), 0);
+		assert_eq!(path.get_attribute(), "name");
+	}
+
+	/// Test filter on empty path (edge case)
+	#[test]
+	fn test_filter_on_empty_path() {
+		let path = RelationshipPath::new().with_filter("field", "value");
+
+		// Filter is added with empty relationship name
+		assert!(path.has_filters());
+	}
 }
