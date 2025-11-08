@@ -22,7 +22,9 @@ impl Injectable for SomeHeader {
 			return Ok((*cached).clone());
 		}
 
-		// In a real implementation, this would extract from HTTP headers
+		// TODO: Implement HTTP header extraction from request
+		// Current: Returns hardcoded test value "test-value"
+		// Required: Extract header value from HTTP request headers
 		let header = SomeHeader("test-value".to_string());
 		ctx.set_request(header.clone());
 		Ok(header)
@@ -70,7 +72,9 @@ async fn test_header_extracted_only_once() {
 	let header1 = SomeHeader::inject(&ctx).await.unwrap();
 	let header2 = SomeHeader::inject(&ctx).await.unwrap();
 
-	// Both should be the same (cached)
+	// NOTE: Verifies dependency caching behavior in injection system
+	// Both header1 and header2 should be the same cached instance
+	// Test confirms that SomeHeader is injected once and reused for subsequent calls
 	assert_eq!(header1, header2);
 }
 

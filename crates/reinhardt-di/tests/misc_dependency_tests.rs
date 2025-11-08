@@ -26,7 +26,9 @@ impl Injectable for UserIdParam {
 		if let Some(override_param) = ctx.get_request::<UserIdParam>() {
 			return Ok((*override_param).clone());
 		}
-		// In a real implementation, this would extract from request path
+		// TODO: Implement path parameter extraction from HTTP request
+		// Current: Returns hardcoded user_id = 42 for test purposes
+		// Required: Extract user_id from request path (e.g., /users/{user_id})
 		Ok(UserIdParam { user_id: 42 })
 	}
 }
@@ -274,7 +276,10 @@ async fn test_complex_repeated_dependencies() {
 
 	let complex = ComplexService::inject(&ctx).await.unwrap();
 
-	// All counters should be the same instance
+	// NOTE: Verifies singleton dependency caching across multiple injection paths
+	// All counter references should point to the same instance in memory
+	// Test confirms that RequestCounter is injected once and shared across:
+	// - service1.counter, service2.counter, direct_counter
 	assert_eq!(*complex.service1.counter, *complex.service2.counter);
 	assert_eq!(*complex.service1.counter, *complex.direct_counter);
 	assert_eq!(complex.direct_counter.count, 1);

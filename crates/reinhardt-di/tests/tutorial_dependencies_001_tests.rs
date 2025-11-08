@@ -36,8 +36,9 @@ impl Injectable for CommonQueryParams {
 			return Ok((*cached).clone());
 		}
 
-		// In a real implementation, these would be extracted from query parameters
-		// For testing, we'll use values from context
+		// TODO: Implement query parameter extraction from HTTP request
+		// Current: Uses default values (q=None, skip=0, limit=100) for test purposes
+		// Required: Extract q, skip, limit from request query string (e.g., ?q=foo&skip=10&limit=50)
 		let params = CommonQueryParams::new(None, None, None);
 		ctx.set_request(params.clone());
 		Ok(params)

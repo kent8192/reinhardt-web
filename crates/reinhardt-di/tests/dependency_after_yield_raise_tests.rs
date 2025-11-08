@@ -32,11 +32,14 @@ struct CatchingDep {
 
 impl Drop for CatchingDep {
 	fn drop(&mut self) {
-		// In FastAPI, this would be the code after yield in a generator
-		// If an exception occurred during request handling, it would be caught here
+		// NOTE: Drop trait simulates FastAPI's after-yield cleanup in generator dependencies
+		// FastAPI: Code after yield in generator executes during cleanup
+		// Reinhardt: Drop trait provides equivalent cleanup guarantees
+		// Test verifies cleanup execution even when exceptions occur during request handling
 		if self.cleanup_error_catcher.load(Ordering::SeqCst) {
-			// In a real implementation, this would catch CustomError and convert to HTTPException
-			// For now, we just mark that cleanup ran
+			// TODO: Implement exception conversion from CustomError to HTTPException
+			// Current: Only marks that cleanup ran (atomic flag)
+			// Required: Add proper error type conversion and HTTPException generation
 		}
 	}
 }

@@ -16,7 +16,9 @@ struct UserId(i32);
 #[async_trait::async_trait]
 impl Injectable for UserId {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		// In a real implementation, this would be extracted from the request path
+		// TODO: Implement path parameter extraction from HTTP request
+		// Current: Uses cached test value or mock value (UserId(42))
+		// Required: Extract user_id from request path (e.g., /users/{user_id})
 		if let Some(cached) = ctx.get_request::<UserId>() {
 			return Ok((*cached).clone());
 		}
