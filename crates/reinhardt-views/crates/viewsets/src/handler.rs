@@ -488,7 +488,7 @@ where
 		let is_authenticated = user_id_string.is_some();
 
 		// Load user from database if authenticated and pool is available
-		let (is_admin, is_active) = if let (Some(user_id_str), Some(_pool)) =
+		let (is_admin, is_active, user_obj) = if let (Some(user_id_str), Some(_pool)) =
 			(user_id_string.as_ref(), self.pool.as_ref())
 		{
 			// Parse user_id as UUID
@@ -518,38 +518,42 @@ where
 										Ok(user) => {
 											use reinhardt_auth::User;
 											// Extract admin and active status from loaded user
-											(user.is_admin(), user.is_active())
+											let is_admin = user.is_admin();
+											let is_active = user.is_active();
+											// Box the user object to store in PermissionContext
+											let boxed_user: Box<dyn User> = Box::new(user);
+											(is_admin, is_active, Some(boxed_user))
 										}
 										Err(_) => {
 											// Deserialization failed, use defaults
-											(false, true)
+											(false, true, None)
 										}
 									}
 								}
 								Ok(None) => {
 									// User not found, use defaults
-									(false, true)
+									(false, true, None)
 								}
 								Err(_) => {
 									// Database query failed, use defaults
-									(false, true)
+									(false, true, None)
 								}
 							}
 						}
 						Err(_) => {
 							// Connection failed, use defaults
-							(false, true)
+							(false, true, None)
 						}
 					}
 				}
 				Err(_) => {
 					// UUID parse failed, use defaults
-					(false, true)
+					(false, true, None)
 				}
 			}
 		} else {
 			// Not authenticated or no pool, use defaults
-			(false, true)
+			(false, true, None)
 		};
 
 		let context = PermissionContext {
@@ -557,7 +561,7 @@ where
 			is_authenticated,
 			is_admin,
 			is_active,
-			user: None, // TODO: Requires lifetime management for boxed trait object
+			user: user_obj,
 		};
 
 		// Check all registered permission classes
