@@ -25,7 +25,7 @@ sea-query-binder = { version = "0.7", features = [
   "sqlx-sqlite",
 ] }
 pg_escape = "0.1.1"
-mongodb = { version = "3.0", optional = true }
+mongodb = { version = "3.0", optional = true, features = ["bson-3"] }
 bson = { version = "3.0.0", optional = true }
 futures = { workspace = true }
 
