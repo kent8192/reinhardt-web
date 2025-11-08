@@ -30,8 +30,9 @@ fn test_create_delete_table_optimization() {
 		},
 	];
 
-	// In a real optimizer, these would cancel out
-	// For now, we just verify they exist
+	// TODO: Implement optimization to cancel out opposite operations (CreateTable + DropTable)
+	// Current: Test verifies operations exist without optimization
+	// Required: Add migration optimizer to detect and remove redundant operation pairs
 	assert_eq!(operations.len(), 2);
 }
 
