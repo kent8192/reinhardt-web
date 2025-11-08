@@ -17,9 +17,11 @@ reinhardt-middleware = { path = "../../crates/reinhardt-middleware" }
 reinhardt-templates = { path = "../../crates/reinhardt-template/crates/templates" }
 reinhardt-apps = { path = "../../crates/reinhardt-apps" }
 reinhardt-routers = { path = "../../crates/reinhardt-urls/crates/routers" }
+reinhardt-proxy = { path = "../../crates/reinhardt-urls/crates/proxy" }
 reinhardt-viewsets = { path = "../../crates/reinhardt-views/crates/viewsets" }
 reinhardt-openapi = { path = "../../crates/reinhardt-rest/crates/openapi" }
 reinhardt-graphql = { path = "../../crates/reinhardt-contrib/crates/graphql" }
+reinhardt-db = { path = "../../crates/reinhardt-db" }
 reinhardt-orm = { path = "../../crates/reinhardt-db/crates/orm" }
 reinhardt-migrations = { path = "../../crates/reinhardt-db/crates/migrations" }
 backends = { path = "../../crates/reinhardt-db/crates/backends", package = "reinhardt-db-backends" }

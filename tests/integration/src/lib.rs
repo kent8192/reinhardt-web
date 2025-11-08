@@ -19,6 +19,7 @@ pub mod messages_helpers;
 
 // New shared modules
 // pub mod flatpages_common;
+pub mod db_transaction;
 pub mod proxy;
 pub mod validator_test_common;
 
