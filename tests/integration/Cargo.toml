@@ -42,7 +42,7 @@ reinhardt-macros = { path = "../../crates/reinhardt-core/crates/macros" }
 reinhardt-static = { path = "../../crates/reinhardt-contrib/crates/static", features = [
   "templates-integration",
 ] }
-reinhardt-cache = { path = "../../crates/reinhardt-utils/crates/cache" }
+reinhardt-cache = { path = "../../crates/reinhardt-utils/crates/cache", features = ["redis-backend", "redis-sentinel", "memcached-backend"] }
 reinhardt-views-core = { path = "../../crates/reinhardt-views/crates/views-core" }
 reinhardt-negotiation = { path = "../../crates/reinhardt-rest/crates/negotiation" }
 reinhardt-renderers = { path = "../../crates/reinhardt-template/crates/renderers" }
@@ -117,6 +117,7 @@ tera = "1.20"
 # Testing utilities
 tempfile = "3.14"
 testcontainers = "0.25.0"
+testcontainers-modules = { version = "0.13", features = ["redis", "postgres"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [features]
@@ -128,17 +129,3 @@ sqlite = ["reinhardt-orm/sqlite", "backends/sqlite"]
 [dev-dependencies]
 # Test utilities
 tokio-test = "0.4"
-
-# Server integration tests
-[[test]]
-name = "server_graceful_shutdown"
-path = "tests/server/graceful_shutdown.rs"
-
-[[test]]
-name = "server_http2"
-path = "tests/server/http2.rs"
-
-# ViewSet integration tests
-[[test]]
-name = "viewsets_as_view"
-path = "tests/viewsets/as_view.rs"

@@ -61,6 +61,7 @@ all-backends = [
 tokio = { workspace = true }
 bytes = { workspace = true }
 rstest = { workspace = true }
+serial_test = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }

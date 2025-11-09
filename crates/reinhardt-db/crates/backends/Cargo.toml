@@ -35,6 +35,7 @@ serial_test = { workspace = true }
 rstest = { workspace = true }
 testcontainers = "0.25.0"
 reinhardt-db = { workspace = true, features = ["backends", "postgres"] }
+uuid = { workspace = true }
 
 [features]
 default = ["postgres"]
