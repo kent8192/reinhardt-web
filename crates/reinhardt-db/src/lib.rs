@@ -68,11 +68,14 @@
 //!
 //! ### Using Schema Editor
 //!
-//! ```rust
+//! ```rust,no_run
+//! # use sqlx::PgPool;
 //! use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 //! use sea_query::PostgresQueryBuilder;
 //!
-//! let factory = SchemaEditorFactory::new();
+//! # async fn example() -> Result<(), sqlx::Error> {
+//! # let pool = PgPool::connect("postgresql://localhost/mydb").await?;
+//! let factory = SchemaEditorFactory::new_postgres(pool);
 //! let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 //!
 //! let stmt = editor.create_table_statement("users", &[
@@ -80,6 +83,8 @@
 //!     ("name", "VARCHAR(100)"),
 //! ]);
 //! let sql = stmt.to_string(PostgresQueryBuilder);
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ### Using Connection Pool

@@ -17,7 +17,7 @@ This crate provides macros that validate template paths at compile time, ensurin
 ## Usage
 
 ```rust
-use reinhardt_templates_macros::template;
+use reinhardt_template::templates_macros::template;
 
 // Valid template paths
 let path = template!("emails/welcome.html");
@@ -52,7 +52,7 @@ The `template!` macro enforces the following rules:
 ### Valid Paths
 
 ```rust
-use reinhardt_templates_macros::template;
+use reinhardt_template::templates_macros::template;
 
 // Simple paths
 template!("index.html");
@@ -75,7 +75,7 @@ template!("user_details.html");
 ### Invalid Paths (Compile-time Errors)
 
 ```rust
-use reinhardt_templates_macros::template;
+use reinhardt_template::templates_macros::template;
 
 // Error: parent directory reference
 template!("../etc/passwd");
