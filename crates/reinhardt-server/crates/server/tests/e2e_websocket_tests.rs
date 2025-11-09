@@ -1,7 +1,7 @@
 #![cfg(feature = "websocket")]
 
 use futures_util::{SinkExt, StreamExt};
-use reinhardt_server::{WebSocketHandler, WebSocketServer};
+use reinhardt_server_core::{WebSocketHandler, WebSocketServer};
 use serde::{Deserialize, Serialize};
 use std::sync::{
 	Arc, Mutex,
@@ -137,7 +137,7 @@ async fn spawn_websocket_server(
 					let handler_clone = server.handler.clone();
 					tokio::spawn(async move {
 						if let Err(e) =
-							WebSocketServer::handle_connection(stream, handler_clone, peer_addr)
+							WebSocketServer::handle_connection(stream, handler_clone, peer_addr, None)
 								.await
 						{
 							eprintln!("WebSocket connection error: {:?}", e);
@@ -168,7 +168,7 @@ async fn test_e2e_websocket_echo() {
 
 	// Send message
 	write
-		.send(Message::Text("Hello".to_string()))
+		.send(Message::Text("Hello".to_string().into()))
 		.await
 		.unwrap();
 
@@ -195,7 +195,7 @@ async fn test_e2e_websocket_multiple_messages() {
 	// Send multiple messages
 	for i in 0..5 {
 		let msg = format!("Message {}", i);
-		write.send(Message::Text(msg.clone())).await.unwrap();
+		write.send(Message::Text(msg.clone().into())).await.unwrap();
 
 		let response = timeout(Duration::from_secs(2), read.next())
 			.await
@@ -220,7 +220,7 @@ async fn test_e2e_websocket_calculator() {
 	// Test addition
 	let request = r#"{"operation":"add","a":5.0,"b":3.0}"#;
 	write
-		.send(Message::Text(request.to_string()))
+		.send(Message::Text(request.to_string().into()))
 		.await
 		.unwrap();
 
@@ -236,7 +236,7 @@ async fn test_e2e_websocket_calculator() {
 	// Test multiplication
 	let request = r#"{"operation":"multiply","a":4.0,"b":2.5}"#;
 	write
-		.send(Message::Text(request.to_string()))
+		.send(Message::Text(request.to_string().into()))
 		.await
 		.unwrap();
 
@@ -263,7 +263,7 @@ async fn test_e2e_websocket_calculator_error() {
 	// Test division by zero
 	let request = r#"{"operation":"divide","a":10.0,"b":0.0}"#;
 	write
-		.send(Message::Text(request.to_string()))
+		.send(Message::Text(request.to_string().into()))
 		.await
 		.unwrap();
 
@@ -289,7 +289,7 @@ async fn test_e2e_websocket_chat_room() {
 
 	// Send message from first client
 	write1
-		.send(Message::Text("Hello from client 1".to_string()))
+		.send(Message::Text("Hello from client 1".to_string().into()))
 		.await
 		.unwrap();
 
@@ -350,7 +350,7 @@ async fn test_e2e_websocket_concurrent_connections() {
 			let (mut write, mut read) = ws_stream.split();
 
 			let msg = format!("Message from connection {}", i);
-			write.send(Message::Text(msg.clone())).await.unwrap();
+			write.send(Message::Text(msg.clone().into())).await.unwrap();
 
 			let response = timeout(Duration::from_secs(2), read.next())
 				.await
@@ -382,7 +382,7 @@ async fn test_e2e_websocket_binary_message() {
 	// Send binary message
 	let binary_data = vec![1, 2, 3, 4, 5];
 	write
-		.send(Message::Binary(binary_data.clone()))
+		.send(Message::Binary(binary_data.clone().into()))
 		.await
 		.unwrap();
 
