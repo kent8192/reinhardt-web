@@ -10,14 +10,15 @@ impl Default for LoggingConfig {
 	}
 }
 
-pub struct LoggingManager {
-	#[allow(dead_code)]
-	config: LoggingConfig,
-}
+// Note: LoggingManager.config field was removed as it was unused
+// LoggingConfig is currently empty and not utilized in get_logger()
+// If configuration-based logger behavior is needed in the future,
+// LoggingConfig should be properly defined and utilized
+pub struct LoggingManager;
 
 impl LoggingManager {
-	pub fn new(config: LoggingConfig) -> Self {
-		Self { config }
+	pub fn new(_config: LoggingConfig) -> Self {
+		Self
 	}
 
 	pub fn get_logger(&self, name: &str) -> std::sync::Arc<crate::logger::Logger> {

@@ -250,8 +250,7 @@ impl App {
 	/// ```
 	pub fn with_timeout(self, _duration: Duration) -> Self {
 		// Note: Timeout middleware implementation is pending in reinhardt-middleware
-		// For now, this is a no-op placeholder
-		self
+		todo!("Implement timeout middleware integration")
 	}
 
 	/// Add logging middleware with custom configuration
