@@ -69,7 +69,7 @@ default = ["sqlite", "postgres", "mysql"]
 sqlite = []
 postgres = []
 mysql = []
-mongodb = ["dep:mongodb", "dep:bson", "backends/mongodb-backend"]
+mongodb-backend = ["dep:mongodb", "dep:bson", "backends/mongodb-backend"]
 
 [[bin]]
 name = "makemigrations"
