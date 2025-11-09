@@ -425,7 +425,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_rate_limit_permission_user_strategy() {
-		use crate::user::{SimpleUser, User};
+		use crate::user::SimpleUser;
 		use uuid::Uuid;
 
 		let backend = Arc::new(MemoryBackend::new());
@@ -450,7 +450,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(&test_user as &dyn User),
+			user: Some(Box::new(test_user)),
 		};
 
 		// First three requests should be allowed

@@ -293,7 +293,7 @@ impl ObjectPermissionChecker for ObjectPermissionManager {
 ///         is_authenticated: true,
 ///         is_admin: false,
 ///         is_active: true,
-///         user: Some(&user),
+///         user: Some(Box::new(user)),
 ///     };
 ///
 ///     assert!(perm.has_permission(&context).await);
@@ -549,7 +549,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(&user),
+			user: Some(Box::new(user)),
 		};
 
 		assert!(perm.has_permission(&context).await);
@@ -607,7 +607,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(&user),
+			user: Some(Box::new(user)),
 		};
 
 		assert!(!perm.has_permission(&context).await);

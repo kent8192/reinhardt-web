@@ -189,40 +189,8 @@ pub trait PermissionsMixin: Send + Sync {
 	/// assert!(group_perms.is_empty());
 	/// ```
 	fn get_group_permissions(&self) -> HashSet<String> {
-		// Group permission lookup implementation using GroupManager
-		//
-		// This method should be overridden in your user model implementation to integrate
-		// with GroupManager:
-		//
-		// Example implementation:
-		// ```rust
-		// use reinhardt_auth::group_management::GroupManager;
-		// use std::sync::Arc;
-		//
-		// struct MyUserModel {
-		//     // ... fields ...
-		//     group_manager: Arc<GroupManager>,
-		// }
-		//
-		// impl PermissionsMixin for MyUserModel {
-		//     fn get_group_permissions(&self) -> HashSet<String> {
-		//         let username = self.get_username();
-		//         // Synchronous wrapper or use a runtime
-		//         tokio::runtime::Runtime::new()
-		//             .unwrap()
-		//             .block_on(async {
-		//                 self.group_manager
-		//                     .get_user_permissions(username)
-		//                     .await
-		//                     .unwrap_or_default()
-		//                     .into_iter()
-		//                     .collect()
-		//             })
-		//     }
-		// }
-		// ```
-		//
-		// For async contexts, create an async version of this trait method.
+		// Default implementation returns empty set.
+		// Override this method to integrate with GroupManager for database-backed permissions.
 		HashSet::new()
 	}
 
