@@ -113,7 +113,7 @@ reinhardt-cache = { workspace = true, features = ["all-backends"] }
 ### Basic In-Memory Caching
 
 ```rust
-use reinhardt_cache::{Cache, InMemoryCache};
+use reinhardt_utils::cache::{Cache, InMemoryCache};
 use std::time::Duration;
 
 let cache = InMemoryCache::new();
@@ -131,7 +131,7 @@ cache.delete("user:123").await?;
 ### Using Cache Key Builder
 
 ```rust
-use reinhardt_cache::CacheKeyBuilder;
+use reinhardt_utils::cache::CacheKeyBuilder;
 
 let builder = CacheKeyBuilder::new("myapp").with_version(2);
 
@@ -145,7 +145,7 @@ let keys = builder.build_many(&["user:1", "user:2"]);
 ### HTTP Response Caching Middleware
 
 ```rust
-use reinhardt_cache::{CacheMiddleware, CacheMiddlewareConfig, InMemoryCache};
+use reinhardt_utils::cache::{CacheMiddleware, CacheMiddlewareConfig, InMemoryCache};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -161,7 +161,7 @@ let middleware = CacheMiddleware::with_config(cache, config);
 ### Dependency Injection
 
 ```rust
-use reinhardt_cache::CacheService;
+use reinhardt_utils::cache::CacheService;
 use reinhardt_di::{Injectable, InjectionContext};
 
 // Inject CacheService
@@ -175,7 +175,7 @@ let session: Option<SessionData> = service.get("session").await?;
 ### Redis Cache (Feature-Gated)
 
 ```rust
-use reinhardt_cache::{Cache, RedisCache, RedisConfig};
+use reinhardt_utils::cache::{Cache, RedisCache, RedisConfig};
 use std::time::Duration;
 
 // Via DI

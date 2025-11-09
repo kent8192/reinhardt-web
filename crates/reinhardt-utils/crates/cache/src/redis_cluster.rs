@@ -45,10 +45,6 @@ use reinhardt_exception::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-/// Redis Cluster cache backend with automatic sharding
-///
-/// Stores cached values in Redis Cluster for distributed caching
-/// with automatic data sharding and failover support.
 #[derive(Clone)]
 pub struct RedisClusterCache {
 	client: ClusterClient,
@@ -57,22 +53,6 @@ pub struct RedisClusterCache {
 }
 
 impl RedisClusterCache {
-	/// Create a new Redis Cluster cache with the given node URLs
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_cache::RedisClusterCache;
-	///
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let cache = RedisClusterCache::new(vec![
-	///     "redis://node1:6379",
-	///     "redis://node2:6379",
-	///     "redis://node3:6379",
-	/// ]).await?;
-	/// # Ok(())
-	/// # }
-	/// ```
 	pub async fn new(urls: Vec<impl Into<String>>) -> Result<Self> {
 		let nodes: Vec<String> = urls.into_iter().map(|u| u.into()).collect();
 
@@ -86,26 +66,6 @@ impl RedisClusterCache {
 		})
 	}
 
-	/// Create a new Redis Cluster cache with custom configuration
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_cache::RedisClusterCache;
-	/// use redis::cluster::ClusterClientBuilder;
-	///
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let builder = ClusterClientBuilder::new(vec![
-	///     "redis://node1:6379",
-	///     "redis://node2:6379",
-	/// ])
-	/// .read_from_replicas()
-	/// .retries(3);
-	///
-	/// let cache = RedisClusterCache::with_builder(builder).await?;
-	/// # Ok(())
-	/// # }
-	/// ```
 	pub async fn with_builder(builder: ClusterClientBuilder) -> Result<Self> {
 		let client = builder
 			.build()
@@ -167,24 +127,6 @@ impl RedisClusterCache {
 			format!("{}:{}", self.key_prefix, key)
 		}
 	}
-
-	/// Get a connection to the cluster
-	#[allow(dead_code)]
-	async fn get_connection(&self) -> Result<redis::cluster::ClusterConnection> {
-		self.client
-			.get_connection()
-			.map_err(|e| Error::Http(format!("Failed to get connection to Redis Cluster: {}", e)))
-	}
-
-	/// Get an async connection to the cluster
-	async fn get_async_connection(&self) -> Result<redis::cluster_async::ClusterConnection> {
-		self.client.get_async_connection().await.map_err(|e| {
-			Error::Http(format!(
-				"Failed to get async connection to Redis Cluster: {}",
-				e
-			))
-		})
-	}
 }
 
 #[async_trait]
@@ -194,7 +136,8 @@ impl Cache for RedisClusterCache {
 		T: for<'de> Deserialize<'de> + Send,
 	{
 		let full_key = self.build_key(key);
-		let mut conn = self.get_async_connection().await?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let value: Option<Vec<u8>> = conn
 			.get(&full_key)
@@ -203,8 +146,8 @@ impl Cache for RedisClusterCache {
 
 		match value {
 			Some(bytes) => {
-				let deserialized = serde_json::from_slice(&bytes)
-					.map_err(|e| Error::Serialization(e.to_string()))?;
+				let deserialized: T =
+					serde_json::from_slice(&bytes).map_err(|e| Error::Serialization(e.to_string()))?;
 				Ok(Some(deserialized))
 			}
 			None => Ok(None),
@@ -216,9 +159,9 @@ impl Cache for RedisClusterCache {
 		T: Serialize + Send + Sync,
 	{
 		let full_key = self.build_key(key);
-		let serialized =
-			serde_json::to_vec(value).map_err(|e| Error::Serialization(e.to_string()))?;
-		let mut conn = self.get_async_connection().await?;
+		let serialized = serde_json::to_vec(value).map_err(|e| Error::Serialization(e.to_string()))?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let effective_ttl = ttl.or(self.default_ttl);
 
@@ -240,31 +183,33 @@ impl Cache for RedisClusterCache {
 
 	async fn delete(&self, key: &str) -> Result<()> {
 		let full_key = self.build_key(key);
-		let mut conn = self.get_async_connection().await?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
-		let _: () = conn.del(&full_key).await.map_err(|e| {
-			Error::Http(format!("Failed to delete value from Redis Cluster: {}", e))
-		})?;
+		let _: () = conn
+			.del(&full_key)
+			.await
+			.map_err(|e| Error::Http(format!("Failed to delete value from Redis Cluster: {}", e)))?;
 
 		Ok(())
 	}
 
 	async fn has_key(&self, key: &str) -> Result<bool> {
 		let full_key = self.build_key(key);
-		let mut conn = self.get_async_connection().await?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
-		let exists: bool = conn.exists(&full_key).await.map_err(|e| {
-			Error::Http(format!(
-				"Failed to check key existence in Redis Cluster: {}",
-				e
-			))
-		})?;
+		let exists: bool = conn
+			.exists(&full_key)
+			.await
+			.map_err(|e| Error::Http(format!("Failed to check key existence in Redis Cluster: {}", e)))?;
 
 		Ok(exists)
 	}
 
 	async fn clear(&self) -> Result<()> {
-		let mut conn = self.get_async_connection().await?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		if self.key_prefix.is_empty() {
 			// Clear all keys if no prefix
@@ -298,7 +243,8 @@ impl Cache for RedisClusterCache {
 		T: for<'de> Deserialize<'de> + Send,
 	{
 		let full_keys: Vec<String> = keys.iter().map(|k| self.build_key(k)).collect();
-		let mut conn = self.get_async_connection().await?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let values: Vec<Option<Vec<u8>>> = conn.get(&full_keys).await.map_err(|e| {
 			Error::Http(format!(
@@ -327,7 +273,8 @@ impl Cache for RedisClusterCache {
 	where
 		T: Serialize + Send + Sync,
 	{
-		let mut conn = self.get_async_connection().await?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 		let effective_ttl = ttl.or(self.default_ttl);
 
 		for (key, value) in values.iter() {
@@ -355,7 +302,8 @@ impl Cache for RedisClusterCache {
 
 	async fn delete_many(&self, keys: &[&str]) -> Result<()> {
 		let full_keys: Vec<String> = keys.iter().map(|k| self.build_key(k)).collect();
-		let mut conn = self.get_async_connection().await?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let _: () = conn.del(full_keys).await.map_err(|e| {
 			Error::Http(format!(
@@ -369,7 +317,8 @@ impl Cache for RedisClusterCache {
 
 	async fn incr(&self, key: &str, delta: i64) -> Result<i64> {
 		let full_key = self.build_key(key);
-		let mut conn = self.get_async_connection().await?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let result: i64 = conn.incr(&full_key, delta).await.map_err(|e| {
 			Error::Http(format!("Failed to increment value in Redis Cluster: {}", e))
@@ -380,7 +329,8 @@ impl Cache for RedisClusterCache {
 
 	async fn decr(&self, key: &str, delta: i64) -> Result<i64> {
 		let full_key = self.build_key(key);
-		let mut conn = self.get_async_connection().await?;
+		let mut conn = self.client.get_async_connection().await
+			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let result: i64 = conn.decr(&full_key, delta).await.map_err(|e| {
 			Error::Http(format!("Failed to decrement value in Redis Cluster: {}", e))
@@ -395,22 +345,20 @@ mod tests {
 	use super::*;
 	use reinhardt_test::fixtures::*;
 	use rstest::*;
-	use testcontainers::ContainerAsync;
+	use serial_test::serial;
 
 	/// Test: Redis Cluster cache creation
 	///
 	/// This test verifies that RedisClusterCache can be created and configured.
 	#[rstest]
+	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_creation(
-		#[future] redis_cluster_fixture: (
-			ContainerAsync<testcontainers::GenericImage>,
-			Vec<String>,
-		),
+		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
 	) {
-		let (_container, urls) = redis_cluster_fixture.await;
+		let cluster = redis_cluster.await;
 
-		let cache = RedisClusterCache::new(urls)
+		let cache = RedisClusterCache::new(cluster.urls())
 			.await
 			.unwrap()
 			.with_default_ttl(Duration::from_secs(300))
@@ -422,16 +370,14 @@ mod tests {
 
 	/// Test: Build key with prefix
 	#[rstest]
+	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_build_key_with_prefix(
-		#[future] redis_cluster_fixture: (
-			ContainerAsync<testcontainers::GenericImage>,
-			Vec<String>,
-		),
+		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
 	) {
-		let (_container, urls) = redis_cluster_fixture.await;
+		let cluster = redis_cluster.await;
 
-		let cache = RedisClusterCache::new(urls)
+		let cache = RedisClusterCache::new(cluster.urls())
 			.await
 			.unwrap()
 			.with_key_prefix("app");
@@ -441,34 +387,27 @@ mod tests {
 
 	/// Test: Build key without prefix
 	#[rstest]
+	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_build_key_without_prefix(
-		#[future] redis_cluster_fixture: (
-			ContainerAsync<testcontainers::GenericImage>,
-			Vec<String>,
-		),
+		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
 	) {
-		let (_container, urls) = redis_cluster_fixture.await;
+		let cluster = redis_cluster.await;
 
-		let cache = RedisClusterCache::new(urls).await.unwrap();
+		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
 		assert_eq!(cache.build_key("user:123"), "user:123");
 	}
 
 	/// Test: Redis Cluster cache basic operations
 	#[rstest]
+	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_basic_operations(
-		#[future] redis_cluster_fixture: (
-			ContainerAsync<testcontainers::GenericImage>,
-			Vec<String>,
-		),
+		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
 	) {
-		let (_container, urls) = redis_cluster_fixture.await;
+		let cluster = redis_cluster.await;
 
-		let cache = RedisClusterCache::new(urls).await.unwrap();
-
-		// Clear any existing data
-		cache.clear().await.unwrap();
+		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
 
 		// Set and get
 		cache.set("test:key1", &"value1", None).await.unwrap();
@@ -483,24 +422,18 @@ mod tests {
 		cache.delete("test:key1").await.unwrap();
 		let value: Option<String> = cache.get("test:key1").await.unwrap();
 		assert_eq!(value, None);
-
-		// Cleanup
-		cache.clear().await.unwrap();
 	}
 
 	/// Test: Redis Cluster cache TTL
 	#[rstest]
+	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_ttl(
-		#[future] redis_cluster_fixture: (
-			ContainerAsync<testcontainers::GenericImage>,
-			Vec<String>,
-		),
+		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
 	) {
-		let (_container, urls) = redis_cluster_fixture.await;
+		let cluster = redis_cluster.await;
 
-		let cache = RedisClusterCache::new(urls).await.unwrap();
-		cache.clear().await.unwrap();
+		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
 
 		// Set with short TTL
 		cache
@@ -518,23 +451,18 @@ mod tests {
 		// Should be expired
 		let value: Option<String> = cache.get("test:ttl").await.unwrap();
 		assert_eq!(value, None);
-
-		cache.clear().await.unwrap();
 	}
 
 	/// Test: Redis Cluster cache batch operations
 	#[rstest]
+	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_batch_operations(
-		#[future] redis_cluster_fixture: (
-			ContainerAsync<testcontainers::GenericImage>,
-			Vec<String>,
-		),
+		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
 	) {
-		let (_container, urls) = redis_cluster_fixture.await;
+		let cluster = redis_cluster.await;
 
-		let cache = RedisClusterCache::new(urls).await.unwrap();
-		cache.clear().await.unwrap();
+		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
 
 		// Set many
 		let mut values = std::collections::HashMap::new();
@@ -558,23 +486,18 @@ mod tests {
 			.unwrap();
 		assert!(!cache.has_key("test:key1").await.unwrap());
 		assert!(!cache.has_key("test:key2").await.unwrap());
-
-		cache.clear().await.unwrap();
 	}
 
 	/// Test: Redis Cluster cache atomic operations
 	#[rstest]
+	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_atomic_operations(
-		#[future] redis_cluster_fixture: (
-			ContainerAsync<testcontainers::GenericImage>,
-			Vec<String>,
-		),
+		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
 	) {
-		let (_container, urls) = redis_cluster_fixture.await;
+		let cluster = redis_cluster.await;
 
-		let cache = RedisClusterCache::new(urls).await.unwrap();
-		cache.clear().await.unwrap();
+		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
 
 		// Increment from zero
 		let value = cache.incr("test:counter", 5).await.unwrap();
@@ -587,7 +510,5 @@ mod tests {
 		// Decrement
 		let value = cache.decr("test:counter", 2).await.unwrap();
 		assert_eq!(value, 6);
-
-		cache.clear().await.unwrap();
 	}
 }
