@@ -193,13 +193,12 @@ impl APIClient {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_test::client::APIClient;
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
-	// Note: login() requires a working handler
-	// let response = client.login("username", "password").await;
+	/// let response = client.login("username", "password").await;
 	/// # });
 	/// ```
 	pub async fn login(&self, username: &str, password: &str) -> ClientResult<TestResponse> {
