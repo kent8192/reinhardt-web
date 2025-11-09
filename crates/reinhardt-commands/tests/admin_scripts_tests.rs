@@ -46,25 +46,6 @@ impl Drop for EnvVarGuard {
 	}
 }
 
-/// RAII guard for working directory - automatically restores on drop
-struct WorkingDirGuard {
-	original_dir: PathBuf,
-}
-
-impl WorkingDirGuard {
-	fn new(new_dir: PathBuf) -> std::io::Result<Self> {
-		let original_dir = std::env::current_dir()?;
-		std::env::set_current_dir(&new_dir)?;
-		Ok(Self { original_dir })
-	}
-}
-
-impl Drop for WorkingDirGuard {
-	fn drop(&mut self) {
-		let _ = std::env::set_current_dir(&self.original_dir);
-	}
-}
-
 impl TestEnvironment {
 	fn new() -> Self {
 		Self {

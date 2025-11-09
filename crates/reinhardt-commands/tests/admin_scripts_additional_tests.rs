@@ -4,7 +4,7 @@
 //! This file contains the remaining test cases from Django's admin_scripts tests
 
 use reinhardt_commands::{
-	BaseCommand, CommandContext, CommandError, CommandResult, StartAppCommand, StartProjectCommand,
+	BaseCommand, CommandContext, CommandError, CommandResult, StartProjectCommand,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -415,7 +415,7 @@ async fn test_manage_testserver_handle_params() {
 
 #[tokio::test]
 async fn test_manage_testserver_params_to_runserver() {
-	let mut ctx = CommandContext::new(vec!["fixture.json".to_string(), "8001".to_string()]);
+	let ctx = CommandContext::new(vec!["fixture.json".to_string(), "8001".to_string()]);
 	// Additional params should be passed to underlying runserver
 	assert_eq!(ctx.arg(0), Some(&"fixture.json".to_string()));
 	assert_eq!(ctx.arg(1), Some(&"8001".to_string()));
@@ -688,47 +688,6 @@ async fn test_argumentorder_setting_then_option() {
 	assert_eq!(ctx.arg(0), Some(&"--settings".to_string()));
 	assert_eq!(ctx.arg(1), Some(&"mysettings".to_string()));
 	assert_eq!(ctx.arg(2), Some(&"--verbose".to_string()));
-}
-
-#[tokio::test]
-async fn test_argumentorder_setting_then_short_option() {
-	let ctx = CommandContext::new(vec![
-		"--settings".to_string(),
-		"mysettings".to_string(),
-		"-v".to_string(),
-	]);
-	// Test setting followed by short option
-}
-
-#[tokio::test]
-async fn test_argumentorder_option_then_setting() {
-	let ctx = CommandContext::new(vec![
-		"--verbose".to_string(),
-		"--settings".to_string(),
-		"mysettings".to_string(),
-	]);
-	// Test option followed by setting
-}
-
-#[tokio::test]
-async fn test_argumentorder_short_option_then_setting() {
-	let ctx = CommandContext::new(vec![
-		"-v".to_string(),
-		"--settings".to_string(),
-		"mysettings".to_string(),
-	]);
-	// Test short option followed by setting
-}
-
-#[tokio::test]
-async fn test_argumentorder_option_then_setting_then_option() {
-	let ctx = CommandContext::new(vec![
-		"-v".to_string(),
-		"--settings".to_string(),
-		"mysettings".to_string(),
-		"--debug".to_string(),
-	]);
-	// Test option, setting, option sequence
 }
 
 // ============================================================================
