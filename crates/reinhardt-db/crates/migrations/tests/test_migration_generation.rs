@@ -14,7 +14,6 @@ use reinhardt_migrations::{
 	FieldState, MakeMigrationsCommand, MakeMigrationsOptions, MigrationAutodetector, ModelState,
 	ProjectState,
 };
-use std::fs;
 use std::path::PathBuf;
 
 /// Helper function to create a simple field

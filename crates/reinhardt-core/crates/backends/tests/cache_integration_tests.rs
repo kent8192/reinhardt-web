@@ -7,7 +7,7 @@
 
 use reinhardt_backends::cache::{CacheBackend, redis::RedisCache};
 use std::time::Duration;
-use testcontainers::{ContainerAsync, ImageExt, runners::AsyncRunner};
+use testcontainers::{ContainerAsync, runners::AsyncRunner};
 use testcontainers_modules::redis::Redis;
 
 /// Test fixture for Redis cache with TestContainer
