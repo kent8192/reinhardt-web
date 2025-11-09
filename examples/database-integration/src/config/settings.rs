@@ -3,11 +3,11 @@
 //! This module provides environment-specific settings configuration using TOML files.
 
 #[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]
-use reinhardt_settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::builder::SettingsBuilder;
 #[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]
-use reinhardt_settings::profile::Profile;
+use reinhardt_conf::settings::profile::Profile;
 #[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]
-use reinhardt_settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 #[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]
 use reinhardt_core::Settings;
 #[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]

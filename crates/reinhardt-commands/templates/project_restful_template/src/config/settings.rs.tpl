@@ -27,9 +27,9 @@
 //!
 //! If `REINHARDT_ENV` is not set, it defaults to `local`.
 
-use reinhardt_settings::builder::SettingsBuilder;
-use reinhardt_settings::profile::Profile;
-use reinhardt_settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 use reinhardt_core::Settings;
 use std::env;
 use std::path::PathBuf;

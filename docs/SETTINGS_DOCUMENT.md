@@ -265,7 +265,7 @@ export REINHARDT_STATIC_URL=/static/
 If you want to manage configuration using only environment variables without TOML files, modify `src/config/settings.rs` as follows:
 
 ```rust
-use reinhardt_settings::prelude::*;
+use reinhardt_conf::settings::prelude::*;
 use reinhardt_core::Settings;
 
 pub fn get_settings() -> Settings {
@@ -288,7 +288,7 @@ pub fn get_settings() -> Settings {
 `src/config/settings.rs`:
 
 ```rust
-use reinhardt_settings::prelude::*;
+use reinhardt_conf::settings::prelude::*;
 use reinhardt_core::Settings;
 use std::env;
 use std::path::PathBuf;
@@ -466,7 +466,7 @@ pub fn get_settings() -> Settings {
 ### Using JSON Format
 
 ```rust
-use reinhardt_settings::sources::JsonFileSource;
+use reinhardt_conf::settings::sources::JsonFileSource;
 
 pub fn get_settings() -> Settings {
     SettingsBuilder::new()
@@ -482,7 +482,7 @@ pub fn get_settings() -> Settings {
 ### Implementing Custom Sources
 
 ```rust
-use reinhardt_settings::sources::Source;
+use reinhardt_conf::settings::sources::Source;
 
 struct RemoteConfigSource {
     url: String,

@@ -148,7 +148,7 @@ reinhardt-settings = { version = "0.1.0-alpha.1", features = ["encryption"] }
 ### Basic Configuration
 
 ```rust
-use reinhardt_settings::Settings;
+use reinhardt_conf::settings::Settings;
 use std::path::PathBuf;
 
 fn main() {
@@ -167,8 +167,8 @@ fn main() {
 ### Using Configuration Sources
 
 ```rust
-use reinhardt_settings::sources::{TomlFileSource, EnvSource, ConfigSource};
-use reinhardt_settings::profile::Profile;
+use reinhardt_conf::settings::sources::{TomlFileSource, EnvSource, ConfigSource};
+use reinhardt_conf::settings::profile::Profile;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load from TOML file
@@ -189,8 +189,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Environment Profiles
 
 ```rust
-use reinhardt_settings::profile::Profile;
-use reinhardt_settings::sources::DotEnvSource;
+use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::sources::DotEnvSource;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Detect profile from environment
@@ -213,8 +213,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Validation
 
 ```rust
-use reinhardt_settings::validation::{SecurityValidator, SettingsValidator};
-use reinhardt_settings::profile::Profile;
+use reinhardt_conf::settings::validation::{SecurityValidator, SettingsValidator};
+use reinhardt_conf::settings::profile::Profile;
 use std::collections::HashMap;
 use serde_json::Value;
 
@@ -243,8 +243,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 With the `async` feature enabled, you can use secret providers:
 
 ```rust
-use reinhardt_settings::secrets::{SecretString, SecretProvider};
-use reinhardt_settings::secrets::providers::memory::MemorySecretProvider;
+use reinhardt_conf::settings::secrets::{SecretString, SecretProvider};
+use reinhardt_conf::settings::secrets::providers::memory::MemorySecretProvider;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -272,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 With the `encryption` feature:
 
 ```rust
-use reinhardt_settings::encryption::ConfigEncryptor;
+use reinhardt_conf::settings::encryption::ConfigEncryptor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = vec![0u8; 32]; // Use a secure key in production
@@ -296,8 +296,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 Track configuration changes for compliance:
 
 ```rust
-use reinhardt_settings::audit::backends::memory::MemoryAuditBackend;
-use reinhardt_settings::audit::{AuditEvent, AuditBackend};
+use reinhardt_conf::settings::audit::backends::memory::MemoryAuditBackend;
+use reinhardt_conf::settings::audit::{AuditEvent, AuditBackend};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -297,7 +297,7 @@ password = "postgres"
 Settings are automatically loaded in `src/config/settings.rs`:
 
 ```rust
-use reinhardt_settings::prelude::*;
+use reinhardt_conf::settings::prelude::*;
 use reinhardt_core::Settings;
 
 pub fn get_settings() -> Settings {
