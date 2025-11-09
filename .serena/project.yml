@@ -22,13 +22,13 @@ recommended_modes:
 included_optional_tools:
   - "switch_modes"
 # Dashboard settings
-web_dashboard: true
+web_dashboard: false
 web_dashboard_open_on_launch: false # Set to false to disable auto-open on launch
 initial_prompt: |
   This is a Rust project using cargo.
   Common commands:
-  - Check: cargo check --workspace --all --all-features
-  - Build: cargo build --workspace --all --all-features
-  - Test: cargo test --workspace --all --all-features
+  - Check: cargo make check
+  - Build: cargo make build
+  - Test: cargo make test
   - Format: cargo make fmt
   - Lint: cargo make clippy
