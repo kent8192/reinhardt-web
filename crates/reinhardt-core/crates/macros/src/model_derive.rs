@@ -411,18 +411,16 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
 					// Check if all fields have values
 					if #(self.#pk_field_names.is_some())&&* {
-						thread_local! {
-							static PK_CACHE: ::std::cell::RefCell<Option<Self::PrimaryKey>> = ::std::cell::RefCell::new(None);
-						}
-
-						PK_CACHE.with(|cache| {
-							let mut cache = cache.borrow_mut();
-							*cache = Some(Self::PrimaryKey::new(
-								#(self.#pk_field_names.clone().unwrap()),*
-							));
-							// SAFETY: We know cache contains Some
-							unsafe { ::std::mem::transmute(cache.as_ref().unwrap()) }
-						})
+						// For composite PK, we need to construct a new value each time
+						// and store it somewhere with a stable address.
+						// We use Box::leak to create a 'static reference.
+						// Note: This intentionally leaks memory. For production use,
+						// consider using an internal cache or modifying the Model trait
+						// to return an owned value instead of a reference.
+						let pk = Box::new(Self::PrimaryKey::new(
+							#(self.#pk_field_names.clone().unwrap()),*
+						));
+						Some(Box::leak(pk))
 					} else {
 						None
 					}
@@ -432,18 +430,16 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 			// All fields are non-Option, construct composite PK directly
 			quote! {
 				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-					thread_local! {
-						static PK_CACHE: ::std::cell::RefCell<Option<Self::PrimaryKey>> = ::std::cell::RefCell::new(None);
-					}
-
-					PK_CACHE.with(|cache| {
-						let mut cache = cache.borrow_mut();
-						*cache = Some(Self::PrimaryKey::new(
-							#(self.#pk_field_names.clone()),*
-						));
-						// SAFETY: We know cache contains Some
-						unsafe { ::std::mem::transmute(cache.as_ref().unwrap()) }
-					})
+					// For composite PK, we need to construct a new value each time
+					// and store it somewhere with a stable address.
+					// We use Box::leak to create a 'static reference.
+					// Note: This intentionally leaks memory. For production use,
+					// consider using an internal cache or modifying the Model trait
+					// to return an owned value instead of a reference.
+					let pk = Box::new(Self::PrimaryKey::new(
+						#(self.#pk_field_names.clone()),*
+					));
+					Some(Box::leak(pk))
 				}
 			}
 		};
