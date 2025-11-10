@@ -12,8 +12,8 @@
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 ///
 /// let pg_editor = PostgreSQLSchemaEditor::new();
 /// let editor = CockroachDBSchemaEditor::new(pg_editor);
@@ -44,8 +44,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let pg_editor = PostgreSQLSchemaEditor::new();
 	/// let editor = CockroachDBSchemaEditor::new(pg_editor);
@@ -64,8 +64,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let pg_editor = PostgreSQLSchemaEditor::new();
 	/// let editor = CockroachDBSchemaEditor::new(pg_editor);
@@ -103,8 +103,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let pg_editor = PostgreSQLSchemaEditor::new();
 	/// let editor = CockroachDBSchemaEditor::new(pg_editor);
@@ -128,8 +128,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let pg_editor = PostgreSQLSchemaEditor::new();
 	/// let editor = CockroachDBSchemaEditor::new(pg_editor);
@@ -176,8 +176,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let pg_editor = PostgreSQLSchemaEditor::new();
 	/// let editor = CockroachDBSchemaEditor::new(pg_editor);
@@ -237,8 +237,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let pg_editor = PostgreSQLSchemaEditor::new();
 	/// let editor = CockroachDBSchemaEditor::new(pg_editor);
@@ -257,8 +257,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let pg_editor = PostgreSQLSchemaEditor::new();
 	/// let editor = CockroachDBSchemaEditor::new(pg_editor);
@@ -277,8 +277,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let pg_editor = PostgreSQLSchemaEditor::new();
 	/// let editor = CockroachDBSchemaEditor::new(pg_editor);
@@ -295,8 +295,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let pg_editor = PostgreSQLSchemaEditor::new();
 	/// let editor = CockroachDBSchemaEditor::new(pg_editor);

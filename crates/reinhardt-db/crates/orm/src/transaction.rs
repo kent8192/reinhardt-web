@@ -1089,10 +1089,10 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use backends::backend::DatabaseBackend as BackendTrait;
-	use backends::connection::DatabaseConnection as BackendsConnection;
-	use backends::error::Result;
-	use backends::types::{DatabaseType, QueryResult, QueryValue, Row};
+	use reinhardt_backends::backend::DatabaseBackend as BackendTrait;
+	use reinhardt_backends::connection::DatabaseConnection as BackendsConnection;
+	use reinhardt_backends::error::Result;
+	use reinhardt_backends::types::{DatabaseType, QueryResult, QueryValue, Row};
 	use rstest::*;
 	use std::sync::Arc;
 
@@ -1551,10 +1551,10 @@ mod transaction_extended_tests {
 	use super::*;
 	// use crate::expressions::{F, Q};
 	// use crate::transaction::*;
-	use backends::backend::DatabaseBackend as BackendTrait;
-	use backends::connection::DatabaseConnection as BackendsConnection;
-	use backends::error::Result;
-	use backends::types::{DatabaseType, QueryResult, QueryValue, Row};
+	use reinhardt_backends::backend::DatabaseBackend as BackendTrait;
+	use reinhardt_backends::connection::DatabaseConnection as BackendsConnection;
+	use reinhardt_backends::error::Result;
+	use reinhardt_backends::types::{DatabaseType, QueryResult, QueryValue, Row};
 	use rstest::*;
 	use std::sync::Arc;
 

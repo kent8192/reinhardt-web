@@ -41,7 +41,7 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use backends::{DatabaseError, DatabaseType, Row as DbRow, connection::DatabaseConnection};
+use reinhardt_backends::{DatabaseError, DatabaseType, Row as DbRow, connection::DatabaseConnection};
 use sqlx::{Any, AnyPool, pool::PoolOptions};
 use std::time::Duration;
 
@@ -273,7 +273,7 @@ impl DatabaseEngine {
 	/// ```ignore
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// use reinhardt_orm::engine::DatabaseEngine;
-	/// use reinhardt_db::backends::drivers::{DatabaseConnection, DatabaseType};
+	/// use reinhardt_db::reinhardt_backends::drivers::{DatabaseConnection, DatabaseType};
 	///
 	/// let connection = DatabaseConnection::connect("postgres://localhost/mydb").await?;
 	/// let engine = DatabaseEngine::new(connection, DatabaseType::Postgres);

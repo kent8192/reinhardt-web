@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 
 /// Re-export backends types
-pub use backends::connection::DatabaseConnection as BackendsConnection;
-pub use backends::types::{QueryValue, Row};
+pub use reinhardt_backends::connection::DatabaseConnection as BackendsConnection;
+pub use reinhardt_backends::types::{QueryValue, Row};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseBackend {

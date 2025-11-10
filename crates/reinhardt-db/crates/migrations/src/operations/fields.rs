@@ -32,7 +32,7 @@
 //! ```
 
 use crate::{FieldState, ProjectState};
-use backends::schema::BaseDatabaseSchemaEditor;
+use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
 use sea_query::PostgresQueryBuilder;
 use serde::{Deserialize, Serialize};
 
@@ -107,7 +107,7 @@ impl AddField {
 	/// ```rust
 	/// use reinhardt_migrations::operations::fields::AddField;
 	/// use reinhardt_migrations::operations::FieldDefinition;
-	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let add = AddField::new("users", FieldDefinition::new("email", "VARCHAR(255)", false, false, Option::<&str>::None));
 	/// let factory = SchemaEditorFactory::new();
@@ -185,7 +185,7 @@ impl RemoveField {
 	///
 	/// ```rust
 	/// use reinhardt_migrations::operations::fields::RemoveField;
-	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let remove = RemoveField::new("users", "email");
 	/// let factory = SchemaEditorFactory::new();
@@ -270,7 +270,7 @@ impl AlterField {
 	/// ```rust
 	/// use reinhardt_migrations::operations::fields::AlterField;
 	/// use reinhardt_migrations::operations::FieldDefinition;
-	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let alter = AlterField::new("users", FieldDefinition::new("email", "VARCHAR(500)", false, false, Option::<&str>::None));
 	/// let factory = SchemaEditorFactory::new();
@@ -355,7 +355,7 @@ impl RenameField {
 	///
 	/// ```rust
 	/// use reinhardt_migrations::operations::fields::RenameField;
-	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let rename = RenameField::new("users", "email", "email_address");
 	/// let factory = SchemaEditorFactory::new();

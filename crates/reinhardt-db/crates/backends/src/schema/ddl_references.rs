@@ -6,7 +6,7 @@
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_db::backends::schema::ddl_references::{Table, Columns};
+/// use reinhardt_db::reinhardt_backends::schema::ddl_references::{Table, Columns};
 ///
 /// let table = Table::new("users", Some("public"));
 /// assert_eq!(table.name(), "users");
@@ -30,7 +30,7 @@ impl Table {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::schema::ddl_references::Table;
+	/// use reinhardt_db::reinhardt_backends::schema::ddl_references::Table;
 	///
 	/// let table = Table::new("users", None::<String>);
 	/// assert_eq!(table.name(), "users");
@@ -85,7 +85,7 @@ impl Columns {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::schema::ddl_references::Columns;
+	/// use reinhardt_db::reinhardt_backends::schema::ddl_references::Columns;
 	///
 	/// let columns = Columns::new("users", &["id", "name", "email"]);
 	/// assert_eq!(columns.table(), "users");
@@ -134,7 +134,7 @@ impl IndexName {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::schema::ddl_references::IndexName;
+	/// use reinhardt_db::reinhardt_backends::schema::ddl_references::IndexName;
 	///
 	/// let idx = IndexName::new("users", &["email"], "idx");
 	/// assert_eq!(idx.table(), "users");
@@ -172,7 +172,7 @@ impl IndexName {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::schema::ddl_references::IndexName;
+	/// use reinhardt_db::reinhardt_backends::schema::ddl_references::IndexName;
 	///
 	/// let idx = IndexName::new("users", &["email"], "idx");
 	/// let name = idx.generate_name();
@@ -214,7 +214,7 @@ impl ForeignKeyName {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::schema::ddl_references::ForeignKeyName;
+	/// use reinhardt_db::reinhardt_backends::schema::ddl_references::ForeignKeyName;
 	///
 	/// let fk = ForeignKeyName::new(
 	///     "posts",
@@ -290,7 +290,7 @@ impl Statement {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::schema::ddl_references::Statement;
+	/// use reinhardt_db::reinhardt_backends::schema::ddl_references::Statement;
 	///
 	/// let stmt = Statement::new("CREATE TABLE %(table)s (%(definition)s)");
 	/// assert!(stmt.template().contains("CREATE TABLE"));

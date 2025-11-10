@@ -1,6 +1,6 @@
 //! Migration recorder
 
-use backends::{DatabaseConnection, QueryValue};
+use reinhardt_backends::{DatabaseConnection, QueryValue};
 use chrono::{DateTime, Utc};
 
 /// Migration record
@@ -86,7 +86,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// ```
 	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
-	/// use backends::DatabaseConnection;
+	/// use reinhardt_backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -106,7 +106,7 @@ impl DatabaseMigrationRecorder {
 	/// Creates the `reinhardt_migrations` table if it doesn't exist.
 	/// This follows Django's migration table schema.
 	pub async fn ensure_schema_table(&self) -> crate::Result<()> {
-		use backends::types::DatabaseType;
+		use reinhardt_backends::types::DatabaseType;
 		use sea_query::{
 			Alias, ColumnDef, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder, Table,
 		};
@@ -120,13 +120,13 @@ impl DatabaseMigrationRecorder {
 			let backend_any = backend.as_any();
 
 			if let Some(mongo_backend) =
-				backend_any.downcast_ref::<backends::drivers::mongodb::MongoDBBackend>()
+				backend_any.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>()
 			{
 				let db = mongo_backend.database();
 				let collection = db.collection::<bson::Document>("_reinhardt_migrations");
 
 				let indexes = collection.list_index_names().await.map_err(|e| {
-					crate::MigrationError::DatabaseError(backends::DatabaseError::ConnectionError(
+					crate::MigrationError::DatabaseError(reinhardt_backends::DatabaseError::ConnectionError(
 						e.to_string(),
 					))
 				})?;
@@ -142,7 +142,7 @@ impl DatabaseMigrationRecorder {
 
 					collection.create_index(index).await.map_err(|e| {
 						crate::MigrationError::DatabaseError(
-							backends::DatabaseError::ConnectionError(e.to_string()),
+							reinhardt_backends::DatabaseError::ConnectionError(e.to_string()),
 						)
 					})?;
 				}
@@ -150,7 +150,7 @@ impl DatabaseMigrationRecorder {
 				return Ok(());
 			} else {
 				return Err(crate::MigrationError::DatabaseError(
-					backends::DatabaseError::ConnectionError(
+					reinhardt_backends::DatabaseError::ConnectionError(
 						"Failed to downcast to MongoDBBackend".to_string(),
 					),
 				));
@@ -207,7 +207,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// ```
 	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
-	/// use backends::DatabaseConnection;
+	/// use reinhardt_backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -222,7 +222,7 @@ impl DatabaseMigrationRecorder {
 	/// ```
 	pub async fn is_applied(&self, app: &str, name: &str) -> crate::Result<bool> {
 		#[cfg(feature = "mongodb-backend")]
-		use backends::types::DatabaseType;
+		use reinhardt_backends::types::DatabaseType;
 
 		match self.connection.database_type() {
 			#[cfg(feature = "mongodb-backend")]
@@ -233,7 +233,7 @@ impl DatabaseMigrationRecorder {
 				let backend_any = backend.as_any();
 
 				if let Some(mongo_backend) =
-					backend_any.downcast_ref::<backends::drivers::mongodb::MongoDBBackend>()
+					backend_any.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>()
 				{
 					let db = mongo_backend.database();
 					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
@@ -244,7 +244,7 @@ impl DatabaseMigrationRecorder {
 					};
 
 					let count = collection.count_documents(filter).await.map_err(|e| {
-						crate::MigrationError::DatabaseError(backends::DatabaseError::QueryError(
+						crate::MigrationError::DatabaseError(reinhardt_backends::DatabaseError::QueryError(
 							e.to_string(),
 						))
 					})?;
@@ -252,7 +252,7 @@ impl DatabaseMigrationRecorder {
 					Ok(count > 0)
 				} else {
 					Err(crate::MigrationError::DatabaseError(
-						backends::DatabaseError::ConnectionError(
+						reinhardt_backends::DatabaseError::ConnectionError(
 							"Failed to downcast to MongoDBBackend".to_string(),
 						),
 					))
@@ -295,7 +295,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// ```
 	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
-	/// use backends::DatabaseConnection;
+	/// use reinhardt_backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -312,7 +312,7 @@ impl DatabaseMigrationRecorder {
 	/// ```
 	pub async fn record_applied(&self, app: &str, name: &str) -> crate::Result<()> {
 		#[cfg(feature = "mongodb-backend")]
-		use backends::types::DatabaseType;
+		use reinhardt_backends::types::DatabaseType;
 
 		match self.connection.database_type() {
 			#[cfg(feature = "mongodb-backend")]
@@ -324,7 +324,7 @@ impl DatabaseMigrationRecorder {
 				let backend_any = backend.as_any();
 
 				if let Some(mongo_backend) =
-					backend_any.downcast_ref::<backends::drivers::mongodb::MongoDBBackend>()
+					backend_any.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>()
 				{
 					let db = mongo_backend.database();
 					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
@@ -336,7 +336,7 @@ impl DatabaseMigrationRecorder {
 					};
 
 					collection.insert_one(doc).await.map_err(|e| {
-						crate::MigrationError::DatabaseError(backends::DatabaseError::QueryError(
+						crate::MigrationError::DatabaseError(reinhardt_backends::DatabaseError::QueryError(
 							e.to_string(),
 						))
 					})?;
@@ -344,7 +344,7 @@ impl DatabaseMigrationRecorder {
 					Ok(())
 				} else {
 					Err(crate::MigrationError::DatabaseError(
-						backends::DatabaseError::ConnectionError(
+						reinhardt_backends::DatabaseError::ConnectionError(
 							"Failed to downcast to MongoDBBackend".to_string(),
 						),
 					))
@@ -373,7 +373,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// ```
 	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
-	/// use backends::DatabaseConnection;
+	/// use reinhardt_backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -388,7 +388,7 @@ impl DatabaseMigrationRecorder {
 	/// ```
 	pub async fn get_applied_migrations(&self) -> crate::Result<Vec<MigrationRecord>> {
 		#[cfg(feature = "mongodb-backend")]
-		use backends::types::DatabaseType;
+		use reinhardt_backends::types::DatabaseType;
 
 		match self.connection.database_type() {
 			#[cfg(feature = "mongodb-backend")]
@@ -400,7 +400,7 @@ impl DatabaseMigrationRecorder {
 				let backend_any = backend.as_any();
 
 				if let Some(mongo_backend) =
-					backend_any.downcast_ref::<backends::drivers::mongodb::MongoDBBackend>()
+					backend_any.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>()
 				{
 					let db = mongo_backend.database();
 					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
@@ -415,13 +415,13 @@ impl DatabaseMigrationRecorder {
 						.await
 						.map_err(|e| {
 							crate::MigrationError::DatabaseError(
-								backends::DatabaseError::QueryError(e.to_string()),
+								reinhardt_backends::DatabaseError::QueryError(e.to_string()),
 							)
 						})?;
 
 					let mut records = Vec::new();
 					while let Some(doc) = cursor.try_next().await.map_err(|e| {
-						crate::MigrationError::DatabaseError(backends::DatabaseError::QueryError(
+						crate::MigrationError::DatabaseError(reinhardt_backends::DatabaseError::QueryError(
 							e.to_string(),
 						))
 					})? {
@@ -429,7 +429,7 @@ impl DatabaseMigrationRecorder {
 							.get_str("app")
 							.map_err(|e| {
 								crate::MigrationError::DatabaseError(
-									backends::DatabaseError::QueryError(e.to_string()),
+									reinhardt_backends::DatabaseError::QueryError(e.to_string()),
 								)
 							})?
 							.to_string();
@@ -438,14 +438,14 @@ impl DatabaseMigrationRecorder {
 							.get_str("name")
 							.map_err(|e| {
 								crate::MigrationError::DatabaseError(
-									backends::DatabaseError::QueryError(e.to_string()),
+									reinhardt_backends::DatabaseError::QueryError(e.to_string()),
 								)
 							})?
 							.to_string();
 
 						let applied_bson = doc.get_datetime("applied").map_err(|e| {
 							crate::MigrationError::DatabaseError(
-								backends::DatabaseError::QueryError(e.to_string()),
+								reinhardt_backends::DatabaseError::QueryError(e.to_string()),
 							)
 						})?;
 
@@ -454,7 +454,7 @@ impl DatabaseMigrationRecorder {
 						)
 						.ok_or_else(|| {
 							crate::MigrationError::DatabaseError(
-								backends::DatabaseError::QueryError(
+								reinhardt_backends::DatabaseError::QueryError(
 									"Invalid timestamp".to_string(),
 								),
 							)
@@ -466,7 +466,7 @@ impl DatabaseMigrationRecorder {
 					Ok(records)
 				} else {
 					Err(crate::MigrationError::DatabaseError(
-						backends::DatabaseError::ConnectionError(
+						reinhardt_backends::DatabaseError::ConnectionError(
 							"Failed to downcast to MongoDBBackend".to_string(),
 						),
 					))
@@ -508,7 +508,7 @@ impl DatabaseMigrationRecorder {
 	/// Used when rolling back migrations.
 	pub async fn unapply(&self, app: &str, name: &str) -> crate::Result<()> {
 		#[cfg(feature = "mongodb-backend")]
-		use backends::types::DatabaseType;
+		use reinhardt_backends::types::DatabaseType;
 
 		match self.connection.database_type() {
 			#[cfg(feature = "mongodb-backend")]
@@ -519,7 +519,7 @@ impl DatabaseMigrationRecorder {
 				let backend_any = backend.as_any();
 
 				if let Some(mongo_backend) =
-					backend_any.downcast_ref::<backends::drivers::mongodb::MongoDBBackend>()
+					backend_any.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>()
 				{
 					let db = mongo_backend.database();
 					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
@@ -530,7 +530,7 @@ impl DatabaseMigrationRecorder {
 					};
 
 					collection.delete_one(filter).await.map_err(|e| {
-						crate::MigrationError::DatabaseError(backends::DatabaseError::QueryError(
+						crate::MigrationError::DatabaseError(reinhardt_backends::DatabaseError::QueryError(
 							e.to_string(),
 						))
 					})?;
@@ -538,7 +538,7 @@ impl DatabaseMigrationRecorder {
 					Ok(())
 				} else {
 					Err(crate::MigrationError::DatabaseError(
-						backends::DatabaseError::ConnectionError(
+						reinhardt_backends::DatabaseError::ConnectionError(
 							"Failed to downcast to MongoDBBackend".to_string(),
 						),
 					))

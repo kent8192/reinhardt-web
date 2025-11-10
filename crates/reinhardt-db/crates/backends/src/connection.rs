@@ -100,7 +100,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_db::backends::connection::DatabaseConnection;
+	/// use reinhardt_db::reinhardt_backends::connection::DatabaseConnection;
 	///
 	/// let connection = DatabaseConnection::connect_mongodb(
 	///     "mongodb://localhost:27017",

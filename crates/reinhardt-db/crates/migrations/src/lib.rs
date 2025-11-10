@@ -121,7 +121,7 @@ pub enum MigrationError {
 	SqlError(#[from] sqlx::Error),
 
 	#[error("Database error: {0}")]
-	DatabaseError(#[from] backends::QueryDatabaseError),
+	DatabaseError(#[from] reinhardt_backends::QueryDatabaseError),
 
 	#[error("Invalid migration: {0}")]
 	InvalidMigration(String),

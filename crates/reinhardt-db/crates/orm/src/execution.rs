@@ -5,8 +5,8 @@
 //! This module provides execution methods similar to SQLAlchemy's Query class
 
 use crate::Model;
-use backends;
-use backends::types::QueryValue;
+use reinhardt_backends;
+use reinhardt_backends::types::QueryValue;
 use sea_query::{Alias, Expr, ExprTrait, Func, Query, SelectStatement};
 use std::marker::PhantomData;
 
@@ -30,7 +30,7 @@ pub enum ExecutionResult<T> {
 pub enum ExecutionError {
 	/// Database error
 	#[error("Database error: {0}")]
-	Database(#[from] backends::DatabaseError),
+	Database(#[from] reinhardt_backends::DatabaseError),
 
 	/// No result found (for .one())
 	#[error("No result found")]

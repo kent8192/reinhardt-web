@@ -1,4 +1,4 @@
-use backends::DatabaseConnection;
+use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{ColumnDefinition, Migration, MigrationExecutor, Operation};
 use sqlx::{Row, SqlitePool};
 

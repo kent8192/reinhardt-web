@@ -17,7 +17,7 @@ use crate::error::{DatabaseError, Result};
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+/// use reinhardt_db::reinhardt_backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 /// use sqlx::PgPool;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -48,7 +48,7 @@ impl PostgresTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+	/// use reinhardt_db::reinhardt_backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), sqlx::Error> {
@@ -81,7 +81,7 @@ impl PostgresTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 	/// # use sqlx::PgPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = PgPool::connect("postgresql://localhost/mydb").await?;
@@ -112,7 +112,7 @@ impl PostgresTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 	/// # use sqlx::PgPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = PgPool::connect("postgresql://localhost/mydb").await?;
@@ -147,7 +147,7 @@ impl PostgresTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 	/// # use sqlx::PgPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = PgPool::connect("postgresql://localhost/mydb").await?;
@@ -175,7 +175,7 @@ impl PostgresTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 	/// # use sqlx::PgPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = PgPool::connect("postgresql://localhost/mydb").await?;
@@ -204,7 +204,7 @@ impl PostgresTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 	/// # use sqlx::PgPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = PgPool::connect("postgresql://localhost/mydb").await?;
@@ -245,7 +245,7 @@ impl PostgresTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 	/// # use sqlx::PgPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = PgPool::connect("postgresql://localhost/mydb").await?;
@@ -291,7 +291,7 @@ impl PostgresTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::postgresql::two_phase::PostgresTwoPhaseParticipant;
 	/// # use sqlx::PgPool;
 	/// # use std::time::Duration;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

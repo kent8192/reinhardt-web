@@ -27,7 +27,7 @@ const BASE_BACKOFF_MS: u64 = 100;
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_db::backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+/// use reinhardt_db::reinhardt_backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
 /// use sqlx::PgPool;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -58,7 +58,7 @@ impl CockroachDBTransactionManager {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), sqlx::Error> {
@@ -89,7 +89,7 @@ impl CockroachDBTransactionManager {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), sqlx::Error> {
@@ -109,7 +109,7 @@ impl CockroachDBTransactionManager {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
 	/// use sqlx::PgPool;
 	/// use std::time::Duration;
 	///
@@ -133,7 +133,7 @@ impl CockroachDBTransactionManager {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -192,7 +192,7 @@ impl CockroachDBTransactionManager {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -218,7 +218,7 @@ impl CockroachDBTransactionManager {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -285,7 +285,7 @@ impl CockroachDBTransactionManager {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+	/// use reinhardt_db::reinhardt_backends::cockroachdb::distributed_tx::CockroachDBTransactionManager;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

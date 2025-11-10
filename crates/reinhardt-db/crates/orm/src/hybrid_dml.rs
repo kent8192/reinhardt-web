@@ -5,7 +5,7 @@
 //!
 //! Based on SQLAlchemy's hybrid property DML support.
 
-use backends::backend::DatabaseBackend;
+use reinhardt_backends::backend::DatabaseBackend;
 use reinhardt_hybrid::HybridProperty;
 use std::collections::HashMap;
 use std::sync::Arc;

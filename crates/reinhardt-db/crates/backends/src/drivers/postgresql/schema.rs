@@ -9,8 +9,8 @@
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-/// use reinhardt_db::backends::schema::BaseDatabaseSchemaEditor;
+/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
+/// use reinhardt_db::reinhardt_backends::schema::BaseDatabaseSchemaEditor;
 /// use sqlx::PgPool;
 ///
 /// # async fn example() -> Result<(), sqlx::Error> {
@@ -38,7 +38,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), sqlx::Error> {
@@ -58,7 +58,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	/// use std::sync::Arc;
 	///
@@ -79,7 +79,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let editor = PostgreSQLSchemaEditor::new();
 	/// let sql = editor.create_index_concurrently_sql(
@@ -128,7 +128,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let editor = PostgreSQLSchemaEditor::new();
 	/// let sql = editor.drop_index_concurrently_sql("idx_email");
@@ -147,7 +147,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let editor = PostgreSQLSchemaEditor::new();
 	/// let sql = editor.alter_sequence_type_sql("users_id_seq", "BIGINT");
@@ -168,7 +168,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let editor = PostgreSQLSchemaEditor::new();
 	/// let sql = editor.drop_sequence_sql("users_id_seq");
@@ -188,7 +188,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let editor = PostgreSQLSchemaEditor::new();
 	/// let sql = editor.add_identity_sql("users", "id");
@@ -211,7 +211,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let editor = PostgreSQLSchemaEditor::new();
 	/// let sql = editor.drop_identity_sql("users", "id");
@@ -232,7 +232,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::reinhardt_backends::postgresql::schema::PostgreSQLSchemaEditor;
 	///
 	/// let editor = PostgreSQLSchemaEditor::new();
 	/// let sql = editor.create_like_index_sql("users", "email", "varchar");

@@ -25,7 +25,7 @@ use crate::error::{DatabaseError, Result};
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+/// use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 /// use sqlx::MySqlPool;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,7 +59,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// use sqlx::MySqlPool;
 	///
 	/// # async fn example() -> Result<(), sqlx::Error> {
@@ -94,7 +94,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// # use sqlx::MySqlPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = MySqlPool::connect("mysql://localhost/mydb").await?;
@@ -119,7 +119,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// # use sqlx::MySqlPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = MySqlPool::connect("mysql://localhost/mydb").await?;
@@ -152,7 +152,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// # use sqlx::MySqlPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = MySqlPool::connect("mysql://localhost/mydb").await?;
@@ -184,7 +184,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// # use sqlx::MySqlPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = MySqlPool::connect("mysql://localhost/mydb").await?;
@@ -210,7 +210,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// # use sqlx::MySqlPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = MySqlPool::connect("mysql://localhost/mydb").await?;
@@ -238,7 +238,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// # use sqlx::MySqlPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = MySqlPool::connect("mysql://localhost/mydb").await?;
@@ -264,7 +264,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// # use sqlx::MySqlPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = MySqlPool::connect("mysql://localhost/mydb").await?;
@@ -307,7 +307,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// # use sqlx::MySqlPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = MySqlPool::connect("mysql://localhost/mydb").await?;
@@ -334,7 +334,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::backends::mysql::two_phase::MySqlTwoPhaseParticipant;
+	/// # use reinhardt_db::reinhardt_backends::mysql::two_phase::MySqlTwoPhaseParticipant;
 	/// # use sqlx::MySqlPool;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let pool = MySqlPool::connect("mysql://localhost/mydb").await?;

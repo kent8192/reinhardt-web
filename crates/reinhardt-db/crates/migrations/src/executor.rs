@@ -6,7 +6,7 @@ use crate::{
 	DatabaseMigrationRecorder, Migration, MigrationPlan, MigrationRecorder, Operation, Result,
 	operations::SqlDialect,
 };
-use backends::{connection::DatabaseConnection, types::DatabaseType};
+use reinhardt_backends::{connection::DatabaseConnection, types::DatabaseType};
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
 
@@ -200,7 +200,7 @@ impl DatabaseMigrationExecutor {
 	///
 	/// ```
 	/// use reinhardt_migrations::executor::DatabaseMigrationExecutor;
-	/// use backends::{DatabaseConnection, DatabaseType};
+	/// use reinhardt_backends::{DatabaseConnection, DatabaseType};
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 	/// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
@@ -233,7 +233,7 @@ impl DatabaseMigrationExecutor {
 	///
 	/// ```no_run
 	/// use reinhardt_migrations::{Migration, executor::DatabaseMigrationExecutor};
-	/// use backends::{DatabaseConnection, DatabaseType};
+	/// use reinhardt_backends::{DatabaseConnection, DatabaseType};
 	///
 	/// # async fn example() {
 	/// let db = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
@@ -309,7 +309,7 @@ impl DatabaseMigrationExecutor {
 	///
 	/// ```
 	/// use reinhardt_migrations::{MigrationPlan, executor::DatabaseMigrationExecutor};
-	/// use backends::{DatabaseConnection, DatabaseType};
+	/// use reinhardt_backends::{DatabaseConnection, DatabaseType};
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 	/// // For doctest purposes, using SQLite in-memory instead of PostgreSQL

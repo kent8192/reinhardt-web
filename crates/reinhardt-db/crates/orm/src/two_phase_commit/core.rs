@@ -47,10 +47,10 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex as TokioMutex;
 
 #[cfg(feature = "postgres")]
-use backends::PostgresTwoPhaseParticipant;
+use reinhardt_backends::PostgresTwoPhaseParticipant;
 
 #[cfg(feature = "mysql")]
-use backends::MySqlTwoPhaseParticipant;
+use reinhardt_backends::MySqlTwoPhaseParticipant;
 
 /// Errors that can occur during two-phase commit operations
 #[derive(Debug, Clone, PartialEq, Eq)]

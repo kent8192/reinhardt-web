@@ -30,7 +30,7 @@
 //! ```
 
 use crate::{FieldState, ModelState, ProjectState};
-use backends::schema::BaseDatabaseSchemaEditor;
+use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
 use sea_query::PostgresQueryBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -360,7 +360,7 @@ impl DeleteModel {
 	///
 	/// ```rust
 	/// use reinhardt_migrations::operations::models::DeleteModel;
-	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let delete = DeleteModel::new("users");
 	/// let factory = SchemaEditorFactory::new();
@@ -428,7 +428,7 @@ impl RenameModel {
 	///
 	/// ```rust
 	/// use reinhardt_migrations::operations::models::RenameModel;
-	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let rename = RenameModel::new("users", "customers");
 	/// let factory = SchemaEditorFactory::new();
@@ -595,7 +595,7 @@ impl MoveModel {
 	///
 	/// ```rust
 	/// use reinhardt_migrations::operations::models::MoveModel;
-	/// use backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// // Without table rename
 	/// let move_op1 = MoveModel::new("User", "myapp", "auth");

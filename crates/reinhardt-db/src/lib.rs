@@ -121,26 +121,26 @@ pub mod backends {
 	//! and query building capabilities.
 
 	// Re-export all types and modules from backends crate
-	pub use ::backends::*;
+	pub use ::reinhardt_backends::*;
 
 	// Re-export drivers module and its submodules for documentation tests
-	pub use ::backends::drivers;
+	pub use ::reinhardt_backends::drivers;
 
 	// Re-export database-specific driver modules at backends level
 	#[cfg(feature = "postgres")]
-	pub use ::backends::drivers::postgresql;
+	pub use ::reinhardt_backends::drivers::postgresql;
 
 	#[cfg(feature = "mysql")]
-	pub use ::backends::drivers::mysql;
+	pub use ::reinhardt_backends::drivers::mysql;
 
 	#[cfg(feature = "sqlite")]
-	pub use ::backends::drivers::sqlite;
+	pub use ::reinhardt_backends::drivers::sqlite;
 
 	#[cfg(feature = "mongodb-backend")]
-	pub use ::backends::drivers::mongodb;
+	pub use ::reinhardt_backends::drivers::mongodb;
 
 	#[cfg(feature = "cockroachdb-backend")]
-	pub use ::backends::drivers::cockroachdb;
+	pub use ::reinhardt_backends::drivers::cockroachdb;
 }
 
 // Re-export pool with convenient module structure
@@ -152,7 +152,7 @@ pub mod pool {
 	//! dependency injection support and event-driven lifecycle hooks.
 
 	// Re-export all backends-pool types (includes DI support)
-	pub use ::backends_pool::*;
+	pub use ::reinhardt_backends_pool::*;
 
 	// Also re-export pool-specific types
 	pub use reinhardt_pool::{
