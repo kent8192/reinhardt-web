@@ -4,7 +4,7 @@
 //! integrating with reinhardt-orm's QuerySet API.
 
 use crate::{AdminError, AdminResult};
-use reinhardt_orm::{DatabaseConnection, Filter, FilterOperator, FilterValue, Model};
+use reinhardt_db::orm::{DatabaseConnection, Filter, FilterOperator, FilterValue, Model};
 use sea_query::{
 	Alias, Asterisk, Condition, Expr, ExprTrait, PostgresQueryBuilder, Query as SeaQuery,
 };
@@ -73,7 +73,7 @@ fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 ///
 /// ```
 /// use reinhardt_admin::AdminDatabase;
-/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
+/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
 /// use std::sync::Arc;
 /// use serde::{Serialize, Deserialize};
 ///
@@ -141,7 +141,7 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::AdminDatabase;
-	/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
+	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
 	/// use std::sync::Arc;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -221,7 +221,7 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::AdminDatabase;
-	/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
+	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
 	/// use std::sync::Arc;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -284,7 +284,7 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::AdminDatabase;
-	/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
+	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
 	/// use std::sync::Arc;
 	/// use std::collections::HashMap;
 	/// use serde::{Serialize, Deserialize};
@@ -369,7 +369,7 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::AdminDatabase;
-	/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
+	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
 	/// use std::sync::Arc;
 	/// use std::collections::HashMap;
 	/// use serde::{Serialize, Deserialize};
@@ -445,7 +445,7 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::AdminDatabase;
-	/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
+	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
 	/// use std::sync::Arc;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -497,7 +497,7 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::AdminDatabase;
-	/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model};
+	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
 	/// use std::sync::Arc;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -542,7 +542,7 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::AdminDatabase;
-	/// use reinhardt_orm::DatabaseConnection;
+	/// use reinhardt_db::orm::DatabaseConnection;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -584,7 +584,7 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::AdminDatabase;
-	/// use reinhardt_orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
+	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
 	/// use std::sync::Arc;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -652,7 +652,7 @@ impl AdminDatabase {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_orm::DatabaseBackend;
+	use reinhardt_db::orm::DatabaseBackend;
 	use reinhardt_test::fixtures::mock_connection;
 	use rstest::*;
 

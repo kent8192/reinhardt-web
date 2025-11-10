@@ -4,7 +4,7 @@ use crate::full_user::FullUser;
 use crate::permissions_mixin::PermissionsMixin;
 use crate::user::User;
 use chrono::{DateTime, Utc};
-use reinhardt_orm::Model;
+use reinhardt_db::orm::Model;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

@@ -3,7 +3,7 @@
 //! Helper functions for sending emails quickly.
 
 use crate::{EmailMessage, EmailResult, backends::EmailBackend};
-use reinhardt_settings::EmailSettings;
+use reinhardt_conf::settings::EmailSettings;
 
 /// Send a simple email
 ///
@@ -148,7 +148,7 @@ pub async fn send_mass_mail(
 ///
 /// ```rust,ignore
 /// use reinhardt_mail::{mail_admins, MemoryBackend};
-/// use reinhardt_settings::EmailSettings;
+/// use reinhardt_conf::settings::EmailSettings;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -230,7 +230,7 @@ pub async fn mail_admins(
 ///
 /// ```rust,ignore
 /// use reinhardt_mail::{mail_managers, MemoryBackend};
-/// use reinhardt_settings::EmailSettings;
+/// use reinhardt_conf::settings::EmailSettings;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {

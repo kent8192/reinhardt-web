@@ -30,7 +30,7 @@
 //! ```
 
 use async_trait::async_trait;
-use reinhardt_cache::{Cache, InMemoryCache};
+use reinhardt_utils::cache::{Cache, InMemoryCache};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;

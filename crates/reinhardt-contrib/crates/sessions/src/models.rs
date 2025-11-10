@@ -29,7 +29,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "database")]
-use reinhardt_orm::Model;
+use reinhardt_db::orm::Model;
 
 /// Session model for database storage
 ///

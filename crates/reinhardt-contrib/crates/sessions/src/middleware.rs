@@ -37,9 +37,9 @@ use async_trait::async_trait;
 #[cfg(feature = "middleware")]
 use reinhardt_exception::Result;
 #[cfg(feature = "middleware")]
-use reinhardt_http::{Request, Response};
-#[cfg(feature = "middleware")]
 use reinhardt_types::{Handler, Middleware};
+#[cfg(feature = "middleware")]
+use reinhardt_http::{Request, Response};
 #[cfg(feature = "middleware")]
 use std::sync::Arc;
 #[cfg(feature = "middleware")]

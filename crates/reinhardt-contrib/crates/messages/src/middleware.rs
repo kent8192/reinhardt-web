@@ -20,8 +20,8 @@ use crate::message::Message;
 use crate::storage::MessageStorage;
 use async_trait::async_trait;
 use reinhardt_exception::Result;
-use reinhardt_http::{Request, Response};
 use reinhardt_types::{Handler, Middleware};
+use reinhardt_http::{Request, Response};
 use std::sync::{Arc, Mutex};
 
 /// Messages middleware

@@ -384,8 +384,8 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_throttling::MemoryBackend;
 	use reinhardt_types::Request;
+	use reinhardt_throttling::MemoryBackend;
 
 	fn create_test_request(headers: HeaderMap) -> Request {
 		Request::new(

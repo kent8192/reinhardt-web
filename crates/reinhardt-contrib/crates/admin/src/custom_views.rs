@@ -64,7 +64,7 @@
 //! ```
 
 use async_trait::async_trait;
-use reinhardt_orm::DatabaseConnection;
+use reinhardt_db::orm::DatabaseConnection;
 use sea_query::{Alias, Expr, ExprTrait, PostgresQueryBuilder, Query};
 use std::collections::HashMap;
 use std::fmt;
@@ -476,7 +476,7 @@ mod tests {
 	use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::backends::error::Result;
 	use reinhardt_db::backends::types::{DatabaseType, QueryResult, QueryValue, Row};
-	use reinhardt_orm::{DatabaseBackend, DatabaseConnection};
+	use reinhardt_db::orm::{DatabaseBackend, DatabaseConnection};
 
 	// Mock backend for testing
 	struct MockBackend;

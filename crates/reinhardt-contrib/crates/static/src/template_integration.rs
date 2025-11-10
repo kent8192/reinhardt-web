@@ -9,7 +9,7 @@ use std::io;
 
 /// Configuration for static files in templates
 ///
-/// This is a simplified version of `reinhardt_templates::static_filters::StaticConfig`
+/// This is a simplified version of `reinhardt_template::templates::static_filters::StaticConfig`
 /// that can be constructed from `StaticFilesConfig`.
 #[derive(Debug, Clone)]
 pub struct TemplateStaticConfig {
@@ -122,7 +122,7 @@ impl TemplateStaticConfig {
 }
 
 #[cfg(feature = "templates-integration")]
-impl From<TemplateStaticConfig> for reinhardt_templates::StaticConfig {
+impl From<TemplateStaticConfig> for reinhardt_template::templates::static_filters::StaticConfig {
 	fn from(config: TemplateStaticConfig) -> Self {
 		Self {
 			static_url: config.static_url,
@@ -155,8 +155,8 @@ impl From<TemplateStaticConfig> for reinhardt_templates::StaticConfig {
 /// ```
 pub fn init_template_static_config(config: &StaticFilesConfig) {
 	let template_config = TemplateStaticConfig::from(config);
-	let reinhardt_config = reinhardt_templates::StaticConfig::from(template_config);
-	reinhardt_templates::init_static_config(reinhardt_config);
+	let reinhardt_config = reinhardt_template::templates::static_filters::StaticConfig::from(template_config);
+	reinhardt_template::templates::static_filters::init_static_config(reinhardt_config);
 }
 
 #[cfg(feature = "templates-integration")]
@@ -185,8 +185,8 @@ pub async fn init_template_static_config_with_manifest(
 	storage: &ManifestStaticFilesStorage,
 ) -> io::Result<()> {
 	let template_config = TemplateStaticConfig::from_storage(storage).await?;
-	let reinhardt_config = reinhardt_templates::StaticConfig::from(template_config);
-	reinhardt_templates::init_static_config(reinhardt_config);
+	let reinhardt_config = reinhardt_template::templates::static_filters::StaticConfig::from(template_config);
+	reinhardt_template::templates::static_filters::init_static_config(reinhardt_config);
 	Ok(())
 }
 

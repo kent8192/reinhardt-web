@@ -485,13 +485,13 @@ impl<B: SessionBackend> AuthenticationBackend for SessionAuthentication<B> {
 			uuid::Uuid::parse_str(user_id).map_err(|_| AuthenticationError::InvalidCredentials)?;
 
 		// Get database connection
-		let conn = reinhardt_orm::manager::get_connection()
+		let conn = reinhardt_db::orm::manager::get_connection()
 			.await
 			.map_err(|e| AuthenticationError::DatabaseError(e.to_string()))?;
 
 		// Build SQL query to fetch user from database
-		use reinhardt_orm::Model;
-		use reinhardt_orm::connection::QueryValue;
+		use reinhardt_db::orm::Model;
+		use reinhardt_db::orm::connection::QueryValue;
 
 		let table_name = DefaultUser::table_name();
 		let sql = format!(
