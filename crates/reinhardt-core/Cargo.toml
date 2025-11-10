@@ -15,7 +15,6 @@ reinhardt-signals = { version = "0.1.0-alpha.1", path = "crates/signals", option
 reinhardt-macros = { version = "0.1.0-alpha.1", path = "crates/macros", optional = true }
 reinhardt-security = { version = "0.1.0-alpha.1", path = "crates/security", optional = true }
 reinhardt-validators = { version = "0.1.0-alpha.1", path = "crates/validators", optional = true }
-reinhardt-backends = { version = "0.1.0-alpha.1", path = "crates/backends", optional = true }
 
 [features]
 default = [
@@ -25,7 +24,6 @@ default = [
   "macros",
   "security",
   "validators",
-  "backends",
 ]
 types = ["dep:reinhardt-types"]
 exception = ["dep:reinhardt-exception"]
@@ -33,5 +31,3 @@ signals = ["dep:reinhardt-signals"]
 macros = ["dep:reinhardt-macros"]
 security = ["dep:reinhardt-security"]
 validators = ["dep:reinhardt-validators"]
-backends = ["dep:reinhardt-backends"]
-redis-backend = ["backends", "reinhardt-backends/redis-backend"]
