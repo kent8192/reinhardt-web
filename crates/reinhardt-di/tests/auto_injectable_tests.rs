@@ -31,7 +31,10 @@ async fn test_auto_injectable_with_depends() {
 	let ctx = InjectionContext::new(singleton_scope);
 
 	// Should work with Depends wrapper
-	let depends_config = Depends::<SimpleConfig>::builder().resolve(&ctx).await.unwrap();
+	let depends_config = Depends::<SimpleConfig>::builder()
+		.resolve(&ctx)
+		.await
+		.unwrap();
 	assert_eq!(depends_config.host, "");
 	assert_eq!(depends_config.port, 0);
 }

@@ -136,7 +136,10 @@ impl Cache for RedisClusterCache {
 		T: for<'de> Deserialize<'de> + Send,
 	{
 		let full_key = self.build_key(key);
-		let mut conn = self.client.get_async_connection().await
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let value: Option<Vec<u8>> = conn
@@ -146,8 +149,8 @@ impl Cache for RedisClusterCache {
 
 		match value {
 			Some(bytes) => {
-				let deserialized: T =
-					serde_json::from_slice(&bytes).map_err(|e| Error::Serialization(e.to_string()))?;
+				let deserialized: T = serde_json::from_slice(&bytes)
+					.map_err(|e| Error::Serialization(e.to_string()))?;
 				Ok(Some(deserialized))
 			}
 			None => Ok(None),
@@ -159,8 +162,12 @@ impl Cache for RedisClusterCache {
 		T: Serialize + Send + Sync,
 	{
 		let full_key = self.build_key(key);
-		let serialized = serde_json::to_vec(value).map_err(|e| Error::Serialization(e.to_string()))?;
-		let mut conn = self.client.get_async_connection().await
+		let serialized =
+			serde_json::to_vec(value).map_err(|e| Error::Serialization(e.to_string()))?;
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let effective_ttl = ttl.or(self.default_ttl);
@@ -183,32 +190,42 @@ impl Cache for RedisClusterCache {
 
 	async fn delete(&self, key: &str) -> Result<()> {
 		let full_key = self.build_key(key);
-		let mut conn = self.client.get_async_connection().await
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
-		let _: () = conn
-			.del(&full_key)
-			.await
-			.map_err(|e| Error::Http(format!("Failed to delete value from Redis Cluster: {}", e)))?;
+		let _: () = conn.del(&full_key).await.map_err(|e| {
+			Error::Http(format!("Failed to delete value from Redis Cluster: {}", e))
+		})?;
 
 		Ok(())
 	}
 
 	async fn has_key(&self, key: &str) -> Result<bool> {
 		let full_key = self.build_key(key);
-		let mut conn = self.client.get_async_connection().await
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
-		let exists: bool = conn
-			.exists(&full_key)
-			.await
-			.map_err(|e| Error::Http(format!("Failed to check key existence in Redis Cluster: {}", e)))?;
+		let exists: bool = conn.exists(&full_key).await.map_err(|e| {
+			Error::Http(format!(
+				"Failed to check key existence in Redis Cluster: {}",
+				e
+			))
+		})?;
 
 		Ok(exists)
 	}
 
 	async fn clear(&self) -> Result<()> {
-		let mut conn = self.client.get_async_connection().await
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		if self.key_prefix.is_empty() {
@@ -243,7 +260,10 @@ impl Cache for RedisClusterCache {
 		T: for<'de> Deserialize<'de> + Send,
 	{
 		let full_keys: Vec<String> = keys.iter().map(|k| self.build_key(k)).collect();
-		let mut conn = self.client.get_async_connection().await
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let values: Vec<Option<Vec<u8>>> = conn.get(&full_keys).await.map_err(|e| {
@@ -273,7 +293,10 @@ impl Cache for RedisClusterCache {
 	where
 		T: Serialize + Send + Sync,
 	{
-		let mut conn = self.client.get_async_connection().await
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 		let effective_ttl = ttl.or(self.default_ttl);
 
@@ -302,7 +325,10 @@ impl Cache for RedisClusterCache {
 
 	async fn delete_many(&self, keys: &[&str]) -> Result<()> {
 		let full_keys: Vec<String> = keys.iter().map(|k| self.build_key(k)).collect();
-		let mut conn = self.client.get_async_connection().await
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let _: () = conn.del(full_keys).await.map_err(|e| {
@@ -317,7 +343,10 @@ impl Cache for RedisClusterCache {
 
 	async fn incr(&self, key: &str, delta: i64) -> Result<i64> {
 		let full_key = self.build_key(key);
-		let mut conn = self.client.get_async_connection().await
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let result: i64 = conn.incr(&full_key, delta).await.map_err(|e| {
@@ -329,7 +358,10 @@ impl Cache for RedisClusterCache {
 
 	async fn decr(&self, key: &str, delta: i64) -> Result<i64> {
 		let full_key = self.build_key(key);
-		let mut conn = self.client.get_async_connection().await
+		let mut conn = self
+			.client
+			.get_async_connection()
+			.await
 			.map_err(|e| Error::Http(format!("Failed to get connection: {}", e)))?;
 
 		let result: i64 = conn.decr(&full_key, delta).await.map_err(|e| {

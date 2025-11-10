@@ -456,43 +456,41 @@ pub async fn redis_container() -> (ContainerAsync<Redis>, String) {
 
 #[cfg(feature = "testcontainers")]
 async fn cleanup_stale_redis_cluster_containers() {
-    use std::process::Command;
+	use std::process::Command;
 
-    eprintln!("🧹 Cleaning up stale Redis Cluster containers...");
+	eprintln!("🧹 Cleaning up stale Redis Cluster containers...");
 
-    // Find all containers based on neohq/redis-cluster image
-    let output = Command::new("podman")
-        .args(&["ps", "-aq", "--filter", "ancestor=neohq/redis-cluster"])
-        .output();
+	// Find all containers based on neohq/redis-cluster image
+	let output = Command::new("podman")
+		.args(["ps", "-aq", "--filter", "ancestor=neohq/redis-cluster"])
+		.output();
 
-    if let Ok(output) = output {
-        let container_ids = String::from_utf8_lossy(&output.stdout);
-        let ids: Vec<&str> = container_ids.lines().collect();
+	if let Ok(output) = output {
+		let container_ids = String::from_utf8_lossy(&output.stdout);
+		let ids: Vec<&str> = container_ids.lines().collect();
 
-        if !ids.is_empty() {
-            eprintln!("  Found {} stale container(s)", ids.len());
+		if !ids.is_empty() {
+			eprintln!("  Found {} stale container(s)", ids.len());
 
-            for id in &ids {
-                let id = id.trim();
-                if !id.is_empty() {
-                    let result = Command::new("podman")
-                        .args(&["rm", "-f", id])
-                        .output();
+			for id in &ids {
+				let id = id.trim();
+				if !id.is_empty() {
+					let result = Command::new("podman").args(["rm", "-f", id]).output();
 
-                    match result {
-                        Ok(_) => eprintln!("  ✓ Removed container: {}", id),
-                        Err(e) => eprintln!("  ✗ Failed to remove container {}: {}", id, e),
-                    }
-                }
-            }
+					match result {
+						Ok(_) => eprintln!("  ✓ Removed container: {}", id),
+						Err(e) => eprintln!("  ✗ Failed to remove container {}: {}", id, e),
+					}
+				}
+			}
 
-            eprintln!("  Cleanup complete");
-        } else {
-            eprintln!("  No stale containers found");
-        }
-    } else {
-        eprintln!("  Warning: Failed to query podman containers");
-    }
+			eprintln!("  Cleanup complete");
+		} else {
+			eprintln!("  No stale containers found");
+		}
+	} else {
+		eprintln!("  Warning: Failed to query podman containers");
+	}
 }
 
 /// File-based lock guard for inter-process synchronization
@@ -504,50 +502,51 @@ async fn cleanup_stale_redis_cluster_containers() {
 /// When the guard is dropped, the lock is automatically released.
 #[cfg(feature = "testcontainers")]
 struct FileLockGuard {
-    #[allow(dead_code)]
-    file: std::fs::File,
+	#[allow(dead_code)]
+	file: std::fs::File,
 }
 
 #[cfg(feature = "testcontainers")]
 impl FileLockGuard {
-    /// Acquire exclusive file lock (blocks until available)
-    fn acquire() -> std::io::Result<Self> {
-        use fs2::FileExt;
-        use std::fs::OpenOptions;
+	/// Acquire exclusive file lock (blocks until available)
+	fn acquire() -> std::io::Result<Self> {
+		use fs2::FileExt;
+		use std::fs::OpenOptions;
 
-        let lock_path = std::env::temp_dir().join("reinhardt_redis_cluster.lock");
+		let lock_path = std::env::temp_dir().join("reinhardt_redis_cluster.lock");
 
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(&lock_path)?;
+		let file = OpenOptions::new()
+			.create(true)
+			.truncate(true)
+			.write(true)
+			.open(&lock_path)?;
 
-        // Acquire exclusive lock (blocking until available)
-        file.lock_exclusive()?;
-        eprintln!(
-            "🔒 Acquired Redis Cluster file lock (PID: {})",
-            std::process::id()
-        );
+		// Acquire exclusive lock (blocking until available)
+		file.lock_exclusive()?;
+		eprintln!(
+			"🔒 Acquired Redis Cluster file lock (PID: {})",
+			std::process::id()
+		);
 
-        Ok(Self { file })
-    }
+		Ok(Self { file })
+	}
 }
 
 #[cfg(feature = "testcontainers")]
 impl Drop for FileLockGuard {
-    fn drop(&mut self) {
-        // Unlock explicitly (also happens automatically when file is closed)
-        // Ignore result as we can't handle errors in Drop
-        #[allow(unused_imports)]
-        {
-            use fs2::FileExt;
-            let _ = self.file.unlock();
-        }
-        eprintln!(
-            "🔓 Released Redis Cluster file lock (PID: {})",
-            std::process::id()
-        );
-    }
+	fn drop(&mut self) {
+		// Unlock explicitly (also happens automatically when file is closed)
+		// Ignore result as we can't handle errors in Drop
+		#[allow(unused_imports)]
+		{
+			use fs2::FileExt;
+			let _ = self.file.unlock();
+		}
+		eprintln!(
+			"🔓 Released Redis Cluster file lock (PID: {})",
+			std::process::id()
+		);
+	}
 }
 
 /// Ensure the specified ports are available before starting a new container
@@ -568,83 +567,89 @@ impl Drop for FileLockGuard {
 /// - `Err(...)` if ports remain unavailable after max_attempts
 #[cfg(feature = "testcontainers")]
 async fn ensure_ports_available(
-    ports: &[u16],
-    max_attempts: u32,
-    retry_interval_ms: u64,
+	ports: &[u16],
+	max_attempts: u32,
+	retry_interval_ms: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use std::process::Command;
-    use std::time::Duration;
-    use tokio::time::sleep;
+	use std::process::Command;
+	use std::time::Duration;
+	use tokio::time::sleep;
 
-    eprintln!("  Waiting for ports {:?} to become available...", ports);
+	eprintln!("  Waiting for ports {:?} to become available...", ports);
 
-    for attempt in 1..=max_attempts {
-        // Use lsof to check if any process is listening on the ports
-        let mut all_available = true;
+	for attempt in 1..=max_attempts {
+		// Use lsof to check if any process is listening on the ports
+		let mut all_available = true;
 
-        for &port in ports {
-            // Check if any process is listening on this port
-            let output = Command::new("lsof")
-                .args(&["-i", &format!("TCP:{}", port), "-s", "TCP:LISTEN"])
-                .output();
+		for &port in ports {
+			// Check if any process is listening on this port
+			let output = Command::new("lsof")
+				.args(["-i", &format!("TCP:{}", port), "-s", "TCP:LISTEN"])
+				.output();
 
-            if let Ok(output) = output {
-                // If lsof returns any output, the port is in use
-                if !output.stdout.is_empty() {
-                    all_available = false;
-                    eprintln!("  ⏳ Port {} still in use (attempt {}/{})", port, attempt, max_attempts);
-                    break;
-                }
-            }
-        }
+			if let Ok(output) = output {
+				// If lsof returns any output, the port is in use
+				if !output.stdout.is_empty() {
+					all_available = false;
+					eprintln!(
+						"  ⏳ Port {} still in use (attempt {}/{})",
+						port, attempt, max_attempts
+					);
+					break;
+				}
+			}
+		}
 
-        if all_available {
-            eprintln!("  ✓ All ports available (attempt {}/{})", attempt, max_attempts);
-            // Add a small additional delay to ensure port release is complete
-            sleep(Duration::from_millis(200)).await;
-            return Ok(());
-        }
+		if all_available {
+			eprintln!(
+				"  ✓ All ports available (attempt {}/{})",
+				attempt, max_attempts
+			);
+			// Add a small additional delay to ensure port release is complete
+			sleep(Duration::from_millis(200)).await;
+			return Ok(());
+		}
 
-        if attempt < max_attempts {
-            sleep(Duration::from_millis(retry_interval_ms)).await;
-        }
-    }
+		if attempt < max_attempts {
+			sleep(Duration::from_millis(retry_interval_ms)).await;
+		}
+	}
 
-    Err(format!(
-        "Ports {:?} not available after {} attempts ({} seconds total)",
-        ports,
-        max_attempts,
-        (max_attempts as u64 * retry_interval_ms) / 1000
-    )
-    .into())
+	Err(format!(
+		"Ports {:?} not available after {} attempts ({} seconds total)",
+		ports,
+		max_attempts,
+		(max_attempts as u64 * retry_interval_ms) / 1000
+	)
+	.into())
 }
 
 #[cfg(feature = "testcontainers")]
 #[fixture]
 pub async fn redis_cluster_fixture() -> (
-    testcontainers::ContainerAsync<testcontainers::GenericImage>,
-    Vec<String>,
+	testcontainers::ContainerAsync<testcontainers::GenericImage>,
+	Vec<String>,
 ) {
-    use testcontainers::{core::ContainerPort, GenericImage, ImageExt, runners::AsyncRunner};
+	use testcontainers::{GenericImage, ImageExt, core::ContainerPort, runners::AsyncRunner};
 
-    // Clean up any stale containers from previous test runs before starting new one
-    cleanup_stale_redis_cluster_containers().await;
+	// Clean up any stale containers from previous test runs before starting new one
+	cleanup_stale_redis_cluster_containers().await;
 
-    // Use neohq/redis-cluster image - ARM64 native build of grokzen/redis-cluster
-    // Benefits: Native ARM64 performance, faster startup (~30s vs 120s+ with QEMU emulation)
-    // Note: We don't use .with_wait_for() here because the cluster doesn't output
-    // a simple "Ready to accept connections" message. Instead, we rely on the custom
-    // wait_for_redis_cluster_ready() function below that polls CLUSTER INFO for cluster_state:ok
-    //
-    // IMPORTANT: Redis Cluster requires FIXED port mapping where host ports match container ports.
-    // Reason: Cluster nodes advertise their ports via CLUSTER SLOTS, and clients connect to those advertised ports.
-    // Dynamic port mapping (7000→38483) breaks this, causing "ClusterConnectionNotFound".
-    //
-    // Port Configuration:
-    // - INITIAL_PORT=17000: Start cluster on ports 17000-17005 (avoids macOS port 7000 conflict with ControlCenter)
-    // - Fixed mappings: 17000:17000, 17001:17001, ..., 17005:17005
-    // - Tests use #[serial(redis_cluster)] to prevent port conflicts between parallel test runs
-    let cluster = GenericImage::new("neohq/redis-cluster", "latest")
+	// Use neohq/redis-cluster image - ARM64 native build of grokzen/redis-cluster
+	// Benefits: Native ARM64 performance, faster startup (~30s vs 120s+ with QEMU emulation)
+	// Note: We don't use .with_wait_for() here because the cluster doesn't output
+	// a simple "Ready to accept connections" message. Instead, we rely on the custom
+	// wait_for_redis_cluster_ready() function below that polls CLUSTER INFO for cluster_state:ok
+	//
+	// IMPORTANT: Redis Cluster requires FIXED port mapping where host ports match container ports.
+	// Reason: Cluster nodes advertise their ports via CLUSTER SLOTS, and clients connect to those advertised ports.
+	// Dynamic port mapping (7000→38483) breaks this, causing "ClusterConnectionNotFound".
+	//
+	// Port Configuration:
+	// - INITIAL_PORT=17000: Start cluster on ports 17000-17005 (avoids macOS port 7000 conflict with ControlCenter)
+	// - Fixed mappings: 17000:17000, 17001:17001, ..., 17005:17005
+	// - Tests use #[serial(redis_cluster)] to prevent port conflicts between parallel test runs
+	let cluster = GenericImage::new("neohq/redis-cluster", "latest")
         // Map each cluster port to the SAME port on host (required for Redis Cluster)
         .with_mapped_port(17000, ContainerPort::Tcp(17000))
         .with_mapped_port(17001, ContainerPort::Tcp(17001))
@@ -659,37 +664,37 @@ pub async fn redis_cluster_fixture() -> (
         .await
         .expect("Failed to start Redis Cluster container");
 
-    eprintln!("Redis Cluster container started (neohq/redis-cluster:latest, ports 17000-17005)");
+	eprintln!("Redis Cluster container started (neohq/redis-cluster:latest, ports 17000-17005)");
 
-    // Get host (localhost for testcontainers)
-    let host_str = cluster
-        .get_host()
-        .await
-        .expect("Failed to get container host");
-    let host_str = host_str.to_string();
+	// Get host (localhost for testcontainers)
+	let host_str = cluster
+		.get_host()
+		.await
+		.expect("Failed to get container host");
+	let host_str = host_str.to_string();
 
-    // Build URLs for all 6 cluster nodes using ports 17000-17005
-    // We use fixed port mapping, so host ports match container ports exactly
-    let mut urls = Vec::new();
-    for port in 17000..=17005 {
-        let url = format!("redis://{}:{}", host_str, port);
-        urls.push(url.clone());
-        eprintln!("  Node {}: {}", port - 17000, url);
-    }
+	// Build URLs for all 6 cluster nodes using ports 17000-17005
+	// We use fixed port mapping, so host ports match container ports exactly
+	let mut urls = Vec::new();
+	for port in 17000..=17005 {
+		let url = format!("redis://{}:{}", host_str, port);
+		urls.push(url.clone());
+		eprintln!("  Node {}: {}", port - 17000, url);
+	}
 
-    // Wait for cluster to be ready by checking cluster state with Redis client
-    eprintln!("Waiting for Redis Cluster to become ready...");
+	// Wait for cluster to be ready by checking cluster state with Redis client
+	eprintln!("Waiting for Redis Cluster to become ready...");
 
-    // Use first node's port (17000) for readiness check
-    let cluster_ready = wait_for_redis_cluster_ready(&host_str, 17000).await;
+	// Use first node's port (17000) for readiness check
+	let cluster_ready = wait_for_redis_cluster_ready(&host_str, 17000).await;
 
-    if let Err(e) = cluster_ready {
-        panic!("Redis Cluster failed to become ready: {}", e);
-    }
+	if let Err(e) = cluster_ready {
+		panic!("Redis Cluster failed to become ready: {}", e);
+	}
 
-    eprintln!("✓ Redis Cluster is ready for testing");
+	eprintln!("✓ Redis Cluster is ready for testing");
 
-    (cluster, urls)
+	(cluster, urls)
 }
 
 /// Redis Cluster fixture with automatic cleanup via RedisClusterGuard
@@ -725,38 +730,38 @@ pub async fn redis_cluster_fixture() -> (
 #[cfg(feature = "testcontainers")]
 #[fixture]
 pub async fn redis_cluster() -> crate::containers::RedisClusterGuard {
-    use testcontainers::{core::ContainerPort, GenericImage, ImageExt, runners::AsyncRunner};
+	use testcontainers::{GenericImage, ImageExt, core::ContainerPort, runners::AsyncRunner};
 
-    // File-based lock to ensure only one fixture execution at a time across processes
-    // This is necessary because cargo-nextest runs each test in a separate process,
-    // so std::sync::Mutex doesn't work for inter-process synchronization
-    let _lock = FileLockGuard::acquire().expect("Failed to acquire Redis Cluster lock");
+	// File-based lock to ensure only one fixture execution at a time across processes
+	// This is necessary because cargo-nextest runs each test in a separate process,
+	// so std::sync::Mutex doesn't work for inter-process synchronization
+	let _lock = FileLockGuard::acquire().expect("Failed to acquire Redis Cluster lock");
 
-    // Clean up any stale containers from previous test runs before starting new one
-    cleanup_stale_redis_cluster_containers().await;
+	// Clean up any stale containers from previous test runs before starting new one
+	cleanup_stale_redis_cluster_containers().await;
 
-    // Wait for ports to become available (OS-level port release is asynchronous)
-    // Redis Cluster uses ports 17000-17005
-    const CLUSTER_PORTS: &[u16] = &[17000, 17001, 17002, 17003, 17004, 17005];
-    ensure_ports_available(CLUSTER_PORTS, 20, 500)
-        .await
-        .expect("Redis Cluster ports (17000-17005) not available after cleanup");
+	// Wait for ports to become available (OS-level port release is asynchronous)
+	// Redis Cluster uses ports 17000-17005
+	const CLUSTER_PORTS: &[u16] = &[17000, 17001, 17002, 17003, 17004, 17005];
+	ensure_ports_available(CLUSTER_PORTS, 20, 500)
+		.await
+		.expect("Redis Cluster ports (17000-17005) not available after cleanup");
 
-    // Use neohq/redis-cluster image - ARM64 native build of grokzen/redis-cluster
-    // Benefits: Native ARM64 performance, faster startup (~30s vs 120s+ with QEMU emulation)
-    // Note: We don't use .with_wait_for() here because the cluster doesn't output
-    // a simple "Ready to accept connections" message. Instead, we rely on the custom
-    // wait_for_redis_cluster_ready() function below that polls CLUSTER INFO for cluster_state:ok
-    //
-    // IMPORTANT: Redis Cluster requires FIXED port mapping where host ports match container ports.
-    // Reason: Cluster nodes advertise their ports via CLUSTER SLOTS, and clients connect to those advertised ports.
-    // Dynamic port mapping (7000→38483) breaks this, causing "ClusterConnectionNotFound".
-    //
-    // Port Configuration:
-    // - INITIAL_PORT=17000: Start cluster on ports 17000-17005 (avoids macOS port 7000 conflict with ControlCenter)
-    // - Fixed mappings: 17000:17000, 17001:17001, ..., 17005:17005
-    // - Tests use #[serial(redis_cluster)] to prevent port conflicts between parallel test runs
-    let cluster = GenericImage::new("neohq/redis-cluster", "latest")
+	// Use neohq/redis-cluster image - ARM64 native build of grokzen/redis-cluster
+	// Benefits: Native ARM64 performance, faster startup (~30s vs 120s+ with QEMU emulation)
+	// Note: We don't use .with_wait_for() here because the cluster doesn't output
+	// a simple "Ready to accept connections" message. Instead, we rely on the custom
+	// wait_for_redis_cluster_ready() function below that polls CLUSTER INFO for cluster_state:ok
+	//
+	// IMPORTANT: Redis Cluster requires FIXED port mapping where host ports match container ports.
+	// Reason: Cluster nodes advertise their ports via CLUSTER SLOTS, and clients connect to those advertised ports.
+	// Dynamic port mapping (7000→38483) breaks this, causing "ClusterConnectionNotFound".
+	//
+	// Port Configuration:
+	// - INITIAL_PORT=17000: Start cluster on ports 17000-17005 (avoids macOS port 7000 conflict with ControlCenter)
+	// - Fixed mappings: 17000:17000, 17001:17001, ..., 17005:17005
+	// - Tests use #[serial(redis_cluster)] to prevent port conflicts between parallel test runs
+	let cluster = GenericImage::new("neohq/redis-cluster", "latest")
         // Map each cluster port to the SAME port on host (required for Redis Cluster)
         .with_mapped_port(17000, ContainerPort::Tcp(17000))
         .with_mapped_port(17001, ContainerPort::Tcp(17001))
@@ -771,40 +776,40 @@ pub async fn redis_cluster() -> crate::containers::RedisClusterGuard {
         .await
         .expect("Failed to start Redis Cluster container");
 
-    eprintln!("Redis Cluster container started (neohq/redis-cluster:latest, ports 17000-17005)");
+	eprintln!("Redis Cluster container started (neohq/redis-cluster:latest, ports 17000-17005)");
 
-    // Get host (localhost for testcontainers)
-    let host_str = cluster
-        .get_host()
-        .await
-        .expect("Failed to get container host");
-    let host_str = host_str.to_string();
+	// Get host (localhost for testcontainers)
+	let host_str = cluster
+		.get_host()
+		.await
+		.expect("Failed to get container host");
+	let host_str = host_str.to_string();
 
-    // Build URLs for all 6 cluster nodes using ports 17000-17005
-    // We use fixed port mapping, so host ports match container ports exactly
-    let mut urls = Vec::new();
-    for port in 17000..=17005 {
-        let url = format!("redis://{}:{}", host_str, port);
-        urls.push(url.clone());
-        eprintln!("  Node {}: {}", port - 17000, url);
-    }
+	// Build URLs for all 6 cluster nodes using ports 17000-17005
+	// We use fixed port mapping, so host ports match container ports exactly
+	let mut urls = Vec::new();
+	for port in 17000..=17005 {
+		let url = format!("redis://{}:{}", host_str, port);
+		urls.push(url.clone());
+		eprintln!("  Node {}: {}", port - 17000, url);
+	}
 
-    // Wait for cluster to be ready by checking cluster state with Redis client
-    eprintln!("Waiting for Redis Cluster to become ready...");
+	// Wait for cluster to be ready by checking cluster state with Redis client
+	eprintln!("Waiting for Redis Cluster to become ready...");
 
-    // Use first node's port (17000) for readiness check
-    let cluster_ready = wait_for_redis_cluster_ready(&host_str, 17000).await;
+	// Use first node's port (17000) for readiness check
+	let cluster_ready = wait_for_redis_cluster_ready(&host_str, 17000).await;
 
-    if let Err(e) = cluster_ready {
-        panic!("Redis Cluster failed to become ready: {}", e);
-    }
+	if let Err(e) = cluster_ready {
+		panic!("Redis Cluster failed to become ready: {}", e);
+	}
 
-    eprintln!("✓ Redis Cluster is ready for testing");
+	eprintln!("✓ Redis Cluster is ready for testing");
 
-    // Create and return guard - automatic cleanup via Drop
-    crate::containers::RedisClusterGuard::new(cluster, urls)
-        .await
-        .expect("Failed to create RedisClusterGuard")
+	// Create and return guard - automatic cleanup via Drop
+	crate::containers::RedisClusterGuard::new(cluster, urls)
+		.await
+		.expect("Failed to create RedisClusterGuard")
 }
 
 /// Wait for Redis Cluster to be ready by checking cluster state
@@ -814,97 +819,98 @@ pub async fn redis_cluster() -> crate::containers::RedisClusterGuard {
 /// 2. CLUSTER INFO - verify cluster state is ok
 #[cfg(feature = "testcontainers")]
 async fn wait_for_redis_cluster_ready(
-    host: &str,
-    port: u16,
+	host: &str,
+	port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use std::time::Duration;
+	use std::time::Duration;
 
-    const MAX_ATTEMPTS: u32 = 60;
-    const RETRY_INTERVAL_MS: u64 = 500;
+	const MAX_ATTEMPTS: u32 = 60;
+	const RETRY_INTERVAL_MS: u64 = 500;
 
-    for attempt in 1..=MAX_ATTEMPTS {
-        let url = format!("redis://{}:{}", host, port);
+	for attempt in 1..=MAX_ATTEMPTS {
+		let url = format!("redis://{}:{}", host, port);
 
-        match redis::Client::open(url.as_str()) {
-            Ok(client) => {
-                match client.get_multiplexed_async_connection().await {
-                    Ok(mut conn) => {
-                        // Stage 1: Check node is alive with PING
-                        match redis::cmd("PING").query_async::<String>(&mut conn).await {
-                            Ok(_) => {
-                                // Stage 2: Check cluster state with CLUSTER INFO
-                                let result: Result<String, redis::RedisError> =
-                                    redis::cmd("CLUSTER").arg("INFO").query_async(&mut conn).await;
+		match redis::Client::open(url.as_str()) {
+			Ok(client) => {
+				match client.get_multiplexed_async_connection().await {
+					Ok(mut conn) => {
+						// Stage 1: Check node is alive with PING
+						match redis::cmd("PING").query_async::<String>(&mut conn).await {
+							Ok(_) => {
+								// Stage 2: Check cluster state with CLUSTER INFO
+								let result: Result<String, redis::RedisError> =
+									redis::cmd("CLUSTER")
+										.arg("INFO")
+										.query_async(&mut conn)
+										.await;
 
-                                if let Ok(info) = result {
-                                    if info.contains("cluster_state:ok") {
-                                        eprintln!(
-                                            "✓ Redis Cluster is ready (attempt {}/{})",
-                                            attempt, MAX_ATTEMPTS
-                                        );
-                                        return Ok(());
-                                    } else {
-                                        // Log only on first 3 attempts and every 10th attempt
-                                        if attempt <= 3 || attempt % 10 == 0 {
-                                            eprintln!(
-                                                "  Cluster initializing... (attempt {}/{})",
-                                                attempt, MAX_ATTEMPTS
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    if attempt <= 3 || attempt % 10 == 0 {
-                                        eprintln!(
-                                            "  CLUSTER INFO command failed (attempt {}/{})",
-                                            attempt, MAX_ATTEMPTS
-                                        );
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                if attempt <= 3 || attempt % 10 == 0 {
-                                    eprintln!(
-                                        "  Node not responding to PING (attempt {}/{}): {}",
-                                        attempt, MAX_ATTEMPTS, e
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        // Log connection errors only on first 3 attempts and every 10th
-                        if attempt <= 3 || attempt % 10 == 0 {
-                            eprintln!(
-                                "  Connection failed (attempt {}/{}): {}",
-                                attempt, MAX_ATTEMPTS, e
-                            );
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                if attempt <= 3 {
-                    eprintln!(
-                        "  Client creation failed (attempt {}/{}): {}",
-                        attempt, MAX_ATTEMPTS, e
-                    );
-                }
-            }
-        }
+								if let Ok(info) = result {
+									if info.contains("cluster_state:ok") {
+										eprintln!(
+											"✓ Redis Cluster is ready (attempt {}/{})",
+											attempt, MAX_ATTEMPTS
+										);
+										return Ok(());
+									} else {
+										// Log only on first 3 attempts and every 10th attempt
+										if attempt <= 3 || attempt % 10 == 0 {
+											eprintln!(
+												"  Cluster initializing... (attempt {}/{})",
+												attempt, MAX_ATTEMPTS
+											);
+										}
+									}
+								} else if attempt <= 3 || attempt % 10 == 0 {
+									eprintln!(
+										"  CLUSTER INFO command failed (attempt {}/{})",
+										attempt, MAX_ATTEMPTS
+									);
+								}
+							}
+							Err(e) => {
+								if attempt <= 3 || attempt % 10 == 0 {
+									eprintln!(
+										"  Node not responding to PING (attempt {}/{}): {}",
+										attempt, MAX_ATTEMPTS, e
+									);
+								}
+							}
+						}
+					}
+					Err(e) => {
+						// Log connection errors only on first 3 attempts and every 10th
+						if attempt <= 3 || attempt % 10 == 0 {
+							eprintln!(
+								"  Connection failed (attempt {}/{}): {}",
+								attempt, MAX_ATTEMPTS, e
+							);
+						}
+					}
+				}
+			}
+			Err(e) => {
+				if attempt <= 3 {
+					eprintln!(
+						"  Client creation failed (attempt {}/{}): {}",
+						attempt, MAX_ATTEMPTS, e
+					);
+				}
+			}
+		}
 
-        if attempt < MAX_ATTEMPTS {
-            tokio::time::sleep(Duration::from_millis(RETRY_INTERVAL_MS)).await;
-        }
-    }
+		if attempt < MAX_ATTEMPTS {
+			tokio::time::sleep(Duration::from_millis(RETRY_INTERVAL_MS)).await;
+		}
+	}
 
-    Err(format!(
-        "Redis Cluster did not become ready after {} attempts ({}s timeout). \
+	Err(format!(
+		"Redis Cluster did not become ready after {} attempts ({}s timeout). \
          Image: neohq/redis-cluster:latest (ports 17000-17005). \
          Check that Docker/Podman is running and ports 17000-17005 are available.",
-        MAX_ATTEMPTS,
-        (MAX_ATTEMPTS as u64 * RETRY_INTERVAL_MS) / 1000
-    )
-    .into())
+		MAX_ATTEMPTS,
+		(MAX_ATTEMPTS as u64 * RETRY_INTERVAL_MS) / 1000
+	)
+	.into())
 }
 
 /// LocalStack container fixture for AWS services testing

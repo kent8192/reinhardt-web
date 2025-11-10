@@ -95,9 +95,7 @@ async fn test_logger_debug_filtered_by_default() {
 	let handler = Arc::new(MemoryHandler::new(LogLevel::Debug));
 	let handler_clone = handler.clone();
 
-	logger
-		.add_handler(handler_clone)
-		.await;
+	logger.add_handler(handler_clone).await;
 	logger.set_level(LogLevel::Info).await;
 
 	logger.debug("debug".to_string()).await;
@@ -113,9 +111,7 @@ async fn test_handler_level_filtering() {
 	let handler = Arc::new(MemoryHandler::new(LogLevel::Warning));
 	let handler_clone = handler.clone();
 
-	logger
-		.add_handler(handler_clone)
-		.await;
+	logger.add_handler(handler_clone).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	logger.debug("Should not log".to_string()).await;

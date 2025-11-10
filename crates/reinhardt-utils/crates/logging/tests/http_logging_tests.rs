@@ -36,9 +36,7 @@ async fn test_page_not_found_warning() {
 	let handler = Arc::new(MemoryHandler::new(LogLevel::Debug));
 	let handler_clone = handler.clone();
 
-	logger
-		.add_handler(handler_clone)
-		.await;
+	logger.add_handler(handler_clone).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	log_response(
@@ -141,9 +139,7 @@ async fn test_internal_server_error_599() {
 	let handler = Arc::new(MemoryHandler::new(LogLevel::Debug));
 	let handler_clone = handler.clone();
 
-	logger
-		.add_handler(handler_clone)
-		.await;
+	logger.add_handler(handler_clone).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	log_response(
@@ -168,9 +164,7 @@ async fn test_logs_5xx_as_error() {
 	let handler = Arc::new(MemoryHandler::new(LogLevel::Debug));
 	let handler_clone = handler.clone();
 
-	logger
-		.add_handler(handler_clone)
-		.await;
+	logger.add_handler(handler_clone).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	log_response(&logger, "Server error occurred", 508, "/test-path/").await;
@@ -187,9 +181,7 @@ async fn test_logs_4xx_as_warning() {
 	let handler = Arc::new(MemoryHandler::new(LogLevel::Debug));
 	let handler_clone = handler.clone();
 
-	logger
-		.add_handler(handler_clone)
-		.await;
+	logger.add_handler(handler_clone).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	log_response(&logger, "This is a teapot!", 418, "/test-path/").await;
@@ -206,9 +198,7 @@ async fn test_logs_2xx_as_info() {
 	let handler = Arc::new(MemoryHandler::new(LogLevel::Debug));
 	let handler_clone = handler.clone();
 
-	logger
-		.add_handler(handler_clone)
-		.await;
+	logger.add_handler(handler_clone).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	log_response(&logger, "OK response", 201, "/test-path/").await;
@@ -249,9 +239,7 @@ async fn test_multi_part_parser_error() {
 	let handler = Arc::new(MemoryHandler::new(LogLevel::Debug));
 	let handler_clone = handler.clone();
 
-	logger
-		.add_handler(handler_clone)
-		.await;
+	logger.add_handler(handler_clone).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	log_response(
@@ -275,9 +263,7 @@ async fn test_format_args_are_applied() {
 	let handler = Arc::new(MemoryHandler::new(LogLevel::Debug));
 	let handler_clone = handler.clone();
 
-	logger
-		.add_handler(handler_clone)
-		.await;
+	logger.add_handler(handler_clone).await;
 	logger.set_level(LogLevel::Debug).await;
 
 	let message = format!("Something went wrong: {} ({})", "DB error", 42);

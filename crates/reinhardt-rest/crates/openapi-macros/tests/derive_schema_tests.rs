@@ -2,8 +2,8 @@
 
 use reinhardt_openapi::{Schema, ToSchema};
 use utoipa::openapi::{
-	schema::{SchemaFormat, SchemaType, Type},
 	Deprecated,
+	schema::{SchemaFormat, SchemaType, Type},
 };
 
 #[test]

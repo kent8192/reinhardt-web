@@ -2,8 +2,8 @@
 
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Uri, Version, header};
-use reinhardt_micro::utils::*;
 use reinhardt_micro::Request;
+use reinhardt_micro::utils::*;
 use serde::{Deserialize, Serialize};
 
 #[test]

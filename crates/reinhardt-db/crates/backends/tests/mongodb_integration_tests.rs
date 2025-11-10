@@ -10,9 +10,7 @@ mod mongodb_tests {
 	};
 	use serial_test::serial;
 	use std::sync::Arc;
-	use testcontainers::{
-		GenericImage, core::WaitFor, runners::AsyncRunner,
-	};
+	use testcontainers::{GenericImage, core::WaitFor, runners::AsyncRunner};
 	use tokio::sync::OnceCell;
 
 	// Global container that will be reused across tests
@@ -28,8 +26,8 @@ mod mongodb_tests {
 			.get_or_init(|| async {
 				let image = GenericImage::new("mongo", "7.0")
 					.with_wait_for(WaitFor::message_on_stdout("Waiting for connections"));
-			// Note: with_exposed_port() is no longer needed in testcontainers 0.25.x
-			// Ports defined in the image's EXPOSE directive are automatically published
+				// Note: with_exposed_port() is no longer needed in testcontainers 0.25.x
+				// Ports defined in the image's EXPOSE directive are automatically published
 
 				let container = image.start().await.expect("Failed to start MongoDB");
 				let port = container

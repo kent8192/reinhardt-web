@@ -136,9 +136,13 @@ async fn spawn_websocket_server(
 				Ok((stream, peer_addr)) => {
 					let handler_clone = server.handler.clone();
 					tokio::spawn(async move {
-						if let Err(e) =
-							WebSocketServer::handle_connection(stream, handler_clone, peer_addr, None)
-								.await
+						if let Err(e) = WebSocketServer::handle_connection(
+							stream,
+							handler_clone,
+							peer_addr,
+							None,
+						)
+						.await
 						{
 							eprintln!("WebSocket connection error: {:?}", e);
 						}
