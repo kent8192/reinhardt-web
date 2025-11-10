@@ -13,17 +13,27 @@
 //! - **DRF-Compatible Permissions**: Permission classes for common authorization scenarios
 //! - **createsuperuser Command**: CLI tool for creating admin users
 
+// Re-export core authentication types from reinhardt-core
+pub use reinhardt_core::auth::{
+	AllowAny, AnonymousUser, AuthBackend, BaseUser, CompositeAuthBackend, FullUser, IsActiveUser,
+	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher, Permission,
+	PermissionContext, PermissionsMixin, SimpleUser, User,
+};
+
+#[cfg(feature = "argon2-hasher")]
+pub use reinhardt_core::auth::Argon2Hasher;
+
+// Re-export permission operators from core
+pub use reinhardt_core::auth::permission_operators;
+
+// Implementation-specific modules (kept in contrib)
 pub mod advanced_permissions;
-pub mod backend;
-pub mod base_user;
 pub mod base_user_manager;
 pub mod basic;
 pub mod default_user;
 pub mod default_user_manager;
-pub mod di_support;
 pub mod drf_authentication;
 pub mod drf_permissions;
-pub mod full_user;
 pub mod group_management;
 #[cfg(feature = "session")]
 pub mod handlers;
@@ -35,9 +45,6 @@ pub mod model_permissions;
 #[cfg(feature = "oauth")]
 pub mod oauth2;
 pub mod object_permissions;
-pub mod permission_operators;
-pub mod permissions;
-pub mod permissions_mixin;
 pub mod rate_limit_permission;
 pub mod remote_user;
 #[cfg(feature = "session")]
@@ -49,12 +56,9 @@ pub mod token_blacklist;
 pub mod token_rotation;
 #[cfg(any(feature = "jwt", feature = "token"))]
 pub mod token_storage;
-pub mod user;
 pub mod user_management;
 
 pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
-pub use backend::{Argon2Hasher, AuthBackend, CompositeAuthBackend, PasswordHasher};
-pub use base_user::BaseUser;
 pub use base_user_manager::BaseUserManager;
 pub use basic::BasicAuthentication as HttpBasicAuth;
 pub use default_user::DefaultUser;
@@ -66,7 +70,6 @@ pub use drf_authentication::{
 pub use drf_permissions::{
 	DrfAllowAny, DrfIsAdminUser, DrfIsAuthenticated, DrfIsAuthenticatedOrReadOnly,
 };
-pub use full_user::FullUser;
 pub use group_management::{
 	CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,
 };
@@ -86,11 +89,6 @@ pub use oauth2::{
 };
 pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPermissionManager};
 pub use permission_operators::{AndPermission, NotPermission, OrPermission};
-pub use permissions::{
-	AllowAny, IsActiveUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
-	PermissionContext,
-};
-pub use permissions_mixin::PermissionsMixin;
 pub use rate_limit_permission::{
 	RateLimitConfig, RateLimitConfigBuilder, RateLimitKeyStrategy, RateLimitPermission,
 	RateLimitPermissionBuilder,
@@ -110,7 +108,6 @@ pub use token_rotation::{AutoTokenRotationManager, TokenRotationConfig, TokenRot
 pub use token_storage::{
 	InMemoryTokenStorage, StoredToken, TokenStorage, TokenStorageError, TokenStorageResult,
 };
-pub use user::{AnonymousUser, SimpleUser, User};
 pub use user_management::{
 	CreateUserData, UpdateUserData, UserManagementError, UserManagementResult, UserManager,
 };
@@ -198,7 +195,7 @@ mod tests {
 	async fn test_permission_allow_any() {
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, Uri, Version};
-		use reinhardt_types::Request;
+		use reinhardt_core::types::Request;
 
 		let permission = AllowAny;
 		let request = Request::new(
@@ -224,7 +221,7 @@ mod tests {
 	async fn test_permission_is_authenticated_with_auth() {
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, Uri, Version};
-		use reinhardt_types::Request;
+		use reinhardt_core::types::Request;
 
 		let permission = IsAuthenticated;
 		let request = Request::new(
@@ -250,7 +247,7 @@ mod tests {
 	async fn test_permission_is_authenticated_without_auth() {
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, Uri, Version};
-		use reinhardt_types::Request;
+		use reinhardt_core::types::Request;
 
 		let permission = IsAuthenticated;
 		let request = Request::new(
@@ -276,7 +273,7 @@ mod tests {
 	async fn test_permission_is_admin_user() {
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, Uri, Version};
-		use reinhardt_types::Request;
+		use reinhardt_core::types::Request;
 
 		let permission = IsAdminUser;
 		let request = Request::new(
@@ -312,7 +309,7 @@ mod tests {
 	async fn test_permission_is_active_user() {
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, Uri, Version};
-		use reinhardt_types::Request;
+		use reinhardt_core::types::Request;
 
 		let permission = IsActiveUser;
 		let request = Request::new(
@@ -348,7 +345,7 @@ mod tests {
 	async fn test_permission_is_authenticated_or_read_only_get() {
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, Uri, Version};
-		use reinhardt_types::Request;
+		use reinhardt_core::types::Request;
 
 		let permission = IsAuthenticatedOrReadOnly;
 		let request = Request::new(
@@ -374,7 +371,7 @@ mod tests {
 	async fn test_permission_is_authenticated_or_read_only_post() {
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, Uri, Version};
-		use reinhardt_types::Request;
+		use reinhardt_core::types::Request;
 
 		let permission = IsAuthenticatedOrReadOnly;
 		let request = Request::new(

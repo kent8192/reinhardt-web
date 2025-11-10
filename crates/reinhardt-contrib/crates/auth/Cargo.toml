@@ -14,6 +14,7 @@ jwt = []
 session = []
 oauth = []
 token = []
+argon2-hasher = []
 
 # Database and session storage
 database = ["sqlx", "sea-query", "sea-query-binder"]
@@ -26,8 +27,7 @@ reinhardt-di = { workspace = true }
 reinhardt-sessions = { path = "../sessions" }
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-throttling = { path = "../../../reinhardt-rest/crates/throttling" }
-reinhardt-types = { path = "../../../reinhardt-core/crates/types" }
-reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
+reinhardt-core = { workspace = true, features = ["exception", "types", "auth"] }
 argon2 = { workspace = true }
 rand = { workspace = true }
 jsonwebtoken = { workspace = true }
