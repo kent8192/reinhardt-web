@@ -91,14 +91,15 @@ command = "cargo"
 args = ["test", "--workspace", "--doc", "--all-features"]
 
 [tasks.unit-test]
-description = "Run unit tests and doc tests"
+description = "Run unit tests and within-crate integration tests"
 command = "cargo"
-args = ["nextest", "run", "--workspace", "--lib", "--all-features", "--no-fail-fast"]
+args = ["nextest", "run", "--workspace", "--lib", "--tests", "--exclude", "reinhardt-integration-tests", "--all-features", "--no-fail-fast"]
 
 [tasks.integration-test]
 description = "Run integration tests (requires PostgreSQL, MySQL, Redis)"
+cwd = "tests/integration"
 command = "cargo"
-args = ["nextest", "run", "--workspace", "--tests", "--all-features", "--no-fail-fast"]
+args = ["nextest", "run", "--workspace", "--all-features", "--no-fail-fast"]
 
 [tasks.test]
 description = "Run all tests"
