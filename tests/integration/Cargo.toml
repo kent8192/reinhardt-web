@@ -37,7 +37,9 @@ reinhardt-http = { path = "../../crates/reinhardt-http" }
 reinhardt-server = { path = "../../crates/reinhardt-server" }
 reinhardt-logging = { path = "../../crates/reinhardt-utils/crates/logging" }
 reinhardt-mail = { path = "../../crates/reinhardt-contrib/crates/mail" }
+reinhardt-contenttypes = { path = "../../crates/reinhardt-contrib/crates/contenttypes", features = ["database"] }
 reinhardt-di = { path = "../../crates/reinhardt-di" }
+reinhardt-params = { path = "../../crates/reinhardt-di/crates/params" }
 reinhardt-macros = { path = "../../crates/reinhardt-core/crates/macros" }
 reinhardt-static = { path = "../../crates/reinhardt-contrib/crates/static", features = [
   "templates-integration",
@@ -49,6 +51,7 @@ reinhardt-renderers = { path = "../../crates/reinhardt-template/crates/renderers
 reinhardt-validators = { path = "../../crates/reinhardt-core/crates/validators" }
 reinhardt-serializers = { path = "../../crates/reinhardt-rest/crates/serializers" }
 reinhardt-settings = { path = "../../crates/reinhardt-conf/crates/settings", features = [
+  "async",
   "dynamic-database",
   "dynamic-redis",
   "hot-reload",
@@ -62,7 +65,7 @@ reinhardt-pagination = { path = "../../crates/reinhardt-rest/crates/pagination" 
 reinhardt-filters = { path = "../../crates/reinhardt-rest/crates/filters" }
 reinhardt-forms = { path = "../../crates/reinhardt-forms" }
 reinhardt-throttling = { path = "../../crates/reinhardt-rest/crates/throttling" }
-reinhardt-utils = { path = "../../crates/reinhardt-utils" }
+reinhardt-utils = { path = "../../crates/reinhardt-utils", features = ["cache", "logging"] }
 reinhardt-storage = { path = "../../crates/reinhardt-utils/crates/storage" }
 reinhardt-test = { path = "../../crates/reinhardt-test", features = ["testcontainers"] }
 reinhardt-sessions = { path = "../../crates/reinhardt-contrib/crates/sessions", features = [
@@ -95,6 +98,7 @@ bytes = "1.0"
 
 # GraphQL
 async-graphql = "7.0.17"
+futures = "0.3"
 futures-util = "0.3"
 
 # Utilities
@@ -125,6 +129,8 @@ default = ["postgres", "sqlite"]
 testcontainers = []
 postgres = ["reinhardt-orm/postgres", "backends/postgres"]
 sqlite = ["reinhardt-orm/sqlite", "backends/sqlite"]
+caching = []
+hot-reload = []
 
 [dev-dependencies]
 # Test utilities
