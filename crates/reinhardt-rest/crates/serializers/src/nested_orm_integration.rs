@@ -8,7 +8,7 @@
 
 use crate::{SerializerError, ValidatorError};
 use async_trait::async_trait;
-use reinhardt_orm::{
+use reinhardt_db::orm::{
 	Model,
 	transaction::{Transaction, TransactionScope, transaction},
 };
@@ -291,7 +291,7 @@ where
 		T::PrimaryKey: std::fmt::Display,
 		R::PrimaryKey: std::fmt::Display,
 	{
-		use reinhardt_orm::manager::get_connection;
+		use reinhardt_db::orm::manager::get_connection;
 
 		if target_ids.is_empty() {
 			return Ok(());
@@ -336,7 +336,7 @@ where
 		T::PrimaryKey: std::fmt::Display,
 		R::PrimaryKey: std::fmt::Display,
 	{
-		use reinhardt_orm::manager::get_connection;
+		use reinhardt_db::orm::manager::get_connection;
 
 		if target_ids.is_empty() {
 			return Ok(());
@@ -406,7 +406,7 @@ where
 	where
 		T::PrimaryKey: std::fmt::Display,
 	{
-		use reinhardt_orm::manager::get_connection;
+		use reinhardt_db::orm::manager::get_connection;
 
 		let query = format!(
 			"DELETE FROM {} WHERE {} = {}",
@@ -464,7 +464,7 @@ impl TransactionHelper {
 		F: FnOnce(&TransactionScope) -> Fut,
 		Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
 	{
-		use reinhardt_orm::manager::get_connection;
+		use reinhardt_db::orm::manager::get_connection;
 
 		// Get database connection
 		let conn = get_connection().await.map_err(|e| SerializerError::Other {
@@ -513,7 +513,7 @@ impl TransactionHelper {
 		F: FnOnce(&TransactionScope) -> Fut,
 		Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
 	{
-		use reinhardt_orm::manager::get_connection;
+		use reinhardt_db::orm::manager::get_connection;
 
 		// Get database connection
 		let conn = get_connection().await.map_err(|e| SerializerError::Other {

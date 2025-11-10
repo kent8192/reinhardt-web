@@ -858,7 +858,7 @@ impl NamespaceVersioning {
 	///
 	/// ```
 	/// use reinhardt_versioning::NamespaceVersioning;
-	/// use reinhardt_routers::DefaultRouter;
+	/// use reinhardt_urls::routers::DefaultRouter;
 	///
 	/// let versioning = NamespaceVersioning::new()
 	///     .with_pattern("/v{version}/")
@@ -870,7 +870,7 @@ impl NamespaceVersioning {
 	/// ```
 	pub fn extract_version_from_router(
 		&self,
-		router: &reinhardt_routers::DefaultRouter,
+		router: &reinhardt_urls::routers::DefaultRouter,
 		path: &str,
 	) -> Option<String> {
 		router
@@ -912,7 +912,7 @@ impl NamespaceVersioning {
 	/// ```
 	pub fn get_available_versions_from_router(
 		&self,
-		router: &reinhardt_routers::DefaultRouter,
+		router: &reinhardt_urls::routers::DefaultRouter,
 	) -> Vec<String> {
 		router.get_available_versions(&self.pattern)
 	}

@@ -4,7 +4,7 @@
 //! field_lookup adds comparison methods.
 
 use crate::ordering_field::{OrderDirection, OrderingField};
-use reinhardt_orm::{Field, Model};
+use reinhardt_db::orm::{Field, Model};
 
 /// Extension trait to add ordering methods to Field
 pub trait FieldOrderingExt<M: Model, T> {
@@ -42,7 +42,7 @@ impl<M: Model, T> FieldOrderingExt<M, T> for Field<M, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_orm::Model;
+	use reinhardt_db::orm::Model;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestPost {

@@ -4,7 +4,7 @@
 //! multiple fields, combining them with AND/OR logic.
 
 use crate::searchable::SearchableModel;
-use reinhardt_orm::{Field, Lookup, Model};
+use reinhardt_db::orm::{Field, Lookup, Model};
 
 /// Combines multiple search terms across multiple fields
 ///
@@ -171,7 +171,7 @@ impl MultiTermSearch {
 			return None;
 		}
 
-		use reinhardt_orm::QueryFieldCompiler;
+		use reinhardt_db::orm::QueryFieldCompiler;
 
 		let term_clauses: Vec<String> = term_lookups
 			.into_iter()
@@ -352,7 +352,7 @@ impl MultiTermSearch {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_orm::{Field, Model};
+	use reinhardt_db::orm::{Field, Model};
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestPost {

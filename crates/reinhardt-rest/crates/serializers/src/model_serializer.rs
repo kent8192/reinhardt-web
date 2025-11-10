@@ -9,7 +9,7 @@ use crate::nested_config::{NestedFieldConfig, NestedSerializerConfig};
 use crate::validator_config::ValidatorConfig;
 use crate::validators::{UniqueTogetherValidator, UniqueValidator};
 use crate::{Serializer, SerializerError};
-use reinhardt_orm::Model;
+use reinhardt_db::orm::Model;
 use std::marker::PhantomData;
 
 /// ModelSerializer provides automatic serialization for ORM models
@@ -22,7 +22,7 @@ use std::marker::PhantomData;
 ///
 /// ```no_run
 /// # use reinhardt_serializers::{ModelSerializer, Serializer};
-/// # use reinhardt_orm::Engine;
+/// # use reinhardt_db::orm::Engine;
 /// # use reinhardt_auth::DefaultUser;
 /// # use uuid::Uuid;
 /// #
@@ -157,7 +157,7 @@ where
 	///
 	/// ```
 	/// # use reinhardt_serializers::{ModelSerializer, nested_config::NestedFieldConfig};
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,7 +192,7 @@ where
 	///
 	/// ```
 	/// # use reinhardt_serializers::{ModelSerializer, nested_config::NestedFieldConfig};
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]

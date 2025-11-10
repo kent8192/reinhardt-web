@@ -4,7 +4,7 @@
 //! URL fields for model instances, enabling HATEOAS-style REST APIs.
 
 use crate::{Serializer, SerializerError};
-use reinhardt_orm::Model;
+use reinhardt_db::orm::Model;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -53,7 +53,7 @@ pub trait UrlReverser: Send + Sync {
 ///
 /// ```no_run
 /// # use reinhardt_serializers::{HyperlinkedModelSerializer, UrlReverser, Serializer};
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// # use std::sync::Arc;
 /// # use std::collections::HashMap;
@@ -114,7 +114,7 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
 	///
 	/// ```
 	/// # use reinhardt_serializers::{HyperlinkedModelSerializer, UrlReverser};
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use std::sync::Arc;
 	/// # use std::collections::HashMap;
@@ -156,7 +156,7 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
 	///
 	/// ```
 	/// # use reinhardt_serializers::HyperlinkedModelSerializer;
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]

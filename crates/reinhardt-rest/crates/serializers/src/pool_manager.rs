@@ -4,7 +4,7 @@
 //! in serializers, enabling efficient database access in high-concurrency scenarios.
 
 use crate::SerializerError;
-use reinhardt_pool::{ConnectionPool, PoolConfig};
+use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 use std::sync::{Arc, RwLock};
 
 /// Global connection pool manager
@@ -16,7 +16,7 @@ use std::sync::{Arc, RwLock};
 ///
 /// ```ignore
 /// use reinhardt_serializers::pool_manager::ConnectionPoolManager;
-/// use reinhardt_pool::{ConnectionPool, PoolConfig};
+/// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 ///
 /// // Initialize the pool
 /// let config = PoolConfig::default()
@@ -90,7 +90,7 @@ impl ConnectionPoolManager {
 	/// // Connection is automatically returned to pool when dropped
 	/// ```
 	pub async fn acquire()
-	-> Result<reinhardt_pool::PooledConnection<sqlx::Postgres>, SerializerError> {
+	-> Result<reinhardt_db::pool::PooledConnection<sqlx::Postgres>, SerializerError> {
 		let pool = Self::get_pool().ok_or_else(|| SerializerError::Other {
 			message: "Connection pool not initialized".to_string(),
 		})?;

@@ -7,7 +7,7 @@
 //!
 //! ```no_run
 //! use reinhardt_serializers::validators::{UniqueValidator, UniqueTogetherValidator};
-//! use reinhardt_orm::Model;
+//! use reinhardt_db::orm::Model;
 //! use serde::{Serialize, Deserialize};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,7 +43,7 @@
 //! ```
 
 use crate::SerializerError;
-use reinhardt_orm::Model;
+use reinhardt_db::orm::Model;
 use sea_query::{Alias, Asterisk, Expr, ExprTrait, Func, PostgresQueryBuilder, Query};
 use sqlx::{Pool, Postgres, Row};
 use std::marker::PhantomData;
@@ -113,7 +113,7 @@ impl From<DatabaseValidatorError> for SerializerError {
 ///
 /// ```no_run
 /// # use reinhardt_serializers::validators::UniqueValidator;
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,7 +156,7 @@ impl<M: Model> UniqueValidator<M> {
 	///
 	/// ```
 	/// # use reinhardt_serializers::validators::UniqueValidator;
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,7 +186,7 @@ impl<M: Model> UniqueValidator<M> {
 	///
 	/// ```
 	/// # use reinhardt_serializers::validators::UniqueValidator;
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,7 +284,7 @@ impl<M: Model> UniqueValidator<M> {
 ///
 /// ```no_run
 /// # use reinhardt_serializers::validators::UniqueTogetherValidator;
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// # use std::collections::HashMap;
 /// #
@@ -328,7 +328,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 	///
 	/// ```
 	/// # use reinhardt_serializers::validators::UniqueTogetherValidator;
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -358,7 +358,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 	///
 	/// ```
 	/// # use reinhardt_serializers::validators::UniqueTogetherValidator;
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]

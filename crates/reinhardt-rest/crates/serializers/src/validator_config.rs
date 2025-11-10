@@ -4,7 +4,7 @@
 //! in ModelSerializer instances.
 
 use crate::validators::{UniqueTogetherValidator, UniqueValidator};
-use reinhardt_orm::Model;
+use reinhardt_db::orm::Model;
 use std::marker::PhantomData;
 
 /// Configuration for field validators
@@ -22,7 +22,7 @@ impl<M: Model> ValidatorConfig<M> {
 	///
 	/// ```
 	/// use reinhardt_serializers::validator_config::ValidatorConfig;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,7 +55,7 @@ impl<M: Model> ValidatorConfig<M> {
 	/// ```
 	/// use reinhardt_serializers::validator_config::ValidatorConfig;
 	/// use reinhardt_serializers::validators::UniqueValidator;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,7 +85,7 @@ impl<M: Model> ValidatorConfig<M> {
 	/// ```
 	/// use reinhardt_serializers::validator_config::ValidatorConfig;
 	/// use reinhardt_serializers::validators::UniqueTogetherValidator;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,7 +128,7 @@ impl<M: Model> ValidatorConfig<M> {
 	/// ```
 	/// use reinhardt_serializers::validator_config::ValidatorConfig;
 	/// use reinhardt_serializers::validators::UniqueValidator;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]

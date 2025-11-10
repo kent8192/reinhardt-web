@@ -34,7 +34,7 @@
 
 use crate::arena::SerializationArena;
 use crate::{Serializer, SerializerError};
-use reinhardt_orm::Model;
+use reinhardt_db::orm::Model;
 use serde_json::Value;
 use std::marker::PhantomData;
 
@@ -47,7 +47,7 @@ use std::marker::PhantomData;
 ///
 /// ```
 /// # use reinhardt_serializers::NestedSerializer;
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,7 +102,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	///
 	/// ```
 	/// # use reinhardt_serializers::NestedSerializer;
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,7 +147,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	///
 	/// ```
 	/// # use reinhardt_serializers::NestedSerializer;
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,7 +187,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	///
 	/// ```
 	/// # use reinhardt_serializers::NestedSerializer;
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,7 +284,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 ///
 /// ```
 /// # use reinhardt_serializers::ListSerializer;
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -366,7 +366,7 @@ impl<M: Model> Serializer for ListSerializer<M> {
 ///
 /// ```ignore
 /// use reinhardt_serializers::WritableNestedSerializer;
-/// use reinhardt_orm::{Model, Transaction};
+/// use reinhardt_db::orm::{Model, Transaction};
 ///
 /// // Define serializer with permissions
 /// let serializer = WritableNestedSerializer::<Post, Author>::new("author")
@@ -438,7 +438,7 @@ impl<M: Model> Serializer for ListSerializer<M> {
 ///
 /// ```
 /// # use reinhardt_serializers::WritableNestedSerializer;
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]

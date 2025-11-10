@@ -12,7 +12,7 @@
 
 use crate::SerializerError;
 use async_trait::async_trait;
-use reinhardt_orm::{Model, QuerySet};
+use reinhardt_db::orm::{Model, QuerySet};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -161,7 +161,7 @@ where
 		}
 
 		// Integrate with Manager.update()
-		use reinhardt_orm::manager::Manager;
+		use reinhardt_db::orm::manager::Manager;
 
 		let manager = Manager::<Self::Model>::new();
 		let updated = manager
@@ -297,7 +297,7 @@ impl SaveContext {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_orm::Model;
+	use reinhardt_db::orm::Model;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

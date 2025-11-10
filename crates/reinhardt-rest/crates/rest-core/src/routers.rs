@@ -12,7 +12,7 @@
 //! ```
 
 // Re-export router types from reinhardt-routers
-pub use reinhardt_routers::{DefaultRouter, Router};
+pub use reinhardt_urls::routers::{DefaultRouter, Router};
 
 // Re-export additional types needed for URL patterns
-pub use reinhardt_routers::{Route, UrlPattern};
+pub use reinhardt_urls::routers::{Route, UrlPattern};

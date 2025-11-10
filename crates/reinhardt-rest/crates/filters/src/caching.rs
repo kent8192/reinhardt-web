@@ -8,7 +8,7 @@
 //!
 //! ```ignore
 //! use reinhardt_filters::{CachedFilterBackend, FilterBackend};
-//! use reinhardt_cache::InMemoryCache;
+//! use reinhardt_utils::cache::InMemoryCache;
 //! use std::time::Duration;
 //! use std::collections::HashMap;
 //!
@@ -30,7 +30,7 @@ use crate::filter::{FilterBackend, FilterResult};
 use async_trait::async_trait;
 
 #[cfg(feature = "caching")]
-use reinhardt_cache::Cache;
+use reinhardt_utils::cache::Cache;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -88,7 +88,7 @@ struct CachedResult {
 ///
 /// ```ignore
 /// use reinhardt_filters::{CachedFilterBackend, FilterBackend};
-/// use reinhardt_cache::InMemoryCache;
+/// use reinhardt_utils::cache::InMemoryCache;
 /// use std::time::Duration;
 /// use std::collections::HashMap;
 ///
@@ -128,7 +128,7 @@ impl<C: Cache> CachedFilterBackend<C> {
 	///
 	/// ```
 	/// use reinhardt_filters::CachedFilterBackend;
-	/// use reinhardt_cache::InMemoryCache;
+	/// use reinhardt_utils::cache::InMemoryCache;
 	/// use std::time::Duration;
 	///
 	/// let cache = InMemoryCache::new();
@@ -148,7 +148,7 @@ impl<C: Cache> CachedFilterBackend<C> {
 	///
 	/// ```
 	/// use reinhardt_filters::{CachedFilterBackend, SimpleSearchBackend};
-	/// use reinhardt_cache::InMemoryCache;
+	/// use reinhardt_utils::cache::InMemoryCache;
 	/// use std::time::Duration;
 	///
 	/// let cache = InMemoryCache::new();
@@ -167,7 +167,7 @@ impl<C: Cache> CachedFilterBackend<C> {
 	///
 	/// ```
 	/// use reinhardt_filters::CachedFilterBackend;
-	/// use reinhardt_cache::InMemoryCache;
+	/// use reinhardt_utils::cache::InMemoryCache;
 	/// use std::time::Duration;
 	///
 	/// let cache = InMemoryCache::new();
@@ -262,7 +262,7 @@ impl CacheStats {
 mod tests {
 	use super::*;
 	use crate::backend::SimpleSearchBackend;
-	use reinhardt_cache::InMemoryCache;
+	use reinhardt_utils::cache::InMemoryCache;
 
 	#[test]
 	fn test_generate_cache_key_consistent() {

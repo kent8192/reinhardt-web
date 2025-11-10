@@ -3,7 +3,7 @@
 //! Defines which fields are searchable and the default ordering for a model.
 
 use crate::ordering_field::OrderingField;
-use reinhardt_orm::{Field, Model};
+use reinhardt_db::orm::{Field, Model};
 
 /// Trait for models that support search and ordering
 ///
@@ -14,7 +14,7 @@ use reinhardt_orm::{Field, Model};
 ///
 /// ```rust,ignore
 /// use reinhardt_filters::SearchableModel;
-/// use reinhardt_orm::{Model, Field};
+/// use reinhardt_db::orm::{Model, Field};
 ///
 /// #[derive(Model)]
 /// struct Post {

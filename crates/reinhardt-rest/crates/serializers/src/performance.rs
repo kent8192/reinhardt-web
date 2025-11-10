@@ -280,7 +280,7 @@ impl BatchValidator {
 		table: &str,
 		queries: &[UniqueCheckQuery],
 	) -> Result<HashMap<String, String>, SerializerError> {
-		use reinhardt_orm::manager::get_connection;
+		use reinhardt_db::orm::manager::get_connection;
 
 		let mut failed_checks = HashMap::new();
 

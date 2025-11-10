@@ -3,7 +3,7 @@
 //! Provides compile-time safe field ordering using reinhardt-orm's Field system.
 //! Similar to Field/Lookup pattern in field_lookup module.
 
-use reinhardt_orm::Model;
+use reinhardt_db::orm::Model;
 use std::marker::PhantomData;
 
 /// Ordering direction
@@ -24,7 +24,7 @@ pub enum OrderDirection {
 ///
 /// ```rust,ignore
 /// use reinhardt_filters::OrderingField;
-/// use reinhardt_orm::Field;
+/// use reinhardt_db::orm::Field;
 ///
 // Create ascending ordering - call .asc() on Field
 /// let field = Field::<Post, String>::new(vec!["title"]);
@@ -55,7 +55,7 @@ impl<M: Model> OrderingField<M> {
 	///
 	/// ```rust,ignore
 	/// use reinhardt_filters::OrderingField;
-	/// use reinhardt_orm::Field;
+	/// use reinhardt_db::orm::Field;
 	///
 	/// let field = Field::<Post, String>::new(vec!["title"]);
 	/// let order = field.asc();
@@ -70,7 +70,7 @@ impl<M: Model> OrderingField<M> {
 	///
 	/// ```rust,ignore
 	/// use reinhardt_filters::{OrderingField, OrderDirection};
-	/// use reinhardt_orm::Field;
+	/// use reinhardt_db::orm::Field;
 	///
 	/// let field = Field::<Post, String>::new(vec!["created_at"]);
 	/// let order = field.desc();
@@ -115,7 +115,7 @@ impl<M: Model> Clone for OrderingField<M> {
 mod tests {
 	use super::*;
 	use crate::field_extensions::FieldOrderingExt;
-	use reinhardt_orm::{Field, Model};
+	use reinhardt_db::orm::{Field, Model};
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestPost {

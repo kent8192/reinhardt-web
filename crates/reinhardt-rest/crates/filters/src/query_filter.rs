@@ -6,7 +6,7 @@
 use crate::filter::{FilterBackend, FilterResult};
 use crate::ordering_field::OrderingField;
 use async_trait::async_trait;
-use reinhardt_orm::{Lookup, Model, QueryFieldCompiler};
+use reinhardt_db::orm::{Lookup, Model, QueryFieldCompiler};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
@@ -19,7 +19,7 @@ use std::marker::PhantomData;
 ///
 /// ```rust,ignore
 /// use reinhardt_filters::QueryFilter;
-/// use reinhardt_orm::Field;
+/// use reinhardt_db::orm::Field;
 ///
 /// let filter = QueryFilter::<Post>::new()
 ///     .add(Field::new(vec!["title"]).icontains("rust"))
@@ -277,7 +277,7 @@ impl<M: Model> FilterBackend for QueryFilter<M> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_orm::Field;
+	use reinhardt_db::orm::Field;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestPost {

@@ -7,7 +7,7 @@
 
 use crate::{SerializerError, ValidatorError};
 use async_trait::async_trait;
-use reinhardt_orm::{Model, query::*};
+use reinhardt_db::orm::{Model, query::*};
 use serde::{Serialize, de::DeserializeOwned};
 use std::future::Future;
 use std::marker::PhantomData;
@@ -93,7 +93,7 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_orm::query::{Filter, FilterOperator, FilterValue};
+	/// use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue};
 	///
 	/// let field = PrimaryKeyRelatedFieldORM::<User>::new()
 	///     .with_queryset_filter(Filter::new(
@@ -128,7 +128,7 @@ where
 		T: Model + Serialize + DeserializeOwned + Clone + Send + Sync,
 		T::PrimaryKey: std::fmt::Display + Clone + Send + Sync,
 	{
-		use reinhardt_orm::QuerySet;
+		use reinhardt_db::orm::QuerySet;
 
 		let mut queryset = QuerySet::<T>::new();
 
@@ -174,7 +174,7 @@ where
 		T: Model + Serialize + DeserializeOwned + Clone + Send + Sync,
 		T::PrimaryKey: std::fmt::Display + Clone + Send + Sync,
 	{
-		use reinhardt_orm::QuerySet;
+		use reinhardt_db::orm::QuerySet;
 
 		let mut queryset = QuerySet::<T>::new();
 
@@ -224,7 +224,7 @@ where
 		T: Model + Serialize + DeserializeOwned + Clone + Send + Sync,
 		T::PrimaryKey: std::fmt::Display + Clone + Send + Sync,
 	{
-		use reinhardt_orm::QuerySet;
+		use reinhardt_db::orm::QuerySet;
 
 		if pks.is_empty() {
 			return Ok(Vec::new());
@@ -343,7 +343,7 @@ where
 	/// field.validate_exists("alice").await?;
 	/// ```
 	pub async fn validate_exists(&self, slug: &str) -> Result<(), SerializerError> {
-		use reinhardt_orm::QuerySet;
+		use reinhardt_db::orm::QuerySet;
 
 		let mut queryset = QuerySet::<T>::new();
 
@@ -387,7 +387,7 @@ where
 	/// assert_eq!(user.username, "alice");
 	/// ```
 	pub async fn get_instance(&self, slug: &str) -> Result<T, SerializerError> {
-		use reinhardt_orm::QuerySet;
+		use reinhardt_db::orm::QuerySet;
 
 		let mut queryset = QuerySet::<T>::new();
 
@@ -430,7 +430,7 @@ where
 	/// assert_eq!(users.len(), 2);
 	/// ```
 	pub async fn get_instances(&self, slugs: Vec<String>) -> Result<Vec<T>, SerializerError> {
-		use reinhardt_orm::QuerySet;
+		use reinhardt_db::orm::QuerySet;
 
 		if slugs.is_empty() {
 			return Ok(Vec::new());
@@ -548,7 +548,7 @@ pub trait OptimizableRelationField {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_orm::Model;
+	use reinhardt_db::orm::Model;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

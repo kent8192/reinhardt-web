@@ -14,7 +14,7 @@
 //!
 //! ```
 //! use reinhardt_serializers::arena::{SerializationArena, FieldValue};
-//! use reinhardt_orm::Model;
+//! use reinhardt_db::orm::Model;
 //!
 //! # use serde::{Serialize, Deserialize};
 //! # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +41,7 @@
 //! ```
 //! use reinhardt_serializers::arena::SerializationArena;
 //! use serde::{Serialize, Deserialize};
-//! use reinhardt_orm::Model;
+//! use reinhardt_db::orm::Model;
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
 //! struct Post { id: Option<i64>, title: String }
@@ -210,7 +210,7 @@ impl<'a> SerializationArena<'a> {
 	///
 	/// ```
 	/// use reinhardt_serializers::arena::SerializationArena;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
