@@ -24,6 +24,12 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          protoc --version
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
@@ -59,6 +65,12 @@ jobs:
         with:
           components: clippy
 
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          protoc --version
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
@@ -75,6 +87,12 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          protoc --version
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
@@ -125,6 +143,12 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          protoc --version
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
