@@ -454,7 +454,7 @@ async fn test_macro_injection_error_propagation() {
 	#[derive(Clone, Injectable)]
 	struct ErrorPropagationStruct {
 		#[inject]
-		service: FailingService,
+		_service: FailingService,
 	}
 
 	let singleton = Arc::new(SingletonScope::new());

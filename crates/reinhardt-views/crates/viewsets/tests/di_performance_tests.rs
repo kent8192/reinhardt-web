@@ -145,24 +145,24 @@ async fn test_injection_speed_multiple_dependencies() {
 async fn test_injection_speed_nested_dependencies() {
 	#[derive(Clone)]
 	struct InnerService {
-		value: i32,
+		_value: i32,
 	}
 	impl Default for InnerService {
 		fn default() -> Self {
-			Self { value: 10 }
+			Self { _value: 10 }
 		}
 	}
 
 	#[derive(Clone, InjectableDerive)]
 	struct MiddleService {
 		#[inject]
-		inner: InnerService,
+		_inner: InnerService,
 	}
 
 	#[derive(Clone, InjectableDerive)]
 	struct OuterService {
 		#[inject]
-		middle: MiddleService,
+		_middle: MiddleService,
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
@@ -243,20 +243,20 @@ async fn test_cache_miss_with_no_cache() {
 
 	#[derive(Clone)]
 	struct FreshService {
-		id: usize,
+		_id: usize,
 	}
 
 	impl Default for FreshService {
 		fn default() -> Self {
 			let count = NO_CACHE_COUNTER.fetch_add(1, Ordering::SeqCst);
-			Self { id: count }
+			Self { _id: count }
 		}
 	}
 
 	#[derive(Clone, InjectableDerive)]
 	struct NoCacheViewSet {
 		#[inject(cache = false)]
-		service: FreshService,
+		_service: FreshService,
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
@@ -287,24 +287,24 @@ async fn test_mixed_cache_behavior() {
 
 	#[derive(Clone)]
 	struct CachedService {
-		id: usize,
+		_id: usize,
 	}
 	impl Default for CachedService {
 		fn default() -> Self {
 			Self {
-				id: MIXED_CACHED.fetch_add(1, Ordering::SeqCst),
+				_id: MIXED_CACHED.fetch_add(1, Ordering::SeqCst),
 			}
 		}
 	}
 
 	#[derive(Clone)]
 	struct FreshService {
-		id: usize,
+		_id: usize,
 	}
 	impl Default for FreshService {
 		fn default() -> Self {
 			Self {
-				id: MIXED_FRESH.fetch_add(1, Ordering::SeqCst),
+				_id: MIXED_FRESH.fetch_add(1, Ordering::SeqCst),
 			}
 		}
 	}
@@ -350,14 +350,14 @@ async fn test_memory_reuse_with_caching() {
 	#[derive(Clone)]
 	struct LargeService {
 		id: usize,
-		data: Vec<u8>,
+		_data: Vec<u8>,
 	}
 
 	impl Default for LargeService {
 		fn default() -> Self {
 			Self {
 				id: MEMORY_COUNTER.fetch_add(1, Ordering::SeqCst),
-				data: vec![0; 1024], // 1KB per instance
+				_data: vec![0; 1024], // 1KB per instance
 			}
 		}
 	}
@@ -405,13 +405,13 @@ async fn test_context_cleanup() {
 
 	#[derive(Clone)]
 	struct CleanupService {
-		id: usize,
+		_id: usize,
 	}
 
 	impl Default for CleanupService {
 		fn default() -> Self {
 			Self {
-				id: CLEANUP_COUNTER.fetch_add(1, Ordering::SeqCst),
+				_id: CLEANUP_COUNTER.fetch_add(1, Ordering::SeqCst),
 			}
 		}
 	}
@@ -419,7 +419,7 @@ async fn test_context_cleanup() {
 	#[derive(Clone, InjectableDerive)]
 	struct CleanupViewSet {
 		#[inject]
-		service: CleanupService,
+		_service: CleanupService,
 	}
 
 	let start_count = CLEANUP_COUNTER.load(Ordering::SeqCst);

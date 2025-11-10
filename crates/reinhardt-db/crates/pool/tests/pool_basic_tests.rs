@@ -2,7 +2,7 @@
 //! Covers pool creation, connection acquisition, and basic operations
 
 use reinhardt_pool::{ConnectionPool, PoolConfig};
-use sqlx::{Connection, Executor, Row, Sqlite};
+use sqlx::Sqlite;
 
 #[tokio::test]
 async fn test_pool_creation() {

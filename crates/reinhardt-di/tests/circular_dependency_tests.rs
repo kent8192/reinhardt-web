@@ -154,7 +154,7 @@ async fn test_optional_dependency() {
 
 	#[derive(Clone, Debug)]
 	struct OptionalService {
-		value: Option<String>,
+		_value: Option<String>,
 	}
 
 	#[async_trait::async_trait]

@@ -8,14 +8,14 @@ use uuid::Uuid;
 /// Mock authentication backend for testing
 struct MockAuthBackend {
 	users: Vec<SimpleUser>,
-	hasher: Argon2Hasher,
+	_hasher: Argon2Hasher,
 }
 
 impl MockAuthBackend {
 	fn new() -> Self {
 		Self {
 			users: Vec::new(),
-			hasher: Argon2Hasher::new(),
+			_hasher: Argon2Hasher::new(),
 		}
 	}
 
