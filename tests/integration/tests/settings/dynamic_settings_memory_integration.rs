@@ -4,8 +4,8 @@
 //! the in-memory backend, including CRUD operations, caching, observer pattern,
 //! and TTL support.
 
-use reinhardt_conf::settings::backends::MemoryBackend;
-use reinhardt_conf::settings::dynamic::{DynamicBackend, DynamicSettings};
+use reinhardt_settings::backends::MemoryBackend;
+use reinhardt_settings::dynamic::{DynamicBackend, DynamicSettings};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -124,7 +124,8 @@ async fn test_memory_backend_observer_pattern() {
 #[cfg(feature = "caching")]
 async fn test_memory_backend_with_cache() {
 	let backend = Arc::new(MemoryBackend::new());
-	let settings = DynamicSettings::new(backend.clone()).with_cache(100);
+	let mut settings = DynamicSettings::new(backend.clone());
+	settings.enable_cache(100, None);
 
 	// Set a value
 	settings
@@ -236,7 +237,8 @@ async fn test_memory_backend_concurrent_access() {
 #[cfg(feature = "caching")]
 async fn test_memory_backend_clear_cache() {
 	let backend = Arc::new(MemoryBackend::new());
-	let settings = DynamicSettings::new(backend.clone()).with_cache(100);
+	let mut settings = DynamicSettings::new(backend.clone());
+	settings.enable_cache(100, None);
 
 	// Set multiple values
 	settings.set("key1", &"value1", None).await.unwrap();
