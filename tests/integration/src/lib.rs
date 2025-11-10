@@ -23,6 +23,10 @@ pub mod db_transaction;
 pub mod proxy;
 pub mod validator_test_common;
 
+// Settings integration tests
+#[cfg(test)]
+mod settings;
+
 /// Test database setup
 pub async fn setup_test_db() -> Pool<Postgres> {
 	let database_url = std::env::var("TEST_DATABASE_URL")
