@@ -129,7 +129,8 @@ pub mod views;
 pub use reinhardt_apps::{AppConfig, AppError, AppResult, Apps};
 
 // Re-export settings from dedicated crate
-pub use reinhardt_settings::{
+#[cfg(feature = "conf")]
+pub use reinhardt_conf::settings::{
 	AdvancedSettings, CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings,
 	MediaSettings, MiddlewareConfig, SessionSettings, Settings, SettingsError, StaticSettings,
 	TemplateConfig,
@@ -139,7 +140,8 @@ pub use reinhardt_settings::{
 pub use reinhardt_apps::{Error, Handler, Middleware, MiddlewareChain, Request, Response, Result};
 
 // Re-export ORM
-pub use reinhardt_orm::{
+#[cfg(feature = "database")]
+pub use reinhardt_db::orm::{
 	DatabaseBackend, DatabaseConnection, Model, QuerySet, SoftDeletable, SoftDelete, Timestamped,
 	Timestamps,
 };
@@ -149,28 +151,30 @@ pub use reinhardt_orm::{
 pub use reinhardt_db::pool::{ConnectionPool, PoolConfig, PoolError};
 
 // Re-export serializers
-pub use reinhardt_serializers::{Deserializer, JsonSerializer, Serializer};
+#[cfg(feature = "rest")]
+pub use reinhardt_rest::serializers::{Deserializer, JsonSerializer, Serializer};
 
 // Re-export viewsets
-pub use reinhardt_viewsets::{
+pub use reinhardt_views::viewsets::{
 	Action, ActionType, CreateMixin, DestroyMixin, GenericViewSet, ListMixin, ModelViewSet,
 	ReadOnlyModelViewSet, RetrieveMixin, UpdateMixin, ViewSet,
 };
 
 // Re-export routers
-pub use reinhardt_routers::{
+pub use reinhardt_urls::routers::{
 	DefaultRouter, PathMatcher, PathPattern, Route, Router, UnifiedRouter, clear_router,
 	get_router, is_router_registered, register_router,
 };
 
 // Re-export auth
-pub use reinhardt_auth::{
+#[cfg(feature = "auth")]
+pub use reinhardt_contrib::auth::{
 	AllowAny, AnonymousUser, Argon2Hasher, AuthBackend, IsAdminUser, IsAuthenticated,
 	PasswordHasher, Permission, SimpleUser, User,
 };
 
 #[cfg(feature = "auth-jwt")]
-pub use reinhardt_auth::{Claims, JwtAuth};
+pub use reinhardt_contrib::auth::{Claims, JwtAuth};
 
 // Re-export middleware
 #[cfg(feature = "sessions")]
@@ -186,24 +190,24 @@ pub use reinhardt_http::Extensions;
 pub use hyper::StatusCode;
 
 // Re-export pagination
-#[cfg(any(feature = "standard", feature = "reinhardt-pagination"))]
-pub use reinhardt_pagination::{
+#[cfg(feature = "rest")]
+pub use reinhardt_rest::pagination::{
 	CursorPagination, LimitOffsetPagination, PageNumberPagination, PaginatedResponse, Paginator,
 };
 
 // Re-export filters
-#[cfg(any(feature = "standard", feature = "reinhardt-filters"))]
-pub use reinhardt_filters::{
+#[cfg(feature = "rest")]
+pub use reinhardt_rest::filters::{
 	FieldOrderingExt, FilterBackend, FilterError, FilterResult, MultiTermSearch,
 };
 
 // Re-export throttling
-#[cfg(any(feature = "standard", feature = "reinhardt-throttling"))]
-pub use reinhardt_throttling::{AnonRateThrottle, ScopedRateThrottle, Throttle, UserRateThrottle};
+#[cfg(feature = "rest")]
+pub use reinhardt_rest::throttling::{AnonRateThrottle, ScopedRateThrottle, Throttle, UserRateThrottle};
 
 // Re-export signals
-#[cfg(any(feature = "standard", feature = "reinhardt-signals"))]
-pub use reinhardt_signals::{
+#[cfg(feature = "core")]
+pub use reinhardt_core::signals::{
 	M2MAction, M2MChangeEvent, Signal, m2m_changed, post_delete, post_save, pre_delete, pre_save,
 };
 
@@ -223,34 +227,34 @@ pub use reinhardt_views::{
 };
 
 // Re-export parsers
-#[cfg(any(feature = "standard", feature = "reinhardt-parsers"))]
-pub use reinhardt_parsers::{
+#[cfg(feature = "rest")]
+pub use reinhardt_rest::parsers::{
 	FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
 	Parser,
 };
 
 // Re-export renderers
-#[cfg(any(feature = "standard", feature = "reinhardt-renderers"))]
-pub use reinhardt_renderers::{BrowsableAPIRenderer, JSONRenderer, XMLRenderer};
+#[cfg(feature = "reinhardt-template")]
+pub use reinhardt_template::renderers::{BrowsableApiRenderer, JSONRenderer, TemplateHTMLRenderer};
 
 // Re-export versioning
-#[cfg(any(feature = "standard", feature = "reinhardt-versioning"))]
-pub use reinhardt_versioning::{
+#[cfg(feature = "rest")]
+pub use reinhardt_rest::versioning::{
 	AcceptHeaderVersioning, BaseVersioning, HostNameVersioning, NamespaceVersioning,
 	QueryParameterVersioning, RequestVersionExt, URLPathVersioning, VersioningError,
 	VersioningMiddleware,
 };
 
 // Re-export metadata
-#[cfg(any(feature = "standard", feature = "reinhardt-metadata"))]
-pub use reinhardt_metadata::{
+#[cfg(feature = "rest")]
+pub use reinhardt_rest::metadata::{
 	ActionMetadata, BaseMetadata, ChoiceInfo, FieldInfo, FieldInfoBuilder, FieldType,
 	MetadataOptions, MetadataResponse, SimpleMetadata,
 };
 
 // Re-export negotiation
-#[cfg(any(feature = "standard", feature = "reinhardt-negotiation"))]
-pub use reinhardt_negotiation::*;
+#[cfg(feature = "rest")]
+pub use reinhardt_rest::negotiation::*;
 
 // Re-export REST integration
 #[cfg(feature = "rest")]
@@ -263,19 +267,19 @@ pub use reinhardt_shortcuts::{
 };
 
 // Re-export URL utilities
-pub use reinhardt_routers::{
+pub use reinhardt_urls::routers::{
 	UrlPattern, UrlPatternWithParams, UrlReverser, include_routes as include, path, re_path,
 	reverse,
 };
 
 // Re-export database related (database feature)
 #[cfg(feature = "database")]
-pub use reinhardt_contenttypes::{
+pub use reinhardt_contrib::contenttypes::{
 	CONTENT_TYPE_REGISTRY, ContentType, ContentTypeRegistry, GenericForeignKey, GenericRelatable,
 	GenericRelationQuery, ModelType,
 };
 #[cfg(feature = "database")]
-pub use reinhardt_migrations::{
+pub use reinhardt_db::migrations::{
 	FieldState, MakeMigrationsCommand, MakeMigrationsOptions, Migration, MigrationAutodetector,
 	MigrationError, MigrationExecutor, MigrationLoader, MigrationPlan, MigrationRecorder,
 	MigrationWriter, ModelState, ProjectState,
@@ -283,21 +287,21 @@ pub use reinhardt_migrations::{
 
 // Re-export cache (cache feature)
 #[cfg(feature = "cache")]
-pub use reinhardt_cache::{
+pub use reinhardt_utils::cache::{
 	Cache, CacheKeyBuilder, CacheMiddleware, CacheMiddlewareConfig, CacheService, InMemoryCache,
 };
 
 #[cfg(all(feature = "cache", feature = "redis-backend"))]
-pub use reinhardt_cache::RedisCache;
+pub use reinhardt_utils::cache::RedisCache;
 
 // Re-export sessions (sessions feature)
 #[cfg(feature = "sessions")]
-pub use reinhardt_sessions::{
+pub use reinhardt_contrib::sessions::{
 	CacheSessionBackend, InMemorySessionBackend, Session, SessionBackend, SessionError,
 };
 
 #[cfg(all(feature = "sessions", feature = "middleware"))]
-pub use reinhardt_sessions::{HttpSessionConfig, SameSite, SessionMiddleware};
+pub use reinhardt_contrib::sessions::{HttpSessionConfig, SameSite, SessionMiddleware};
 
 // Re-export contrib modules (contrib feature)
 // Note: reinhardt_contrib exports individual modules (auth, sessions, etc.)
@@ -315,7 +319,7 @@ pub use reinhardt_forms::{
 pub use reinhardt_di::{Depends, DiError, DiResult, InjectionContext, RequestContext};
 
 #[cfg(feature = "minimal")]
-pub use reinhardt_params::{Body, Cookie, Header, Json, Path, Query};
+pub use reinhardt_di::params::{Body, Cookie, Header, Json, Path, Query};
 
 // Re-export templates
 #[cfg(feature = "templates")]
@@ -331,7 +335,7 @@ pub use reinhardt_test::{APIClient, APIRequestFactory, APITestCase, TestResponse
 
 // Re-export storage
 #[cfg(feature = "storage")]
-pub use reinhardt_storage::{InMemoryStorage, LocalStorage, Storage};
+pub use reinhardt_utils::storage::{InMemoryStorage, LocalStorage, Storage};
 
 // Re-export common external dependencies
 pub use async_trait::async_trait;
@@ -438,7 +442,6 @@ pub mod prelude {
 		// ViewSets
 		ViewSet,
 
-		XMLRenderer,
 		// External
 		async_trait,
 		clear_router,
