@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-routers = { workspace = true }
+reinhardt-urls = { workspace = true, features = ["routers"] }
 async-trait = "0.1"
 bytes = "1.9"
 regex = "1.11"

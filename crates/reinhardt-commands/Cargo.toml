@@ -9,12 +9,12 @@ description = "Django-style management command framework for Reinhardt"
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-mail = { workspace = true }
-reinhardt-settings = { workspace = true }
-reinhardt-static = { workspace = true }
-reinhardt-utils-core = { workspace = true }
-reinhardt-routers = { workspace = true, optional = true }
-reinhardt-migrations = { workspace = true, optional = true }
+reinhardt-mail = { path = "../reinhardt-contrib/crates/mail" }
+reinhardt-static = { path = "../reinhardt-contrib/crates/static" }
+reinhardt-utils-core = { path = "../reinhardt-utils/crates/utils-core" }
+reinhardt-conf = { workspace = true }
+reinhardt-routers = { path = "../reinhardt-urls/crates/routers", optional = true }
+reinhardt-migrations = { path = "../reinhardt-db/crates/migrations", optional = true }
 reinhardt-db = { workspace = true, optional = true }
 reinhardt-server = { workspace = true, optional = true }
 clap = { version = "4.5", features = ["derive", "cargo"] }
@@ -55,7 +55,7 @@ rcgen = "0.14.5"
 tokio = { workspace = true }
 tempfile = "3.13"
 regex = { workspace = true }
-reinhardt-i18n = { workspace = true }
+reinhardt-i18n = { path = "../reinhardt-contrib/crates/i18n" }
 serial_test = { workspace = true }
 rstest = { workspace = true }
 

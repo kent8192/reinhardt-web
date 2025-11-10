@@ -1,5 +1,5 @@
 [package]
-name = "reinhardt-db-backends-pool"
+name = "reinhardt-backends-pool"
 version.workspace = true
 description = "Database connection pooling for various backends"
 edition.workspace = true

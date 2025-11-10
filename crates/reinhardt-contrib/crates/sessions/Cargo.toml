@@ -9,7 +9,7 @@ authors.workspace = true
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-cache = { workspace = true }
+reinhardt-utils = { workspace = true, features = ["cache"] }
 reinhardt-di = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
@@ -19,8 +19,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 
 # Optional dependencies for different backends
-reinhardt-orm = { workspace = true, optional = true }
-reinhardt-db = { workspace = true, optional = true }
+reinhardt-db = { workspace = true, optional = true, features = ["orm"] }
 sqlx = { workspace = true, features = ["any", "sqlite", "runtime-tokio"] }
 sea-query = { version = "1.0.0-rc.1", features = [
   "backend-postgres",
@@ -43,8 +42,8 @@ jsonwebtoken = { workspace = true, optional = true }
 
 # Optional dependencies for HTTP middleware
 reinhardt-http = { workspace = true, optional = true }
-reinhardt-types = { workspace = true, optional = true }
-reinhardt-exception = { workspace = true, optional = true }
+reinhardt-types = { path = "../../../reinhardt-core/crates/types" }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
 bytes = { workspace = true, optional = true }
 
 # Optional dependency for MessagePack serialization
@@ -53,7 +52,6 @@ rmp-serde = { version = "1.1", optional = true }
 [features]
 default = []
 database = [
-  "reinhardt-orm",
   "reinhardt-db",
   "sea-query",
   "sea-query-binder",
@@ -61,7 +59,7 @@ database = [
 file = ["tokio", "fs2"]
 cookie = ["base64", "aes-gcm", "rand", "hmac", "sha2"]
 jwt = ["jsonwebtoken"]
-middleware = ["reinhardt-http", "reinhardt-types", "reinhardt-exception", "bytes"]
+middleware = ["reinhardt-http", "bytes"]
 messagepack = ["rmp-serde"]
 
 [dev-dependencies]

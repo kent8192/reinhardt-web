@@ -7,9 +7,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reinhardt-types = { workspace = true }
 reinhardt-http = { workspace = true }
-reinhardt-exception = { workspace = true }
+reinhardt-types = { path = "../../../reinhardt-core/crates/types" }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
+serde_json = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }
 hyper-util = { version = "0.1", features = ["tokio", "server", "http2"] }
@@ -19,8 +20,6 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 # GraphQL support
 async-graphql = { version = "7.0", optional = true }
-serde = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
 # WebSocket support
 tokio-tungstenite = { version = "0.28.0", optional = true }
 futures-util = { version = "0.3", optional = true }
@@ -37,5 +36,5 @@ serde_json = { workspace = true }
 
 [features]
 default = []
-graphql = ["async-graphql", "serde", "serde_json"]
+graphql = ["async-graphql"]
 websocket = ["tokio-tungstenite", "futures-util"]

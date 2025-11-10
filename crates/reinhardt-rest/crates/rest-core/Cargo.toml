@@ -8,16 +8,16 @@ repository.workspace = true
 
 [features]
 default = []
-jwt = ["reinhardt-auth/jwt"]
+jwt = ["reinhardt-contrib/auth-jwt"]
 
 [dependencies]
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-reinhardt-routers = { workspace = true }
-reinhardt-auth = { workspace = true }
-reinhardt-pagination = { workspace = true }
-reinhardt-openapi = { workspace = true }
+reinhardt-urls = { workspace = true, features = ["routers"] }
+reinhardt-contrib = { workspace = true, features = ["auth"] }
+reinhardt-pagination = { path = "../pagination" }
+reinhardt-openapi = { path = "../openapi" }
 
 [dev-dependencies]
 reinhardt-rest = { workspace = true }

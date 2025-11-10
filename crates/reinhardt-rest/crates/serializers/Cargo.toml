@@ -17,10 +17,8 @@ yaml = ["serde_yaml"]
 [dependencies]
 reinhardt-apps = { workspace = true }
 reinhardt-parsers = { version = "0.1.0-alpha.1", path = "../parsers" }
-reinhardt-renderers = { workspace = true }
 reinhardt-negotiation = { version = "0.1.0-alpha.1", path = "../negotiation" }
-reinhardt-orm = { workspace = true }
-reinhardt-pool = { workspace = true }
+reinhardt-db = { workspace = true, features = ["pool", "orm"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
@@ -42,8 +40,9 @@ serde_yaml = { version = "0.9.33", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
-reinhardt-auth = { workspace = true}
+reinhardt-contrib = { workspace = true, features = ["auth"] }
 uuid = { workspace = true }
 testcontainers = { workspace = true }
 sea-orm = { workspace = true }
-reinhardt-orm = { workspace = true }
+reinhardt-db = { workspace = true, features = ["orm"] }
+reinhardt-template = { workspace = true, features = ["renderers"] }

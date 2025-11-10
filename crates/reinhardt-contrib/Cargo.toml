@@ -18,6 +18,7 @@ reinhardt-mail = { version = "0.1.0-alpha.1", path = "crates/mail", optional = t
 reinhardt-graphql = { version = "0.1.0-alpha.1", path = "crates/graphql", optional = true }
 reinhardt-websockets = { version = "0.1.0-alpha.1", path = "crates/websockets", optional = true }
 reinhardt-i18n = { version = "0.1.0-alpha.1", path = "crates/i18n", optional = true }
+reinhardt-admin = { version = "0.1.0-alpha.1", path = "crates/admin", optional = true }
 reinhardt-utils = { workspace = true }
 chrono = { workspace = true }
 
@@ -37,6 +38,13 @@ mail = ["dep:reinhardt-mail"]
 graphql = ["dep:reinhardt-graphql"]
 websockets = ["dep:reinhardt-websockets"]
 i18n = ["dep:reinhardt-i18n"]
+admin = ["dep:reinhardt-admin"]
+
+# Fine-grained authentication features (pass-through from reinhardt-auth)
+auth-jwt = ["auth", "reinhardt-auth/jwt"]
+auth-session = ["auth", "reinhardt-auth/session"]
+auth-oauth = ["auth", "reinhardt-auth/oauth"]
+auth-token = ["auth", "reinhardt-auth/token"]
 
 # Convenience feature to enable all contrib modules
 full = [
@@ -49,4 +57,5 @@ full = [
   "graphql",
   "websockets",
   "i18n",
+  "admin",
 ]

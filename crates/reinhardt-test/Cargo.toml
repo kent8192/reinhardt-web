@@ -21,20 +21,14 @@ websockets = ["dep:reinhardt-websockets"]
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-orm = { workspace = true }
-reinhardt-serializers = { workspace = true }
-reinhardt-views = { workspace = true }
-reinhardt-viewsets = { workspace = true }
-reinhardt-auth = { workspace = true }
-reinhardt-parsers = { workspace = true }
-reinhardt-renderers = { workspace = true }
-reinhardt-messages = { workspace = true }
-reinhardt-backends = { workspace = true }
+reinhardt-orm = { path = "../reinhardt-db/crates/orm" }
 reinhardt-db = { workspace = true }
+reinhardt-views = { workspace = true }
+reinhardt-viewsets = { path = "../reinhardt-views/crates/viewsets" }
+reinhardt-auth = { path = "../reinhardt-contrib/crates/auth" }
+reinhardt-messages = { path = "../reinhardt-contrib/crates/messages" }
 reinhardt-http = { workspace = true }
 reinhardt-server = { workspace = true }
-reinhardt-types = { workspace = true }
-reinhardt-exception = { workspace = true }
 
 hyper = { workspace = true }
 tokio = { workspace = true }
@@ -68,10 +62,17 @@ redis = { workspace = true, optional = true, features = [
 fs2 = { version = "0.4", optional = true }
 
 # Optional dependencies for static feature
-reinhardt-static = { workspace = true, optional = true }
+reinhardt-static = { path = "../reinhardt-contrib/crates/static", optional = true }
 
 # Optional dependencies for websockets feature
-reinhardt-websockets = { workspace = true, optional = true }
+reinhardt-websockets = { path = "../reinhardt-contrib/crates/websockets", optional = true }
+reinhardt-serializers = { path = "../reinhardt-rest/crates/serializers" }
+reinhardt-parsers = { path = "../reinhardt-rest/crates/parsers" }
+reinhardt-types = { path = "../reinhardt-core/crates/types" }
+reinhardt-backends = { path = "../reinhardt-db/crates/backends" }
+reinhardt-exception = { path = "../reinhardt-core/crates/exception" }
+reinhardt-cache = { path = "../reinhardt-utils/crates/cache" }
+reinhardt-template = { workspace = true, features = ["renderers"] }
 
 tempfile = "3.8"
 

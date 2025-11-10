@@ -9,9 +9,7 @@ authors.workspace = true
 description = "Dependency injection system for Reinhardt, inspired by FastAPI"
 
 [dependencies]
-reinhardt-types = { workspace = true }
 reinhardt-http = { workspace = true }
-reinhardt-exception = { workspace = true }
 
 # Internal crates
 di = { path = "crates/di", version = "0.1.0-alpha.1", package = "reinhardt-di-core" }
@@ -37,6 +35,7 @@ futures = "0.3"
 bytes.workspace = true
 hyper.workspace = true
 serial_test = { workspace = true }
-reinhardt-params = { path = "crates/params", version = "0.1.0-alpha.1" }
 reinhardt-apps = { workspace = true }
+reinhardt-types = { path = "../reinhardt-core/crates/types" }
+reinhardt-exception = { path = "../reinhardt-core/crates/exception" }
 serde = { workspace = true }

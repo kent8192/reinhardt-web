@@ -10,7 +10,7 @@ repository.workspace = true
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 reinhardt-apps = { workspace = true }
-reinhardt-params = { workspace = true }
+reinhardt-params = { path = "../../../reinhardt-di/crates/params" }
 
 [dev-dependencies]
 reinhardt-di = { workspace = true }

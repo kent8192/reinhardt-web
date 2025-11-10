@@ -9,7 +9,7 @@ description = "Parameter extraction system for Reinhardt, inspired by FastAPI"
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-validators = { workspace = true, optional = true }
+reinhardt-validators = { path = "../../../reinhardt-core/crates/validators", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }

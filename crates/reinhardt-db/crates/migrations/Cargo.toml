@@ -9,9 +9,7 @@ repository.workspace = true
 [dependencies]
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
-backends = { path = "../backends", version = "0.1.0-alpha.1", package = "reinhardt-db-backends", features = [
-  "sqlite",
-] }
+reinhardt-backends = { path = "../../../reinhardt-db/crates/backends", features = ["sqlite"] }
 mongodb = { version = "3.0", optional = true }
 bson = { version = "3.0.0", optional = true }
 reinhardt-di = { workspace = true }
@@ -69,7 +67,7 @@ default = ["sqlite", "postgres", "mysql"]
 sqlite = []
 postgres = []
 mysql = []
-mongodb-backend = ["dep:mongodb", "dep:bson", "backends/mongodb-backend"]
+mongodb-backend = ["dep:mongodb", "dep:bson", "reinhardt-backends/mongodb-backend"]
 
 [[bin]]
 name = "makemigrations"

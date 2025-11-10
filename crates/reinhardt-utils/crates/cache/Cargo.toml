@@ -10,7 +10,7 @@ authors.workspace = true
 [dependencies]
 reinhardt-apps = { workspace = true }
 reinhardt-di = { workspace = true }
-reinhardt-exception = { workspace = true }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
 
 async-trait = { workspace = true }
 thiserror = { workspace = true }
@@ -65,4 +65,5 @@ serial_test = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
-reinhardt-backends = { workspace = true }
+reinhardt-backends = { path = "../../../reinhardt-db/crates/backends" }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }

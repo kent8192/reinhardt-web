@@ -1,5 +1,5 @@
 [package]
-name = "reinhardt-db-backends"
+name = "reinhardt-backends"
 version.workspace = true
 description = "Database backend implementations (PostgreSQL, MySQL, SQLite)"
 edition.workspace = true

@@ -8,10 +8,8 @@ repository.workspace = true
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-orm = { workspace = true }
-reinhardt-cache = { workspace = true, optional = true }
-reinhardt-db = { workspace = true, optional = true }
-reinhardt-db-backends = { workspace = true, optional = true }
+reinhardt-db = { workspace = true, optional = true, features = ["orm", "backends"] }
+reinhardt-utils = { workspace = true, optional = true, features = ["cache"] }
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -25,8 +23,8 @@ log = "0.4"
 
 [features]
 default = ["database-optimization"]
-caching = ["dep:reinhardt-cache"]
-database-optimization = ["dep:reinhardt-db", "dep:reinhardt-db-backends"]
+caching = ["dep:reinhardt-utils"]
+database-optimization = ["dep:reinhardt-db"]
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util"] }

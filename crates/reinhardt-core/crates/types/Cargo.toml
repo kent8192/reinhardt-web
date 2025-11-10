@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 reinhardt-http = { workspace = true }
-reinhardt-exception = { workspace = true }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
 async-trait = { workspace = true }
 
 [dev-dependencies]

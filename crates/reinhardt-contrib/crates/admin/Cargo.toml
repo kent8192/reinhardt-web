@@ -11,22 +11,18 @@ categories = ["web-programming"]
 [features]
 default = []
 # Template rendering with Jinja2-style engine
-templates = ["reinhardt-templates"]
+templates = ["reinhardt-template/templates"]
 # File upload handling
-file-uploads = ["reinhardt-storage"]
+file-uploads = ["reinhardt-utils"]
 
 [dependencies]
 # Reinhardt dependencies
-reinhardt-auth = { workspace = true}
+reinhardt-auth = { path = "../auth" }
 reinhardt-http = { workspace = true }
-reinhardt-types = { workspace = true }
-reinhardt-db = { workspace = true }
-reinhardt-orm = { workspace = true }
-reinhardt-routers = { workspace = true }
-reinhardt-pagination = { workspace = true }
-reinhardt-filters = { workspace = true }
-reinhardt-templates = { workspace = true, optional = true }
-reinhardt-storage = { workspace = true, optional = true }
+reinhardt-db = { workspace = true, features = ["orm"] }
+reinhardt-routers = { path = "../../../reinhardt-urls/crates/routers" }
+reinhardt-utils = { workspace = true, optional = true, features = ["storage"] }
+reinhardt-template = { workspace = true, optional = true }
 
 # Core dependencies
 tokio = { workspace = true }
@@ -47,6 +43,10 @@ uuid = { workspace = true }
 base64 = { workspace = true }
 
 [dev-dependencies]
+reinhardt-db = { workspace = true }
 tokio-test = { workspace = true }
 rstest = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
+reinhardt-rest = { workspace = true, features = ["filters", "pagination"] }
+reinhardt-types = { path = "../../../reinhardt-core/crates/types" }
+reinhardt-template = { workspace = true, features = ["templates"] }

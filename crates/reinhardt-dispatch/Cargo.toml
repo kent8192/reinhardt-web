@@ -10,13 +10,13 @@ description = "URL dispatcher and request routing for Reinhardt framework"
 [dependencies]
 # Core dependencies
 reinhardt-urls = { workspace = true }
-reinhardt-routers = { workspace = true }
+reinhardt-routers = { path = "../reinhardt-urls/crates/routers" }
 reinhardt-http = { workspace = true }
 reinhardt-views = { workspace = true }
-reinhardt-signals = { workspace = true }
 reinhardt-middleware = { workspace = true }
-reinhardt-types = { workspace = true }
-reinhardt-exception = { workspace = true }
+reinhardt-types = { path = "../reinhardt-core/crates/types" }
+reinhardt-signals = { path = "../reinhardt-core/crates/signals" }
+reinhardt-exception = { path = "../reinhardt-core/crates/exception" }
 bytes = { workspace = true }
 
 # HTTP

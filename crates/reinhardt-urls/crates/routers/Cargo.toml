@@ -8,11 +8,11 @@ repository.workspace = true
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-exception = { workspace = true }
-reinhardt-viewsets = { workspace = true }
+reinhardt-viewsets = { path = "../../../reinhardt-views/crates/viewsets" }
 reinhardt-routers-macros = { path = "../routers-macros", version = "0.1.0-alpha.1" }
 reinhardt-di = { workspace = true, optional = true }
 reinhardt-middleware = { workspace = true, optional = true }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
 regex = { workspace = true }
 nom = { workspace = true }
 async-trait = { workspace = true }

@@ -20,14 +20,14 @@ database = ["sqlx", "sea-query", "sea-query-binder"]
 redis-sessions = ["redis"]
 
 [dependencies]
-reinhardt-types = { workspace = true }
 reinhardt-http = { workspace = true }
-reinhardt-exception = { workspace = true }
 reinhardt-apps = { workspace = true }
 reinhardt-di = { workspace = true }
-reinhardt-sessions = { workspace = true }
-reinhardt-orm = { workspace = true }
-reinhardt-throttling = { workspace = true }
+reinhardt-sessions = { path = "../sessions" }
+reinhardt-db = { workspace = true, features = ["orm"] }
+reinhardt-throttling = { path = "../../../reinhardt-rest/crates/throttling" }
+reinhardt-types = { path = "../../../reinhardt-core/crates/types" }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
 argon2 = { workspace = true }
 rand = { workspace = true }
 jsonwebtoken = { workspace = true }

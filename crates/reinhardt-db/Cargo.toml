@@ -9,8 +9,8 @@ description = "Django-style database layer for Reinhardt framework"
 
 [dependencies]
 # Internal crates (optional)
-backends = { path = "crates/backends", version = "0.1.0-alpha.1", package = "reinhardt-db-backends", optional = true }
-backends-pool = { path = "crates/backends-pool", version = "0.1.0-alpha.1", package = "reinhardt-db-backends-pool", optional = true }
+reinhardt-backends = { path = "../reinhardt-db/crates/backends", optional = true }
+reinhardt-backends-pool = { path = "../reinhardt-db/crates/backends-pool", optional = true }
 reinhardt-pool = { path = "crates/pool", version = "0.1.0-alpha.1", optional = true }
 reinhardt-orm = { path = "crates/orm", version = "0.1.0-alpha.1", optional = true }
 reinhardt-migrations = { path = "crates/migrations", version = "0.1.0-alpha.1", optional = true }
@@ -66,10 +66,10 @@ default = [
 ]
 
 # Module features
-backends = ["dep:backends"]
+backends = ["dep:reinhardt-backends"]
 
 # Internal crate features
-pool = ["dep:backends-pool", "dep:reinhardt-pool", "reinhardt-di"]
+pool = ["dep:reinhardt-backends-pool", "dep:reinhardt-pool", "reinhardt-di"]
 orm = ["dep:reinhardt-orm"]
 migrations = ["dep:reinhardt-migrations"]
 hybrid = ["dep:reinhardt-hybrid"]
@@ -80,19 +80,19 @@ postgres = [
   "sqlx/postgres",
   "reinhardt-orm?/postgres",
   "reinhardt-migrations?/postgres",
-  "backends?/postgres",
+  "reinhardt-backends?/postgres",
 ]
 sqlite = [
   "sqlx/sqlite",
   "reinhardt-orm?/sqlite",
   "reinhardt-migrations?/sqlite",
-  "backends?/sqlite",
+  "reinhardt-backends?/sqlite",
 ]
 mysql = [
   "sqlx/mysql",
   "reinhardt-orm?/mysql",
   "reinhardt-migrations?/mysql",
-  "backends?/mysql",
+  "reinhardt-backends?/mysql",
 ]
 mongodb-backend = []
 cockroachdb-backend = ["postgres"] # CockroachDB uses PostgreSQL protocol

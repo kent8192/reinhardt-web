@@ -14,8 +14,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = "0.9.8"
-reinhardt-exception = { workspace = true }
-reinhardt-validators = { workspace = true }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
+reinhardt-validators = { path = "../../../reinhardt-core/crates/validators" }
 
 # Environment variables and URL handling
 dotenv = "0.15"
@@ -104,6 +104,8 @@ tempfile = "3.8"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 testcontainers = "0.25.0"
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
+reinhardt-validators = { path = "../../../reinhardt-core/crates/validators" }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
 env_logger = "0.11"
 anyhow = { workspace = true }
 hex = "0.4"

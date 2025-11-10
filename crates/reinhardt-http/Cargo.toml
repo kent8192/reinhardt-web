@@ -13,8 +13,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 futures = "0.3.31"
 thiserror = { workspace = true }
-reinhardt-parsers = { workspace = true }
-reinhardt-exception = { workspace = true }
+reinhardt-parsers = { path = "../reinhardt-rest/crates/parsers" }
+reinhardt-exception = { path = "../reinhardt-core/crates/exception" }
 async-trait = "0.1"
 tokio = { version = "1.0", features = ["sync"] }
 percent-encoding = "2.3"

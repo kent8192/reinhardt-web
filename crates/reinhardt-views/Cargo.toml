@@ -10,9 +10,7 @@ authors.workspace = true
 [dependencies]
 reinhardt-apps = { workspace = true }
 reinhardt-contrib = { workspace = true }
-reinhardt-exception = { workspace = true }
-reinhardt-orm = { workspace = true }
-reinhardt-serializers = { workspace = true }
+reinhardt-orm = { path = "../reinhardt-db/crates/orm" }
 reinhardt-template = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
@@ -27,6 +25,8 @@ reinhardt-views-core = { version = "0.1.0-alpha.1", path = "crates/views-core" }
 
 # Optional dependencies for features
 reinhardt-viewsets = { version = "0.1.0-alpha.1", path = "crates/viewsets", optional = true }
+reinhardt-serializers = { path = "../reinhardt-rest/crates/serializers" }
+reinhardt-exception = { path = "../reinhardt-core/crates/exception" }
 
 [features]
 default = []

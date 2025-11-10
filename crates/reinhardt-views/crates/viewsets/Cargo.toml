@@ -9,13 +9,13 @@ repository.workspace = true
 [dependencies]
 reinhardt-apps = { workspace = true }
 reinhardt-di = { workspace = true }
-reinhardt-orm = { workspace = true }
-reinhardt-serializers = { workspace = true }
-reinhardt-macros = { workspace = true }
-reinhardt-auth = { workspace = true }
-reinhardt-filters = { workspace = true }
-reinhardt-pagination = { workspace = true }
-reinhardt-cache = { workspace = true }
+reinhardt-db = { workspace = true, features = ["orm"] }
+reinhardt-auth = { path = "../../../reinhardt-contrib/crates/auth" }
+reinhardt-cache = { path = "../../../reinhardt-utils/crates/cache" }
+reinhardt-serializers = { path = "../../../reinhardt-rest/crates/serializers" }
+reinhardt-filters = { path = "../../../reinhardt-rest/crates/filters" }
+reinhardt-pagination = { path = "../../../reinhardt-rest/crates/pagination" }
+reinhardt-macros = { path = "../../../reinhardt-core/crates/macros" }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

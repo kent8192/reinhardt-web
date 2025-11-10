@@ -8,10 +8,10 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-reinhardt-types = { workspace = true }
 reinhardt-http = { workspace = true }
-reinhardt-exception = { workspace = true }
-reinhardt-settings = { workspace = true }
+reinhardt-conf = { workspace = true, features = ["settings"] }
+reinhardt-types = { path = "../../../reinhardt-core/crates/types" }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -11,9 +11,9 @@ categories = ["web-programming"]
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-browsable-api = { workspace = true }
-reinhardt-exception = { workspace = true }
-reinhardt-negotiation = { workspace = true }
+reinhardt-browsable-api = { path = "../../../reinhardt-rest/crates/browsable-api" }
+reinhardt-negotiation = { path = "../../../reinhardt-rest/crates/negotiation" }
+reinhardt-exception = { path = "../../../reinhardt-core/crates/exception" }
 async-trait = "0.1"
 bytes = "1.0"
 serde = { version = "1.0", features = ["derive"] }

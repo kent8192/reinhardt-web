@@ -9,7 +9,7 @@ authors.workspace = true
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-orm = { workspace = true }
+reinhardt-db = { workspace = true, features = ["orm"] }
 
 async-trait = { workspace = true }
 thiserror = { workspace = true }

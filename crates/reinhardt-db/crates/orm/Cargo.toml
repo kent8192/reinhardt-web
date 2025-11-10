@@ -17,15 +17,15 @@ advanced-queries = []
 # Integration tests with real database
 integration-tests = []
 # Database driver features
-postgres = ["backends/postgres", "sqlx/postgres"]
-sqlite = ["backends/sqlite", "sqlx/sqlite"]
-mysql = ["backends/mysql", "sqlx/mysql"]
+postgres = ["reinhardt-backends/postgres", "sqlx/postgres"]
+sqlite = ["reinhardt-backends/sqlite", "sqlx/sqlite"]
+mysql = ["reinhardt-backends/mysql", "sqlx/mysql"]
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-backends = { path = "../backends", version = "0.1.0-alpha.1", package = "reinhardt-db-backends" }
+reinhardt-validators = { path = "../../../reinhardt-core/crates/validators" }
+reinhardt-backends = { path = "../../../reinhardt-db/crates/backends" }
 reinhardt-hybrid = { path = "../hybrid", version = "0.1.0-alpha.1" }
-reinhardt-validators = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = "1.0"
@@ -65,8 +65,9 @@ regex = "1.10"
 smallvec = "1.13"
 
 [dev-dependencies]
-reinhardt-macros = { workspace = true }
 reinhardt-migrations = { path = "../migrations", version = "0.1.0-alpha.1" }
+reinhardt-validators = { path = "../../../reinhardt-core/crates/validators" }
+reinhardt-macros = { path = "../../../reinhardt-core/crates/macros" }
 ctor = "0.6.1"
 serial_test = { workspace = true }
 tokio-test = "0.4"
