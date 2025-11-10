@@ -2,8 +2,8 @@
 //!
 //! Provides permission checking on individual object instances.
 
-use crate::permissions::{Permission, PermissionContext};
-use crate::user::User;
+use crate::User;
+use crate::{Permission, PermissionContext};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -260,7 +260,7 @@ impl ObjectPermissionChecker for ObjectPermissionManager {
 /// use reinhardt_auth::user::{SimpleUser, User};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_core::types::Request;
 /// use uuid::Uuid;
 ///
 /// #[tokio::main]
@@ -346,10 +346,10 @@ impl<T: ObjectPermissionChecker + Send + Sync> Permission for ObjectPermission<T
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::user::SimpleUser;
+	use crate::SimpleUser;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_types::Request;
+	use reinhardt_core::types::Request;
 	use uuid::Uuid;
 
 	#[tokio::test]

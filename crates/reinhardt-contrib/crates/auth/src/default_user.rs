@@ -1,8 +1,6 @@
+#[cfg(feature = "argon2-hasher")]
 use crate::Argon2Hasher;
-use crate::base_user::BaseUser;
-use crate::full_user::FullUser;
-use crate::permissions_mixin::PermissionsMixin;
-use crate::user::User;
+use crate::{BaseUser, FullUser, PermissionsMixin, User};
 use chrono::{DateTime, Utc};
 use reinhardt_db::orm::Model;
 use serde::{Deserialize, Serialize};

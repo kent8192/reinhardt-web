@@ -1,6 +1,8 @@
-use crate::base_user::BaseUser;
+use crate::BaseUser;
 use async_trait::async_trait;
-use reinhardt_apps::Result;
+use reinhardt_core::exception::Error;
+
+type Result<T> = std::result::Result<T, Error>;
 use serde_json::Value;
 use std::collections::HashMap;
 

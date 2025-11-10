@@ -2,7 +2,7 @@
 //!
 //! Provides permissions based on model-level operations with Django-style permission checking.
 
-use crate::permissions::{Permission, PermissionContext};
+use crate::{Permission, PermissionContext};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -26,7 +26,7 @@ type PermissionMap = Arc<RwLock<HashMap<String, Vec<String>>>>;
 /// use reinhardt_auth::permissions::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_core::types::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -174,7 +174,7 @@ impl Permission for DjangoModelPermissions {
 /// use reinhardt_auth::permissions::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_core::types::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -325,7 +325,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_types::Request;
+	use reinhardt_core::types::Request;
 
 	#[derive(Debug)]
 	struct TestModel;

@@ -1,9 +1,11 @@
-use crate::base_user::BaseUser;
+use crate::BaseUser;
 use crate::base_user_manager::BaseUserManager;
 use crate::default_user::DefaultUser;
 use async_trait::async_trait;
 use chrono::Utc;
-use reinhardt_apps::Result;
+use reinhardt_core::exception::Error;
+
+type Result<T> = std::result::Result<T, Error>;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -130,7 +132,7 @@ impl BaseUserManager<DefaultUser> for DefaultUserManager {
 	) -> Result<DefaultUser> {
 		// Check if username already exists
 		if self.get_by_username(username).is_some() {
-			return Err(reinhardt_exception::Error::Validation(format!(
+			return Err(reinhardt_core::exception::Error::Validation(format!(
 				"Username '{}' already exists",
 				username
 			)));

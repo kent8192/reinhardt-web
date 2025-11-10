@@ -3,7 +3,7 @@
 //! Provides permission checking based on rate limits, integrating with
 //! the throttling backend for distributed rate limiting support.
 
-use crate::permissions::{Permission, PermissionContext};
+use crate::{Permission, PermissionContext};
 use async_trait::async_trait;
 use reinhardt_throttling::ThrottleBackend;
 use std::net::IpAddr;
@@ -384,7 +384,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_types::Request;
+	use reinhardt_core::types::Request;
 	use reinhardt_throttling::MemoryBackend;
 
 	fn create_test_request(headers: HeaderMap) -> Request {
@@ -425,7 +425,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_rate_limit_permission_user_strategy() {
-		use crate::user::SimpleUser;
+		use crate::SimpleUser;
 		use uuid::Uuid;
 
 		let backend = Arc::new(MemoryBackend::new());

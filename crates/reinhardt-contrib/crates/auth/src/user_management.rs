@@ -2,8 +2,8 @@
 //!
 //! Provides CRUD operations for user management.
 
-use crate::backend::PasswordHasher;
-use crate::user::SimpleUser;
+use crate::PasswordHasher;
+use crate::SimpleUser;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -514,7 +514,7 @@ impl<H: PasswordHasher> UserManager<H> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::backend::Argon2Hasher;
+	use crate::Argon2Hasher;
 
 	#[tokio::test]
 	async fn test_create_user() {

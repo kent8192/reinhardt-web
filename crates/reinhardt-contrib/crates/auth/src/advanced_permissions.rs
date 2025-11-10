@@ -3,7 +3,7 @@
 //! Provides object-level permissions, role-based access control,
 //! and dynamic permission evaluation.
 
-use crate::permissions::{Permission, PermissionContext};
+use crate::{Permission, PermissionContext};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -179,7 +179,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_types::Request;
+	use reinhardt_core::types::Request;
 
 	#[test]
 	fn test_object_permission_creation() {

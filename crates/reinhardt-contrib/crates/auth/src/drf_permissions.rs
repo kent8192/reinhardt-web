@@ -2,7 +2,7 @@
 //!
 //! Provides DRF-compatible permission classes for common authorization scenarios.
 
-use crate::permissions::{Permission, PermissionContext};
+use crate::{Permission, PermissionContext};
 use async_trait::async_trait;
 
 /// Allow any request (DRF compatible)
@@ -16,7 +16,7 @@ use async_trait::async_trait;
 /// use reinhardt_auth::permissions::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_core::types::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -60,7 +60,7 @@ impl Permission for DrfAllowAny {
 /// use reinhardt_auth::permissions::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_core::types::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -114,7 +114,7 @@ impl Permission for DrfIsAuthenticated {
 /// use reinhardt_auth::permissions::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_core::types::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -169,7 +169,7 @@ impl Permission for DrfIsAdminUser {
 /// use reinhardt_auth::permissions::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_core::types::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -228,7 +228,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_types::Request;
+	use reinhardt_core::types::Request;
 
 	#[tokio::test]
 	async fn test_drf_allow_any() {

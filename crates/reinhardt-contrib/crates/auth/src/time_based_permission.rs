@@ -418,7 +418,7 @@ mod tests {
 	use bytes::Bytes;
 	use chrono::Timelike;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_types::Request;
+	use reinhardt_core::types::Request;
 
 	#[test]
 	fn test_time_window_creation() {
