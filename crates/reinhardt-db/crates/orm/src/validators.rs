@@ -1,7 +1,7 @@
 /// Field validators similar to Django's validators
 use once_cell::sync::Lazy;
 use regex::Regex;
-use reinhardt_core::apps::Result;
+use reinhardt_core::exception::Result;
 use reinhardt_core::validators::{
 	self as validators_crate, OrmValidator, ValidationError as BaseValidationError,
 	ValidationResult,

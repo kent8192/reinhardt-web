@@ -70,7 +70,7 @@
 //! - You're migrating from Django and want familiar patterns
 //! - You need all the batteries included
 
-pub use reinhardt_core::apps::{Error, Request, Response, Result};
+pub use reinhardt_core::http::{Error, Request, Response, Result};
 
 #[cfg(feature = "params")]
 pub use reinhardt_core::di::params::{Cookie, Form, Header, Json, Path, Query};
