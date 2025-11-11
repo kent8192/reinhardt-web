@@ -254,7 +254,7 @@ use crate::views;
 pub fn url_patterns() -> UnifiedRouter {
     UnifiedRouter::new()
         .function("/users", Method::GET, views::list_users)
-        .function("/users/:id", Method::GET, views::get_user)
+        .function("/users/{id}", Method::GET, views::get_user)
         .function("/users", Method::POST, views::create_user)
 }
 ```

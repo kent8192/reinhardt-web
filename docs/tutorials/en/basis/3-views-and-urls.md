@@ -244,9 +244,9 @@ pub fn url_patterns() -> UnifiedRouter {
     UnifiedRouter::new()
         .with_namespace("polls")
         .function("/", Method::GET, views::index)
-        .function("/:question_id", Method::GET, views::detail)
-        .function("/:question_id/results", Method::GET, views::results)
-        .function("/:question_id/vote", Method::POST, views::vote)
+        .function("/{question_id}", Method::GET, views::detail)
+        .function("/{question_id}/results", Method::GET, views::results)
+        .function("/{question_id}/vote", Method::POST, views::vote)
 }
 ```
 

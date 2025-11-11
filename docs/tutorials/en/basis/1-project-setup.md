@@ -342,11 +342,11 @@ pub fn url_patterns() -> UnifiedRouter {
         // ex: /polls/
         .function("/", Method::GET, views::index)
         // ex: /polls/5/
-        .function("/:question_id", Method::GET, views::detail)
+        .function("/{question_id}", Method::GET, views::detail)
         // ex: /polls/5/results/
-        .function("/:question_id/results", Method::GET, views::results)
+        .function("/{question_id}/results", Method::GET, views::results)
         // ex: /polls/5/vote/
-        .function("/:question_id/vote", Method::POST, views::vote)
+        .function("/{question_id}/vote", Method::POST, views::vote)
 }
 ```
 
