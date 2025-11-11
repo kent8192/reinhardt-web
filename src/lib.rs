@@ -123,9 +123,9 @@ pub mod urls;
 pub mod utils;
 pub mod views;
 
-// Re-export app types from reinhardt-core
-#[cfg(feature = "core")]
-pub use reinhardt_core::apps::{AppConfig, AppError, AppResult, Apps};
+// TODO: Re-export app types when apps system is restored
+// #[cfg(feature = "core")]
+// pub use reinhardt_core::apps::{AppConfig, AppError, AppResult, Apps};
 
 // Re-export settings from dedicated crate
 #[cfg(feature = "conf")]
@@ -294,9 +294,11 @@ pub use reinhardt_db::migrations::{
 
 // Re-export cache (cache feature)
 #[cfg(feature = "cache")]
-pub use reinhardt_utils::cache::{
-	Cache, CacheKeyBuilder, CacheMiddleware, CacheMiddlewareConfig, CacheService, InMemoryCache,
-};
+pub use reinhardt_utils::cache::{Cache, CacheKeyBuilder, InMemoryCache};
+
+// Cache middleware is in reinhardt-middleware
+#[cfg(feature = "middleware")]
+pub use reinhardt_middleware::CacheMiddleware;
 
 #[cfg(all(feature = "cache", feature = "redis-backend"))]
 pub use reinhardt_utils::cache::RedisCache;
@@ -358,28 +360,27 @@ pub mod prelude {
 
 		// Throttling
 		AnonRateThrottle,
-		AppConfig,
+		// AppConfig, // TODO: Re-add when apps system is restored
 		// App
-		Apps,
+		// Apps, // TODO: Re-add when apps system is restored
 		AuthBackend,
 		// Middleware
-		BrowsableAPIRenderer,
-
+		// BrowsableAPIRenderer, // TODO: Fix typo or remove if not exported
 		CursorPagination,
 		DatabaseConnection,
 
 		DefaultRouter,
 		Deserialize,
-		Deserializer,
+		// Deserializer, // Use Deserialize trait instead
 		DetailView,
 		// Core
 		Error,
 
-		FieldInfo,
-		FieldOrderingExt,
-		FieldType,
-		FilterBackend,
-
+		// Metadata/Filter types - gated by 'rest' feature
+		// FieldInfo,
+		// FieldOrderingExt,
+		// FieldType,
+		// FilterBackend,
 		FormParser,
 		Handler,
 		// Parsers
@@ -508,6 +509,7 @@ pub mod prelude {
 	};
 
 	// HTTP utilities
+	#[cfg(feature = "core")]
 	pub use crate::Extensions;
 
 	// Storage (if enabled)
