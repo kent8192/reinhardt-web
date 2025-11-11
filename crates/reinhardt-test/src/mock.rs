@@ -437,7 +437,9 @@ impl<T> Default for Spy<T> {
 /// ```
 pub struct SimpleHandler<F>
 where
-	F: Fn(reinhardt_core::apps::Request) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response>
+	F: Fn(
+			reinhardt_core::apps::Request,
+		) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response>
 		+ Send
 		+ Sync
 		+ 'static,
@@ -447,7 +449,9 @@ where
 
 impl<F> SimpleHandler<F>
 where
-	F: Fn(reinhardt_core::apps::Request) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response>
+	F: Fn(
+			reinhardt_core::apps::Request,
+		) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response>
 		+ Send
 		+ Sync
 		+ 'static,
@@ -476,7 +480,9 @@ where
 #[async_trait::async_trait]
 impl<F> reinhardt_core::types::Handler for SimpleHandler<F>
 where
-	F: Fn(reinhardt_core::apps::Request) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response>
+	F: Fn(
+			reinhardt_core::apps::Request,
+		) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response>
 		+ Send
 		+ Sync
 		+ 'static,

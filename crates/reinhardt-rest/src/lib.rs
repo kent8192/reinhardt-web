@@ -59,10 +59,10 @@ pub use reinhardt_core::parsers;
 pub use reinhardt_renderers as renderers;
 
 // Re-export other internal crates
-pub use reinhardt_filters as filters;
-pub use reinhardt_metadata as metadata;
 pub use reinhardt_core::negotiation;
 pub use reinhardt_core::pagination;
+pub use reinhardt_filters as filters;
+pub use reinhardt_metadata as metadata;
 pub use reinhardt_throttling as throttling;
 pub use reinhardt_versioning as versioning;
 

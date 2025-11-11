@@ -713,8 +713,9 @@ mod tests {
 
 	#[test]
 	fn test_assert_error() {
-		let result: reinhardt_core::apps::Result<()> =
-			Err(reinhardt_core::apps::Error::NotFound("Not found".to_string()));
+		let result: reinhardt_core::apps::Result<()> = Err(reinhardt_core::apps::Error::NotFound(
+			"Not found".to_string(),
+		));
 		assert_error(result);
 	}
 
@@ -728,9 +729,9 @@ mod tests {
 
 	#[test]
 	fn test_assert_validation_error() {
-		let result: reinhardt_core::apps::Result<()> = Err(reinhardt_core::apps::Error::Validation(
-			"Invalid input".to_string(),
-		));
+		let result: reinhardt_core::apps::Result<()> = Err(
+			reinhardt_core::apps::Error::Validation("Invalid input".to_string()),
+		);
 		assert_validation_error(result);
 	}
 

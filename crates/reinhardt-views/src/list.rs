@@ -1,9 +1,9 @@
 //! ListView for displaying lists of objects.
 
 use async_trait::async_trait;
+use reinhardt_core::exception::{Error, Result};
 use reinhardt_core::http::{Request, Response};
 use reinhardt_db::orm::Model;
-use reinhardt_core::exception::{Error, Result};
 use reinhardt_serializers::Serializer;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;

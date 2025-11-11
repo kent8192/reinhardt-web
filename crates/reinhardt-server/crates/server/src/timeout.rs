@@ -1,5 +1,5 @@
-use reinhardt_core::types::Handler;
 use reinhardt_core::http::{Request, Response};
+use reinhardt_core::types::Handler;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;

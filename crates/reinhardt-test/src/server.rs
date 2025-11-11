@@ -3,8 +3,8 @@
 //! This module provides utilities for testing HTTP servers, including
 //! spawning test servers and various test handler implementations.
 
-use reinhardt_core::types::Handler;
 use reinhardt_core::http::{Request, Response};
+use reinhardt_core::types::Handler;
 use reinhardt_server::HttpServer;
 use std::sync::Arc;
 use tokio::net::TcpListener;

@@ -6,9 +6,9 @@
 //! This module is only available with the `database` feature enabled.
 
 #[cfg(feature = "database")]
-use reinhardt_db::prelude::Model;
-#[cfg(feature = "database")]
 use reinhardt_core::http::Response;
+#[cfg(feature = "database")]
+use reinhardt_db::prelude::Model;
 
 /// Get a single object from the database or return a 404 response
 ///
