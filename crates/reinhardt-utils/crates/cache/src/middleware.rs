@@ -5,7 +5,7 @@
 use crate::{Cache, CacheKeyBuilder};
 use async_trait::async_trait;
 use bytes::Bytes;
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 use std::time::Duration;
 

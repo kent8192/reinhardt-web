@@ -13,7 +13,6 @@ serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 reinhardt-i18n = { path = "../../../reinhardt-contrib/crates/i18n", version = "0.1.0-alpha.1" }
 reinhardt-core = { workspace = true, features = ["exception"] }
-reinhardt-exception = { path = "../../../reinhardt-core/crates/exception", version = "0.1.0-alpha.1" }
 chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2.1"
 regex = "1.11"

@@ -13,7 +13,7 @@
 //! ```rust,ignore
 //! use reinhardt_sessions::di_support::SessionProvider;
 //! use reinhardt_sessions::backends::InMemorySessionBackend;
-//! use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
+//! use reinhardt_core::di::{Injectable, InjectionContext, SingletonScope};
 //! use std::sync::Arc;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,7 +34,7 @@
 use crate::backends::SessionBackend;
 use crate::session::Session;
 use async_trait::async_trait;
-use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
+use reinhardt_core::di::{DiError, DiResult, Injectable, InjectionContext};
 use std::sync::Arc;
 
 /// Session provider for dependency injection
@@ -117,7 +117,7 @@ impl<B: SessionBackend + 'static> SessionProvider<B> {
 	/// ```rust
 	/// use reinhardt_sessions::di_support::SessionProvider;
 	/// use reinhardt_sessions::backends::InMemorySessionBackend;
-	/// use reinhardt_di::{InjectionContext, SingletonScope};
+	/// use reinhardt_core::di::{InjectionContext, SingletonScope};
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -176,7 +176,7 @@ impl<B: SessionBackend + 'static> Injectable for Session<B> {
 mod tests {
 	use super::*;
 	use crate::backends::InMemorySessionBackend;
-	use reinhardt_di::SingletonScope;
+	use reinhardt_core::di::SingletonScope;
 
 	#[tokio::test]
 	async fn test_session_provider_new() {

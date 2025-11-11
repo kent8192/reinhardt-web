@@ -13,8 +13,8 @@ use async_trait::async_trait;
 use hyper::StatusCode;
 use hyper::header::{REFERER, USER_AGENT};
 use regex::Regex;
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
 use reinhardt_conf::settings;
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use reinhardt_mail;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -139,7 +139,7 @@ impl Default for BrokenLinkConfig {
 /// ```
 /// use std::sync::Arc;
 /// use reinhardt_middleware::{BrokenLinkEmailsMiddleware, BrokenLinkConfig};
-/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///
@@ -147,7 +147,7 @@ impl Default for BrokenLinkConfig {
 ///
 /// #[async_trait::async_trait]
 /// impl Handler for NotFoundHandler {
-///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 ///         Ok(Response::new(StatusCode::NOT_FOUND))
 ///     }
 /// }

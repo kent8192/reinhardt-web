@@ -23,24 +23,20 @@ browsable-api = []
 
 [dependencies]
 # Core dependencies
-reinhardt-apps = { workspace = true }
-reinhardt-core = { workspace = true, features = ["auth", "exception"] }
+reinhardt-core = { workspace = true, features = ["auth", "exception", "apps", "pagination", "negotiation", "parsers"] }
 reinhardt-urls = { workspace = true, features = ["routers"] }
 reinhardt-views = { workspace = true, features = ["viewsets"] }
-# openapi = { path = "crates/openapi", optional = true } # Temporarily disabled due to utoipa API changes
+# openapi = { path = "crates/openapi", optional = true } # TODO: Temporarily disabled due to utoipa API changes
 reinhardt-browsable-api = { path = "../reinhardt-rest/crates/browsable-api" }
 reinhardt-db = { workspace = true, optional = true, features = ["orm"] }
 
 # Internal crates (now part of reinhardt-rest)
 rest-core = { version = "0.1.0-alpha.1", path = "crates/rest-core", package = "reinhardt-rest-core" }
 reinhardt-serializers = { version = "0.1.0-alpha.1", path = "crates/serializers" }
-reinhardt-parsers = { version = "0.1.0-alpha.1", path = "crates/parsers" }
-reinhardt-pagination = { version = "0.1.0-alpha.1", path = "crates/pagination" }
 reinhardt-filters = { version = "0.1.0-alpha.1", path = "crates/filters" }
 reinhardt-throttling = { version = "0.1.0-alpha.1", path = "crates/throttling" }
 reinhardt-versioning = { version = "0.1.0-alpha.1", path = "crates/versioning" }
 reinhardt-metadata = { version = "0.1.0-alpha.1", path = "crates/metadata" }
-reinhardt-negotiation = { version = "0.1.0-alpha.1", path = "crates/negotiation" }
 
 # Serialization
 serde = { workspace = true }

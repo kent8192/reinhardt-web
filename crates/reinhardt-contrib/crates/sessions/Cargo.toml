@@ -8,14 +8,12 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-reinhardt-apps = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["cache"] }
-reinhardt-di = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-reinhardt-core = { workspace = true, features = ["exception", "types"] }
+reinhardt-core = { workspace = true, features = ["exception", "types", "apps", "di", "http"] }
 uuid = { workspace = true }
 chrono = { workspace = true }
 
@@ -42,7 +40,6 @@ sha2 = { version = "0.10", optional = true }
 jsonwebtoken = { workspace = true, optional = true }
 
 # Optional dependencies for HTTP middleware
-reinhardt-http = { workspace = true, optional = true }
 bytes = { workspace = true, optional = true }
 
 # Optional dependency for MessagePack serialization
@@ -58,7 +55,7 @@ database = [
 file = ["tokio", "fs2"]
 cookie = ["base64", "aes-gcm", "rand", "hmac", "sha2"]
 jwt = ["jsonwebtoken"]
-middleware = ["reinhardt-http", "bytes"]
+middleware = ["bytes"]
 messagepack = ["rmp-serde"]
 
 [dev-dependencies]

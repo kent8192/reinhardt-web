@@ -1,7 +1,7 @@
 /// Manual action registration support
 /// This provides a simpler API for registering actions without macros
 use crate::metadata::{ActionMetadata, FunctionActionHandler};
-use reinhardt_apps::{Request, Response, Result};
+use reinhardt_core::apps::{Request, Response, Result};
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, RwLock};

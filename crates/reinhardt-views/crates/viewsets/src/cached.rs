@@ -4,8 +4,8 @@
 //! Supports TTL-based expiration and cache invalidation.
 
 use async_trait::async_trait;
-use reinhardt_apps::{Request, Response, Result};
-use reinhardt_cache::Cache;
+use reinhardt_utils::cache::Cache;
+use reinhardt_core::apps::{Request, Response, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -137,7 +137,7 @@ impl CachedResponse {
 ///
 /// ```
 /// use reinhardt_viewsets::{CachedViewSet, CacheConfig, ModelViewSet};
-/// use reinhardt_cache::InMemoryCache;
+/// use reinhardt_utils::cache::InMemoryCache;
 /// use std::time::Duration;
 ///
 /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -300,7 +300,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::StatusCode;
-	use reinhardt_cache::InMemoryCache;
+	use reinhardt_utils::cache::InMemoryCache;
 
 	#[test]
 	fn test_cache_config_builder() {

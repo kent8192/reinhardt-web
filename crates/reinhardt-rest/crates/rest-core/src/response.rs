@@ -6,8 +6,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// Re-export PaginatedResponse from reinhardt-pagination
-pub use reinhardt_pagination::PaginatedResponse;
+// Re-export PaginatedResponse from reinhardt-pagination (via reinhardt-core)
+pub use reinhardt_core::pagination::PaginatedResponse;
 
 /// DRF-style API response
 #[derive(Debug, Clone, Serialize, Deserialize)]

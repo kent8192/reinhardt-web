@@ -9,7 +9,7 @@
 //! Note: Tera already provides `{% include %}` syntax. This module provides
 //! additional helpers for dynamic template inclusion and context management.
 
-use reinhardt_exception::{Error, Result};
+use reinhardt_core::exception::{Error, Result};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};

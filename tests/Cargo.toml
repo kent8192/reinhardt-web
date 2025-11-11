@@ -7,15 +7,12 @@ publish = false
 
 [dependencies]
 # Reinhardt crates
-reinhardt-apps = { workspace = true }
 reinhardt-commands = { workspace = true }
 reinhardt-contrib = { workspace = true, features = ["admin", "auth", "contenttypes", "graphql", "i18n", "mail", "messages", "sessions", "static", "websockets"] }
-reinhardt-core = { workspace = true, features = ["exception", "macros", "security", "signals", "types", "validators"] }
+reinhardt-core = { workspace = true, features = ["exception", "macros", "security", "signals", "types", "validators", "di", "params", "apps", "http"] }
 reinhardt-db = { workspace = true, features = ["hybrid", "migrations"] }
-reinhardt-di = { workspace = true, features = ["params"] }
 reinhardt-conf = { workspace = true, features = ["settings"] }
 reinhardt-forms = { workspace = true }
-reinhardt-http = { workspace = true }
 reinhardt-middleware = { workspace = true }
 reinhardt-orm = { path = "../crates/reinhardt-db/crates/orm", features = ["postgres", "sqlite"] }
 reinhardt-rest = { workspace = true, features = ["browsable-api", "filters", "metadata", "negotiation", "pagination", "parsers", "serializers", "throttling", "versioning"] }

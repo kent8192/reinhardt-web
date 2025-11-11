@@ -22,8 +22,7 @@ sqlite = ["reinhardt-backends/sqlite", "sqlx/sqlite"]
 mysql = ["reinhardt-backends/mysql", "sqlx/mysql"]
 
 [dependencies]
-reinhardt-apps = { workspace = true }
-reinhardt-core = { workspace = true, features = ["validators", "macros"] }
+reinhardt-core = { workspace = true, features = ["exception", "types", "validators", "macros", "apps"] }
 reinhardt-backends = { path = "../backends", version = "0.1.0-alpha.1" }
 reinhardt-hybrid = { path = "../hybrid", version = "0.1.0-alpha.1" }
 async-trait = { workspace = true }

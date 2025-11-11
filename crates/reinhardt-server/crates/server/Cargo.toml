@@ -7,8 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reinhardt-http = { workspace = true }
-reinhardt-core = { workspace = true, features = ["exception", "types"] }
+reinhardt-core = { workspace = true, features = ["exception", "types", "http"] }
 serde_json = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }

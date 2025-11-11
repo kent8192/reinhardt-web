@@ -11,4 +11,5 @@
 //! let app_config = AppConfig::new("myapp");
 //! ```
 
-pub use reinhardt_apps::*;
+#[cfg(feature = "core")]
+pub use reinhardt_core::apps::*;

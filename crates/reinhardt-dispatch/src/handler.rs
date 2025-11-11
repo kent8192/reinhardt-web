@@ -9,7 +9,7 @@ use reinhardt_core::signals::{
 	RequestFinishedEvent, RequestStartedEvent, request_finished, request_started,
 };
 use reinhardt_core::types::Handler;
-use reinhardt_http::{Request, Response};
+use reinhardt_core::http::{Request, Response};
 use reinhardt_urls::routers::DefaultRouter;
 use std::sync::Arc;
 use tracing::{debug, error, trace};

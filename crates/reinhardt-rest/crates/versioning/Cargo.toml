@@ -7,7 +7,7 @@ description = "API versioning strategies for Reinhardt framework"
 repository.workspace = true
 
 [dependencies]
-reinhardt-apps = { workspace = true }
+reinhardt-core = { workspace = true, version = "0.1.0-alpha.1", features = ["http", "exception", "types"] }
 reinhardt-urls = { workspace = true, features = ["routers"] }
 async-trait = "0.1"
 bytes = "1.9"

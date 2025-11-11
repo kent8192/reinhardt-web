@@ -70,7 +70,7 @@
 //! use reinhardt_middleware::LoggingMiddleware;
 //! use hyper::Method;
 //! use std::sync::Arc;
-//! # use reinhardt_apps::{Request, Response, Result};
+//! # use reinhardt_core::apps::{Request, Response, Result};
 //!
 //! # async fn handler(_req: Request) -> Result<Response> {
 //! #     Ok(Response::ok())
@@ -87,7 +87,7 @@
 //! use reinhardt_middleware::LoggingMiddleware;
 //! use hyper::Method;
 //! use std::sync::Arc;
-//! # use reinhardt_apps::{Request, Response, Result};
+//! # use reinhardt_core::apps::{Request, Response, Result};
 //!
 //! # async fn users_list(_req: Request) -> Result<Response> {
 //! #     Ok(Response::ok())

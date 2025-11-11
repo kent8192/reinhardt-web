@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::StatusCode;
-use reinhardt_http::{Request, Response};
+use reinhardt_core::http::{Request, Response};
 use std::fmt;
 use std::future::Future;
 use tracing::{error, warn};

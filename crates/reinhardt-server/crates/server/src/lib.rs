@@ -23,7 +23,7 @@ pub use graphql::{GraphQLHandler, graphql_handler};
 pub use websocket::{BroadcastManager, WebSocketHandler, WebSocketServer, serve_websocket};
 
 // Re-export types needed for server trait
-pub use reinhardt_http::{Request, Response};
+pub use reinhardt_core::http::{Request, Response};
 
 /// Common server trait that all server types implement
 pub trait ServerHandler: Send + Sync {

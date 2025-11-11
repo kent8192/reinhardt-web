@@ -9,7 +9,6 @@ authors.workspace = true
 
 [dependencies]
 # Internal dependencies
-reinhardt-apps = { workspace = true }
 reinhardt-validators = { path = "../reinhardt-core/crates/validators" }
 
 # Async runtime

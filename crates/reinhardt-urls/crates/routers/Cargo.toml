@@ -7,14 +7,11 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reinhardt-apps = { workspace = true }
 reinhardt-views = { workspace = true, features = ["viewsets"] }
 reinhardt-viewsets = { path = "../../../reinhardt-views/crates/viewsets", version = "0.1.0-alpha.1" }
 reinhardt-routers-macros = { path = "../routers-macros", version = "0.1.0-alpha.1" }
-reinhardt-di = { workspace = true, optional = true }
 reinhardt-middleware = { workspace = true, optional = true }
-reinhardt-core = { workspace = true, features = ["exception"] }
-reinhardt-exception = { path = "../../../reinhardt-core/crates/exception", version = "0.1.0-alpha.1" }
+reinhardt-core = { workspace = true, features = ["exception", "http", "types", "apps", "di"] }
 regex = { workspace = true }
 nom = { workspace = true }
 async-trait = { workspace = true }
@@ -30,7 +27,7 @@ aho-corasick = "1.1"
 
 [features]
 default = ["unified-router"]
-unified-router = ["reinhardt-di", "reinhardt-middleware"]
+unified-router = ["reinhardt-middleware"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

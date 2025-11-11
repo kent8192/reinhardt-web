@@ -2,8 +2,8 @@
 use crate::{Action, ViewSet};
 use async_trait::async_trait;
 use hyper::Method;
-use reinhardt_apps::{Handler, Request, Response, Result};
 use reinhardt_auth::{Permission, PermissionContext};
+use reinhardt_core::apps::{Handler, Request, Response, Result};
 use reinhardt_db::orm::{Model, query_types::DbBackend};
 use reinhardt_filters::FilterBackend;
 use reinhardt_serializers::{ModelSerializer, Serializer};
@@ -21,7 +21,7 @@ pub struct ViewSetHandler<V: ViewSet> {
 	name: Option<String>,
 	#[allow(dead_code)]
 	suffix: Option<String>,
-	injection_context: Option<Arc<reinhardt_di::InjectionContext>>,
+	injection_context: Option<Arc<reinhardt_core::di::InjectionContext>>,
 
 	// Attributes set after as_view() is called
 	// These mirror Django REST Framework's behavior
@@ -55,7 +55,7 @@ impl<V: ViewSet> ViewSetHandler<V> {
 	///
 	/// ```
 	/// use reinhardt_viewsets::ViewSetHandler;
-	/// use reinhardt_di::{InjectionContext, SingletonScope};
+	/// use reinhardt_core::di::{InjectionContext, SingletonScope};
 	/// use std::sync::Arc;
 	///
 	/// # fn example() {
@@ -66,7 +66,7 @@ impl<V: ViewSet> ViewSetHandler<V> {
 	/// //     .with_di_context(ctx);
 	/// # }
 	/// ```
-	pub fn with_di_context(mut self, ctx: Arc<reinhardt_di::InjectionContext>) -> Self {
+	pub fn with_di_context(mut self, ctx: Arc<reinhardt_core::di::InjectionContext>) -> Self {
 		self.injection_context = Some(ctx);
 		self
 	}
@@ -112,7 +112,7 @@ impl<V: ViewSet + 'static> Handler for ViewSetHandler<V> {
 
 		// Resolve action from HTTP method
 		let action_name = self.action_map.get(&request.method).ok_or_else(|| {
-			reinhardt_apps::Error::Http(format!("Method {} not allowed", request.method))
+			reinhardt_core::exception::Error::Http(format!("Method {} not allowed", request.method))
 		})?;
 
 		// Create Action from name
@@ -126,7 +126,7 @@ impl<V: ViewSet + 'static> Handler for ViewSetHandler<V> {
 					.dispatch_with_context(request, action, ctx)
 					.await?
 			} else {
-				return Err(reinhardt_apps::Error::Internal(
+				return Err(reinhardt_core::exception::Error::Internal(
                     "ViewSet requires DI context but none was provided. Use .with_di_context() to configure.".to_string()
                 ));
 			}
@@ -224,7 +224,7 @@ where
 	serializer_class: Option<Arc<dyn Serializer<Input = T, Output = String> + Send + Sync>>,
 	permission_classes: Vec<Arc<dyn Permission>>,
 	filter_backends: Vec<Arc<dyn FilterBackend>>,
-	pagination_class: Option<reinhardt_pagination::PaginatorImpl>,
+	pagination_class: Option<reinhardt_core::pagination::PaginatorImpl>,
 	pool: Option<Arc<sqlx::AnyPool>>,
 	/// Database backend type (default: PostgreSQL)
 	db_backend: DbBackend,
@@ -409,7 +409,7 @@ where
 	///
 	/// ```
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_auth::permissions::IsAuthenticated;
+	/// # use reinhardt_auth::IsAuthenticated;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use std::sync::Arc;
@@ -441,7 +441,10 @@ where
 	}
 
 	/// Set the pagination class for this handler
-	pub fn with_pagination(mut self, pagination: reinhardt_pagination::PaginatorImpl) -> Self {
+	pub fn with_pagination(
+		mut self,
+		pagination: reinhardt_core::pagination::PaginatorImpl,
+	) -> Self {
 		self.pagination_class = Some(pagination);
 		self
 	}
@@ -591,7 +594,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_apps::Request;
+	/// # use reinhardt_core::apps::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use bytes::Bytes;
@@ -650,7 +653,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_apps::Request;
+	/// # use reinhardt_core::apps::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use serde_json::Value;
@@ -723,7 +726,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_apps::Request;
+	/// # use reinhardt_core::apps::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use bytes::Bytes;
@@ -811,7 +814,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_apps::Request;
+	/// # use reinhardt_core::apps::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use serde_json::Value;
@@ -908,7 +911,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_apps::Request;
+	/// # use reinhardt_core::apps::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use serde_json::Value;
@@ -1013,7 +1016,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-	use reinhardt_auth::permissions::{AllowAny, IsAuthenticated};
+	use reinhardt_auth::{AllowAny, IsAuthenticated};
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]

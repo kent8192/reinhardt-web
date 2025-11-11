@@ -16,12 +16,9 @@ yaml = ["serde_yaml"]
 
 [dependencies]
 # Base layer dependency (ORM-agnostic serialization)
-reinhardt-core = { workspace = true, features = ["serializers"] }
+reinhardt-core = { workspace = true, features = ["serializers", "apps", "negotiation", "parsers"] }
 
 # REST-specific dependencies
-reinhardt-apps = { workspace = true }
-reinhardt-parsers = { version = "0.1.0-alpha.1", path = "../parsers" }
-reinhardt-negotiation = { version = "0.1.0-alpha.1", path = "../negotiation" }
 reinhardt-db = { workspace = true, features = ["pool", "orm"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

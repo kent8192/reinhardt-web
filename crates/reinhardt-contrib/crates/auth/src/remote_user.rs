@@ -4,7 +4,7 @@
 //! authentication systems (e.g., Apache mod_auth, nginx auth_request).
 
 use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
-use reinhardt_apps::Request;
+use reinhardt_core::apps::Request;
 use uuid::Uuid;
 
 /// Remote user authentication backend

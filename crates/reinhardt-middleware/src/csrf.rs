@@ -9,7 +9,7 @@
 
 use async_trait::async_trait;
 use hyper::Method;
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -129,7 +129,7 @@ impl CsrfMiddleware {
 	///
 	/// ```
 	/// use reinhardt_middleware::csrf::CsrfMiddleware;
-	/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	/// use hyper::{Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	/// use std::sync::Arc;
@@ -138,7 +138,7 @@ impl CsrfMiddleware {
 	///
 	/// #[async_trait::async_trait]
 	/// impl Handler for TestHandler {
-	///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 	///         Ok(Response::ok().with_body("OK"))
 	///     }
 	/// }
@@ -272,7 +272,7 @@ impl CsrfMiddleware {
 			let is_secure = self.is_secure_request(request);
 
 			check_referer(referer, &self.config.trusted_origins, is_secure).map_err(|e| {
-				reinhardt_apps::Error::Authorization(format!(
+				reinhardt_core::exception::Error::Authorization(format!(
 					"CSRF validation failed: {}",
 					e.reason
 				))
@@ -281,7 +281,7 @@ impl CsrfMiddleware {
 
 		// Extract and validate token
 		let token = self.extract_token(request).ok_or_else(|| {
-			reinhardt_apps::Error::Authorization(REASON_CSRF_TOKEN_MISSING.to_string())
+			reinhardt_core::exception::Error::Authorization(REASON_CSRF_TOKEN_MISSING.to_string())
 		})?;
 
 		// Get secret and session_id
@@ -290,7 +290,7 @@ impl CsrfMiddleware {
 
 		// Validate token using HMAC
 		check_token(&token, &secret, &session_id).map_err(|e| {
-			reinhardt_apps::Error::Authorization(format!(
+			reinhardt_core::exception::Error::Authorization(format!(
 				"CSRF token validation failed: {}",
 				e.reason
 			))

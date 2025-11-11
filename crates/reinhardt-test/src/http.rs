@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 use std::str::FromStr;
 
 // Re-export types from reinhardt-apps for convenience
-pub use reinhardt_apps::{Error, Request, Response, Result};
+pub use reinhardt_core::apps::{Error, Request, Response, Result};
 
 /// Create a test HTTP request
 ///
@@ -83,7 +83,7 @@ pub fn create_request(
 ///
 /// ```
 /// use reinhardt_test::http::{extract_json, create_request};
-/// use reinhardt_apps::Response;
+/// use reinhardt_core::apps::Response;
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -107,7 +107,7 @@ pub fn create_request(
 ///
 /// ```
 /// use reinhardt_test::http::extract_json;
-/// use reinhardt_apps::Response;
+/// use reinhardt_core::apps::Response;
 /// use serde::Deserialize;
 ///
 /// #[derive(Deserialize)]

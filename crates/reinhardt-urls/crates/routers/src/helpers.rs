@@ -9,7 +9,7 @@ use nom::{
 	combinator::map,
 	multi::many0,
 };
-use reinhardt_apps::Handler;
+use reinhardt_core::apps::Handler;
 
 /// Create a route using simple path syntax
 /// Similar to Django's path() function
@@ -21,10 +21,10 @@ use reinhardt_apps::Handler;
 ///
 /// ```
 /// use reinhardt_routers::path;
-/// use reinhardt_apps::Handler;
+/// use reinhardt_core::apps::Handler;
 ///
 /// # use async_trait::async_trait;
-/// # use reinhardt_apps::{Request, Response, Result};
+/// # use reinhardt_core::apps::{Request, Response, Result};
 /// # struct DummyHandler;
 /// # #[async_trait]
 /// # impl Handler for DummyHandler {
@@ -61,10 +61,10 @@ where
 ///
 /// ```
 /// use reinhardt_routers::re_path;
-/// use reinhardt_apps::Handler;
+/// use reinhardt_core::apps::Handler;
 ///
 /// # use async_trait::async_trait;
-/// # use reinhardt_apps::{Request, Response, Result};
+/// # use reinhardt_core::apps::{Request, Response, Result};
 /// # struct DummyHandler;
 /// # #[async_trait]
 /// # impl Handler for DummyHandler {
@@ -218,11 +218,11 @@ fn parse_non_group_char(input: &str) -> IResult<&str, char> {
 ///
 /// ```
 /// use reinhardt_routers::{DefaultRouter, Router, path};
-/// use reinhardt_apps::Handler;
+/// use reinhardt_core::apps::Handler;
 /// use std::sync::Arc;
 ///
 /// # use async_trait::async_trait;
-/// # use reinhardt_apps::{Request, Response, Result};
+/// # use reinhardt_core::apps::{Request, Response, Result};
 /// # struct DummyHandler;
 /// # #[async_trait]
 /// # impl Handler for DummyHandler {
@@ -271,11 +271,11 @@ impl IncludedRouter {
 ///
 /// ```
 /// use reinhardt_routers::{include_routes, path};
-/// use reinhardt_apps::Handler;
+/// use reinhardt_core::apps::Handler;
 /// use std::sync::Arc;
 ///
 /// # use async_trait::async_trait;
-/// # use reinhardt_apps::{Request, Response, Result};
+/// # use reinhardt_core::apps::{Request, Response, Result};
 /// # struct DummyHandler;
 /// # #[async_trait]
 /// # impl Handler for DummyHandler {

@@ -4,7 +4,8 @@
 //! across multiple Reinhardt crates with HTTP framework integration.
 
 use bytes::Bytes;
-use reinhardt_apps::{Handler, Request};
+use reinhardt_core::http::Request;
+use reinhardt_core::types::Handler;
 use sqlx::{Pool, Postgres};
 // NOTE: AssertSqlSafe trait was removed in newer sqlx versions (v0.6+)
 // This import is no longer needed as the trait is not used in tests

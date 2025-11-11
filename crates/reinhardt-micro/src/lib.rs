@@ -70,13 +70,13 @@
 //! - You're migrating from Django and want familiar patterns
 //! - You need all the batteries included
 
-pub use reinhardt_apps::{Error, Request, Response, Result};
+pub use reinhardt_core::apps::{Error, Request, Response, Result};
 
 #[cfg(feature = "params")]
-pub use reinhardt_di::params::{Cookie, Form, Header, Json, Path, Query};
+pub use reinhardt_core::di::params::{Cookie, Form, Header, Json, Path, Query};
 
 #[cfg(feature = "di")]
-pub use reinhardt_di::Depends;
+pub use reinhardt_core::di::Depends;
 
 #[cfg(feature = "database")]
 pub use reinhardt_db::orm;
@@ -122,10 +122,10 @@ pub mod prelude {
 	pub use super::{Error, Request, Response, Result};
 
 	#[cfg(feature = "params")]
-	pub use reinhardt_di::params::{Cookie, Form, Header, Json, Path, Query};
+	pub use reinhardt_core::di::params::{Cookie, Form, Header, Json, Path, Query};
 
 	#[cfg(feature = "di")]
-	pub use reinhardt_di::Depends;
+	pub use reinhardt_core::di::Depends;
 
 	// Re-export endpoint macros
 	pub use reinhardt_core::macros::{delete, endpoint, get, patch, post, put, use_injection};

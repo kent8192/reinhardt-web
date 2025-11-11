@@ -1,7 +1,7 @@
 /// ViewSetBuilder - converts ViewSet to Handler with action mapping
 use crate::ViewSet;
 use hyper::Method;
-use reinhardt_apps::{Handler, Result};
+use reinhardt_core::apps::{Handler, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -39,7 +39,7 @@ impl<V: ViewSet + 'static> ViewSetBuilder<V> {
 	/// Set a custom name (mutually exclusive with suffix)
 	pub fn with_name(mut self, name: impl Into<String>) -> Result<Self> {
 		if self.suffix.is_some() {
-			return Err(reinhardt_apps::Error::Http(format!(
+			return Err(reinhardt_core::exception::Error::Http(format!(
 				"{}() received both `name` and `suffix`, which are mutually exclusive arguments.",
 				std::any::type_name::<V>()
 			)));
@@ -51,7 +51,7 @@ impl<V: ViewSet + 'static> ViewSetBuilder<V> {
 	/// Set a custom suffix (mutually exclusive with name)
 	pub fn with_suffix(mut self, suffix: impl Into<String>) -> Result<Self> {
 		if self.name.is_some() {
-			return Err(reinhardt_apps::Error::Http(format!(
+			return Err(reinhardt_core::exception::Error::Http(format!(
 				"{}() received both `name` and `suffix`, which are mutually exclusive arguments.",
 				std::any::type_name::<V>()
 			)));
@@ -64,7 +64,7 @@ impl<V: ViewSet + 'static> ViewSetBuilder<V> {
 	pub fn build(self) -> Result<Arc<dyn Handler>> {
 		// Validate that actions are not empty
 		if self.actions.is_empty() {
-			return Err(reinhardt_apps::Error::Http(
+			return Err(reinhardt_core::exception::Error::Http(
 				"The `actions` argument must be provided when calling `.as_view()` on a ViewSet. \
                  For example `.as_view({'get': 'list'})`"
 					.to_string(),

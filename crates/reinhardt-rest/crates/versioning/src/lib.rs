@@ -44,7 +44,8 @@ pub use handler::{
 };
 pub use middleware::{ApiVersion, RequestVersionExt, VersioningMiddleware};
 use regex::Regex;
-use reinhardt_apps::{Error, Request, Result};
+use reinhardt_core::exception::{Error, Result};
+use reinhardt_core::http::Request;
 pub use reverse::{
 	ApiDocFormat, ApiDocUrlBuilder, UrlReverseManager, VersionedUrlBuilder,
 	VersioningStrategy as ReverseVersioningStrategy,
@@ -885,12 +886,12 @@ impl NamespaceVersioning {
 	///
 	/// ```
 	/// use reinhardt_versioning::NamespaceVersioning;
-	/// use reinhardt_routers::{DefaultRouter, Router, path};
-	/// use reinhardt_apps::Handler;
+	/// use reinhardt_urls::routers::{DefaultRouter, Router, path};
+	/// use reinhardt_core::apps::Handler;
 	/// use std::sync::Arc;
 	///
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	/// # struct DummyHandler;
 	/// # #[async_trait]
 	/// # impl Handler for DummyHandler {
@@ -923,7 +924,7 @@ pub mod test_utils {
 	use bytes::Bytes;
 	use hyper::header::HeaderName;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_apps::Request;
+	use reinhardt_core::apps::Request;
 
 	pub fn create_test_request(uri: &str, headers: Vec<(String, String)>) -> Request {
 		let uri = uri.parse::<Uri>().unwrap();
@@ -1077,8 +1078,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_namespace_versioning_router_integration() {
-		use reinhardt_apps::{Handler, Response};
-		use reinhardt_routers::{DefaultRouter, Router, path};
+		use reinhardt_core::apps::{Handler, Response};
+		use reinhardt_urls::routers::{DefaultRouter, Router, path};
 		use std::sync::Arc;
 
 		struct DummyHandler;

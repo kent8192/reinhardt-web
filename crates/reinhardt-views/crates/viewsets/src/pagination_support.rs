@@ -3,8 +3,8 @@
 //! Provides automatic pagination integration for list actions in ViewSets.
 
 use async_trait::async_trait;
-use reinhardt_apps::{Request, Result};
-use reinhardt_pagination::{
+use reinhardt_core::apps::{Request, Result};
+use reinhardt_core::pagination::{
 	CursorPagination, LimitOffsetPagination, PageNumberPagination, PaginatedResponse, Paginator,
 };
 use serde::Serialize;

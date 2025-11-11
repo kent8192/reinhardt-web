@@ -8,12 +8,11 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-reinhardt-http = { workspace = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-reinhardt-core = { workspace = true, features = ["exception", "types"] }
+reinhardt-core = { workspace = true, features = ["exception", "types", "http"] }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 lettre = { version = "0.11", features = [

@@ -2,7 +2,7 @@
 
 use crate::{Cache, CacheKeyBuilder, InMemoryCache};
 use async_trait::async_trait;
-use reinhardt_di::{DiResult, Injectable, InjectionContext};
+use reinhardt_core::di::{DiError, DiResult, Injectable, InjectionContext};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -81,9 +81,9 @@ impl Injectable for RedisConfig {
 impl Injectable for RedisCache {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
 		let config = RedisConfig::inject(ctx).await?;
-		RedisCache::new(&config.url).await.map_err(|e| {
-			reinhardt_di::DiError::ProviderError(format!("Failed to create Redis cache: {}", e))
-		})
+		RedisCache::new(&config.url)
+			.await
+			.map_err(|e| DiError::ProviderError(format!("Failed to create Redis cache: {}", e)))
 	}
 }
 
@@ -250,7 +250,7 @@ impl Injectable for CacheService {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_di::SingletonScope;
+	use reinhardt_core::di::SingletonScope;
 
 	#[tokio::test]
 	async fn test_in_memory_cache_injection() {

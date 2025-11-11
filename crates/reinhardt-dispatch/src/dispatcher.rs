@@ -1,7 +1,7 @@
 //! Main dispatcher for handling HTTP requests
 
 use reinhardt_core::exception::Result;
-use reinhardt_http::{Request, Response};
+use reinhardt_core::http::{Request, Response};
 
 use crate::handler::BaseHandler;
 

@@ -11,16 +11,12 @@ default = []
 argon2-hasher = ["reinhardt-auth/argon2-hasher"]
 
 [dependencies]
-reinhardt-apps = { workspace = true }
-reinhardt-di = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
-reinhardt-core = { workspace = true, features = ["auth", "macros"] }
+reinhardt-core = { workspace = true, features = ["exception", "types", "macros", "apps", "di", "pagination"] }
 reinhardt-auth = { path = "../../../reinhardt-contrib/crates/auth", version = "0.1.0-alpha.1" }
 reinhardt-utils = { workspace = true, features = ["cache"] }
 reinhardt-serializers = { path = "../../../reinhardt-rest/crates/serializers", version = "0.1.0-alpha.1" }
 reinhardt-filters = { path = "../../../reinhardt-rest/crates/filters", version = "0.1.0-alpha.1" }
-reinhardt-pagination = { path = "../../../reinhardt-rest/crates/pagination", version = "0.1.0-alpha.1" }
-reinhardt-cache = { path = "../../../reinhardt-utils/crates/cache", version = "0.1.0-alpha.1" }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

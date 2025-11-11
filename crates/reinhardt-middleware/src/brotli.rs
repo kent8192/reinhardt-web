@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use brotli::enc::BrotliEncoderParams;
 use bytes::Bytes;
 use hyper::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE};
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// Brotli compression quality level
@@ -125,7 +125,7 @@ impl BrotliMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::brotli::BrotliMiddleware;
-	/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -133,7 +133,7 @@ impl BrotliMiddleware {
 	///
 	/// #[async_trait::async_trait]
 	/// impl Handler for TestHandler {
-	///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 	///         let body = "This is a response body that will be compressed. ".repeat(10);
 	///         let mut response = Response::new(StatusCode::OK).with_body(Bytes::from(body));
 	///         response.headers.insert(

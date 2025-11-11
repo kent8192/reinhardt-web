@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use hyper::header::HeaderName;
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
@@ -257,7 +257,7 @@ impl Default for TracingConfig {
 /// ```
 /// use std::sync::Arc;
 /// use reinhardt_middleware::{TracingMiddleware, TracingConfig};
-/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///
@@ -265,7 +265,7 @@ impl Default for TracingConfig {
 ///
 /// #[async_trait::async_trait]
 /// impl Handler for TestHandler {
-///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 ///         Ok(Response::new(StatusCode::OK).with_body(Bytes::from("OK")))
 ///     }
 /// }

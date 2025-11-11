@@ -21,13 +21,10 @@ database = ["sqlx", "sea-query", "sea-query-binder"]
 redis-sessions = ["redis"]
 
 [dependencies]
-reinhardt-http = { workspace = true }
-reinhardt-apps = { workspace = true }
-reinhardt-di = { workspace = true }
 reinhardt-sessions = { path = "../sessions" }
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-throttling = { path = "../../../reinhardt-rest/crates/throttling", version = "0.1.0-alpha.1" }
-reinhardt-core = { workspace = true, features = ["exception", "types", "auth"] }
+reinhardt-core = { workspace = true, features = ["exception", "types", "auth", "http", "apps", "di"] }
 argon2 = { workspace = true }
 rand = { workspace = true }
 jsonwebtoken = { workspace = true }

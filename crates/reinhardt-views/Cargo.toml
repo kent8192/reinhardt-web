@@ -8,7 +8,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-reinhardt-apps = { workspace = true }
+reinhardt-core = { workspace = true, features = ["http", "exception", "types"] }
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-template = { workspace = true }
 async-trait = { workspace = true }
@@ -25,7 +25,6 @@ reinhardt-views-core = { version = "0.1.0-alpha.1", path = "crates/views-core" }
 # Optional dependencies for features
 reinhardt-viewsets = { version = "0.1.0-alpha.1", path = "crates/viewsets", optional = true }
 reinhardt-serializers = { path = "../reinhardt-rest/crates/serializers" }
-reinhardt-exception = { path = "../reinhardt-core/crates/exception" }
 
 [features]
 default = []

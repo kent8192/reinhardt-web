@@ -4,7 +4,8 @@ use crate::fields::FieldInfo;
 use crate::options::MetadataOptions;
 use crate::response::MetadataResponse;
 use async_trait::async_trait;
-use reinhardt_apps::{Request, Result};
+use reinhardt_core::exception::Result;
+use reinhardt_core::http::Request;
 use std::collections::HashMap;
 
 /// Base trait for metadata providers

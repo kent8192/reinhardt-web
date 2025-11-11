@@ -68,20 +68,21 @@ pub use escaping::{
 	unescape_html,
 };
 pub use fs_loader::FileSystemTemplateLoader;
-pub use include_tag::{TemplateIncludeManager, include_template, process_includes};
-pub use reinhardt_exception::Error as TemplateError;
-pub use tags::{
-	TemplateTagRegistry, alert_tag, breadcrumb_tag, css_class_tag, image_tag, link_tag,
-};
-pub type TemplateResult<T> = reinhardt_exception::Result<T>;
 pub use i18n_filters::{
 	blocktrans, blocktrans_plural, get_current_language, localize_currency_filter,
 	localize_date_filter, localize_date_with_format, localize_integer_filter,
 	localize_number_filter, trans, trans_plural_with_context, trans_with_context,
 };
+pub use include_tag::{TemplateIncludeManager, include_template, process_includes};
+pub use reinhardt_core::exception::Error as TemplateError;
 pub use static_filters::{StaticConfig, init_static_config, static_filter, static_path_join};
+pub use tags::{
+	TemplateTagRegistry, alert_tag, breadcrumb_tag, css_class_tag, image_tag, link_tag,
+};
 
-use reinhardt_exception::{Error, Result};
+use reinhardt_core::exception::{Error, Result};
+
+pub type TemplateResult<T> = Result<T>;
 use std::collections::HashMap;
 
 /// Template loader for managing multiple templates

@@ -9,13 +9,13 @@ autotests = true
 
 [dependencies]
 # Reinhardt crates
+reinhardt-core = { path = "../../crates/reinhardt-core", features = ["http", "types", "exception", "apps", "di"] }
 reinhardt-contrib = { path = "../../crates/reinhardt-contrib" }
 reinhardt-admin = { path = "../../crates/reinhardt-contrib/crates/admin" }
 reinhardt-auth = { path = "../../crates/reinhardt-contrib/crates/auth" }
 reinhardt-security = { path = "../../crates/reinhardt-core/crates/security" }
 reinhardt-middleware = { path = "../../crates/reinhardt-middleware" }
 reinhardt-templates = { path = "../../crates/reinhardt-template/crates/templates" }
-reinhardt-apps = { path = "../../crates/reinhardt-apps" }
 reinhardt-routers = { path = "../../crates/reinhardt-urls/crates/routers" }
 reinhardt-proxy = { path = "../../crates/reinhardt-urls/crates/proxy" }
 reinhardt-viewsets = { path = "../../crates/reinhardt-views/crates/viewsets" }
@@ -33,13 +33,10 @@ reinhardt-exception = { path = "../../crates/reinhardt-core/crates/exception" }
 reinhardt-types = { path = "../../crates/reinhardt-core/crates/types" }
 reinhardt-signals = { path = "../../crates/reinhardt-core/crates/signals" }
 reinhardt-websockets = { path = "../../crates/reinhardt-contrib/crates/websockets" }
-reinhardt-http = { path = "../../crates/reinhardt-http" }
 reinhardt-server = { path = "../../crates/reinhardt-server" }
 reinhardt-logging = { path = "../../crates/reinhardt-utils/crates/logging" }
 reinhardt-mail = { path = "../../crates/reinhardt-contrib/crates/mail" }
 reinhardt-contenttypes = { path = "../../crates/reinhardt-contrib/crates/contenttypes", features = ["database"] }
-reinhardt-di = { path = "../../crates/reinhardt-di" }
-reinhardt-params = { path = "../../crates/reinhardt-di/crates/params" }
 reinhardt-macros = { path = "../../crates/reinhardt-core/crates/macros" }
 reinhardt-static = { path = "../../crates/reinhardt-contrib/crates/static", features = [
   "templates-integration",

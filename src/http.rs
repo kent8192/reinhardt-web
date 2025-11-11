@@ -8,4 +8,5 @@
 //! use reinhardt::http::{Request, Response, StatusCode};
 //! ```
 
-pub use reinhardt_http::*;
+#[cfg(feature = "core")]
+pub use reinhardt_core::http::*;

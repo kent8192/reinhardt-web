@@ -26,7 +26,7 @@ static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DatabaseConnection>>>> =
 /// # }
 /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 /// ```
-pub async fn init_database(url: &str) -> reinhardt_apps::Result<()> {
+pub async fn init_database(url: &str) -> reinhardt_core::exception::Result<()> {
 	init_database_with_pool_size(url, None).await
 }
 
@@ -51,7 +51,7 @@ pub async fn init_database(url: &str) -> reinhardt_apps::Result<()> {
 pub async fn init_database_with_pool_size(
 	url: &str,
 	pool_size: Option<u32>,
-) -> reinhardt_apps::Result<()> {
+) -> reinhardt_core::exception::Result<()> {
 	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
 	DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
 	Ok(())
@@ -76,7 +76,7 @@ pub async fn init_database_with_pool_size(
 /// # }
 /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 /// ```
-pub async fn reinitialize_database(url: &str) -> reinhardt_apps::Result<()> {
+pub async fn reinitialize_database(url: &str) -> reinhardt_core::exception::Result<()> {
 	reinitialize_database_with_pool_size(url, None).await
 }
 
@@ -101,7 +101,7 @@ pub async fn reinitialize_database(url: &str) -> reinhardt_apps::Result<()> {
 pub async fn reinitialize_database_with_pool_size(
 	url: &str,
 	pool_size: Option<u32>,
-) -> reinhardt_apps::Result<()> {
+) -> reinhardt_core::exception::Result<()> {
 	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
 
 	if let Some(db_cell) = DB.get() {
@@ -117,13 +117,13 @@ pub async fn reinitialize_database_with_pool_size(
 }
 
 /// Get a reference to the global database connection
-pub async fn get_connection() -> reinhardt_apps::Result<DatabaseConnection> {
-	let db = DB
-		.get()
-		.ok_or_else(|| reinhardt_apps::Error::Database("Database not initialized".to_string()))?;
+pub async fn get_connection() -> reinhardt_core::exception::Result<DatabaseConnection> {
+	let db = DB.get().ok_or_else(|| {
+		reinhardt_core::exception::Error::Database("Database not initialized".to_string())
+	})?;
 	let guard = db.read().await;
 	guard.clone().ok_or_else(|| {
-		reinhardt_apps::Error::Database("Database connection not available".to_string())
+		reinhardt_core::exception::Error::Database("Database connection not available".to_string())
 	})
 }
 
@@ -171,14 +171,14 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Create a new record using SeaQuery for SQL injection protection
-	pub async fn create(&self, model: &M) -> reinhardt_apps::Result<M> {
+	pub async fn create(&self, model: &M) -> reinhardt_core::exception::Result<M> {
 		let conn = get_connection().await?;
 		let json = serde_json::to_value(model)
-			.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 
 		// Extract fields and values from model
 		let obj = json.as_object().ok_or_else(|| {
-			reinhardt_apps::Error::Database("Model must serialize to object".to_string())
+			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
 		})?;
 
 		// Build SeaQuery INSERT statement
@@ -202,8 +202,9 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&sql, vec![]).await?;
 		let value = serde_json::to_value(&row.data)
-			.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
-		serde_json::from_value(value).map_err(|e| reinhardt_apps::Error::Database(e.to_string()))
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+		serde_json::from_value(value)
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
 	}
 
 	/// Convert serde_json::Value to sea_query::Value for parameter binding
@@ -259,17 +260,17 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Update an existing record using SeaQuery for SQL injection protection
-	pub async fn update(&self, model: &M) -> reinhardt_apps::Result<M> {
+	pub async fn update(&self, model: &M) -> reinhardt_core::exception::Result<M> {
 		let conn = get_connection().await?;
 		let pk = model.primary_key().ok_or_else(|| {
-			reinhardt_apps::Error::Database("Model must have primary key".to_string())
+			reinhardt_core::exception::Error::Database("Model must have primary key".to_string())
 		})?;
 
 		let json = serde_json::to_value(model)
-			.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 
 		let obj = json.as_object().ok_or_else(|| {
-			reinhardt_apps::Error::Database("Model must serialize to object".to_string())
+			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
 		})?;
 
 		// Build SeaQuery UPDATE statement
@@ -297,12 +298,13 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&sql, vec![]).await?;
 		let value = serde_json::to_value(&row.data)
-			.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
-		serde_json::from_value(value).map_err(|e| reinhardt_apps::Error::Database(e.to_string()))
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+		serde_json::from_value(value)
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
 	}
 
 	/// Delete a record using SeaQuery for SQL injection protection
-	pub async fn delete(&self, pk: M::PrimaryKey) -> reinhardt_apps::Result<()> {
+	pub async fn delete(&self, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
 		let conn = get_connection().await?;
 
 		// Build SeaQuery DELETE statement
@@ -318,7 +320,7 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Count records using SeaQuery
-	pub async fn count(&self) -> reinhardt_apps::Result<i64> {
+	pub async fn count(&self) -> reinhardt_core::exception::Result<i64> {
 		let conn = get_connection().await?;
 
 		// Build SeaQuery SELECT COUNT(*) statement
@@ -331,8 +333,9 @@ impl<M: Model> Manager<M> {
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
 		let row = conn.query_one(&sql, vec![]).await?;
-		row.get::<i64>("count")
-			.ok_or_else(|| reinhardt_apps::Error::Database("Failed to get count".to_string()))
+		row.get::<i64>("count").ok_or_else(|| {
+			reinhardt_core::exception::Error::Database("Failed to get count".to_string())
+		})
 	}
 
 	/// Bulk create multiple records using SeaQuery (similar to Django's bulk_create())
@@ -416,7 +419,7 @@ impl<M: Model> Manager<M> {
 		&self,
 		lookup_fields: HashMap<String, String>,
 		defaults: Option<HashMap<String, String>>,
-	) -> reinhardt_apps::Result<(M, bool)> {
+	) -> reinhardt_core::exception::Result<(M, bool)> {
 		let conn = get_connection().await?;
 
 		// Try to find existing record
@@ -425,9 +428,9 @@ impl<M: Model> Manager<M> {
 
 		if let Ok(Some(row)) = conn.query_optional(&select_sql, vec![]).await {
 			let value = serde_json::to_value(&row.data)
-				.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
+				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 			let model: M = serde_json::from_value(value)
-				.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
+				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 			return Ok((model, false));
 		}
 
@@ -449,9 +452,9 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&insert_sql, vec![]).await?;
 		let value = serde_json::to_value(&row.data)
-			.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 		let model: M = serde_json::from_value(value)
-			.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 
 		Ok((model, true))
 	}
@@ -477,7 +480,7 @@ impl<M: Model> Manager<M> {
 		batch_size: Option<usize>,
 		ignore_conflicts: bool,
 		_update_conflicts: bool,
-	) -> reinhardt_apps::Result<Vec<M>> {
+	) -> reinhardt_core::exception::Result<Vec<M>> {
 		if models.is_empty() {
 			return Ok(vec![]);
 		}
@@ -489,9 +492,11 @@ impl<M: Model> Manager<M> {
 		for chunk in models.chunks(batch_size) {
 			// Extract fields from first model
 			let json = serde_json::to_value(&chunk[0])
-				.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
+				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 			let obj = json.as_object().ok_or_else(|| {
-				reinhardt_apps::Error::Database("Model must serialize to object".to_string())
+				reinhardt_core::exception::Error::Database(
+					"Model must serialize to object".to_string(),
+				)
 			})?;
 			let field_names: Vec<String> = obj.keys().cloned().collect();
 
@@ -527,9 +532,9 @@ impl<M: Model> Manager<M> {
 				let rows = conn.query(&sql_with_returning, vec![]).await?;
 				for row in rows {
 					let value = serde_json::to_value(&row.data)
-						.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
+						.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 					let model: M = serde_json::from_value(value)
-						.map_err(|e| reinhardt_apps::Error::Database(e.to_string()))?;
+						.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 					results.push(model);
 				}
 			}
@@ -554,7 +559,7 @@ impl<M: Model> Manager<M> {
 		models: Vec<M>,
 		fields: Vec<String>,
 		batch_size: Option<usize>,
-	) -> reinhardt_apps::Result<usize> {
+	) -> reinhardt_core::exception::Result<usize> {
 		if models.is_empty() || fields.is_empty() {
 			return Ok(0);
 		}

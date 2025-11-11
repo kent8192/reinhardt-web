@@ -5,7 +5,9 @@
 
 use crate::{BaseVersioning, VersioningError};
 use async_trait::async_trait;
-use reinhardt_apps::{Error, Handler, Middleware, Request, Response, Result};
+use reinhardt_core::exception::{Error, Result};
+use reinhardt_core::http::{Request, Response};
+use reinhardt_core::types::{Handler, Middleware};
 use std::sync::Arc;
 
 /// API version extracted from request

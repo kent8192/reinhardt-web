@@ -159,7 +159,7 @@ pub trait AuthenticationBackend: Send + Sync {
 	/// - `Err(error)` if a fatal error occurred
 	async fn authenticate(
 		&self,
-		request: &reinhardt_apps::Request,
+		request: &reinhardt_core::http::Request,
 	) -> Result<Option<Box<dyn User>>, AuthenticationError>;
 
 	/// Get a user by their ID

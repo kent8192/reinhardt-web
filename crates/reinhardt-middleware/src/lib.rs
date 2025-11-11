@@ -33,7 +33,7 @@ pub mod tracing;
 pub mod xframe;
 
 // Re-export core middleware traits from reinhardt-types
-pub use reinhardt_types::{Handler, Middleware, MiddlewareChain};
+pub use reinhardt_core::types::{Handler, Middleware, MiddlewareChain};
 
 #[cfg(feature = "session")]
 pub use auth::AuthenticationMiddleware;
@@ -84,14 +84,14 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-	use reinhardt_apps::{Handler, Middleware, Request, Response};
+	use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	use std::sync::Arc;
 
 	struct TestHandler;
 
 	#[async_trait::async_trait]
 	impl Handler for TestHandler {
-		async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+		async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 			Ok(Response::ok().with_body("test response".as_bytes()))
 		}
 	}

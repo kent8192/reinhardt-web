@@ -2,8 +2,8 @@
 
 use crate::viewset::ViewSet;
 use async_trait::async_trait;
-use reinhardt_apps::{Request, Response, Result};
-use reinhardt_di::{Depends, DiError, DiResult, Injectable, InjectionContext};
+use reinhardt_core::apps::{Request, Response, Result};
+use reinhardt_core::di::{Depends, DiError, DiResult, Injectable, InjectionContext};
 use std::sync::Arc;
 
 /// ViewSet with DI support
@@ -18,8 +18,8 @@ impl<V: ViewSet + Injectable + Clone> DiViewSet<V> {
 	///
 	/// ```
 	/// use reinhardt_viewsets::{DiViewSet, ViewSet};
-	/// use reinhardt_di::{Injectable, InjectionContext, SingletonScope, DiResult};
-	/// use reinhardt_apps::{Request, Response, Result};
+	/// use reinhardt_core::di::{Injectable, InjectionContext, SingletonScope, DiResult};
+	/// use reinhardt_core::apps::{Request, Response, Result};
 	/// use std::sync::Arc;
 	/// use async_trait::async_trait;
 	///
@@ -70,8 +70,8 @@ impl<V: ViewSet + Injectable + Clone> DiViewSet<V> {
 	///
 	/// ```
 	/// use reinhardt_viewsets::{DiViewSet, ViewSet};
-	/// use reinhardt_di::{Injectable, InjectionContext, SingletonScope, DiResult};
-	/// use reinhardt_apps::{Request, Response, Result};
+	/// use reinhardt_core::di::{Injectable, InjectionContext, SingletonScope, DiResult};
+	/// use reinhardt_core::apps::{Request, Response, Result};
 	/// use std::sync::Arc;
 	/// use async_trait::async_trait;
 	///
@@ -147,7 +147,7 @@ pub trait ViewSetFactory: Send + Sync {
 ///
 /// ```rust
 /// use reinhardt_viewsets::di_support::DatabaseConnection;
-/// use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
+/// use reinhardt_core::di::{Injectable, InjectionContext, SingletonScope};
 /// use std::sync::Arc;
 ///
 /// # tokio_test::block_on(async {
@@ -232,8 +232,8 @@ impl Injectable for DatabaseConnection {
 mod tests {
 	use super::*;
 	use crate::GenericViewSet;
-	use reinhardt_apps::{Request, Response};
-	use reinhardt_di::SingletonScope;
+	use reinhardt_core::apps::{Request, Response};
+	use reinhardt_core::di::SingletonScope;
 
 	#[derive(Clone)]
 	struct TestHandler {

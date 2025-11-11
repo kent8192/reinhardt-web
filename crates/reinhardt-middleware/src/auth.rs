@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 #[cfg(feature = "session")]
-use reinhardt_apps::{Handler, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Request, Response, Result};
 #[cfg(feature = "session")]
-use reinhardt_types::Middleware;
+use reinhardt_core::types::Middleware;
 
 #[cfg(feature = "session")]
 use reinhardt_auth::session::{SESSION_KEY_USER_ID, SessionStore};
@@ -31,8 +31,8 @@ use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 /// use std::sync::Arc;
 /// use reinhardt_middleware::AuthenticationMiddleware;
 /// use reinhardt_auth::session::InMemorySessionStore;
-/// use reinhardt_types::MiddlewareChain;
-/// # use reinhardt_apps::{Handler, Request, Response, Result};
+/// use reinhardt_core::types::MiddlewareChain;
+/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
 /// # use reinhardt_auth::{AuthenticationBackend, AuthenticationError, User, SimpleUser};
 /// # use async_trait::async_trait;
 /// # use uuid::Uuid;
@@ -80,7 +80,7 @@ use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 /// Accessing authentication state in handlers:
 ///
 /// ```
-/// # use reinhardt_apps::{Handler, Request, Response, Result};
+/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
 /// # use async_trait::async_trait;
 /// struct ProtectedHandler;
 ///
@@ -121,7 +121,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::AuthenticationMiddleware;
 	/// use reinhardt_auth::session::InMemorySessionStore;
-	/// # use reinhardt_apps::Request;
+	/// # use reinhardt_core::apps::Request;
 	/// # use reinhardt_auth::{AuthenticationBackend, AuthenticationError, User, SimpleUser};
 	/// # use uuid::Uuid;
 	/// #
@@ -231,7 +231,7 @@ impl AuthState {
 	///
 	/// ```
 	/// use reinhardt_middleware::auth::AuthState;
-	/// use reinhardt_http::Extensions;
+	/// use reinhardt_core::http::Extensions;
 	///
 	/// let extensions = Extensions::new();
 	/// extensions.insert("user123".to_string());
@@ -242,7 +242,7 @@ impl AuthState {
 	/// let auth_state = AuthState::from_extensions(&extensions);
 	/// assert!(auth_state.is_some());
 	/// ```
-	pub fn from_extensions(extensions: &reinhardt_http::Extensions) -> Option<Self> {
+	pub fn from_extensions(extensions: &reinhardt_core::http::Extensions) -> Option<Self> {
 		Some(Self {
 			user_id: extensions.get::<String>()?,
 			is_authenticated: extensions.get::<bool>()?,
@@ -278,8 +278,8 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
 	use reinhardt_auth::AuthenticationError;
+	use reinhardt_auth::SimpleUser;
 	use reinhardt_auth::session::{InMemorySessionStore, Session};
-	use reinhardt_auth::user::SimpleUser;
 	use uuid::Uuid;
 
 	struct TestHandler;
@@ -361,7 +361,7 @@ mod tests {
 		);
 
 		let response = middleware.process(request, handler).await.unwrap();
-		assert_eq!(response.status, reinhardt_http::Response::ok().status);
+		assert_eq!(response.status, reinhardt_core::http::Response::ok().status);
 	}
 
 	#[tokio::test]
@@ -381,7 +381,7 @@ mod tests {
 		);
 
 		let response = middleware.process(request, handler).await.unwrap();
-		assert_eq!(response.status, reinhardt_http::Response::ok().status);
+		assert_eq!(response.status, reinhardt_core::http::Response::ok().status);
 
 		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 		assert!(body_str.contains("\"is_authenticated\":false"));
@@ -389,7 +389,7 @@ mod tests {
 
 	#[test]
 	fn test_auth_state_from_extensions() {
-		let extensions = reinhardt_http::Extensions::new();
+		let extensions = reinhardt_core::http::Extensions::new();
 		extensions.insert("user123".to_string());
 		extensions.insert(true);
 

@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use hyper::StatusCode;
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// Configuration for HTTPS redirect middleware
@@ -46,7 +46,7 @@ impl HttpsRedirectMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::{HttpsRedirectMiddleware, HttpsRedirectConfig};
-	/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -54,7 +54,7 @@ impl HttpsRedirectMiddleware {
 	///
 	/// #[async_trait::async_trait]
 	/// impl Handler for TestHandler {
-	///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 	///         Ok(Response::new(StatusCode::OK))
 	///     }
 	/// }
@@ -97,7 +97,7 @@ impl HttpsRedirectMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::HttpsRedirectMiddleware;
-	/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -105,7 +105,7 @@ impl HttpsRedirectMiddleware {
 	///
 	/// #[async_trait::async_trait]
 	/// impl Handler for TestHandler {
-	///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 	///         Ok(Response::new(StatusCode::OK))
 	///     }
 	/// }
@@ -192,7 +192,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-	use reinhardt_apps::Request;
+	use reinhardt_core::apps::Request;
 
 	struct TestHandler;
 

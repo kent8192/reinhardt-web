@@ -27,8 +27,8 @@ use crate::{PathMatcher, Route, UrlReverser};
 use async_trait::async_trait;
 use hyper::Method;
 use matchit::Router as MatchitRouter;
-use reinhardt_apps::{Error, Handler, MiddlewareChain, Request, Response, Result};
-use reinhardt_di::InjectionContext;
+use reinhardt_core::apps::{Error, Handler, MiddlewareChain, Request, Response, Result};
+use reinhardt_core::di::InjectionContext;
 use reinhardt_middleware::Middleware;
 use reinhardt_viewsets::{Action, ViewSet};
 use std::collections::HashMap;
@@ -89,7 +89,7 @@ pub(crate) struct RouteMatch {
 /// ```
 /// use reinhardt_routers::UnifiedRouter;
 /// use hyper::Method;
-/// # use reinhardt_apps::{Request, Response, Result};
+/// # use reinhardt_core::apps::{Request, Response, Result};
 ///
 /// # async fn example() -> Result<()> {
 /// // Create a users sub-router
@@ -267,7 +267,7 @@ impl UnifiedRouter {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_routers::UnifiedRouter;
-	/// use reinhardt_di::{InjectionContext, SingletonScope};
+	/// use reinhardt_core::di::{InjectionContext, SingletonScope};
 	/// use std::sync::Arc;
 	///
 	/// let di_ctx = Arc::new(InjectionContext::new(Arc::new(SingletonScope::new())));
@@ -380,7 +380,7 @@ impl UnifiedRouter {
 	/// ```rust,no_run
 	/// use reinhardt_routers::UnifiedRouter;
 	/// use hyper::Method;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	///
 	/// async fn health_check(_req: Request) -> Result<Response> {
 	///     Ok(Response::ok())
@@ -412,7 +412,7 @@ impl UnifiedRouter {
 	/// ```rust
 	/// use reinhardt_routers::UnifiedRouter;
 	/// use hyper::Method;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	///
 	/// # async fn health_check(_req: Request) -> Result<Response> {
 	/// #     Ok(Response::ok())
@@ -454,9 +454,9 @@ impl UnifiedRouter {
 	/// # #[async_trait]
 	/// # impl ViewSet for UserViewSet {
 	/// #     fn get_basename(&self) -> &str { "users" }
-	/// #     async fn dispatch(&self, _req: reinhardt_apps::Request, _action: reinhardt_viewsets::Action)
-	/// #         -> reinhardt_apps::Result<reinhardt_apps::Response> {
-	/// #         Ok(reinhardt_apps::Response::ok())
+	/// #     async fn dispatch(&self, _req: reinhardt_core::http::Request, _action: reinhardt_viewsets::Action)
+	/// #         -> reinhardt_core::exception::Result<reinhardt_core::http::Response> {
+	/// #         Ok(reinhardt_core::http::Response::ok())
 	/// #     }
 	/// # }
 	///
@@ -475,7 +475,7 @@ impl UnifiedRouter {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_routers::UnifiedRouter;
-	/// # use reinhardt_apps::{Handler, Request, Response, Result};
+	/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
 	/// # use async_trait::async_trait;
 	/// # struct ArticleListView;
 	/// # #[async_trait]
@@ -508,7 +508,7 @@ impl UnifiedRouter {
 	///
 	/// ```rust
 	/// use reinhardt_routers::UnifiedRouter;
-	/// # use reinhardt_apps::{Handler, Request, Response, Result};
+	/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
 	/// # use async_trait::async_trait;
 	/// # struct ArticleListView;
 	/// # #[async_trait]
@@ -549,7 +549,7 @@ impl UnifiedRouter {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_routers::UnifiedRouter;
-	/// # use reinhardt_apps::{Handler, Request, Response, Result};
+	/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
 	/// # use async_trait::async_trait;
 	/// # struct CustomHandler;
 	/// # #[async_trait]
@@ -581,7 +581,7 @@ impl UnifiedRouter {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_routers::UnifiedRouter;
-	/// # use reinhardt_apps::{Handler, Request, Response, Result};
+	/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
 	/// # use async_trait::async_trait;
 	/// # use std::sync::Arc;
 	/// # struct CustomHandler;
@@ -611,7 +611,7 @@ impl UnifiedRouter {
 	/// use reinhardt_middleware::LoggingMiddleware;
 	/// use hyper::Method;
 	/// use std::sync::Arc;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	///
 	/// # async fn health(_req: Request) -> Result<Response> {
 	/// #     Ok(Response::ok())
@@ -1314,7 +1314,7 @@ mod tests {
 	#[test]
 	fn test_mount_inherits_di_context() {
 		let di_ctx = Arc::new(InjectionContext::new(Arc::new(
-			reinhardt_di::SingletonScope::new(),
+			reinhardt_core::di::SingletonScope::new(),
 		)));
 
 		let child = UnifiedRouter::new();

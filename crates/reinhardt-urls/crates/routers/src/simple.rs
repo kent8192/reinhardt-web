@@ -15,11 +15,11 @@
 //!
 //! ```
 //! use reinhardt_routers::{SimpleRouter, Router, path};
-//! use reinhardt_apps::Handler;
+//! use reinhardt_core::apps::Handler;
 //! use std::sync::Arc;
 //!
 //! # use async_trait::async_trait;
-//! # use reinhardt_apps::{Request, Response, Result};
+//! # use reinhardt_core::apps::{Request, Response, Result};
 //! # struct DummyHandler;
 //! # #[async_trait]
 //! # impl Handler for DummyHandler {
@@ -37,7 +37,7 @@
 
 use crate::{PathMatcher, PathPattern, Route, Router};
 use async_trait::async_trait;
-use reinhardt_apps::{Handler, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Request, Response, Result};
 
 /// Simple router implementation with minimal overhead
 ///
@@ -81,11 +81,11 @@ impl SimpleRouter {
 	///
 	/// ```
 	/// use reinhardt_routers::{SimpleRouter, Router, path};
-	/// use reinhardt_apps::Handler;
+	/// use reinhardt_core::apps::Handler;
 	/// use std::sync::Arc;
 	///
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	/// # struct DummyHandler;
 	/// # #[async_trait]
 	/// # impl Handler for DummyHandler {
@@ -131,11 +131,11 @@ impl crate::router::Router for SimpleRouter {
 	///
 	/// ```
 	/// use reinhardt_routers::{SimpleRouter, Router, path};
-	/// use reinhardt_apps::Handler;
+	/// use reinhardt_core::apps::Handler;
 	/// use std::sync::Arc;
 	///
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	/// # struct DummyHandler;
 	/// # #[async_trait]
 	/// # impl Handler for DummyHandler {
@@ -197,7 +197,7 @@ impl crate::router::Router for SimpleRouter {
 			}
 		}
 
-		Err(reinhardt_apps::Error::NotFound(format!(
+		Err(reinhardt_core::exception::Error::NotFound(format!(
 			"No route found for {}",
 			path
 		)))
@@ -218,7 +218,7 @@ mod tests {
 	use async_trait::async_trait;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_apps::{Request, Response, Result};
+	use reinhardt_core::apps::{Request, Response, Result};
 
 	struct DummyHandler;
 

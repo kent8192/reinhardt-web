@@ -6,7 +6,7 @@
 #[cfg(feature = "templates")]
 use crate::template_inheritance::get_tera_engine;
 #[cfg(feature = "templates")]
-use reinhardt_http::{Request, Response};
+use reinhardt_core::http::{Request, Response};
 #[cfg(feature = "templates")]
 use serde::Serialize;
 #[cfg(feature = "templates")]

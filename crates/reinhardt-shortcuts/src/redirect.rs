@@ -2,7 +2,7 @@
 //!
 //! Provides convenient functions for creating HTTP redirects.
 
-use reinhardt_http::Response;
+use reinhardt_core::http::Response;
 
 /// Create a temporary redirect (HTTP 302) to the specified URL
 ///

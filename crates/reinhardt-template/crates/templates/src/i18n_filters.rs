@@ -3,7 +3,7 @@
 //! Translation and localization filters for templates
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime};
-use reinhardt_exception::{Error, Result};
+use reinhardt_core::exception::{Error, Result};
 
 /// Get the current language
 ///

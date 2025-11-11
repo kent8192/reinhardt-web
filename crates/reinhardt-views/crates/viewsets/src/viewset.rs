@@ -5,7 +5,7 @@ use crate::middleware::ViewSetMiddleware;
 use crate::pagination_support::{PaginatedViewSet, PaginationConfig};
 use async_trait::async_trait;
 use hyper::Method;
-use reinhardt_apps::{Request, Response, Result};
+use reinhardt_core::apps::{Request, Response, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -35,7 +35,7 @@ pub trait ViewSet: Send + Sync {
 		&self,
 		request: Request,
 		action: Action,
-		_ctx: &reinhardt_di::InjectionContext,
+		_ctx: &reinhardt_core::di::InjectionContext,
 	) -> Result<Response> {
 		// Default: delegate to non-DI dispatch
 		self.dispatch(request, action).await
@@ -77,7 +77,7 @@ pub trait ViewSet: Send + Sync {
 
 	/// Reverse an action name to a URL
 	fn reverse_action(&self, _action_name: &str, _args: &[&str]) -> Result<String> {
-		Err(reinhardt_apps::Error::NotFound(
+		Err(reinhardt_core::exception::Error::NotFound(
 			"ViewSet not bound to router".to_string(),
 		))
 	}
@@ -156,7 +156,7 @@ impl<T: Send + Sync> ViewSet for GenericViewSet<T> {
 	async fn dispatch(&self, _request: Request, _action: Action) -> Result<Response> {
 		// Default implementation delegates to mixins if available
 		// This would be extended with actual mixin dispatch logic
-		Err(reinhardt_apps::Error::NotFound(
+		Err(reinhardt_core::exception::Error::NotFound(
 			"Action not implemented".to_string(),
 		))
 	}
@@ -383,7 +383,7 @@ where
 				// Destroy action
 				self.handle_destroy(request).await
 			}
-			_ => Err(reinhardt_apps::Error::Http(
+			_ => Err(reinhardt_core::exception::Error::Http(
 				"Method not allowed".to_string(),
 			)),
 		}
@@ -399,28 +399,28 @@ where
 		// Implementation would query all objects and serialize them
 		Response::ok()
 			.with_json(&serde_json::json!([]))
-			.map_err(|e| reinhardt_apps::Error::Http(e.to_string()))
+			.map_err(|e| reinhardt_core::exception::Error::Http(e.to_string()))
 	}
 
 	async fn handle_retrieve(&self, _request: Request) -> Result<Response> {
 		// Implementation would get object by ID and serialize it
 		Response::ok()
 			.with_json(&serde_json::json!({}))
-			.map_err(|e| reinhardt_apps::Error::Http(e.to_string()))
+			.map_err(|e| reinhardt_core::exception::Error::Http(e.to_string()))
 	}
 
 	async fn handle_create(&self, _request: Request) -> Result<Response> {
 		// Implementation would deserialize, validate, and create object
 		Response::created()
 			.with_json(&serde_json::json!({}))
-			.map_err(|e| reinhardt_apps::Error::Http(e.to_string()))
+			.map_err(|e| reinhardt_core::exception::Error::Http(e.to_string()))
 	}
 
 	async fn handle_update(&self, _request: Request) -> Result<Response> {
 		// Implementation would deserialize, validate, and update object
 		Response::ok()
 			.with_json(&serde_json::json!({}))
-			.map_err(|e| reinhardt_apps::Error::Http(e.to_string()))
+			.map_err(|e| reinhardt_core::exception::Error::Http(e.to_string()))
 	}
 
 	async fn handle_destroy(&self, _request: Request) -> Result<Response> {
@@ -577,15 +577,15 @@ where
 				// List only
 				Response::ok()
 					.with_json(&serde_json::json!([]))
-					.map_err(|e| reinhardt_apps::Error::Http(e.to_string()))
+					.map_err(|e| reinhardt_core::exception::Error::Http(e.to_string()))
 			}
 			(Method::GET, true) => {
 				// Retrieve only
 				Response::ok()
 					.with_json(&serde_json::json!({}))
-					.map_err(|e| reinhardt_apps::Error::Http(e.to_string()))
+					.map_err(|e| reinhardt_core::exception::Error::Http(e.to_string()))
 			}
-			_ => Err(reinhardt_apps::Error::Http(
+			_ => Err(reinhardt_core::exception::Error::Http(
 				"Method not allowed".to_string(),
 			)),
 		}

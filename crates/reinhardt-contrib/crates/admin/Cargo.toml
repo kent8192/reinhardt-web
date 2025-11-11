@@ -18,7 +18,7 @@ file-uploads = ["reinhardt-utils"]
 [dependencies]
 # Reinhardt dependencies
 reinhardt-auth = { path = "../auth" }
-reinhardt-http = { workspace = true }
+reinhardt-core = { workspace = true, features = ["http"] }
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-urls = { workspace = true, features = ["routers"] }
 reinhardt-utils = { workspace = true, optional = true, features = ["storage"] }

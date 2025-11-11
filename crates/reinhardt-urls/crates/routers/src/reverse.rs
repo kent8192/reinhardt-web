@@ -6,7 +6,7 @@
 // use crate::path;
 use crate::{PathPattern, Route};
 use aho_corasick::AhoCorasick;
-use reinhardt_exception::{Error, Result};
+use reinhardt_core::exception::{Error, Result};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
@@ -229,7 +229,7 @@ impl UrlReverser {
 	pub fn register_path(&mut self, name: &str, path: &str) {
 		// Create a dummy handler for the route
 		// The handler is never used for URL reversal
-		use reinhardt_apps::Handler;
+		use reinhardt_core::apps::Handler;
 		use std::sync::Arc;
 
 		#[derive(Clone)]
@@ -239,8 +239,8 @@ impl UrlReverser {
 		impl Handler for DummyHandler {
 			async fn handle(
 				&self,
-				_req: reinhardt_apps::Request,
-			) -> reinhardt_apps::Result<reinhardt_apps::Response> {
+				_req: reinhardt_core::http::Request,
+			) -> reinhardt_core::exception::Result<reinhardt_core::http::Response> {
 				unreachable!("DummyHandler should never be called")
 			}
 		}
@@ -276,12 +276,12 @@ impl UrlReverser {
 	///
 	/// ```
 	/// use reinhardt_routers::{UrlReverser, Route};
-	/// use reinhardt_apps::Handler;
+	/// use reinhardt_core::apps::Handler;
 	/// use std::sync::Arc;
 	/// use std::collections::HashMap;
 	///
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	/// # struct DummyHandler;
 	/// # #[async_trait]
 	/// # impl Handler for DummyHandler {
@@ -330,11 +330,11 @@ impl UrlReverser {
 	///
 	/// ```
 	/// use reinhardt_routers::{UrlReverser, Route};
-	/// use reinhardt_apps::Handler;
+	/// use reinhardt_core::apps::Handler;
 	/// use std::sync::Arc;
 	///
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	/// # struct DummyHandler;
 	/// # #[async_trait]
 	/// # impl Handler for DummyHandler {
@@ -583,7 +583,7 @@ mod tests {
 	use super::*;
 	use crate::{Route, path};
 	use async_trait::async_trait;
-	use reinhardt_apps::{Handler, Request, Response, Result as CoreResult};
+	use reinhardt_core::apps::{Handler, Request, Response, Result as CoreResult};
 	use std::sync::Arc;
 
 	// Simple test handler

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// Logging middleware
@@ -17,7 +17,7 @@ impl LoggingMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::LoggingMiddleware;
-	/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	/// use hyper::{Method, Uri, Version, HeaderMap, StatusCode};
 	/// use bytes::Bytes;
 	///
@@ -25,7 +25,7 @@ impl LoggingMiddleware {
 	///
 	/// #[async_trait::async_trait]
 	/// impl Handler for TestHandler {
-	///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 	///         Ok(Response::new(StatusCode::OK).with_body(Bytes::from("OK")))
 	///     }
 	/// }

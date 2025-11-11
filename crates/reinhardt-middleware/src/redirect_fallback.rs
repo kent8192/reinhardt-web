@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use hyper::StatusCode;
 use regex::Regex;
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -78,7 +78,7 @@ impl RedirectResponseConfig {
 /// ```
 /// use std::sync::Arc;
 /// use reinhardt_middleware::{RedirectFallbackMiddleware, RedirectResponseConfig};
-/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///
@@ -86,7 +86,7 @@ impl RedirectResponseConfig {
 ///
 /// #[async_trait::async_trait]
 /// impl Handler for NotFoundHandler {
-///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 ///         Ok(Response::new(StatusCode::NOT_FOUND))
 ///     }
 /// }

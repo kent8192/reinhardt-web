@@ -376,7 +376,7 @@ mod tests {
 	#[test]
 	fn test_url_function() {
 		use hyper::Method;
-		use reinhardt_http::{Request, Response};
+		use reinhardt_core::http::{Request, Response};
 		use reinhardt_urls::routers::{UnifiedRouter, register_router};
 
 		// Setup router with a named route

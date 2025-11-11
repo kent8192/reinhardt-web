@@ -9,7 +9,7 @@
 
 use async_trait::async_trait;
 use hyper::header::{ACCEPT_LANGUAGE, COOKIE};
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -102,7 +102,7 @@ impl Default for LocaleConfig {
 /// ```ignore
 /// use std::sync::Arc;
 /// use reinhardt_middleware::{LocaleMiddleware, locale::LocaleConfig};
-/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///
@@ -110,7 +110,7 @@ impl Default for LocaleConfig {
 ///
 /// #[async_trait::async_trait]
 /// impl Handler for TestHandler {
-///     async fn handle(&self, request: Request) -> reinhardt_apps::Result<Response> {
+///     async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
 ///         // Access detected locale from header
 ///         let locale = request.headers.get("X-Locale")
 ///             .and_then(|h| h.to_str().ok())

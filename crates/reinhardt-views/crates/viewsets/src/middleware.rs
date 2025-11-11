@@ -4,7 +4,7 @@
 //! authentication, permission checks, and other cross-cutting concerns.
 
 use async_trait::async_trait;
-use reinhardt_apps::{Request, Response, Result};
+use reinhardt_core::apps::{Request, Response, Result};
 use std::sync::Arc;
 
 /// Middleware trait for ViewSet processing
@@ -240,7 +240,7 @@ impl ViewSetMiddleware for CompositeMiddleware {
 mod tests {
 	use super::*;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_apps::Request;
+	use reinhardt_core::apps::Request;
 
 	fn create_test_request() -> Request {
 		Request::new(

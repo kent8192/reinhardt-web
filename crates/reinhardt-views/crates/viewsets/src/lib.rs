@@ -50,7 +50,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-	use reinhardt_apps::Request;
+	use reinhardt_core::apps::Request;
 
 	#[allow(dead_code)]
 	#[derive(Debug, Clone)]

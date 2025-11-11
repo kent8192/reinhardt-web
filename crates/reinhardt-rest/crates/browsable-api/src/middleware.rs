@@ -5,7 +5,9 @@
 
 use async_trait::async_trait;
 use hyper::{Method, Uri};
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::exception::Result;
+use reinhardt_core::http::{Request, Response};
+use reinhardt_core::types::{Handler, Middleware};
 use std::sync::Arc;
 
 use crate::renderer::{ApiContext, BrowsableApiRenderer};
@@ -110,10 +112,10 @@ impl BrowsableApiMiddleware {
 		request_uri: &Uri,
 		request_method: &Method,
 		response: Response,
-	) -> reinhardt_apps::Result<Response> {
+	) -> reinhardt_core::exception::Result<Response> {
 		// Parse JSON response
 		let json_body: serde_json::Value = serde_json::from_slice(&response.body).map_err(|e| {
-			reinhardt_apps::Error::Other(anyhow::anyhow!("Failed to parse JSON: {}", e))
+			reinhardt_core::exception::Error::Other(anyhow::anyhow!("Failed to parse JSON: {}", e))
 		})?;
 
 		// Extract headers for display
@@ -143,7 +145,7 @@ impl BrowsableApiMiddleware {
 
 		// Render HTML
 		let html = self.renderer.render(&context).map_err(|e| {
-			reinhardt_apps::Error::Other(anyhow::anyhow!("Failed to render HTML: {}", e))
+			reinhardt_core::exception::Error::Other(anyhow::anyhow!("Failed to render HTML: {}", e))
 		})?;
 
 		// Create new response with HTML body

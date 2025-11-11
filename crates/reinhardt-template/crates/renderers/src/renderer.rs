@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use reinhardt_core::exception::{Error, Result};
-use reinhardt_negotiation::{ContentNegotiator, MediaType};
+use reinhardt_core::negotiation::{ContentNegotiator, MediaType};
 use serde_json::Value;
 use std::collections::HashMap;
 

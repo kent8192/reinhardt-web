@@ -1,7 +1,7 @@
 /// Field validators similar to Django's validators
 use once_cell::sync::Lazy;
 use regex::Regex;
-use reinhardt_apps::Result;
+use reinhardt_core::apps::Result;
 use reinhardt_core::validators::{
 	self as validators_crate, OrmValidator, ValidationError as BaseValidationError,
 	ValidationResult,
@@ -113,7 +113,9 @@ impl Default for RequiredValidator {
 impl Validator for RequiredValidator {
 	fn validate(&self, value: &str) -> Result<()> {
 		if value.trim().is_empty() {
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 		Ok(())
 	}
@@ -184,7 +186,9 @@ impl MaxLengthValidator {
 impl Validator for MaxLengthValidator {
 	fn validate(&self, value: &str) -> Result<()> {
 		if value.len() > self.max_length {
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 		Ok(())
 	}
@@ -255,7 +259,9 @@ impl MinLengthValidator {
 impl Validator for MinLengthValidator {
 	fn validate(&self, value: &str) -> Result<()> {
 		if value.len() < self.min_length {
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 		Ok(())
 	}
@@ -337,7 +343,9 @@ impl Validator for EmailValidator {
 		// Split email into local and domain parts
 		let parts: Vec<&str> = value.rsplitn(2, '@').collect();
 		if parts.len() != 2 {
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 
 		let domain = parts[0];
@@ -345,12 +353,16 @@ impl Validator for EmailValidator {
 
 		// Validate local part (before @)
 		if !Self::validate_local_part(local) {
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 
 		// Validate domain part (after @)
 		if !Self::validate_domain_part(domain) {
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 
 		Ok(())
@@ -604,7 +616,9 @@ impl Validator for URLValidator {
 		});
 
 		if !URL_REGEX.is_match(value) {
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 		Ok(())
 	}
@@ -749,7 +763,9 @@ impl RegexValidator {
 impl Validator for RegexValidator {
 	fn validate(&self, value: &str) -> Result<()> {
 		if !self.compiled_regex.is_match(value) {
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 		Ok(())
 	}
@@ -827,20 +843,24 @@ impl RangeValidator {
 
 impl Validator for RangeValidator {
 	fn validate(&self, value: &str) -> Result<()> {
-		let num: i64 = value
-			.parse()
-			.map_err(|_| reinhardt_apps::Error::Validation("Invalid number".to_string()))?;
+		let num: i64 = value.parse().map_err(|_| {
+			reinhardt_core::exception::Error::Validation("Invalid number".to_string())
+		})?;
 
 		if let Some(min) = self.min
 			&& num < min
 		{
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 
 		if let Some(max) = self.max
 			&& num > max
 		{
-			return Err(reinhardt_apps::Error::Validation(self.message.clone()));
+			return Err(reinhardt_core::exception::Error::Validation(
+				self.message.clone(),
+			));
 		}
 
 		Ok(())

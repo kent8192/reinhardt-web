@@ -3,7 +3,7 @@
 //! Provides convenient functions for database queries that return 404 errors
 //! when objects are not found, similar to Django's get_object_or_404.
 
-use reinhardt_http::Response;
+use reinhardt_core::http::Response;
 
 /// Error type for get_or_404 operations
 #[derive(Debug, thiserror::Error)]

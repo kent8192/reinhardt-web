@@ -12,7 +12,7 @@ use crate::query_types::{DbBackend, QueryStatement};
 pub type Row = sqlx::postgres::PgRow;
 
 /// Result type for database operations
-pub type DbResult<T> = Result<T, reinhardt_apps::Error>;
+pub type DbResult<T> = Result<T, reinhardt_core::exception::Error>;
 
 /// Connection trait extension for SeaQuery support
 #[async_trait]

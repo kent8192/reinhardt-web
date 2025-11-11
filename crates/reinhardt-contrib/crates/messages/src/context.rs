@@ -5,7 +5,7 @@
 
 use crate::message::Message;
 use crate::middleware::MessagesContainer;
-use reinhardt_http::Request;
+use reinhardt_core::http::Request;
 use serde::Serialize;
 
 /// Messages context for template rendering
@@ -110,7 +110,7 @@ impl MessagesContext {
 /// use reinhardt_messages::context::get_messages_context;
 /// use reinhardt_messages::middleware::MessagesContainer;
 /// use reinhardt_messages::Message;
-/// use reinhardt_http::Request;
+/// use reinhardt_core::http::Request;
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 ///
@@ -147,7 +147,7 @@ pub fn get_messages_context(request: &Request) -> MessagesContext {
 /// use reinhardt_messages::context::add_message;
 /// use reinhardt_messages::middleware::MessagesContainer;
 /// use reinhardt_messages::Message;
-/// use reinhardt_http::Request;
+/// use reinhardt_core::http::Request;
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 ///

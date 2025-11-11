@@ -11,4 +11,4 @@
 //! ```
 
 #[cfg(feature = "di")]
-pub use reinhardt_di::*;
+pub use reinhardt_core::di::*;

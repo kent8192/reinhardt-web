@@ -10,10 +10,9 @@ description = "URL dispatcher and request routing for Reinhardt framework"
 [dependencies]
 # Core dependencies
 reinhardt-urls = { workspace = true, features = ["routers"] }
-reinhardt-http = { workspace = true }
 reinhardt-views = { workspace = true }
 reinhardt-middleware = { workspace = true }
-reinhardt-core = { workspace = true, features = ["types", "signals", "exception"] }
+reinhardt-core = { workspace = true, features = ["types", "signals", "exception", "http"] }
 bytes = { workspace = true }
 
 # HTTP

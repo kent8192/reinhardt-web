@@ -6,7 +6,9 @@
 use crate::BaseVersioning;
 use async_trait::async_trait;
 use bytes::Bytes;
-use reinhardt_apps::{Handler, Request, Response, Result};
+use reinhardt_core::exception::Result;
+use reinhardt_core::http::{Request, Response};
+use reinhardt_core::types::Handler;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -49,7 +51,7 @@ impl Handler for VersionedHandlerWrapper {
 
 		// Check if handler supports this version
 		if !self.inner.supports_version(&version) {
-			return Err(reinhardt_apps::Error::Validation(format!(
+			return Err(reinhardt_core::exception::Error::Validation(format!(
 				"Handler does not support version: {}",
 				version
 			)));
@@ -158,7 +160,7 @@ impl VersionedHandler for ConfigurableVersionedHandler {
 		} else if let Some(default_handler) = &self.default_handler {
 			default_handler.handle(request).await
 		} else {
-			Err(reinhardt_apps::Error::Validation(format!(
+			Err(reinhardt_core::exception::Error::Validation(format!(
 				"No handler available for version: {}",
 				version
 			)))

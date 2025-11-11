@@ -1,8 +1,8 @@
 //! Handler adapters for ViewSets and functions
 
 use async_trait::async_trait;
-use reinhardt_apps::{Handler, Request, Response, Result};
-use reinhardt_di::InjectionContext;
+use reinhardt_core::apps::{Handler, Request, Response, Result};
+use reinhardt_core::di::InjectionContext;
 use reinhardt_viewsets::{Action, ViewSet};
 use std::sync::Arc;
 

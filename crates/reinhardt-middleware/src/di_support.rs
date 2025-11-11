@@ -1,8 +1,8 @@
 //! Dependency Injection support for Middleware
 
 use async_trait::async_trait;
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
-use reinhardt_di::{DiResult, Injectable, InjectionContext};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::di::{DiResult, Injectable, InjectionContext};
 use std::sync::Arc;
 
 /// Middleware with DI support
@@ -22,7 +22,7 @@ impl<M: Middleware + Injectable> DiMiddleware<M> {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::di_support::{DiMiddleware, LoggingMiddleware};
-	/// use reinhardt_di::{InjectionContext, SingletonScope};
+	/// use reinhardt_core::di::{InjectionContext, SingletonScope};
 	///
 	/// # tokio_test::block_on(async {
 	/// let singleton = Arc::new(SingletonScope::new());
@@ -45,7 +45,7 @@ impl<M: Middleware + Injectable> DiMiddleware<M> {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::di_support::{DiMiddleware, LoggingMiddleware};
-	/// use reinhardt_di::{InjectionContext, SingletonScope};
+	/// use reinhardt_core::di::{InjectionContext, SingletonScope};
 	///
 	/// # tokio_test::block_on(async {
 	/// let singleton = Arc::new(SingletonScope::new());
@@ -129,7 +129,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_di::SingletonScope;
+	use reinhardt_core::di::SingletonScope;
 
 	struct TestHandler;
 

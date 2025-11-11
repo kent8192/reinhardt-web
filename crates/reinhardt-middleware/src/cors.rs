@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// CORS middleware configuration
@@ -47,7 +47,7 @@ impl CorsMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::{CorsMiddleware, cors::CorsConfig};
-	/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -55,7 +55,7 @@ impl CorsMiddleware {
 	///
 	/// #[async_trait::async_trait]
 	/// impl Handler for TestHandler {
-	///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 	///         Ok(Response::new(StatusCode::OK).with_body(Bytes::from("OK")))
 	///     }
 	/// }
@@ -97,7 +97,7 @@ impl CorsMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::CorsMiddleware;
-	/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -105,7 +105,7 @@ impl CorsMiddleware {
 	///
 	/// #[async_trait::async_trait]
 	/// impl Handler for TestHandler {
-	///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 	///         Ok(Response::new(StatusCode::OK))
 	///     }
 	/// }

@@ -7,9 +7,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reinhardt-apps = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
-reinhardt-core = { workspace = true, features = ["serializers", "exception"] }
+reinhardt-core = { workspace = true, features = ["serializers", "exception", "apps"] }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }

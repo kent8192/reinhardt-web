@@ -125,8 +125,9 @@ pub mod urls;
 pub mod utils;
 pub mod views;
 
-// Re-export app types from reinhardt-apps
-pub use reinhardt_apps::{AppConfig, AppError, AppResult, Apps};
+// Re-export app types from reinhardt-core
+#[cfg(feature = "core")]
+pub use reinhardt_core::apps::{AppConfig, AppError, AppResult, Apps};
 
 // Re-export settings from dedicated crate
 #[cfg(feature = "conf")]
@@ -137,7 +138,12 @@ pub use reinhardt_conf::settings::{
 };
 
 // Re-export core types
-pub use reinhardt_apps::{Error, Handler, Middleware, MiddlewareChain, Request, Response, Result};
+#[cfg(feature = "core")]
+pub use reinhardt_core::{
+	exception::{Error, Result},
+	http::{Request, Response},
+	types::{Handler, Middleware, MiddlewareChain},
+};
 
 // Re-export ORM
 #[cfg(feature = "database")]
@@ -185,7 +191,8 @@ pub use reinhardt_middleware::LoggingMiddleware;
 pub use reinhardt_middleware::CorsMiddleware;
 
 // Re-export HTTP types (additional commonly used types)
-pub use reinhardt_http::Extensions;
+#[cfg(feature = "core")]
+pub use reinhardt_core::http::Extensions;
 // Re-export StatusCode from hyper (already used in reinhardt_http)
 pub use hyper::StatusCode;
 
@@ -318,10 +325,10 @@ pub use reinhardt_forms::{
 
 // Re-export DI and parameters (FastAPI-style parameter extraction)
 #[cfg(feature = "di")]
-pub use reinhardt_di::{Depends, DiError, DiResult, InjectionContext, RequestContext};
+pub use reinhardt_core::di::{Depends, DiError, DiResult, InjectionContext, RequestContext};
 
 #[cfg(feature = "minimal")]
-pub use reinhardt_di::params::{Body, Cookie, Header, Json, Path, Query};
+pub use reinhardt_core::di::params::{Body, Cookie, Header, Json, Path, Query};
 
 // Re-export templates
 #[cfg(feature = "templates")]

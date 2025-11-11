@@ -2,7 +2,7 @@ use crate::drf_authentication::Authentication;
 use crate::{AuthenticationError, SimpleUser, User};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use reinhardt_apps::Request;
+use reinhardt_core::apps::Request;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -107,9 +107,9 @@ impl JwtAuth {
 	/// let token = jwt_auth.encode(&claims).unwrap();
 	/// assert!(!token.is_empty());
 	/// ```
-	pub fn encode(&self, claims: &Claims) -> reinhardt_apps::Result<String> {
+	pub fn encode(&self, claims: &Claims) -> reinhardt_core::exception::Result<String> {
 		encode(&Header::default(), claims, &self.encoding_key)
-			.map_err(|e| reinhardt_apps::Error::Authentication(e.to_string()))
+			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))
 	}
 	/// Decodes a JWT token string into claims.
 	///
@@ -130,10 +130,10 @@ impl JwtAuth {
 	/// let decoded = jwt_auth.decode(&token).unwrap();
 	/// assert_eq!(decoded.sub, "user123");
 	/// ```
-	pub fn decode(&self, token: &str) -> reinhardt_apps::Result<Claims> {
+	pub fn decode(&self, token: &str) -> reinhardt_core::exception::Result<Claims> {
 		decode::<Claims>(token, &self.decoding_key, &self.validation)
 			.map(|data| data.claims)
-			.map_err(|e| reinhardt_apps::Error::Authentication(e.to_string()))
+			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))
 	}
 	/// Generates a JWT token for the given user with 24-hour expiration.
 	///
@@ -155,7 +155,7 @@ impl JwtAuth {
 		&self,
 		user_id: String,
 		username: String,
-	) -> reinhardt_apps::Result<String> {
+	) -> reinhardt_core::exception::Result<String> {
 		let claims = Claims::new(user_id, username, Duration::hours(24));
 		self.encode(&claims)
 	}
@@ -176,11 +176,11 @@ impl JwtAuth {
 	/// assert_eq!(claims.sub, "user123");
 	/// assert_eq!(claims.username, "john_doe");
 	/// ```
-	pub fn verify_token(&self, token: &str) -> reinhardt_apps::Result<Claims> {
+	pub fn verify_token(&self, token: &str) -> reinhardt_core::exception::Result<Claims> {
 		let claims = self.decode(token)?;
 
 		if claims.is_expired() {
-			return Err(reinhardt_apps::Error::Authentication(
+			return Err(reinhardt_core::exception::Error::Authentication(
 				"Token expired".to_string(),
 			));
 		}

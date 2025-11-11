@@ -4,7 +4,7 @@
 
 use crate::{OpenApiSchema, SchemaResult};
 use once_cell::sync::Lazy;
-use reinhardt_apps::{Request, Response, Result};
+use reinhardt_core::apps::{Request, Response, Result};
 use serde::Serialize;
 use std::sync::Arc;
 use tera::Tera;
@@ -143,9 +143,9 @@ impl SwaggerUI {
 
 	/// Serve OpenAPI spec
 	async fn serve_openapi_spec(&self) -> Result<Response> {
-		let json = self
-			.schema_json()
-			.map_err(|e| reinhardt_apps::Error::Serialization(format!("Schema error: {}", e)))?;
+		let json = self.schema_json().map_err(|e| {
+			reinhardt_core::exception::Error::Serialization(format!("Schema error: {}", e))
+		})?;
 
 		Ok(Response::ok()
 			.with_body(json)
@@ -224,9 +224,9 @@ impl RedocUI {
 	/// # }
 	/// ```ignore
 	pub async fn handle(&self, _request: Request) -> Result<Response> {
-		let html = self
-			.render_html()
-			.map_err(|e| reinhardt_apps::Error::Serialization(format!("Schema error: {}", e)))?;
+		let html = self.render_html().map_err(|e| {
+			reinhardt_core::exception::Error::Serialization(format!("Schema error: {}", e))
+		})?;
 
 		Ok(Response::ok()
 			.with_body(html)

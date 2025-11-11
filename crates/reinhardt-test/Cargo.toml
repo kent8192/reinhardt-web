@@ -20,12 +20,10 @@ static = ["reinhardt-contrib/static"]
 websockets = ["reinhardt-contrib/websockets"]
 
 [dependencies]
-reinhardt-apps = { workspace = true }
 
 reinhardt-db = { workspace = true, features = ["orm", "backends"] }
 reinhardt-views = { workspace = true, features = ["viewsets"] }
 reinhardt-contrib = { workspace = true, features = ["auth", "messages"] }
-reinhardt-http = { workspace = true }
 reinhardt-server = { workspace = true }
 
 hyper = { workspace = true }
@@ -65,7 +63,7 @@ fs2 = { version = "0.4", optional = true }
 # Optional dependencies for websockets feature
 # Note: contrib features are added to the main reinhardt-contrib dependency above
 reinhardt-rest = { workspace = true, features = ["serializers", "parsers"] }
-reinhardt-core = { workspace = true, features = ["types", "exception"] }
+reinhardt-core = { workspace = true, features = ["types", "exception", "http", "apps"] }
 reinhardt-utils = { workspace = true, features = ["cache"] }
 reinhardt-template = { workspace = true, features = ["renderers"] }
 

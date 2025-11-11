@@ -20,4 +20,3 @@ reinhardt-db = { workspace = true, features = ["backends", "pool", "postgres"] }
 
 [features]
 default = []
-reinhardt-di = []

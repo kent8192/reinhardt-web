@@ -4,7 +4,7 @@
 
 use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
 use async_trait::async_trait;
-use reinhardt_apps::Request;
+use reinhardt_core::apps::Request;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

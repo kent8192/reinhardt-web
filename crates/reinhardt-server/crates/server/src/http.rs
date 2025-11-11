@@ -5,7 +5,7 @@ use hyper::server::conn::http1;
 use hyper::service::Service;
 use hyper_util::rt::TokioIo;
 use reinhardt_core::types::{Handler, Middleware, MiddlewareChain};
-use reinhardt_http::{Request, Response};
+use reinhardt_core::http::{Request, Response};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -29,7 +29,7 @@ impl HttpServer {
 	/// use std::sync::Arc;
 	/// use reinhardt_server_core::HttpServer;
 	/// use reinhardt_core::types::Handler;
-	/// use reinhardt_http::{Request, Response};
+	/// use reinhardt_core::http::{Request, Response};
 	///
 	/// struct MyHandler;
 	///
@@ -60,7 +60,7 @@ impl HttpServer {
 	/// use std::sync::Arc;
 	/// use reinhardt_server_core::HttpServer;
 	/// use reinhardt_core::types::{Handler, Middleware};
-	/// use reinhardt_http::{Request, Response};
+	/// use reinhardt_core::http::{Request, Response};
 	///
 	/// struct MyHandler;
 	/// struct MyMiddleware;
@@ -116,7 +116,7 @@ impl HttpServer {
 	/// use std::net::SocketAddr;
 	/// use reinhardt_server_core::HttpServer;
 	/// use reinhardt_core::types::Handler;
-	/// use reinhardt_http::{Request, Response};
+	/// use reinhardt_core::http::{Request, Response};
 	///
 	/// struct MyHandler;
 	///
@@ -168,7 +168,7 @@ impl HttpServer {
 	/// use std::time::Duration;
 	/// use reinhardt_server_core::{HttpServer, ShutdownCoordinator};
 	/// use reinhardt_core::types::Handler;
-	/// use reinhardt_http::{Request, Response};
+	/// use reinhardt_core::http::{Request, Response};
 	///
 	/// struct MyHandler;
 	///
@@ -248,7 +248,7 @@ impl HttpServer {
 	/// use tokio::net::TcpStream;
 	/// use reinhardt_server_core::HttpServer;
 	/// use reinhardt_core::types::Handler;
-	/// use reinhardt_http::{Request, Response};
+	/// use reinhardt_core::http::{Request, Response};
 	///
 	/// struct MyHandler;
 	///
@@ -347,7 +347,7 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 /// use std::net::SocketAddr;
 /// use reinhardt_server_core::serve;
 /// use reinhardt_core::types::Handler;
-/// use reinhardt_http::{Request, Response};
+/// use reinhardt_core::http::{Request, Response};
 ///
 /// struct MyHandler;
 ///
@@ -385,7 +385,7 @@ pub async fn serve(
 /// use std::time::Duration;
 /// use reinhardt_server_core::{serve_with_shutdown, shutdown_signal, ShutdownCoordinator};
 /// use reinhardt_core::types::Handler;
-/// use reinhardt_http::{Request, Response};
+/// use reinhardt_core::http::{Request, Response};
 ///
 /// struct MyHandler;
 ///

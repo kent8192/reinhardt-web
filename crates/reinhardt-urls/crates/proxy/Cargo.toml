@@ -8,7 +8,6 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-reinhardt-apps = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
 
 async-trait = { workspace = true }

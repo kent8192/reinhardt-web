@@ -21,7 +21,7 @@ use crate::storage::MessageStorage;
 use async_trait::async_trait;
 use reinhardt_core::exception::Result;
 use reinhardt_core::types::{Handler, Middleware};
-use reinhardt_http::{Request, Response};
+use reinhardt_core::http::{Request, Response};
 use std::sync::{Arc, Mutex};
 
 /// Messages middleware

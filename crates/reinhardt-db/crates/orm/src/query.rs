@@ -680,7 +680,7 @@ where
 	/// - Database connection fails
 	/// - SQL execution fails
 	/// - Deserialization of results fails
-	pub async fn all(&self) -> reinhardt_apps::Result<Vec<T>>
+	pub async fn all(&self) -> reinhardt_core::exception::Result<Vec<T>>
 	where
 		T: serde::de::DeserializeOwned,
 	{
@@ -711,10 +711,16 @@ where
 		rows.into_iter()
 			.map(|row| {
 				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
-					reinhardt_apps::Error::Database(format!("Serialization error: {}", e))
+					reinhardt_core::exception::Error::Database(format!(
+						"Serialization error: {}",
+						e
+					))
 				})?)
 				.map_err(|e| {
-					reinhardt_apps::Error::Database(format!("Deserialization error: {}", e))
+					reinhardt_core::exception::Error::Database(format!(
+						"Deserialization error: {}",
+						e
+					))
 				})
 			})
 			.collect()
@@ -742,7 +748,7 @@ where
 	///     None => println!("No active users found"),
 	/// }
 	/// ```
-	pub async fn first(&self) -> reinhardt_apps::Result<Option<T>>
+	pub async fn first(&self) -> reinhardt_core::exception::Result<Option<T>>
 	where
 		T: serde::de::DeserializeOwned,
 	{
@@ -774,17 +780,17 @@ where
 	/// - No records match the query
 	/// - Multiple records match the query
 	/// - Database connection fails
-	pub async fn get(&self) -> reinhardt_apps::Result<T>
+	pub async fn get(&self) -> reinhardt_core::exception::Result<T>
 	where
 		T: serde::de::DeserializeOwned,
 	{
 		let results = self.all().await?;
 		match results.len() {
-			0 => Err(reinhardt_apps::Error::Database(
+			0 => Err(reinhardt_core::exception::Error::Database(
 				"No record found matching the query".to_string(),
 			)),
 			1 => Ok(results.into_iter().next().unwrap()),
-			n => Err(reinhardt_apps::Error::Database(format!(
+			n => Err(reinhardt_core::exception::Error::Database(format!(
 				"Multiple records found ({}), expected exactly one",
 				n
 			))),
@@ -810,7 +816,7 @@ where
 	///
 	/// println!("Active users: {}", count);
 	/// ```
-	pub async fn count(&self) -> reinhardt_apps::Result<usize> {
+	pub async fn count(&self) -> reinhardt_core::exception::Result<usize> {
 		use sea_query::{Func, PostgresQueryBuilder};
 
 		let conn = crate::manager::get_connection().await?;
@@ -863,7 +869,7 @@ where
 	///     println!("Admin users exist");
 	/// }
 	/// ```
-	pub async fn exists(&self) -> reinhardt_apps::Result<bool> {
+	pub async fn exists(&self) -> reinhardt_core::exception::Result<bool> {
 		let count = self.count().await?;
 		Ok(count > 0)
 	}
@@ -880,7 +886,7 @@ where
 	/// };
 	/// let created = User::objects().create(user).await?;
 	/// ```
-	pub async fn create(&self, object: T) -> reinhardt_apps::Result<T>
+	pub async fn create(&self, object: T) -> reinhardt_core::exception::Result<T>
 	where
 		T: crate::Model + Clone,
 	{
@@ -1045,7 +1051,7 @@ where
 	pub async fn get_composite(
 		&self,
 		pk_values: &HashMap<String, crate::composite_pk::PkValue>,
-	) -> reinhardt_apps::Result<T>
+	) -> reinhardt_core::exception::Result<T>
 	where
 		T: crate::Model + Clone,
 	{
@@ -1053,14 +1059,17 @@ where
 
 		// Get composite primary key definition from the model
 		let composite_pk = T::composite_primary_key().ok_or_else(|| {
-			reinhardt_apps::Error::Database(
+			reinhardt_core::exception::Error::Database(
 				"Model does not have a composite primary key".to_string(),
 			)
 		})?;
 
 		// Validate that all required PK fields are provided
 		composite_pk.validate(pk_values).map_err(|e| {
-			reinhardt_apps::Error::Database(format!("Composite PK validation failed: {}", e))
+			reinhardt_core::exception::Error::Database(format!(
+				"Composite PK validation failed: {}",
+				e
+			))
 		})?;
 
 		// Build SELECT query using sea-query
@@ -1111,13 +1120,13 @@ where
 
 		// Composite PK queries should return exactly one row
 		if rows.is_empty() {
-			return Err(reinhardt_apps::Error::Database(
+			return Err(reinhardt_core::exception::Error::Database(
 				"No record found matching the composite primary key".to_string(),
 			));
 		}
 
 		if rows.len() > 1 {
-			return Err(reinhardt_apps::Error::Database(format!(
+			return Err(reinhardt_core::exception::Error::Database(format!(
 				"Multiple records found ({}) for composite primary key, expected exactly one",
 				rows.len()
 			)));
@@ -1125,11 +1134,13 @@ where
 
 		// Deserialize the single row into the model
 		let row = &rows[0];
-		let value = serde_json::to_value(&row.data)
-			.map_err(|e| reinhardt_apps::Error::Database(format!("Serialization error: {}", e)))?;
+		let value = serde_json::to_value(&row.data).map_err(|e| {
+			reinhardt_core::exception::Error::Database(format!("Serialization error: {}", e))
+		})?;
 
-		serde_json::from_value(value)
-			.map_err(|e| reinhardt_apps::Error::Database(format!("Deserialization error: {}", e)))
+		serde_json::from_value(value).map_err(|e| {
+			reinhardt_core::exception::Error::Database(format!("Deserialization error: {}", e))
+		})
 	}
 
 	/// Add an annotation to the QuerySet

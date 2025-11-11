@@ -7,7 +7,6 @@ description = "Filtering backends for Reinhardt framework (Django REST Framework
 repository.workspace = true
 
 [dependencies]
-reinhardt-apps = { workspace = true }
 reinhardt-db = { workspace = true, optional = true, features = ["orm", "backends"] }
 reinhardt-utils = { workspace = true, optional = true, features = ["cache"] }
 async-trait = "0.1"

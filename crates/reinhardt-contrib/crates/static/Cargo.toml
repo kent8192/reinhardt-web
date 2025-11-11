@@ -9,8 +9,8 @@ description = "Static file serving and production utilities for Reinhardt with h
 
 [dependencies]
 # Internal dependencies
+reinhardt-core = { workspace = true, features = ["apps", "http", "exception", "types"] }
 reinhardt-utils = { workspace = true, features = ["storage"] }
-reinhardt-apps = { workspace = true }
 reinhardt-template = { workspace = true, optional = true }
 
 # Async runtime

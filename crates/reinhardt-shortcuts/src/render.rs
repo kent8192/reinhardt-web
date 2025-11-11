@@ -3,7 +3,7 @@
 //! Provides convenient functions for rendering templates and creating HTTP responses.
 
 use bytes::Bytes;
-use reinhardt_http::Response;
+use reinhardt_core::http::Response;
 use serde::Serialize;
 
 /// Render data as JSON and return an HTTP 200 response

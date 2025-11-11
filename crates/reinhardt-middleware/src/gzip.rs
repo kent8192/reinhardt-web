@@ -7,7 +7,7 @@ use bytes::Bytes;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use hyper::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE};
-use reinhardt_apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
 use std::io::Write;
 use std::sync::Arc;
 
@@ -53,7 +53,7 @@ impl GZipMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::GZipMiddleware;
-	/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -61,7 +61,7 @@ impl GZipMiddleware {
 	///
 	/// #[async_trait::async_trait]
 	/// impl Handler for TestHandler {
-	///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 	///         let body = "This is a long response body that will be compressed by gzip middleware. ".repeat(10);
 	///         let mut response = Response::new(StatusCode::OK).with_body(Bytes::from(body));
 	///         response.headers.insert(
@@ -107,7 +107,7 @@ impl GZipMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::{GZipMiddleware, GZipConfig};
-	/// use reinhardt_apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -115,7 +115,7 @@ impl GZipMiddleware {
 	///
 	/// #[async_trait::async_trait]
 	/// impl Handler for TestHandler {
-	///     async fn handle(&self, _request: Request) -> reinhardt_apps::Result<Response> {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
 	///         let body = "Small response";
 	///         let mut response = Response::new(StatusCode::OK).with_body(Bytes::from(body));
 	///         response.headers.insert(
@@ -184,10 +184,10 @@ impl GZipMiddleware {
 			GzEncoder::new(Vec::new(), Compression::new(self.config.compression_level));
 		encoder
 			.write_all(body)
-			.map_err(|e| reinhardt_apps::Error::Internal(e.to_string()))?;
+			.map_err(|e| reinhardt_core::exception::Error::Internal(e.to_string()))?;
 		encoder
 			.finish()
-			.map_err(|e| reinhardt_apps::Error::Internal(e.to_string()))
+			.map_err(|e| reinhardt_core::exception::Error::Internal(e.to_string()))
 	}
 }
 
@@ -248,7 +248,7 @@ impl Middleware for GZipMiddleware {
 mod tests {
 	use super::*;
 	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-	use reinhardt_apps::Response;
+	use reinhardt_core::apps::Response;
 
 	struct TestHandler {
 		response_body: &'static str,

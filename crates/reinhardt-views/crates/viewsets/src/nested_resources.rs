@@ -5,7 +5,7 @@
 //! - /posts/{post_id}/comments/
 //! - /organizations/{org_id}/teams/{team_id}/members/
 
-use reinhardt_apps::Request;
+use reinhardt_core::apps::Request;
 use std::collections::HashMap;
 use std::sync::Arc;
 

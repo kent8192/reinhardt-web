@@ -20,7 +20,7 @@
 //! use reinhardt_views::{ListView, DetailView, View};
 //! use reinhardt_serializers::JsonSerializer;
 //! use reinhardt_db::orm::{Model, QuerySet};
-//! use reinhardt_apps::{Request, Response};
+//! use reinhardt_core::http::{Request, Response};
 //! use serde::{Serialize, Deserialize};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -21,7 +21,7 @@ pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<hyper::Met
 /// use reinhardt_middleware::LoggingMiddleware;
 /// use hyper::Method;
 /// use std::sync::Arc;
-/// # use reinhardt_apps::{Request, Response, Result};
+/// # use reinhardt_core::apps::{Request, Response, Result};
 ///
 /// # async fn users_list(_req: Request) -> Result<Response> {
 /// #     Ok(Response::ok())
@@ -120,7 +120,7 @@ impl RouteGroup {
 	/// ```
 	/// use reinhardt_routers::RouteGroup;
 	/// use hyper::Method;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	///
 	/// # async fn health(_req: Request) -> Result<Response> {
 	/// #     Ok(Response::ok())
@@ -134,9 +134,10 @@ impl RouteGroup {
 	/// ```
 	pub fn function<F, Fut>(mut self, path: &str, method: hyper::Method, func: F) -> Self
 	where
-		F: Fn(reinhardt_apps::Request) -> Fut + Send + Sync + 'static,
-		Fut: std::future::Future<Output = reinhardt_apps::Result<reinhardt_apps::Response>>
-			+ Send
+		F: Fn(reinhardt_core::http::Request) -> Fut + Send + Sync + 'static,
+		Fut: std::future::Future<
+				Output = reinhardt_core::exception::Result<reinhardt_core::http::Response>,
+			> + Send
 			+ 'static,
 	{
 		self.router = self.router.function(path, method, func);
@@ -150,7 +151,7 @@ impl RouteGroup {
 	/// ```
 	/// use reinhardt_routers::RouteGroup;
 	/// use hyper::Method;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	///
 	/// # async fn health(_req: Request) -> Result<Response> {
 	/// #     Ok(Response::ok())
@@ -172,9 +173,10 @@ impl RouteGroup {
 		func: F,
 	) -> Self
 	where
-		F: Fn(reinhardt_apps::Request) -> Fut + Send + Sync + 'static,
-		Fut: std::future::Future<Output = reinhardt_apps::Result<reinhardt_apps::Response>>
-			+ Send
+		F: Fn(reinhardt_core::http::Request) -> Fut + Send + Sync + 'static,
+		Fut: std::future::Future<
+				Output = reinhardt_core::exception::Result<reinhardt_core::http::Response>,
+			> + Send
 			+ 'static,
 	{
 		self.router = self.router.function_named(path, method, name, func);
@@ -194,9 +196,9 @@ impl RouteGroup {
 	/// # #[async_trait]
 	/// # impl ViewSet for UserViewSet {
 	/// #     fn get_basename(&self) -> &str { "users" }
-	/// #     async fn dispatch(&self, _req: reinhardt_apps::Request, _action: reinhardt_viewsets::Action)
-	/// #         -> reinhardt_apps::Result<reinhardt_apps::Response> {
-	/// #         Ok(reinhardt_apps::Response::ok())
+	/// #     async fn dispatch(&self, _req: reinhardt_core::http::Request, _action: reinhardt_viewsets::Action)
+	/// #         -> reinhardt_core::exception::Result<reinhardt_core::http::Response> {
+	/// #         Ok(reinhardt_core::http::Response::ok())
 	/// #     }
 	/// # }
 	///
@@ -215,7 +217,7 @@ impl RouteGroup {
 	///
 	/// ```rust
 	/// use reinhardt_routers::RouteGroup;
-	/// # use reinhardt_apps::{Handler, Request, Response, Result};
+	/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
 	/// # use async_trait::async_trait;
 	/// # struct ArticleListView;
 	/// # #[async_trait]
@@ -232,7 +234,7 @@ impl RouteGroup {
 	/// ```
 	pub fn view<V>(mut self, path: &str, view: V) -> Self
 	where
-		V: reinhardt_apps::Handler + 'static,
+		V: reinhardt_core::types::Handler + 'static,
 	{
 		self.router = self.router.view(path, view);
 		self
@@ -244,7 +246,7 @@ impl RouteGroup {
 	///
 	/// ```rust
 	/// use reinhardt_routers::RouteGroup;
-	/// # use reinhardt_apps::{Handler, Request, Response, Result};
+	/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
 	/// # use async_trait::async_trait;
 	/// # struct ArticleListView;
 	/// # #[async_trait]
@@ -261,7 +263,7 @@ impl RouteGroup {
 	/// ```
 	pub fn view_named<V>(mut self, path: &str, name: &str, view: V) -> Self
 	where
-		V: reinhardt_apps::Handler + 'static,
+		V: reinhardt_core::types::Handler + 'static,
 	{
 		self.router = self.router.view_named(path, name, view);
 		self
@@ -350,7 +352,7 @@ impl RouteGroup {
 	/// ```
 	/// use reinhardt_routers::RouteGroup;
 	/// use hyper::Method;
-	/// # use reinhardt_apps::{Request, Response, Result};
+	/// # use reinhardt_core::apps::{Request, Response, Result};
 	///
 	/// # async fn health(_req: Request) -> Result<Response> {
 	/// #     Ok(Response::ok())
@@ -391,7 +393,7 @@ impl Default for RouteGroup {
 mod tests {
 	use super::*;
 	use hyper::Method;
-	use reinhardt_apps::{Request, Response, Result};
+	use reinhardt_core::apps::{Request, Response, Result};
 	use reinhardt_middleware::LoggingMiddleware;
 
 	async fn test_handler(_req: Request) -> Result<Response> {

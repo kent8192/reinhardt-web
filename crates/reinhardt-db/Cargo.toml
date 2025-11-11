@@ -17,9 +17,6 @@ reinhardt-migrations = { path = "crates/migrations", version = "0.1.0-alpha.1", 
 reinhardt-hybrid = { path = "crates/hybrid", version = "0.1.0-alpha.1", optional = true }
 reinhardt-associations = { path = "crates/associations", version = "0.1.0-alpha.1", optional = true }
 
-# DI support for connection pooling
-reinhardt-di = { path = "../reinhardt-di", version = "0.1.0-alpha.1", optional = true }
-
 # Database drivers and query builders
 sqlx = { version = "0.8", features = [
   "runtime-tokio",
@@ -69,7 +66,7 @@ default = [
 backends = ["dep:reinhardt-backends"]
 
 # Internal crate features
-pool = ["dep:reinhardt-backends-pool", "dep:reinhardt-pool", "reinhardt-di"]
+pool = ["dep:reinhardt-backends-pool", "dep:reinhardt-pool"]
 orm = ["dep:reinhardt-orm"]
 migrations = ["dep:reinhardt-migrations"]
 hybrid = ["dep:reinhardt-hybrid"]

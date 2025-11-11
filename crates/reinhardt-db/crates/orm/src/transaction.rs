@@ -393,8 +393,10 @@ impl Transaction {
 	/// Execute transaction begin on database
 	/// Documentation for `begin_db`
 	///
-	pub async fn begin_db(&mut self) -> reinhardt_apps::Result<()> {
-		let sql = self.begin().map_err(reinhardt_apps::Error::Database)?;
+	pub async fn begin_db(&mut self) -> reinhardt_core::exception::Result<()> {
+		let sql = self
+			.begin()
+			.map_err(reinhardt_core::exception::Error::Database)?;
 		let conn = crate::manager::get_connection().await?;
 		conn.execute(&sql, vec![]).await?;
 		Ok(())
@@ -403,8 +405,10 @@ impl Transaction {
 	/// Execute transaction commit on database
 	/// Documentation for `commit_db`
 	///
-	pub async fn commit_db(&mut self) -> reinhardt_apps::Result<()> {
-		let sql = self.commit().map_err(reinhardt_apps::Error::Database)?;
+	pub async fn commit_db(&mut self) -> reinhardt_core::exception::Result<()> {
+		let sql = self
+			.commit()
+			.map_err(reinhardt_core::exception::Error::Database)?;
 		let conn = crate::manager::get_connection().await?;
 		conn.execute(&sql, vec![]).await?;
 		Ok(())
@@ -413,8 +417,10 @@ impl Transaction {
 	/// Execute transaction rollback on database
 	/// Documentation for `rollback_db`
 	///
-	pub async fn rollback_db(&mut self) -> reinhardt_apps::Result<()> {
-		let sql = self.rollback().map_err(reinhardt_apps::Error::Database)?;
+	pub async fn rollback_db(&mut self) -> reinhardt_core::exception::Result<()> {
+		let sql = self
+			.rollback()
+			.map_err(reinhardt_core::exception::Error::Database)?;
 		let conn = crate::manager::get_connection().await?;
 		conn.execute(&sql, vec![]).await?;
 		Ok(())
@@ -1396,7 +1402,7 @@ mod tests {
 		}
 	}
 
-	async fn setup_transaction_test_db() -> reinhardt_apps::Result<()> {
+	async fn setup_transaction_test_db() -> reinhardt_core::exception::Result<()> {
 		use sqlx::SqlitePool;
 		use tokio::sync::OnceCell;
 
@@ -1421,14 +1427,19 @@ mod tests {
 		)
 		.execute(pool)
 		.await
-		.map_err(|e| reinhardt_apps::Error::Database(format!("Create table failed: {}", e)))?;
+		.map_err(|e| {
+			reinhardt_core::exception::Error::Database(format!("Create table failed: {}", e))
+		})?;
 
 		// Clear any existing data
 		sqlx::query("DELETE FROM test_items")
 			.execute(pool)
 			.await
 			.map_err(|e| {
-				reinhardt_apps::Error::Database(format!("Clear table data failed: {}", e))
+				reinhardt_core::exception::Error::Database(format!(
+					"Clear table data failed: {}",
+					e
+				))
 			})?;
 
 		Ok(())

@@ -50,9 +50,9 @@
 #[cfg(feature = "serializers")]
 pub use reinhardt_serializers as serializers;
 
-// Parsers module - from crates/parsers
+// Parsers module - from reinhardt-core/crates/parsers
 #[cfg(feature = "parsers")]
-pub use reinhardt_parsers as parsers;
+pub use reinhardt_core::parsers;
 
 // Renderers module
 #[cfg(feature = "renderers")]
@@ -61,8 +61,8 @@ pub use reinhardt_renderers as renderers;
 // Re-export other internal crates
 pub use reinhardt_filters as filters;
 pub use reinhardt_metadata as metadata;
-pub use reinhardt_negotiation as negotiation;
-pub use reinhardt_pagination as pagination;
+pub use reinhardt_core::negotiation;
+pub use reinhardt_core::pagination;
 pub use reinhardt_throttling as throttling;
 pub use reinhardt_versioning as versioning;
 
@@ -98,7 +98,7 @@ pub use reinhardt_serializers::{
 };
 
 #[cfg(feature = "parsers")]
-pub use reinhardt_parsers::{
+pub use reinhardt_core::parsers::{
 	FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
 	Parser,
 };

@@ -8,7 +8,7 @@
 #[cfg(feature = "database")]
 use reinhardt_db::prelude::Model;
 #[cfg(feature = "database")]
-use reinhardt_http::Response;
+use reinhardt_core::http::Response;
 
 /// Get a single object from the database or return a 404 response
 ///

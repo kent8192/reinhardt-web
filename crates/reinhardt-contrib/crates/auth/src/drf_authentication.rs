@@ -2,10 +2,10 @@
 //!
 //! Provides DRF-compatible authentication wrappers and combinators.
 
-use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
 #[cfg(feature = "argon2-hasher")]
 use crate::DefaultUser;
-use reinhardt_apps::Request;
+use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
+use reinhardt_core::apps::Request;
 use reinhardt_sessions::{Session, backends::SessionBackend};
 use std::sync::Arc;
 

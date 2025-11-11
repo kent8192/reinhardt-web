@@ -3,7 +3,7 @@
 //! Provides utility functions for retrieving CSP nonce from Request extensions
 //! for use in templates and views.
 
-use reinhardt_apps::Request;
+use reinhardt_core::apps::Request;
 
 use crate::csp::CspNonce;
 
@@ -16,7 +16,7 @@ use crate::csp::CspNonce;
 ///
 /// ```ignore
 /// use reinhardt_middleware::csp_helpers::get_csp_nonce;
-/// use reinhardt_apps::Request;
+/// use reinhardt_core::apps::Request;
 ///
 /// fn my_view(request: &Request) -> String {
 ///     if let Some(nonce) = get_csp_nonce(request) {
@@ -39,7 +39,7 @@ pub fn get_csp_nonce(request: &Request) -> Option<String> {
 ///
 /// ```ignore
 /// use reinhardt_middleware::csp_helpers::csp_nonce_attr;
-/// use reinhardt_apps::Request;
+/// use reinhardt_core::apps::Request;
 ///
 /// fn my_template(request: &Request) -> String {
 ///     format!("<script {}>alert('Hello');</script>", csp_nonce_attr(request))
