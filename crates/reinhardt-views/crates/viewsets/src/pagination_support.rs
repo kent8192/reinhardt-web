@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use reinhardt_core::apps::{Request, Result};
-use reinhardt_core::pagination::{
+use reinhardt_pagination::{
 	CursorPagination, LimitOffsetPagination, PageNumberPagination, PaginatedResponse, Paginator,
 };
 use serde::Serialize;

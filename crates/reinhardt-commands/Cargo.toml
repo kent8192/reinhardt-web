@@ -8,8 +8,8 @@ authors.workspace = true
 description = "Django-style management command framework for Reinhardt"
 
 [dependencies]
-reinhardt-mail = { path = "../reinhardt-contrib/crates/mail" }
-reinhardt-static = { path = "../reinhardt-contrib/crates/static" }
+reinhardt-mail = { workspace = true }
+reinhardt-static = { path = "../reinhardt-utils/crates/static" }
 reinhardt-utils-core = { path = "../reinhardt-utils/crates/utils-core" }
 reinhardt-conf = { workspace = true }
 reinhardt-urls = { workspace = true, features = ["routers"], optional = true }
@@ -53,7 +53,7 @@ rcgen = "0.14.5"
 tokio = { workspace = true }
 tempfile = "3.13"
 regex = { workspace = true }
-reinhardt-i18n = { path = "../reinhardt-contrib/crates/i18n" }
+reinhardt-i18n = { workspace = true }
 serial_test = { workspace = true }
 rstest = { workspace = true }
 
@@ -64,7 +64,7 @@ routers = ["dep:reinhardt-urls"]
 server = ["dep:reinhardt-server", "routers"]
 autoreload = ["dep:notify", "server"]
 cargo-watch-reload = ["server"]
-watch = ["cargo-watch-reload"]  # Convenient alias
+watch = ["cargo-watch-reload"]                      # Convenient alias
 shell = ["dep:rustyline"]
 shell-rhai = ["shell", "dep:rhai"]
 shell-pyo3 = ["shell", "dep:pyo3"]

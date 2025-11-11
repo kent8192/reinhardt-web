@@ -11,7 +11,7 @@ description = "Template engine for Reinhardt framework (optional feature)"
 tera = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
-reinhardt-i18n = { path = "../../../reinhardt-contrib/crates/i18n", version = "0.1.0-alpha.1" }
+reinhardt-i18n = { workspace = true }
 reinhardt-core = { workspace = true, features = ["exception"] }
 chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2.1"

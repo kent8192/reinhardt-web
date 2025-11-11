@@ -50,7 +50,7 @@
 #[cfg(feature = "serializers")]
 pub use reinhardt_serializers as serializers;
 
-// Parsers module - from reinhardt-core/crates/parsers
+// Parsers module - now part of reinhardt-rest
 #[cfg(feature = "parsers")]
 pub use reinhardt_core::parsers;
 

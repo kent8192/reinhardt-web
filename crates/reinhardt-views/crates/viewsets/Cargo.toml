@@ -12,8 +12,15 @@ argon2-hasher = ["reinhardt-auth/argon2-hasher"]
 
 [dependencies]
 reinhardt-db = { workspace = true, features = ["orm"] }
-reinhardt-core = { workspace = true, features = ["exception", "types", "macros", "apps", "di", "pagination"] }
-reinhardt-auth = { path = "../../../reinhardt-contrib/crates/auth", version = "0.1.0-alpha.1" }
+reinhardt-core = { workspace = true, features = [
+  "exception",
+  "types",
+  "macros",
+  "apps",
+  "di",
+] }
+reinhardt-pagination = { workspace = true }
+reinhardt-auth = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["cache"] }
 reinhardt-serializers = { path = "../../../reinhardt-rest/crates/serializers", version = "0.1.0-alpha.1" }
 reinhardt-filters = { path = "../../../reinhardt-rest/crates/filters", version = "0.1.0-alpha.1" }

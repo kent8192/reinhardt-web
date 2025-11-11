@@ -15,8 +15,9 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 reinhardt-urls = { workspace = true, features = ["routers"] }
-reinhardt-core = { workspace = true, features = ["auth", "pagination"] }
-reinhardt-auth = { path = "../../../reinhardt-contrib/crates/auth", version = "0.1.0-alpha.1", optional = true }
+reinhardt-core = { workspace = true, features = ["auth"] }
+reinhardt-pagination = { path = "../pagination" }
+reinhardt-auth = { workspace = true, optional = true }
 reinhardt-openapi = { path = "../openapi" }
 
 [dev-dependencies]

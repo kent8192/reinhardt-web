@@ -20,9 +20,16 @@ session = []
 sqlx = ["dep:sqlx"]
 
 [dependencies]
-reinhardt-core = { workspace = true, features = ["auth", "apps", "di", "http", "types", "exception"] }
-reinhardt-auth = { path = "../reinhardt-contrib/crates/auth", features = ["session"] }
-reinhardt-mail = { path = "../reinhardt-contrib/crates/mail" }
+reinhardt-core = { workspace = true, features = [
+    "auth",
+    "apps",
+    "di",
+    "http",
+    "types",
+    "exception",
+] }
+reinhardt-auth = { workspace = true, features = ["session"] }
+reinhardt-mail = { workspace = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }
 reinhardt-security = { path = "../reinhardt-core/crates/security" }
 async-trait = { workspace = true }
