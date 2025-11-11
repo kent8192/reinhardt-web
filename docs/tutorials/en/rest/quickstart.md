@@ -71,21 +71,50 @@ pub struct GroupSerializer {
 
 This example uses simple data structures. In real applications, you can implement the `Serializer` trait to add validation and data transformation logic.
 
-## ViewSets
+## Views
 
-Use ViewSets to implement CRUD operations. Add to `src/main.rs`:
+Implement API endpoints using the `#[endpoint]` macro. Add to `users/views.rs`:
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt_macros::endpoint;
+use reinhardt_db::backends::DatabaseConnection;
+use std::sync::Arc;
+use crate::models::User;
+use crate::serializers::UserSerializer;
 
-// UserViewSet - full CRUD operations
-let user_viewset = ModelViewSet::<User, UserSerializer>::new("user");
+#[endpoint]
+pub async fn list_users(
+    #[inject] conn: Arc<DatabaseConnection>,
+) -> Result<Response> {
+    let users = User::all(&conn).await?;
+    let serialized: Vec<UserSerializer> = users.into_iter()
+        .map(|u| UserSerializer::from(u))
+        .collect();
 
-// GroupViewSet - read-only
-let group_viewset = ReadOnlyModelViewSet::<Group, GroupSerializer>::new("group");
+    Response::ok()
+        .with_json(&serialized)
+}
+
+#[endpoint]
+pub async fn create_user(
+    mut request: Request,
+    #[inject] conn: Arc<DatabaseConnection>,
+) -> Result<Response> {
+    // Parse request body
+    let body_bytes = std::mem::take(&mut request.body);
+    let data: UserSerializer = serde_json::from_slice(&body_bytes)?;
+
+    // Create user
+    let user = User::create(&conn, data.username, data.email).await?;
+    let serialized = UserSerializer::from(user);
+
+    Response::new(201)
+        .with_json(&serialized)
+}
 ```
 
-`ModelViewSet` provides all standard CRUD operations (list, retrieve, create, update, delete). `ReadOnlyModelViewSet` provides only list and retrieve operations.
+**Note**: ViewSets (like Django REST framework's ViewSets) are planned for future release. Currently, use function-based endpoints with `#[endpoint]` macro.
 
 ## Routing
 
@@ -123,39 +152,83 @@ pub struct UserSerializer {
 }
 ```
 
-### Create ViewSet
+### Create Views
 
-Edit `users/views.rs`:
+Edit `users/views.rs` to implement full CRUD operations:
 
 ```rust
-use reinhardt::viewsets::ModelViewSet;
+use reinhardt::prelude::*;
+use reinhardt_macros::endpoint;
+use reinhardt_db::backends::DatabaseConnection;
+use std::sync::Arc;
 use crate::models::User;
 use crate::serializers::UserSerializer;
 
-pub struct UserViewSet;
+#[endpoint]
+pub async fn list_users(
+    #[inject] conn: Arc<DatabaseConnection>,
+) -> Result<Response> {
+    let users = User::all(&conn).await?;
+    let serialized: Vec<UserSerializer> = users.into_iter()
+        .map(|u| UserSerializer::from(u))
+        .collect();
 
-impl UserViewSet {
-    pub fn new() -> ModelViewSet<User, UserSerializer> {
-        ModelViewSet::new("user")
-    }
+    Response::ok().with_json(&serialized)
+}
+
+#[endpoint]
+pub async fn retrieve_user(
+    request: Request,
+    #[inject] conn: Arc<DatabaseConnection>,
+) -> Result<Response> {
+    let id: i64 = request.path_params.get("id")
+        .ok_or("Missing id")?
+        .parse()?;
+
+    let user = User::get(&conn, id).await?
+        .ok_or_else(|| Response::not_found().with_body("User not found"))?;
+
+    let serialized = UserSerializer::from(user);
+    Response::ok().with_json(&serialized)
+}
+
+#[endpoint]
+pub async fn create_user(
+    mut request: Request,
+    #[inject] conn: Arc<DatabaseConnection>,
+) -> Result<Response> {
+    let body_bytes = std::mem::take(&mut request.body);
+    let data: UserSerializer = serde_json::from_slice(&body_bytes)?;
+
+    let user = User::create(&conn, data.username, data.email).await?;
+    let serialized = UserSerializer::from(user);
+
+    Response::new(201).with_json(&serialized)
 }
 ```
 
 ### Configure URLs
 
-Edit `users/urls.rs`:
+Edit `users/urls.rs` to register the view functions:
 
 ```rust
 use reinhardt_routers::UnifiedRouter;
-use std::sync::Arc;
-use crate::views::UserViewSet;
+use hyper::Method;
+use crate::views;
 
 pub fn url_patterns() -> UnifiedRouter {
-    // Register ViewSet - CRUD endpoints are auto-generated
     UnifiedRouter::new()
-        .viewset("/users", Arc::new(UserViewSet::new()))
+        .with_namespace("users")
+        .function("/users", Method::GET, views::list_users)
+        .function("/users/:id", Method::GET, views::retrieve_user)
+        .function("/users", Method::POST, views::create_user)
 }
 ```
+
+**URL Patterns Generated:**
+- `GET /api/users/` → `views::list_users`
+- `GET /api/users/{id}/` → `views::retrieve_user`
+- `POST /api/users/` → `views::create_user`
 
 ### Register with Project
 
@@ -187,14 +260,13 @@ pub fn get_installed_apps() -> Vec<String> {
 }
 ```
 
-This automatically generates the following URL patterns:
+This configures the following URL patterns:
 
 - `GET /api/users/` - List users
 - `POST /api/users/` - Create new user
 - `GET /api/users/{id}/` - Retrieve specific user
-- `PUT /api/users/{id}/` - Update user
-- `PATCH /api/users/{id}/` - Partial update user
-- `DELETE /api/users/{id}/` - Delete user
+
+**Note**: To implement full CRUD (UPDATE, DELETE), add additional endpoint functions in `users/views.rs` and register them in `users/urls.rs` following the same pattern.
 
 ## Testing the API
 

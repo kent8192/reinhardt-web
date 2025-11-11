@@ -15,27 +15,29 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["admin"] }
 
 ## Creating an Admin User
 
-First, create a superuser account that can access the admin interface:
+First, create a superuser account that can access the admin interface using the `createsuperuser` command:
 
-```rust
-// Add this to src/main.rs or create a separate admin setup script
-use reinhardt::prelude::*;
-use reinhardt::auth::models::User;
-
-async fn create_superuser(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    let user = User::create_superuser(
-        pool,
-        "admin",
-        "admin@example.com",
-        "password123",
-    ).await?;
-
-    println!("Superuser created: {}", user.username);
-    Ok(())
-}
+```bash
+cargo run --bin manage createsuperuser
 ```
 
-Run this once to create your admin user.
+You'll be prompted to enter:
+- Username
+- Email address
+- Password (entered twice for confirmation)
+
+Example session:
+
+```
+$ cargo run --bin manage createsuperuser
+Username: admin
+Email address: admin@example.com
+Password:
+Password (again):
+Superuser created successfully.
+```
+
+**Note**: The `createsuperuser` command handles password hashing automatically using secure algorithms (Argon2 by default).
 
 ## Registering Models with the Admin
 
@@ -298,19 +300,14 @@ impl AdminAction<Question> for MakePublishedAction {
 
     async fn perform(
         &self,
-        pool: &SqlitePool,
+        conn: &DatabaseConnection,
         queryset: Vec<Question>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let count = queryset.len();
 
-        for question in queryset {
-            sqlx::query!(
-                "UPDATE questions SET pub_date = ? WHERE id = ?",
-                Utc::now(),
-                question.id
-            )
-            .execute(pool)
-            .await?;
+        for mut question in queryset {
+            question.pub_date = Utc::now();
+            question.save(conn).await?;
         }
 
         Ok(format!("Successfully updated {} question(s).", count))

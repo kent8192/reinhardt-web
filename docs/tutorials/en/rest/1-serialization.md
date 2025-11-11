@@ -223,27 +223,39 @@ let json = serializer.serialize(&article).unwrap();
 
 ## Validation Workflow
 
-Typical validation workflow in an API view:
+Typical validation workflow in an API view with Reinhardt:
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt_macros::endpoint;
 
-async fn create_snippet(request: Request) -> Result<Response> {
-    // 1. Parse JSON from request body
-    let serializer = JsonSerializer::<Snippet>::new();
-    let snippet = serializer.deserialize(&request.body)?;
+#[endpoint]
+async fn create_snippet(mut request: Request) -> Result<Response> {
+    // 1. Parse JSON from request body (automatic deserialization)
+    let body_bytes = std::mem::take(&mut request.body);
+    let snippet: Snippet = serde_json::from_slice(&body_bytes)?;
 
     // 2. Validate the data
     let validator = SnippetSerializer;
-    validator.validate(&snippet)?;
+    if let Err(errors) = validator.validate(&snippet) {
+        return Response::bad_request()
+            .with_json(&errors);
+    }
 
-    // 3. Save to database
-    // db.save(&snippet).await?;
+    // 3. Save to database (using Reinhardt ORM)
+    // snippet.save(&conn).await?;
 
-    // 4. Return response
-    Ok(Response::created(snippet))
+    // 4. Return response with created status
+    Response::new(201)
+        .with_json(&snippet)
 }
 ```
+
+**Key Points:**
+- **Automatic Parsing**: Reinhardt's `#[endpoint]` macro handles Content-Type checking
+- **serde_json**: Use `serde_json::from_slice` for JSON deserialization
+- **Validation**: Custom validators return `ValidationResult`
+- **Response Builder**: Use `.with_json()` for JSON responses
 
 ## Summary
 

@@ -1,66 +1,123 @@
 # Part 3: Views and URLs
 
-In this tutorial, we'll create more views to display our poll data using templates.
+In this tutorial, we'll create more views to display our poll data using templates and Reinhardt's modern endpoint system.
 
-## Writing More Views
+## Writing More Views with Endpoint Macro
 
-Let's update our `src/polls.rs` to work with the database models we created in Part 2.
+Let's update our `polls/views.rs` to use the `#[endpoint]` macro and dependency injection.
 
-Update `src/polls.rs`:
+Update `polls/views.rs`:
 
 ```rust
 use reinhardt::prelude::*;
-use sqlx::SqlitePool;
-use std::collections::HashMap;
+use reinhardt_macros::endpoint;
+use reinhardt_db::backends::DatabaseConnection;
+use std::sync::Arc;
+use serde_json::json;
+use crate::models::{Question, Choice};
 
-pub async fn index(request: Request) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-    let pool = request.extensions.get::<SqlitePool>().unwrap();
-
+#[endpoint]
+pub async fn index(
+    #[inject] conn: Arc<DatabaseConnection>,
+) -> Result<Response> {
     // Get latest 5 questions
-    let questions = crate::models::Question::all(pool).await?;
+    let questions = Question::all(&conn).await?;
     let latest_questions: Vec<_> = questions.into_iter().take(5).collect();
 
-    let mut context = HashMap::new();
-    context.insert("latest_question_list", serde_json::to_value(&latest_questions)?);
+    let context = json!({
+        "latest_question_list": latest_questions,
+    });
 
-    render_template(&request, "polls/index.html", context)
+    Response::ok()
+        .render_template("polls/index.html", &context)
 }
 
-pub async fn detail(request: Request) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-    let pool = request.extensions.get::<SqlitePool>().unwrap();
-    let question_id: i64 = request.path_params.get("question_id")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
+#[endpoint]
+pub async fn detail(
+    request: Request,
+    #[inject] conn: Arc<DatabaseConnection>,
+) -> Result<Response> {
+    let question_id: i64 = request.path_params
+        .get("question_id")
+        .ok_or("Missing question_id")?
+        .parse()?;
 
-    let question = crate::models::Question::get(pool, question_id)
+    let question = Question::get(&conn, question_id)
         .await?
-        .ok_or("Question not found")?;
+        .ok_or_else(|| Response::not_found().with_body("Question not found"))?;
 
-    let mut context = HashMap::new();
-    context.insert("question", serde_json::to_value(&question)?);
+    let choices = question.choices(&conn).await?;
 
-    render_template(&request, "polls/detail.html", context)
+    let context = json!({
+        "question": question,
+        "choices": choices,
+    });
+
+    Response::ok()
+        .render_template("polls/detail.html", &context)
 }
 
-pub async fn results(request: Request) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-    let pool = request.extensions.get::<SqlitePool>().unwrap();
-    let question_id: i64 = request.path_params.get("question_id")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
+#[endpoint]
+pub async fn results(
+    request: Request,
+    #[inject] conn: Arc<DatabaseConnection>,
+) -> Result<Response> {
+    let question_id: i64 = request.path_params
+        .get("question_id")
+        .ok_or("Missing question_id")?
+        .parse()?;
 
-    let question = crate::models::Question::get(pool, question_id)
+    let question = Question::get(&conn, question_id)
         .await?
-        .ok_or("Question not found")?;
+        .ok_or_else(|| Response::not_found().with_body("Question not found"))?;
 
-    let choices = question.choices(pool).await?;
+    let choices = question.choices(&conn).await?;
 
-    let mut context = HashMap::new();
-    context.insert("question", serde_json::to_value(&question)?);
-    context.insert("choices", serde_json::to_value(&choices)?);
+    let context = json!({
+        "question": question,
+        "choices": choices,
+    });
 
-    render_template(&request, "polls/results.html", context)
+    Response::ok()
+        .render_template("polls/results.html", &context)
+}
+
+#[endpoint]
+pub async fn vote(
+    mut request: Request,
+    #[inject] conn: Arc<DatabaseConnection>,
+) -> Result<Response> {
+    let question_id: i64 = request.path_params
+        .get("question_id")
+        .ok_or("Missing question_id")?
+        .parse()?;
+
+    // Parse form data
+    let form_data = request.parse_form().await?;
+    let choice_id: i64 = form_data
+        .get("choice")
+        .ok_or("No choice selected")?
+        .parse()?;
+
+    // Get the choice and increment votes
+    let mut choice = Choice::get(&conn, choice_id)
+        .await?
+        .ok_or("Choice not found")?;
+
+    choice.increment_votes(&conn).await?;
+
+    // Redirect to results page
+    Response::redirect(&format!("/polls/{}/results/", question_id))
 }
 ```
+
+**Key improvements:**
+
+- `#[endpoint]` macro handles request parsing automatically
+- `#[inject]` provides database connection via dependency injection
+- `Response::ok().render_template()` replaces manual template rendering
+- `Response::not_found()` and `Response::redirect()` for HTTP status codes
+- No manual `extensions.get::<Pool>()` - DI handles it
 
 ## Creating Templates
 
@@ -87,7 +144,7 @@ Create `templates/polls/index.html`:
     <ul>
       {% for question in latest_question_list %}
       <li>
-        <a href="/polls/{{ question.id }}/">{{ question.question_text }}</a>
+        <a href="{% url 'polls:detail' question.id %}">{{ question.question_text }}</a>
       </li>
       {% endfor %}
     </ul>
@@ -109,8 +166,9 @@ Create `templates/polls/detail.html`:
   <body>
     <h1>{{ question.question_text }}</h1>
 
-    <form action="/polls/{{ question.id }}/vote/" method="post">
-      {% for choice in question.choices %}
+    <form action="{% url 'polls:vote' question.id %}" method="post">
+      {% csrf_token %}
+      {% for choice in choices %}
       <input
         type="radio"
         name="choice"
@@ -145,118 +203,104 @@ Create `templates/polls/results.html`:
       {% endfor %}
     </ul>
 
-    <a href="/polls/{{ question.id }}/">Vote again?</a>
+    <a href="{% url 'polls:detail' question.id %}">Vote again?</a>
   </body>
 </html>
 ```
 
 ## Using Shortcut Functions
 
-Reinhardt provides shortcut functions to make common tasks easier. We've already used `render_template()`. Let's explore `get_object_or_404()`:
+Reinhardt provides shortcut functions to make common tasks easier. The `Response` builder pattern includes several shortcuts:
 
 ```rust
-use reinhardt::prelude::*;
+// 404 Not Found
+Response::not_found()
+    .with_body("Question not found")
 
-pub async fn detail(request: Request) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-    let pool = request.extensions.get::<SqlitePool>().unwrap();
-    let question_id: i64 = request.path_params.get("question_id")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
+// 302 Redirect
+Response::redirect("/polls/1/results/")
 
-    // This will automatically return a 404 response if the question doesn't exist
-    let question = get_object_or_404(
-        crate::models::Question::get(pool, question_id)
-    ).await?;
+// 200 OK with JSON
+Response::ok()
+    .with_json(&data)?
 
-    let mut context = HashMap::new();
-    context.insert("question", serde_json::to_value(&question)?);
+// 200 OK with template rendering
+Response::ok()
+    .render_template("polls/index.html", &context)?
+```
 
-    render_template(&request, "polls/detail.html", context)
+These replace manual error handling and status code management.
+
+## Configuring URL Patterns with UnifiedRouter
+
+Update `polls/urls.rs` to use UnifiedRouter with namespacing:
+
+```rust
+use reinhardt_routers::UnifiedRouter;
+use hyper::Method;
+use crate::views;
+
+pub fn url_patterns() -> UnifiedRouter {
+    UnifiedRouter::new()
+        .with_namespace("polls")
+        .function("/", Method::GET, views::index)
+        .function("/:question_id", Method::GET, views::detail)
+        .function("/:question_id/results", Method::GET, views::results)
+        .function("/:question_id/vote", Method::POST, views::vote)
 }
 ```
 
-The `get_object_or_404()` function queries the database and raises a 404 Not Found error if the object doesn't exist, saving you from writing repetitive error handling code.
+**Namespace benefits:**
 
-## Removing Hardcoded URLs in Templates
+- URLs are automatically named: `polls:index`, `polls:detail`, etc.
+- No naming conflicts with other apps
+- Use in templates with `{% url 'polls:detail' question.id %}`
 
-Currently, our templates have hardcoded URLs like `/polls/{{ question.id }}/`. This makes maintenance difficult. Let's use URL namespacing instead.
+## Mounting the Polls Router
 
-Update `src/urls.rs` to add names to our routes:
-
-```rust
-use reinhardt::prelude::*;
-
-pub fn url_patterns() -> Vec<Route> {
-    vec![
-        path("polls/", crate::polls::index).name("polls:index"),
-        path("polls/{question_id}/", crate::polls::detail).name("polls:detail"),
-        path("polls/{question_id}/results/", crate::polls::results).name("polls:results"),
-        path("polls/{question_id}/vote/", crate::polls::vote).name("polls:vote"),
-    ]
-}
-```
-
-Now you can use the `url` filter in templates:
-
-```html
-<a href="{% url 'polls:detail' question.id %}">{{ question.question_text }}</a>
-```
-
-## Namespacing URL Names
-
-To avoid name conflicts between different apps, we use namespaced URL names. The format is `app_name:url_name`.
-
-In our case:
-
-- `polls:index` - The index view of the polls app
-- `polls:detail` - The detail view of the polls app
-- `polls:results` - The results view
-- `polls:vote` - The vote action
-
-## Update main.rs
-
-Update `src/main.rs` to configure the template environment:
+Update `src/config/urls.rs` to mount the polls router:
 
 ```rust
-mod models;
-mod polls;
-mod urls;
-
-use reinhardt::prelude::*;
-use sqlx::SqlitePool;
+use reinhardt_routers::UnifiedRouter;
+use hyper::Method;
 use std::sync::Arc;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup database
-    let pool = SqlitePool::connect("sqlite:polls.db").await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
+pub fn url_patterns() -> Arc<UnifiedRouter> {
+    let router = UnifiedRouter::new()
+        .mount("/polls", polls::urls::url_patterns());
 
-    // Setup template loader
-    let template_loader = Arc::new(FileSystemTemplateLoader::new("templates"));
-
-    // Create router
-    let mut router = DefaultRouter::new();
-
-    // Add database pool to request extensions
-    router.add_extension(pool.clone());
-    router.add_extension(template_loader);
-
-    // Register URL patterns
-    for route in urls::url_patterns() {
-        router.add_route(route);
-    }
-
-    // Start server
-    let server = Server::new("127.0.0.1:8000", router);
-
-    println!("Starting development server at http://127.0.0.1:8000/");
-    println!("Quit the server with CTRL-C.");
-
-    server.run().await?;
-
-    Ok(())
+    Arc::new(router)
 }
+```
+
+The `mount()` method:
+- Prefixes all routes with `/polls`
+- Preserves namespace (`polls:index`, `polls:detail`, etc.)
+- Enables hierarchical routing
+
+## Template Configuration
+
+Reinhardt projects generated by `reinhardt-admin startproject` automatically configure templates. The template loader is set up in `src/bin/runserver.rs`.
+
+If you need to customize template configuration, update `settings/base.toml`:
+
+```toml
+[templates]
+dirs = ["templates"]
+debug = true
+```
+
+## URL Reversal in Code
+
+You can also reverse URLs in Rust code:
+
+```rust
+use reinhardt_urls::reverse;
+
+let detail_url = reverse("polls:detail", &[("question_id", "5")])?;
+// Returns: "/polls/5"
+
+let redirect = Response::redirect(&detail_url);
 ```
 
 ## Testing the Views
@@ -264,7 +308,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Run your server:
 
 ```bash
-cargo run
+cargo run --bin runserver
 ```
 
 Visit these URLs:
@@ -273,19 +317,52 @@ Visit these URLs:
 - `http://127.0.0.1:8000/polls/1/` - See details for poll #1
 - `http://127.0.0.1:8000/polls/1/results/` - See results for poll #1
 
+## Response Builder Patterns
+
+Reinhardt's `Response` type uses a builder pattern for flexibility:
+
+```rust
+// Simple text response
+Response::ok()
+    .with_body("Hello, world!")
+
+// JSON response
+Response::ok()
+    .with_json(&data)?
+    .with_header("X-Custom-Header", "value")
+
+// Template response
+Response::ok()
+    .render_template("template.html", &context)?
+
+// Redirect
+Response::redirect("/new-location")
+
+// Error responses
+Response::not_found()
+    .with_body("Page not found")
+
+Response::bad_request()
+    .with_body("Invalid input")
+
+Response::internal_server_error()
+    .with_body("Something went wrong")
+```
+
 ## Summary
 
 In this tutorial, you learned:
 
-- How to create views that use database models
-- How to use templates to render HTML
-- How to use template variables and control structures
-- How to use shortcut functions like `render_template()` and `get_object_or_404()`
-- How to use URL namespacing to avoid hardcoded URLs
-- How to configure template loaders
+- How to use the `#[endpoint]` macro for FastAPI-style views
+- How to use dependency injection with `#[inject]` for database connections
+- How to use the Response builder pattern (`.ok()`, `.redirect()`, `.not_found()`)
+- How to create and use templates with the template system
+- How to use UnifiedRouter with namespacing
+- How to use template tags like `{% url %}` for URL reversal
+- How to configure URL patterns hierarchically with `mount()`
 
 ## What's Next?
 
-In the next tutorial, we'll add form processing so users can actually vote on polls.
+In the next tutorial, we'll add form processing and introduce generic views to reduce boilerplate code.
 
 Continue to [Part 4: Forms and Generic Views](4-forms-and-generic-views.md).

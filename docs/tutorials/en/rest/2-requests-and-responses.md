@@ -8,8 +8,10 @@ Reinhardt's `Request` object provides access to HTTP request data:
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt_macros::endpoint;
 use hyper::{Method, StatusCode};
 
+#[endpoint]
 async fn my_view(request: Request) -> Result<Response> {
     // Access HTTP method
     match request.method {
@@ -29,7 +31,8 @@ async fn my_view(request: Request) -> Result<Response> {
     // Access request body
     let body_bytes = &request.body;
 
-    Ok(Response::ok("Success"))
+    Response::ok()
+        .with_body("Success")
 }
 ```
 
@@ -39,28 +42,28 @@ Create responses using the builder pattern:
 
 ```rust
 use reinhardt::prelude::*;
-use hyper::StatusCode;
 use serde_json::json;
 
 // Simple text response
-let response = Response::ok("Hello, World!");
+let response = Response::ok()
+    .with_body("Hello, World!");
 
 // JSON response
 let data = json!({
     "message": "Success",
     "count": 42
 });
-let response = Response::ok(data);
+let response = Response::ok()
+    .with_json(&data)?;
 
-// Custom status code
-let response = Response::new(StatusCode::CREATED, "Created");
+// Custom status code (201 Created)
+let response = Response::new(201)
+    .with_body("Created");
 
 // Response with custom headers
-let mut response = Response::ok("Data");
-response.headers.insert(
-    "X-Custom-Header",
-    "value".parse().unwrap()
-);
+let response = Response::ok()
+    .with_body("Data")
+    .with_header("X-Custom-Header", "value");
 ```
 
 ## Status Codes
@@ -69,30 +72,36 @@ Reinhardt provides convenience methods for common status codes:
 
 ```rust
 // 200 OK
-Response::ok(data)
+Response::ok()
+    .with_json(&data)?
 
 // 201 Created
-Response::created(data)
+Response::new(201)
+    .with_json(&data)?
 
 // 204 No Content
-Response::no_content()
+Response::new(204)
 
 // 400 Bad Request
-Response::bad_request("Invalid input")
+Response::bad_request()
+    .with_body("Invalid input")
 
 // 404 Not Found
-Response::not_found("Resource not found")
+Response::not_found()
+    .with_body("Resource not found")
 
 // 500 Internal Server Error
-Response::internal_server_error("Error occurred")
+Response::internal_server_error()
+    .with_body("Error occurred")
 ```
 
 ## Parsing Request Data
 
-Parse JSON from request body:
+Reinhardt automatically parses JSON request bodies. Simply use `serde_json::from_slice`:
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt_macros::endpoint;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -102,17 +111,24 @@ struct CreateSnippet {
     language: String,
 }
 
-async fn create_snippet(request: Request) -> Result<Response> {
+#[endpoint]
+async fn create_snippet(mut request: Request) -> Result<Response> {
     // Parse JSON from request body
-    let serializer = JsonSerializer::<CreateSnippet>::new();
-    let data = serializer.deserialize(&request.body)?;
+    let body_bytes = std::mem::take(&mut request.body);
+    let data: CreateSnippet = serde_json::from_slice(&body_bytes)?;
 
     println!("Title: {}", data.title);
     println!("Code: {}", data.code);
 
-    Ok(Response::created(data))
+    Response::new(201)
+        .with_json(&data)
 }
 ```
+
+**Note**: Reinhardt's `#[endpoint]` macro handles request parsing automatically. The framework takes care of:
+- Content-Type header checking
+- JSON deserialization
+- Error handling for invalid JSON
 
 ## Content Negotiation
 
@@ -120,26 +136,32 @@ Reinhardt supports multiple content types:
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt_macros::endpoint;
+use serde_json::Value;
 
-async fn handle_request(request: Request) -> Result<Response> {
+#[endpoint]
+async fn handle_request(mut request: Request) -> Result<Response> {
     let content_type = request.headers
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
+    let body_bytes = std::mem::take(&mut request.body);
+
     match content_type {
         "application/json" => {
-            let parser = JSONParser::new();
-            let data = parser.parse(&request.body)?;
-            Ok(Response::ok(data))
+            let data: Value = serde_json::from_slice(&body_bytes)?;
+            Response::ok()
+                .with_json(&data)
         }
         "application/x-www-form-urlencoded" => {
-            let parser = FormParser::new();
-            let data = parser.parse(&request.body)?;
-            Ok(Response::ok(data))
+            let form_data = request.parse_form().await?;
+            Response::ok()
+                .with_json(&form_data)
         }
         _ => {
-            Ok(Response::bad_request("Unsupported content type"))
+            Response::bad_request()
+                .with_body("Unsupported content type")
         }
     }
 }
@@ -151,35 +173,40 @@ Handle errors gracefully:
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt_macros::endpoint;
 
-async fn safe_view(request: Request) -> Result<Response> {
+#[endpoint]
+async fn safe_view(mut request: Request) -> Result<Response> {
     // Parse and validate data
-    let serializer = JsonSerializer::<CreateSnippet>::new();
-    let data = match serializer.deserialize(&request.body) {
+    let body_bytes = std::mem::take(&mut request.body);
+    let data: CreateSnippet = match serde_json::from_slice(&body_bytes) {
         Ok(d) => d,
         Err(e) => {
-            return Ok(Response::bad_request(
-                format!("Invalid JSON: {}", e)
-            ));
+            return Response::bad_request()
+                .with_body(&format!("Invalid JSON: {}", e));
         }
     };
 
     // Validate required fields
     if data.title.is_empty() {
-        return Ok(Response::bad_request("Title is required"));
+        return Response::bad_request()
+            .with_body("Title is required");
     }
 
-    Ok(Response::created(data))
+    Response::new(201)
+        .with_json(&data)
 }
 ```
 
 ## Complete Example
 
-Full request/response handling:
+Full request/response handling with modern Reinhardt patterns:
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt_macros::endpoint;
 use serde::{Serialize, Deserialize};
+use hyper::Method;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Snippet {
@@ -189,29 +216,20 @@ struct Snippet {
     language: String,
 }
 
-struct SnippetValidator;
-
-impl Serializer<Snippet> for SnippetValidator {
-    fn validate(&self, snippet: &Snippet) -> Result<(), Vec<ValidationError>> {
-        let mut errors = Vec::new();
-
-        if snippet.title.is_empty() {
-            errors.push(ValidationError::new("title", "Title is required"));
-        }
-
-        if snippet.code.is_empty() {
-            errors.push(ValidationError::new("code", "Code is required"));
-        }
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
+fn validate_snippet(snippet: &Snippet) -> Result<(), String> {
+    if snippet.title.is_empty() {
+        return Err("Title is required".to_string());
     }
+
+    if snippet.code.is_empty() {
+        return Err("Code is required".to_string());
+    }
+
+    Ok(())
 }
 
-async fn snippet_list(request: Request) -> Result<Response> {
+#[endpoint]
+async fn snippet_list(mut request: Request) -> Result<Response> {
     match request.method {
         Method::GET => {
             // Return list of snippets
@@ -223,27 +241,29 @@ async fn snippet_list(request: Request) -> Result<Response> {
                     language: "python".to_string(),
                 }
             ];
-            Ok(Response::ok(snippets))
+            Response::ok()
+                .with_json(&snippets)
         }
         Method::POST => {
             // Create new snippet
-            let serializer = JsonSerializer::<Snippet>::new();
-            let mut snippet = serializer.deserialize(&request.body)?;
+            let body_bytes = std::mem::take(&mut request.body);
+            let mut snippet: Snippet = serde_json::from_slice(&body_bytes)?;
 
             // Validate
-            let validator = SnippetValidator;
-            validator.validate(&snippet)?;
+            if let Err(e) = validate_snippet(&snippet) {
+                return Response::bad_request()
+                    .with_body(&e);
+            }
 
             // Assign ID and save
             snippet.id = Some(1);
 
-            Ok(Response::created(snippet))
+            Response::new(201)
+                .with_json(&snippet)
         }
         _ => {
-            Ok(Response::new(
-                StatusCode::METHOD_NOT_ALLOWED,
-                "Method not allowed"
-            ))
+            Response::new(405)
+                .with_body("Method not allowed")
         }
     }
 }
