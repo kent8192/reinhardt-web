@@ -7,7 +7,7 @@ description = "Core type definitions and common types for the Reinhardt framewor
 repository.workspace = true
 
 [dependencies]
-reinhardt-http = { workspace = true, optional = true }
+reinhardt-http = { path = "../http", version = "0.1.0-alpha.1", optional = true }
 reinhardt-exception = { path = "../exception", version = "0.1.0-alpha.1" }
 async-trait = { workspace = true }
 

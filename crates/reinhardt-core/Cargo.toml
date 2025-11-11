@@ -18,6 +18,14 @@ reinhardt-validators = { version = "0.1.0-alpha.1", path = "crates/validators", 
 reinhardt-core-serializers = { version = "0.1.0-alpha.1", path = "crates/serializers", optional = true }
 reinhardt-core-auth = { version = "0.1.0-alpha.1", path = "crates/auth", optional = true }
 
+# New facade subcrates
+reinhardt-negotiation = { version = "0.1.0-alpha.1", path = "crates/negotiation", optional = true }
+reinhardt-pagination = { version = "0.1.0-alpha.1", path = "crates/pagination", optional = true }
+reinhardt-http = { version = "0.1.0-alpha.1", path = "crates/http", optional = true }
+reinhardt-apps = { version = "0.1.0-alpha.1", path = "crates/apps", optional = true }
+reinhardt-di = { version = "0.1.0-alpha.1", path = "crates/di", optional = true }
+reinhardt-parsers = { version = "0.1.0-alpha.1", path = "crates/parsers", optional = true }
+
 [features]
 default = [
   "types",
@@ -27,6 +35,8 @@ default = [
   "security",
   "validators",
   "serializers",
+  "negotiation",
+  "pagination",
 ]
 types = ["dep:reinhardt-types"]
 types-http = ["types", "reinhardt-types/http"]
@@ -38,3 +48,14 @@ validators = ["dep:reinhardt-validators"]
 serializers = ["dep:reinhardt-core-serializers"]
 auth = ["dep:reinhardt-core-auth"]
 argon2-hasher = ["auth", "reinhardt-core-auth/argon2-hasher"]
+
+# New facade features
+negotiation = ["dep:reinhardt-negotiation"]
+pagination = ["dep:reinhardt-pagination"]
+http = ["dep:reinhardt-http", "types-http"]
+apps = ["dep:reinhardt-apps"]
+apps-http = ["apps", "reinhardt-apps/http"]
+di = ["dep:reinhardt-di"]
+params = ["di", "reinhardt-di/params"]
+di-generator = ["di", "reinhardt-di/generator"]
+parsers = ["dep:reinhardt-parsers"]

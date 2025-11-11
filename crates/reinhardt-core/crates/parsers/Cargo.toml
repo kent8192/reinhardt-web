@@ -1,0 +1,34 @@
+[package]
+name = "reinhardt-parsers"
+version = "0.1.0-alpha.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Request parsers for Reinhardt framework (Django REST Framework inspired)"
+repository = "https://github.com/kent8192/reinhardt"
+keywords = ["web", "framework", "parser", "rest", "api"]
+categories = ["web-programming"]
+
+[dependencies]
+reinhardt-exception = { path = "../exception", version = "0.1.0-alpha.1" }
+async-trait = "0.1"
+bytes = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_urlencoded = "0.7"
+multer = "3.0"
+mime = "0.3"
+thiserror = "2.0.17"
+futures-util = "0.3"
+urlencoding = "2.1"
+quick-xml = "0.38.3"
+serde_yaml = { workspace = true }
+flate2 = { workspace = true }
+brotli = { workspace = true }
+rmp-serde = { workspace = true }
+prost = { workspace = true }
+http = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full"] }
+tokio-test = "0.4"
+hyper = { version = "1.0", features = ["full"] }

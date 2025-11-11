@@ -11,7 +11,7 @@ authors.workspace = true
 default = ["standard"]
 
 # Minimal feature set - for microservices and simple APIs
-minimal = ["reinhardt-di", "reinhardt-di/params"]
+minimal = ["reinhardt-core/di", "reinhardt-core/params"]
 
 # Standard feature set - balanced for most projects
 standard = [
@@ -70,8 +70,8 @@ server = ["reinhardt-server"]
 conf = ["reinhardt-conf"]
 core = ["reinhardt-core"]
 rest = ["reinhardt-rest"]
-di = ["reinhardt-di"]
-di-generator = ["di", "reinhardt-di/generator"]
+di = ["reinhardt-core/di"]
+di-generator = ["di", "reinhardt-core/di-generator"]
 test = ["reinhardt-test"]
 
 # Meta features
@@ -170,8 +170,6 @@ middleware-rate-limit = ["reinhardt-middleware", "reinhardt-middleware/rate-limi
 
 [dependencies]
 # Core dependencies (always included)
-reinhardt-apps = { workspace = true }
-reinhardt-http = { workspace = true }
 reinhardt-urls = { workspace = true }
 reinhardt-utils = { workspace = true }
 reinhardt-views = { workspace = true }
@@ -185,7 +183,6 @@ reinhardt-core = { workspace = true, optional = true }
 reinhardt-db = { workspace = true, optional = true }
 reinhardt-template = { workspace = true, optional = true }
 reinhardt-test = { workspace = true, optional = true }
-reinhardt-di = { workspace = true, optional = true }
 reinhardt-rest = { workspace = true, optional = true }
 reinhardt-contrib = { workspace = true, optional = true }
 
@@ -210,8 +207,6 @@ resolver = "3"
 members = [
   # Core framework (always included)
   "crates/reinhardt-micro",
-  "crates/reinhardt-apps",
-  "crates/reinhardt-http",
   "crates/reinhardt-conf",
   "crates/reinhardt-core",
   "crates/reinhardt-server",
@@ -228,7 +223,6 @@ members = [
   "crates/reinhardt-commands",
   "crates/reinhardt-admin", # CLI tool
   "crates/reinhardt-db",
-  "crates/reinhardt-di",
   "crates/reinhardt-dispatch",
   "crates/reinhardt-shortcuts",
   "crates/reinhardt-forms",
@@ -265,8 +259,6 @@ no-individual-tags = true       # Disable cargo-ws automatic tag generation (we 
 [workspace.dependencies]
 # Internal crates
 reinhardt-micro = { path = "crates/reinhardt-micro", version = "0.1.0-alpha.1" }
-reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.0-alpha.1" }
-reinhardt-http = { path = "crates/reinhardt-http", version = "0.1.0-alpha.1" }
 reinhardt-conf = { path = "crates/reinhardt-conf", version = "0.1.0-alpha.1" }
 reinhardt-core = { path = "crates/reinhardt-core", version = "0.1.0-alpha.1" }
 reinhardt-server = { path = "crates/reinhardt-server", version = "0.1.0-alpha.1" }
@@ -287,7 +279,6 @@ reinhardt-admin-cli = { path = "crates/reinhardt-admin", version = "0.1.0-alpha.
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.1" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
 reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0-alpha.1" }
-reinhardt-di = { path = "crates/reinhardt-di", version = "0.1.0-alpha.1" }
 reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-alpha.1" }
 reinhardt-dispatch = { path = "crates/reinhardt-dispatch", version = "0.1.0-alpha.1" }
 
