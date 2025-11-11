@@ -1,5 +1,8 @@
+#[cfg(feature = "argon2-hasher")]
 use crate::BaseUser;
+#[cfg(feature = "argon2-hasher")]
 use crate::base_user_manager::BaseUserManager;
+#[cfg(feature = "argon2-hasher")]
 use crate::default_user::DefaultUser;
 use async_trait::async_trait;
 use chrono::Utc;
@@ -85,10 +88,12 @@ use uuid::Uuid;
 /// assert_eq!(user.last_name, "Johnson");
 /// # })
 /// ```
+#[cfg(feature = "argon2-hasher")]
 pub struct DefaultUserManager {
 	users: Arc<RwLock<HashMap<Uuid, DefaultUser>>>,
 }
 
+#[cfg(feature = "argon2-hasher")]
 impl DefaultUserManager {
 	/// Creates a new DefaultUserManager with empty user storage
 	pub fn new() -> Self {
@@ -116,12 +121,14 @@ impl DefaultUserManager {
 	}
 }
 
+#[cfg(feature = "argon2-hasher")]
 impl Default for DefaultUserManager {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
+#[cfg(feature = "argon2-hasher")]
 #[async_trait]
 impl BaseUserManager<DefaultUser> for DefaultUserManager {
 	async fn create_user(

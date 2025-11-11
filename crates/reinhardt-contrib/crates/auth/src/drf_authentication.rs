@@ -2,7 +2,9 @@
 //!
 //! Provides DRF-compatible authentication wrappers and combinators.
 
-use crate::{AuthenticationBackend, AuthenticationError, DefaultUser, SimpleUser, User};
+use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
+#[cfg(feature = "argon2-hasher")]
+use crate::DefaultUser;
 use reinhardt_apps::Request;
 use reinhardt_sessions::{Session, backends::SessionBackend};
 use std::sync::Arc;
@@ -479,6 +481,7 @@ impl<B: SessionBackend> AuthenticationBackend for SessionAuthentication<B> {
 		Authentication::authenticate(self, request).await
 	}
 
+	#[cfg(feature = "argon2-hasher")]
 	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
 		// Parse user_id as UUID
 		let id =
@@ -515,6 +518,13 @@ impl<B: SessionBackend> AuthenticationBackend for SessionAuthentication<B> {
 
 		// Return as trait object
 		Ok(Some(Box::new(user)))
+	}
+
+	#[cfg(not(feature = "argon2-hasher"))]
+	async fn get_user(&self, _user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+		// When argon2-hasher feature is disabled, DefaultUser is not available
+		// Return None to indicate user retrieval is not supported
+		Ok(None)
 	}
 }
 

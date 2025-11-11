@@ -490,6 +490,7 @@ where
 			(user_id_string.as_ref(), self.pool.as_ref())
 		{
 			// Parse user_id as UUID
+			#[cfg(feature = "argon2-hasher")]
 			match uuid::Uuid::parse_str(user_id_str) {
 				Ok(user_uuid) => {
 					// Get database connection
@@ -548,6 +549,14 @@ where
 					// UUID parse failed, use defaults
 					(false, true, None)
 				}
+			}
+
+			// When argon2-hasher feature is disabled, DefaultUser is not available
+			// Return default values to indicate user retrieval is not supported
+			#[cfg(not(feature = "argon2-hasher"))]
+			{
+				let _ = user_id_str; // Suppress unused variable warning
+				(false, true, None)
 			}
 		} else {
 			// Not authenticated or no pool, use defaults

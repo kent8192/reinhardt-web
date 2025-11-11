@@ -45,6 +45,7 @@ auth-jwt = ["auth", "reinhardt-auth/jwt"]
 auth-session = ["auth", "reinhardt-auth/session"]
 auth-oauth = ["auth", "reinhardt-auth/oauth"]
 auth-token = ["auth", "reinhardt-auth/token"]
+argon2-hasher = ["auth", "reinhardt-auth/argon2-hasher"]
 
 # Convenience feature to enable all contrib modules
 full = [

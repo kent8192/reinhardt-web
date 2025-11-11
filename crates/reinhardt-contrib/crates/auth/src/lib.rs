@@ -61,7 +61,9 @@ pub mod user_management;
 pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
 pub use base_user_manager::BaseUserManager;
 pub use basic::BasicAuthentication as HttpBasicAuth;
+#[cfg(feature = "argon2-hasher")]
 pub use default_user::DefaultUser;
+#[cfg(feature = "argon2-hasher")]
 pub use default_user_manager::DefaultUserManager;
 pub use drf_authentication::{
 	Authentication, BasicAuthConfig, CompositeAuthentication, RemoteUserAuthentication,

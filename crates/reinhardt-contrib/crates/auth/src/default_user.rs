@@ -105,6 +105,7 @@ use uuid::Uuid;
 /// assert!(!user.has_perm("blog.delete_post"));
 /// assert!(user.has_module_perms("blog"));
 /// ```
+#[cfg(feature = "argon2-hasher")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DefaultUser {
 	/// Unique identifier (primary key)
@@ -147,6 +148,7 @@ pub struct DefaultUser {
 	pub groups: Vec<String>,
 }
 
+#[cfg(feature = "argon2-hasher")]
 impl BaseUser for DefaultUser {
 	type PrimaryKey = Uuid;
 	type Hasher = Argon2Hasher;
@@ -180,6 +182,7 @@ impl BaseUser for DefaultUser {
 	}
 }
 
+#[cfg(feature = "argon2-hasher")]
 impl FullUser for DefaultUser {
 	fn username(&self) -> &str {
 		&self.username
@@ -210,6 +213,7 @@ impl FullUser for DefaultUser {
 	}
 }
 
+#[cfg(feature = "argon2-hasher")]
 impl PermissionsMixin for DefaultUser {
 	fn is_superuser(&self) -> bool {
 		self.is_superuser
@@ -224,6 +228,7 @@ impl PermissionsMixin for DefaultUser {
 	}
 }
 
+#[cfg(feature = "argon2-hasher")]
 impl Model for DefaultUser {
 	type PrimaryKey = Uuid;
 
@@ -244,6 +249,7 @@ impl Model for DefaultUser {
 	}
 }
 
+#[cfg(feature = "argon2-hasher")]
 impl Default for DefaultUser {
 	fn default() -> Self {
 		Self {
@@ -264,6 +270,7 @@ impl Default for DefaultUser {
 	}
 }
 
+#[cfg(feature = "argon2-hasher")]
 impl User for DefaultUser {
 	fn id(&self) -> String {
 		self.id.to_string()
