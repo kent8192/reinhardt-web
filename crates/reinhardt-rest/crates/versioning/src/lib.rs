@@ -887,11 +887,11 @@ impl NamespaceVersioning {
 	/// ```
 	/// use reinhardt_versioning::NamespaceVersioning;
 	/// use reinhardt_urls::routers::{DefaultRouter, Router, path};
-	/// use reinhardt_core::apps::Handler;
+	/// use reinhardt_core::http::Handler;
 	/// use std::sync::Arc;
 	///
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_core::apps::{Request, Response, Result};
+	/// # use reinhardt_core::http::{Request, Response, Result};
 	/// # struct DummyHandler;
 	/// # #[async_trait]
 	/// # impl Handler for DummyHandler {
@@ -924,7 +924,7 @@ pub mod test_utils {
 	use bytes::Bytes;
 	use hyper::header::HeaderName;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_core::apps::Request;
+	use reinhardt_core::http::Request;
 
 	pub fn create_test_request(uri: &str, headers: Vec<(String, String)>) -> Request {
 		let uri = uri.parse::<Uri>().unwrap();
@@ -1078,7 +1078,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_namespace_versioning_router_integration() {
-		use reinhardt_core::apps::{Handler, Response};
+		use reinhardt_core::{Handler, http::Response};
 		use reinhardt_urls::routers::{DefaultRouter, Router, path};
 		use std::sync::Arc;
 

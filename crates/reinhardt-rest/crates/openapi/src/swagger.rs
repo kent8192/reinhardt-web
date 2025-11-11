@@ -4,7 +4,7 @@
 
 use crate::{OpenApiSchema, SchemaResult};
 use once_cell::sync::Lazy;
-use reinhardt_core::apps::{Request, Response, Result};
+use reinhardt_core::http::{Request, Response, Result};
 use serde::Serialize;
 use std::sync::Arc;
 use tera::Tera;

@@ -1,8 +1,8 @@
 //! Generic API views
 
 use async_trait::async_trait;
-use reinhardt_core::apps::{Request, Response};
 use reinhardt_core::exception::Result;
+use reinhardt_core::http::{Request, Response};
 
 /// Base trait for all generic views
 #[async_trait]

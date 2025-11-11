@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hyper::Method;
-use reinhardt_core::apps::{Request, Response, Result};
+use reinhardt_core::http::{Request, Response, Result};
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;

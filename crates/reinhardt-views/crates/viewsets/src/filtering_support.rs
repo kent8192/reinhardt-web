@@ -3,7 +3,7 @@
 //! Provides automatic filtering and ordering integration for list actions in ViewSets.
 
 use async_trait::async_trait;
-use reinhardt_core::apps::Request;
+use reinhardt_core::http::Request;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 

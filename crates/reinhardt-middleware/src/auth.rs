@@ -4,9 +4,10 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 #[cfg(feature = "session")]
-use reinhardt_core::apps::{Handler, Request, Response, Result};
-#[cfg(feature = "session")]
-use reinhardt_core::types::Middleware;
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 
 #[cfg(feature = "session")]
 use reinhardt_auth::session::{SESSION_KEY_USER_ID, SessionStore};
@@ -32,7 +33,7 @@ use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 /// use reinhardt_middleware::AuthenticationMiddleware;
 /// use reinhardt_auth::session::InMemorySessionStore;
 /// use reinhardt_core::types::MiddlewareChain;
-/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
+/// # use reinhardt_core::{Handler, http::{Request, Response, Result}};
 /// # use reinhardt_auth::{AuthenticationBackend, AuthenticationError, User, SimpleUser};
 /// # use async_trait::async_trait;
 /// # use uuid::Uuid;
@@ -80,7 +81,7 @@ use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 /// Accessing authentication state in handlers:
 ///
 /// ```
-/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
+/// # use reinhardt_core::{Handler, http::{Request, Response, Result}};
 /// # use async_trait::async_trait;
 /// struct ProtectedHandler;
 ///
@@ -121,7 +122,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::AuthenticationMiddleware;
 	/// use reinhardt_auth::session::InMemorySessionStore;
-	/// # use reinhardt_core::apps::Request;
+	/// # use reinhardt_core::http::Request;
 	/// # use reinhardt_auth::{AuthenticationBackend, AuthenticationError, User, SimpleUser};
 	/// # use uuid::Uuid;
 	/// #

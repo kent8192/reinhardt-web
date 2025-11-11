@@ -5,7 +5,10 @@
 
 use async_trait::async_trait;
 use hyper::StatusCode;
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use std::sync::Arc;
 
 /// Configuration for HTTPS redirect middleware
@@ -46,7 +49,7 @@ impl HttpsRedirectMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::{HttpsRedirectMiddleware, HttpsRedirectConfig};
-	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -97,7 +100,7 @@ impl HttpsRedirectMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::HttpsRedirectMiddleware;
-	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -192,7 +195,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-	use reinhardt_core::apps::Request;
+	use reinhardt_core::http::Request;
 
 	struct TestHandler;
 

@@ -6,7 +6,10 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::StatusCode;
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 

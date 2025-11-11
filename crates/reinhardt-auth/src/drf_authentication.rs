@@ -5,7 +5,7 @@
 #[cfg(feature = "argon2-hasher")]
 use crate::DefaultUser;
 use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
-use reinhardt_core::apps::Request;
+use reinhardt_core::http::Request;
 use reinhardt_sessions::{Session, backends::SessionBackend};
 use std::sync::Arc;
 

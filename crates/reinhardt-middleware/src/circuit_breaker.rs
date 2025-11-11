@@ -5,7 +5,10 @@
 
 use async_trait::async_trait;
 use hyper::StatusCode;
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -186,7 +189,7 @@ impl Default for CircuitBreakerConfig {
 /// use std::sync::Arc;
 /// use std::time::Duration;
 /// use reinhardt_middleware::circuit_breaker::{CircuitBreakerMiddleware, CircuitBreakerConfig};
-/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///

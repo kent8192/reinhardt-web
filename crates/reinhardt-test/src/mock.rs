@@ -394,7 +394,7 @@ impl<T> Default for Spy<T> {
 ///
 /// ```no_run
 /// use reinhardt_test::mock::SimpleHandler;
-/// use reinhardt_core::apps::{Request, Response};
+/// use reinhardt_core::http::{Request, Response};
 /// use reinhardt_core::types::Handler;
 ///
 /// let handler = SimpleHandler::new(|req: Request| {
@@ -408,7 +408,7 @@ impl<T> Default for Spy<T> {
 ///
 /// ```no_run
 /// use reinhardt_test::mock::SimpleHandler;
-/// use reinhardt_core::apps::{Request, Response};
+/// use reinhardt_core::http::{Request, Response};
 ///
 /// let handler = SimpleHandler::new(|req: Request| {
 ///     match req.path() {
@@ -423,7 +423,7 @@ impl<T> Default for Spy<T> {
 ///
 /// ```no_run
 /// use reinhardt_test::mock::SimpleHandler;
-/// use reinhardt_core::apps::{Request, Response};
+/// use reinhardt_core::http::{Request, Response};
 /// use std::sync::{Arc, Mutex};
 ///
 /// let call_count = Arc::new(Mutex::new(0));
@@ -438,8 +438,8 @@ impl<T> Default for Spy<T> {
 pub struct SimpleHandler<F>
 where
 	F: Fn(
-			reinhardt_core::apps::Request,
-		) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response>
+			reinhardt_core::http::Request,
+		) -> reinhardt_core::http::Result<reinhardt_core::http::Response>
 		+ Send
 		+ Sync
 		+ 'static,
@@ -450,8 +450,8 @@ where
 impl<F> SimpleHandler<F>
 where
 	F: Fn(
-			reinhardt_core::apps::Request,
-		) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response>
+			reinhardt_core::http::Request,
+		) -> reinhardt_core::http::Result<reinhardt_core::http::Response>
 		+ Send
 		+ Sync
 		+ 'static,
@@ -466,7 +466,7 @@ where
 	///
 	/// ```no_run
 	/// use reinhardt_test::mock::SimpleHandler;
-	/// use reinhardt_core::apps::{Request, Response};
+	/// use reinhardt_core::http::{Request, Response};
 	///
 	/// let handler = SimpleHandler::new(|req| {
 	///     Ok(Response::ok().with_body("Success"))
@@ -481,16 +481,16 @@ where
 impl<F> reinhardt_core::types::Handler for SimpleHandler<F>
 where
 	F: Fn(
-			reinhardt_core::apps::Request,
-		) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response>
+			reinhardt_core::http::Request,
+		) -> reinhardt_core::http::Result<reinhardt_core::http::Response>
 		+ Send
 		+ Sync
 		+ 'static,
 {
 	async fn handle(
 		&self,
-		request: reinhardt_core::apps::Request,
-	) -> reinhardt_core::apps::Result<reinhardt_core::apps::Response> {
+		request: reinhardt_core::http::Request,
+	) -> reinhardt_core::http::Result<reinhardt_core::http::Response> {
 		(self.handler_fn)(request)
 	}
 }

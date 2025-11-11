@@ -5,7 +5,10 @@
 
 use async_trait::async_trait;
 use hyper::StatusCode;
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
@@ -98,7 +101,7 @@ impl Default for ETagConfig {
 /// ```
 /// use std::sync::Arc;
 /// use reinhardt_middleware::etag::{ETagMiddleware, ETagConfig};
-/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///

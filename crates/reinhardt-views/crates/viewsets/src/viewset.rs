@@ -5,7 +5,7 @@ use crate::middleware::ViewSetMiddleware;
 use crate::pagination_support::{PaginatedViewSet, PaginationConfig};
 use async_trait::async_trait;
 use hyper::Method;
-use reinhardt_core::apps::{Request, Response, Result};
+use reinhardt_core::http::{Request, Response, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -27,27 +27,6 @@ pub trait ViewSet: Send + Sync {
 
 	/// Dispatch request with dependency injection context
 	///
-	/// This is the DI-aware version of `dispatch`. ViewSets that use dependency injection
-	/// should override this method instead of `dispatch`.
-	///
-	/// Default implementation calls the regular `dispatch` method for backward compatibility.
-	async fn dispatch_with_context(
-		&self,
-		request: Request,
-		action: Action,
-		_ctx: &reinhardt_core::di::InjectionContext,
-	) -> Result<Response> {
-		// Default: delegate to non-DI dispatch
-		self.dispatch(request, action).await
-	}
-
-	/// Check if this ViewSet supports dependency injection
-	///
-	/// Returns `true` if the ViewSet overrides `dispatch_with_context` to use DI.
-	/// Default is `false` for backward compatibility.
-	fn supports_di(&self) -> bool {
-		false
-	}
 
 	/// Get extra actions defined on this ViewSet
 	/// Returns custom actions decorated with #[action] or manually registered

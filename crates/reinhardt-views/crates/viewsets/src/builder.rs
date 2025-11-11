@@ -1,7 +1,7 @@
 /// ViewSetBuilder - converts ViewSet to Handler with action mapping
 use crate::ViewSet;
 use hyper::Method;
-use reinhardt_core::apps::{Handler, Result};
+use reinhardt_core::{Handler, http::Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 

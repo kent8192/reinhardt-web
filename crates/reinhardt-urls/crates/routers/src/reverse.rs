@@ -229,7 +229,7 @@ impl UrlReverser {
 	pub fn register_path(&mut self, name: &str, path: &str) {
 		// Create a dummy handler for the route
 		// The handler is never used for URL reversal
-		use reinhardt_core::apps::Handler;
+		use reinhardt_core::Handler;
 		use std::sync::Arc;
 
 		#[derive(Clone)]
@@ -276,12 +276,12 @@ impl UrlReverser {
 	///
 	/// ```
 	/// use reinhardt_routers::{UrlReverser, Route};
-	/// use reinhardt_core::apps::Handler;
+	/// use reinhardt_core::Handler;
 	/// use std::sync::Arc;
 	/// use std::collections::HashMap;
 	///
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_core::apps::{Request, Response, Result};
+	/// # use reinhardt_core::http::{Request, Response, Result};
 	/// # struct DummyHandler;
 	/// # #[async_trait]
 	/// # impl Handler for DummyHandler {
@@ -330,11 +330,11 @@ impl UrlReverser {
 	///
 	/// ```
 	/// use reinhardt_routers::{UrlReverser, Route};
-	/// use reinhardt_core::apps::Handler;
+	/// use reinhardt_core::Handler;
 	/// use std::sync::Arc;
 	///
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_core::apps::{Request, Response, Result};
+	/// # use reinhardt_core::http::{Request, Response, Result};
 	/// # struct DummyHandler;
 	/// # #[async_trait]
 	/// # impl Handler for DummyHandler {
@@ -583,7 +583,10 @@ mod tests {
 	use super::*;
 	use crate::{Route, path};
 	use async_trait::async_trait;
-	use reinhardt_core::apps::{Handler, Request, Response, Result as CoreResult};
+	use reinhardt_core::{
+		Handler,
+		http::{Request, Response, Result as CoreResult},
+	};
 	use std::sync::Arc;
 
 	// Simple test handler

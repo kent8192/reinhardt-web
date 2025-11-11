@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use std::sync::Arc;
 
 /// Logging middleware
@@ -17,7 +20,7 @@ impl LoggingMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::LoggingMiddleware;
-	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 	/// use hyper::{Method, Uri, Version, HeaderMap, StatusCode};
 	/// use bytes::Bytes;
 	///

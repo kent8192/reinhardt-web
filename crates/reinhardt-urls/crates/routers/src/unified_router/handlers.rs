@@ -1,8 +1,11 @@
 //! Handler adapters for ViewSets and functions
 
 use async_trait::async_trait;
-use reinhardt_core::apps::{Handler, Request, Response, Result};
-use reinhardt_core::di::InjectionContext;
+use reinhardt_core::{
+	Handler,
+	http::{Request, Response, Result},
+};
+// use reinhardt_core::di::InjectionContext; // TODO: Enable when ViewSet supports DI
 use reinhardt_viewsets::{Action, ViewSet};
 use std::sync::Arc;
 
@@ -15,18 +18,18 @@ pub(crate) struct ViewSetHandler {
 #[async_trait]
 impl Handler for ViewSetHandler {
 	async fn handle(&self, req: Request) -> Result<Response> {
-		// Check if ViewSet supports DI
-		if self.viewset.supports_di()
-			&& let Some(di_ctx) = req.get_di_context::<InjectionContext>()
-		{
-			// Use DI-aware dispatch
-			return self
-				.viewset
-				.dispatch_with_context(req, self.action, &di_ctx)
-				.await;
-		}
+		// TODO: DI support - check if ViewSet supports DI
+		// if self.viewset.supports_di()
+		// 	&& let Some(di_ctx) = req.get_di_context::<InjectionContext>()
+		// {
+		// 	// Use DI-aware dispatch
+		// 	return self
+		// 		.viewset
+		// 		.dispatch_with_context(req, self.action, &di_ctx)
+		// 		.await;
+		// }
 
-		// Fallback to regular dispatch
+		// Regular dispatch
 		self.viewset.dispatch(req, self.action).await
 	}
 }

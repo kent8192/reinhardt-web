@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use reinhardt_core::apps::{Request, Response, Result};
+use reinhardt_core::http::{Request, Response, Result};
 
 use crate::{BatchRequest, BatchResponse};
 
@@ -50,7 +50,7 @@ impl<T> CrudMixin for T where T: ListMixin + RetrieveMixin + CreateMixin + Updat
 ///
 /// ```
 /// use reinhardt_viewsets::{BulkCreateMixin, BatchRequest, BatchResponse, BatchOperation};
-/// use reinhardt_core::apps::{Request, Response, Result};
+/// use reinhardt_core::http::{Request, Response, Result};
 /// use async_trait::async_trait;
 /// use serde::{Serialize, Deserialize};
 ///
@@ -106,7 +106,7 @@ pub trait BulkCreateMixin: Send + Sync {
 ///
 /// ```
 /// use reinhardt_viewsets::{BulkUpdateMixin, BatchRequest, BatchResponse, BatchOperation};
-/// use reinhardt_core::apps::{Request, Response, Result};
+/// use reinhardt_core::http::{Request, Response, Result};
 /// use async_trait::async_trait;
 /// use serde::{Serialize, Deserialize};
 ///
@@ -162,7 +162,7 @@ pub trait BulkUpdateMixin: Send + Sync {
 ///
 /// ```
 /// use reinhardt_viewsets::{BulkDeleteMixin, BatchRequest, BatchResponse, BatchOperation};
-/// use reinhardt_core::apps::{Request, Response, Result};
+/// use reinhardt_core::http::{Request, Response, Result};
 /// use async_trait::async_trait;
 /// use serde::{Serialize, Deserialize};
 ///

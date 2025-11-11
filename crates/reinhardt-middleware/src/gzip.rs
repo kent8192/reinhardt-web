@@ -7,7 +7,10 @@ use bytes::Bytes;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use hyper::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE};
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use std::io::Write;
 use std::sync::Arc;
 
@@ -53,7 +56,7 @@ impl GZipMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::GZipMiddleware;
-	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -107,7 +110,7 @@ impl GZipMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::{GZipMiddleware, GZipConfig};
-	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -248,7 +251,7 @@ impl Middleware for GZipMiddleware {
 mod tests {
 	use super::*;
 	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
-	use reinhardt_core::apps::Response;
+	use reinhardt_core::http::Response;
 
 	struct TestHandler {
 		response_body: &'static str,

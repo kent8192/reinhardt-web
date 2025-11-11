@@ -332,7 +332,7 @@ pub fn assert_status_redirect(status: StatusCode) {
 ///
 /// ```
 /// use reinhardt_test::assertions::assert_status;
-/// use reinhardt_core::apps::Response;
+/// use reinhardt_core::http::Response;
 /// use http::StatusCode;
 ///
 /// let response = Response::ok();
@@ -342,7 +342,7 @@ pub fn assert_status_redirect(status: StatusCode) {
 /// # Panics
 ///
 /// Panics if status codes don't match.
-pub fn assert_status(response: &reinhardt_core::apps::Response, expected: StatusCode) {
+pub fn assert_status(response: &reinhardt_core::http::Response, expected: StatusCode) {
 	assert_eq!(
 		response.status, expected,
 		"Expected status {}, got {}",
@@ -358,7 +358,7 @@ pub fn assert_status(response: &reinhardt_core::apps::Response, expected: Status
 ///
 /// ```
 /// use reinhardt_test::assertions::assert_response_body_contains;
-/// use reinhardt_core::apps::Response;
+/// use reinhardt_core::http::Response;
 ///
 /// let response = Response::ok().with_body(b"Hello, World!".to_vec());
 /// assert_response_body_contains(&response, "World");
@@ -367,7 +367,7 @@ pub fn assert_status(response: &reinhardt_core::apps::Response, expected: Status
 /// # Panics
 ///
 /// Panics if body doesn't contain the expected text.
-pub fn assert_response_body_contains(response: &reinhardt_core::apps::Response, expected: &str) {
+pub fn assert_response_body_contains(response: &reinhardt_core::http::Response, expected: &str) {
 	let body_str = String::from_utf8_lossy(&response.body);
 	assert!(
 		body_str.contains(expected),
@@ -383,7 +383,7 @@ pub fn assert_response_body_contains(response: &reinhardt_core::apps::Response, 
 ///
 /// ```
 /// use reinhardt_test::assertions::assert_response_body_equals;
-/// use reinhardt_core::apps::Response;
+/// use reinhardt_core::http::Response;
 ///
 /// let expected = b"exact content";
 /// let response = Response::ok().with_body(expected.to_vec());
@@ -393,7 +393,7 @@ pub fn assert_response_body_contains(response: &reinhardt_core::apps::Response, 
 /// # Panics
 ///
 /// Panics if body doesn't match expected bytes.
-pub fn assert_response_body_equals(response: &reinhardt_core::apps::Response, expected: &[u8]) {
+pub fn assert_response_body_equals(response: &reinhardt_core::http::Response, expected: &[u8]) {
 	assert_eq!(
 		response.body, expected,
 		"Expected body {:?}, got {:?}",
@@ -412,7 +412,7 @@ pub fn assert_response_body_equals(response: &reinhardt_core::apps::Response, ex
 ///
 /// ```
 /// use reinhardt_test::assertions::assert_json_response;
-/// use reinhardt_core::apps::Response;
+/// use reinhardt_core::http::Response;
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -436,7 +436,7 @@ pub fn assert_response_body_equals(response: &reinhardt_core::apps::Response, ex
 /// Panics if:
 /// - Response body is not valid JSON
 /// - Deserialized value doesn't match expected
-pub fn assert_json_response<T>(response: reinhardt_core::apps::Response, expected: T)
+pub fn assert_json_response<T>(response: reinhardt_core::http::Response, expected: T)
 where
 	T: serde::de::DeserializeOwned + PartialEq + std::fmt::Debug,
 {
@@ -456,7 +456,7 @@ where
 ///
 /// ```
 /// use reinhardt_test::assertions::assert_json_response_contains;
-/// use reinhardt_core::apps::Response;
+/// use reinhardt_core::http::Response;
 /// use serde_json::json;
 ///
 /// let json = json!({"name": "Alice", "age": 30, "city": "NYC"});
@@ -474,7 +474,7 @@ where
 /// - JSON doesn't contain the expected field
 /// - Field value doesn't match expected
 pub fn assert_json_response_contains(
-	response: &reinhardt_core::apps::Response,
+	response: &reinhardt_core::http::Response,
 	expected_key: &str,
 	expected_value: &serde_json::Value,
 ) {
@@ -508,7 +508,7 @@ pub fn assert_json_response_contains(
 ///
 /// ```
 /// use reinhardt_test::assertions::assert_error;
-/// use reinhardt_core::apps::{Error, Result};
+/// use reinhardt_core::http::{Error, Result};
 ///
 /// let result: Result<()> = Err(Error::NotFound("Item not found".to_string()));
 /// assert_error(result);
@@ -517,7 +517,7 @@ pub fn assert_json_response_contains(
 /// # Panics
 ///
 /// Panics if result is `Ok`.
-pub fn assert_error<T>(result: reinhardt_core::apps::Result<T>) {
+pub fn assert_error<T>(result: reinhardt_core::http::Result<T>) {
 	if result.is_ok() {
 		panic!("Expected error, got Ok");
 	}
@@ -530,7 +530,7 @@ pub fn assert_error<T>(result: reinhardt_core::apps::Result<T>) {
 ///
 /// ```
 /// use reinhardt_test::assertions::assert_not_found_error;
-/// use reinhardt_core::apps::{Error, Result};
+/// use reinhardt_core::http::{Error, Result};
 ///
 /// let result: Result<()> = Err(Error::NotFound("User not found".to_string()));
 /// assert_not_found_error(result);
@@ -539,10 +539,10 @@ pub fn assert_error<T>(result: reinhardt_core::apps::Result<T>) {
 /// # Panics
 ///
 /// Panics if result is `Ok` or a different error type.
-pub fn assert_not_found_error<T>(result: reinhardt_core::apps::Result<T>) {
+pub fn assert_not_found_error<T>(result: reinhardt_core::http::Result<T>) {
 	match result {
 		Ok(_) => panic!("Expected NotFound error, got Ok"),
-		Err(reinhardt_core::apps::Error::NotFound(_)) => {}
+		Err(reinhardt_core::http::Error::NotFound(_)) => {}
 		Err(error) => panic!("Expected NotFound error, got {:?}", error),
 	}
 }
@@ -553,7 +553,7 @@ pub fn assert_not_found_error<T>(result: reinhardt_core::apps::Result<T>) {
 ///
 /// ```
 /// use reinhardt_test::assertions::assert_validation_error;
-/// use reinhardt_core::apps::{Error, Result};
+/// use reinhardt_core::http::{Error, Result};
 ///
 /// let result: Result<()> = Err(Error::Validation("Invalid email".to_string()));
 /// assert_validation_error(result);
@@ -562,10 +562,10 @@ pub fn assert_not_found_error<T>(result: reinhardt_core::apps::Result<T>) {
 /// # Panics
 ///
 /// Panics if result is `Ok` or a different error type.
-pub fn assert_validation_error<T>(result: reinhardt_core::apps::Result<T>) {
+pub fn assert_validation_error<T>(result: reinhardt_core::http::Result<T>) {
 	match result {
 		Ok(_) => panic!("Expected Validation error, got Ok"),
-		Err(reinhardt_core::apps::Error::Validation(_)) => {}
+		Err(reinhardt_core::http::Error::Validation(_)) => {}
 		Err(error) => panic!("Expected Validation error, got {:?}", error),
 	}
 }
@@ -576,7 +576,7 @@ pub fn assert_validation_error<T>(result: reinhardt_core::apps::Result<T>) {
 ///
 /// ```
 /// use reinhardt_test::assertions::assert_internal_error;
-/// use reinhardt_core::apps::{Error, Result};
+/// use reinhardt_core::http::{Error, Result};
 ///
 /// let result: Result<()> = Err(Error::Internal("Database connection failed".to_string()));
 /// assert_internal_error(result);
@@ -585,10 +585,10 @@ pub fn assert_validation_error<T>(result: reinhardt_core::apps::Result<T>) {
 /// # Panics
 ///
 /// Panics if result is `Ok` or a different error type.
-pub fn assert_internal_error<T>(result: reinhardt_core::apps::Result<T>) {
+pub fn assert_internal_error<T>(result: reinhardt_core::http::Result<T>) {
 	match result {
 		Ok(_) => panic!("Expected Internal error, got Ok"),
-		Err(reinhardt_core::apps::Error::Internal(_)) => {}
+		Err(reinhardt_core::http::Error::Internal(_)) => {}
 		Err(error) => panic!("Expected Internal error, got {:?}", error),
 	}
 }
@@ -657,20 +657,20 @@ mod tests {
 
 	#[test]
 	fn test_assert_status() {
-		let response = reinhardt_core::apps::Response::ok();
+		let response = reinhardt_core::http::Response::ok();
 		assert_status(&response, StatusCode::OK);
 	}
 
 	#[test]
 	fn test_assert_response_body_contains() {
-		let response = reinhardt_core::apps::Response::ok().with_body(b"Hello, World!".to_vec());
+		let response = reinhardt_core::http::Response::ok().with_body(b"Hello, World!".to_vec());
 		assert_response_body_contains(&response, "World");
 	}
 
 	#[test]
 	fn test_assert_response_body_equals() {
 		let expected = b"exact content";
-		let response = reinhardt_core::apps::Response::ok().with_body(expected.to_vec());
+		let response = reinhardt_core::http::Response::ok().with_body(expected.to_vec());
 		assert_response_body_equals(&response, expected);
 	}
 
@@ -689,7 +689,7 @@ mod tests {
 			name: "test".to_string(),
 		};
 		let json = serde_json::to_vec(&data).unwrap();
-		let response = reinhardt_core::apps::Response::ok()
+		let response = reinhardt_core::http::Response::ok()
 			.with_header("Content-Type", "application/json")
 			.with_body(json);
 
@@ -703,7 +703,7 @@ mod tests {
 	#[test]
 	fn test_assert_json_response_contains() {
 		let json = json!({"name": "Alice", "age": 30});
-		let response = reinhardt_core::apps::Response::ok()
+		let response = reinhardt_core::http::Response::ok()
 			.with_header("Content-Type", "application/json")
 			.with_body(serde_json::to_vec(&json).unwrap());
 
@@ -713,7 +713,7 @@ mod tests {
 
 	#[test]
 	fn test_assert_error() {
-		let result: reinhardt_core::apps::Result<()> = Err(reinhardt_core::apps::Error::NotFound(
+		let result: reinhardt_core::http::Result<()> = Err(reinhardt_core::http::Error::NotFound(
 			"Not found".to_string(),
 		));
 		assert_error(result);
@@ -721,7 +721,7 @@ mod tests {
 
 	#[test]
 	fn test_assert_not_found_error() {
-		let result: reinhardt_core::apps::Result<()> = Err(reinhardt_core::apps::Error::NotFound(
+		let result: reinhardt_core::http::Result<()> = Err(reinhardt_core::http::Error::NotFound(
 			"User not found".to_string(),
 		));
 		assert_not_found_error(result);
@@ -729,15 +729,15 @@ mod tests {
 
 	#[test]
 	fn test_assert_validation_error() {
-		let result: reinhardt_core::apps::Result<()> = Err(
-			reinhardt_core::apps::Error::Validation("Invalid input".to_string()),
+		let result: reinhardt_core::http::Result<()> = Err(
+			reinhardt_core::http::Error::Validation("Invalid input".to_string()),
 		);
 		assert_validation_error(result);
 	}
 
 	#[test]
 	fn test_assert_internal_error() {
-		let result: reinhardt_core::apps::Result<()> = Err(reinhardt_core::apps::Error::Internal(
+		let result: reinhardt_core::http::Result<()> = Err(reinhardt_core::http::Error::Internal(
 			"Database error".to_string(),
 		));
 		assert_internal_error(result);

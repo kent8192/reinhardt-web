@@ -3,7 +3,10 @@ use crate::{Action, ViewSet};
 use async_trait::async_trait;
 use hyper::Method;
 use reinhardt_auth::{Permission, PermissionContext};
-use reinhardt_core::apps::{Handler, Request, Response, Result};
+use reinhardt_core::{
+	Handler,
+	http::{Request, Response, Result},
+};
 use reinhardt_db::orm::{Model, query_types::DbBackend};
 use reinhardt_filters::FilterBackend;
 use reinhardt_serializers::{ModelSerializer, Serializer};
@@ -21,7 +24,6 @@ pub struct ViewSetHandler<V: ViewSet> {
 	name: Option<String>,
 	#[allow(dead_code)]
 	suffix: Option<String>,
-	injection_context: Option<Arc<reinhardt_core::di::InjectionContext>>,
 
 	// Attributes set after as_view() is called
 	// These mirror Django REST Framework's behavior
@@ -42,33 +44,10 @@ impl<V: ViewSet> ViewSetHandler<V> {
 			action_map,
 			name,
 			suffix,
-			injection_context: None,
 			args: RwLock::new(None),
 			kwargs: RwLock::new(None),
 			has_handled_request: RwLock::new(false),
 		}
-	}
-
-	/// Set the dependency injection context for this handler
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_viewsets::ViewSetHandler;
-	/// use reinhardt_core::di::{InjectionContext, SingletonScope};
-	/// use std::sync::Arc;
-	///
-	/// # fn example() {
-	/// let singleton = Arc::new(SingletonScope::new());
-	/// let ctx = Arc::new(InjectionContext::new(singleton));
-	///
-	/// // let handler = ViewSetHandler::new(...)
-	/// //     .with_di_context(ctx);
-	/// # }
-	/// ```
-	pub fn with_di_context(mut self, ctx: Arc<reinhardt_core::di::InjectionContext>) -> Self {
-		self.injection_context = Some(ctx);
-		self
 	}
 
 	/// Check if args attribute is set (for testing)
@@ -118,22 +97,8 @@ impl<V: ViewSet + 'static> Handler for ViewSetHandler<V> {
 		// Create Action from name
 		let action = Action::from_name(action_name);
 
-		// Dispatch to ViewSet (with DI support if available)
-		let response = if self.viewset.supports_di() {
-			// ViewSet supports DI - use dispatch_with_context
-			if let Some(ctx) = &self.injection_context {
-				self.viewset
-					.dispatch_with_context(request, action, ctx)
-					.await?
-			} else {
-				return Err(reinhardt_core::exception::Error::Internal(
-                    "ViewSet requires DI context but none was provided. Use .with_di_context() to configure.".to_string()
-                ));
-			}
-		} else {
-			// Standard dispatch without DI
-			self.viewset.dispatch(request, action).await?
-		};
+		// Dispatch to ViewSet
+		let response = self.viewset.dispatch(request, action).await?;
 
 		// Process middleware after ViewSet
 		Ok(response)
@@ -594,7 +559,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_core::apps::Request;
+	/// # use reinhardt_core::http::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use bytes::Bytes;
@@ -653,7 +618,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_core::apps::Request;
+	/// # use reinhardt_core::http::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use serde_json::Value;
@@ -726,7 +691,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_core::apps::Request;
+	/// # use reinhardt_core::http::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use bytes::Bytes;
@@ -814,7 +779,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_core::apps::Request;
+	/// # use reinhardt_core::http::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use serde_json::Value;
@@ -911,7 +876,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_viewsets::ModelViewSetHandler;
-	/// # use reinhardt_core::apps::Request;
+	/// # use reinhardt_core::http::Request;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use serde_json::Value;

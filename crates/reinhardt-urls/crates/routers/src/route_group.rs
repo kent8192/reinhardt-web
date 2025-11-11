@@ -21,7 +21,7 @@ pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<hyper::Met
 /// use reinhardt_middleware::LoggingMiddleware;
 /// use hyper::Method;
 /// use std::sync::Arc;
-/// # use reinhardt_core::apps::{Request, Response, Result};
+/// # use reinhardt_core::http::{Request, Response, Result};
 ///
 /// # async fn users_list(_req: Request) -> Result<Response> {
 /// #     Ok(Response::ok())
@@ -120,7 +120,7 @@ impl RouteGroup {
 	/// ```
 	/// use reinhardt_routers::RouteGroup;
 	/// use hyper::Method;
-	/// # use reinhardt_core::apps::{Request, Response, Result};
+	/// # use reinhardt_core::http::{Request, Response, Result};
 	///
 	/// # async fn health(_req: Request) -> Result<Response> {
 	/// #     Ok(Response::ok())
@@ -151,7 +151,7 @@ impl RouteGroup {
 	/// ```
 	/// use reinhardt_routers::RouteGroup;
 	/// use hyper::Method;
-	/// # use reinhardt_core::apps::{Request, Response, Result};
+	/// # use reinhardt_core::http::{Request, Response, Result};
 	///
 	/// # async fn health(_req: Request) -> Result<Response> {
 	/// #     Ok(Response::ok())
@@ -217,7 +217,7 @@ impl RouteGroup {
 	///
 	/// ```rust
 	/// use reinhardt_routers::RouteGroup;
-	/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
+	/// # use reinhardt_core::{Handler, http::{Request, Response, Result}};
 	/// # use async_trait::async_trait;
 	/// # struct ArticleListView;
 	/// # #[async_trait]
@@ -246,7 +246,7 @@ impl RouteGroup {
 	///
 	/// ```rust
 	/// use reinhardt_routers::RouteGroup;
-	/// # use reinhardt_core::apps::{Handler, Request, Response, Result};
+	/// # use reinhardt_core::{Handler, http::{Request, Response, Result}};
 	/// # use async_trait::async_trait;
 	/// # struct ArticleListView;
 	/// # #[async_trait]
@@ -352,7 +352,7 @@ impl RouteGroup {
 	/// ```
 	/// use reinhardt_routers::RouteGroup;
 	/// use hyper::Method;
-	/// # use reinhardt_core::apps::{Request, Response, Result};
+	/// # use reinhardt_core::http::{Request, Response, Result};
 	///
 	/// # async fn health(_req: Request) -> Result<Response> {
 	/// #     Ok(Response::ok())
@@ -393,7 +393,7 @@ impl Default for RouteGroup {
 mod tests {
 	use super::*;
 	use hyper::Method;
-	use reinhardt_core::apps::{Request, Response, Result};
+	use reinhardt_core::http::{Request, Response, Result};
 	use reinhardt_middleware::LoggingMiddleware;
 
 	async fn test_handler(_req: Request) -> Result<Response> {

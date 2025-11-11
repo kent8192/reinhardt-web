@@ -9,7 +9,10 @@
 
 use async_trait::async_trait;
 use hyper::header::{ACCEPT_LANGUAGE, COOKIE};
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -102,7 +105,7 @@ impl Default for LocaleConfig {
 /// ```ignore
 /// use std::sync::Arc;
 /// use reinhardt_middleware::{LocaleMiddleware, locale::LocaleConfig};
-/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///

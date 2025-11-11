@@ -14,7 +14,10 @@ use hyper::StatusCode;
 use hyper::header::{REFERER, USER_AGENT};
 use regex::Regex;
 use reinhardt_conf::settings;
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use reinhardt_mail;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -139,7 +142,7 @@ impl Default for BrokenLinkConfig {
 /// ```
 /// use std::sync::Arc;
 /// use reinhardt_middleware::{BrokenLinkEmailsMiddleware, BrokenLinkConfig};
-/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///

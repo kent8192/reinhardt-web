@@ -7,7 +7,10 @@
 //! - Per-request CSP overrides
 
 use async_trait::async_trait;
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -92,7 +95,7 @@ impl CspMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::CspMiddleware;
-	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -138,7 +141,7 @@ impl CspMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::{CspMiddleware, CspConfig};
-	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	/// use std::collections::HashMap;
@@ -191,7 +194,7 @@ impl CspMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::CspMiddleware;
-	/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///

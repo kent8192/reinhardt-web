@@ -5,7 +5,10 @@
 use async_trait::async_trait;
 use hyper::StatusCode;
 use hyper::header::HOST;
-use reinhardt_core::apps::{Handler, Middleware, Request, Response, Result};
+use reinhardt_core::{
+	Handler, Middleware,
+	http::{Request, Response, Result},
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -59,7 +62,7 @@ impl Default for CommonConfig {
 /// ```
 /// use std::sync::Arc;
 /// use reinhardt_middleware::{CommonMiddleware, CommonConfig};
-/// use reinhardt_core::apps::{Handler, Middleware, Request, Response};
+/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///

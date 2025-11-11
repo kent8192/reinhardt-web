@@ -5,7 +5,7 @@
 //! different test scenarios in the Reinhardt framework.
 
 use async_trait::async_trait;
-use reinhardt_core::apps::{Request, Response, Result};
+use reinhardt_core::http::{Request, Response, Result};
 use reinhardt_views::viewsets::middleware::{CompositeMiddleware, ViewSetMiddleware};
 use reinhardt_views::viewsets::{Action, ViewSet};
 use std::sync::Arc;

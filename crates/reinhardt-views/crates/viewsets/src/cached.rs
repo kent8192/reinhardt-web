@@ -4,7 +4,7 @@
 //! Supports TTL-based expiration and cache invalidation.
 
 use async_trait::async_trait;
-use reinhardt_core::apps::{Request, Response, Result};
+use reinhardt_core::http::{Request, Response, Result};
 use reinhardt_utils::cache::Cache;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
