@@ -54,11 +54,21 @@ pub use reinhardt_core_auth as auth;
 #[cfg(feature = "http")]
 pub use reinhardt_http as http;
 
-#[cfg(feature = "apps")]
-pub use reinhardt_apps as apps;
+#[cfg(feature = "messages")]
+pub use reinhardt_messages as messages;
 
 #[cfg(feature = "di")]
 pub use reinhardt_di as di;
 
-#[cfg(feature = "messages")]
-pub use reinhardt_messages as messages;
+#[cfg(feature = "negotiation")]
+pub use reinhardt_negotiation as negotiation;
+
+#[cfg(feature = "parsers")]
+pub use reinhardt_parsers as parsers;
+
+#[cfg(feature = "pagination")]
+pub use reinhardt_pagination as pagination;
+
+// Re-export Handler and Middleware traits from reinhardt-types when http feature is enabled
+#[cfg(feature = "http")]
+pub use reinhardt_types::{Handler, Middleware, MiddlewareChain};
