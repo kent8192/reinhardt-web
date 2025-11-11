@@ -9,9 +9,9 @@ authors.workspace = true
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-openapi-macros = { path = "../openapi-macros" }
-reinhardt-serializers = { path = "../serializers", optional = true }
-reinhardt-viewsets = { path = "../../../reinhardt-views/crates/viewsets" }
+reinhardt-openapi-macros = { path = "../openapi-macros", version = "0.1.0-alpha.1" }
+reinhardt-serializers = { path = "../serializers", version = "0.1.0-alpha.1", optional = true }
+reinhardt-viewsets = { path = "../../../reinhardt-views/crates/viewsets", version = "0.1.0-alpha.1" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = "0.9.33"

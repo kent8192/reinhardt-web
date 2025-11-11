@@ -24,7 +24,7 @@ mysql = ["reinhardt-backends/mysql", "sqlx/mysql"]
 [dependencies]
 reinhardt-apps = { workspace = true }
 reinhardt-core = { workspace = true, features = ["validators", "macros"] }
-reinhardt-backends = { path = "../../../reinhardt-db/crates/backends" }
+reinhardt-backends = { path = "../backends", version = "0.1.0-alpha.1" }
 reinhardt-hybrid = { path = "../hybrid", version = "0.1.0-alpha.1" }
 async-trait = { workspace = true }
 serde = { workspace = true }
