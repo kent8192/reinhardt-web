@@ -7,13 +7,13 @@
 //! - Concurrent dashboard widget loading
 
 use async_trait::async_trait;
-use chrono::Utc;
 use reinhardt_admin_panel::{
 	audit::{AuditAction, AuditLog, AuditLogQuery, AuditLogger, MemoryAuditLogger},
 	dashboard::{DashboardWidget, WidgetConfig, WidgetContext, WidgetPosition, WidgetRegistry},
 	import::{CsvImporter, JsonImporter},
 	AdminResult, BooleanFilter, FilterManager,
 };
+use reinhardt_test::fixtures::admin::generate_test_audit_entries;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -22,22 +22,24 @@ use std::time::Instant;
 async fn test_audit_logger_indexed_query_performance() {
 	let logger = MemoryAuditLogger::new();
 
-	// Insert 10,000 audit logs
+	// Generate and insert 10,000 audit logs using fixture helper
+	let test_entries = generate_test_audit_entries(10_000, 100, 10);
+
 	let start = Instant::now();
-	for i in 0..10_000 {
+	for entry in test_entries {
 		let log = AuditLog::builder()
-            .user_id(format!("user_{}", i % 100)) // 100 different users
-            .model_name(format!("Model_{}", i % 10)) // 10 different models
-            .object_id(i.to_string())
-            .action(if i % 3 == 0 {
-                AuditAction::Create
-            } else if i % 3 == 1 {
-                AuditAction::Update
-            } else {
-                AuditAction::Delete
-            })
-            .timestamp(Utc::now())
-            .build();
+			.user_id(entry.user_id)
+			.model_name(entry.model_name)
+			.object_id(entry.object_id)
+			.action(if entry.action == "Create" {
+				AuditAction::Create
+			} else if entry.action == "Update" {
+				AuditAction::Update
+			} else {
+				AuditAction::Delete
+			})
+			.timestamp(entry.timestamp)
+			.build();
 
 		logger.log(log).await.expect("Failed to log");
 	}
@@ -70,6 +72,7 @@ async fn test_audit_logger_indexed_query_performance() {
 	let start = Instant::now();
 	let query = AuditLogQuery::builder()
 		.model_name("Model_5".to_string())
+		.limit(10_000) // Set high limit to get all matching entries
 		.build();
 	let results = logger.query(&query).await.expect("Query failed");
 	let query_duration = start.elapsed();
