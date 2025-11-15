@@ -11,7 +11,6 @@ use chrono::Utc;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
-use tokio::time::sleep;
 
 /// Worker configuration
 ///
@@ -281,7 +280,10 @@ impl Worker {
 		&self,
 		backend: Arc<dyn TaskBackend>,
 	) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+		use tokio::time::interval;
+
 		let mut shutdown_rx = self.shutdown_tx.subscribe();
+		let mut poll_interval = interval(self.config.poll_interval);
 
 		println!(
 			"[{}] Worker started with concurrency {}",
@@ -294,7 +296,9 @@ impl Worker {
 					println!("[{}] Shutdown signal received", self.config.name);
 					break;
 				}
-				_ = self.process_tasks(backend.clone()) => {}
+				_ = poll_interval.tick() => {
+					self.try_process_task(backend.clone()).await;
+				}
 			}
 		}
 
@@ -302,8 +306,8 @@ impl Worker {
 		Ok(())
 	}
 
-	/// Process tasks from the backend
-	async fn process_tasks(&self, backend: Arc<dyn TaskBackend>) {
+	/// Try to process a single task from the backend
+	async fn try_process_task(&self, backend: Arc<dyn TaskBackend>) {
 		match backend.dequeue().await {
 			Ok(Some(task_id)) => {
 				println!("[{}] Processing task: {}", self.config.name, task_id);
@@ -334,12 +338,11 @@ impl Worker {
 				}
 			}
 			Ok(None) => {
-				// No tasks available, wait before polling again
-				sleep(self.config.poll_interval).await;
+				// No tasks available - interval will automatically wait before next poll
 			}
 			Err(e) => {
 				eprintln!("[{}] Failed to dequeue task: {}", self.config.name, e);
-				sleep(self.config.poll_interval).await;
+				// Error occurred - interval will automatically wait before next poll
 			}
 		}
 	}
@@ -539,6 +542,7 @@ mod tests {
 	use super::*;
 	use crate::{DummyBackend, Task, TaskId, TaskPriority};
 	use std::time::Duration;
+	use tokio::time::sleep;
 
 	#[allow(dead_code)]
 	struct TestTask {
