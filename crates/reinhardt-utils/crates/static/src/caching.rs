@@ -414,9 +414,7 @@ mod tests {
 		let policy = CachePolicy::long_term();
 		let header_value = policy.to_header_value();
 
-		assert!(header_value.contains("public"));
-		assert!(header_value.contains("immutable"));
-		assert!(header_value.contains("max-age=31536000"));
+		assert_eq!(header_value, "public, immutable, max-age=31536000");
 	}
 
 	#[tokio::test]
@@ -424,9 +422,7 @@ mod tests {
 		let policy = CachePolicy::short_term();
 		let header_value = policy.to_header_value();
 
-		assert!(header_value.contains("public"));
-		assert!(header_value.contains("must-revalidate"));
-		assert!(header_value.contains("max-age=300"));
+		assert_eq!(header_value, "public, must-revalidate, max-age=300");
 	}
 
 	#[tokio::test]
@@ -434,9 +430,7 @@ mod tests {
 		let policy = CachePolicy::no_cache();
 		let header_value = policy.to_header_value();
 
-		assert!(header_value.contains("no-cache"));
-		assert!(header_value.contains("no-store"));
-		assert!(header_value.contains("must-revalidate"));
+		assert_eq!(header_value, "no-cache, no-store, must-revalidate");
 	}
 
 	#[tokio::test]
@@ -461,9 +455,7 @@ mod tests {
 			.unwrap()
 			.to_str()
 			.unwrap();
-		assert!(cache_control.contains("max-age=31536000"));
-		assert!(cache_control.contains("public"));
-		assert!(cache_control.contains("immutable"));
+		assert_eq!(cache_control, "public, immutable, max-age=31536000");
 	}
 
 	#[tokio::test]
@@ -488,7 +480,7 @@ mod tests {
 			.unwrap()
 			.to_str()
 			.unwrap();
-		assert!(cache_control.contains("max-age=31536000"));
+		assert_eq!(cache_control, "public, immutable, max-age=31536000");
 	}
 
 	#[tokio::test]
@@ -513,8 +505,7 @@ mod tests {
 			.unwrap()
 			.to_str()
 			.unwrap();
-		assert!(cache_control.contains("max-age=300"));
-		assert!(cache_control.contains("must-revalidate"));
+		assert_eq!(cache_control, "public, must-revalidate, max-age=300");
 	}
 
 	#[tokio::test]
@@ -540,8 +531,8 @@ mod tests {
 				.unwrap()
 				.to_str()
 				.unwrap();
-			assert!(
-				cache_control.contains("max-age=31536000"),
+			assert_eq!(
+				cache_control, "public, immutable, max-age=31536000",
 				"Extension: {}",
 				ext
 			);
@@ -571,8 +562,8 @@ mod tests {
 				.unwrap()
 				.to_str()
 				.unwrap();
-			assert!(
-				cache_control.contains("max-age=31536000"),
+			assert_eq!(
+				cache_control, "public, immutable, max-age=31536000",
 				"Extension: {}",
 				ext
 			);
@@ -602,7 +593,7 @@ mod tests {
 			.to_str()
 			.unwrap();
 		// Default policy is short_term
-		assert!(cache_control.contains("max-age=300"));
+		assert_eq!(cache_control, "public, must-revalidate, max-age=300");
 	}
 
 	#[tokio::test]
@@ -628,8 +619,7 @@ mod tests {
 			.unwrap()
 			.to_str()
 			.unwrap();
-		assert!(cache_control.contains("no-cache"));
-		assert!(cache_control.contains("no-store"));
+		assert_eq!(cache_control, "no-cache, no-store, must-revalidate");
 	}
 
 	#[tokio::test]
@@ -704,8 +694,7 @@ mod tests {
 			.with_s_maxage(Duration::from_secs(3600));
 		let header_value = policy.to_header_value();
 
-		assert!(header_value.contains("max-age=300"));
-		assert!(header_value.contains("s-maxage=3600"));
+		assert_eq!(header_value, "public, max-age=300, s-maxage=3600");
 	}
 
 	#[tokio::test]
@@ -717,9 +706,9 @@ mod tests {
 			.with_max_age(Duration::from_secs(3600));
 		let header_value = policy.to_header_value();
 
-		assert!(header_value.contains("public"));
-		assert!(header_value.contains("must-revalidate"));
-		assert!(header_value.contains("proxy-revalidate"));
-		assert!(header_value.contains("max-age=3600"));
+		assert_eq!(
+			header_value,
+			"public, must-revalidate, proxy-revalidate, max-age=3600"
+		);
 	}
 }
