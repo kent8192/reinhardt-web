@@ -138,7 +138,7 @@ fn test_hmac_timing_attack_resistance() {
 
 	let mut almost_valid_2 = valid_token.clone();
 	let last_idx = almost_valid_2.len() - 1;
-	almost_valid_2.replace_range(last_idx..last_idx + 1, "0");
+	almost_valid_2.replace_range(last_idx..last_idx + 1, "f");
 
 	// Both should fail verification
 	assert!(!verify_token_hmac(&almost_valid_1, &secret, message));
