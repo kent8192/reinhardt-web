@@ -155,28 +155,28 @@ pub trait TwoPhaseParticipant: Send + Sync {
 	fn id(&self) -> &str;
 
 	/// Begin a local transaction
-	async fn begin(&mut self) -> Result<(), TwoPhaseError>;
+	async fn begin(&self) -> Result<(), TwoPhaseError>;
 
 	/// Prepare the transaction (Phase 1)
 	///
 	/// This is the voting phase where the participant indicates whether it can commit.
 	/// Returns Ok(()) if ready to commit, or an error if unable to commit.
-	async fn prepare(&mut self, xid: &str) -> Result<(), TwoPhaseError>;
+	async fn prepare(&self, xid: &str) -> Result<(), TwoPhaseError>;
 
 	/// Commit the prepared transaction (Phase 2)
 	///
 	/// This commits the transaction that was previously prepared.
-	async fn commit(&mut self, xid: &str) -> Result<(), TwoPhaseError>;
+	async fn commit(&self, xid: &str) -> Result<(), TwoPhaseError>;
 
 	/// Rollback the transaction (Phase 2)
 	///
 	/// This rolls back the transaction, either before or after prepare.
-	async fn rollback(&mut self, xid: &str) -> Result<(), TwoPhaseError>;
+	async fn rollback(&self, xid: &str) -> Result<(), TwoPhaseError>;
 
 	/// Recover prepared transactions
 	///
 	/// Returns a list of transaction IDs that are currently in the prepared state.
-	async fn recover(&mut self) -> Result<Vec<String>, TwoPhaseError>;
+	async fn recover(&self) -> Result<Vec<String>, TwoPhaseError>;
 
 	/// Get the current status
 	fn status(&self) -> ParticipantStatus;
@@ -956,35 +956,35 @@ impl TwoPhaseParticipant for PostgresParticipantAdapter {
 		&self.id
 	}
 
-	async fn begin(&mut self) -> Result<(), TwoPhaseError> {
+	async fn begin(&self) -> Result<(), TwoPhaseError> {
 		self.backend
-			.begin(&self.id)
+			.begin_by_xid(&self.id)
 			.await
 			.map_err(|e| TwoPhaseError::DatabaseError(e.to_string()))
 	}
 
-	async fn prepare(&mut self, xid: &str) -> Result<(), TwoPhaseError> {
+	async fn prepare(&self, xid: &str) -> Result<(), TwoPhaseError> {
 		self.backend
-			.prepare(xid)
+			.prepare_by_xid(xid)
 			.await
 			.map_err(|e| TwoPhaseError::PrepareFailed(self.id.clone(), e.to_string()))
 	}
 
-	async fn commit(&mut self, xid: &str) -> Result<(), TwoPhaseError> {
+	async fn commit(&self, xid: &str) -> Result<(), TwoPhaseError> {
 		self.backend
-			.commit(xid)
+			.commit_managed(xid)
 			.await
 			.map_err(|e| TwoPhaseError::CommitFailed(self.id.clone(), e.to_string()))
 	}
 
-	async fn rollback(&mut self, xid: &str) -> Result<(), TwoPhaseError> {
+	async fn rollback(&self, xid: &str) -> Result<(), TwoPhaseError> {
 		self.backend
-			.rollback(xid)
+			.rollback_managed(xid)
 			.await
 			.map_err(|e| TwoPhaseError::RollbackFailed(self.id.clone(), e.to_string()))
 	}
 
-	async fn recover(&mut self) -> Result<Vec<String>, TwoPhaseError> {
+	async fn recover(&self) -> Result<Vec<String>, TwoPhaseError> {
 		let txns = self
 			.backend
 			.list_prepared_transactions()
@@ -1005,9 +1005,36 @@ impl TwoPhaseParticipant for PostgresParticipantAdapter {
 /// MySQL participant adapter
 ///
 /// Adapts backend's `MySqlTwoPhaseParticipant` to ORM layer's `TwoPhaseParticipant` trait.
+/// Session management is delegated to the backend layer.
+///
+/// # Implementation Status
+///
+/// **Note**: This adapter currently has compilation issues due to Rust lifetime constraints
+/// with `async_trait` and SQLx's `PoolConnection<MySql>`. The issue stems from MySQL's
+/// requirement that all XA operations occur on the same database connection, combined with
+/// `async_trait`'s Higher-Rank Trait Bound (HRTB) lifetime requirements.
+///
+/// **Workaround**: Use the backend layer's `MySqlTwoPhaseParticipant` directly in your code
+/// until this adapter is fixed. The backend API is fully functional:
+///
+/// ```no_run
+/// use reinhardt_backends::MySqlTwoPhaseParticipant;
+/// # tokio_test::block_on(async {
+/// # let pool = todo!(); // MySql pool
+/// let participant = MySqlTwoPhaseParticipant::new(pool);
+/// let mut session = participant.begin("xid_001").await.unwrap();
+/// // Perform operations...
+/// participant.end(&mut session).await.unwrap();
+/// participant.prepare(&mut session).await.unwrap();
+/// participant.commit(session).await.unwrap();
+/// # });
+/// ```
+///
+/// TODO: Resolve lifetime incompatibility between `async_trait` HRTB and `PoolConnection<MySql>`
 #[cfg(feature = "mysql")]
 pub struct MySqlParticipantAdapter {
 	id: String,
+	#[allow(dead_code)] // TODO: Will be used once lifetime issues are resolved
 	backend: MySqlTwoPhaseParticipant,
 	status: ParticipantStatus,
 }
@@ -1053,47 +1080,39 @@ impl TwoPhaseParticipant for MySqlParticipantAdapter {
 		&self.id
 	}
 
-	async fn begin(&mut self) -> Result<(), TwoPhaseError> {
-		self.backend
-			.begin(&self.id)
-			.await
-			.map_err(|e| TwoPhaseError::DatabaseError(e.to_string()))
+	async fn begin(&self) -> Result<(), TwoPhaseError> {
+		todo!(
+			"MySQL adapter has lifetime issues with async_trait. \
+			 Use MySqlTwoPhaseParticipant from backend layer directly."
+		)
 	}
 
-	async fn prepare(&mut self, xid: &str) -> Result<(), TwoPhaseError> {
-		// MySQL requires XA END
-		self.backend
-			.end(xid)
-			.await
-			.map_err(|e| TwoPhaseError::PrepareFailed(self.id.clone(), e.to_string()))?;
-
-		self.backend
-			.prepare(xid)
-			.await
-			.map_err(|e| TwoPhaseError::PrepareFailed(self.id.clone(), e.to_string()))
+	async fn prepare(&self, _xid: &str) -> Result<(), TwoPhaseError> {
+		todo!(
+			"MySQL adapter has lifetime issues with async_trait. \
+			 Use MySqlTwoPhaseParticipant from backend layer directly."
+		)
 	}
 
-	async fn commit(&mut self, xid: &str) -> Result<(), TwoPhaseError> {
-		self.backend
-			.commit(xid)
-			.await
-			.map_err(|e| TwoPhaseError::CommitFailed(self.id.clone(), e.to_string()))
+	async fn commit(&self, _xid: &str) -> Result<(), TwoPhaseError> {
+		todo!(
+			"MySQL adapter has lifetime issues with async_trait. \
+			 Use MySqlTwoPhaseParticipant from backend layer directly."
+		)
 	}
 
-	async fn rollback(&mut self, xid: &str) -> Result<(), TwoPhaseError> {
-		self.backend
-			.rollback(xid)
-			.await
-			.map_err(|e| TwoPhaseError::RollbackFailed(self.id.clone(), e.to_string()))
+	async fn rollback(&self, _xid: &str) -> Result<(), TwoPhaseError> {
+		todo!(
+			"MySQL adapter has lifetime issues with async_trait. \
+			 Use MySqlTwoPhaseParticipant from backend layer directly."
+		)
 	}
 
-	async fn recover(&mut self) -> Result<Vec<String>, TwoPhaseError> {
-		let txns = self
-			.backend
-			.list_prepared_transactions()
-			.await
-			.map_err(|e| TwoPhaseError::RecoveryFailed(e.to_string()))?;
-		Ok(txns.into_iter().map(|t| t.xid).collect())
+	async fn recover(&self) -> Result<Vec<String>, TwoPhaseError> {
+		todo!(
+			"MySQL adapter has lifetime issues with async_trait. \
+			 Use MySqlTwoPhaseParticipant from backend layer directly."
+		)
 	}
 
 	fn status(&self) -> ParticipantStatus {
@@ -1109,7 +1128,7 @@ impl TwoPhaseParticipant for MySqlParticipantAdapter {
 #[cfg(test)]
 pub struct MockParticipant {
 	id: String,
-	status: ParticipantStatus,
+	status: std::sync::Mutex<ParticipantStatus>,
 	should_fail_prepare: bool,
 	should_fail_commit: bool,
 	should_fail_rollback: bool,
@@ -1120,7 +1139,7 @@ impl MockParticipant {
 	pub fn new(id: impl Into<String>) -> Self {
 		Self {
 			id: id.into(),
-			status: ParticipantStatus::Active,
+			status: std::sync::Mutex::new(ParticipantStatus::Active),
 			should_fail_prepare: false,
 			should_fail_commit: false,
 			should_fail_rollback: false,
@@ -1150,56 +1169,56 @@ impl TwoPhaseParticipant for MockParticipant {
 		&self.id
 	}
 
-	async fn begin(&mut self) -> Result<(), TwoPhaseError> {
+	async fn begin(&self) -> Result<(), TwoPhaseError> {
 		Ok(())
 	}
 
-	async fn prepare(&mut self, _xid: &str) -> Result<(), TwoPhaseError> {
+	async fn prepare(&self, _xid: &str) -> Result<(), TwoPhaseError> {
 		if self.should_fail_prepare {
 			Err(TwoPhaseError::PrepareFailed(
 				self.id.clone(),
 				"Simulated prepare failure".to_string(),
 			))
 		} else {
-			self.status = ParticipantStatus::Prepared;
+			*self.status.lock().unwrap() = ParticipantStatus::Prepared;
 			Ok(())
 		}
 	}
 
-	async fn commit(&mut self, _xid: &str) -> Result<(), TwoPhaseError> {
+	async fn commit(&self, _xid: &str) -> Result<(), TwoPhaseError> {
 		if self.should_fail_commit {
 			Err(TwoPhaseError::CommitFailed(
 				self.id.clone(),
 				"Simulated commit failure".to_string(),
 			))
 		} else {
-			self.status = ParticipantStatus::Committed;
+			*self.status.lock().unwrap() = ParticipantStatus::Committed;
 			Ok(())
 		}
 	}
 
-	async fn rollback(&mut self, _xid: &str) -> Result<(), TwoPhaseError> {
+	async fn rollback(&self, _xid: &str) -> Result<(), TwoPhaseError> {
 		if self.should_fail_rollback {
 			Err(TwoPhaseError::RollbackFailed(
 				self.id.clone(),
 				"Simulated rollback failure".to_string(),
 			))
 		} else {
-			self.status = ParticipantStatus::Aborted;
+			*self.status.lock().unwrap() = ParticipantStatus::Aborted;
 			Ok(())
 		}
 	}
 
-	async fn recover(&mut self) -> Result<Vec<String>, TwoPhaseError> {
+	async fn recover(&self) -> Result<Vec<String>, TwoPhaseError> {
 		Ok(Vec::new())
 	}
 
 	fn status(&self) -> ParticipantStatus {
-		self.status.clone()
+		self.status.lock().unwrap().clone()
 	}
 
 	fn set_status(&mut self, status: ParticipantStatus) {
-		self.status = status;
+		*self.status.lock().unwrap() = status;
 	}
 }
 
