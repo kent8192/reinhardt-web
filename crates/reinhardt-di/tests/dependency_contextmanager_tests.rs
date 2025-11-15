@@ -199,10 +199,13 @@ impl Injectable for ErrorTracker {
 }
 
 // Custom errors
+#[allow(dead_code)]
 #[derive(Debug)]
 struct AsyncDependencyError;
+#[allow(dead_code)]
 #[derive(Debug)]
 struct SyncDependencyError;
+#[allow(dead_code)]
 #[derive(Debug)]
 struct OtherDependencyError;
 

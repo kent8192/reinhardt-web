@@ -33,6 +33,7 @@ impl Injectable for B {
 // Generic dependency wrapper (simulates Annotated[T, Depends()])
 // This is handled automatically by Rust's type system
 struct Dep<T> {
+	#[allow(dead_code)]
 	inner: T,
 }
 

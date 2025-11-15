@@ -285,6 +285,7 @@ async fn test_websocket_cleanup_on_error() {
 #[derive(Debug)]
 struct HttpException {
 	status_code: u16,
+	#[allow(dead_code)]
 	detail: String,
 }
 
