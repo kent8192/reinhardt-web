@@ -195,7 +195,7 @@ impl MessageStorage for CookieStorage {
 /// ```
 /// use std::sync::Arc;
 /// use reinhardt_middleware::messages::{MessageMiddleware, SessionStorage, Message, MessageLevel};
-/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
+/// use reinhardt_core::{Handler, Middleware, http::{Request, Response}};
 /// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 /// use bytes::Bytes;
 ///

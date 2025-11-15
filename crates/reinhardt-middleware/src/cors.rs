@@ -50,7 +50,7 @@ impl CorsMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::{CorsMiddleware, cors::CorsConfig};
-	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, Middleware, http::{Request, Response}};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
@@ -100,7 +100,7 @@ impl CorsMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::CorsMiddleware;
-	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, Middleware, http::{Request, Response}};
 	/// use hyper::{StatusCode, Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///

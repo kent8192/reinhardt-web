@@ -20,7 +20,7 @@ impl LoggingMiddleware {
 	/// ```
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::LoggingMiddleware;
-	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, Middleware, http::{Request, Response}};
 	/// use hyper::{Method, Uri, Version, HeaderMap, StatusCode};
 	/// use bytes::Bytes;
 	///

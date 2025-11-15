@@ -132,7 +132,7 @@ impl CsrfMiddleware {
 	///
 	/// ```
 	/// use reinhardt_middleware::csrf::CsrfMiddleware;
-	/// use reinhardt_core::{Handler, http::{Middleware, Request, Response};
+	/// use reinhardt_core::{Handler, Middleware, http::{Request, Response}};
 	/// use hyper::{Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	/// use std::sync::Arc;
