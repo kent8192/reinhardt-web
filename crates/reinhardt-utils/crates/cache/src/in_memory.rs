@@ -145,7 +145,6 @@ impl InMemoryCache {
 	/// cache.set("key", &"value", None).await.unwrap();
 	///
 	// Wait for default TTL to expire
-	/// tokio::time::sleep(Duration::from_millis(1100)).await;
 	///
 	// Value should be expired
 	/// let value: Option<String> = cache.get("key").await.unwrap();
@@ -176,7 +175,6 @@ impl InMemoryCache {
 	/// cache.set("key1", &"value", Some(Duration::from_millis(10))).await.unwrap();
 	///
 	// Wait for expiration
-	/// tokio::time::sleep(Duration::from_millis(20)).await;
 	///
 	// Clean up expired entries (O(n) scan)
 	/// cache.cleanup_expired().await;
@@ -187,7 +185,6 @@ impl InMemoryCache {
 	/// // Layered cleanup (faster for large caches)
 	/// let cache = InMemoryCache::with_layered_cleanup();
 	/// cache.set("key2", &"value", Some(Duration::from_millis(10))).await.unwrap();
-	/// tokio::time::sleep(Duration::from_millis(20)).await;
 	/// cache.cleanup_expired().await; // O(1) amortized
 	/// # }
 	/// ```
@@ -599,12 +596,17 @@ mod tests {
 		let value: Option<String> = cache.get("key1").await.unwrap();
 		assert_eq!(value, Some("value1".to_string()));
 
-		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(150)).await;
-
-		// Should be expired
-		let value: Option<String> = cache.get("key1").await.unwrap();
-		assert_eq!(value, None);
+		// Poll until key expires
+		reinhardt_test::poll_until(
+			Duration::from_millis(200),
+			Duration::from_millis(10),
+			|| async {
+				let value: Option<String> = cache.get("key1").await.unwrap();
+				value.is_none()
+			},
+		)
+		.await
+		.expect("Key should expire within 200ms");
 	}
 
 	#[tokio::test]
@@ -671,8 +673,17 @@ mod tests {
 			.unwrap();
 		cache.set("key2", &"value2", None).await.unwrap();
 
-		// Wait for first key to expire
-		tokio::time::sleep(Duration::from_millis(150)).await;
+		// Poll until first key expires
+		reinhardt_test::poll_until(
+			Duration::from_millis(200),
+			Duration::from_millis(10),
+			|| async {
+				let value: Option<String> = cache.get("key1").await.unwrap();
+				value.is_none()
+			},
+		)
+		.await
+		.expect("Key1 should expire within 200ms");
 
 		// Cleanup expired entries
 		cache.cleanup_expired().await;
@@ -750,15 +761,17 @@ mod tests {
 			.await
 			.unwrap();
 
-		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(20)).await;
+		// Wait for key to expire (10ms TTL + 5ms buffer)
+		tokio::time::sleep(Duration::from_millis(15)).await;
 
-		// Try to get expired key
-		let _: Option<String> = cache.get("key1").await.unwrap();
+		// Access expired key - should count as miss
+		let value: Option<String> = cache.get("key1").await.unwrap();
+		assert!(value.is_none(), "Key should have expired");
 
+		// Statistics should show exactly 1 miss and 0 hits
 		let stats = cache.get_statistics().await;
-		assert_eq!(stats.hits, 0);
-		assert_eq!(stats.misses, 1);
+		assert_eq!(stats.hits, 0, "Expected 0 hits, got {}", stats.hits);
+		assert_eq!(stats.misses, 1, "Expected 1 miss, got {}", stats.misses);
 	}
 
 	#[tokio::test]
@@ -826,8 +839,17 @@ mod tests {
 		// Set a key without TTL
 		cache.set("valid_key", &"value", None).await.unwrap();
 
-		// Wait for first key to expire
-		tokio::time::sleep(Duration::from_millis(20)).await;
+		// Poll until first key expires
+		reinhardt_test::poll_until(
+			Duration::from_millis(50),
+			Duration::from_millis(5),
+			|| async {
+				let value: Option<String> = cache.get("expired_key").await.unwrap();
+				value.is_none()
+			},
+		)
+		.await
+		.expect("Expired key should expire within 50ms");
 
 		// list_keys should include expired keys (until cleanup)
 		let keys = cache.list_keys().await;
@@ -916,8 +938,17 @@ mod tests {
 		let info = cache.inspect_entry("key1").await;
 		assert!(info.is_some());
 
-		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(20)).await;
+		// Poll until key expires
+		reinhardt_test::poll_until(
+			Duration::from_millis(50),
+			Duration::from_millis(5),
+			|| async {
+				let value: Option<String> = cache.get("key1").await.unwrap();
+				value.is_none()
+			},
+		)
+		.await
+		.expect("Key should expire within 50ms");
 
 		// Entry still exists (not cleaned up)
 		let info = cache.inspect_entry("key1").await;
@@ -955,8 +986,16 @@ mod tests {
 		assert!(cache.has_key("key1").await.unwrap());
 		assert!(cache.has_key("key2").await.unwrap());
 
-		// Wait for keys to expire and cleanup to run
-		tokio::time::sleep(Duration::from_millis(100)).await;
+		// Poll until auto-cleanup removes expired keys
+		reinhardt_test::poll_until(
+			Duration::from_millis(200),
+			Duration::from_millis(10),
+			|| async {
+				!cache.has_key("key1").await.unwrap() && !cache.has_key("key2").await.unwrap()
+			},
+		)
+		.await
+		.expect("Keys should be auto-cleaned within 200ms");
 
 		// Keys should be cleaned up automatically
 		assert!(!cache.has_key("key1").await.unwrap());
@@ -981,12 +1020,16 @@ mod tests {
 		assert!(cache.has_key("key1").await.unwrap());
 		assert!(cache.has_key("key2").await.unwrap());
 
-		// Wait for expiration and cleanup
-		tokio::time::sleep(Duration::from_millis(100)).await;
-
-		// Keys should be cleaned up automatically
-		assert!(!cache.has_key("key1").await.unwrap());
-		assert!(!cache.has_key("key2").await.unwrap());
+		// Poll until auto-cleanup removes expired keys
+		reinhardt_test::poll_until(
+			Duration::from_millis(200),
+			Duration::from_millis(10),
+			|| async {
+				!cache.has_key("key1").await.unwrap() && !cache.has_key("key2").await.unwrap()
+			},
+		)
+		.await
+		.expect("Keys should be auto-cleaned within 200ms");
 	}
 
 	#[tokio::test]
@@ -1007,12 +1050,17 @@ mod tests {
 		assert!(cache.has_key("short_lived").await.unwrap());
 		assert!(cache.has_key("long_lived").await.unwrap());
 
-		// Wait for first key to expire and cleanup to run
-		tokio::time::sleep(Duration::from_millis(100)).await;
-
-		// short_lived should be gone, long_lived should remain
-		assert!(!cache.has_key("short_lived").await.unwrap());
-		assert!(cache.has_key("long_lived").await.unwrap());
+		// Poll until auto-cleanup removes short_lived key
+		reinhardt_test::poll_until(
+			Duration::from_millis(200),
+			Duration::from_millis(10),
+			|| async {
+				!cache.has_key("short_lived").await.unwrap()
+					&& cache.has_key("long_lived").await.unwrap()
+			},
+		)
+		.await
+		.expect("Short-lived key should be cleaned, long-lived should remain");
 	}
 
 	// Layered cleanup strategy tests
@@ -1050,12 +1098,17 @@ mod tests {
 		let value: Option<String> = cache.get("key1").await.unwrap();
 		assert_eq!(value, Some("value1".to_string()));
 
-		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(150)).await;
-
-		// Should be expired (passive expiration on get)
-		let value: Option<String> = cache.get("key1").await.unwrap();
-		assert_eq!(value, None);
+		// Poll until key expires (passive expiration on get)
+		reinhardt_test::poll_until(
+			Duration::from_millis(200),
+			Duration::from_millis(10),
+			|| async {
+				let value: Option<String> = cache.get("key1").await.unwrap();
+				value.is_none()
+			},
+		)
+		.await
+		.expect("Key should expire within 200ms");
 	}
 
 	#[tokio::test]
@@ -1070,7 +1123,6 @@ mod tests {
 		cache.set("key2", &"value2", None).await.unwrap();
 
 		// Wait for first key to expire
-		tokio::time::sleep(Duration::from_millis(100)).await;
 
 		// Cleanup expired entries
 		cache.cleanup_expired().await;
@@ -1173,7 +1225,6 @@ mod tests {
 		assert_eq!(stats.entry_count, num_keys);
 
 		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(100)).await;
 
 		// Cleanup (should be fast with layered strategy)
 		cache.cleanup_expired().await;
