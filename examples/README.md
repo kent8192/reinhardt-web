@@ -7,14 +7,14 @@ This directory contains practical application examples using **reinhardt publish
 - **Fetch from crates.io**: Uses published version, not local implementation
 - **Version validation**: Ensures each example works with specific versions
 - **End-to-end testing**: Validates functionality in actual user environments
-- **Infrastructure**: Reproducible environment with Podman + docker-compose
+- **Infrastructure**: Reproducible environment with Docker + docker-compose
 
 ## 📋 Prerequisites
 
 ### Required
 - **Rust**: 1.85+ (Rust 2024 Edition)
-- **Podman**: Container management
-- **podman-compose**: docker-compose compatible tool
+- **Docker**: Container management
+- **Docker Compose**: Container orchestration tool
 
 ### Optional
 - **cargo-make**: For convenient commands (`cargo install cargo-make`)
@@ -22,12 +22,12 @@ This directory contains practical application examples using **reinhardt publish
 ### Installation Check
 
 ```bash
-# Check Podman installation
-podman --version
-podman-compose --version
+# Check Docker installation
+docker --version
+docker compose version
 
 # Or use cargo-make
-cargo make check-podman
+cargo make check-docker
 ```
 
 ## 🚀 Quick Start
@@ -216,13 +216,13 @@ See each example's README for details.
 
 ```bash
 # PostgreSQL (starts by default)
-podman-compose up -d postgres
+docker compose up -d postgres
 
 # MySQL (optional)
-podman-compose --profile mysql up -d mysql
+docker compose --profile mysql up -d mysql
 
 # Redis (optional)
-podman-compose --profile cache up -d redis
+docker compose --profile cache up -d redis
 ```
 
 ### Connection Information
@@ -334,16 +334,6 @@ pub fn migration() -> Migration {
 
 ## ⚠️ Troubleshooting
 
-### Podman Won't Start
-
-```bash
-# Start Podman service
-podman machine start
-
-# Or with systemd
-systemctl --user start podman.socket
-```
-
 ### Database Connection Error
 
 ```bash
@@ -382,7 +372,6 @@ REDIS_PORT=6380
 - [Reinhardt Main Tests](../tests/)
 - [Project README](../README.md)
 - [Contributing Guide](../CONTRIBUTING.md)
-- [Podman Official Documentation](https://podman.io/)
 - [docker-compose Specification](https://docs.docker.com/compose/compose-file/)
 
 ---

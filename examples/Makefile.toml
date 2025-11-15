@@ -2,8 +2,8 @@
 default_to_workspace = false
 
 [env]
-# Podman Compose command (docker-compose compatible)
-COMPOSE = "podman-compose"
+# Docker Compose command
+COMPOSE = "docker compose"
 
 [tasks.help]
 description = "Show available commands"
@@ -20,7 +20,7 @@ echo "  cargo make test            - Test all examples (start → test → stop)
 echo "  cargo make test-keep       - Test and keep infrastructure running"
 echo "  cargo make clean           - Clean build artifacts"
 echo "  cargo make status          - Check service status"
-echo "  cargo make check-podman    - Check Podman installation"
+echo "  cargo make check-docker    - Check Docker installation"
 echo "  cargo make test-hello      - Test hello-world example"
 echo "  cargo make test-rest       - Test rest-api example"
 echo "  cargo make test-db         - Test database-integration example"
@@ -113,18 +113,18 @@ script = '''
 ${COMPOSE} ps
 '''
 
-[tasks.check-podman]
-description = "Check Podman installation"
+[tasks.check-docker]
+description = "Check Docker installation"
 script = '''
-if ! command -v podman >/dev/null 2>&1; then
-  echo "❌ Podman is not installed"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "❌ Docker is not installed"
   exit 1
 fi
-if ! command -v podman-compose >/dev/null 2>&1; then
-  echo "❌ podman-compose is not installed"
+if ! docker compose version >/dev/null 2>&1; then
+  echo "❌ Docker Compose is not installed or not available"
   exit 1
 fi
-echo "✅ Podman and podman-compose are installed"
+echo "✅ Docker and Docker Compose are installed"
 '''
 
 # Example-specific tasks

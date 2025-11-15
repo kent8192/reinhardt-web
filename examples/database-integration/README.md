@@ -46,7 +46,7 @@ src/
 
 ```bash
 # Start PostgreSQL server
-podman run -d \
+docker run -d \
   --name reinhardt-postgres \
   -e POSTGRES_USER=reinhardt \
   -e POSTGRES_PASSWORD=reinhardt_dev \
@@ -59,7 +59,7 @@ podman run -d \
 
 ```bash
 # Start MySQL server
-podman run -d \
+docker run -d \
   --name reinhardt-mysql \
   -e MYSQL_ROOT_PASSWORD=rootpass \
   -e MYSQL_DATABASE=reinhardt_examples \
