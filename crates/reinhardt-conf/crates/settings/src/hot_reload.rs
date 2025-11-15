@@ -190,11 +190,14 @@ impl HotReloadManager {
 				.watch(&canonical_path, RecursiveMode::NonRecursive)
 				.map_err(|e| format!("Failed to watch path {:?}: {}", canonical_path, e))?;
 
-			// Track watched path
+			// Track watched path with timestamp in the past to allow immediate first event
 			drop(watcher_guard);
+			let initial_timestamp = Instant::now()
+				.checked_sub(self.debounce_duration)
+				.unwrap_or_else(Instant::now);
 			self.watched_paths
 				.lock()
-				.insert(canonical_path.clone(), Instant::now());
+				.insert(canonical_path.clone(), initial_timestamp);
 
 			Ok(())
 		} else {

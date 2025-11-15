@@ -371,7 +371,7 @@ impl ActionRegistry {
 	) -> AdminResult<dashmap::mapref::one::Ref<'_, String, Box<dyn AdminAction>>> {
 		self.actions
 			.get(name)
-			.ok_or_else(|| AdminError::InvalidAction(format!("Action '{}' not found", name)))
+			.ok_or_else(|| AdminError::InvalidAction(format!("Action not found: {}", name)))
 	}
 
 	/// Get all available action names

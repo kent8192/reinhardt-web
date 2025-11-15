@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
+use hyper::StatusCode;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::Service;
@@ -319,10 +320,12 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 			request.remote_addr = Some(remote_addr);
 
 			// Handle request
-			let response = handler
-				.handle(request)
-				.await
-				.unwrap_or_else(|_| Response::internal_server_error());
+			let response = handler.handle(request).await.unwrap_or_else(|err| {
+				// Convert error to appropriate HTTP response based on status code
+				let status_code = StatusCode::from_u16(err.status_code())
+					.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+				Response::new(status_code).with_body(err.to_string())
+			});
 
 			// Convert to hyper response
 			let mut hyper_response = hyper::Response::builder().status(response.status);

@@ -269,9 +269,8 @@ impl CreateModel {
 					if f.unique {
 						parts.push("UNIQUE".to_string());
 					}
-					if !f.null {
-						parts.push("NOT NULL".to_string());
-					}
+					// Primary key fields are always NOT NULL
+					parts.push("NOT NULL".to_string());
 					if let Some(ref default) = f.default {
 						parts.push(format!("DEFAULT {}", default));
 					}

@@ -96,7 +96,7 @@ async fn run_postgres_demo() {
 
 	// Begin transaction
 	println!("2. Beginning transaction...");
-	participant
+	let mut session = participant
 		.begin(xid)
 		.await
 		.expect("Failed to begin transaction");
@@ -117,7 +117,7 @@ async fn run_postgres_demo() {
 	// Prepare phase
 	println!("4. Preparing transaction...");
 	participant
-		.prepare(xid)
+		.prepare(&mut session)
 		.await
 		.expect("Failed to prepare transaction");
 	println!("   ✓ Transaction prepared\n");
@@ -138,7 +138,7 @@ async fn run_postgres_demo() {
 	// Commit phase
 	println!("6. Committing transaction...");
 	participant
-		.commit(xid)
+		.commit(session)
 		.await
 		.expect("Failed to commit transaction");
 	println!("   ✓ Transaction committed\n");
@@ -203,7 +203,7 @@ async fn run_mysql_demo() {
 
 	// Begin XA transaction
 	println!("2. Starting XA transaction...");
-	participant
+	let mut session = participant
 		.begin(xid)
 		.await
 		.expect("Failed to begin XA transaction");
@@ -223,13 +223,16 @@ async fn run_mysql_demo() {
 
 	// End XA transaction
 	println!("4. Ending XA transaction...");
-	participant.end(xid).await.expect("Failed to end XA");
+	participant
+		.end(&mut session)
+		.await
+		.expect("Failed to end XA");
 	println!("   ✓ XA transaction ended\n");
 
 	// Prepare phase
 	println!("5. Preparing XA transaction...");
 	participant
-		.prepare(xid)
+		.prepare(&mut session)
 		.await
 		.expect("Failed to prepare XA transaction");
 	println!("   ✓ XA transaction prepared\n");
@@ -250,7 +253,7 @@ async fn run_mysql_demo() {
 	// Commit phase
 	println!("7. Committing XA transaction...");
 	participant
-		.commit(xid)
+		.commit(session)
 		.await
 		.expect("Failed to commit XA transaction");
 	println!("   ✓ XA transaction committed\n");

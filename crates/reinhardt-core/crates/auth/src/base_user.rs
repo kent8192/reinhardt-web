@@ -232,6 +232,11 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	/// # }
 	/// ```
 	fn check_password(&self, password: &str) -> Result<bool, reinhardt_exception::Error> {
+		// Return false early if password is not usable (e.g., "!" marker)
+		if !self.has_usable_password() {
+			return Ok(false);
+		}
+
 		match self.password_hash() {
 			Some(hash) => {
 				let hasher = Self::Hasher::default();
