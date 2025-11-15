@@ -245,8 +245,8 @@ fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo])
 				///
 				/// Returns a `FieldRef<#struct_name, #field_type>` that provides compile-time
 				/// type safety for field operations.
-				pub const fn #method_name() -> ::reinhardt_orm::expressions::FieldRef<#struct_name, #field_type> {
-					::reinhardt_orm::expressions::FieldRef::new(#field_name_str)
+				pub const fn #method_name() -> ::reinhardt_db::orm::expressions::FieldRef<#struct_name, #field_type> {
+					::reinhardt_db::orm::expressions::FieldRef::new(#field_name_str)
 				}
 			}
 		})
@@ -509,7 +509,7 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 		// Generate field accessor methods for type-safe field references
 		#field_accessors
 
-		impl #generics ::reinhardt_orm::Model for #struct_name #generics #where_clause {
+		impl #generics ::reinhardt_db::orm::Model for #struct_name #generics #where_clause {
 			type PrimaryKey = #pk_type;
 
 			fn table_name() -> &'static str {
@@ -530,16 +530,16 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 
 			#composite_pk_impl
 
-			fn field_metadata() -> Vec<::reinhardt_orm::inspection::FieldInfo> {
+			fn field_metadata() -> Vec<::reinhardt_db::orm::inspection::FieldInfo> {
 				vec![
 					#(#field_metadata_items),*
 				]
 			}
 
-			fn index_metadata() -> Vec<::reinhardt_orm::inspection::IndexInfo> {
+			fn index_metadata() -> Vec<::reinhardt_db::orm::inspection::IndexInfo> {
 				vec![
 					#(
-						::reinhardt_orm::inspection::IndexInfo {
+						::reinhardt_db::orm::inspection::IndexInfo {
 							fields: vec![#indexed_fields.to_string()],
 							unique: false,
 							name: None,
@@ -548,12 +548,12 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 				]
 			}
 
-			fn constraint_metadata() -> Vec<::reinhardt_orm::inspection::ConstraintInfo> {
+			fn constraint_metadata() -> Vec<::reinhardt_db::orm::inspection::ConstraintInfo> {
 				vec![
 					#(
-						::reinhardt_orm::inspection::ConstraintInfo {
+						::reinhardt_db::orm::inspection::ConstraintInfo {
 							name: #constraint_names.to_string(),
-							constraint_type: ::reinhardt_orm::inspection::ConstraintType::Check,
+							constraint_type: ::reinhardt_db::orm::inspection::ConstraintType::Check,
 							definition: #constraint_expressions.to_string(),
 						}
 					),*
@@ -590,7 +590,7 @@ fn generate_field_metadata(field_infos: &[FieldInfo]) -> Result<Vec<TokenStream>
 			attrs.push(quote! {
 				attributes.insert(
 					"max_length".to_string(),
-					::reinhardt_orm::fields::FieldKwarg::Uint(#max_length)
+					::reinhardt_db::orm::fields::FieldKwarg::Uint(#max_length)
 				);
 			});
 		}
@@ -602,7 +602,7 @@ fn generate_field_metadata(field_infos: &[FieldInfo]) -> Result<Vec<TokenStream>
 			attrs.push(quote! {
 				attributes.insert(
 					"email".to_string(),
-					::reinhardt_orm::fields::FieldKwarg::Bool(true)
+					::reinhardt_db::orm::fields::FieldKwarg::Bool(true)
 				);
 			});
 		}
@@ -612,7 +612,7 @@ fn generate_field_metadata(field_infos: &[FieldInfo]) -> Result<Vec<TokenStream>
 			attrs.push(quote! {
 				attributes.insert(
 					"url".to_string(),
-					::reinhardt_orm::fields::FieldKwarg::Bool(true)
+					::reinhardt_db::orm::fields::FieldKwarg::Bool(true)
 				);
 			});
 		}
@@ -620,7 +620,7 @@ fn generate_field_metadata(field_infos: &[FieldInfo]) -> Result<Vec<TokenStream>
 			attrs.push(quote! {
 				attributes.insert(
 					"min_length".to_string(),
-					::reinhardt_orm::fields::FieldKwarg::Uint(#min_length)
+					::reinhardt_db::orm::fields::FieldKwarg::Uint(#min_length)
 				);
 			});
 		}
@@ -628,7 +628,7 @@ fn generate_field_metadata(field_infos: &[FieldInfo]) -> Result<Vec<TokenStream>
 			attrs.push(quote! {
 				attributes.insert(
 					"min_value".to_string(),
-					::reinhardt_orm::fields::FieldKwarg::Int(#min_value)
+					::reinhardt_db::orm::fields::FieldKwarg::Int(#min_value)
 				);
 			});
 		}
@@ -636,7 +636,7 @@ fn generate_field_metadata(field_infos: &[FieldInfo]) -> Result<Vec<TokenStream>
 			attrs.push(quote! {
 				attributes.insert(
 					"max_value".to_string(),
-					::reinhardt_orm::fields::FieldKwarg::Int(#max_value)
+					::reinhardt_db::orm::fields::FieldKwarg::Int(#max_value)
 				);
 			});
 		}
@@ -646,7 +646,7 @@ fn generate_field_metadata(field_infos: &[FieldInfo]) -> Result<Vec<TokenStream>
 				let mut attributes = ::std::collections::HashMap::new();
 				#(#attrs)*
 
-				::reinhardt_orm::inspection::FieldInfo {
+				::reinhardt_db::orm::inspection::FieldInfo {
 					name: #name.to_string(),
 					field_type: #field_type_path.to_string(),
 					nullable: #nullable,
@@ -713,7 +713,7 @@ fn generate_registration_code(
 		field_registrations.push(quote! {
 			metadata.add_field(
 				#field_name.to_string(),
-				::reinhardt_migrations::model_registry::FieldMetadata::new(#field_type)
+				::reinhardt_db::migrations::model_registry::FieldMetadata::new(#field_type)
 					#(#params)*
 			);
 		});
@@ -722,7 +722,7 @@ fn generate_registration_code(
 	let code = quote! {
 		#[::ctor::ctor]
 		fn #register_fn_name() {
-			use ::reinhardt_migrations::model_registry::*;
+			use ::reinhardt_db::migrations::model_registry::*;
 
 			let mut metadata = ModelMetadata::new(
 				#app_label,
@@ -744,16 +744,16 @@ fn generate_composite_pk_impl(pk_fields: &[&FieldInfo]) -> TokenStream {
 	let field_name_strings: Vec<String> = pk_fields.iter().map(|f| f.name.to_string()).collect();
 
 	quote! {
-		fn composite_primary_key() -> Option<::reinhardt_orm::composite_pk::CompositePrimaryKey> {
+		fn composite_primary_key() -> Option<::reinhardt_db::orm::composite_pk::CompositePrimaryKey> {
 			Some(
-				::reinhardt_orm::composite_pk::CompositePrimaryKey::new(
+				::reinhardt_db::orm::composite_pk::CompositePrimaryKey::new(
 					vec![#(#field_name_strings.to_string()),*]
 				)
 				.expect("Invalid composite primary key")
 			)
 		}
 
-		fn get_composite_pk_values(&self) -> ::std::collections::HashMap<String, ::reinhardt_orm::composite_pk::PkValue> {
+		fn get_composite_pk_values(&self) -> ::std::collections::HashMap<String, ::reinhardt_db::orm::composite_pk::PkValue> {
 			// Use the generated composite PK type's to_pk_values() method
 			if let Some(pk) = self.primary_key() {
 				pk.to_pk_values()
@@ -801,7 +801,7 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 			quote! {
 				values.insert(
 					stringify!(#name).to_string(),
-					::reinhardt_orm::composite_pk::PkValue::from(&self.#name)
+					::reinhardt_db::orm::composite_pk::PkValue::from(&self.#name)
 				);
 			}
 		})
@@ -823,7 +823,7 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 			}
 
 			/// Convert to a HashMap of PkValues for database operations
-			pub fn to_pk_values(&self) -> ::std::collections::HashMap<String, ::reinhardt_orm::composite_pk::PkValue> {
+			pub fn to_pk_values(&self) -> ::std::collections::HashMap<String, ::reinhardt_db::orm::composite_pk::PkValue> {
 				let mut values = ::std::collections::HashMap::new();
 				#(#pk_value_conversions)*
 				values
