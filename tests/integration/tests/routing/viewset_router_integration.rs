@@ -518,7 +518,10 @@ async fn test_initialize_view_set_with_empty_actions() {
 	assert!(result.is_err());
 	if let Err(e) = result {
 		let err_msg = e.to_string();
-		assert!(err_msg.contains("actions") && err_msg.contains("must be provided"));
+		assert_eq!(
+			err_msg,
+			"HTTP error: The `actions` argument must be provided when calling `.as_view()` on a ViewSet. For example `.as_view({'get': 'list'})`"
+		);
 	}
 }
 
@@ -540,8 +543,11 @@ async fn test_initialize_view_set_with_both_name_and_suffix() {
 	assert!(result.is_err());
 	if let Err(e) = result {
 		let err_msg = e.to_string();
-		assert!(err_msg.contains("name") && err_msg.contains("suffix"));
-		assert!(err_msg.contains("mutually exclusive"));
+		// Exact error message from builder.rs
+		assert_eq!(
+			err_msg,
+			"HTTP error: reinhardt_viewsets::viewset::GenericViewSet<()>() received both `name` and `suffix`, which are mutually exclusive arguments."
+		);
 	}
 }
 
@@ -587,7 +593,7 @@ async fn test_args_kwargs_request_action_map_on_self() {
 	if let Err(e) = response {
 		// Should get "Action not implemented" error, not a method routing error
 		let err_msg = e.to_string();
-		assert!(err_msg.contains("Action not implemented"));
+		assert_eq!(err_msg, "Not found: Action not implemented");
 	}
 }
 

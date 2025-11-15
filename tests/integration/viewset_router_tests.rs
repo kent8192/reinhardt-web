@@ -519,7 +519,10 @@ async fn test_initialize_view_set_with_empty_actions() {
 	assert!(result.is_err());
 	if let Err(e) = result {
 		let err_msg = e.to_string();
-		assert!(err_msg.contains("actions") && err_msg.contains("must be provided"));
+		assert_eq!(
+			err_msg,
+			"The `actions` argument must be provided when calling `.as_view()` on a ViewSet. For example: .as_view().with_actions(viewset_actions!(GET => \"list\"))"
+		);
 	}
 }
 
@@ -541,8 +544,11 @@ async fn test_initialize_view_set_with_both_name_and_suffix() {
 	assert!(result.is_err());
 	if let Err(e) = result {
 		let err_msg = e.to_string();
-		assert!(err_msg.contains("name") && err_msg.contains("suffix"));
-		assert!(err_msg.contains("mutually exclusive"));
+		// Exact error message from builder.rs
+		assert_eq!(
+			err_msg,
+			"reinhardt_viewsets::GenericViewSet<()>() received both `name` and `suffix`, which are mutually exclusive arguments."
+		);
 	}
 }
 
@@ -552,31 +558,20 @@ async fn test_args_kwargs_request_action_map_on_self() {
 	use reinhardt_viewsets::{ViewSetHandler, viewset_actions};
 
 	// Test that ViewSetHandler has the expected behavior:
-	// 1. action_map is set during construction
-	// 2. args, kwargs, request are set after handling a request
+	// - It can be called as a handler
+	// - It has access to request, action_map, args, kwargs
 
-	// Create a handler using as_view()
 	let viewset = GenericViewSet::new("test", ());
 	let actions = viewset_actions!(GET => "list");
+	let handler = viewset.as_view().with_actions(actions).build().unwrap();
 
-	// Build the handler
-	let result = viewset.as_view().with_actions(actions.clone()).build();
-	assert!(
-		result.is_ok(),
-		"as_view() should successfully build a handler"
-	);
-
-	// We can't directly test the internal state without accessing ViewSetHandler,
-	// but we can test that the handler works correctly by sending requests
-	let handler = result.unwrap();
-
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	// Create a test request
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(Uri::from_static("/test/"))
+		.version(Version::HTTP_11)
+		.body(vec![])
+		.unwrap();
 
 	// Handler should be able to process the request
 	// This implicitly tests that args, kwargs, request, and action_map are being set
@@ -588,7 +583,7 @@ async fn test_args_kwargs_request_action_map_on_self() {
 	if let Err(e) = response {
 		// Should get "Action not implemented" error, not a method routing error
 		let err_msg = e.to_string();
-		assert!(err_msg.contains("Action not implemented"));
+		assert_eq!(err_msg, "Action not implemented");
 	}
 }
 
