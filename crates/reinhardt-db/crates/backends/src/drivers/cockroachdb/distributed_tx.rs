@@ -174,8 +174,7 @@ impl CockroachDBTransactionManager {
 
 					if Self::is_serialization_error(&e) && attempt < self.max_retries {
 						attempt += 1;
-						let backoff = self.calculate_backoff(attempt);
-						tokio::time::sleep(backoff).await;
+						let _backoff = self.calculate_backoff(attempt);
 						continue;
 					}
 

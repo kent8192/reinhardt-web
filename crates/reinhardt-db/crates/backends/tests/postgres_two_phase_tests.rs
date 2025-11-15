@@ -308,8 +308,8 @@ async fn test_cleanup_stale_transactions(
 		.await
 		.expect("Failed to prepare");
 
-	// Wait a moment
-	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+	// Wait for transaction to become stale (threshold is 1 second)
+	tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
 
 	// Cleanup transactions older than 1 second
 	let cleaned = participant
@@ -317,7 +317,7 @@ async fn test_cleanup_stale_transactions(
 		.await
 		.expect("Failed to cleanup");
 
-	assert!(cleaned >= 1);
+	assert!(cleaned >= 1, "Should clean at least one stale transaction");
 
 	// Verify transaction no longer exists
 	let prepared = participant.find_prepared_transaction(xid).await.unwrap();

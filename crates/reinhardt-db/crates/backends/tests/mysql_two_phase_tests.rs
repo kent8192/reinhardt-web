@@ -43,18 +43,17 @@ async fn mysql_pool() -> (MysqlContainer, Arc<MySqlPool>) {
 		loop {
 			match MySqlPool::connect(&database_url).await {
 				Ok(pool) => break pool,
-				Err(e) if retries < max_retries => {
-					retries += 1;
-					let backoff = std::time::Duration::from_millis(100 * (1 << retries));
-					tokio::time::sleep(backoff).await;
-					if retries == max_retries {
+				Err(e) => {
+					if retries >= max_retries {
 						panic!(
 							"Failed to connect to MySQL after {} retries: {}",
 							max_retries, e
 						);
 					}
+					retries += 1;
+					let backoff = std::time::Duration::from_millis(100 * (1 << retries));
+					tokio::time::sleep(backoff).await;
 				}
-				Err(e) => panic!("Failed to connect to MySQL: {}", e),
 			}
 		}
 	};

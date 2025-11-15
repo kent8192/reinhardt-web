@@ -561,7 +561,7 @@ mod cockroachdb_tests {
 		let (_container, pool, _port, _url) = cockroachdb_container.await;
 		cleanup_test_tables(pool.as_ref()).await;
 
-		// Wait a moment to ensure a clean starting point
+		// Wait to ensure a clean starting point for time-based query
 		tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
 		// Create table and insert data
@@ -576,7 +576,7 @@ mod cockroachdb_tests {
 			.await
 			.expect("Failed to insert");
 
-		// Wait a moment for the data to be committed
+		// Wait for the data to be committed before querying historical state
 		tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
 		// Query historical data (100ms ago should be empty since table was just created)
