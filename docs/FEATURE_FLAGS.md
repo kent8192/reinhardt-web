@@ -1742,11 +1742,6 @@ docker ps
 reinhardt-test = { version = "0.1.0-alpha.1", features = ["testcontainers"] }
 ```
 
-3. **Set environment variable (when using Podman)**:
-```bash
-export DOCKER_HOST=unix:///run/podman/podman.sock
-```
-
 ---
 
 ### Debugging Tips
