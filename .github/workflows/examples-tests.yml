@@ -48,7 +48,6 @@ jobs:
 
     services:
       # Use docker services in GitHub Actions
-      # (Podman is for local development)
       postgres:
         image: postgres:16-alpine
         env:
