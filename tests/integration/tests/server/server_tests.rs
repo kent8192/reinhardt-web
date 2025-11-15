@@ -3,7 +3,7 @@
 use hyper::Method;
 use reinhardt_http::Response;
 use reinhardt_routers::UnifiedRouter as Router;
-use reinhardt_server::HttpServer;
+use reinhardt_test::fixtures::*;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -12,24 +12,12 @@ async fn test_server_basic_request() {
 		Ok(Response::ok().with_body("Server works!"))
 	}));
 
-	// Spawn server in background
-	let addr = "127.0.0.1:0".parse::<std::net::SocketAddr>().unwrap();
-	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-	let server_addr = listener.local_addr().unwrap();
-
-	let router_clone = router.clone();
-	tokio::spawn(async move {
-		let server = HttpServer::new(router_clone);
-		let _ = server.listen(server_addr).await;
-	});
-
-	// Give server time to start
-	tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+	let server = test_server_guard(router).await;
 
 	// Make HTTP request
 	let client = reqwest::Client::new();
 	let response = client
-		.get(format!("http://{}/test", server_addr))
+		.get(format!("{}/test", server.url))
 		.send()
 		.await
 		.unwrap();
@@ -50,29 +38,19 @@ async fn test_server_multiple_requests() {
 			}),
 	);
 
-	let addr = "127.0.0.1:0".parse::<std::net::SocketAddr>().unwrap();
-	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-	let server_addr = listener.local_addr().unwrap();
-
-	let router_clone = router.clone();
-	tokio::spawn(async move {
-		let server = HttpServer::new(router_clone);
-		let _ = server.listen(server_addr).await;
-	});
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
 
 	let response = client
-		.get(format!("http://{}/hello", server_addr))
+		.get(format!("{}/hello", server.url))
 		.send()
 		.await
 		.unwrap();
 	assert_eq!(response.text().await.unwrap(), "Hello!");
 
 	let response = client
-		.get(format!("http://{}/goodbye", server_addr))
+		.get(format!("{}/goodbye", server.url))
 		.send()
 		.await
 		.unwrap();
@@ -88,21 +66,11 @@ async fn test_server_post_request() {
 		}),
 	);
 
-	let addr = "127.0.0.1:0".parse::<std::net::SocketAddr>().unwrap();
-	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-	let server_addr = listener.local_addr().unwrap();
-
-	let router_clone = router.clone();
-	tokio::spawn(async move {
-		let server = HttpServer::new(router_clone);
-		let _ = server.listen(server_addr).await;
-	});
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
 	let response = client
-		.post(format!("http://{}/submit", server_addr))
+		.post(format!("{}/submit", server.url))
 		.body("test data")
 		.send()
 		.await
@@ -121,17 +89,7 @@ async fn test_server_json_request_response() {
 		}),
 	);
 
-	let addr = "127.0.0.1:0".parse::<std::net::SocketAddr>().unwrap();
-	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-	let server_addr = listener.local_addr().unwrap();
-
-	let router_clone = router.clone();
-	tokio::spawn(async move {
-		let server = HttpServer::new(router_clone);
-		let _ = server.listen(server_addr).await;
-	});
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
 	let test_data = serde_json::json!({
@@ -140,7 +98,7 @@ async fn test_server_json_request_response() {
 	});
 
 	let response = client
-		.post(format!("http://{}/echo", server_addr))
+		.post(format!("{}/echo", server.url))
 		.json(&test_data)
 		.send()
 		.await
@@ -160,21 +118,11 @@ async fn test_server_404_response() {
 		}),
 	);
 
-	let addr = "127.0.0.1:0".parse::<std::net::SocketAddr>().unwrap();
-	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-	let server_addr = listener.local_addr().unwrap();
-
-	let router_clone = router.clone();
-	tokio::spawn(async move {
-		let server = HttpServer::new(router_clone);
-		let _ = server.listen(server_addr).await;
-	});
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
 	let response = client
-		.get(format!("http://{}/notfound", server_addr))
+		.get(format!("{}/notfound", server.url))
 		.send()
 		.await
 		.unwrap();
@@ -190,26 +138,16 @@ async fn test_server_concurrent_requests() {
 		}),
 	);
 
-	let addr = "127.0.0.1:0".parse::<std::net::SocketAddr>().unwrap();
-	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-	let server_addr = listener.local_addr().unwrap();
-
-	let router_clone = router.clone();
-	tokio::spawn(async move {
-		let server = HttpServer::new(router_clone);
-		let _ = server.listen(server_addr).await;
-	});
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+	let server = test_server_guard(router).await;
 
 	// Make multiple concurrent requests
 	let mut handles = vec![];
 	for _ in 0..10 {
-		let addr = server_addr;
+		let url = server.url.clone();
 		let handle = tokio::spawn(async move {
 			let client = reqwest::Client::new();
 			client
-				.get(format!("http://{}/test", addr))
+				.get(format!("{}/test", url))
 				.send()
 				.await
 				.unwrap()
@@ -240,21 +178,11 @@ async fn test_server_custom_headers() {
 		}),
 	);
 
-	let addr = "127.0.0.1:0".parse::<std::net::SocketAddr>().unwrap();
-	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-	let server_addr = listener.local_addr().unwrap();
-
-	let router_clone = router.clone();
-	tokio::spawn(async move {
-		let server = HttpServer::new(router_clone);
-		let _ = server.listen(server_addr).await;
-	});
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
 	let response = client
-		.get(format!("http://{}/headers", server_addr))
+		.get(format!("{}/headers", server.url))
 		.header("User-Agent", "TestAgent/1.0")
 		.send()
 		.await
@@ -268,27 +196,17 @@ async fn test_server_custom_headers() {
 async fn test_server_path_parameters() {
 	let router =
 		Arc::new(
-			Router::new().function("/users/:id", Method::GET, |request| async move {
+			Router::new().function("/users/{id}", Method::GET, |request| async move {
 				let id = request.path_params.get("id").unwrap();
 				Ok(Response::ok().with_body(format!("ID: {}", id)))
 			}),
 		);
 
-	let addr = "127.0.0.1:0".parse::<std::net::SocketAddr>().unwrap();
-	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-	let server_addr = listener.local_addr().unwrap();
-
-	let router_clone = router.clone();
-	tokio::spawn(async move {
-		let server = HttpServer::new(router_clone);
-		let _ = server.listen(server_addr).await;
-	});
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
 	let response = client
-		.get(format!("http://{}/users/123", server_addr))
+		.get(format!("{}/users/123", server.url))
 		.send()
 		.await
 		.unwrap();
