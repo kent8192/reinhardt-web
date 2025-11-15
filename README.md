@@ -135,7 +135,7 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "websockets", "
 ### 1. Install Reinhardt Admin Tool
 
 ```bash
-cargo install reinhardt-admin
+cargo install reinhardt-admin-cli
 ```
 
 ### 2. Create a New Project
@@ -183,7 +183,44 @@ Run the setup script to install pre-commit hooks:
 
 This will automatically check code formatting and linting before each commit.
 
-### 4. Run the Development Server
+### 4. Verify Docker Setup (Required for Integration Tests)
+
+Reinhardt uses Docker for TestContainers integration in database and infrastructure tests.
+
+```bash
+# Verify Docker is installed and running
+docker version
+docker ps
+
+# Both commands should succeed without errors
+```
+
+**Important Notes:**
+
+- **Docker Desktop must be running** before executing integration tests
+- If you have both Docker and Podman installed, ensure `DOCKER_HOST` environment variable is **not** set to a Podman socket
+- The project includes `.testcontainers.properties` to ensure Docker is used
+
+**Troubleshooting:**
+
+If you encounter "Cannot connect to the Docker daemon" errors during tests:
+
+```bash
+# Check if Docker is running
+docker ps
+
+# Check DOCKER_HOST environment variable
+echo $DOCKER_HOST
+
+# It should be empty or point to Docker socket:
+# ✅ Correct: (empty) or unix:///var/run/docker.sock
+# ❌ Incorrect: unix:///.../podman/... (needs to be unset)
+
+# Unset DOCKER_HOST if pointing to Podman
+unset DOCKER_HOST
+```
+
+### 5. Run the Development Server
 
 ```bash
 # Using the runserver binary (recommended)
@@ -219,7 +256,7 @@ cargo run --bin runserver -- --noreload
 
 See [Feature Flags Guide](docs/FEATURE_FLAGS.md) for more auto-reload options.
 
-### 5. Create Your First App
+### 6. Create Your First App
 
 ```bash
 # Create a new app
@@ -242,7 +279,7 @@ users/
 └── tests.rs
 ```
 
-### 6. Register Routes
+### 7. Register Routes
 
 Edit your app's `urls.rs`:
 
@@ -625,7 +662,7 @@ Reinhardt includes the following core components:
 - **Routers**: Function-based and class-based URL routing
 - **Authentication**: JWT, Token, Session, and Basic authentication with BaseUser/FullUser traits
 - **Middleware**: Request/response processing pipeline
-- **Management Commands**: Django-style CLI for project management (`reinhardt-admin`)
+- **Management Commands**: Django-style CLI for project management (`reinhardt-admin-cli`)
 
 ### REST API Features (reinhardt-rest)
 
@@ -639,7 +676,7 @@ Reinhardt includes the following core components:
 
 ### Advanced Features
 
-- **Admin Panel**: Fully-featured admin interface (`reinhardt-admin`) with model management, filtering, bulk actions, and audit logging
+- **Admin Panel**: Fully-featured admin interface (`reinhardt-admin-panel`) with model management, filtering, bulk actions, and audit logging
 - **GraphQL**: Complete GraphQL support (`reinhardt-graphql`) with schema generation and subscription support
 - **WebSockets**: Real-time communication (`reinhardt-websockets`) with channels, rooms, authentication, and Redis integration
 - **Internationalization**: Multi-language support with translation catalogs
@@ -649,7 +686,6 @@ Reinhardt includes the following core components:
 
 - 📚 [Getting Started Guide](docs/GETTING_STARTED.md) - Step-by-step tutorial for beginners
 - 🎛️ [Feature Flags Guide](docs/FEATURE_FLAGS.md) - Optimize your build with granular feature control
-- 🐳 [Podman Setup Guide](docs/PODMAN_SETUP.md) - Use Podman as a Docker Desktop alternative
 - 📖 [API Reference](https://docs.rs/reinhardt) (Coming soon)
 - 📝 [Tutorials](docs/tutorials/) - Learn by building real applications
 

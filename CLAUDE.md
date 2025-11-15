@@ -193,17 +193,42 @@ cargo make clippy  # Lint code
 TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres cargo test
 ```
 
-**Container Runtime (Podman):**
+**Container Runtime:**
 ```bash
-# Start Podman machine (macOS/Windows)
-podman machine start
+# Verify Docker status
+docker version
+docker ps
 
-# Verify Podman status
-podman version
-podman ps
+# Docker daemon should be running automatically on most systems
+```
 
-# Stop Podman machine
-podman machine stop
+**CRITICAL: This project uses Docker for TestContainers integration, NOT Podman.**
+
+- **MUST** ensure Docker Desktop is installed and running
+- **MUST** ensure `DOCKER_HOST` environment variable points to Docker socket:
+  - ✅ Correct: `unix:///var/run/docker.sock` or not set
+  - ❌ Incorrect: `unix:///.../podman/...` (will cause container startup failures)
+- If both Docker and Podman are installed:
+  - Use `.testcontainers.properties` to force Docker usage (already configured in project)
+  - Ensure `DOCKER_HOST` is not set to Podman socket
+- **NEVER** use Podman for integration tests in this project
+
+**Troubleshooting Container Errors:**
+
+If you encounter "Cannot connect to Docker daemon" or "IncompleteMessage" errors:
+
+```bash
+# 1. Check Docker is running
+docker ps
+
+# 2. Check DOCKER_HOST environment variable
+echo $DOCKER_HOST
+
+# 3. If DOCKER_HOST points to Podman, unset it
+unset DOCKER_HOST
+
+# 4. Verify .testcontainers.properties exists in project root
+cat .testcontainers.properties
 ```
 
 ---
