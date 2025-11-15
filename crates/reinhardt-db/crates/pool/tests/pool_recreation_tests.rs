@@ -127,7 +127,6 @@ async fn test_pool_recreate_resets_first_connect() {
 		let _conn = pool.acquire().await.expect("Failed to acquire connection");
 	}
 
-	tokio::time::sleep(Duration::from_millis(50)).await;
 	let count1 = *count.lock().await;
 	assert_eq!(count1, 1, "First connect should have fired once");
 
@@ -142,7 +141,6 @@ async fn test_pool_recreate_resets_first_connect() {
 			.expect("Failed to acquire after recreate");
 	}
 
-	tokio::time::sleep(Duration::from_millis(50)).await;
 	let count2 = *count.lock().await;
 	assert_eq!(count2, 2, "First connect should fire again after recreate");
 }

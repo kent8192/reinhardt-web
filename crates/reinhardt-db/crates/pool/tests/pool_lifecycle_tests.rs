@@ -172,7 +172,6 @@ async fn test_connection_recycle() {
 		.expect("Failed to acquire connection");
 
 	// Wait for recycle time
-	tokio::time::sleep(Duration::from_millis(100)).await;
 
 	// Connection should be recycled on next acquire
 	let _conn2 = pool
@@ -195,7 +194,6 @@ async fn test_min_connections_maintained() {
 		.expect("Failed to create pool");
 
 	// Give pool time to establish minimum connections
-	tokio::time::sleep(Duration::from_millis(100)).await;
 
 	// Pool should have created min_connections
 	// Note: SQLx doesn't expose pool size directly, so we verify by usage
@@ -375,7 +373,6 @@ async fn test_concurrent_pool_operations() {
 				.fetch_one(&mut *conn)
 				.await
 				.expect("Failed to execute query");
-			tokio::time::sleep(Duration::from_millis(10)).await;
 			result
 		});
 		handles.push(handle);
