@@ -21,7 +21,7 @@ pub type PermissionMap = Arc<RwLock<HashMap<(String, String), Vec<String>>>>;
 ///
 /// ```
 /// use reinhardt_auth::object_permissions::ObjectPermissionChecker;
-/// use reinhardt_auth::user::{User, SimpleUser};
+/// use reinhardt_auth::{User, SimpleUser};
 /// use async_trait::async_trait;
 /// use uuid::Uuid;
 ///
@@ -86,7 +86,7 @@ pub trait ObjectPermissionChecker: Send + Sync {
 ///
 /// ```
 /// use reinhardt_auth::object_permissions::{ObjectPermissionManager, ObjectPermissionChecker};
-/// use reinhardt_auth::user::{SimpleUser, User};
+/// use reinhardt_auth::{SimpleUser, User};
 /// use uuid::Uuid;
 ///
 /// #[tokio::main]
@@ -256,8 +256,8 @@ impl ObjectPermissionChecker for ObjectPermissionManager {
 ///
 /// ```
 /// use reinhardt_auth::object_permissions::{ObjectPermission, ObjectPermissionManager};
-/// use reinhardt_auth::permissions::{Permission, PermissionContext};
-/// use reinhardt_auth::user::{SimpleUser, User};
+/// use reinhardt_auth::{Permission, PermissionContext};
+/// use reinhardt_auth::{SimpleUser, User};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 /// use reinhardt_core::types::Request;

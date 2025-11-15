@@ -24,7 +24,7 @@ use uuid::Uuid;
 /// use reinhardt_auth::{AuthenticationBackend, SimpleUser};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_http::Request;
+/// use reinhardt_core::http::Request;
 ///
 /// # async fn example() {
 /// // Create auth backend

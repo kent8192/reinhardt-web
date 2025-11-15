@@ -169,7 +169,7 @@ impl SessionBackend for InMemorySessionBackend {
 ///
 /// ```rust
 /// use reinhardt_sessions::backends::{CacheSessionBackend, SessionBackend};
-/// use reinhardt_cache::InMemoryCache;
+/// use reinhardt_utils::cache::InMemoryCache;
 /// use serde_json::json;
 /// use std::sync::Arc;
 ///

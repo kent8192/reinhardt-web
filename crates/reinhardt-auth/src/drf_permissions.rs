@@ -13,7 +13,7 @@ use async_trait::async_trait;
 ///
 /// ```
 /// use reinhardt_auth::drf_permissions::DrfAllowAny;
-/// use reinhardt_auth::permissions::{Permission, PermissionContext};
+/// use reinhardt_auth::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 /// use reinhardt_core::types::Request;
@@ -57,7 +57,7 @@ impl Permission for DrfAllowAny {
 ///
 /// ```
 /// use reinhardt_auth::drf_permissions::DrfIsAuthenticated;
-/// use reinhardt_auth::permissions::{Permission, PermissionContext};
+/// use reinhardt_auth::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 /// use reinhardt_core::types::Request;
@@ -111,7 +111,7 @@ impl Permission for DrfIsAuthenticated {
 ///
 /// ```
 /// use reinhardt_auth::drf_permissions::DrfIsAdminUser;
-/// use reinhardt_auth::permissions::{Permission, PermissionContext};
+/// use reinhardt_auth::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 /// use reinhardt_core::types::Request;
@@ -166,7 +166,7 @@ impl Permission for DrfIsAdminUser {
 ///
 /// ```
 /// use reinhardt_auth::drf_permissions::DrfIsAuthenticatedOrReadOnly;
-/// use reinhardt_auth::permissions::{Permission, PermissionContext};
+/// use reinhardt_auth::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 /// use reinhardt_core::types::Request;

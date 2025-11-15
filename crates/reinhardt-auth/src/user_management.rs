@@ -105,7 +105,7 @@ pub struct UpdateUserData {
 ///
 /// ```
 /// use reinhardt_auth::user_management::{UserManager, CreateUserData};
-/// use reinhardt_auth::backend::Argon2Hasher;
+/// use reinhardt_auth::Argon2Hasher;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -147,7 +147,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// ```
 	/// use reinhardt_auth::user_management::UserManager;
-	/// use reinhardt_auth::backend::Argon2Hasher;
+	/// use reinhardt_auth::Argon2Hasher;
 	///
 	/// let hasher = Argon2Hasher::new();
 	/// let manager = UserManager::new(hasher);
@@ -167,7 +167,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// ```
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
-	/// use reinhardt_auth::backend::Argon2Hasher;
+	/// use reinhardt_auth::Argon2Hasher;
 	///
 	/// #[tokio::main]
 	/// async fn main() {
@@ -244,7 +244,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// ```
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
-	/// use reinhardt_auth::backend::Argon2Hasher;
+	/// use reinhardt_auth::Argon2Hasher;
 	///
 	/// #[tokio::main]
 	/// async fn main() {
@@ -281,7 +281,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// ```
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
-	/// use reinhardt_auth::backend::Argon2Hasher;
+	/// use reinhardt_auth::Argon2Hasher;
 	///
 	/// #[tokio::main]
 	/// async fn main() {
@@ -320,7 +320,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// ```
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData, UpdateUserData};
-	/// use reinhardt_auth::backend::Argon2Hasher;
+	/// use reinhardt_auth::Argon2Hasher;
 	///
 	/// #[tokio::main]
 	/// async fn main() {
@@ -385,7 +385,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// ```
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
-	/// use reinhardt_auth::backend::Argon2Hasher;
+	/// use reinhardt_auth::Argon2Hasher;
 	///
 	/// #[tokio::main]
 	/// async fn main() {
@@ -431,7 +431,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// ```
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
-	/// use reinhardt_auth::backend::Argon2Hasher;
+	/// use reinhardt_auth::Argon2Hasher;
 	///
 	/// #[tokio::main]
 	/// async fn main() {
@@ -472,7 +472,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// ```
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
-	/// use reinhardt_auth::backend::Argon2Hasher;
+	/// use reinhardt_auth::Argon2Hasher;
 	///
 	/// #[tokio::main]
 	/// async fn main() {

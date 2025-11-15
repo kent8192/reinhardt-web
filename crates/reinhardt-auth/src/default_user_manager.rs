@@ -4,14 +4,22 @@ use crate::BaseUser;
 use crate::base_user_manager::BaseUserManager;
 #[cfg(feature = "argon2-hasher")]
 use crate::default_user::DefaultUser;
+#[cfg(feature = "argon2-hasher")]
 use async_trait::async_trait;
+#[cfg(feature = "argon2-hasher")]
 use chrono::Utc;
+#[cfg(feature = "argon2-hasher")]
 use reinhardt_core::exception::Error;
 
+#[cfg(feature = "argon2-hasher")]
 type Result<T> = std::result::Result<T, Error>;
+#[cfg(feature = "argon2-hasher")]
 use serde_json::Value;
+#[cfg(feature = "argon2-hasher")]
 use std::collections::HashMap;
+#[cfg(feature = "argon2-hasher")]
 use std::sync::{Arc, RwLock};
+#[cfg(feature = "argon2-hasher")]
 use uuid::Uuid;
 
 /// DefaultUserManager - In-memory user manager for DefaultUser

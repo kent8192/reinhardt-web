@@ -23,7 +23,7 @@ type PermissionMap = Arc<RwLock<HashMap<String, Vec<String>>>>;
 ///
 /// ```
 /// use reinhardt_auth::model_permissions::DjangoModelPermissions;
-/// use reinhardt_auth::permissions::{Permission, PermissionContext};
+/// use reinhardt_auth::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 /// use reinhardt_core::types::Request;
@@ -171,7 +171,7 @@ impl Permission for DjangoModelPermissions {
 ///
 /// ```
 /// use reinhardt_auth::model_permissions::DjangoModelPermissionsOrAnonReadOnly;
-/// use reinhardt_auth::permissions::{Permission, PermissionContext};
+/// use reinhardt_auth::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
 /// use reinhardt_core::types::Request;

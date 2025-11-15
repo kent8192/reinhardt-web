@@ -24,7 +24,7 @@ use std::collections::HashMap;
 ///
 /// ```
 /// use reinhardt_auth::{BaseUser, BaseUserManager, Argon2Hasher};
-/// use reinhardt_apps::Result;
+/// use reinhardt_core::exception::Result;
 /// use async_trait::async_trait;
 /// use std::collections::HashMap;
 /// use serde_json::Value;

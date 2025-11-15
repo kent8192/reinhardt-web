@@ -1,9 +1,14 @@
 #[cfg(feature = "argon2-hasher")]
 use crate::Argon2Hasher;
+#[cfg(feature = "argon2-hasher")]
 use crate::{BaseUser, FullUser, PermissionsMixin, User};
+#[cfg(feature = "argon2-hasher")]
 use chrono::{DateTime, Utc};
+#[cfg(feature = "argon2-hasher")]
 use reinhardt_db::orm::Model;
+#[cfg(feature = "argon2-hasher")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "argon2-hasher")]
 use uuid::Uuid;
 
 /// DefaultUser struct - Django's AbstractUser equivalent
