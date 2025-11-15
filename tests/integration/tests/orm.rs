@@ -9,4 +9,3 @@ mod loading_strategy_integration;
 
 #[path = "orm/session_get_integration.rs"]
 mod session_get_integration;
-

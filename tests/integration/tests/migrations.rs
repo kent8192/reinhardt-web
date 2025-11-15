@@ -3,4 +3,3 @@
 
 #[path = "migrations/composite_pk_integration.rs"]
 mod composite_pk_integration;
-

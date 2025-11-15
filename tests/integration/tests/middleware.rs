@@ -3,4 +3,3 @@
 
 #[path = "middleware/csrf_middleware_integration.rs"]
 mod csrf_middleware_integration;
-

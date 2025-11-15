@@ -13,4 +13,3 @@ mod model_derive_integration;
 
 #[path = "macros/validator_integration.rs"]
 mod validator_integration;
-

@@ -18,4 +18,3 @@ mod filters_export_import_integration;
 
 #[path = "admin/performance_integration.rs"]
 mod performance_integration;
-

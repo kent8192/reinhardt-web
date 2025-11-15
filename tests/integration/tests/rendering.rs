@@ -15,4 +15,3 @@ mod template_i18n_integration;
 
 #[path = "rendering/template_pagination_integration.rs"]
 mod template_pagination_integration;
-

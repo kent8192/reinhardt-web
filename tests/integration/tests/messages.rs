@@ -27,4 +27,3 @@ mod storage_basic_integration;
 
 #[path = "messages/views_integration.rs"]
 mod views_integration;
-

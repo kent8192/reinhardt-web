@@ -6,4 +6,3 @@ mod core_integration;
 
 #[path = "di/macros_integration.rs"]
 mod macros_integration;
-

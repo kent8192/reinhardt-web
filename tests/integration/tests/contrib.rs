@@ -18,4 +18,3 @@ mod messages_integration_core;
 
 #[path = "contrib/websocket_integration.rs"]
 mod websocket_integration;
-

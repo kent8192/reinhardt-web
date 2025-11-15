@@ -9,4 +9,3 @@ mod unified_router_integration;
 
 #[path = "routing/viewset_router_integration.rs"]
 mod viewset_router_integration;
-
