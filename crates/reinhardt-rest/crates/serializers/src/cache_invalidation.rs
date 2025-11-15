@@ -226,7 +226,7 @@ impl CacheInvalidator {
 			tokio::spawn(async move {
 				tokio::time::sleep(Duration::from_secs(seconds)).await;
 
-				// Perform immediate invalidation after delay
+				// Perform invalidation after delay
 				if let Ok(mut deps) = invalidator.dependencies.write()
 					&& let Some(cache_keys) = deps.remove(&key_clone)
 				{
