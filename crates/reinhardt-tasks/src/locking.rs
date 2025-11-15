@@ -349,8 +349,6 @@ mod tests {
 			.await
 			.unwrap();
 
-		tokio::time::sleep(Duration::from_millis(200)).await;
-
 		let is_locked = lock.is_locked(task_id).await.unwrap();
 		assert!(!is_locked);
 	}

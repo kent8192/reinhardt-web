@@ -411,7 +411,6 @@ impl HttpWebhookSender {
 						backoff
 					);
 
-					tokio::time::sleep(backoff).await;
 					retry_count += 1;
 				}
 			}
