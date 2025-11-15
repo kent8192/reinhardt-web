@@ -61,7 +61,6 @@ impl AsyncCallableDependency {
 
 	async fn call(&self, value: i32) -> i32 {
 		// Simulate async work
-		tokio::time::sleep(std::time::Duration::from_millis(1)).await;
 		value * self.multiplier
 	}
 }
@@ -202,7 +201,6 @@ struct ResourceDependency {
 impl ResourceDependency {
 	async fn setup() -> Self {
 		// Simulate resource acquisition
-		tokio::time::sleep(std::time::Duration::from_millis(1)).await;
 		Self {
 			resource_id: "resource_123".to_string(),
 			setup_done: true,
@@ -215,7 +213,6 @@ impl ResourceDependency {
 
 	async fn teardown(self) {
 		// Simulate resource cleanup
-		tokio::time::sleep(std::time::Duration::from_millis(1)).await;
 		// Resource cleaned up
 	}
 }

@@ -271,11 +271,9 @@ mod tests {
 		let generator = DependencyGenerator::new(|co| {
 			Box::pin(async move {
 				// Simulate async database connection
-				tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 				co.yield_("database".to_string()).await;
 
 				// Simulate async cache connection
-				tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 				co.yield_("cache".to_string()).await;
 			})
 		});
