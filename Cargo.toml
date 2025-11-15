@@ -231,7 +231,7 @@ members = [
   "crates/reinhardt-graphql",
   "crates/reinhardt-websockets",
   # Integration tests
-  "tests",
+  "tests/integration",
 ]
 
 exclude = []

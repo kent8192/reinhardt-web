@@ -5,20 +5,20 @@ edition = "2021"
 publish = false
 autotests = true
 
-[workspace]
-
 [dependencies]
 # Reinhardt crates
 reinhardt-core = { workspace = true, features = [
   "http",
   "types",
   "exception",
-  "apps",
   "di",
 ] }
-reinhardt-admin = { workspace = true }
-reinhardt-auth = { workspace = true }
+reinhardt-admin-panel = { workspace = true }
+reinhardt-auth = { workspace = true, features = ["argon2-hasher"] }
 reinhardt-security = { path = "../../crates/reinhardt-core/crates/security" }
+reinhardt-http = { workspace = true }
+reinhardt-params = { path = "../../crates/reinhardt-di/crates/params" }
+reinhardt-di = { workspace = true }
 reinhardt-middleware = { path = "../../crates/reinhardt-middleware" }
 reinhardt-templates = { path = "../../crates/reinhardt-template/crates/templates" }
 reinhardt-routers = { path = "../../crates/reinhardt-urls/crates/routers" }
@@ -29,7 +29,7 @@ reinhardt-graphql = { workspace = true }
 reinhardt-db = { path = "../../crates/reinhardt-db" }
 reinhardt-orm = { path = "../../crates/reinhardt-db/crates/orm" }
 reinhardt-migrations = { path = "../../crates/reinhardt-db/crates/migrations" }
-backends = { path = "../../crates/reinhardt-db/crates/backends", package = "reinhardt-db-backends" }
+backends = { path = "../../crates/reinhardt-db/crates/backends", package = "reinhardt-backends" }
 reinhardt-metadata = { path = "../../crates/reinhardt-rest/crates/metadata" }
 reinhardt-versioning = { path = "../../crates/reinhardt-rest/crates/versioning" }
 reinhardt-messages = { workspace = true }
@@ -54,7 +54,7 @@ reinhardt-negotiation = { workspace = true }
 reinhardt-renderers = { path = "../../crates/reinhardt-template/crates/renderers" }
 reinhardt-validators = { path = "../../crates/reinhardt-core/crates/validators" }
 reinhardt-serializers = { path = "../../crates/reinhardt-rest/crates/serializers" }
-reinhardt-settings = { path = "../../crates/reinhardt-conf/crates/settings", features = [
+reinhardt-settings = { workspace = true, features = [
   "async",
   "dynamic-database",
   "dynamic-redis",
@@ -132,12 +132,12 @@ testcontainers-modules = { version = "0.13", features = ["redis", "postgres"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [features]
-default = ["postgres", "sqlite"]
+default = ["postgres", "sqlite", "caching", "hot-reload"]
 testcontainers = []
 postgres = ["reinhardt-orm/postgres", "backends/postgres"]
 sqlite = ["reinhardt-orm/sqlite", "backends/sqlite"]
-caching = []
-hot-reload = []
+caching = ["reinhardt-settings/caching"]
+hot-reload = ["reinhardt-settings/hot-reload"]
 
 [dev-dependencies]
 # Test utilities
