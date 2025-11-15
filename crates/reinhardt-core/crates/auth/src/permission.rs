@@ -12,8 +12,16 @@ use crate::user::User;
 /// ```
 /// use reinhardt_core_auth::{PermissionContext, AnonymousUser, User};
 /// use reinhardt_types::Request;
+/// use hyper::{Method, Uri, Version, header::HeaderMap};
+/// use bytes::Bytes;
 ///
-/// let request = Request::default();
+/// let request = Request::new(
+///     Method::GET,
+///     "/".parse::<Uri>().unwrap(),
+///     Version::HTTP_11,
+///     HeaderMap::new(),
+///     Bytes::new()
+/// );
 /// let context = PermissionContext {
 ///     request: &request,
 ///     is_authenticated: false,
@@ -82,10 +90,18 @@ pub trait Permission: Send + Sync {
 /// ```
 /// use reinhardt_core_auth::{Permission, AllowAny, PermissionContext};
 /// use reinhardt_types::Request;
+/// use hyper::{Method, Uri, Version, header::HeaderMap};
+/// use bytes::Bytes;
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let permission = AllowAny;
-/// let request = Request::default();
+/// let request = Request::new(
+///     Method::GET,
+///     "/".parse::<Uri>().unwrap(),
+///     Version::HTTP_11,
+///     HeaderMap::new(),
+///     Bytes::new()
+/// );
 /// let context = PermissionContext {
 ///     request: &request,
 ///     is_authenticated: false,
@@ -114,11 +130,19 @@ impl Permission for AllowAny {
 /// ```
 /// use reinhardt_core_auth::{Permission, IsAuthenticated, PermissionContext, SimpleUser, User};
 /// use reinhardt_types::Request;
+/// use hyper::{Method, Uri, Version, header::HeaderMap};
+/// use bytes::Bytes;
 /// use uuid::Uuid;
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let permission = IsAuthenticated;
-/// let request = Request::default();
+/// let request = Request::new(
+///     Method::GET,
+///     "/".parse::<Uri>().unwrap(),
+///     Version::HTTP_11,
+///     HeaderMap::new(),
+///     Bytes::new()
+/// );
 ///
 /// // Anonymous user - permission denied
 /// let context = PermissionContext {
@@ -167,11 +191,19 @@ impl Permission for IsAuthenticated {
 /// ```
 /// use reinhardt_core_auth::{Permission, IsAdminUser, PermissionContext, SimpleUser, User};
 /// use reinhardt_types::Request;
+/// use hyper::{Method, Uri, Version, header::HeaderMap};
+/// use bytes::Bytes;
 /// use uuid::Uuid;
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let permission = IsAdminUser;
-/// let request = Request::default();
+/// let request = Request::new(
+///     Method::GET,
+///     "/".parse::<Uri>().unwrap(),
+///     Version::HTTP_11,
+///     HeaderMap::new(),
+///     Bytes::new()
+/// );
 ///
 /// // Non-admin user - permission denied
 /// let user = SimpleUser {
@@ -228,10 +260,18 @@ impl Permission for IsAdminUser {
 /// ```
 /// use reinhardt_core_auth::{Permission, IsActiveUser, PermissionContext};
 /// use reinhardt_types::Request;
+/// use hyper::{Method, Uri, Version, header::HeaderMap};
+/// use bytes::Bytes;
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let permission = IsActiveUser;
-/// let request = Request::default();
+/// let request = Request::new(
+///     Method::GET,
+///     "/".parse::<Uri>().unwrap(),
+///     Version::HTTP_11,
+///     HeaderMap::new(),
+///     Bytes::new()
+/// );
 ///
 /// // Inactive user - permission denied
 /// let context = PermissionContext {
@@ -273,13 +313,20 @@ impl Permission for IsActiveUser {
 /// ```
 /// use reinhardt_core_auth::{Permission, IsAuthenticatedOrReadOnly, PermissionContext};
 /// use reinhardt_types::Request;
-/// use hyper::Method;
+/// use hyper::{Method, Uri, Version, header::HeaderMap};
+/// use bytes::Bytes;
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let permission = IsAuthenticatedOrReadOnly;
 ///
 /// // GET request from anonymous user - allowed
-/// let mut request = Request::default();
+/// let mut request = Request::new(
+///     Method::GET,
+///     "/".parse::<Uri>().unwrap(),
+///     Version::HTTP_11,
+///     HeaderMap::new(),
+///     Bytes::new()
+/// );
 /// request.method = Method::GET;
 /// let context = PermissionContext {
 ///     request: &request,

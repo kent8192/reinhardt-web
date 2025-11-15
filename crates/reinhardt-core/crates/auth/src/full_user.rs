@@ -128,7 +128,7 @@ pub trait FullUser: BaseUser {
 	/// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
 	/// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
 	/// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-	/// #     fn set_last_login(&mut self, time: DateTime<Utc>> { self.last_login = Some(time); }
+	/// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
 	/// #     fn is_active(&self) -> bool { self.is_active }
 	/// # }
 	/// # impl FullUser for MyUser {
@@ -191,7 +191,7 @@ pub trait FullUser: BaseUser {
 	/// #     fn password_hash(&self) -> Option<&str> { self.password_hash.as_deref() }
 	/// #     fn set_password_hash(&mut self, hash: String) { self.password_hash = Some(hash); }
 	/// #     fn last_login(&self) -> Option<DateTime<Utc>> { self.last_login }
-	/// #     fn set_last_login(&mut self, time: DateTime<Utc>> { self.last_login = Some(time); }
+	/// #     fn set_last_login(&mut self, time: DateTime<Utc>) { self.last_login = Some(time); }
 	/// #     fn is_active(&self) -> bool { self.is_active }
 	/// # }
 	/// # impl FullUser for MyUser {

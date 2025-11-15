@@ -89,10 +89,18 @@
 //! ```
 //! use reinhardt_core_auth::{Permission, IsAuthenticated, PermissionContext};
 //! use reinhardt_types::Request;
+//! use hyper::{Method, Uri, Version, header::HeaderMap};
+//! use bytes::Bytes;
 //!
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
 //! let permission = IsAuthenticated;
-//! let request = Request::default();
+//! let request = Request::new(
+//!     Method::GET,
+//!     "/".parse::<Uri>().unwrap(),
+//!     Version::HTTP_11,
+//!     HeaderMap::new(),
+//!     Bytes::new()
+//! );
 //!
 //! let context = PermissionContext {
 //!     request: &request,

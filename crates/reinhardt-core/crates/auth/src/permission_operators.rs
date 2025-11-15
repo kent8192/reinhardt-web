@@ -15,11 +15,11 @@ use std::ops::{BitAnd, BitOr, Not};
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::permission_operators::AndPermission;
-/// use reinhardt_auth::permissions::{IsAuthenticated, IsAdminUser, Permission, PermissionContext};
+/// use reinhardt_core_auth::permission_operators::AndPermission;
+/// use reinhardt_core_auth::permission::{IsAuthenticated, IsAdminUser, Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_core::types::Request;
+/// use reinhardt_types::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -64,8 +64,8 @@ impl<A, B> AndPermission<A, B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_auth::permission_operators::AndPermission;
-	/// use reinhardt_auth::permissions::{IsAuthenticated, IsActiveUser};
+	/// use reinhardt_core_auth::permission_operators::AndPermission;
+	/// use reinhardt_core_auth::permission::{IsAuthenticated, IsActiveUser};
 	///
 	/// let permission = AndPermission::new(IsAuthenticated, IsActiveUser);
 	/// ```
@@ -92,11 +92,11 @@ where
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::permission_operators::OrPermission;
-/// use reinhardt_auth::permissions::{IsAuthenticated, AllowAny, Permission, PermissionContext};
+/// use reinhardt_core_auth::permission_operators::OrPermission;
+/// use reinhardt_core_auth::permission::{IsAuthenticated, AllowAny, Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_core::types::Request;
+/// use reinhardt_types::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -131,8 +131,8 @@ impl<A, B> OrPermission<A, B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_auth::permission_operators::OrPermission;
-	/// use reinhardt_auth::permissions::{IsAdminUser, IsActiveUser};
+	/// use reinhardt_core_auth::permission_operators::OrPermission;
+	/// use reinhardt_core_auth::permission::{IsAdminUser, IsActiveUser};
 	///
 	/// let permission = OrPermission::new(IsAdminUser, IsActiveUser);
 	/// ```
@@ -159,11 +159,11 @@ where
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::permission_operators::NotPermission;
-/// use reinhardt_auth::permissions::{IsAuthenticated, Permission, PermissionContext};
+/// use reinhardt_core_auth::permission_operators::NotPermission;
+/// use reinhardt_core_auth::permission::{IsAuthenticated, Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Uri, Version};
-/// use reinhardt_core::types::Request;
+/// use reinhardt_types::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -207,8 +207,8 @@ impl<P> NotPermission<P> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_auth::permission_operators::NotPermission;
-	/// use reinhardt_auth::permissions::IsAdminUser;
+	/// use reinhardt_core_auth::permission_operators::NotPermission;
+	/// use reinhardt_core_auth::permission::IsAdminUser;
 	///
 	/// let permission = NotPermission::new(IsAdminUser);
 	/// ```
