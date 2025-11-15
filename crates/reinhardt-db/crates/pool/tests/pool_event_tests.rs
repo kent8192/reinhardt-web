@@ -3,6 +3,7 @@
 
 use async_trait::async_trait;
 use reinhardt_pool::{ConnectionPool, PoolConfig, PoolEvent, PoolEventListener};
+use rstest::*;
 use sqlx::Sqlite;
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,6 +22,58 @@ impl TestEventListener {
 		};
 		(listener, events)
 	}
+}
+
+/// Helper struct for event polling fixtures
+struct EventPoller;
+
+impl EventPoller {
+	/// Poll until a specific event type is received
+	async fn wait_for_event<F>(
+		events: Arc<Mutex<Vec<PoolEvent>>>,
+		timeout: Duration,
+		predicate: F,
+	) -> Result<(), String>
+	where
+		F: Fn(&PoolEvent) -> bool + Send,
+	{
+		reinhardt_test::poll_until(timeout, Duration::from_millis(10), || async {
+			let events = events.lock().await;
+			events.iter().any(&predicate)
+		})
+		.await
+	}
+
+	/// Poll until event list is non-empty
+	async fn wait_for_any_event(
+		events: Arc<Mutex<Vec<PoolEvent>>>,
+		timeout: Duration,
+	) -> Result<(), String> {
+		reinhardt_test::poll_until(timeout, Duration::from_millis(10), || async {
+			let events = events.lock().await;
+			!events.is_empty()
+		})
+		.await
+	}
+
+	/// Poll until event count reaches expected value
+	async fn wait_for_event_count(
+		events: Arc<Mutex<Vec<PoolEvent>>>,
+		expected: usize,
+		timeout: Duration,
+	) -> Result<(), String> {
+		reinhardt_test::poll_until(timeout, Duration::from_millis(10), || async {
+			let events = events.lock().await;
+			events.len() >= expected
+		})
+		.await
+	}
+}
+
+/// Fixture for event poller helper
+#[fixture]
+fn event_poller() -> EventPoller {
+	EventPoller
 }
 
 #[async_trait]
@@ -142,7 +195,6 @@ async fn test_event_serialization() {
 async fn test_event_timestamps() {
 	// Test that events include timestamps
 	let event1 = PoolEvent::connection_acquired("conn-1".to_string());
-	tokio::time::sleep(Duration::from_millis(10)).await;
 	let event2 = PoolEvent::connection_acquired("conn-2".to_string());
 
 	match (&event1, &event2) {
@@ -160,8 +212,9 @@ async fn test_event_timestamps() {
 // These tests verify that pool events are properly emitted during connection lifecycle operations.
 // The event emission system is functional but may require additional hooks for advanced use cases.
 
+#[rstest]
 #[tokio::test]
-async fn test_checkout_event() {
+async fn test_checkout_event(_event_poller: EventPoller) {
 	// Test that checkout event fires when connection is checked out
 	// Based on SQLAlchemy test_checkout_event
 	let url = "sqlite::memory:";
@@ -177,7 +230,10 @@ async fn test_checkout_event() {
 	// Acquire connection (should trigger checkout event)
 	let _conn = pool.acquire().await.expect("Failed to acquire connection");
 
-	tokio::time::sleep(Duration::from_millis(100)).await;
+	// Wait for event to be recorded
+	EventPoller::wait_for_any_event(events.clone(), Duration::from_millis(100))
+		.await
+		.expect("Should receive checkout event within 100ms");
 
 	let events = events.lock().await;
 	assert!(!events.is_empty(), "Should have received checkout event");
@@ -192,8 +248,9 @@ async fn test_checkout_event() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
-async fn test_checkin_event() {
+async fn test_checkin_event(_event_poller: EventPoller) {
 	// Test that checkin event fires when connection is returned
 	// Based on SQLAlchemy test_checkin_event
 	let url = "sqlite::memory:";
@@ -211,7 +268,12 @@ async fn test_checkin_event() {
 		// Connection returned on drop
 	}
 
-	tokio::time::sleep(Duration::from_millis(100)).await;
+	// Wait for ConnectionReturned event
+	EventPoller::wait_for_event(events.clone(), Duration::from_millis(100), |e| {
+		matches!(e, PoolEvent::ConnectionReturned { .. })
+	})
+	.await
+	.expect("Should receive ConnectionReturned event within 100ms");
 
 	let events = events.lock().await;
 	let returned_events: Vec<_> = events
@@ -225,8 +287,9 @@ async fn test_checkin_event() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
-async fn test_connect_event() {
+async fn test_connect_event(_event_poller: EventPoller) {
 	// Test that connect event fires on connection creation (first connect)
 	// Based on SQLAlchemy test_connect_event
 	let url = "sqlite::memory:";
@@ -243,7 +306,12 @@ async fn test_connect_event() {
 
 	let _conn = pool.acquire().await.expect("Failed to acquire connection");
 
-	tokio::time::sleep(Duration::from_millis(100)).await;
+	// Wait for ConnectionCreated event
+	EventPoller::wait_for_event(events.clone(), Duration::from_millis(100), |e| {
+		matches!(e, PoolEvent::ConnectionCreated { .. })
+	})
+	.await
+	.expect("Should receive ConnectionCreated event within 100ms");
 
 	let events = events.lock().await;
 	let created_events: Vec<_> = events
@@ -257,8 +325,9 @@ async fn test_connect_event() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
-async fn test_first_connect_event() {
+async fn test_first_connect_event(_event_poller: EventPoller) {
 	// Test that first_connect event fires only once
 	// Based on SQLAlchemy test_first_connect_event
 	let url = "sqlite::memory:";
@@ -273,10 +342,18 @@ async fn test_first_connect_event() {
 
 	// First connection
 	let _conn1 = pool.acquire().await.expect("Failed to acquire conn1");
-	tokio::time::sleep(Duration::from_millis(50)).await;
+
+	// Wait for first ConnectionCreated event
+	EventPoller::wait_for_event(events.clone(), Duration::from_millis(100), |e| {
+		matches!(e, PoolEvent::ConnectionCreated { .. })
+	})
+	.await
+	.expect("Should receive first ConnectionCreated event within 100ms");
 
 	// Second connection
 	let _conn2 = pool.acquire().await.expect("Failed to acquire conn2");
+
+	// Small delay to ensure no additional events
 	tokio::time::sleep(Duration::from_millis(50)).await;
 
 	// Verify that ConnectionCreated event fired only once (for first connect)
@@ -292,8 +369,9 @@ async fn test_first_connect_event() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
-async fn test_checkout_event_fires_subsequent() {
+async fn test_checkout_event_fires_subsequent(_event_poller: EventPoller) {
 	// Test that checkout event fires for each checkout
 	// Based on SQLAlchemy test_checkout_event_fires_subsequent
 	let url = "sqlite::memory:";
@@ -309,10 +387,12 @@ async fn test_checkout_event_fires_subsequent() {
 	// Multiple checkouts
 	for _ in 0..3 {
 		let _conn = pool.acquire().await.expect("Failed to acquire connection");
-		tokio::time::sleep(Duration::from_millis(10)).await;
 	}
 
-	tokio::time::sleep(Duration::from_millis(100)).await;
+	// Wait for at least 3 ConnectionAcquired events
+	EventPoller::wait_for_event_count(events.clone(), 3, Duration::from_millis(200))
+		.await
+		.expect("Should receive at least 3 ConnectionAcquired events within 200ms");
 
 	let events = events.lock().await;
 	let acquired_count = events
@@ -327,8 +407,9 @@ async fn test_checkout_event_fires_subsequent() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
-async fn test_soft_invalidate_event() {
+async fn test_soft_invalidate_event(_event_poller: EventPoller) {
 	// Test soft_invalidate event
 	// Based on SQLAlchemy test_soft_invalidate_event_no_exception
 	let url = "sqlite::memory:";
@@ -346,7 +427,12 @@ async fn test_soft_invalidate_event() {
 		conn.soft_invalidate().await;
 	}
 
-	tokio::time::sleep(Duration::from_millis(100)).await;
+	// Wait for ConnectionSoftInvalidated event
+	EventPoller::wait_for_event(events.clone(), Duration::from_millis(100), |e| {
+		matches!(e, PoolEvent::ConnectionSoftInvalidated { .. })
+	})
+	.await
+	.expect("Should receive ConnectionSoftInvalidated event within 100ms");
 
 	let events = events.lock().await;
 	let soft_invalidated = events
@@ -359,8 +445,9 @@ async fn test_soft_invalidate_event() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
-async fn test_invalidate_event() {
+async fn test_invalidate_event(_event_poller: EventPoller) {
 	// Test invalidate event
 	// Based on SQLAlchemy test_invalidate_event_no_exception
 	let url = "sqlite::memory:";
@@ -378,7 +465,12 @@ async fn test_invalidate_event() {
 		conn.invalidate("Test invalidation".to_string()).await;
 	}
 
-	tokio::time::sleep(Duration::from_millis(100)).await;
+	// Wait for ConnectionInvalidated event
+	EventPoller::wait_for_event(events.clone(), Duration::from_millis(100), |e| {
+		matches!(e, PoolEvent::ConnectionInvalidated { .. })
+	})
+	.await
+	.expect("Should receive ConnectionInvalidated event within 100ms");
 
 	let events = events.lock().await;
 	let invalidated = events
@@ -391,8 +483,9 @@ async fn test_invalidate_event() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
-async fn test_reset_event() {
+async fn test_reset_event(_event_poller: EventPoller) {
 	// Test reset event on connection return
 	// Based on SQLAlchemy test_reset_event
 	let url = "sqlite::memory:";
@@ -410,7 +503,12 @@ async fn test_reset_event() {
 		conn.reset().await;
 	}
 
-	tokio::time::sleep(Duration::from_millis(100)).await;
+	// Wait for ConnectionReset event
+	EventPoller::wait_for_event(events.clone(), Duration::from_millis(100), |e| {
+		matches!(e, PoolEvent::ConnectionReset { .. })
+	})
+	.await
+	.expect("Should receive ConnectionReset event within 100ms");
 
 	let events = events.lock().await;
 	let reset = events
