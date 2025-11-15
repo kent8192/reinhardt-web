@@ -49,7 +49,7 @@ fn test_validator_error_unique_together_violation() {
 	let display = format!("{}", error);
 	assert_eq!(
 		display,
-		"Unique together violation on fields [username, email] with values (username=alice, email=alice@example.com): Username and email combination must be unique"
+		"Unique together violation on fields [username, email] with values (email=alice@example.com, username=alice): Username and email combination must be unique"
 	);
 }
 

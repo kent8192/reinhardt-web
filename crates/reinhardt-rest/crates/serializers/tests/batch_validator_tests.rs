@@ -32,7 +32,7 @@ async fn setup_test_db() -> (testcontainers::ContainerAsync<GenericImage>, Strin
 	let database_url = format!("postgres://postgres:test@localhost:{}/test_db", port);
 
 	// Initialize global database connection
-	reinhardt_orm::manager::init_database(&database_url)
+	reinhardt_db::orm::manager::init_database(&database_url)
 		.await
 		.expect("Failed to initialize database");
 
