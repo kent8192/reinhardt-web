@@ -361,6 +361,22 @@ impl WebSocketServer {
 										}
 									}
 								}
+							} else if msg.is_binary() {
+								let data = msg.into_data();
+								println!("Received binary message from {}: {} bytes", peer_addr, data.len());
+
+								// Echo binary messages directly back to client
+								if use_broadcast {
+									// Broadcast mode: send through broadcast manager
+									if let Some(ref manager) = broadcast_manager
+										&& let Some(clients) = manager.clients.read().await.get(&peer_addr) {
+											let mut sender = clients.sender.lock().await;
+											sender.send(Message::Binary(data)).await?;
+										}
+								} else if let Some(ref mut w) = direct_write {
+									// Normal mode: send directly
+									w.send(Message::Binary(data)).await?;
+								}
 							} else if msg.is_close() {
 								println!("Connection closing: {}", peer_addr);
 								break;
