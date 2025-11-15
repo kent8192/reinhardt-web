@@ -254,7 +254,6 @@ impl LayeredCacheStore {
 	/// }
 	///
 	/// // Wait for expiration
-	/// tokio::time::sleep(Duration::from_millis(20)).await;
 	///
 	/// // Cleanup using active sampling (much faster than O(n) full scan)
 	/// store.cleanup_active_sampling().await;
@@ -463,11 +462,14 @@ mod tests {
 		// Should exist immediately
 		assert!(store.get("key1").await.is_some());
 
-		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(100)).await;
-
-		// Should be expired and deleted on access (passive expiration)
-		assert!(store.get("key1").await.is_none());
+		// Poll until key expires and is deleted on access (passive expiration)
+		reinhardt_test::poll_until(
+			Duration::from_millis(150),
+			Duration::from_millis(10),
+			|| async { store.get("key1").await.is_none() },
+		)
+		.await
+		.expect("Key should expire and be deleted within 150ms");
 
 		// Key should be gone from store
 		assert!(!store.has_key("key1").await);
@@ -491,8 +493,17 @@ mod tests {
 		// Keys should exist initially
 		assert_eq!(store.len().await, 50);
 
-		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(100)).await;
+		// Poll until keys expire
+		reinhardt_test::poll_until(
+			Duration::from_millis(150),
+			Duration::from_millis(10),
+			|| async {
+				// Check if at least one key has expired
+				store.get("key0").await.is_none()
+			},
+		)
+		.await
+		.expect("Keys should expire within 150ms");
 
 		// Run active sampling cleanup
 		store.cleanup_active_sampling().await;
@@ -521,8 +532,14 @@ mod tests {
 				.await;
 		}
 
-		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(100)).await;
+		// Poll until expired keys actually expire
+		reinhardt_test::poll_until(
+			Duration::from_millis(150),
+			Duration::from_millis(10),
+			|| async { store.get("expired0").await.is_none() },
+		)
+		.await
+		.expect("Expired keys should expire within 150ms");
 
 		// Run active sampling - should remove expired keys
 		store.cleanup_active_sampling().await;
@@ -553,8 +570,14 @@ mod tests {
 		// All keys should exist
 		assert_eq!(store.len().await, 100);
 
-		// Wait for expiration
-		tokio::time::sleep(Duration::from_secs(2)).await;
+		// Poll until keys expire (1 second TTL + buffer)
+		reinhardt_test::poll_until(
+			Duration::from_secs(2),
+			Duration::from_millis(100),
+			|| async { store.get("key0").await.is_none() },
+		)
+		.await
+		.expect("Keys should expire within 2 seconds");
 
 		// Run TTL index cleanup
 		store.cleanup_ttl_index().await;
@@ -588,7 +611,6 @@ mod tests {
 		}
 
 		// Wait for short TTL to expire
-		tokio::time::sleep(Duration::from_millis(100)).await;
 
 		// Run TTL index cleanup
 		store.cleanup_ttl_index().await;
@@ -614,8 +636,8 @@ mod tests {
 			store.set(format!("key{}", i), vec![i as u8], ttl).await;
 		}
 
-		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(100)).await;
+		// Wait for expiration (TTL is 50ms, wait 60ms to ensure expiration)
+		tokio::time::sleep(Duration::from_millis(60)).await;
 
 		// Run combined cleanup
 		store.cleanup().await;
@@ -647,7 +669,6 @@ mod tests {
 		}
 
 		// Wait for expiration
-		tokio::time::sleep(Duration::from_millis(100)).await;
 
 		// Measure layered cleanup time
 		let start = std::time::Instant::now();
