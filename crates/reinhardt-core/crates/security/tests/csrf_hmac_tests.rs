@@ -131,14 +131,18 @@ fn test_hmac_timing_attack_resistance() {
 	let valid_token = generate_token_hmac(&secret, message);
 
 	// Create two invalid tokens:
-	// 1. All correct except first char
-	// 2. All correct except last char
+	// 1. All correct except first char (replace with 'z' to ensure different)
+	// 2. All correct except last char (replace with 'x' to ensure different)
 	let mut almost_valid_1 = valid_token.clone();
-	almost_valid_1.replace_range(0..1, "0");
+	let first_char = almost_valid_1.chars().next().unwrap();
+	let replacement_1 = if first_char == 'z' { 'a' } else { 'z' };
+	almost_valid_1.replace_range(0..1, &replacement_1.to_string());
 
 	let mut almost_valid_2 = valid_token.clone();
 	let last_idx = almost_valid_2.len() - 1;
-	almost_valid_2.replace_range(last_idx..last_idx + 1, "f");
+	let last_char = almost_valid_2.chars().last().unwrap();
+	let replacement_2 = if last_char == 'x' { 'y' } else { 'x' };
+	almost_valid_2.replace_range(last_idx..last_idx + 1, &replacement_2.to_string());
 
 	// Both should fail verification
 	assert!(!verify_token_hmac(&almost_valid_1, &secret, message));
