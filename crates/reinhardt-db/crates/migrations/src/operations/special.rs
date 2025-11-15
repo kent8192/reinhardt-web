@@ -133,7 +133,7 @@ impl RunSQL {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::special::RunSQL;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///

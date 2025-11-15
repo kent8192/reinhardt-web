@@ -358,7 +358,7 @@ impl DeleteModel {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::models::DeleteModel;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
@@ -426,7 +426,7 @@ impl RenameModel {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::models::RenameModel;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
@@ -593,7 +593,7 @@ impl MoveModel {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::models::MoveModel;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///

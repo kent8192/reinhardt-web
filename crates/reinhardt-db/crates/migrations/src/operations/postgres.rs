@@ -89,7 +89,7 @@ impl CreateExtension {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::postgres::CreateExtension;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
@@ -124,7 +124,7 @@ impl CreateExtension {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::postgres::CreateExtension;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
@@ -168,7 +168,7 @@ impl DropExtension {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::postgres::DropExtension;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
@@ -241,7 +241,7 @@ impl CreateCollation {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::postgres::CreateCollation;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///

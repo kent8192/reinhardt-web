@@ -6,9 +6,10 @@ use crate::{
 	DatabaseMigrationRecorder, Migration, MigrationPlan, MigrationRecorder, Operation, Result,
 	operations::SqlDialect,
 };
+use indexmap::IndexMap;
 use reinhardt_backends::{connection::DatabaseConnection, types::DatabaseType};
 use sqlx::SqlitePool;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 pub struct ExecutionResult {
 	pub applied: Vec<String>,
@@ -459,7 +460,7 @@ impl OperationOptimizer {
 		let mut created_tables = HashSet::new();
 
 		// Priority order:
-		// 1. CreateTable
+		// 1. CreateTable (sorted by foreign key dependencies)
 		// 2. AddColumn
 		// 3. AlterColumn
 		// 4. CreateIndex
@@ -469,14 +470,63 @@ impl OperationOptimizer {
 		// 8. DropColumn
 		// 9. DropTable
 
-		// First pass: Create tables
+		// First pass: Create tables (respecting foreign key dependencies)
+		// Extract all CreateTable operations
+		let mut create_table_ops = Vec::new();
 		let mut i = 0;
 		while i < remaining.len() {
-			if let Operation::CreateTable { name, .. } = &remaining[i] {
-				created_tables.insert(name.clone());
-				ordered.push(remaining.remove(i));
+			if matches!(&remaining[i], Operation::CreateTable { .. }) {
+				create_table_ops.push(remaining.remove(i));
 			} else {
 				i += 1;
+			}
+		}
+
+		// Sort CreateTable operations by dependencies using topological sort
+		while !create_table_ops.is_empty() {
+			let mut found_independent = false;
+
+			for i in 0..create_table_ops.len() {
+				if let Operation::CreateTable {
+					name, constraints, ..
+				} = &create_table_ops[i]
+				{
+					// Extract foreign key references from constraints
+					let mut depends_on_uncreated = false;
+					for constraint in constraints {
+						if let Some(referenced_table) =
+							self.extract_foreign_key_reference(constraint)
+						{
+							// Check if the referenced table has been created
+							if !created_tables.contains(&referenced_table)
+								&& referenced_table != *name
+							{
+								depends_on_uncreated = true;
+								break;
+							}
+						}
+					}
+
+					// If this table doesn't depend on any uncreated table, we can create it now
+					if !depends_on_uncreated {
+						created_tables.insert(name.clone());
+						ordered.push(create_table_ops.remove(i));
+						found_independent = true;
+						break;
+					}
+				}
+			}
+
+			// If we couldn't find any independent table, just add the remaining tables
+			// (this handles circular dependencies or malformed constraints)
+			if !found_independent {
+				for op in create_table_ops.drain(..) {
+					if let Operation::CreateTable { name, .. } = &op {
+						created_tables.insert(name.clone());
+					}
+					ordered.push(op);
+				}
+				break;
 			}
 		}
 
@@ -496,9 +546,35 @@ impl OperationOptimizer {
 		ordered
 	}
 
+	/// Extract the referenced table name from a FOREIGN KEY constraint string
+	/// Example: "FOREIGN KEY (table1_id) REFERENCES table1(id)" -> Some("table1")
+	fn extract_foreign_key_reference(&self, constraint: &str) -> Option<String> {
+		// Simple regex-like parsing for "REFERENCES table_name"
+		const REFERENCES_KEYWORD: &str = "REFERENCES";
+		let constraint_upper = constraint.to_uppercase();
+
+		if let Some(references_pos) = constraint_upper.find(REFERENCES_KEYWORD) {
+			// Extract substring after "REFERENCES" keyword
+			let start_pos = references_pos + REFERENCES_KEYWORD.len();
+			let after_references = constraint[start_pos..].trim_start();
+
+			// Extract table name (everything before '(' or whitespace)
+			let table_name = after_references
+				.split(|c: char| c == '(' || c.is_whitespace())
+				.next()
+				.unwrap_or("")
+				.trim();
+
+			if !table_name.is_empty() {
+				return Some(table_name.to_string());
+			}
+		}
+		None
+	}
+
 	/// Group similar operations together
 	fn group_similar_operations(&self, operations: Vec<Operation>) -> Vec<Operation> {
-		let mut by_table: HashMap<String, Vec<Operation>> = HashMap::new();
+		let mut by_table: IndexMap<String, Vec<Operation>> = IndexMap::new();
 		let mut create_ops = Vec::new();
 		let mut other_ops = Vec::new();
 
@@ -537,8 +613,6 @@ impl OperationOptimizer {
 
 	/// Remove redundant operations by detecting cancellations and merging similar operations
 	fn remove_redundant_operations(&self, operations: Vec<Operation>) -> Vec<Operation> {
-		use std::collections::HashMap;
-
 		let mut optimized = Vec::new();
 		let mut removed_indices = HashSet::new();
 
@@ -620,7 +694,7 @@ impl OperationOptimizer {
 
 		// Pass 1.5: Remove duplicate CreateTable operations (keep last occurrence)
 		let mut deduped = Vec::new();
-		let mut create_table_map: HashMap<String, Operation> = HashMap::new();
+		let mut create_table_map: IndexMap<String, Operation> = IndexMap::new();
 
 		for operation in optimized {
 			match &operation {
@@ -630,7 +704,7 @@ impl OperationOptimizer {
 				}
 				_ => {
 					// Flush accumulated CreateTable operations before non-CreateTable operation
-					for (_, create_op) in create_table_map.drain() {
+					for (_, create_op) in create_table_map.drain(..) {
 						deduped.push(create_op);
 					}
 					deduped.push(operation);
@@ -645,7 +719,7 @@ impl OperationOptimizer {
 
 		// Pass 2: Merge consecutive AlterColumn operations on same column
 		let mut merged = Vec::new();
-		let mut alter_column_map: HashMap<(String, String), Operation> = HashMap::new();
+		let mut alter_column_map: IndexMap<(String, String), Operation> = IndexMap::new();
 
 		for operation in deduped {
 			match &operation {
@@ -660,7 +734,7 @@ impl OperationOptimizer {
 				}
 				_ => {
 					// Flush accumulated AlterColumn operations before non-AlterColumn operation
-					for (_, alter_op) in alter_column_map.drain() {
+					for (_, alter_op) in alter_column_map.drain(..) {
 						merged.push(alter_op);
 					}
 					merged.push(operation);
@@ -675,7 +749,7 @@ impl OperationOptimizer {
 
 		// Pass 3: Chain consecutive RenameTable operations
 		let mut chained = Vec::new();
-		let mut rename_chain: HashMap<String, String> = HashMap::new(); // original_name -> current_name
+		let mut rename_chain: IndexMap<String, String> = IndexMap::new(); // original_name -> current_name
 
 		for operation in merged {
 			match &operation {
@@ -699,7 +773,7 @@ impl OperationOptimizer {
 				}
 				_ => {
 					// Flush accumulated RenameTable chains before non-RenameTable operation
-					for (original_name, final_name) in rename_chain.drain() {
+					for (original_name, final_name) in rename_chain.drain(..) {
 						chained.push(Operation::RenameTable {
 							old_name: original_name,
 							new_name: final_name,

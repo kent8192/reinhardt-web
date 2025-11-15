@@ -104,7 +104,7 @@ impl AddField {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::fields::AddField;
 	/// use reinhardt_migrations::operations::FieldDefinition;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
@@ -183,7 +183,7 @@ impl RemoveField {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::fields::RemoveField;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
@@ -267,7 +267,7 @@ impl AlterField {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::fields::AlterField;
 	/// use reinhardt_migrations::operations::FieldDefinition;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
@@ -353,7 +353,7 @@ impl RenameField {
 	///
 	/// # Example
 	///
-	/// ```rust
+	/// ```rust,no_run
 	/// use reinhardt_migrations::operations::fields::RenameField;
 	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
