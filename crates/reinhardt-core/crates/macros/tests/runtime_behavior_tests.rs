@@ -210,7 +210,6 @@ async fn test_stateful_viewset() {
 async fn view_with_async_ops(_request: Request) -> Result<Response, RuntimeError> {
 	// Simulate async database call
 	async fn fetch_data() -> Result<String, RuntimeError> {
-		tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 		Ok("data".to_string())
 	}
 
