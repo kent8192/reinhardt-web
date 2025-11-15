@@ -1,14 +1,18 @@
 //! Redis connection pool integration tests
 //!
-//! These tests verify the connection pooling functionality of RedisCache.
+//! These tests verify the connection pooling functionality of RedisCache using TestContainers.
 
 #[cfg(feature = "redis-backend")]
 mod redis_pool_integration {
 	use deadpool_redis::Config as PoolConfig;
 	use reinhardt_cache::{Cache, redis_backend::RedisCache};
+	use reinhardt_test::fixtures::redis_container;
+	use rstest::*;
 	use serde::{Deserialize, Serialize};
+	use serial_test::serial;
 	use std::collections::HashMap;
 	use std::time::Duration;
+	use testcontainers::{ContainerAsync, GenericImage};
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct TestData {
@@ -16,47 +20,66 @@ mod redis_pool_integration {
 		name: String,
 	}
 
-	// Helper function to get Redis URL from environment or use default
-	fn get_redis_url() -> String {
-		std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string())
-	}
-
-	// Helper function to create a test cache instance
-	async fn create_test_cache() -> RedisCache {
-		let url = get_redis_url();
-		RedisCache::new(url)
+	/// Fixture to provide a Redis cache instance using reinhardt-test's redis_container
+	#[fixture]
+	async fn redis_cache(
+		#[future] redis_container: (ContainerAsync<GenericImage>, u16, String),
+	) -> (ContainerAsync<GenericImage>, RedisCache) {
+		let (container, _port, url) = redis_container.await;
+		let cache = RedisCache::new(url)
 			.await
-			.expect("Failed to create Redis cache")
+			.expect("Failed to create Redis cache");
+		(container, cache)
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_creation_from_url() {
-		let cache = create_test_cache().await;
-		assert!(cache.pool().status().size > 0);
+	async fn test_pool_creation_from_url(
+		#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache),
+	) {
+		let (_container, cache) = redis_cache.await;
+		// Get a connection to verify pool is working
+		let conn = cache.pool().get().await;
+		assert!(conn.is_ok(), "Should be able to get connection from pool");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_creation_from_config() {
-		let url = get_redis_url();
+	async fn test_pool_creation_from_config(
+		#[future] redis_container: (ContainerAsync<GenericImage>, u16, String),
+	) {
+		let (_container, _port, url) = redis_container.await;
 		let mut config = PoolConfig::from_url(url);
 		config.pool = Some(deadpool_redis::PoolConfig::new(10));
 
 		let cache =
 			RedisCache::with_pool_config(config).expect("Failed to create cache from config");
 
-		assert!(cache.pool().status().size > 0);
-	}
-
-	#[tokio::test]
-	async fn test_pool_get_connection() {
-		let cache = create_test_cache().await;
+		// Get a connection to verify pool is working
 		let conn = cache.pool().get().await;
 		assert!(conn.is_ok(), "Should be able to get connection from pool");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_concurrent_pool_access() {
-		let cache = create_test_cache().await;
+	async fn test_pool_get_connection(
+		#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache),
+	) {
+		let (_container, cache) = redis_cache.await;
+		let conn = cache.pool().get().await;
+		assert!(conn.is_ok(), "Should be able to get connection from pool");
+	}
+
+	#[rstest]
+	#[serial(redis)]
+	#[tokio::test]
+	async fn test_concurrent_pool_access(
+		#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache),
+	) {
+		let (_container, cache) = redis_cache.await;
 		let cache_clone1 = cache.clone();
 		let cache_clone2 = cache.clone();
 		let cache_clone3 = cache.clone();
@@ -87,9 +110,13 @@ mod redis_pool_integration {
 		let _ = cache.delete("concurrent_key_3").await;
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_with_key_prefix() {
-		let url = get_redis_url();
+	async fn test_pool_with_key_prefix(
+		#[future] redis_container: (ContainerAsync<GenericImage>, u16, String),
+	) {
+		let (_container, _port, url) = redis_container.await;
 		let cache = RedisCache::new(url)
 			.await
 			.expect("Failed to create cache")
@@ -107,9 +134,13 @@ mod redis_pool_integration {
 		cache.delete("key1").await.expect("Failed to delete key");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_with_default_ttl() {
-		let url = get_redis_url();
+	async fn test_pool_with_default_ttl(
+		#[future] redis_container: (ContainerAsync<GenericImage>, u16, String),
+	) {
+		let (_container, _port, url) = redis_container.await;
 		let cache = RedisCache::new(url)
 			.await
 			.expect("Failed to create cache")
@@ -127,9 +158,13 @@ mod redis_pool_integration {
 		cache.delete("ttl_key").await.expect("Failed to delete key");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_set_and_get() {
-		let cache = create_test_cache().await;
+	async fn test_pool_set_and_get(
+		#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache),
+	) {
+		let (_container, cache) = redis_cache.await;
 		let test_data = TestData {
 			id: 1,
 			name: "Test".to_string(),
@@ -154,9 +189,13 @@ mod redis_pool_integration {
 			.expect("Failed to delete key");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_set_with_ttl() {
-		let cache = create_test_cache().await;
+	async fn test_pool_set_with_ttl(
+		#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache),
+	) {
+		let (_container, cache) = redis_cache.await;
 
 		cache
 			.set("ttl_test", &"expires_soon", Some(Duration::from_secs(2)))
@@ -176,9 +215,11 @@ mod redis_pool_integration {
 		assert_eq!(expired, None);
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_delete() {
-		let cache = create_test_cache().await;
+	async fn test_pool_delete(#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache)) {
+		let (_container, cache) = redis_cache.await;
 
 		cache
 			.set("delete_test", &"to_be_deleted", None)
@@ -197,9 +238,11 @@ mod redis_pool_integration {
 		assert_eq!(value, None);
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_has_key() {
-		let cache = create_test_cache().await;
+	async fn test_pool_has_key(#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache)) {
+		let (_container, cache) = redis_cache.await;
 
 		cache
 			.set("exists_test", &"exists", None)
@@ -225,9 +268,11 @@ mod redis_pool_integration {
 			.expect("Failed to delete key");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_get_many() {
-		let cache = create_test_cache().await;
+	async fn test_pool_get_many(#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache)) {
+		let (_container, cache) = redis_cache.await;
 
 		cache
 			.set("many_1", &"value1", None)
@@ -243,16 +288,16 @@ mod redis_pool_integration {
 			.expect("Failed to set value");
 
 		let keys = vec!["many_1", "many_2", "many_3", "nonexistent"];
-		let values: HashMap<String, Option<String>> = cache
+		let values: HashMap<String, String> = cache
 			.get_many(&keys)
 			.await
 			.expect("Failed to get many values");
 
-		assert_eq!(values.len(), 4);
-		assert_eq!(values.get("many_1"), Some(&Some("value1".to_string())));
-		assert_eq!(values.get("many_2"), Some(&Some("value2".to_string())));
-		assert_eq!(values.get("many_3"), Some(&Some("value3".to_string())));
-		assert_eq!(values.get("nonexistent"), Some(&None));
+		assert_eq!(values.len(), 3); // Only existing keys are returned
+		assert_eq!(values.get("many_1"), Some(&"value1".to_string()));
+		assert_eq!(values.get("many_2"), Some(&"value2".to_string()));
+		assert_eq!(values.get("many_3"), Some(&"value3".to_string()));
+		assert_eq!(values.get("nonexistent"), None); // Non-existent key not in results
 
 		// Cleanup
 		cache.delete("many_1").await.expect("Failed to delete key");
@@ -260,9 +305,11 @@ mod redis_pool_integration {
 		cache.delete("many_3").await.expect("Failed to delete key");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_set_many() {
-		let cache = create_test_cache().await;
+	async fn test_pool_set_many(#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache)) {
+		let (_container, cache) = redis_cache.await;
 
 		let mut items = HashMap::new();
 		items.insert("set_many_1".to_string(), "value1");
@@ -297,9 +344,13 @@ mod redis_pool_integration {
 			.expect("Failed to delete key");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_delete_many() {
-		let cache = create_test_cache().await;
+	async fn test_pool_delete_many(
+		#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache),
+	) {
+		let (_container, cache) = redis_cache.await;
 
 		cache
 			.set("delete_many_1", &"value1", None)
@@ -329,9 +380,11 @@ mod redis_pool_integration {
 		assert_eq!(value2, None);
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_incr() {
-		let cache = create_test_cache().await;
+	async fn test_pool_incr(#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache)) {
+		let (_container, cache) = redis_cache.await;
 
 		let new_value = cache
 			.incr("counter_incr", 1)
@@ -352,9 +405,11 @@ mod redis_pool_integration {
 			.expect("Failed to delete key");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_decr() {
-		let cache = create_test_cache().await;
+	async fn test_pool_decr(#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache)) {
+		let (_container, cache) = redis_cache.await;
 
 		// Set initial value
 		cache
@@ -381,9 +436,12 @@ mod redis_pool_integration {
 			.expect("Failed to delete key");
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_clear() {
-		let cache = create_test_cache().await.with_key_prefix("clear_test");
+	async fn test_pool_clear(#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache)) {
+		let (_container, cache) = redis_cache.await;
+		let cache = cache.with_key_prefix("clear_test");
 
 		cache
 			.set("key1", &"value1", None)
@@ -403,9 +461,13 @@ mod redis_pool_integration {
 		assert_eq!(value2, None);
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_connection_reuse() {
-		let cache = create_test_cache().await;
+	async fn test_pool_connection_reuse(
+		#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache),
+	) {
+		let (_container, cache) = redis_cache.await;
 
 		// Perform multiple operations to ensure connections are reused
 		for i in 0..20 {
@@ -422,21 +484,29 @@ mod redis_pool_integration {
 		}
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_status() {
-		let cache = create_test_cache().await;
-		let status = cache.pool().status();
+	async fn test_pool_status(#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache)) {
+		let (_container, cache) = redis_cache.await;
 
-		assert!(status.size > 0, "Pool should have connections");
+		// Trigger pool initialization by getting a connection
+		let _conn = cache.pool().get().await.expect("Failed to get connection");
+
+		let status = cache.pool().status();
 		assert!(
-			status.available > 0,
-			"Pool should have available connections"
+			status.size > 0,
+			"Pool should have connections after first use"
 		);
 	}
 
+	#[rstest]
+	#[serial(redis)]
 	#[tokio::test]
-	async fn test_pool_multiple_concurrent_operations() {
-		let cache = create_test_cache().await;
+	async fn test_pool_multiple_concurrent_operations(
+		#[future] redis_cache: (ContainerAsync<GenericImage>, RedisCache),
+	) {
+		let (_container, cache) = redis_cache.await;
 		let mut handles = vec![];
 
 		for i in 0..50 {

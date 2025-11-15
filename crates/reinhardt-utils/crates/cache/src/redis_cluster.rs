@@ -386,11 +386,11 @@ mod tests {
 	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_creation(
-		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
+		#[future] redis_cluster_urls: (Vec<String>, RedisClusterContainer),
 	) {
-		let cluster = redis_cluster.await;
+		let (cluster_urls, _container) = redis_cluster_urls.await;
 
-		let cache = RedisClusterCache::new(cluster.urls())
+		let cache = RedisClusterCache::new(cluster_urls)
 			.await
 			.unwrap()
 			.with_default_ttl(Duration::from_secs(300))
@@ -401,15 +401,12 @@ mod tests {
 	}
 
 	/// Test: Build key with prefix
-	#[rstest]
-	#[serial(redis_cluster)]
 	#[tokio::test]
-	async fn test_build_key_with_prefix(
-		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
-	) {
-		let cluster = redis_cluster.await;
+	async fn test_build_key_with_prefix() {
+		// This test doesn't need real Redis cluster, just tests string building
+		let cluster_urls = vec!["redis://127.0.0.1:7000".to_string()];
 
-		let cache = RedisClusterCache::new(cluster.urls())
+		let cache = RedisClusterCache::new(cluster_urls)
 			.await
 			.unwrap()
 			.with_key_prefix("app");
@@ -418,15 +415,12 @@ mod tests {
 	}
 
 	/// Test: Build key without prefix
-	#[rstest]
-	#[serial(redis_cluster)]
 	#[tokio::test]
-	async fn test_build_key_without_prefix(
-		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
-	) {
-		let cluster = redis_cluster.await;
+	async fn test_build_key_without_prefix() {
+		// This test doesn't need real Redis cluster, just tests string building
+		let cluster_urls = vec!["redis://127.0.0.1:7000".to_string()];
 
-		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
+		let cache = RedisClusterCache::new(cluster_urls).await.unwrap();
 		assert_eq!(cache.build_key("user:123"), "user:123");
 	}
 
@@ -435,11 +429,11 @@ mod tests {
 	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_basic_operations(
-		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
+		#[future] redis_cluster_urls: (Vec<String>, RedisClusterContainer),
 	) {
-		let cluster = redis_cluster.await;
+		let (cluster_urls, _container) = redis_cluster_urls.await;
 
-		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
+		let cache = RedisClusterCache::new(cluster_urls).await.unwrap();
 
 		// Set and get
 		cache.set("test:key1", &"value1", None).await.unwrap();
@@ -461,11 +455,11 @@ mod tests {
 	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_ttl(
-		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
+		#[future] redis_cluster_urls: (Vec<String>, RedisClusterContainer),
 	) {
-		let cluster = redis_cluster.await;
+		let (cluster_urls, _container) = redis_cluster_urls.await;
 
-		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
+		let cache = RedisClusterCache::new(cluster_urls).await.unwrap();
 
 		// Set with short TTL
 		cache
@@ -490,11 +484,11 @@ mod tests {
 	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_batch_operations(
-		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
+		#[future] redis_cluster_urls: (Vec<String>, RedisClusterContainer),
 	) {
-		let cluster = redis_cluster.await;
+		let (cluster_urls, _container) = redis_cluster_urls.await;
 
-		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
+		let cache = RedisClusterCache::new(cluster_urls).await.unwrap();
 
 		// Set many
 		let mut values = std::collections::HashMap::new();
@@ -525,11 +519,11 @@ mod tests {
 	#[serial(redis_cluster)]
 	#[tokio::test]
 	async fn test_redis_cluster_cache_atomic_operations(
-		#[future] redis_cluster: reinhardt_test::containers::RedisClusterGuard,
+		#[future] redis_cluster_urls: (Vec<String>, RedisClusterContainer),
 	) {
-		let cluster = redis_cluster.await;
+		let (cluster_urls, _container) = redis_cluster_urls.await;
 
-		let cache = RedisClusterCache::new(cluster.urls()).await.unwrap();
+		let cache = RedisClusterCache::new(cluster_urls).await.unwrap();
 
 		// Increment from zero
 		let value = cache.incr("test:counter", 5).await.unwrap();
