@@ -94,6 +94,8 @@ sqlx = { version = "0.8", features = [
   "tls-rustls",
   "chrono",
 ] }
+sea-query = { workspace = true }
+sea-query-binder = { version = "0.7", features = ["with-chrono"] }
 
 # HTTP client for testing
 reqwest = { version = "0.12", features = ["cookies"] }

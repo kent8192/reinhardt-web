@@ -6,6 +6,7 @@
 // use reinhardt_orm::connection::Connection; // Not available in current version
 // use reinhardt_orm::model::Model; // Not used in current tests
 use reinhardt_core::validators::ValidationResult;
+use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};
 use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
@@ -13,7 +14,7 @@ use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt
 /// Test database setup and management with TestContainers
 pub struct TestDatabase {
 	pub pool: Arc<PgPool>,
-	_container: testcontainers::ContainerAsync<GenericImage>,
+	_container: Option<testcontainers::ContainerAsync<GenericImage>>,
 }
 
 impl TestDatabase {
@@ -60,18 +61,9 @@ impl TestDatabase {
 				)
 			})?;
 
-		// If we have a container, wrap it; otherwise create a dummy container
-		let final_container = if let Some(c) = container {
-			c
-		} else {
-			// For external database connections, create a dummy container
-			// This won't actually be used, but satisfies the struct field requirement
-			GenericImage::new("postgres", "17-alpine").start().await?
-		};
-
 		Ok(Self {
 			pool: Arc::new(pool),
-			_container: final_container,
+			_container: container,
 		})
 	}
 
@@ -309,4 +301,249 @@ pub fn assert_validation_result<T: std::fmt::Debug>(
 			);
 		}
 	}
+}
+
+/// Setup test tables for validator integration tests
+pub async fn setup_test_tables(pool: &PgPool) {
+	// Create users table for uniqueness tests
+	sqlx::query(
+		r#"
+		CREATE TABLE IF NOT EXISTS test_users (
+			id SERIAL PRIMARY KEY,
+			username VARCHAR(100) UNIQUE NOT NULL,
+			email VARCHAR(255) UNIQUE NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+		"#,
+	)
+	.execute(pool)
+	.await
+	.expect("Failed to create test_users table");
+
+	// Create products table for validation tests
+	sqlx::query(
+		r#"
+		CREATE TABLE IF NOT EXISTS test_products (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(200) NOT NULL,
+			code VARCHAR(50) UNIQUE NOT NULL,
+			price DECIMAL(10, 2) NOT NULL,
+			stock INTEGER NOT NULL CHECK (stock >= 0),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+		"#,
+	)
+	.execute(pool)
+	.await
+	.expect("Failed to create test_products table");
+
+	// Create orders table for relationship tests
+	sqlx::query(
+		r#"
+		CREATE TABLE IF NOT EXISTS test_orders (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES test_users(id),
+			product_id INTEGER NOT NULL REFERENCES test_products(id),
+			quantity INTEGER NOT NULL CHECK (quantity > 0),
+			order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(user_id, product_id)
+		)
+		"#,
+	)
+	.execute(pool)
+	.await
+	.expect("Failed to create test_orders table");
+}
+
+/// Clean up test tables
+pub async fn cleanup_test_tables(pool: &PgPool) {
+	sqlx::query("DROP TABLE IF EXISTS test_orders CASCADE")
+		.execute(pool)
+		.await
+		.expect("Failed to drop test_orders");
+	sqlx::query("DROP TABLE IF EXISTS test_products CASCADE")
+		.execute(pool)
+		.await
+		.expect("Failed to drop test_products");
+	sqlx::query("DROP TABLE IF EXISTS test_users CASCADE")
+		.execute(pool)
+		.await
+		.expect("Failed to drop test_users");
+}
+
+/// Insert test user
+pub async fn insert_test_user(pool: &PgPool, username: &str, email: &str) -> i32 {
+	let row: (i32,) =
+		sqlx::query_as("INSERT INTO test_users (username, email) VALUES ($1, $2) RETURNING id")
+			.bind(username)
+			.bind(email)
+			.fetch_one(pool)
+			.await
+			.expect("Failed to insert user");
+	row.0
+}
+
+/// Insert test product
+pub async fn insert_test_product(
+	pool: &PgPool,
+	name: &str,
+	code: &str,
+	price: f64,
+	stock: i32,
+) -> i32 {
+	let row: (i32,) = sqlx::query_as(
+		"INSERT INTO test_products (name, code, price, stock) VALUES ($1, $2, $3, $4) RETURNING id",
+	)
+	.bind(name)
+	.bind(code)
+	.bind(price)
+	.bind(stock)
+	.fetch_one(pool)
+	.await
+	.expect("Failed to insert product");
+	row.0
+}
+
+/// Insert test order
+pub async fn insert_test_order(pool: &PgPool, user_id: i32, product_id: i32, quantity: i32) -> i32 {
+	let row: (i32,) = sqlx::query_as(
+		"INSERT INTO test_orders (user_id, product_id, quantity) VALUES ($1, $2, $3) RETURNING id",
+	)
+	.bind(user_id)
+	.bind(product_id)
+	.bind(quantity)
+	.fetch_one(pool)
+	.await
+	.expect("Failed to insert order");
+	row.0
+}
+
+/// Check if user exists by ID
+pub async fn check_user_exists(pool: &PgPool, user_id: i32) -> bool {
+	let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM test_users WHERE id = $1")
+		.bind(user_id)
+		.fetch_one(pool)
+		.await
+		.expect("Failed to check user existence");
+	count.0 > 0
+}
+
+// ========== SeaQuery-based helper functions ==========
+
+/// Table identifiers for SeaQuery
+#[allow(dead_code)]
+#[derive(Iden)]
+enum TestUsers {
+	Table,
+	Id,
+	Username,
+	Email,
+}
+
+#[allow(dead_code)]
+#[derive(Iden)]
+enum TestProducts {
+	Table,
+	Id,
+	Name,
+	Code,
+	Price,
+	Stock,
+}
+
+#[derive(Iden)]
+enum TestOrders {
+	Table,
+	Id,
+	UserId,
+	ProductId,
+	Quantity,
+}
+
+/// Insert test order using SeaQuery (returns Result for error handling)
+pub async fn insert_order_with_seaquery(
+	pool: &PgPool,
+	user_id: i32,
+	product_id: i32,
+	quantity: i32,
+) -> Result<i64, sqlx::Error> {
+	let sql = Query::insert()
+		.into_table(TestOrders::Table)
+		.columns([
+			TestOrders::UserId,
+			TestOrders::ProductId,
+			TestOrders::Quantity,
+		])
+		.values_panic([user_id.into(), product_id.into(), quantity.into()])
+		.returning_col(TestOrders::Id)
+		.to_string(PostgresQueryBuilder);
+
+	let row: (i64,) = sqlx::query_as(&sql)
+		.bind(user_id)
+		.bind(product_id)
+		.bind(quantity)
+		.fetch_one(pool)
+		.await?;
+	Ok(row.0)
+}
+
+/// Update order user_id using SeaQuery (returns Result for error handling)
+pub async fn update_order_user_with_seaquery(
+	pool: &PgPool,
+	order_id: i32,
+	new_user_id: i32,
+) -> Result<u64, sqlx::Error> {
+	let sql = Query::update()
+		.table(TestOrders::Table)
+		.value(TestOrders::UserId, new_user_id)
+		.cond_where(Expr::col(TestOrders::Id).eq(order_id))
+		.to_string(PostgresQueryBuilder);
+
+	let result = sqlx::query(&sql)
+		.bind(new_user_id)
+		.bind(order_id)
+		.execute(pool)
+		.await?;
+	Ok(result.rows_affected())
+}
+
+/// Delete user using SeaQuery (returns Result for error handling)
+pub async fn delete_user_with_seaquery(pool: &PgPool, user_id: i32) -> Result<u64, sqlx::Error> {
+	let sql = Query::delete()
+		.from_table(TestUsers::Table)
+		.cond_where(Expr::col(TestUsers::Id).eq(user_id))
+		.to_string(PostgresQueryBuilder);
+
+	let result = sqlx::query(&sql).bind(user_id).execute(pool).await?;
+	Ok(result.rows_affected())
+}
+
+/// Count records in test_users with username using SeaQuery
+pub async fn count_users_by_username_with_seaquery(
+	pool: &PgPool,
+	username: &str,
+) -> Result<i64, sqlx::Error> {
+	let sql = Query::select()
+		.expr(Expr::col(TestUsers::Id).count())
+		.from(TestUsers::Table)
+		.cond_where(Expr::col(TestUsers::Username).eq(username))
+		.to_string(PostgresQueryBuilder);
+
+	let row: (i64,) = sqlx::query_as(&sql).bind(username).fetch_one(pool).await?;
+	Ok(row.0)
+}
+
+/// Count records in test_products with code using SeaQuery
+pub async fn count_products_by_code_with_seaquery(
+	pool: &PgPool,
+	code: &str,
+) -> Result<i64, sqlx::Error> {
+	let sql = Query::select()
+		.expr(Expr::col(TestProducts::Id).count())
+		.from(TestProducts::Table)
+		.cond_where(Expr::col(TestProducts::Code).eq(code))
+		.to_string(PostgresQueryBuilder);
+
+	let row: (i64,) = sqlx::query_as(&sql).bind(code).fetch_one(pool).await?;
+	Ok(row.0)
 }
