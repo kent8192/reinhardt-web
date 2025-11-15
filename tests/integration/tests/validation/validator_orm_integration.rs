@@ -2,36 +2,37 @@
 //!
 //! Based on SQLAlchemy test/orm/test_validators.py
 //!
-//! **REQUIRES DATABASE**: These tests require a running PostgreSQL database.
-//!
-//! ## Manual Setup
-//!
-//! ```bash
-//! # Start PostgreSQL container
-//! docker run --rm -d -p 5432:5432 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-alpine
-//!
-//! # Run tests
-//! TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres \
-//!     cargo test --test validator_orm_integration_tests
-//! ```
+//! **USES TESTCONTAINERS**: These tests use TestContainers for PostgreSQL database.
+//! Docker Desktop must be running before executing these tests.
 
 use reinhardt_integration_tests::validator_test_common::*;
+use reinhardt_test::fixtures::validator::{
+	validator_db_guard, validator_test_db, ValidatorDbGuard,
+};
+use reinhardt_test::resource::TeardownGuard;
 use reinhardt_validators::{
 	MaxLengthValidator, MaxValueValidator, MinLengthValidator, MinValueValidator, RangeValidator,
 	ValidationError, Validator,
 };
+use rstest::*;
+use std::sync::Arc;
+use testcontainers::{ContainerAsync, GenericImage};
 
 #[cfg(test)]
 mod scalar_validation_tests {
 	use super::*;
 
 	// Based on SQLAlchemy: ValidatorTest::test_scalar
+	#[rstest]
 	#[tokio::test]
-	async fn test_scalar_field_validation() {
-		let db = TestDatabase::new()
-			.await
-			.expect("Failed to connect to database");
-		db.setup_tables().await.expect("Failed to setup tables");
+	async fn test_scalar_field_validation(
+		#[future] validator_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+		_validator_db_guard: TeardownGuard<reinhardt_test::fixtures::validator::ValidatorDbGuard>,
+	) {
+		let (_container, pool, _port, _database_url) = validator_test_db.await;
+
+		// Setup tables using helper function
+		setup_test_tables(pool.as_ref()).await;
 
 		// Test username length validation
 		let min_validator = MinLengthValidator::new(3);
@@ -43,14 +44,10 @@ mod scalar_validation_tests {
 		assert!(max_validator.validate(valid_username).is_ok());
 
 		// Insert user with valid username
-		let user_id = db
-			.insert_user(valid_username, "john@example.com")
-			.await
-			.expect("Failed to insert user");
+		let user_id = insert_test_user(pool.as_ref(), valid_username, "john@example.com").await;
 		assert!(user_id > 0);
 
-		// Cleanup
-		db.cleanup().await.expect("Failed to cleanup");
+		// Cleanup is automatic via TeardownGuard and container drop
 	}
 
 	// Based on SQLAlchemy: test_validators_dict
@@ -256,28 +253,27 @@ mod constraint_validation_tests {
 		assert!(existing_codes.contains(&duplicate_code));
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_unique_constraint_database_violation() {
+	async fn test_unique_constraint_database_violation(
+		#[future] validator_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
+	) {
 		use reinhardt_validators::UniqueValidator;
 
-		let db = TestDatabase::new()
-			.await
-			.expect("Failed to connect to database");
-		db.setup_tables().await.expect("Failed to setup tables");
+		let (_container, pool, _port, _database_url) = validator_test_db.await;
+		setup_test_tables(pool.as_ref()).await;
 
 		// Insert first user successfully
-		let user1_id = db
-			.insert_user("alice", "alice@example.com")
-			.await
-			.expect("Failed to insert first user");
+		let user1_id = insert_test_user(pool.as_ref(), "alice", "alice@example.com").await;
 		assert!(user1_id > 0);
 
 		// Create a UniqueValidator for username field
-		let pool = db.pool.clone();
+		let pool_clone = pool.clone();
 		let username_validator = UniqueValidator::new(
 			"username",
 			Box::new(move |value, exclude_id| {
-				let pool = pool.clone();
+				let pool = pool_clone.clone();
 				Box::pin(async move {
 					let query = if let Some(id) = exclude_id {
 						sqlx::query_as::<_, (i64,)>(
@@ -318,7 +314,13 @@ mod constraint_validation_tests {
 		assert!(result.is_ok());
 
 		// Test actual database UNIQUE constraint violation
-		let insert_result = db.insert_user("alice", "different@example.com").await;
+		// Direct sqlx query to catch UNIQUE constraint error
+		let insert_result =
+			sqlx::query("INSERT INTO test_users (username, email) VALUES ($1, $2) RETURNING id")
+				.bind("alice")
+				.bind("different@example.com")
+				.fetch_one(pool.as_ref())
+				.await;
 		assert!(insert_result.is_err());
 
 		// Verify error message contains UNIQUE constraint violation
@@ -329,8 +331,7 @@ mod constraint_validation_tests {
 			error_message
 		);
 
-		// Cleanup
-		db.cleanup().await.expect("Failed to cleanup");
+		// Cleanup handled automatically by TeardownGuard
 	}
 }
 
@@ -339,49 +340,43 @@ mod relationship_validation_tests {
 	use super::*;
 
 	// Based on SQLAlchemy: test_validator_backrefs
+	#[rstest]
 	#[tokio::test]
-	async fn test_foreign_key_validation() {
-		let db = TestDatabase::new()
-			.await
-			.expect("Failed to connect to database");
-		db.setup_tables().await.expect("Failed to setup tables");
+	async fn test_foreign_key_validation(
+		#[future] validator_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
+	) {
+		let (_container, pool, _port, _database_url) = validator_test_db.await;
+		setup_test_tables(pool.as_ref()).await;
 
 		// Insert user and verify it exists
-		let user_id = db
-			.insert_user("testuser", "test@example.com")
-			.await
-			.expect("Failed to insert user");
+		let user_id = insert_test_user(pool.as_ref(), "testuser", "test@example.com").await;
 
 		// Simple positivity check (legacy validation)
 		assert!(user_id > 0);
 		let id_validator = MinValueValidator::new(1);
 		assert!(id_validator.validate(&user_id).is_ok());
 
-		// Cleanup
-		db.cleanup().await.expect("Failed to cleanup");
+		// Cleanup handled automatically by TeardownGuard
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_foreign_key_existence_validation() {
+	async fn test_foreign_key_existence_validation(
+		#[future] validator_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
+	) {
 		use reinhardt_validators::ExistsValidator;
 
-		let db = TestDatabase::new()
-			.await
-			.expect("Failed to connect to database");
-		db.setup_tables().await.expect("Failed to setup tables");
+		let (_container, pool, _port, _database_url) = validator_test_db.await;
+		setup_test_tables(pool.as_ref()).await;
 
 		// Insert user and product for valid FK references
-		let user_id = db
-			.insert_user("alice", "alice@example.com")
-			.await
-			.expect("Failed to insert user");
-		let product_id = db
-			.insert_product("Laptop", "PROD001", 999.99, 10)
-			.await
-			.expect("Failed to insert product");
+		let user_id = insert_test_user(pool.as_ref(), "alice", "alice@example.com").await;
+		let product_id = insert_test_product(pool.as_ref(), "Laptop", "PROD001", 999.99, 10).await;
 
 		// Create ExistsValidator for user_id
-		let user_pool = db.pool.clone();
+		let user_pool = pool.clone();
 		let user_validator = ExistsValidator::new(
 			"user_id",
 			"users",
@@ -404,7 +399,7 @@ mod relationship_validation_tests {
 		);
 
 		// Create ExistsValidator for product_id
-		let product_pool = db.pool.clone();
+		let product_pool = pool.clone();
 		let product_validator = ExistsValidator::new(
 			"product_id",
 			"products",
@@ -456,7 +451,7 @@ mod relationship_validation_tests {
 		assert!(error.to_string().contains("88888"));
 
 		// Test actual database FK constraint violation (insert with invalid FK)
-		let insert_result = db.insert_order(99999, product_id, 1).await;
+		let insert_result = insert_order_with_seaquery(pool.as_ref(), 99999, product_id, 1).await;
 		assert!(insert_result.is_err());
 
 		// Verify error message indicates FK constraint violation
@@ -467,40 +462,28 @@ mod relationship_validation_tests {
 			error_message
 		);
 
-		// Cleanup
-		db.cleanup().await.expect("Failed to cleanup");
+		// Cleanup handled automatically by TeardownGuard
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_foreign_key_update_violation() {
-		let db = TestDatabase::new()
-			.await
-			.expect("Failed to connect to database");
-		db.setup_tables().await.expect("Failed to setup tables");
+	async fn test_foreign_key_update_violation(
+		#[future] validator_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
+	) {
+		let (_container, pool, _port, _database_url) = validator_test_db.await;
+		setup_test_tables(pool.as_ref()).await;
 
 		// Insert user and product
-		let user_id = db
-			.insert_user("bob", "bob@example.com")
-			.await
-			.expect("Failed to insert user");
-		let product_id = db
-			.insert_product("Mouse", "PROD002", 29.99, 50)
-			.await
-			.expect("Failed to insert product");
+		let user_id = insert_test_user(pool.as_ref(), "bob", "bob@example.com").await;
+		let product_id = insert_test_product(pool.as_ref(), "Mouse", "PROD002", 29.99, 50).await;
 
 		// Insert valid order
-		let order_id = db
-			.insert_order(user_id, product_id, 2)
-			.await
-			.expect("Failed to insert order");
+		let order_id = insert_test_order(pool.as_ref(), user_id, product_id, 2).await;
 		assert!(order_id > 0);
 
 		// Attempt to update order with non-existent user_id (should fail)
-		let update_result = sqlx::query("UPDATE test_orders SET user_id = $1 WHERE id = $2")
-			.bind(99999)
-			.bind(order_id)
-			.execute(db.pool.as_ref())
-			.await;
+		let update_result = update_order_user_with_seaquery(pool.as_ref(), order_id, 99999).await;
 
 		assert!(update_result.is_err());
 		let error_message = update_result.unwrap_err().to_string();
@@ -510,40 +493,29 @@ mod relationship_validation_tests {
 			error_message
 		);
 
-		// Cleanup
-		db.cleanup().await.expect("Failed to cleanup");
+		// Cleanup handled automatically by TeardownGuard
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_foreign_key_cascade_delete() {
-		let db = TestDatabase::new()
-			.await
-			.expect("Failed to connect to database");
-		db.setup_tables().await.expect("Failed to setup tables");
+	async fn test_foreign_key_cascade_delete(
+		#[future] validator_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
+	) {
+		let (_container, pool, _port, _database_url) = validator_test_db.await;
+		setup_test_tables(pool.as_ref()).await;
 
 		// Insert user and product
-		let user_id = db
-			.insert_user("charlie", "charlie@example.com")
-			.await
-			.expect("Failed to insert user");
-		let product_id = db
-			.insert_product("Keyboard", "PROD003", 79.99, 30)
-			.await
-			.expect("Failed to insert product");
+		let user_id = insert_test_user(pool.as_ref(), "charlie", "charlie@example.com").await;
+		let product_id = insert_test_product(pool.as_ref(), "Keyboard", "PROD003", 79.99, 30).await;
 
 		// Insert order referencing both
-		let order_id = db
-			.insert_order(user_id, product_id, 1)
-			.await
-			.expect("Failed to insert order");
+		let order_id = insert_test_order(pool.as_ref(), user_id, product_id, 1).await;
 		assert!(order_id > 0);
 
 		// Attempt to delete user (should fail because of FK constraint)
 		// Note: test_orders table does NOT have ON DELETE CASCADE
-		let delete_result = sqlx::query("DELETE FROM test_users WHERE id = $1")
-			.bind(user_id)
-			.execute(db.pool.as_ref())
-			.await;
+		let delete_result = delete_user_with_seaquery(pool.as_ref(), user_id).await;
 
 		assert!(delete_result.is_err());
 		let error_message = delete_result.unwrap_err().to_string();
@@ -556,11 +528,10 @@ mod relationship_validation_tests {
 		);
 
 		// Verify user still exists (delete was prevented)
-		let user_exists = db.user_exists(user_id).await.expect("Failed to check user");
+		let user_exists = check_user_exists(pool.as_ref(), user_id).await;
 		assert!(user_exists);
 
-		// Cleanup
-		db.cleanup().await.expect("Failed to cleanup");
+		// Cleanup handled automatically by TeardownGuard
 	}
 }
 
