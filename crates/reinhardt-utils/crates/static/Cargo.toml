@@ -9,7 +9,7 @@ description = "Static file serving and production utilities for Reinhardt with h
 
 [dependencies]
 # Internal dependencies
-reinhardt-core = { workspace = true, features = ["exception", "types"] }
+reinhardt-core = { workspace = true, features = ["exception", "types", "http"] }
 reinhardt-storage = { version = "0.1.0-alpha.1", path = "../storage" }
 reinhardt-template = { workspace = true, optional = true }
 

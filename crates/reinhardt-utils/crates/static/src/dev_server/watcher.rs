@@ -114,6 +114,18 @@ impl FileWatcher {
 	}
 }
 
+impl Drop for FileWatcher {
+	fn drop(&mut self) {
+		// Close the receiver to signal the watcher to stop
+		self.receiver.close();
+
+		// Give the background thread a moment to clean up
+		// Note: This is a blocking sleep in a Drop implementation,
+		// which is generally acceptable for cleanup purposes
+		std::thread::sleep(std::time::Duration::from_millis(10));
+	}
+}
+
 /// Builder for creating a file watcher with specific configuration
 pub struct FileWatcherBuilder {
 	paths: Vec<PathBuf>,
@@ -157,6 +169,7 @@ impl Default for FileWatcherBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use serial_test::serial;
 	use std::fs;
 	use tempfile::TempDir;
 
@@ -176,15 +189,23 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial(file_watcher)]
 	async fn test_file_watcher_creation() {
 		let temp_dir = TempDir::new().unwrap();
 		let paths = vec![temp_dir.path().to_path_buf()];
 
 		let watcher = FileWatcher::new(&paths);
 		assert!(watcher.is_ok());
+
+		// Explicitly drop to ensure cleanup
+		drop(watcher);
+
+		// Give background thread time to clean up
+		tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 	}
 
 	#[tokio::test]
+	#[serial(file_watcher)]
 	async fn test_file_watcher_detects_changes() {
 		let temp_dir = TempDir::new().unwrap();
 		let test_file = temp_dir.path().join("test.txt");
@@ -202,9 +223,16 @@ mod tests {
 		assert!(event.is_ok());
 		let event = event.unwrap();
 		assert!(event.is_some());
+
+		// Explicitly drop to ensure cleanup
+		drop(watcher);
+
+		// Give background thread time to clean up
+		tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 	}
 
 	#[tokio::test]
+	#[serial(file_watcher)]
 	async fn test_file_watcher_try_next() {
 		let temp_dir = TempDir::new().unwrap();
 		let paths = vec![temp_dir.path().to_path_buf()];
@@ -214,6 +242,12 @@ mod tests {
 		// Try to receive without blocking (should return None immediately)
 		let event = watcher.try_next_event();
 		assert!(event.is_none());
+
+		// Explicitly drop to ensure cleanup
+		drop(watcher);
+
+		// Give background thread time to clean up
+		tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 	}
 
 	#[test]
