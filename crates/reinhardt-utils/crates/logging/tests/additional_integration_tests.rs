@@ -26,13 +26,13 @@ async fn test_translation_key_missing_logged() {
 		.debug("Translation key 'missing.key' not found in catalog 'en_US'".to_string())
 		.await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
 	assert_eq!(records[0].level, LogLevel::Debug);
-	assert!(records[0].message.contains("Translation key"));
-	assert!(records[0].message.contains("missing.key"));
+	assert_eq!(
+		records[0].message,
+		"Translation key 'missing.key' not found in catalog 'en_US'"
+	);
 }
 
 #[tokio::test]
@@ -49,12 +49,12 @@ async fn test_translation_locale_fallback_logged() {
 		.info("Locale 'fr_CA' not available, falling back to 'fr'".to_string())
 		.await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
-	assert!(records[0].message.contains("falling back"));
-	assert!(records[0].message.contains("fr_CA"));
+	assert_eq!(
+		records[0].message,
+		"Locale 'fr_CA' not available, falling back to 'fr'"
+	);
 }
 
 // ==============================================================================
@@ -89,13 +89,12 @@ async fn test_format_exception_with_traceback() {
 
 	logger.error(formatted).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
-	assert!(records[0].message.contains("ValueError"));
-	assert!(records[0].message.contains("views.py"));
-	assert!(records[0].message.contains("line 42"));
+
+	// Verify the formatted exception contains all expected components
+	let expected = format_exception_with_traceback("ValueError: Invalid input", &traceback);
+	assert_eq!(records[0].message, expected);
 }
 
 #[tokio::test]
@@ -111,13 +110,12 @@ async fn test_format_exception_with_cause_chain() {
 	let msg = "RuntimeError: Failed to process\nCaused by: ValueError: Invalid data\nCaused by: TypeError: Wrong type";
 	logger.error(msg.to_string()).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
-	assert!(records[0].message.contains("RuntimeError"));
-	assert!(records[0].message.contains("Caused by: ValueError"));
-	assert!(records[0].message.contains("Caused by: TypeError"));
+	assert_eq!(
+		records[0].message,
+		"RuntimeError: Failed to process\nCaused by: ValueError: Invalid data\nCaused by: TypeError: Wrong type"
+	);
 }
 
 #[tokio::test]
@@ -140,8 +138,6 @@ async fn test_format_exception_truncation() {
 
 	let formatted = format_exception_with_traceback("Error", &trace_refs);
 	logger.error(formatted).await;
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
@@ -178,8 +174,6 @@ async fn test_exception_in_log_record() {
 
 	logger.log_record(&record).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
 	assert_eq!(
@@ -201,14 +195,12 @@ async fn test_multiple_nested_exceptions() {
 	let msg = "Level 1 Error\n  Caused by: Level 2 Error\n    Caused by: Level 3 Error\n      Caused by: Root cause";
 	logger.error(msg.to_string()).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
-	assert!(records[0].message.contains("Level 1"));
-	assert!(records[0].message.contains("Level 2"));
-	assert!(records[0].message.contains("Level 3"));
-	assert!(records[0].message.contains("Root cause"));
+	assert_eq!(
+		records[0].message,
+		"Level 1 Error\n  Caused by: Level 2 Error\n    Caused by: Level 3 Error\n      Caused by: Root cause"
+	);
 }
 
 // ==============================================================================
@@ -365,12 +357,9 @@ async fn test_request_logging_middleware() {
 		.info(format!("{} {}", request.method, request.path))
 		.await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
-	assert!(records[0].message.contains("GET"));
-	assert!(records[0].message.contains("/api/users"));
+	assert_eq!(records[0].message, "GET /api/users");
 }
 
 #[tokio::test]
@@ -387,11 +376,9 @@ async fn test_response_logging_middleware() {
 
 	logger.info(format!("Response: {}", response.status)).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
-	assert!(records[0].message.contains("200"));
+	assert_eq!(records[0].message, "Response: 200");
 }
 
 #[tokio::test]
@@ -411,7 +398,6 @@ async fn test_request_response_timing_logged() {
 	};
 
 	// Simulate some processing time
-	tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
 	let duration = request.timestamp.elapsed();
 	logger
@@ -423,11 +409,23 @@ async fn test_request_response_timing_logged() {
 		))
 		.await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
-	assert!(records[0].message.contains("POST"));
-	assert!(records[0].message.contains("completed in"));
-	assert!(records[0].message.contains("ms"));
+	// NOTE: Execution time is non-deterministic, verify format pattern
+	assert!(
+		records[0]
+			.message
+			.starts_with("POST /api/data completed in ")
+	);
+	assert!(records[0].message.ends_with("ms"));
+	// Verify the numeric part exists and is valid
+	let parts: Vec<&str> = records[0].message.split_whitespace().collect();
+	assert_eq!(parts.len(), 5); // ["POST", "/api/data", "completed", "in", "X.XXms"]
+	assert_eq!(parts[0], "POST");
+	assert_eq!(parts[1], "/api/data");
+	assert_eq!(parts[2], "completed");
+	assert_eq!(parts[3], "in");
+	assert!(parts[4].ends_with("ms"));
+	let time_str = parts[4].trim_end_matches("ms");
+	assert!(time_str.parse::<f64>().is_ok()); // Verify numeric value
 }

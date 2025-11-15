@@ -6,6 +6,7 @@
 use reinhardt_logging::handlers::MemoryHandler;
 use reinhardt_logging::{LogHandler, LogLevel, LogRecord, Logger};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::mpsc;
 
@@ -109,7 +110,8 @@ async fn test_queue_handler_enqueues_records() {
 	logger.info("Test message 1".to_string()).await;
 	logger.info("Test message 2".to_string()).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for records to be enqueued
+	tokio::time::sleep(Duration::from_millis(100)).await;
 
 	// Check that records were enqueued
 	let record1 = receiver.try_recv().unwrap();
@@ -138,13 +140,21 @@ async fn test_queue_listener_processes_records() {
 	logger.info("Message 2".to_string()).await;
 	logger.info("Message 3".to_string()).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for records to be enqueued
+	tokio::time::sleep(Duration::from_millis(100)).await;
 
 	// Process the queued records
 	let processed = listener.process_batch(10).await;
 	assert_eq!(processed, 3);
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for records to be processed by memory handler
+	reinhardt_test::poll_until(
+		Duration::from_millis(100),
+		Duration::from_millis(5),
+		|| async { memory.get_records().len() >= 3 },
+	)
+	.await
+	.expect("Records should be processed within 100ms");
 
 	// Check that records were handled
 	let records = memory.get_records();
@@ -196,12 +206,20 @@ async fn test_listener_respects_handler_levels() {
 	logger.warning("Warning message".to_string()).await;
 	logger.error("Error message".to_string()).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for records to be enqueued
+	tokio::time::sleep(Duration::from_millis(100)).await;
 
 	// Process all records
 	listener.process_batch(10).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for records to be processed (only WARNING and ERROR)
+	reinhardt_test::poll_until(
+		Duration::from_millis(100),
+		Duration::from_millis(5),
+		|| async { memory.get_records().len() >= 2 },
+	)
+	.await
+	.expect("Records should be processed within 100ms");
 
 	// Only WARNING and ERROR should be in memory handler
 	let records = memory.get_records();
@@ -236,13 +254,21 @@ async fn test_logging_multiple_listeners() {
 	logger1.info("Queue 1 message".to_string()).await;
 	logger2.info("Queue 2 message".to_string()).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for records to be enqueued in both queues
+	tokio::time::sleep(Duration::from_millis(100)).await;
 
 	// Process both queues
 	listener1.process_batch(10).await;
 	listener2.process_batch(10).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for records to be processed in both memory handlers
+	reinhardt_test::poll_until(
+		Duration::from_millis(100),
+		Duration::from_millis(5),
+		|| async { memory1.get_records().len() >= 1 && memory2.get_records().len() >= 1 },
+	)
+	.await
+	.expect("Records should be processed within 100ms");
 
 	// Each memory handler should have its own records
 	let records1 = memory1.get_records();
@@ -271,11 +297,19 @@ async fn test_listener_with_multiple_handlers() {
 
 	logger.info("Broadcast message".to_string()).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for record to be enqueued
+	tokio::time::sleep(Duration::from_millis(100)).await;
 
 	listener.process_batch(10).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for record to be processed by both handlers
+	reinhardt_test::poll_until(
+		Duration::from_millis(100),
+		Duration::from_millis(5),
+		|| async { memory1.get_records().len() >= 1 && memory2.get_records().len() >= 1 },
+	)
+	.await
+	.expect("Record should be processed within 100ms");
 
 	// Both handlers should have received the record
 	let records1 = memory1.get_records();
@@ -298,14 +332,16 @@ async fn test_queue_handler_cloning_records() {
 
 	logger.info("Test message".to_string()).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for first record
+	tokio::time::sleep(Duration::from_millis(100)).await;
 
 	let record1 = receiver.try_recv().unwrap();
 
 	// Should be able to log again (handler still works)
 	logger.info("Another message".to_string()).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+	// Wait for second record
+	tokio::time::sleep(Duration::from_millis(100)).await;
 
 	let record2 = receiver.try_recv().unwrap();
 
@@ -332,8 +368,14 @@ async fn test_listener_start_background() {
 	logger.info("Background message 1".to_string()).await;
 	logger.info("Background message 2".to_string()).await;
 
-	// Give background task time to process
-	tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+	// Wait for background task to process records
+	reinhardt_test::poll_until(
+		Duration::from_millis(200),
+		Duration::from_millis(10),
+		|| async { memory.get_records().len() >= 2 },
+	)
+	.await
+	.expect("Background task should process records within 200ms");
 
 	// Records should be processed automatically
 	let records = memory.get_records();

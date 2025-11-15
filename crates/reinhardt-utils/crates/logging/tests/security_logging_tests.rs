@@ -81,8 +81,6 @@ async fn test_suspicious_operation_logged() {
 
 	sec_logger.log_security_error(&error).await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
 	assert_eq!(records[0].level, LogLevel::Error);
@@ -104,8 +102,6 @@ async fn test_disallowed_host_logged() {
 
 	let sec_logger = SecurityLogger::new(logger.clone());
 	sec_logger.log_disallowed_host("evil.com", "/admin/").await;
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
@@ -131,8 +127,6 @@ async fn test_suspicious_file_operation_logged() {
 	sec_logger
 		.log_suspicious_file_operation("read", "../../../etc/passwd")
 		.await;
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
@@ -165,8 +159,6 @@ async fn test_security_logger_separation() {
 	// Log security event
 	let error = SecurityError::SuspiciousOperation("Attack detected".to_string());
 	sec_logger.log_security_error(&error).await;
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	// Each logger should have its own records
 	let main_records = main_memory.get_records();
@@ -204,8 +196,6 @@ async fn test_multiple_security_violations() {
 
 	let error = SecurityError::SuspiciousOperation("CSRF token missing".to_string());
 	sec_logger.log_security_error(&error).await;
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 4);
@@ -245,7 +235,6 @@ async fn test_security_logger_with_different_levels() {
 
 	// If we had lower-severity security events, they would also be logged
 	// For now, just verify ERROR level works
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
@@ -274,8 +263,6 @@ async fn test_security_error_types() {
 	for error in errors {
 		sec_logger.log_security_error(&error).await;
 	}
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 3);

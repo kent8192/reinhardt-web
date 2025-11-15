@@ -52,8 +52,6 @@ async fn test_engine_echo_flag() {
 	engine.execute("SELECT * FROM users").await;
 	engine.execute("INSERT INTO users VALUES (1, 'test')").await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 2);
 	assert_eq!(records[0].message, "SQL: SELECT * FROM users");
@@ -77,8 +75,6 @@ async fn test_engine_echo_disabled() {
 
 	engine.execute("SELECT * FROM users").await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 0); // No logs
 }
@@ -96,8 +92,6 @@ async fn test_named_logger() {
 	let engine = LoggingEngine::new(logger.clone(), true);
 
 	engine.execute("SELECT 1").await;
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
@@ -120,8 +114,6 @@ async fn test_sql_parameter_logging() {
 	engine
 		.execute_with_params("SELECT * FROM users WHERE id = ? AND name = ?", &params)
 		.await;
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
@@ -151,8 +143,6 @@ async fn test_large_parameter_truncation() {
 		.execute_with_params("INSERT INTO logs VALUES (?)", &params)
 		.await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
 	// Should be truncated (repr_params default is ~200 chars)
@@ -177,8 +167,6 @@ async fn test_multiple_statements_logged() {
 	engine.execute("SELECT * FROM users").await;
 	engine.execute("DROP TABLE users").await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 4);
 	assert_eq!(records[0].message, "SQL: CREATE TABLE users (id INTEGER)");
@@ -201,8 +189,6 @@ async fn test_echo_respects_logger_level() {
 
 	// Echo logs at INFO level - should be filtered
 	engine.execute("SELECT 1").await;
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 0); // Filtered by level
@@ -232,8 +218,6 @@ async fn test_multiple_engines_different_echo() {
 	engine1.execute("SELECT 1").await;
 	engine2.execute("SELECT 2").await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records1 = memory1.get_records();
 	let records2 = memory2.get_records();
 
@@ -256,8 +240,6 @@ async fn test_sql_with_newlines_logged() {
 
 	let multiline_sql = "SELECT id, name, email\nFROM users\nWHERE active = true";
 	engine.execute(multiline_sql).await;
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);

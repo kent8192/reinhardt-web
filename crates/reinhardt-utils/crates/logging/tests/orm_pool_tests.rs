@@ -132,8 +132,6 @@ async fn test_pool_connection_logging() {
 	pool.acquire().await.unwrap();
 	pool.release().await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 3);
 	assert_eq!(records[0].message, "Pool connection acquired (1/5)");
@@ -159,8 +157,6 @@ async fn test_pool_overflow_warnings() {
 
 	// Use overflow
 	pool.acquire().await.unwrap();
-
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 3);
@@ -192,8 +188,6 @@ async fn test_connection_timeout_logging() {
 	let result = pool.acquire().await;
 	assert!(result.is_err());
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	let error_record = records.iter().find(|r| r.level == LogLevel::Error);
 	assert!(error_record.is_some());
@@ -217,8 +211,6 @@ async fn test_pool_recycle_events() {
 
 	pool.recycle().await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
 	assert_eq!(
@@ -241,12 +233,9 @@ async fn test_pool_dispose_logging() {
 
 	pool.dispose().await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
-	assert!(records[0].message.contains("Pool dispose"));
-	assert!(records[0].message.contains("closing all connections"));
+	assert_eq!(records[0].message, "Pool dispose: closing all connections");
 }
 
 #[tokio::test]
@@ -270,15 +259,13 @@ async fn test_multiple_pools_different_configs() {
 	pool1.acquire().await.unwrap();
 	pool2.acquire().await.unwrap();
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records1 = memory1.get_records();
 	let records2 = memory2.get_records();
 
 	assert_eq!(records1.len(), 1);
 	assert_eq!(records2.len(), 1);
-	assert!(records1[0].message.contains("(1/10)"));
-	assert!(records2[0].message.contains("(1/5)"));
+	assert_eq!(records1[0].message, "Pool connection acquired (1/10)");
+	assert_eq!(records2[0].message, "Pool connection acquired (1/5)");
 	assert_eq!(records1[0].logger_name, "reinhardt.orm.pool.primary");
 	assert_eq!(records2[0].logger_name, "reinhardt.orm.pool.replica");
 }
@@ -299,14 +286,12 @@ async fn test_pool_statistics_logging() {
 	pool.acquire().await.unwrap();
 	pool.log_statistics().await;
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
-	assert!(records[0].message.contains("Pool statistics"));
-	assert!(records[0].message.contains("size=10"));
-	assert!(records[0].message.contains("overflow=5"));
-	assert!(records[0].message.contains("current=2"));
+	assert_eq!(
+		records[0].message,
+		"Pool statistics: size=10, overflow=5, current=2"
+	);
 }
 
 #[tokio::test]
@@ -325,11 +310,11 @@ async fn test_connection_validation_errors() {
 	let result = pool.validate_connection(false).await;
 	assert!(result.is_err());
 
-	tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);
 	assert_eq!(records[0].level, LogLevel::Error);
-	assert!(records[0].message.contains("Connection validation failed"));
-	assert!(records[0].message.contains("stale"));
+	assert_eq!(
+		records[0].message,
+		"Connection validation failed: connection is stale"
+	);
 }

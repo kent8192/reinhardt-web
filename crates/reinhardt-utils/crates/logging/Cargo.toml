@@ -29,4 +29,5 @@ async-trait = { workspace = true }
 once_cell = { workspace = true, optional = false }
 
 [dev-dependencies]
+reinhardt-test = { workspace = true }
 tokio-test = "0.4"
