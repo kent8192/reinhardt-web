@@ -208,16 +208,12 @@ impl XssProtector {
 
 	/// Remove dangerous attributes
 	fn remove_dangerous_attributes(&self, input: &str) -> String {
-		let dangerous_attrs = ["onerror", "onload", "onclick", "onmouseover"];
-		let mut result = input.to_string();
-
-		for attr in &dangerous_attrs {
-			let pattern = format!(r#"(?i)\s*{}\s*=\s*["'][^"']*["']"#, attr);
-			let re = Regex::new(&pattern).unwrap();
-			result = re.replace_all(&result, "").to_string();
-		}
-
-		result
+		static DANGEROUS_ATTRS_RE: OnceLock<Regex> = OnceLock::new();
+		let re = DANGEROUS_ATTRS_RE.get_or_init(|| {
+			Regex::new(r#"(?i)\s*(onerror|onload|onclick|onmouseover)\s*=\s*["'][^"']*["']"#)
+				.unwrap()
+		});
+		re.replace_all(input, "").to_string()
 	}
 
 	/// Remove dangerous protocols (javascript:, data:, etc.)
