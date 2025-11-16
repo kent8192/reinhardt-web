@@ -28,6 +28,7 @@ pub mod request_id;
 pub mod security_middleware;
 pub mod session;
 pub mod site;
+pub mod timeout;
 pub mod tracing;
 pub mod xframe;
 
@@ -72,6 +73,7 @@ pub use request_id::{REQUEST_ID_HEADER, RequestIdConfig, RequestIdMiddleware};
 pub use security_middleware::{SecurityConfig, SecurityMiddleware};
 pub use session::{SessionConfig, SessionData, SessionMiddleware, SessionStore};
 pub use site::{SITE_ID_HEADER, Site, SiteConfig, SiteMiddleware, SiteRegistry};
+pub use timeout::{TimeoutConfig, TimeoutMiddleware};
 pub use tracing::{
 	PARENT_SPAN_ID_HEADER, SPAN_ID_HEADER, Span, SpanStatus, TRACE_ID_HEADER, TraceStore,
 	TracingConfig, TracingMiddleware,
