@@ -5,7 +5,6 @@ use reinhardt_core::{
 	Handler,
 	http::{Request, Response, Result},
 };
-// use reinhardt_core::di::InjectionContext; // TODO: Enable when ViewSet supports DI
 use reinhardt_viewsets::{Action, ViewSet};
 use std::sync::Arc;
 
@@ -18,18 +17,10 @@ pub(crate) struct ViewSetHandler {
 #[async_trait]
 impl Handler for ViewSetHandler {
 	async fn handle(&self, req: Request) -> Result<Response> {
-		// TODO: DI support - check if ViewSet supports DI
-		// if self.viewset.supports_di()
-		// 	&& let Some(di_ctx) = req.get_di_context::<InjectionContext>()
-		// {
-		// 	// Use DI-aware dispatch
-		// 	return self
-		// 		.viewset
-		// 		.dispatch_with_context(req, self.action, &di_ctx)
-		// 		.await;
-		// }
-
-		// Regular dispatch
+		// ViewSets use constructor-level dependency injection via the `Injectable` trait.
+		// Dependencies are injected once at ViewSet creation time using `ViewSet::inject(&ctx)`,
+		// and the `dispatch()` method uses those pre-injected dependencies.
+		// This pattern avoids runtime DI context lookups and provides better performance.
 		self.viewset.dispatch(req, self.action).await
 	}
 }
