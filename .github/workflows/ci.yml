@@ -11,6 +11,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  CARGO_TARGET_DIR: /tmp/cargo_target
 
 jobs:
   check:
@@ -21,13 +22,13 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: false
+          tool-cache: true
           android: true
           dotnet: true
           haskell: true
           large-packages: true
           docker-images: true
-          swap-storage: true
+          swap-storage: false
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,8 +45,11 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-make
+        run: cargo install cargo-make
+
       - name: Run cargo check
-        run: cargo check --workspace --all --all-features
+        run: cargo make check
 
   fmt:
     name: Format
@@ -60,8 +64,11 @@ jobs:
         with:
           components: rustfmt
 
+      - name: Install cargo-make
+        run: cargo install cargo-make
+
       - name: Check code formatting
-        run: cargo fmt --all --check
+        run: cargo make fmt
 
   clippy:
     name: Clippy
@@ -71,13 +78,13 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: false
+          tool-cache: true
           android: true
           dotnet: true
           haskell: true
           large-packages: true
           docker-images: true
-          swap-storage: true
+          swap-storage: false
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -96,8 +103,11 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-make
+        run: cargo install cargo-make
+
       - name: Run clippy
-        run: cargo clippy --workspace --all --all-features -- -D warnings
+        run: cargo make clippy
 
   test-unit:
     name: Unit Tests & Doc Tests
@@ -107,13 +117,13 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: false
+          tool-cache: true
           android: true
           dotnet: true
           haskell: true
           large-packages: true
           docker-images: true
-          swap-storage: true
+          swap-storage: false
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -127,6 +137,9 @@ jobs:
           sudo apt-get install -y protobuf-compiler
           protoc --version
 
+      - name: Install cargo-make
+        run: cargo install cargo-make
+
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
@@ -135,11 +148,10 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Run unit tests
-        run: cargo nextest run --workspace --lib --all-features
-
-      - name: Run documentation tests
-        run: cargo test --doc --workspace --all-features
+      - name: Run unit tests and documentation tests
+        run: |
+          cargo make doc-test
+          cargo make unit-test
 
   test-integration:
     name: Integration Tests
@@ -153,13 +165,13 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: false
+          tool-cache: true
           android: true
           dotnet: true
           haskell: true
           large-packages: true
           docker-images: true
-          swap-storage: true
+          swap-storage: false
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -173,6 +185,9 @@ jobs:
           sudo apt-get install -y protobuf-compiler
           protoc --version
 
+      - name: Install cargo-make
+        run: cargo install cargo-make
+
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
@@ -182,7 +197,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run integration tests
-        run: cargo nextest run --package reinhardt-integration-tests --all-features
+        run: cargo make integration-test
 
   test-examples:
     name: Examples Tests (crates.io)
@@ -211,6 +226,9 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-make
+        run: cargo install cargo-make
+
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
@@ -235,10 +253,7 @@ jobs:
 
       - name: Setup environment
         if: steps.check-published.outputs.available == 'true'
-        run: |
-          cd examples
-          cp .env.example .env
-          echo "DATABASE_URL=postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_examples" >> .env
+        run: cargo make examples-setup
 
       - name: Wait for PostgreSQL
         if: steps.check-published.outputs.available == 'true'
@@ -250,23 +265,17 @@ jobs:
 
       - name: Update dependencies (crates.io)
         if: steps.check-published.outputs.available == 'true'
-        run: |
-          cd examples
-          cargo update
+        run: cargo make examples-update
 
       - name: Test Examples
         if: steps.check-published.outputs.available == 'true'
-        run: |
-          cd examples
-          cargo nextest run --workspace --verbose
+        run: cargo make examples-test-keep
         env:
           DATABASE_URL: postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_examples
 
       - name: Build Examples
         if: steps.check-published.outputs.available == 'true'
-        run: |
-          cd examples
-          cargo build --workspace --release
+        run: cargo make examples-build
 
       - name: Skip Examples Tests (not published)
         if: steps.check-published.outputs.available == 'false'
