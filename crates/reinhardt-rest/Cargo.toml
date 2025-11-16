@@ -27,7 +27,7 @@ reinhardt-core = { workspace = true, features = ["auth", "exception"] }
 reinhardt-urls = { workspace = true, features = ["routers"] }
 reinhardt-views = { workspace = true, features = ["viewsets"] }
 # openapi = { path = "crates/openapi", optional = true } # TODO: Temporarily disabled due to utoipa API changes
-reinhardt-browsable-api = { path = "../reinhardt-rest/crates/browsable-api" }
+reinhardt-browsable-api = { workspace = true }
 reinhardt-db = { workspace = true, optional = true, features = ["orm"] }
 
 # Internal crates (now part of reinhardt-rest)

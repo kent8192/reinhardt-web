@@ -12,6 +12,7 @@ reinhardt-core = { workspace = true, features = [
   "types",
   "exception",
   "di",
+  "validators",
 ] }
 reinhardt-admin-panel = { workspace = true }
 reinhardt-auth = { workspace = true, features = ["argon2-hasher"] }
@@ -52,7 +53,6 @@ reinhardt-cache = { path = "../../crates/reinhardt-utils/crates/cache", features
 reinhardt-views-core = { path = "../../crates/reinhardt-views/crates/views-core" }
 reinhardt-negotiation = { workspace = true }
 reinhardt-renderers = { path = "../../crates/reinhardt-template/crates/renderers" }
-reinhardt-validators = { path = "../../crates/reinhardt-core/crates/validators" }
 reinhardt-serializers = { path = "../../crates/reinhardt-rest/crates/serializers" }
 reinhardt-settings = { workspace = true, features = [
   "async",

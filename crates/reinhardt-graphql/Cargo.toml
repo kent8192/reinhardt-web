@@ -51,7 +51,7 @@ chrono = { workspace = true }
 # gRPC integration (optional)
 reinhardt-grpc = { workspace = true, optional = true }
 reinhardt-graphql-macros = { workspace = true, optional = true }
-tonic = { version = "0.14.2", optional = true }
+tonic = { workspace = true, optional = true }
 tokio-stream = { workspace = true, optional = true, features = ["sync"] }
 
 [dev-dependencies]

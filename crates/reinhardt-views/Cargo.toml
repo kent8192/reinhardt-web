@@ -24,7 +24,7 @@ reinhardt-views-core = { version = "0.1.0-alpha.1", path = "crates/views-core" }
 
 # Optional dependencies for features
 reinhardt-viewsets = { version = "0.1.0-alpha.1", path = "crates/viewsets", optional = true }
-reinhardt-serializers = { path = "../reinhardt-rest/crates/serializers" }
+reinhardt-serializers = { workspace = true }
 
 [features]
 default = []

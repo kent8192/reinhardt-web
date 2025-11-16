@@ -3,6 +3,7 @@ name = "reinhardt-test"
 version = "0.1.0-alpha.1"
 edition = "2024"
 description = "Testing utilities and helpers for Reinhardt framework"
+license.workspace = true
 repository.workspace = true
 
 [features]
@@ -24,7 +25,7 @@ reinhardt-db = { workspace = true, features = ["orm", "backends"] }
 reinhardt-views = { workspace = true, features = ["viewsets"] }
 reinhardt-auth = { workspace = true }
 reinhardt-server = { workspace = true }
-reinhardt-routers = { path = "../reinhardt-urls/crates/routers" }
+reinhardt-routers = { workspace = true }
 reinhardt-websockets = { workspace = true, optional = true }
 
 hyper = { workspace = true }

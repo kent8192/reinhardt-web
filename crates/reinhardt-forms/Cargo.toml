@@ -9,7 +9,7 @@ authors.workspace = true
 
 [dependencies]
 # Internal dependencies
-reinhardt-validators = { path = "../reinhardt-core/crates/validators" }
+reinhardt-core = { workspace = true, features = ["validators"] }
 
 # Async runtime
 tokio = { workspace = true }

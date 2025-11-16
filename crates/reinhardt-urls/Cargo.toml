@@ -11,7 +11,7 @@ description = "URL routing and proxy utilities for Reinhardt framework"
 # Re-export internal crates
 reinhardt-routers = { path = "crates/routers", version = "0.1.0-alpha.1", optional = true }
 reinhardt-routers-macros = { path = "crates/routers-macros", version = "0.1.0-alpha.1", optional = true }
-reinhardt-proxy = { path = "crates/proxy", version = "0.1.0-alpha.1", optional = true }
+reinhardt-proxy = { workspace = true, optional = true }
 
 [features]
 default = ["routers", "routers-macros", "proxy"]

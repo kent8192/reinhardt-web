@@ -269,6 +269,7 @@ reinhardt-http = { path = "crates/reinhardt-http", version = "0.1.0-alpha.1" }
 reinhardt-server = { path = "crates/reinhardt-server", version = "0.1.0-alpha.1" }
 reinhardt-views = { path = "crates/reinhardt-views", version = "0.1.0-alpha.1" }
 reinhardt-urls = { path = "crates/reinhardt-urls", version = "0.1.0-alpha.1" }
+reinhardt-routers = { path = "crates/reinhardt-urls/crates/routers", version = "0.1.0-alpha.1" }
 reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.1.0-alpha.1" }
 reinhardt-template = { path = "crates/reinhardt-template", version = "0.1.0-alpha.1" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.1" }
@@ -302,6 +303,13 @@ reinhardt-static = { path = "crates/reinhardt-utils/crates/static", version = "0
 reinhardt-negotiation = { path = "crates/reinhardt-core/crates/negotiation", version = "0.1.0-alpha.1" }
 reinhardt-pagination = { path = "crates/reinhardt-core/crates/pagination", version = "0.1.0-alpha.1" }
 reinhardt-parsers = { path = "crates/reinhardt-core/crates/parsers", version = "0.1.0-alpha.1" }
+reinhardt-serializers = { path = "crates/reinhardt-rest/crates/serializers", version = "0.1.0-alpha.1" }
+reinhardt-browsable-api = { path = "crates/reinhardt-rest/crates/browsable-api", version = "0.1.0-alpha.1" }
+reinhardt-openapi = { path = "crates/reinhardt-rest/crates/openapi", version = "0.1.0-alpha.1" }
+reinhardt-openapi-macros = { path = "crates/reinhardt-rest/crates/openapi-macros", version = "0.1.0-alpha.1" }
+
+# URL subcrates
+reinhardt-proxy = { path = "crates/reinhardt-urls/crates/proxy", version = "0.1.0-alpha.1" }
 
 # Web framework
 tokio = { version = "1.48.0", features = ["full"] }
@@ -379,6 +387,9 @@ phonenumber = "0.3.7"
 # Serialization formats
 rmp-serde = "1.3.0"
 prost = "0.14.1"
+
+# gRPC
+tonic = "0.14.2"
 
 # Redis (for sessions)
 # Temporarily downgraded to 0.32 due to deadpool-redis compatibility

@@ -9,7 +9,7 @@ description = "Django-style management command framework for Reinhardt"
 
 [dependencies]
 reinhardt-mail = { workspace = true }
-reinhardt-static = { path = "../reinhardt-utils/crates/static" }
+reinhardt-static = { workspace = true }
 reinhardt-utils-core = { path = "../reinhardt-utils/crates/utils-core" }
 reinhardt-conf = { workspace = true }
 reinhardt-urls = { workspace = true, features = ["routers"], optional = true }

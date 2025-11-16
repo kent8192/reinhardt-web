@@ -18,7 +18,7 @@ reinhardt-urls = { workspace = true, features = ["routers"] }
 reinhardt-core = { workspace = true, features = ["auth"] }
 reinhardt-pagination = { path = "../../../reinhardt-core/crates/pagination" }
 reinhardt-auth = { workspace = true, optional = true }
-reinhardt-openapi = { path = "../openapi" }
+reinhardt-openapi = { workspace = true }
 
 [dev-dependencies]
 reinhardt-rest = { workspace = true }
