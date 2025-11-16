@@ -2,8 +2,9 @@
 
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Uri, Version, header};
-use reinhardt_micro::Request;
 use reinhardt_micro::utils::*;
+use reinhardt_micro::{Request, Response};
+use reinhardt_test::http::{assert_status, create_test_request, extract_json};
 use serde::{Deserialize, Serialize};
 
 #[test]
@@ -186,13 +187,10 @@ fn test_request_helpers_get_client_ip() {
 	assert_eq!(ip, Some("192.168.1.1".parse().unwrap()));
 }
 
-// TODO: Implement test helper functions (test_request, assert_json_response, assert_status, extract_json)
-// These tests are temporarily disabled until the helper functions are implemented
-/*
 #[test]
-fn test_testing_test_request() {
-	let request = test_request(Method::GET, "/test", None);
-	assert_eq!(request.method, Method::GET);
+fn test_testing_create_test_request() {
+	let request = create_test_request("GET", "/test", false);
+	assert_eq!(request.method.as_str(), "GET");
 	assert_eq!(request.uri.path(), "/test");
 }
 
@@ -217,13 +215,14 @@ fn test_testing_assert_json_response() {
 		id: 1,
 		name: "test".to_string(),
 	};
-	assert!(assert_json_response(response, expected).is_ok());
+	let actual: TestData = extract_json(response).unwrap();
+	assert_eq!(actual, expected);
 }
 
 #[test]
 fn test_testing_assert_status() {
 	let response = Response::ok();
-	assert!(assert_status(&response, StatusCode::OK).is_ok());
+	assert_status(&response, StatusCode::OK);
 }
 
 #[test]
@@ -247,4 +246,3 @@ fn test_testing_extract_json() {
 	assert_eq!(extracted.id, 1);
 	assert_eq!(extracted.name, "test");
 }
-*/
