@@ -6,18 +6,13 @@ use ipnet::IpNet;
 use std::net::IpAddr;
 
 /// IP Filtering operation mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum IpFilterMode {
 	/// Whitelist mode: Only allow IPs in the list
 	Whitelist,
 	/// Blacklist mode: Deny IPs in the list
+	#[default]
 	Blacklist,
-}
-
-impl Default for IpFilterMode {
-	fn default() -> Self {
-		Self::Blacklist
-	}
 }
 
 /// IP Filtering configuration

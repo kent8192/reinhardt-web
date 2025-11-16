@@ -49,20 +49,15 @@ pub struct CsrfMeta {
 }
 
 /// SameSite cookie attribute
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SameSite {
 	/// Strict mode - cookie only sent in first-party context
 	Strict,
 	/// Lax mode - cookie sent with top-level navigation
+	#[default]
 	Lax,
 	/// None mode - cookie sent in all contexts (requires Secure)
 	None,
-}
-
-impl Default for SameSite {
-	fn default() -> Self {
-		Self::Lax
-	}
 }
 
 /// CSRF configuration
