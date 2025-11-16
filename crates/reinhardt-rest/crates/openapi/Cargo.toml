@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-openapi"
 version.workspace = true
 description = "OpenAPI 3.0 schema generation and documentation"

@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-utils-core"
 version.workspace = true
 description = "Core utility functions and helpers"

@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-server-core"
 version.workspace = true
 description = "HTTP server implementation for Reinhardt framework"

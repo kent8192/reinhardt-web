@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-core-auth"
 version.workspace = true
 edition.workspace = true

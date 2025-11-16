@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-core-serializers"
 version.workspace = true
 description = "Core serialization and deserialization functionality for Reinhardt"

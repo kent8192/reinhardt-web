@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-backends-pool"
 version.workspace = true
 description = "Database connection pooling for various backends"

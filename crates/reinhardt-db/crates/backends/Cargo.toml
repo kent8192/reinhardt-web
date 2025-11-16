@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-backends"
 version.workspace = true
 description = "Database backend implementations (PostgreSQL, MySQL, SQLite)"

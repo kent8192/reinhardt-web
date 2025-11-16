@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-routers"
 version.workspace = true
 description = "URL routing and pattern matching"

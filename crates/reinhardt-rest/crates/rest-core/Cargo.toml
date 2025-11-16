@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-rest-core"
 version.workspace = true
 description = "Core REST API functionality and base classes for Reinhardt"

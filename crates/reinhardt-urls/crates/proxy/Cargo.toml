@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-proxy"
 version.workspace = true
 description = "HTTP proxy and reverse proxy utilities"

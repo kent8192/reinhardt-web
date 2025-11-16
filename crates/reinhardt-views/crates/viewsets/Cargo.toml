@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-viewsets"
 version.workspace = true
 description = "ViewSet implementations for DRY CRUD operations"

@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-logging"
 version.workspace = true
 description = "Logging utilities and handlers"

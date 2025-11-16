@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-cache"
 version.workspace = true
 description = "Caching layer with multiple backend support"

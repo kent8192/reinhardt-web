@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-storage"
 version.workspace = true
 description = "File storage abstraction with multiple backends"

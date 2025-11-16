@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-sessions"
 version = "0.1.0-alpha.1"
 description = "Session management with various storage backends"

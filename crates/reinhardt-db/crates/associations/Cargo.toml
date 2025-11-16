@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-associations"
 version.workspace = true
 description = "Database relationship and association management"

@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-settings"
 version.workspace = true
 edition.workspace = true

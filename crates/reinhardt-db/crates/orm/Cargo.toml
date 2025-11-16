@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-orm"
 version.workspace = true
 description = "Object-Relational Mapping (ORM) layer for database operations"

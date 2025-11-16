@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-filters"
 version = "0.1.0-alpha.1"
 edition = "2024"

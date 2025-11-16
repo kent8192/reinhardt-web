@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-hybrid"
 version.workspace = true
 description = "Hybrid database operations combining sync and async patterns"

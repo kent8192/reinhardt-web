@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-pool"
 version.workspace = true
 description = "Generic database connection pool interface"

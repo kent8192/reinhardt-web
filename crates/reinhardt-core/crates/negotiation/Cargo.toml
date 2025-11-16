@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-negotiation"
 version.workspace = true
 description = "Content negotiation for REST API responses"

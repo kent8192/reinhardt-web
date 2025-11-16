@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reinhardt-browsable-api"
 version.workspace = true
 description = "HTML interface for browsing and interacting with REST APIs"
