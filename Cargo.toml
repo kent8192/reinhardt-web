@@ -256,7 +256,7 @@ authors = ["kent8192 <51869472+kent8192@users.noreply.github.com>"]
 # cargo-workspaces configuration
 allow-branch = "main"           # Only allow publishing from main branch
 allow-dirty = false             # Require clean working directory
-no-individual-tags = true       # Disable cargo-ws automatic tag generation (we use GitHub Actions)
+no-individual-tags = false      # Enable cargo-ws automatic tag generation
 
 [workspace.dependencies]
 # Internal crates
