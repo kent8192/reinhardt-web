@@ -1005,36 +1005,32 @@ impl TwoPhaseParticipant for PostgresParticipantAdapter {
 /// MySQL participant adapter
 ///
 /// Adapts backend's `MySqlTwoPhaseParticipant` to ORM layer's `TwoPhaseParticipant` trait.
-/// Session management is delegated to the backend layer.
+/// Session management is delegated to the backend layer via XID-based wrapper methods.
 ///
-/// # Implementation Status
+/// # XA Transaction Flow
 ///
-/// **Note**: This adapter currently has compilation issues due to Rust lifetime constraints
-/// with `async_trait` and SQLx's `PoolConnection<MySql>`. The issue stems from MySQL's
-/// requirement that all XA operations occur on the same database connection, combined with
-/// `async_trait`'s Higher-Rank Trait Bound (HRTB) lifetime requirements.
+/// MySQL XA transactions require a specific sequence:
+/// 1. XA START - Begin transaction
+/// 2. ... perform operations ...
+/// 3. XA END - End transaction (required before prepare)
+/// 4. XA PREPARE - Prepare for commit
+/// 5. XA COMMIT or XA ROLLBACK - Finalize
 ///
-/// **Workaround**: Use the backend layer's `MySqlTwoPhaseParticipant` directly in your code
-/// until this adapter is fixed. The backend API is fully functional:
+/// # Examples
 ///
 /// ```no_run
-/// use reinhardt_backends::MySqlTwoPhaseParticipant;
-/// # tokio_test::block_on(async {
-/// # let pool = todo!(); // MySql pool
-/// let participant = MySqlTwoPhaseParticipant::new(pool);
-/// let mut session = participant.begin("xid_001").await.unwrap();
-/// // Perform operations...
-/// participant.end(&mut session).await.unwrap();
-/// participant.prepare(&mut session).await.unwrap();
-/// participant.commit(session).await.unwrap();
-/// # });
-/// ```
+/// use reinhardt_orm::two_phase_commit::MySqlParticipantAdapter;
+/// use sqlx::MySqlPool;
 ///
-/// TODO: Resolve lifetime incompatibility between `async_trait` HRTB and `PoolConnection<MySql>`
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let pool = MySqlPool::connect("mysql://localhost/mydb").await?;
+/// let adapter = MySqlParticipantAdapter::new("db1", pool);
+/// # Ok(())
+/// # }
+/// ```
 #[cfg(feature = "mysql")]
 pub struct MySqlParticipantAdapter {
 	id: String,
-	#[allow(dead_code)] // TODO: Will be used once lifetime issues are resolved
 	backend: MySqlTwoPhaseParticipant,
 	status: ParticipantStatus,
 }
@@ -1081,38 +1077,46 @@ impl TwoPhaseParticipant for MySqlParticipantAdapter {
 	}
 
 	async fn begin(&self) -> Result<(), TwoPhaseError> {
-		todo!(
-			"MySQL adapter has lifetime issues with async_trait. \
-			 Use MySqlTwoPhaseParticipant from backend layer directly."
-		)
+		self.backend
+			.begin_by_xid(&self.id)
+			.await
+			.map_err(|e| TwoPhaseError::DatabaseError(e.to_string()))
 	}
 
-	async fn prepare(&self, _xid: &str) -> Result<(), TwoPhaseError> {
-		todo!(
-			"MySQL adapter has lifetime issues with async_trait. \
-			 Use MySqlTwoPhaseParticipant from backend layer directly."
-		)
+	async fn prepare(&self, xid: &str) -> Result<(), TwoPhaseError> {
+		// MySQL requires XA END before XA PREPARE
+		self.backend
+			.end_by_xid(xid)
+			.await
+			.map_err(|e| TwoPhaseError::PrepareFailed(self.id.clone(), e.to_string()))?;
+
+		self.backend
+			.prepare_by_xid(xid)
+			.await
+			.map_err(|e| TwoPhaseError::PrepareFailed(self.id.clone(), e.to_string()))
 	}
 
-	async fn commit(&self, _xid: &str) -> Result<(), TwoPhaseError> {
-		todo!(
-			"MySQL adapter has lifetime issues with async_trait. \
-			 Use MySqlTwoPhaseParticipant from backend layer directly."
-		)
+	async fn commit(&self, xid: &str) -> Result<(), TwoPhaseError> {
+		self.backend
+			.commit_managed(xid)
+			.await
+			.map_err(|e| TwoPhaseError::CommitFailed(self.id.clone(), e.to_string()))
 	}
 
-	async fn rollback(&self, _xid: &str) -> Result<(), TwoPhaseError> {
-		todo!(
-			"MySQL adapter has lifetime issues with async_trait. \
-			 Use MySqlTwoPhaseParticipant from backend layer directly."
-		)
+	async fn rollback(&self, xid: &str) -> Result<(), TwoPhaseError> {
+		self.backend
+			.rollback_managed(xid)
+			.await
+			.map_err(|e| TwoPhaseError::RollbackFailed(self.id.clone(), e.to_string()))
 	}
 
 	async fn recover(&self) -> Result<Vec<String>, TwoPhaseError> {
-		todo!(
-			"MySQL adapter has lifetime issues with async_trait. \
-			 Use MySqlTwoPhaseParticipant from backend layer directly."
-		)
+		let txns = self
+			.backend
+			.list_prepared_transactions()
+			.await
+			.map_err(|e| TwoPhaseError::RecoveryFailed(e.to_string()))?;
+		Ok(txns.into_iter().map(|t| t.xid).collect())
 	}
 
 	fn status(&self) -> ParticipantStatus {
