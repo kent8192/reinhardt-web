@@ -9,7 +9,7 @@ publish = false
 # Reinhardt crates
 reinhardt-commands = { workspace = true }
 reinhardt-auth = { workspace = true }
-reinhardt-admin-panel = { workspace = true }
+reinhardt-panel = { workspace = true }
 reinhardt-graphql = { workspace = true }
 reinhardt-websockets = { workspace = true }
 reinhardt-i18n = { workspace = true }

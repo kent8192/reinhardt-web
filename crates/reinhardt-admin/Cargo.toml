@@ -1,0 +1,32 @@
+[package]
+name = "reinhardt-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Admin functionality for Reinhardt framework (panel and CLI)"
+
+[dependencies]
+# Internal crates (optional)
+reinhardt-panel = { path = "crates/panel", version = "0.1.0-alpha.1", optional = true }
+
+# Dependencies for CLI binary (conditional)
+reinhardt-commands = { workspace = true, optional = true }
+clap = { version = "4.5", features = ["derive", "cargo"], optional = true }
+tokio = { workspace = true, optional = true }
+
+[features]
+default = ["panel"]
+
+# Module features
+panel = ["dep:reinhardt-panel"]
+cli = ["dep:reinhardt-commands", "dep:clap", "dep:tokio"]
+
+# All features
+all = ["panel", "cli"]
+
+# Binary features (for cargo install)
+binary = ["cli"]
+
+[dev-dependencies]

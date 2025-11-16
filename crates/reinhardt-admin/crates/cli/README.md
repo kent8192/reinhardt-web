@@ -11,7 +11,7 @@ Global command-line tool for Reinhardt project management.
 Install globally using cargo:
 
 ```bash
-cargo install reinhardt-admin-cli
+cargo install reinhardt-admin --features cli
 ```
 
 ## Usage

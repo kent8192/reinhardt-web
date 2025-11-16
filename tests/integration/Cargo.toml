@@ -14,7 +14,7 @@ reinhardt-core = { workspace = true, features = [
   "di",
   "validators",
 ] }
-reinhardt-admin-panel = { workspace = true }
+reinhardt-panel = { workspace = true }
 reinhardt-auth = { workspace = true, features = ["argon2-hasher"] }
 reinhardt-security = { path = "../../crates/reinhardt-core/crates/security" }
 reinhardt-http = { workspace = true }

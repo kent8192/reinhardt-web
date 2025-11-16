@@ -45,8 +45,9 @@ database = [
 ]
 api = ["reinhardt-rest", "reinhardt-rest/serializers", "reinhardt-views/viewsets"]
 auth = ["reinhardt-auth"]
-# admin = ["reinhardt-admin", "reinhardt-forms", "reinhardt-template"]  # reinhardt-admin not yet created
-admin = ["reinhardt-forms", "reinhardt-template"]
+admin = ["reinhardt-admin", "reinhardt-admin/panel", "reinhardt-forms", "reinhardt-template"]
+admin-panel = ["reinhardt-admin/panel"]
+admin-cli = ["reinhardt-admin/cli"]
 forms = ["reinhardt-forms"]
 graphql = ["reinhardt-graphql"]
 templates = ["reinhardt-template"]
@@ -179,7 +180,7 @@ reinhardt-rest = { workspace = true, optional = true }
 reinhardt-auth = { workspace = true, optional = true }
 
 # Additional optional dependencies
-reinhardt-admin-panel = { workspace = true, optional = true }
+reinhardt-admin = { workspace = true, optional = true }
 reinhardt-forms = { workspace = true, optional = true }
 reinhardt-middleware = { workspace = true, optional = true }
 reinhardt-shortcuts = { workspace = true, optional = true }
@@ -216,11 +217,10 @@ members = [
   "crates/reinhardt-utils",
   "crates/reinhardt-rest",
   "crates/reinhardt-auth",
-  "crates/reinhardt-admin-panel", # Web admin panel
+  "crates/reinhardt-admin", # Admin functionality (panel + CLI)
   "crates/reinhardt-grpc",
   "crates/reinhardt-graphql-macros",
   "crates/reinhardt-commands",
-  "crates/reinhardt-admin-cli", # CLI tool
   "crates/reinhardt-db",
   "crates/reinhardt-dispatch",
   "crates/reinhardt-shortcuts",
@@ -278,11 +278,12 @@ reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.1.0-alpha.1" }
 reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-alpha.1" }
 reinhardt-rest = { path = "crates/reinhardt-rest", version = "0.1.0-alpha.1" }
 reinhardt-auth = { path = "crates/reinhardt-auth", version = "0.1.0-alpha.1" }
-reinhardt-admin-panel = { path = "crates/reinhardt-admin-panel", version = "0.1.0-alpha.1" }
+reinhardt-admin = { path = "crates/reinhardt-admin", version = "0.1.0-alpha.1" }
+reinhardt-panel = { path = "crates/reinhardt-admin/crates/panel", version = "0.1.0-alpha.1" }
+reinhardt-cli = { path = "crates/reinhardt-admin/crates/cli", version = "0.1.0-alpha.1" }
 reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.1.0-alpha.1" }
 reinhardt-graphql-macros = { path = "crates/reinhardt-graphql-macros", version = "0.1.0-alpha.1" }
 reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.1" }
-reinhardt-admin-cli = { path = "crates/reinhardt-admin-cli", version = "0.1.0-alpha.1" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.1" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
 reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0-alpha.1" }

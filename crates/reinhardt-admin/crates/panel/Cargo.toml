@@ -1,10 +1,11 @@
 [package]
-name = "reinhardt-admin-panel"
+name = "reinhardt-panel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
 description = "Django-style admin panel for Reinhardt framework"
-repository = "https://github.com/kent8192/reinhardt-rs"
 keywords = ["reinhardt", "admin", "django", "web", "framework"]
 categories = ["web-programming"]
 
