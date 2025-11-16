@@ -5,15 +5,15 @@
 //! **USES TESTCONTAINERS**: These tests use TestContainers for PostgreSQL database.
 //! Docker Desktop must be running before executing these tests.
 
+use reinhardt_core::validators::{
+	MaxLengthValidator, MaxValueValidator, MinLengthValidator, MinValueValidator, RangeValidator,
+	ValidationError, Validator,
+};
 use reinhardt_integration_tests::validator_test_common::*;
 use reinhardt_test::fixtures::validator::{
 	validator_db_guard, validator_test_db, ValidatorDbGuard,
 };
 use reinhardt_test::resource::TeardownGuard;
-use reinhardt_core::validators::{
-	MaxLengthValidator, MaxValueValidator, MinLengthValidator, MinValueValidator, RangeValidator,
-	ValidationError, Validator,
-};
 use rstest::*;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};

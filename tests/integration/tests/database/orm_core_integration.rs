@@ -2,12 +2,12 @@
 //!
 //! These tests verify the public API of the crate
 
+use reinhardt_core::validators::TableName;
 use reinhardt_orm::{
 	Abs, AnnotationValue, Cast, Concat, Greatest, IsolationLevel, Lower, Model, Round,
 	SoftDeletable, SoftDelete, SqlType, Sqrt, Timestamped, Timestamps, Transaction,
 	TransactionState, Upper, Value, F, Q,
 };
-use reinhardt_core::validators::TableName;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

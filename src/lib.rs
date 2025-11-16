@@ -382,8 +382,8 @@ pub mod prelude {
 	// Core feature - types, signals, etc.
 	#[cfg(feature = "core")]
 	pub use crate::{
-		Error, Handler, Middleware, MiddlewareChain, Request, Response, Result, Signal, m2m_changed,
-		post_delete, post_save, pre_delete, pre_save,
+		Error, Handler, Middleware, MiddlewareChain, Request, Response, Result, Signal,
+		m2m_changed, post_delete, post_save, pre_delete, pre_save,
 	};
 
 	// Database feature - ORM

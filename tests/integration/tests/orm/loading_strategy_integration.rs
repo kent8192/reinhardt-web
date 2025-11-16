@@ -6,11 +6,11 @@
 //! Run with: cargo test --test loading_strategy_integration_tests --features integration-tests
 
 mod integration_tests {
+	use reinhardt_core::validators::TableName;
 	use reinhardt_orm::{
 		joinedload, lazyload, selectinload, subqueryload, LoadContext, LoadOptionBuilder,
 		LoadingStrategy, Model,
 	};
-	use reinhardt_core::validators::TableName;
 	use rstest::{fixture, rstest};
 	use serde::{Deserialize, Serialize};
 	use sqlx::{sqlite::SqlitePoolOptions, Row, SqlitePool};
