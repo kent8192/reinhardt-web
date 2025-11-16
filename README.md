@@ -52,7 +52,7 @@ Reinhardt brings together the best of three worlds:
 - **Powerful Serializers**: Automatic validation and transformation with serde and validator
 - **Smart Routing**: Function-based and class-based route registration
 - **Multi-Auth Support**: JWT, Token, Session, and Basic authentication with BaseUser/FullUser traits
-- **ViewSets**: DRY principle for CRUD operations (planned for future release)
+- **ViewSets**: DRY principle for CRUD operations with ModelViewSet and ReadOnlyModelViewSet
 
 ### 🚀 FastAPI-Inspired Ergonomics
 
@@ -632,13 +632,13 @@ pub async fn create_user(mut req: Request) -> Result<Response, Box<dyn std::erro
 | Serializers           | ❌       | ✅        | ✅      |
 | Authentication        | ❌       | ✅        | ✅      |
 | Pagination            | ❌       | ✅        | ✅      |
+| ViewSets              | ❌       | ✅        | ✅      |
 | **Advanced Features** |
 | Admin Panel           | ❌       | ❌        | ✅      |
 | GraphQL               | ❌       | ❌        | ✅      |
 | WebSockets            | ❌       | ❌        | ✅      |
 | i18n                  | ❌       | ❌        | ✅      |
 | **Planned Features**  |
-| ViewSets              | ❌       | 🔜       | 🔜      |
 | FastAPI-style DI      | ❌       | 🔜       | 🔜      |
 | #[derive(Model)]      | ❌       | 🔜       | 🔜      |
 | **Use Case**          |

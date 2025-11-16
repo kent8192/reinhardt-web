@@ -15,7 +15,7 @@ Before you begin, make sure you have:
 ### Step 1: Install Reinhardt Admin
 
 ```bash
-cargo install reinhardt-admin
+cargo install reinhardt-admin-cli
 ```
 
 ### Step 2: Create a New Project
