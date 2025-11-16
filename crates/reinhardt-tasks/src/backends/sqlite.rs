@@ -211,12 +211,11 @@ impl crate::backend::TaskBackend for SqliteBackend {
 	) -> Result<Option<crate::registry::SerializedTask>, TaskExecutionError> {
 		let id_str = task_id.to_string();
 
-		let record: Option<(String,)> =
-			sqlx::query_as("SELECT task_data FROM tasks WHERE id = ?")
-				.bind(&id_str)
-				.fetch_optional(&self.pool)
-				.await
-				.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+		let record: Option<(String,)> = sqlx::query_as("SELECT task_data FROM tasks WHERE id = ?")
+			.bind(&id_str)
+			.fetch_optional(&self.pool)
+			.await
+			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
 		match record {
 			Some((task_data_json,)) => {

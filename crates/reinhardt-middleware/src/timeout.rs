@@ -93,8 +93,10 @@ impl Middleware for TimeoutMiddleware {
 	async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
 		match timeout(self.config.duration, next.handle(request)).await {
 			Ok(result) => result,
-			Err(_) => Ok(Response::new(StatusCode::REQUEST_TIMEOUT)
-				.with_body("Request Timeout".to_string())),
+			Err(_) => {
+				Ok(Response::new(StatusCode::REQUEST_TIMEOUT)
+					.with_body("Request Timeout".to_string()))
+			}
 		}
 	}
 }
