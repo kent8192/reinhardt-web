@@ -1,4 +1,4 @@
-name: Auto-tag on Merge
+name: Publish on Merge
 
 on:
   pull_request:
@@ -11,13 +11,16 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  create-tags:
-    name: Create release tags
+  publish-on-merge:
+    name: Publish changed crates to crates.io
     runs-on: ubuntu-latest
     # Only run when PR is merged and has 'release' label
     if: |
       github.event.pull_request.merged == true &&
       contains(github.event.pull_request.labels.*.name, 'release')
+
+    permissions:
+      contents: write  # Required for creating tags and GitHub Releases
 
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -34,7 +37,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history needed
+          fetch-depth: 0  # Full history needed for cargo-workspaces
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
@@ -51,106 +54,227 @@ jobs:
           sudo apt-get install -y protobuf-compiler
           protoc --version
 
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Install cargo-workspaces
         run: cargo install cargo-workspaces
 
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
-      - name: Detect changed crates and create tags
-        id: create-tags
+      - name: Detect changed crates
+        id: detect-crates
         run: |
           echo "Detecting changed crates..."
 
-          # Get list of changed Cargo.toml files
-          CHANGED_TOMLS=$(git diff --name-only HEAD~1 HEAD | grep 'Cargo.toml$' || true)
+          # Use cargo-workspaces to detect changed crates
+          CHANGED_OUTPUT=$(cargo ws changed --include-merged-tags 2>&1 || true)
 
-          if [ -z "$CHANGED_TOMLS" ]; then
-            echo "No Cargo.toml files changed."
-            echo "new_tags=" >> $GITHUB_OUTPUT
+          if echo "$CHANGED_OUTPUT" | grep -q "No changed crates detected"; then
+            echo "No changed crates detected. Skipping publication."
+            echo "has_changes=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          echo "Changed Cargo.toml files:"
-          echo "$CHANGED_TOMLS"
+          echo "Changed crates found:"
+          echo "$CHANGED_OUTPUT"
+          echo "has_changes=true" >> $GITHUB_OUTPUT
 
-          # Extract crate names and versions
-          NEW_TAGS=""
-          for toml in $CHANGED_TOMLS; do
-            # Skip workspace root Cargo.toml (only has [workspace] section)
-            if [ "$toml" == "Cargo.toml" ]; then
-              continue
-            fi
+          # Extract changed crate names and store in array
+          CRATES_JSON="["
+          FIRST=true
 
-            # Extract crate name and version using cargo metadata
-            CRATE_INFO=$(cargo metadata --manifest-path "$toml" --no-deps --format-version 1 2>/dev/null || true)
+          for CRATE_PATH in crates/*/Cargo.toml; do
+            CRATE_DIR=$(dirname "$CRATE_PATH")
+            CRATE_NAME=$(basename "$CRATE_DIR")
 
-            if [ -z "$CRATE_INFO" ]; then
-              continue
-            fi
+            # Check if this crate was in the changed list
+            if echo "$CHANGED_OUTPUT" | grep -q "$CRATE_NAME"; then
+              # Extract version from Cargo.toml
+              VERSION=$(grep -m1 '^version = ' "$CRATE_PATH" | sed 's/version = "\(.*\)"/\1/')
 
-            CRATE_NAME=$(echo "$CRATE_INFO" | jq -r '.packages[0].name')
-            VERSION=$(echo "$CRATE_INFO" | jq -r '.packages[0].version')
+              if [ -z "$VERSION" ]; then
+                echo "⚠️ Could not extract version for $CRATE_NAME, skipping..."
+                continue
+              fi
 
-            if [ -z "$CRATE_NAME" ] || [ "$CRATE_NAME" == "null" ] || [ -z "$VERSION" ] || [ "$VERSION" == "null" ]; then
-              continue
-            fi
+              # Check if already published
+              if curl -s "https://crates.io/api/v1/crates/$CRATE_NAME/$VERSION" | grep -q "\"num\":\"$VERSION\""; then
+                echo "ℹ️ $CRATE_NAME@$VERSION already published, skipping..."
+                continue
+              fi
 
-            TAG_NAME="$CRATE_NAME@v$VERSION"
+              if [ "$FIRST" = true ]; then
+                FIRST=false
+              else
+                CRATES_JSON="${CRATES_JSON},"
+              fi
 
-            # Check if tag already exists
-            if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-              echo "Tag $TAG_NAME already exists, skipping."
-              continue
-            fi
-
-            echo "Creating tag: $TAG_NAME"
-            git tag "$TAG_NAME" -m "Release $CRATE_NAME v$VERSION"
-
-            if [ -z "$NEW_TAGS" ]; then
-              NEW_TAGS="$TAG_NAME"
-            else
-              NEW_TAGS="$NEW_TAGS $TAG_NAME"
+              CRATES_JSON="${CRATES_JSON}{\"name\":\"${CRATE_NAME}\",\"version\":\"${VERSION}\"}"
+              echo "📦 Will publish: $CRATE_NAME v$VERSION"
             fi
           done
 
-          echo "new_tags=$NEW_TAGS" >> $GITHUB_OUTPUT
-          echo "New tags to push: $NEW_TAGS"
+          CRATES_JSON="${CRATES_JSON}]"
 
-      - name: Push tags sequentially
-        if: steps.create-tags.outputs.new_tags != ''
+          if [ "$CRATES_JSON" = "[]" ]; then
+            echo "No crates to publish (all may be already published)."
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "crates_json=$CRATES_JSON" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish crates sequentially
+        if: steps.detect-crates.outputs.has_changes == 'true'
         env:
-          NEW_TAGS: ${{ steps.create-tags.outputs.new_tags }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          echo "Pushing tags sequentially with 30s interval..."
+          CRATES_JSON='${{ steps.detect-crates.outputs.crates_json }}'
 
-          for tag in $NEW_TAGS; do
-            echo "Pushing tag: $tag"
-            git push origin "$tag"
+          echo "Publishing crates with 30s interval..."
+          echo "This delay allows crates.io index to update between publishes."
 
-            echo "Tag $tag pushed successfully."
+          CRATE_COUNT=$(echo "$CRATES_JSON" | jq '. | length')
+          CURRENT=0
 
-            # Wait 30 seconds before pushing next tag
-            # This allows crates.io index to update
-            if [ "$tag" != "${NEW_TAGS##* }" ]; then
-              echo "Waiting 30 seconds before next tag..."
+          echo "$CRATES_JSON" | jq -c '.[]' | while read -r crate; do
+            CURRENT=$((CURRENT + 1))
+            CRATE_NAME=$(echo "$crate" | jq -r '.name')
+            VERSION=$(echo "$crate" | jq -r '.version')
+
+            echo ""
+            echo "[$CURRENT/$CRATE_COUNT] Publishing $CRATE_NAME v$VERSION..."
+            echo ""
+
+            # Run dry-run first
+            echo "Running dry-run..."
+            if ! cargo ws publish --dry-run -p "$CRATE_NAME"; then
+              echo "❌ Dry-run failed for $CRATE_NAME"
+              exit 1
+            fi
+
+            # Publish with retry logic
+            MAX_RETRIES=3
+            RETRY_COUNT=0
+            WAIT_TIME=10
+
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              if cargo ws publish -p "$CRATE_NAME" --no-git-push; then
+                echo "✅ Successfully published $CRATE_NAME v$VERSION"
+                break
+              else
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                  echo "⚠️ Publish failed, retrying in ${WAIT_TIME}s (attempt $RETRY_COUNT/$MAX_RETRIES)..."
+                  sleep $WAIT_TIME
+                  WAIT_TIME=$((WAIT_TIME * 2))
+                else
+                  echo "❌ Publish failed after $MAX_RETRIES attempts"
+                  exit 1
+                fi
+              fi
+            done
+
+            # Create local tag (don't push yet)
+            TAG_NAME="${CRATE_NAME}@v${VERSION}"
+            git tag "$TAG_NAME" -m "Release $CRATE_NAME v$VERSION"
+            echo "🏷️ Created tag: $TAG_NAME"
+
+            # Wait before next crate (except for last one)
+            if [ "$CURRENT" -lt "$CRATE_COUNT" ]; then
+              echo "⏳ Waiting 30 seconds before next crate..."
               sleep 30
             fi
           done
 
-          echo "All tags pushed successfully!"
+          echo ""
+          echo "🎉 All crates published successfully!"
+
+      - name: Create GitHub Releases
+        if: steps.detect-crates.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CRATES_JSON='${{ steps.detect-crates.outputs.crates_json }}'
+
+          echo "Creating GitHub Releases..."
+
+          echo "$CRATES_JSON" | jq -c '.[]' | while read -r crate; do
+            CRATE_NAME=$(echo "$crate" | jq -r '.name')
+            VERSION=$(echo "$crate" | jq -r '.version')
+            TAG_NAME="${CRATE_NAME}@v${VERSION}"
+
+            # Find CHANGELOG
+            CRATE_DIR=$(find crates -type f -name "Cargo.toml" -exec dirname {} \; | \
+              xargs -I {} sh -c 'grep -l "name = \"'"$CRATE_NAME"'\"" {}/Cargo.toml 2>/dev/null && echo {}' | head -1)
+
+            if [ -n "$CRATE_DIR" ] && [ -f "$CRATE_DIR/CHANGELOG.md" ]; then
+              # Extract release notes for this version
+              NOTES=$(awk "/## \[$VERSION\]/,/## \[/" "$CRATE_DIR/CHANGELOG.md" | head -n -1)
+
+              if [ -z "$NOTES" ]; then
+                NOTES="Release $CRATE_NAME v$VERSION
+
+          Published to crates.io"
+              fi
+            else
+              NOTES="Release $CRATE_NAME v$VERSION
+
+          Published to crates.io"
+            fi
+
+            echo "$NOTES" > /tmp/release-notes-${CRATE_NAME}.md
+
+            # Create GitHub Release
+            gh release create "$TAG_NAME" \
+              --title "Release $CRATE_NAME v$VERSION" \
+              --notes-file /tmp/release-notes-${CRATE_NAME}.md
+
+            echo "✅ Created GitHub Release for $TAG_NAME"
+          done
+
+      - name: Push tags
+        if: steps.detect-crates.outputs.has_changes == 'true'
+        run: |
+          # Get all tags created in this run (tags pointing at HEAD)
+          TAGS=$(git tag --points-at HEAD | grep -E "^[a-z0-9_-]+@v[0-9]" || echo "")
+
+          if [ -z "$TAGS" ]; then
+            echo "No tags to push."
+            exit 0
+          fi
+
+          echo "Pushing tags..."
+          echo "$TAGS" | while read -r tag; do
+            if [ -n "$tag" ]; then
+              echo "Pushing tag: $tag"
+              git push origin "$tag"
+              echo "✅ Tag $tag pushed successfully."
+            fi
+          done
 
       - name: Summary
-        if: steps.create-tags.outputs.new_tags != ''
-        env:
-          NEW_TAGS: ${{ steps.create-tags.outputs.new_tags }}
+        if: steps.detect-crates.outputs.has_changes == 'true'
         run: |
-          echo "## Release Tags Created" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The following tags were created and pushed:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          for tag in $NEW_TAGS; do
-            echo "- \`$tag\`" >> $GITHUB_STEP_SUMMARY
-          done
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The publish-on-tag workflow will now automatically publish these crates to crates.io." >> $GITHUB_STEP_SUMMARY
+          CRATES_JSON='${{ steps.detect-crates.outputs.crates_json }}'
+
+          {
+            echo "## 🎉 Release Successful"
+            echo ""
+            echo "The following crates were published to crates.io:"
+            echo ""
+            echo "$CRATES_JSON" | jq -r '.[] | "- [\(.name) v\(.version)](https://crates.io/crates/\(.name)/\(.version))"'
+            echo ""
+            echo "### Documentation"
+            echo ""
+            echo "Documentation will be available shortly on docs.rs:"
+            echo ""
+            echo "$CRATES_JSON" | jq -r '.[] | "- [\(.name)](https://docs.rs/\(.name)/\(.version))"'
+          } >> $GITHUB_STEP_SUMMARY
