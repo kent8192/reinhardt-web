@@ -123,6 +123,13 @@ pub mod urls;
 pub mod utils;
 pub mod views;
 
+// Contrib modules (Django-style)
+pub mod contrib {
+	#[cfg(feature = "admin")]
+	#[cfg_attr(docsrs, doc(cfg(feature = "admin")))]
+	pub use reinhardt_admin::panel as admin;
+}
+
 // TODO: Re-export app types when apps system is restored
 // #[cfg(feature = "core")]
 // pub use reinhardt_core::apps::{AppConfig, AppError, AppResult, Apps};
@@ -173,7 +180,7 @@ pub use reinhardt_urls::routers::{
 // Re-export auth
 #[cfg(feature = "auth")]
 pub use reinhardt_auth::{
-	AllowAny, AnonymousUser, Argon2Hasher, AuthBackend, IsAdminUser, IsAuthenticated,
+	AllowAny, AnonymousUser, AuthBackend, IsAdminUser, IsAuthenticated,
 	PasswordHasher, Permission, SimpleUser, User,
 };
 
@@ -277,6 +284,129 @@ pub use reinhardt_shortcuts::{
 pub use reinhardt_urls::routers::{
 	UrlPattern, UrlPatternWithParams, UrlReverser, include_routes as include, path, re_path,
 	reverse,
+};
+
+// Re-export admin panel (admin feature)
+#[cfg(feature = "admin")]
+pub use reinhardt_admin::panel::{
+	// Core types
+	AdminSite,
+	ModelAdmin,
+	ModelAdminConfig,
+	// Actions
+	ActionRegistry,
+	ActionResult,
+	AdminAction,
+	DeleteSelectedAction,
+	// Views
+	CreateView as AdminCreateView,
+	DeleteView as AdminDeleteView,
+	DetailView as AdminDetailView,
+	ListView as AdminListView,
+	UpdateView as AdminUpdateView,
+	// Filters
+	BooleanFilter,
+	ChoiceFilter,
+	DateRangeFilter,
+	FilterManager,
+	FilterSpec,
+	ListFilter,
+	NumberRangeFilter,
+	// Forms
+	AdminForm,
+	FieldType as AdminFieldType,
+	FormBuilder,
+	FormField,
+	// Advanced features
+	BulkEdit,
+	BulkEditConfig,
+	BulkEditField,
+	BulkEditForm,
+	BulkEditResult,
+	// Export/Import
+	CsvExporter,
+	CsvImporter,
+	ExportBuilder,
+	ExportConfig,
+	ExportFormat,
+	ExportResult,
+	ImportBuilder,
+	ImportConfig,
+	ImportError,
+	ImportFormat,
+	ImportResult,
+	JsonExporter,
+	JsonImporter,
+	TsvExporter,
+	TsvImporter,
+	// Inline editing
+	InlineForm,
+	InlineFormset,
+	InlineModelAdmin,
+	InlineType,
+	// Widgets
+	EditorType,
+	ImageFormat,
+	ImageUploadConfig,
+	RichTextEditorConfig,
+	Widget,
+	WidgetFactory,
+	WidgetType,
+	// Audit
+	AuditAction,
+	AuditLog,
+	AuditLogBuilder,
+	AuditLogQuery,
+	AuditLogQueryBuilder,
+	AuditLogger,
+	DatabaseAuditLogger,
+	MemoryAuditLogger,
+	// Auth
+	AdminAuthBackend,
+	AdminAuthMiddleware,
+	AdminPermissionChecker,
+	PermissionAction,
+	// Custom views
+	CustomView,
+	CustomViewRegistry,
+	DragDropConfig,
+	DragDropConfigBuilder,
+	ReorderHandler,
+	ReorderResult,
+	ReorderableModel,
+	ViewConfig,
+	ViewConfigBuilder,
+	// Dashboard
+	Activity,
+	ChartData,
+	ChartDataset,
+	ChartType,
+	ChartWidget,
+	DashboardWidget,
+	QuickLink,
+	QuickLinksWidget,
+	RecentActivityWidget,
+	StatWidget,
+	TableWidget,
+	DashboardUserInfo,
+	WidgetConfig,
+	WidgetContext,
+	WidgetPosition,
+	WidgetRegistry,
+	// Database
+	AdminDatabase,
+	// Templates
+	AdminContext,
+	AdminTemplateRenderer,
+	DashboardContext,
+	DeleteConfirmationContext,
+	FormViewContext,
+	ListViewContext,
+	PaginationContext,
+	UserContext,
+	// Error types
+	AdminError,
+	AdminResult,
 };
 
 // Re-export database related (database feature)
@@ -444,4 +574,22 @@ pub mod prelude {
 	// Cache feature
 	#[cfg(feature = "cache")]
 	pub use crate::{Cache, InMemoryCache};
+
+	// Admin feature
+	#[cfg(feature = "admin")]
+	pub use crate::{
+		AdminSite, AdminAction, AdminForm, AdminError, AdminResult, ModelAdmin, ModelAdminConfig,
+		// Filters
+		BooleanFilter,
+		ChoiceFilter,
+		DateRangeFilter,
+		ListFilter,
+		// Forms
+		FieldType,
+		FormBuilder,
+		FormField,
+		// Actions
+		ActionRegistry,
+		DeleteSelectedAction,
+	};
 }
