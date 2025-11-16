@@ -10,7 +10,7 @@ mod integration_tests {
 		joinedload, lazyload, selectinload, subqueryload, LoadContext, LoadOptionBuilder,
 		LoadingStrategy, Model,
 	};
-	use reinhardt_validators::TableName;
+	use reinhardt_core::validators::TableName;
 	use rstest::{fixture, rstest};
 	use serde::{Deserialize, Serialize};
 	use sqlx::{sqlite::SqlitePoolOptions, Row, SqlitePool};

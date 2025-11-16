@@ -4,14 +4,18 @@
 //! including PostgreSQL database setup with proper connection pool configuration
 //! and automatic cleanup.
 
+#[cfg(feature = "testcontainers")]
 use rstest::*;
+#[cfg(feature = "testcontainers")]
 use std::sync::Arc;
+#[cfg(feature = "testcontainers")]
 use testcontainers::{
 	ContainerAsync, GenericImage, ImageExt,
 	core::{ContainerPort, WaitFor},
 	runners::AsyncRunner,
 };
 
+#[cfg(feature = "testcontainers")]
 use crate::resource::{TeardownGuard, TestResource};
 
 /// Fixture providing a PostgreSQL container with optimized connection pool for validator tests
@@ -42,6 +46,7 @@ use crate::resource::{TeardownGuard, TestResource};
 ///     // 自動的にクリーンアップされる
 /// }
 /// ```
+#[cfg(feature = "testcontainers")]
 #[fixture]
 pub async fn validator_test_db() -> (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String) {
 	let postgres = GenericImage::new("postgres", "17-alpine")
@@ -99,8 +104,10 @@ pub async fn validator_test_db() -> (ContainerAsync<GenericImage>, Arc<sqlx::PgP
 ///
 /// This guard ensures that database connections are properly released
 /// even if tests panic or fail.
+#[cfg(feature = "testcontainers")]
 pub struct ValidatorDbGuard;
 
+#[cfg(feature = "testcontainers")]
 impl TestResource for ValidatorDbGuard {
 	fn setup() -> Self {
 		// 必要に応じて初期化処理を追加
@@ -133,6 +140,7 @@ impl TestResource for ValidatorDbGuard {
 ///     // panicしても自動的にクリーンアップされる
 /// }
 /// ```
+#[cfg(feature = "testcontainers")]
 #[fixture]
 pub fn validator_db_guard() -> TeardownGuard<ValidatorDbGuard> {
 	TeardownGuard::new()

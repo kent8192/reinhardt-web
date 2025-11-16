@@ -218,6 +218,8 @@ impl DebugToolbar {
 	///
 	/// # tokio_test::block_on(async {
 	/// let toolbar = DebugToolbar::new();
+	/// // Simulate some work
+	/// tokio::time::sleep(Duration::from_millis(10)).await;
 	/// toolbar.finalize().await;
 	/// let timing = toolbar.get_timing().await;
 	/// assert!(timing.total_time >= Duration::from_millis(10));

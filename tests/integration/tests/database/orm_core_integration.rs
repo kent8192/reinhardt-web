@@ -7,7 +7,7 @@ use reinhardt_orm::{
 	SoftDeletable, SoftDelete, SqlType, Sqrt, Timestamped, Timestamps, Transaction,
 	TransactionState, Upper, Value, F, Q,
 };
-use reinhardt_validators::TableName;
+use reinhardt_core::validators::TableName;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

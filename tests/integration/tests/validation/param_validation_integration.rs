@@ -2,7 +2,7 @@
 //!
 //! These tests verify that reinhardt-validators work correctly with parameters.
 
-use reinhardt_validators::{
+use reinhardt_core::validators::{
 	EmailValidator, MaxLengthValidator, MaxValueValidator, MinLengthValidator, MinValueValidator,
 	RangeValidator, RegexValidator, Validator,
 };

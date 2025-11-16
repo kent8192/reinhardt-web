@@ -10,7 +10,7 @@ use reinhardt_test::fixtures::validator::{
 	validator_db_guard, validator_test_db, ValidatorDbGuard,
 };
 use reinhardt_test::resource::TeardownGuard;
-use reinhardt_validators::{
+use reinhardt_core::validators::{
 	MaxLengthValidator, MaxValueValidator, MinLengthValidator, MinValueValidator, RangeValidator,
 	ValidationError, Validator,
 };
@@ -174,7 +174,7 @@ mod bulk_operation_validation_tests {
 
 	#[test]
 	fn test_bulk_email_validation() {
-		use reinhardt_validators::EmailValidator;
+		use reinhardt_core::validators::EmailValidator;
 
 		let email_validator = EmailValidator::new();
 
@@ -259,7 +259,7 @@ mod constraint_validation_tests {
 		#[future] validator_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
-		use reinhardt_validators::UniqueValidator;
+		use reinhardt_core::validators::UniqueValidator;
 
 		let (_container, pool, _port, _database_url) = validator_test_db.await;
 		setup_test_tables(pool.as_ref()).await;
@@ -366,7 +366,7 @@ mod relationship_validation_tests {
 		#[future] validator_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
-		use reinhardt_validators::ExistsValidator;
+		use reinhardt_core::validators::ExistsValidator;
 
 		let (_container, pool, _port, _database_url) = validator_test_db.await;
 		setup_test_tables(pool.as_ref()).await;

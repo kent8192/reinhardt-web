@@ -79,6 +79,8 @@ pub mod testcontainers;
 // New fixture modules for integration tests
 pub mod admin;
 pub mod auth;
+
+#[cfg(feature = "testcontainers")]
 pub mod validator;
 
 // Re-export commonly used items from submodules

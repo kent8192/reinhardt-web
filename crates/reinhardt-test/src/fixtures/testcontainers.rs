@@ -51,6 +51,8 @@ async fn is_port_range_available(base_port: u16) -> bool {
 ///
 /// # Example
 /// ```rust
+/// use rstest::*;
+///
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_with_auto_ports(
