@@ -7,10 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Features and changes in development (not yet released)
-
-## [0.1.0] - 2025-10-30
+### Breaking Changes
+- N/A
 
 ### Added
-- Initial release of reinhardt-conf
+- Work in progress features (not yet released)
+
+### Changed
+- N/A
+
+### Deprecated
+- N/A
+
+### Removed
+- N/A
+
+### Fixed
+- N/A
+
+### Security
+- N/A
+
+## [0.1.0] - 2025-11-16
+
+### Added
+- Initial release with configuration management with environment-based settings and type-safe access
