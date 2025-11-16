@@ -248,9 +248,12 @@ impl App {
 	/// let app = App::new()
 	///     .with_timeout(Duration::from_secs(30));
 	/// ```
-	pub fn with_timeout(self, _duration: Duration) -> Self {
-		// Note: Timeout middleware implementation is pending in reinhardt-middleware
-		todo!("Implement timeout middleware integration")
+	pub fn with_timeout(mut self, duration: Duration) -> Self {
+		use reinhardt_middleware::{TimeoutConfig, TimeoutMiddleware};
+		let config = TimeoutConfig::new(duration);
+		self.middlewares
+			.push(Arc::new(TimeoutMiddleware::new(config)));
+		self
 	}
 
 	/// Add logging middleware with custom configuration
@@ -444,5 +447,18 @@ mod tests {
 		let handler = std::sync::Arc::new(DummyHandler);
 		let app = App::new().route("/", handler);
 		let _ = app.serve("127.0.0.1:0").await;
+	}
+
+	#[test]
+	fn test_app_with_timeout() {
+		let _app = App::new().with_timeout(Duration::from_secs(30));
+	}
+
+	#[test]
+	fn test_app_with_timeout_chaining() {
+		let handler = std::sync::Arc::new(DummyHandler);
+		let _app = App::new()
+			.with_timeout(Duration::from_secs(30))
+			.route("/", handler);
 	}
 }
