@@ -5,7 +5,7 @@ use crate::{
 	result::{ResultBackend, TaskResultMetadata},
 };
 use async_trait::async_trait;
-use sqlx::SqlitePool;
+use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 
 /// SQLite-based task backend
 ///
@@ -43,7 +43,11 @@ impl SqliteBackend {
 	/// # }
 	/// ```
 	pub async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
-		let pool = SqlitePool::connect(database_url).await?;
+		use std::str::FromStr;
+
+		let options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+
+		let pool = SqlitePool::connect_with(options).await?;
 
 		let backend = Self { pool };
 
@@ -560,7 +564,7 @@ mod tests {
 		// Create temporary directory for database file
 		let temp_dir = tempdir().expect("Failed to create temp directory");
 		let db_path = temp_dir.path().join("test.db");
-		let db_url = format!("sqlite://{}", db_path.display());
+		let db_url = format!("sqlite:///{}", db_path.display());
 
 		let task_id = TaskId::new();
 		let task_name = "persistent_task".to_string();
