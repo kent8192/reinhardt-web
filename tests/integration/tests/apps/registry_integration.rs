@@ -11,6 +11,7 @@ use reinhardt_apps::registry::{
 	RELATIONSHIPS,
 };
 use reinhardt_test::resource::{TeardownGuard, TestResource};
+use rstest::{fixture, rstest};
 use serial_test::serial;
 use std::collections::HashSet;
 
