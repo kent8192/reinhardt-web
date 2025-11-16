@@ -351,185 +351,97 @@ pub use async_trait::async_trait;
 pub use serde::{Deserialize, Serialize};
 pub use tokio;
 
-/// Prelude module for convenient imports
 pub mod prelude {
+	// Core types - always available
 	pub use crate::{
-		// Versioning
-		AcceptHeaderVersioning,
 		Action,
-
-		// Throttling
-		AnonRateThrottle,
-		// AppConfig, // TODO: Re-add when apps system is restored
-		// App
-		// Apps, // TODO: Re-add when apps system is restored
-		AuthBackend,
-		// Middleware
-		// BrowsableAPIRenderer, // TODO: Fix typo or remove if not exported
-		CursorPagination,
-		DatabaseConnection,
-
 		DefaultRouter,
-		Deserialize,
-		// Deserializer, // Use Deserialize trait instead
 		DetailView,
-		// Core
-		Error,
-
-		// Metadata/Filter types - gated by 'rest' feature
-		// FieldInfo,
-		// FieldOrderingExt,
-		// FieldType,
-		// FilterBackend,
-		FormParser,
-		Handler,
-		// Parsers
-		JSONParser,
-		// Renderers
-		JSONRenderer,
-		JsonSerializer,
-		LimitOffsetPagination,
 		ListView,
-		LoggingMiddleware,
-
-		Middleware,
-		MiddlewareChain,
-
-		// ORM
-		Model,
 		ModelViewSet,
-		MultiPartParser,
-		// Filters
-		MultiTermSearch,
 		MultipleObjectMixin,
-		// Pagination
-		PageNumberPagination,
-		Paginator,
-
-		Parser,
-
-		PasswordHasher,
-		Permission,
-
-		QueryParameterVersioning,
 		ReadOnlyModelViewSet,
-		Request,
-		Response,
-		Result,
 		Route,
-
-		// Routers
 		Router,
-		ScopedRateThrottle,
-		Serialize,
-		// Serializers
-		Serializer,
-		Settings,
-
-		// Signals
-		Signal,
-		// Metadata
-		SimpleMetadata,
-		SimpleUser,
 		SingleObjectMixin,
-
-		SoftDeletable,
 		StatusCode,
-		Throttle,
-
-		Timestamped,
-		URLPathVersioning,
 		UnifiedRouter,
-		// Auth
-		User,
-		UserRateThrottle,
-		VersioningMiddleware,
-
-		// Views
 		View,
-		// ViewSets
 		ViewSet,
-
-		// External
-		async_trait,
+		// Routers
 		clear_router,
 		get_router,
 		is_router_registered,
-		m2m_changed,
-
-		post_delete,
-		post_save,
-		pre_delete,
-		pre_save,
 		register_router,
 	};
 
-	// Cache (if enabled)
+	// External
+	pub use async_trait::async_trait;
+	pub use serde::{Deserialize, Serialize};
+
+	// Core feature - types, signals, etc.
+	#[cfg(feature = "core")]
+	pub use crate::{
+		Error, Handler, Middleware, MiddlewareChain, Request, Response, Result, Signal, m2m_changed,
+		post_delete, post_save, pre_delete, pre_save,
+	};
+
+	// Database feature - ORM
+	#[cfg(feature = "database")]
+	pub use crate::{DatabaseConnection, Model, SoftDeletable, Timestamped};
+
+	// Auth feature
+	#[cfg(feature = "auth")]
+	pub use crate::{AuthBackend, PasswordHasher, Permission, SimpleUser, User};
+
+	// REST feature - serializers, parsers, pagination, throttling, versioning, metadata
+	#[cfg(feature = "rest")]
+	pub use crate::{
+		// Versioning
+		AcceptHeaderVersioning,
+		// Throttling
+		AnonRateThrottle,
+		CursorPagination,
+		FormParser,
+		// Parsers
+		JSONParser,
+		JsonSerializer,
+		LimitOffsetPagination,
+		MultiPartParser,
+		// Filters
+		MultiTermSearch,
+		// Pagination
+		PageNumberPagination,
+		Paginator,
+		Parser,
+		QueryParameterVersioning,
+		ScopedRateThrottle,
+		// Serializers
+		Serializer,
+		// Metadata
+		SimpleMetadata,
+		Throttle,
+		URLPathVersioning,
+		UserRateThrottle,
+		VersioningMiddleware,
+	};
+
+	// Template renderer feature
+	#[cfg(feature = "reinhardt-template")]
+	pub use crate::JSONRenderer;
+
+	// Settings feature
+	#[cfg(feature = "conf")]
+	pub use crate::Settings;
+
+	// Middleware
+	pub use crate::LoggingMiddleware;
+
+	// Sessions feature
+	#[cfg(feature = "sessions")]
+	pub use crate::{AuthenticationMiddleware, Session};
+
+	// Cache feature
 	#[cfg(feature = "cache")]
 	pub use crate::{Cache, InMemoryCache};
-
-	// Sessions (if enabled)
-	#[cfg(feature = "sessions")]
-	pub use crate::{AuthenticationMiddleware, InMemorySessionBackend, Session};
-
-	// Forms (if enabled)
-	#[cfg(feature = "forms")]
-	pub use crate::{CharField, EmailField, FieldError, Form, FormError, ModelForm};
-
-	// JWT Auth (if enabled)
-	#[cfg(feature = "auth-jwt")]
-	pub use crate::{Claims, JwtAuth};
-
-	// CORS Middleware (if enabled)
-	#[cfg(feature = "middleware-cors")]
-	pub use crate::CorsMiddleware;
-
-	// Shortcuts (if enabled)
-	#[cfg(feature = "shortcuts")]
-	pub use crate::{get_list_or_404, get_object_or_404, redirect, render};
-
-	// DI/Params (if enabled)
-	#[cfg(feature = "minimal")]
-	pub use crate::{Body, Cookie, Header, Json, Path, Query};
-
-	#[cfg(feature = "di")]
-	pub use crate::{Depends, DiError, DiResult, InjectionContext, RequestContext};
-
-	// Templates (if enabled)
-	#[cfg(feature = "templates")]
-	pub use crate::TemplateError;
-
-	// Tasks (if enabled)
-	#[cfg(feature = "tasks")]
-	pub use crate::{Scheduler, Task, TaskQueue};
-
-	// URL utilities
-	pub use crate::{
-		UrlPattern, UrlPatternWithParams, UrlReverser, include, path, re_path, reverse,
-	};
-
-	// HTTP utilities
-	#[cfg(feature = "core")]
-	pub use crate::Extensions;
-
-	// Storage (if enabled)
-	#[cfg(feature = "storage")]
-	pub use crate::{InMemoryStorage, LocalStorage, Storage};
-
-	// Database pool (if enabled)
-	#[cfg(feature = "database")]
-	pub use crate::{ConnectionPool, PoolConfig, PoolError};
-
-	// Core utilities (if enabled)
-	#[cfg(feature = "core")]
-	pub use crate::{
-		CreditCardValidator, EmailValidator, IBANValidator, IPAddressValidator,
-		PhoneNumberValidator, UrlValidator, ValidationResult, Validator, ValidatorError,
-	};
-
-	// Test utilities (if enabled)
-	#[cfg(feature = "test")]
-	pub use crate::{APIClient, TestResponse};
-
-	pub use std::sync::Arc;
 }
