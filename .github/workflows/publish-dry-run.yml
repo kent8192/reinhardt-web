@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0  # Full history for cargo-workspaces
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.91.1
 
       - name: Install protoc
         run: |
@@ -52,5 +52,12 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           echo "::group::Running cargo ws publish --dry-run"
+          set -e  # Exit immediately if any command fails
           cargo ws publish --dry-run --all
+          EXIT_CODE=$?
           echo "::endgroup::"
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "::error::Dry-run publish failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+          echo "::notice::Dry-run publish succeeded"
