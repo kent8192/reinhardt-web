@@ -1,9 +1,16 @@
-name: Publish to crates.io
+# DISABLED: Publishing is now handled by publish-on-merge.yml
+# This workflow is kept for emergency manual releases.
+# To trigger manually: GitHub Actions → Publish on Tag (Manual) → Run workflow
+
+name: Publish on Tag (Manual Only)
 
 on:
-  push:
-    tags:
-      - '*@v*.*.*'  # Matches: reinhardt-orm@v0.1.0, etc.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g., reinhardt-core@v0.1.0)'
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,7 +34,7 @@ jobs:
       - name: Extract crate name and version from tag
         id: extract
         run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          TAG_NAME="${{ github.event.inputs.tag }}"
           echo "Tag: $TAG_NAME"
 
           # Extract crate name (everything before @vX.Y.Z)
@@ -42,10 +49,18 @@ jobs:
           echo "crate_name=$CRATE_NAME" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Validate tag is on main branch
+      - name: Validate tag exists
         id: validate
         run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          TAG_NAME="${{ github.event.inputs.tag }}"
+
+          # Check if tag exists
+          if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "❌ Tag $TAG_NAME does not exist"
+            echo "::error::Tag must exist before publishing"
+            echo "is_valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
 
           # Check if tag is ancestor of main
           if git merge-base --is-ancestor "$TAG_NAME" origin/main; then
@@ -245,7 +260,7 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ github.event.inputs.tag }}
           CRATE_NAME: ${{ needs.validate-tag.outputs.crate_name }}
           VERSION: ${{ needs.validate-tag.outputs.version }}
         run: |
@@ -258,7 +273,7 @@ jobs:
           CRATE_NAME: ${{ needs.validate-tag.outputs.crate_name }}
           VERSION: ${{ needs.validate-tag.outputs.version }}
         run: |
-          echo "## 🎉 Release Successful" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎉 Manual Release Successful" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Crate:** \`${CRATE_NAME}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
