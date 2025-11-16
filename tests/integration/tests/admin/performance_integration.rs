@@ -7,7 +7,7 @@
 //! - Concurrent dashboard widget loading
 
 use async_trait::async_trait;
-use reinhardt_admin_panel::{
+use reinhardt_panel::{
 	audit::{AuditAction, AuditLog, AuditLogQuery, AuditLogger, MemoryAuditLogger},
 	dashboard::{DashboardWidget, WidgetConfig, WidgetContext, WidgetPosition, WidgetRegistry},
 	import::{CsvImporter, JsonImporter},

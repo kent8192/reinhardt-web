@@ -5,11 +5,11 @@
 //! querying, and aggregation.
 
 use chrono::{Duration, Utc};
-use reinhardt_admin_panel::audit::{
+use reinhardt_orm::DatabaseConnection;
+use reinhardt_panel::audit::{
 	AuditAction, AuditLog, AuditLogQuery, AuditLogger, DatabaseAuditLogger,
 };
-use reinhardt_admin_panel::AdminDatabase;
-use reinhardt_orm::DatabaseConnection;
+use reinhardt_panel::AdminDatabase;
 use rstest::{fixture, rstest};
 use serde_json::json;
 use serial_test::serial;

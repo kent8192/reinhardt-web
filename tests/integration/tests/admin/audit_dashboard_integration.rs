@@ -2,7 +2,7 @@
 //!
 //! Tests the complete flow: user actions → audit logging → dashboard statistics
 
-use reinhardt_admin_panel::{
+use reinhardt_panel::{
 	// Dashboard
 	Activity,
 	// Audit

@@ -10,11 +10,11 @@
 //!
 //! All tests use TestContainers for automatic database setup and cleanup.
 
-use reinhardt_admin_panel::{
+use reinhardt_orm::{DatabaseConnection, Filter, FilterOperator, FilterValue, Model};
+use reinhardt_panel::{
 	AdminDatabase, AdminSite, BooleanFilter, ChoiceFilter, CreateView, DeleteView, FilterManager,
 	ListFilter, ListView, ModelAdminConfig, UpdateView,
 };
-use reinhardt_orm::{DatabaseConnection, Filter, FilterOperator, FilterValue, Model};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
