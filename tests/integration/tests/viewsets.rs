@@ -27,3 +27,6 @@ mod manual_action_integration;
 
 #[path = "viewsets/viewset_initialization_integration.rs"]
 mod viewset_initialization_integration;
+
+#[path = "viewsets/router_tests.rs"]
+mod router_tests;
