@@ -30,5 +30,7 @@ initial_prompt: |
   - Check: cargo make check
   - Build: cargo make build
   - Test: cargo make test
-  - Format: cargo make fmt
-  - Lint: cargo make clippy
+  - Automatic Format: cargo make fmt-fix
+  - Automatic Lint: cargo make clippy-fix
+  - Check Format Rules: cargo make fmt-check
+  - Check Lint Rules: cargo make clippy-check

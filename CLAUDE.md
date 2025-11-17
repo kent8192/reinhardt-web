@@ -184,8 +184,10 @@ cargo test --doc  # Documentation tests
 
 **Code Quality:**
 ```bash
-cargo make fmt   # Format code
-cargo make clippy  # Lint code
+cargo make fmt-check   # Cheeck format rules of the code
+cargo make clippy-check  # Check lint rules of the code
+cargo make fmt-fix   # Automatically fix code based on formatting rules
+cargo make clippy-fix  # Automatically fix code based on lint rules
 ```
 
 **Database Tests:**
@@ -249,8 +251,8 @@ Before submitting code:
    - `cargo check --workspace --all --all-features`
    - `cargo build --workspace --all --all-features`
    - `cargo test --workspace --all --all-features`
-   - `cargo make fmt`
-   - `cargo make clippy`
+   - `cargo make fmt-check`
+   - `cargo make clippy-check`
 
 2. **Iterate until all issues resolved**
 
