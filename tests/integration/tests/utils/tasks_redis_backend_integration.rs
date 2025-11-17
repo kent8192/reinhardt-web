@@ -3,14 +3,17 @@
 //! These tests verify that RedisTaskBackend and RedisTaskResultBackend
 //! correctly execute operations against a real Redis container.
 
+#![cfg(feature = "redis-backend")]
+
 use reinhardt_tasks::backend::TaskBackend;
 use reinhardt_tasks::backends::redis::{RedisTaskBackend, RedisTaskResultBackend};
-use reinhardt_tasks::{Task, TaskId, TaskPriority, TaskStatus, TaskExecutionError};
+use reinhardt_tasks::result::ResultBackend;
+use reinhardt_tasks::{Task, TaskExecutionError, TaskId, TaskPriority, TaskStatus};
 use serial_test::serial;
 use testcontainers::{
-	GenericImage,
 	core::{ContainerPort, WaitFor},
 	runners::AsyncRunner,
+	GenericImage,
 };
 
 struct TestTask {
@@ -234,7 +237,8 @@ async fn test_redis_result_backend_delete() {
 		.expect("Failed to connect to Redis");
 
 	let task_id = TaskId::new();
-	let metadata = reinhardt_tasks::result::TaskResultMetadata::new(task_id, TaskStatus::Success, None);
+	let metadata =
+		reinhardt_tasks::result::TaskResultMetadata::new(task_id, TaskStatus::Success, None);
 
 	// Store and then delete
 	backend

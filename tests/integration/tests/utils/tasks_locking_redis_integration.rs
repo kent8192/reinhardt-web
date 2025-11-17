@@ -3,14 +3,16 @@
 //! These tests verify that RedisTaskLock correctly executes distributed
 //! locking operations against a real Redis container.
 
+#![cfg(feature = "redis-backend")]
+
 use reinhardt_tasks::locking::{RedisTaskLock, TaskLock};
 use reinhardt_tasks::TaskId;
 use serial_test::serial;
 use std::time::Duration;
 use testcontainers::{
-	GenericImage,
 	core::{ContainerPort, WaitFor},
 	runners::AsyncRunner,
+	GenericImage,
 };
 
 async fn setup_redis() -> testcontainers::ContainerAsync<GenericImage> {

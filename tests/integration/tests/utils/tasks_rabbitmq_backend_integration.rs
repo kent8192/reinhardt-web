@@ -3,14 +3,16 @@
 //! These tests verify that RabbitMQBackend correctly executes operations
 //! against a real RabbitMQ container.
 
+#![cfg(feature = "rabbitmq-backend")]
+
 use reinhardt_tasks::backend::TaskBackend;
 use reinhardt_tasks::backends::rabbitmq::{RabbitMQBackend, RabbitMQConfig};
 use reinhardt_tasks::{Task, TaskId, TaskPriority, TaskStatus};
 use serial_test::serial;
 use testcontainers::{
-	GenericImage,
 	core::{ContainerPort, WaitFor},
 	runners::AsyncRunner,
+	GenericImage,
 };
 
 struct TestTask {

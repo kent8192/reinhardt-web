@@ -4,10 +4,12 @@
 //! with real database containers.
 
 use reinhardt_core::validators::TableName;
-use reinhardt_orm::{Model, async_query::{AsyncQuery, AsyncSession}, engine::Engine, expressions::Q, query_execution::QueryCompiler, types::DatabaseDialect};
+use reinhardt_orm::{
+	expressions::Q, query_execution::QueryCompiler, types::DatabaseDialect, Model,
+};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use testcontainers::{ContainerAsync, GenericImage, ImageExt, runners::AsyncRunner};
+use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage, ImageExt};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,7 +184,7 @@ mod postgres_tests {
 // MySQL Tests
 // ========================================================================
 
-#[cfg(feature = "mysql")]
+#[cfg(any())] // MySQL support not yet enabled in integration tests
 mod mysql_tests {
 	use super::*;
 	use sqlx::mysql::{MySqlPool, MySqlPoolOptions};

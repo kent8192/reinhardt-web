@@ -64,8 +64,14 @@ reinhardt-settings = { workspace = true, features = [
 ] }
 reinhardt-browsable-api = { path = "../../crates/reinhardt-rest/crates/browsable-api" }
 reinhardt-i18n = { workspace = true }
-reinhardt-tasks = { path = "../../crates/reinhardt-tasks" }
+reinhardt-tasks = { path = "../../crates/reinhardt-tasks", features = [
+  "redis-backend",
+  "rabbitmq-backend",
+] }
 reinhardt-rest = { path = "../../crates/reinhardt-rest" }
+reinhardt-shortcuts = { path = "../../crates/reinhardt-shortcuts", features = [
+  "database",
+] }
 reinhardt-pagination = { workspace = true }
 reinhardt-filters = { path = "../../crates/reinhardt-rest/crates/filters" }
 reinhardt-forms = { path = "../../crates/reinhardt-forms" }
@@ -141,6 +147,8 @@ postgres = ["reinhardt-orm/postgres", "backends/postgres"]
 sqlite = ["reinhardt-orm/sqlite", "backends/sqlite"]
 caching = ["reinhardt-settings/caching"]
 hot-reload = ["reinhardt-settings/hot-reload"]
+redis-backend = ["reinhardt-tasks/redis-backend"]
+rabbitmq-backend = ["reinhardt-tasks/rabbitmq-backend"]
 
 [dev-dependencies]
 # Test utilities
