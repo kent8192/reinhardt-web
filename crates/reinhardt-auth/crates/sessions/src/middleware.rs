@@ -297,7 +297,7 @@ mod tests {
 	use super::*;
 	use crate::backends::InMemorySessionBackend;
 	use bytes::Bytes;
-	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+	use hyper::{HeaderMap, Method, StatusCode};
 	use std::sync::Arc;
 
 	// Mock handler for testing

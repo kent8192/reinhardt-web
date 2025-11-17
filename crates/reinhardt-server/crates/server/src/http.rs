@@ -505,7 +505,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_middleware_chain_execution() {
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, Uri, Version};
+		use hyper::{HeaderMap, Method, Version};
 		use reinhardt_core::types::Middleware;
 
 		struct PrefixMiddleware {

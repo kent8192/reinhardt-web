@@ -247,7 +247,7 @@ mod tests {
 	use super::*;
 	use async_trait::async_trait;
 	use bytes::Bytes;
-	use hyper::{HeaderMap, Method, Uri, Version};
+	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_exception::Result;
 	use std::sync::Arc;
 

@@ -218,7 +218,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_struct_params() {
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, Uri, Version};
+		use hyper::{HeaderMap, Method, Version};
 		use serde::Deserialize;
 
 		#[derive(Debug, Deserialize, PartialEq)]
@@ -248,7 +248,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_primitive_i64() {
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, Uri, Version};
+		use hyper::{HeaderMap, Method, Version};
 
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "42".to_string());
@@ -271,7 +271,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_primitive_string() {
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, Uri, Version};
+		use hyper::{HeaderMap, Method, Version};
 
 		let mut params = HashMap::new();
 		params.insert("name".to_string(), "foobar".to_string());
@@ -298,7 +298,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_primitive_f64() {
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, Uri, Version};
+		use hyper::{HeaderMap, Method, Version};
 
 		let mut params = HashMap::new();
 		params.insert("price".to_string(), "19.99".to_string());
@@ -321,7 +321,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_primitive_bool() {
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, Uri, Version};
+		use hyper::{HeaderMap, Method, Version};
 
 		let mut params = HashMap::new();
 		params.insert("active".to_string(), "true".to_string());
@@ -344,7 +344,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_multiple_params_struct() {
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, Uri, Version};
+		use hyper::{HeaderMap, Method, Version};
 		use serde::Deserialize;
 
 		#[derive(Debug, Deserialize, PartialEq)]

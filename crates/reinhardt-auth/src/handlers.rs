@@ -203,7 +203,7 @@ mod tests {
 	use crate::SimpleUser;
 	use crate::session::InMemorySessionStore;
 	use bytes::Bytes;
-	use hyper::{HeaderMap, Method, Uri, Version};
+	use hyper::{HeaderMap, Method};
 	use uuid::Uuid;
 
 	struct TestAuthBackend {

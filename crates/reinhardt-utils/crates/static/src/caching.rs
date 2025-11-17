@@ -382,7 +382,7 @@ impl Middleware for CacheControlMiddleware {
 mod tests {
 	use super::*;
 	use bytes::Bytes;
-	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+	use hyper::{HeaderMap, Method, StatusCode, Version};
 
 	struct TestHandler {
 		status: StatusCode,

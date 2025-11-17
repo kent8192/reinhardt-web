@@ -158,7 +158,7 @@ impl Handler for BaseHandler {
 mod tests {
 	use super::*;
 	use async_trait::async_trait;
-	use hyper::{HeaderMap, Method, Uri, Version};
+	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_urls::routers::{DefaultRouter, Router, path};
 
 	// Test handler for routing tests

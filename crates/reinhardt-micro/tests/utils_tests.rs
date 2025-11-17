@@ -1,7 +1,7 @@
 //! Integration tests for reinhardt-micro utilities
 
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version, header};
+use hyper::{HeaderMap, Method, StatusCode, Version, header};
 use reinhardt_micro::utils::*;
 use reinhardt_micro::{Request, Response};
 use reinhardt_test::http::{assert_status, create_test_request, extract_json};

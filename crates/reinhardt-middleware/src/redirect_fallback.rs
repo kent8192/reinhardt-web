@@ -200,7 +200,7 @@ impl Middleware for RedirectFallbackMiddleware {
 mod tests {
 	use super::*;
 	use bytes::Bytes;
-	use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+	use hyper::{HeaderMap, Method, StatusCode, Version};
 
 	struct NotFoundHandler;
 

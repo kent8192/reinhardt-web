@@ -378,7 +378,7 @@ pub fn get_client_ip(request: &Request) -> Option<std::net::IpAddr> {
 mod tests {
 	use super::*;
 	use bytes::Bytes;
-	use hyper::{HeaderMap, Method, Uri, Version, header};
+	use hyper::{HeaderMap, Method, Version, header};
 
 	#[test]
 	fn test_extract_bearer_token() {

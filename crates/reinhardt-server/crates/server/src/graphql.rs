@@ -164,7 +164,7 @@ mod tests {
 	use super::*;
 	use async_graphql::Object;
 	use bytes::Bytes;
-	use http::{HeaderMap, Method, StatusCode, Uri, Version};
+	use http::{HeaderMap, Method, StatusCode, Version};
 
 	struct QueryRoot;
 
