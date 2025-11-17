@@ -10,7 +10,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_exception::Result;
 use reinhardt_http::{Request, Response};
 use reinhardt_types::Handler;

@@ -51,7 +51,7 @@ async fn test_middleware_integration_chain() {
 	// For now, we can test that the chain is constructed correctly
 
 	// Create a test request
-	use hyper::{HeaderMap, Method, Uri, Version};
+	use hyper::{HeaderMap, Method, Version};
 	let request = Request::builder()
 		.method(Method::GET)
 		.uri("/test")
@@ -80,7 +80,7 @@ async fn test_server_middleware_integration_multiple() {
 		.with_middleware(Arc::new(LoggingMiddleware::new()) as Arc<dyn Middleware>)
 		.with_middleware(Arc::new(LoggingMiddleware::new()) as Arc<dyn Middleware>);
 
-	use hyper::{HeaderMap, Method, Uri, Version};
+	use hyper::{HeaderMap, Method, Version};
 	let request = Request::builder()
 		.method(Method::GET)
 		.uri("/test")

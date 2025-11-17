@@ -6,7 +6,6 @@ use reinhardt_http::{Request, Response, Result};
 use reinhardt_routers::UnifiedRouter;
 use reinhardt_types::Handler;
 use reinhardt_viewsets::{Action, ActionType, ViewSet};
-use std::sync::Arc;
 
 // Mock ViewSet for testing
 #[derive(Clone)]

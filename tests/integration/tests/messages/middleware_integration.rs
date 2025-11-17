@@ -139,7 +139,7 @@ mod tests {
 		// Test: Messages added in one request should appear in the next request
 		use async_trait::async_trait;
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+		use hyper::{HeaderMap, Method, StatusCode, Version};
 		use reinhardt_http::{Request, Response};
 		use reinhardt_messages::middleware::{MessagesContainer, MessagesMiddleware};
 		use reinhardt_messages::{Level, MemoryStorage, Message};
@@ -213,7 +213,7 @@ mod tests {
 		// Test: Messages should be cleared after being retrieved
 		use async_trait::async_trait;
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+		use hyper::{HeaderMap, Method, StatusCode, Version};
 		use reinhardt_http::{Request, Response};
 		use reinhardt_messages::middleware::{MessagesContainer, MessagesMiddleware};
 		use reinhardt_messages::{Level, MemoryStorage, Message};
@@ -291,7 +291,7 @@ mod tests {
 		// Test: Multiple messages can be added and accumulated across requests
 		use async_trait::async_trait;
 		use bytes::Bytes;
-		use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+		use hyper::{HeaderMap, Method, StatusCode, Version};
 		use reinhardt_http::{Request, Response};
 		use reinhardt_messages::middleware::{MessagesContainer, MessagesMiddleware};
 		use reinhardt_messages::{Level, MemoryStorage, Message};

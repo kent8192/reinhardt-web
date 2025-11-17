@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, Uri, Version};
+use hyper::{HeaderMap, Method, Version};
 use reinhardt_auth::{Authentication, SessionAuthentication};
 use reinhardt_http::Request;
 use reinhardt_sessions::{backends::InMemorySessionBackend, Session};

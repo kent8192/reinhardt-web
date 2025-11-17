@@ -2,7 +2,7 @@
 // Inspired by Django REST Framework's ViewSet router registration tests
 
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::Request;
 use reinhardt_routers::{DefaultRouter, Router};
 use reinhardt_viewsets::ModelViewSet;

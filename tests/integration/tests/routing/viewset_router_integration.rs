@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::Request;
 use reinhardt_routers::{DefaultRouter, Router};
 use reinhardt_types::Handler;
@@ -614,7 +614,7 @@ async fn test_args_kwargs_request_action_map_on_self() {
 /// Test login_required middleware compatibility
 #[tokio::test]
 async fn test_login_required_middleware_compat() {
-	use hyper::{Method, Uri, Version};
+	use hyper::{Method, Version};
 	use reinhardt_test::TestViewSet;
 	use reinhardt_viewsets::viewset_actions;
 
