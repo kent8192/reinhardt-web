@@ -22,9 +22,13 @@
 /// # }
 /// ```
 use crate::schema::{BaseDatabaseSchemaEditor, SchemaEditorError, SchemaEditorResult};
-use pg_escape::quote_identifier;
 use sqlx::PgPool;
 use std::sync::Arc;
+
+/// Quote a PostgreSQL identifier by wrapping it in double quotes
+fn quote_identifier(name: &str) -> String {
+	format!("\"{}\"", name)
+}
 
 /// PostgreSQL-specific schema editor
 pub struct PostgreSQLSchemaEditor {
@@ -354,7 +358,7 @@ mod tests {
 		let editor = create_test_editor(pool);
 		let sql = editor.drop_index_concurrently_sql("idx_email");
 
-		assert_eq!(sql, "DROP INDEX CONCURRENTLY IF EXISTS idx_email");
+		assert_eq!(sql, "DROP INDEX CONCURRENTLY IF EXISTS \"idx_email\"");
 	}
 
 	#[rstest]
@@ -364,7 +368,7 @@ mod tests {
 		let editor = create_test_editor(pool);
 		let sql = editor.alter_sequence_type_sql("users_id_seq", "BIGINT");
 
-		assert_eq!(sql, "ALTER SEQUENCE IF EXISTS users_id_seq AS BIGINT");
+		assert_eq!(sql, "ALTER SEQUENCE IF EXISTS \"users_id_seq\" AS BIGINT");
 	}
 
 	#[rstest]
@@ -374,7 +378,7 @@ mod tests {
 		let editor = create_test_editor(pool);
 		let sql = editor.drop_sequence_sql("users_id_seq");
 
-		assert_eq!(sql, "DROP SEQUENCE IF EXISTS users_id_seq CASCADE");
+		assert_eq!(sql, "DROP SEQUENCE IF EXISTS \"users_id_seq\" CASCADE");
 	}
 
 	#[rstest]
