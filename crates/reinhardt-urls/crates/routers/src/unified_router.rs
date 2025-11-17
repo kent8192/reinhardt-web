@@ -289,13 +289,12 @@ impl UnifiedRouter {
 	/// ```rust,no_run
 	/// use reinhardt_routers::UnifiedRouter;
 	/// use reinhardt_middleware::LoggingMiddleware;
-	/// use std::sync::Arc;
 	///
 	/// let router = UnifiedRouter::new()
-	///     .with_middleware(Arc::new(LoggingMiddleware));
+	///     .with_middleware(LoggingMiddleware);
 	/// ```
-	pub fn with_middleware(mut self, mw: Arc<dyn Middleware>) -> Self {
-		self.middleware.push(mw);
+	pub fn with_middleware<M: Middleware + 'static>(mut self, mw: M) -> Self {
+		self.middleware.push(Arc::new(mw));
 		self
 	}
 
@@ -351,6 +350,48 @@ impl UnifiedRouter {
 			child.di_context = self.di_context.clone();
 		}
 		self.children.push(child);
+	}
+
+	/// Include a child router at the given prefix (Django-style alias for `mount`)
+	///
+	/// This is a Django-compatible alias for the `mount` method, providing
+	/// familiar syntax for developers coming from Django.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_routers::UnifiedRouter;
+	///
+	/// let users_router = UnifiedRouter::new()
+	///     .with_namespace("users");
+	///
+	/// let router = UnifiedRouter::new()
+	///     .with_prefix("/api")
+	///     .include("/users", users_router);
+	///
+	/// // Verify the router was created successfully
+	/// assert_eq!(router.prefix(), "/api");
+	/// ```
+	pub fn include(self, prefix: &str, child: UnifiedRouter) -> Self {
+		self.mount(prefix, child)
+	}
+
+	/// Include a child router (mutable version, Django-style alias for `mount_mut`)
+	///
+	/// This is a Django-compatible alias for the `mount_mut` method.
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_routers::UnifiedRouter;
+	///
+	/// let mut router = UnifiedRouter::new();
+	/// let users_router = UnifiedRouter::new();
+	///
+	/// router.include_mut("/users", users_router);
+	/// ```
+	pub fn include_mut(&mut self, prefix: &str, child: UnifiedRouter) {
+		self.mount_mut(prefix, child);
 	}
 
 	/// Add multiple child routers at once
@@ -452,7 +493,6 @@ impl UnifiedRouter {
 	/// use reinhardt_routers::UnifiedRouter;
 	/// # use reinhardt_viewsets::ViewSet;
 	/// # use async_trait::async_trait;
-	/// # use std::sync::Arc;
 	/// # struct UserViewSet;
 	/// # #[async_trait]
 	/// # impl ViewSet for UserViewSet {
@@ -463,12 +503,11 @@ impl UnifiedRouter {
 	/// #     }
 	/// # }
 	///
-	/// let viewset = Arc::new(UserViewSet);
 	/// let router = UnifiedRouter::new()
-	///     .viewset("/users", viewset);
+	///     .viewset("/users", UserViewSet);
 	/// ```
-	pub fn viewset(mut self, prefix: &str, viewset: Arc<dyn ViewSet>) -> Self {
-		self.viewsets.insert(prefix.to_string(), viewset);
+	pub fn viewset<V: ViewSet + 'static>(mut self, prefix: &str, viewset: V) -> Self {
+		self.viewsets.insert(prefix.to_string(), Arc::new(viewset));
 		self
 	}
 
@@ -613,7 +652,6 @@ impl UnifiedRouter {
 	/// use reinhardt_routers::UnifiedRouter;
 	/// use reinhardt_middleware::LoggingMiddleware;
 	/// use hyper::Method;
-	/// use std::sync::Arc;
 	/// # use reinhardt_core::http::{Request, Response, Result};
 	///
 	/// # async fn health(_req: Request) -> Result<Response> {
@@ -621,9 +659,10 @@ impl UnifiedRouter {
 	/// # }
 	/// let router = UnifiedRouter::new()
 	///     .function("/health", Method::GET, health)
-	///     .with_route_middleware(Arc::new(LoggingMiddleware));
+	///     .with_route_middleware(LoggingMiddleware);
 	/// ```
-	pub fn with_route_middleware(mut self, middleware: Arc<dyn Middleware>) -> Self {
+	pub fn with_route_middleware<M: Middleware + 'static>(mut self, middleware: M) -> Self {
+		let middleware = Arc::new(middleware);
 		if let Some(route) = self.functions.last_mut() {
 			route.middleware.push(middleware.clone());
 		} else if let Some(route) = self.views.last_mut() {
@@ -1283,6 +1322,20 @@ impl Handler for UnifiedRouter {
 	}
 }
 
+/// Implement RegisterViewSet trait for UnifiedRouter
+///
+/// This allows ViewSetBuilder to directly register handlers to the router.
+impl reinhardt_viewsets::RegisterViewSet for UnifiedRouter {
+	fn register_handler(&mut self, path: &str, handler: Arc<dyn Handler>) {
+		self.views.push(ViewRoute {
+			path: path.to_string(),
+			handler,
+			name: None,
+			middleware: Vec::new(),
+		});
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1316,9 +1369,9 @@ mod tests {
 
 	#[test]
 	fn test_mount_inherits_di_context() {
-		let di_ctx = Arc::new(InjectionContext::new(Arc::new(
-			reinhardt_core::di::SingletonScope::new(),
-		)));
+		let di_ctx = Arc::new(
+			InjectionContext::builder(Arc::new(reinhardt_core::di::SingletonScope::new())).build(),
+		);
 
 		let child = UnifiedRouter::new();
 		let router = UnifiedRouter::new()
@@ -1544,7 +1597,6 @@ mod tests {
 
 		// Test multiple parameters
 		let result = router.match_own_routes("/posts/789/comments/101", &Method::GET);
-		assert!(result.is_some());
 		let params = result.unwrap().params;
 		assert_eq!(params.get("post_id"), Some(&"789".to_string()));
 		assert_eq!(params.get("comment_id"), Some(&"101".to_string()));

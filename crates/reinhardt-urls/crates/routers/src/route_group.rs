@@ -4,7 +4,6 @@
 
 use crate::UnifiedRouter;
 use reinhardt_middleware::Middleware;
-use std::sync::Arc;
 
 /// Route information tuple: (path, name, namespace, methods)
 pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<hyper::Method>)>;
@@ -99,16 +98,15 @@ impl RouteGroup {
 	/// ```
 	/// use reinhardt_routers::RouteGroup;
 	/// use reinhardt_middleware::LoggingMiddleware;
-	/// use std::sync::Arc;
 	///
 	/// let group = RouteGroup::new()
-	///     .with_middleware(Arc::new(LoggingMiddleware));
+	///     .with_middleware(LoggingMiddleware);
 	///
 	/// // Middleware is applied to the router
 	/// let router = group.build();
 	/// assert!(router.prefix().is_empty() || !router.prefix().is_empty());
 	/// ```
-	pub fn with_middleware(mut self, middleware: Arc<dyn Middleware>) -> Self {
+	pub fn with_middleware<M: Middleware + 'static>(mut self, middleware: M) -> Self {
 		self.router = self.router.with_middleware(middleware);
 		self
 	}
@@ -189,7 +187,6 @@ impl RouteGroup {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_routers::RouteGroup;
-	/// use std::sync::Arc;
 	/// # use reinhardt_viewsets::ViewSet;
 	/// # use async_trait::async_trait;
 	/// # struct UserViewSet;
@@ -202,11 +199,14 @@ impl RouteGroup {
 	/// #     }
 	/// # }
 	///
-	/// let viewset = Arc::new(UserViewSet);
 	/// let group = RouteGroup::new()
-	///     .viewset("/users", viewset);
+	///     .viewset("/users", UserViewSet);
 	/// ```
-	pub fn viewset(mut self, prefix: &str, viewset: Arc<dyn reinhardt_viewsets::ViewSet>) -> Self {
+	pub fn viewset<V: reinhardt_viewsets::ViewSet + 'static>(
+		mut self,
+		prefix: &str,
+		viewset: V,
+	) -> Self {
 		self.router = self.router.viewset(prefix, viewset);
 		self
 	}
@@ -423,7 +423,7 @@ mod tests {
 
 	#[test]
 	fn test_route_group_with_middleware() {
-		let group = RouteGroup::new().with_middleware(Arc::new(LoggingMiddleware));
+		let group = RouteGroup::new().with_middleware(LoggingMiddleware);
 		let _router = group.build();
 		// Middleware is correctly added, verified in integration tests
 	}
@@ -451,8 +451,8 @@ mod tests {
 	#[test]
 	fn test_route_group_multiple_middleware() {
 		let group = RouteGroup::new()
-			.with_middleware(Arc::new(LoggingMiddleware))
-			.with_middleware(Arc::new(LoggingMiddleware))
+			.with_middleware(LoggingMiddleware)
+			.with_middleware(LoggingMiddleware)
 			.function("/test", Method::GET, test_handler);
 
 		let _router = group.build();

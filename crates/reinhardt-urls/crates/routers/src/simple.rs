@@ -274,13 +274,14 @@ mod tests {
 		router.add_route(path("/users/{id}/", handler).with_name("user-detail"));
 
 		let uri = Uri::from_static("/users/");
-		let req = Request::new(
-			Method::GET,
-			uri,
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri(uri)
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = router.route(req).await.unwrap();
 		assert_eq!(response.status, 200);
@@ -294,13 +295,14 @@ mod tests {
 		router.add_route(path("/users/{id}/", handler).with_name("user-detail"));
 
 		let uri = Uri::from_static("/users/123/");
-		let req = Request::new(
-			Method::GET,
-			uri,
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri(uri)
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = router.route(req).await.unwrap();
 		assert_eq!(response.status, 200);
@@ -311,13 +313,14 @@ mod tests {
 		let router = SimpleRouter::new();
 
 		let uri = Uri::from_static("/nonexistent/");
-		let req = Request::new(
-			Method::GET,
-			uri,
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri(uri)
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let result = router.route(req).await;
 		assert!(result.is_err());
