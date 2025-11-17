@@ -8,6 +8,9 @@ use uuid::Uuid;
 /// Test SessionAuthentication with InMemorySessionBackend
 #[tokio::test]
 async fn test_session_authentication_with_inmemory_backend() {
+	// Test intent: Verify SessionAuthentication successfully authenticates user
+	// from valid session data stored in InMemorySessionBackend with all user fields
+	// Not intent: Database backend, session expiry, concurrent access, CSRF validation
 	let session_backend = InMemorySessionBackend::new();
 	let auth = SessionAuthentication::new(session_backend.clone());
 
@@ -58,6 +61,9 @@ async fn test_session_authentication_with_inmemory_backend() {
 /// Test SessionAuthentication without session cookie
 #[tokio::test]
 async fn test_session_authentication_no_cookie() {
+	// Test intent: Verify SessionAuthentication returns None when
+	// request has no session cookie (Cookie header missing)
+	// Not intent: Invalid cookie format, expired sessions, cookie parsing errors
 	let session_backend = InMemorySessionBackend::new();
 	let auth = SessionAuthentication::new(session_backend);
 
@@ -80,6 +86,9 @@ async fn test_session_authentication_no_cookie() {
 /// Test SessionAuthentication with invalid session key
 #[tokio::test]
 async fn test_session_authentication_invalid_session_key() {
+	// Test intent: Verify SessionAuthentication returns None when
+	// session key in cookie does not exist in session backend
+	// Not intent: Malformed session key format, session hijacking detection, brute force protection
 	let session_backend = InMemorySessionBackend::new();
 	let auth = SessionAuthentication::new(session_backend);
 
@@ -104,6 +113,9 @@ async fn test_session_authentication_invalid_session_key() {
 /// Test SessionAuthentication with session without user data
 #[tokio::test]
 async fn test_session_authentication_no_user_data() {
+	// Test intent: Verify SessionAuthentication returns None when
+	// valid session exists but lacks _auth_user_id field in session data
+	// Not intent: Partial user data handling, session corruption detection, auto-logout
 	let session_backend = InMemorySessionBackend::new();
 	let auth = SessionAuthentication::new(session_backend.clone());
 
@@ -137,6 +149,9 @@ async fn test_session_authentication_no_user_data() {
 /// Test SessionAuthentication with custom cookie name
 #[tokio::test]
 async fn test_session_authentication_custom_cookie_name() {
+	// Test intent: Verify SessionAuthentication correctly reads session key
+	// from custom cookie name via SessionAuthConfig configuration
+	// Not intent: Multiple cookie names, cookie domain/path settings, cookie security flags
 	use reinhardt_auth::SessionAuthConfig;
 
 	let session_backend = InMemorySessionBackend::new();

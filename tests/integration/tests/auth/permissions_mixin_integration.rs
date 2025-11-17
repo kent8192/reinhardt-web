@@ -3,6 +3,9 @@ use uuid::Uuid;
 
 #[test]
 fn test_permissions_mixin_has_perm() {
+	// Test intent: Verify PermissionsMixin::has_perm() correctly checks
+	// if user has specific permission in user_permissions list
+	// Not intent: Superuser bypass, group permissions, wildcard permissions
 	let user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "alice".to_string(),
@@ -26,6 +29,9 @@ fn test_permissions_mixin_has_perm() {
 
 #[test]
 fn test_permissions_mixin_superuser_bypass() {
+	// Test intent: Verify superuser has_perm() returns true for any
+	// permission string without explicit grant in user_permissions
+	// Not intent: Permission validation, actual authorization enforcement
 	let superuser = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "admin".to_string(),
@@ -50,6 +56,9 @@ fn test_permissions_mixin_superuser_bypass() {
 
 #[test]
 fn test_permissions_mixin_has_module_perms() {
+	// Test intent: Verify has_module_perms() returns true if user has
+	// any permission with module prefix (e.g., "blog.x")
+	// Not intent: Exact permission matching, wildcard modules, case sensitivity
 	let user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "bob".to_string(),
@@ -72,6 +81,9 @@ fn test_permissions_mixin_has_module_perms() {
 
 #[test]
 fn test_permissions_mixin_group_permissions() {
+	// Test intent: Verify groups() method returns correct group list
+	// and contains() can check group membership
+	// Not intent: Group-based permission resolution, group hierarchy, permission inheritance
 	let user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "charlie".to_string(),
@@ -95,6 +107,9 @@ fn test_permissions_mixin_group_permissions() {
 
 #[test]
 fn test_permissions_mixin_get_all_permissions() {
+	// Test intent: Verify get_all_permissions() returns complete list
+	// of user permissions with correct count and content
+	// Not intent: Group permissions aggregation, superuser all-permissions behavior, permission caching
 	let user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "dave".to_string(),
@@ -124,6 +139,9 @@ fn test_permissions_mixin_get_all_permissions() {
 
 #[test]
 fn test_permissions_mixin_no_permissions() {
+	// Test intent: Verify permission checking methods correctly handle
+	// users with empty user_permissions and groups lists
+	// Not intent: Default permissions, anonymous user behavior, permission denial reasons
 	let user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "eve".to_string(),

@@ -10,7 +10,9 @@ mod tests {
 
 	#[test]
 	fn test_message_creation_with_storage() {
-		// Test that messages can be created and stored successfully
+		// Test intent: Verify Message creation and storage via MemoryStorage::add()
+		// with correct text and level preservation
+		// Not intent: Multiple messages, message ordering, complex levels
 		let mut storage = MemoryStorage::new();
 
 		// Create and add a message
@@ -26,7 +28,9 @@ mod tests {
 
 	#[test]
 	fn test_multiple_messages_ordering() {
-		// Test that multiple messages maintain their order
+		// Test intent: Verify MemoryStorage preserves insertion order
+		// of multiple messages with different levels
+		// Not intent: Message priority sorting, level-based filtering, message deduplication
 		let mut storage = MemoryStorage::new();
 
 		storage.add(Message::new(Level::Info, "First message"));
@@ -42,7 +46,9 @@ mod tests {
 
 	#[test]
 	fn test_message_with_extra_tags_api() {
-		// Test message creation with extra tags
+		// Test intent: Verify Message::with_tags() correctly attaches
+		// extra tags to message and persists in storage
+		// Not intent: Tag validation, tag ordering, tag deduplication, max tag count
 		let mut storage = MemoryStorage::new();
 
 		let message = Message::new(Level::Info, "Tagged message")
@@ -61,7 +67,9 @@ mod tests {
 
 	#[test]
 	fn test_request_with_middleware() {
-		// Test message storage integration with HTTP request simulation
+		// Test intent: Verify mock HTTP request can add and retrieve messages
+		// via Arc<Mutex<MemoryStorage>> shared state pattern
+		// Not intent: Real HTTP middleware, request lifecycle, concurrent access safety
 		use std::collections::HashMap;
 		use std::sync::{Arc, Mutex};
 
@@ -106,7 +114,9 @@ mod tests {
 
 	#[test]
 	fn test_request_is_none() {
-		// Test that operations handle None/missing request gracefully
+		// Test intent: Verify RequestWrapper correctly returns error when
+		// request is None and successfully stores messages when request is Some
+		// Not intent: Error message format, logging behavior, fallback storage mechanisms
 		use std::collections::HashMap;
 		use std::sync::{Arc, Mutex};
 
@@ -191,7 +201,9 @@ mod tests {
 
 	#[test]
 	fn test_middleware_missing() {
-		// Test that MessageFailure is raised when middleware is not installed
+		// Test intent: Verify MockRequest::add_message() returns error
+		// when has_message_middleware flag is false and succeeds when true
+		// Not intent: Actual middleware installation, middleware chain execution, error types
 		use std::collections::HashMap;
 
 		#[derive(Debug)]
@@ -239,7 +251,9 @@ mod tests {
 
 	#[test]
 	fn test_middleware_missing_silently() {
-		// Test that no error is raised when fail_silently=true and middleware is missing
+		// Test intent: Verify add_message_silently() respects fail_silently parameter:
+		// returns error when false, succeeds when true (even without middleware)
+		// Not intent: Error suppression logging, partial failure handling, error recovery
 		use std::collections::HashMap;
 
 		#[derive(Debug)]
@@ -286,7 +300,9 @@ mod tests {
 
 	#[test]
 	fn test_custom_request_wrapper() {
-		// Test that add_message works with custom request wrappers (duck typing)
+		// Test intent: Verify CustomRequestWrapper can implement message storage
+		// interface with additional request properties (path field)
+		// Not intent: Trait-based polymorphism, request wrapper validation, type safety
 		use std::collections::HashMap;
 		use std::sync::{Arc, Mutex};
 

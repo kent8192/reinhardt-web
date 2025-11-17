@@ -34,7 +34,9 @@ fn parse_basic_auth(auth_header: &str) -> Option<(String, String)> {
 
 #[test]
 fn test_basic_auth_encoding() {
-	// Test: Basic auth credentials are properly encoded
+	// Test intent: Verify create_basic_auth() properly base64-encodes
+	// username:password credentials with "Basic " prefix
+	// Not intent: Decoding/parsing, special characters, actual HTTP auth
 	let auth = create_basic_auth("john", "secret");
 	assert!(auth.starts_with("Basic "));
 	assert!(auth.len() > 6); // "Basic " + base64
@@ -42,7 +44,9 @@ fn test_basic_auth_encoding() {
 
 #[test]
 fn test_basic_auth_parsing() {
-	// Test: Basic auth credentials can be parsed
+	// Test intent: Verify parse_basic_auth() correctly decodes base64
+	// credentials and extracts username and password separated by colon
+	// Not intent: Invalid formats, special characters, empty values
 	let auth = create_basic_auth("alice", "password123");
 	let (username, password) = parse_basic_auth(&auth).unwrap();
 	assert_eq!(username, "alice");
@@ -51,7 +55,9 @@ fn test_basic_auth_parsing() {
 
 #[test]
 fn test_basic_auth_with_special_chars() {
-	// Test: Basic auth handles special characters in password
+	// Test intent: Verify Basic auth encoding/decoding handles special
+	// characters in password including @ : ! symbols
+	// Not intent: Unicode characters, extremely long passwords, username special chars
 	let auth = create_basic_auth("user", "p@ss:w0rd!");
 	let (username, password) = parse_basic_auth(&auth).unwrap();
 	assert_eq!(username, "user");
@@ -60,7 +66,9 @@ fn test_basic_auth_with_special_chars() {
 
 #[test]
 fn test_basic_auth_invalid_format() {
-	// Test: Invalid Basic auth format is detected
+	// Test intent: Verify parse_basic_auth() returns None for invalid
+	// base64 encoding (contains invalid characters like !)
+	// Not intent: Missing prefix, empty string, correct base64 with wrong structure
 	let invalid_auth = "Basic notbase64!!!";
 	let result = parse_basic_auth(invalid_auth);
 	assert!(result.is_none());
@@ -68,7 +76,9 @@ fn test_basic_auth_invalid_format() {
 
 #[test]
 fn test_basic_auth_missing_colon() {
-	// Test: Basic auth without colon separator is invalid
+	// Test intent: Verify parse_basic_auth() returns None when decoded
+	// credentials lack colon separator between username and password
+	// Not intent: Multiple colons, empty credentials, whitespace handling
 	let credentials = "johnsecret"; // Missing colon
 	let encoded = general_purpose::STANDARD.encode(credentials.as_bytes());
 	let auth = format!("Basic {}", encoded);
@@ -78,7 +88,9 @@ fn test_basic_auth_missing_colon() {
 
 #[test]
 fn test_bearer_token_format() {
-	// Test: Bearer token has correct format
+	// Test intent: Verify create_bearer_token() correctly formats
+	// token with "Bearer " prefix and exact token value
+	// Not intent: Token validation, JWT parsing, token expiry
 	let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
 	let auth = create_bearer_token(token);
 	assert_eq!(auth, format!("Bearer {}", token));
@@ -86,7 +98,9 @@ fn test_bearer_token_format() {
 
 #[test]
 fn test_bearer_token_extraction() {
-	// Test: Bearer token can be extracted
+	// Test intent: Verify Bearer token can be extracted by stripping
+	// "Bearer " prefix from authorization header value
+	// Not intent: Case sensitivity, missing prefix, token validation
 	let token = "abc123def456";
 	let auth = create_bearer_token(token);
 	let extracted = auth.strip_prefix("Bearer ").unwrap();
@@ -95,7 +109,9 @@ fn test_bearer_token_extraction() {
 
 #[test]
 fn test_authorization_header_basic() {
-	// Test: Authorization header with Basic auth
+	// Test intent: Verify Basic auth can be added to HTTP request
+	// Authorization header and retrieved correctly
+	// Not intent: Server-side validation, actual authentication, header conflicts
 	let mut request = create_test_request("GET", "/api/users", true);
 	let auth = create_basic_auth("testuser", "testpass");
 	request
@@ -108,7 +124,9 @@ fn test_authorization_header_basic() {
 
 #[test]
 fn test_authorization_header_bearer() {
-	// Test: Authorization header with Bearer token
+	// Test intent: Verify Bearer token can be added to HTTP request
+	// Authorization header and retrieved with correct prefix
+	// Not intent: Token validation, JWT verification, header overwriting
 	let mut request = create_test_request("GET", "/api/users", true);
 	let auth = create_bearer_token("my_token_123");
 	request
@@ -121,7 +139,9 @@ fn test_authorization_header_bearer() {
 
 #[test]
 fn test_www_authenticate_header() {
-	// Test: WWW-Authenticate header for 401 responses
+	// Test intent: Verify WWW-Authenticate header can be added to 401
+	// response and contains Basic realm specification
+	// Not intent: Multiple auth schemes, challenge parsing, response body
 	let mut response = create_response_with_status(StatusCode::UNAUTHORIZED);
 	response.headers.insert(
 		WWW_AUTHENTICATE,
@@ -134,7 +154,9 @@ fn test_www_authenticate_header() {
 
 #[test]
 fn test_multiple_auth_schemes() {
-	// Test: Multiple authentication schemes can be advertised
+	// Test intent: Verify WWW-Authenticate header can advertise multiple
+	// authentication schemes (Basic and Bearer) in single header value
+	// Not intent: Scheme preference order, client-side parsing, scheme parameters
 	let mut response = create_response_with_status(StatusCode::UNAUTHORIZED);
 	response.headers.insert(
 		WWW_AUTHENTICATE,
@@ -148,7 +170,9 @@ fn test_multiple_auth_schemes() {
 
 #[test]
 fn test_api_key_in_header() {
-	// Test: API key in custom header
+	// Test intent: Verify custom X-API-Key header can be added to
+	// request and retrieved with exact value
+	// Not intent: API key validation, rate limiting, header case sensitivity
 	let mut request = create_test_request("GET", "/api/data", true);
 	request.headers.insert(
 		HeaderName::from_static("x-api-key"),
@@ -162,7 +186,9 @@ fn test_api_key_in_header() {
 
 #[test]
 fn test_api_key_in_query() {
-	// Test: API key in query parameter
+	// Test intent: Verify API key can be passed via URL query parameter
+	// and retrieved from request URI
+	// Not intent: Query parameter parsing, URL encoding, key validation
 	let request = create_test_request("GET", "/api/data?api_key=secret123", true);
 	let query = request.uri.query().unwrap();
 	assert!(query.contains("api_key=secret123"));
@@ -170,7 +196,9 @@ fn test_api_key_in_query() {
 
 #[test]
 fn test_api_key_in_cookie() {
-	// Test: API key in cookie
+	// Test intent: Verify API key can be passed via Cookie header
+	// and retrieved from request headers
+	// Not intent: Cookie parsing, secure/httponly flags, cookie expiry
 	let mut request = create_test_request("GET", "/api/data", true);
 	request.headers.insert(
 		hyper::header::COOKIE,
@@ -183,7 +211,9 @@ fn test_api_key_in_cookie() {
 
 #[test]
 fn test_empty_authorization_header() {
-	// Test: Empty authorization header is invalid
+	// Test intent: Verify empty Authorization header can be set and
+	// retrieved as empty string
+	// Not intent: Server-side validation, error handling, default values
 	let mut request = create_test_request("GET", "/api/test", true);
 	request
 		.headers
@@ -195,7 +225,9 @@ fn test_empty_authorization_header() {
 
 #[test]
 fn test_malformed_basic_auth() {
-	// Test: Malformed Basic auth header
+	// Test intent: Verify malformed Basic auth header (missing space
+	// and credentials) can be set and retrieved as-is
+	// Not intent: Server-side validation, error messages, auto-correction
 	let mut request = create_test_request("GET", "/api/test", true);
 	request
 		.headers
@@ -212,7 +244,9 @@ fn test_malformed_basic_auth() {
 
 #[test]
 fn test_case_sensitivity_auth_scheme() {
-	// Test: Auth scheme should be case-insensitive
+	// Test intent: Verify auth scheme names (Basic, Bearer) can be
+	// case-insensitive and normalized to lowercase for comparison
+	// Not intent: Server-side parsing, RFC compliance, mixed-case handling
 	let schemes = ["Basic", "basic", "BASIC", "Bearer", "bearer", "BEARER"];
 	for scheme in &schemes {
 		let auth = format!("{} credentials", scheme);
@@ -224,7 +258,9 @@ fn test_case_sensitivity_auth_scheme() {
 
 #[test]
 fn test_basic_auth_with_empty_password() {
-	// Test: Basic auth with empty password
+	// Test intent: Verify Basic auth encoding/decoding handles empty
+	// password string correctly with username:colon:empty pattern
+	// Not intent: Password validation, security implications, null vs empty
 	let auth = create_basic_auth("user", "");
 	let (username, password) = parse_basic_auth(&auth).unwrap();
 	assert_eq!(username, "user");
@@ -233,7 +269,9 @@ fn test_basic_auth_with_empty_password() {
 
 #[test]
 fn test_basic_auth_with_empty_username() {
-	// Test: Basic auth with empty username
+	// Test intent: Verify Basic auth encoding/decoding handles empty
+	// username string correctly with empty:colon:password pattern
+	// Not intent: Username validation, security implications, anonymous access
 	let auth = create_basic_auth("", "password");
 	let (username, password) = parse_basic_auth(&auth).unwrap();
 	assert_eq!(username, "");
@@ -242,7 +280,9 @@ fn test_basic_auth_with_empty_username() {
 
 #[test]
 fn test_bearer_token_with_special_chars() {
-	// Test: Bearer tokens can contain various characters
+	// Test intent: Verify Bearer token creation handles JWT-style tokens
+	// with dots, underscores, and dashes in token value
+	// Not intent: JWT validation, signature verification, token decoding
 	let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
 	let auth = create_bearer_token(token);
 	assert!(auth.contains(token));
@@ -250,7 +290,9 @@ fn test_bearer_token_with_special_chars() {
 
 #[test]
 fn test_authorization_header_with_extra_spaces() {
-	// Test: Extra spaces in authorization header
+	// Test intent: Verify authorization header string with extra spaces
+	// between scheme and credentials still starts with "Basic"
+	// Not intent: Whitespace normalization, parsing validation, error handling
 	let auth = "Basic  dXNlcjpwYXNz"; // Extra space
 								   // This should be invalid or handled gracefully
 	assert!(auth.starts_with("Basic"));
@@ -258,7 +300,9 @@ fn test_authorization_header_with_extra_spaces() {
 
 #[test]
 fn test_unauthorized_response_format() {
-	// Test: 401 response should include WWW-Authenticate
+	// Test intent: Verify 401 Unauthorized response can include
+	// WWW-Authenticate header with realm specification
+	// Not intent: Multiple challenges, response body, authentication flow
 	let mut response = create_response_with_status(StatusCode::UNAUTHORIZED);
 	response.headers.insert(
 		WWW_AUTHENTICATE,
@@ -271,7 +315,9 @@ fn test_unauthorized_response_format() {
 
 #[test]
 fn test_forbidden_vs_unauthorized() {
-	// Test: 401 (Unauthorized) vs 403 (Forbidden)
+	// Test intent: Verify distinction between 401 (no/invalid authentication)
+	// and 403 (valid auth but insufficient permissions) status codes
+	// Not intent: Authorization logic, permission checking, error messages
 	let unauthorized = create_response_with_status(StatusCode::UNAUTHORIZED);
 	let forbidden = create_response_with_status(StatusCode::FORBIDDEN);
 

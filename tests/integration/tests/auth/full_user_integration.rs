@@ -3,6 +3,9 @@ use uuid::Uuid;
 
 #[test]
 fn test_full_user_get_full_name() {
+	// Test intent: Verify FullUser::get_full_name() concatenates
+	// first_name and last_name with space separator
+	// Not intent: Empty names, Unicode handling, name formatting rules
 	let user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "alice".to_string(),
@@ -24,6 +27,9 @@ fn test_full_user_get_full_name() {
 
 #[test]
 fn test_full_user_get_short_name() {
+	// Test intent: Verify FullUser::get_short_name() returns only
+	// the first_name field without last_name
+	// Not intent: Empty name handling, nickname field, name truncation
 	let user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "bob".to_string(),
@@ -45,6 +51,9 @@ fn test_full_user_get_short_name() {
 
 #[test]
 fn test_full_user_empty_names() {
+	// Test intent: Verify FullUser name methods return empty strings
+	// when both first_name and last_name are empty
+	// Not intent: Whitespace handling, null values, partial empty names
 	let user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "user123".to_string(),
@@ -68,6 +77,10 @@ fn test_full_user_empty_names() {
 
 #[test]
 fn test_full_user_staff_and_superuser_flags() {
+	// Test intent: Verify FullUser::is_staff() and is_superuser() correctly
+	// return boolean flags for regular user, staff user, and superuser
+	// Not intent: Permission checking, role hierarchy, flag modification
+
 	// Regular user
 	let regular_user = DefaultUser {
 		id: Uuid::new_v4(),

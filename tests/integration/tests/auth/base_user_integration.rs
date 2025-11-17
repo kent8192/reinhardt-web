@@ -4,6 +4,8 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn test_default_user_with_password() {
+	// Test intent: Verify DefaultUser password hashing, verification,
+	// and session auth hash functionality using Argon2id
 	let mut user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "alice".to_string(),
@@ -38,6 +40,8 @@ async fn test_default_user_with_password() {
 
 #[tokio::test]
 async fn test_default_user_manager_create_user() {
+	// Test intent: Verify DefaultUserManager creates regular user with correct
+	// attributes and hashed password
 	let mut manager = DefaultUserManager::new();
 
 	let mut extra = HashMap::new();
@@ -62,6 +66,8 @@ async fn test_default_user_manager_create_user() {
 
 #[tokio::test]
 async fn test_default_user_manager_create_superuser() {
+	// Test intent: Verify DefaultUserManager creates superuser with
+	// is_staff and is_superuser flags correctly set
 	let mut manager = DefaultUserManager::new();
 
 	let admin = manager
@@ -78,6 +84,8 @@ async fn test_default_user_manager_create_superuser() {
 
 #[tokio::test]
 async fn test_username_already_exists() {
+	// Test intent: Verify DefaultUserManager returns error when attempting
+	// to create user with duplicate username
 	let mut manager = DefaultUserManager::new();
 
 	manager
@@ -94,6 +102,8 @@ async fn test_username_already_exists() {
 
 #[tokio::test]
 async fn test_email_normalization() {
+	// Test intent: Verify DefaultUserManager normalizes email addresses
+	// to lowercase during user creation
 	let mut manager = DefaultUserManager::new();
 
 	let mut extra = HashMap::new();
@@ -110,6 +120,8 @@ async fn test_email_normalization() {
 
 #[tokio::test]
 async fn test_unusable_password() {
+	// Test intent: Verify set_unusable_password() creates password hash that
+	// cannot be used for authentication
 	let mut user = DefaultUser {
 		id: Uuid::new_v4(),
 		username: "oauth_user".to_string(),

@@ -63,6 +63,9 @@ impl std::fmt::Display for UserRole {
 async fn test_get_composite_success(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
+	// Test intent: Verify get_composite() successfully retrieves a record
+	// with composite primary key from PostgreSQL database
+	// Not intent: Error cases, NULL fields, string PK types, multiple records
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
 	// Initialize reinhardt_orm manager with this database
@@ -110,6 +113,9 @@ async fn test_get_composite_success(
 async fn test_get_composite_not_found(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
+	// Test intent: Verify get_composite() returns error when querying
+	// for non-existent composite primary key
+	// Not intent: Success cases, validation errors, NULL handling
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
 	// Initialize reinhardt_orm manager
@@ -152,6 +158,8 @@ async fn test_get_composite_not_found(
 async fn test_get_composite_missing_pk_field(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
+	// Test intent: Verify get_composite() returns validation error when
+	// required primary key field is missing from query parameters
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
 	// Initialize reinhardt_orm manager
@@ -195,6 +203,8 @@ async fn test_get_composite_missing_pk_field(
 async fn test_get_composite_with_optional_field(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
+	// Test intent: Verify get_composite() correctly handles optional fields
+	// with both NULL and non-NULL values in database records
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
 	// Initialize reinhardt_orm manager
@@ -260,6 +270,8 @@ async fn test_get_composite_with_optional_field(
 async fn test_get_composite_multiple_records(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
+	// Test intent: Verify get_composite() successfully retrieves correct record
+	// when multiple records exist with different composite keys
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
 	// Initialize reinhardt_orm manager
@@ -316,6 +328,8 @@ async fn test_get_composite_multiple_records(
 async fn test_get_composite_string_pk(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
+	// Test intent: Verify get_composite() supports string type as part of
+	// composite primary key alongside integer types
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
 	// Initialize reinhardt_orm manager

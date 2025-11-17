@@ -173,10 +173,11 @@ mod integration_tests {
 		counter
 	}
 
-	// Test 1: Joinedload generates LEFT JOIN
 	#[rstest]
 	#[tokio::test]
 	async fn test_joinedload_generates_left_join(#[future] sqlite_fixture: QueryCounter) {
+		// Test intent: Verify joinedload strategy generates LEFT JOIN SQL
+		// and retrieves related data in single query
 		let counter = sqlite_fixture.await;
 
 		// Simulate joinedload query with LEFT JOIN
@@ -202,10 +203,11 @@ mod integration_tests {
 		assert_eq!(option.strategy(), LoadingStrategy::Joined);
 	}
 
-	// Test 2: Selectinload generates IN clause
 	#[rstest]
 	#[tokio::test]
 	async fn test_selectinload_generates_in_clause(#[future] sqlite_fixture: QueryCounter) {
+		// Test intent: Verify selectinload strategy generates IN clause SQL
+		// to batch load related data efficiently (2 queries total)
 		let counter = sqlite_fixture.await;
 
 		// Step 1: Get authors

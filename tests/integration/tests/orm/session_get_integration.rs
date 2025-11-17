@@ -10,11 +10,12 @@
 
 use reinhardt_macros::Model;
 use reinhardt_orm::{query_types::DbBackend, session::Session, DatabaseConnection};
+use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{AnyPool, Row};
 use std::sync::Arc;
-use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
+use testcontainers::{ContainerAsync, GenericImage};
 
 /// Test model using derive(Model) macro
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Model)]
@@ -38,38 +39,21 @@ struct TestUser {
 
 /// rstest fixture providing a PostgreSQL container, pool, and Session
 ///
-/// The container is automatically cleaned up when the test ends.
+/// This fixture chains from the standard postgres_container fixture and sets up
+/// the test_users table and Session for ORM testing.
+///
+/// Test intent: Provide a configured PostgreSQL database with test_users table
+/// and Session object for testing Session::get() functionality.
 #[fixture]
-async fn postgres_fixture() -> (
-	testcontainers::ContainerAsync<GenericImage>,
-	Arc<AnyPool>,
-	Session,
-) {
+async fn session_fixture(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+) -> (ContainerAsync<GenericImage>, Arc<AnyPool>, Session) {
 	// Install sqlx drivers for AnyPool
 	sqlx::any::install_default_drivers();
 
-	// Start PostgreSQL container
-	let postgres = GenericImage::new("postgres", "16-alpine")
-		.with_wait_for(WaitFor::message_on_stderr(
-			"database system is ready to accept connections",
-		))
-		.with_env_var("POSTGRES_PASSWORD", "test")
-		.with_env_var("POSTGRES_DB", "session_test_db")
-		.start()
-		.await
-		.expect("Failed to start PostgreSQL container");
+	let (container, _pg_pool, _port, database_url) = postgres_container.await;
 
-	let port = postgres
-		.get_host_port_ipv4(5432)
-		.await
-		.expect("Failed to get PostgreSQL port");
-
-	let database_url = format!(
-		"postgres://postgres:test@localhost:{}/session_test_db",
-		port
-	);
-
-	// Create connection pool
+	// Create connection pool using AnyPool for Session compatibility
 	let pool = Arc::new(
 		AnyPool::connect(&database_url)
 			.await
@@ -99,7 +83,7 @@ async fn postgres_fixture() -> (
 	.await
 	.expect("Failed to create test_users table");
 
-	(postgres, pool, session)
+	(container, pool, session)
 }
 
 /// Helper to insert test user data directly via AnyPool
@@ -130,13 +114,9 @@ async fn insert_test_user(
 #[rstest]
 #[tokio::test]
 async fn test_session_get_basic(
-	#[future] postgres_fixture: (
-		testcontainers::ContainerAsync<GenericImage>,
-		Arc<AnyPool>,
-		Session,
-	),
+	#[future] session_fixture: (ContainerAsync<GenericImage>, Arc<AnyPool>, Session),
 ) {
-	let (_container, pool, mut session) = postgres_fixture.await;
+	let (_container, pool, mut session) = session_fixture.await;
 
 	// Insert test data
 	let user_id = insert_test_user(&pool, "alice", "alice@example.com", Some(25), true).await;
@@ -159,13 +139,9 @@ async fn test_session_get_basic(
 #[rstest]
 #[tokio::test]
 async fn test_session_get_not_found(
-	#[future] postgres_fixture: (
-		testcontainers::ContainerAsync<GenericImage>,
-		Arc<AnyPool>,
-		Session,
-	),
+	#[future] session_fixture: (ContainerAsync<GenericImage>, Arc<AnyPool>, Session),
 ) {
-	let (_container, _pool, mut session) = postgres_fixture.await;
+	let (_container, _pool, mut session) = session_fixture.await;
 
 	// Try to get non-existent user
 	let result = session.get::<TestUser>(999).await;
@@ -181,13 +157,9 @@ async fn test_session_get_not_found(
 #[rstest]
 #[tokio::test]
 async fn test_session_get_with_null_field(
-	#[future] postgres_fixture: (
-		testcontainers::ContainerAsync<GenericImage>,
-		Arc<AnyPool>,
-		Session,
-	),
+	#[future] session_fixture: (ContainerAsync<GenericImage>, Arc<AnyPool>, Session),
 ) {
-	let (_container, pool, mut session) = postgres_fixture.await;
+	let (_container, pool, mut session) = session_fixture.await;
 
 	// Insert user with NULL age
 	let user_id = insert_test_user(&pool, "bob", "bob@example.com", None, false).await;
@@ -210,13 +182,9 @@ async fn test_session_get_with_null_field(
 #[rstest]
 #[tokio::test]
 async fn test_session_get_identity_map_caching(
-	#[future] postgres_fixture: (
-		testcontainers::ContainerAsync<GenericImage>,
-		Arc<AnyPool>,
-		Session,
-	),
+	#[future] session_fixture: (ContainerAsync<GenericImage>, Arc<AnyPool>, Session),
 ) {
-	let (_container, pool, mut session) = postgres_fixture.await;
+	let (_container, pool, mut session) = session_fixture.await;
 
 	// Insert test data
 	let user_id = insert_test_user(&pool, "charlie", "charlie@example.com", Some(30), true).await;
@@ -252,13 +220,9 @@ async fn test_session_get_identity_map_caching(
 #[rstest]
 #[tokio::test]
 async fn test_session_get_multiple_users(
-	#[future] postgres_fixture: (
-		testcontainers::ContainerAsync<GenericImage>,
-		Arc<AnyPool>,
-		Session,
-	),
+	#[future] session_fixture: (ContainerAsync<GenericImage>, Arc<AnyPool>, Session),
 ) {
-	let (_container, pool, mut session) = postgres_fixture.await;
+	let (_container, pool, mut session) = session_fixture.await;
 
 	// Insert multiple users
 	let user1_id = insert_test_user(&pool, "user1", "user1@example.com", Some(20), true).await;
@@ -294,13 +258,9 @@ async fn test_session_get_multiple_users(
 #[rstest]
 #[tokio::test]
 async fn test_session_get_after_database_update(
-	#[future] postgres_fixture: (
-		testcontainers::ContainerAsync<GenericImage>,
-		Arc<AnyPool>,
-		Session,
-	),
+	#[future] session_fixture: (ContainerAsync<GenericImage>, Arc<AnyPool>, Session),
 ) {
-	let (_container, pool, mut session) = postgres_fixture.await;
+	let (_container, pool, mut session) = session_fixture.await;
 
 	// Insert test data
 	let user_id = insert_test_user(&pool, "david", "david@example.com", Some(35), true).await;

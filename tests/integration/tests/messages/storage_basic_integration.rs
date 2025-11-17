@@ -10,6 +10,9 @@ mod tests {
 
 	#[test]
 	fn test_memory_storage_add_and_get() {
+		// Test intent: Verify MemoryStorage adds message and peek() retrieves it
+		// without clearing the storage
+		// Not intent: Thread safety, persistence, multi-message behavior
 		let mut storage = MemoryStorage::new();
 
 		// Add a message
