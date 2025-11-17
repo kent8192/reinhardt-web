@@ -10,36 +10,41 @@ use reinhardt_panel::audit::{
 	AuditAction, AuditLog, AuditLogQuery, AuditLogger, DatabaseAuditLogger,
 };
 use reinhardt_panel::AdminDatabase;
+use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
 use serde_json::json;
 use serial_test::serial;
 use std::net::IpAddr;
 use std::sync::Arc;
-use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
+use testcontainers::GenericImage;
 
-/// Fixture providing test database with audit_logs table
+/// Fixture providing PostgreSQL container with audit_logs table and DatabaseAuditLogger
+///
+/// Test intent: Provide a ready-to-use DatabaseAuditLogger with PostgreSQL backend
+/// for testing database audit logging functionality.
+///
+/// This fixture chains from the standard postgres_container fixture and:
+/// 1. Creates audit_logs table with proper schema
+/// 2. Initializes AdminDatabase connection
+/// 3. Returns DatabaseAuditLogger instance
+///
+/// The audit_logs table schema includes:
+/// - id (SERIAL PRIMARY KEY)
+/// - user_id, model_name, object_id, action, timestamp (required fields)
+/// - changes, ip_address, user_agent (optional fields)
 #[fixture]
-async fn setup_test_db() -> (
+async fn setup_test_db(
+	#[future] postgres_container: (
+		testcontainers::ContainerAsync<GenericImage>,
+		Arc<sqlx::PgPool>,
+		u16,
+		String,
+	),
+) -> (
 	testcontainers::ContainerAsync<GenericImage>,
 	DatabaseAuditLogger,
 ) {
-	// Start PostgreSQL container
-	let postgres = GenericImage::new("postgres", "16-alpine")
-		.with_wait_for(WaitFor::message_on_stderr(
-			"database system is ready to accept connections",
-		))
-		.with_env_var("POSTGRES_PASSWORD", "test")
-		.with_env_var("POSTGRES_DB", "test_db")
-		.start()
-		.await
-		.expect("Failed to start PostgreSQL container");
-
-	let port = postgres
-		.get_host_port_ipv4(5432)
-		.await
-		.expect("Failed to get PostgreSQL port");
-
-	let database_url = format!("postgres://postgres:test@localhost:{}/test_db", port);
+	let (container, _pool, _port, database_url) = postgres_container.await;
 
 	// Create connection using DatabaseConnection
 	let conn = DatabaseConnection::connect(&database_url)
@@ -68,7 +73,7 @@ async fn setup_test_db() -> (
 	let admin_db = Arc::new(AdminDatabase::new(conn));
 	let logger = DatabaseAuditLogger::new(admin_db, "audit_logs".to_string());
 
-	(postgres, logger)
+	(container, logger)
 }
 
 #[rstest]

@@ -15,12 +15,13 @@ use reinhardt_panel::{
 	AdminDatabase, AdminSite, BooleanFilter, ChoiceFilter, CreateView, DeleteView, FilterManager,
 	ListFilter, ListView, ModelAdminConfig, UpdateView,
 };
+use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
+use testcontainers::GenericImage;
 
 /// Test model representing a user
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,31 +48,36 @@ impl Model for TestUser {
 	}
 }
 
-/// rstest fixture providing a PostgreSQL container and AdminDatabase
+/// rstest fixture providing a PostgreSQL container and AdminDatabase with test_users table
+///
+/// Test intent: Provide a ready-to-use AdminDatabase with test_users table
+/// for testing admin panel CRUD operations.
+///
+/// This fixture chains from the standard postgres_container fixture and:
+/// 1. Creates test_users table with proper schema
+/// 2. Initializes AdminDatabase connection
+/// 3. Returns container and AdminDatabase instance
+///
+/// The test_users table schema includes:
+/// - id (SERIAL PRIMARY KEY)
+/// - username (TEXT NOT NULL UNIQUE)
+/// - email (TEXT NOT NULL)
+/// - is_active (BOOLEAN NOT NULL DEFAULT TRUE)
 ///
 /// The container is automatically cleaned up when the test ends.
 #[fixture]
-async fn postgres_fixture() -> (
+async fn postgres_fixture(
+	#[future] postgres_container: (
+		testcontainers::ContainerAsync<GenericImage>,
+		Arc<sqlx::PgPool>,
+		u16,
+		String,
+	),
+) -> (
 	testcontainers::ContainerAsync<GenericImage>,
 	Arc<AdminDatabase>,
 ) {
-	// Start PostgreSQL container
-	let postgres = GenericImage::new("postgres", "16-alpine")
-		.with_wait_for(WaitFor::message_on_stderr(
-			"database system is ready to accept connections",
-		))
-		.with_env_var("POSTGRES_PASSWORD", "test")
-		.with_env_var("POSTGRES_DB", "admin_test_db")
-		.start()
-		.await
-		.expect("Failed to start PostgreSQL container");
-
-	let port = postgres
-		.get_host_port_ipv4(5432)
-		.await
-		.expect("Failed to get PostgreSQL port");
-
-	let database_url = format!("postgres://postgres:test@localhost:{}/admin_test_db", port);
+	let (container, _pool, _port, database_url) = postgres_container.await;
 
 	// Create connection
 	let conn = DatabaseConnection::connect(&database_url)
@@ -93,7 +99,7 @@ async fn postgres_fixture() -> (
 
 	let admin_db = Arc::new(AdminDatabase::new(conn));
 
-	(postgres, admin_db)
+	(container, admin_db)
 }
 
 /// Helper to insert test user data directly

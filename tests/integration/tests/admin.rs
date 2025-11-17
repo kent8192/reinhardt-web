@@ -10,8 +10,14 @@ mod admin_audit_integration;
 #[path = "admin/audit_dashboard_integration.rs"]
 mod audit_dashboard_integration;
 
+#[path = "admin/crud_integration.rs"]
+mod crud_integration;
+
 #[path = "admin/custom_views_reordering_integration.rs"]
 mod custom_views_reordering_integration;
+
+#[path = "admin/database_audit_logger.rs"]
+mod database_audit_logger;
 
 #[path = "admin/filters_export_import_integration.rs"]
 mod filters_export_import_integration;
