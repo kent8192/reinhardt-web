@@ -121,7 +121,7 @@ async fn test_basic_xa_transaction_flow(#[future] mysql_pool: (MysqlContainer, A
 		.expect("Failed to insert");
 
 	// End XA transaction (consumes XaSessionStarted, returns XaSessionEnded)
-	let mut ended_session = participant.end(session).await.expect("Failed to end XA");
+	let ended_session = participant.end(session).await.expect("Failed to end XA");
 
 	// Prepare XA transaction (consumes XaSessionEnded, returns XaSessionPrepared)
 	let prepared_session = participant
