@@ -1116,7 +1116,7 @@ impl TwoPhaseParticipant for MySqlParticipantAdapter {
 		Ok(())
 	}
 
-	async fn prepare(&self, xid: String) -> Result<(), TwoPhaseError> {
+	async fn prepare(&self, _xid: String) -> Result<(), TwoPhaseError> {
 		// Take session from Started state
 		let session = {
 			let mut session_guard = self.session.lock().map_err(|e| {
@@ -1167,7 +1167,7 @@ impl TwoPhaseParticipant for MySqlParticipantAdapter {
 		Ok(())
 	}
 
-	async fn commit(&self, xid: String) -> Result<(), TwoPhaseError> {
+	async fn commit(&self, _xid: String) -> Result<(), TwoPhaseError> {
 		// Take session from Prepared state
 		let session = {
 			let mut session_guard = self.session.lock().map_err(|e| {
@@ -1201,7 +1201,7 @@ impl TwoPhaseParticipant for MySqlParticipantAdapter {
 			.map_err(|e| TwoPhaseError::CommitFailed(self.id.clone(), e.to_string()))
 	}
 
-	async fn rollback(&self, xid: String) -> Result<(), TwoPhaseError> {
+	async fn rollback(&self, _xid: String) -> Result<(), TwoPhaseError> {
 		// Take session from either Started or Prepared state
 		let session_state = {
 			let mut session_guard = self.session.lock().map_err(|e| {
