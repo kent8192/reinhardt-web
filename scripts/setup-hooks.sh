@@ -26,7 +26,7 @@ chmod +x "$SCRIPT_DIR/pre-push"
 
 echo "✅ Git hooks installed successfully!"
 echo ""
-echo "Pre-push hook will now run 'cargo make fmt' and 'cargo make clippy'"
+echo "Pre-push hook will now run 'cargo make fmt-check' and 'cargo make clippy-check'"
 echo "before each push."
 echo ""
 echo "To bypass the hook (emergency only), use:"

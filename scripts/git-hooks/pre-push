@@ -8,16 +8,16 @@ echo "🔍 Running pre-push checks..."
 
 # Run cargo make fmt (check mode)
 echo "📝 Checking code formatting..."
-if ! cargo make fmt; then
+if ! cargo make fmt-check; then
     echo ""
     echo "❌ Code formatting check failed!"
-    echo "💡 Run \`cargo make fmt-fix\` to fix formatting issues"
+    echo "💡 Run \`cargo make fmt-fix-check\` to fix formatting issues"
     exit 1
 fi
 
 # Run cargo make clippy
 echo "🔧 Running clippy linter..."
-if ! cargo make clippy; then
+if ! cargo make clippy-check; then
     echo ""
     echo "❌ Clippy check failed!"
     echo "💡 Fix the warnings above before pushing by \`cargo make clippy-fix\`"
