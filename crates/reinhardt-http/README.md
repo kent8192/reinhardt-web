@@ -12,9 +12,25 @@ Core HTTP abstractions for the Reinhardt framework. Provides request and respons
 
 - **Request type** - Complete HTTP request representation
   - Method, URI, version, headers, body
+  - Builder pattern for construction (`Request::builder()`)
   - Path parameters and query string parsing
   - HTTPS detection (`is_secure`)
   - Type-safe extensions (`Extensions`)
+
+  Example:
+  ```rust
+  use reinhardt_http::Request;
+  use hyper::Method;
+
+  let request = Request::builder()
+      .method(Method::POST)
+      .uri("/api/users")
+      .version(hyper::Version::HTTP_11)
+      .headers(hyper::HeaderMap::new())
+      .body(bytes::Bytes::from("request body"))
+      .build()
+      .unwrap();
+  ```
 - **Response type** - Flexible HTTP response creation
   - Status code helpers (`ok()`, `created()`, `not_found()`, etc.)
   - Builder pattern (`with_body()`, `with_header()`, `with_json()`)

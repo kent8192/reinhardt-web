@@ -16,17 +16,16 @@ impl Request {
 	///
 	/// ```
 	/// use reinhardt_http::Request;
-	/// use hyper::{Method, Uri, Version, HeaderMap};
+	/// use hyper::Method;
 	/// use bytes::Bytes;
 	///
 	/// let body = Bytes::from("test body");
-	/// let request = Request::new(
-	///     Method::POST,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     body.clone()
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::POST)
+	///     .uri("/")
+	///     .body(body.clone())
+	///     .build()
+	///     .unwrap();
 	///
 	/// assert_eq!(request.body(), &body);
 	/// ```
@@ -40,7 +39,7 @@ impl Request {
 	///
 	/// ```
 	/// use reinhardt_http::Request;
-	/// use hyper::{Method, Uri, Version, HeaderMap};
+	/// use hyper::Method;
 	/// use bytes::Bytes;
 	/// use serde::Deserialize;
 	///
@@ -51,13 +50,12 @@ impl Request {
 	/// }
 	///
 	/// let json_body = r#"{"name": "Alice", "age": 30}"#;
-	/// let request = Request::new(
-	///     Method::POST,
-	///     "/api/users".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     Bytes::from(json_body)
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::POST)
+	///     .uri("/api/users")
+	///     .body(Bytes::from(json_body))
+	///     .build()
+	///     .unwrap();
 	///
 	/// let user: User = request.json().unwrap();
 	/// assert_eq!(user.name, "Alice");
@@ -74,16 +72,13 @@ impl Request {
 	///
 	/// ```
 	/// use reinhardt_http::Request;
-	/// use hyper::{Method, Uri, Version, HeaderMap};
-	/// use bytes::Bytes;
+	/// use hyper::Method;
 	///
-	/// let request = Request::new(
-	///     Method::POST,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     Bytes::new()
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::POST)
+	///     .uri("/")
+	///     .build()
+	///     .unwrap();
 	///
 	// Set up parsers (empty vec for this example)
 	/// let request = request.with_parsers(vec![]);
@@ -102,16 +97,15 @@ impl Request {
 	///
 	/// ```
 	/// use reinhardt_http::Request;
-	/// use hyper::{Method, Uri, Version, HeaderMap};
+	/// use hyper::Method;
 	/// use bytes::Bytes;
 	///
-	/// let request = Request::new(
-	///     Method::POST,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     Bytes::from("request body")
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::POST)
+	///     .uri("/")
+	///     .body(Bytes::from("request body"))
+	///     .build()
+	///     .unwrap();
 	///
 	/// let body = request.read_body().unwrap();
 	/// assert_eq!(body, Bytes::from("request body"));
@@ -137,17 +131,14 @@ impl Request {
 	///
 	/// ```no_run
 	/// use reinhardt_http::Request;
-	/// use hyper::{Method, Uri, Version, HeaderMap};
-	/// use bytes::Bytes;
+	/// use hyper::Method;
 	///
 	/// async fn example() {
-	///     let request = Request::new(
-	///         Method::POST,
-	///         "/".parse::<Uri>().unwrap(),
-	///         Version::HTTP_11,
-	///         HeaderMap::new(),
-	///         Bytes::new()
-	///     );
+	///     let request = Request::builder()
+	///         .method(Method::POST)
+	///         .uri("/")
+	///         .build()
+	///         .unwrap();
 	///
 	///     // Without parsers, returns empty HashMap
 	///     let post_data = request.post().await.unwrap();
@@ -198,17 +189,14 @@ impl Request {
 	///
 	/// ```no_run
 	/// use reinhardt_http::Request;
-	/// use hyper::{Method, Uri, Version, HeaderMap};
-	/// use bytes::Bytes;
+	/// use hyper::Method;
 	///
 	/// async fn example() {
-	///     let request = Request::new(
-	///         Method::POST,
-	///         "/".parse::<Uri>().unwrap(),
-	///         Version::HTTP_11,
-	///         HeaderMap::new(),
-	///         Bytes::new()
-	///     );
+	///     let request = Request::builder()
+	///         .method(Method::POST)
+	///         .uri("/")
+	///         .build()
+	///         .unwrap();
 	///
 	///     // Without parsers, this will fail
 	///     assert!(request.data().await.is_err());

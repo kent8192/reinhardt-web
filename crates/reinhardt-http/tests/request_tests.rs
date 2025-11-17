@@ -22,7 +22,14 @@ fn test_request_initialization() {
 	let headers = HeaderMap::new();
 	let body = Bytes::new();
 
-	let request = Request::new(method.clone(), uri.clone(), version, headers, body);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap();
 
 	assert_eq!(request.method, Method::GET);
 	assert_eq!(request.path(), "/api/users");
@@ -38,7 +45,14 @@ fn test_get_has_no_content() {
 	let headers = HeaderMap::new();
 	let body = Bytes::new();
 
-	let request = Request::new(method, uri, version, headers, body);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap();
 
 	// GET requests should not have body content
 	assert_eq!(request.method, Method::GET);
@@ -58,7 +72,14 @@ fn test_head_has_no_content() {
 	let headers = HeaderMap::new();
 	let body = Bytes::new();
 
-	let request = Request::new(method, uri, version, headers, body);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap();
 
 	assert_eq!(request.method, Method::HEAD);
 
@@ -82,7 +103,14 @@ fn test_post_with_form_content() {
 	);
 	let body = Bytes::from("name=John&age=30");
 
-	let request = Request::new(method, uri, version, headers, body);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap();
 
 	assert_eq!(request.method, Method::POST);
 
@@ -106,7 +134,14 @@ fn test_put_with_form_content() {
 	);
 	let body = Bytes::from("name=Updated&status=active");
 
-	let request = Request::new(method, uri, version, headers, body);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap();
 
 	assert_eq!(request.method, Method::PUT);
 
@@ -129,7 +164,14 @@ fn test_put_with_json_content() {
 	);
 	let body = Bytes::from(r#"{"name":"Updated","status":"active"}"#);
 
-	let request = Request::new(method, uri, version, headers, body);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap();
 
 	assert_eq!(request.method, Method::PUT);
 
@@ -141,7 +183,6 @@ fn test_put_with_json_content() {
 	}
 
 	let json_result: Result<TestData, _> = request.json();
-	assert!(json_result.is_ok());
 	let data = json_result.unwrap();
 	assert_eq!(data.name, "Updated");
 	assert_eq!(data.status, "active");
@@ -157,7 +198,14 @@ fn test_secure_default_false() {
 	let headers = HeaderMap::new();
 	let body = Bytes::new();
 
-	let request = Request::new(method, uri, version, headers, body);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap();
 
 	// Default should be insecure (HTTP)
 	assert!(!request.is_secure());
@@ -174,7 +222,15 @@ fn test_secure_can_be_true() {
 	let headers = HeaderMap::new();
 	let body = Bytes::new();
 
-	let request = Request::new_with_secure(method, uri, version, headers, body, true);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.secure(true)
+		.build()
+		.unwrap();
 
 	assert!(request.is_secure());
 	assert_eq!(request.scheme(), "https");
@@ -190,7 +246,14 @@ fn test_secure_via_forwarded_proto() {
 	headers.insert("x-forwarded-proto", "https".parse().unwrap());
 	let body = Bytes::new();
 
-	let request = Request::new(method, uri, version, headers, body);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap();
 
 	// Should detect HTTPS via X-Forwarded-Proto header
 	assert!(request.is_secure());
@@ -207,7 +270,14 @@ fn test_request_properties() {
 	let headers = HeaderMap::new();
 	let body = Bytes::from("test body");
 
-	let request = Request::new(method, uri, version, headers, body);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap();
 
 	// Verify basic properties
 	assert_eq!(request.method, Method::POST);
@@ -220,13 +290,14 @@ fn test_request_properties() {
 #[test]
 fn test_query_parameters() {
 	let uri = Uri::from_str("/api/search?q=test&category=books&page=2").unwrap();
-	let request = Request::new(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	assert_eq!(request.query_params.get("q"), Some(&"test".to_string()));
 	assert_eq!(
@@ -240,13 +311,14 @@ fn test_query_parameters() {
 #[test]
 fn test_path_extraction() {
 	let uri = Uri::from_str("/api/users/123?details=true").unwrap();
-	let request = Request::new(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	assert_eq!(request.path(), "/api/users/123");
 }
@@ -255,13 +327,14 @@ fn test_path_extraction() {
 /// DRF: test_duplicate_request_stream_parsing_exception
 #[test]
 fn test_body_consumed_once() {
-	let request = Request::new(
-		Method::POST,
-		Uri::from_static("/api/data"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from("test data"),
-	);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/data")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from("test data"))
+		.build()
+		.unwrap();
 
 	// First read should succeed
 	let first_read = request.read_body();
@@ -279,7 +352,14 @@ fn test_build_absolute_uri() {
 	let mut headers = HeaderMap::new();
 	headers.insert(hyper::header::HOST, "example.com".parse().unwrap());
 
-	let request = Request::new(Method::GET, uri, Version::HTTP_11, headers, Bytes::new());
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let absolute_uri = request.build_absolute_uri(None);
 	assert_eq!(absolute_uri, "http://example.com/api/users");
@@ -292,14 +372,15 @@ fn test_build_absolute_uri_https() {
 	let mut headers = HeaderMap::new();
 	headers.insert(hyper::header::HOST, "example.com".parse().unwrap());
 
-	let request = Request::new_with_secure(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-		true,
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.secure(true)
+		.build()
+		.unwrap();
 
 	let absolute_uri = request.build_absolute_uri(None);
 	assert_eq!(absolute_uri, "https://example.com/api/users");
@@ -315,7 +396,14 @@ fn test_accept_language_parsing() {
 		"en-US,en;q=0.9,ja;q=0.8".parse().unwrap(),
 	);
 
-	let request = Request::new(Method::GET, uri, Version::HTTP_11, headers, Bytes::new());
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let languages = request.get_accepted_languages();
 	assert_eq!(languages.len(), 3);
@@ -339,7 +427,14 @@ fn test_preferred_language() {
 		"ja;q=0.8,en-US,en;q=0.9".parse().unwrap(),
 	);
 
-	let request = Request::new(Method::GET, uri, Version::HTTP_11, headers, Bytes::new());
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let preferred = request.get_preferred_language();
 	assert_eq!(preferred, Some("en-US".to_string())); // Highest quality
@@ -357,7 +452,14 @@ fn test_language_from_cookie() {
 			.unwrap(),
 	);
 
-	let request = Request::new(Method::GET, uri, Version::HTTP_11, headers, Bytes::new());
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let language = request.get_language_from_cookie("reinhardt_language");
 	assert_eq!(language, Some("fr".to_string()));
@@ -384,16 +486,16 @@ fn test_json_parsing() {
 		"application/json".parse().unwrap(),
 	);
 
-	let request = Request::new(
-		Method::POST,
-		Uri::from_static("/api/users"),
-		Version::HTTP_11,
-		headers,
-		Bytes::from(body),
-	);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/users")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::from(body))
+		.build()
+		.unwrap();
 
 	let user: Result<User, _> = request.json();
-	assert!(user.is_ok());
 	let user = user.unwrap();
 	assert_eq!(user.name, "John Doe");
 	assert_eq!(user.email, "john@example.com");
@@ -402,13 +504,14 @@ fn test_json_parsing() {
 /// Test: Path parameters
 #[test]
 fn test_path_parameters() {
-	let mut request = Request::new(
-		Method::GET,
-		Uri::from_static("/api/users/123"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let mut request = Request::builder()
+		.method(Method::GET)
+		.uri("/api/users/123")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Manually set path params (normally done by router)
 	request
@@ -421,13 +524,14 @@ fn test_path_parameters() {
 /// Test: Empty query string
 #[test]
 fn test_empty_query_string() {
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/api/users"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/api/users")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	assert!(request.query_params.is_empty());
 }
@@ -436,13 +540,14 @@ fn test_empty_query_string() {
 #[test]
 fn test_query_param_single_value() {
 	let uri = Uri::from_str("/api/search?tag=rust").unwrap();
-	let request = Request::new(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	assert_eq!(request.query_params.get("tag"), Some(&"rust".to_string()));
 }
@@ -458,7 +563,14 @@ fn test_invalid_language_codes_rejected() {
 		"-invalid,en".parse().unwrap(),
 	);
 
-	let request = Request::new(Method::GET, uri, Version::HTTP_11, headers, Bytes::new());
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let languages = request.get_accepted_languages();
 	// Should only have valid 'en'

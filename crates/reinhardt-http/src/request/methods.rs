@@ -11,30 +11,26 @@ impl Request {
 	///
 	/// ```
 	/// use reinhardt_http::Request;
-	/// use hyper::{Method, Uri, Version, HeaderMap};
-	/// use bytes::Bytes;
+	/// use hyper::Method;
 	///
-	// Direct HTTPS connection
-	/// let request = Request::new_with_secure(
-	///     Method::GET,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     Bytes::new(),
-	///     true
-	/// );
+	/// // Direct HTTPS connection
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/")
+	///     .secure(true)
+	///     .build()
+	///     .unwrap();
 	/// assert!(request.is_secure());
 	///
-	// Behind reverse proxy
-	/// let mut headers = HeaderMap::new();
+	/// // Behind reverse proxy
+	/// let mut headers = hyper::HeaderMap::new();
 	/// headers.insert("x-forwarded-proto", "https".parse().unwrap());
-	/// let request = Request::new(
-	///     Method::GET,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     headers,
-	///     Bytes::new()
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/")
+	///     .headers(headers)
+	///     .build()
+	///     .unwrap();
 	/// assert!(request.is_secure());
 	/// ```
 	pub fn is_secure(&self) -> bool {
@@ -59,23 +55,19 @@ impl Request {
 	/// use hyper::{Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
-	/// let request = Request::new_with_secure(
-	///     Method::GET,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     Bytes::new(),
-	///     true
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/")
+	///     .secure(true)
+	///     .build()
+	///     .unwrap();
 	/// assert_eq!(request.scheme(), "https");
 	///
-	/// let request = Request::new(
-	///     Method::GET,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     Bytes::new()
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/")
+	///     .build()
+	///     .unwrap();
 	/// assert_eq!(request.scheme(), "http");
 	/// ```
 	pub fn scheme(&self) -> &str {
@@ -93,17 +85,16 @@ impl Request {
 	/// use hyper::{Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
-	/// let mut headers = HeaderMap::new();
+	/// let mut headers = hyper::HeaderMap::new();
 	/// headers.insert("host", "example.com".parse().unwrap());
 	///
-	/// let request = Request::new_with_secure(
-	///     Method::GET,
-	///     "/api/users".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     headers,
-	///     Bytes::new(),
-	///     true
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/api/users")
+	///     .headers(headers)
+	///     .secure(true)
+	///     .build()
+	///     .unwrap();
 	///
 	/// let uri = request.build_absolute_uri(None);
 	/// assert_eq!(uri, "https://example.com/api/users");

@@ -27,16 +27,13 @@ impl Request {
 	///
 	/// ```
 	/// use reinhardt_http::Request;
-	/// use hyper::{Method, Uri, Version, HeaderMap};
-	/// use bytes::Bytes;
+	/// use hyper::Method;
 	///
-	/// let request = Request::new(
-	///     Method::GET,
-	///     "/api/users".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     Bytes::new()
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/api/users")
+	///     .build()
+	///     .unwrap();
 	///
 	/// assert_eq!(request.path(), "/api/users");
 	/// ```
@@ -53,17 +50,13 @@ impl Request {
 	///
 	/// ```
 	/// use reinhardt_http::Request;
-	/// use hyper::{Method, Uri, Version, HeaderMap};
-	/// use bytes::Bytes;
+	/// use hyper::Method;
 	///
-	/// let uri = "/test?name=John%20Doe".parse::<Uri>().unwrap();
-	/// let request = Request::new(
-	///     Method::GET,
-	///     uri,
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     Bytes::new(),
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/test?name=John%20Doe")
+	///     .build()
+	///     .unwrap();
 	///
 	/// let decoded = request.decoded_query_params();
 	/// assert_eq!(decoded.get("name"), Some(&"John Doe".to_string()));
@@ -91,13 +84,11 @@ impl Request {
 	/// use hyper::{Method, Uri, Version, HeaderMap};
 	/// use bytes::Bytes;
 	///
-	/// let mut request = Request::new(
-	///     Method::GET,
-	///     "/users/123".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     HeaderMap::new(),
-	///     Bytes::new()
-	/// );
+	/// let mut request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/users/123")
+	///     .build()
+	///     .unwrap();
 	///
 	/// request.set_path_param("id", "123");
 	/// assert_eq!(request.path_params.get("id"), Some(&"123".to_string()));
@@ -121,13 +112,12 @@ impl Request {
 	/// let mut headers = HeaderMap::new();
 	/// headers.insert("accept-language", "en-US,en;q=0.9,ja;q=0.8".parse().unwrap());
 	///
-	/// let request = Request::new(
-	///     Method::GET,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     headers,
-	///     Bytes::new()
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/")
+	///     .headers(headers)
+	///     .build()
+	///     .unwrap();
 	///
 	/// let languages = request.get_accepted_languages();
 	/// assert_eq!(languages[0].0, "en-US");
@@ -156,13 +146,12 @@ impl Request {
 	/// let mut headers = HeaderMap::new();
 	/// headers.insert("accept-language", "ja;q=0.8,en-US,en;q=0.9".parse().unwrap());
 	///
-	/// let request = Request::new(
-	///     Method::GET,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     headers,
-	///     Bytes::new()
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/")
+	///     .headers(headers)
+	///     .build()
+	///     .unwrap();
 	///
 	/// assert_eq!(request.get_preferred_language(), Some("en-US".to_string()));
 	/// ```
@@ -256,13 +245,12 @@ impl Request {
 	/// let mut headers = HeaderMap::new();
 	/// headers.insert("cookie", "session_id=abc123; language=ja; theme=dark".parse().unwrap());
 	///
-	/// let request = Request::new(
-	///     Method::GET,
-	///     "/".parse::<Uri>().unwrap(),
-	///     Version::HTTP_11,
-	///     headers,
-	///     Bytes::new()
-	/// );
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/")
+	///     .headers(headers)
+	///     .build()
+	///     .unwrap();
 	///
 	/// assert_eq!(request.get_language_from_cookie("language"), Some("ja".to_string()));
 	/// assert_eq!(request.get_language_from_cookie("nonexistent"), None);
