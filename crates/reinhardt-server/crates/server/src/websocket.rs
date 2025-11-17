@@ -125,7 +125,7 @@ pub trait WebSocketHandler: Send + Sync {
 /// WebSocket server with broadcast support
 #[cfg(feature = "websocket")]
 pub struct WebSocketServer {
-	pub handler: Arc<dyn WebSocketHandler>,
+	handler: Arc<dyn WebSocketHandler>,
 	pub broadcast_manager: Option<BroadcastManager>,
 }
 
@@ -136,7 +136,6 @@ impl WebSocketServer {
 	/// # Examples
 	///
 	/// ```
-	/// use std::sync::Arc;
 	/// use reinhardt_server_core::WebSocketServer;
 	/// use reinhardt_server_core::WebSocketHandler;
 	///
@@ -149,12 +148,11 @@ impl WebSocketServer {
 	///     }
 	/// }
 	///
-	/// let handler = Arc::new(EchoHandler);
-	/// let server = WebSocketServer::new(handler);
+	/// let server = WebSocketServer::new(EchoHandler);
 	/// ```
-	pub fn new(handler: Arc<dyn WebSocketHandler>) -> Self {
+	pub fn new<H: WebSocketHandler + 'static>(handler: H) -> Self {
 		Self {
-			handler,
+			handler: Arc::new(handler),
 			broadcast_manager: None,
 		}
 	}
@@ -164,7 +162,6 @@ impl WebSocketServer {
 	/// # Examples
 	///
 	/// ```
-	/// use std::sync::Arc;
 	/// use reinhardt_server_core::WebSocketServer;
 	/// use reinhardt_server_core::WebSocketHandler;
 	///
@@ -177,8 +174,7 @@ impl WebSocketServer {
 	///     }
 	/// }
 	///
-	/// let handler = Arc::new(EchoHandler);
-	/// let server = WebSocketServer::new(handler)
+	/// let server = WebSocketServer::new(EchoHandler)
 	///     .with_broadcast(100);
 	/// ```
 	pub fn with_broadcast(mut self, capacity: usize) -> Self {
@@ -191,7 +187,6 @@ impl WebSocketServer {
 	/// # Examples
 	///
 	/// ```
-	/// use std::sync::Arc;
 	/// use reinhardt_server_core::WebSocketServer;
 	/// use reinhardt_server_core::WebSocketHandler;
 	///
@@ -205,8 +200,7 @@ impl WebSocketServer {
 	/// }
 	///
 	/// # async fn example() {
-	/// let handler = Arc::new(EchoHandler);
-	/// let server = WebSocketServer::new(handler)
+	/// let server = WebSocketServer::new(EchoHandler)
 	///     .with_broadcast(100);
 	///
 	/// if let Some(manager) = server.broadcast_manager() {
@@ -225,7 +219,6 @@ impl WebSocketServer {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use std::sync::Arc;
 	/// use std::net::SocketAddr;
 	/// use reinhardt_server_core::WebSocketServer;
 	/// use reinhardt_server_core::WebSocketHandler;
@@ -240,8 +233,7 @@ impl WebSocketServer {
 	/// }
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let handler = Arc::new(EchoHandler);
-	/// let server = WebSocketServer::new(handler);
+	/// let server = WebSocketServer::new(EchoHandler);
 	/// let addr: SocketAddr = "127.0.0.1:9001".parse()?;
 	/// server.listen(addr).await?;
 	/// # Ok(())
@@ -289,10 +281,9 @@ impl WebSocketServer {
 	/// }
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let handler = Arc::new(EchoHandler);
 	/// let addr: SocketAddr = "127.0.0.1:9001".parse()?;
 	/// let stream = TcpStream::connect(addr).await?;
-	/// WebSocketServer::handle_connection(stream, handler, addr, None).await?;
+	/// WebSocketServer::handle_connection(stream, Arc::new(EchoHandler), addr, None).await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -429,7 +420,6 @@ impl WebSocketServer {
 /// # Examples
 ///
 /// ```no_run
-/// use std::sync::Arc;
 /// use std::net::SocketAddr;
 /// use reinhardt_server_core::serve_websocket;
 /// use reinhardt_server_core::WebSocketHandler;
@@ -452,16 +442,15 @@ impl WebSocketServer {
 /// }
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let handler = Arc::new(ChatHandler);
 /// let addr: SocketAddr = "127.0.0.1:9001".parse()?;
-/// serve_websocket(addr, handler).await?;
+/// serve_websocket(addr, ChatHandler).await?;
 /// # Ok(())
 /// # }
 /// ```
 #[cfg(feature = "websocket")]
-pub async fn serve_websocket(
+pub async fn serve_websocket<H: WebSocketHandler + 'static>(
 	addr: SocketAddr,
-	handler: Arc<dyn WebSocketHandler>,
+	handler: H,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let server = WebSocketServer::new(handler);
 	server.listen(addr).await
@@ -482,14 +471,12 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_websocket_server_creation() {
-		let handler = Arc::new(EchoHandler);
-		let _server = WebSocketServer::new(handler);
+		let _server = WebSocketServer::new(EchoHandler);
 	}
 
 	#[tokio::test]
 	async fn test_websocket_server_with_broadcast() {
-		let handler = Arc::new(EchoHandler);
-		let _server = WebSocketServer::new(handler).with_broadcast(100);
+		let _server = WebSocketServer::new(EchoHandler).with_broadcast(100);
 	}
 
 	#[tokio::test]

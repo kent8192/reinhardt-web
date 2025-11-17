@@ -198,13 +198,14 @@ mod tests {
 		let handler = GraphQLHandler::build(QueryRoot, MutationRoot);
 
 		let query = r#"{"query": "{ hello }"}"#;
-		let request = Request::new(
-			Method::POST,
-			Uri::from_static("/graphql"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::from(query),
-		);
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/graphql")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::from(query))
+			.build()
+			.unwrap();
 
 		let response = handler.handle(request).await.unwrap();
 		assert_eq!(response.status, StatusCode::OK);
@@ -217,13 +218,14 @@ mod tests {
 	async fn test_graphql_method_not_allowed() {
 		let handler = GraphQLHandler::build(QueryRoot, MutationRoot);
 
-		let request = Request::new(
-			Method::GET,
-			Uri::from_static("/graphql"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/graphql")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = handler.handle(request).await.unwrap();
 		assert_eq!(response.status, StatusCode::METHOD_NOT_ALLOWED);

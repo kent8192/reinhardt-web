@@ -152,13 +152,14 @@ mod tests {
 		let handler = Arc::new(FastHandler);
 		let timeout_handler = TimeoutHandler::new(handler, Duration::from_secs(1));
 
-		let request = Request::new(
-			http::Method::GET,
-			"/".parse().unwrap(),
-			http::Version::HTTP_11,
-			http::HeaderMap::new(),
-			bytes::Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(http::Method::GET)
+			.uri("/")
+			.version(http::Version::HTTP_11)
+			.headers(http::HeaderMap::new())
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = timeout_handler.handle(request).await.unwrap();
 		assert_eq!(response.status, http::StatusCode::OK);
@@ -171,13 +172,14 @@ mod tests {
 		});
 		let timeout_handler = TimeoutHandler::new(handler, Duration::from_millis(100));
 
-		let request = Request::new(
-			http::Method::GET,
-			"/".parse().unwrap(),
-			http::Version::HTTP_11,
-			http::HeaderMap::new(),
-			bytes::Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(http::Method::GET)
+			.uri("/")
+			.version(http::Version::HTTP_11)
+			.headers(http::HeaderMap::new())
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = timeout_handler.handle(request).await.unwrap();
 		assert_eq!(response.status, http::StatusCode::REQUEST_TIMEOUT);
@@ -190,13 +192,14 @@ mod tests {
 		});
 		let timeout_handler = TimeoutHandler::new(handler, Duration::from_millis(100));
 
-		let request = Request::new(
-			http::Method::GET,
-			"/".parse().unwrap(),
-			http::Version::HTTP_11,
-			http::HeaderMap::new(),
-			bytes::Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(http::Method::GET)
+			.uri("/")
+			.version(http::Version::HTTP_11)
+			.headers(http::HeaderMap::new())
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = timeout_handler.handle(request).await.unwrap();
 		assert_eq!(response.status, http::StatusCode::OK);

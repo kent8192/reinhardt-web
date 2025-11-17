@@ -1,3 +1,32 @@
+//! HTTP server implementation for Reinhardt framework.
+//!
+//! This module provides HTTP/1.1 and HTTP/2 server implementations based on Hyper.
+//!
+//! ## Basic Usage
+//!
+//! ```rust,ignore
+//! use reinhardt_server::{HttpServer, serve};
+//! use std::net::SocketAddr;
+//! use std::sync::Arc;
+//!
+//! let addr: SocketAddr = "127.0.0.1:8000".parse()?;
+//! let handler = Arc::new(MyHandler);
+//!
+//! let server = HttpServer::new(handler.clone());
+//!
+//! // Start server
+//! serve(addr, handler).await?;
+//! ```
+//!
+//! ## Accessing Handler
+//!
+//! Use the `handler()` method to get a clone of the server's handler:
+//!
+//! ```rust,ignore
+//! let server = HttpServer::new(handler);
+//! let handler_clone = server.handler();  // Returns Arc<dyn Handler>
+//! ```
+
 pub mod http;
 pub mod http2;
 pub mod rate_limit;

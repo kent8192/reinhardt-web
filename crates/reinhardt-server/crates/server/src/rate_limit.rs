@@ -280,13 +280,14 @@ mod tests {
 		let rate_limit_handler = RateLimitHandler::new(handler, config);
 
 		for _ in 0..5 {
-			let request = Request::new(
-				http::Method::GET,
-				"/".parse().unwrap(),
-				http::Version::HTTP_11,
-				http::HeaderMap::new(),
-				bytes::Bytes::new(),
-			);
+			let request = Request::builder()
+				.method(http::Method::GET)
+				.uri("/")
+				.version(http::Version::HTTP_11)
+				.headers(http::HeaderMap::new())
+				.body(bytes::Bytes::new())
+				.build()
+				.unwrap();
 
 			let response = rate_limit_handler.handle(request).await.unwrap();
 			assert_eq!(response.status, http::StatusCode::OK);
@@ -301,26 +302,28 @@ mod tests {
 
 		// First 3 requests should succeed
 		for _ in 0..3 {
-			let request = Request::new(
-				http::Method::GET,
-				"/".parse().unwrap(),
-				http::Version::HTTP_11,
-				http::HeaderMap::new(),
-				bytes::Bytes::new(),
-			);
+			let request = Request::builder()
+				.method(http::Method::GET)
+				.uri("/")
+				.version(http::Version::HTTP_11)
+				.headers(http::HeaderMap::new())
+				.body(bytes::Bytes::new())
+				.build()
+				.unwrap();
 
 			let response = rate_limit_handler.handle(request).await.unwrap();
 			assert_eq!(response.status, http::StatusCode::OK);
 		}
 
 		// 4th request should be rate limited
-		let request = Request::new(
-			http::Method::GET,
-			"/".parse().unwrap(),
-			http::Version::HTTP_11,
-			http::HeaderMap::new(),
-			bytes::Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(http::Method::GET)
+			.uri("/")
+			.version(http::Version::HTTP_11)
+			.headers(http::HeaderMap::new())
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = rate_limit_handler.handle(request).await.unwrap();
 		assert_eq!(response.status, http::StatusCode::TOO_MANY_REQUESTS);
@@ -338,13 +341,14 @@ mod tests {
 
 		// Use up the limit
 		for _ in 0..2 {
-			let request = Request::new(
-				http::Method::GET,
-				"/".parse().unwrap(),
-				http::Version::HTTP_11,
-				http::HeaderMap::new(),
-				bytes::Bytes::new(),
-			);
+			let request = Request::builder()
+				.method(http::Method::GET)
+				.uri("/")
+				.version(http::Version::HTTP_11)
+				.headers(http::HeaderMap::new())
+				.body(bytes::Bytes::new())
+				.build()
+				.unwrap();
 			let response = rate_limit_handler.handle(request).await.unwrap();
 			assert_eq!(response.status, http::StatusCode::OK);
 		}
@@ -354,13 +358,14 @@ mod tests {
 			Duration::from_millis(200),
 			Duration::from_millis(10),
 			|| async {
-				let test_request = Request::new(
-					http::Method::GET,
-					"/".parse().unwrap(),
-					http::Version::HTTP_11,
-					http::HeaderMap::new(),
-					bytes::Bytes::new(),
-				);
+				let test_request = Request::builder()
+					.method(http::Method::GET)
+					.uri("/")
+					.version(http::Version::HTTP_11)
+					.headers(http::HeaderMap::new())
+					.body(bytes::Bytes::new())
+					.build()
+					.unwrap();
 				let test_response = rate_limit_handler.handle(test_request).await.unwrap();
 				test_response.status == http::StatusCode::OK
 			},
@@ -383,13 +388,14 @@ mod tests {
 			"192.168.1.100, 10.0.0.1, 172.16.0.1".parse().unwrap(),
 		);
 
-		let request = Request::new(
-			http::Method::GET,
-			"/".parse().unwrap(),
-			http::Version::HTTP_11,
-			headers,
-			bytes::Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(http::Method::GET)
+			.uri("/")
+			.version(http::Version::HTTP_11)
+			.headers(headers)
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
 
 		let ip = rate_limit_handler.extract_client_ip(&request);
 		assert_eq!(ip, "192.168.1.100".parse::<IpAddr>().unwrap());
@@ -404,13 +410,14 @@ mod tests {
 		let mut headers = http::HeaderMap::new();
 		headers.insert("X-Real-IP", "203.0.113.42".parse().unwrap());
 
-		let request = Request::new(
-			http::Method::GET,
-			"/".parse().unwrap(),
-			http::Version::HTTP_11,
-			headers,
-			bytes::Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(http::Method::GET)
+			.uri("/")
+			.version(http::Version::HTTP_11)
+			.headers(headers)
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
 
 		let ip = rate_limit_handler.extract_client_ip(&request);
 		assert_eq!(ip, "203.0.113.42".parse::<IpAddr>().unwrap());
@@ -426,13 +433,14 @@ mod tests {
 		headers.insert("X-Forwarded-For", "198.51.100.1".parse().unwrap());
 		headers.insert("X-Real-IP", "203.0.113.42".parse().unwrap());
 
-		let request = Request::new(
-			http::Method::GET,
-			"/".parse().unwrap(),
-			http::Version::HTTP_11,
-			headers,
-			bytes::Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(http::Method::GET)
+			.uri("/")
+			.version(http::Version::HTTP_11)
+			.headers(headers)
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
 
 		let ip = rate_limit_handler.extract_client_ip(&request);
 		// Should prefer X-Forwarded-For over X-Real-IP
@@ -447,13 +455,14 @@ mod tests {
 
 		let headers = http::HeaderMap::new();
 
-		let request = Request::new(
-			http::Method::GET,
-			"/".parse().unwrap(),
-			http::Version::HTTP_11,
-			headers,
-			bytes::Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(http::Method::GET)
+			.uri("/")
+			.version(http::Version::HTTP_11)
+			.headers(headers)
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
 
 		let ip = rate_limit_handler.extract_client_ip(&request);
 		// Should fallback to localhost
@@ -469,13 +478,14 @@ mod tests {
 		let mut headers = http::HeaderMap::new();
 		headers.insert("X-Forwarded-For", "invalid-ip".parse().unwrap());
 
-		let request = Request::new(
-			http::Method::GET,
-			"/".parse().unwrap(),
-			http::Version::HTTP_11,
-			headers,
-			bytes::Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(http::Method::GET)
+			.uri("/")
+			.version(http::Version::HTTP_11)
+			.headers(headers)
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
 
 		let ip = rate_limit_handler.extract_client_ip(&request);
 		// Should fallback to localhost when parsing fails

@@ -13,6 +13,7 @@ use tokio::time::timeout;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 /// Echo handler - simply echoes messages back
+#[derive(Clone)]
 struct EchoHandler;
 
 #[async_trait::async_trait]
@@ -23,6 +24,8 @@ impl WebSocketHandler for EchoHandler {
 }
 
 /// Chat room handler - broadcasts messages to all connected clients
+#[derive(Clone)]
+
 struct ChatRoomHandler {
 	messages: Arc<Mutex<Vec<String>>>,
 }
@@ -64,6 +67,7 @@ struct CalculatorRequest {
 struct CalculatorResponse {
 	result: f64,
 }
+#[derive(Clone)]
 
 struct CalculatorHandler;
 
@@ -90,6 +94,7 @@ impl WebSocketHandler for CalculatorHandler {
 		serde_json::to_string(&response).map_err(|e| format!("Serialization error: {}", e))
 	}
 }
+#[derive(Clone)]
 
 /// Connection counter handler
 struct ConnectionCounterHandler {
@@ -121,24 +126,24 @@ impl WebSocketHandler for ConnectionCounterHandler {
 }
 
 /// Helper function to spawn a WebSocket server
-async fn spawn_websocket_server(
-	handler: Arc<dyn WebSocketHandler>,
+async fn spawn_websocket_server<H: WebSocketHandler + Clone + 'static>(
+	handler: H,
 ) -> (String, tokio::task::JoinHandle<()>) {
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let addr = listener.local_addr().unwrap();
 	let url = format!("ws://{}", addr);
 
-	let server = WebSocketServer::new(handler);
+	let _server = WebSocketServer::new(handler.clone());
 
 	let handle = tokio::spawn(async move {
 		loop {
 			match listener.accept().await {
 				Ok((stream, peer_addr)) => {
-					let handler_clone = server.handler.clone();
+					let handler_clone = handler.clone();
 					tokio::spawn(async move {
 						if let Err(e) = WebSocketServer::handle_connection(
 							stream,
-							handler_clone,
+							Arc::new(handler_clone),
 							peer_addr,
 							None,
 						)
@@ -161,7 +166,7 @@ async fn spawn_websocket_server(
 
 #[tokio::test]
 async fn test_e2e_websocket_echo() {
-	let handler = Arc::new(EchoHandler);
+	let handler = EchoHandler;
 	let (url, server_handle) = spawn_websocket_server(handler).await;
 
 	// Connect to WebSocket server
@@ -188,7 +193,7 @@ async fn test_e2e_websocket_echo() {
 
 #[tokio::test]
 async fn test_e2e_websocket_multiple_messages() {
-	let handler = Arc::new(EchoHandler);
+	let handler = EchoHandler;
 	let (url, server_handle) = spawn_websocket_server(handler).await;
 
 	let (ws_stream, _) = connect_async(&url).await.unwrap();
@@ -213,7 +218,7 @@ async fn test_e2e_websocket_multiple_messages() {
 
 #[tokio::test]
 async fn test_e2e_websocket_calculator() {
-	let handler = Arc::new(CalculatorHandler);
+	let handler = CalculatorHandler;
 	let (url, server_handle) = spawn_websocket_server(handler).await;
 
 	let (ws_stream, _) = connect_async(&url).await.unwrap();
@@ -256,7 +261,7 @@ async fn test_e2e_websocket_calculator() {
 
 #[tokio::test]
 async fn test_e2e_websocket_calculator_error() {
-	let handler = Arc::new(CalculatorHandler);
+	let handler = CalculatorHandler;
 	let (url, server_handle) = spawn_websocket_server(handler).await;
 
 	let (ws_stream, _) = connect_async(&url).await.unwrap();
@@ -282,7 +287,7 @@ async fn test_e2e_websocket_calculator_error() {
 
 #[tokio::test]
 async fn test_e2e_websocket_chat_room() {
-	let handler = Arc::new(ChatRoomHandler::new());
+	let handler = ChatRoomHandler::new();
 	let (url, server_handle) = spawn_websocket_server(handler).await;
 
 	// Connect first client
@@ -308,7 +313,7 @@ async fn test_e2e_websocket_chat_room() {
 
 #[tokio::test]
 async fn test_e2e_websocket_connection_lifecycle() {
-	let handler = Arc::new(ConnectionCounterHandler::new());
+	let handler = ConnectionCounterHandler::new();
 	let handler_clone = handler.clone();
 	let (url, server_handle) = spawn_websocket_server(handler).await;
 
@@ -360,7 +365,7 @@ async fn test_e2e_websocket_connection_lifecycle() {
 
 #[tokio::test]
 async fn test_e2e_websocket_concurrent_connections() {
-	let handler = Arc::new(EchoHandler);
+	let handler = EchoHandler;
 	let (url, server_handle) = spawn_websocket_server(handler).await;
 
 	// Create 10 concurrent connections
@@ -395,7 +400,7 @@ async fn test_e2e_websocket_concurrent_connections() {
 
 #[tokio::test]
 async fn test_e2e_websocket_binary_message() {
-	let handler = Arc::new(EchoHandler);
+	let handler = EchoHandler;
 	let (url, server_handle) = spawn_websocket_server(handler).await;
 
 	let (ws_stream, _) = connect_async(&url).await.unwrap();

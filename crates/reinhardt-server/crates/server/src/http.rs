@@ -17,7 +17,7 @@ use crate::shutdown::ShutdownCoordinator;
 
 /// HTTP Server with middleware support
 pub struct HttpServer {
-	pub handler: Arc<dyn Handler>,
+	handler: Arc<dyn Handler>,
 	pub(crate) middlewares: Vec<Arc<dyn Middleware>>,
 }
 
@@ -27,7 +27,6 @@ impl HttpServer {
 	/// # Examples
 	///
 	/// ```
-	/// use std::sync::Arc;
 	/// use reinhardt_server_core::HttpServer;
 	/// use reinhardt_core::types::Handler;
 	/// use reinhardt_core::http::{Request, Response};
@@ -41,12 +40,11 @@ impl HttpServer {
 	///     }
 	/// }
 	///
-	/// let handler = Arc::new(MyHandler);
-	/// let server = HttpServer::new(handler);
+	/// let server = HttpServer::new(MyHandler);
 	/// ```
-	pub fn new(handler: Arc<dyn Handler>) -> Self {
+	pub fn new<H: Handler + 'static>(handler: H) -> Self {
 		Self {
-			handler,
+			handler: Arc::new(handler),
 			middlewares: Vec::new(),
 		}
 	}
@@ -80,14 +78,19 @@ impl HttpServer {
 	///     }
 	/// }
 	///
-	/// let handler = Arc::new(MyHandler);
-	/// let middleware = Arc::new(MyMiddleware);
-	/// let server = HttpServer::new(handler)
-	///     .with_middleware(middleware);
+	/// let server = HttpServer::new(MyHandler)
+	///     .with_middleware(MyMiddleware);
 	/// ```
-	pub fn with_middleware(mut self, middleware: Arc<dyn Middleware>) -> Self {
-		self.middlewares.push(middleware);
+	pub fn with_middleware<M: Middleware + 'static>(mut self, middleware: M) -> Self {
+		self.middlewares.push(Arc::new(middleware));
 		self
+	}
+
+	/// Get a clone of the handler
+	///
+	/// This is useful for test utilities that need access to the handler.
+	pub fn handler(&self) -> Arc<dyn Handler> {
+		self.handler.clone()
 	}
 
 	/// Build the final handler with middleware chain
@@ -113,7 +116,6 @@ impl HttpServer {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use std::sync::Arc;
 	/// use std::net::SocketAddr;
 	/// use reinhardt_server_core::HttpServer;
 	/// use reinhardt_core::types::Handler;
@@ -129,8 +131,7 @@ impl HttpServer {
 	/// }
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let handler = Arc::new(MyHandler);
-	/// let server = HttpServer::new(handler);
+	/// let server = HttpServer::new(MyHandler);
 	/// let addr: SocketAddr = "127.0.0.1:8080".parse()?;
 	/// server.listen(addr).await?;
 	/// # Ok(())
@@ -164,7 +165,6 @@ impl HttpServer {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use std::sync::Arc;
 	/// use std::net::SocketAddr;
 	/// use std::time::Duration;
 	/// use reinhardt_server_core::{HttpServer, ShutdownCoordinator};
@@ -181,8 +181,7 @@ impl HttpServer {
 	/// }
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let handler = Arc::new(MyHandler);
-	/// let server = HttpServer::new(handler);
+	/// let server = HttpServer::new(MyHandler);
 	/// let addr: SocketAddr = "127.0.0.1:8080".parse()?;
 	/// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
 	/// server.listen_with_shutdown(addr, coordinator).await?;
@@ -261,11 +260,10 @@ impl HttpServer {
 	/// }
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let handler = Arc::new(MyHandler);
 	/// let addr: SocketAddr = "127.0.0.1:8080".parse()?;
 	/// let stream = TcpStream::connect(addr).await?;
 	/// let socket_addr = stream.peer_addr()?;
-	/// HttpServer::handle_connection(stream, socket_addr, handler).await?;
+	/// HttpServer::handle_connection(stream, socket_addr, Arc::new(MyHandler)).await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -310,14 +308,15 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 			let body_bytes = body.collect().await?.to_bytes();
 
 			// Create reinhardt Request
-			let mut request = Request::new(
-				parts.method,
-				parts.uri,
-				parts.version,
-				parts.headers,
-				body_bytes,
-			);
-			request.remote_addr = Some(remote_addr);
+			let request = Request::builder()
+				.method(parts.method)
+				.uri(parts.uri)
+				.version(parts.version)
+				.headers(parts.headers)
+				.body(body_bytes)
+				.remote_addr(remote_addr)
+				.build()
+				.expect("Failed to build request");
 
 			// Handle request
 			let response = handler.handle(request).await.unwrap_or_else(|err| {
@@ -346,7 +345,6 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 /// # Examples
 ///
 /// ```no_run
-/// use std::sync::Arc;
 /// use std::net::SocketAddr;
 /// use reinhardt_server_core::serve;
 /// use reinhardt_core::types::Handler;
@@ -362,15 +360,14 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 /// }
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let handler = Arc::new(MyHandler);
 /// let addr: SocketAddr = "127.0.0.1:3000".parse()?;
-/// serve(addr, handler).await?;
+/// serve(addr, MyHandler).await?;
 /// # Ok(())
 /// # }
 /// ```
-pub async fn serve(
+pub async fn serve<H: Handler + 'static>(
 	addr: SocketAddr,
-	handler: Arc<dyn Handler>,
+	handler: H,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let server = HttpServer::new(handler);
 	server.listen(addr).await
@@ -383,7 +380,6 @@ pub async fn serve(
 /// # Examples
 ///
 /// ```no_run
-/// use std::sync::Arc;
 /// use std::net::SocketAddr;
 /// use std::time::Duration;
 /// use reinhardt_server_core::{serve_with_shutdown, shutdown_signal, ShutdownCoordinator};
@@ -400,12 +396,11 @@ pub async fn serve(
 /// }
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let handler = Arc::new(MyHandler);
 /// let addr: SocketAddr = "127.0.0.1:3000".parse()?;
 /// let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
 ///
 /// tokio::select! {
-///     result = serve_with_shutdown(addr, handler, coordinator.clone()) => {
+///     result = serve_with_shutdown(addr, MyHandler, coordinator.clone()) => {
 ///         result?;
 ///     }
 ///     _ = shutdown_signal() => {
@@ -416,9 +411,9 @@ pub async fn serve(
 /// # Ok(())
 /// # }
 /// ```
-pub async fn serve_with_shutdown(
+pub async fn serve_with_shutdown<H: Handler + 'static>(
 	addr: SocketAddr,
-	handler: Arc<dyn Handler>,
+	handler: H,
 	coordinator: ShutdownCoordinator,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let server = HttpServer::new(handler);
@@ -440,7 +435,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_http_server_creation() {
-		let _server = HttpServer::new(Arc::new(TestHandler));
+		let _server = HttpServer::new(TestHandler);
 		// Just verify server can be created without panicking
 	}
 
@@ -466,11 +461,9 @@ mod tests {
 			}
 		}
 
-		let middleware = Arc::new(TestMiddleware {
+		let server = HttpServer::new(TestHandler).with_middleware(TestMiddleware {
 			prefix: "Middleware: ".to_string(),
 		});
-
-		let server = HttpServer::new(Arc::new(TestHandler)).with_middleware(middleware);
 
 		// Verify middleware is added
 		assert_eq!(server.middlewares.len(), 1);
@@ -498,16 +491,13 @@ mod tests {
 			}
 		}
 
-		let mw1 = Arc::new(PrefixMiddleware {
-			prefix: "MW1:".to_string(),
-		});
-		let mw2 = Arc::new(PrefixMiddleware {
-			prefix: "MW2:".to_string(),
-		});
-
-		let server = HttpServer::new(Arc::new(TestHandler))
-			.with_middleware(mw1)
-			.with_middleware(mw2);
+		let server = HttpServer::new(TestHandler)
+			.with_middleware(PrefixMiddleware {
+				prefix: "MW1:".to_string(),
+			})
+			.with_middleware(PrefixMiddleware {
+				prefix: "MW2:".to_string(),
+			});
 
 		assert_eq!(server.middlewares.len(), 2);
 	}
@@ -536,28 +526,26 @@ mod tests {
 			}
 		}
 
-		let mw1 = Arc::new(PrefixMiddleware {
-			prefix: "First:".to_string(),
-		});
-		let mw2 = Arc::new(PrefixMiddleware {
-			prefix: "Second:".to_string(),
-		});
-
-		let server = HttpServer::new(Arc::new(TestHandler))
-			.with_middleware(mw1)
-			.with_middleware(mw2);
+		let server = HttpServer::new(TestHandler)
+			.with_middleware(PrefixMiddleware {
+				prefix: "First:".to_string(),
+			})
+			.with_middleware(PrefixMiddleware {
+				prefix: "Second:".to_string(),
+			});
 
 		// Build the handler with middleware chain
 		let handler = server.build_handler();
 
 		// Create a test request
-		let request = Request::new(
-			Method::GET,
-			"/".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		// Execute the handler
 		let response = handler.handle(request).await.unwrap();
