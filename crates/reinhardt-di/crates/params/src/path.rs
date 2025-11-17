@@ -230,13 +230,14 @@ mod tests {
 		params.insert("id".to_string(), "42".to_string());
 
 		let ctx = ParamContext::with_path_params(params);
-		let req = Request::new(
-			Method::GET,
-			Uri::from_static("/test"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let result = PathStruct::<PathParams>::from_request(&req, &ctx).await;
 		assert!(result.is_ok());
@@ -253,13 +254,14 @@ mod tests {
 		params.insert("id".to_string(), "42".to_string());
 
 		let ctx = ParamContext::with_path_params(params);
-		let req = Request::new(
-			Method::GET,
-			Uri::from_static("/test"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let result = Path::<i64>::from_request(&req, &ctx).await;
 		assert!(result.is_ok(), "Failed to extract i64: {:?}", result.err());
@@ -275,13 +277,14 @@ mod tests {
 		params.insert("name".to_string(), "foobar".to_string());
 
 		let ctx = ParamContext::with_path_params(params);
-		let req = Request::new(
-			Method::GET,
-			Uri::from_static("/test"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let result = Path::<String>::from_request(&req, &ctx).await;
 		assert!(
@@ -301,13 +304,14 @@ mod tests {
 		params.insert("price".to_string(), "19.99".to_string());
 
 		let ctx = ParamContext::with_path_params(params);
-		let req = Request::new(
-			Method::GET,
-			Uri::from_static("/test"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let result = Path::<f64>::from_request(&req, &ctx).await;
 		assert!(result.is_ok(), "Failed to extract f64: {:?}", result.err());
@@ -323,13 +327,14 @@ mod tests {
 		params.insert("active".to_string(), "true".to_string());
 
 		let ctx = ParamContext::with_path_params(params);
-		let req = Request::new(
-			Method::GET,
-			Uri::from_static("/test"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let result = Path::<bool>::from_request(&req, &ctx).await;
 		assert!(result.is_ok(), "Failed to extract bool: {:?}", result.err());
@@ -353,16 +358,16 @@ mod tests {
 		params.insert("post_id".to_string(), "456".to_string());
 
 		let ctx = ParamContext::with_path_params(params);
-		let req = Request::new(
-			Method::GET,
-			Uri::from_static("/test"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let result = PathStruct::<MultiParams>::from_request(&req, &ctx).await;
-		assert!(result.is_ok());
 		let params = result.unwrap();
 		assert_eq!(params.user_id, 123);
 		assert_eq!(params.post_id, 456);

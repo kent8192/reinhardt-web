@@ -10,7 +10,9 @@ pub mod scope;
 
 use thiserror::Error;
 
-pub use context::{InjectionContext, ParamContext, Request, RequestContext};
+pub use context::{
+	InjectionContext, InjectionContextBuilder, ParamContext, Request, RequestContext,
+};
 pub use depends::{Depends, DependsBuilder};
 pub use injectable::Injectable;
 pub use provider::{Provider, ProviderFn};

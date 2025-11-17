@@ -34,8 +34,8 @@ Types implementing `Default + Clone + Send + Sync + 'static` automatically imple
   - Custom implementation: When complex initialization logic is needed
 
 - ✓ **InjectionContext**: Context for dependency resolution
-  - `get_request<T>()` / `set_request<T>()` - Request scope
-  - `get_singleton<T>()` / `set_singleton<T>()` - Singleton scope
+  - Builder pattern for context creation: `InjectionContext::builder(singleton).build()`
+  - Internal scope management (request and singleton)
   - Generate new context per request
 
 - ✓ **RequestScope**: Caching within requests
@@ -195,7 +195,7 @@ async fn main() {
     let singleton = Arc::new(SingletonScope::new());
 
     // Creating the request context
-    let ctx = InjectionContext::new(singleton);
+    let ctx = InjectionContext::builder(singleton).build();
 
     // Dependency Resolution (Cache Enabled)
     let config = Depends::<Config>::new()
@@ -278,16 +278,22 @@ mod tests {
         // Mock implementation for testing
     }
 
+    #[async_trait::async_trait]
+    impl Injectable for MockDatabase {
+        async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+            Ok(MockDatabase { /* ... */ })
+        }
+    }
+
     #[tokio::test]
     async fn test_with_mock_database() {
         let singleton = Arc::new(SingletonScope::new());
-        let ctx = InjectionContext::new(singleton);
+        let ctx = InjectionContext::builder(singleton).build();
 
-        // Set mock for testing
-        let mock_db = MockDatabase { /* ... */ };
-        ctx.set_request(mock_db);
+        // Inject mock for testing
+        let mock_db = MockDatabase::inject(&ctx).await.unwrap();
 
-        // Test code
+        // Test code using mock_db
     }
 }
 ```

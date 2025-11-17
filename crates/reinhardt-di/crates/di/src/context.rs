@@ -16,119 +16,191 @@ pub struct InjectionContext {
 	param_context: Option<Arc<ParamContext>>,
 }
 
-impl InjectionContext {
-	/// Creates a new InjectionContext with a shared singleton scope.
+/// Builder for constructing `InjectionContext` instances.
+///
+/// Provides a fluent API for building injection contexts with optional HTTP request support.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_di::{InjectionContext, SingletonScope};
+///
+/// let singleton_scope = SingletonScope::new();
+/// let ctx = InjectionContext::builder(singleton_scope).build();
+/// ```
+pub struct InjectionContextBuilder {
+	singleton_scope: Arc<SingletonScope>,
+	request: Option<Request>,
+	param_context: Option<ParamContext>,
+}
+
+impl InjectionContextBuilder {
+	/// Set the HTTP request for this context.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_di::{InjectionContext, SingletonScope, Request};
+	///
+	/// let singleton_scope = SingletonScope::new();
+	/// let request = Request::builder()
+	///     .method(hyper::Method::GET)
+	///     .uri("/")
+	///     .build()
+	///     .unwrap();
+	///
+	/// let ctx = InjectionContext::builder(singleton_scope)
+	///     .with_request(request)
+	///     .build();
+	/// ```
+	pub fn with_request(mut self, request: Request) -> Self {
+		self.request = Some(request);
+		self
+	}
+
+	/// Set the parameter context for this context.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_di::{InjectionContext, SingletonScope, ParamContext};
+	///
+	/// let singleton_scope = SingletonScope::new();
+	/// let param_context = ParamContext::new();
+	///
+	/// let ctx = InjectionContext::builder(singleton_scope)
+	///     .with_param_context(param_context)
+	///     .build();
+	/// ```
+	pub fn with_param_context(mut self, param_context: ParamContext) -> Self {
+		self.param_context = Some(param_context);
+		self
+	}
+
+	/// Build the final `InjectionContext` instance.
 	///
 	/// # Examples
 	///
 	/// ```
 	/// use reinhardt_di::{InjectionContext, SingletonScope};
-	/// use std::sync::Arc;
 	///
-	/// let singleton_scope = Arc::new(SingletonScope::new());
-	/// let ctx = InjectionContext::new(singleton_scope);
+	/// let singleton_scope = SingletonScope::new();
+	/// let ctx = InjectionContext::builder(singleton_scope).build();
 	/// ```
-	pub fn new(singleton_scope: Arc<SingletonScope>) -> Self {
-		Self {
+	pub fn build(self) -> InjectionContext {
+		InjectionContext {
 			request_scope: RequestScope::new(),
-			singleton_scope,
-			request: None,
-			param_context: None,
+			singleton_scope: self.singleton_scope,
+			request: self.request.map(Arc::new),
+			param_context: self.param_context.map(Arc::new),
 		}
 	}
+}
 
-	/// Creates a new InjectionContext with HTTP request and parameter context.
+impl InjectionContext {
+	/// Create a new `InjectionContextBuilder`.
 	///
-	/// This is the preferred constructor when using FastAPI-style dependency injection
-	/// with HTTP request parameter extraction.
+	/// This is the recommended way to construct an `InjectionContext`.
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// use reinhardt_di::{InjectionContext, SingletonScope, Request, ParamContext};
-	/// use std::sync::Arc;
-	///
-	/// let singleton_scope = Arc::new(SingletonScope::new());
-	/// let request = Arc::new(request); // Your HTTP request
-	/// let param_context = Arc::new(ParamContext::new());
-	///
-	/// let ctx = InjectionContext::with_request(singleton_scope, request, param_context);
 	/// ```
-	pub fn with_request(
-		singleton_scope: Arc<SingletonScope>,
-		request: Arc<Request>,
-		param_context: Arc<ParamContext>,
-	) -> Self {
-		Self {
-			request_scope: RequestScope::new(),
-			singleton_scope,
-			request: Some(request),
-			param_context: Some(param_context),
+	/// use reinhardt_di::{InjectionContext, SingletonScope};
+	///
+	/// let singleton_scope = SingletonScope::new();
+	/// let ctx = InjectionContext::builder(singleton_scope).build();
+	/// ```
+	pub fn builder(singleton_scope: impl Into<Arc<SingletonScope>>) -> InjectionContextBuilder {
+		InjectionContextBuilder {
+			singleton_scope: singleton_scope.into(),
+			request: None,
+			param_context: None,
 		}
 	}
 
 	/// Gets the HTTP request from the context.
 	///
 	/// Returns `None` if no request was set (e.g., when testing without HTTP context).
+	/// Returns a reference to the request.
 	///
 	/// # Examples
 	///
 	/// ```ignore
 	/// use reinhardt_di::{InjectionContext, SingletonScope, Request, ParamContext};
-	/// use std::sync::Arc;
 	///
-	/// let singleton_scope = Arc::new(SingletonScope::new());
-	/// let request = Arc::new(request);
-	/// let param_context = Arc::new(ParamContext::new());
+	/// let singleton_scope = SingletonScope::new();
+	/// let request = Request::builder()
+	///     .method(hyper::Method::GET)
+	///     .uri("/")
+	///     .build()
+	///     .unwrap();
+	/// let param_context = ParamContext::new();
 	///
-	/// let ctx = InjectionContext::with_request(singleton_scope, request.clone(), param_context);
+	/// let ctx = InjectionContext::builder(singleton_scope)
+	///     .with_request(request)
+	///     .with_param_context(param_context)
+	///     .build();
+	///
 	/// assert!(ctx.get_http_request().is_some());
 	/// ```
-	pub fn get_http_request(&self) -> Option<&Arc<Request>> {
-		self.request.as_ref()
+	pub fn get_http_request(&self) -> Option<&Request> {
+		self.request.as_ref().map(|arc| arc.as_ref())
 	}
 
 	/// Gets the parameter context from the context.
 	///
 	/// Returns `None` if no parameter context was set.
+	/// Returns a reference to the parameter context.
 	///
 	/// # Examples
 	///
 	/// ```ignore
 	/// use reinhardt_di::{InjectionContext, SingletonScope, Request, ParamContext};
-	/// use std::sync::Arc;
 	///
-	/// let singleton_scope = Arc::new(SingletonScope::new());
-	/// let request = Arc::new(request);
-	/// let param_context = Arc::new(ParamContext::new());
+	/// let singleton_scope = SingletonScope::new();
+	/// let request = Request::builder()
+	///     .method(hyper::Method::GET)
+	///     .uri("/")
+	///     .build()
+	///     .unwrap();
+	/// let param_context = ParamContext::new();
 	///
-	/// let ctx = InjectionContext::with_request(singleton_scope, request, param_context.clone());
+	/// let ctx = InjectionContext::builder(singleton_scope)
+	///     .with_request(request)
+	///     .with_param_context(param_context)
+	///     .build();
+	///
 	/// assert!(ctx.get_param_context().is_some());
 	/// ```
-	pub fn get_param_context(&self) -> Option<&Arc<ParamContext>> {
-		self.param_context.as_ref()
+	pub fn get_param_context(&self) -> Option<&ParamContext> {
+		self.param_context.as_ref().map(|arc| arc.as_ref())
 	}
 
 	/// Sets the HTTP request and parameter context.
 	///
 	/// This can be used to add HTTP context to an existing InjectionContext.
+	/// The request and parameter context will be wrapped in Arc internally.
 	///
 	/// # Examples
 	///
 	/// ```ignore
 	/// use reinhardt_di::{InjectionContext, SingletonScope, Request, ParamContext};
-	/// use std::sync::Arc;
 	///
-	/// let singleton_scope = Arc::new(SingletonScope::new());
-	/// let ctx = InjectionContext::new(singleton_scope);
+	/// let singleton_scope = SingletonScope::new();
+	/// let mut ctx = InjectionContext::builder(singleton_scope).build();
 	///
-	/// let request = Arc::new(request);
-	/// let param_context = Arc::new(ParamContext::new());
+	/// let request = Request::builder()
+	///     .method(hyper::Method::GET)
+	///     .uri("/")
+	///     .build()
+	///     .unwrap();
+	/// let param_context = ParamContext::new();
+	///
 	/// ctx.set_http_request(request, param_context);
 	/// ```
-	pub fn set_http_request(&mut self, request: Arc<Request>, param_context: Arc<ParamContext>) {
-		self.request = Some(request);
-		self.param_context = Some(param_context);
+	pub fn set_http_request(&mut self, request: Request, param_context: ParamContext) {
+		self.request = Some(Arc::new(request));
+		self.param_context = Some(Arc::new(param_context));
 	}
 	/// Retrieves a request-scoped value from the context.
 	///
@@ -223,14 +295,13 @@ impl RequestContext {
 	///
 	/// ```
 	/// use reinhardt_di::{RequestContext, SingletonScope};
-	/// use std::sync::Arc;
 	///
-	/// let singleton_scope = Arc::new(SingletonScope::new());
+	/// let singleton_scope = SingletonScope::new();
 	/// let request_ctx = RequestContext::new(singleton_scope);
 	/// ```
-	pub fn new(singleton_scope: Arc<SingletonScope>) -> Self {
+	pub fn new(singleton_scope: SingletonScope) -> Self {
 		Self {
-			injection_ctx: InjectionContext::new(singleton_scope),
+			injection_ctx: InjectionContext::builder(singleton_scope).build(),
 		}
 	}
 	/// Returns a reference to the underlying injection context.

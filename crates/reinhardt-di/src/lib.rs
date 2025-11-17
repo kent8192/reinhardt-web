@@ -67,6 +67,45 @@
 //! }
 //! ```
 //!
+//! ## InjectionContext Construction
+//!
+//! InjectionContext is constructed using the builder pattern with a required singleton scope:
+//!
+//! ```rust
+//! use reinhardt_di::{InjectionContext, SingletonScope};
+//! use std::sync::Arc;
+//!
+//! // Create singleton scope
+//! let singleton = Arc::new(SingletonScope::new());
+//!
+//! // Build injection context with singleton scope
+//! let ctx = InjectionContext::builder(singleton).build();
+//! ```
+//!
+//! Optional request and param context can be added:
+//!
+//! ```rust
+//! use reinhardt_di::{InjectionContext, SingletonScope};
+//! use reinhardt_http::Request;
+//! use std::sync::Arc;
+//!
+//! let singleton = Arc::new(SingletonScope::new());
+//!
+//! // Create a dummy request for demonstration
+//! let request = Request::builder()
+//!     .method(hyper::Method::GET)
+//!     .uri("/")
+//!     .version(hyper::Version::HTTP_11)
+//!     .headers(hyper::HeaderMap::new())
+//!     .body(bytes::Bytes::new())
+//!     .build()
+//!     .unwrap();
+//!
+//! let ctx = InjectionContext::builder(singleton)
+//!     .with_request(request)
+//!     .build();
+//! ```
+//!
 //! ## Development Tools Example
 //!
 //! ```rust,ignore
