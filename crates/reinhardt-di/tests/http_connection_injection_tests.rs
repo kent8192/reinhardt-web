@@ -117,13 +117,13 @@ impl Injectable for ValueFromWebSocket {
 
 #[tokio::test]
 async fn test_value_extracting_by_http() {
-	let singleton = Arc::new(SingletonScope::new());
+	let singleton = SingletonScope::new();
 
 	// Set up app state
 	let app_state = AppState::new();
 	singleton.set(app_state);
 
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject value through HTTP connection
 	let value = ValueFromHttp::inject(&ctx).await.unwrap();
@@ -133,13 +133,13 @@ async fn test_value_extracting_by_http() {
 
 #[tokio::test]
 async fn test_value_extracting_by_ws() {
-	let singleton = Arc::new(SingletonScope::new());
+	let singleton = SingletonScope::new();
 
 	// Set up app state
 	let app_state = AppState::new();
 	singleton.set(app_state);
 
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject value through WebSocket connection
 	let value = ValueFromWebSocket::inject(&ctx).await.unwrap();
@@ -149,10 +149,10 @@ async fn test_value_extracting_by_ws() {
 
 #[tokio::test]
 async fn test_http_connection_cached() {
-	let singleton = Arc::new(SingletonScope::new());
+	let singleton = SingletonScope::new();
 	singleton.set(AppState::new());
 
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject connection twice
 	let conn1 = HttpConnection::inject(&ctx).await.unwrap();
@@ -164,10 +164,10 @@ async fn test_http_connection_cached() {
 
 #[tokio::test]
 async fn test_websocket_connection_cached() {
-	let singleton = Arc::new(SingletonScope::new());
+	let singleton = SingletonScope::new();
 	singleton.set(AppState::new());
 
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject connection twice
 	let conn1 = WebSocketConnection::inject(&ctx).await.unwrap();
@@ -182,13 +182,13 @@ async fn test_app_state_shared_across_connections() {
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set(AppState::new());
 
-	let ctx = InjectionContext::new(singleton.clone());
+	let ctx = InjectionContext::builder(singleton.clone()).build();
 
 	// Get value through HTTP
 	let http_value = ValueFromHttp::inject(&ctx).await.unwrap();
 
 	// Create new context (simulating new request)
-	let ctx2 = InjectionContext::new(singleton);
+	let ctx2 = InjectionContext::builder(singleton.clone()).build();
 
 	// Get value through WebSocket
 	let ws_value = ValueFromWebSocket::inject(&ctx2).await.unwrap();

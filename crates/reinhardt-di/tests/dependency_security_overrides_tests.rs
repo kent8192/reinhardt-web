@@ -8,7 +8,6 @@
 //! 3. Regular dependencies can be overridden alongside security dependencies
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
-use std::sync::Arc;
 
 // Security scopes
 #[derive(Clone, Debug, PartialEq)]
@@ -103,8 +102,8 @@ impl Injectable for DataDependencyOverride {
 
 #[tokio::test]
 async fn test_normal_security_with_scopes() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set security scopes
 	ctx.set_request(SecurityScopes::new(vec!["foo", "bar"]));
@@ -120,8 +119,8 @@ async fn test_normal_security_with_scopes() {
 
 #[tokio::test]
 async fn test_override_data_dependency() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set security scopes
 	ctx.set_request(SecurityScopes::new(vec!["foo", "bar"]));
@@ -139,8 +138,8 @@ async fn test_override_data_dependency() {
 
 #[tokio::test]
 async fn test_override_security_dependency() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set security scopes
 	ctx.set_request(SecurityScopes::new(vec!["foo", "bar"]));
@@ -159,8 +158,8 @@ async fn test_override_security_dependency() {
 // Test that scopes are properly passed through security dependencies
 #[tokio::test]
 async fn test_security_scopes_preserved() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set different scopes
 	let scopes = vec!["read", "write", "admin"];
@@ -174,8 +173,8 @@ async fn test_security_scopes_preserved() {
 // Test empty scopes
 #[tokio::test]
 async fn test_security_with_empty_scopes() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Don't set any scopes
 	let user = UserData::inject(&ctx).await.unwrap();

@@ -40,7 +40,7 @@ impl Injectable for CallableDependency {
 #[tokio::test]
 async fn test_callable_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let dep = CallableDependency::inject(&ctx).await.unwrap();
 	let result = dep.call("World".to_string());
@@ -75,7 +75,7 @@ impl Injectable for AsyncCallableDependency {
 #[tokio::test]
 async fn test_async_callable_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let dep = AsyncCallableDependency::inject(&ctx).await.unwrap();
 	let result = dep.call(5).await;
@@ -131,7 +131,7 @@ impl Injectable for StatefulDependency {
 #[tokio::test]
 async fn test_stateful_dependency_cached() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let dep1 = StatefulDependency::inject(&ctx).await.unwrap();
 	let dep2 = StatefulDependency::inject(&ctx).await.unwrap();
@@ -145,10 +145,10 @@ async fn test_stateful_dependency_cached() {
 async fn test_stateful_dependency_separate_requests() {
 	let singleton = Arc::new(SingletonScope::new());
 
-	let ctx1 = InjectionContext::new(singleton.clone());
+	let ctx1 = InjectionContext::builder(singleton.clone()).build();
 	let dep1 = StatefulDependency::inject(&ctx1).await.unwrap();
 
-	let ctx2 = InjectionContext::new(singleton.clone());
+	let ctx2 = InjectionContext::builder(singleton.clone()).build();
 	let dep2 = StatefulDependency::inject(&ctx2).await.unwrap();
 
 	// Different instances across requests
@@ -183,7 +183,7 @@ impl Injectable for ServiceWithMethods {
 #[tokio::test]
 async fn test_method_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let service = ServiceWithMethods::inject(&ctx).await.unwrap();
 	let result = service.method_dependency().await;
@@ -227,7 +227,7 @@ impl Injectable for ResourceDependency {
 #[tokio::test]
 async fn test_resource_dependency_lifecycle() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let resource = ResourceDependency::inject(&ctx).await.unwrap();
 
@@ -269,7 +269,7 @@ impl ComplexDependency {
 #[tokio::test]
 async fn test_complex_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let complex = ComplexDependency::inject(&ctx).await.unwrap();
 	let result = complex.process("Result".to_string(), 7).await;
@@ -319,11 +319,11 @@ async fn test_singleton_service_shared() {
 	let singleton = Arc::new(SingletonScope::new());
 
 	// Request 1
-	let ctx1 = InjectionContext::new(singleton.clone());
+	let ctx1 = InjectionContext::builder(singleton.clone()).build();
 	let service1 = SingletonService::inject(&ctx1).await.unwrap();
 
 	// Request 2
-	let ctx2 = InjectionContext::new(singleton.clone());
+	let ctx2 = InjectionContext::builder(singleton.clone()).build();
 	let service2 = SingletonService::inject(&ctx2).await.unwrap();
 
 	// Same instance across requests (singleton)

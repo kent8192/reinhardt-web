@@ -36,8 +36,8 @@ impl Injectable for ServiceB {
 
 #[tokio::test]
 async fn test_no_circular_dependency() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// This should work fine - no circular dependency
 	let _service_b = ServiceB::inject(&ctx).await.unwrap();
@@ -94,8 +94,8 @@ async fn test_deep_dependency_chain() {
 		}
 	}
 
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Deep dependency chain should work
 	let _level4 = Level4::inject(&ctx).await.unwrap();
@@ -141,8 +141,8 @@ async fn test_multiple_dependencies() {
 		}
 	}
 
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Service with multiple independent dependencies
 	let _service = MultiService::inject(&ctx).await.unwrap();
@@ -165,8 +165,8 @@ async fn test_optional_dependency() {
 		}
 	}
 
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// This should fail gracefully
 	let result = OptionalService::inject(&ctx).await;

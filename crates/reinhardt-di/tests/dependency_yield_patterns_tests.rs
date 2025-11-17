@@ -97,8 +97,8 @@ impl Injectable for YieldDependencyWithCleanup {
 // Test 1: Cleanup runs after successful execution
 #[tokio::test]
 async fn test_yield_cleanup_success() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = CleanupState::inject(&ctx).await.unwrap();
 	state.clear();
@@ -119,8 +119,8 @@ async fn test_yield_cleanup_success() {
 // Test 2: Cleanup runs even when error occurs
 #[tokio::test]
 async fn test_yield_cleanup_after_raise() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = CleanupState::inject(&ctx).await.unwrap();
 	state.clear();
@@ -168,8 +168,8 @@ impl Injectable for StreamingDependency {
 // Test 3: Cleanup runs after streaming response completes
 #[tokio::test]
 async fn test_yield_with_streaming_response() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = CleanupState::inject(&ctx).await.unwrap();
 	state.clear();
@@ -189,8 +189,8 @@ async fn test_yield_with_streaming_response() {
 // Test 4: Multiple streaming dependencies
 #[tokio::test]
 async fn test_multiple_streaming_dependencies() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = CleanupState::inject(&ctx).await.unwrap();
 	state.clear();
@@ -245,8 +245,8 @@ impl Injectable for WebSocketDependency {
 // Test 5: WebSocket lifecycle
 #[tokio::test]
 async fn test_yield_with_websocket() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = CleanupState::inject(&ctx).await.unwrap();
 	state.clear();
@@ -266,8 +266,8 @@ async fn test_yield_with_websocket() {
 // Test 6: WebSocket cleanup on error
 #[tokio::test]
 async fn test_websocket_cleanup_on_error() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = CleanupState::inject(&ctx).await.unwrap();
 	state.clear();
@@ -321,8 +321,8 @@ impl Injectable for HttpExceptionDependency {
 // Test 7: Cleanup with HTTP exception
 #[tokio::test]
 async fn test_yield_except_httpexception() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = CleanupState::inject(&ctx).await.unwrap();
 	state.clear();
@@ -344,8 +344,8 @@ async fn test_yield_except_httpexception() {
 // Test 8: Cleanup without exception
 #[tokio::test]
 async fn test_yield_no_exception() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = CleanupState::inject(&ctx).await.unwrap();
 	state.clear();
@@ -385,8 +385,8 @@ impl OuterYieldDependency {
 
 #[tokio::test]
 async fn test_nested_yield_dependencies() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = CleanupState::inject(&ctx).await.unwrap();
 	state.clear();

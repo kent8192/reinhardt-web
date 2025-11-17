@@ -8,7 +8,6 @@
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
 use std::any::type_name;
-use std::sync::Arc;
 
 // Type A
 struct A;
@@ -49,8 +48,8 @@ impl<T> Dep<T> {
 
 #[tokio::test]
 async fn test_generic_parameterless_depends_type_a() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject type A
 	let a = A::inject(&ctx).await.unwrap();
@@ -61,8 +60,8 @@ async fn test_generic_parameterless_depends_type_a() {
 
 #[tokio::test]
 async fn test_generic_parameterless_depends_type_b() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject type B
 	let b = B::inject(&ctx).await.unwrap();
@@ -73,8 +72,8 @@ async fn test_generic_parameterless_depends_type_b() {
 
 #[tokio::test]
 async fn test_different_types_create_different_instances() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject both types
 	let a = A::inject(&ctx).await.unwrap();
@@ -110,8 +109,8 @@ impl<T: Injectable + Send + Sync> Injectable for GenericService<T> {
 
 #[tokio::test]
 async fn test_generic_service_with_type_a() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject GenericService<A>
 	let service = GenericService::<A>::inject(&ctx).await.unwrap();
@@ -122,8 +121,8 @@ async fn test_generic_service_with_type_a() {
 
 #[tokio::test]
 async fn test_generic_service_with_type_b() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject GenericService<B>
 	let service = GenericService::<B>::inject(&ctx).await.unwrap();

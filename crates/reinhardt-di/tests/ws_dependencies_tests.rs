@@ -145,7 +145,7 @@ impl Injectable for RouterPrefixIndexDependency {
 #[tokio::test]
 async fn test_index_dependencies() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Simulate WebSocket endpoint "/" with dependencies: app, index
 	let _app_dep = AppDependency::inject(&ctx).await.unwrap();
@@ -160,7 +160,7 @@ async fn test_index_dependencies() {
 #[tokio::test]
 async fn test_router_index_dependencies() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Simulate WebSocket endpoint "/router" with dependencies: app, router2, router, routerindex
 	let _app_dep = AppDependency::inject(&ctx).await.unwrap();
@@ -177,7 +177,7 @@ async fn test_router_index_dependencies() {
 #[tokio::test]
 async fn test_prefix_router_index_dependencies() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Simulate WebSocket endpoint "/prefix/" with dependencies: app, prefix_router2, prefix_router, routerprefixindex
 	let _app_dep = AppDependency::inject(&ctx).await.unwrap();
@@ -203,7 +203,7 @@ async fn test_prefix_router_index_dependencies() {
 #[tokio::test]
 async fn test_dependency_list_shared() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject multiple dependencies
 	let _app_dep = AppDependency::inject(&ctx).await.unwrap();
@@ -224,12 +224,12 @@ async fn test_different_requests_different_lists() {
 	let singleton = Arc::new(SingletonScope::new());
 
 	// Request 1
-	let ctx1 = InjectionContext::new(singleton.clone());
+	let ctx1 = InjectionContext::builder(singleton.clone()).build();
 	let _app_dep1 = AppDependency::inject(&ctx1).await.unwrap();
 	let list1 = DependencyList::inject(&ctx1).await.unwrap();
 
 	// Request 2
-	let ctx2 = InjectionContext::new(singleton);
+	let ctx2 = InjectionContext::builder(singleton).build();
 	let _router_dep2 = RouterDependency::inject(&ctx2).await.unwrap();
 	let list2 = DependencyList::inject(&ctx2).await.unwrap();
 

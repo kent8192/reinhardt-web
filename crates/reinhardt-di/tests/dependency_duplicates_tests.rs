@@ -57,8 +57,8 @@ impl Injectable for DuplicateDependency {
 
 #[tokio::test]
 async fn test_duplicate_dependency_cached() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Create an item first
 	let item1 = Item::inject(&ctx).await.unwrap();
@@ -111,8 +111,8 @@ impl Injectable for NoDuplicateDependency {
 
 #[tokio::test]
 async fn test_no_duplicate_different_types() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let no_dup = NoDuplicateDependency::inject(&ctx).await.unwrap();
 
@@ -143,8 +143,8 @@ impl Injectable for SubDuplicateDependency {
 
 #[tokio::test]
 async fn test_sub_duplicate_dependency() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let sub_dup = SubDuplicateDependency::inject(&ctx).await.unwrap();
 
@@ -178,8 +178,8 @@ impl Injectable for AggregateWithDuplicates {
 
 #[tokio::test]
 async fn test_aggregate_with_duplicates() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let aggregate = AggregateWithDuplicates::inject(&ctx).await.unwrap();
 
@@ -208,8 +208,8 @@ impl Injectable for CustomItemDependency {
 
 #[tokio::test]
 async fn test_custom_item_dependency_no_cache() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Get default cached item
 	let default_item = Item::inject(&ctx).await.unwrap();
@@ -245,8 +245,8 @@ impl Injectable for ItemList {
 
 #[tokio::test]
 async fn test_item_list_all_cached() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let list = ItemList::inject(&ctx).await.unwrap();
 
@@ -316,8 +316,8 @@ impl Injectable for UserProductService {
 
 #[tokio::test]
 async fn test_different_types_separate_caches() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let service = UserProductService::inject(&ctx).await.unwrap();
 

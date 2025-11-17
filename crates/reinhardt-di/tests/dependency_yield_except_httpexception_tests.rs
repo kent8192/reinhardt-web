@@ -103,8 +103,8 @@ impl Injectable for Database {
 
 #[tokio::test]
 async fn test_dependency_gets_exception() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton.clone());
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject database
 	let mut db = Database::inject(&ctx).await.unwrap();
@@ -136,8 +136,8 @@ async fn test_dependency_gets_exception() {
 
 #[tokio::test]
 async fn test_dependency_no_exception() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton.clone());
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject database
 	let mut db = Database::inject(&ctx).await.unwrap();

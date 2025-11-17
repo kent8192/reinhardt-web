@@ -67,7 +67,7 @@ impl Injectable for CommonQueryParams {
 #[tokio::test]
 async fn test_default_query_params() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject with default values
 	let params = CommonQueryParams::inject(&ctx).await.unwrap();
@@ -80,7 +80,7 @@ async fn test_default_query_params() {
 #[tokio::test]
 async fn test_query_params_with_q() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set params with q
 	ctx.set_request(CommonQueryParams::new(Some("foo".to_string()), None, None));
@@ -95,7 +95,7 @@ async fn test_query_params_with_q() {
 #[tokio::test]
 async fn test_query_params_with_skip() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set params with q and skip
 	ctx.set_request(CommonQueryParams::new(
@@ -114,7 +114,7 @@ async fn test_query_params_with_skip() {
 #[tokio::test]
 async fn test_query_params_with_all() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set all params
 	ctx.set_request(CommonQueryParams::new(
@@ -133,7 +133,7 @@ async fn test_query_params_with_all() {
 #[tokio::test]
 async fn test_shared_dependency_across_endpoints() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set params
 	ctx.set_request(CommonQueryParams::new(
@@ -155,7 +155,7 @@ async fn test_different_requests_have_different_params() {
 	let singleton = Arc::new(SingletonScope::new());
 
 	// Request 1
-	let ctx1 = InjectionContext::new(singleton.clone());
+	let ctx1 = InjectionContext::builder(singleton.clone()).build();
 	ctx1.set_request(CommonQueryParams::new(
 		Some("req1".to_string()),
 		Some(0),
@@ -164,7 +164,7 @@ async fn test_different_requests_have_different_params() {
 	let params1 = CommonQueryParams::inject(&ctx1).await.unwrap();
 
 	// Request 2
-	let ctx2 = InjectionContext::new(singleton);
+	let ctx2 = InjectionContext::builder(singleton).build();
 	ctx2.set_request(CommonQueryParams::new(
 		Some("req2".to_string()),
 		Some(5),

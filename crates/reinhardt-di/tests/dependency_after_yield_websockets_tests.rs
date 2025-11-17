@@ -83,8 +83,8 @@ impl Injectable for BrokenSessionDep {
 
 #[tokio::test]
 async fn test_websocket_dependency_after_yield() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject session dependency
 	let dep = SessionDep::inject(&ctx).await.unwrap();
@@ -103,8 +103,8 @@ async fn test_websocket_dependency_after_yield() {
 
 #[tokio::test]
 async fn test_websocket_dependency_after_yield_broken() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject broken session dependency
 	let dep = BrokenSessionDep::inject(&ctx).await.unwrap();
@@ -120,8 +120,8 @@ async fn test_websocket_dependency_after_yield_broken() {
 // Test session cleanup on drop
 #[tokio::test]
 async fn test_session_cleanup_on_drop() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let dep = SessionDep::inject(&ctx).await.unwrap();
 	let open_flag = dep.session.open.clone();
@@ -139,8 +139,8 @@ async fn test_session_cleanup_on_drop() {
 // Test multiple iterations
 #[tokio::test]
 async fn test_session_data_iteration() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let dep = SessionDep::inject(&ctx).await.unwrap();
 
@@ -156,8 +156,8 @@ async fn test_session_data_iteration() {
 // Test session state across WebSocket lifecycle
 #[tokio::test]
 async fn test_websocket_session_lifecycle() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Accept WebSocket connection
 	let dep = SessionDep::inject(&ctx).await.unwrap();

@@ -1,7 +1,6 @@
 //! Tests for automatic Injectable implementation
 
 use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope};
-use std::sync::Arc;
 
 #[derive(Default, Clone, Debug, PartialEq)]
 struct SimpleConfig {
@@ -16,8 +15,8 @@ struct AnotherConfig {
 
 #[tokio::test]
 async fn test_auto_injectable_simple() {
-	let singleton_scope = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton_scope);
+	let singleton_scope = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// SimpleConfig should be automatically injectable
 	let config = SimpleConfig::inject(&ctx).await.unwrap();
@@ -27,8 +26,8 @@ async fn test_auto_injectable_simple() {
 
 #[tokio::test]
 async fn test_auto_injectable_with_depends() {
-	let singleton_scope = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton_scope);
+	let singleton_scope = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// Should work with Depends wrapper
 	let depends_config = Depends::<SimpleConfig>::builder()
@@ -41,8 +40,8 @@ async fn test_auto_injectable_with_depends() {
 
 #[tokio::test]
 async fn test_auto_injectable_caching() {
-	let singleton_scope = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton_scope);
+	let singleton_scope = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// First injection - creates new instance
 	let config1 = SimpleConfig::inject(&ctx).await.unwrap();
@@ -56,8 +55,8 @@ async fn test_auto_injectable_caching() {
 
 #[tokio::test]
 async fn test_multiple_auto_injectable_types() {
-	let singleton_scope = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton_scope);
+	let singleton_scope = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// Multiple different types should work
 	let config1 = SimpleConfig::inject(&ctx).await.unwrap();
@@ -81,8 +80,8 @@ impl Injectable for CustomInjectable {
 
 #[tokio::test]
 async fn test_custom_injectable_override() {
-	let singleton_scope = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton_scope);
+	let singleton_scope = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// Custom implementation should be used
 	let custom = CustomInjectable::inject(&ctx).await.unwrap();

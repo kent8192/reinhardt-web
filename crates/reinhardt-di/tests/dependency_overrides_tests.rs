@@ -180,7 +180,7 @@ async fn execute_endpoint_with_dependency(
 #[tokio::test]
 async fn test_main_depends() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let result = execute_endpoint_with_dependency(&ctx).await;
 	assert!(result.is_err());
@@ -190,7 +190,7 @@ async fn test_main_depends() {
 #[tokio::test]
 async fn test_main_depends_q_foo() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Simulate query parameter
 	let params = CommonParameters::required("foo".to_string(), 0, 100);
@@ -205,7 +205,7 @@ async fn test_main_depends_q_foo() {
 #[tokio::test]
 async fn test_main_depends_q_foo_skip_100_limit_200() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Simulate query parameters
 	let params = CommonParameters::required("foo".to_string(), 100, 200);
@@ -225,7 +225,7 @@ async fn test_main_depends_q_foo_skip_100_limit_200() {
 async fn test_override_simple_no_query() {
 	let singleton = Arc::new(SingletonScope::new());
 	let app = App::new();
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	ctx.set_singleton(app.clone());
 
 	// Set override
@@ -244,7 +244,7 @@ async fn test_override_simple_no_query() {
 async fn test_override_simple_with_query() {
 	let singleton = Arc::new(SingletonScope::new());
 	let app = App::new();
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	ctx.set_singleton(app.clone());
 
 	// Set override
@@ -263,7 +263,7 @@ async fn test_override_simple_with_query() {
 async fn test_override_simple_ignores_query_params() {
 	let singleton = Arc::new(SingletonScope::new());
 	let app = App::new();
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	ctx.set_singleton(app.clone());
 
 	// Set override
@@ -290,7 +290,7 @@ async fn test_override_simple_ignores_query_params() {
 async fn test_override_with_sub_main_depends() {
 	let singleton = Arc::new(SingletonScope::new());
 	let app = App::new();
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	ctx.set_singleton(app.clone());
 
 	// Create override with sub-dependency
@@ -313,7 +313,7 @@ async fn test_override_with_sub_main_depends() {
 async fn test_override_with_sub_main_depends_k_bar() {
 	let singleton = Arc::new(SingletonScope::new());
 	let app = App::new();
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	ctx.set_singleton(app.clone());
 
 	// Simulate k parameter
@@ -343,7 +343,7 @@ async fn test_override_cleared_between_requests() {
 	let app = App::new();
 
 	// Request 1 with override
-	let ctx1 = InjectionContext::new(singleton.clone());
+	let ctx1 = InjectionContext::builder(singleton.clone()).build();
 	ctx1.set_singleton(app.clone());
 
 	let override_params = SimpleOverride::new(None).to_common_parameters();
@@ -357,7 +357,7 @@ async fn test_override_cleared_between_requests() {
 	app.clear_overrides();
 
 	// Request 2 without override
-	let ctx2 = InjectionContext::new(singleton.clone());
+	let ctx2 = InjectionContext::builder(singleton.clone()).build();
 	ctx2.set_singleton(app.clone());
 
 	let params = CommonParameters::required("test".to_string(), 0, 100);
@@ -370,15 +370,15 @@ async fn test_override_cleared_between_requests() {
 
 #[tokio::test]
 async fn test_override_isolation() {
-	let singleton1 = Arc::new(SingletonScope::new());
-	let singleton2 = Arc::new(SingletonScope::new());
+	let singleton1 = SingletonScope::new();
+	let singleton2 = SingletonScope::new();
 	let app1 = App::new();
 	let app2 = App::new();
 
-	let ctx1 = InjectionContext::new(singleton1);
+	let ctx1 = InjectionContext::builder(singleton1).build();
 	ctx1.set_singleton(app1.clone());
 
-	let ctx2 = InjectionContext::new(singleton2);
+	let ctx2 = InjectionContext::builder(singleton2).build();
 	ctx2.set_singleton(app2.clone());
 
 	// Set different overrides
@@ -403,7 +403,7 @@ async fn test_override_isolation() {
 async fn test_multiple_overrides() {
 	let singleton = Arc::new(SingletonScope::new());
 	let app = App::new();
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	ctx.set_singleton(app.clone());
 
 	// Set multiple overrides
@@ -437,7 +437,7 @@ type OverrideFactory = Arc<dyn Fn() -> CommonParameters + Send + Sync>;
 async fn test_override_with_factory() {
 	let singleton = Arc::new(SingletonScope::new());
 	let app = App::new();
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	ctx.set_singleton(app.clone());
 
 	let factory: OverrideFactory =
@@ -446,8 +446,6 @@ async fn test_override_with_factory() {
 	app.set_override("factory", factory.clone());
 
 	let retrieved: Option<OverrideFactory> = app.get_override("factory");
-	assert!(retrieved.is_some());
-
 	let params = retrieved.unwrap()();
 	assert_eq!(params.q, Some("from_factory".to_string()));
 	assert_eq!(params.skip, 99);
@@ -467,7 +465,7 @@ async fn test_override_multiple_scenarios() {
 	for (endpoint, q, expected_skip, expected_limit) in test_cases {
 		let singleton = Arc::new(SingletonScope::new());
 		let app = App::new();
-		let ctx = InjectionContext::new(singleton);
+		let ctx = InjectionContext::builder(singleton).build();
 		ctx.set_singleton(app.clone());
 
 		let override_params = SimpleOverride::new(q.map(String::from)).to_common_parameters();
@@ -494,7 +492,7 @@ async fn test_override_multiple_scenarios() {
 async fn test_override_persists_in_context() {
 	let singleton = Arc::new(SingletonScope::new());
 	let app = App::new();
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	ctx.set_singleton(app.clone());
 
 	let override_params =
@@ -516,7 +514,7 @@ async fn test_override_persists_in_context() {
 async fn test_override_replacement() {
 	let singleton = Arc::new(SingletonScope::new());
 	let app = App::new();
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	ctx.set_singleton(app.clone());
 
 	// Set initial override

@@ -2,7 +2,6 @@
 
 use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope};
 use serial_test::serial;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Default, Debug, PartialEq)]
@@ -35,8 +34,8 @@ impl Injectable for CountedService {
 
 #[tokio::test]
 async fn test_depends_with_cache_default() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Cache is enabled by default
 	let params1 = Depends::<CommonQueryParams>::builder()
@@ -58,8 +57,8 @@ async fn test_depends_no_cache() {
 	// Reset counter for this test
 	INSTANCE_COUNTER.store(0, Ordering::SeqCst);
 
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Cache disabled
 	let service1 = Depends::<CountedService>::builder_no_cache()
@@ -82,8 +81,8 @@ async fn test_depends_with_cache_enabled() {
 	// Reset counter for this test
 	INSTANCE_COUNTER.store(0, Ordering::SeqCst);
 
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Cache enabled (default)
 	let service1 = Depends::<CountedService>::builder()
@@ -111,8 +110,8 @@ async fn test_depends_from_value() {
 
 #[tokio::test]
 async fn test_depends_deref() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let params = Depends::<CommonQueryParams>::builder()
 		.resolve(&ctx)
@@ -126,8 +125,8 @@ async fn test_depends_deref() {
 
 #[tokio::test]
 async fn test_fastapi_depends_clone() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let params1 = Depends::<CommonQueryParams>::builder()
 		.resolve(&ctx)
@@ -154,8 +153,8 @@ async fn test_fastapi_style_usage() {
 		format!("API Key: {}, Skip: {}", config.api_key, params.skip)
 	}
 
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Simulate endpoint usage
 	let config = Depends::<Config>::builder().resolve(&ctx).await.unwrap();

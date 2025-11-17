@@ -60,7 +60,7 @@ impl Injectable for DerivedDependency {
 #[tokio::test]
 async fn test_repeated_dependency_uses_cache() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set initial header value
 	ctx.set_request(SomeHeader("hello".to_string()));
@@ -77,7 +77,7 @@ async fn test_repeated_dependency_uses_cache() {
 #[tokio::test]
 async fn test_header_extracted_only_once() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set header
 	ctx.set_request(SomeHeader("test".to_string()));
@@ -95,7 +95,7 @@ async fn test_header_extracted_only_once() {
 #[tokio::test]
 async fn test_derived_dependency_uses_cached_header() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set header
 	ctx.set_request(SomeHeader("value".to_string()));
@@ -125,7 +125,7 @@ async fn test_multiple_endpoints_share_dependencies() {
 	let singleton = Arc::new(SingletonScope::new());
 
 	// Request 1 - uses both dependencies
-	let ctx1 = InjectionContext::new(singleton.clone());
+	let ctx1 = InjectionContext::builder(singleton.clone()).build();
 	ctx1.set_request(SomeHeader("req1".to_string()));
 
 	let result1 = Endpoint1Result {
@@ -137,7 +137,7 @@ async fn test_multiple_endpoints_share_dependencies() {
 	assert_eq!(result1.dep2.0, "req1123");
 
 	// Request 2 - uses only header
-	let ctx2 = InjectionContext::new(singleton.clone());
+	let ctx2 = InjectionContext::builder(singleton.clone()).build();
 	ctx2.set_request(SomeHeader("req2".to_string()));
 
 	let result2 = Endpoint2Result {

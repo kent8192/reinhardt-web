@@ -75,8 +75,8 @@ impl Injectable for UserExists {
 // Test 1: Path parameter in dependency
 #[tokio::test]
 async fn test_param_in_path_and_dependency() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject user_id from path
 	let user_id = UserIdParam::inject(&ctx).await.unwrap();
@@ -90,8 +90,8 @@ async fn test_param_in_path_and_dependency() {
 // Test 2: Path parameter validation
 #[tokio::test]
 async fn test_path_param_validation() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set invalid user_id in request scope
 	let invalid_user_id = UserIdParam { user_id: -1 };
@@ -141,8 +141,8 @@ impl Injectable for SecurityToken {
 // Test 3: Security dependency override
 #[tokio::test]
 async fn test_security_override_authenticated() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Override with valid token
 	let override_token = SecurityToken::new("valid_test_token".to_string());
@@ -156,8 +156,8 @@ async fn test_security_override_authenticated() {
 // Test 4: Security dependency override - unauthenticated
 #[tokio::test]
 async fn test_security_override_unauthenticated() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Override with invalid token
 	let override_token = SecurityToken::new("invalid".to_string());
@@ -170,8 +170,8 @@ async fn test_security_override_unauthenticated() {
 // Test 5: Security dependency default
 #[tokio::test]
 async fn test_security_default() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// No override - use default
 	let token = SecurityToken::inject(&ctx).await.unwrap();
@@ -232,8 +232,8 @@ impl Injectable for Service2 {
 // Test 6: Repeated dependency returns same instance
 #[tokio::test]
 async fn test_repeated_dependency_cached() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let service1 = Service1::inject(&ctx).await.unwrap();
 	let service2 = Service2::inject(&ctx).await.unwrap();
@@ -246,8 +246,8 @@ async fn test_repeated_dependency_cached() {
 // Test 7: Repeated dependency in schema
 #[tokio::test]
 async fn test_repeated_dependency_schema() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Direct injection
 	let counter1 = Counter::inject(&ctx).await.unwrap();
@@ -283,8 +283,8 @@ impl Injectable for ComplexService {
 // Test 8: Complex dependency chain with repeated dependencies
 #[tokio::test]
 async fn test_complex_repeated_dependencies() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let complex = ComplexService::inject(&ctx).await.unwrap();
 

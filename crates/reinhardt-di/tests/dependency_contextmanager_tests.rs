@@ -89,8 +89,8 @@ impl Injectable for AsyncGenDependency {
 
 #[tokio::test]
 async fn test_async_state_lifecycle() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = SharedState::inject(&ctx).await.unwrap();
 	state.set("/async", "asyncgen not started");
@@ -142,8 +142,8 @@ impl Injectable for SyncGenDependency {
 
 #[tokio::test]
 async fn test_sync_state_lifecycle() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = SharedState::inject(&ctx).await.unwrap();
 	state.set("/sync", "generator not started");
@@ -253,8 +253,8 @@ impl Injectable for AsyncGenTryDependency {
 
 #[tokio::test]
 async fn test_async_raise_other() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = SharedState::inject(&ctx).await.unwrap();
 	let error_tracker = ErrorTracker::inject(&ctx).await.unwrap();
@@ -274,8 +274,8 @@ async fn test_async_raise_other() {
 
 #[tokio::test]
 async fn test_async_raise_raises() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = SharedState::inject(&ctx).await.unwrap();
 	let error_tracker = ErrorTracker::inject(&ctx).await.unwrap();
@@ -365,8 +365,8 @@ impl Injectable for ContextB {
 
 #[tokio::test]
 async fn test_context_b() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = SharedState::inject(&ctx).await.unwrap();
 	state.set("context_a", "not started a");
@@ -387,8 +387,8 @@ async fn test_context_b() {
 
 #[tokio::test]
 async fn test_context_b_raise() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = SharedState::inject(&ctx).await.unwrap();
 	state.set("context_a", "not started a");
@@ -410,8 +410,8 @@ async fn test_context_b_raise() {
 // Background tasks simulation
 #[tokio::test]
 async fn test_background_tasks() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = SharedState::inject(&ctx).await.unwrap();
 	state.set("context_a", "not started a");
@@ -488,8 +488,8 @@ impl Injectable for SyncGenTryDependency {
 
 #[tokio::test]
 async fn test_sync_raise_other() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = SharedState::inject(&ctx).await.unwrap();
 	let error_tracker = ErrorTracker::inject(&ctx).await.unwrap();
@@ -509,8 +509,8 @@ async fn test_sync_raise_other() {
 
 #[tokio::test]
 async fn test_sync_raise_raises() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let state = SharedState::inject(&ctx).await.unwrap();
 	let error_tracker = ErrorTracker::inject(&ctx).await.unwrap();

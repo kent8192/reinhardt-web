@@ -65,7 +65,7 @@ impl Injectable for SuperDep {
 #[tokio::test]
 async fn test_dependency_cached_within_request() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// First injection
 	let counter1 = Counter::inject(&ctx).await.unwrap();
@@ -82,7 +82,7 @@ async fn test_dependency_cached_within_request() {
 #[tokio::test]
 async fn test_nested_dependencies_share_cache() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject SuperDep (which depends on Counter)
 	let super_dep = SuperDep::inject(&ctx).await.unwrap();
@@ -103,12 +103,12 @@ async fn test_separate_requests_have_separate_caches() {
 	let singleton = Arc::new(SingletonScope::new());
 
 	// Request 1
-	let ctx1 = InjectionContext::new(singleton.clone());
+	let ctx1 = InjectionContext::builder(singleton.clone()).build();
 	let counter1 = Counter::inject(&ctx1).await.unwrap();
 	assert_eq!(counter1.value, 1);
 
 	// Request 2 - new context, new cache
-	let ctx2 = InjectionContext::new(singleton.clone());
+	let ctx2 = InjectionContext::builder(singleton.clone()).build();
 	let counter2 = Counter::inject(&ctx2).await.unwrap();
 	assert_eq!(counter2.value, 2); // Different value
 
@@ -139,7 +139,7 @@ async fn test_no_cache_creates_new_instances() {
 	NO_CACHE_COUNTER.store(0, Ordering::SeqCst);
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// First injection
 	let counter1 = NoCacheCounter::inject(&ctx).await.unwrap();
@@ -205,7 +205,7 @@ impl Injectable for AggregateService {
 #[tokio::test]
 async fn test_multiple_services_share_cached_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject aggregate service that depends on ServiceA and ServiceB,
 	// both of which depend on Counter

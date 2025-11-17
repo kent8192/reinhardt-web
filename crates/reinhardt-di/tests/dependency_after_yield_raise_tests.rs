@@ -85,8 +85,8 @@ impl Injectable for BrokenDep {
 
 #[tokio::test]
 async fn test_catching_dependency_can_handle_errors() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject catching dependency
 	let catching = CatchingDep::inject(&ctx).await.unwrap();
@@ -106,8 +106,8 @@ async fn test_catching_dependency_can_handle_errors() {
 #[tokio::test]
 #[should_panic(expected = "Broken after yield")]
 async fn test_broken_dependency_raises_on_drop() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject broken dependency
 	let broken = BrokenDep::inject(&ctx).await.unwrap();
@@ -119,8 +119,8 @@ async fn test_broken_dependency_raises_on_drop() {
 
 #[tokio::test]
 async fn test_broken_dependency_no_raise_when_disabled() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject broken dependency
 	let broken = BrokenDep::inject(&ctx).await.unwrap();
@@ -166,8 +166,8 @@ impl Injectable for ResponseBeforeCleanup {
 
 #[tokio::test]
 async fn test_response_sent_before_cleanup() {
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let singleton = SingletonScope::new();
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject dependency
 	let dep = ResponseBeforeCleanup::inject(&ctx).await.unwrap();

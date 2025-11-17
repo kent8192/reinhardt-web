@@ -65,7 +65,7 @@ impl Injectable for UserValidator {
 #[tokio::test]
 async fn test_path_param_available_to_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject validator which depends on path parameter
 	let validator = UserValidator::inject(&ctx).await.unwrap();
@@ -77,7 +77,7 @@ async fn test_path_param_available_to_dependency() {
 #[tokio::test]
 async fn test_path_param_shared_between_dependency_and_endpoint() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject validator
 	let validator = UserValidator::inject(&ctx).await.unwrap();
@@ -94,7 +94,7 @@ async fn test_path_param_shared_between_dependency_and_endpoint() {
 async fn test_different_path_params_in_different_requests() {
 	// Request 1
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx1 = InjectionContext::new(singleton.clone());
+	let ctx1 = InjectionContext::builder(singleton.clone()).build();
 
 	// Set user_id for request 1
 	ctx1.set_request(UserId(100));
@@ -102,7 +102,7 @@ async fn test_different_path_params_in_different_requests() {
 	assert_eq!(validator1.user_id, 100);
 
 	// Request 2
-	let ctx2 = InjectionContext::new(singleton.clone());
+	let ctx2 = InjectionContext::builder(singleton.clone()).build();
 
 	// Set user_id for request 2
 	ctx2.set_request(UserId(200));
@@ -129,7 +129,7 @@ impl Injectable for PathParamDependency {
 #[tokio::test]
 async fn test_multiple_dependencies_access_same_path_param() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Set path parameter
 	ctx.set_request(UserId(42));
