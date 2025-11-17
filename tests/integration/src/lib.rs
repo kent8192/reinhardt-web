@@ -200,7 +200,14 @@ pub async fn make_request_with_headers(
 
 	let body_bytes = body.map(Bytes::from).unwrap_or_default();
 
-	let request = Request::new(method, uri, hyper::Version::HTTP_11, header_map, body_bytes);
+	let request = Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(hyper::Version::HTTP_11)
+		.headers(header_map)
+		.body(body_bytes)
+		.build()
+		.expect("Failed to build request");
 
 	let response = router
 		.handle(request)

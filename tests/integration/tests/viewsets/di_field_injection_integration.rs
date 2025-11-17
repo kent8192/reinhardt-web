@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
 use reinhardt_exception::Result;
 use reinhardt_macros::Injectable;
@@ -77,7 +77,7 @@ impl ViewSet for UserViewSet {
 async fn test_field_injection_basic() {
 	// Create DI context
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject dependencies into ViewSet
 	let viewset = UserViewSet::inject(&ctx).await.unwrap();
@@ -92,19 +92,20 @@ async fn test_field_injection_basic() {
 async fn test_field_injection_with_viewset_dispatch() {
 	// Create DI context
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject dependencies into ViewSet
 	let viewset = UserViewSet::inject(&ctx).await.unwrap();
 
 	// Create request
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/users/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/users/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let action = Action::list();
 
@@ -143,7 +144,7 @@ impl ViewSet for ServiceViewSet {
 async fn test_field_injection_with_cache_control() {
 	// Create DI context
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Inject dependencies into ViewSet
 	let viewset = ServiceViewSet::inject(&ctx).await.unwrap();
@@ -163,7 +164,7 @@ async fn test_field_injection_with_cache_control() {
 async fn test_field_injection_caching_behavior() {
 	// Create DI context
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton.clone());
+	let ctx = InjectionContext::builder(singleton.clone()).build();
 
 	// Inject first ViewSet
 	let viewset1 = UserViewSet::inject(&ctx).await.unwrap();

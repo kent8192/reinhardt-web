@@ -1,9 +1,8 @@
 // Auto-generated module file for macros integration tests
 // Each test file in macros/ subdirectory is explicitly included with #[path] attribute
 
-// FIXME: Temporarily disabled due to Self error in Model macro
-// #[path = "macros/composite_pk_integration.rs"]
-// mod composite_pk_integration;
+#[path = "macros/composite_pk_integration.rs"]
+mod composite_pk_integration;
 
 #[path = "macros/constraint_integration.rs"]
 mod constraint_integration;

@@ -34,7 +34,14 @@ fn create_request(uri: &str, headers: Vec<(&str, &str)>) -> Request {
 		let header_value: HeaderValue = value.parse().unwrap();
 		header_map.insert(header_name, header_value);
 	}
-	Request::new(Method::GET, uri, Version::HTTP_11, header_map, Bytes::new())
+	Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(header_map)
+		.body(Bytes::new())
+		.build()
+		.unwrap()
 }
 
 #[tokio::test]

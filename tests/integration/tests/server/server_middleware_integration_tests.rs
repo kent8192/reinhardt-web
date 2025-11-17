@@ -52,18 +52,18 @@ async fn test_middleware_integration_chain() {
 
 	// Create a test request
 	use hyper::{HeaderMap, Method, Uri, Version};
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		bytes::Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
 
 	// Execute through the chain
 	let response = chain.handle(request).await;
 
-	assert!(response.is_ok());
 	let response = response.unwrap();
 	assert_eq!(response.status, hyper::StatusCode::OK);
 
@@ -81,17 +81,17 @@ async fn test_server_middleware_integration_multiple() {
 		.with_middleware(Arc::new(LoggingMiddleware::new()) as Arc<dyn Middleware>);
 
 	use hyper::{HeaderMap, Method, Uri, Version};
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		bytes::Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = chain.handle(request).await;
 
-	assert!(response.is_ok());
 	let response = response.unwrap();
 	assert_eq!(response.status, hyper::StatusCode::OK);
 }

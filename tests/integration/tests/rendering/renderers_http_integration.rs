@@ -44,7 +44,14 @@ fn create_test_request(method: &str, headers: Vec<(&str, &str)>) -> Request {
 
 	let body = Bytes::new();
 
-	Request::new(method, uri, version, header_map, body)
+	Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(header_map)
+		.body(body)
+		.build()
+		.unwrap()
 }
 
 /// Create a renderer registry with JSON and custom renderers

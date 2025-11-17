@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::{Request, Response};
 use reinhardt_viewsets::{action, register_action, ActionMetadata, FunctionActionHandler, ViewSet};
 use std::collections::HashSet;
@@ -119,13 +119,14 @@ async fn test_action_helper() {
 	assert_eq!(my_action.detail, false);
 
 	// Test handler execution
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = my_action.handler.handle(request).await;
 	assert!(response.is_ok());

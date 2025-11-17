@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
 use reinhardt_exception::Result;
 use reinhardt_macros::Injectable;
@@ -61,17 +61,18 @@ async fn test_complete_request_response_cycle() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = LoggingViewSet::inject(&ctx).await.unwrap();
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/api/items/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/api/items/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = viewset.dispatch(request, Action::list()).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -118,17 +119,18 @@ async fn test_post_request_with_body() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = ParsingViewSet::inject(&ctx).await.unwrap();
 
-	let request = Request::new(
-		Method::POST,
-		Uri::from_static("/api/items/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from("test data"),
-	);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/items/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from("test data"))
+		.build()
+		.unwrap();
 
 	let response = viewset.dispatch(request, Action::create()).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -177,19 +179,20 @@ async fn test_headers_extraction() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = HeaderViewSet::inject(&ctx).await.unwrap();
 
 	// Request without header
 	let mut headers = HeaderMap::new();
-	let request1 = Request::new(
-		Method::GET,
-		Uri::from_static("/api/items/"),
-		Version::HTTP_11,
-		headers.clone(),
-		Bytes::new(),
-	);
+	let request1 = Request::builder()
+		.method(Method::GET)
+		.uri("/api/items/")
+		.version(Version::HTTP_11)
+		.headers(headers.clone())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response1 = viewset.dispatch(request1, Action::list()).await.unwrap();
 	let body1 = String::from_utf8(response1.body.to_vec()).unwrap();
@@ -197,13 +200,14 @@ async fn test_headers_extraction() {
 
 	// Request with header
 	headers.insert("x-api-key", "test-key".parse().unwrap());
-	let request2 = Request::new(
-		Method::GET,
-		Uri::from_static("/api/items/"),
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-	);
+	let request2 = Request::builder()
+		.method(Method::GET)
+		.uri("/api/items/")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response2 = viewset.dispatch(request2, Action::list()).await.unwrap();
 	let body2 = String::from_utf8(response2.body.to_vec()).unwrap();
@@ -269,25 +273,27 @@ async fn test_multiple_viewsets_shared_service() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset_a = ViewSetA::inject(&ctx).await.unwrap();
 	let viewset_b = ViewSetB::inject(&ctx).await.unwrap();
 
-	let request_a = Request::new(
-		Method::GET,
-		Uri::from_static("/a/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
-	let request_b = Request::new(
-		Method::GET,
-		Uri::from_static("/b/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request_a = Request::builder()
+		.method(Method::GET)
+		.uri("/a/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
+	let request_b = Request::builder()
+		.method(Method::GET)
+		.uri("/b/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response_a = viewset_a.dispatch(request_a, Action::list()).await.unwrap();
 	let response_b = viewset_b.dispatch(request_b, Action::list()).await.unwrap();
@@ -361,31 +367,33 @@ async fn test_viewset_composition() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = ComposedViewSet::inject(&ctx).await.unwrap();
 
 	// Create item
-	let request1 = Request::new(
-		Method::POST,
-		Uri::from_static("/items/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from("item1"),
-	);
+	let request1 = Request::builder()
+		.method(Method::POST)
+		.uri("/items/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from("item1"))
+		.build()
+		.unwrap();
 
 	let response1 = viewset.dispatch(request1, Action::create()).await.unwrap();
 	let body1 = String::from_utf8(response1.body.to_vec()).unwrap();
 	assert_eq!(body1, "Created: item1");
 
 	// List items
-	let request2 = Request::new(
-		Method::GET,
-		Uri::from_static("/items/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request2 = Request::builder()
+		.method(Method::GET)
+		.uri("/items/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response2 = viewset.dispatch(request2, Action::list()).await.unwrap();
 	let body2 = String::from_utf8(response2.body.to_vec()).unwrap();
@@ -432,17 +440,18 @@ async fn test_viewset_dependency_chain() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = ChainedViewSet::inject(&ctx).await.unwrap();
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/chain/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/chain/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = viewset.dispatch(request, Action::list()).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -489,7 +498,7 @@ async fn test_action_based_routing() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = RoutedViewSet::inject(&ctx).await.unwrap();
 
@@ -502,13 +511,14 @@ async fn test_action_based_routing() {
 	];
 
 	for action in actions {
-		let request = Request::new(
-			Method::GET,
-			Uri::from_static("/route/"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/route/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = viewset.dispatch(request, action).await.unwrap();
 		assert_eq!(response.status, hyper::StatusCode::OK);
@@ -558,17 +568,18 @@ async fn test_custom_action_handling() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = CustomActionViewSet::inject(&ctx).await.unwrap();
 
-	let request = Request::new(
-		Method::POST,
-		Uri::from_static("/custom/action/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/custom/action/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let custom_action = Action {
 		action_type: ActionType::Custom("special"),
@@ -620,31 +631,33 @@ async fn test_method_based_routing() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = MethodViewSet::inject(&ctx).await.unwrap();
 
 	// Allowed method
-	let request1 = Request::new(
-		Method::GET,
-		Uri::from_static("/method/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request1 = Request::builder()
+		.method(Method::GET)
+		.uri("/method/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response1 = viewset.dispatch(request1, Action::list()).await.unwrap();
 	let body1 = String::from_utf8(response1.body.to_vec()).unwrap();
 	assert_eq!(body1, "Allowed: GET");
 
 	// Disallowed method
-	let request2 = Request::new(
-		Method::DELETE,
-		Uri::from_static("/method/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request2 = Request::builder()
+		.method(Method::DELETE)
+		.uri("/method/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response2 = viewset.dispatch(request2, Action::destroy()).await.unwrap();
 	let body2 = String::from_utf8(response2.body.to_vec()).unwrap();
@@ -700,20 +713,21 @@ async fn test_request_scoped_state() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = StateViewSet::inject(&ctx).await.unwrap();
 
 	let mut headers = HeaderMap::new();
 	headers.insert("x-request-id", "req-123".parse().unwrap());
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/state/"),
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/state/")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = viewset.dispatch(request, Action::list()).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -771,19 +785,20 @@ async fn test_singleton_state_persistence() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = CounterViewSet::inject(&ctx).await.unwrap();
 
 	// Increment counter
 	for i in 1..=3 {
-		let request = Request::new(
-			Method::POST,
-			Uri::from_static("/counter/"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/counter/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = viewset.dispatch(request, Action::create()).await.unwrap();
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -791,13 +806,14 @@ async fn test_singleton_state_persistence() {
 	}
 
 	// Read counter
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/counter/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/counter/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = viewset.dispatch(request, Action::list()).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -843,35 +859,37 @@ async fn test_session_state_isolation() {
 	}
 
 	let singleton1 = Arc::new(SingletonScope::new());
-	let ctx1 = InjectionContext::new(singleton1);
+	let ctx1 = InjectionContext::builder(singleton1).build();
 
 	let singleton2 = Arc::new(SingletonScope::new());
-	let ctx2 = InjectionContext::new(singleton2);
+	let ctx2 = InjectionContext::builder(singleton2).build();
 
 	let viewset1 = SessionViewSet::inject(&ctx1).await.unwrap();
 	let viewset2 = SessionViewSet::inject(&ctx2).await.unwrap();
 
 	// Add data to first session
-	let request1 = Request::new(
-		Method::POST,
-		Uri::from_static("/session/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from("data1"),
-	);
+	let request1 = Request::builder()
+		.method(Method::POST)
+		.uri("/session/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from("data1"))
+		.build()
+		.unwrap();
 
 	let response1 = viewset1.dispatch(request1, Action::create()).await.unwrap();
 	let body1 = String::from_utf8(response1.body.to_vec()).unwrap();
 	assert_eq!(body1, "Session items: 1");
 
 	// Check second session shares the same data (cached singleton)
-	let request2 = Request::new(
-		Method::GET,
-		Uri::from_static("/session/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request2 = Request::builder()
+		.method(Method::GET)
+		.uri("/session/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let _response2 = viewset2.dispatch(request2, Action::list()).await.unwrap();
 
@@ -920,17 +938,18 @@ async fn test_graceful_service_failure() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = ResilientViewSet::inject(&ctx).await.unwrap();
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/resilient/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/resilient/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = viewset.dispatch(request, Action::list()).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -972,17 +991,18 @@ async fn test_empty_request_handling() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = EmptyViewSet::inject(&ctx).await.unwrap();
 
-	let request = Request::new(
-		Method::POST,
-		Uri::from_static("/empty/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/empty/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = viewset.dispatch(request, Action::create()).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -1025,19 +1045,20 @@ async fn test_large_payload_handling() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = LimitedViewSet::inject(&ctx).await.unwrap();
 
 	// Small payload
 	let small_data = vec![0u8; 512];
-	let request1 = Request::new(
-		Method::POST,
-		Uri::from_static("/limited/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(small_data),
-	);
+	let request1 = Request::builder()
+		.method(Method::POST)
+		.uri("/limited/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(small_data))
+		.build()
+		.unwrap();
 
 	let response1 = viewset.dispatch(request1, Action::create()).await.unwrap();
 	let body1 = String::from_utf8(response1.body.to_vec()).unwrap();
@@ -1045,13 +1066,14 @@ async fn test_large_payload_handling() {
 
 	// Large payload
 	let large_data = vec![0u8; 2048];
-	let request2 = Request::new(
-		Method::POST,
-		Uri::from_static("/limited/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(large_data),
-	);
+	let request2 = Request::builder()
+		.method(Method::POST)
+		.uri("/limited/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(large_data))
+		.build()
+		.unwrap();
 
 	let response2 = viewset.dispatch(request2, Action::create()).await.unwrap();
 	let body2 = String::from_utf8(response2.body.to_vec()).unwrap();

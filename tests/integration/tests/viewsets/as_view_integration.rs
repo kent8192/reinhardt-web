@@ -14,7 +14,14 @@ fn create_test_request(method: Method, path: &str) -> Request {
 	let version = Version::HTTP_11;
 	let headers = HeaderMap::new();
 	let body = hyper::body::Bytes::new();
-	Request::new(method, uri, version, headers, body)
+	Request::builder()
+		.method(method)
+		.uri(uri)
+		.version(version)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap()
 }
 
 #[tokio::test]

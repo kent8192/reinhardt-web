@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::Request;
 use reinhardt_viewsets::{Action, GenericViewSet, ModelViewSet, ReadOnlyModelViewSet, ViewSet};
 
@@ -17,13 +17,14 @@ struct TestSerializer;
 #[tokio::test]
 async fn test_initialize_view_set_with_actions() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("test");
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let action = Action::list();
 
 	let response = viewset.dispatch(request, action).await;
@@ -51,13 +52,14 @@ async fn test_initialize_view_set_with_actions() {
 #[tokio::test]
 async fn test_head_request_against_viewset() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("test");
-	let request = Request::new(
-		Method::HEAD,
-		Uri::from_static("/test/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::HEAD)
+		.uri("/test/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let action = Action::list();
 
 	// HEAD requests should be handled (or properly rejected)
@@ -97,13 +99,14 @@ async fn test_viewset_action_types() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("items");
 
 	// Test list action
-	let list_request = Request::new(
-		Method::GET,
-		Uri::from_static("/items/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let list_request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let list_response = viewset.dispatch(list_request, Action::list()).await;
 	assert!(list_response.is_ok(), "List action should succeed");
 	let list_resp = list_response.unwrap();
@@ -123,13 +126,14 @@ async fn test_viewset_action_types() {
 	);
 
 	// Test retrieve action
-	let retrieve_request = Request::new(
-		Method::GET,
-		Uri::from_static("/items/1/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let retrieve_request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let retrieve_response = viewset.dispatch(retrieve_request, Action::retrieve()).await;
 	assert!(retrieve_response.is_ok(), "Retrieve action should succeed");
 	let retrieve_resp = retrieve_response.unwrap();
@@ -149,13 +153,14 @@ async fn test_viewset_action_types() {
 	);
 
 	// Test create action
-	let create_request = Request::new(
-		Method::POST,
-		Uri::from_static("/items/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "test"}"#),
-	);
+	let create_request = Request::builder()
+		.method(Method::POST)
+		.uri("/items/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "test"}"#))
+		.build()
+		.unwrap();
 	let create_response = viewset.dispatch(create_request, Action::create()).await;
 	assert!(create_response.is_ok(), "Create action should succeed");
 	let create_resp = create_response.unwrap();
@@ -175,13 +180,14 @@ async fn test_viewset_action_types() {
 	);
 
 	// Test update action
-	let update_request = Request::new(
-		Method::PUT,
-		Uri::from_static("/items/1/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "updated"}"#),
-	);
+	let update_request = Request::builder()
+		.method(Method::PUT)
+		.uri("/items/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "updated"}"#))
+		.build()
+		.unwrap();
 	let update_response = viewset.dispatch(update_request, Action::update()).await;
 	assert!(update_response.is_ok(), "Update action should succeed");
 	let update_resp = update_response.unwrap();
@@ -201,13 +207,14 @@ async fn test_viewset_action_types() {
 	);
 
 	// Test destroy action
-	let destroy_request = Request::new(
-		Method::DELETE,
-		Uri::from_static("/items/1/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let destroy_request = Request::builder()
+		.method(Method::DELETE)
+		.uri("/items/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let destroy_response = viewset.dispatch(destroy_request, Action::destroy()).await;
 	assert!(destroy_response.is_ok(), "Destroy action should succeed");
 	let destroy_resp = destroy_response.unwrap();
@@ -233,13 +240,14 @@ async fn test_readonly_viewset_restrictions() {
 		ReadOnlyModelViewSet::new("readonly");
 
 	// List should work
-	let list_request = Request::new(
-		Method::GET,
-		Uri::from_static("/readonly/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let list_request = Request::builder()
+		.method(Method::GET)
+		.uri("/readonly/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let list_response = viewset.dispatch(list_request, Action::list()).await;
 	assert!(
 		list_response.is_ok(),
@@ -262,13 +270,14 @@ async fn test_readonly_viewset_restrictions() {
 	);
 
 	// Retrieve should work
-	let retrieve_request = Request::new(
-		Method::GET,
-		Uri::from_static("/readonly/1/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let retrieve_request = Request::builder()
+		.method(Method::GET)
+		.uri("/readonly/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let retrieve_response = viewset.dispatch(retrieve_request, Action::retrieve()).await;
 	assert!(
 		retrieve_response.is_ok(),
@@ -291,13 +300,14 @@ async fn test_readonly_viewset_restrictions() {
 	);
 
 	// Create should fail
-	let create_request = Request::new(
-		Method::POST,
-		Uri::from_static("/readonly/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "test"}"#),
-	);
+	let create_request = Request::builder()
+		.method(Method::POST)
+		.uri("/readonly/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "test"}"#))
+		.build()
+		.unwrap();
 	let create_response = viewset.dispatch(create_request, Action::create()).await;
 	assert!(
 		create_response.is_err(),
@@ -305,13 +315,14 @@ async fn test_readonly_viewset_restrictions() {
 	);
 
 	// Delete should fail
-	let delete_request = Request::new(
-		Method::DELETE,
-		Uri::from_static("/readonly/1/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let delete_request = Request::builder()
+		.method(Method::DELETE)
+		.uri("/readonly/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let delete_response = viewset.dispatch(delete_request, Action::destroy()).await;
 	assert!(
 		delete_response.is_err(),

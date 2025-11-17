@@ -3,35 +3,68 @@
 use reinhardt_macros::Model;
 use serde::{Deserialize, Serialize};
 
-#[derive(Model, Serialize, Deserialize, Clone, Debug)]
-#[model(app_label = "test_app", table_name = "post_tags")]
-struct PostTag {
-	#[field(primary_key = true)]
-	post_id: i64,
+/// Test models module to avoid "Self" resolution issues with proc macros
+#[cfg(test)]
+mod test_models {
+	use super::*;
 
-	#[field(primary_key = true)]
-	tag_id: i64,
+	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[model(app_label = "test_app", table_name = "post_tags")]
+	pub struct PostTag {
+		#[field(primary_key = true)]
+		pub post_id: i64,
 
-	#[field(max_length = 200)]
-	description: String,
-}
+		#[field(primary_key = true)]
+		pub tag_id: i64,
 
-#[derive(Model, Serialize, Deserialize, Clone, Debug)]
-#[model(app_label = "test_app", table_name = "user_roles")]
-struct UserRole {
-	#[field(primary_key = true)]
-	user_id: i64,
+		#[field(max_length = 200)]
+		pub description: String,
+	}
 
-	#[field(primary_key = true)]
-	role_id: i64,
+	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[model(app_label = "test_app", table_name = "user_roles")]
+	pub struct UserRole {
+		#[field(primary_key = true)]
+		pub user_id: i64,
 
-	#[field(max_length = 100, null = true)]
-	granted_by: Option<String>,
+		#[field(primary_key = true)]
+		pub role_id: i64,
+
+		#[field(max_length = 100, null = true)]
+		pub granted_by: Option<String>,
+	}
+
+	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[model(app_label = "test_app", table_name = "users")]
+	pub struct User {
+		#[field(primary_key = true)]
+		pub id: i64,
+
+		#[field(index = true, max_length = 100)]
+		pub email: String,
+
+		#[field(index = true, max_length = 50)]
+		pub username: String,
+
+		#[field(max_length = 200)]
+		pub full_name: String,
+	}
+
+	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[model(app_label = "test_app", table_name = "simple_models")]
+	pub struct SimpleModel {
+		#[field(primary_key = true)]
+		pub id: i64,
+
+		#[field(max_length = 100)]
+		pub name: String,
+	}
 }
 
 #[test]
 fn test_composite_pk_definition() {
 	use reinhardt_orm::Model;
+	use test_models::*;
 
 	// Verify composite_primary_key() returns Some
 	let composite_pk = PostTag::composite_primary_key();
@@ -54,8 +87,9 @@ fn test_composite_pk_definition() {
 
 #[test]
 fn test_composite_pk_values() {
-	use reinhardt_orm::Model;
 	use reinhardt_orm::composite_pk::PkValue;
+	use reinhardt_orm::Model;
+	use test_models::*;
 
 	// Create test instance
 	let post_tag = PostTag {
@@ -88,6 +122,7 @@ fn test_composite_pk_values() {
 #[test]
 fn test_composite_pk_with_optional_field() {
 	use reinhardt_orm::Model;
+	use test_models::*;
 
 	// Test with Some value
 	let user_role = UserRole {
@@ -115,6 +150,7 @@ fn test_composite_pk_with_optional_field() {
 #[test]
 fn test_composite_pk_sql_generation() {
 	use reinhardt_orm::Model;
+	use test_models::*;
 
 	let composite_pk = PostTag::composite_primary_key().unwrap();
 
@@ -131,6 +167,7 @@ fn test_composite_pk_sql_generation() {
 #[test]
 fn test_composite_pk_field_metadata() {
 	use reinhardt_orm::Model;
+	use test_models::*;
 
 	let fields = PostTag::field_metadata();
 
@@ -152,6 +189,7 @@ fn test_composite_pk_field_metadata() {
 #[test]
 fn test_model_basic_properties() {
 	use reinhardt_orm::Model;
+	use test_models::*;
 
 	assert_eq!(PostTag::table_name(), "post_tags");
 	assert_eq!(PostTag::app_label(), "test_app");
@@ -163,22 +201,7 @@ fn test_model_basic_properties() {
 #[test]
 fn test_index_metadata() {
 	use reinhardt_orm::Model;
-
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
-	#[model(app_label = "test_app", table_name = "users")]
-	struct User {
-		#[field(primary_key = true)]
-		id: i64,
-
-		#[field(index = true, max_length = 100)]
-		email: String,
-
-		#[field(index = true, max_length = 50)]
-		username: String,
-
-		#[field(max_length = 200)]
-		full_name: String,
-	}
+	use test_models::*;
 
 	let indexes = User::index_metadata();
 	assert_eq!(indexes.len(), 2, "Should have 2 indexed fields");
@@ -195,16 +218,7 @@ fn test_index_metadata() {
 #[test]
 fn test_no_index() {
 	use reinhardt_orm::Model;
-
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
-	#[model(app_label = "test_app", table_name = "simple_models")]
-	struct SimpleModel {
-		#[field(primary_key = true)]
-		id: i64,
-
-		#[field(max_length = 100)]
-		name: String,
-	}
+	use test_models::*;
 
 	let indexes = SimpleModel::index_metadata();
 	assert_eq!(indexes.len(), 0, "Should have no indexed fields");

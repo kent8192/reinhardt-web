@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
 use reinhardt_exception::Result;
 use reinhardt_macros::{endpoint, Injectable};
@@ -48,7 +48,7 @@ async fn test_error_propagation_from_di() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = TestViewSet::inject(&ctx).await.unwrap();
 	assert_eq!(viewset.service.value, 42);
@@ -91,7 +91,7 @@ async fn test_partial_injection_failure_recovery() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let instance = PartialStruct::inject(&ctx).await.unwrap();
 	assert_eq!(instance.service_a.name, "ServiceA");
@@ -123,7 +123,7 @@ async fn test_error_messages_are_descriptive() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let result = TestStruct::inject(&ctx).await;
 	assert!(result.is_ok());
@@ -171,17 +171,18 @@ async fn test_viewset_dispatch_error_handling() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = ErrorViewSet::inject(&ctx).await.unwrap();
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/error/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/error/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let action = Action::list();
 
 	let response = viewset.dispatch(request, action).await.unwrap();
@@ -224,16 +225,17 @@ async fn test_method_di_error_conversion() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = MethodViewSet;
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = viewset.test_method(request, &ctx).await.unwrap();
 	assert_eq!(response.status, StatusCode::OK);
@@ -289,7 +291,7 @@ async fn test_nested_dependency_injection() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = NestedViewSet::inject(&ctx).await.unwrap();
 	assert_eq!(viewset.repository.db.connection, "postgres://localhost");
@@ -343,7 +345,7 @@ async fn test_multiple_viewsets_same_context() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset_a = ViewSetA::inject(&ctx).await.unwrap();
 	let viewset_b = ViewSetB::inject(&ctx).await.unwrap();
@@ -386,7 +388,7 @@ async fn test_generic_service_injection() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = GenericViewSet::inject(&ctx).await.unwrap();
 	assert_eq!(viewset.service.value, "generic");
@@ -427,7 +429,7 @@ async fn test_option_wrapped_dependency() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = OptionalViewSet::inject(&ctx).await.unwrap();
 	assert!(viewset.service.available);
@@ -470,26 +472,28 @@ async fn test_arc_shared_state() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset1 = StateViewSet::inject(&ctx).await.unwrap();
 	let viewset2 = StateViewSet::inject(&ctx).await.unwrap();
 
 	// Both viewsets should share the same state
-	let request1 = Request::new(
-		Method::GET,
-		Uri::from_static("/state/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
-	let request2 = Request::new(
-		Method::GET,
-		Uri::from_static("/state/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request1 = Request::builder()
+		.method(Method::GET)
+		.uri("/state/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
+	let request2 = Request::builder()
+		.method(Method::GET)
+		.uri("/state/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let _ = viewset1.dispatch(request1, Action::list()).await;
 	let response = viewset2.dispatch(request2, Action::list()).await.unwrap();
@@ -545,16 +549,17 @@ async fn test_field_injection_with_all_actions() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	let viewset = ActionViewSet::inject(&ctx).await.unwrap();
 
-	let _request = Request::new(
-		Method::GET,
-		Uri::from_static("/actions/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let _request = Request::builder()
+		.method(Method::GET)
+		.uri("/actions/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Test all standard actions
 	for (action, expected) in [
@@ -565,13 +570,14 @@ async fn test_field_injection_with_all_actions() {
 		(Action::partial_update(), "action_partial_update"),
 		(Action::destroy(), "action_destroy"),
 	] {
-		let req = Request::new(
-			Method::GET,
-			Uri::from_static("/actions/"),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let req = Request::builder()
+			.method(Method::GET)
+			.uri("/actions/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 		let response = viewset.dispatch(req, action).await.unwrap();
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
 		assert_eq!(body, expected);
@@ -629,16 +635,17 @@ async fn test_method_injection_with_request_params() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	let viewset = ParamViewSet::new();
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/params/123/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/params/123/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = viewset.process(request, 123, &ctx).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -700,17 +707,18 @@ async fn test_dispatch_injection_with_action_routing() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	let viewset = RouterViewSet;
 
 	// Test allowed action
-	let request1 = Request::new(
-		Method::GET,
-		Uri::from_static("/router/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request1 = Request::builder()
+		.method(Method::GET)
+		.uri("/router/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let response = viewset
 		.dispatch_with_ctx(request1, Action::list(), &ctx)
 		.await
@@ -718,13 +726,14 @@ async fn test_dispatch_injection_with_action_routing() {
 	assert_eq!(response.status, StatusCode::OK);
 
 	// Test disallowed action
-	let request2 = Request::new(
-		Method::GET,
-		Uri::from_static("/router/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request2 = Request::builder()
+		.method(Method::GET)
+		.uri("/router/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let result = viewset
 		.dispatch_with_ctx(request2, Action::retrieve(), &ctx)
 		.await;
@@ -799,29 +808,31 @@ async fn test_mixed_di_patterns_in_viewset() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	let viewset = MixedViewSet::inject(&ctx).await.unwrap();
 
 	// Test field injection via dispatch
-	let request1 = Request::new(
-		Method::GET,
-		Uri::from_static("/mixed/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request1 = Request::builder()
+		.method(Method::GET)
+		.uri("/mixed/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let response = viewset.dispatch(request1, Action::list()).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
 	assert!(body.contains("field: field"));
 
 	// Test method injection
-	let request2 = Request::new(
-		Method::GET,
-		Uri::from_static("/mixed/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request2 = Request::builder()
+		.method(Method::GET)
+		.uri("/mixed/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let response = viewset.custom_action(request2, &ctx).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
 	assert!(body.contains("field: field"));
@@ -875,36 +886,39 @@ async fn test_viewset_with_stateful_service() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	let viewset = CounterViewSet::inject(&ctx).await.unwrap();
 
 	// Increment counter
-	let request1 = Request::new(
-		Method::POST,
-		Uri::from_static("/counter/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request1 = Request::builder()
+		.method(Method::POST)
+		.uri("/counter/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	viewset.dispatch(request1, Action::create()).await.unwrap();
 
-	let request2 = Request::new(
-		Method::POST,
-		Uri::from_static("/counter/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request2 = Request::builder()
+		.method(Method::POST)
+		.uri("/counter/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	viewset.dispatch(request2, Action::create()).await.unwrap();
 
 	// Check counter value
-	let request3 = Request::new(
-		Method::POST,
-		Uri::from_static("/counter/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request3 = Request::builder()
+		.method(Method::POST)
+		.uri("/counter/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let response = viewset.dispatch(request3, Action::list()).await.unwrap();
 	let body = String::from_utf8(response.body.to_vec()).unwrap();
 	assert!(body.contains("count: 2"));
@@ -938,7 +952,7 @@ async fn test_concurrent_di_injections() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = Arc::new(InjectionContext::new(singleton));
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
 	let mut tasks = JoinSet::new();
 
@@ -982,7 +996,7 @@ async fn test_async_service_initialization() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = AsyncViewSet::inject(&ctx).await.unwrap();
 	assert_eq!(viewset.service.data, "async_initialized");
@@ -1012,7 +1026,7 @@ async fn test_timeout_handling_in_injection() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Injection should complete within reasonable time
 	let result = timeout(Duration::from_secs(5), TimeoutViewSet::inject(&ctx)).await;
@@ -1072,24 +1086,26 @@ async fn test_multiple_async_methods_with_di() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	let viewset = AsyncMethodViewSet;
 
-	let request1 = Request::new(
-		Method::GET,
-		Uri::from_static("/async/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request1 = Request::builder()
+		.method(Method::GET)
+		.uri("/async/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
-	let request2 = Request::new(
-		Method::GET,
-		Uri::from_static("/async/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request2 = Request::builder()
+		.method(Method::GET)
+		.uri("/async/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Both methods should work independently
 	let response1 = viewset.method_one(request1, &ctx).await.unwrap();
@@ -1133,7 +1149,7 @@ async fn test_parallel_viewset_operations() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 	let viewset = Arc::new(ParallelViewSet::inject(&ctx).await.unwrap());
 
 	// Spawn multiple concurrent dispatch operations
@@ -1141,13 +1157,14 @@ async fn test_parallel_viewset_operations() {
 	for _ in 0..5 {
 		let vs = viewset.clone();
 		handles.push(tokio::spawn(async move {
-			let req = Request::new(
-				Method::GET,
-				Uri::from_static("/parallel/"),
-				Version::HTTP_11,
-				HeaderMap::new(),
-				Bytes::new(),
-			);
+			let req = Request::builder()
+				.method(Method::GET)
+				.uri("/parallel/")
+				.version(Version::HTTP_11)
+				.headers(HeaderMap::new())
+				.body(Bytes::new())
+				.build()
+				.unwrap();
 			vs.dispatch(req, Action::list()).await
 		}));
 	}
@@ -1184,7 +1201,7 @@ async fn test_empty_context_still_works() {
 
 	// Create context without pre-registering anything
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = EmptyContextViewSet::inject(&ctx).await.unwrap();
 	assert_eq!(viewset.service.value, 100);
@@ -1239,7 +1256,7 @@ async fn test_large_number_of_dependencies() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = LargeDepsViewSet::inject(&ctx).await.unwrap();
 	assert_eq!(viewset.s1.id, 1);
@@ -1273,7 +1290,7 @@ async fn test_recursive_struct_with_arc() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = RecursiveViewSet::inject(&ctx).await.unwrap();
 	assert_eq!(viewset.root.value, 1);
@@ -1297,7 +1314,7 @@ async fn test_zero_sized_types() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = ZstViewSet::inject(&ctx).await.unwrap();
 	// Just verify it compiles and runs
@@ -1328,7 +1345,7 @@ async fn test_deeply_nested_generic_types() {
 	}
 
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	let viewset = ComplexViewSet::inject(&ctx).await.unwrap();
 	assert!(viewset.service.data.contains_key("key"));

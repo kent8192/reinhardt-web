@@ -1,7 +1,7 @@
 //! Integration tests for filtering and ordering support in ViewSets
 
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, Uri, Version};
+use hyper::{HeaderMap, Method, Version};
 use reinhardt_http::Request;
 use reinhardt_viewsets::{
 	FilterConfig, FilterableViewSet, ModelViewSet, OrderingConfig, ReadOnlyModelViewSet,
@@ -37,7 +37,6 @@ async fn test_viewset_with_filters() {
 		ModelViewSet::new("items").with_filters(filter_config.clone());
 
 	let config = viewset.get_filter_config();
-	assert!(config.is_some());
 	let config = config.unwrap();
 	assert_eq!(config.filterable_fields.len(), 2);
 
@@ -69,13 +68,14 @@ async fn test_extract_filters_from_request() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> =
 		ModelViewSet::new("items").with_filters(filter_config);
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/items/?status=active&category=tech&invalid=ignored"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/?status=active&category=tech&invalid=ignored")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let filters = viewset.extract_filters(&request);
 	assert_eq!(filters.len(), 2);
@@ -91,13 +91,14 @@ async fn test_extract_search_from_request() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> =
 		ModelViewSet::new("items").with_filters(filter_config);
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/items/?search=rust%20programming"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/?search=rust%20programming")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let search = viewset.extract_search(&request);
 	assert_eq!(search, Some("rust programming".to_string()));
@@ -113,7 +114,6 @@ async fn test_viewset_with_ordering() {
 		ModelViewSet::new("items").with_ordering(ordering_config.clone());
 
 	let config = viewset.get_ordering_config();
-	assert!(config.is_some());
 	let config = config.unwrap();
 	assert_eq!(config.ordering_fields.len(), 2);
 
@@ -139,13 +139,14 @@ async fn test_extract_ordering_from_request() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> =
 		ModelViewSet::new("items").with_ordering(ordering_config);
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/items/?ordering=name,-created_at"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/?ordering=name,-created_at")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let ordering = viewset.extract_ordering(&request);
 	assert_eq!(ordering.len(), 2);
@@ -163,13 +164,14 @@ async fn test_extract_ordering_with_validation() {
 		ModelViewSet::new("items").with_ordering(ordering_config);
 
 	// Request invalid field
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/items/?ordering=invalid_field"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/?ordering=invalid_field")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let ordering = viewset.extract_ordering(&request);
 	// Should fall back to default ordering when all requested fields are invalid
@@ -187,13 +189,14 @@ async fn test_extract_ordering_default() {
 		ModelViewSet::new("items").with_ordering(ordering_config);
 
 	// Request without ordering parameter
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/items/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let ordering = viewset.extract_ordering(&request);
 	// Should use default ordering
@@ -258,13 +261,14 @@ async fn test_extract_filters_url_decoding() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> =
 		ModelViewSet::new("items").with_filters(filter_config);
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/items/?name=hello%20world"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/?name=hello%20world")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let filters = viewset.extract_filters(&request);
 	assert_eq!(filters.get("name"), Some(&"hello world".to_string()));
@@ -277,15 +281,14 @@ async fn test_extract_filters_skip_pagination_params() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> =
 		ModelViewSet::new("items").with_filters(filter_config);
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static(
-			"/items/?status=active&page=2&page_size=10&limit=20&offset=0&cursor=abc&ordering=name&search=test",
-		),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/?status=active&page=2&page_size=10&limit=20&offset=0&cursor=abc&ordering=name&search=test")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let filters = viewset.extract_filters(&request);
 	// Only status should be in filters

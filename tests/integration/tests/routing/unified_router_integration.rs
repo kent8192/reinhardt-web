@@ -72,7 +72,7 @@ async fn test_unified_router_mount_child() {
 async fn test_unified_router_with_viewset() {
 	let router = UnifiedRouter::new()
 		.with_prefix("/api")
-		.viewset("users", Arc::new(UserViewSet));
+		.viewset("users", UserViewSet);
 
 	// Check that routes are generated
 	let routes = router.get_all_routes();
@@ -83,7 +83,7 @@ async fn test_unified_router_with_viewset() {
 async fn test_unified_router_hierarchical_namespace() {
 	let users = UnifiedRouter::new()
 		.with_namespace("users")
-		.viewset("users", Arc::new(UserViewSet));
+		.viewset("users", UserViewSet);
 
 	let mut api = UnifiedRouter::new()
 		.with_namespace("v1")
@@ -140,7 +140,7 @@ async fn test_unified_router_nested_namespace_reversal() {
 async fn test_unified_router_multiple_children() {
 	let users = UnifiedRouter::new()
 		.with_namespace("users")
-		.viewset("users", Arc::new(UserViewSet));
+		.viewset("users", UserViewSet);
 
 	let posts = UnifiedRouter::new().with_namespace("posts").function_named(
 		"/list",
@@ -165,7 +165,7 @@ async fn test_unified_router_mixed_api_styles() {
 	let router = UnifiedRouter::new()
 		.with_prefix("/api")
 		.function("/health", Method::GET, health_handler)
-		.viewset("users", Arc::new(UserViewSet))
+		.viewset("users", UserViewSet)
 		.view("/about", AboutView);
 
 	let routes = router.get_all_routes();
@@ -229,7 +229,7 @@ async fn test_unified_router_viewset_url_reversal() {
 	let mut router = UnifiedRouter::new()
 		.with_namespace("api")
 		.with_prefix("/api")
-		.viewset("users", Arc::new(UserViewSet));
+		.viewset("users", UserViewSet);
 
 	router.register_all_routes();
 

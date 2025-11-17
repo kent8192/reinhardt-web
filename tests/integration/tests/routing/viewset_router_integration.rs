@@ -25,13 +25,14 @@ async fn test_register_viewset_with_router() {
 	router.register_viewset("test", viewset);
 
 	// Test list endpoint is accessible
-	let list_request = Request::new(
-		Method::GET,
-		Uri::from_static("/test/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let list_request = Request::builder()
+		.method(Method::GET)
+		.uri("/test/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(list_request).await;
 	assert!(response.is_ok());
@@ -48,13 +49,14 @@ async fn test_viewset_detail_endpoint_with_router() {
 	router.register_viewset("items", viewset);
 
 	// Test detail endpoint
-	let detail_request = Request::new(
-		Method::GET,
-		Uri::from_static("/items/1/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let detail_request = Request::builder()
+		.method(Method::GET)
+		.uri("/items/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(detail_request).await;
 	assert!(response.is_ok());
@@ -113,24 +115,26 @@ async fn test_multiple_viewset_registration() {
 	router.register_viewset("posts", posts_viewset);
 
 	// Test users endpoint
-	let users_request = Request::new(
-		Method::GET,
-		Uri::from_static("/users/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let users_request = Request::builder()
+		.method(Method::GET)
+		.uri("/users/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let users_response = router.route(users_request).await;
 	assert!(users_response.is_ok());
 
 	// Test posts endpoint
-	let posts_request = Request::new(
-		Method::GET,
-		Uri::from_static("/posts/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let posts_request = Request::builder()
+		.method(Method::GET)
+		.uri("/posts/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let posts_response = router.route(posts_request).await;
 	assert!(posts_response.is_ok());
 }
@@ -145,49 +149,53 @@ async fn test_viewset_router_http_methods() {
 	router.register_viewset("resources", viewset);
 
 	// GET (list)
-	let get_request = Request::new(
-		Method::GET,
-		Uri::from_static("/resources/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let get_request = Request::builder()
+		.method(Method::GET)
+		.uri("/resources/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let get_response = router.route(get_request).await;
 	assert!(get_response.is_ok());
 	assert_eq!(get_response.unwrap().status, StatusCode::OK);
 
 	// POST (create)
-	let post_request = Request::new(
-		Method::POST,
-		Uri::from_static("/resources/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "test"}"#),
-	);
+	let post_request = Request::builder()
+		.method(Method::POST)
+		.uri("/resources/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "test"}"#))
+		.build()
+		.unwrap();
 	let post_response = router.route(post_request).await;
 	assert!(post_response.is_ok());
 	assert_eq!(post_response.unwrap().status, StatusCode::CREATED);
 
 	// PUT (update)
-	let put_request = Request::new(
-		Method::PUT,
-		Uri::from_static("/resources/1/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "updated"}"#),
-	);
+	let put_request = Request::builder()
+		.method(Method::PUT)
+		.uri("/resources/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "updated"}"#))
+		.build()
+		.unwrap();
 	let put_response = router.route(put_request).await;
 	assert!(put_response.is_ok());
 	assert_eq!(put_response.unwrap().status, StatusCode::OK);
 
 	// DELETE (destroy)
-	let delete_request = Request::new(
-		Method::DELETE,
-		Uri::from_static("/resources/1/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let delete_request = Request::builder()
+		.method(Method::DELETE)
+		.uri("/resources/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let delete_response = router.route(delete_request).await;
 	assert!(delete_response.is_ok());
 	assert_eq!(delete_response.unwrap().status, StatusCode::NO_CONTENT);
@@ -255,26 +263,28 @@ async fn test_extra_actions_with_router() {
 	assert_eq!(router.get_routes().len(), 4);
 
 	// Test custom list action endpoint
-	let custom_list_request = Request::new(
-		Method::GET,
-		Uri::from_static("/custom/custom_list/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let custom_list_request = Request::builder()
+		.method(Method::GET)
+		.uri("/custom/custom_list/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(custom_list_request).await;
 	assert!(response.is_ok(), "Custom list action should be accessible");
 	assert_eq!(response.unwrap().status, StatusCode::OK);
 
 	// Test custom detail action endpoint
-	let custom_detail_request = Request::new(
-		Method::GET,
-		Uri::from_static("/custom/1/custom_detail/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let custom_detail_request = Request::builder()
+		.method(Method::GET)
+		.uri("/custom/1/custom_detail/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(custom_detail_request).await;
 	assert!(
@@ -483,25 +493,27 @@ async fn test_action_names_with_kwargs() {
 	);
 
 	// Test that the actions are actually accessible via HTTP
-	let named_request = Request::new(
-		Method::GET,
-		Uri::from_static("/test/1/custom_action/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let named_request = Request::builder()
+		.method(Method::GET)
+		.uri("/test/1/custom_action/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(named_request).await;
 	assert!(response.is_ok(), "Named action should be accessible");
 	assert_eq!(response.unwrap().status, StatusCode::OK);
 
-	let suffixed_request = Request::new(
-		Method::GET,
-		Uri::from_static("/test/another_action/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let suffixed_request = Request::builder()
+		.method(Method::GET)
+		.uri("/test/another_action/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(suffixed_request).await;
 	assert!(response.is_ok(), "Suffixed action should be accessible");
@@ -576,13 +588,14 @@ async fn test_args_kwargs_request_action_map_on_self() {
 	// but we can test that the handler works correctly by sending requests
 	let handler = result.unwrap();
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Handler should be able to process the request
 	// This implicitly tests that args, kwargs, request, and action_map are being set
@@ -630,23 +643,20 @@ async fn test_login_required_middleware_compat() {
 
 	// Build the handler
 	let result = viewset.as_view().with_actions(actions).build();
-	assert!(result.is_ok());
-
 	let handler = result.unwrap();
 
 	// Create a request without authentication
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		bytes::Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
 
 	// Handler should return 401 due to authentication middleware
 	let response = handler.handle(request).await;
-	assert!(response.is_ok());
-
 	let response = response.unwrap();
 	assert_eq!(response.status, hyper::StatusCode::UNAUTHORIZED);
 }

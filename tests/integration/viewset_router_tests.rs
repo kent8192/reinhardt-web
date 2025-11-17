@@ -155,25 +155,27 @@ async fn test_viewset_router_http_methods() {
 	assert_eq!(get_response.unwrap().status, StatusCode::OK);
 
 	// POST (create)
-	let post_request = Request::new(
-		Method::POST,
-		Uri::from_static("/resources/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "test"}"#),
-	);
+	let post_request = Request::builder()
+		.method(Method::POST)
+		.uri("/resources/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "test"}"#))
+		.build()
+		.unwrap();
 	let post_response = router.route(post_request).await;
 	assert!(post_response.is_ok());
 	assert_eq!(post_response.unwrap().status, StatusCode::CREATED);
 
 	// PUT (update)
-	let put_request = Request::new(
-		Method::PUT,
-		Uri::from_static("/resources/1/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "updated"}"#),
-	);
+	let put_request = Request::builder()
+		.method(Method::PUT)
+		.uri("/resources/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "updated"}"#))
+		.build()
+		.unwrap();
 	let put_response = router.route(put_request).await;
 	assert!(put_response.is_ok());
 	assert_eq!(put_response.unwrap().status, StatusCode::OK);
@@ -619,9 +621,7 @@ async fn test_login_required_middleware_compat() {
 
 	// Build the handler
 	let result = viewset.as_view().with_actions(actions).build();
-	assert!(result.is_ok());
-
-	let handler = result.unwrap();
+		let handler = result.unwrap();
 
 	// Create a request without authentication
 	let request = Request::new(
@@ -634,8 +634,6 @@ async fn test_login_required_middleware_compat() {
 
 	// Handler should return 401 due to authentication middleware
 	let response = handler.handle(request).await;
-	assert!(response.is_ok());
-
-	let response = response.unwrap();
+		let response = response.unwrap();
 	assert_eq!(response.status, hyper::StatusCode::UNAUTHORIZED);
 }

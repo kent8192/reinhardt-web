@@ -184,24 +184,26 @@ mod tests {
 		let middleware = MessagesMiddleware::new(storage);
 
 		// First request: Add a message
-		let request1 = Request::new(
-			Method::POST,
-			"/".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request1 = Request::builder()
+			.method(Method::POST)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 		let handler1 = Arc::new(AddMessageHandler) as Arc<dyn Handler>;
 		let _ = middleware.process(request1, handler1).await.unwrap();
 
 		// Second request: Verify message appears
-		let request2 = Request::new(
-			Method::GET,
-			"/".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request2 = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 		let handler2 = Arc::new(CheckMessageHandler) as Arc<dyn Handler>;
 		let _ = middleware.process(request2, handler2).await.unwrap();
 	}
@@ -260,24 +262,26 @@ mod tests {
 		let middleware = MessagesMiddleware::new(storage);
 
 		// First request: Display messages
-		let request1 = Request::new(
-			Method::GET,
-			"/".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request1 = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 		let handler1 = Arc::new(DisplayMessagesHandler) as Arc<dyn Handler>;
 		let _ = middleware.process(request1, handler1).await.unwrap();
 
 		// Second request: Verify messages were cleared
-		let request2 = Request::new(
-			Method::GET,
-			"/".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request2 = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 		let handler2 = Arc::new(CheckEmptyHandler) as Arc<dyn Handler>;
 		let _ = middleware.process(request2, handler2).await.unwrap();
 	}
@@ -331,13 +335,14 @@ mod tests {
 		let middleware = MessagesMiddleware::new(storage);
 
 		// Request 1: Add first message
-		let request1 = Request::new(
-			Method::POST,
-			"/".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request1 = Request::builder()
+			.method(Method::POST)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 		let handler1 = Arc::new(AddMessageHandler {
 			message_text: "First message".to_string(),
 			level: Level::Info,
@@ -345,13 +350,14 @@ mod tests {
 		let _ = middleware.process(request1, handler1).await.unwrap();
 
 		// Request 2: Add second message
-		let request2 = Request::new(
-			Method::POST,
-			"/".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request2 = Request::builder()
+			.method(Method::POST)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 		let handler2 = Arc::new(AddMessageHandler {
 			message_text: "Second message".to_string(),
 			level: Level::Warning,
@@ -359,13 +365,14 @@ mod tests {
 		let _ = middleware.process(request2, handler2).await.unwrap();
 
 		// Request 3: Verify both messages accumulated
-		let request3 = Request::new(
-			Method::GET,
-			"/".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request3 = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 		let handler3 = Arc::new(CheckAccumulatedHandler { expected_count: 2 }) as Arc<dyn Handler>;
 		let _ = middleware.process(request3, handler3).await.unwrap();
 	}

@@ -37,18 +37,17 @@ async fn test_session_authentication_with_inmemory_backend() {
 		format!("sessionid={}", session_key).parse().unwrap(),
 	);
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test"),
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Test authentication
 	let result = Authentication::authenticate(&auth, &request).await.unwrap();
-	assert!(result.is_some());
-
 	let user = result.unwrap();
 	assert_eq!(user.id(), user_id.to_string());
 	assert_eq!(user.get_username(), "alice");
@@ -64,13 +63,14 @@ async fn test_session_authentication_no_cookie() {
 
 	// Create request without session cookie
 	let headers = HeaderMap::new();
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test"),
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Should return None (no authentication)
 	let result = Authentication::authenticate(&auth, &request).await.unwrap();
@@ -87,13 +87,14 @@ async fn test_session_authentication_invalid_session_key() {
 	let mut headers = HeaderMap::new();
 	headers.insert("Cookie", "sessionid=invalid_key".parse().unwrap());
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test"),
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Should return None (invalid session)
 	let result = Authentication::authenticate(&auth, &request).await.unwrap();
@@ -119,13 +120,14 @@ async fn test_session_authentication_no_user_data() {
 		format!("sessionid={}", session_key).parse().unwrap(),
 	);
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test"),
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Should return None (no user data in session)
 	let result = Authentication::authenticate(&auth, &request).await.unwrap();
@@ -158,18 +160,17 @@ async fn test_session_authentication_custom_cookie_name() {
 		format!("custom_session={}", session_key).parse().unwrap(),
 	);
 
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/test"),
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/test")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Test authentication
 	let result = Authentication::authenticate(&auth, &request).await.unwrap();
-	assert!(result.is_some());
-
 	let user = result.unwrap();
 	assert_eq!(user.id(), user_id.to_string());
 }

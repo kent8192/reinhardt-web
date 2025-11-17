@@ -32,13 +32,14 @@ async fn test_query_string_with_fragment() {
 	// But if they are in the query string, they should be parsed
 	let uri = Uri::try_from("/test?test=value#fragment").expect("Invalid URI");
 
-	let req = Request::new(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let req = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let ctx = ParamContext::new();
 
 	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
@@ -61,13 +62,14 @@ async fn test_query_string_special_chars() {
 	// Special characters: & = ? # should be URL-encoded
 	let uri = Uri::try_from("/test?data=%26%3D%3F%23").expect("Invalid URI");
 
-	let req = Request::new(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let req = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let ctx = ParamContext::new();
 
 	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
@@ -93,13 +95,14 @@ async fn test_query_string_unicode() {
 	// "nihongo" (Japanese) URL-encoded
 	let uri = Uri::try_from("/test?text=%E6%97%A5%E6%9C%AC%E8%AA%9E").expect("Invalid URI");
 
-	let req = Request::new(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let req = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let ctx = ParamContext::new();
 
 	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
@@ -118,13 +121,14 @@ async fn test_query_string_emoji() {
 	// Emoji "🦀" URL-encoded
 	let uri = Uri::try_from("/test?emoji=%F0%9F%A6%80").expect("Invalid URI");
 
-	let req = Request::new(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let req = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let ctx = ParamContext::new();
 
 	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
@@ -143,13 +147,14 @@ async fn test_query_string_repeated_param() {
 	// Note: serde_urlencoded may not handle repeated keys as expected
 	let uri = Uri::try_from("/test?tags=rust&tags=web&tags=framework").expect("Invalid URI");
 
-	let req = Request::new(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let req = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let ctx = ParamContext::new();
 
 	let result = Query::<QueryParams>::from_request(&req, &ctx).await;
@@ -179,24 +184,26 @@ async fn test_empty_vs_no_query_string() {
 
 	// No query string
 	let uri1 = Uri::try_from("/test").expect("Invalid URI");
-	let req1 = Request::new(
-		Method::GET,
-		uri1,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let req1 = Request::builder()
+		.method(Method::GET)
+		.uri(uri1)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let ctx1 = ParamContext::new();
 
 	// Empty query string
 	let uri2 = Uri::try_from("/test?").expect("Invalid URI");
-	let req2 = Request::new(
-		Method::GET,
-		uri2,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let req2 = Request::builder()
+		.method(Method::GET)
+		.uri(uri2)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let ctx2 = ParamContext::new();
 
 	let result1 = Query::<QueryParams>::from_request(&req1, &ctx1).await;
@@ -223,13 +230,14 @@ async fn test_malformed_query_string() {
 	// Malformed: missing value
 	let uri = Uri::try_from("/test?key").expect("Invalid URI");
 
-	let req = Request::new(
-		Method::GET,
-		uri,
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let req = Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let ctx = ParamContext::new();
 
 	let result = Query::<QueryParams>::from_request(&req, &ctx).await;

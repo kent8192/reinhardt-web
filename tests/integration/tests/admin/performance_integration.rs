@@ -128,7 +128,6 @@ async fn test_csv_import_parallel_processing() {
 	let result = CsvImporter::import(csv.as_bytes(), true);
 	let duration = start.elapsed();
 
-	assert!(result.is_ok());
 	let records = result.unwrap();
 	assert_eq!(records.len(), 5000);
 
@@ -162,7 +161,6 @@ async fn test_json_import_parallel_processing() {
 	let result = JsonImporter::import(json.as_bytes());
 	let duration = start.elapsed();
 
-	assert!(result.is_ok());
 	let records = result.unwrap();
 	assert_eq!(records.len(), 3000);
 

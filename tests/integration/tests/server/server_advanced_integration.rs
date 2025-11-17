@@ -58,7 +58,7 @@ async fn test_http_server_creation() {
 	let server = HttpServer::new(handler);
 
 	// Verify server can be created without error
-	assert!(Arc::strong_count(&server.handler) > 0);
+	assert!(Arc::strong_count(&server.handler()) > 0);
 }
 
 #[tokio::test]
@@ -109,7 +109,7 @@ async fn test_handler_with_delay() {
 	let server = HttpServer::new(handler);
 
 	// Verify delayed handler can be used
-	assert!(Arc::strong_count(&server.handler) > 0);
+	assert!(Arc::strong_count(&server.handler()) > 0);
 }
 
 #[tokio::test]
@@ -137,7 +137,7 @@ async fn test_multiple_handler_types() {
 
 	for handler in handlers {
 		let server = HttpServer::new(handler);
-		assert!(Arc::strong_count(&server.handler) > 0);
+		assert!(Arc::strong_count(&server.handler()) > 0);
 	}
 }
 
@@ -188,5 +188,5 @@ async fn test_handler_state_management() {
 	assert_eq!(count.load(Ordering::SeqCst), 0);
 
 	// Server should maintain handler state
-	assert!(Arc::strong_count(&server.handler) > 0);
+	assert!(Arc::strong_count(&server.handler()) > 0);
 }

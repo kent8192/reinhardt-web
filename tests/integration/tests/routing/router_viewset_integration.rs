@@ -65,13 +65,14 @@ async fn test_viewset_list_route_matching() {
 
 	router.register_viewset("users", viewset);
 
-	let request = Request::new(
-		Method::GET,
-		"/users/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/users/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(request).await;
 	assert!(response.is_ok());
@@ -87,13 +88,14 @@ async fn test_viewset_detail_route_matching() {
 
 	router.register_viewset("users", viewset);
 
-	let request = Request::new(
-		Method::GET,
-		"/users/123/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/users/123/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(request).await;
 	assert!(response.is_ok());
@@ -109,13 +111,14 @@ async fn test_viewset_create_action() {
 
 	router.register_viewset("users", viewset);
 
-	let request = Request::new(
-		Method::POST,
-		"/users/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "test"}"#),
-	);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/users/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "test"}"#))
+		.build()
+		.unwrap();
 
 	let response = router.route(request).await;
 	assert!(response.is_ok());
@@ -131,13 +134,14 @@ async fn test_viewset_update_action() {
 
 	router.register_viewset("users", viewset);
 
-	let request = Request::new(
-		Method::PUT,
-		"/users/123/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "updated"}"#),
-	);
+	let request = Request::builder()
+		.method(Method::PUT)
+		.uri("/users/123/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "updated"}"#))
+		.build()
+		.unwrap();
 
 	let response = router.route(request).await;
 	assert!(response.is_ok());
@@ -153,13 +157,14 @@ async fn test_viewset_destroy_action() {
 
 	router.register_viewset("users", viewset);
 
-	let request = Request::new(
-		Method::DELETE,
-		"/users/123/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::DELETE)
+		.uri("/users/123/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(request).await;
 	assert!(response.is_ok());
@@ -231,13 +236,14 @@ async fn test_viewset_custom_lookup_field() {
 	assert_eq!(routes[1].path, "/users/{username}/");
 
 	// Test that the lookup field parameter is correctly used
-	let request = Request::new(
-		Method::GET,
-		"/users/alice/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/users/alice/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(request).await;
 	assert!(response.is_ok());
@@ -254,35 +260,38 @@ async fn test_viewset_multiple_http_methods() {
 	router.register_viewset("users", viewset);
 
 	// GET (retrieve)
-	let get_request = Request::new(
-		Method::GET,
-		"/users/1/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let get_request = Request::builder()
+		.method(Method::GET)
+		.uri("/users/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let get_response = router.route(get_request).await;
 	assert!(get_response.is_ok());
 
 	// PUT (update)
-	let put_request = Request::new(
-		Method::PUT,
-		"/users/1/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::from(r#"{"name": "updated"}"#),
-	);
+	let put_request = Request::builder()
+		.method(Method::PUT)
+		.uri("/users/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::from(r#"{"name": "updated"}"#))
+		.build()
+		.unwrap();
 	let put_response = router.route(put_request).await;
 	assert!(put_response.is_ok());
 
 	// DELETE (destroy)
-	let delete_request = Request::new(
-		Method::DELETE,
-		"/users/1/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let delete_request = Request::builder()
+		.method(Method::DELETE)
+		.uri("/users/1/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 	let delete_response = router.route(delete_request).await;
 	assert!(delete_response.is_ok());
 }
@@ -296,13 +305,14 @@ async fn test_viewset_route_not_found() {
 
 	router.register_viewset("users", viewset);
 
-	let request = Request::new(
-		Method::GET,
-		"/invalid/path/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/invalid/path/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = router.route(request).await;
 	assert!(response.is_err());

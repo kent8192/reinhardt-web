@@ -232,13 +232,14 @@ impl VersionedAPIView {
 async fn test_none_metadata() {
 	let view = MockAPIView::new("Example", "Example view.").with_metadata_class(None);
 
-	let request = Request::new(
-		Method::OPTIONS,
-		"/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::OPTIONS)
+		.uri("/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let result = view.handle_options(&request).await;
 
@@ -266,13 +267,14 @@ async fn test_global_permissions() {
 	let headers = HeaderMap::new();
 	// No authentication header - user is not authenticated
 
-	let request = Request::new(
-		Method::OPTIONS,
-		"/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::OPTIONS)
+		.uri("/")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = view.handle_options(&request).await.unwrap();
 	assert_eq!(response.status, StatusCode::OK);
@@ -301,13 +303,14 @@ async fn test_object_permissions() {
 	let headers = HeaderMap::new();
 	// No authentication - PUT will be denied
 
-	let request = Request::new(
-		Method::OPTIONS,
-		"/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		headers,
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::OPTIONS)
+		.uri("/")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let response = view.handle_options(&request).await.unwrap();
 	assert_eq!(response.status, StatusCode::OK);
@@ -333,13 +336,14 @@ async fn test_bug_2455_clone_request() {
 
 	let view = VersionedAPIView::new(versioning);
 
-	let request = Request::new(
-		Method::OPTIONS,
-		"/?version=2.0".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::OPTIONS)
+		.uri("/?version=2.0")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// This should not panic - version attribute should be accessible
 	let response = view.handle_options(&request).await.unwrap();
@@ -362,13 +366,14 @@ async fn test_bug_2477_clone_request() {
 
 	let view = VersionedAPIView::new(versioning);
 
-	let request = Request::new(
-		Method::OPTIONS,
-		"/?v=1.0".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::OPTIONS)
+		.uri("/?v=1.0")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// This should not panic - versioning_scheme should be accessible
 	let response = view.handle_options(&request).await.unwrap();
@@ -385,13 +390,14 @@ async fn test_bug_2477_clone_request() {
 async fn test_read_only_primary_key_related_field() {
 	// Simulate ModelSerializer with read-only PrimaryKeyRelatedField
 	let metadata = SimpleMetadata::new();
-	let request = Request::new(
-		Method::OPTIONS,
-		"/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::OPTIONS)
+		.uri("/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	let mut fields = HashMap::new();
 

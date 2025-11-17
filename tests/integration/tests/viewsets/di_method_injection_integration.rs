@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
+use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_di::{DiResult, InjectionContext, SingletonScope};
 use reinhardt_exception::Result;
 use reinhardt_macros::endpoint;
@@ -156,19 +156,20 @@ impl ViewSet for ProductViewSet {
 async fn test_method_injection_single_dependency() {
 	// Create DI context
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Create ViewSet
 	let viewset = ProductViewSet::new();
 
 	// Create request
-	let request = Request::new(
-		Method::POST,
-		Uri::from_static("/products/notify/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/products/notify/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Call method with DI
 	let response = viewset.send_notification(request, &ctx).await.unwrap();
@@ -184,19 +185,20 @@ async fn test_method_injection_single_dependency() {
 async fn test_method_injection_in_list_action() {
 	// Create DI context
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Create ViewSet
 	let viewset = ProductViewSet::new();
 
 	// Create request
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/products/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/products/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Call list method with DI
 	let response = viewset.list_products(request, &ctx).await.unwrap();
@@ -212,19 +214,20 @@ async fn test_method_injection_in_list_action() {
 async fn test_method_injection_multiple_dependencies() {
 	// Create DI context
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Create ViewSet
 	let viewset = ProductViewSet::new();
 
 	// Create request
-	let request = Request::new(
-		Method::POST,
-		Uri::from_static("/products/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/products/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Call method with multiple DI
 	let response = viewset.create_and_notify(request, &ctx).await.unwrap();
@@ -241,19 +244,20 @@ async fn test_method_injection_multiple_dependencies() {
 async fn test_method_injection_mixed_parameters() {
 	// Create DI context
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Create ViewSet
 	let viewset = ProductViewSet::new();
 
 	// Create request
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/products/42/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/products/42/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Call method with regular param + DI
 	let response = viewset.get_product_by_id(request, 42, &ctx).await.unwrap();
@@ -311,19 +315,20 @@ impl ViewSet for CacheTestViewSet {
 async fn test_method_injection_cache_control() {
 	// Create DI context
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Create ViewSet
 	let viewset = CacheTestViewSet;
 
 	// Create request
-	let request = Request::new(
-		Method::GET,
-		Uri::from_static("/cache_test/"),
-		Version::HTTP_11,
-		HeaderMap::new(),
-		Bytes::new(),
-	);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/cache_test/")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.unwrap();
 
 	// Call method with cache control
 	let response = viewset.test_cache_control(request, &ctx).await.unwrap();

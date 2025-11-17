@@ -88,7 +88,7 @@ async fn handler_no_inject(
 #[tokio::test]
 async fn test_endpoint_with_single_inject() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// #[inject] parameters are removed by the macro, only pass regular params and &ctx at the end
 	let result = handler_with_inject("test_value".to_string(), &ctx)
@@ -103,7 +103,7 @@ async fn test_endpoint_with_single_inject() {
 #[tokio::test]
 async fn test_endpoint_with_multiple_inject() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Both #[inject] params (db, config) are removed, only pass regular_param and &ctx
 	let result = handler_multiple_inject(100, &ctx).await.unwrap();
@@ -117,7 +117,7 @@ async fn test_endpoint_with_multiple_inject() {
 #[tokio::test]
 async fn test_endpoint_with_cache_control() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Both #[inject] params (db, service) are removed, only pass &ctx
 	let result = handler_with_cache_control(&ctx).await.unwrap();
@@ -128,7 +128,7 @@ async fn test_endpoint_with_cache_control() {
 #[tokio::test]
 async fn test_endpoint_only_inject_params() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Only #[inject] param (db) is removed, only pass &ctx
 	let result = handler_only_inject(&ctx).await.unwrap();
@@ -139,7 +139,7 @@ async fn test_endpoint_only_inject_params() {
 #[tokio::test]
 async fn test_endpoint_no_inject_params() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// No #[inject] params, so pass all regular params and &ctx at the end
 	let result = handler_no_inject("hello".to_string(), 42, &ctx)
@@ -206,7 +206,7 @@ async fn calculate_report(
 #[tokio::test]
 async fn test_simple_injection() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// #[inject] db param is removed, only pass data and &ctx
 	let result = process_data("test_data".to_string(), &ctx).await.unwrap();
@@ -216,7 +216,7 @@ async fn test_simple_injection() {
 #[tokio::test]
 async fn test_multiple_injections() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// All #[inject] params (db, config, logger) are removed, only pass input and &ctx
 	let result = complex_handler(42, &ctx).await.unwrap();
@@ -229,7 +229,7 @@ async fn test_multiple_injections() {
 #[tokio::test]
 async fn test_use_injection_cache_control() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// Both #[inject] params (cached_db, fresh_logger) are removed, only pass &ctx
 	let result = cache_control(&ctx).await.unwrap();
@@ -240,7 +240,7 @@ async fn test_use_injection_cache_control() {
 #[tokio::test]
 async fn test_helper_function() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// #[inject] db param is removed, only pass user_id and &ctx
 	let valid = validate_user(12345, &ctx).await.unwrap();
@@ -253,7 +253,7 @@ async fn test_helper_function() {
 #[tokio::test]
 async fn test_business_logic() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// #[inject] params (db, config) are removed, only pass year, month, and &ctx
 	let result = calculate_report(2025, 10, &ctx).await.unwrap();
@@ -264,7 +264,7 @@ async fn test_business_logic() {
 #[tokio::test]
 async fn test_injection_caching() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::new(singleton);
+	let ctx = InjectionContext::builder(singleton).build();
 
 	// #[inject] db param is removed, only pass data and &ctx
 	// First call

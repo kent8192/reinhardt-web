@@ -106,13 +106,14 @@ mod template_exception_tests {
 
 		let handler = Arc::new(ErrorTemplateHandler::new(template, StatusCode::NOT_FOUND));
 
-		let request = Request::new(
-			Method::GET,
-			"/nonexistent".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/nonexistent")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = handler.handle(request).await.unwrap();
 
@@ -131,13 +132,14 @@ mod template_exception_tests {
 
 		let handler = Arc::new(ErrorTemplateHandler::new(template, StatusCode::FORBIDDEN));
 
-		let request = Request::new(
-			Method::GET,
-			"/admin/secret".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/admin/secret")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = handler.handle(request).await.unwrap();
 
@@ -219,13 +221,14 @@ mod form_rendering_tests {
 	async fn test_renderer_template_json_response() {
 		let handler = Arc::new(FormHandler { render_html: false });
 
-		let request = Request::new(
-			Method::GET,
-			"/api/data".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/api/data")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = handler.handle(request).await.unwrap();
 
@@ -243,13 +246,14 @@ mod form_rendering_tests {
 	async fn test_browsable_api() {
 		let handler = Arc::new(FormHandler { render_html: true });
 
-		let request = Request::new(
-			Method::GET,
-			"/api/data".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/api/data")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = handler.handle(request).await.unwrap();
 
@@ -293,13 +297,14 @@ mod form_rendering_tests {
 
 		let handler = Arc::new(ManyToManyHandler);
 
-		let request = Request::new(
-			Method::POST,
-			"/api/user-tags".parse::<Uri>().unwrap(),
-			Version::HTTP_11,
-			HeaderMap::new(),
-			Bytes::new(),
-		);
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/api/user-tags")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
 
 		let response = handler.handle(request).await.unwrap();
 

@@ -32,17 +32,18 @@ async fn test_post_accessed_in_post_method() {
 	);
 
 	// Create request with parsers
-	let request = Request::new(
-		Method::POST,
-		"/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		headers,
-		body,
-	)
-	.with_parsers(vec![
-		Box::new(FormParser::new()) as Box<dyn Parser>,
-		Box::new(MultiPartParser::new()) as Box<dyn Parser>,
-	]);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap()
+		.with_parsers(vec![
+			Box::new(FormParser::new()) as Box<dyn Parser>,
+			Box::new(MultiPartParser::new()) as Box<dyn Parser>,
+		]);
 
 	// Access POST data first
 	let post_data = request.post().await.unwrap();
@@ -74,14 +75,15 @@ async fn test_post_accessed_in_post_method_with_json_parser() {
 	headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
 
 	// Create request with JSONParser only
-	let request = Request::new(
-		Method::POST,
-		"/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		headers,
-		body,
-	)
-	.with_parsers(vec![Box::new(JSONParser::new()) as Box<dyn Parser>]);
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap()
+		.with_parsers(vec![Box::new(JSONParser::new()) as Box<dyn Parser>]);
 
 	// Access POST data - should be empty (no form parser)
 	let post_data = request.post().await.unwrap();
@@ -115,17 +117,18 @@ async fn test_post_accessed_in_put_method() {
 	);
 
 	// Create PUT request with parsers
-	let request = Request::new(
-		Method::PUT,
-		"/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		headers,
-		body,
-	)
-	.with_parsers(vec![
-		Box::new(FormParser::new()) as Box<dyn Parser>,
-		Box::new(MultiPartParser::new()) as Box<dyn Parser>,
-	]);
+	let request = Request::builder()
+		.method(Method::PUT)
+		.uri("/")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap()
+		.with_parsers(vec![
+			Box::new(FormParser::new()) as Box<dyn Parser>,
+			Box::new(MultiPartParser::new()) as Box<dyn Parser>,
+		]);
 
 	// Access POST data
 	let post_data = request.post().await.unwrap();
@@ -159,17 +162,18 @@ async fn test_request_read_before_parsing() {
 	);
 
 	// Create request with parsers
-	let request = Request::new(
-		Method::PUT,
-		"/".parse::<Uri>().unwrap(),
-		Version::HTTP_11,
-		headers,
-		body,
-	)
-	.with_parsers(vec![
-		Box::new(FormParser::new()) as Box<dyn Parser>,
-		Box::new(MultiPartParser::new()) as Box<dyn Parser>,
-	]);
+	let request = Request::builder()
+		.method(Method::PUT)
+		.uri("/")
+		.version(Version::HTTP_11)
+		.headers(headers)
+		.body(body)
+		.build()
+		.unwrap()
+		.with_parsers(vec![
+			Box::new(FormParser::new()) as Box<dyn Parser>,
+			Box::new(MultiPartParser::new()) as Box<dyn Parser>,
+		]);
 
 	// First access - should succeed
 	let _post_data = request.post().await.unwrap();
