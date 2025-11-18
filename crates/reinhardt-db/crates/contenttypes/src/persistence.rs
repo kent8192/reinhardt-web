@@ -41,7 +41,8 @@ use serde::{Deserialize, Serialize};
 use async_trait::async_trait;
 #[cfg(feature = "database")]
 use sea_query::{
-	Alias, BinOper, ColumnDef, Condition, Expr, ExprTrait, Index, Query, SqliteQueryBuilder, Table,
+	Alias, BinOper, ColumnDef, Condition, Expr, ExprTrait, Index, PostgresQueryBuilder, Query,
+	SqliteQueryBuilder, Table,
 };
 #[cfg(feature = "database")]
 use sqlx::{AnyPool, Row};
@@ -204,6 +205,7 @@ pub trait ContentTypePersistenceBackend: Send + Sync {
 #[derive(Clone)]
 pub struct ContentTypePersistence {
 	pool: Arc<AnyPool>,
+	database_url: String,
 }
 
 #[cfg(feature = "database")]
@@ -250,6 +252,7 @@ impl ContentTypePersistence {
 
 		Ok(Self {
 			pool: Arc::new(pool),
+			database_url: database_url.to_string(),
 		})
 	}
 
@@ -263,13 +266,17 @@ impl ContentTypePersistence {
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let persistence = ContentTypePersistence::from_pool(Arc::new(pool));
+	/// let database_url = "sqlite::memory:";
+	/// let pool = AnyPool::connect(database_url).await?;
+	/// let persistence = ContentTypePersistence::from_pool(Arc::new(pool), database_url);
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub fn from_pool(pool: Arc<AnyPool>) -> Self {
-		Self { pool }
+	pub fn from_pool(pool: Arc<AnyPool>, database_url: &str) -> Self {
+		Self {
+			pool,
+			database_url: database_url.to_string(),
+		}
 	}
 
 	/// Create the django_content_type table if it doesn't exist
@@ -315,7 +322,13 @@ impl ContentTypePersistence {
 					.not_null(),
 			)
 			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
+
+		// Select appropriate QueryBuilder based on database URL
+		let sql = if self.database_url.starts_with("postgres") {
+			stmt.to_string(PostgresQueryBuilder)
+		} else {
+			stmt.to_string(SqliteQueryBuilder)
+		};
 		let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 		sqlx::query(sql_leaked)
@@ -334,7 +347,12 @@ impl ContentTypePersistence {
 			.col(Alias::new("app_label"))
 			.col(Alias::new("model"))
 			.to_owned();
-		let sql = idx.to_string(SqliteQueryBuilder);
+		// Use same QueryBuilder as table creation
+		let sql = if self.database_url.starts_with("postgres") {
+			idx.to_string(PostgresQueryBuilder)
+		} else {
+			idx.to_string(SqliteQueryBuilder)
+		};
 		let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 		sqlx::query(sql_leaked)
@@ -351,7 +369,12 @@ impl ContentTypePersistence {
 			.table(Alias::new("django_content_type"))
 			.col(Alias::new("app_label"))
 			.to_owned();
-		let sql = idx.to_string(SqliteQueryBuilder);
+		// Use same QueryBuilder as table creation
+		let sql = if self.database_url.starts_with("postgres") {
+			idx.to_string(PostgresQueryBuilder)
+		} else {
+			idx.to_string(SqliteQueryBuilder)
+		};
 		let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 		sqlx::query(sql_leaked)
@@ -368,7 +391,12 @@ impl ContentTypePersistence {
 			.table(Alias::new("django_content_type"))
 			.col(Alias::new("model"))
 			.to_owned();
-		let sql = idx.to_string(SqliteQueryBuilder);
+		// Use same QueryBuilder as table creation
+		let sql = if self.database_url.starts_with("postgres") {
+			idx.to_string(PostgresQueryBuilder)
+		} else {
+			idx.to_string(SqliteQueryBuilder)
+		};
 		let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 		sqlx::query(sql_leaked)
@@ -379,6 +407,23 @@ impl ContentTypePersistence {
 			})?;
 
 		Ok(())
+	}
+
+	/// Helper method to check if database is PostgreSQL
+	fn is_postgres(&self) -> bool {
+		self.database_url.starts_with("postgres")
+	}
+
+	/// Helper method to build SQL string with appropriate QueryBuilder
+	fn build_sql<T>(&self, builder: T) -> String
+	where
+		T: sea_query::QueryStatementWriter,
+	{
+		if self.is_postgres() {
+			builder.to_string(PostgresQueryBuilder)
+		} else {
+			builder.to_string(SqliteQueryBuilder)
+		}
 	}
 }
 
@@ -405,7 +450,7 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.add(Expr::col(Alias::new("model")).binary(BinOper::Equal, Expr::val(model))),
 			)
 			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
+		let sql = self.build_sql(stmt);
 		let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 		let row = sqlx::query(sql_leaked)
@@ -450,7 +495,7 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 			)
 			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
+		let sql = self.build_sql(stmt);
 		let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 		let row = sqlx::query(sql_leaked)
@@ -508,7 +553,7 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 			.order_by(Alias::new("app_label"), sea_query::Order::Asc)
 			.order_by(Alias::new("model"), sea_query::Order::Asc)
 			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
+		let sql = self.build_sql(stmt);
 		let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 		let rows = sqlx::query(sql_leaked)
@@ -552,7 +597,7 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 						.add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 				)
 				.to_owned();
-			let sql = stmt.to_string(SqliteQueryBuilder);
+			let sql = self.build_sql(stmt);
 			let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 			sqlx::query(sql_leaked)
@@ -564,40 +609,71 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 
 			Ok(ct.clone())
 		} else {
-			// Insert new
-			let stmt = Query::insert()
-				.into_table(Alias::new("django_content_type"))
-				.columns([Alias::new("app_label"), Alias::new("model")])
-				.values([ct.app_label.clone().into(), ct.model.clone().into()])
-				.expect("Failed to build insert statement")
-				.to_owned();
-			let sql = stmt.to_string(SqliteQueryBuilder);
-			let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
+			// Insert new - handle PostgreSQL RETURNING vs SQLite last_insert_rowid()
+			if self.is_postgres() {
+				// PostgreSQL: Use RETURNING clause
+				let stmt = Query::insert()
+					.into_table(Alias::new("django_content_type"))
+					.columns([Alias::new("app_label"), Alias::new("model")])
+					.values([ct.app_label.clone().into(), ct.model.clone().into()])
+					.expect("Failed to build insert statement")
+					.returning(Query::returning().column(Alias::new("id")))
+					.to_owned();
+				let sql = self.build_sql(stmt);
+				let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
-			sqlx::query(sql_leaked)
-				.execute(&*self.pool)
-				.await
-				.map_err(|e| {
-					PersistenceError::DatabaseError(format!("Failed to insert content type: {}", e))
+				let id_row = sqlx::query(sql_leaked)
+					.fetch_one(&*self.pool)
+					.await
+					.map_err(|e| {
+						PersistenceError::DatabaseError(format!("Failed to insert content type: {}", e))
+					})?;
+
+				let id: i64 = id_row.try_get("id").map_err(|e| {
+					PersistenceError::DatabaseError(format!("Failed to extract ID: {}", e))
 				})?;
 
-			// Get the last inserted ID using SQLite's last_insert_rowid()
-			let id_row = sqlx::query("SELECT last_insert_rowid() as id")
-				.fetch_one(&*self.pool)
-				.await
-				.map_err(|e| {
-					PersistenceError::DatabaseError(format!("Failed to get last insert ID: {}", e))
+				Ok(ContentType {
+					id: Some(id),
+					app_label: ct.app_label.clone(),
+					model: ct.model.clone(),
+				})
+			} else {
+				// SQLite: Use last_insert_rowid()
+				let stmt = Query::insert()
+					.into_table(Alias::new("django_content_type"))
+					.columns([Alias::new("app_label"), Alias::new("model")])
+					.values([ct.app_label.clone().into(), ct.model.clone().into()])
+					.expect("Failed to build insert statement")
+					.to_owned();
+				let sql = self.build_sql(stmt);
+				let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
+
+				sqlx::query(sql_leaked)
+					.execute(&*self.pool)
+					.await
+					.map_err(|e| {
+						PersistenceError::DatabaseError(format!("Failed to insert content type: {}", e))
+					})?;
+
+				// Get the last inserted ID using SQLite's last_insert_rowid()
+				let id_row = sqlx::query("SELECT last_insert_rowid() as id")
+					.fetch_one(&*self.pool)
+					.await
+					.map_err(|e| {
+						PersistenceError::DatabaseError(format!("Failed to get last insert ID: {}", e))
+					})?;
+
+				let id: i64 = id_row.try_get("id").map_err(|e| {
+					PersistenceError::DatabaseError(format!("Failed to extract ID: {}", e))
 				})?;
 
-			let id: i64 = id_row.try_get("id").map_err(|e| {
-				PersistenceError::DatabaseError(format!("Failed to extract ID: {}", e))
-			})?;
-
-			Ok(ContentType {
-				id: Some(id),
-				app_label: ct.app_label.clone(),
-				model: ct.model.clone(),
-			})
+				Ok(ContentType {
+					id: Some(id),
+					app_label: ct.app_label.clone(),
+					model: ct.model.clone(),
+				})
+			}
 		}
 	}
 
@@ -609,7 +685,7 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 			)
 			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
+		let sql = self.build_sql(stmt);
 		let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 		sqlx::query(sql_leaked)
@@ -634,7 +710,7 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.add(Expr::col(Alias::new("model")).binary(BinOper::Equal, Expr::val(model))),
 			)
 			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
+		let sql = self.build_sql(stmt);
 		let sql_leaked: &'static str = Box::leak(sql.into_boxed_str());
 
 		let row = sqlx::query(sql_leaked)
@@ -680,7 +756,7 @@ mod tests {
 			.await
 			.expect("Failed to connect to test database");
 
-		let persistence = ContentTypePersistence::from_pool(Arc::new(pool));
+		let persistence = ContentTypePersistence::from_pool(Arc::new(pool), db_url);
 
 		persistence
 			.create_table()

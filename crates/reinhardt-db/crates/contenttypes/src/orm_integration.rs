@@ -520,7 +520,7 @@ mod tests {
 			.expect("Failed to connect");
 
 		// Create table
-		let persistence = ContentTypePersistence::from_pool(pool.clone().into());
+		let persistence = ContentTypePersistence::from_pool(pool.clone().into(), db_url);
 		persistence
 			.create_table()
 			.await

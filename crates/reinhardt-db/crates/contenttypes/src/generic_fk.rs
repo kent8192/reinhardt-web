@@ -442,7 +442,7 @@ mod database_tests {
 			.await
 			.expect("Failed to connect to test database");
 
-		let persistence = ContentTypePersistence::from_pool(Arc::new(pool));
+		let persistence = ContentTypePersistence::from_pool(Arc::new(pool), db_url);
 
 		persistence
 			.create_table()
