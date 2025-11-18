@@ -18,3 +18,6 @@ mod permissions_mixin_integration;
 
 #[path = "auth/session_authentication_integration.rs"]
 mod session_authentication_integration;
+
+#[path = "auth/multi_auth_backend_integration.rs"]
+mod multi_auth_backend_integration;

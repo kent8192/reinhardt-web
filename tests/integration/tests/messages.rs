@@ -27,3 +27,6 @@ mod storage_basic_integration;
 
 #[path = "messages/views_integration.rs"]
 mod views_integration;
+
+#[path = "messages/messages_template_integration.rs"]
+mod messages_template_integration;

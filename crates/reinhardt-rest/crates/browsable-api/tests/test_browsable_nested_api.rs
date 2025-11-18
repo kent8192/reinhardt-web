@@ -8,22 +8,6 @@
 
 use reinhardt_browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
 use serde_json::json;
-use std::fs;
-use std::path::PathBuf;
-
-/// Helper function to create a temporary test output directory
-fn create_test_output_dir(test_name: &str) -> PathBuf {
-	let dir = PathBuf::from(format!("target/test_output/nested_api/{}", test_name));
-	fs::create_dir_all(&dir).unwrap();
-	dir
-}
-
-/// Helper function to clean up test output
-fn cleanup_test_output(dir: &PathBuf) {
-	if dir.exists() {
-		fs::remove_dir_all(dir).ok();
-	}
-}
 
 /// Tests correct rendering of nested serializers in browsable API forms
 mod nested_serializers_tests {
@@ -31,8 +15,6 @@ mod nested_serializers_tests {
 
 	#[test]
 	fn test_nested_serializer_form_rendering() {
-		let test_dir = create_test_output_dir("nested_form");
-
 		// Test that nested serializers are properly rendered in forms
 		// Corresponds to DRF's test_login test
 		// This tests the core functionality of displaying nested field names
@@ -126,14 +108,10 @@ mod nested_serializers_tests {
 			html.contains("required"),
 			"Nested fields should be marked as required"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_nested_field_with_dot_notation() {
-		let test_dir = create_test_output_dir("dot_notation");
-
 		// Test that field names with dots (nested notation) are properly handled
 		// including deeply nested structures
 		let renderer = BrowsableApiRenderer::new();
@@ -187,14 +165,10 @@ mod nested_serializers_tests {
 			html.contains("type=\"text\""),
 			"Should render as text field"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_nested_serializer_with_initial_values() {
-		let test_dir = create_test_output_dir("nested_initial_values");
-
 		// Test nested serializer rendering with initial values
 		// This is important for edit/update operations
 		let renderer = BrowsableApiRenderer::new();
@@ -270,14 +244,10 @@ mod nested_serializers_tests {
 			html.contains("\"two\": 7") || html.contains("two"),
 			"Response should show nested.two value"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_multiple_nested_serializers() {
-		let test_dir = create_test_output_dir("multiple_nested");
-
 		// Test handling of multiple nested serializers
 		// This ensures the renderer can handle complex object structures
 		let renderer = BrowsableApiRenderer::new();
@@ -354,14 +324,10 @@ mod nested_serializers_tests {
 			second_section.contains("required") || html.contains("required"),
 			"Second field should be marked as required"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_nested_with_validation_constraints() {
-		let test_dir = create_test_output_dir("nested_validation");
-
 		// Test that validation constraints are properly rendered for nested fields
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -431,8 +397,6 @@ mod nested_serializers_tests {
 			count_section.contains("required"),
 			"Count field should be marked as required"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 }
 
@@ -442,8 +406,6 @@ mod list_create_view_tests {
 
 	#[test]
 	fn test_list_create_api_view_rendering() {
-		let test_dir = create_test_output_dir("list_create_view");
-
 		// Test rendering of ListCreateAPIView with nested serializers
 		// This simulates a common DRF pattern
 		let renderer = BrowsableApiRenderer::new();
@@ -541,7 +503,5 @@ mod list_create_view_tests {
 			html.contains("method=\"POST\""),
 			"Form should use POST for creating items"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 }

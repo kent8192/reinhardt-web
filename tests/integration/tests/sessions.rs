@@ -4,5 +4,8 @@
 #[path = "sessions/database_backend_integration.rs"]
 mod database_backend_integration;
 
+#[path = "sessions/session_auth_integration.rs"]
+mod session_auth_integration;
+
 #[path = "sessions/session_security_integration.rs"]
 mod session_security_integration;

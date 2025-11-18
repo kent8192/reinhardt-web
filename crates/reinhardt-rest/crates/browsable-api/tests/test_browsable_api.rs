@@ -9,26 +9,12 @@
 use reinhardt_browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
 use serde_json::json;
 use std::fs;
-use std::path::PathBuf;
-
-/// Helper function to create a temporary test output directory
-fn create_test_output_dir(test_name: &str) -> PathBuf {
-	let dir = PathBuf::from(format!("target/test_output/{}", test_name));
-	fs::create_dir_all(&dir).unwrap();
-	dir
-}
-
-/// Helper function to clean up test output
-fn cleanup_test_output(dir: &PathBuf) {
-	if dir.exists() {
-		fs::remove_dir_all(dir).ok();
-	}
-}
+use tempfile::TempDir;
 
 /// Helper function to save HTML for debugging
 #[allow(dead_code)]
-fn save_html_output(dir: &PathBuf, filename: &str, html: &str) {
-	let path = dir.join(filename);
+fn save_html_output(dir: &TempDir, filename: &str, html: &str) {
+	let path = dir.path().join(filename);
 	fs::write(path, html).unwrap();
 }
 
@@ -38,8 +24,6 @@ mod anonymous_user_tests {
 
 	#[test]
 	fn test_renderer_handles_anonymous_context() {
-		let test_dir = create_test_output_dir("anonymous_user_anonymous_context");
-
 		// Simulate anonymous user accessing a protected endpoint
 		// This corresponds to DRF's test where anonymous user gets 403
 		let renderer = BrowsableApiRenderer::new();
@@ -95,14 +79,10 @@ mod anonymous_user_tests {
 			1,
 			"HTML should display WWW-Authenticate header exactly once"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_forbidden_response_rendering() {
-		let test_dir = create_test_output_dir("anonymous_user_forbidden");
-
 		// Simulate a forbidden response when anonymous user lacks permissions
 		// This corresponds to DRF's test_get_returns_http_forbidden_when_anonymous_user
 		let renderer = BrowsableApiRenderer::new();
@@ -163,8 +143,6 @@ mod anonymous_user_tests {
 			0,
 			"Should not show any method badges when no methods are allowed"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 }
 
@@ -174,8 +152,6 @@ mod dropdown_with_auth_tests {
 
 	#[test]
 	fn test_name_shown_when_logged_in() {
-		let test_dir = create_test_output_dir("auth_name_logged_in");
-
 		// When auth views are enabled and user is logged in,
 		// the browsable API should display user information
 		let renderer = BrowsableApiRenderer::new();
@@ -220,14 +196,10 @@ mod dropdown_with_auth_tests {
 			html_with_user.matches("john").count() >= 1,
 			"Should support displaying username in title at least once"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_logout_shown_when_logged_in() {
-		let test_dir = create_test_output_dir("auth_logout_shown");
-
 		// When user is authenticated, logout option should be available
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -271,14 +243,10 @@ mod dropdown_with_auth_tests {
 			has_request_section || has_form,
 			"Should render a form for logout"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_login_shown_when_logged_out() {
-		let test_dir = create_test_output_dir("auth_login_shown");
-
 		// When user is not authenticated, login option should be shown
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -349,14 +317,10 @@ mod dropdown_with_auth_tests {
 			html.matches("required").count() >= 1,
 			"Login fields should be required at least once"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_dropdown_contains_logout_form() {
-		let test_dir = create_test_output_dir("auth_logout_form");
-
 		// Verify logout form is properly rendered with correct action URL including next parameter
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -409,8 +373,6 @@ mod dropdown_with_auth_tests {
 			html.matches("</form>").count() >= 1,
 			"Should have closing form tag at least once"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 }
 
@@ -420,8 +382,6 @@ mod no_dropdown_without_auth_tests {
 
 	#[test]
 	fn test_dropdown_not_shown_when_logged_in() {
-		let test_dir = create_test_output_dir("no_auth_no_dropdown_logged_in");
-
 		// When auth views are disabled, no dropdown should be shown even when logged in
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -458,14 +418,10 @@ mod no_dropdown_without_auth_tests {
 			html.matches("200").count() >= 1,
 			"Should display status at least once"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_dropdown_not_shown_when_logged_out() {
-		let test_dir = create_test_output_dir("no_auth_no_dropdown_logged_out");
-
 		// No dropdown for logged out users when auth views are disabled
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -512,8 +468,6 @@ mod no_dropdown_without_auth_tests {
 			html.matches("GET").count() >= 1,
 			"Should display method at least once"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 }
 
@@ -523,8 +477,6 @@ mod integration_tests {
 
 	#[test]
 	fn test_complete_browsable_api_rendering() {
-		let test_dir = create_test_output_dir("integration_complete_rendering");
-
 		// Comprehensive test of browsable API rendering with all features
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -688,7 +640,5 @@ mod integration_tests {
 			html.matches("action=\"/api/users/\"").count() >= 1,
 			"Form should submit to correct URL at least once"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 }

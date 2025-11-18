@@ -1,15 +1,27 @@
 //! Integration tests for async query API with PostgreSQL and MySQL
 //!
 //! These tests verify that AsyncQuery and AsyncSession work correctly
-//! with real database containers.
+//! with real database containers using reinhardt-test fixtures.
+//!
+//! **Test Coverage:**
+//! - Async query builder SQL generation (PostgreSQL, MySQL)
+//! - Async query execution with real database
+//! - Async session operations
+//!
+//! **Fixtures Used:**
+//! - postgres_container: PostgreSQL database container (reinhardt-test)
+//! - mysql_suite: MySQL database container (reinhardt-test, planned)
 
 use reinhardt_core::validators::TableName;
 use reinhardt_orm::{
 	expressions::Q, query_execution::QueryCompiler, types::DatabaseDialect, Model,
 };
+use reinhardt_test::fixtures::postgres_container;
+use rstest::*;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
-use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage, ImageExt};
+use sqlx::PgPool;
+use std::sync::Arc;
+use testcontainers::{ContainerAsync, GenericImage};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,52 +56,20 @@ impl Model for TestModel {
 #[cfg(feature = "postgres")]
 mod postgres_tests {
 	use super::*;
-	use sqlx::postgres::{PgPool, PgPoolOptions};
 
-	async fn create_postgres_pool(
-		container: &ContainerAsync<GenericImage>,
-	) -> Result<PgPool, sqlx::Error> {
-		let port = container
-			.get_host_port_ipv4(testcontainers::core::ContainerPort::Tcp(5432))
-			.await
-			.expect("Failed to get PostgreSQL port");
-		let url = format!("postgres://postgres:postgres@localhost:{}/postgres", port);
-
-		// Retry connection up to 10 times with 1 second delay
-		for attempt in 1..=10 {
-			match PgPoolOptions::new()
-				.min_connections(1)
-				.max_connections(5)
-				.acquire_timeout(Duration::from_secs(10))
-				.connect(&url)
-				.await
-			{
-				Ok(pool) => return Ok(pool),
-				Err(_e) if attempt < 10 => {
-					tokio::time::sleep(Duration::from_secs(1)).await;
-					continue;
-				}
-				Err(e) => return Err(e),
-			}
-		}
-		unreachable!()
-	}
-
+	/// Test basic SQL generation with QueryCompiler for PostgreSQL
+	///
+	/// **Test Intent**: Verify QueryCompiler generates correct SQL for PostgreSQL dialect
+	///
+	/// **Integration Point**: QueryCompiler → PostgreSQL SQL syntax
+	///
+	/// **Not Intent**: Query execution, database operations
+	#[rstest]
 	#[tokio::test]
-	async fn test_postgres_async_query_builder() {
-		let postgres_image = GenericImage::new("postgres", "17-alpine")
-			.with_exposed_port(testcontainers::core::ContainerPort::Tcp(5432))
-			.with_env_var("POSTGRES_PASSWORD", "postgres")
-			.with_env_var("POSTGRES_DB", "postgres");
-
-		// Use AsyncRunner for compatibility with #[tokio::test]
-		let container = postgres_image
-			.start()
-			.await
-			.expect("Failed to start PostgreSQL container");
-		let pool = create_postgres_pool(&container)
-			.await
-			.expect("Failed to create PostgreSQL pool");
+	async fn test_postgres_async_query_builder(
+		#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	) {
+		let (_container, _pool, _port, _url) = postgres_container.await;
 
 		// Test basic SQL generation with QueryCompiler
 		let compiler = QueryCompiler::new(DatabaseDialect::PostgreSQL);
@@ -105,78 +85,76 @@ mod postgres_tests {
 		let sql = stmt.to_string(sea_query::PostgresQueryBuilder);
 		assert!(sql.contains("test_model"));
 		assert!(sql.contains("ORDER BY"));
-
-		pool.close().await;
 	}
 
+	/// Test async query execution with real PostgreSQL database
+	///
+	/// **Test Intent**: Verify async query execution (CREATE TABLE, INSERT, SELECT COUNT)
+	/// works with real PostgreSQL database
+	///
+	/// **Integration Point**: Async query API → PostgreSQL database operations
+	///
+	/// **Not Intent**: Query optimization, complex queries
+	#[rstest]
 	#[tokio::test]
-	async fn test_postgres_async_query_execution() {
-		let postgres_image = GenericImage::new("postgres", "17-alpine")
-			.with_exposed_port(testcontainers::core::ContainerPort::Tcp(5432))
-			.with_env_var("POSTGRES_PASSWORD", "postgres")
-			.with_env_var("POSTGRES_DB", "postgres");
+	async fn test_postgres_async_query_execution(
+		#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	) {
+		let (_container, pool, _port, _url) = postgres_container.await;
 
-		// Use AsyncRunner for compatibility with #[tokio::test]
-		let container = postgres_image
-			.start()
-			.await
-			.expect("Failed to start PostgreSQL container");
-		let pool = create_postgres_pool(&container)
-			.await
-			.expect("Failed to create PostgreSQL pool");
-
+		// Create table
 		sqlx::query("CREATE TABLE test_models (id SERIAL PRIMARY KEY, name TEXT)")
-			.execute(&pool)
+			.execute(pool.as_ref())
 			.await
 			.expect("Failed to create table");
 
+		// Insert data
 		sqlx::query("INSERT INTO test_models (name) VALUES ('Alice'), ('Bob')")
-			.execute(&pool)
+			.execute(pool.as_ref())
 			.await
 			.expect("Failed to insert data");
 
+		// Count records
 		let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM test_models")
-			.fetch_one(&pool)
+			.fetch_one(pool.as_ref())
 			.await
 			.expect("Count failed");
 		assert_eq!(count, 2);
-
-		pool.close().await;
 	}
 
+	/// Test async session operations with PostgreSQL
+	///
+	/// **Test Intent**: Verify async session can perform basic database operations
+	/// (table creation, data insertion, existence check)
+	///
+	/// **Integration Point**: Async session → PostgreSQL database
+	///
+	/// **Not Intent**: Session management, transaction handling
+	#[rstest]
 	#[tokio::test]
-	async fn test_postgres_async_session() {
-		let postgres_image = GenericImage::new("postgres", "17-alpine")
-			.with_exposed_port(testcontainers::core::ContainerPort::Tcp(5432))
-			.with_env_var("POSTGRES_PASSWORD", "postgres")
-			.with_env_var("POSTGRES_DB", "postgres");
+	async fn test_postgres_async_session(
+		#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	) {
+		let (_container, pool, _port, _url) = postgres_container.await;
 
-		// Use AsyncRunner for compatibility with #[tokio::test]
-		let container = postgres_image
-			.start()
-			.await
-			.expect("Failed to start PostgreSQL container");
-		let pool = create_postgres_pool(&container)
-			.await
-			.expect("Failed to create PostgreSQL pool");
-
+		// Create table
 		sqlx::query("CREATE TABLE test_models (id SERIAL PRIMARY KEY, name TEXT)")
-			.execute(&pool)
+			.execute(pool.as_ref())
 			.await
 			.unwrap();
 
+		// Insert data
 		sqlx::query("INSERT INTO test_models (name) VALUES ('Test')")
-			.execute(&pool)
+			.execute(pool.as_ref())
 			.await
 			.expect("Insert failed");
 
+		// Check existence
 		let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM test_models)")
-			.fetch_one(&pool)
+			.fetch_one(pool.as_ref())
 			.await
 			.expect("Exists check failed");
 		assert!(exists);
-
-		pool.close().await;
 	}
 }
 

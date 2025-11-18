@@ -7,6 +7,9 @@ mod contenttypes_integration;
 #[path = "contrib/graphql_integration.rs"]
 mod graphql_integration;
 
+#[path = "contrib/graphql_subscriptions_integration.rs"]
+mod graphql_subscriptions_integration;
+
 #[path = "contrib/health_integration.rs"]
 mod health_integration;
 

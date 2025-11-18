@@ -487,14 +487,6 @@ async fn test_commandtypes_help_default_options_with_custom_arguments() {
 // ============================================================================
 
 #[test]
-fn test_commandtypes_color_style() {
-	unsafe {
-		std::env::set_var("FORCE_COLOR", "1");
-	}
-	// Color style should be enabled with FORCE_COLOR
-}
-
-#[test]
 fn test_commandtypes_command_color() {
 	let mut ctx = CommandContext::new(vec![]);
 	ctx.set_option("color".to_string(), "true".to_string());
@@ -506,14 +498,6 @@ fn test_commandtypes_command_no_color() {
 	let mut ctx = CommandContext::new(vec![]);
 	ctx.set_option("no-color".to_string(), "true".to_string());
 	assert!(ctx.has_option("no-color"));
-}
-
-#[test]
-fn test_commandtypes_force_color_execute() {
-	unsafe {
-		std::env::set_var("FORCE_COLOR", "1");
-	}
-	// Force color should override auto-detection
 }
 
 #[test]

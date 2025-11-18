@@ -4,29 +4,7 @@ use reinhardt_shortcuts::template_inheritance::render_string_with_inheritance;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
-
-/// Create a temporary test directory and return its path
-fn setup_test_templates() -> PathBuf {
-	let test_dir = PathBuf::from("/tmp/reinhardt_test_templates");
-
-	// Clean up any existing test directory
-	if test_dir.exists() {
-		fs::remove_dir_all(&test_dir).unwrap();
-	}
-
-	// Create fresh test directory
-	fs::create_dir_all(&test_dir).unwrap();
-
-	test_dir
-}
-
-/// Clean up the test template directory
-fn cleanup_test_templates(test_dir: &PathBuf) {
-	if test_dir.exists() {
-		fs::remove_dir_all(test_dir).unwrap();
-	}
-}
+use tempfile::TempDir;
 
 #[test]
 fn test_render_string_with_basic_variables() {
@@ -103,10 +81,10 @@ fn test_render_string_with_filters() {
 #[test]
 #[ignore = "Template inheritance with extends requires file-based templates, which needs filesystem-based Tera instance"]
 fn test_render_with_inheritance_base_template() {
-	let test_dir = setup_test_templates();
+	let temp_dir = TempDir::new().unwrap();
 
 	// Create base template
-	let base_path = test_dir.join("base.html");
+	let base_path = temp_dir.path().join("base.html");
 	fs::write(
 		&base_path,
 		r#"<!DOCTYPE html>
@@ -123,7 +101,7 @@ fn test_render_with_inheritance_base_template() {
 	.unwrap();
 
 	// Create child template
-	let child_path = test_dir.join("child.html");
+	let child_path = temp_dir.path().join("child.html");
 	fs::write(
 		&child_path,
 		r#"{% extends "base.html" %}
@@ -138,7 +116,7 @@ fn test_render_with_inheritance_base_template() {
 
 	// Set template directory
 	unsafe {
-		env::set_var("REINHARDT_TEMPLATE_DIR", test_dir.to_str().unwrap());
+		env::set_var("REINHARDT_TEMPLATE_DIR", temp_dir.path().to_str().unwrap());
 	}
 
 	// Render child template
@@ -152,7 +130,6 @@ fn test_render_with_inheritance_base_template() {
 		render_string_with_inheritance(&fs::read_to_string(&child_path).unwrap(), &context);
 
 	// Clean up
-	cleanup_test_templates(&test_dir);
 	unsafe {
 		env::remove_var("REINHARDT_TEMPLATE_DIR");
 	}
@@ -160,6 +137,8 @@ fn test_render_with_inheritance_base_template() {
 	// The template inheritance requires file-based templates
 	// String rendering doesn't support extends
 	assert!(result.is_ok());
+
+	// temp_dir is automatically cleaned up when it drops
 }
 
 #[test]

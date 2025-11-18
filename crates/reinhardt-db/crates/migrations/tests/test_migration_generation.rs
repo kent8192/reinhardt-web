@@ -259,10 +259,13 @@ fn test_generate_migration_for_deleted_model() {
 /// Similar to: django/tests/migrations/test_commands.py::MakeMigrationsTests::test_makemigrations_dry_run
 #[test]
 fn test_makemigrations_dry_run() {
+	use tempfile::TempDir;
+
 	// Setup
+	let temp_dir = TempDir::new().expect("Failed to create temp directory");
 	let options = MakeMigrationsOptions {
 		dry_run: true,
-		migrations_dir: "/tmp/test_migrations_dry_run".to_string(),
+		migrations_dir: temp_dir.path().to_str().unwrap().to_string(),
 		..Default::default()
 	};
 
@@ -276,6 +279,8 @@ fn test_makemigrations_dry_run() {
 		files.is_empty() || !PathBuf::from(&files[0]).exists(),
 		"Dry-run should not create actual files"
 	);
+
+	// temp_dir is automatically cleaned up when it drops
 }
 
 /// Test migration file writing
@@ -286,14 +291,10 @@ fn test_makemigrations_dry_run() {
 fn test_write_migration_file() {
 	use reinhardt_migrations::{Migration, MigrationWriter, Operation};
 	use std::fs;
-	use std::path::PathBuf;
+	use tempfile::TempDir;
 
 	// Setup
-	let test_dir = PathBuf::from("/tmp/test_write_migration");
-	if test_dir.exists() {
-		fs::remove_dir_all(&test_dir).ok();
-	}
-	fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+	let temp_dir = TempDir::new().expect("Failed to create temp directory");
 
 	// Create a migration
 	let migration =
@@ -306,7 +307,7 @@ fn test_write_migration_file() {
 	// Write migration
 	let writer = MigrationWriter::new(migration);
 	let filepath = writer
-		.write_to_file(&test_dir)
+		.write_to_file(temp_dir.path())
 		.expect("Failed to write migration file");
 
 	// Verify
@@ -334,8 +335,7 @@ fn test_write_migration_file() {
 		"Content should contain app label"
 	);
 
-	// Cleanup
-	fs::remove_dir_all(&test_dir).ok();
+	// temp_dir is automatically cleaned up when it drops
 }
 
 /// Test complex model changes (multiple operations)

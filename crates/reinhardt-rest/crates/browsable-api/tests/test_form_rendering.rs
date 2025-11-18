@@ -9,22 +9,6 @@
 
 use reinhardt_browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
 use serde_json::json;
-use std::fs;
-use std::path::PathBuf;
-
-/// Helper function to create a temporary test output directory
-fn create_test_output_dir(test_name: &str) -> PathBuf {
-	let dir = PathBuf::from(format!("target/test_output/form_rendering/{}", test_name));
-	fs::create_dir_all(&dir).unwrap();
-	dir
-}
-
-/// Helper function to clean up test output
-fn cleanup_test_output(dir: &PathBuf) {
-	if dir.exists() {
-		fs::remove_dir_all(dir).ok();
-	}
-}
 
 /// POSTing a list of data to a regular view should not cause the browsable
 /// API to fail during rendering.
@@ -35,8 +19,6 @@ mod posting_list_data_tests {
 
 	#[test]
 	fn test_browsable_api_form_json_response() {
-		let test_dir = create_test_output_dir("json_response");
-
 		// Sanity check for non-browsable API responses with list data
 		// When POSTing list data to an endpoint expecting a dict, should get 400
 		let renderer = BrowsableApiRenderer::new();
@@ -100,14 +82,10 @@ mod posting_list_data_tests {
 			"Endpoint URL should appear at least once, found {} times",
 			endpoint_count
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_browsable_api_with_list_data() {
-		let test_dir = create_test_output_dir("browsable_api_list_data");
-
 		// Test that browsable API can render even when list data causes validation errors
 		// The key is that rendering shouldn't crash, even with validation errors
 		let renderer = BrowsableApiRenderer::new();
@@ -198,14 +176,10 @@ mod posting_list_data_tests {
 			"Form should use POST method exactly once, found {} times",
 			method_count
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_list_error_response_rendering() {
-		let test_dir = create_test_output_dir("list_error_response");
-
 		// Test that list errors are properly displayed in browsable API
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -269,8 +243,6 @@ mod posting_list_data_tests {
 			has_array_format,
 			"Errors should be displayed as array in JSON"
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 }
 
@@ -282,8 +254,6 @@ mod many_post_view_tests {
 
 	#[test]
 	fn test_post_many_post_view() {
-		let test_dir = create_test_output_dir("post_many_view");
-
 		// POST request to a view that returns a list of objects should
 		// still successfully return the browsable API with a rendered form
 		let renderer = BrowsableApiRenderer::new();
@@ -393,14 +363,10 @@ mod many_post_view_tests {
 			"Form should use POST method exactly once, found {} times",
 			method_count
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_many_serializer_with_form_rendering() {
-		let test_dir = create_test_output_dir("many_serializer_form");
-
 		// Test that forms are correctly rendered even when response is a list
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -503,14 +469,10 @@ mod many_post_view_tests {
 			"Name field should be marked as required at least once, found {} times",
 			required_count
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_empty_list_response_with_form() {
-		let test_dir = create_test_output_dir("empty_list_form");
-
 		// Test rendering when response is an empty list
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -572,14 +534,10 @@ mod many_post_view_tests {
 			"Should have item field exactly once, found {} times",
 			item_field_count
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_large_list_response_rendering() {
-		let test_dir = create_test_output_dir("large_list");
-
 		// Test that large lists are properly rendered without issues
 		let items: Vec<_> = (1..=100)
 			.map(|i| json!({"id": i, "value": format!("item_{}", i)}))
@@ -649,8 +607,6 @@ mod many_post_view_tests {
 			"Should show 200 status at least once, found {} times",
 			status_200_count
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 }
 
@@ -660,8 +616,6 @@ mod form_field_rendering_tests {
 
 	#[test]
 	fn test_textarea_field_rendering() {
-		let test_dir = create_test_output_dir("textarea_field");
-
 		// Test that textarea fields are properly rendered with correct attributes
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -744,14 +698,10 @@ mod form_field_rendering_tests {
 			"Should mark field as required at least once, found {} times",
 			required_count
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_required_field_marking() {
-		let test_dir = create_test_output_dir("required_fields");
-
 		// Test that required fields are properly marked with asterisk
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -837,14 +787,10 @@ mod form_field_rendering_tests {
 			"Should have optional field exactly once, found {} times",
 			optional_field_count
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 
 	#[test]
 	fn test_form_with_multiple_field_types() {
-		let test_dir = create_test_output_dir("multiple_field_types");
-
 		// Test rendering of various field types in a single form
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -1001,7 +947,5 @@ mod form_field_rendering_tests {
 			"Should have submit button at least once, found {} times",
 			submit_count
 		);
-
-		cleanup_test_output(&test_dir);
 	}
 }

@@ -8,10 +8,27 @@ mod mongodb_tests {
 	use reinhardt_db::backends::mongodb::{
 		MongoDBBackend, MongoDBBackendBuilder, MongoDBQueryBuilder, MongoDBSchemaEditor,
 	};
-	use reinhardt_test::fixtures::mongodb_container;
 	use rstest::*;
 	use serial_test::serial;
-	use testcontainers::{ContainerAsync, GenericImage};
+	use testcontainers::{ContainerAsync, GenericImage, core::WaitFor, runners::AsyncRunner};
+
+	#[fixture]
+	async fn mongodb_container() -> (ContainerAsync<GenericImage>, String, u16) {
+		let mongo = GenericImage::new("mongo", "7.0")
+			.with_wait_for(WaitFor::message_on_stdout("Waiting for connections"))
+			.start()
+			.await
+			.expect("Failed to start MongoDB container");
+
+		let port = mongo
+			.get_host_port_ipv4(27017)
+			.await
+			.expect("Failed to get MongoDB port");
+
+		let connection_string = format!("mongodb://127.0.0.1:{}", port);
+
+		(mongo, connection_string, port)
+	}
 
 	#[rstest]
 	#[tokio::test]

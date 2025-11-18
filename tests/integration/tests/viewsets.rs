@@ -19,8 +19,8 @@ mod di_field_injection_integration;
 #[path = "viewsets/di_method_injection_integration.rs"]
 mod di_method_injection_integration;
 
-#[path = "viewsets/filtering_integration.rs"]
-mod filtering_integration;
+// #[path = "viewsets/filtering_integration.rs"]
+// mod filtering_integration;
 
 #[path = "viewsets/manual_action_integration.rs"]
 mod manual_action_integration;
@@ -30,3 +30,12 @@ mod viewset_initialization_integration;
 
 #[path = "viewsets/router_tests.rs"]
 mod router_tests;
+
+#[path = "viewsets/permissions_integration.rs"]
+mod permissions_integration;
+
+#[path = "viewsets/pagination_viewsets_integration.rs"]
+mod pagination_viewsets_integration;
+
+#[path = "viewsets/filtering_orm_advanced_integration.rs"]
+mod filtering_orm_advanced_integration;
