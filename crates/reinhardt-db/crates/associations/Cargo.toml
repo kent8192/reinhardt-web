@@ -11,6 +11,9 @@ repository.workspace = true
 serde = { workspace = true }
 
 [dev-dependencies]
-reinhardt-test = { workspace = true }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
 rstest = { workspace = true }
 serial_test = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres"] }
+tokio = { workspace = true }
+testcontainers = { workspace = true }

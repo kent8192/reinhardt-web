@@ -30,5 +30,8 @@ async-trait = { workspace = true }
 once_cell = { workspace = true, optional = false }
 
 [dev-dependencies]
-reinhardt-test = { workspace = true }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
 tokio-test = "0.4"
+rstest = { workspace = true }
+testcontainers = { workspace = true }
+sqlx = { workspace = true }

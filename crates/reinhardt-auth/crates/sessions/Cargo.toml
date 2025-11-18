@@ -25,11 +25,7 @@ sea-query = { version = "1.0.0-rc.1", features = [
   "backend-postgres",
   "backend-mysql",
   "backend-sqlite",
-], optional = true }
-sea-query-binder = { version = "0.7", features = [
-  "sqlx-postgres",
-  "sqlx-mysql",
-  "sqlx-sqlite",
+  "sqlx-utils",
 ], optional = true }
 tokio = { workspace = true, optional = true, features = ["fs"] }
 fs2 = { version = "0.4", optional = true }
@@ -51,7 +47,6 @@ default = []
 database = [
   "reinhardt-db",
   "sea-query",
-  "sea-query-binder",
 ]
 file = ["tokio", "fs2"]
 cookie = ["base64", "aes-gcm", "rand", "hmac", "sha2"]
@@ -63,3 +58,10 @@ messagepack = ["rmp-serde"]
 tokio = { workspace = true }
 hyper = { workspace = true }
 sqlx = { workspace = true, features = ["any", "sqlite", "runtime-tokio"] }
+rstest = { workspace = true }
+serial_test = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
+tempfile = { workspace = true }
+filetime = "0.2"

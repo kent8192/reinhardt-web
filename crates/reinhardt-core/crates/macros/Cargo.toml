@@ -26,3 +26,5 @@ serde = { version = "1.0", features = ["derive"] }
 reinhardt-db = { workspace = true, features = ["orm", "migrations"] }
 reinhardt-signals = { path = "../signals", version = "0.1.0-alpha.1" }
 serial_test = { workspace = true }
+reinhardt-di = { workspace = true }
+async-trait = { workspace = true }

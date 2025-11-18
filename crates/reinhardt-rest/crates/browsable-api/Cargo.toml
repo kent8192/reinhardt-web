@@ -21,3 +21,8 @@ hyper = { workspace = true }
 tokio = { workspace = true }
 hyper = { workspace = true }
 bytes = { workspace = true }
+rstest = { workspace = true }
+testcontainers = { workspace = true }
+sqlx = { workspace = true }
+tempfile = { workspace = true }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }

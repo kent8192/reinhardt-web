@@ -28,10 +28,9 @@ database-optimization = ["dep:reinhardt-db"]
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util"] }
-sqlx = { version = "0.9.0-alpha.1", features = [
-  "runtime-tokio",
-  "tls-rustls",
-  "sqlite",
-] }
+sqlx = { workspace = true }
 tempfile = "3.0"
 env_logger = "0.11"
+rstest = { workspace = true }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
+testcontainers = { workspace = true }

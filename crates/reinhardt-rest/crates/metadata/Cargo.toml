@@ -17,6 +17,8 @@ serde_json = "1.0"
 thiserror = "2.0"
 
 [dev-dependencies]
+reinhardt-core = { workspace = true, features = ["exception", "http"] }
 tokio = { version = "1", features = ["full"] }
 bytes = "1.9"
 hyper = "1.5"
+rstest = { workspace = true }

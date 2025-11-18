@@ -65,3 +65,4 @@ testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
 reinhardt-db = { workspace = true, features = ["backends"] }
+uuid = { workspace = true }

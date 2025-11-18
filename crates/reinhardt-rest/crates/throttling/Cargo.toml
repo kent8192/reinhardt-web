@@ -26,3 +26,4 @@ geo-limiting = ["maxminddb"]
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util"] }
 tokio-test = { workspace = true }
+rstest = { workspace = true }

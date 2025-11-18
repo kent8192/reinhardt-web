@@ -18,6 +18,10 @@ sqlx = { workspace = true }
 
 [dev-dependencies]
 reinhardt-db = { workspace = true, features = ["backends", "pool", "postgres"] }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
+rstest = { workspace = true }
+testcontainers = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }
 
 [features]
 default = []

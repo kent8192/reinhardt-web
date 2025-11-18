@@ -20,3 +20,5 @@ syn = { version = "2.0", features = ["full", "extra-traits"] }
 
 [dev-dependencies]
 trybuild = "1.0"
+rstest = { workspace = true }
+tempfile = { workspace = true }

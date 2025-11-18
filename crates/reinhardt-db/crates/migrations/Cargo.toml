@@ -24,11 +24,7 @@ sea-query = { version = "1.0.0-rc.1", features = [
   "backend-postgres",
   "backend-mysql",
   "backend-sqlite",
-] }
-sea-query-binder = { version = "0.7", features = [
-  "sqlx-postgres",
-  "sqlx-mysql",
-  "sqlx-sqlite",
+  "sqlx-utils",
 ] }
 sea-schema = { version = "0.16", features = [
   "sqlx-postgres",
@@ -62,7 +58,11 @@ prettyplease = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
-reinhardt-test = { workspace = true }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
+tempfile = { workspace = true }
+rstest = { workspace = true }
+testcontainers = { workspace = true }
+serial_test = { workspace = true }
 
 [features]
 default = ["sqlite", "postgres", "mysql"]

@@ -50,3 +50,5 @@ testcontainers = { workspace = true }
 sea-orm = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-template = { workspace = true, features = ["renderers"] }
+rstest = { workspace = true }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
