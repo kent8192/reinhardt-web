@@ -3,9 +3,9 @@
 //! This module provides Django-style reverse URL resolution, allowing you to
 //! generate URLs from pattern names and parameters.
 
-use std::collections::HashMap;
-use crate::url_pattern::UrlPattern;
 use crate::url_namespace::UrlNamespace;
+use crate::url_pattern::UrlPattern;
+use std::collections::HashMap;
 
 /// A resolver for reverse URL resolution
 #[derive(Debug)]
@@ -89,7 +89,9 @@ impl UrlResolver {
 	/// ```
 	pub fn reverse(&self, name: &str, kwargs: HashMap<String, String>) -> Result<String, String> {
 		// Find pattern by name
-		let pattern = self.patterns.iter()
+		let pattern = self
+			.patterns
+			.iter()
 			.find(|p| p.name() == name)
 			.ok_or_else(|| format!("URL pattern '{}' not found", name))?;
 

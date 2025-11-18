@@ -3,9 +3,9 @@
 //! This module provides Django-style lazy URL objects that defer URL resolution
 //! until the actual URL string is needed.
 
-use std::sync::{Arc, RwLock};
-use std::collections::HashMap;
 use crate::url_resolver::UrlResolver;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 /// A lazy URL that defers resolution until needed
 #[derive(Clone)]
@@ -143,7 +143,8 @@ impl LazyUrl {
 		}
 
 		// Resolve the URL
-		let url = self.resolver
+		let url = self
+			.resolver
 			.reverse(&self.name, self.kwargs.clone())
 			.unwrap_or_else(|e| panic!("Failed to resolve URL '{}': {}", self.name, e));
 

@@ -34,7 +34,11 @@ impl UrlPattern {
 	/// assert_eq!(pattern.name(), "user-detail");
 	/// assert_eq!(pattern.template(), "/users/<id>/");
 	/// ```
-	pub fn new(name: impl Into<String>, template: impl Into<String>, namespace: Option<&str>) -> Self {
+	pub fn new(
+		name: impl Into<String>,
+		template: impl Into<String>,
+		namespace: Option<&str>,
+	) -> Self {
 		Self {
 			name: name.into(),
 			template: template.into(),

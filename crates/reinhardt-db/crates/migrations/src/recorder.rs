@@ -108,7 +108,8 @@ impl DatabaseMigrationRecorder {
 	pub async fn ensure_schema_table(&self) -> crate::Result<()> {
 		use reinhardt_backends::types::DatabaseType;
 		use sea_query::{
-			Alias, ColumnDef, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder, Table,
+			Alias, ColumnDef, Expr, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+			Table,
 		};
 
 		// Handle MongoDB separately (early return)
@@ -180,7 +181,7 @@ impl DatabaseMigrationRecorder {
 					ColumnDef::new(Alias::new("applied"))
 						.timestamp()
 						.not_null()
-						.default("CURRENT_TIMESTAMP"),
+						.default(Expr::current_timestamp()),
 				)
 				.to_owned();
 

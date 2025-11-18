@@ -129,9 +129,7 @@ fn convert_value_to_query_value(value: sea_query::Value) -> QueryValue {
 		SV::Json(_) => QueryValue::String(format!("{:?}", value)),
 
 		// Decimal - convert to f64
-		SV::Decimal(Some(d)) => {
-			QueryValue::Float(d.to_f64().unwrap_or(0.0))
-		}
+		SV::Decimal(Some(d)) => QueryValue::Float(d.to_f64().unwrap_or(0.0)),
 
 		// Arrays - convert to string
 		SV::Array(_, _) => QueryValue::String(format!("{:?}", value)),

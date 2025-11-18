@@ -521,36 +521,36 @@ impl ManifestStaticFilesStorage {
 	}
 
 	async fn save_manifest(&self) -> io::Result<()> {
-	let (manifest_path, manifest_json) = {
-		let hashed_files = self.hashed_files.read().unwrap();
-		let manifest_path = self.normalize_path(&self.manifest_name);
+		let (manifest_path, manifest_json) = {
+			let hashed_files = self.hashed_files.read().unwrap();
+			let manifest_path = self.normalize_path(&self.manifest_name);
 
-		// Create manifest with "paths" key to match Django's manifest structure
-		let manifest_data = serde_json::json!({
-			"paths": *hashed_files
-		});
+			// Create manifest with "paths" key to match Django's manifest structure
+			let manifest_data = serde_json::json!({
+				"paths": *hashed_files
+			});
 
-		let manifest_json =
-			serde_json::to_string_pretty(&manifest_data).map_err(io::Error::other)?;
+			let manifest_json =
+				serde_json::to_string_pretty(&manifest_data).map_err(io::Error::other)?;
 
-		(manifest_path, manifest_json)
-	};
+			(manifest_path, manifest_json)
+		};
 
-	tokio::fs::write(manifest_path, manifest_json).await
-}
+		tokio::fs::write(manifest_path, manifest_json).await
+	}
 
 	/// Load manifest from disk
 	pub async fn load_manifest(&self) -> io::Result<()> {
 		let manifest_path = self.normalize_path(&self.manifest_name);
-		
+
 		if !manifest_path.exists() {
 			// No manifest file exists yet, that's okay
 			return Ok(());
 		}
 
 		let manifest_content = tokio::fs::read_to_string(manifest_path).await?;
-		let manifest_data: serde_json::Value = serde_json::from_str(&manifest_content)
-			.map_err(io::Error::other)?;
+		let manifest_data: serde_json::Value =
+			serde_json::from_str(&manifest_content).map_err(io::Error::other)?;
 
 		// Extract "paths" object from manifest
 		if let Some(paths) = manifest_data.get("paths").and_then(|p| p.as_object()) {
@@ -572,20 +572,20 @@ impl ManifestStaticFilesStorage {
 	}
 
 	pub fn exists(&self, name: &str) -> bool {
-	// First check if we have a hashed version of this file
-	let hashed_files = self.hashed_files.read().unwrap();
-	if let Some(hashed_name) = hashed_files.get(name) {
-		// Check hashed file path
-		let hashed_path = self.normalize_path(hashed_name);
-		if hashed_path.exists() {
-			return true;
+		// First check if we have a hashed version of this file
+		let hashed_files = self.hashed_files.read().unwrap();
+		if let Some(hashed_name) = hashed_files.get(name) {
+			// Check hashed file path
+			let hashed_path = self.normalize_path(hashed_name);
+			if hashed_path.exists() {
+				return true;
+			}
 		}
-	}
-	drop(hashed_files);
+		drop(hashed_files);
 
-	// Fall back to checking original path
-	self.normalize_path(name).exists()
-}
+		// Fall back to checking original path
+		self.normalize_path(name).exists()
+	}
 
 	/// Open a file by its original name
 	pub async fn open(&self, name: &str) -> io::Result<Vec<u8>> {

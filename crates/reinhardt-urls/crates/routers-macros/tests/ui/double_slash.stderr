@@ -1,0 +1,6 @@
+error: Double slash '//' found at position 7
+       Paths should not contain consecutive slashes
+ --> tests/ui/double_slash.rs:5:20
+  |
+5 |     let _path = path!("/users//posts/");
+  |                       ^^^^^^^^^^^^^^^^

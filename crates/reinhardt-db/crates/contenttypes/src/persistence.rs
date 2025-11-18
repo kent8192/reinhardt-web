@@ -626,7 +626,10 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.fetch_one(&*self.pool)
 					.await
 					.map_err(|e| {
-						PersistenceError::DatabaseError(format!("Failed to insert content type: {}", e))
+						PersistenceError::DatabaseError(format!(
+							"Failed to insert content type: {}",
+							e
+						))
 					})?;
 
 				let id: i64 = id_row.try_get("id").map_err(|e| {
@@ -653,7 +656,10 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.execute(&*self.pool)
 					.await
 					.map_err(|e| {
-						PersistenceError::DatabaseError(format!("Failed to insert content type: {}", e))
+						PersistenceError::DatabaseError(format!(
+							"Failed to insert content type: {}",
+							e
+						))
 					})?;
 
 				// Get the last inserted ID using SQLite's last_insert_rowid()
@@ -661,7 +667,10 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.fetch_one(&*self.pool)
 					.await
 					.map_err(|e| {
-						PersistenceError::DatabaseError(format!("Failed to get last insert ID: {}", e))
+						PersistenceError::DatabaseError(format!(
+							"Failed to get last insert ID: {}",
+							e
+						))
 					})?;
 
 				let id: i64 = id_row.try_get("id").map_err(|e| {

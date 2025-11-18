@@ -1,0 +1,6 @@
+error: Empty parameter name at position 7
+       Parameter names must not be empty: use {param_name}
+ --> tests/ui/empty_parameter_name.rs:5:20
+  |
+5 |     let _path = path!("/users/{}/");
+  |                       ^^^^^^^^^^^^

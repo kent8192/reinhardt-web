@@ -1,0 +1,11 @@
+error: Invalid character ' ' at position 5
+       URL paths may only contain:
+       - Alphanumeric characters (a-z, A-Z, 0-9)
+       - Hyphens (-)
+       - Underscores (_)
+       - Slashes (/)
+       - Curly braces for parameters ({, })
+ --> tests/ui/invalid_character_space.rs:5:20
+  |
+5 |     let _path = path!("/user profiles/");
+  |                       ^^^^^^^^^^^^^^^^^

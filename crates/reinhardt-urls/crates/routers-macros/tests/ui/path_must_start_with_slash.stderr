@@ -1,0 +1,6 @@
+error: URL path must start with '/'
+       Example: path!("/users/") instead of path!("users/")
+ --> tests/ui/path_must_start_with_slash.rs:5:20
+  |
+5 |     let _path = path!("users/");
+  |                       ^^^^^^^^
