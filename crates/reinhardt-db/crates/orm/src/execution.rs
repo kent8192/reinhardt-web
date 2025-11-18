@@ -7,6 +7,7 @@
 use crate::Model;
 use reinhardt_backends;
 use reinhardt_backends::types::QueryValue;
+use rust_decimal::prelude::ToPrimitive;
 use sea_query::{Alias, Expr, ExprTrait, Func, Query, SelectStatement};
 use std::marker::PhantomData;
 
@@ -80,6 +81,7 @@ fn convert_value_to_query_value(value: sea_query::Value) -> QueryValue {
 		| SV::ChronoTime(None)
 		| SV::ChronoDateTime(None)
 		| SV::Json(None)
+		| SV::Decimal(None)
 		| SV::Array(_, None) => QueryValue::Null,
 
 		// Boolean
@@ -125,6 +127,11 @@ fn convert_value_to_query_value(value: sea_query::Value) -> QueryValue {
 
 		// JSON - convert to string
 		SV::Json(_) => QueryValue::String(format!("{:?}", value)),
+
+		// Decimal - convert to f64
+		SV::Decimal(Some(d)) => {
+			QueryValue::Float(d.to_f64().unwrap_or(0.0))
+		}
 
 		// Arrays - convert to string
 		SV::Array(_, _) => QueryValue::String(format!("{:?}", value)),
