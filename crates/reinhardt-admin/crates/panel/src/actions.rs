@@ -68,6 +68,94 @@ impl ActionResult {
 			ActionResult::PartialSuccess { message, .. } => message,
 		}
 	}
+
+	/// Create a success result
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_panel::ActionResult;
+	///
+	/// let result = ActionResult::success("Operation completed", 10);
+	/// assert_eq!(result.affected_count(), 10);
+	/// ```
+	pub fn success(message: impl Into<String>, affected_count: usize) -> Self {
+		Self::Success {
+			message: message.into(),
+			affected_count,
+		}
+	}
+
+	/// Create a warning result
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_panel::ActionResult;
+	///
+	/// let result = ActionResult::warning("No items selected", 0, ["Please select items"]);
+	/// assert!(result.is_success());
+	/// ```
+	pub fn warning(
+		message: impl Into<String>,
+		affected_count: usize,
+		warnings: impl IntoIterator<Item = impl Into<String>>,
+	) -> Self {
+		Self::Warning {
+			message: message.into(),
+			affected_count,
+			warnings: warnings.into_iter().map(Into::into).collect(),
+		}
+	}
+
+	/// Create an error result
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_panel::ActionResult;
+	///
+	/// let result = ActionResult::error("Operation failed", ["Database connection error"]);
+	/// assert!(!result.is_success());
+	/// ```
+	pub fn error(
+		message: impl Into<String>,
+		errors: impl IntoIterator<Item = impl Into<String>>,
+	) -> Self {
+		Self::Error {
+			message: message.into(),
+			errors: errors.into_iter().map(Into::into).collect(),
+		}
+	}
+
+	/// Create a partial success result
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_panel::ActionResult;
+	///
+	/// let result = ActionResult::partial_success(
+	///     "Partially completed",
+	///     8,
+	///     2,
+	///     ["Item 3 failed", "Item 7 failed"]
+	/// );
+	/// assert_eq!(result.affected_count(), 8);
+	/// ```
+	pub fn partial_success(
+		message: impl Into<String>,
+		succeeded_count: usize,
+		failed_count: usize,
+		errors: impl IntoIterator<Item = impl Into<String>>,
+	) -> Self {
+		Self::PartialSuccess {
+			message: message.into(),
+			succeeded_count,
+			failed_count,
+			errors: errors.into_iter().map(Into::into).collect(),
+		}
+	}
 }
 
 /// Trait for admin actions
@@ -155,6 +243,9 @@ pub trait AdminAction: Send + Sync {
 	) -> ActionResult;
 }
 
+/// Default description for delete action
+const DEFAULT_DELETE_DESCRIPTION: &str = "Delete selected items";
+
 /// Built-in action: Delete selected items
 ///
 /// # Examples
@@ -176,12 +267,7 @@ pub struct DeleteSelectedAction {
 impl DeleteSelectedAction {
 	/// Create a new delete action
 	pub fn new() -> Self {
-		Self {
-			description: "Delete selected items".to_string(),
-			database: None,
-			table_name: None,
-			pk_field: None,
-		}
+		Self::with_description(DEFAULT_DELETE_DESCRIPTION)
 	}
 
 	/// Create a delete action with custom description
@@ -249,19 +335,19 @@ impl AdminAction for DeleteSelectedAction {
 		let _ = user;
 
 		if item_ids.is_empty() {
-			return ActionResult::Warning {
-				message: "No items selected".to_string(),
-				affected_count: 0,
-				warnings: vec!["Please select at least one item to delete".to_string()],
-			};
+			return ActionResult::warning(
+				"No items selected",
+				0,
+				["Please select at least one item to delete"],
+			);
 		}
 
 		// If database is not configured, return placeholder success
 		let Some(ref database) = self.database else {
-			return ActionResult::Success {
-				message: format!("Successfully deleted {} item(s)", item_ids.len()),
-				affected_count: item_ids.len(),
-			};
+			return ActionResult::success(
+				format!("Successfully deleted {} item(s)", item_ids.len()),
+				item_ids.len(),
+			);
 		};
 
 		let table_name = self.table_name.as_deref().unwrap_or_else(|| model_name);
@@ -273,14 +359,13 @@ impl AdminAction for DeleteSelectedAction {
 			.bulk_delete_by_table(table_name, pk_field, item_ids.clone())
 			.await
 		{
-			Ok(affected) => ActionResult::Success {
-				message: format!("Successfully deleted {} item(s)", affected),
-				affected_count: affected as usize,
-			},
-			Err(e) => ActionResult::Error {
-				message: format!("Failed to delete items: {}", e),
-				errors: vec![e.to_string()],
-			},
+			Ok(affected) => ActionResult::success(
+				format!("Successfully deleted {} item(s)", affected),
+				affected as usize,
+			),
+			Err(e) => {
+				ActionResult::error(format!("Failed to delete items: {}", e), [format!("{}", e)])
+			}
 		}
 	}
 }
@@ -337,8 +422,7 @@ impl ActionRegistry {
 	/// registry.register(DeleteSelectedAction::new());
 	/// ```
 	pub fn register(&self, action: impl AdminAction + 'static) {
-		self.actions
-			.insert(action.name().to_string(), Box::new(action));
+		self.actions.insert(action.name().into(), Box::new(action));
 	}
 
 	/// Unregister an action
@@ -430,85 +514,35 @@ mod tests {
 			_user: &(dyn Any + Send + Sync),
 		) -> ActionResult {
 			if self.should_fail {
-				ActionResult::Error {
-					message: "Action failed".to_string(),
-					errors: vec!["Test error".to_string()],
-				}
+				ActionResult::error("Action failed", ["Test error"])
 			} else {
-				ActionResult::Success {
-					message: "Action succeeded".to_string(),
-					affected_count: item_ids.len(),
-				}
+				ActionResult::success("Action succeeded", item_ids.len())
 			}
 		}
 	}
 
 	#[test]
 	fn test_action_result_is_success() {
-		assert!(
-			ActionResult::Success {
-				message: "OK".to_string(),
-				affected_count: 5
-			}
-			.is_success()
-		);
+		assert!(ActionResult::success("OK", 5).is_success());
 
-		assert!(
-			ActionResult::Warning {
-				message: "Warning".to_string(),
-				affected_count: 3,
-				warnings: vec![]
-			}
-			.is_success()
-		);
+		assert!(ActionResult::warning("Warning", 3, [] as [&str; 0]).is_success());
 
-		assert!(
-			ActionResult::PartialSuccess {
-				message: "Partial".to_string(),
-				succeeded_count: 2,
-				failed_count: 1,
-				errors: vec![]
-			}
-			.is_success()
-		);
+		assert!(ActionResult::partial_success("Partial", 2, 1, [] as [&str; 0]).is_success());
 
-		assert!(
-			!ActionResult::Error {
-				message: "Error".to_string(),
-				errors: vec![]
-			}
-			.is_success()
-		);
+		assert!(!ActionResult::error("Error", [] as [&str; 0]).is_success());
 	}
 
 	#[test]
 	fn test_action_result_affected_count() {
-		assert_eq!(
-			ActionResult::Success {
-				message: "OK".to_string(),
-				affected_count: 5
-			}
-			.affected_count(),
-			5
-		);
+		assert_eq!(ActionResult::success("OK", 5).affected_count(), 5);
 
 		assert_eq!(
-			ActionResult::PartialSuccess {
-				message: "Partial".to_string(),
-				succeeded_count: 3,
-				failed_count: 2,
-				errors: vec![]
-			}
-			.affected_count(),
+			ActionResult::partial_success("Partial", 3, 2, [] as [&str; 0]).affected_count(),
 			3
 		);
 
 		assert_eq!(
-			ActionResult::Error {
-				message: "Error".to_string(),
-				errors: vec![]
-			}
-			.affected_count(),
+			ActionResult::error("Error", [] as [&str; 0]).affected_count(),
 			0
 		);
 	}
@@ -522,7 +556,7 @@ mod tests {
 
 		let user = ();
 		let result = action
-			.execute("User", vec!["1".to_string(), "2".to_string()], &user)
+			.execute("User", vec!["1".into(), "2".into()], &user)
 			.await;
 
 		assert!(result.is_success());
@@ -568,7 +602,7 @@ mod tests {
 	fn test_action_registry_register() {
 		let registry = ActionRegistry::new();
 		registry.register(TestAction {
-			name: "test_action".to_string(),
+			name: "test_action".into(),
 			should_fail: false,
 		});
 
@@ -614,18 +648,18 @@ mod tests {
 	fn test_action_registry_available_actions() {
 		let registry = ActionRegistry::new();
 		registry.register(TestAction {
-			name: "action1".to_string(),
+			name: "action1".into(),
 			should_fail: false,
 		});
 		registry.register(TestAction {
-			name: "action2".to_string(),
+			name: "action2".into(),
 			should_fail: false,
 		});
 
 		let actions = registry.available_actions();
 		assert_eq!(actions.len(), 2);
-		assert!(actions.contains(&"action1".to_string()));
-		assert!(actions.contains(&"action2".to_string()));
+		assert!(actions.contains(&"action1".into()));
+		assert!(actions.contains(&"action2".into()));
 	}
 
 	#[test]
