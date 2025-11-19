@@ -37,6 +37,47 @@ impl LogRecord {
 			extra: HashMap::new(),
 		}
 	}
+
+	/// Adds an extra field to the log record (builder style).
+	///
+	/// This method returns `self`, allowing method chaining.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_logging::{LogRecord, LogLevel};
+	/// use serde_json::json;
+	///
+	/// let record = LogRecord::new(LogLevel::Info, "app", "User logged in")
+	///     .with_extra("user_id", json!(123))
+	///     .with_extra("ip_address", json!("192.168.1.1"));
+	///
+	/// assert_eq!(record.extra.get("user_id").unwrap(), &json!(123));
+	/// ```
+	pub fn with_extra(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+		self.extra.insert(key.into(), value);
+		self
+	}
+
+	/// Adds an extra field to the log record (mutable reference style).
+	///
+	/// This method modifies the log record in place.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_logging::{LogRecord, LogLevel};
+	/// use serde_json::json;
+	///
+	/// let mut record = LogRecord::new(LogLevel::Info, "app", "User action");
+	/// record.add_extra("action", json!("login"));
+	/// record.add_extra("timestamp", json!(1234567890));
+	///
+	/// assert_eq!(record.extra.len(), 2);
+	/// ```
+	pub fn add_extra(&mut self, key: impl Into<String>, value: serde_json::Value) {
+		self.extra.insert(key.into(), value);
+	}
 }
 
 pub struct Logger {
@@ -99,8 +140,44 @@ impl Logger {
 		self.log(LogLevel::Debug, message).await;
 	}
 
+	/// Synchronous version of debug log
+	///
+	/// This method provides a synchronous interface for logging debug messages.
+	/// Note that if handlers perform async operations, they will be blocked.
+	/// Prefer using the async `debug` method when possible.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_logging::Logger;
+	///
+	/// let logger = Logger::new("my_logger");
+	/// logger.debug_sync("This is a synchronous debug message");
+	/// ```
+	pub fn debug_sync(&self, message: impl Into<String>) {
+		self.log_sync(LogLevel::Debug, message);
+	}
+
 	pub async fn info(&self, message: impl Into<String>) {
 		self.log(LogLevel::Info, message).await;
+	}
+
+	/// Synchronous version of info log
+	///
+	/// This method provides a synchronous interface for logging info messages.
+	/// Note that if handlers perform async operations, they will be blocked.
+	/// Prefer using the async `info` method when possible.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_logging::Logger;
+	///
+	/// let logger = Logger::new("my_logger");
+	/// logger.info_sync("This is a synchronous info message");
+	/// ```
+	pub fn info_sync(&self, message: impl Into<String>) {
+		self.log_sync(LogLevel::Info, message);
 	}
 
 	pub async fn warning(&self, message: impl Into<String>) {
@@ -161,5 +238,23 @@ impl Logger {
 
 	pub async fn error(&self, message: impl Into<String>) {
 		self.log(LogLevel::Error, message).await;
+	}
+
+	/// Synchronous version of error log
+	///
+	/// This method provides a synchronous interface for logging error messages.
+	/// Note that if handlers perform async operations, they will be blocked.
+	/// Prefer using the async `error` method when possible.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_logging::Logger;
+	///
+	/// let logger = Logger::new("my_logger");
+	/// logger.error_sync("This is a synchronous error message");
+	/// ```
+	pub fn error_sync(&self, message: impl Into<String>) {
+		self.log_sync(LogLevel::Error, message);
 	}
 }

@@ -67,9 +67,60 @@ impl LoggerHandle {
 		self.inner.warning(message.into()).await;
 	}
 
+	/// Log a debug message synchronously.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_logging::get_logger;
+	///
+	/// let logger = get_logger("myapp");
+	/// logger.debug_sync("This is a debug message");
+	/// ```
+	pub fn debug_sync(&self, message: impl Into<String>) {
+		self.inner.debug_sync(message);
+	}
+
+	/// Log an info message synchronously.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_logging::get_logger;
+	///
+	/// let logger = get_logger("myapp");
+	/// logger.info_sync("This is an info message");
+	/// ```
+	pub fn info_sync(&self, message: impl Into<String>) {
+		self.inner.info_sync(message);
+	}
+
 	/// Log a warning message synchronously.
-	pub fn warning_sync(&self, message: &str) {
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_logging::get_logger;
+	///
+	/// let logger = get_logger("myapp");
+	/// logger.warning_sync("This is a warning message");
+	/// ```
+	pub fn warning_sync(&self, message: impl Into<String>) {
 		self.inner.warning_sync(message);
+	}
+
+	/// Log an error message synchronously.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_logging::get_logger;
+	///
+	/// let logger = get_logger("myapp");
+	/// logger.error_sync("This is an error message");
+	/// ```
+	pub fn error_sync(&self, message: impl Into<String>) {
+		self.inner.error_sync(message);
 	}
 }
 
