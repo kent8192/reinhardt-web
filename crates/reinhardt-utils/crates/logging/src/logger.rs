@@ -25,11 +25,11 @@ pub struct LogRecord {
 }
 
 impl LogRecord {
-	pub fn new(level: LogLevel, logger_name: String, message: String) -> Self {
+	pub fn new(level: LogLevel, logger_name: impl Into<String>, message: impl Into<String>) -> Self {
 		Self {
 			level,
-			logger_name,
-			message,
+			logger_name: logger_name.into(),
+			message: message.into(),
 			extra: HashMap::new(),
 		}
 	}
@@ -42,9 +42,9 @@ pub struct Logger {
 }
 
 impl Logger {
-	pub fn new(name: String) -> Self {
+	pub fn new(name: impl Into<String>) -> Self {
 		Self {
-			name,
+			name: name.into(),
 			handlers: Arc::new(Mutex::new(Vec::new())),
 			level: Arc::new(Mutex::new(LogLevel::Debug)),
 		}
@@ -71,13 +71,13 @@ impl Logger {
 		}
 	}
 
-	async fn log(&self, level: LogLevel, message: String) {
+	async fn log(&self, level: LogLevel, message: impl Into<String>) {
 		let current_level = *self.level.lock().unwrap();
 		if level < current_level {
 			return;
 		}
 
-		let record = LogRecord::new(level, self.name.clone(), message);
+		let record = LogRecord::new(level, &self.name, message);
 
 		// Clone Arc references to handlers before releasing the lock
 		let handlers: Vec<Arc<dyn LogHandler>> = {
@@ -91,15 +91,15 @@ impl Logger {
 		}
 	}
 
-	pub async fn debug(&self, message: String) {
+	pub async fn debug(&self, message: impl Into<String>) {
 		self.log(LogLevel::Debug, message).await;
 	}
 
-	pub async fn info(&self, message: String) {
+	pub async fn info(&self, message: impl Into<String>) {
 		self.log(LogLevel::Info, message).await;
 	}
 
-	pub async fn warning(&self, message: String) {
+	pub async fn warning(&self, message: impl Into<String>) {
 		self.log(LogLevel::Warning, message).await;
 	}
 
@@ -114,20 +114,20 @@ impl Logger {
 	/// ```rust
 	/// use reinhardt_logging::Logger;
 	///
-	/// let logger = Logger::new("my_logger".to_string());
+	/// let logger = Logger::new("my_logger");
 	/// logger.warning_sync("This is a synchronous warning");
 	/// ```
-	pub fn warning_sync(&self, message: &str) {
-		self.log_sync(LogLevel::Warning, message.to_string());
+	pub fn warning_sync(&self, message: impl Into<String>) {
+		self.log_sync(LogLevel::Warning, message);
 	}
 
-	fn log_sync(&self, level: LogLevel, message: String) {
+	fn log_sync(&self, level: LogLevel, message: impl Into<String>) {
 		let current_level = *self.level.lock().unwrap();
 		if level < current_level {
 			return;
 		}
 
-		let record = LogRecord::new(level, self.name.clone(), message);
+		let record = LogRecord::new(level, &self.name, message);
 
 		// Clone Arc references to handlers before releasing the lock
 		let handlers: Vec<Arc<dyn LogHandler>> = {
@@ -155,7 +155,7 @@ impl Logger {
 		}
 	}
 
-	pub async fn error(&self, message: String) {
+	pub async fn error(&self, message: impl Into<String>) {
 		self.log(LogLevel::Error, message).await;
 	}
 }
