@@ -107,9 +107,11 @@
 //! - ✅ Custom template filters (truncate_chars, intcomma, pluralize, default, add_class)
 //! - ✅ Custom template functions/tags (range, now, cycle, static, url)
 
+pub mod context;
 pub mod get_or_404;
 pub mod redirect;
 pub mod render;
+pub mod url;
 
 // ORM integration (feature-gated)
 #[cfg(feature = "database")]
@@ -140,11 +142,13 @@ pub mod tera_filters;
 pub mod tera_functions;
 
 // Re-export core functions
+pub use context::TemplateContext;
 pub use get_or_404::{
 	GetError, exists_or_404_response, get_list_or_404_response, get_or_404_response,
 };
-pub use redirect::{redirect, redirect_permanent};
+pub use redirect::{redirect, redirect_permanent, redirect_to, redirect_permanent_to};
 pub use render::{render_html, render_json, render_json_pretty, render_text};
+pub use url::{Url, UrlError};
 
 // Re-export ORM functions (feature-gated)
 #[cfg(feature = "database")]
@@ -152,11 +156,18 @@ pub use orm::{get_list_or_404, get_object_or_404};
 
 // Re-export template functions (feature-gated)
 #[cfg(feature = "templates")]
-pub use template::{render_template, render_to_response};
+pub use template::{
+	render_template, render_template_with_context, render_to_response,
+	render_to_response_with_context,
+};
 
 // Re-export error page functions (feature-gated)
 #[cfg(feature = "templates")]
 pub use error_pages::{
-	bad_request, page_not_found, permission_denied, render_debug_error_page, render_error_page,
-	server_error,
+	ErrorPageBuilder, bad_request, page_not_found, permission_denied, render_debug_error_page,
+	render_error_page, server_error,
 };
+
+// Re-export template cache types (feature-gated)
+#[cfg(feature = "templates")]
+pub use template_cache::{EvictedEntry, TemplateCacheError};
