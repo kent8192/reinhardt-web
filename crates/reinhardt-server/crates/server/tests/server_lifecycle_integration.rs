@@ -175,17 +175,69 @@ async fn spawn_server_with_shutdown(
 			.map_err(|e| anyhow::anyhow!("{}", e))
 	});
 
-	// Give server time to start
-	sleep(Duration::from_millis(50)).await;
+	// Wait for server to be ready with retry logic
+	wait_for_server_ready(addr).await;
 
 	(addr, handle)
 }
 
-/// Helper function to make HTTP request
+/// Wait for server to be ready to accept connections
+async fn wait_for_server_ready(addr: SocketAddr) {
+	let max_retries = 50;
+	let retry_delay = Duration::from_millis(10);
+
+	for attempt in 0..max_retries {
+		if tokio::net::TcpStream::connect(addr).await.is_ok() {
+			// Server is listening, give it a moment to fully initialize
+			sleep(Duration::from_millis(10)).await;
+			return;
+		}
+
+		if attempt < max_retries - 1 {
+			sleep(retry_delay).await;
+		}
+	}
+
+	panic!("Server did not start listening on {} within timeout", addr);
+}
+
+/// Helper function to make HTTP request with retry logic
 async fn make_request(addr: SocketAddr, path: &str) -> Result<String> {
+	make_request_with_retries(addr, path, 3).await
+}
+
+/// Make HTTP request with configurable retry count
+async fn make_request_with_retries(
+	addr: SocketAddr,
+	path: &str,
+	max_retries: usize,
+) -> Result<String> {
 	let url = format!("http://{}{}", addr, path);
-	let response = timeout(Duration::from_secs(5), reqwest::get(&url)).await??;
-	Ok(response.text().await?)
+
+	let mut last_error = None;
+
+	for attempt in 0..max_retries {
+		match timeout(Duration::from_secs(2), reqwest::get(&url)).await {
+			Ok(Ok(response)) => {
+				return Ok(response.text().await?);
+			}
+			Ok(Err(e)) => {
+				last_error = Some(e.into());
+				if attempt < max_retries - 1 {
+					sleep(Duration::from_millis(100)).await;
+				}
+			}
+			Err(e) => {
+				last_error = Some(e.into());
+				if attempt < max_retries - 1 {
+					sleep(Duration::from_millis(100)).await;
+				}
+			}
+		}
+	}
+
+	Err(last_error
+		.unwrap_or_else(|| anyhow::anyhow!("Request failed after {} retries", max_retries)))
 }
 
 /// Test: Server starts successfully and accepts connections
@@ -562,7 +614,7 @@ async fn test_requests_during_partial_shutdown() {
 	)
 	.await;
 
-	let request_task = tokio::spawn({ async move { make_request(delayed_addr, "/").await } });
+	let request_task = tokio::spawn(async move { make_request(delayed_addr, "/").await });
 
 	// Wait for request to start
 	// Poll until processing starts

@@ -194,16 +194,17 @@ mod orm_integration_tests {
 	async fn setup_test_pool(_init_drivers: ()) -> Arc<AnyPool> {
 		// Use single connection pool for in-memory SQLite with shared cache
 		use sqlx::pool::PoolOptions;
+		let database_url = "sqlite::memory:?mode=rwc&cache=shared";
 		let pool = PoolOptions::new()
 			.min_connections(1)
 			.max_connections(1)
-			.connect("sqlite::memory:?mode=rwc&cache=shared")
+			.connect(database_url)
 			.await
 			.expect("Failed to connect");
 
 		// Create table
 		use reinhardt_contenttypes::persistence::ContentTypePersistence;
-		let persistence = ContentTypePersistence::from_pool(pool.clone().into());
+		let persistence = ContentTypePersistence::from_pool(pool.clone().into(), database_url);
 		persistence
 			.create_table()
 			.await
@@ -413,16 +414,17 @@ mod combined_tests {
 	) {
 		// Use single connection pool for in-memory SQLite with shared cache
 		use sqlx::pool::PoolOptions;
+		let database_url = "sqlite::memory:?mode=rwc&cache=shared";
 		let pool = PoolOptions::new()
 			.min_connections(1)
 			.max_connections(1)
-			.connect("sqlite::memory:?mode=rwc&cache=shared")
+			.connect(database_url)
 			.await
 			.expect("Failed to connect");
 
 		// Create table
 		use reinhardt_contenttypes::persistence::ContentTypePersistence;
-		let persistence = ContentTypePersistence::from_pool(pool.clone().into());
+		let persistence = ContentTypePersistence::from_pool(pool.clone().into(), database_url);
 		persistence
 			.create_table()
 			.await

@@ -808,6 +808,7 @@ async fn test_same_user_different_backends() {
 /// Custom authentication backend that uses database for user lookup
 #[derive(Clone)]
 struct DatabaseAuthBackend {
+	#[allow(dead_code)]
 	db_url: String,
 	pool: Arc<sqlx::PgPool>,
 }

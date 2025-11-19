@@ -27,7 +27,7 @@ fn render_template(template_str: &str, messages: Vec<Message>) -> String {
 				"level": m.level.value(),
 				"level_tag": m.level.as_str(),
 				"text": m.text,
-				"extra_tags": m.extra_tags,
+				"extra_tags": m.extra_tags.join(" "),
 			})
 		})
 		.collect();
@@ -382,7 +382,7 @@ async fn test_message_persistence_across_storage_operations(
 	storage.add(Message::new(Level::Info, "Record created"));
 
 	// Get messages (simulating retrieval for template)
-	let messages = storage.get();
+	let messages = storage.get_all();
 
 	let template = r#"
 		<div>
@@ -735,7 +735,7 @@ async fn test_message_storage_clear_after_retrieval(
 	storage.add(Message::new(Level::Info, "One-time message"));
 
 	// First retrieval - should get message
-	let messages1 = storage.get();
+	let messages1 = storage.get_all();
 	assert_eq!(messages1.len(), 1);
 
 	let template = r#"
@@ -749,7 +749,7 @@ async fn test_message_storage_clear_after_retrieval(
 	storage.clear();
 
 	// Second retrieval - should be empty
-	let messages2 = storage.get();
+	let messages2 = storage.peek();
 	assert_eq!(messages2.len(), 0);
 
 	let rendered2 = render_template(template, messages2);

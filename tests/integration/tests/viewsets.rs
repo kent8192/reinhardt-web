@@ -37,5 +37,5 @@ mod permissions_integration;
 #[path = "viewsets/pagination_viewsets_integration.rs"]
 mod pagination_viewsets_integration;
 
-#[path = "viewsets/filtering_orm_advanced_integration.rs"]
-mod filtering_orm_advanced_integration;
+#[path = "viewsets/filtering_viewsets_integration.rs"]
+mod filtering_viewsets_integration;

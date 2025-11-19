@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::{Request, Response};
-use reinhardt_viewsets::{ModelViewSet, ReadOnlyModelViewSet};
+use reinhardt_viewsets::ReadOnlyModelViewSet;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
@@ -162,7 +162,10 @@ impl Paginator for CursorPagination {
 
 		let start_idx = if let Some(cursor_str) = cursor {
 			if let Some(cursor_id) = self.decode_cursor(cursor_str) {
-				items.iter().position(|p| p.id > cursor_id).unwrap_or(items.len())
+				items
+					.iter()
+					.position(|p| p.id > cursor_id)
+					.unwrap_or(items.len())
 			} else {
 				0
 			}
@@ -180,7 +183,9 @@ impl Paginator for CursorPagination {
 		};
 
 		let prev_cursor = if start_idx > 0 {
-			items.get(start_idx.saturating_sub(1)).map(|p| self.encode_cursor(p.id))
+			items
+				.get(start_idx.saturating_sub(1))
+				.map(|p| self.encode_cursor(p.id))
 		} else {
 			None
 		};
@@ -214,11 +219,6 @@ impl LimitOffsetPagination {
 			default_limit: 10,
 			max_limit: 100,
 		}
-	}
-
-	fn with_default_limit(mut self, limit: usize) -> Self {
-		self.default_limit = limit;
-		self
 	}
 
 	fn get_limit(&self, request: &Request) -> usize {
@@ -266,7 +266,6 @@ impl Paginator for LimitOffsetPagination {
 // ============================================================================
 
 struct PaginatedViewSet<P: Paginator> {
-	base: ModelViewSet<Product, ProductSerializer>,
 	paginator: P,
 	products: Arc<Mutex<Vec<Product>>>,
 }
@@ -279,12 +278,15 @@ impl<P: Paginator> PaginatedViewSet<P> {
 				id: i,
 				name: format!("Product {}", i),
 				price: 10.0 + (i as f64),
-				category: if i % 2 == 0 { "A".to_string() } else { "B".to_string() },
+				category: if i % 2 == 0 {
+					"A".to_string()
+				} else {
+					"B".to_string()
+				},
 			});
 		}
 
 		Self {
-			base: ModelViewSet::new("products"),
 			paginator,
 			products: Arc::new(Mutex::new(products)),
 		}
@@ -294,7 +296,11 @@ impl<P: Paginator> PaginatedViewSet<P> {
 		let products = self.products.lock().unwrap();
 
 		if let Some(category) = request.query_params.get("category") {
-			products.iter().filter(|p| &p.category == category).cloned().collect()
+			products
+				.iter()
+				.filter(|p| &p.category == category)
+				.cloned()
+				.collect()
 		} else {
 			products.clone()
 		}
@@ -305,7 +311,7 @@ impl<P: Paginator> PaginatedViewSet<P> {
 		let result = self.paginator.paginate(&filtered, request);
 
 		let json = serde_json::to_string(&result).unwrap();
-		Ok(Response::new(StatusCode::OK, Bytes::from(json)))
+		Ok(Response::new(StatusCode::OK).with_body(json))
 	}
 }
 
@@ -335,7 +341,11 @@ async fn test_page_number_pagination_default() {
 	assert_eq!(result.total, 50);
 
 	match result.page_info {
-		PageInfo::PageNumber { page, page_size, total_pages } => {
+		PageInfo::PageNumber {
+			page,
+			page_size,
+			total_pages,
+		} => {
 			assert_eq!(page, 1);
 			assert_eq!(page_size, 10);
 			assert_eq!(total_pages, 5);
@@ -393,7 +403,11 @@ async fn test_page_number_pagination_custom_page_size() {
 	assert_eq!(result.data[4].id, 10);
 
 	match result.page_info {
-		PageInfo::PageNumber { page, page_size, total_pages } => {
+		PageInfo::PageNumber {
+			page,
+			page_size,
+			total_pages,
+		} => {
 			assert_eq!(page, 2);
 			assert_eq!(page_size, 5);
 			assert_eq!(total_pages, 10);
@@ -467,7 +481,12 @@ async fn test_cursor_pagination_first_page() {
 	assert_eq!(result.data[4].id, 5);
 
 	match result.page_info {
-		PageInfo::Cursor { next_cursor, prev_cursor, has_next, has_prev } => {
+		PageInfo::Cursor {
+			next_cursor,
+			prev_cursor,
+			has_next,
+			has_prev,
+		} => {
 			assert_eq!(next_cursor, Some("5".to_string()));
 			assert_eq!(prev_cursor, None);
 			assert!(has_next);
@@ -499,7 +518,11 @@ async fn test_cursor_pagination_next_page() {
 	assert_eq!(result.data[4].id, 10);
 
 	match result.page_info {
-		PageInfo::Cursor { next_cursor, has_prev, .. } => {
+		PageInfo::Cursor {
+			next_cursor,
+			has_prev,
+			..
+		} => {
 			assert_eq!(next_cursor, Some("10".to_string()));
 			assert!(has_prev);
 		}
@@ -524,12 +547,16 @@ async fn test_cursor_pagination_last_page() {
 	let response = viewset.list(&request).await.unwrap();
 	let result: PaginationResult = serde_json::from_slice(&response.body).unwrap();
 
-	assert_eq!(result.data.len(), 4);
+	assert_eq!(result.data.len(), 5);
 	assert_eq!(result.data[0].id, 46);
-	assert_eq!(result.data[3].id, 49);
+	assert_eq!(result.data[4].id, 50);
 
 	match result.page_info {
-		PageInfo::Cursor { next_cursor, has_next, .. } => {
+		PageInfo::Cursor {
+			next_cursor,
+			has_next,
+			..
+		} => {
 			assert_eq!(next_cursor, None);
 			assert!(!has_next);
 		}
@@ -558,7 +585,11 @@ async fn test_limit_offset_pagination_default() {
 	assert_eq!(result.data[0].id, 1);
 
 	match result.page_info {
-		PageInfo::LimitOffset { limit, offset, has_next } => {
+		PageInfo::LimitOffset {
+			limit,
+			offset,
+			has_next,
+		} => {
 			assert_eq!(limit, 10);
 			assert_eq!(offset, 0);
 			assert!(has_next);
@@ -589,7 +620,11 @@ async fn test_limit_offset_pagination_custom() {
 	assert_eq!(result.data[4].id, 25);
 
 	match result.page_info {
-		PageInfo::LimitOffset { limit, offset, has_next } => {
+		PageInfo::LimitOffset {
+			limit,
+			offset,
+			has_next,
+		} => {
 			assert_eq!(limit, 5);
 			assert_eq!(offset, 20);
 			assert!(has_next);

@@ -51,8 +51,8 @@ async fn test_session_creation_on_login(
 		r#"
 		CREATE TABLE IF NOT EXISTS sessions (
 			session_key TEXT PRIMARY KEY,
-			session_data JSONB NOT NULL,
-			expire_date TIMESTAMP NOT NULL,
+			session_data TEXT NOT NULL,
+			expire_date BIGINT NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 		"#,
@@ -100,7 +100,9 @@ async fn test_session_creation_on_login(
 			.expect("Failed to query session");
 
 	let stored_key: String = result.get("session_key");
-	let stored_data: serde_json::Value = result.get("session_data");
+	let stored_data_str: String = result.get("session_data");
+	let stored_data: serde_json::Value =
+		serde_json::from_str(&stored_data_str).expect("Failed to parse session data");
 
 	assert_eq!(stored_key, session_key);
 	assert_eq!(
@@ -253,8 +255,8 @@ async fn test_session_invalidation_on_logout(
 		r#"
 		CREATE TABLE IF NOT EXISTS sessions (
 			session_key TEXT PRIMARY KEY,
-			session_data JSONB NOT NULL,
-			expire_date TIMESTAMP NOT NULL
+			session_data TEXT NOT NULL,
+			expire_date BIGINT NOT NULL
 		)
 		"#,
 	)
@@ -328,8 +330,8 @@ async fn test_session_invalidation_clears_all_data(
 		r#"
 		CREATE TABLE IF NOT EXISTS sessions (
 			session_key TEXT PRIMARY KEY,
-			session_data JSONB NOT NULL,
-			expire_date TIMESTAMP NOT NULL
+			session_data TEXT NOT NULL,
+			expire_date BIGINT NOT NULL
 		)
 		"#,
 	)
@@ -366,7 +368,9 @@ async fn test_session_invalidation_clears_all_data(
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to fetch session");
-	let data_before: serde_json::Value = result_before.get("session_data");
+	let data_before_str: String = result_before.get("session_data");
+	let data_before: serde_json::Value =
+		serde_json::from_str(&data_before_str).expect("Failed to parse session data");
 	assert!(data_before.get("_auth_user_id").is_some());
 	assert!(data_before.get("_csrf_token").is_some());
 	assert!(data_before.get("_user_language").is_some());
@@ -969,8 +973,8 @@ async fn test_session_timeout_and_idle_detection(
 		r#"
 		CREATE TABLE IF NOT EXISTS sessions (
 			session_key TEXT PRIMARY KEY,
-			session_data JSONB NOT NULL,
-			expire_date TIMESTAMP NOT NULL,
+			session_data TEXT NOT NULL,
+			expire_date BIGINT NOT NULL,
 			last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 		"#,

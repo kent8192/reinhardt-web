@@ -324,7 +324,7 @@ async fn test_session_database_cache_integration(
 		CREATE TABLE IF NOT EXISTS sessions (
 			session_key VARCHAR(255) PRIMARY KEY,
 			session_data TEXT NOT NULL,
-			expire_date TIMESTAMP NOT NULL
+			expire_date BIGINT NOT NULL
 		)
 		"#,
 	)
@@ -341,7 +341,7 @@ async fn test_session_database_cache_integration(
 	sqlx::query("INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)")
 		.bind(session_key)
 		.bind(&serialized)
-		.bind(expire_date)
+		.bind(expire_date.timestamp())
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to insert session");
@@ -391,7 +391,7 @@ async fn test_cache_miss_fallback_to_database(
 		CREATE TABLE IF NOT EXISTS sessions (
 			session_key VARCHAR(255) PRIMARY KEY,
 			session_data TEXT NOT NULL,
-			expire_date TIMESTAMP NOT NULL
+			expire_date BIGINT NOT NULL
 		)
 		"#,
 	)
@@ -408,7 +408,7 @@ async fn test_cache_miss_fallback_to_database(
 	sqlx::query("INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)")
 		.bind(session_key)
 		.bind(&serialized)
-		.bind(expire_date)
+		.bind(expire_date.timestamp())
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to insert session");
@@ -462,7 +462,7 @@ async fn test_cache_performance_improvement(
 		CREATE TABLE IF NOT EXISTS sessions (
 			session_key VARCHAR(255) PRIMARY KEY,
 			session_data TEXT NOT NULL,
-			expire_date TIMESTAMP NOT NULL
+			expire_date BIGINT NOT NULL
 		)
 		"#,
 	)
@@ -482,7 +482,7 @@ async fn test_cache_performance_improvement(
 		)
 		.bind(&session_key)
 		.bind(&serialized)
-		.bind(expire_date)
+		.bind(expire_date.timestamp())
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to insert session");
@@ -556,7 +556,7 @@ async fn test_cache_warming_for_active_sessions(
 		CREATE TABLE IF NOT EXISTS sessions (
 			session_key VARCHAR(255) PRIMARY KEY,
 			session_data TEXT NOT NULL,
-			expire_date TIMESTAMP NOT NULL,
+			expire_date BIGINT NOT NULL,
 			access_count INT DEFAULT 0
 		)
 		"#,
@@ -577,7 +577,7 @@ async fn test_cache_warming_for_active_sessions(
 		)
 		.bind(&session_key)
 		.bind(&serialized)
-		.bind(expire_date)
+		.bind(expire_date.timestamp())
 		.bind(i % 5) // Simulate varying access counts
 		.execute(pool.as_ref())
 		.await

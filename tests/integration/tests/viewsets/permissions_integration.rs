@@ -107,7 +107,11 @@ struct IsAuthenticated;
 
 impl Permission for IsAuthenticated {
 	fn has_permission(&self, request: &Request) -> bool {
-		request.headers.get("authorization").and_then(|h| h.to_str().ok()).is_some()
+		request
+			.headers
+			.get("authorization")
+			.and_then(|h| h.to_str().ok())
+			.is_some()
 	}
 
 	fn has_object_permission(&self, request: &Request, _obj: &Article) -> bool {
@@ -160,7 +164,9 @@ impl Permission for IsOwner {
 	}
 
 	fn has_object_permission(&self, request: &Request, obj: &Article) -> bool {
-		self.get_user_id(request).map(|user_id| user_id == obj.author_id).unwrap_or(false)
+		self.get_user_id(request)
+			.map(|user_id| user_id == obj.author_id)
+			.unwrap_or(false)
 	}
 }
 
@@ -302,7 +308,7 @@ impl<P: Permission> PermissionViewSet<P> {
 
 	async fn list(&self, request: &Request) -> Result<Response, String> {
 		if !self.permission.has_permission(request) {
-			return Ok(Response::new(StatusCode::FORBIDDEN, Bytes::from("Permission denied")));
+			return Ok(Response::new(StatusCode::FORBIDDEN).with_body("Permission denied"));
 		}
 
 		let articles = sqlx::query_as::<_, Article>(
@@ -318,12 +324,12 @@ impl<P: Permission> PermissionViewSet<P> {
 			.collect();
 
 		let json = serde_json::to_string(&filtered).unwrap();
-		Ok(Response::new(StatusCode::OK, Bytes::from(json)))
+		Ok(Response::new(StatusCode::OK).with_body(json))
 	}
 
 	async fn retrieve(&self, request: &Request, id: i64) -> Result<Response, String> {
 		if !self.permission.has_permission(request) {
-			return Ok(Response::new(StatusCode::FORBIDDEN, Bytes::from("Permission denied")));
+			return Ok(Response::new(StatusCode::FORBIDDEN).with_body("Permission denied"));
 		}
 
 		let article = sqlx::query_as::<_, Article>(
@@ -337,21 +343,19 @@ impl<P: Permission> PermissionViewSet<P> {
 		match article {
 			Some(article) => {
 				if !self.permission.has_object_permission(request, &article) {
-					return Ok(Response::new(
-						StatusCode::FORBIDDEN,
-						Bytes::from("Permission denied for this object"),
-					));
+					return Ok(Response::new(StatusCode::FORBIDDEN)
+						.with_body("Permission denied for this object"));
 				}
 				let json = serde_json::to_string(&article).unwrap();
-				Ok(Response::new(StatusCode::OK, Bytes::from(json)))
+				Ok(Response::new(StatusCode::OK).with_body(json))
 			}
-			None => Ok(Response::new(StatusCode::NOT_FOUND, Bytes::from("Not found"))),
+			None => Ok(Response::new(StatusCode::NOT_FOUND).with_body("Not found")),
 		}
 	}
 
 	async fn update(&self, request: &Request, id: i64) -> Result<Response, String> {
 		if !self.permission.has_permission(request) {
-			return Ok(Response::new(StatusCode::FORBIDDEN, Bytes::from("Permission denied")));
+			return Ok(Response::new(StatusCode::FORBIDDEN).with_body("Permission denied"));
 		}
 
 		let article = sqlx::query_as::<_, Article>(
@@ -365,14 +369,12 @@ impl<P: Permission> PermissionViewSet<P> {
 		match article {
 			Some(article) => {
 				if !self.permission.has_object_permission(request, &article) {
-					return Ok(Response::new(
-						StatusCode::FORBIDDEN,
-						Bytes::from("Permission denied for this object"),
-					));
+					return Ok(Response::new(StatusCode::FORBIDDEN)
+						.with_body("Permission denied for this object"));
 				}
-				Ok(Response::new(StatusCode::OK, Bytes::from("Updated")))
+				Ok(Response::new(StatusCode::OK).with_body("Updated"))
 			}
-			None => Ok(Response::new(StatusCode::NOT_FOUND, Bytes::from("Not found"))),
+			None => Ok(Response::new(StatusCode::NOT_FOUND).with_body("Not found")),
 		}
 	}
 }
@@ -423,9 +425,9 @@ async fn cleanup_articles_table(pool: &PgPool) {
 #[rstest]
 #[tokio::test]
 async fn test_allow_any_permission(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -452,9 +454,9 @@ async fn test_allow_any_permission(
 #[rstest]
 #[tokio::test]
 async fn test_deny_all_permission(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -478,9 +480,9 @@ async fn test_deny_all_permission(
 #[rstest]
 #[tokio::test]
 async fn test_is_authenticated_permission_denied(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -504,9 +506,9 @@ async fn test_is_authenticated_permission_denied(
 #[rstest]
 #[tokio::test]
 async fn test_is_authenticated_permission_allowed(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -533,9 +535,9 @@ async fn test_is_authenticated_permission_allowed(
 #[rstest]
 #[tokio::test]
 async fn test_is_admin_permission_denied(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -562,9 +564,9 @@ async fn test_is_admin_permission_denied(
 #[rstest]
 #[tokio::test]
 async fn test_is_admin_permission_allowed(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -591,9 +593,9 @@ async fn test_is_admin_permission_allowed(
 #[rstest]
 #[tokio::test]
 async fn test_is_owner_object_permission_denied(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -620,9 +622,9 @@ async fn test_is_owner_object_permission_denied(
 #[rstest]
 #[tokio::test]
 async fn test_is_owner_object_permission_allowed(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -653,9 +655,9 @@ async fn test_is_owner_object_permission_allowed(
 #[rstest]
 #[tokio::test]
 async fn test_is_readonly_permission_get_allowed(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -679,9 +681,9 @@ async fn test_is_readonly_permission_get_allowed(
 #[rstest]
 #[tokio::test]
 async fn test_is_readonly_permission_post_denied(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -705,9 +707,9 @@ async fn test_is_readonly_permission_post_denied(
 #[rstest]
 #[tokio::test]
 async fn test_published_or_admin_permission_published_allowed(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -731,9 +733,9 @@ async fn test_published_or_admin_permission_published_allowed(
 #[rstest]
 #[tokio::test]
 async fn test_published_or_admin_permission_draft_denied_for_user(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -757,9 +759,9 @@ async fn test_published_or_admin_permission_draft_denied_for_user(
 #[rstest]
 #[tokio::test]
 async fn test_published_or_admin_permission_draft_allowed_for_admin(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -786,9 +788,9 @@ async fn test_published_or_admin_permission_draft_allowed_for_admin(
 #[rstest]
 #[tokio::test]
 async fn test_and_permission_both_pass(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -816,9 +818,9 @@ async fn test_and_permission_both_pass(
 #[rstest]
 #[tokio::test]
 async fn test_and_permission_first_fails(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -843,9 +845,9 @@ async fn test_and_permission_first_fails(
 #[rstest]
 #[tokio::test]
 async fn test_and_permission_second_fails(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -873,9 +875,9 @@ async fn test_and_permission_second_fails(
 #[rstest]
 #[tokio::test]
 async fn test_or_permission_both_pass(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -904,9 +906,9 @@ async fn test_or_permission_both_pass(
 #[rstest]
 #[tokio::test]
 async fn test_or_permission_first_passes(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -935,9 +937,9 @@ async fn test_or_permission_first_passes(
 #[rstest]
 #[tokio::test]
 async fn test_or_permission_second_passes(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -966,9 +968,9 @@ async fn test_or_permission_second_passes(
 #[rstest]
 #[tokio::test]
 async fn test_or_permission_both_fail(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -997,9 +999,9 @@ async fn test_or_permission_both_fail(
 #[rstest]
 #[tokio::test]
 async fn test_list_filters_objects_by_permission(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -1030,9 +1032,9 @@ async fn test_list_filters_objects_by_permission(
 #[rstest]
 #[tokio::test]
 async fn test_update_requires_object_permission(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 	setup_articles_table(&pool).await;
 	insert_test_articles(&pool).await;
 
@@ -1059,9 +1061,9 @@ async fn test_update_requires_object_permission(
 #[rstest]
 #[tokio::test]
 async fn test_readonly_viewset_inherits_permissions(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, _pool) = postgres_container.await;
+	let (_container, _pool, _port, _url) = postgres_container.await;
 
 	let _viewset: ReadOnlyModelViewSet<Article, ArticleSerializer> =
 		ReadOnlyModelViewSet::new("articles");

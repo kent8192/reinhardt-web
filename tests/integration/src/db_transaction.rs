@@ -6,7 +6,11 @@
 use reinhardt_orm::connection::DatabaseConnection;
 use rstest::*;
 use std::sync::Arc;
-use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
+use testcontainers::{
+	core::{ContainerPort, WaitFor},
+	runners::AsyncRunner,
+	GenericImage, ImageExt,
+};
 
 /// Database transaction fixture that automatically rolls back on drop
 ///
@@ -62,6 +66,7 @@ impl DbTransactionFixture {
 			))
 			.with_env_var("POSTGRES_PASSWORD", "test")
 			.with_env_var("POSTGRES_DB", "test_db")
+			.with_mapped_port(0, ContainerPort::Tcp(5432))
 			.start()
 			.await
 			.expect("Failed to start PostgreSQL container");
@@ -181,6 +186,7 @@ pub async fn shared_db_fixture() -> (testcontainers::ContainerAsync<GenericImage
 		))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "test_db")
+		.with_mapped_port(0, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start PostgreSQL container");

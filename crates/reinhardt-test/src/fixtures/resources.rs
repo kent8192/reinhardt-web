@@ -69,7 +69,6 @@ impl PostgresSuiteResource {
 			.with_wait_for(WaitFor::message_on_stderr(
 				"database system is ready to accept connections",
 			))
-			.with_exposed_port(ContainerPort::Tcp(5432))
 			.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
 			.start()
 			.await
@@ -186,7 +185,6 @@ impl MySqlSuiteResource {
 
 		let mysql = GenericImage::new("mysql", "8.0")
 			.with_wait_for(WaitFor::message_on_stderr("ready for connections"))
-			.with_exposed_port(ContainerPort::Tcp(3306))
 			.with_env_var("MYSQL_ROOT_PASSWORD", "test")
 			.with_env_var("MYSQL_DATABASE", "test")
 			.start()
