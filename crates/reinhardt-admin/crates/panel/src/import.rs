@@ -288,19 +288,19 @@ pub struct ImportError {
 
 impl ImportError {
 	/// Create a new import error
-	pub fn new(row_number: usize, message: String) -> Self {
+	pub fn new(row_number: usize, message: impl Into<String>) -> Self {
 		Self {
 			row_number,
-			message,
+			message: message.into(),
 			data: None,
 		}
 	}
 
 	/// Create import error with data
-	pub fn with_data(row_number: usize, message: String, data: HashMap<String, String>) -> Self {
+	pub fn with_data(row_number: usize, message: impl Into<String>, data: HashMap<String, String>) -> Self {
 		Self {
 			row_number,
-			message,
+			message: message.into(),
 			data: Some(data),
 		}
 	}

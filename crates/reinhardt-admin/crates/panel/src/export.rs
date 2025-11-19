@@ -202,11 +202,11 @@ pub struct ExportResult {
 
 impl ExportResult {
 	/// Create a new export result
-	pub fn new(data: Vec<u8>, mime_type: String, filename: String, row_count: usize) -> Self {
+	pub fn new(data: Vec<u8>, mime_type: impl Into<String>, filename: impl Into<String>, row_count: usize) -> Self {
 		Self {
 			data,
-			mime_type,
-			filename,
+			mime_type: mime_type.into(),
+			filename: filename.into(),
 			row_count,
 		}
 	}

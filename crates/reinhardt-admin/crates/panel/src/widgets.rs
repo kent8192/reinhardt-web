@@ -69,11 +69,11 @@ impl Default for RichTextEditorConfig {
 	fn default() -> Self {
 		Self {
 			editor_type: EditorType::TinyMCE,
-			toolbar: "bold italic underline | link image | bullist numlist".to_string(),
+			toolbar: "bold italic underline | link image | bullist numlist".into(),
 			max_length: None,
-			allowed_tags: Some("p,a,strong,em,ul,ol,li,br,img".to_string()),
+			allowed_tags: Some("p,a,strong,em,ul,ol,li,br,img".into()),
 			file_upload_enabled: false,
-			css_class: "rich-text-editor".to_string(),
+			css_class: "rich-text-editor".into(),
 		}
 	}
 }
@@ -193,7 +193,7 @@ impl Default for ImageUploadConfig {
 			enable_crop: true,
 			enable_resize: true,
 			enable_drag_drop: true,
-			css_class: "image-upload-widget".to_string(),
+			css_class: "image-upload-widget".into(),
 		}
 	}
 }
@@ -782,7 +782,7 @@ mod tests {
 			.with_attr("placeholder", "Enter text");
 
 		assert_eq!(widget.attrs.len(), 2);
-		assert_eq!(widget.attrs.get("class"), Some(&"form-control".to_string()));
+		assert_eq!(widget.attrs.get("class"), Some(&String::from("form-control")));
 	}
 
 	#[test]
@@ -791,7 +791,7 @@ mod tests {
 
 		let html = widget.render(
 			"username",
-			Some(&serde_json::Value::String("alice".to_string())),
+			Some(&serde_json::Value::String(String::from("alice"))),
 		);
 
 		assert!(
@@ -824,7 +824,7 @@ mod tests {
 	#[test]
 	fn test_render_textarea() {
 		let widget = Widget::new(WidgetType::TextArea { rows: 5, cols: 40 });
-		let html = widget.render("bio", Some(&serde_json::Value::String("Hello".to_string())));
+		let html = widget.render("bio", Some(&serde_json::Value::String(String::from("Hello"))));
 
 		assert!(
 			html.starts_with("<textarea"),
@@ -857,13 +857,13 @@ mod tests {
 	#[test]
 	fn test_render_select() {
 		let choices = vec![
-			("active".to_string(), "Active".to_string()),
-			("inactive".to_string(), "Inactive".to_string()),
+			(String::from("active"), String::from("Active")),
+			(String::from("inactive"), String::from("Inactive")),
 		];
 		let widget = Widget::new(WidgetType::Select { choices });
 		let html = widget.render(
 			"status",
-			Some(&serde_json::Value::String("active".to_string())),
+			Some(&serde_json::Value::String(String::from("active"))),
 		);
 
 		assert!(
@@ -927,7 +927,7 @@ mod tests {
 		let widget = Widget::new(WidgetType::DateInput);
 		let html = widget.render(
 			"birth_date",
-			Some(&serde_json::Value::String("2025-01-01".to_string())),
+			Some(&serde_json::Value::String(String::from("2025-01-01"))),
 		);
 
 		assert!(
@@ -962,7 +962,7 @@ mod tests {
 		let widget = Widget::new(WidgetType::EmailInput);
 		let html = widget.render(
 			"email",
-			Some(&serde_json::Value::String("test@example.com".to_string())),
+			Some(&serde_json::Value::String(String::from("test@example.com"))),
 		);
 
 		assert!(
@@ -995,7 +995,7 @@ mod tests {
 	#[test]
 	fn test_render_hidden_input() {
 		let widget = Widget::new(WidgetType::HiddenInput);
-		let html = widget.render("id", Some(&serde_json::Value::String("123".to_string())));
+		let html = widget.render("id", Some(&serde_json::Value::String(String::from("123"))));
 
 		assert!(
 			html.starts_with("<input"),
@@ -1024,14 +1024,14 @@ mod tests {
 	fn test_widget_factory_text_input() {
 		let widget = WidgetFactory::text_input();
 		assert!(matches!(widget.widget_type, WidgetType::TextInput));
-		assert_eq!(widget.attrs.get("class"), Some(&"form-control".to_string()));
+		assert_eq!(widget.attrs.get("class"), Some(&String::from("form-control")));
 	}
 
 	#[test]
 	fn test_widget_factory_select() {
 		let choices = vec![
-			("1".to_string(), "Option 1".to_string()),
-			("2".to_string(), "Option 2".to_string()),
+			(String::from("1"), String::from("Option 1")),
+			(String::from("2"), String::from("Option 2")),
 		];
 		let widget = WidgetFactory::select(choices);
 
@@ -1045,9 +1045,9 @@ mod tests {
 	#[test]
 	fn test_render_multi_select() {
 		let choices = vec![
-			("tag1".to_string(), "Tag 1".to_string()),
-			("tag2".to_string(), "Tag 2".to_string()),
-			("tag3".to_string(), "Tag 3".to_string()),
+			(String::from("tag1"), String::from("Tag 1")),
+			(String::from("tag2"), String::from("Tag 2")),
+			(String::from("tag3"), String::from("Tag 3")),
 		];
 		let widget = Widget::new(WidgetType::MultiSelect { choices });
 
@@ -1096,7 +1096,7 @@ mod tests {
 		let widget = Widget::new(WidgetType::ColorPicker);
 		let html = widget.render(
 			"color",
-			Some(&serde_json::Value::String("#ff0000".to_string())),
+			Some(&serde_json::Value::String(String::from("#ff0000"))),
 		);
 
 		assert!(
@@ -1144,7 +1144,7 @@ mod tests {
 		assert_eq!(config.editor_type, EditorType::Quill);
 		assert_eq!(config.toolbar, "bold italic | link");
 		assert_eq!(config.max_length, Some(5000));
-		assert_eq!(config.allowed_tags, Some("p,strong,em".to_string()));
+		assert_eq!(config.allowed_tags, Some(String::from("p,strong,em")));
 		assert!(config.file_upload_enabled);
 	}
 
@@ -1154,7 +1154,7 @@ mod tests {
 		let widget = Widget::new(WidgetType::RichTextEditorWidget { config });
 		let html = widget.render(
 			"content",
-			Some(&serde_json::Value::String("Hello".to_string())),
+			Some(&serde_json::Value::String(String::from("Hello"))),
 		);
 
 		assert!(
@@ -1265,7 +1265,7 @@ mod tests {
 		let widget = Widget::new(WidgetType::ImageUploadWidget { config });
 		let html = widget.render(
 			"photo",
-			Some(&serde_json::Value::String("/uploads/photo.jpg".to_string())),
+			Some(&serde_json::Value::String(String::from("/uploads/photo.jpg"))),
 		);
 
 		assert!(

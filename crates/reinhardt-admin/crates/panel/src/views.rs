@@ -64,7 +64,7 @@ impl ListView {
 		Self {
 			model_name: model_name.into(),
 			page_size: 100,
-			ordering: vec!["-id".to_string()],
+			ordering: vec!["-id".into()],
 			search_fields: Vec::new(),
 		}
 	}
@@ -459,7 +459,7 @@ mod tests {
 		let view = ListView::new("User");
 		assert_eq!(view.model_name(), "User");
 		assert_eq!(view.get_page_size(), 100);
-		assert_eq!(view.get_ordering(), &["-id".to_string()]);
+		assert_eq!(view.get_ordering(), &[String::from("-id")]);
 	}
 
 	#[test]
@@ -471,10 +471,10 @@ mod tests {
 	#[test]
 	fn test_list_view_with_ordering() {
 		let view = ListView::new("User")
-			.with_ordering(vec!["name".to_string(), "-created_at".to_string()]);
+			.with_ordering(vec![String::from("name"), String::from("-created_at")]);
 		assert_eq!(
 			view.get_ordering(),
-			&["name".to_string(), "-created_at".to_string()]
+			&[String::from("name"), String::from("-created_at")]
 		);
 	}
 
@@ -497,10 +497,10 @@ mod tests {
 	#[test]
 	fn test_detail_view_with_fields() {
 		let view =
-			DetailView::new("User", "123").with_fields(vec!["id".to_string(), "name".to_string()]);
+			DetailView::new("User", "123").with_fields(vec![String::from("id"), String::from("name")]);
 		assert_eq!(
 			view.get_fields(),
-			Some(&["id".to_string(), "name".to_string()][..])
+			Some(&[String::from("id"), String::from("name")][..])
 		);
 	}
 
@@ -535,10 +535,10 @@ mod tests {
 	#[test]
 	fn test_update_view_with_readonly_fields() {
 		let view = UpdateView::new("User", "123")
-			.with_readonly_fields(vec!["id".to_string(), "created_at".to_string()]);
+			.with_readonly_fields(vec![String::from("id"), String::from("created_at")]);
 		assert_eq!(
 			view.get_readonly_fields(),
-			&["id".to_string(), "created_at".to_string()]
+			&[String::from("id"), String::from("created_at")]
 		);
 	}
 

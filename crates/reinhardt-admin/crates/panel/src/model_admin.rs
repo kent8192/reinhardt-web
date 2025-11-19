@@ -152,12 +152,12 @@ impl ModelAdminConfig {
 	pub fn new(model_name: impl Into<String>) -> Self {
 		Self {
 			model_name: model_name.into(),
-			list_display: vec!["id".to_string()],
+			list_display: vec!["id".into()],
 			list_filter: vec![],
 			search_fields: vec![],
 			fields: None,
 			readonly_fields: vec![],
-			ordering: vec!["-id".to_string()],
+			ordering: vec!["-id".into()],
 			list_per_page: None,
 		}
 	}
@@ -304,12 +304,12 @@ impl ModelAdminConfigBuilder {
 	pub fn build(self) -> ModelAdminConfig {
 		ModelAdminConfig {
 			model_name: self.model_name.expect("model_name is required"),
-			list_display: self.list_display.unwrap_or_else(|| vec!["id".to_string()]),
+			list_display: self.list_display.unwrap_or_else(|| vec!["id".into()]),
 			list_filter: self.list_filter.unwrap_or_default(),
 			search_fields: self.search_fields.unwrap_or_default(),
 			fields: self.fields,
 			readonly_fields: self.readonly_fields.unwrap_or_default(),
-			ordering: self.ordering.unwrap_or_else(|| vec!["-id".to_string()]),
+			ordering: self.ordering.unwrap_or_else(|| vec!["-id".into()]),
 			list_per_page: self.list_per_page,
 		}
 	}

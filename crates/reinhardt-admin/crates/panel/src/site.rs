@@ -57,9 +57,9 @@ pub struct AdminSiteConfig {
 impl Default for AdminSiteConfig {
 	fn default() -> Self {
 		Self {
-			site_title: "Admin Panel".to_string(),
-			site_header: "Administration".to_string(),
-			index_title: "Dashboard".to_string(),
+			site_title: "Admin Panel".into(),
+			site_header: "Administration".into(),
+			index_title: "Dashboard".into(),
 			list_per_page: 100,
 			enable_search: true,
 			enable_filters: true,
@@ -80,7 +80,7 @@ impl AdminSite {
 	pub fn new(name: impl Into<String>) -> Self {
 		Self {
 			name: name.into(),
-			url_prefix: "/admin".to_string(),
+			url_prefix: "/admin".into(),
 			registry: Arc::new(DashMap::new()),
 			config: Arc::new(RwLock::new(AdminSiteConfig::default())),
 		}
@@ -129,7 +129,7 @@ impl AdminSite {
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// admin.configure(|config| {
-	///     config.site_title = "My Custom Admin".to_string();
+	///     config.site_title = "My Custom Admin".into();
 	///     config.list_per_page = 50;
 	/// });
 	/// ```
@@ -186,7 +186,7 @@ impl AdminSite {
 	pub fn unregister(&self, model_name: &str) -> AdminResult<()> {
 		self.registry
 			.remove(model_name)
-			.ok_or_else(|| AdminError::ModelNotRegistered(model_name.to_string()))?;
+			.ok_or_else(|| AdminError::ModelNotRegistered(model_name.into()))?;
 		Ok(())
 	}
 
@@ -219,7 +219,7 @@ impl AdminSite {
 		self.registry
 			.get(model_name)
 			.map(|entry| Arc::clone(entry.value()))
-			.ok_or_else(|| AdminError::ModelNotRegistered(model_name.to_string()))
+			.ok_or_else(|| AdminError::ModelNotRegistered(model_name.into()))
 	}
 
 	/// Get all registered model names
@@ -293,7 +293,7 @@ mod tests {
 	fn test_configuration() {
 		let admin = AdminSite::new("Admin");
 		admin.configure(|config| {
-			config.site_title = "Custom Title".to_string();
+			config.site_title = "Custom Title".into();
 			config.list_per_page = 25;
 		});
 
@@ -356,8 +356,8 @@ mod tests {
 
 		let models = admin.registered_models();
 		assert_eq!(models.len(), 2);
-		assert!(models.contains(&"User".to_string()));
-		assert!(models.contains(&"Post".to_string()));
+		assert!(models.contains(&"User".into()));
+		assert!(models.contains(&"Post".into()));
 	}
 
 	#[test]

@@ -72,9 +72,9 @@ impl AuditAction {
 /// use serde_json::json;
 ///
 /// let log = AuditLog::builder()
-///     .user_id("admin_user".to_string())
-///     .model_name("User".to_string())
-///     .object_id("123".to_string())
+///     .user_id("admin_user")
+///     .model_name("User")
+///     .object_id("123")
 ///     .action(AuditAction::Update)
 ///     .changes(json!({"email": {"old": "old@example.com", "new": "new@example.com"}}))
 ///     .build();
@@ -171,8 +171,8 @@ impl AuditLog {
 	}
 
 	/// Set the user agent
-	pub fn set_user_agent(&mut self, user_agent: String) {
-		self.user_agent = Some(user_agent);
+	pub fn set_user_agent(&mut self, user_agent: impl Into<String>) {
+		self.user_agent = Some(user_agent.into());
 	}
 }
 
@@ -185,9 +185,9 @@ impl AuditLog {
 /// use serde_json::json;
 ///
 /// let log = AuditLogBuilder::new()
-///     .user_id("admin_user".to_string())
-///     .model_name("Article".to_string())
-///     .object_id("456".to_string())
+///     .user_id("admin_user")
+///     .model_name("Article")
+///     .object_id("456")
 ///     .action(AuditAction::Create)
 ///     .changes(json!({"title": "New Article", "status": "draft"}))
 ///     .build();
@@ -221,20 +221,20 @@ impl AuditLogBuilder {
 	}
 
 	/// Set the user ID
-	pub fn user_id(mut self, user_id: String) -> Self {
-		self.user_id = Some(user_id);
+	pub fn user_id(mut self, user_id: impl Into<String>) -> Self {
+		self.user_id = Some(user_id.into());
 		self
 	}
 
 	/// Set the model name
-	pub fn model_name(mut self, model_name: String) -> Self {
-		self.model_name = Some(model_name);
+	pub fn model_name(mut self, model_name: impl Into<String>) -> Self {
+		self.model_name = Some(model_name.into());
 		self
 	}
 
 	/// Set the object ID
-	pub fn object_id(mut self, object_id: String) -> Self {
-		self.object_id = Some(object_id);
+	pub fn object_id(mut self, object_id: impl Into<String>) -> Self {
+		self.object_id = Some(object_id.into());
 		self
 	}
 
@@ -263,8 +263,8 @@ impl AuditLogBuilder {
 	}
 
 	/// Set the user agent
-	pub fn user_agent(mut self, user_agent: String) -> Self {
-		self.user_agent = Some(user_agent);
+	pub fn user_agent(mut self, user_agent: impl Into<String>) -> Self {
+		self.user_agent = Some(user_agent.into());
 		self
 	}
 
@@ -353,8 +353,8 @@ pub trait AuditLogger: Send + Sync {
 /// use chrono::{Utc, Duration};
 ///
 /// let query = AuditLogQuery::builder()
-///     .user_id("admin_user".to_string())
-///     .model_name("User".to_string())
+///     .user_id("admin_user")
+///     .model_name("User")
 ///     .action(AuditAction::Update)
 ///     .limit(100)
 ///     .build();
@@ -456,20 +456,20 @@ impl AuditLogQueryBuilder {
 	}
 
 	/// Filter by user ID
-	pub fn user_id(mut self, user_id: String) -> Self {
-		self.user_id = Some(user_id);
+	pub fn user_id(mut self, user_id: impl Into<String>) -> Self {
+		self.user_id = Some(user_id.into());
 		self
 	}
 
 	/// Filter by model name
-	pub fn model_name(mut self, model_name: String) -> Self {
-		self.model_name = Some(model_name);
+	pub fn model_name(mut self, model_name: impl Into<String>) -> Self {
+		self.model_name = Some(model_name.into());
 		self
 	}
 
 	/// Filter by object ID
-	pub fn object_id(mut self, object_id: String) -> Self {
-		self.object_id = Some(object_id);
+	pub fn object_id(mut self, object_id: impl Into<String>) -> Self {
+		self.object_id = Some(object_id.into());
 		self
 	}
 
@@ -537,16 +537,16 @@ impl Default for AuditLogQueryBuilder {
 /// let logger = MemoryAuditLogger::new();
 ///
 /// let log = AuditLog::builder()
-///     .user_id("admin".to_string())
-///     .model_name("User".to_string())
-///     .object_id("1".to_string())
+///     .user_id("admin")
+///     .model_name("User")
+///     .object_id("1")
 ///     .action(AuditAction::Create)
 ///     .build();
 ///
 /// logger.log(log).await?;
 ///
 /// let query = AuditLogQuery::builder()
-///     .user_id("admin".to_string())
+///     .user_id("admin")
 ///     .build();
 ///
 /// let logs = logger.query(&query).await?;
@@ -835,7 +835,7 @@ impl AuditLogger for MemoryAuditLogger {
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let db = Arc::new(AdminDatabase::new(/* connection */));
-/// let logger = DatabaseAuditLogger::new(db, "audit_logs".to_string());
+/// let logger = DatabaseAuditLogger::new(db, "audit_logs");
 ///
 /// // Use the logger
 /// # Ok(())
@@ -848,10 +848,10 @@ pub struct DatabaseAuditLogger {
 
 impl DatabaseAuditLogger {
 	/// Create a new database audit logger
-	pub fn new(database: Arc<AdminDatabase>, table_name: String) -> Self {
+	pub fn new(database: Arc<AdminDatabase>, table_name: impl Into<String>) -> Self {
 		Self {
 			database,
-			table_name,
+			table_name: table_name.into(),
 		}
 	}
 
@@ -1031,24 +1031,21 @@ impl AuditLogger for DatabaseAuditLogger {
 				.data
 				.get("user_id")
 				.and_then(|v| v.as_str())
-				.ok_or("Missing or invalid user_id field")?
-				.to_string();
+				.ok_or("Missing or invalid user_id field")?;
 
 			// Extract model_name
 			let model_name = row
 				.data
 				.get("model_name")
 				.and_then(|v| v.as_str())
-				.ok_or("Missing or invalid model_name field")?
-				.to_string();
+				.ok_or("Missing or invalid model_name field")?;
 
 			// Extract object_id
 			let object_id = row
 				.data
 				.get("object_id")
 				.and_then(|v| v.as_str())
-				.ok_or("Missing or invalid object_id field")?
-				.to_string();
+				.ok_or("Missing or invalid object_id field")?;
 
 			// Extract action
 			let action_str = row
@@ -1088,7 +1085,7 @@ impl AuditLogger for DatabaseAuditLogger {
 				.data
 				.get("user_agent")
 				.and_then(|v| v.as_str())
-				.map(|s| s.to_string());
+				.map(|s| s);
 
 			// Build AuditLog
 			let mut log = AuditLog::builder()
@@ -1228,9 +1225,9 @@ mod tests {
 	#[test]
 	fn test_audit_log_builder() {
 		let log = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
-			.object_id("123".to_string())
+			.user_id("admin")
+			.model_name("User")
+			.object_id("123")
 			.action(AuditAction::Create)
 			.build();
 
@@ -1254,9 +1251,9 @@ mod tests {
 		});
 
 		let log = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
-			.object_id("123".to_string())
+			.user_id("admin")
+			.model_name("User")
+			.object_id("123")
 			.action(AuditAction::Update)
 			.changes(changes.clone())
 			.build();
@@ -1268,12 +1265,12 @@ mod tests {
 	#[test]
 	fn test_audit_log_builder_with_ip_and_user_agent() {
 		let ip: IpAddr = "127.0.0.1".parse().unwrap();
-		let user_agent = "Mozilla/5.0".to_string();
+		let user_agent = "Mozilla/5.0";
 
 		let log = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
-			.object_id("123".to_string())
+			.user_id("admin")
+			.model_name("User")
+			.object_id("123")
 			.action(AuditAction::View)
 			.ip_address(ip)
 			.user_agent(user_agent.clone())
@@ -1286,8 +1283,8 @@ mod tests {
 	#[test]
 	fn test_audit_log_query_builder() {
 		let query = AuditLogQuery::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
+			.user_id("admin")
+			.model_name("User")
 			.action(AuditAction::Update)
 			.limit(50)
 			.offset(10)
@@ -1305,9 +1302,9 @@ mod tests {
 		let logger = MemoryAuditLogger::new();
 
 		let log = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
-			.object_id("1".to_string())
+			.user_id("admin")
+			.model_name("User")
+			.object_id("1")
 			.action(AuditAction::Create)
 			.build();
 
@@ -1325,18 +1322,16 @@ mod tests {
 		for i in 1..=3 {
 			let user_id = if i == 2 { "user2" } else { "user1" };
 			let log = AuditLog::builder()
-				.user_id(user_id.to_string())
-				.model_name("User".to_string())
-				.object_id(i.to_string())
+				.user_id(user_id)
+				.model_name("User")
+				.object_id(i)
 				.action(AuditAction::Create)
 				.build();
 			logger.log(log).await.unwrap();
 		}
 
 		// Query by user1
-		let query = AuditLogQuery::builder()
-			.user_id("user1".to_string())
-			.build();
+		let query = AuditLogQuery::builder().user_id("user1").build();
 
 		let results = logger.query(&query).await.unwrap();
 		assert_eq!(results.len(), 2);
@@ -1349,23 +1344,23 @@ mod tests {
 
 		// Log different actions and models
 		let log1 = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
-			.object_id("1".to_string())
+			.user_id("admin")
+			.model_name("User")
+			.object_id("1")
 			.action(AuditAction::Create)
 			.build();
 
 		let log2 = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
-			.object_id("1".to_string())
+			.user_id("admin")
+			.model_name("User")
+			.object_id("1")
 			.action(AuditAction::Update)
 			.build();
 
 		let log3 = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("Article".to_string())
-			.object_id("1".to_string())
+			.user_id("admin")
+			.model_name("Article")
+			.object_id("1")
 			.action(AuditAction::Create)
 			.build();
 
@@ -1375,7 +1370,7 @@ mod tests {
 
 		// Query User model with Create action
 		let query = AuditLogQuery::builder()
-			.model_name("User".to_string())
+			.model_name("User")
 			.action(AuditAction::Create)
 			.build();
 
@@ -1394,9 +1389,9 @@ mod tests {
 		let future = now + chrono::Duration::hours(2);
 
 		let log = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
-			.object_id("1".to_string())
+			.user_id("admin")
+			.model_name("User")
+			.object_id("1")
 			.action(AuditAction::Create)
 			.build();
 
@@ -1425,9 +1420,9 @@ mod tests {
 		// Log 10 entries
 		for i in 1..=10 {
 			let log = AuditLog::builder()
-				.user_id("admin".to_string())
-				.model_name("User".to_string())
-				.object_id(i.to_string())
+				.user_id("admin")
+				.model_name("User")
+				.object_id(i)
 				.action(AuditAction::Create)
 				.build();
 			logger.log(log).await.unwrap();
@@ -1453,9 +1448,9 @@ mod tests {
 		// Log multiple entries
 		for i in 1..=5 {
 			let log = AuditLog::builder()
-				.user_id("admin".to_string())
-				.model_name("User".to_string())
-				.object_id(i.to_string())
+				.user_id("admin")
+				.model_name("User")
+				.object_id(i)
 				.action(AuditAction::Create)
 				.build();
 			logger.log(log).await.unwrap();
@@ -1481,9 +1476,9 @@ mod tests {
 		let logger = MemoryAuditLogger::new();
 
 		let log = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
-			.object_id("1".to_string())
+			.user_id("admin")
+			.model_name("User")
+			.object_id("1")
 			.action(AuditAction::Create)
 			.build();
 
@@ -1500,7 +1495,7 @@ mod tests {
 	fn test_database_audit_logger_creation(mock_connection: DatabaseConnection) {
 		// Create a dummy database for testing
 		let db = Arc::new(AdminDatabase::new(mock_connection));
-		let logger = DatabaseAuditLogger::new(db, "audit_logs".to_string());
+		let logger = DatabaseAuditLogger::new(db, "audit_logs");
 
 		assert_eq!(logger.table_name(), "audit_logs");
 	}
@@ -1521,9 +1516,9 @@ mod tests {
 		});
 
 		let log = AuditLog::builder()
-			.user_id("admin".to_string())
-			.model_name("User".to_string())
-			.object_id("123".to_string())
+			.user_id("admin")
+			.model_name("User")
+			.object_id("123")
 			.action(AuditAction::Update)
 			.changes(changes.clone())
 			.build();
