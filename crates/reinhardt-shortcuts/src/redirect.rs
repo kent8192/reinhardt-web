@@ -3,6 +3,7 @@
 //! Provides convenient functions for creating HTTP redirects.
 
 use reinhardt_core::http::Response;
+use crate::url::Url;
 
 /// Create a temporary redirect (HTTP 302) to the specified URL
 ///
@@ -52,6 +53,42 @@ pub fn redirect(to: impl AsRef<str>) -> Response {
 /// A `Response` with HTTP 301 status and the Location header set.
 pub fn redirect_permanent(to: impl AsRef<str>) -> Response {
 	Response::permanent_redirect(to.as_ref())
+}
+
+/// Redirects to the specified URL (using Url type).
+///
+/// This variant provides type safety for the redirect URL.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_shortcuts::{redirect_to, Url};
+///
+/// let url = Url::new("/home")?;
+/// let response = redirect_to(url);
+/// assert_eq!(response.status, 302);
+/// # Ok::<(), reinhardt_shortcuts::UrlError>(())
+/// ```
+pub fn redirect_to(to: Url) -> Response {
+	redirect(to.as_str())
+}
+
+/// Redirects permanently to the specified URL (using Url type).
+///
+/// This variant provides type safety for the redirect URL.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_shortcuts::{redirect_permanent_to, Url};
+///
+/// let url = Url::new("/new-location")?;
+/// let response = redirect_permanent_to(url);
+/// assert_eq!(response.status, 301);
+/// # Ok::<(), reinhardt_shortcuts::UrlError>(())
+/// ```
+pub fn redirect_permanent_to(to: Url) -> Response {
+	redirect_permanent(to.as_str())
 }
 
 #[cfg(test)]
