@@ -52,7 +52,8 @@ use super::cache::{SessionBackend, SessionError};
 
 #[cfg(feature = "database")]
 use sea_query::{
-	Alias, ColumnDef, Expr, ExprTrait, Index, OnConflict, Query, SqliteQueryBuilder, Table,
+	Alias, ColumnDef, Expr, ExprTrait, Index, OnConflict, PostgresQueryBuilder, Query,
+	SqliteQueryBuilder, Table,
 };
 
 /// Database session model
@@ -220,11 +221,11 @@ impl DatabaseSessionBackend {
 			.col(ColumnDef::new(Alias::new("session_data")).text().not_null())
 			.col(
 				ColumnDef::new(Alias::new("expire_date"))
-					.integer()
+					.big_integer()
 					.not_null(),
 			)
 			.to_owned();
-		let create_table_sql = create_table_stmt.to_string(SqliteQueryBuilder);
+		let create_table_sql = create_table_stmt.to_string(PostgresQueryBuilder);
 
 		sqlx::query(&create_table_sql)
 			.execute(&mut *tx)
@@ -238,7 +239,7 @@ impl DatabaseSessionBackend {
 			.table(Alias::new("sessions"))
 			.col(Alias::new("expire_date"))
 			.to_owned();
-		let create_index_sql = create_index_stmt.to_string(SqliteQueryBuilder);
+		let create_index_sql = create_index_stmt.to_string(PostgresQueryBuilder);
 
 		sqlx::query(&create_index_sql)
 			.execute(&mut *tx)
@@ -273,13 +274,13 @@ impl DatabaseSessionBackend {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn cleanup_expired(&self) -> Result<u64, SessionError> {
-		// Use RFC3339 string for TEXT column compatibility
-		let now_str = Utc::now().to_rfc3339();
+		// Use UNIX timestamp for INTEGER column compatibility
+		let now_timestamp = Utc::now().timestamp_millis();
 
 		// Use sea-query for DELETE
 		let stmt = Query::delete()
 			.from_table(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("expire_date")).lt(&now_str))
+			.and_where(Expr::col(Alias::new("expire_date")).lt(now_timestamp))
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);
 
@@ -314,13 +315,12 @@ impl SessionBackend for DatabaseSessionBackend {
 		match row {
 			Some(row) => {
 				// Check if session has expired
-				let expire_date_str: String = row
+				let expire_timestamp: i64 = row
 					.try_get("expire_date")
 					.map_err(|e| SessionError::CacheError(format!("Invalid expire_date: {}", e)))?;
 
-				let expire_date = DateTime::parse_from_rfc3339(&expire_date_str)
-					.map(|dt| dt.with_timezone(&Utc))
-					.unwrap_or_else(|_| Utc::now());
+				let expire_date =
+					DateTime::from_timestamp_millis(expire_timestamp).unwrap_or_else(Utc::now);
 
 				if expire_date < Utc::now() {
 					// Session expired, delete it
@@ -359,8 +359,8 @@ impl SessionBackend for DatabaseSessionBackend {
 			None => Utc::now() + Duration::days(14), // Default 14 days
 		};
 
-		// Convert to RFC3339 string for TEXT column compatibility
-		let expire_date_str = expire_date.to_rfc3339();
+		// Convert to UNIX timestamp for INTEGER column compatibility
+		let expire_timestamp = expire_date.timestamp_millis();
 
 		// Use sea-query for INSERT with ON CONFLICT (upsert, SQLite compatible)
 		let stmt = Query::insert()
@@ -373,7 +373,7 @@ impl SessionBackend for DatabaseSessionBackend {
 			.values_panic(vec![
 				session_key.into(),
 				session_data.into(),
-				expire_date_str.into(),
+				expire_timestamp.into(),
 			])
 			.on_conflict(
 				OnConflict::column(Alias::new("session_key"))
@@ -407,15 +407,15 @@ impl SessionBackend for DatabaseSessionBackend {
 	}
 
 	async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
-		// Use RFC3339 string for TEXT column compatibility
-		let now_str = Utc::now().to_rfc3339();
+		// Use UNIX timestamp for INTEGER column compatibility
+		let now_timestamp = Utc::now().timestamp_millis();
 
 		// Use sea-query for SELECT
 		let stmt = Query::select()
 			.expr(Expr::value(1))
 			.from(Alias::new("sessions"))
 			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-			.and_where(Expr::col(Alias::new("expire_date")).gt(&now_str))
+			.and_where(Expr::col(Alias::new("expire_date")).gt(now_timestamp))
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);
 
