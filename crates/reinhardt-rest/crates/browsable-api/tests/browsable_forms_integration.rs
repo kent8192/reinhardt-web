@@ -993,8 +993,8 @@ fn test_html_escaping_in_field_values(renderer: BrowsableApiRenderer) {
 
 	let html = renderer.render(&context).expect("Failed to render");
 
-	// Debug: Print HTML output to see actual content
-	println!("=== Rendered HTML ===");
+	// Debug: Print HTML output
+	println!("=== HTML Output ===");
 	println!("{}", html);
 	println!("=== End HTML ===");
 
