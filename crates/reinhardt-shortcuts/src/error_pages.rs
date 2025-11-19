@@ -16,6 +16,156 @@ use std::collections::HashMap;
 #[cfg(feature = "templates")]
 use tera::Context;
 
+/// A builder for constructing error page responses.
+///
+/// This provides a fluent API for creating error pages with optional
+/// context and debug information.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_shortcuts::ErrorPageBuilder;
+/// use reinhardt_core::http::Request;
+/// use hyper::{HeaderMap, Method, Version};
+/// use bytes::Bytes;
+/// use std::collections::HashMap;
+///
+/// # let request = Request::builder()
+/// #     .method(Method::GET)
+/// #     .uri("/test/path")
+/// #     .version(Version::HTTP_11)
+/// #     .headers(HeaderMap::new())
+/// #     .body(Bytes::new())
+/// #     .build()
+/// #     .unwrap();
+/// // Simple error page
+/// let response = ErrorPageBuilder::new(&request, 404).build();
+///
+/// // Error page with context
+/// let mut context = HashMap::new();
+/// context.insert("url", "/missing");
+/// let response = ErrorPageBuilder::new(&request, 404)
+///     .with_context(context)
+///     .build();
+///
+/// // Debug error page
+/// let response = ErrorPageBuilder::new(&request, 500)
+///     .debug()
+///     .error_message("Internal server error")
+///     .build();
+/// ```
+#[cfg(feature = "templates")]
+pub struct ErrorPageBuilder<'a> {
+	request: &'a Request,
+	status_code: u16,
+	context: Option<HashMap<String, serde_json::Value>>,
+	is_debug: bool,
+	error_message: Option<String>,
+}
+
+#[cfg(feature = "templates")]
+impl<'a> ErrorPageBuilder<'a> {
+	/// Creates a new error page builder.
+	pub fn new(request: &'a Request, status_code: u16) -> Self {
+		Self {
+			request,
+			status_code,
+			context: None,
+			is_debug: false,
+			error_message: None,
+		}
+	}
+
+	/// Sets the context for the error page.
+	pub fn with_context<K, V>(mut self, context: HashMap<K, V>) -> Self
+	where
+		K: AsRef<str>,
+		V: Serialize,
+	{
+		let mut map = HashMap::new();
+		for (k, v) in context {
+			let key = k.as_ref().to_string();
+			let value = serde_json::to_value(v).unwrap_or(serde_json::Value::Null);
+			map.insert(key, value);
+		}
+		self.context = Some(map);
+		self
+	}
+
+	/// Enables debug mode for the error page.
+	pub fn debug(mut self) -> Self {
+		self.is_debug = true;
+		self
+	}
+
+	/// Sets the error message (only used in debug mode).
+	pub fn error_message(mut self, message: impl Into<String>) -> Self {
+		self.error_message = Some(message.into());
+		self
+	}
+
+	/// Builds the error response.
+	pub fn build(self) -> Response {
+		if self.is_debug {
+			let error_message = self.error_message.as_deref().unwrap_or("");
+			render_debug_error_page_internal(
+				self.request,
+				self.status_code,
+				error_message,
+				self.context,
+			)
+		} else {
+			render_error_page_internal(self.request, self.status_code, self.context)
+		}
+	}
+}
+
+/// Internal function to render a custom error page based on HTTP status code.
+///
+/// This is the internal implementation used by both the builder and the public API.
+#[cfg(feature = "templates")]
+fn render_error_page_internal(
+	request: &Request,
+	status_code: u16,
+	context: Option<HashMap<String, serde_json::Value>>,
+) -> Response {
+	let tera = get_tera_engine();
+	let template_name = format!("{}.html", status_code);
+
+	// Create base context with error information
+	let mut tera_context = Context::new();
+	tera_context.insert("status_code", &status_code);
+	tera_context.insert("request_path", &request.uri.path());
+
+	// Add user-provided context if any
+	if let Some(user_context) = context {
+		for (key, value) in user_context {
+			tera_context.insert(&key, &value);
+		}
+	}
+
+	// Try to render custom error template
+	let html = match tera.render(&template_name, &tera_context) {
+		Ok(html) => html,
+		Err(_) => {
+			// Fallback to default error page
+			render_default_error_page(status_code, request.uri.path())
+		}
+	};
+
+	let status = hyper::StatusCode::from_u16(status_code)
+		.unwrap_or(hyper::StatusCode::INTERNAL_SERVER_ERROR);
+
+	let mut response = Response::new(status);
+	response.headers.insert(
+		hyper::header::CONTENT_TYPE,
+		hyper::header::HeaderValue::from_static("text/html; charset=utf-8"),
+	);
+	response.body = bytes::Bytes::from(html);
+
+	response
+}
+
 /// Render a custom error page based on HTTP status code
 ///
 /// This function attempts to render a custom error template based on the status code.
@@ -60,43 +210,15 @@ where
 	K: AsRef<str>,
 	V: Serialize,
 {
-	let tera = get_tera_engine();
-	let template_name = format!("{}.html", status_code);
-
-	// Create base context with error information
-	let mut tera_context = Context::new();
-	tera_context.insert("status_code", &status_code);
-	tera_context.insert("request_path", &request.uri.path());
-
-	// Add user-provided context if any
-	if let Some(user_context) = context {
-		for (key, value) in user_context {
-			if let Ok(json_value) = serde_json::to_value(value) {
-				tera_context.insert(key.as_ref(), &json_value);
-			}
-		}
-	}
-
-	// Try to render custom error template
-	let html = match tera.render(&template_name, &tera_context) {
-		Ok(html) => html,
-		Err(_) => {
-			// Fallback to default error page
-			render_default_error_page(status_code, request.uri.path())
-		}
-	};
-
-	let status = hyper::StatusCode::from_u16(status_code)
-		.unwrap_or(hyper::StatusCode::INTERNAL_SERVER_ERROR);
-
-	let mut response = Response::new(status);
-	response.headers.insert(
-		hyper::header::CONTENT_TYPE,
-		hyper::header::HeaderValue::from_static("text/html; charset=utf-8"),
-	);
-	response.body = bytes::Bytes::from(html);
-
-	response
+	let context_map = context.map(|ctx| {
+		ctx.into_iter()
+			.filter_map(|(k, v)| {
+				let key = k.as_ref().to_string();
+				serde_json::to_value(v).ok().map(|value| (key, value))
+			})
+			.collect()
+	});
+	render_error_page_internal(request, status_code, context_map)
 }
 
 /// Render the default error page (used when no custom template exists)
@@ -155,6 +277,72 @@ fn render_default_error_page(status_code: u16, path: &str) -> String {
         })
 }
 
+/// Internal function to render a debug error page for development environments.
+///
+/// This is the internal implementation used by both the builder and the public API.
+#[cfg(feature = "templates")]
+fn render_debug_error_page_internal(
+	request: &Request,
+	status_code: u16,
+	error_message: &str,
+	context: Option<HashMap<String, serde_json::Value>>,
+) -> Response {
+	let tera = get_tera_engine();
+	let template_name = "debug_error.html";
+
+	// Create comprehensive debug context
+	let mut tera_context = Context::new();
+	tera_context.insert("status_code", &status_code);
+	tera_context.insert("error_message", &error_message);
+	tera_context.insert("request_path", &request.uri.path());
+	tera_context.insert("request_method", &request.method.as_str());
+
+	// Add request headers for debugging
+	let headers: Vec<(String, String)> = request
+		.headers
+		.iter()
+		.map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("<binary>").to_string()))
+		.collect();
+	tera_context.insert("request_headers", &headers);
+
+	// Add user-provided debug context
+	if let Some(user_context) = context {
+		for (key, value) in user_context {
+			tera_context.insert(&key, &value);
+		}
+	}
+
+	// Capture and add stack trace
+	let backtrace = Backtrace::capture();
+	let stack_trace = if backtrace.status() == BacktraceStatus::Captured {
+		format!("{}", backtrace)
+	} else {
+		"Stack trace not available (compile with RUST_BACKTRACE=1)".to_string()
+	};
+	tera_context.insert("stack_trace", &stack_trace);
+
+	// Try to render debug template
+	let html = match tera.render(template_name, &tera_context) {
+		Ok(html) => html,
+		Err(_) => {
+			// Fallback to simple debug page if template doesn't exist
+			render_simple_debug_page(status_code, error_message, request)
+		}
+	};
+
+	let status = hyper::StatusCode::from_u16(status_code)
+		.unwrap_or(hyper::StatusCode::INTERNAL_SERVER_ERROR);
+
+	let mut response = Response::new(status);
+	response.headers.insert(
+		hyper::header::CONTENT_TYPE,
+		hyper::header::HeaderValue::from_static("text/html; charset=utf-8"),
+	);
+	response.body = bytes::Bytes::from(html);
+
+	response
+}
+
 /// Render a debug error page for development environments
 ///
 /// This function provides detailed error information including automatically
@@ -204,62 +392,15 @@ where
 	K: AsRef<str>,
 	V: Serialize,
 {
-	let tera = get_tera_engine();
-	let template_name = "debug_error.html";
-
-	// Create comprehensive debug context
-	let mut tera_context = Context::new();
-	tera_context.insert("status_code", &status_code);
-	tera_context.insert("error_message", &error_message);
-	tera_context.insert("request_path", &request.uri.path());
-	tera_context.insert("request_method", &request.method.as_str());
-
-	// Add request headers for debugging
-	let headers: Vec<(String, String)> = request
-		.headers
-		.iter()
-		.map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("<binary>").to_string()))
-		.collect();
-	tera_context.insert("request_headers", &headers);
-
-	// Add user-provided debug context
-	if let Some(user_context) = context {
-		for (key, value) in user_context {
-			if let Ok(json_value) = serde_json::to_value(value) {
-				tera_context.insert(key.as_ref(), &json_value);
-			}
-		}
-	}
-
-	// Capture and add stack trace
-	let backtrace = Backtrace::capture();
-	let stack_trace = if backtrace.status() == BacktraceStatus::Captured {
-		format!("{}", backtrace)
-	} else {
-		"Stack trace not available (compile with RUST_BACKTRACE=1)".to_string()
-	};
-	tera_context.insert("stack_trace", &stack_trace);
-
-	// Try to render debug template
-	let html = match tera.render(template_name, &tera_context) {
-		Ok(html) => html,
-		Err(_) => {
-			// Fallback to simple debug page if template doesn't exist
-			render_simple_debug_page(status_code, error_message, request)
-		}
-	};
-
-	let status = hyper::StatusCode::from_u16(status_code)
-		.unwrap_or(hyper::StatusCode::INTERNAL_SERVER_ERROR);
-
-	let mut response = Response::new(status);
-	response.headers.insert(
-		hyper::header::CONTENT_TYPE,
-		hyper::header::HeaderValue::from_static("text/html; charset=utf-8"),
-	);
-	response.body = bytes::Bytes::from(html);
-
-	response
+	let context_map = context.map(|ctx| {
+		ctx.into_iter()
+			.filter_map(|(k, v)| {
+				let key = k.as_ref().to_string();
+				serde_json::to_value(v).ok().map(|value| (key, value))
+			})
+			.collect()
+	});
+	render_debug_error_page_internal(request, status_code, error_message, context_map)
 }
 
 /// Render a simple debug error page (fallback)
