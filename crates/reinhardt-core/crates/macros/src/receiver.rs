@@ -1,6 +1,6 @@
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{ItemFn, parse_macro_input};
+use syn::{ItemFn, Result};
 
 /// Parse receiver macro arguments
 #[derive(Default)]
@@ -11,11 +11,11 @@ struct ReceiverArgs {
 	priority: i32,
 }
 
-fn parse_receiver_args(args: TokenStream) -> ReceiverArgs {
+fn parse_receiver_args(args: TokenStream) -> Result<ReceiverArgs> {
 	let mut result = ReceiverArgs::default();
 
 	if args.is_empty() {
-		return result;
+		return Ok(result);
 	}
 
 	// Parse arguments using ParseNestedMeta
@@ -37,8 +37,8 @@ fn parse_receiver_args(args: TokenStream) -> ReceiverArgs {
 		}
 	});
 
-	syn::parse::Parser::parse(parser, args).unwrap_or_default();
-	result
+	syn::parse::Parser::parse2(parser, args)?;
+	Ok(result)
 }
 
 /// Implementation of the `receiver` procedural macro
@@ -66,15 +66,14 @@ fn parse_receiver_args(args: TokenStream) -> ReceiverArgs {
 ///     Ok(())
 /// }
 /// ```
-pub fn receiver_impl(args: TokenStream, input: TokenStream) -> TokenStream {
-	let input_fn = parse_macro_input!(input as ItemFn);
-	let args = parse_receiver_args(args);
+pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+	let args = parse_receiver_args(args)?;
 
-	let fn_name = &input_fn.sig.ident;
-	let fn_vis = &input_fn.vis;
-	let fn_block = &input_fn.block;
-	let fn_attrs = &input_fn.attrs;
-	let fn_sig = &input_fn.sig;
+	let fn_name = &input.sig.ident;
+	let fn_vis = &input.vis;
+	let fn_block = &input.block;
+	let fn_attrs = &input.attrs;
+	let fn_sig = &input.sig;
 
 	// Generate registration code
 	let signal_name = &args.signal_name;
@@ -84,7 +83,10 @@ pub fn receiver_impl(args: TokenStream, input: TokenStream) -> TokenStream {
 
 	// Validate that the function has at least one parameter
 	if fn_sig.inputs.is_empty() {
-		panic!("Receiver function must have at least one parameter");
+		return Err(syn::Error::new_spanned(
+			fn_sig,
+			"Receiver function must have at least one parameter",
+		));
 	}
 
 	// Build the receiver factory function with type erasure
@@ -147,5 +149,5 @@ pub fn receiver_impl(args: TokenStream, input: TokenStream) -> TokenStream {
 		}
 	};
 
-	TokenStream::from(expanded)
+	Ok(expanded)
 }

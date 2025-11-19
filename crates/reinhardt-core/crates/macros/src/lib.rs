@@ -281,7 +281,11 @@ pub fn path(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn receiver(args: TokenStream, input: TokenStream) -> TokenStream {
-	receiver_impl(args, input)
+	let input = parse_macro_input!(input as ItemFn);
+
+	receiver_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Automatic dependency injection macro
