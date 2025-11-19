@@ -146,7 +146,7 @@ pub use context::TemplateContext;
 pub use get_or_404::{
 	GetError, exists_or_404_response, get_list_or_404_response, get_or_404_response,
 };
-pub use redirect::{redirect, redirect_permanent, redirect_to, redirect_permanent_to};
+pub use redirect::{redirect, redirect_permanent, redirect_permanent_to, redirect_to};
 pub use render::{render_html, render_json, render_json_pretty, render_text};
 pub use url::{Url, UrlError};
 

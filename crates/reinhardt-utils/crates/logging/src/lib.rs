@@ -152,7 +152,7 @@ pub fn get_logger(name: &str) -> LoggerHandle {
 /// Emit a warning message via the named logger (global).
 pub fn emit_warning(logger_name: &str, message: impl Into<String>) {
 	let logger = get_logger(logger_name);
-	logger.warning_sync(&message.into());
+	logger.warning_sync(message.into());
 }
 
 /// Attach a `MemoryHandler` to the named logger (useful for tests).

@@ -162,9 +162,8 @@ impl TemplateCache {
 	/// let cache = TemplateCache::new(0);
 	/// ```
 	pub fn new(capacity: usize) -> Self {
-		Self::try_new(capacity).unwrap_or_else(|_| {
-			Self::try_new(100).expect("Default capacity should be valid")
-		})
+		Self::try_new(capacity)
+			.unwrap_or_else(|_| Self::try_new(100).expect("Default capacity should be valid"))
 	}
 
 	/// Create a new template cache with capacity from environment variable
@@ -274,11 +273,7 @@ impl TemplateCache {
 	/// assert_eq!(entry.key, "template1");
 	/// assert_eq!(entry.content, "content1");
 	/// ```
-	pub fn put(
-		&self,
-		key: impl Into<String>,
-		content: impl Into<String>,
-	) -> Option<EvictedEntry> {
+	pub fn put(&self, key: impl Into<String>, content: impl Into<String>) -> Option<EvictedEntry> {
 		let mut cache = self.content_cache.lock().unwrap();
 		let evicted = cache.push(key.into(), content.into());
 

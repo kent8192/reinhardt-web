@@ -2,8 +2,8 @@
 //!
 //! Provides convenient functions for creating HTTP redirects.
 
-use reinhardt_core::http::Response;
 use crate::url::Url;
+use reinhardt_core::http::Response;
 
 /// Create a temporary redirect (HTTP 302) to the specified URL
 ///
