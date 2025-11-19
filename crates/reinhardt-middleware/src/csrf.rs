@@ -96,7 +96,7 @@ impl CsrfMiddleware {
 	fn get_session_id(request: &Request) -> String {
 		// Try to get session ID from extensions (set by session middleware)
 		if let Some(session_id) = request.extensions.get::<String>() {
-			return session_id.clone();
+			return session_id.to_owned();
 		}
 
 		// Try to get session ID from cookie
