@@ -9,7 +9,7 @@ use reinhardt_core::validators::ValidationResult;
 use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};
 use sqlx::PgPool;
 use std::sync::Arc;
-use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
+use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
 /// Test database setup and management with TestContainers
 pub struct TestDatabase {

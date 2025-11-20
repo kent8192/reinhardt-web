@@ -42,9 +42,11 @@
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use serde::{Deserialize, Serialize};
-use sqlx::any::AnyPool;
+use sqlx::AnyPool;
 use sqlx::Row;
 use std::sync::Arc;
+use testcontainers::core::image::image_ext::ImageExt as _;
+use testcontainers::core::WaitFor;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage};
 use tokio::time::{sleep, Duration};
@@ -88,9 +90,7 @@ async fn test_multiple_database_connections(
 
 	// Start second PostgreSQL container
 	let postgres2 = GenericImage::new("postgres", "16-alpine")
-		.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
-			"database system is ready",
-		))
+		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "testdb2")
 		.start()
@@ -179,9 +179,7 @@ async fn test_data_migration_between_databases(
 
 	// Start target database container
 	let postgres_target = GenericImage::new("postgres", "16-alpine")
-		.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
-			"database system is ready",
-		))
+		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "target_db")
 		.start()
@@ -192,7 +190,10 @@ async fn test_data_migration_between_databases(
 		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get target port");
-	let url_target = format!("postgres://postgres:test@localhost:{}/target_db", port_target);
+	let url_target = format!(
+		"postgres://postgres:test@localhost:{}/target_db",
+		port_target
+	);
 
 	let pool_target = Arc::new(
 		AnyPool::connect(&url_target)
@@ -240,7 +241,8 @@ async fn test_data_migration_between_databases(
 	for row in products {
 		let id: i32 = row.get("id");
 		let name: String = row.get("name");
-		let price: f64 = row.get::<sqlx::types::BigDecimal, _>("price")
+		let price: f64 = row
+			.get::<sqlx::types::Decimal, _>("price")
 			.to_string()
 			.parse()
 			.expect("Failed to parse price");
@@ -260,7 +262,10 @@ async fn test_data_migration_between_databases(
 		.await
 		.expect("Failed to count in target");
 
-	assert_eq!(target_count, 10, "Target should have 10 products after migration");
+	assert_eq!(
+		target_count, 10,
+		"Target should have 10 products after migration"
+	);
 
 	// Verify data integrity (compare first and last products)
 	let source_first: (i32, String, f64) = sqlx::query_as(
@@ -302,14 +307,11 @@ async fn test_data_migration_between_databases(
 async fn test_read_replica_pattern(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
 ) {
-	let (_container_primary, pool_primary, _port_primary, _url_primary) =
-		postgres_container.await;
+	let (_container_primary, pool_primary, _port_primary, _url_primary) = postgres_container.await;
 
 	// Start replica database
 	let postgres_replica = GenericImage::new("postgres", "16-alpine")
-		.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
-			"database system is ready",
-		))
+		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "replica_db")
 		.start()
@@ -320,7 +322,10 @@ async fn test_read_replica_pattern(
 		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get replica port");
-	let url_replica = format!("postgres://postgres:test@localhost:{}/replica_db", port_replica);
+	let url_replica = format!(
+		"postgres://postgres:test@localhost:{}/replica_db",
+		port_replica
+	);
 
 	let pool_replica = Arc::new(
 		AnyPool::connect(&url_replica)
@@ -403,16 +408,13 @@ async fn test_read_replica_pattern(
 async fn test_read_load_balancing_across_replicas(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
 ) {
-	let (_container_primary, pool_primary, _port_primary, _url_primary) =
-		postgres_container.await;
+	let (_container_primary, pool_primary, _port_primary, _url_primary) = postgres_container.await;
 
 	// Start two replica databases
 	let mut replicas = Vec::new();
 	for i in 1..=2 {
 		let postgres_replica = GenericImage::new("postgres", "16-alpine")
-			.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
-				"database system is ready",
-			))
+			.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 			.with_env_var("POSTGRES_PASSWORD", "test")
 			.with_env_var("POSTGRES_DB", format!("replica_{}", i))
 			.start()
@@ -517,14 +519,11 @@ async fn test_read_load_balancing_across_replicas(
 async fn test_primary_database_failover(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
 ) {
-	let (_container_primary, pool_primary, _port_primary, _url_primary) =
-		postgres_container.await;
+	let (_container_primary, pool_primary, _port_primary, _url_primary) = postgres_container.await;
 
 	// Start replica database
 	let postgres_replica = GenericImage::new("postgres", "16-alpine")
-		.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
-			"database system is ready",
-		))
+		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "replica_db")
 		.start()
@@ -535,7 +534,10 @@ async fn test_primary_database_failover(
 		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get replica port");
-	let url_replica = format!("postgres://postgres:test@localhost:{}/replica_db", port_replica);
+	let url_replica = format!(
+		"postgres://postgres:test@localhost:{}/replica_db",
+		port_replica
+	);
 
 	let pool_replica = Arc::new(
 		AnyPool::connect(&url_replica)
@@ -580,7 +582,7 @@ async fn test_primary_database_failover(
 		let id: i32 = row.get("id");
 		let customer_id: i32 = row.get("customer_id");
 		let total: f64 = row
-			.get::<sqlx::types::BigDecimal, _>("total")
+			.get::<sqlx::types::Decimal, _>("total")
 			.to_string()
 			.parse()
 			.expect("Failed to parse total");
@@ -638,9 +640,7 @@ async fn test_data_sharding_across_databases(
 
 	// Start second shard database
 	let postgres_shard1 = GenericImage::new("postgres", "16-alpine")
-		.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
-			"database system is ready",
-		))
+		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "shard1_db")
 		.start()
@@ -651,7 +651,10 @@ async fn test_data_sharding_across_databases(
 		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get shard1 port");
-	let url_shard1 = format!("postgres://postgres:test@localhost:{}/shard1_db", port_shard1);
+	let url_shard1 = format!(
+		"postgres://postgres:test@localhost:{}/shard1_db",
+		port_shard1
+	);
 
 	let pool_shard1 = Arc::new(
 		AnyPool::connect(&url_shard1)
@@ -758,9 +761,7 @@ async fn test_cross_shard_aggregation(
 
 	// Start second shard
 	let postgres_shard1 = GenericImage::new("postgres", "16-alpine")
-		.with_wait_for(testcontainers::core::WaitFor::message_on_stderr(
-			"database system is ready",
-		))
+		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "shard1_db")
 		.start()
@@ -771,7 +772,10 @@ async fn test_cross_shard_aggregation(
 		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get shard1 port");
-	let url_shard1 = format!("postgres://postgres:test@localhost:{}/shard1_db", port_shard1);
+	let url_shard1 = format!(
+		"postgres://postgres:test@localhost:{}/shard1_db",
+		port_shard1
+	);
 
 	let pool_shard1 = Arc::new(
 		AnyPool::connect(&url_shard1)
@@ -820,15 +824,19 @@ async fn test_cross_shard_aggregation(
 	}
 
 	// Aggregate total sales across all shards
-	let sum_shard0: f64 = sqlx::query_scalar("SELECT COALESCE(SUM(CAST(amount AS DOUBLE PRECISION)), 0.0) FROM sales")
-		.fetch_one(pool_shard0.as_ref())
-		.await
-		.expect("Failed to sum in shard0");
+	let sum_shard0: f64 = sqlx::query_scalar(
+		"SELECT COALESCE(SUM(CAST(amount AS DOUBLE PRECISION)), 0.0) FROM sales",
+	)
+	.fetch_one(pool_shard0.as_ref())
+	.await
+	.expect("Failed to sum in shard0");
 
-	let sum_shard1: f64 = sqlx::query_scalar("SELECT COALESCE(SUM(CAST(amount AS DOUBLE PRECISION)), 0.0) FROM sales")
-		.fetch_one(pool_shard1.as_ref())
-		.await
-		.expect("Failed to sum in shard1");
+	let sum_shard1: f64 = sqlx::query_scalar(
+		"SELECT COALESCE(SUM(CAST(amount AS DOUBLE PRECISION)), 0.0) FROM sales",
+	)
+	.fetch_one(pool_shard1.as_ref())
+	.await
+	.expect("Failed to sum in shard1");
 
 	let total_sales = sum_shard0 + sum_shard1;
 

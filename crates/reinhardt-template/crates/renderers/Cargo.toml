@@ -21,7 +21,6 @@ quick-xml = { version = "0.38.3", features = ["serialize"] }
 csv = "1.3"
 thiserror = "2.0.17"
 reinhardt-core = { workspace = true, features = ["exception", "negotiation"] }
-reinhardt-negotiation = { workspace = true }
 mime = "0.3"
 utoipa = { version = "5.4", features = ["yaml"] }
 tera = "1.19"

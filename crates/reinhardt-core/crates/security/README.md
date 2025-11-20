@@ -55,9 +55,13 @@ Security utilities and middleware for protecting web applications. Provides comp
 
 #### Security Utilities
 
-- **Secure Token Generation**: `generate_token()` creates cryptographically random tokens
-- **SHA-256 Hashing**: `hash_sha256()` for secure string hashing
+The `utils` module provides internal security utilities:
+
+- **Secure Token Generation**: `generate_token()` creates cryptographically random tokens (internal use)
+- **SHA-256 Hashing**: `hash_sha256()` for secure string hashing (internal use)
 - **Random Number Generation**: Built on `rand` crate for security
+
+**Note**: These utilities are available through the `utils` module but are not re-exported at the crate root. They are primarily used internally by CSRF and other security features.
 
 #### Error Handling
 

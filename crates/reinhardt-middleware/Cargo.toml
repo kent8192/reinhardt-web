@@ -25,11 +25,11 @@ reinhardt-core = { workspace = true, features = [
     "types",
     "exception",
     "http",
+    "security",
 ] }
 reinhardt-auth = { workspace = true, features = ["session"] }
 reinhardt-mail = { workspace = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }
-reinhardt-security = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 hyper = { workspace = true }

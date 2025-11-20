@@ -35,7 +35,6 @@ futures = "0.3"
 bytes.workspace = true
 hyper.workspace = true
 serial_test = { workspace = true }
-reinhardt-types = { path = "../reinhardt-core/crates/types" }
-reinhardt-exception = { path = "../reinhardt-core/crates/exception" }
+reinhardt-core = { workspace = true, features = ["types", "exception"] }
 reinhardt-params = { path = "crates/params", version = "0.1.0-alpha.1" }
 serde = { workspace = true }

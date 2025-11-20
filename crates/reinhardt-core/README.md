@@ -53,11 +53,31 @@ This parent crate re-exports functionality from the following sub-crates:
   - Range validators
   - Custom validator support
 
-- **Backends** (`reinhardt-backends`): Backend abstractions
-  - Cache backend traits
-  - Session backend traits
-  - Memory backend implementation
-  - Redis backend implementation
+- **Messages** (`reinhardt-messages`): Flash messages and user notifications
+  - Message levels (Debug, Info, Success, Warning, Error)
+  - Storage backends (Memory, Session, Cookie, Fallback)
+  - Middleware integration
+
+- **Pagination** (`reinhardt-pagination`): Pagination strategies
+  - PageNumberPagination for page-based pagination
+  - LimitOffsetPagination for SQL-style pagination
+  - CursorPagination for efficient large dataset pagination
+  - Database cursor pagination with O(k) performance
+
+- **Parsers** (`reinhardt-parsers`): Request body parsing
+  - JSON, XML, YAML, Form, MultiPart parsers
+  - File upload handling
+  - Content-type negotiation
+
+- **Negotiation** (`reinhardt-negotiation`): Content negotiation
+  - Media type selection based on Accept headers
+  - Language negotiation (Accept-Language)
+  - Encoding negotiation (Accept-Encoding)
+
+- **Dependency Injection** (`reinhardt-di`): FastAPI-style DI system
+  - Automatic dependency resolution
+  - Parameter injection
+  - Cache control
 
 ## Installation
 
@@ -85,8 +105,15 @@ Available features:
 - `macros` (default): Procedural macros
 - `security` (default): Security primitives
 - `validators` (default): Data validation
-- `backends` (default): Backend abstractions
-- `redis-backend`: Redis backend implementation
+- `serializers` (default): Serialization utilities
+- `auth`: Authentication support
+- `argon2-hasher`: Argon2 password hasher (requires `auth`)
+- `http`: HTTP types and traits (requires `types`)
+- `messages`: Flash messaging system
+- `di`: Dependency injection with parameter extraction
+- `negotiation`: Content negotiation
+- `parsers`: Request body parsers
+- `pagination`: Pagination strategies
 
 ## Usage
 
@@ -161,7 +188,12 @@ reinhardt-core/
     ├── macros/         # Procedural macros
     ├── security/       # Security primitives
     ├── validators/     # Data validation
-    └── backends/       # Backend abstractions
+    ├── serializers/    # Serialization utilities
+    ├── auth/           # Authentication support
+    ├── messages/       # Flash messaging
+    ├── pagination/     # Pagination strategies
+    ├── parsers/        # Request body parsers
+    └── negotiation/    # Content negotiation
 ```
 
 ## License

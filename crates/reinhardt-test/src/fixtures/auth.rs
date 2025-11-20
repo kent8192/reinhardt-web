@@ -116,7 +116,7 @@ pub fn test_users() -> Vec<TestUser> {
 			id: Uuid::new_v4(),
 			username: "user3".to_string(),
 			email: "user3@example.com".to_string(),
-			is_active: false, // 非アクティブユーザー
+			is_active: false, // Inactive user
 			is_admin: false,
 			is_staff: false,
 			is_superuser: false,

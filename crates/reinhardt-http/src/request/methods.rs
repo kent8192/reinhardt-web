@@ -76,7 +76,7 @@ impl Request {
 
 	/// Build an absolute URI for the request
 	///
-	/// Example: "https://example.com:8000/path?query=value"
+	/// Example: "<https://example.com:8000/path?query=value>"
 	///
 	/// # Examples
 	///

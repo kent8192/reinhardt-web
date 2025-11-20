@@ -1,7 +1,7 @@
 //! GraphQL Relay-style cursor pagination
 //!
 //! Implements the Relay Cursor Connections Specification:
-//! https://relay.dev/graphql/connections.htm
+//! <https://relay.dev/graphql/connections.htm>
 
 use serde::{Deserialize, Serialize};
 

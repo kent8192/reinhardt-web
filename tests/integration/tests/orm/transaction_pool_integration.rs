@@ -14,7 +14,7 @@
 use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
 use testcontainers::{ContainerAsync, GenericImage};
@@ -116,9 +116,7 @@ async fn test_transaction_rollback_with_pool(
 		.expect("Failed to insert");
 
 	// Rollback transaction
-	tx.rollback()
-		.await
-		.expect("Failed to rollback transaction");
+	tx.rollback().await.expect("Failed to rollback transaction");
 
 	// Verify data is NOT persisted
 	let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM products")
@@ -209,10 +207,12 @@ async fn test_read_committed_isolation(
 	);
 
 	// Create test table
-	sqlx::query("CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, balance BIGINT NOT NULL)")
-		.execute(pool.inner())
-		.await
-		.expect("Failed to create table");
+	sqlx::query(
+		"CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, balance BIGINT NOT NULL)",
+	)
+	.execute(pool.inner())
+	.await
+	.expect("Failed to create table");
 
 	// Insert initial data
 	sqlx::query("INSERT INTO accounts (id, balance) VALUES ($1, $2)")
@@ -223,11 +223,7 @@ async fn test_read_committed_isolation(
 		.expect("Failed to insert");
 
 	// Transaction 1: Read initial balance
-	let mut tx1 = pool
-		.inner()
-		.begin()
-		.await
-		.expect("Failed to begin tx1");
+	let mut tx1 = pool.inner().begin().await.expect("Failed to begin tx1");
 
 	sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
 		.execute(&mut *tx1)
@@ -243,11 +239,7 @@ async fn test_read_committed_isolation(
 	assert_eq!(balance1, 1000);
 
 	// Transaction 2: Update balance and commit
-	let mut tx2 = pool
-		.inner()
-		.begin()
-		.await
-		.expect("Failed to begin tx2");
+	let mut tx2 = pool.inner().begin().await.expect("Failed to begin tx2");
 
 	sqlx::query("UPDATE accounts SET balance = $1 WHERE id = $2")
 		.bind(1500_i64)
@@ -265,7 +257,10 @@ async fn test_read_committed_isolation(
 		.await
 		.expect("Failed to read balance again");
 
-	assert_eq!(balance2, 1500, "READ COMMITTED should see committed changes");
+	assert_eq!(
+		balance2, 1500,
+		"READ COMMITTED should see committed changes"
+	);
 
 	tx1.rollback().await.expect("Failed to rollback tx1");
 }
@@ -293,10 +288,12 @@ async fn test_repeatable_read_isolation(
 	);
 
 	// Create test table
-	sqlx::query("CREATE TABLE IF NOT EXISTS inventory (id SERIAL PRIMARY KEY, quantity BIGINT NOT NULL)")
-		.execute(pool.inner())
-		.await
-		.expect("Failed to create table");
+	sqlx::query(
+		"CREATE TABLE IF NOT EXISTS inventory (id SERIAL PRIMARY KEY, quantity BIGINT NOT NULL)",
+	)
+	.execute(pool.inner())
+	.await
+	.expect("Failed to create table");
 
 	// Insert initial data
 	sqlx::query("INSERT INTO inventory (id, quantity) VALUES ($1, $2)")
@@ -307,11 +304,7 @@ async fn test_repeatable_read_isolation(
 		.expect("Failed to insert");
 
 	// Transaction 1: Read initial quantity with REPEATABLE READ
-	let mut tx1 = pool
-		.inner()
-		.begin()
-		.await
-		.expect("Failed to begin tx1");
+	let mut tx1 = pool.inner().begin().await.expect("Failed to begin tx1");
 
 	sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 		.execute(&mut *tx1)
@@ -327,11 +320,7 @@ async fn test_repeatable_read_isolation(
 	assert_eq!(qty1, 100);
 
 	// Transaction 2: Update quantity and commit
-	let mut tx2 = pool
-		.inner()
-		.begin()
-		.await
-		.expect("Failed to begin tx2");
+	let mut tx2 = pool.inner().begin().await.expect("Failed to begin tx2");
 
 	sqlx::query("UPDATE inventory SET quantity = $1 WHERE id = $2")
 		.bind(150_i64)
@@ -516,7 +505,10 @@ async fn test_nested_savepoints(
 		.await
 		.expect("Failed to count");
 
-	assert_eq!(count, 2, "Should have 2 events after nested savepoint rollback");
+	assert_eq!(
+		count, 2,
+		"Should have 2 events after nested savepoint rollback"
+	);
 
 	let names: Vec<String> = sqlx::query_scalar("SELECT name FROM events ORDER BY id")
 		.fetch_all(pool.inner())
@@ -560,11 +552,7 @@ async fn test_connection_reuse_after_commit(
 
 	// First transaction
 	{
-		let mut tx = pool
-			.inner()
-			.begin()
-			.await
-			.expect("Failed to begin tx1");
+		let mut tx = pool.inner().begin().await.expect("Failed to begin tx1");
 
 		sqlx::query("INSERT INTO reuse_test (value) VALUES ($1)")
 			.bind(1)
@@ -577,11 +565,7 @@ async fn test_connection_reuse_after_commit(
 
 	// Second transaction (should reuse connection)
 	{
-		let mut tx = pool
-			.inner()
-			.begin()
-			.await
-			.expect("Failed to begin tx2");
+		let mut tx = pool.inner().begin().await.expect("Failed to begin tx2");
 
 		sqlx::query("INSERT INTO reuse_test (value) VALUES ($1)")
 			.bind(2)
@@ -631,11 +615,7 @@ async fn test_connection_reuse_after_rollback(
 
 	// First transaction (rollback)
 	{
-		let mut tx = pool
-			.inner()
-			.begin()
-			.await
-			.expect("Failed to begin tx1");
+		let mut tx = pool.inner().begin().await.expect("Failed to begin tx1");
 
 		sqlx::query("INSERT INTO rollback_test (value) VALUES ($1)")
 			.bind(10)
@@ -648,11 +628,7 @@ async fn test_connection_reuse_after_rollback(
 
 	// Second transaction (should reuse connection)
 	{
-		let mut tx = pool
-			.inner()
-			.begin()
-			.await
-			.expect("Failed to begin tx2");
+		let mut tx = pool.inner().begin().await.expect("Failed to begin tx2");
 
 		sqlx::query("INSERT INTO rollback_test (value) VALUES ($1)")
 			.bind(20)
@@ -734,9 +710,7 @@ async fn test_transaction_error_handling(
 	assert!(result.is_err(), "Duplicate insert should fail");
 
 	// Rollback due to error
-	tx.rollback()
-		.await
-		.expect("Failed to rollback after error");
+	tx.rollback().await.expect("Failed to rollback after error");
 
 	// Pool should still work
 	let mut new_tx = pool
@@ -751,7 +725,10 @@ async fn test_transaction_error_handling(
 		.await
 		.expect("Failed to insert in new transaction");
 
-	new_tx.commit().await.expect("Failed to commit new transaction");
+	new_tx
+		.commit()
+		.await
+		.expect("Failed to commit new transaction");
 
 	// Verify only second insert persisted
 	let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM unique_test")
@@ -789,10 +766,12 @@ async fn test_concurrent_transactions(
 	);
 
 	// Create test table
-	sqlx::query("CREATE TABLE IF NOT EXISTS concurrent_test (id SERIAL PRIMARY KEY, thread_id INT)")
-		.execute(pool.inner())
-		.await
-		.expect("Failed to create table");
+	sqlx::query(
+		"CREATE TABLE IF NOT EXISTS concurrent_test (id SERIAL PRIMARY KEY, thread_id INT)",
+	)
+	.execute(pool.inner())
+	.await
+	.expect("Failed to create table");
 
 	// Spawn multiple concurrent transactions
 	let mut handles = Vec::new();
@@ -872,11 +851,7 @@ async fn test_concurrent_transactions_with_locks(
 	// Transaction 1: Lock row with FOR UPDATE
 	let pool1 = Arc::clone(&pool);
 	let handle1 = tokio::spawn(async move {
-		let mut tx = pool1
-			.inner()
-			.begin()
-			.await
-			.expect("Failed to begin tx1");
+		let mut tx = pool1.inner().begin().await.expect("Failed to begin tx1");
 
 		// Lock row
 		sqlx::query("SELECT value FROM locked_test WHERE id = $1 FOR UPDATE")
@@ -905,11 +880,7 @@ async fn test_concurrent_transactions_with_locks(
 	// Transaction 2: Try to update same row (will wait for lock)
 	let pool2 = Arc::clone(&pool);
 	let handle2 = tokio::spawn(async move {
-		let mut tx = pool2
-			.inner()
-			.begin()
-			.await
-			.expect("Failed to begin tx2");
+		let mut tx = pool2.inner().begin().await.expect("Failed to begin tx2");
 
 		// This will wait for tx1's lock to release
 		sqlx::query("UPDATE locked_test SET value = value + $1 WHERE id = $2")
@@ -933,5 +904,8 @@ async fn test_concurrent_transactions_with_locks(
 		.await
 		.expect("Failed to get final value");
 
-	assert_eq!(final_value, 150, "Lock contention should be handled correctly");
+	assert_eq!(
+		final_value, 150,
+		"Lock contention should be handled correctly"
+	);
 }

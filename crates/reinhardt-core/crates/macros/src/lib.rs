@@ -575,7 +575,7 @@ pub fn derive_injectable(input: TokenStream) -> TokenStream {
 ///
 /// - `primary_key`: Mark field as primary key (required for exactly one field)
 /// - `max_length`: Maximum length for String fields (required for String)
-/// - `null`: Allow NULL values (default: inferred from Option<T>)
+/// - `null`: Allow NULL values (default: inferred from `Option<T>`)
 /// - `blank`: Allow blank values in forms
 /// - `unique`: Enforce uniqueness constraint
 /// - `default`: Default value

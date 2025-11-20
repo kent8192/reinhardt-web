@@ -89,7 +89,7 @@ A comprehensive collection of reusable validators following Django's validator p
 - `PatternMismatch(String)`: Regex pattern did not match
 - `Custom(String)`: Custom validation error
 
-#### Additional Validators
+#### Additional Validators (Implemented ✓)
 
 - **SlugValidator**: Validate URL-safe slugs
 - **UUIDValidator**: Validate UUID formats (v1-v5)
@@ -97,17 +97,22 @@ A comprehensive collection of reusable validators following Django's validator p
 - **DateValidator**: Validate date formats
 - **TimeValidator**: Validate time formats
 - **DateTimeValidator**: Validate datetime formats
-- **JSONValidator**: Validate JSON structure and schema
-- **FileExtensionValidator**: Validate file extensions
-- **FileSizeValidator**: Validate file sizes
-- **ImageDimensionValidator**: Validate image width/height
+- **JSONValidator**: Validate JSON structure
+- **FileTypeValidator**: Validate file types and MIME types
 - **ColorValidator**: Validate color codes (hex, rgb, rgba, etc.)
 - **PhoneNumberValidator**: Validate phone numbers (E.164 format)
 - **CreditCardValidator**: Validate credit card numbers (Luhn algorithm)
+- **IBANValidator**: Validate international bank account numbers
+- **ExistsValidator**: Validate record existence in database
+- **UniqueValidator**: Validate uniqueness constraints
+- **CustomRegexValidator**: User-defined regex pattern validation
+
+#### Planned Features
+
 - **PostalCodeValidator**: Validate postal codes (country-specific)
-
-#### Enhanced Features
-
+- **FileExtensionValidator**: Validate specific file extensions
+- **FileSizeValidator**: Validate file sizes with limits
+- **ImageDimensionValidator**: Validate image width/height
 - **Validator Composition**: Combine multiple validators with AND/OR logic
 - **Conditional Validation**: Apply validators based on conditions
 - **Async Validators**: Support for async validation operations
@@ -115,12 +120,10 @@ A comprehensive collection of reusable validators following Django's validator p
 - **Internationalization (i18n)**: Multi-language error messages
 - **Serialization Support**: Serialize/deserialize validators for storage
 - **Schema Validation**: JSON Schema and other schema format support
-
-#### Performance Optimizations
-
-- **Lazy Regex Compilation**: Compile regex patterns only when needed
-- **Validator Caching**: Cache compiled validators for reuse
-- **Parallel Validation**: Run independent validators concurrently
+- **Performance Optimizations**:
+  - Lazy Regex Compilation: Compile regex patterns only when needed
+  - Validator Caching: Cache compiled validators for reuse
+  - Parallel Validation: Run independent validators concurrently
 
 ## Usage Examples
 

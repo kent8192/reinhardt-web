@@ -43,14 +43,18 @@ async fn test_basic_crud_lifecycle(
 		.expect("Failed to create table");
 
 	// CREATE: Insert article
-	let article_id: i32 = sqlx::query_scalar("INSERT INTO articles (title, body) VALUES ($1, $2) RETURNING id")
-		.bind("My First Article")
-		.bind("This is the article body")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create article");
+	let article_id: i32 =
+		sqlx::query_scalar("INSERT INTO articles (title, body) VALUES ($1, $2) RETURNING id")
+			.bind("My First Article")
+			.bind("This is the article body")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to create article");
 
-	assert!(article_id > 0, "Article should have valid ID after creation");
+	assert!(
+		article_id > 0,
+		"Article should have valid ID after creation"
+	);
 
 	// READ: Fetch article
 	let result = sqlx::query("SELECT id, title, body FROM articles WHERE id = $1")
@@ -172,7 +176,10 @@ async fn test_crud_lifecycle_with_timestamps(
 	let new_created_at: chrono::NaiveDateTime = updated_result.get("created_at");
 	let new_updated_at: chrono::NaiveDateTime = updated_result.get("updated_at");
 
-	assert_eq!(created_at, new_created_at, "created_at should not change on update");
+	assert_eq!(
+		created_at, new_created_at,
+		"created_at should not change on update"
+	);
 	assert!(
 		new_updated_at > initial_updated_at,
 		"updated_at should be newer after update"
@@ -211,15 +218,19 @@ async fn test_crud_lifecycle_not_null_validation(
 		.execute(pool.as_ref())
 		.await;
 
-	assert!(result.is_err(), "Insert with NULL NOT NULL column should fail");
+	assert!(
+		result.is_err(),
+		"Insert with NULL NOT NULL column should fail"
+	);
 
 	// CREATE: Valid insert
-	let profile_id: i32 = sqlx::query_scalar("INSERT INTO profiles (username, email) VALUES ($1, $2) RETURNING id")
-		.bind("john_doe")
-		.bind("john@example.com")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create profile");
+	let profile_id: i32 =
+		sqlx::query_scalar("INSERT INTO profiles (username, email) VALUES ($1, $2) RETURNING id")
+			.bind("john_doe")
+			.bind("john@example.com")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to create profile");
 
 	// UPDATE: Attempt to set email to NULL (should fail)
 	let update_result = sqlx::query("UPDATE profiles SET email = $1 WHERE id = $2")
@@ -250,17 +261,20 @@ async fn test_crud_lifecycle_unique_validation(
 	let (_container, pool, _port, _url) = postgres_container.await;
 
 	// Create table with UNIQUE constraint
-	sqlx::query("CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL)")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create table");
+	sqlx::query(
+		"CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL)",
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to create table");
 
 	// CREATE: Insert first account
-	let account1_id: i32 = sqlx::query_scalar("INSERT INTO accounts (email) VALUES ($1) RETURNING id")
-		.bind("user@example.com")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create account 1");
+	let account1_id: i32 =
+		sqlx::query_scalar("INSERT INTO accounts (email) VALUES ($1) RETURNING id")
+			.bind("user@example.com")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to create account 1");
 
 	// CREATE: Attempt duplicate insert (should fail)
 	let duplicate_result = sqlx::query("INSERT INTO accounts (email) VALUES ($1)")
@@ -271,11 +285,12 @@ async fn test_crud_lifecycle_unique_validation(
 	assert!(duplicate_result.is_err(), "Duplicate insert should fail");
 
 	// CREATE: Insert second account with different email
-	let account2_id: i32 = sqlx::query_scalar("INSERT INTO accounts (email) VALUES ($1) RETURNING id")
-		.bind("other@example.com")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create account 2");
+	let account2_id: i32 =
+		sqlx::query_scalar("INSERT INTO accounts (email) VALUES ($1) RETURNING id")
+			.bind("other@example.com")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to create account 2");
 
 	// UPDATE: Attempt to change account2's email to duplicate account1's
 	let update_result = sqlx::query("UPDATE accounts SET email = $1 WHERE id = $2")
@@ -338,12 +353,13 @@ async fn test_crud_lifecycle_check_constraint(
 	assert!(result.is_err(), "Insert with negative price should fail");
 
 	// CREATE: Valid insert
-	let item_id: i32 = sqlx::query_scalar("INSERT INTO items (name, price) VALUES ($1, $2) RETURNING id")
-		.bind("Valid Item")
-		.bind(500_i64)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create item");
+	let item_id: i32 =
+		sqlx::query_scalar("INSERT INTO items (name, price) VALUES ($1, $2) RETURNING id")
+			.bind("Valid Item")
+			.bind(500_i64)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to create item");
 
 	// UPDATE: Attempt to set price to invalid value
 	let update_result = sqlx::query("UPDATE items SET price = $1 WHERE id = $2")
@@ -442,11 +458,12 @@ async fn test_crud_lifecycle_cascade_delete(
 		.expect("Failed to delete author");
 
 	// Verify books also deleted
-	let remaining_books: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM books WHERE author_id = $1")
-		.bind(author_id)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count remaining books");
+	let remaining_books: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM books WHERE author_id = $1")
+			.bind(author_id)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to count remaining books");
 
 	assert_eq!(remaining_books, 0, "Books should be cascade deleted");
 }
@@ -466,10 +483,12 @@ async fn test_crud_lifecycle_set_null_on_delete(
 	let (_container, pool, _port, _url) = postgres_container.await;
 
 	// Create parent table
-	sqlx::query("CREATE TABLE IF NOT EXISTS categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL)")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create categories table");
+	sqlx::query(
+		"CREATE TABLE IF NOT EXISTS categories (id SERIAL PRIMARY KEY, name TEXT NOT NULL)",
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to create categories table");
 
 	// Create child table with SET NULL
 	sqlx::query(
@@ -487,19 +506,21 @@ async fn test_crud_lifecycle_set_null_on_delete(
 	.expect("Failed to create products table");
 
 	// CREATE: Insert category
-	let category_id: i32 = sqlx::query_scalar("INSERT INTO categories (name) VALUES ($1) RETURNING id")
-		.bind("Electronics")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create category");
+	let category_id: i32 =
+		sqlx::query_scalar("INSERT INTO categories (name) VALUES ($1) RETURNING id")
+			.bind("Electronics")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to create category");
 
 	// CREATE: Insert product
-	let product_id: i32 = sqlx::query_scalar("INSERT INTO products (name, category_id) VALUES ($1, $2) RETURNING id")
-		.bind("Laptop")
-		.bind(category_id)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create product");
+	let product_id: i32 =
+		sqlx::query_scalar("INSERT INTO products (name, category_id) VALUES ($1, $2) RETURNING id")
+			.bind("Laptop")
+			.bind(category_id)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to create product");
 
 	// DELETE: Remove category
 	sqlx::query("DELETE FROM categories WHERE id = $1")
@@ -519,7 +540,10 @@ async fn test_crud_lifecycle_set_null_on_delete(
 	let category_id_after: Option<i32> = result.get("category_id");
 
 	assert_eq!(name, "Laptop");
-	assert!(category_id_after.is_none(), "category_id should be NULL after parent deletion");
+	assert!(
+		category_id_after.is_none(),
+		"category_id should be NULL after parent deletion"
+	);
 }
 
 // ============================================================================
@@ -579,11 +603,12 @@ async fn test_crud_lifecycle_soft_delete(
 		.expect("Failed to soft delete");
 
 	// READ: Query with soft delete filter (exclude deleted)
-	let active_result = sqlx::query("SELECT id FROM documents WHERE id = $1 AND deleted_at IS NULL")
-		.bind(doc_id)
-		.fetch_optional(pool.as_ref())
-		.await
-		.expect("Failed to query active documents");
+	let active_result =
+		sqlx::query("SELECT id FROM documents WHERE id = $1 AND deleted_at IS NULL")
+			.bind(doc_id)
+			.fetch_optional(pool.as_ref())
+			.await
+			.expect("Failed to query active documents");
 
 	assert!(
 		active_result.is_none(),
@@ -611,11 +636,12 @@ async fn test_crud_lifecycle_soft_delete(
 		.expect("Failed to restore document");
 
 	// READ: Verify restored
-	let restored_result = sqlx::query("SELECT id FROM documents WHERE id = $1 AND deleted_at IS NULL")
-		.bind(doc_id)
-		.fetch_optional(pool.as_ref())
-		.await
-		.expect("Failed to query restored document");
+	let restored_result =
+		sqlx::query("SELECT id FROM documents WHERE id = $1 AND deleted_at IS NULL")
+			.bind(doc_id)
+			.fetch_optional(pool.as_ref())
+			.await
+			.expect("Failed to query restored document");
 
 	assert!(
 		restored_result.is_some(),
@@ -642,10 +668,12 @@ async fn test_crud_lifecycle_bulk_insert(
 	let (_container, pool, _port, _url) = postgres_container.await;
 
 	// Create table
-	sqlx::query("CREATE TABLE IF NOT EXISTS bulk_items (id SERIAL PRIMARY KEY, value INT NOT NULL)")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create table");
+	sqlx::query(
+		"CREATE TABLE IF NOT EXISTS bulk_items (id SERIAL PRIMARY KEY, value INT NOT NULL)",
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to create table");
 
 	// Bulk INSERT: Use transaction for efficiency
 	let mut tx = pool.begin().await.expect("Failed to begin transaction");
@@ -684,13 +712,15 @@ async fn test_crud_lifecycle_bulk_update(
 	let (_container, pool, _port, _url) = postgres_container.await;
 
 	// Create table
-	sqlx::query("CREATE TABLE IF NOT EXISTS status_items (id SERIAL PRIMARY KEY, status TEXT NOT NULL)")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create table");
+	sqlx::query(
+		"CREATE TABLE IF NOT EXISTS status_items (id SERIAL PRIMARY KEY, status TEXT NOT NULL)",
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to create table");
 
 	// Insert test data
-	for i in 1..=30 {
+	for _i in 1..=30 {
 		sqlx::query("INSERT INTO status_items (status) VALUES ($1)")
 			.bind("pending")
 			.execute(pool.as_ref())
@@ -706,11 +736,12 @@ async fn test_crud_lifecycle_bulk_update(
 		.expect("Failed to bulk update");
 
 	// READ: Verify all updated
-	let processed_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM status_items WHERE status = $1")
-		.bind("processed")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count processed");
+	let processed_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM status_items WHERE status = $1")
+			.bind("processed")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to count processed");
 
 	assert_eq!(processed_count, 30, "All items should be bulk updated");
 }
@@ -730,10 +761,12 @@ async fn test_crud_lifecycle_bulk_delete(
 	let (_container, pool, _port, _url) = postgres_container.await;
 
 	// Create table
-	sqlx::query("CREATE TABLE IF NOT EXISTS temp_items (id SERIAL PRIMARY KEY, category TEXT NOT NULL)")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create table");
+	sqlx::query(
+		"CREATE TABLE IF NOT EXISTS temp_items (id SERIAL PRIMARY KEY, category TEXT NOT NULL)",
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to create table");
 
 	// Insert test data
 	for i in 1..=40 {
@@ -758,7 +791,10 @@ async fn test_crud_lifecycle_bulk_delete(
 		.await
 		.expect("Failed to count remaining");
 
-	assert_eq!(remaining_count, 20, "Only odd items should remain after bulk delete");
+	assert_eq!(
+		remaining_count, 20,
+		"Only odd items should remain after bulk delete"
+	);
 
 	let all_odd: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM temp_items WHERE category = $1")
 		.bind("odd")

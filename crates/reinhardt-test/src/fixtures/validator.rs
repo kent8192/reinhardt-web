@@ -42,8 +42,8 @@ use crate::resource::{TeardownGuard, TestResource};
 ///     #[future] validator_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String)
 /// ) {
 ///     let (_container, pool, port, url) = validator_test_db.await;
-///     // テストコード
-///     // 自動的にクリーンアップされる
+///     // Test code
+///     // Automatically cleaned up
 /// }
 /// ```
 #[cfg(feature = "testcontainers")]
@@ -53,7 +53,7 @@ pub async fn validator_test_db() -> (ContainerAsync<GenericImage>, Arc<sqlx::PgP
 		.with_wait_for(WaitFor::message_on_stderr(
 			"database system is ready to accept connections",
 		))
-		.with_wait_for(WaitFor::seconds(2)) // 追加の待機時間
+		.with_wait_for(WaitFor::seconds(2)) // Additional wait time
 		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
 		.with_env_var("POSTGRES_USER", "postgres")
 		.with_env_var("POSTGRES_DB", "test_db")
@@ -68,14 +68,14 @@ pub async fn validator_test_db() -> (ContainerAsync<GenericImage>, Arc<sqlx::PgP
 
 	let database_url = format!("postgres://postgres@localhost:{}/test_db", port);
 
-	// リトライメカニズム付きで接続
+	// Connect with retry mechanism
 	let mut retry_count = 0;
 	let max_retries = 3;
 	let pool = loop {
 		match sqlx::postgres::PgPoolOptions::new()
-			.max_connections(10) // 増加: 5 → 10
+			.max_connections(10) // Increased: 5 → 10
 			.min_connections(1)
-			.acquire_timeout(std::time::Duration::from_secs(20)) // 増加: 10s → 20s
+			.acquire_timeout(std::time::Duration::from_secs(20)) // Increased: 10s → 20s
 			.idle_timeout(Some(std::time::Duration::from_secs(30)))
 			.max_lifetime(Some(std::time::Duration::from_secs(300)))
 			.connect(&database_url)
@@ -110,13 +110,13 @@ pub struct ValidatorDbGuard;
 #[cfg(feature = "testcontainers")]
 impl TestResource for ValidatorDbGuard {
 	fn setup() -> Self {
-		// 必要に応じて初期化処理を追加
+		// Add initialization if needed
 		Self
 	}
 
 	fn teardown(&mut self) {
-		// プール接続のクリーンアップは自動的に行われるため、
-		// 追加のクリーンアップ処理が必要な場合はここに実装
+		// Pool connections are automatically cleaned up,
+		// implement additional cleanup here if needed
 	}
 }
 
@@ -136,8 +136,8 @@ impl TestResource for ValidatorDbGuard {
 /// async fn test_with_cleanup(
 ///     _validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 /// ) {
-///     // テストコード
-///     // panicしても自動的にクリーンアップされる
+///     // Test code
+///     // Automatically cleaned up even on panic
 /// }
 /// ```
 #[cfg(feature = "testcontainers")]

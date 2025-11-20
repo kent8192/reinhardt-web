@@ -1,19 +1,19 @@
-//! OpenAPI + ViewSets クレート横断統合テスト
+//! OpenAPI + ViewSets Cross-Crate Integration Tests
 //!
-//! OpenAPIスキーマ生成とViewSetsの統合を検証します。
+//! Validates the integration of OpenAPI schema generation and ViewSets.
 //!
-//! ## 統合ポイント
+//! ## Integration Points
 //!
-//! - **openapi**: OpenAPI 3.0スキーマ生成
-//! - **viewsets**: ModelViewSet, ReadOnlyModelViewSet等
+//! - **openapi**: OpenAPI 3.0 schema generation
+//! - **viewsets**: ModelViewSet, ReadOnlyModelViewSet, etc.
 //!
-//! ## 目的
+//! ## Purpose
 //!
-//! ViewSetsからOpenAPIスキーマを自動生成し、以下を検証:
-//! - paths, components, schemasの正確性
-//! - CRUD操作のエンドポイント生成
-//! - パラメータスキーマの型と制約
-//! - レスポンススキーマの構造
+//! Automatically generate OpenAPI schemas from ViewSets and verify:
+//! - Accuracy of paths, components, and schemas
+//! - Endpoint generation for CRUD operations
+//! - Parameter schema types and constraints
+//! - Response schema structure
 
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use reinhardt_openapi::{InspectorConfig, SchemaGenerator, ViewSetInspector};
 use reinhardt_viewsets::{ModelViewSet, ReadOnlyModelViewSet};
 
-/// テスト用ユーザーモデル
+/// User model for testing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct User {
 	id: i64,
@@ -30,7 +30,7 @@ struct User {
 	is_active: bool,
 }
 
-/// テスト用ユーザーシリアライザー
+/// User serializer for testing
 #[derive(Debug, Clone)]
 struct UserSerializer;
 
@@ -49,19 +49,19 @@ fn generator() -> SchemaGenerator {
 		.description("Test API for OpenAPI integration")
 }
 
-/// Test 1: ModelViewSetからのOpenAPI paths生成
+/// Test 1: OpenAPI paths generation from ModelViewSet
 ///
-/// 検証内容:
-/// - CRUD操作（GET, POST, PUT, PATCH, DELETE）のパス
-/// - コレクションエンドポイント (/api/users/) と詳細エンドポイント (/api/users/{id}/)
-/// - 各HTTPメソッドの存在確認
+/// Verification:
+/// - Paths for CRUD operations (GET, POST, PUT, PATCH, DELETE)
+/// - Collection endpoint (/api/users/) and detail endpoint (/api/users/{id}/)
+/// - Existence of each HTTP method
 #[rstest]
 #[test]
 fn test_model_viewset_openapi_paths_generation(inspector: ViewSetInspector) {
-	// ModelViewSet構築
+	// Build ModelViewSet
 	let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 
-	// パス抽出
+	// Extract paths
 	let paths = inspector.extract_paths(&viewset, "/api/users");
 
 	// DEBUG: Print all generated path keys
@@ -70,14 +70,14 @@ fn test_model_viewset_openapi_paths_generation(inspector: ViewSetInspector) {
 		eprintln!("  - '{}'", key);
 	}
 
-	// パスが生成されたことを確認
+	// Verify that paths were generated
 	assert_eq!(
 		paths.len(),
 		2,
 		"Should generate collection and detail paths"
 	);
 
-	// コレクションエンドポイント (/api/users/)
+	// Collection endpoint (/api/users/)
 	let collection_path = paths.get("/api/users/");
 	assert!(
 		collection_path.is_some(),
@@ -98,7 +98,7 @@ fn test_model_viewset_openapi_paths_generation(inspector: ViewSetInspector) {
 		"Collection should have POST operation"
 	);
 
-	// 詳細エンドポイント (/api/users/{id}/)
+	// Detail endpoint (/api/users/{id}/)
 	// Try to find the detail path - it should match the OpenAPI format
 	let detail_path = paths
 		.keys()
@@ -127,50 +127,50 @@ fn test_model_viewset_openapi_paths_generation(inspector: ViewSetInspector) {
 	);
 }
 
-/// Test 2: ReadOnlyModelViewSetのOpenAPIスキーマ生成
+/// Test 2: OpenAPI schema generation from ReadOnlyModelViewSet
 ///
-/// 検証内容:
-/// - ViewSetInspectorは常に全CRUD操作を生成する
-/// - ReadOnlyModelViewSetでもGET/POST/PUT/PATCH/DELETEが含まれる
-/// - コレクションと詳細の2つのエンドポイントが生成される
+/// Verification:
+/// - ViewSetInspector always generates all CRUD operations
+/// - ReadOnlyModelViewSet also includes GET/POST/PUT/PATCH/DELETE
+/// - Two endpoints (collection and detail) are generated
 ///
-/// Note: 現在の実装ではViewSetInspectorはViewSetの種類を判別せず、
-/// 全てのCRUD操作を生成します。将来的にはViewSet種類の判別機能が
-/// 追加される可能性があります。
+/// Note: The current implementation does not distinguish ViewSet types,
+/// and generates all CRUD operations. ViewSet type detection functionality
+/// may be added in the future.
 #[rstest]
 #[test]
 fn test_readonly_viewset_openapi_schema(inspector: ViewSetInspector) {
-	// ReadOnlyModelViewSet構築
+	// Build ReadOnlyModelViewSet
 	let viewset = ReadOnlyModelViewSet::<User, UserSerializer>::new("users");
 
-	// パス抽出
+	// Extract paths
 	let paths = inspector.extract_paths(&viewset, "/api/users");
 
-	// パスが生成されたことを確認
+	// Verify that paths were generated
 	assert_eq!(
 		paths.len(),
 		2,
 		"Should generate collection and detail paths"
 	);
 
-	// コレクションエンドポイント
+	// Collection endpoint
 	let collection = paths
 		.get("/api/users/")
 		.expect("Collection path should exist");
 
-	// GETは存在するはず
+	// GET should exist
 	assert!(
 		collection.get.is_some(),
 		"Collection should have GET operation"
 	);
 
-	// 現在の実装ではPOSTも生成される (将来的に修正される可能性あり)
+	// POST is also generated in current implementation (may be fixed in the future)
 	assert!(
 		collection.post.is_some(),
 		"Current implementation generates POST for all ViewSets"
 	);
 
-	// 詳細エンドポイント - 動的に検索
+	// Detail endpoint - search dynamically
 	let detail_path = paths
 		.keys()
 		.find(|k| k.contains("{") && k.contains("id"))
@@ -180,10 +180,10 @@ fn test_readonly_viewset_openapi_schema(inspector: ViewSetInspector) {
 		.get(detail_path.as_str())
 		.expect("Detail endpoint should be retrievable");
 
-	// GETは存在するはず
+	// GET should exist
 	assert!(detail.get.is_some(), "Detail should have GET operation");
 
-	// 現在の実装ではPUT, PATCH, DELETEも生成される
+	// PUT, PATCH, DELETE are also generated in current implementation
 	assert!(
 		detail.put.is_some(),
 		"Current implementation generates PUT for all ViewSets"
@@ -198,31 +198,31 @@ fn test_readonly_viewset_openapi_schema(inspector: ViewSetInspector) {
 	);
 }
 
-/// Test 3: ViewSetからのOpenAPI 3.0スキーマ生成
+/// Test 3: OpenAPI 3.0 schema generation from ViewSet
 ///
-/// 検証内容:
-/// - OpenAPI 3.0仕様への準拠
-/// - info部分の正確性（title, version, description）
-/// - JSONシリアライゼーション
+/// Verification:
+/// - Compliance with OpenAPI 3.0 specification
+/// - Accuracy of info section (title, version, description)
+/// - JSON serialization
 #[rstest]
 #[test]
 fn test_complete_openapi_schema_generation(
 	inspector: ViewSetInspector,
 	generator: SchemaGenerator,
 ) {
-	// ViewSetからパス情報を抽出
+	// Extract path information from ViewSet
 	let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 	let paths = inspector.extract_paths(&viewset, "/api/users");
 
-	// パスが生成されたことを確認
+	// Verify that paths were generated
 	assert!(!paths.is_empty(), "Paths should be extracted");
 
-	// OpenAPIスキーマ生成
+	// Generate OpenAPI schema
 	let schema = generator
 		.generate()
 		.expect("Schema generation should succeed");
 
-	// info部分の検証
+	// Verify info section
 	assert_eq!(schema.info.title, "Test API", "Title should match");
 	assert_eq!(schema.info.version, "1.0.0", "Version should match");
 	assert_eq!(
@@ -231,50 +231,50 @@ fn test_complete_openapi_schema_generation(
 		"Description should match"
 	);
 
-	// JSONシリアライズの検証
+	// Verify JSON serialization
 	let json_result = schema.to_json();
 	assert!(json_result.is_ok(), "Schema should be serializable to JSON");
 
 	let json = json_result.unwrap();
 	assert!(!json.is_empty(), "JSON should not be empty");
 
-	// OpenAPI versionの確認（JSON経由）
+	// Verify OpenAPI version (via JSON)
 	assert!(
 		json.contains("\"openapi\""),
 		"JSON should contain OpenAPI version field"
 	);
 }
 
-/// Test 4: ViewSet operation レスポンススキーマの生成
+/// Test 4: Response schema generation for ViewSet operations
 ///
-/// 検証内容:
-/// - 成功レスポンス（200, 201）のスキーマ生成
-/// - レスポンスの存在確認
-/// - GETとPUT operationsのレスポンス
+/// Verification:
+/// - Schema generation for success responses (200, 201)
+/// - Existence of responses
+/// - Responses for GET and PUT operations
 #[rstest]
 #[test]
 fn test_viewset_response_schema_generation(inspector: ViewSetInspector) {
 	let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 	let paths = inspector.extract_paths(&viewset, "/api/users");
 
-	// コレクションエンドポイントのGET操作
+	// GET operation on collection endpoint
 	let collection = paths
 		.get("/api/users/")
 		.expect("Collection path should exist");
 	let get_operation = collection.get.as_ref().expect("GET operation should exist");
 
-	// レスポンススキーマの存在確認
+	// Verify existence of response schema
 	let responses = &get_operation.responses;
 	assert!(
 		!responses.responses.is_empty(),
 		"Responses should be defined"
 	);
 
-	// 200 OKレスポンスの存在確認
+	// Verify existence of 200 OK response
 	let ok_response = responses.responses.get("200");
 	assert!(ok_response.is_some(), "200 OK response should be defined");
 
-	// 詳細エンドポイントのPUT操作 - 動的に検索
+	// PUT operation on detail endpoint - search dynamically
 	let detail_path = paths
 		.keys()
 		.find(|k| k.contains("{") && k.contains("id"))
@@ -285,14 +285,14 @@ fn test_viewset_response_schema_generation(inspector: ViewSetInspector) {
 		.expect("Detail path should exist");
 	let put_operation = detail.put.as_ref().expect("PUT operation should exist");
 
-	// PUTレスポンススキーマの存在確認
+	// Verify existence of PUT response schema
 	let put_responses = &put_operation.responses;
 	assert!(
 		!put_responses.responses.is_empty(),
 		"PUT responses should be defined"
 	);
 
-	// 200 OKレスポンスの存在確認
+	// Verify existence of 200 OK response
 	let put_ok_response = put_responses.responses.get("200");
 	assert!(
 		put_ok_response.is_some(),

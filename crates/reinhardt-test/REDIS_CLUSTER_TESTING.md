@@ -479,9 +479,7 @@ export REDIS_CLUSTER_BASE_PORT=27000
 
 ### Why Not Random Port Mapping?
 
-**User Request**: "ホストコンピュータ側のポートを固定するのではなく、TestContainersがランダムに割り振ってアナウンスしたポート番号を指定するようにしてください。"
-
-**Investigation Result**: Random port mapping is **technically impossible** with current architecture:
+Random port mapping is **technically impossible** due to the following architectural constraints:
 
 1. **redis-rs limitation**: ClusterClient has no way to override CLUSTER SLOTS topology
 2. **grokzen/redis-cluster limitation**: Single container means CLUSTER SLOTS always returns internal ports

@@ -61,7 +61,9 @@ Cursor-based pagination for consistent results in large, changing datasets.
 
 ##### Database-Integrated Cursor Pagination
 
-The `cursor::database` module provides efficient cursor-based pagination that integrates directly with database queries, achieving **O(k) performance** instead of the O(n) cost of OFFSET/LIMIT pagination.
+The `cursor` module provides efficient cursor-based pagination that integrates directly with database queries, achieving **O(k) performance** instead of the O(n) cost of OFFSET/LIMIT pagination.
+
+**Note**: The database cursor types are re-exported at the crate root for convenience.
 
 **Performance Characteristics:**
 
@@ -90,7 +92,7 @@ The `cursor::database` module provides efficient cursor-based pagination that in
 **Usage Example:**
 
 ```rust
-use reinhardt_pagination::cursor::database::{CursorPaginator, HasTimestamp};
+use reinhardt_pagination::{CursorPaginator, HasTimestamp};
 
 #[derive(Clone)]
 struct User {

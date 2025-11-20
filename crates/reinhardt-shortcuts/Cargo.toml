@@ -31,7 +31,7 @@ database = ["reinhardt-db", "reinhardt-db/backends", "reinhardt-db/pool", "reinh
 [dev-dependencies]
 tokio = { workspace = true }
 rstest = { workspace = true }
-reinhardt-test = { path = "../reinhardt-test", features = ["testcontainers"] }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
 sqlx = { workspace = true }
 serial_test = { workspace = true }
 testcontainers = { workspace = true }

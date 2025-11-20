@@ -108,3 +108,4 @@ mockito = "1.5"
 mockall = "0.13"
 rstest = "0.26.1"
 wiremock = "0.6"
+serial_test = { workspace = true }

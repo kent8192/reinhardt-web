@@ -20,7 +20,6 @@ reinhardt-core = { workspace = true, features = [
   "http",
   "pagination",
 ] }
-reinhardt-pagination = { workspace = true }
 reinhardt-auth = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["cache"] }
 reinhardt-serializers = { path = "../../../reinhardt-rest/crates/serializers", version = "0.1.0-alpha.1" }

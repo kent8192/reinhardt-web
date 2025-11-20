@@ -127,7 +127,7 @@ async fn test_first_page_with_queryset(#[future] db_pool: Pool<Sqlite>) {
 	assert_eq!(page.start_index(), 1);
 	assert_eq!(page.end_index(), 10);
 
-	// pool は自動的にドロップされる
+	// pool is automatically dropped
 }
 
 #[rstest]
@@ -161,7 +161,7 @@ async fn test_last_page_with_queryset(#[future] db_pool: Pool<Sqlite>) {
 	assert_eq!(page.start_index(), 21);
 	assert_eq!(page.end_index(), 25);
 
-	// pool は自動的にドロップされる
+	// pool is automatically dropped
 }
 
 #[rstest]
@@ -195,7 +195,7 @@ async fn test_page_getitem_with_queryset(#[future] db_pool: Pool<Sqlite>) {
 	// All our test data is published, so we should get 5 results
 	assert_eq!(filtered_results.len(), 5);
 
-	// pool は自動的にドロップされる
+	// pool is automatically dropped
 }
 
 #[rstest]
@@ -219,7 +219,7 @@ async fn test_paginating_unordered_queryset_raises_warning(#[future] db_pool: Po
 	// "UnorderedObjectListWarning: Pagination may yield inconsistent results with an unordered object_list"
 	// For this test, we just verify the functionality works
 
-	// pool は自動的にドロップされる
+	// pool is automatically dropped
 }
 
 #[rstest]
@@ -247,7 +247,7 @@ async fn test_paginating_empty_queryset_does_not_warn(#[future] db_pool: Pool<Sq
 
 	assert_eq!(total_count, 0);
 
-	// pool は自動的にドロップされる
+	// pool is automatically dropped
 }
 
 #[rstest]
@@ -272,5 +272,5 @@ async fn test_paginating_unordered_object_list_raises_warning(#[future] db_pool:
 	// "UnorderedObjectListWarning: Pagination may yield inconsistent results with an unordered object_list"
 	// The warning would be raised when the Paginator is created with an unordered object list
 
-	// pool は自動的にドロップされる
+	// pool is automatically dropped
 }

@@ -17,8 +17,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::sync::Arc;
 
-// Re-export CSRF functionality from reinhardt-security
-pub use reinhardt_security::csrf::{
+// Re-export CSRF functionality from reinhardt-core::security
+pub use reinhardt_core::security::csrf::{
 	CSRF_ALLOWED_CHARS, CSRF_SECRET_LENGTH, CSRF_SESSION_KEY, CSRF_TOKEN_LENGTH, CsrfConfig,
 	CsrfMeta, CsrfToken, InvalidTokenFormat, REASON_BAD_ORIGIN, REASON_BAD_REFERER,
 	REASON_CSRF_TOKEN_MISSING, REASON_INCORRECT_LENGTH, REASON_INSECURE_REFERER,
