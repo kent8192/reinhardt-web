@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document provides comprehensive, step-by-step procedures for releasing Reinhardt crates to crates.io. It covers version selection, CHANGELOG management, verification, publication, and troubleshooting.
+This document provides step-by-step procedures for releasing Reinhardt crates to crates.io, covering version selection, CHANGELOG management, automated publishing, and troubleshooting.
 
 ---
 
@@ -11,66 +11,45 @@ This document provides comprehensive, step-by-step procedures for releasing Rein
 - [Overview](#overview)
 - [Version Selection Guidelines](#version-selection-guidelines)
 - [Pre-Release Checklist](#pre-release-checklist)
-- [Manual Publishing Process (Without CI/CD)](#manual-publishing-process-without-cicd)
 - [Automated Publishing with CI/CD](#automated-publishing-with-cicd)
 - [CHANGELOG Management](#changelog-management)
 - [Multi-Crate Releases](#multi-crate-releases)
 - [Rollback Procedures](#rollback-procedures)
 - [Troubleshooting](#troubleshooting)
+- [Quick Reference](#quick-reference)
 
 ---
 
 ## Overview
 
-### Reinhardt's Release Strategy
+### Release Strategy
 
-Reinhardt follows a **per-crate versioning and tagging strategy**, inspired by large-scale Rust projects like Tokio:
+Reinhardt follows a **per-crate versioning and tagging strategy**:
 
-- **Independent Versioning**: Each crate maintains its own version number
-- **Selective Releases**: Only release crates that have changed
-- **Clear Traceability**: Git tags enable precise version tracking
+- **Independent Versioning**: Each crate maintains its own version
+- **Selective Releases**: Only release changed crates
 - **Semantic Versioning**: Strict adherence to SemVer 2.0.0
-
-**Benefits:**
-- Avoid unnecessary dependency updates
-- Clear change tracking for each crate
-- Efficient CI/CD workflows
-- Better user experience (minimal breaking changes)
+- **Git Tags**: Format `[crate-name]@v[version]`
 
 ### Key Principles
 
-1. **Explicit Authorization**: Every release step requires user approval
-2. **Dry-Run First**: Always verify with `--dry-run` before actual publication
-3. **Commit Before Tag**: Version bumps must be committed before creating tags
-4. **Comprehensive Testing**: All tests must pass before release
+1. **Explicit Authorization**: Every release requires user approval
+2. **Dry-Run First**: Always verify before publication
+3. **Commit Before Tag**: Version bumps committed before tagging
+4. **Comprehensive Testing**: All tests must pass
 
-### cargo-workspaces Configuration
+### Tools
 
-Reinhardt uses [`cargo-workspaces`](https://crates.io/crates/cargo-workspaces) for multi-crate publishing and change detection.
+**cargo-workspaces** handles change detection and publishing:
 
-**Workspace configuration** (`Cargo.toml`):
-```toml
-[workspace.metadata.workspaces]
-allow-branch = "main"           # Only publish from main branch
-allow-dirty = false             # Require clean working directory
-no-individual-tags = false      # Enable individual crate tags
-```
-
-**Key features used:**
-- `cargo ws changed`: Detects crates that have changed since last tagged release
-- `cargo ws publish`: Publishes crates in dependency order
-- Automatic tag creation (format: `[crate-name]@v[version]`)
-- Workspace dependency resolution
-
-**Installation:**
-```bash
-cargo install cargo-workspaces
-```
-
-**Version recommendation:** Pin to `v0.4.1` for consistency:
 ```bash
 cargo install cargo-workspaces --version 0.4.1
 ```
+
+**Key commands**:
+- `cargo ws changed` - Detect changed crates
+- `cargo ws publish --dry-run` - Validate
+- `cargo ws publish` - Publish
 
 ---
 
@@ -78,534 +57,118 @@ cargo install cargo-workspaces --version 0.4.1
 
 ### Semantic Versioning 2.0.0
 
-Reinhardt strictly follows [Semantic Versioning 2.0.0](https://semver.org/):
-
 **Format:** `MAJOR.MINOR.PATCH`
 
-### Version Type Decision Matrix
+#### MAJOR (X.0.0) - Breaking Changes
 
-#### MAJOR Version (X.0.0) - Breaking Changes
-
-**When to use:**
-- Breaking API changes (function signature changes, removed methods)
-- Incompatible behavior changes
-- Removed or renamed public items
-- Changed trait bounds or generic constraints
-
-**Examples:**
-```rust
-// MAJOR version bump required
-
-// Before (v0.1.0)
-pub fn connect(url: &str) -> Connection { }
-
-// After (v0.2.0)
-pub fn connect(url: &str) -> Result<Connection> { } // ❌ Breaking: return type changed
-```
+- Breaking API changes
+- Removed/renamed public items
+- Changed trait bounds
 
 ```rust
-// MAJOR version bump required
-
-// Before (v0.1.0)
-pub struct QueryBuilder { }
-impl QueryBuilder {
-    pub fn build(self) -> Query { }
-}
-
-// After (v0.2.0)
-impl QueryBuilder {
-    pub fn build(self) -> Result<Query> { } // ❌ Breaking: method signature changed
-}
+// MAJOR bump required
+// Before: pub fn connect(url: &str) -> Connection
+// After:  pub fn connect(url: &str) -> Result<Connection>
 ```
 
-#### MINOR Version (0.X.0) - New Features
+#### MINOR (0.X.0) - New Features
 
-**When to use:**
-- New public functions, methods, or structs
-- New optional features (feature flags)
+- New public APIs
+- New optional features
 - Backward-compatible enhancements
-- Deprecations (with `#[deprecated]` attribute)
+- Deprecations
 
-**Examples:**
 ```rust
-// MINOR version bump (0.1.0 -> 0.2.0)
-
-// Existing code (v0.1.0)
-pub struct Pool { }
-
-// Added in v0.2.0
+// MINOR bump
 impl Pool {
-    pub fn with_timeout(self, duration: Duration) -> Self { } // ✅ New method, backward compatible
+	pub fn with_timeout(self, duration: Duration) -> Self { }  // New method
 }
 ```
 
-```rust
-// MINOR version bump (0.1.0 -> 0.2.0)
+#### PATCH (0.0.X) - Bug Fixes
 
-// Added new public function
-pub fn validate_email(email: &str) -> Result<()> { } // ✅ New functionality
-```
-
-#### PATCH Version (0.0.X) - Bug Fixes
-
-**When to use:**
 - Bug fixes (no API changes)
-- Performance improvements (no API changes)
+- Performance improvements
 - Documentation corrections
-- Internal refactoring (no public API impact)
 
-**Examples:**
-```rust
-// PATCH version bump (0.1.0 -> 0.1.1)
+### Pre-1.0.0 Rules
 
-// Before (v0.1.0)
-pub fn calculate_hash(data: &[u8]) -> u64 {
-    // Bug: incorrect hash calculation
-    data.iter().fold(0, |acc, &b| acc + b as u64)
-}
+- **MINOR (0.X.0)**: MAY include breaking changes
+- **PATCH (0.0.X)**: MUST be backward compatible
 
-// After (v0.1.1)
-pub fn calculate_hash(data: &[u8]) -> u64 {
-    // Fix: correct hash calculation
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    data.hash(&mut hasher);
-    hasher.finish()
-}
-```
-
-### Pre-1.0.0 Special Rules
-
-For versions `0.x.x` (pre-1.0.0), per SemVer specification:
-
-- **MINOR version changes (0.X.0) MAY include breaking changes**
-- **PATCH version changes (0.0.X) MUST be backward compatible**
-
-**Example:**
-```
-0.1.0 -> 0.2.0: Breaking changes allowed (API redesign)
-0.2.0 -> 0.2.1: Only bug fixes (must be compatible with 0.2.0)
-```
-
-**After 1.0.0 Release:**
-- Breaking changes REQUIRE MAJOR version bump (1.0.0 -> 2.0.0)
-- Strict backward compatibility enforced
+**After 1.0.0**: Breaking changes REQUIRE MAJOR version bump
 
 ---
 
 ## Pre-Release Checklist
 
-Before starting the release process, verify:
-
 ### Code Quality
 
-- [ ] All tests pass: `cargo test --workspace --all --all-features`
-- [ ] Code builds without warnings: `cargo build --workspace --all --all-features`
+- [ ] Tests pass: `cargo test --workspace --all --all-features`
+- [ ] Build succeeds: `cargo build --workspace --all --all-features`
 - [ ] Linting passes: `cargo make clippy-fix`
-- [ ] Code formatting applied: `cargo make fmt-fix`
-- [ ] Documentation builds: `cargo doc --no-deps --all-features`
+- [ ] Formatting applied: `cargo make fmt-fix`
 
 ### Documentation
 
-- [ ] README.md updated (if public API changed)
-- [ ] Crate-level documentation updated (`src/lib.rs`)
+- [ ] README.md updated (if API changed)
+- [ ] `src/lib.rs` documentation updated
+- [ ] CHANGELOG.md prepared
 - [ ] Code examples tested: `cargo test --doc`
-- [ ] CHANGELOG.md prepared with release notes
-- [ ] Migration guide written (for breaking changes)
 
-### Dependencies
+### Metadata
 
-- [ ] Dependency versions are up-to-date
-- [ ] No dev-dependencies on other Reinhardt crates (for functional crates)
-- [ ] Cargo.toml metadata complete (description, license, repository)
+- [ ] `description`, `license`, `repository` fields present
+- [ ] Dependencies up-to-date
+- [ ] No dev-dependencies on other Reinhardt crates (functional crates)
 
-### Metadata Verification
-
-Run the following to verify crate metadata:
-
+**Verify with**:
 ```bash
 cargo publish --dry-run -p <crate-name>
 ```
-
-Common metadata issues:
-- Missing `description` field
-- Missing `license` field
-- Missing `repository` field
-
----
-
-## Manual Publishing Process (Without CI/CD)
-
-This section is preserved as a reference for cases where CI/CD automation is unavailable or when you need to perform completely manual publishing.
-
-**Recommended**: Normally, use the procedures in the "Automated Publishing with CI/CD" section.
-
-### Step-by-Step Release Process
-
-#### Step 1: Select Version Number
-
-Based on the [Version Selection Guidelines](#version-selection-guidelines):
-
-```bash
-# Option 1: Use cargo-workspaces to detect changes
-cargo ws changed
-
-# Option 2: Review changes since last release (if tag exists)
-git log [crate-name]@v[last-version]..HEAD -- crates/[crate-name]/
-
-# Determine version type
-# MAJOR: Breaking changes
-# MINOR: New features
-# PATCH: Bug fixes only
-```
-
-**Example:**
-```bash
-# Using cargo-workspaces (recommended)
-cargo ws changed
-
-# Or using git log (if previous tag exists)
-git log reinhardt-orm@v0.1.0..HEAD -- crates/reinhardt-orm/
-# Review commits to determine if changes are breaking, features, or fixes
-```
-
-**Note:** For initial releases without tags, use `cargo ws changed` or review all commits in the crate directory.
-
-#### Step 2: Update Cargo.toml
-
-**Important:** This project uses workspace dependencies. Version updates depend on your configuration.
-
-**Option 1: Workspace version inheritance (recommended)**
-
-If the crate uses `version.workspace = true`:
-
-1. Update the workspace-level version in root `Cargo.toml`:
-   ```toml
-   [workspace.package]
-   version = "0.2.0"  # Update this line
-   ```
-
-2. Individual crate `Cargo.toml` should have:
-   ```toml
-   [package]
-   name = "reinhardt-orm"
-   version.workspace = true  # Inherits from workspace
-   ```
-
-**Option 2: Individual crate version**
-
-If the crate has its own version (not using workspace inheritance):
-
-Edit `crates/[crate-name]/Cargo.toml`:
-```toml
-[package]
-name = "reinhardt-orm"
-version = "0.2.0"  # Update this line directly
-description = "..."
-# ... other fields
-```
-
-**Note:** Check which approach your crate uses before updating.
-
-#### Step 3: Update CHANGELOG.md
-
-Edit or create `crates/[crate-name]/CHANGELOG.md`:
-
-```markdown
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [0.2.0] - 2025-01-15
-
-### Breaking Changes
-- `QueryBuilder::build()` now returns `Result<Query>` instead of `Query`
-- Removed deprecated method `Model::save_sync()`
-
-### Added
-- Support for async connection pooling
-- `QueryBuilder::with_timeout()` method
-- `Model::bulk_insert()` for batch operations
-
-### Fixed
-- Race condition in transaction rollback
-- UTC timezone handling in timestamp fields
-
-## [0.1.0] - 2024-12-01
-
-### Added
-- Initial release with basic ORM functionality
-```
-
-#### Step 4: Run Verification Commands
-
-```bash
-# Check that everything compiles
-cargo check --workspace --all --all-features
-
-# Run all tests
-cargo test --workspace --all --all-features
-
-# Run doc tests
-cargo test --doc -p <crate-name>
-
-# Build documentation
-cargo doc --no-deps --all-features -p <crate-name>
-
-# Lint and format
-cargo make fmt-fix
-cargo make clippy-fix
-```
-
-#### Step 5: Commit Version Changes
-
-Create a version bump commit following @CLAUDE.commit.md CE-5:
-
-```bash
-git add crates/[crate-name]/Cargo.toml
-git add crates/[crate-name]/CHANGELOG.md
-
-git commit -m "$(cat <<'EOF'
-chore(release): Bump [crate-name] to v[version]
-
-Prepare [crate-name] for publication to crates.io.
-
-Version Changes:
-- crates/[crate-name]/Cargo.toml: version [old] -> [new]
-- crates/[crate-name]/CHANGELOG.md: Add release notes for v[new]
-
-[Breaking Changes/New Features/Bug Fixes sections as applicable]
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-EOF
-)"
-```
-
-**Example:**
-```bash
-git commit -m "$(cat <<'EOF'
-chore(release): Bump reinhardt-orm to v0.2.0
-
-Prepare reinhardt-orm for publication to crates.io.
-
-Version Changes:
-- crates/reinhardt-orm/Cargo.toml: version 0.1.0 -> 0.2.0
-- crates/reinhardt-orm/CHANGELOG.md: Add release notes for v0.2.0
-
-Breaking Changes:
-- QueryBuilder::build() now returns Result<Query> instead of Query
-- Removed deprecated method Model::save_sync()
-
-New Features:
-- Add support for async connection pooling
-- Implement QueryBuilder::with_timeout() method
-- Add Model::bulk_insert() for batch operations
-
-Bug Fixes:
-- Fix race condition in transaction rollback
-- Correct UTC timezone handling in timestamp fields
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-EOF
-)"
-```
-
-#### Step 6: Dry-Run Publication
-
-**NEVER skip this step!**
-
-**Using cargo-workspaces (recommended):**
-```bash
-cargo ws publish --dry-run -p <crate-name>
-```
-
-**Using standard cargo (alternative):**
-```bash
-cargo publish --dry-run -p <crate-name>
-```
-
-**Note:** `cargo ws publish` is recommended as it handles workspace dependencies and provides better multi-crate publishing support.
-
-Review the dry-run output carefully:
-
-- [ ] No warnings or errors
-- [ ] File list is correct (no extra test files, no missing essential files)
-- [ ] Metadata is complete
-- [ ] Size is reasonable (check `target/package/<crate-name>-<version>.crate` size)
-
-**Common Issues:**
-- Missing `Cargo.toml` fields (description, license, repository)
-- Uncommitted files in working directory
-- Path dependencies not published to crates.io
-
-#### Step 7: Wait for User Authorization
-
-**CRITICAL: Do not proceed without explicit user approval**
-
-Present the dry-run results to the user and wait for confirmation:
-
-```
-Dry-run completed successfully for [crate-name] v[version].
-
-Package size: X.XX MB
-Files included: XX files
-
-Ready to publish. Please confirm:
-- Have you reviewed the dry-run output?
-- Are all changes documented in CHANGELOG.md?
-- Is this the correct version number?
-
-Type "yes" to proceed with publication.
-```
-
-#### Step 8: Publish to crates.io
-
-After user confirms:
-
-**Using cargo-workspaces (recommended):**
-```bash
-cargo ws publish -p <crate-name>
-```
-
-**Using standard cargo (alternative):**
-```bash
-cargo publish -p <crate-name>
-```
-
-**Note:** `cargo ws publish` is recommended as it:
-- Handles workspace dependencies automatically
-- Supports dependency ordering for multi-crate releases
-- Integrates with cargo-workspaces change detection
-
-**Expected output:**
-```
-    Updating crates.io index
-   Packaging reinhardt-orm v0.2.0 (/path/to/crates/reinhardt-orm)
-   Verifying reinhardt-orm v0.2.0 (/path/to/crates/reinhardt-orm)
-   Compiling reinhardt-orm v0.2.0 (/path/to/crates/reinhardt-orm)
-    Finished dev [unoptimized + debuginfo] target(s) in X.XXs
-   Uploading reinhardt-orm v0.2.0 (/path/to/crates/reinhardt-orm)
-```
-
-**Note:** Publication is immediate and **cannot be undone**. Only version yanking is possible after publication.
-
-#### Step 9: Create Git Tag
-
-After successful publication:
-
-```bash
-git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"
-```
-
-**Example:**
-```bash
-git tag reinhardt-orm@v0.2.0 -m "Release reinhardt-orm v0.2.0"
-```
-
-Verify tag creation:
-```bash
-git tag -l "[crate-name]@v*"
-```
-
-#### Step 10: Push Commits and Tags
-
-```bash
-git push origin main  # or your branch name
-git push origin --tags
-```
-
-Verify on GitHub:
-- Commit appears in history
-- Tag appears in "Releases" or "Tags" section
 
 ---
 
 ## Automated Publishing with CI/CD
 
-The Reinhardt project automatically publishes crates to crates.io when a pull request with the `release` label is merged to the main branch. This integrated workflow combines change detection, publishing, tagging, and GitHub Release creation into a single automated process.
-
 ### Prerequisites
-
-#### Development Tools
-
-**cargo-workspaces**
-
-The automated publishing workflow uses `cargo-workspaces` for change detection and multi-crate publishing. This tool is automatically installed and used by GitHub Actions workflows.
-
-**Version:** 0.4.1 (as of the latest workflow configuration)
-
-**Key commands used:**
-- `cargo ws changed` - Detects crates that have changed since last tagged release
-- `cargo ws publish --dry-run` - Validates publishability without actually publishing
-- `cargo ws publish` - Publishes crates to crates.io
-
-**Installation (for local development):**
-```bash
-cargo install cargo-workspaces
-```
-
-**Note:** The CI/CD workflows automatically handle tool installation, so manual installation is only needed for local testing.
 
 #### GitHub Repository Setup
 
-Before using the automated publishing system, configure the following:
-
 **1. GitHub Secrets**
 
-Add `CARGO_REGISTRY_TOKEN` to repository secrets:
-- Navigate to Settings → Secrets and variables → Actions
-- Click "New repository secret"
+Add `CARGO_REGISTRY_TOKEN`:
+- Settings → Secrets and variables → Actions
 - Name: `CARGO_REGISTRY_TOKEN`
-- Value: Your crates.io API token (obtain from https://crates.io/settings/tokens)
+- Value: crates.io API token (from https://crates.io/settings/tokens)
 
 **2. GitHub Labels**
 
-Create a `release` label:
-- Navigate to Issues → Labels → New label
-- Name: `release`
-- Description: `Trigger automatic crates.io publishing`
-- Color: `#0e8a16` (green)
+Create `release` label:
+- Issues → Labels → New label
+- Name: `release`, Color: `#0e8a16`
 
-**3. Branch Protection Rules (Recommended)**
+**3. Branch Protection (Recommended)**
 
-Configure main branch protection:
-- Navigate to Settings → Branches → Branch protection rules → Add rule
-- Branch name pattern: `main`
-- Enable:
-  - ✅ Require pull request reviews before merging
-  - ✅ Require status checks to pass before merging
-  - Select `Publish Dry-Run` (this check appears after first workflow run)
-  - ✅ Require branches to be up to date before merging
+- Require PR reviews
+- Require `Publish Dry-Run` status check
+- Require branches to be up-to-date
 
 ### Publishing Workflow
 
-The automated publishing process consists of two main stages:
-
-1. **Pre-merge validation** (`publish-dry-run.yml`): Validates publishability before merge
-2. **Post-merge publishing** (`publish-on-merge.yml`): Publishes to crates.io and creates releases
-
-#### Step 1: Develop and Create PR
-
-Create a feature branch and update version information:
+#### Step 1: Create PR with Version Changes
 
 ```bash
 # 1. Create feature branch
 git checkout -b feature/update-reinhardt-orm
 
-# 2. Update Cargo.toml version
+# 2. Update version
 vim crates/reinhardt-orm/Cargo.toml  # version = "0.2.0"
 
-# 3. Update CHANGELOG.md
-vim crates/reinhardt-orm/CHANGELOG.md  # Add release notes
+# 3. Update CHANGELOG
+vim crates/reinhardt-orm/CHANGELOG.md
 
-# 4. Commit changes
+# 4. Commit
 git add crates/reinhardt-orm/Cargo.toml crates/reinhardt-orm/CHANGELOG.md
 git commit -m "chore(release): Bump reinhardt-orm to v0.2.0
 
@@ -616,8 +179,8 @@ Version Changes:
 - crates/reinhardt-orm/CHANGELOG.md: Add release notes for v0.2.0
 
 New Features:
-- Add support for async connection pooling
-- Implement QueryBuilder::with_timeout() method
+- Add async connection pooling
+- Implement QueryBuilder::with_timeout()
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
@@ -627,393 +190,108 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 git push origin feature/update-reinhardt-orm
 ```
 
-#### Step 2: Add `release` Label to PR
+#### Step 2: Add `release` Label
 
-**Critical**: The `release` label triggers both dry-run validation and automatic publishing.
+1. Open PR on GitHub
+2. Add `release` label
+3. `publish-dry-run.yml` workflow starts automatically
 
-1. Open the PR on GitHub
-2. Click "Labels" in the right sidebar
-3. Select `release` label
-4. Verify the green `release` label appears
-
-**What happens:**
-- `publish-dry-run.yml` workflow automatically starts
-- Detects changed crates using `cargo ws changed`
-- Runs `cargo ws publish --dry-run` for each changed crate
+**Workflow actions**:
+- Detects changed crates (`cargo ws changed`)
+- Runs `cargo ws publish --dry-run`
 - Reports results in PR checks
 
 #### Step 3: Review Dry-Run Results
 
-Check the GitHub Actions tab for dry-run results:
+**Success indicators**:
+- ✅ Green check on "Publish Dry-Run"
+- No errors/warnings in logs
 
-**Success indicators:**
-- ✅ Green check mark on "Publish Dry-Run" workflow
-- Summary shows: "📋 Dry-Run Publish Check" with validated crates list
-- No errors or warnings in workflow logs
+**Common issues**:
+- Missing metadata fields
+- Unpublished dependencies
+- Version already published
 
-**Common issues:**
-- ❌ Missing Cargo.toml fields (description, license, repository)
-- ❌ Unpublished dependencies
-- ❌ Version already published to crates.io
-
-**Fix issues before merging:**
-```bash
-# Fix metadata issues
-vim crates/reinhardt-orm/Cargo.toml  # Add missing fields
-
-# Commit and push fixes
-git add crates/reinhardt-orm/Cargo.toml
-git commit -m "fix(release): Add missing Cargo.toml metadata"
-git push origin feature/update-reinhardt-orm
-
-# Dry-run automatically re-runs on new push
-```
+**Fix and push** - dry-run re-runs automatically.
 
 #### Step 4: Merge PR
 
-Once dry-run passes and PR is approved:
+Merge after:
+- Dry-run passes
+- PR approved
 
-1. Click "Merge pull request" on GitHub
-2. Confirm merge
+#### Step 5: Automatic Publishing
 
-**Important**: Only merge after dry-run succeeds.
+`publish-on-merge.yml` executes:
 
-#### Step 5: Automatic Publishing Process
+1. **Detect changes** (`cargo ws changed`)
+2. **Publish sequentially**:
+   - Dry-run verification
+   - Publish to crates.io
+   - Create Git tag
+   - 30s wait between crates
+3. **Create GitHub Releases** (with CHANGELOG notes)
+4. **Push tags**
 
-After merge, `publish-on-merge.yml` workflow automatically executes:
-
-**Phase 1: Change Detection**
-- Detects changed crates using `cargo ws changed`
-- Extracts crate name and version from Cargo.toml
-- Checks if version already published to crates.io
-- Skips already-published crates
-
-**Phase 2: Sequential Publishing**
-- Publishes each changed crate to crates.io
-- Runs dry-run before each publish as final verification
-- Uses exponential backoff retry (3 attempts: 10s, 20s, 40s)
-- Waits 30 seconds between crates (for crates.io index propagation)
-- Creates local Git tags after successful publish
-
-**Phase 3: GitHub Releases**
-- Extracts release notes from each crate's CHANGELOG.md
-- Creates GitHub Release for each published crate
-- Links to crates.io and docs.rs
-
-**Phase 4: Tag Push**
-- Pushes all created tags to remote repository
-- Tag format: `[crate-name]@v[version]`
-
-**Example execution:**
+**Example output**:
 ```
 [1/2] Publishing reinhardt-types v0.2.0...
-  Running dry-run...
-  ✅ Dry-run passed for reinhardt-types v0.2.0
-  Publishing...
-  ✅ Successfully published reinhardt-types v0.2.0
+  ✅ Dry-run passed
+  ✅ Published to crates.io
   🏷️ Created tag: reinhardt-types@v0.2.0
-  ⏳ Waiting 30 seconds before next crate...
 
 [2/2] Publishing reinhardt-orm v0.3.0...
-  Running dry-run...
-  ✅ Dry-run passed for reinhardt-orm v0.3.0
-  Publishing...
-  ✅ Successfully published reinhardt-orm v0.3.0
+  ✅ Dry-run passed
+  ✅ Published to crates.io
   🏷️ Created tag: reinhardt-orm@v0.3.0
-
-Creating GitHub Releases...
-✅ Created GitHub Release for reinhardt-types@v0.2.0
-✅ Created GitHub Release for reinhardt-orm@v0.3.0
-
-Pushing tags...
-✅ Tag reinhardt-types@v0.2.0 pushed successfully
-✅ Tag reinhardt-orm@v0.3.0 pushed successfully
 
 🎉 All crates published successfully!
 ```
 
 #### Step 6: Verify Publication
 
-Check the following to confirm successful publication:
-
-**crates.io:**
+**crates.io**:
 - Visit https://crates.io/crates/[crate-name]
-- Verify new version appears in version dropdown
-- Check publication timestamp
+- Verify new version
 
-**GitHub Releases:**
-- Navigate to repository's "Releases" page
-- Verify new release with tag `[crate-name]@v[version]`
-- Check release notes extracted from CHANGELOG.md
+**GitHub Releases**:
+- Check tag `[crate-name]@v[version]`
+- Verify release notes
 
-**docs.rs:**
-- Visit https://docs.rs/[crate-name]/[version]
-- Documentation builds automatically within ~5-10 minutes
-- Check "Docs" badge shows "passing"
+**docs.rs**:
+- Documentation builds in ~5-10 minutes
 
-**GitHub Actions:**
-- Workflow summary shows "🎉 Release Successful"
-- Lists all published crates with links
-- No errors in workflow logs
+### Multi-Crate Releases
 
-### Multi-Crate Release Process
-
-The workflow automatically handles multiple crate releases in a single PR:
+Update multiple crates in one PR:
 
 ```bash
-# Update multiple crates
 vim crates/reinhardt-types/Cargo.toml     # version = "0.2.0"
 vim crates/reinhardt-types/CHANGELOG.md
 
 vim crates/reinhardt-orm/Cargo.toml       # version = "0.3.0"
 vim crates/reinhardt-orm/CHANGELOG.md
 
-# Commit all changes
 git add crates/reinhardt-types crates/reinhardt-orm
-git commit -m "chore(release): Bump reinhardt-types v0.2.0 and reinhardt-orm v0.3.0
-
-..."
-
-# Create PR + add `release` label + merge
+git commit -m "chore(release): Bump reinhardt-types v0.2.0 and reinhardt-orm v0.3.0"
 ```
 
-**Automatic dependency ordering:**
-- `cargo ws changed` detects all modified crates
-- Publishes in dependency order (leaf crates first)
-- 30-second intervals ensure crates.io index updates
-- Retry logic handles transient failures
-
-**Example with dependencies:**
-```
-reinhardt-types (no internal deps) → published first
-    ↓
-reinhardt-orm (depends on reinhardt-types) → published after 30s
-```
-
-### Troubleshooting
-
-#### Issue: Dry-run Check Not Executing
-
-**Cause**: PR does not have `release` label
-
-**Solution**:
-1. Add `release` label to PR
-2. Workflow automatically triggers
-3. Alternative: Manually trigger from GitHub Actions tab
-
-#### Issue: Dry-run Failed - Missing Metadata
-
-**Cause**: Cargo.toml missing required fields
-
-**Error example:**
-```
-error: missing field `description` in Cargo.toml
-```
-
-**Solution**:
-```toml
-[package]
-name = "reinhardt-orm"
-version = "0.2.0"
-description = "ORM layer for Reinhardt framework"  # Add this
-license = "MIT OR Apache-2.0"  # Add this
-repository = "https://github.com/kent8192/reinhardt-rs"  # Add this
-```
-
-Commit and push - dry-run re-runs automatically.
-
-#### Issue: Publishing Failed - Version Already Exists
-
-**Cause**: Version already published to crates.io
-
-**Solution**:
-```bash
-# Check existing versions
-curl -s "https://crates.io/api/v1/crates/reinhardt-orm" | jq '.versions[].num'
-
-# Increment version in Cargo.toml
-vim crates/reinhardt-orm/Cargo.toml  # version = "0.2.1"
-
-# Update CHANGELOG.md
-vim crates/reinhardt-orm/CHANGELOG.md
-
-# Commit, push, wait for dry-run, merge
-```
-
-#### Issue: Publishing Failed - Dependency Not Available
-
-**Cause**: Dependency crate not yet published or crates.io index not updated
-
-**Solution 1**: Wait and retry
-- Workflow automatically retries 3 times with exponential backoff
-- Usually resolves after 30-second interval
-
-**Solution 2**: Manual intervention (if auto-retry fails)
-```bash
-# Wait 2-3 minutes for crates.io index to fully update
-# Manually trigger publish-on-tag workflow from GitHub Actions:
-# Actions → Publish on Tag (Manual Only) → Run workflow
-# Input: reinhardt-orm@v0.2.0
-```
-
-#### Issue: No Crates Detected for Publishing
-
-**Cause**: No version changes detected or all versions already published
-
-**Solution**:
-```bash
-# Verify Cargo.toml version was actually changed
-git diff main -- crates/*/Cargo.toml
-
-# Check if version already published
-curl -s "https://crates.io/api/v1/crates/reinhardt-orm" | \
-  jq '.versions[] | select(.num == "0.2.0")'
-
-# If needed, update version and create new PR
-```
-
-#### Issue: CHANGELOG Extraction Failed
-
-**Cause**: CHANGELOG.md format doesn't match expected pattern
-
-**Expected format:**
-```markdown
-## [0.2.0] - 2025-01-15
-
-### Added
-- Feature description
-
-### Fixed
-- Bug fix description
-```
-
-**Solution**:
-Follow [Keep a Changelog](https://keepachangelog.com/) format exactly.
-
-#### Issue: Git Tag Already Exists
-
-**Cause**: Previous failed publish attempt created tag
-
-**Solution**:
-```bash
-# Delete remote tag
-git push origin :refs/tags/reinhardt-orm@v0.2.0
-
-# Workflow will recreate tag after successful publish
-```
+**Automatic dependency ordering**: Publishes leaf crates first.
 
 ### Emergency Manual Publishing
 
-If automated publishing fails completely, use the manual workflow:
+**Via GitHub Actions**:
+1. Actions → "Publish on Tag (Manual Only)"
+2. Enter tag: `reinhardt-orm@v0.2.0`
+3. Run workflow
 
-#### Via GitHub Actions (Recommended)
-
-1. Navigate to Actions → "Publish on Tag (Manual Only)"
-2. Click "Run workflow"
-3. Enter tag name: `reinhardt-orm@v0.2.0`
-4. Click "Run workflow"
-5. Monitor execution in Actions tab
-
-**Note**: The tag must already exist. Create it first if needed:
-```bash
-git tag reinhardt-orm@v0.2.0 -m "Release reinhardt-orm v0.2.0"
-git push origin reinhardt-orm@v0.2.0
-```
-
-#### Via Command Line
-
-If GitHub Actions is unavailable:
-
-```bash
-# Follow steps in "Manual Publishing Process" section above
-# Then create and push tag:
-git tag reinhardt-orm@v0.2.0 -m "Release reinhardt-orm v0.2.0"
-git push origin --tags
-```
-
-### Workflow Files Reference
-
-**`.github/workflows/publish-dry-run.yml`**
-- Triggers: PR with `release` label (on open, sync, reopen, labeled)
-- Purpose: Pre-merge validation of publishability
-- Actions: Detects changed crates, runs `--dry-run` for each
-
-**`.github/workflows/publish-on-merge.yml`**
-- Triggers: PR merge to main (only if PR has `release` label)
-- Purpose: Publish to crates.io, create tags and releases
-- Actions: Detect changes → publish → create tags → create releases → push tags
-
-**`.github/workflows/publish-on-tag.yml`**
-- Triggers: Manual dispatch only
-- Purpose: Emergency manual publishing
-- Actions: Validate tag → verify version → publish → create release
-
-### Technical Implementation Details
-
-The automated workflows include several technical optimizations and requirements:
-
-#### Disk Space Management
-
-Workflows use the `jlumbroso/free-disk-space` action to free up approximately 30GB of disk space on GitHub Actions runners:
-
-```yaml
-- name: Free Disk Space (Ubuntu)
-  uses: jlumbroso/free-disk-space@main
-  with:
-    tool-cache: false
-    android: true
-    dotnet: true
-    haskell: true
-    large-packages: true
-    docker-images: true
-    swap-storage: true
-```
-
-This ensures sufficient space for large workspace builds (Reinhardt has 80+ Cargo.toml files).
-
-#### Git Configuration
-
-Bot commits are configured with GitHub Actions bot identity:
-
-```yaml
-- name: Configure Git
-  run: |
-    git config user.name "github-actions[bot]"
-    git config user.email "github-actions[bot]@users.noreply.github.com"
-```
-
-This is required for tag creation and other git operations performed by the workflow.
-
-#### protobuf Compiler
-
-The workflows install the protobuf compiler, which is required for building gRPC-related crates:
-
-```yaml
-- name: Install protoc
-  run: |
-    sudo apt-get update
-    sudo apt-get install -y protobuf-compiler
-    protoc --version
-```
-
-Crates like `reinhardt-grpc` require protoc to compile `.proto` files during the build process.
-
-#### Summary Reports
-
-Workflows generate detailed summaries in GitHub Actions UI using `$GITHUB_STEP_SUMMARY`:
-
-```yaml
-echo "## 📋 Dry-Run Publish Check" >> $GITHUB_STEP_SUMMARY
-echo "..." >> $GITHUB_STEP_SUMMARY
-```
-
-These summaries provide:
-- List of validated/published crates
-- Version numbers
-- Links to crates.io and docs.rs
-- Next steps for the release process
-
-Accessible via the workflow run summary page in GitHub Actions.
+**Via Command Line** (if CI/CD unavailable):
+1. Update `Cargo.toml` and `CHANGELOG.md`
+2. Commit changes
+3. `cargo publish --dry-run -p <crate-name>`
+4. `cargo publish -p <crate-name>`
+5. `git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"`
+6. `git push origin main && git push origin --tags`
 
 ---
 
@@ -1021,58 +299,28 @@ Accessible via the workflow run summary page in GitHub Actions.
 
 ### Format (Keep a Changelog)
 
-Reinhardt uses [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format:
-
+**Structure**:
 ```markdown
 # Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
-- Work in progress features (not yet released)
+- Work in progress features
 
 ### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
 - N/A
 
 ## [0.2.0] - 2025-01-15
 
 ### Breaking Changes
-- List breaking changes first for visibility
+- List breaking changes first
 
 ### Added
 - New features
 
-### Changed
-- Changes to existing functionality
-
-### Deprecated
-- Features marked for removal (use `#[deprecated]` in code)
-
-### Removed
-- Features removed in this release
-
 ### Fixed
 - Bug fixes
-
-### Security
-- Security vulnerability fixes
 
 ## [0.1.0] - 2024-12-01
 
@@ -1080,119 +328,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release
 ```
 
-**Important: CHANGELOG Structure Requirements**
+### Critical Requirements
 
-The automated workflows extract release notes using AWK pattern matching. To ensure proper extraction:
+1. **Always include `[Unreleased]` section** (for AWK extraction)
+2. **Exact header format**: `## [version] - YYYY-MM-DD`
+   - ✅ Correct: `## [0.2.0] - 2025-01-15`
+   - ❌ Wrong: `## 0.2.0 - 2025-01-15` (no brackets)
+   - ❌ Wrong: `## [v0.2.0] - 2025-01-15` (extra 'v')
+3. **Use `###` for subsections**: `### Added`, `### Fixed`
 
-1. **Always include an `[Unreleased]` section** at the top of your CHANGELOG
-   - This ensures the extraction logic can find the end of each version section
-   - Without it, the last version's notes may not extract correctly
-
-2. **Use exact header format**: `## [version] - YYYY-MM-DD`
-   - Correct: `## [0.2.0] - 2025-01-15`
-   - Incorrect: `## 0.2.0 - 2025-01-15` (missing brackets)
-   - Incorrect: `## [v0.2.0] - 2025-01-15` (extra 'v' prefix)
-
-3. **Maintain consistent formatting**
-   - Each version section must start with `## [version]`
-   - The extraction stops at the next `## [` pattern
-   - Subsections use `###` (e.g., `### Added`, `### Fixed`)
-
-**Extraction Logic:**
+**Extraction logic**:
 ```bash
-# Workflow extracts from ## [version] to next ## [
 awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | head -n -1
 ```
 
-This pattern requires a following `## [` to work correctly, which is why `[Unreleased]` is essential.
-
 ### Section Guidelines
 
-#### Using "N/A" in Unreleased Section
+- **Breaking Changes**: List first, include migration guides
+- **Added**: New public APIs and features
+- **Changed**: Non-breaking changes
+- **Deprecated**: Mark with `#[deprecated]`, include removal timeline
+- **Removed**: Deleted features (MAJOR version)
+- **Fixed**: Bug fixes (include issue numbers)
+- **Security**: Vulnerabilities (highlight prominently)
 
-For the `[Unreleased]` section, use "N/A" (Not Applicable) to indicate that there are currently no changes in that category:
-
-```markdown
-## [Unreleased]
-
-### Added
-- Work in progress features (not yet released)
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-```
-
-**When to use "N/A":**
-- In the `[Unreleased]` section when a category has no pending changes
-- Replace "N/A" with actual changes when you add them
-- At release time, remove any remaining "N/A" entries (only keep sections with actual changes)
-
-**Note**: Released version sections (e.g., `[0.2.0]`) should NOT contain "N/A". Only include sections that have actual changes.
-
-#### Breaking Changes
-- **Always list first** for maximum visibility
-- Explain what changed and how to migrate
-- Include code examples if helpful
-
-**Example:**
-```markdown
-### Breaking Changes
-- `QueryBuilder::build()` now returns `Result<Query>` instead of `Query`
-  - **Migration:** Wrap calls in `?` operator: `let query = builder.build()?;`
-- Removed deprecated method `Model::save_sync()`
-  - **Migration:** Use `Model::save().await` instead
-```
-
-#### Added
-- New public APIs
-- New features
-- New configuration options
-
-#### Changed
-- Changes to existing behavior (non-breaking)
-- Performance improvements
-- Internal refactoring (user-visible impact)
-
-#### Deprecated
-- Features marked with `#[deprecated]` attribute
-- Include removal timeline
-
-**Example:**
-```markdown
-### Deprecated
-- `Pool::new()` is deprecated, use `Pool::builder()` instead (will be removed in v0.3.0)
-```
-
-#### Removed
-- Features removed in this release
-- Must correspond to MAJOR version bump (unless pre-1.0.0)
-
-#### Fixed
-- Bug fixes
-- Include issue numbers if applicable
-
-**Example:**
-```markdown
-### Fixed
-- Fix race condition in transaction rollback (#123)
-- Correct UTC timezone handling in timestamp fields (#145)
-```
-
-#### Security
-- Security vulnerability fixes
-- **Always highlight prominently**
+**"N/A" usage**: Only in `[Unreleased]` for empty categories. Released versions should omit empty sections.
 
 ---
 
@@ -1200,126 +360,29 @@ For the `[Unreleased]` section, use "N/A" (Not Applicable) to indicate that ther
 
 ### When to Release Multiple Crates
 
-Release multiple crates when:
-- One crate depends on updated version of another
-- Coordinated feature release across crates
-- Breaking changes cascade through dependencies
+- Dependency updates cascade
+- Coordinated feature releases
+- Breaking changes affect multiple crates
 
 ### Dependency Order
 
-**Release in reverse dependency order:**
+**Automatic with cargo-workspaces**: Publishes in correct order.
 
-1. **Leaf crates** (no internal dependencies)
-   - Example: `reinhardt-types`, `reinhardt-macros`
+**Manual order** (if needed):
+1. Leaf crates (no internal deps)
+2. Mid-level crates
+3. Top-level crates (facades)
 
-2. **Mid-level crates** (depend on leaf crates)
-   - Example: `reinhardt-orm` (depends on `reinhardt-types`)
-
-3. **Top-level crates** (depend on mid-level)
-   - Example: `reinhardt` (facade, depends on many crates)
-
-**Visualization:**
+**Example**:
 ```
-reinhardt (facade) -> reinhardt-orm -> reinhardt-types
-                   -> reinhardt-http -> reinhardt-types
-
-Release order: reinhardt-types -> reinhardt-orm, reinhardt-http -> reinhardt
+reinhardt-types → reinhardt-orm → reinhardt (facade)
 ```
 
-### Sub-Crate Structure
+### Sub-Crate Structures
 
-Reinhardt uses nested crate structures where parent crates contain multiple sub-crates.
-
-**Example structure:**
-```
-crates/reinhardt-db/            # Parent crate
-├── Cargo.toml
-├── src/lib.rs
-└── crates/                     # Sub-crates
-    ├── orm/Cargo.toml
-    ├── migrations/Cargo.toml
-    ├── backends/Cargo.toml
-    ├── pool/Cargo.toml
-    ├── hybrid/Cargo.toml
-    ├── associations/Cargo.toml
-    ├── contenttypes/Cargo.toml
-    └── backends-pool/Cargo.toml
-```
-
-**Publishing order for nested structures:**
-
-1. **Sub-crates first** (they are the dependencies)
-   ```bash
-   cargo ws publish -p reinhardt-backends
-   cargo ws publish -p reinhardt-pool
-   cargo ws publish -p reinhardt-orm
-   # ... other sub-crates
-   ```
-
-2. **Parent crate last** (depends on sub-crates)
-   ```bash
-   cargo ws publish -p reinhardt-db
-   ```
-
-**Important considerations:**
-
-- Parent crate typically re-exports sub-crates via `pub use`
-- Sub-crates should be published before the parent
-- Use path dependencies during development: `reinhardt-orm = { path = "crates/orm" }`
-- Convert to workspace dependencies for release: `reinhardt-orm = { workspace = true }`
-
-**Automatic handling with cargo-workspaces:**
-
-`cargo ws publish` automatically handles publishing in the correct dependency order, including nested structures. You don't need to manually specify the order.
-
-### Multi-Crate Release Workflow
-
-#### Step 1: Identify Release Set
-
-```bash
-# List crates with changes since last release
-git log --name-only --since="2024-12-01" -- crates/ | grep Cargo.toml
-```
-
-#### Step 2: Determine Versions
-
-For each crate:
-- Review changes
-- Select appropriate version (MAJOR/MINOR/PATCH)
-- Document in CHANGELOG.md
-
-#### Step 3: Update Dependency Versions
-
-If `crate-b` depends on `crate-a`:
-
-**After releasing `crate-a` v0.2.0:**
-
-Update `crates/crate-b/Cargo.toml`:
-```toml
-[dependencies]
-crate-a = { workspace = true }  # If using workspace dependencies
-# OR
-crate-a = "0.2.0"  # Explicit version
-```
-
-#### Step 4: Release in Order
-
-Follow the standard release workflow for each crate:
-
-1. Release `crate-a` v0.2.0
-2. Update `crate-b`'s dependency on `crate-a`
-3. Release `crate-b` v0.3.0
-4. Continue up the dependency chain
-
-#### Step 5: Verify Dependency Chain
-
-After all releases:
-
-```bash
-cargo tree -p <top-level-crate> | grep reinhardt
-```
-
-Verify all internal dependencies use correct versions.
+**Nested crates** (e.g., `reinhardt-db/crates/orm/`):
+- Sub-crates published before parent
+- `cargo ws publish` handles automatically
 
 ---
 
@@ -1327,42 +390,21 @@ Verify all internal dependencies use correct versions.
 
 ### Version Yanking (Preferred)
 
-If a released version has critical issues:
-
 ```bash
 cargo yank <crate-name> --version <version>
 ```
 
-**What yank does:**
-- Prevents new projects from using the version
-- Existing projects with `Cargo.lock` can still use it
-- Version remains in crates.io (cannot be deleted)
+**What it does**:
+- Prevents new projects from using version
+- Existing `Cargo.lock` still works
+- Cannot delete (remains on crates.io)
 
-**When to yank:**
-- Critical bugs
-- Security vulnerabilities
-- Incorrect metadata
-
-**After yanking:**
-1. Fix the issue
+**After yanking**:
+1. Fix issue
 2. Increment PATCH version
 3. Release fixed version
 
-**Example:**
-```bash
-# Yank broken version
-cargo yank reinhardt-orm --version 0.2.0
-
-# Fix the issue in code
-# ...
-
-# Release fixed version
-cargo publish -p reinhardt-orm  # Now v0.2.1
-```
-
-### Un-yanking (If Safe)
-
-If yank was a mistake:
+### Un-yanking
 
 ```bash
 cargo yank <crate-name> --version <version> --undo
@@ -1370,186 +412,115 @@ cargo yank <crate-name> --version <version> --undo
 
 ### Git Tag Rollback
 
-If publication failed but tag was created:
-
 ```bash
-# Delete local tag
 git tag -d [crate-name]@v[version]
-
-# Delete remote tag (if pushed)
 git push origin :refs/tags/[crate-name]@v[version]
 ```
 
 ### Commit Rollback
 
-If version bump was committed but publication failed:
-
 ```bash
-# Revert the commit
-git revert HEAD
-
-# OR reset if not pushed yet
-git reset --hard HEAD~1
+git revert HEAD  # If pushed
+git reset --hard HEAD~1  # If not pushed
 ```
 
 ---
 
 ## Troubleshooting
 
-### Common Issues and Solutions
+### Common Issues
 
-#### Issue: `cargo publish` fails with "no such file or directory"
+#### Dry-run Failed - Missing Metadata
 
-**Cause:** Uncommitted changes or files in `.gitignore`
+**Error**: `missing field 'description' in Cargo.toml`
 
-**Solution:**
-```bash
-git status  # Check for uncommitted changes
-git add <missing-files>
-git commit -m "Add missing files"
-```
-
-#### Issue: "package.description missing in manifest"
-
-**Cause:** Missing `description` field in `Cargo.toml`
-
-**Solution:**
+**Solution**:
 ```toml
 [package]
-name = "reinhardt-orm"
-version = "0.2.0"
-description = "ORM layer for Reinhardt framework"  # Add this
+description = "ORM layer for Reinhardt framework"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/kent8192/reinhardt-rs"
 ```
 
-#### Issue: "version already published"
+#### Version Already Published
 
-**Cause:** Attempting to publish an already-published version
-
-**Solution:**
-- Increment version number
-- Update CHANGELOG.md
-- Commit and retry
-
-#### Issue: "path dependency outside of workspace"
-
-**Cause:** Path dependencies to unpublished crates
-
-**Solution:**
-- Publish dependency crates first
-- Update `Cargo.toml` to use published versions:
-  ```toml
-  [dependencies]
-  reinhardt-types = { workspace = true }  # Use workspace version
-  # OR
-  reinhardt-types = "0.1.0-alpha.1"  # Explicit version from crates.io
-  ```
-
-#### Issue: Tag already exists
-
-**Cause:** Git tag already created (possibly from failed previous attempt)
-
-**Solution:**
+**Solution**:
 ```bash
-# Delete local tag
-git tag -d [crate-name]@v[version]
+# Check existing versions
+curl -s "https://crates.io/api/v1/crates/reinhardt-orm" | jq '.versions[].num'
 
-# Delete remote tag (if pushed)
-git push origin :refs/tags/[crate-name]@v[version]
-
-# Recreate tag after fixing
-git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"
+# Increment version and retry
+vim crates/reinhardt-orm/Cargo.toml  # version = "0.2.1"
 ```
 
-### cargo-workspaces Specific Issues
+#### Dependency Not Available
 
-#### Issue: "No changed crates detected"
+**Cause**: Dependency not published or index not updated
 
-**Cause:** All crates are already released, or tags are not properly set
+**Solution**:
+- Workflow retries automatically (3 attempts)
+- Manual: Wait 2-3 minutes, trigger manually
 
-**Solution:**
+#### No Crates Detected
+
+**Cause**: No version changes or already published
+
+**Solution**:
 ```bash
-# Check which crates cargo-workspaces detects as changed
-cargo ws changed
+# Verify changes
+git diff main -- crates/*/Cargo.toml
 
-# Check existing tags
-git tag | grep "@v"
+# Check if published
+curl -s "https://crates.io/api/v1/crates/reinhardt-orm" | \
+  jq '.versions[] | select(.num == "0.2.0")'
+```
 
-# If tags are missing or incorrect, you can:
-# Option 1: Force publish specific crate
+#### Git Tag Already Exists
+
+**Solution**:
+```bash
+git push origin :refs/tags/reinhardt-orm@v0.2.0
+# Workflow recreates after successful publish
+```
+
+### cargo-workspaces Issues
+
+#### "No changed crates detected"
+
+```bash
+cargo ws changed  # Check detection
+
+# Force publish
 cargo ws publish -p <crate-name> --force
 
-# Option 2: Create missing tags manually
-git tag <crate-name>@v<last-version> <commit-hash>
-git tag <crate-name>@v<last-version> -m "Retroactive tag for v<last-version>"
+# Or create missing tags
+git tag <crate-name>@v<version> -m "Retroactive tag"
 ```
 
-#### Issue: "version mismatch for workspace dependency"
+#### "version mismatch for workspace dependency"
 
-**Cause:** Workspace-level dependency version doesn't match what's specified in individual crate
-
-**Solution:**
 ```bash
-# Check workspace dependencies
+# Check consistency
 grep -A 50 "\[workspace.dependencies\]" Cargo.toml
-
-# Check individual crate dependencies
 grep "workspace = true" crates/*/Cargo.toml
-
-# Fix: Ensure consistency
-# In root Cargo.toml:
-[workspace.dependencies]
-reinhardt-types = "0.2.0"
-
-# In crate Cargo.toml:
-[dependencies]
-reinhardt-types = { workspace = true }  # Must match workspace version
 ```
 
-#### Issue: cargo-workspaces command not found
+#### cargo-workspaces not found
 
-**Cause:** cargo-workspaces not installed
-
-**Solution:**
 ```bash
-# Install cargo-workspaces
-cargo install cargo-workspaces
-
-# Or install specific version for consistency
 cargo install cargo-workspaces --version 0.4.1
-
-# Verify installation
 cargo ws --version
 ```
 
-#### Issue: CI/CD failures after release
-
-**Cause:** Tests failing with new version
-
-**Solution:**
-1. Yank the problematic version: `cargo yank <crate-name> --version <version>`
-2. Fix the issue in code
-3. Increment PATCH version
-4. Re-release with fix
-
 ### Verification Checklist
 
-If unsure about a release, verify:
-
-- [ ] Version number follows SemVer
-- [ ] CHANGELOG.md is up-to-date
-- [ ] All tests pass locally and in CI
-- [ ] Documentation builds without warnings
+- [ ] Version follows SemVer
+- [ ] CHANGELOG updated
+- [ ] Tests pass
+- [ ] Documentation builds
 - [ ] Dry-run succeeds
 - [ ] No uncommitted changes
-- [ ] Dependencies are published to crates.io
-
----
-
-## Related Documentation
-
-- **Main Standards**: @CLAUDE.md
-- **Commit Guidelines**: @CLAUDE.commit.md
-- **Version Policy**: See "Release & Publishing Policy" in CLAUDE.md
+- [ ] Dependencies published
 
 ---
 
@@ -1559,34 +530,50 @@ If unsure about a release, verify:
 
 ```
 1. ✅ Select version (MAJOR/MINOR/PATCH)
-2. ✅ Update Cargo.toml
-3. ✅ Update CHANGELOG.md
-4. ✅ Run verification commands
-5. ✅ Commit version changes
-6. ✅ Run cargo publish --dry-run
-7. ✅ Wait for user authorization
-8. ✅ Publish: cargo publish -p <crate-name>
-9. ✅ Create Git tag
-10. ✅ Push commits and tags
+2. ✅ Update Cargo.toml + CHANGELOG.md
+3. ✅ Run verification commands
+4. ✅ Create PR + add 'release' label
+5. ✅ Review dry-run results
+6. ✅ Merge PR
+7. ✅ Verify publication (crates.io, GitHub Releases, docs.rs)
 ```
 
 ### Key Commands
 
 ```bash
-# Verify
+# Verification
 cargo check --workspace --all --all-features
 cargo test --workspace --all --all-features
 cargo test --doc -p <crate-name>
 
-# Publish
-cargo publish --dry-run -p <crate-name>
-cargo publish -p <crate-name>
+# Change detection
+cargo ws changed
 
-# Tagging
+# Dry-run
+cargo ws publish --dry-run -p <crate-name>
+
+# Publish (manual)
+cargo ws publish -p <crate-name>
+
+# Tagging (manual)
 git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"
-git push origin main
-git push origin --tags
+git push origin main && git push origin --tags
 
-# Yank (if needed)
+# Yank
 cargo yank <crate-name> --version <version>
+cargo yank <crate-name> --version <version> --undo
 ```
+
+### Workflow Files
+
+- **`.github/workflows/publish-dry-run.yml`**: Pre-merge validation
+- **`.github/workflows/publish-on-merge.yml`**: Auto-publish on merge
+- **`.github/workflows/publish-on-tag.yml`**: Manual emergency publish
+
+---
+
+## Related Documentation
+
+- **Main Standards**: @CLAUDE.md
+- **Commit Guidelines**: @CLAUDE.commit.md
+- **Version Policy**: See "Release & Publishing Policy" in CLAUDE.md
