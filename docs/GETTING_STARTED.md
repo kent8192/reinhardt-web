@@ -18,6 +18,8 @@ Before you begin, make sure you have:
 cargo install reinhardt-admin-cli
 ```
 
+**Note:** After installation, the command is `reinhardt-admin`, not `reinhardt-admin-cli`.
+
 ### Step 2: Create a New Project
 
 ```bash
@@ -29,13 +31,29 @@ cd my-api
 reinhardt-admin startproject my-web --template-type mtv
 ```
 
-This generates a complete project structure with:
-- Configuration files (`src/config/`)
-- Settings management with environment support
-- URL routing configuration
-- App registry
-- Management commands (`src/bin/manage.rs`)
-- Development server (`src/bin/runserver.rs`)
+This generates a complete project structure:
+
+```
+my-api/
+├── Cargo.toml
+├── settings/
+│   ├── base.example.toml
+│   ├── local.example.toml
+│   ├── staging.example.toml
+│   └── production.example.toml
+├── src/
+│   ├── lib.rs
+│   ├── main.rs
+│   ├── config.rs
+│   ├── apps.rs
+│   ├── bin/
+│   │   └── manage.rs
+│   └── config/
+│       ├── settings.rs
+│       ├── urls.rs
+│       └── apps.rs
+└── README.md
+```
 
 ### Step 3: Choose Your Flavor
 
@@ -108,20 +126,33 @@ This creates a `hello` app with the following structure:
 ```
 hello/
 ├── lib.rs
+├── apps.rs
 ├── models.rs
+├── models/          # Directory for model files
+│   └── .gitkeep
 ├── views.rs
+├── views/           # Directory for view files
+│   └── .gitkeep
 ├── serializers.rs
-├── urls.rs
+├── serializers/     # Directory for serializer files
+│   └── .gitkeep
 ├── admin.rs
-└── tests.rs
+├── admin/           # Directory for admin files
+│   └── .gitkeep
+├── urls.rs
+├── tests.rs
+└── tests/           # Directory for test files
+    └── .gitkeep
 ```
+
+**Note:** Following Rust 2024 Edition module system, each `module.rs` file serves as the entry point for its corresponding `module/` directory.
 
 ### Step 6: Create a Simple Endpoint
 
 Edit `hello/views.rs`:
 
 ```rust
-use reinhardt_http::{Request, Response, StatusCode};
+use reinhardt::prelude::*;  // Imports Request, Response, StatusCode
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -135,7 +166,7 @@ pub async fn hello_world(_req: Request) -> Result<Response, Box<dyn std::error::
     };
 
     let json = serde_json::to_string(&response_data)?;
-    Ok(Response::new(StatusCode::OK, json.into()))
+    Ok(Response::new(StatusCode::OK).with_body(json))
 }
 ```
 
