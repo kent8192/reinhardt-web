@@ -21,12 +21,7 @@ pub mod messages_helpers;
 // New shared modules
 // pub mod flatpages_common;
 pub mod db_transaction;
-pub mod proxy;
 pub mod validator_test_common;
-
-// Settings integration tests
-#[cfg(test)]
-mod settings;
 
 /// Test database setup
 pub async fn setup_test_db() -> Pool<Postgres> {

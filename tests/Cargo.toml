@@ -1,5 +1,5 @@
 [package]
-name = "reinhardt-integration-tests"
+name = "reinhardt-test-support"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -29,6 +29,13 @@ reinhardt-db = { workspace = true, features = [
     "contenttypes",
 ] }
 reinhardt-conf = { workspace = true, features = ["settings"] }
+reinhardt-settings = { path = "../crates/reinhardt-conf/crates/settings", features = [
+	"async",
+	"dynamic-database",
+	"dynamic-redis",
+	"hot-reload",
+	"caching",
+] }
 reinhardt-forms = { workspace = true }
 reinhardt-middleware = { workspace = true }
 reinhardt-orm = { path = "../crates/reinhardt-db/crates/orm", features = [
@@ -93,9 +100,7 @@ prost = "0.14.1"
 async-stream = "0.3"
 
 [build-dependencies]
-tonic-prost-build = "0.14.2"
-tonic-build = "0.14.2"
-protox = "0.9.0"
+tonic-prost-build = { workspace = true }
 
 [lib]
 path = "integration/src/lib.rs"
