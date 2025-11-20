@@ -43,6 +43,9 @@ jobs:
           sudo apt-get install -y protobuf-compiler
           protoc --version
 
+      - name: Clean cargo cache
+        run: cargo clean
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
