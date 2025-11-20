@@ -64,7 +64,7 @@ jobs:
           echo "Detecting changed crates..."
 
           # Use cargo-workspaces to detect changed crates
-          CHANGED_OUTPUT=$(cargo ws changed --include-merged-tags 2>&1 || true)
+          CHANGED_OUTPUT=$(cargo ws changed 2>&1 || true)
 
           if echo "$CHANGED_OUTPUT" | grep -q "No changed crates detected"; then
             echo "No changed crates detected."
