@@ -82,53 +82,47 @@ Reinhardt brings together the best of three worlds:
 
 ## Installation
 
-Compose your perfect framework—Reinhardt offers three ready-made flavors:
+Reinhardt is a modular framework. Choose your starting point:
 
-### Reinhardt Micro - For Microservices
+### Option 1: Microservices (Minimal Setup)
 
-Lightweight and fast, perfect for simple APIs and microservices:
+Lightweight and fast, perfect for simple APIs:
 
 ```toml
 [dependencies]
 reinhardt-micro = "0.1.0-alpha.1"
 ```
 
-### Reinhardt Standard - Balanced Approach
+**Includes:** HTTP, routing, DI, parameter extraction
 
-The default configuration, suitable for most projects:
+### Option 2: Build Your Custom Stack
 
-```toml
-[dependencies]
-reinhardt = "0.1.0-alpha.1"
-# Equivalent to: reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }
-```
-
-### Reinhardt Full - Everything Included
-
-All features enabled, Django-style batteries-included:
+Install only the components you need:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }
+# Core components
+reinhardt-http = "0.1.0-alpha.1"
+reinhardt-urls = "0.1.0-alpha.1"
+
+# Optional: Database
+reinhardt-db = "0.1.0-alpha.1"
+
+# Optional: Authentication
+reinhardt-auth = "0.1.0-alpha.1"
+
+# Optional: REST API features
+reinhardt-rest = "0.1.0-alpha.1"
+
+# Optional: Admin panel
+reinhardt-admin = "0.1.0-alpha.1"
+
+# Optional: Advanced features
+reinhardt-graphql = "0.1.0-alpha.1"
+reinhardt-websockets = "0.1.0-alpha.1"
 ```
 
-### Compose Your Own Configuration
-
-Mix and match features to build your ideal framework:
-
-```toml
-[dependencies]
-# Minimal setup with just routing and params
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal"] }
-
-# Add database support
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal", "database"] }
-
-# Standard with extra features
-reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "websockets", "graphql"] }
-```
-
-**📖 For a complete list of available feature flags and detailed configuration options, see the [Feature Flags Guide](docs/FEATURE_FLAGS.md).**
+**📖 For a complete list of available crates and feature flags, see the [Feature Flags Guide](docs/FEATURE_FLAGS.md).**
 
 ## Quick Start
 
@@ -234,27 +228,20 @@ cargo run --bin manage runserver
 
 **Auto-Reload Support:**
 
-For automatic reloading on code changes (like Django's runserver):
+For automatic reloading on code changes (requires external tool):
 
 ```bash
 # Install cargo-watch
 cargo install cargo-watch
 
-# Enable cargo-watch-reload feature in Cargo.toml
-# [dependencies]
-# reinhardt-commands = { version = "0.1.0-alpha.1", features = ["cargo-watch-reload"] }
-
 # Run with auto-reload (detects changes, rebuilds, and restarts automatically)
-cargo run --bin runserver
+cargo watch -x 'run --bin runserver'
 
 # Optional: Clear screen before each rebuild
-cargo run --bin runserver -- --clear
-
-# Optional: Disable auto-reload
-cargo run --bin runserver -- --noreload
+cargo watch -c -x 'run --bin runserver'
 ```
 
-See [Feature Flags Guide](docs/FEATURE_FLAGS.md) for more auto-reload options.
+**Note:** Auto-reload is provided by the external `cargo-watch` tool. The `runserver` binary has `--noreload` and `--clear` options, but built-in auto-reload functionality is not yet implemented.
 
 ### 6. Create Your First App
 
@@ -335,7 +322,7 @@ Settings are automatically loaded in `src/config/settings.rs`:
 
 ```rust
 use reinhardt_conf::settings::prelude::*;
-use reinhardt_core::Settings;
+use reinhardt_settings::Settings;
 
 pub fn get_settings() -> Settings {
     let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
@@ -412,6 +399,8 @@ pub fn get_installed_apps() -> Vec<String> {
 ### With Authentication
 
 Reinhardt provides Django-style user models with `BaseUser` and `FullUser` traits.
+
+**Note:** Reinhardt includes a built-in `DefaultUser` implementation. You can use it directly or define your own user model as shown below.
 
 Define your user model in `users/models.rs`:
 
@@ -618,38 +607,29 @@ pub async fn create_user(mut req: Request) -> Result<Response, Box<dyn std::erro
 }
 ```
 
-## Choosing the Right Flavor
+## Available Components
 
-| Feature      | Micro    | Standard  | Full    |
-|--------------|----------|-----------|---------|
-| Binary Size  | ~5-10 MB | ~20-30 MB | ~50+ MB |
-| Compile Time | Fast     | Medium    | Slower  |
-| **Core Features**     |
-| Routing               | ✅       | ✅        | ✅      |
-| Parameter Extraction  | ✅       | ✅        | ✅      |
-| **Standard Features** |
-| ORM (SeaQuery)        | Optional | ✅        | ✅      |
-| Serializers           | ❌       | ✅        | ✅      |
-| Authentication        | ❌       | ✅        | ✅      |
-| Pagination            | ❌       | ✅        | ✅      |
-| ViewSets              | ❌       | ✅        | ✅      |
-| **Advanced Features** |
-| Admin Panel           | ❌       | ❌        | ✅      |
-| GraphQL               | ❌       | ❌        | ✅      |
-| WebSockets            | ❌       | ❌        | ✅      |
-| i18n                  | ❌       | ❌        | ✅      |
-| **Planned Features**  |
-| FastAPI-style DI      | ❌       | 🔜       | 🔜      |
-| #[derive(Model)]      | ❌       | 🔜       | 🔜      |
-| **Use Case**          |
-| Microservices         | ✅       | ⚠️        | ❌      |
-| REST APIs             | ✅       | ✅        | ✅      |
-| Full Applications     | ❌       | ✅        | ✅      |
-| Complex Systems       | ❌       | ⚠️        | ✅      |
+Reinhardt offers modular components you can mix and match:
 
-**Legend**: ✅ Recommended • ⚠️ Possible but not optimal • ❌ Not recommended
+| Component           | Crate Name                | Features                                    |
+|---------------------|---------------------------|---------------------------------------------|
+| **Core**            |                           |                                             |
+| HTTP & Routing      | `reinhardt-http`          | Request/Response, HTTP handling             |
+| URL Routing         | `reinhardt-urls`          | Function-based and class-based routes       |
+| Microservices       | `reinhardt-micro`         | All-in-one minimal setup (HTTP + routing + DI) |
+| **Database**        |                           |                                             |
+| ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc1 integration             |
+| **Authentication**  |                           |                                             |
+| Auth                | `reinhardt-auth`          | JWT, Token, Session, Basic auth             |
+| **REST API**        |                           |                                             |
+| Serializers         | `reinhardt-rest`          | serde/validator integration, ViewSets       |
+| **Advanced**        |                           |                                             |
+| Admin Panel         | `reinhardt-admin`         | Django-style admin interface                |
+| GraphQL             | `reinhardt-graphql`       | Schema generation, subscriptions            |
+| WebSockets          | `reinhardt-websockets`    | Real-time communication                     |
+| i18n                | `reinhardt-i18n`          | Multi-language support                      |
 
-**Need more granular control?** The [Feature Flags Guide](docs/FEATURE_FLAGS.md) provides detailed documentation on 70+ individual feature flags, allowing you to fine-tune your build beyond these presets.
+**For detailed feature flags within each crate, see the [Feature Flags Guide](docs/FEATURE_FLAGS.md).**
 
 ## Components
 
