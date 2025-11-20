@@ -82,19 +82,21 @@ Session framework for maintaining state across HTTP requests. This crate provide
 
 #### Session Management Features
 
-- Session expiration and cleanup
-- Session key rotation
-- Cross-site request forgery (CSRF) protection integration
-- Session serialization formats (JSON, MessagePack, etc.)
-- Session storage migration tools
+- **Session expiration and cleanup** - Implemented via `cleanup_expired()` in DatabaseSessionBackend
+- **Session key rotation** - Implemented via `cycle_key()` and `flush()` in Session API
+- **Cross-site request forgery (CSRF) protection integration** - CSRF module available
+- **Session serialization formats** - JSON via serde_json (MessagePack and other formats: planned)
+- **Session storage migration tools** - Migration module available
 
-#### Advanced Features
+### Planned Features
 
-- Session replication for high availability
-- Session analytics and monitoring
-- Custom session serializers
-- Session compression for large data
-- Multi-tenant session isolation
+The following features are planned for future releases:
+
+- **Session replication** - High availability with multi-backend replication
+- **Session analytics** - Monitoring and usage statistics
+- **Custom session serializers** - Pluggable serialization formats (MessagePack, CBOR, etc.)
+- **Session compression** - Automatic compression for large session data
+- **Multi-tenant session isolation** - Tenant-specific session namespacing
 
 ## Installation
 

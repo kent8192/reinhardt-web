@@ -318,6 +318,171 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Dynamic Settings
+
+Runtime configuration changes without application restarts:
+
+#### Using Memory Backend
+
+```rust
+use reinhardt_settings::dynamic::DynamicSettings;
+use reinhardt_settings::backends::MemoryBackend;
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create backend and settings manager
+    let backend = Arc::new(MemoryBackend::new());
+    let mut settings = DynamicSettings::new(backend);
+
+    // Enable caching with 100 entry limit and 5-minute TTL
+    #[cfg(feature = "caching")]
+    settings.enable_cache(100, Some(std::time::Duration::from_secs(300)));
+
+    // Set configuration values with type safety
+    settings.set("app.name", &"MyApp", None).await?;
+    settings.set("app.debug", &true, Some(3600)).await?; // 1 hour TTL
+    settings.set("app.max_connections", &100, None).await?;
+
+    // Retrieve values with type safety
+    let name: String = settings.get("app.name").await?.unwrap();
+    let debug: bool = settings.get("app.debug").await?.unwrap();
+    let max_conn: i32 = settings.get("app.max_connections").await?.unwrap();
+
+    println!("App Name: {}", name);
+    println!("Debug Mode: {}", debug);
+    println!("Max Connections: {}", max_conn);
+
+    // Subscribe to configuration changes
+    let sub_id = settings.subscribe(|key, value| {
+        println!("Configuration changed: {} = {:?}", key, value);
+    });
+
+    // Update configuration - triggers observer callback
+    settings.set("app.debug", &false, None).await?;
+
+    // Unsubscribe when done
+    settings.unsubscribe(sub_id);
+
+    Ok(())
+}
+```
+
+#### Using Database Backend
+
+With the `dynamic-database` feature enabled:
+
+```rust
+use reinhardt_settings::backends::DatabaseBackend;
+use reinhardt_settings::dynamic::DynamicSettings;
+use serde_json::json;
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Connect to database (PostgreSQL, MySQL, or SQLite)
+    let backend = DatabaseBackend::new("postgres://localhost/settings").await?;
+    backend.create_table().await?;
+
+    let settings = DynamicSettings::new(Arc::new(backend));
+
+    // Store complex configuration objects
+    settings.set("feature_flags", &json!({
+        "new_ui": true,
+        "beta_features": false,
+        "rate_limit": 1000
+    }), None).await?;
+
+    // Retrieve and use configuration
+    let flags: serde_json::Value = settings.get("feature_flags").await?.unwrap();
+    if flags["new_ui"].as_bool().unwrap_or(false) {
+        println!("New UI enabled!");
+    }
+
+    Ok(())
+}
+```
+
+#### Hot Reload with File Watching
+
+With the `hot-reload` feature enabled:
+
+```rust
+use reinhardt_settings::hot_reload::HotReloadManager;
+use reinhardt_settings::dynamic::DynamicSettings;
+use reinhardt_settings::backends::MemoryBackend;
+use std::path::Path;
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create hot reload manager
+    let hot_reload = Arc::new(parking_lot::Mutex::new(HotReloadManager::new()));
+
+    // Create dynamic settings with hot reload
+    let backend = Arc::new(MemoryBackend::new());
+    let mut settings = DynamicSettings::new(backend);
+    settings.enable_hot_reload(hot_reload.clone());
+
+    // Register reload callback
+    hot_reload.lock().on_reload(Arc::new(|path| {
+        println!("Configuration file changed: {:?}", path);
+        // Reload configuration from file
+    }));
+
+    // Watch configuration file
+    hot_reload.lock().watch(Path::new("settings.toml")).await?;
+
+    // Settings will automatically reload when file changes
+    println!("Watching settings.toml for changes...");
+
+    // Keep application running
+    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+
+    Ok(())
+}
+```
+
+#### Observer Pattern for Change Notifications
+
+```rust
+use reinhardt_settings::dynamic::DynamicSettings;
+use reinhardt_settings::backends::MemoryBackend;
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let backend = Arc::new(MemoryBackend::new());
+    let mut settings = DynamicSettings::new(backend);
+
+    // Multiple observers can be registered
+    let sub1 = settings.subscribe(|key, value| {
+        println!("Observer 1: {} changed to {:?}", key, value);
+    });
+
+    let sub2 = settings.subscribe(|key, value| {
+        // Log to file, send notification, etc.
+        eprintln!("AUDIT: Configuration key '{}' modified", key);
+    });
+
+    // Changes trigger all registered observers
+    settings.set("app.timeout", &30, None).await?;
+    // Output:
+    // Observer 1: app.timeout changed to Number(30)
+    // AUDIT: Configuration key 'app.timeout' modified
+
+    // Unsubscribe individual observers
+    settings.unsubscribe(sub1);
+
+    // This change only triggers sub2
+    settings.set("app.max_retries", &3, None).await?;
+
+    settings.unsubscribe(sub2);
+
+    Ok(())
+}
+```
+
 ## Documentation
 
 For complete documentation and API reference, visit:
