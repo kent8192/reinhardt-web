@@ -1200,9 +1200,9 @@ impl<'de> Deserialize<'de> for CollectionProxy {
 					relationship,
 					attribute,
 					unique,
-					deduplicate: false, // Default value
+					deduplicate: false,     // Default value
 					loading_strategy: None, // Cannot be deserialized
-					factory: None, // Cannot be deserialized
+					factory: None,          // Cannot be deserialized
 					caching: false,
 					cache_ttl: None,
 					streaming: false,

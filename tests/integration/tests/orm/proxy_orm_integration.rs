@@ -369,7 +369,7 @@ async fn test_create_via_append(
 	let result = proxy
 		.append(&mut user, ScalarValue::String("rust".to_string()))
 		.await;
-	
+
 	// Verify result is successful
 	result.expect("Append operation should succeed");
 
@@ -386,7 +386,6 @@ async fn test_create_via_append(
 #[rstest]
 #[tokio::test]
 async fn test_create_via_set() {
-
 	// Create proxy for keywords
 	let proxy = CollectionProxy::new("keywords", "name");
 
@@ -407,10 +406,9 @@ async fn test_create_via_set() {
 		ScalarValue::String("python".to_string()),
 	];
 	let result = proxy.set_values(&mut user, keywords).await;
-	
+
 	// Verify result is successful
 	result.expect("Set values operation should succeed");
-
 }
 
 /// Test persisting changes through proxy
@@ -425,7 +423,6 @@ async fn test_create_via_set() {
 #[rstest]
 #[tokio::test]
 async fn test_persist_changes() {
-
 	// Create proxy for keywords
 	let proxy = CollectionProxy::new("keywords", "name");
 
@@ -444,7 +441,7 @@ async fn test_persist_changes() {
 	let result = proxy
 		.append(&mut user, ScalarValue::String("new_keyword".to_string()))
 		.await;
-	
+
 	// Verify append succeeded
 	result.expect("Append operation should succeed");
 
@@ -461,7 +458,6 @@ async fn test_persist_changes() {
 		}
 		Err(_) => {} // Implementation dependent
 	}
-
 }
 
 /// Test lazy loading through proxy
@@ -476,7 +472,6 @@ async fn test_persist_changes() {
 #[rstest]
 #[tokio::test]
 async fn test_lazy_load_through_proxy() {
-
 	// Create proxy with lazy loading
 	let proxy =
 		CollectionProxy::new("keywords", "name").with_loading_strategy(LoadingStrategy::Lazy);
@@ -497,7 +492,6 @@ async fn test_lazy_load_through_proxy() {
 	// Result may be Ok or Err depending on implementation
 	// Verify the operation completes without panicking
 	let _ = result;
-
 }
 
 /// Test filtering with SQLAlchemy's any()
@@ -511,7 +505,6 @@ async fn test_lazy_load_through_proxy() {
 #[rstest]
 #[tokio::test]
 async fn test_filter_with_any() {
-
 	// Create proxy for filtering
 	let proxy = CollectionProxy::new("keywords", "name");
 
@@ -519,7 +512,6 @@ async fn test_filter_with_any() {
 	let filter_result = proxy.filter_with_any("name", "rust").await;
 	// Verify the operation completes without panicking
 	let _ = filter_result;
-
 }
 
 /// Test filtering with SQLAlchemy's has()
@@ -533,7 +525,6 @@ async fn test_filter_with_any() {
 #[rstest]
 #[tokio::test]
 async fn test_filter_with_has() {
-
 	// Create proxy for filtering
 	let proxy = CollectionProxy::new("users", "name");
 
@@ -541,7 +532,6 @@ async fn test_filter_with_has() {
 	let filter_result = proxy.filter_with_has("name", "Alice").await;
 	// Verify the operation completes without panicking
 	let _ = filter_result;
-
 }
 
 /// Test generating SQL JOIN queries
@@ -557,7 +547,6 @@ async fn test_filter_with_has() {
 #[rstest]
 #[tokio::test]
 async fn test_query_with_join() {
-
 	// Create relationship for JOIN
 	let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 		.with_foreign_key("user_id")
@@ -565,12 +554,14 @@ async fn test_query_with_join() {
 
 	// Generate SQL for JOIN
 	let sql = relationship.load_sql("users.id", DatabaseDialect::PostgreSQL);
-	
+
 	// Verify SQL structure with exact checks
 	assert!(sql.contains("LEFT JOIN"), "SQL should contain LEFT JOIN");
 	assert!(sql.contains("posts"), "SQL should reference posts table");
-	assert!(sql.contains("user_id"), "SQL should reference user_id foreign key");
-
+	assert!(
+		sql.contains("user_id"),
+		"SQL should reference user_id foreign key"
+	);
 }
 
 /// Test cascade delete through proxy
@@ -583,7 +574,6 @@ async fn test_query_with_join() {
 #[rstest]
 #[tokio::test]
 async fn test_cascade_delete() {
-
 	// Create proxy with cascade delete
 	let proxy = CollectionProxy::new("keywords", "name").with_cascade(CascadeOption::Delete);
 
@@ -601,7 +591,6 @@ async fn test_cascade_delete() {
 	// Clear keywords (should trigger cascade delete)
 	let result = proxy.clear(&mut user).await;
 	result.expect("Clear operation should succeed");
-
 }
 
 /// Test backref handling
@@ -614,14 +603,12 @@ async fn test_cascade_delete() {
 #[rstest]
 #[tokio::test]
 async fn test_backref_handling() {
-
 	// Create bidirectional relationship
 	let relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 		.with_foreign_key("user_id")
 		.with_back_populates("author");
 
 	// Note: back_populates and sync_backref are private fields and cannot be tested directly
-
 }
 
 /// Test relationship loading strategies
@@ -636,7 +623,6 @@ async fn test_backref_handling() {
 #[rstest]
 #[tokio::test]
 async fn test_relationship_loading_strategies() {
-
 	// Test different loading strategies
 	let strategies = vec![
 		LoadingStrategy::Lazy,
@@ -676,7 +662,6 @@ async fn test_relationship_loading_strategies() {
 			_ => {}
 		}
 	}
-
 }
 
 /// Test transaction rollback with proxy changes
@@ -714,7 +699,7 @@ async fn test_transaction_rollback(
 	let result = proxy
 		.append(&mut user, ScalarValue::String("temp".to_string()))
 		.await;
-	
+
 	result.expect("Append operation should succeed");
 
 	// Automatic rollback implemented via container drop:
@@ -729,7 +714,6 @@ async fn test_transaction_rollback(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_insert() {
-
 	// Create proxy for bulk operations
 	let proxy = CollectionProxy::new("keywords", "name").with_batch_size(10);
 
@@ -753,27 +737,23 @@ async fn test_bulk_insert() {
 
 	let result = proxy.bulk_insert(&mut user, keywords).await;
 	result.expect("Bulk insert operation should succeed");
-
 }
 
 /// Test proxy with composite keys
 #[rstest]
 #[tokio::test]
 async fn test_composite_key_relationships() {
-
 	// Create relationship with composite foreign keys
 	let _relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 		.with_foreign_keys(vec!["user_id".to_string(), "tenant_id".to_string()]);
 
 	// Note: foreign_keys() is a private field and cannot be tested directly
-
 }
 
 /// Test proxy with polymorphic relationships
 #[rstest]
 #[tokio::test]
 async fn test_polymorphic_proxy() {
-
 	// Create polymorphic relationship
 	let relationship =
 		Relationship::<Comment, Comment>::new("replies", RelationshipType::OneToMany)
@@ -785,14 +765,12 @@ async fn test_polymorphic_proxy() {
 		relationship.relationship_type(),
 		RelationshipType::OneToMany
 	);
-
 }
 
 /// Test session merge with proxy changes
 #[rstest]
 #[tokio::test]
 async fn test_session_merge() {
-
 	// Create proxy for testing
 	let proxy = CollectionProxy::new("keywords", "name");
 
@@ -811,16 +789,14 @@ async fn test_session_merge() {
 	let result = proxy
 		.merge(&mut user, ScalarValue::String("merged_keyword".to_string()))
 		.await;
-	
-	result.expect("Merge operation should succeed");
 
+	result.expect("Merge operation should succeed");
 }
 
 /// Test optimistic locking with proxy updates
 #[rstest]
 #[tokio::test]
 async fn test_optimistic_locking() {
-
 	// Create proxy with version tracking
 	let proxy = CollectionProxy::new("keywords", "name").with_version_tracking(true);
 
@@ -839,16 +815,14 @@ async fn test_optimistic_locking() {
 	let result = proxy
 		.update_with_version(&mut user, ScalarValue::String("updated".to_string()), 1)
 		.await;
-	
-	result.expect("Optimistic locking update should succeed");
 
+	result.expect("Optimistic locking update should succeed");
 }
 
 /// Test query caching with proxy access
 #[rstest]
 #[tokio::test]
 async fn test_query_caching() {
-
 	// Create proxy with caching
 	let proxy = CollectionProxy::new("keywords", "name")
 		.with_caching(true)
@@ -856,14 +830,12 @@ async fn test_query_caching() {
 
 	assert!(proxy.is_cached());
 	assert_eq!(proxy.cache_ttl(), Some(300));
-
 }
 
 /// Test database constraints with proxy operations
 #[rstest]
 #[tokio::test]
 async fn test_constraint_violations() {
-
 	// Create foreign key constraint
 	let constraint = ForeignKeyConstraint::new("posts_user_id_fk", "user_id", "users", "id")
 		.on_delete(OnDelete::Cascade);
@@ -871,39 +843,33 @@ async fn test_constraint_violations() {
 	assert_eq!(constraint.name(), "posts_user_id_fk");
 	assert_eq!(constraint.column(), "user_id");
 	assert_eq!(constraint.references_table(), "users");
-
 }
 
 /// Test proxy with custom SQL expressions
 #[rstest]
 #[tokio::test]
 async fn test_custom_sql_expressions() {
-
 	// Create relationship with custom join condition
 	let _relationship = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 		.with_join_condition("users.id = posts.user_id AND posts.published = true");
 
 	// Note: join_condition() is a private field and cannot be tested directly
-
 }
 
 /// Test proxy with database views
 #[rstest]
 #[tokio::test]
 async fn test_database_views() {
-
 	// Create proxy for database view
 	let proxy = CollectionProxy::new("user_posts_view", "title").with_view(true);
 
 	assert!(proxy.is_view());
-
 }
 
 /// Test proxy performance with large datasets
 #[rstest]
 #[tokio::test]
 async fn test_large_dataset_performance() {
-
 	// Create proxy with performance optimizations
 	let proxy = CollectionProxy::new("large_collection", "data")
         .with_memory_limit(1024 * 1024) // 1MB limit
@@ -913,14 +879,12 @@ async fn test_large_dataset_performance() {
 	assert_eq!(proxy.memory_limit(), Some(1024 * 1024));
 	assert_eq!(proxy.chunk_size(), Some(100));
 	assert!(proxy.is_streaming());
-
 }
 
 /// Test proxy with database triggers
 #[rstest]
 #[tokio::test]
 async fn test_database_triggers() {
-
 	// Create proxy with trigger support
 	let proxy = CollectionProxy::new("triggered_data", "value")
 		.with_triggers(true)
@@ -931,14 +895,12 @@ async fn test_database_triggers() {
 		proxy.trigger_events(),
 		Some(&vec!["INSERT".to_string(), "UPDATE".to_string()])
 	);
-
 }
 
 /// Test proxy with stored procedures
 #[rstest]
 #[tokio::test]
 async fn test_stored_procedures() {
-
 	// Create proxy with stored procedure support
 	let proxy = CollectionProxy::new("procedure_data", "result")
 		.with_stored_procedure("get_user_data")
@@ -946,14 +908,12 @@ async fn test_stored_procedures() {
 
 	assert_eq!(proxy.stored_procedure(), Some("get_user_data"));
 	assert_eq!(proxy.procedure_params(), Some(&vec!["user_id".to_string()]));
-
 }
 
 /// Test multi-database proxy operations
 #[rstest]
 #[tokio::test]
 async fn test_multi_database() {
-
 	// Create proxy with multi-database support
 	let proxy = CollectionProxy::new("cross_db_data", "value")
 		.with_database("read_replica")
@@ -961,14 +921,12 @@ async fn test_multi_database() {
 
 	assert_eq!(proxy.database(), Some("read_replica"));
 	assert_eq!(proxy.fallback_database(), Some("primary"));
-
 }
 
 /// Test proxy with async/await patterns
 #[rstest]
 #[tokio::test]
 async fn test_async_patterns() {
-
 	// Create proxy with async patterns
 	let proxy = CollectionProxy::new("async_data", "value")
 		.with_async_loading(true)
@@ -976,5 +934,4 @@ async fn test_async_patterns() {
 
 	assert!(proxy.is_async_loading());
 	assert!(proxy.supports_concurrent_access());
-
 }

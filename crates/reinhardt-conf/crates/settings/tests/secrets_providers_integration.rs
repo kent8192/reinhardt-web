@@ -4,7 +4,9 @@
 //! with secret management functionality, including retrieval, rotation, and audit logging.
 
 use reinhardt_settings::secrets::audit::backends::MemorySecretAuditBackend;
-use reinhardt_settings::secrets::audit::{SecretAccessEvent, SecretAuditBackend, SecretAuditLogger};
+use reinhardt_settings::secrets::audit::{
+	SecretAccessEvent, SecretAuditBackend, SecretAuditLogger,
+};
 use reinhardt_settings::secrets::providers::env::EnvSecretProvider;
 use reinhardt_settings::secrets::providers::memory::MemorySecretProvider;
 use reinhardt_settings::secrets::rotation::{RotationPolicy, SecretRotation};
@@ -23,7 +25,10 @@ async fn memory_secrets_provider() -> MemorySecretProvider {
 
 	// Pre-populate with secrets
 	provider
-		.set_secret("database/password", SecretString::new("super_secret_password"))
+		.set_secret(
+			"database/password",
+			SecretString::new("super_secret_password"),
+		)
 		.await
 		.unwrap();
 	provider
@@ -35,7 +40,10 @@ async fn memory_secrets_provider() -> MemorySecretProvider {
 		.await
 		.unwrap();
 	provider
-		.set_secret("oauth/client_secret", SecretString::new("oauth_client_secret_abc"))
+		.set_secret(
+			"oauth/client_secret",
+			SecretString::new("oauth_client_secret_abc"),
+		)
 		.await
 		.unwrap();
 
@@ -46,7 +54,9 @@ async fn memory_secrets_provider() -> MemorySecretProvider {
 #[rstest]
 #[serial(secrets)]
 #[tokio::test]
-async fn test_memory_provider_basic_retrieval(#[future] memory_secrets_provider: MemorySecretProvider) {
+async fn test_memory_provider_basic_retrieval(
+	#[future] memory_secrets_provider: MemorySecretProvider,
+) {
 	let provider = Arc::new(memory_secrets_provider.await);
 
 	// Retrieve secrets
@@ -105,7 +115,9 @@ async fn test_memory_provider_secret_update() {
 #[rstest]
 #[serial(secrets)]
 #[tokio::test]
-async fn test_memory_provider_nonexistent_secret(#[future] memory_secrets_provider: MemorySecretProvider) {
+async fn test_memory_provider_nonexistent_secret(
+	#[future] memory_secrets_provider: MemorySecretProvider,
+) {
 	let provider = Arc::new(memory_secrets_provider.await);
 
 	// Try to get non-existent secret
@@ -272,7 +284,7 @@ async fn test_secret_rotation_basic() {
 #[tokio::test]
 async fn test_secret_rotation_with_max_age() {
 	let policy = RotationPolicy {
-		interval: Duration::from_secs(3600), // 1 hour
+		interval: Duration::from_secs(3600),   // 1 hour
 		max_age: Some(Duration::from_secs(1)), // 1 second max age
 	};
 	let rotation = SecretRotation::new(policy);
@@ -325,7 +337,10 @@ async fn test_concurrent_secret_access() {
 	// Pre-populate secrets
 	for i in 0..10 {
 		provider
-			.set_secret(&format!("concurrent/secret{}", i), SecretString::new(format!("value_{}", i)))
+			.set_secret(
+				&format!("concurrent/secret{}", i),
+				SecretString::new(format!("value_{}", i)),
+			)
 			.await
 			.unwrap();
 	}
@@ -448,12 +463,7 @@ async fn test_multiple_audit_events() {
 
 	// Log multiple events
 	for i in 0..5 {
-		let event = SecretAccessEvent::new(
-			format!("secret{}", i),
-			"app".to_string(),
-			true,
-			None,
-		);
+		let event = SecretAccessEvent::new(format!("secret{}", i), "app".to_string(), true, None);
 		audit_logger.log_access(event).await.unwrap();
 	}
 
