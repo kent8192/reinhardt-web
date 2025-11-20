@@ -559,7 +559,12 @@ pub use reinhardt_rest::negotiation::*;
 
 // Re-export REST integration
 #[cfg(feature = "rest")]
-pub use reinhardt_rest::*;
+pub use reinhardt_rest::{
+	browsable_api, filters, metadata, negotiation, pagination, parsers, renderers, serializers,
+	throttling, versioning, BrowsableAPIRenderer, CursorPagination, FilterBackend, JsonParser,
+	JsonRenderer, LimitOffsetPagination, OrderingFilter, PageNumberPagination, Renderer,
+	SearchFilter, Serializer, TemplateHTMLRenderer, ThrottleRate,
+};
 
 // Re-export OpenAPI types
 //
