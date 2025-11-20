@@ -82,7 +82,17 @@ Clear separation based on the nature of what is being tested:
 #### Unit Tests
 **Definition:** Tests that verify the behavior of a **single component**
 
-**Component:** A function, method, struct, trait, module, or any cohesive functional unit
+**Component:** A single function, method, struct, trait, enum, or closely related group of items that serve a unified purpose.
+
+**Clarification:**
+- ✅ Single component: A `QueryBuilder` struct with its methods
+- ✅ Single component: A `redirect()` function
+- ✅ Single component: A `MessageCatalog` struct
+- ❌ Multiple components: `QueryBuilder` + `Connection` (these are separate components)
+- ❌ Multiple components: `FilterBackend` + `ORM` (integration across components)
+- ❌ Multiple components: Different crates (always cross-crate integration)
+
+**Note:** A module may contain multiple components. Testing how these components interact is integration testing, not unit testing.
 
 **Location:** Within the functional crate being tested
 
@@ -172,6 +182,64 @@ fn test_query_execution() {
     let query = QueryBuilder::new().table("users").build();
     let result = conn.execute(query);
     assert!(result.is_ok());
+}
+```
+
+#### How to Determine Test Type
+
+**Ask these questions:**
+
+1. **How many Reinhardt crates does this test import?**
+   - 1 crate → Unit or within-crate integration
+   - 2+ crates → Cross-crate integration (→ `tests/` at repo root)
+
+2. **How many distinct components does this test verify?**
+   - 1 component → Unit test (→ inline `#[cfg(test)]` or `crate/tests/`)
+   - 2+ components within same crate → Within-crate integration (→ `crate/tests/`)
+   - 2+ components across crates → Cross-crate integration (→ `tests/` at repo root)
+
+3. **What is the test verifying?**
+   - Internal behavior of a single component → Unit test
+   - Interface/interaction between components → Integration test
+
+**Examples:**
+
+✅ **Cross-crate integration** (→ `tests/integration/tests/`):
+```rust
+// Imports from multiple Reinhardt crates
+use reinhardt_filters::SimpleSearchBackend;
+use reinhardt_orm::QueryBuilder;
+
+#[test]
+fn test_filter_with_orm() {
+    // Tests integration between filters and ORM
+    let backend = SimpleSearchBackend::new("search");
+    let query = QueryBuilder::new().table("users");
+    // Test how filter modifies ORM query
+}
+```
+
+✅ **Within-crate integration** (→ `crates/reinhardt-server/tests/`):
+```rust
+// Imports from same crate only
+use reinhardt_server::{HttpServer, ShutdownCoordinator};
+
+#[test]
+fn test_server_lifecycle() {
+    // Tests integration between server components
+    let server = HttpServer::new();
+    let coordinator = ShutdownCoordinator::new();
+    // Test how they work together
+}
+```
+
+✅ **Unit test** (→ `src/redirect.rs` with `#[cfg(test)]`):
+```rust
+// Tests single function
+#[test]
+fn test_redirect_status_code() {
+    let response = redirect("/path");
+    assert_eq!(response.status, 302);
 }
 ```
 
@@ -810,23 +878,35 @@ async fn test_good(#[future] postgres_fixture: DbFixture) {
 }
 ```
 
-#### Pitfall 2: JSON Nested Structure Access
+#### Pitfall 2: Incorrect Data Structure Access
 
-When using `db.list()` or similar methods that return JSON, be aware of nested structures:
+When working with database results, be aware of the actual structure returned by different methods:
 
-❌ **BAD:**
+❌ **BAD - Assuming nested structure when data is flat:**
 ```rust
 let users = db.list::<User>("users", vec![], 0, 100).await?;
-let username = users[0].get("username");  // ❌ Wrong structure
-```
-
-✅ **GOOD:**
-```rust
-let users = db.list::<User>("users", vec![], 0, 100).await?;
-// db.list() returns: {"data": {"username": "...", "id": ...}}
 let username = users[0].get("data")
-    .and_then(|data| data.get("username"));  // ✅ Correct
+    .and_then(|data| data.get("username"));  // ❌ db.list() returns flat structure
 ```
+
+✅ **GOOD - Access flat structure directly:**
+```rust
+let users = db.list::<User>("users", vec![], 0, 100).await?;
+// db.list() returns: [{"id": 1, "username": "alice", ...}, ...]
+let username = users[0].get("username")
+    .and_then(|v| v.as_str());  // ✅ Direct access for flat structure
+```
+
+✅ **GOOD - Handle nested structure when appropriate:**
+```rust
+// For session data or other nested structures
+let stored_data: serde_json::Value = result.get("data");
+assert_eq!(stored_data["user_id"], user_id);  // ✅ Nested access where applicable
+```
+
+**When to use each pattern:**
+- **Flat structure**: `db.list()`, `db.get()`, most ORM operations
+- **Nested structure**: Session data, serialized JSON fields, specific API responses
 
 #### Pitfall 3: Fixture Parameter Order
 
