@@ -103,24 +103,27 @@ Bundle features are convenient presets that enable multiple features at once.
 **Use case**: Lightweight microservices or simple APIs
 
 **Enabled features**:
-- Parameter extraction (`reinhardt-params`)
-- Dependency injection (`reinhardt-di`)
+- None (empty feature flag for backward compatibility)
 
-**Binary size**: ~5-10 MB
-**Compile time**: Fast
+**Binary size**: ~5 MB
+**Compile time**: Very fast
+
+**Note**: `minimal` is an empty bundle that exists for backward compatibility. To add functionality, explicitly specify other feature flags.
 
 **Usage example**:
 ```toml
 [dependencies]
+# minimal alone provides no features
 reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal"] }
+
+# Add features explicitly as needed
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal", "database", "auth-jwt"] }
 ```
 
 **Suitable use cases**:
-- ✅ Simple REST APIs
-- ✅ Microservice architecture
-- ✅ When fast startup time is required
-- ❌ When database access is needed
-- ❌ When complex authentication is required
+- ✅ As a base for custom configurations
+- ✅ When you want to explicitly control all enabled features
+- ❌ When you need any functionality out of the box (use `standard` or other bundles instead)
 
 ---
 
@@ -131,22 +134,26 @@ reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["
 **Use case**: Balanced configuration suitable for most projects
 
 **Enabled features**:
-- All of `minimal`
-- ORM (`reinhardt-orm`)
-- Serializers (`reinhardt-serializers`)
-- ViewSets (`reinhardt-viewsets`)
+- All of `minimal` (empty)
+- Core functionality (`core`)
+- Database layer (`reinhardt-db`, `reinhardt-db/orm`)
+- REST API core (`reinhardt-rest`)
+- Serializers (`reinhardt-rest/serializers`)
+- ViewSets (`reinhardt-views/viewsets`)
 - Authentication (`reinhardt-auth`)
 - Middleware (`reinhardt-middleware`)
-- Pagination (`reinhardt-pagination`)
-- Filtering (`reinhardt-filters`)
-- Throttling (`reinhardt-throttling`)
-- Signals (`reinhardt-signals`)
-- Parsers (`reinhardt-parsers`)
-- Renderers (`reinhardt-renderers`)
-- Versioning (`reinhardt-versioning`)
-- Metadata (`reinhardt-metadata`)
-- Content negotiation (`reinhardt-negotiation`)
-- REST API core (`reinhardt-rest`)
+- Pagination (`reinhardt-rest/pagination`)
+- Filtering (`reinhardt-rest/filters`)
+- Throttling (`reinhardt-rest/throttling`)
+- Signals (`reinhardt-core/signals`)
+- Parsers (`reinhardt-rest/parsers`)
+- Template engine (`reinhardt-template`)
+- Renderers (`reinhardt-template/renderers`)
+- Versioning (`reinhardt-rest/versioning`)
+- Metadata (`reinhardt-rest/metadata`)
+- Content negotiation (`reinhardt-rest/negotiation`)
+
+**Note**: Many features are enabled through parent crates' sub-features (e.g., `reinhardt-rest/serializers` instead of standalone `reinhardt-serializers`).
 
 **Binary size**: ~20-30 MB
 **Compile time**: Medium
@@ -177,6 +184,7 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }
 **Enabled features**:
 - All of `standard`
 - Database (`database`)
+- Authentication (`auth`) - Note: redundant with `standard` but explicitly included
 - Admin panel (`admin`)
 - GraphQL (`graphql`)
 - WebSocket (`websockets`)
@@ -186,7 +194,8 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }
 - Session management (`sessions`)
 - Static file serving (`static-files`)
 - Storage system (`storage`)
-- Contrib apps (`contrib`)
+
+**Note**: The `contrib` feature is not included as it does not exist in the current implementation.
 
 **Binary size**: ~50+ MB
 **Compile time**: Slow
@@ -214,15 +223,25 @@ Preset configurations optimized for specific use cases are also available.
 
 #### api-only - REST API Only
 
-REST API-only configuration without templates or forms.
+REST API-only configuration for building REST APIs.
 
 **Enabled features**:
-- All of `minimal`
-- Serializers, ViewSets, authentication
-- Parsers, renderers, versioning
-- Metadata, content negotiation
-- REST API core
-- Pagination, filtering, throttling
+- All of `minimal` (empty)
+- REST API core (`reinhardt-rest`)
+- Serializers (`reinhardt-rest/serializers`)
+- ViewSets (`reinhardt-views/viewsets`)
+- Authentication (`reinhardt-auth`)
+- Parsers (`reinhardt-rest/parsers`)
+- Template engine (`reinhardt-template`) - Note: included for renderer support
+- Renderers (`reinhardt-template/renderers`)
+- Versioning (`reinhardt-rest/versioning`)
+- Metadata (`reinhardt-rest/metadata`)
+- Content negotiation (`reinhardt-rest/negotiation`)
+- Pagination (`reinhardt-rest/pagination`)
+- Filtering (`reinhardt-rest/filters`)
+- Throttling (`reinhardt-rest/throttling`)
+
+**Note**: Although named "api-only", this preset includes `reinhardt-template` for HTML renderer support in browsable API.
 
 **Usage example**:
 ```toml
@@ -251,10 +270,10 @@ reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["
 Real-time communication-centric server configuration.
 
 **Enabled features**:
-- All of `minimal`
+- All of `minimal` (empty)
 - WebSocket (`reinhardt-websockets`)
 - Authentication (`reinhardt-auth`)
-- Cache (`reinhardt-cache`)
+- Cache (`reinhardt-utils/cache`) - Note: uses utils subcrate
 
 **Usage example**:
 ```toml
@@ -268,9 +287,10 @@ Configuration for CLI tools and background processing.
 
 **Enabled features**:
 - Database (`database`)
-- Migrations (`reinhardt-migrations`)
+- Database foundation (`reinhardt-db`)
+- Migrations (`reinhardt-db/migrations`)
 - Tasks (`reinhardt-tasks`)
-- Email sending (`reinhardt-mail`)
+- Email sending (`mail`)
 
 **Usage example**:
 ```toml
@@ -302,11 +322,13 @@ reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["
 
 Enables general database functionality.
 
-**Enabled crates**:
-- `reinhardt-orm` - ORM functionality
-- `reinhardt-migrations` - Migrations
-- `reinhardt-contenttypes` - Content types
+**Enabled crates and features**:
 - `reinhardt-db` - Database foundation
+- `reinhardt-db/orm` - ORM functionality (via sub-feature)
+- `reinhardt-db/migrations` - Migrations (via sub-feature)
+- `reinhardt-db/contenttypes` - Content types (via sub-feature)
+
+**Note**: This feature enables database functionality through `reinhardt-db`'s sub-features rather than individual standalone crates.
 
 **Usage example**:
 ```toml
@@ -323,8 +345,8 @@ Enable support for specific databases:
 | `db-postgres` | PostgreSQL | PostgreSQL support |
 | `db-mysql` | MySQL | MySQL support |
 | `db-sqlite` | SQLite | SQLite support (lightweight, file-based) |
-| `db-mongodb` | MongoDB | MongoDB support (NoSQL) |
-| `db-cockroachdb` | CockroachDB | CockroachDB support (distributed SQL) |
+| `db-mongodb` | MongoDB | MongoDB support (NoSQL) - **Currently empty implementation (planned)** |
+| `db-cockroachdb` | CockroachDB | CockroachDB support (distributed SQL, uses PostgreSQL protocol) |
 
 **Usage example**:
 ```toml
@@ -411,11 +433,17 @@ reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["
 **Usage example**:
 ```toml
 [dependencies]
-# Redis cache
+# Redis cache (basic backend only - see note below)
 reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal", "cache", "redis-backend"] }
+```
 
-# Redis cluster support
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal", "cache", "redis-backend", "redis-cluster"] }
+**IMPORTANT NOTE**: Currently, only the `redis-backend` feature is defined at the root level. The `redis-cluster`, `redis-sentinel`, and `memcached-backend` features exist in the `reinhardt-cache` subcrate but are not exposed at the root level.
+
+**Workaround** - To use these advanced features, add the cache crate directly:
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal", "cache"] }
+reinhardt-cache = { version = "0.1.0-alpha.1", features = ["redis-cluster"] }  # Access subcrate features directly
 ```
 
 **Dependencies**:
@@ -430,9 +458,12 @@ reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["
 
 Enables basic API-related functionality.
 
-**Enabled crates**:
-- `reinhardt-serializers` - Serializers
-- `reinhardt-viewsets` - ViewSets
+**Enabled crates and features**:
+- `reinhardt-rest` - REST API core
+- `reinhardt-rest/serializers` - Serializers (subcrate of reinhardt-rest)
+- `reinhardt-views/viewsets` - ViewSets (subcrate of reinhardt-views)
+
+**Note**: `reinhardt-serializers` and `reinhardt-viewsets` are subcrates accessed via parent crate features, not standalone crates.
 
 **Usage example**:
 ```toml
@@ -456,8 +487,11 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "serialize-yaml
 ```
 
 **Note**:
-- `serialize-json` is enabled by default in `reinhardt-serializers`
+- The `json` format feature is enabled by default within the `reinhardt-serializers` subcrate
+- However, the root-level `serialize-json` feature itself requires explicit specification
 - XML/YAML require explicit specification
+
+**Clarification**: When you enable `reinhardt-rest/serializers`, JSON support is included by default within that subcrate. The `serialize-json` root feature is primarily for explicit documentation purposes.
 
 ---
 
@@ -504,7 +538,9 @@ reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["
 
 Django-style auto-generated admin panel.
 
-**Enabled crates**:
+**Enabled crates and features**:
+- `reinhardt-admin` - Admin panel core
+- `reinhardt-admin/panel` - Panel functionality
 - `reinhardt-forms` - Form processing
 - `reinhardt-template` - Template engine
 
@@ -514,7 +550,7 @@ Django-style auto-generated admin panel.
 reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "admin"] }
 ```
 
-**Note**: The `reinhardt-admin` crate is currently under development and excluded from the `admin` feature.
+**Note**: The `reinhardt-admin` crate and its panel feature are now included in the `admin` feature.
 
 ---
 
@@ -606,7 +642,9 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "mail"] }
 Session management functionality.
 
 **Enabled crates**:
-- `reinhardt-sessions` - Session storage
+- `reinhardt-auth` - Authentication layer (includes `reinhardt-sessions` as subcrate)
+
+**Note**: `reinhardt-sessions` is a subcrate of `reinhardt-auth`, not a standalone crate. The `sessions` feature enables authentication functionality which includes session management.
 
 **Usage example**:
 ```toml
@@ -625,8 +663,10 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "sessions"] }
 
 Static file serving and management.
 
-**Enabled crates**:
-- `reinhardt-static` - Static file handler
+**Enabled crates and features**:
+- `reinhardt-utils/static` - Static file handler (subcrate of reinhardt-utils)
+
+**Note**: `reinhardt-static` is located at `reinhardt-utils/crates/static` and accessed via the parent crate's feature.
 
 **Usage example**:
 ```toml
@@ -646,8 +686,10 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "static-files"]
 
 File storage abstraction.
 
-**Enabled crates**:
-- `reinhardt-storage` - Storage backends
+**Enabled crates and features**:
+- `reinhardt-utils/storage` - Storage backends (subcrate of reinhardt-utils)
+
+**Note**: `reinhardt-storage` is located at `reinhardt-utils/crates/storage` and accessed via the parent crate's feature.
 
 **Usage example**:
 ```toml
@@ -703,21 +745,6 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "shortcuts"] }
 
 ---
 
-#### contrib - Contrib Apps Aggregation
-
-Enables all contrib apps at once.
-
-**Enabled crates**:
-- `reinhardt-contrib` - Contrib aggregation crate (auth, contenttypes, sessions, messages, static, mail, graphql, websockets, i18n)
-
-**Usage example**:
-```toml
-[dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "contrib"] }
-```
-
-**Note**: Individual contrib features can be enabled (see `reinhardt-contrib` crate feature flags).
-
 ---
 
 ## Feature Flags for Major Crates
@@ -770,6 +797,9 @@ reinhardt-micro = { version = "0.1.0-alpha.1", features = ["routing", "params", 
 | `migrations` | Migrations | reinhardt-migrations |
 | `hybrid` | Hybrid functionality | reinhardt-hybrid |
 | `associations` | Association functionality | reinhardt-associations |
+| `contenttypes` | Content types system | reinhardt-contenttypes |
+
+**Note**: The `contenttypes` feature was not documented previously but exists in the implementation.
 
 #### Database Features
 
@@ -817,6 +847,9 @@ reinhardt-db = { version = "0.1.0-alpha.1", features = ["all-databases"] }
 | `session` | Session authentication | reinhardt-sessions |
 | `oauth` | OAuth authentication | oauth2 |
 | `token` | Token authentication | - |
+| `argon2-hasher` | Argon2 password hashing | - |
+
+**Note**: The `argon2-hasher` feature was not documented previously but exists in the implementation.
 
 #### Storage
 
@@ -981,6 +1014,15 @@ reinhardt-serializers = { version = "0.1.0-alpha.1", features = ["json", "xml", 
 | `parsers` | Parsers | reinhardt-parsers |
 | `renderers` | Renderers | reinhardt-renderers |
 | `jwt` | JWT support | rest-core/jwt |
+| `pagination` | Pagination support | - |
+| `filters` | Filtering support | - |
+| `throttling` | Rate limiting support | - |
+| `versioning` | API versioning support | - |
+| `metadata` | Metadata support | - |
+| `negotiation` | Content negotiation | - |
+| `browsable-api` | Browsable API interface | - |
+
+**Note**: The last 7 features (`pagination` through `browsable-api`) were not documented previously but exist as subcrate features.
 
 **Usage example**:
 ```toml
@@ -996,38 +1038,6 @@ reinhardt-rest = { version = "0.1.0-alpha.1", features = ["serializers", "parser
 
 ---
 
-### reinhardt-contrib
-
-**Purpose**: Contrib apps aggregation
-
-**Default**: None (all optional)
-
-**Available features**:
-
-| Feature | Description | Enabled Crates |
-|---------|-------------|----------------|
-| `auth` | Authentication | reinhardt-auth |
-| `contenttypes` | Content types | reinhardt-contenttypes |
-| `sessions` | Sessions | reinhardt-sessions |
-| `messages` | Messages | reinhardt-messages |
-| `static` | Static files | reinhardt-static |
-| `mail` | Email | reinhardt-mail |
-| `graphql` | GraphQL | reinhardt-graphql |
-| `websockets` | WebSocket | reinhardt-websockets |
-| `i18n` | Internationalization | reinhardt-i18n |
-| `full` | All | All of the above |
-
-**Usage example**:
-```toml
-[dependencies]
-# Individual features
-reinhardt-contrib = { version = "0.1.0-alpha.1", features = ["auth", "sessions"] }
-
-# All features
-reinhardt-contrib = { version = "0.1.0-alpha.1", features = ["full"] }
-```
-
----
 
 ### reinhardt-di
 
@@ -1067,6 +1077,9 @@ reinhardt-di = { version = "0.1.0-alpha.1", features = ["params", "dev-tools", "
 |---------|-------------|------------------|
 | `testcontainers` | TestContainers integration | testcontainers, testcontainers-modules, sqlx, memcache-async, tokio-util |
 | `static` | Static file testing | reinhardt-static |
+| `websockets` | WebSocket testing utilities | - |
+
+**Note**: The `websockets` feature was not documented previously but exists in the implementation.
 
 **Usage example**:
 ```toml
@@ -1092,72 +1105,72 @@ reinhardt-test = { version = "0.1.0-alpha.1", features = ["testcontainers", "sta
 ```
 default
 └── standard
-    ├── minimal
-    │   ├── reinhardt-params
-    │   └── reinhardt-di
-    ├── reinhardt-orm
-    ├── reinhardt-serializers
-    ├── reinhardt-viewsets
+    ├── minimal (empty)
+    ├── core
+    ├── reinhardt-db
+    ├── reinhardt-db/orm
+    ├── reinhardt-rest
+    ├── reinhardt-rest/serializers
+    ├── reinhardt-views/viewsets
     ├── reinhardt-auth
     ├── reinhardt-middleware
-    ├── reinhardt-pagination
-    ├── reinhardt-filters
-    ├── reinhardt-throttling
-    ├── reinhardt-signals
-    ├── reinhardt-parsers
-    ├── reinhardt-renderers
-    ├── reinhardt-versioning
-    ├── reinhardt-metadata
-    ├── reinhardt-negotiation
-    └── reinhardt-rest
+    ├── reinhardt-rest/pagination
+    ├── reinhardt-rest/filters
+    ├── reinhardt-rest/throttling
+    ├── reinhardt-core/signals
+    ├── reinhardt-rest/parsers
+    ├── reinhardt-template
+    ├── reinhardt-template/renderers
+    ├── reinhardt-rest/versioning
+    ├── reinhardt-rest/metadata
+    └── reinhardt-rest/negotiation
 
 full
 ├── standard (all of the above)
 ├── database
-│   ├── reinhardt-orm
-│   ├── reinhardt-migrations
-│   ├── reinhardt-contenttypes
-│   └── reinhardt-db
-│       ├── backends
-│       ├── pool (→ reinhardt-di)
-│       ├── postgres
-│       ├── orm
-│       ├── migrations
-│       ├── hybrid
-│       └── associations
-├── auth → reinhardt-auth
+│   ├── reinhardt-db
+│   ├── reinhardt-db/orm
+│   ├── reinhardt-db/migrations
+│   └── reinhardt-db/contenttypes
+├── auth → reinhardt-auth (redundant with standard)
 ├── admin
+│   ├── reinhardt-admin
+│   ├── reinhardt-admin/panel
 │   ├── reinhardt-forms
 │   └── reinhardt-template
 ├── graphql → reinhardt-graphql
 ├── websockets → reinhardt-websockets
-├── cache → reinhardt-cache
+├── cache → reinhardt-utils/cache
 ├── i18n → reinhardt-i18n
 ├── mail → reinhardt-mail
-├── sessions → reinhardt-sessions
-├── static-files → reinhardt-static
-├── storage → reinhardt-storage
-└── contrib → reinhardt-contrib
+├── sessions → reinhardt-auth (includes reinhardt-sessions subcrate)
+├── static-files → reinhardt-utils/static
+└── storage → reinhardt-utils/storage
 ```
+
+**Note**: `contrib` feature removed as it does not exist in the implementation.
 
 ### Database Feature Dependencies
 
 ```
 database
-├── reinhardt-orm
-├── reinhardt-migrations
-├── reinhardt-contenttypes
-└── reinhardt-db (default features enabled)
-    ├── backends
-    ├── pool
-    │   ├── reinhardt-backends-pool
-    │   ├── reinhardt-pool
-    │   └── reinhardt-di (auto-enabled)
-    ├── postgres (default)
-    ├── orm
-    ├── migrations
-    ├── hybrid
-    └── associations
+├── reinhardt-db
+├── reinhardt-db/orm (sub-feature, not standalone crate)
+├── reinhardt-db/migrations (sub-feature, not standalone crate)
+└── reinhardt-db/contenttypes (sub-feature, not standalone crate)
+
+reinhardt-db default features:
+├── backends
+├── pool
+│   ├── reinhardt-backends-pool
+│   ├── reinhardt-pool
+│   └── reinhardt-di (auto-enabled)
+├── postgres (default)
+├── orm
+├── migrations
+├── hybrid
+├── associations
+└── contenttypes
 
 db-postgres
 ├── database
@@ -1173,11 +1186,11 @@ db-sqlite
 
 db-mongodb
 ├── database
-└── reinhardt-db/mongodb-backend
+└── reinhardt-db/mongodb-backend (empty implementation)
 
 db-cockroachdb
 ├── database
-└── reinhardt-db/cockroachdb-backend
+└── reinhardt-db/cockroachdb-backend (uses postgres)
 ```
 
 ### Authentication Feature Dependencies
@@ -1796,7 +1809,6 @@ cargo build -vv 2>&1 | grep reinhardt
 | `cache` | Feature | Cache system | ❌ |
 | `cli-tools` | Bundle | CLI/background job configuration | ❌ |
 | `conf` | Crate | Configuration management | ❌ |
-| `contrib` | Feature | Contrib apps aggregation | ❌ |
 | `core` | Crate | Core functionality | ❌ |
 | `database` | Feature | General database | ❌ |
 | `db-cockroachdb` | Database | CockroachDB support | ❌ |
@@ -1864,11 +1876,14 @@ cargo build -vv 2>&1 | grep reinhardt
 #### Other
 - `admin`, `forms`, `templates`, `websockets`, `i18n`, `mail`, `sessions`, `static-files`, `storage`, `tasks`, `shortcuts`, `server`
 
+**Note**: The `contrib` feature does not exist in the current implementation and has been removed from this documentation.
+
 ### Configuration Templates
 
 #### Microservice
 ```toml
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal"] }
+# Note: minimal is empty, explicitly add features you need
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal", "database", "auth-jwt"] }
 ```
 
 #### REST API
@@ -1898,6 +1913,14 @@ Reinhardt's feature flag system provides **over 70 features** with **3 levels of
 2. **Automatic Dependency Resolution**: Enabling higher-level features automatically enables required lower-level features
 3. **Performance**: Reduced build time and binary size by excluding unnecessary functionality
 4. **Default Configuration**: `standard` is the default, a balanced configuration suitable for most projects
+5. **Subcrate Architecture**: Many features are accessed through parent crates' sub-features (e.g., `reinhardt-rest/serializers`) rather than standalone crates
+
+### Important Notes
+
+- The `minimal` bundle is **empty** and serves as a backward compatibility placeholder
+- The `contrib` feature does **not exist** in the current implementation
+- Some cache backend features (`redis-cluster`, `redis-sentinel`, `memcached-backend`) are not exposed at the root level
+- MongoDB support (`db-mongodb`) is currently an empty implementation (planned)
 
 ### Selection Guide
 
