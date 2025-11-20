@@ -94,6 +94,10 @@ See @docs/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Planned features go in `lib.rs` header, NOT in README.md
 - Test all code examples
 - Verify all links are valid
+- **NEVER** document user requests or AI assistant interactions in project documentation
+  - Documentation must describe technical reasons, design decisions, and implementation details
+  - Avoid phrases like "User requested...", "As requested by...", "User asked..."
+  - Focus on the "why" (technical rationale) not the "who asked"
 
 See @docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 
@@ -292,6 +296,7 @@ Before submitting code:
 - Use `mod.rs` files (deprecated pattern)
 - Commit without user instruction
 - Leave docs outdated after code changes
+- Document user requests or AI interactions in project documentation
 - Save files to project directory (use `/tmp`)
 - Leave backup files (`.bak`, `.backup`, `.old`, `~`)
 - Create skeleton tests (tests without assertions)
