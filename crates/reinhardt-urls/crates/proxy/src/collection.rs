@@ -1104,8 +1104,8 @@ impl CollectionProxy {
 		// Update items with version check
 		for item in collection.iter_mut() {
 			// Check if item has version field
-			if let Some(current_version) = item.get_attribute("version") {
-				if let ScalarValue::Integer(ver) = current_version {
+			if let Some(current_version) = item.get_attribute("version")
+				&& let ScalarValue::Integer(ver) = current_version {
 					// Check version match
 					if ver == expected_version {
 						// Update the value using set_attribute
@@ -1119,7 +1119,6 @@ impl CollectionProxy {
 						});
 					}
 				}
-			}
 		}
 
 		Ok(())
