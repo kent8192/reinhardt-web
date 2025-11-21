@@ -49,7 +49,8 @@ fn test_create_model_with_composite_primary_key() {
 			FieldDefinition::new("description", "VARCHAR(200)", false, false, None::<&str>),
 		],
 	)
-	.with_composite_primary_key(vec!["post_id".to_string(), "tag_id".to_string()]);
+	.with_composite_primary_key(vec!["post_id".to_string(), "tag_id".to_string()])
+	.expect("Valid composite primary key");
 
 	let schema_editor = MockSchemaEditor;
 	let sql_statements = create.database_forwards(&schema_editor);
@@ -89,7 +90,8 @@ fn test_create_model_composite_pk_three_fields() {
 		"user_id".to_string(),
 		"role_id".to_string(),
 		"permission_id".to_string(),
-	]);
+	])
+	.expect("Valid composite primary key");
 
 	let schema_editor = MockSchemaEditor;
 	let sql_statements = create.database_forwards(&schema_editor);
@@ -113,7 +115,8 @@ fn test_create_model_composite_pk_with_additional_fields() {
 			FieldDefinition::new("price", "DECIMAL(10, 2)", false, false, None::<&str>),
 		],
 	)
-	.with_composite_primary_key(vec!["order_id".to_string(), "item_id".to_string()]);
+	.with_composite_primary_key(vec!["order_id".to_string(), "item_id".to_string()])
+	.expect("Valid composite primary key");
 
 	let schema_editor = MockSchemaEditor;
 	let sql_statements = create.database_forwards(&schema_editor);
