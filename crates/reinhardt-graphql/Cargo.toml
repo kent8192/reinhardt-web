@@ -11,18 +11,40 @@ authors.workspace = true
 default = []
 # GraphQL facade over gRPC for Query/Mutation
 graphql-grpc = [
-  "reinhardt-graphql-core/graphql-grpc",
+  "dep:reinhardt-grpc",
+  "dep:reinhardt-graphql-macros",
+  "dep:tonic",
+  "dep:chrono",
 ]
 # gRPC-based Subscriptions (Rust 2024 compatible)
 subscription = [
-  "reinhardt-graphql-core/subscription",
+  "dep:reinhardt-grpc",
+  "dep:reinhardt-graphql-macros",
+  "dep:tonic",
+  "dep:chrono",
 ]
 # All features enabled
 full = ["graphql-grpc", "subscription"]
 
 [dependencies]
-# Core GraphQL functionality
-reinhardt-graphql-core = { path = "crates/core", version = "0.1.0-alpha.1" }
+# Core dependencies (merged from graphql-core)
+async-graphql = "7.0"
+async-graphql-warp = "7.0"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+dashmap = "6.1"
+async-trait = { workspace = true }
+futures-util = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+async-stream = "0.3"
+uuid = { workspace = true }
+
+# gRPC support (optional)
+reinhardt-grpc = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
 
 # Re-export macros when features are enabled
 reinhardt-graphql-macros = { path = "crates/macros", version = "0.1.0-alpha.1", optional = true }
