@@ -25,14 +25,22 @@ Using `#[derive(GrpcGraphQLConvert)]` automatically generates conversions betwee
 
 ```rust
 use reinhardt_graphql::GrpcGraphQLConvert;
-use async_graphql::SimpleObject;
+use async_graphql::Object;
 
-#[derive(GrpcGraphQLConvert, SimpleObject)]
-#[graphql(rename_all = "camelCase")]
-struct User {
+// Define the struct
+#[derive(GrpcGraphQLConvert)]
+pub struct User {
     id: String,
     name: String,
     email: Option<String>,
+}
+
+// Implement GraphQL Object with async field resolvers
+#[Object]
+impl User {
+    async fn id(&self) -> &str { &self.id }
+    async fn name(&self) -> &str { &self.name }
+    async fn email(&self) -> Option<&str> { self.email.as_deref() }
 }
 
 // Automatically generated:
@@ -85,8 +93,12 @@ Using `#[derive(GrpcSubscription)]` automatically maps gRPC Server Streaming to 
 use reinhardt_graphql::GrpcSubscription;
 
 #[derive(GrpcSubscription)]
-#[grpc(service = "UserEventsServiceClient", method = "subscribe_user_events")]
-#[graphql(filter = "event_type == Created")]
+#[grpc(
+    service = "proto::UserEventsServiceClient",
+    method = "subscribe_user_events",
+    proto_type = "proto::UserEvent"
+)]
+#[graphql(type = "User")]
 struct UserCreatedSubscription;
 
 // Automatically generated GraphQL Subscription:
@@ -99,7 +111,58 @@ struct UserCreatedSubscription;
 // }
 ```
 
+**Required Attributes:**
+- `#[grpc(service = "...")]`: gRPC service client type (e.g., `proto::UserServiceClient`)
+- `#[grpc(method = "...")]`: gRPC streaming method name (e.g., `subscribe_user_events`)
+- `#[grpc(proto_type = "...")]`: Protobuf event type (e.g., `proto::UserEvent`)
+- `#[graphql(type = "...")]`: GraphQL output type (e.g., `User`)
+
+**Optional Attributes:**
+- `#[graphql(filter = "...")]`: Filter expression to select specific events (e.g., `|event| event.priority > 5`)
+
+**How it Works:**
+1. Retrieves gRPC client from GraphQL context: `ctx.data::<ServiceClient<Channel>>()`
+2. Calls the gRPC streaming method: `client.method(request).await?.into_inner()`
+3. Converts Protobuf events to GraphQL types using `Into` trait
+4. Applies filter expression if specified
+5. Returns a `Stream<Item = GraphQLType>`
+
+**Type Conversion:**
+The macro expects `From<ProtoType>` or `Into<GraphQLType>` to be implemented for automatic conversion:
+
+```rust
+impl From<proto::UserEvent> for User {
+    fn from(event: proto::UserEvent) -> Self {
+        User {
+            id: event.user_id,
+            name: event.name,
+            email: event.email,
+        }
+    }
+}
+```
+
 **Rust 2024 Compatible:** This macro uses `Box::pin` and explicit lifetime annotations to solve Rust 2024's lifetime capture issues.
+
+**Example with Filter:**
+
+```rust
+use reinhardt_graphql::GrpcSubscription;
+
+#[derive(GrpcSubscription)]
+#[grpc(
+    service = "proto::EventServiceClient",
+    method = "subscribe_events",
+    proto_type = "proto::Event"
+)]
+#[graphql(
+    type = "GraphQLEvent",
+    filter = "|event| event.priority > 5"
+)]
+struct HighPriorityEventsSubscription;
+```
+
+This will only emit events where `priority > 5`.
 
 ### 4. Manual Implementation (Advanced Use Cases)
 
