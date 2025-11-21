@@ -557,14 +557,16 @@ pub use reinhardt_rest::metadata::{
 #[cfg(feature = "rest")]
 pub use reinhardt_rest::negotiation::*;
 
-// Re-export REST integration
+// Re-export REST integration modules
 #[cfg(feature = "rest")]
 pub use reinhardt_rest::{
-	browsable_api, filters, metadata, negotiation, pagination, parsers, renderers, serializers,
-	throttling, versioning, BrowsableAPIRenderer, CursorPagination, FilterBackend, JsonParser,
-	JsonRenderer, LimitOffsetPagination, OrderingFilter, PageNumberPagination, Renderer,
-	SearchFilter, Serializer, TemplateHTMLRenderer, ThrottleRate,
+	filters, metadata, negotiation, pagination, parsers, renderers, serializers, throttling,
+	versioning,
 };
+
+// Re-export browsable API (from reinhardt-browsable-api via reinhardt-rest)
+#[cfg(feature = "rest")]
+pub use reinhardt_browsable_api as browsable_api;
 
 // Re-export OpenAPI types
 //
