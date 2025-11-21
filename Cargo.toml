@@ -182,6 +182,7 @@ reinhardt-auth = { workspace = true, optional = true }
 
 # Additional optional dependencies
 reinhardt-admin = { workspace = true, optional = true }
+reinhardt-browsable-api = { workspace = true, optional = true }
 reinhardt-forms = { workspace = true, optional = true }
 reinhardt-middleware = { workspace = true, optional = true }
 reinhardt-shortcuts = { workspace = true, optional = true }
@@ -226,13 +227,11 @@ members = [
   "crates/reinhardt-core/crates/types",
   "crates/reinhardt-core/crates/validators",
   "crates/reinhardt-di",
-  "crates/reinhardt-di/crates/di",
   "crates/reinhardt-di/crates/params",
   "crates/reinhardt-http",
   "crates/reinhardt-server",
   "crates/reinhardt-server/crates/server",
   "crates/reinhardt-views",
-  "crates/reinhardt-views/crates/views-core",
   "crates/reinhardt-views/crates/viewsets",
   "crates/reinhardt-urls",
   "crates/reinhardt-urls/crates/proxy",
@@ -253,7 +252,6 @@ members = [
   "crates/reinhardt-rest/crates/metadata",
   "crates/reinhardt-rest/crates/openapi",
   "crates/reinhardt-rest/crates/openapi-macros",
-  "crates/reinhardt-rest/crates/rest-core",
   "crates/reinhardt-rest/crates/serializers",
   "crates/reinhardt-rest/crates/throttling",
   "crates/reinhardt-rest/crates/versioning",
@@ -341,7 +339,6 @@ reinhardt-panel = { path = "crates/reinhardt-admin/crates/panel", version = "0.1
 reinhardt-admin-cli = { path = "crates/reinhardt-admin-cli", version = "0.1.0-alpha.1" }
 reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.1.0-alpha.1" }
 reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/crates/macros", version = "0.1.0-alpha.1" }
-reinhardt-graphql-core = { path = "crates/reinhardt-graphql/crates/core", version = "0.1.0-alpha.1" }
 reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.1" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.1" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
@@ -375,14 +372,12 @@ reinhardt-orm = { path = "crates/reinhardt-db/crates/orm", version = "0.1.0-alph
 reinhardt-pool = { path = "crates/reinhardt-db/crates/pool", version = "0.1.0-alpha.1" }
 
 # DI subcrates
-reinhardt-di-core = { path = "crates/reinhardt-di/crates/di", version = "0.1.0-alpha.1" }
 reinhardt-params = { path = "crates/reinhardt-di/crates/params", version = "0.1.0-alpha.1" }
 
 # Server subcrates
 reinhardt-server-core = { path = "crates/reinhardt-server/crates/server", version = "0.1.0-alpha.1" }
 
 # Views subcrates
-reinhardt-views-core = { path = "crates/reinhardt-views/crates/views-core", version = "0.1.0-alpha.1" }
 reinhardt-viewsets = { path = "crates/reinhardt-views/crates/viewsets", version = "0.1.0-alpha.1" }
 
 # Utils subcrates
@@ -412,7 +407,6 @@ reinhardt-openapi-macros = { path = "crates/reinhardt-rest/crates/openapi-macros
 # REST subcrates (continued)
 reinhardt-filters = { path = "crates/reinhardt-rest/crates/filters", version = "0.1.0-alpha.1" }
 reinhardt-metadata = { path = "crates/reinhardt-rest/crates/metadata", version = "0.1.0-alpha.1" }
-reinhardt-rest-core = { path = "crates/reinhardt-rest/crates/rest-core", version = "0.1.0-alpha.1" }
 reinhardt-throttling = { path = "crates/reinhardt-rest/crates/throttling", version = "0.1.0-alpha.1" }
 reinhardt-versioning = { path = "crates/reinhardt-rest/crates/versioning", version = "0.1.0-alpha.1" }
 reinhardt-routers-macros = { path = "crates/reinhardt-urls/crates/routers-macros", version = "0.1.0-alpha.1" }
@@ -514,7 +508,7 @@ redis = { version = "0.32", features = [
 
 # Connection pooling & migrations
 refinery = { version = "0.9.0", features = ["tokio-postgres"] }
-sea-query = { version = "1.0.0-rc.1", features = ["with-json", "with-chrono", "with-rust_decimal", "postgres-array", "sqlx-utils", "backend-postgres", "backend-mysql", "backend-sqlite"] }
+sea-query = { version = "1.0.0-rc.20", features = ["with-json", "with-chrono", "with-rust_decimal", "postgres-array", "sqlx-utils", "backend-postgres", "backend-mysql", "backend-sqlite"] }
 rust_decimal = "1.37"
 sea-orm = { version = "1.1.3", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
 
