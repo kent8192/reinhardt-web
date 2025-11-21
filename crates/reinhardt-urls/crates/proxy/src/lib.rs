@@ -113,4 +113,12 @@ pub enum ProxyError {
 		"Factory not configured for collection proxy - required for creating objects from scalar values"
 	)]
 	FactoryNotConfigured,
+
+	/// Version tracking not enabled
+	#[error("Version tracking is not enabled for this proxy")]
+	VersionTrackingNotEnabled,
+
+	/// Version mismatch during update
+	#[error("Version mismatch: expected {expected}, got {actual}")]
+	VersionMismatch { expected: i64, actual: i64 },
 }

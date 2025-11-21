@@ -77,6 +77,21 @@ pub struct CollectionProxy {
 
 	/// Whether this proxy targets a database view
 	is_view: bool,
+
+	/// Batch size for bulk operations
+	batch_size: Option<usize>,
+
+	/// Chunk size for processing batches
+	chunk_size: Option<usize>,
+
+	/// Whether cascade delete/update is enabled
+	cascade: bool,
+
+	/// Whether version tracking is enabled for items
+	version_tracking: bool,
+
+	/// Memory limit in bytes for collection operations
+	memory_limit: Option<usize>,
 }
 
 impl CollectionProxy {
@@ -112,6 +127,11 @@ impl CollectionProxy {
 			async_loading: false,
 			concurrent_access: false,
 			is_view: false,
+			batch_size: None,
+			chunk_size: None,
+			cascade: false,
+			version_tracking: false,
+			memory_limit: None,
 		}
 	}
 	/// Create a collection proxy that removes duplicates
@@ -146,6 +166,11 @@ impl CollectionProxy {
 			async_loading: false,
 			concurrent_access: false,
 			is_view: false,
+			batch_size: None,
+			chunk_size: None,
+			cascade: false,
+			version_tracking: false,
+			memory_limit: None,
 		}
 	}
 
@@ -174,6 +199,11 @@ impl CollectionProxy {
 			async_loading: false,
 			concurrent_access: false,
 			is_view: false,
+			batch_size: None,
+			chunk_size: None,
+			cascade: false,
+			version_tracking: false,
+			memory_limit: None,
 		}
 	}
 
@@ -589,77 +619,195 @@ impl CollectionProxy {
 
 	/// Filter collection where any item matches the condition
 	///
+	/// Returns a new proxy with filtered values where at least one item
+	/// in the collection matches the specified field and value.
+	///
 	/// # Examples
 	///
 	/// ```ignore
 	/// use reinhardt_proxy::CollectionProxy;
 	///
-	/// let proxy = CollectionProxy::new("tags", "name");
-	/// let result = proxy.filter_with_any("name", "rust").await;
+	/// // Example: Filter posts where any tag matches "rust"
+	/// // let proxy = CollectionProxy::new("posts", "tags");
+	/// // let filtered = proxy.filter_with_any("name", "rust").await?;
 	/// ```
-	pub async fn filter_with_any(&self, _field: &str, _value: &str) -> ProxyResult<Self> {
-		// TODO: Implement filter_with_any logic
-		Ok(self.clone())
+	pub async fn filter_with_any<T>(
+		&self,
+		source: &T,
+		field: &str,
+		value: &str,
+	) -> ProxyResult<Vec<ScalarValue>>
+	where
+		T: crate::reflection::Reflectable,
+	{
+		// Get the collection
+		let rel = source
+			.get_relationship(&self.relationship)
+			.ok_or_else(|| ProxyError::RelationshipNotFound(self.relationship.clone()))?;
+
+		let collection = crate::reflection::downcast_relationship::<
+			Vec<Box<dyn crate::reflection::Reflectable>>,
+		>(rel)?;
+
+		// Filter values where any item in the collection matches the field and value
+		let mut filtered_values = Vec::new();
+		for item in collection.iter() {
+			// Check if any attribute of the item matches
+			if let Some(attr_value) = item.get_attribute(field) {
+				let matches = match &attr_value {
+					ScalarValue::String(s) => s.contains(value),
+					_ => format!("{:?}", attr_value).contains(value),
+				};
+
+				if matches {
+					// Add the proxy's target attribute to filtered values
+					if let Some(value) = item.get_attribute(&self.attribute) {
+						filtered_values.push(value);
+					}
+				}
+			}
+		}
+
+		Ok(filtered_values)
 	}
 
 	/// Filter collection where item has specific relationship
 	///
+	/// Filters the collection to include only items that have a specific
+	/// relationship with the given value.
+	///
 	/// # Examples
 	///
 	/// ```ignore
 	/// use reinhardt_proxy::CollectionProxy;
 	///
-	/// let proxy = CollectionProxy::new("posts", "title");
-	/// let result = proxy.filter_with_has("comments", "Alice").await;
+	/// // Example: Filter posts that have comments from "Alice"
+	/// // let proxy = CollectionProxy::new("posts", "title");
+	/// // let source = ...;
+	/// // let filtered = proxy.filter_with_has(&source, "comments", "Alice").await?;
 	/// ```
-	pub async fn filter_with_has(&self, _field: &str, _value: &str) -> ProxyResult<Self> {
-		// TODO: Implement filter_with_has logic
-		Ok(self.clone())
+	pub async fn filter_with_has<T>(
+		&self,
+		source: &T,
+		relationship: &str,
+		value: &str,
+	) -> ProxyResult<Vec<ScalarValue>>
+	where
+		T: crate::reflection::Reflectable,
+	{
+		// Get the collection
+		let rel = source
+			.get_relationship(&self.relationship)
+			.ok_or_else(|| ProxyError::RelationshipNotFound(self.relationship.clone()))?;
+
+		let collection = crate::reflection::downcast_relationship::<
+			Vec<Box<dyn crate::reflection::Reflectable>>,
+		>(rel)?;
+
+		// Filter items that have the specified relationship
+		let mut filtered_values = Vec::new();
+		for item in collection.iter() {
+			// Check if item has the specified relationship
+			if let Some(item_rel) = item.get_relationship(relationship) {
+				// Check if the relationship contains the value
+				if let Ok(rel_collection) = crate::reflection::downcast_relationship::<
+					Vec<Box<dyn crate::reflection::Reflectable>>,
+				>(item_rel)
+				{
+					let has_value = rel_collection.iter().any(|rel_item| {
+						if let Some(attr) = rel_item.get_attribute(&self.attribute) {
+							match &attr {
+								ScalarValue::String(s) => s == value,
+								_ => false,
+							}
+						} else {
+							false
+						}
+					});
+
+					if has_value {
+						// Add the item's attribute to filtered values
+						if let Some(value) = item.get_attribute(&self.attribute) {
+							filtered_values.push(value);
+						}
+					}
+				}
+			}
+		}
+
+		Ok(filtered_values)
 	}
 
 	/// Configure cascade behavior for related operations
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
 	/// use reinhardt_proxy::CollectionProxy;
 	///
 	/// let proxy = CollectionProxy::new("posts", "title")
 	///     .with_cascade(true);
+	/// assert!(proxy.is_cascade());
 	/// ```
-	pub fn with_cascade(self, _cascade: bool) -> Self {
-		// TODO: Implement cascade configuration
+	pub fn with_cascade(mut self, cascade: bool) -> Self {
+		self.cascade = cascade;
 		self
 	}
 
 	/// Merge with another collection proxy
+	///
+	/// Merges two collection proxies by combining their values.
+	/// Note: This operation requires both proxies to work on the same source object.
 	///
 	/// # Examples
 	///
 	/// ```ignore
 	/// use reinhardt_proxy::CollectionProxy;
 	///
-	/// let proxy1 = CollectionProxy::new("posts", "title");
-	/// let proxy2 = CollectionProxy::new("drafts", "title");
-	/// let merged = proxy1.merge(proxy2);
+	/// // Merge values from two different relationships
+	/// // let proxy1 = CollectionProxy::new("posts", "title");
+	/// // let proxy2 = CollectionProxy::new("drafts", "title");
+	/// // let source = ...;
+	/// // let merged = proxy1.merge(&source, proxy2, &source).await?;
 	/// ```
-	pub fn merge(self, _other: Self) -> Self {
-		// TODO: Implement merge logic
-		self
+	pub async fn merge<T>(
+		&self,
+		source1: &T,
+		other: &Self,
+		source2: &T,
+	) -> ProxyResult<Vec<ScalarValue>>
+	where
+		T: crate::reflection::Reflectable,
+	{
+		// Get values from both proxies
+		let mut values1 = self.get_values(source1).await?;
+		let values2 = other.get_values(source2).await?;
+
+		// Merge the values
+		values1.extend(values2);
+
+		// Optionally deduplicate if unique is set
+		if self.unique || other.unique {
+			values1.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+			values1.dedup_by(|a, b| format!("{:?}", a) == format!("{:?}", b));
+		}
+
+		Ok(values1)
 	}
 
 	/// Set batch size for collection operations
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
 	/// use reinhardt_proxy::CollectionProxy;
 	///
 	/// let proxy = CollectionProxy::new("posts", "title")
 	///     .with_batch_size(100);
+	/// assert_eq!(proxy.batch_size(), Some(100));
 	/// ```
-	pub fn with_batch_size(self, _batch_size: usize) -> Self {
-		// TODO: Implement batch size configuration
+	pub fn with_batch_size(mut self, batch_size: usize) -> Self {
+		self.batch_size = Some(batch_size);
 		self
 	}
 
@@ -727,14 +875,15 @@ impl CollectionProxy {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
 	/// use reinhardt_proxy::CollectionProxy;
 	///
 	/// let proxy = CollectionProxy::new("posts", "title")
 	///     .with_memory_limit(1024 * 1024);
+	/// assert_eq!(proxy.memory_limit(), Some(1024 * 1024));
 	/// ```
-	pub fn with_memory_limit(self, _memory_limit: usize) -> Self {
-		// TODO: Implement memory limit configuration
+	pub fn with_memory_limit(mut self, memory_limit: usize) -> Self {
+		self.memory_limit = Some(memory_limit);
 		self
 	}
 
@@ -772,30 +921,72 @@ impl CollectionProxy {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
 	/// use reinhardt_proxy::CollectionProxy;
 	///
 	/// let proxy = CollectionProxy::new("posts", "title")
 	///     .with_version_tracking(true);
+	/// assert!(proxy.is_version_tracking());
 	/// ```
-	pub fn with_version_tracking(self, _version_tracking: bool) -> Self {
-		// TODO: Implement version tracking configuration
+	pub fn with_version_tracking(mut self, version_tracking: bool) -> Self {
+		self.version_tracking = version_tracking;
 		self
 	}
 
 	/// Bulk insert multiple items into the collection
 	///
+	/// Inserts multiple scalar values into the collection by creating
+	/// Reflectable objects using the configured factory.
+	///
 	/// # Examples
 	///
-	/// ```
-	/// use reinhardt_proxy::CollectionProxy;
+	/// ```ignore
+	/// use reinhardt_proxy::{CollectionProxy, ScalarValue};
 	///
-	/// let proxy = CollectionProxy::new("users", "email");
-	/// let items = vec!["alice@example.com", "bob@example.com"];
-	/// let _ = proxy.bulk_insert(&items);
+	/// // Requires factory to be configured
+	/// // let proxy = CollectionProxy::with_factory("tags", "name", factory)
+	/// //     .with_batch_size(100);
+	/// // let mut source = ...;
+	/// // let values = vec![
+	/// //     ScalarValue::String("rust".to_string()),
+	/// //     ScalarValue::String("python".to_string()),
+	/// // ];
+	/// // proxy.bulk_insert(&mut source, values).await?;
 	/// ```
-	pub fn bulk_insert<I>(&self, _items: &[I]) -> ProxyResult<()> {
-		// TODO: Implement bulk insert logic
+	pub async fn bulk_insert<T>(&self, source: &mut T, items: Vec<ScalarValue>) -> ProxyResult<()>
+	where
+		T: crate::reflection::Reflectable,
+	{
+		// Check if factory is configured
+		let factory = self
+			.factory
+			.as_ref()
+			.ok_or(ProxyError::FactoryNotConfigured)?;
+
+		// Access the relationship
+		let relationship = source
+			.get_relationship_mut(&self.relationship)
+			.ok_or_else(|| ProxyError::RelationshipNotFound(self.relationship.clone()))?;
+
+		// Downcast to Vec<Box<dyn Reflectable>>
+		let collection = relationship
+			.downcast_mut::<Vec<Box<dyn crate::reflection::Reflectable>>>()
+			.ok_or_else(|| ProxyError::TypeMismatch {
+				expected: "Vec<Box<dyn Reflectable>>".to_string(),
+				actual: "unknown".to_string(),
+			})?;
+
+		// Determine batch size (default to all items if not set)
+		let batch_size = self.batch_size.unwrap_or(items.len());
+
+		// Process items in batches
+		for chunk in items.chunks(batch_size) {
+			for value in chunk {
+				let new_object = factory.create_from_scalar(&self.attribute, value.clone())?;
+				collection.push(new_object);
+			}
+		}
+
 		Ok(())
 	}
 
@@ -803,14 +994,34 @@ impl CollectionProxy {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use reinhardt_proxy::CollectionProxy;
 	///
-	/// let proxy = CollectionProxy::new("tags", "name");
-	/// let _ = proxy.clear();
+	/// // Requires a mutable source object with Reflectable trait
+	/// // let mut source = ...;
+	/// // let proxy = CollectionProxy::new("tags", "name");
+	/// // proxy.clear_on(&mut source).await?;
 	/// ```
-	pub fn clear(&self) -> ProxyResult<()> {
-		// TODO: Implement clear logic
+	pub async fn clear_on<T>(&self, source: &mut T) -> ProxyResult<()>
+	where
+		T: crate::reflection::Reflectable,
+	{
+		// Access the relationship
+		let relationship = source
+			.get_relationship_mut(&self.relationship)
+			.ok_or_else(|| ProxyError::RelationshipNotFound(self.relationship.clone()))?;
+
+		// Downcast to Vec<Box<dyn Reflectable>>
+		let collection = relationship
+			.downcast_mut::<Vec<Box<dyn crate::reflection::Reflectable>>>()
+			.ok_or_else(|| ProxyError::TypeMismatch {
+				expected: "Vec<Box<dyn Reflectable>>".to_string(),
+				actual: "unknown".to_string(),
+			})?;
+
+		// Clear the collection
+		collection.clear();
+
 		Ok(())
 	}
 
@@ -847,17 +1058,70 @@ impl CollectionProxy {
 
 	/// Update items with version tracking
 	///
+	/// Updates collection items with optimistic locking based on version numbers.
+	/// This method ensures that updates only succeed if the version matches,
+	/// preventing concurrent modification conflicts.
+	///
 	/// # Examples
 	///
-	/// ```
-	/// use reinhardt_proxy::CollectionProxy;
+	/// ```ignore
+	/// use reinhardt_proxy::{CollectionProxy, ScalarValue};
 	///
-	/// let proxy = CollectionProxy::new("documents", "content")
-	///     .with_version_tracking(true);
-	/// let _ = proxy.update_with_version("new_content", 1);
+	/// // Requires version tracking to be enabled
+	/// // let proxy = CollectionProxy::new("documents", "content")
+	/// //     .with_version_tracking(true);
+	/// // let mut source = ...;
+	/// // let new_value = ScalarValue::String("updated content".to_string());
+	/// // proxy.update_with_version(&mut source, new_value, 1).await?;
 	/// ```
-	pub fn update_with_version<V>(&self, _value: V, _version: i64) -> ProxyResult<()> {
-		// TODO: Implement versioned update logic
+	pub async fn update_with_version<T>(
+		&self,
+		source: &mut T,
+		value: ScalarValue,
+		expected_version: i64,
+	) -> ProxyResult<()>
+	where
+		T: crate::reflection::Reflectable,
+	{
+		// Check if version tracking is enabled
+		if !self.version_tracking {
+			return Err(ProxyError::VersionTrackingNotEnabled);
+		}
+
+		// Access the relationship
+		let relationship = source
+			.get_relationship_mut(&self.relationship)
+			.ok_or_else(|| ProxyError::RelationshipNotFound(self.relationship.clone()))?;
+
+		// Downcast to Vec<Box<dyn Reflectable>>
+		let collection = relationship
+			.downcast_mut::<Vec<Box<dyn crate::reflection::Reflectable>>>()
+			.ok_or_else(|| ProxyError::TypeMismatch {
+				expected: "Vec<Box<dyn Reflectable>>".to_string(),
+				actual: "unknown".to_string(),
+			})?;
+
+		// Update items with version check
+		for item in collection.iter_mut() {
+			// Check if item has version field
+			if let Some(current_version) = item.get_attribute("version") {
+				if let ScalarValue::Integer(ver) = current_version {
+					// Check version match
+					if ver == expected_version {
+						// Update the value using set_attribute
+						item.set_attribute(&self.attribute, value.clone())?;
+						// Increment version
+						item.set_attribute("version", ScalarValue::Integer(ver + 1))?;
+					} else {
+						return Err(ProxyError::VersionMismatch {
+							expected: expected_version,
+							actual: ver,
+						});
+					}
+				}
+			}
+		}
+
 		Ok(())
 	}
 
@@ -887,9 +1151,10 @@ impl CollectionProxy {
 	/// let proxy = CollectionProxy::new("orders", "total")
 	///     .with_batch_size(100)
 	///     .with_chunk_size(10); // Process 10 items at a time
+	/// assert_eq!(proxy.chunk_size(), Some(10));
 	/// ```
-	pub fn with_chunk_size(self, _chunk_size: usize) -> Self {
-		// TODO: Implement chunk size configuration
+	pub fn with_chunk_size(mut self, chunk_size: usize) -> Self {
+		self.chunk_size = Some(chunk_size);
 		self
 	}
 
@@ -1110,6 +1375,81 @@ impl CollectionProxy {
 	pub fn supports_concurrent_access(&self) -> bool {
 		self.concurrent_access
 	}
+
+	/// Get batch size
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::CollectionProxy;
+	///
+	/// let proxy = CollectionProxy::new("orders", "total")
+	///     .with_batch_size(100);
+	/// assert_eq!(proxy.batch_size(), Some(100));
+	/// ```
+	pub fn batch_size(&self) -> Option<usize> {
+		self.batch_size
+	}
+
+	/// Get chunk size
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::CollectionProxy;
+	///
+	/// let proxy = CollectionProxy::new("orders", "total")
+	///     .with_chunk_size(10);
+	/// assert_eq!(proxy.chunk_size(), Some(10));
+	/// ```
+	pub fn chunk_size(&self) -> Option<usize> {
+		self.chunk_size
+	}
+
+	/// Check if cascade is enabled
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::CollectionProxy;
+	///
+	/// let proxy = CollectionProxy::new("posts", "title")
+	///     .with_cascade(true);
+	/// assert!(proxy.is_cascade());
+	/// ```
+	pub fn is_cascade(&self) -> bool {
+		self.cascade
+	}
+
+	/// Check if version tracking is enabled
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::CollectionProxy;
+	///
+	/// let proxy = CollectionProxy::new("documents", "content")
+	///     .with_version_tracking(true);
+	/// assert!(proxy.is_version_tracking());
+	/// ```
+	pub fn is_version_tracking(&self) -> bool {
+		self.version_tracking
+	}
+
+	/// Get memory limit
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_proxy::CollectionProxy;
+	///
+	/// let proxy = CollectionProxy::new("large_data", "content")
+	///     .with_memory_limit(1024 * 1024);
+	/// assert_eq!(proxy.memory_limit(), Some(1024 * 1024));
+	/// ```
+	pub fn memory_limit(&self) -> Option<usize> {
+		self.memory_limit
+	}
 }
 
 // Manual Debug implementation for CollectionProxy
@@ -1133,11 +1473,16 @@ impl Serialize for CollectionProxy {
 		S: serde::Serializer,
 	{
 		use serde::ser::SerializeStruct;
-		let mut state = serializer.serialize_struct("CollectionProxy", 3)?;
+		let mut state = serializer.serialize_struct("CollectionProxy", 8)?;
 		state.serialize_field("relationship", &self.relationship)?;
 		state.serialize_field("attribute", &self.attribute)?;
 		state.serialize_field("unique", &self.unique)?;
-		// loading_strategy is not serialized (not Serialize)
+		state.serialize_field("batch_size", &self.batch_size)?;
+		state.serialize_field("chunk_size", &self.chunk_size)?;
+		state.serialize_field("cascade", &self.cascade)?;
+		state.serialize_field("version_tracking", &self.version_tracking)?;
+		state.serialize_field("memory_limit", &self.memory_limit)?;
+		// loading_strategy and factory are not serialized (not Serialize)
 		state.end()
 	}
 }
@@ -1166,6 +1511,11 @@ impl<'de> Deserialize<'de> for CollectionProxy {
 				let mut unique = None;
 				let mut caching = None;
 				let mut cache_ttl = None;
+				let mut batch_size = None;
+				let mut chunk_size = None;
+				let mut cascade = None;
+				let mut version_tracking = None;
+				let mut memory_limit = None;
 
 				while let Some(key) = map.next_key::<String>()? {
 					match key.as_str() {
@@ -1199,6 +1549,36 @@ impl<'de> Deserialize<'de> for CollectionProxy {
 							}
 							cache_ttl = Some(map.next_value()?);
 						}
+						"batch_size" => {
+							if batch_size.is_some() {
+								return Err(serde::de::Error::duplicate_field("batch_size"));
+							}
+							batch_size = Some(map.next_value()?);
+						}
+						"chunk_size" => {
+							if chunk_size.is_some() {
+								return Err(serde::de::Error::duplicate_field("chunk_size"));
+							}
+							chunk_size = Some(map.next_value()?);
+						}
+						"cascade" => {
+							if cascade.is_some() {
+								return Err(serde::de::Error::duplicate_field("cascade"));
+							}
+							cascade = Some(map.next_value()?);
+						}
+						"version_tracking" => {
+							if version_tracking.is_some() {
+								return Err(serde::de::Error::duplicate_field("version_tracking"));
+							}
+							version_tracking = Some(map.next_value()?);
+						}
+						"memory_limit" => {
+							if memory_limit.is_some() {
+								return Err(serde::de::Error::duplicate_field("memory_limit"));
+							}
+							memory_limit = Some(map.next_value()?);
+						}
 						_ => {
 							// Ignore unknown fields
 							let _ = map.next_value::<serde::de::IgnoredAny>()?;
@@ -1231,11 +1611,25 @@ impl<'de> Deserialize<'de> for CollectionProxy {
 					async_loading: false,
 					concurrent_access: false,
 					is_view: false,
+					batch_size,
+					chunk_size,
+					cascade: cascade.unwrap_or(false),
+					version_tracking: version_tracking.unwrap_or(false),
+					memory_limit,
 				})
 			}
 		}
 
-		const FIELDS: &[&str] = &["relationship", "attribute", "unique"];
+		const FIELDS: &[&str] = &[
+			"relationship",
+			"attribute",
+			"unique",
+			"batch_size",
+			"chunk_size",
+			"cascade",
+			"version_tracking",
+			"memory_limit",
+		];
 		deserializer.deserialize_struct("CollectionProxy", FIELDS, CollectionProxyVisitor)
 	}
 }
