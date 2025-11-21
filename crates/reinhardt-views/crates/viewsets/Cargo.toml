@@ -45,3 +45,4 @@ tokio-test = "0.4"
 bytes = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
+rstest = { workspace = true }
