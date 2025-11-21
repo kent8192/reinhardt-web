@@ -70,6 +70,8 @@ pub use reinhardt_versioning as versioning;
 pub mod authentication;
 pub mod response;
 pub mod routers;
+
+#[cfg(feature = "openapi")]
 pub mod schema;
 
 // Re-export authentication types
