@@ -211,14 +211,13 @@ static/
 
 ## Collecting Static Files for Production
 
-In production, you'll want to collect all static files into a single directory for efficient serving. Reinhardt provides the `collectstatic` command:
+In production, you'll want to collect all static files into a single directory for efficient serving. Reinhardt provides the `collectstatic` command through the `manage` binary:
 
 ```bash
-# This will be available through reinhardt-admin in production
-reinhardt-admin collectstatic
+cargo run --bin manage collectstatic
 ```
 
-This collects all static files from your apps into a single `STATIC_ROOT` directory.
+This collects all static files from your apps into a single `STATIC_ROOT` directory configured in your settings.
 
 ## Static File Optimization
 

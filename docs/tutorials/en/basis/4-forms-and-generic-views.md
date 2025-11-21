@@ -61,42 +61,60 @@ pub async fn vote(
 - `Response::redirect()` for type-safe redirects
 - No manual `extensions.get()` - DI handles it
 
-Add the helper methods to `src/models.rs`:
+Since we're using `#[derive(Model)]`, the `get` method is automatically available through the QuerySet API. For incrementing votes, we'll use F expressions for atomic database updates:
 
 ```rust
-impl Choice {
-    /// Get a choice by ID
-    pub async fn get(pool: &SqlitePool, id: i64) -> Result<Option<Choice>, sqlx::Error> {
-        let choice = sqlx::query_as!(
-            Choice,
-            "SELECT id, question_id, choice_text, votes FROM choices WHERE id = ?",
-            id
-        )
-        .fetch_optional(pool)
-        .await?;
+use reinhardt::prelude::*;
 
-        Ok(choice)
-    }
+// Get a choice by ID (using generated QuerySet methods)
+let choice = Choice::objects()
+    .filter(Choice::field_id().eq(choice_id))
+    .first(&conn)
+    .await?;
 
-    /// Increment vote count for a choice
-    pub async fn increment_votes(pool: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "UPDATE choices SET votes = votes + 1 WHERE id = ?",
-            id
-        )
-        .execute(pool)
-        .await?;
-
-        Ok(())
-    }
-}
+// Increment vote count using F expression (atomic operation)
+Choice::objects()
+    .filter(Choice::field_id().eq(choice_id))
+    .update()
+    .set(Choice::field_votes(), F::new(Choice::field_votes()) + 1)
+    .execute(&conn)
+    .await?;
 ```
+
+**Why F Expressions?**
+- **Atomic**: Database-level operation prevents race conditions
+- **Type-safe**: Compile-time verification of field types
+- **Efficient**: Single SQL UPDATE query, no SELECT needed
 
 ## Race Condition Prevention
 
-The current implementation has a potential race condition. Two users voting at the same time might cause incorrect vote counts. To prevent this, we use database-level atomic operations.
+The F expression approach automatically prevents race conditions:
 
-The `UPDATE choices SET votes = votes + 1` query is atomic at the database level, so this implementation is already safe from race conditions.
+```rust
+// ✅ SAFE: Atomic database operation
+Choice::objects()
+    .filter(Choice::field_id().eq(choice_id))
+    .update()
+    .set(Choice::field_votes(), F::new(Choice::field_votes()) + 1)
+    .execute(&conn)
+    .await?;
+```
+
+**Why this is safe:**
+1. Single UPDATE query at database level
+2. No SELECT needed (avoids read-modify-write race)
+3. Database ensures atomicity of the increment
+
+**Unsafe alternative (DON'T DO THIS):**
+```rust
+// ❌ UNSAFE: Race condition possible
+let mut choice = Choice::objects()
+    .filter(Choice::field_id().eq(choice_id))
+    .first(&conn)
+    .await?;
+choice.votes += 1;  // Two requests could read same value
+choice.save(&conn).await?;  // Last write wins, lost update
+```
 
 ## Adding CSRF Protection
 
@@ -153,18 +171,25 @@ Create a new file `src/views.rs`:
 
 ```rust
 use reinhardt::prelude::*;
-use sqlx::SqlitePool;
-use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct QuestionListView;
 
 impl ListView for QuestionListView {
     type Model = crate::models::Question;
 
-    async fn get_queryset(&self, request: &Request) -> Result<Vec<Self::Model>, Box<dyn std::error::Error + Send + Sync>> {
-        let pool = request.extensions.get::<SqlitePool>().unwrap();
-        let questions = crate::models::Question::all(pool).await?;
-        Ok(questions.into_iter().take(5).collect())
+    #[endpoint]
+    async fn get_queryset(
+        &self,
+        request: &Request,
+        #[inject] db: Arc<DatabaseConnection>,
+    ) -> Result<Vec<Self::Model>, Box<dyn std::error::Error + Send + Sync>> {
+        let questions = Question::objects()
+            .order_by(Question::field_pub_date(), false)
+            .limit(5)
+            .all(&db)
+            .await?;
+        Ok(questions)
     }
 
     fn get_template_name(&self) -> &str {
@@ -181,13 +206,19 @@ pub struct QuestionDetailView;
 impl DetailView for QuestionDetailView {
     type Model = crate::models::Question;
 
-    async fn get_object(&self, request: &Request) -> Result<Self::Model, Box<dyn std::error::Error + Send + Sync>> {
-        let pool = request.extensions.get::<SqlitePool>().unwrap();
+    #[endpoint]
+    async fn get_object(
+        &self,
+        request: &Request,
+        #[inject] db: Arc<DatabaseConnection>,
+    ) -> Result<Self::Model, Box<dyn std::error::Error + Send + Sync>> {
         let question_id: i64 = request.path_params.get("question_id")
             .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
+            .ok_or("Invalid question_id")?;
 
-        crate::models::Question::get(pool, question_id)
+        Question::objects()
+            .filter(Question::field_id().eq(question_id))
+            .first(&db)
             .await?
             .ok_or("Question not found".into())
     }
@@ -206,13 +237,19 @@ pub struct ResultsView;
 impl DetailView for ResultsView {
     type Model = crate::models::Question;
 
-    async fn get_object(&self, request: &Request) -> Result<Self::Model, Box<dyn std::error::Error + Send + Sync>> {
-        let pool = request.extensions.get::<SqlitePool>().unwrap();
+    #[endpoint]
+    async fn get_object(
+        &self,
+        request: &Request,
+        #[inject] db: Arc<DatabaseConnection>,
+    ) -> Result<Self::Model, Box<dyn std::error::Error + Send + Sync>> {
         let question_id: i64 = request.path_params.get("question_id")
             .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
+            .ok_or("Invalid question_id")?;
 
-        crate::models::Question::get(pool, question_id)
+        Question::objects()
+            .filter(Question::field_id().eq(question_id))
+            .first(&db)
             .await?
             .ok_or("Question not found".into())
     }
@@ -225,9 +262,14 @@ impl DetailView for ResultsView {
         "question"
     }
 
-    async fn get_context_data(&self, request: &Request, object: &Self::Model) -> Result<HashMap<String, serde_json::Value>, Box<dyn std::error::Error + Send + Sync>> {
-        let pool = request.extensions.get::<SqlitePool>().unwrap();
-        let choices = object.choices(pool).await?;
+    #[endpoint]
+    async fn get_context_data(
+        &self,
+        request: &Request,
+        object: &Self::Model,
+        #[inject] db: Arc<DatabaseConnection>,
+    ) -> Result<HashMap<String, serde_json::Value>, Box<dyn std::error::Error + Send + Sync>> {
+        let choices = object.choices(&db).await?;
 
         let mut context = HashMap::new();
         context.insert("question".to_string(), serde_json::to_value(object)?);

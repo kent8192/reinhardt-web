@@ -13,12 +13,12 @@ cargo --version
 
 You should see version information for both commands. If not, visit [rust-lang.org](https://www.rust-lang.org/tools/install) to install Rust.
 
-## Installing Reinhardt Admin
+## Installing Reinhardt Admin CLI
 
 First, install the global tool for project generation:
 
 ```bash
-cargo install reinhardt-admin
+cargo install reinhardt-admin-cli
 ```
 
 ## Creating a Project
@@ -36,17 +36,16 @@ This creates a `polls_project` directory with the following structure:
 polls_project/
 ├── Cargo.toml
 ├── README.md
+├── settings/
+│   ├── base.toml
+│   ├── local.toml
+│   ├── staging.toml
+│   └── production.toml
 └── src/
-    ├── main.rs
     ├── config.rs
     ├── apps.rs
     ├── config/
     │   ├── settings.rs
-    │   ├── settings/
-    │   │   ├── base.rs
-    │   │   ├── local.rs
-    │   │   ├── staging.rs
-    │   │   └── production.rs
     │   ├── urls.rs
     │   └── apps.rs
     └── bin/
@@ -61,14 +60,14 @@ polls_project/
 Let's understand the key elements of the generated project:
 
 - `Cargo.toml` - Configuration file for your project and its dependencies
-- `src/main.rs` - The entry point for your application
+- `settings/` - Environment-specific settings files (base, local, staging, production)
 - `src/config/` - Project configuration
-  - `settings/` - Environment-specific settings (base, local, staging, production)
+  - `settings.rs` - Settings loader
   - `urls.rs` - URL routing configuration
   - `apps.rs` - Installed apps registration
 - `src/bin/` - Executable files
-  - `manage.rs` - Management commands (equivalent to Django's `manage.py`)
   - `runserver.rs` - Development server
+  - `manage.rs` - Management commands (equivalent to Django's `manage.py`)
 
 ## Creating Your First View
 
