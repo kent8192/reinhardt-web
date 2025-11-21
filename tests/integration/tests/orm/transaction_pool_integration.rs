@@ -647,7 +647,8 @@ async fn test_connection_reuse_after_rollback(
 
 	assert_eq!(count, 1, "Connection should be reused after rollback");
 
-	let value: i32 = sqlx::query_scalar("SELECT value FROM rollback_test WHERE id = 1")
+	// Note: SERIAL sequence is not rolled back, so id will be 2 (not 1)
+	let value: i32 = sqlx::query_scalar("SELECT value FROM rollback_test ORDER BY id LIMIT 1")
 		.fetch_one(pool.inner())
 		.await
 		.expect("Failed to get value");

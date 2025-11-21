@@ -39,15 +39,15 @@
 //! ❌ Cross-vendor database integration (PostgreSQL + MySQL)
 //! ❌ Distributed transaction protocols (2PC, Saga patterns)
 
-use reinhardt_test::fixtures::*;
+use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sqlx::AnyPool;
-use sqlx::Row;
+use sqlx::{Pool, Postgres, Row};
 use std::sync::Arc;
-use testcontainers::core::image::image_ext::ImageExt as _;
 use testcontainers::core::WaitFor;
 use testcontainers::runners::AsyncRunner;
+use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, GenericImage};
 use tokio::time::{sleep, Duration};
 
@@ -84,9 +84,14 @@ impl User {
 #[rstest]
 #[tokio::test]
 async fn test_multiple_database_connections(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
+	#[future] postgres_container: (
+		ContainerAsync<GenericImage>,
+		Arc<Pool<Postgres>>,
+		u16,
+		String,
+	),
 ) {
-	let (_container1, pool1, _port1, url1) = postgres_container.await;
+	let (_container1, pool1, _port1, _url1) = postgres_container.await;
 
 	// Start second PostgreSQL container
 	let postgres2 = GenericImage::new("postgres", "16-alpine")
@@ -105,7 +110,7 @@ async fn test_multiple_database_connections(
 
 	// Create second connection pool
 	let pool2 = Arc::new(
-		AnyPool::connect(&url2)
+		Pool::<Postgres>::connect(&url2)
 			.await
 			.expect("Failed to connect to second database"),
 	);
@@ -173,7 +178,12 @@ async fn test_multiple_database_connections(
 #[rstest]
 #[tokio::test]
 async fn test_data_migration_between_databases(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
+	#[future] postgres_container: (
+		ContainerAsync<GenericImage>,
+		Arc<Pool<Postgres>>,
+		u16,
+		String,
+	),
 ) {
 	let (_container1, pool_source, _port1, _url1) = postgres_container.await;
 
@@ -196,7 +206,7 @@ async fn test_data_migration_between_databases(
 	);
 
 	let pool_target = Arc::new(
-		AnyPool::connect(&url_target)
+		Pool::<Postgres>::connect(&url_target)
 			.await
 			.expect("Failed to connect to target database"),
 	);
@@ -241,11 +251,7 @@ async fn test_data_migration_between_databases(
 	for row in products {
 		let id: i32 = row.get("id");
 		let name: String = row.get("name");
-		let price: f64 = row
-			.get::<sqlx::types::Decimal, _>("price")
-			.to_string()
-			.parse()
-			.expect("Failed to parse price");
+		let price: Decimal = row.get("price");
 
 		sqlx::query("INSERT INTO products (id, name, price) VALUES ($1, $2, $3)")
 			.bind(id)
@@ -305,7 +311,12 @@ async fn test_data_migration_between_databases(
 #[rstest]
 #[tokio::test]
 async fn test_read_replica_pattern(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
+	#[future] postgres_container: (
+		ContainerAsync<GenericImage>,
+		Arc<Pool<Postgres>>,
+		u16,
+		String,
+	),
 ) {
 	let (_container_primary, pool_primary, _port_primary, _url_primary) = postgres_container.await;
 
@@ -328,7 +339,7 @@ async fn test_read_replica_pattern(
 	);
 
 	let pool_replica = Arc::new(
-		AnyPool::connect(&url_replica)
+		Pool::<Postgres>::connect(&url_replica)
 			.await
 			.expect("Failed to connect to replica database"),
 	);
@@ -406,7 +417,12 @@ async fn test_read_replica_pattern(
 #[rstest]
 #[tokio::test]
 async fn test_read_load_balancing_across_replicas(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
+	#[future] postgres_container: (
+		ContainerAsync<GenericImage>,
+		Arc<Pool<Postgres>>,
+		u16,
+		String,
+	),
 ) {
 	let (_container_primary, pool_primary, _port_primary, _url_primary) = postgres_container.await;
 
@@ -421,6 +437,9 @@ async fn test_read_load_balancing_across_replicas(
 			.await
 			.expect(&format!("Failed to start replica {} container", i));
 
+		// Wait for container to be fully ready
+		tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
 		let port = postgres_replica
 			.get_host_port_ipv4(5432)
 			.await
@@ -428,12 +447,18 @@ async fn test_read_load_balancing_across_replicas(
 		let url = format!("postgres://postgres:test@localhost:{}/replica_{}", port, i);
 
 		let pool = Arc::new(
-			AnyPool::connect(&url)
+			sqlx::postgres::PgPoolOptions::new()
+				.max_connections(5)
+				.acquire_timeout(std::time::Duration::from_secs(60))
+				.connect(&url)
 				.await
 				.expect(&format!("Failed to connect to replica {}", i)),
 		);
 
-		replicas.push(pool);
+		replicas.push((postgres_replica, pool));
+
+		// Add delay after each replica connection to ensure full initialization
+		tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 	}
 
 	// Create table in primary and replicas
@@ -449,7 +474,7 @@ async fn test_read_load_balancing_across_replicas(
 		.await
 		.expect("Failed to create table in primary");
 
-	for (i, pool) in replicas.iter().enumerate() {
+	for (i, (_container, pool)) in replicas.iter().enumerate() {
 		sqlx::query(create_table_sql)
 			.execute(pool.as_ref())
 			.await
@@ -471,7 +496,7 @@ async fn test_read_load_balancing_across_replicas(
 		.await
 		.expect("Failed to fetch from primary");
 
-	for pool in &replicas {
+	for (_container, pool) in &replicas {
 		for row in &stats {
 			let id: i32 = row.get("id");
 			let value: i32 = row.get("value");
@@ -489,7 +514,7 @@ async fn test_read_load_balancing_across_replicas(
 	let mut read_counts = vec![0, 0];
 	for i in 0..10 {
 		let replica_index = i % 2;
-		let pool = &replicas[replica_index];
+		let (_container, pool) = &replicas[replica_index];
 
 		let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM stats")
 			.fetch_one(pool.as_ref())
@@ -517,7 +542,12 @@ async fn test_read_load_balancing_across_replicas(
 #[rstest]
 #[tokio::test]
 async fn test_primary_database_failover(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
+	#[future] postgres_container: (
+		ContainerAsync<GenericImage>,
+		Arc<Pool<Postgres>>,
+		u16,
+		String,
+	),
 ) {
 	let (_container_primary, pool_primary, _port_primary, _url_primary) = postgres_container.await;
 
@@ -540,7 +570,7 @@ async fn test_primary_database_failover(
 	);
 
 	let pool_replica = Arc::new(
-		AnyPool::connect(&url_replica)
+		Pool::<Postgres>::connect(&url_replica)
 			.await
 			.expect("Failed to connect to replica"),
 	);
@@ -581,11 +611,7 @@ async fn test_primary_database_failover(
 	for row in orders {
 		let id: i32 = row.get("id");
 		let customer_id: i32 = row.get("customer_id");
-		let total: f64 = row
-			.get::<sqlx::types::Decimal, _>("total")
-			.to_string()
-			.parse()
-			.expect("Failed to parse total");
+		let total: Decimal = row.get("total");
 
 		sqlx::query("INSERT INTO orders (id, customer_id, total) VALUES ($1, $2, $3)")
 			.bind(id)
@@ -634,7 +660,12 @@ async fn test_primary_database_failover(
 #[rstest]
 #[tokio::test]
 async fn test_data_sharding_across_databases(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
+	#[future] postgres_container: (
+		ContainerAsync<GenericImage>,
+		Arc<Pool<Postgres>>,
+		u16,
+		String,
+	),
 ) {
 	let (_container_shard0, pool_shard0, _port0, _url0) = postgres_container.await;
 
@@ -657,7 +688,7 @@ async fn test_data_sharding_across_databases(
 	);
 
 	let pool_shard1 = Arc::new(
-		AnyPool::connect(&url_shard1)
+		Pool::<Postgres>::connect(&url_shard1)
 			.await
 			.expect("Failed to connect to shard1"),
 	);
@@ -755,7 +786,12 @@ async fn test_data_sharding_across_databases(
 #[rstest]
 #[tokio::test]
 async fn test_cross_shard_aggregation(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<AnyPool>, u16, String),
+	#[future] postgres_container: (
+		ContainerAsync<GenericImage>,
+		Arc<Pool<Postgres>>,
+		u16,
+		String,
+	),
 ) {
 	let (_container_shard0, pool_shard0, _port0, _url0) = postgres_container.await;
 
@@ -778,7 +814,7 @@ async fn test_cross_shard_aggregation(
 	);
 
 	let pool_shard1 = Arc::new(
-		AnyPool::connect(&url_shard1)
+		Pool::<Postgres>::connect(&url_shard1)
 			.await
 			.expect("Failed to connect to shard1"),
 	);
