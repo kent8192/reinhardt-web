@@ -167,54 +167,7 @@ my-api/
 └── README.md
 ```
 
-### 3. Setup Git Hooks (Recommended)
-
-Run the setup script to install pre-commit hooks:
-
-```bash
-./scripts/setup-hooks.sh
-```
-
-This will automatically check code formatting and linting before each commit.
-
-### 4. Verify Docker Setup (Required for Integration Tests)
-
-Reinhardt uses Docker for TestContainers integration in database and infrastructure tests.
-
-```bash
-# Verify Docker is installed and running
-docker version
-docker ps
-
-# Both commands should succeed without errors
-```
-
-**Important Notes:**
-
-- **Docker Desktop must be running** before executing integration tests
-- If you have both Docker and Podman installed, ensure `DOCKER_HOST` environment variable is **not** set to a Podman socket
-- The project includes `.testcontainers.properties` to ensure Docker is used
-
-**Troubleshooting:**
-
-If you encounter "Cannot connect to the Docker daemon" errors during tests:
-
-```bash
-# Check if Docker is running
-docker ps
-
-# Check DOCKER_HOST environment variable
-echo $DOCKER_HOST
-
-# It should be empty or point to Docker socket:
-# ✅ Correct: (empty) or unix:///var/run/docker.sock
-# ❌ Incorrect: unix:///.../podman/... (needs to be unset)
-
-# Unset DOCKER_HOST if pointing to Podman
-unset DOCKER_HOST
-```
-
-### 5. Run the Development Server
+### 3. Run the Development Server
 
 ```bash
 # Using the runserver binary (recommended)
@@ -243,7 +196,7 @@ cargo watch -c -x 'run --bin runserver'
 
 **Note:** Auto-reload is provided by the external `cargo-watch` tool. The `runserver` binary has `--noreload` and `--clear` options, but built-in auto-reload functionality is not yet implemented.
 
-### 6. Create Your First App
+### 4. Create Your First App
 
 ```bash
 # Create a new app
@@ -266,7 +219,7 @@ users/
 └── tests.rs
 ```
 
-### 7. Register Routes
+### 5. Register Routes
 
 Edit your app's `urls.rs`:
 
@@ -298,7 +251,7 @@ pub fn url_patterns() -> Arc<UnifiedRouter> {
 	let router = UnifiedRouter::new();
 
 	// Include app routers
-	// router.include_router("/api/", users::urls::url_patterns(), Some("users".to_string()));
+	// router.include("/api/", users::urls::url_patterns())
 
 	Arc::new(router)
 }
@@ -370,63 +323,124 @@ pub fn get_settings() -> Settings {
 }
 ```
 
-**Priority Order**: `{profile}.toml` > `base.toml` > Environment Variables > Defaults
+**Environment Variable Sources:**
+
+Reinhardt provides two types of environment variable sources with different priorities:
+
+- **`EnvSource`** (priority: 100) - High priority environment variables that override TOML files
+  ```rust
+  .add_source(EnvSource::new().with_prefix("REINHARDT_"))
+  ```
+
+- **`LowPriorityEnvSource`** (priority: 40) - Low priority environment variables that fall back to TOML files
+  ```rust
+  .add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
+  ```
+
+**Priority Order**:
+- Using `EnvSource`: Environment Variables > `{profile}.toml` > `base.toml` > Defaults
+- Using `LowPriorityEnvSource` (shown above): `{profile}.toml` > `base.toml` > Environment Variables > Defaults
+
+Choose `EnvSource` when environment variables should always take precedence (e.g., production deployments).
+Choose `LowPriorityEnvSource` when TOML files should be the primary configuration source (e.g., development).
 
 See [Settings Documentation](docs/SETTINGS_DOCUMENT.md) for more details.
 
-Define models in your app (e.g., `users/models.rs`):
+**Using the Built-in DefaultUser:**
+
+Reinhardt provides a ready-to-use `DefaultUser` implementation (requires `argon2-hasher` feature):
+
+```rust
+// users/models.rs
+use reinhardt::prelude::*;
+use reinhardt_auth::DefaultUser;
+
+// Re-export DefaultUser as User for your app
+pub type User = DefaultUser;
+
+// DefaultUser includes:
+// - id: Uuid (primary key)
+// - username: String
+// - email: String
+// - password_hash: Option<String>
+// - first_name: String
+// - last_name: String
+// - is_active: bool
+// - is_staff: bool
+// - is_superuser: bool
+// - last_login: Option<DateTime<Utc>>
+// - date_joined: DateTime<Utc>
+
+// DefaultUser implements:
+// - BaseUser trait (authentication methods)
+// - FullUser trait (full user information)
+// - PermissionsMixin trait (permission management)
+// - Model trait (database operations)
+```
+
+**Defining Custom User Models:**
+
+If you need custom fields, define your own model:
 
 ```rust
 // users/models.rs
 use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct User {
+#[derive(Model, Serialize, Deserialize, Clone)]
+#[model(app_label = "users", table_name = "users")]
+pub struct CustomUser {
+	#[field(primary_key = true)]
 	pub id: i64,
+
+	#[field(max_length = 255)]
 	pub email: String,
+
+	#[field(max_length = 100)]
 	pub username: String,
+
+	#[field(default = true)]
 	pub is_active: bool,
+
+	#[field(auto_now_add = true)]
 	pub created_at: DateTime<Utc>,
+
+	// Add custom fields
+	#[field(max_length = 50, null = true)]
+	pub phone_number: Option<String>,
 }
+```
 
-impl User {
-	pub async fn find_by_id(id: i64) -> Result<Self, Box<dyn std::error::Error>> {
-		// Query database using SeaQuery
-		// This is a simplified example
-		todo!("Implement database query with SeaQuery")
-	}
+**Model Derive Macro:**
 
-	pub async fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-		// Insert or update using SeaQuery
-		todo!("Implement database save with SeaQuery")
-	}
+The `#[derive(Model)]` macro automatically generates:
+- Implementation of the `Model` trait
+- Type-safe field accessors: `User::field_email()`, `User::field_username()`, etc.
+- Global model registry registration
+- Support for composite primary keys
 
-	pub async fn delete(&self) -> Result<(), Box<dyn std::error::Error>> {
-		// Delete from database
-		todo!("Implement database delete with SeaQuery")
-	}
+**Field Attributes:**
+- `#[field(primary_key = true)]` - Mark as primary key
+- `#[field(max_length = 255)]` - Set maximum length for string fields
+- `#[field(default = value)]` - Set default value
+- `#[field(auto_now_add = true)]` - Auto-populate timestamp on creation
+- `#[field(auto_now = true)]` - Auto-update timestamp on save
+- `#[field(null = true)]` - Allow NULL values
+- `#[field(unique = true)]` - Enforce uniqueness constraint
 
-	// Django-style query methods with F/Q objects
-	pub async fn find_active_users() -> Result<Vec<Self>, Box<dyn std::error::Error>> {
-		// Filter using Q objects (Django-style)
-		// queryset.filter(Q::new().field("is_active").eq(true))
-		todo!("Implement query with Q objects")
-	}
+The generated field accessors enable type-safe field references in queries:
 
-	pub async fn find_by_email_domain(domain: &str) -> Result<Vec<Self>, Box<dyn std::error::Error>> {
-		// Use F object to reference field and database functions
-		// queryset.filter(Q::new().field("email").contains(domain))
-		//         .annotate("email_lower", Lower::new(F::new("email")))
-		todo!("Implement query with F object and database functions")
-	}
-
-	pub async fn count_by_activity() -> Result<Vec<(bool, i64)>, Box<dyn std::error::Error>> {
-		// Aggregation with group by
-		// queryset.group_by("is_active")
-		//         .annotate("count", Count::new("id"))
-		todo!("Implement aggregation query")
-	}
+```rust
+// Generated by #[derive(Model)] for DefaultUser
+impl DefaultUser {
+	pub const fn field_id() -> FieldRef<DefaultUser, Uuid> { FieldRef::new("id") }
+	pub const fn field_username() -> FieldRef<DefaultUser, String> { FieldRef::new("username") }
+	pub const fn field_email() -> FieldRef<DefaultUser, String> { FieldRef::new("email") }
+	pub const fn field_is_active() -> FieldRef<DefaultUser, bool> { FieldRef::new("is_active") }
+	pub const fn field_is_staff() -> FieldRef<DefaultUser, bool> { FieldRef::new("is_staff") }
+	pub const fn field_date_joined() -> FieldRef<DefaultUser, DateTime<Utc>> { FieldRef::new("date_joined") }
+	// ... other fields
 }
 ```
 
@@ -434,35 +448,39 @@ impl User {
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt_auth::DefaultUser;
 
-// Django-style F/Q object queries
-async fn complex_user_query() -> Result<Vec<User>, Box<dyn std::error::Error>> {
-	// F objects for field references
+// Django-style F/Q object queries with type-safe field references
+async fn complex_user_query() -> Result<Vec<DefaultUser>, Box<dyn std::error::Error>> {
+	// Q objects with type-safe field references (using generated field accessors)
 	let active_query = Q::new()
 		.field("is_active").eq(true)
-		.and(Q::new().field("created_at").gte(Now::new()));
+		.and(Q::new().field("date_joined").gte(Now::new()));
 
-	// Database functions
-	let email_lower = Lower::new(F::new("email"));
-	let username_upper = Upper::new(F::new("username"));
+	// Database functions with type-safe field references
+	let email_lower = Lower::new(DefaultUser::field_email().into());
+	let username_upper = Upper::new(DefaultUser::field_username().into());
 
-	// Aggregations
-	let user_count = Aggregate::count("id");
-	let latest_created = Aggregate::max("created_at");
+	// Aggregations using field accessors
+	let user_count = Aggregate::count(DefaultUser::field_id().into());
+	let latest_joined = Aggregate::max(DefaultUser::field_date_joined().into());
 
 	// Window functions for ranking
-	let rank_by_creation = Window::new()
-		.partition_by(vec!["is_active"])
-		.order_by(vec![("created_at", "DESC")])
+	let rank_by_join_date = Window::new()
+		.partition_by(vec![DefaultUser::field_is_active().into()])
+		.order_by(vec![(DefaultUser::field_date_joined().into(), "DESC")])
 		.function(RowNumber::new());
 
 	todo!("Execute query with these components")
 }
 
 // Transaction support
-async fn create_user_with_transaction(user_data: CreateUserRequest) -> Result<User, Box<dyn std::error::Error>> {
-	// Atomic transaction with automatic rollback on error
-	atomic(|| async {
+async fn create_user_with_transaction(
+	conn: &DatabaseConnection,
+	user_data: CreateUserRequest
+) -> Result<User, Box<dyn std::error::Error>> {
+	// Transaction with automatic rollback on error
+	transaction(conn, |_tx| async move {
 		let user = User::create(user_data).await?;
 		log_user_creation(&user).await?;
 		Ok(user)
@@ -504,7 +522,8 @@ use reinhardt::prelude::*;
 
 // Create and manage users with UserManager
 async fn manage_users() -> Result<(), Box<dyn std::error::Error>> {
-	let user_manager = UserManager::new();
+	let hasher = Argon2Hasher::new();
+	let user_manager = UserManager::new(hasher);
 
 	// Create a new user
 	let user = user_manager.create_user(CreateUserData {
@@ -539,7 +558,25 @@ async fn manage_users() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Define your user model in `users/models.rs`:
+Use the built-in `DefaultUser` in `users/models.rs`:
+
+```rust
+// users/models.rs
+use reinhardt_auth::DefaultUser;
+
+// Re-export DefaultUser as your User type
+pub type User = DefaultUser;
+
+// DefaultUser already implements:
+// - BaseUser trait (authentication methods)
+// - FullUser trait (username, email, first_name, last_name, etc.)
+// - PermissionsMixin trait (permission management)
+// - Model trait (database operations)
+```
+
+**For Custom User Models:**
+
+If you need additional fields beyond DefaultUser, define your own:
 
 ```rust
 // users/models.rs
@@ -548,22 +585,46 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct User {
+#[derive(Model, Serialize, Deserialize, Clone)]
+#[model(app_label = "users", table_name = "users")]
+pub struct CustomUser {
+	#[field(primary_key = true)]
 	pub id: Uuid,
+
+	#[field(max_length = 150)]
 	pub username: String,
+
+	#[field(max_length = 255)]
 	pub email: String,
+
 	pub password_hash: Option<String>,
+
+	#[field(max_length = 150)]
 	pub first_name: String,
+
+	#[field(max_length = 150)]
 	pub last_name: String,
+
+	#[field(default = true)]
 	pub is_active: bool,
+
+	#[field(default = false)]
 	pub is_staff: bool,
+
+	#[field(default = false)]
 	pub is_superuser: bool,
+
 	pub last_login: Option<DateTime<Utc>>,
+
+	#[field(auto_now_add = true)]
 	pub date_joined: DateTime<Utc>,
+
+	// Custom fields
+	#[field(max_length = 20, null = true)]
+	pub phone_number: Option<String>,
 }
 
-impl BaseUser for User {
+impl BaseUser for CustomUser {
 	type PrimaryKey = Uuid;
 
 	fn get_username_field() -> &'static str { "username" }
@@ -575,7 +636,7 @@ impl BaseUser for User {
 	fn is_active(&self) -> bool { self.is_active }
 }
 
-impl FullUser for User {
+impl FullUser for CustomUser {
 	fn username(&self) -> &str { &self.username }
 	fn email(&self) -> &str { &self.email }
 	fn first_name(&self) -> &str { &self.first_name }
@@ -592,9 +653,15 @@ Use JWT authentication in your app's `views/profile.rs`:
 // users/views/profile.rs
 use reinhardt_auth::{JwtAuth, BaseUser};
 use reinhardt_http::{Request, Response, StatusCode};
+use reinhardt_db::DatabaseConnection;
+use std::sync::Arc;
 use crate::models::User;
 
-pub async fn get_profile(req: Request) -> Result<Response, Box<dyn std::error::Error>> {
+#[endpoint]
+pub async fn get_profile(
+	req: Request,
+	#[inject] db: Arc<DatabaseConnection>,
+) -> Result<Response, Box<dyn std::error::Error>> {
 	// Extract JWT token from Authorization header
 	let auth_header = req.headers.get("authorization")
 		.and_then(|h| h.to_str().ok())
@@ -608,7 +675,7 @@ pub async fn get_profile(req: Request) -> Result<Response, Box<dyn std::error::E
 	let claims = jwt_auth.verify_token(token)?;
 
 	// Load user from database using claims.user_id
-	let user = User::find_by_id(&claims.user_id).await?;
+	let user = User::find_by_id(&db, &claims.user_id).await?;
 
 	// Check if user is active
 	if !user.is_active() {
@@ -621,16 +688,89 @@ pub async fn get_profile(req: Request) -> Result<Response, Box<dyn std::error::E
 }
 ```
 
+### FastAPI-Style Endpoint Definition
+
+Reinhardt provides a FastAPI-inspired `#[endpoint]` macro for clean, declarative endpoint definitions with automatic dependency injection.
+
+**Basic Endpoint:**
+
+```rust
+use reinhardt_macros::endpoint;
+use reinhardt_http::{Request, Response, StatusCode};
+
+#[endpoint]
+pub async fn hello(req: Request) -> Result<Response, Box<dyn std::error::Error>> {
+	let name = req.path_params.get("name").unwrap_or("World");
+	let message = format!("Hello, {}!", name);
+	Ok(Response::new(StatusCode::OK, message.into()))
+}
+```
+
+**Dependency Injection with `#[inject]`:**
+
+The `#[inject]` attribute automatically injects dependencies from the application context:
+
+```rust
+use reinhardt_macros::endpoint;
+use reinhardt_http::{Request, Response, StatusCode};
+use std::sync::Arc;
+
+#[endpoint]
+pub async fn get_user_from_db(
+	req: Request,
+	#[inject] db: Arc<DatabaseConnection>,  // Automatically injected
+) -> Result<Response, Box<dyn std::error::Error>> {
+	let id = req.path_params.get("id")
+		.ok_or("Missing id")?
+		.parse::<i64>()?;
+
+	// Use injected database connection
+	let user = db.query("SELECT * FROM users WHERE id = $1")
+		.bind(id)
+		.fetch_one()
+		.await?;
+
+	let json = serde_json::to_string(&user)?;
+	Ok(Response::new(StatusCode::OK, json.into()))
+}
+```
+
+**Cache Control:**
+
+Disable dependency caching with `cache = false`:
+
+```rust
+#[endpoint]
+pub async fn handler(
+	#[inject(cache = false)] fresh_data: DataService,  // Always creates new instance
+) -> Result<Response, Box<dyn std::error::Error>> {
+	// fresh_data is not cached
+	Ok(Response::new(StatusCode::OK, "OK".into()))
+}
+```
+
+**Key Features:**
+- Automatic dependency injection via `#[inject]`
+- Cache control with `cache` parameter
+- Clean, declarative syntax inspired by FastAPI
+- Compatible with `UnifiedRouter::function()` for registration
+
 ### With Parameter Extraction
 
 In your app's `views/user.rs`:
 
 ```rust
 // users/views/user.rs
+use reinhardt_macros::endpoint;
 use reinhardt_http::{Request, Response, StatusCode};
 use crate::models::User;
+use std::sync::Arc;
 
-pub async fn get_user(req: Request) -> Result<Response, Box<dyn std::error::Error>> {
+#[endpoint]
+pub async fn get_user(
+	req: Request,
+	#[inject] db: Arc<DatabaseConnection>,
+) -> Result<Response, Box<dyn std::error::Error>> {
 	// Extract path parameter from request
 	let id = req.path_params.get("id")
 		.ok_or("Missing id parameter")?
@@ -642,8 +782,8 @@ pub async fn get_user(req: Request) -> Result<Response, Box<dyn std::error::Erro
 		.and_then(|v| v.parse::<bool>().ok())
 		.unwrap_or(false);
 
-	// Fetch user from database
-	let user = User::find_by_id(id).await?;
+	// Fetch user from database using injected connection
+	let user = User::find_by_id(&db, id).await?;
 
 	// Check active status if needed
 	if !include_inactive && !user.is_active {
@@ -715,12 +855,18 @@ In your app's `views/user.rs`:
 
 ```rust
 // users/views/user.rs
+use reinhardt_macros::endpoint;
 use reinhardt_http::{Request, Response, StatusCode};
 use crate::models::User;
 use crate::serializers::{CreateUserRequest, UserResponse};
 use validator::Validate;
+use std::sync::Arc;
 
-pub async fn create_user(mut req: Request) -> Result<Response, Box<dyn std::error::Error>> {
+#[endpoint]
+pub async fn create_user(
+	mut req: Request,
+	#[inject] db: Arc<DatabaseConnection>,
+) -> Result<Response, Box<dyn std::error::Error>> {
 	// Parse request body
 	let body_bytes = std::mem::take(&mut req.body);
 	let create_req: CreateUserRequest = serde_json::from_slice(&body_bytes)?;
@@ -735,14 +881,14 @@ pub async fn create_user(mut req: Request) -> Result<Response, Box<dyn std::erro
 		email: create_req.email,
 		password_hash: None,
 		is_active: true,
-		// ... other fields
+		created_at: Utc::now(),
 	};
 
 	// Hash password using BaseUser trait
 	user.set_password(&create_req.password)?;
 
-	// Save to database
-	user.save().await?;
+	// Save to database using injected connection
+	user.save(&db).await?;
 
 	// Convert to response
 	let response_data = UserResponse::from(user);
@@ -759,20 +905,30 @@ Reinhardt offers modular components you can mix and match:
 | Component           | Crate Name                | Features                                    |
 |---------------------|---------------------------|---------------------------------------------|
 | **Core**            |                           |                                             |
+| Core Types          | `reinhardt-core`          | Core traits, types, macros (Model, endpoint)|
 | HTTP & Routing      | `reinhardt-http`          | Request/Response, HTTP handling             |
 | URL Routing         | `reinhardt-urls`          | Function-based and class-based routes       |
+| Server              | `reinhardt-server`        | HTTP server implementation                  |
+| Middleware          | `reinhardt-dispatch`      | Middleware chain, signal dispatch           |
+| Configuration       | `reinhardt-conf`          | Settings management, environment loading    |
+| Commands            | `reinhardt-commands`      | Management CLI tools (startproject, etc.)   |
+| Shortcuts           | `reinhardt-shortcuts`     | Common utility functions                    |
 | Microservices       | `reinhardt-micro`         | All-in-one minimal setup (HTTP + routing + DI) |
 | **Database**        |                           |                                             |
 | ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc1 integration             |
 | **Authentication**  |                           |                                             |
-| Auth                | `reinhardt-auth`          | JWT, Token, Session, Basic auth             |
+| Auth                | `reinhardt-auth`          | JWT, Token, Session, Basic auth, User models|
 | **REST API**        |                           |                                             |
 | Serializers         | `reinhardt-rest`          | serde/validator integration, ViewSets       |
+| **Forms**           |                           |                                             |
+| Forms               | `reinhardt-forms`         | Form handling and validation                |
 | **Advanced**        |                           |                                             |
 | Admin Panel         | `reinhardt-admin`         | Django-style admin interface                |
 | GraphQL             | `reinhardt-graphql`       | Schema generation, subscriptions            |
 | WebSockets          | `reinhardt-websockets`    | Real-time communication                     |
 | i18n                | `reinhardt-i18n`          | Multi-language support                      |
+| **Testing**         |                           |                                             |
+| Test Utilities      | `reinhardt-test`          | Testing helpers, fixtures, TestContainers   |
 
 **For detailed feature flags within each crate, see the [Feature Flags Guide](docs/FEATURE_FLAGS.md).**
 
