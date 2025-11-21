@@ -131,6 +131,7 @@ ctor = "0.6.0"
 rstest = "0.26.1"
 scopeguard = "1.2"
 linkme = "0.3"
+paste = "1.0"
 
 # Templates
 tera = "1.20"
@@ -154,3 +155,5 @@ rabbitmq-backend = ["reinhardt-tasks/rabbitmq-backend"]
 [dev-dependencies]
 # Test utilities
 tokio-test = "0.4"
+trybuild = { workspace = true }
+url = { workspace = true }

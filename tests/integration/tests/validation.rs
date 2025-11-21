@@ -4,5 +4,14 @@
 #[path = "validation/param_validation_integration.rs"]
 mod param_validation_integration;
 
+#[path = "validation/param_validation_advanced.rs"]
+mod param_validation_advanced;
+
 #[path = "validation/validator_orm_integration.rs"]
 mod validator_orm_integration;
+
+#[path = "validation/validator_orm_constraints.rs"]
+mod validator_orm_constraints;
+
+#[path = "validation/serializer_validator_advanced.rs"]
+mod serializer_validator_advanced;
