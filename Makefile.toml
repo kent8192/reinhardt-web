@@ -151,11 +151,21 @@ args = [
 description = "Run all integration tests"
 dependencies = ["intra-crate-integration-test", "cross-crate-integration-test"]
 
-[tasks.examples-test]
-description = "Test all examples (uses local reinhardt workspace)"
-cwd = "examples"
+[tasks.local-examples-test]
+description = "Test local examples (uses local reinhardt workspace)"
+cwd = "examples/local"
 command = "cargo"
 args = ["nextest", "run", "--workspace", "--verbose"]
+
+[tasks.remote-examples-test]
+description = "Test remote examples (uses crates.io published versions)"
+cwd = "examples/remote"
+command = "cargo"
+args = ["nextest", "run", "--workspace", "--verbose"]
+
+[tasks.examples-test]
+description = "Test all examples (local + remote)"
+dependencies = ["local-examples-test", "remote-examples-test"]
 
 [tasks.test]
 description = "Run all tests"
@@ -231,26 +241,37 @@ args = ["make", "--list-all-steps"]
 # Examples Tasks
 # ============================================================================
 
-[tasks.examples-build]
-description = "Build all examples (packages starting with 'examples-')"
-cwd = "examples"
+[tasks.local-examples-build]
+description = "Build local examples"
+cwd = "examples/local"
 command = "cargo"
-args = [
-  "build",
-  "--release",
-  "-p",
-  "examples-hello-world",
-  "-p",
-  "examples-rest-api",
-  "-p",
-  "examples-database-integration",
-]
+args = ["build", "--workspace", "--release"]
 
-[tasks.examples-clean]
-description = "Clean examples build artifacts"
-cwd = "examples"
+[tasks.remote-examples-build]
+description = "Build remote examples"
+cwd = "examples/remote"
+command = "cargo"
+args = ["build", "--workspace", "--release"]
+
+[tasks.examples-build]
+description = "Build all examples (local + remote)"
+dependencies = ["local-examples-build", "remote-examples-build"]
+
+[tasks.local-examples-clean]
+description = "Clean local examples build artifacts"
+cwd = "examples/local"
 command = "cargo"
 args = ["clean"]
+
+[tasks.remote-examples-clean]
+description = "Clean remote examples build artifacts"
+cwd = "examples/remote"
+command = "cargo"
+args = ["clean"]
+
+[tasks.examples-clean]
+description = "Clean all examples build artifacts"
+dependencies = ["local-examples-clean", "remote-examples-clean"]
 
 # ============================================================================
 # Combined CI Tasks (including examples)
