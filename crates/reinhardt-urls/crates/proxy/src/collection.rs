@@ -1105,20 +1105,21 @@ impl CollectionProxy {
 		for item in collection.iter_mut() {
 			// Check if item has version field
 			if let Some(current_version) = item.get_attribute("version")
-				&& let ScalarValue::Integer(ver) = current_version {
-					// Check version match
-					if ver == expected_version {
-						// Update the value using set_attribute
-						item.set_attribute(&self.attribute, value.clone())?;
-						// Increment version
-						item.set_attribute("version", ScalarValue::Integer(ver + 1))?;
-					} else {
-						return Err(ProxyError::VersionMismatch {
-							expected: expected_version,
-							actual: ver,
-						});
-					}
+				&& let ScalarValue::Integer(ver) = current_version
+			{
+				// Check version match
+				if ver == expected_version {
+					// Update the value using set_attribute
+					item.set_attribute(&self.attribute, value.clone())?;
+					// Increment version
+					item.set_attribute("version", ScalarValue::Integer(ver + 1))?;
+				} else {
+					return Err(ProxyError::VersionMismatch {
+						expected: expected_version,
+						actual: ver,
+					});
 				}
+			}
 		}
 
 		Ok(())
