@@ -9,11 +9,9 @@ name = "manage"
 path = "src/bin/manage.rs"
 
 [dependencies]
-# Caret requirement: 0.1.x
-reinhardt = "^0.1.0-alpha.1"
-reinhardt-commands = "^0.1.0-alpha.1"
-reinhardt-core = "^0.1.0-alpha.1"
-reinhardt-macros = "^0.1.0-alpha.1"
+# Use reinhardt facade crate (imports all sub-crates)
+# Note: Uses local reinhardt-web crate for development
+reinhardt = { path = "../..", package = "reinhardt-web", version = "0.1.0-alpha.1", features = ["core", "conf", "database"] }
 
 # Common utilities with manage CLI support
 example-common = { path = "../common", features = ["manage"] }
@@ -29,6 +27,16 @@ async-trait = "0.1"
 example-test-macros = { path = "../test-macros" }
 example-common = { path = "../common" }
 reqwest = { workspace = true }
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
 
 [build-dependencies]
 example-common = { path = "../common" }
+
+[features]
+default = []
+with-reinhardt = []
+
+[[test]]
+name = "api_tests"
+required-features = ["with-reinhardt"]
