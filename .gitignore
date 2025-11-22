@@ -96,3 +96,4 @@ docs/Gemfile.lock
 !.env.example
 !.env.sample
 .ignore/
+.claude/
