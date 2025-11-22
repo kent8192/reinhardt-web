@@ -16,6 +16,14 @@ members = [
 tokio = { version = "1", features = ["full", "rt-multi-thread", "macros"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12.24", features = ["json"] }
 semver = "1"
 once_cell = "1"
+
+# Patch for local development
+# When REINHARDT_LOCAL_DEV=1, use local workspace crates
+# This allows examples to test against unreleased versions
+[patch.crates-io]
+# Note: We patch 'reinhardt' with 'reinhardt-web' (root crate)
+# because 'reinhardt' is already taken on crates.io
+reinhardt = { path = "..", package = "reinhardt-web", version = "0.1.0-alpha.1" }

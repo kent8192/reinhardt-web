@@ -1,0 +1,11 @@
+# Cargo configuration for examples workspace
+#
+# This configuration enables local development mode when REINHARDT_LOCAL_DEV=1
+# is set in the environment.
+
+# When REINHARDT_LOCAL_DEV=1, use local workspace crates instead of crates.io
+# This is configured via patch section below
+
+# Note: To enable local development mode:
+# export REINHARDT_LOCAL_DEV=1
+# cargo build
