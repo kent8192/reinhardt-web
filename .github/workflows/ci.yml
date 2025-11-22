@@ -152,8 +152,8 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Setup examples environment
-        run: cargo make examples-setup
+      - name: Build examples
+        run: cargo make examples-build
 
       - name: Run all tests
         run: cargo make test

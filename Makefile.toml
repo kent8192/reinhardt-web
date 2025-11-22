@@ -21,7 +21,15 @@ TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = "/var/run/docker.sock"
 [tasks.check]
 description = "Run cargo check on workspace"
 command = "cargo"
-args = ["check", "--workspace", "--all", "--all-features", "--all-targets", "--profile", "test"]
+args = [
+  "check",
+  "--workspace",
+  "--all",
+  "--all-features",
+  "--all-targets",
+  "--profile",
+  "test",
+]
 
 [tasks.build]
 description = "Build workspace"
@@ -56,28 +64,28 @@ args = ["fmt", "--all"]
 description = "Run clippy linter"
 command = "cargo"
 args = [
-    "clippy",
-    "--workspace",
-    "--all",
-    "--all-features",
-    "--",
-    "-D",
-    "warnings",
+  "clippy",
+  "--workspace",
+  "--all",
+  "--all-features",
+  "--",
+  "-D",
+  "warnings",
 ]
 
 [tasks.clippy-fix]
 description = "Run clippy linter and automatically fix found errors."
 command = "cargo"
 args = [
-    "clippy",
-    "--fix",
-    "--workspace",
-    "--all",
-    "--all-features",
-    "--allow-dirty",
-    "--",
-    "-D",
-    "warnings",
+  "clippy",
+  "--fix",
+  "--workspace",
+  "--all",
+  "--all-features",
+  "--allow-dirty",
+  "--",
+  "-D",
+  "warnings",
 ]
 
 [tasks.auto-fix]
@@ -101,31 +109,63 @@ args = ["bench", "--manifest-path", "tests/bench/Cargo.toml"]
 [tasks.unit-test]
 description = "Run unit tests (src/)"
 command = "cargo"
-args = ["nextest", "run", "--workspace", "--lib", "--exclude", "reinhardt-integration-tests", "--all-features", "--no-fail-fast"]
+args = [
+  "nextest",
+  "run",
+  "--workspace",
+  "--lib",
+  "--exclude",
+  "reinhardt-integration-tests",
+  "--all-features",
+  "--no-fail-fast",
+]
 
 [tasks.intra-crate-integration-test]
 description = "Run intra-crate integration tests (tests/)"
 command = "cargo"
-args = ["nextest", "run", "--workspace", "--test", "*", "--exclude", "reinhardt-integration-tests", "--all-features", "--no-fail-fast"]
+args = [
+  "nextest",
+  "run",
+  "--workspace",
+  "--test",
+  "*",
+  "--exclude",
+  "reinhardt-integration-tests",
+  "--all-features",
+  "--no-fail-fast",
+]
 
 [tasks.cross-crate-integration-test]
 description = "Run cross-crate integration tests (reinhardt-integration-tests)"
 command = "cargo"
-args = ["nextest", "run", "--package", "reinhardt-integration-tests", "--all-features", "--no-fail-fast"]
+args = [
+  "nextest",
+  "run",
+  "--package",
+  "reinhardt-integration-tests",
+  "--all-features",
+  "--no-fail-fast",
+]
 
 [tasks.integration-test]
 description = "Run all integration tests"
 dependencies = ["intra-crate-integration-test", "cross-crate-integration-test"]
-
-[tasks.test]
-description = "Run all tests"
-dependencies = ["unit-test", "cross-crate-integration-test", "intra-crate-integration-test", "doc-test", "examples-test"]
 
 [tasks.examples-test]
 description = "Test all examples (uses local reinhardt workspace)"
 cwd = "examples"
 command = "cargo"
 args = ["nextest", "run", "--workspace", "--verbose"]
+
+[tasks.test]
+description = "Run all tests"
+dependencies = [
+  "unit-test",
+  "cross-crate-integration-test",
+  "intra-crate-integration-test",
+  "doc-test",
+  "examples-test",
+]
 
 # ============================================================================
 # CI Tasks
@@ -192,10 +232,19 @@ args = ["make", "--list-all-steps"]
 # ============================================================================
 
 [tasks.examples-build]
-description = "Build all examples"
+description = "Build all examples (packages starting with 'examples-')"
 cwd = "examples"
 command = "cargo"
-args = ["build", "--workspace", "--release"]
+args = [
+  "build",
+  "--release",
+  "-p",
+  "examples-hello-world",
+  "-p",
+  "examples-rest-api",
+  "-p",
+  "examples-database-integration",
+]
 
 [tasks.examples-clean]
 description = "Clean examples build artifacts"
