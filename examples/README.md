@@ -1,84 +1,67 @@
 # Reinhardt Examples Tests
 
-This directory contains practical application examples using **reinhardt published from crates.io**.
+This directory contains practical application examples using **reinhardt from crates.io or local workspace**.
 
 ## 🎯 Purpose
 
-- **Fetch from crates.io**: Uses published version, not local implementation
+- **Dual Mode Support**:
+  - **Production Mode**: Uses published version from crates.io
+  - **Local Development Mode**: Uses local workspace crates via `REINHARDT_LOCAL_DEV=1`
 - **Version validation**: Ensures each example works with specific versions
 - **End-to-end testing**: Validates functionality in actual user environments
-- **Infrastructure**: Reproducible environment with Docker + docker-compose
+- **Infrastructure**: TestContainers for automatic database setup (no docker-compose required)
 
 ## 📋 Prerequisites
 
 ### Required
 - **Rust**: 1.85+ (Rust 2024 Edition)
-- **Docker**: Container management
-- **Docker Compose**: Container orchestration tool
+- **Docker**: Container runtime for TestContainers
 
 ### Optional
-- **cargo-make**: For convenient commands (`cargo install cargo-make`)
+- **cargo-nextest**: For faster test execution (`cargo install cargo-nextest`)
 
 ### Installation Check
 
 ```bash
 # Check Docker installation
 docker --version
-docker compose version
-
-# Or use cargo-make
-cargo make check-docker
+docker ps  # Verify Docker daemon is running
 ```
 
 ## 🚀 Quick Start
 
-### 1. Initial Setup
+### Local Development Mode (Recommended for Development)
+
+Use local workspace crates instead of crates.io:
 
 ```bash
 cd examples
 
-# Create .env file
-cargo make setup
+# Set environment variable for local development mode
+export REINHARDT_LOCAL_DEV=1
 
-# Or manually
-cp .env.example .env
-```
-
-### 2. Start Infrastructure
-
-```bash
-# Start PostgreSQL only
-cargo make up
-
-# Start all services (including MySQL, Redis)
-cargo make up-all
-
-# Check status
-cargo make status
-```
-
-### 3. Run Tests
-
-```bash
-# Test all examples
-cargo make test
-
-# Keep infrastructure running after tests
-cargo make test-keep
-
-# Or run directly
+# Run tests (TestContainers will automatically start PostgreSQL)
 cargo test --workspace
+
+# Or with nextest
+cargo nextest run --workspace
 ```
 
-### 4. Stop Infrastructure
+### Production Mode (Testing Published Crates)
+
+Test against published crates.io versions:
 
 ```bash
-# Stop
-cargo make down
+cd examples
 
-# Stop and remove volumes
-cargo make down-volumes
+# Run tests without REINHARDT_LOCAL_DEV
+cargo test --workspace
+
+# Or with nextest
+cargo nextest run --workspace
 ```
+
+**Note**: Production mode requires reinhardt to be published on crates.io. If not published, tests will be skipped.
 
 ## 📝 Version Specification (Cargo Compatible)
 
@@ -210,49 +193,45 @@ cargo run --bin manage showurls [--names]
 
 See each example's README for details.
 
-## 🐳 Infrastructure
+## 🐳 Infrastructure with TestContainers
 
-### Available Services
+### Automatic Container Management
 
-```bash
-# PostgreSQL (starts by default)
-docker compose up -d postgres
+TestContainers automatically starts and stops containers for each test:
 
-# MySQL (optional)
-docker compose --profile mysql up -d mysql
+- **PostgreSQL**: Automatically started for database tests
+- **Isolated**: Each test gets its own container instance
+- **Cleanup**: Containers are automatically removed after tests
 
-# Redis (optional)
-docker compose --profile cache up -d redis
+### How It Works
+
+```rust
+use testcontainers::{clients::Cli, GenericImage, RunnableImage};
+
+#[test]
+async fn test_with_database() {
+    // Container automatically started
+    let docker = Cli::default();
+    let postgres = docker.run(
+        GenericImage::new("postgres", "16-alpine")
+            .with_env_var("POSTGRES_PASSWORD", "test")
+    );
+
+    let port = postgres.get_host_port_ipv4(5432);
+    let url = format!("postgres://postgres:test@localhost:{}/testdb", port);
+
+    // Test code here
+
+    // Container automatically stopped and removed when dropped
+}
 ```
 
-### Connection Information
+### Benefits
 
-**PostgreSQL:**
-```
-Host: localhost
-Port: 5432
-User: reinhardt
-Password: reinhardt_dev
-Database: reinhardt_examples
-URL: postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_examples
-```
-
-**MySQL:**
-```
-Host: localhost
-Port: 3306
-User: reinhardt
-Password: reinhardt_dev
-Database: reinhardt_examples
-URL: mysql://reinhardt:reinhardt_dev@localhost:3306/reinhardt_examples
-```
-
-**Redis:**
-```
-Host: localhost
-Port: 6379
-URL: redis://localhost:6379
-```
+- **No Manual Setup**: No need to start docker-compose before tests
+- **Isolated**: Tests don't interfere with each other
+- **Portable**: Works on any system with Docker installed
+- **Fast**: Containers start only when needed
 
 ### Database Migrations
 
@@ -357,7 +336,7 @@ MYSQL_PORT=3307
 REDIS_PORT=6380
 ```
 
-### Tests Are Skipped
+### Tests Are Skipped (Production Mode)
 
 ```
 ⏭️  Skipping test: reinhardt not available from crates.io
@@ -365,7 +344,11 @@ REDIS_PORT=6380
 
 **Cause**: reinhardt is not yet published to crates.io
 
-**Solution**: Wait until published, or use local integration tests (`tests/`)
+**Solution**: Use local development mode:
+```bash
+export REINHARDT_LOCAL_DEV=1
+cargo test --workspace
+```
 
 ## 📚 Related Documentation
 
@@ -378,13 +361,40 @@ REDIS_PORT=6380
 
 ## 💡 Implementation Notes
 
-### Why crates.io Only?
+### Dual Mode Architecture
 
-These examples test the **actual published version** that users will install. This ensures:
+This examples workspace supports two modes:
 
-1. **Real User Experience**: Tests reflect what users will encounter
-2. **Version Compatibility**: Verifies version claims are accurate
-3. **Publication Validation**: Confirms published packages work correctly
+**Production Mode** (Default):
+- Uses published crates from crates.io
+- Tests the actual user experience
+- Validates version compatibility
+- Skips tests if crates aren't published
+
+**Local Development Mode** (`REINHARDT_LOCAL_DEV=1`):
+- Uses local workspace crates via `[patch.crates-io]`
+- Enables testing unreleased features
+- Bypasses version checks
+- Allows development before publication
+
+### How It Works
+
+1. **Build Script Check**: Each example's `build.rs` checks:
+   - If `REINHARDT_LOCAL_DEV=1`: Use local workspace
+   - Otherwise: Check if reinhardt is available on crates.io
+
+2. **Cargo Patch**: `examples/Cargo.toml` includes:
+   ```toml
+   [patch.crates-io]
+   reinhardt = { path = "../crates/reinhardt" }
+   ```
+   This overrides crates.io versions with local workspace when building.
+
+3. **Conditional Compilation**: Tests are compiled only when reinhardt is available:
+   ```rust
+   #[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]
+   mod tests_with_reinhardt { }
+   ```
 
 ### Why Version-Specific Tests?
 
@@ -394,8 +404,9 @@ Different versions may have different APIs or behaviors. Version-specific tests:
 2. **Document Compatibility**: Show which features work with which versions
 3. **Aid Migration**: Help users understand version differences
 
-### Current Status
+### TestContainers Integration
 
-⚠️ **Note**: Since reinhardt is not yet published to crates.io, all tests will currently be skipped. This is **expected behavior**. Once published, tests will automatically begin running.
-
-To test reinhardt before publication, use the main integration tests in `tests/` directory instead.
+- **No docker-compose needed**: Containers are managed automatically
+- **Isolated testing**: Each test gets its own container
+- **Automatic cleanup**: Containers are removed after tests
+- **Cross-platform**: Works on any system with Docker
