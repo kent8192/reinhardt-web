@@ -1,29 +1,27 @@
 [config]
 default_to_workspace = false
 
-[env]
-# Docker Compose command
-COMPOSE = "docker compose"
-
 [tasks.help]
 description = "Show available commands"
 script = '''
 echo "Available commands:"
+echo ""
+echo "Setup:"
 echo "  cargo make setup           - Initial setup (.env file creation)"
-echo "  cargo make up              - Start infrastructure (PostgreSQL only)"
-echo "  cargo make up-all          - Start all services (MySQL, Redis included)"
-echo "  cargo make down            - Stop infrastructure"
-echo "  cargo make down-volumes    - Stop and remove all data"
-echo "  cargo make logs            - Show logs"
-echo "  cargo make logs-postgres   - Show PostgreSQL logs"
-echo "  cargo make test            - Test all examples (start → test → stop)"
-echo "  cargo make test-keep       - Test and keep infrastructure running"
-echo "  cargo make clean           - Clean build artifacts"
-echo "  cargo make status          - Check service status"
-echo "  cargo make check-docker    - Check Docker installation"
+echo ""
+echo "Running Examples:"
+echo "  cargo make run-rest        - Run rest-api example server"
+echo "  cargo make run-db          - Run database-integration example"
+echo ""
+echo "Testing:"
+echo "  cargo make test            - Test all examples"
+echo "  cargo make test-keep       - Test examples (alias for test)"
 echo "  cargo make test-hello      - Test hello-world example"
 echo "  cargo make test-rest       - Test rest-api example"
 echo "  cargo make test-db         - Test database-integration example"
+echo ""
+echo "Maintenance:"
+echo "  cargo make clean           - Clean build artifacts"
 '''
 
 [tasks.setup]
@@ -37,68 +35,14 @@ else
 fi
 '''
 
-[tasks.up]
-description = "Start infrastructure (PostgreSQL only)"
-script = '''
-${COMPOSE} up -d postgres
-echo "⏳ Waiting for PostgreSQL to start..."
-sleep 5
-echo "✅ PostgreSQL started"
-'''
-
-[tasks.up-all]
-description = "Start all services (MySQL, Redis included)"
-script = '''
-${COMPOSE} --profile mysql --profile cache up -d
-echo "⏳ Waiting for all services to start..."
-sleep 10
-echo "✅ All services started"
-'''
-
-[tasks.down]
-description = "Stop infrastructure"
-script = '''
-${COMPOSE} down
-'''
-
-[tasks.down-volumes]
-description = "Stop infrastructure and remove volumes"
-script = '''
-${COMPOSE} down -v
-echo "⚠️  All data has been removed"
-'''
-
-[tasks.logs]
-description = "Show logs"
-script = '''
-${COMPOSE} logs -f
-'''
-
-[tasks.logs-postgres]
-description = "Show PostgreSQL logs"
-script = '''
-${COMPOSE} logs -f postgres
-'''
-
 [tasks.test]
-description = "Test all examples (start → test → stop)"
-dependencies = ["up"]
-script = '''
-echo "🧪 Running tests..."
-cargo test --workspace || (cargo make down && exit 1)
-echo "🛑 Stopping infrastructure..."
-cargo make down
-echo "✅ All tests completed"
-'''
+description = "Test all examples"
+command = "cargo"
+args = ["test", "--workspace"]
 
 [tasks.test-keep]
-description = "Test and keep infrastructure running"
-dependencies = ["up"]
-script = '''
-echo "🧪 Running tests..."
-cargo test --workspace
-echo "✅ Tests completed (infrastructure is still running)"
-'''
+description = "Test examples (alias for test)"
+dependencies = ["test"]
 
 [tasks.clean]
 description = "Clean build artifacts"
@@ -107,27 +51,21 @@ cargo clean
 echo "✅ Build artifacts removed"
 '''
 
-[tasks.status]
-description = "Check service status"
-script = '''
-${COMPOSE} ps
-'''
+# Example-specific tasks - Running
 
-[tasks.check-docker]
-description = "Check Docker installation"
-script = '''
-if ! command -v docker >/dev/null 2>&1; then
-  echo "❌ Docker is not installed"
-  exit 1
-fi
-if ! docker compose version >/dev/null 2>&1; then
-  echo "❌ Docker Compose is not installed or not available"
-  exit 1
-fi
-echo "✅ Docker and Docker Compose are installed"
-'''
+[tasks.run-rest]
+description = "Run rest-api example server"
+cwd = "rest-api"
+command = "cargo"
+args = ["run", "--bin", "manage", "runserver"]
 
-# Example-specific tasks
+[tasks.run-db]
+description = "Run database-integration example"
+cwd = "database-integration"
+command = "cargo"
+args = ["run", "--bin", "manage", "runserver"]
+
+# Example-specific tasks - Testing
 
 [tasks.test-hello]
 description = "Test hello-world example"
@@ -142,8 +80,7 @@ command = "cargo"
 args = ["test"]
 
 [tasks.test-db]
-description = "Test database-integration example (requires DB)"
-dependencies = ["up"]
+description = "Test database-integration example"
 cwd = "database-integration"
 command = "cargo"
 args = ["test"]
