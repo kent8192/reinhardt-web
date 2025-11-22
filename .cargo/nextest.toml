@@ -1,0 +1,29 @@
+# Nextest Configuration for Reinhardt
+#
+# This configuration addresses flaky test issues during parallel execution,
+# particularly for TestContainers-based database integration tests.
+
+[profile.default]
+# Limit concurrent tests to prevent Docker resource exhaustion
+# (file descriptors, memory, Docker daemon connection pool)
+max-tests-per-run = 8
+
+# Increase timeout for database operations
+# Database container initialization can be slow under high load
+slow-timeout = "60s"
+timeout = "120s"
+
+# Enable retries for flaky infrastructure tests
+# Uses exponential backoff to handle transient failures
+retries = { backoff = "exponential", max-retries = 2, seed = 12345 }
+
+# Separate integration tests into dedicated worker threads
+# Reduces resource contention for database-dependent tests
+[profile.default.overrides]
+filter = 'test(integration)'
+threads-required = 1
+max-threads = 4
+
+# JUnit output for CI/CD integration
+[profile.default.junit]
+path = "target/nextest/junit.xml"
