@@ -1,18 +1,13 @@
-//! Reinhardt Project Management CLI for example-rest-api
+//! Reinhardt Project Management CLI for database-integration example
 //!
 //! This is the project-specific management command interface (equivalent to Django's manage.py).
+//! Uses local reinhardt-web crate for development.
 
-// This example only compiles when reinhardt is available from crates.io with version ^0.1.
-#[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]
-pub use available::*;
-
-#[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]
-mod available {
-	use clap::{Parser, Subcommand};
-	use console::style;
-	use example_common::manage_cli;
-	use std::path::PathBuf;
-	use std::process;
+use clap::{Parser, Subcommand};
+use console::style;
+use example_common::manage_cli;
+use std::path::PathBuf;
+use std::process;
 
 	#[derive(Parser)]
 	#[command(name = "manage")]
@@ -224,30 +219,6 @@ mod available {
 
 		Ok(())
 	}
-}
-
-#[cfg(any(reinhardt_unavailable, reinhardt_version_mismatch))]
-pub use unavailable::*;
-
-#[cfg(any(reinhardt_unavailable, reinhardt_version_mismatch))]
-mod unavailable {
-	pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-		eprintln!("⚠️  REST API Example - manage");
-		eprintln!();
-		eprintln!("This example requires reinhardt from crates.io (version ^0.1).");
-		eprintln!();
-		eprintln!("Current status:");
-		#[cfg(reinhardt_unavailable)]
-		eprintln!("  ❌ reinhardt is not available from crates.io");
-		#[cfg(reinhardt_version_mismatch)]
-		eprintln!("  ❌ reinhardt version does not match requirement ^0.1");
-		eprintln!();
-		eprintln!("This binary will be available once reinhardt 0.1.x is published.");
-		eprintln!();
-		eprintln!("For development, use the integration tests in tests/ directory instead.");
-		Ok(())
-	}
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
