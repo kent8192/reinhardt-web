@@ -166,6 +166,8 @@ middleware-rate-limit = ["reinhardt-middleware", "reinhardt-middleware/rate-limi
 reinhardt-urls = { workspace = true }
 reinhardt-utils = { workspace = true }
 reinhardt-views = { workspace = true }
+reinhardt-http = { workspace = true }
+reinhardt-macros = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }
 
@@ -183,6 +185,7 @@ reinhardt-auth = { workspace = true, optional = true }
 # Additional optional dependencies
 reinhardt-admin = { workspace = true, optional = true }
 reinhardt-browsable-api = { workspace = true, optional = true }
+reinhardt-commands = { workspace = true }
 reinhardt-forms = { workspace = true, optional = true }
 reinhardt-middleware = { workspace = true, optional = true }
 reinhardt-shortcuts = { workspace = true, optional = true }
