@@ -111,6 +111,15 @@ See @docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 - Use `git apply <patchfile name>.patch` for partial file commits
 - **NEVER** execute batch commits without user confirmation
 
+**GitHub Integration:**
+- **MUST** use GitHub CLI (`gh`) for all GitHub operations
+- Use `gh pr create` for creating pull requests
+- Use `gh pr view` for viewing PR details
+- Use `gh issue create` for creating issues
+- Use `gh issue view` for viewing issue details
+- Use `gh api` for accessing GitHub API
+- **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
+
 See @CLAUDE.commit.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
 - Commit message format (CM-1 ~ CM-3)
@@ -208,6 +217,29 @@ docker ps
 # Docker daemon should be running automatically on most systems
 ```
 
+**GitHub Operations (using GitHub CLI):**
+```bash
+# Pull Requests
+gh pr create --title "feat: Add feature" --body "Description" --label enhancement
+gh pr view [number]
+gh pr list --state open
+gh pr checks
+
+# Issues
+gh issue create --title "Bug report" --body "Description"
+gh issue view [number]
+gh issue list
+
+# Releases
+gh release list
+gh release view [tag]
+gh release create [tag] --title "Release v1.0.0" --notes "Release notes"
+
+# Repository
+gh repo view
+gh api repos/{owner}/{repo}/pulls
+```
+
 **CRITICAL: This project uses Docker for TestContainers integration, NOT Podman.**
 
 - **MUST** ensure Docker Desktop is installed and running
@@ -291,6 +323,7 @@ Before submitting code:
 - Verify with `--dry-run` before publishing to crates.io
 - Commit version bump before creating tags
 - Update crate's CHANGELOG.md with version changes
+- Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
