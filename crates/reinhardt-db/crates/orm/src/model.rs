@@ -100,6 +100,25 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync {
 	fn constraint_metadata() -> Vec<crate::inspection::ConstraintInfo> {
 		Vec::new()
 	}
+
+	/// Django-style objects manager accessor
+	///
+	/// Returns a new Manager instance for this model type.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_orm::Model;
+	///
+	/// let manager = MyModel::objects();
+	/// let all_records = manager.all().all().await?;
+	/// ```
+	fn objects() -> crate::Manager<Self>
+	where
+		Self: Sized,
+	{
+		crate::Manager::new()
+	}
 }
 
 /// Trait for models with timestamps - compose this with Model
