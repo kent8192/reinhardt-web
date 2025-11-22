@@ -32,12 +32,12 @@ fn validate_permission(permission: &str, span: Span) -> Result<()> {
 ///
 /// ```ignore
 /// use reinhardt_macros::permission_required;
-/// use reinhardt_http::{Request, Response};
+/// use reinhardt_http::{Request, Response, ViewResult};
 /// use std::sync::Arc;
 /// use reinhardt_auth::PermissionsMixin;
 ///
 /// #[permission_required("auth.view_user")]
-/// async fn view_user(request: Request) -> Result<Response, Box<dyn std::error::Error>> {
+/// async fn view_user(request: Request) -> ViewResult<Response> {
 ///     // Runtime permission check is automatically injected here
 ///     // User is extracted from request.extensions as Arc<dyn PermissionsMixin>
 ///     // The authentication middleware must store the user in this format:
