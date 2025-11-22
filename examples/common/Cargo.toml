@@ -12,12 +12,13 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 
 # Dependencies for manage_cli (only when reinhardt is available)
-reinhardt-commands = { version = "^0.1.0-alpha.1", optional = true }
+# Note: Uses local reinhardt-web crate when REINHARDT_LOCAL_DEV=1
+reinhardt = { path = "../..", package = "reinhardt-web", version = "0.1.0-alpha.1", optional = true }
 console = { version = "0.16.1", optional = true }
 
 [features]
 # Enable manage_cli feature
-manage = ["reinhardt-commands", "console"]
+manage = ["reinhardt", "console"]
 
 # Note: example-common is also used as build-dependency by example build.rs scripts
 # These dependencies are available at both build-time and run-time

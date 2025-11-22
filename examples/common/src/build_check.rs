@@ -3,7 +3,9 @@
 //! This module provides compile-time checks for reinhardt availability
 //! from crates.io and version requirement validation.
 //!
-//! Used by `build.rs` scripts to determine whether to compile example code.
+//! Each example's `build.rs` controls whether to use local workspace crates
+//! or crates.io via the `USE_LOCAL_DEV` constant. Set `USE_LOCAL_DEV = true`
+//! to use local workspace crates during development.
 
 use semver::{Version, VersionReq};
 use std::process::Command;

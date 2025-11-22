@@ -2,14 +2,14 @@
 //!
 //! Provides the logic in manage.rs shared among examples.
 
-#[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]
+#[cfg(feature = "manage")]
 pub use available::*;
 
-#[cfg(not(any(reinhardt_unavailable, reinhardt_version_mismatch)))]
+#[cfg(feature = "manage")]
 mod available {
-	use reinhardt_commands::{
-		CheckCommand, CollectStaticCommand, CommandContext, MakeMigrationsCommand, MigrateCommand,
-		RunServerCommand, ShellCommand,
+	use reinhardt::commands::{
+		BaseCommand, CheckCommand, CollectStaticCommand, CommandContext, MakeMigrationsCommand,
+		MigrateCommand, RunServerCommand, ShellCommand,
 	};
 	use std::path::PathBuf;
 
@@ -142,78 +142,32 @@ mod available {
 	}
 
 	pub async fn run_collectstatic(
-		clear: bool,
-		no_input: bool,
-		dry_run: bool,
-		link: bool,
-		ignore: Vec<String>,
-		verbosity: u8,
+		_clear: bool,
+		_no_input: bool,
+		_dry_run: bool,
+		_link: bool,
+		_ignore: Vec<String>,
+		_verbosity: u8,
 	) -> Result<(), Box<dyn std::error::Error>> {
-		let mut ctx = CommandContext::default();
-		ctx.set_verbosity(verbosity);
-
-		if clear {
-			ctx.set_option("clear".to_string(), "true".to_string());
-		}
-		if no_input {
-			ctx.set_option("no-input".to_string(), "true".to_string());
-		}
-		if dry_run {
-			ctx.set_option("dry-run".to_string(), "true".to_string());
-		}
-		if link {
-			ctx.set_option("link".to_string(), "true".to_string());
-		}
-		if !ignore.is_empty() {
-			ctx.set_option_multi("ignore".to_string(), ignore);
-		}
-
-		let cmd = CollectStaticCommand;
-		cmd.execute(&ctx).await.map_err(|e| e.into())
+		// TODO: Implement collectstatic command integration
+		// CollectStaticCommand requires StaticFilesConfig which is not available in examples
+		Err("collectstatic command is not yet implemented for examples".into())
 	}
 
 	pub async fn run_showurls(
-		names: bool,
-		verbosity: u8,
+		_names: bool,
+		_verbosity: u8,
 	) -> Result<(), Box<dyn std::error::Error>> {
-		#[cfg(feature = "routers")]
-		{
-			use console::style;
-			use reinhardt_commands::builtin::ShowUrlsCommand;
-
-			let mut ctx = CommandContext::default();
-			ctx.set_verbosity(verbosity);
-
-			if names {
-				ctx.set_option("names".to_string(), "true".to_string());
-			}
-
-			let cmd = ShowUrlsCommand;
-			cmd.execute(&ctx).await.map_err(|e| e.into())
-		}
-
-		#[cfg(not(feature = "routers"))]
-		{
-			use console::style;
-
-			eprintln!(
-				"{}",
-				style("showurls command requires 'routers' feature")
-					.red()
-					.bold()
-			);
-			eprintln!("Enable it in your Cargo.toml:");
-			eprintln!("  [dependencies]");
-			eprintln!("  reinhardt-commands = {{ version = \"0.1.0\", features = [\"routers\"] }}");
-			std::process::exit(1);
-		}
+		// TODO: Implement showurls command
+		// This requires routers feature which is not enabled in example-common
+		Err("showurls command is not yet implemented for examples".into())
 	}
 }
 
-#[cfg(any(reinhardt_unavailable, reinhardt_version_mismatch))]
+#[cfg(not(feature = "manage"))]
 pub use unavailable::*;
 
-#[cfg(any(reinhardt_unavailable, reinhardt_version_mismatch))]
+#[cfg(not(feature = "manage"))]
 mod unavailable {
 	use std::path::PathBuf;
 
