@@ -93,6 +93,12 @@
 //!     .with_middleware(Arc::new(CorsMiddleware::permissive()));
 //! ```
 
+// Re-export external crates for macro support
+#[cfg(feature = "core")]
+pub extern crate reinhardt_apps;
+#[cfg(feature = "di")]
+pub extern crate reinhardt_di;
+
 // Module re-exports following Django's structure
 #[cfg(feature = "core")]
 pub mod apps;
@@ -141,7 +147,10 @@ pub use reinhardt_apps::{
 
 // Re-export macros
 #[cfg(feature = "core")]
-pub use reinhardt_macros::installed_apps;
+pub use reinhardt_macros::{AppConfig, installed_apps};
+
+// Re-export endpoint macro
+pub use reinhardt_macros::endpoint;
 
 // Re-export settings from dedicated crate
 #[cfg(feature = "conf")]

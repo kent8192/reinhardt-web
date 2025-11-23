@@ -12,3 +12,7 @@
 
 #[cfg(feature = "di")]
 pub use reinhardt_core::di::*;
+
+// Re-export reinhardt-di types for macro compatibility
+#[cfg(feature = "di")]
+pub use reinhardt_di::{Depends, DiError, DiResult, Injectable, InjectionContext};
