@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use crate::base_user::BaseUser;
+use crate::core::base_user::BaseUser;
 
 /// FullUser trait - Django's AbstractUser equivalent
 ///

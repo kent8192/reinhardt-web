@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::user::User;
+use crate::core::user::User;
 
 /// Authentication backend trait
 ///

@@ -13,18 +13,21 @@
 //! - **DRF-Compatible Permissions**: Permission classes for common authorization scenarios
 //! - **createsuperuser Command**: CLI tool for creating admin users
 
-// Re-export core authentication types from reinhardt-core
-pub use reinhardt_core::auth::{
+// Core authentication types and traits (migrated from reinhardt-core-auth)
+pub mod core;
+
+// Re-export core authentication types
+pub use core::{
 	AllowAny, AnonymousUser, AuthBackend, BaseUser, CompositeAuthBackend, FullUser, IsActiveUser,
 	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher, Permission,
 	PermissionContext, PermissionsMixin, SimpleUser, User,
 };
 
 #[cfg(feature = "argon2-hasher")]
-pub use reinhardt_core::auth::Argon2Hasher;
+pub use core::Argon2Hasher;
 
 // Re-export permission operators from core
-pub use reinhardt_core::auth::permission_operators;
+pub use core::permission_operators;
 
 // Re-export sessions subcrate
 pub use reinhardt_sessions as sessions;
@@ -162,7 +165,7 @@ pub trait AuthenticationBackend: Send + Sync {
 	/// - `Err(error)` if a fatal error occurred
 	async fn authenticate(
 		&self,
-		request: &reinhardt_core::http::Request,
+		request: &reinhardt_http::Request,
 	) -> Result<Option<Box<dyn User>>, AuthenticationError>;
 
 	/// Get a user by their ID
@@ -200,7 +203,7 @@ mod tests {
 	async fn test_permission_allow_any() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_core::types::Request;
+		use reinhardt_types::Request;
 
 		let permission = AllowAny;
 		let request = Request::builder()
@@ -225,7 +228,7 @@ mod tests {
 	async fn test_permission_is_authenticated_with_auth() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_core::types::Request;
+		use reinhardt_types::Request;
 
 		let permission = IsAuthenticated;
 		let request = Request::builder()
@@ -250,7 +253,7 @@ mod tests {
 	async fn test_permission_is_authenticated_without_auth() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_core::types::Request;
+		use reinhardt_types::Request;
 
 		let permission = IsAuthenticated;
 		let request = Request::builder()
@@ -275,7 +278,7 @@ mod tests {
 	async fn test_permission_is_admin_user() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_core::types::Request;
+		use reinhardt_types::Request;
 
 		let permission = IsAdminUser;
 		let request = Request::builder()
@@ -310,7 +313,7 @@ mod tests {
 	async fn test_permission_is_active_user() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_core::types::Request;
+		use reinhardt_types::Request;
 
 		let permission = IsActiveUser;
 		let request = Request::builder()
@@ -345,7 +348,7 @@ mod tests {
 	async fn test_permission_is_authenticated_or_read_only_get() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_core::types::Request;
+		use reinhardt_types::Request;
 
 		let permission = IsAuthenticatedOrReadOnly;
 		let request = Request::builder()
@@ -370,7 +373,7 @@ mod tests {
 	async fn test_permission_is_authenticated_or_read_only_post() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_core::types::Request;
+		use reinhardt_types::Request;
 
 		let permission = IsAuthenticatedOrReadOnly;
 		let request = Request::builder()

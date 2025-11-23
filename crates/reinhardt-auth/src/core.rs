@@ -19,7 +19,7 @@
 //! ### Basic User Implementation
 //!
 //! ```
-//! use reinhardt_core_auth::{User, SimpleUser};
+//! use reinhardt_auth::core::{User, SimpleUser};
 //! use uuid::Uuid;
 //!
 //! let user = SimpleUser {
@@ -39,9 +39,9 @@
 //! ### Custom User with Password Hashing
 //!
 //! ```
-//! use reinhardt_core_auth::{BaseUser, PasswordHasher};
+//! use reinhardt_auth::core::{BaseUser, PasswordHasher};
 //! #[cfg(feature = "argon2-hasher")]
-//! use reinhardt_core_auth::Argon2Hasher;
+//! use reinhardt_auth::core::Argon2Hasher;
 //! use uuid::Uuid;
 //! use chrono::{DateTime, Utc};
 //! use serde::{Serialize, Deserialize};
@@ -87,7 +87,7 @@
 //! ### Permission Checking
 //!
 //! ```
-//! use reinhardt_core_auth::{Permission, IsAuthenticated, PermissionContext};
+//! use reinhardt_auth::core::{Permission, IsAuthenticated, PermissionContext};
 //! use reinhardt_types::Request;
 //! use hyper::{Method, Uri, Version, header::HeaderMap};
 //! use bytes::Bytes;
@@ -115,13 +115,22 @@
 //! # });
 //! ```
 
+// Rust 2024 module system: use module.rs + module/ pattern
+#[path = "core/backend.rs"]
 pub mod backend;
+#[path = "core/base_user.rs"]
 pub mod base_user;
+#[path = "core/full_user.rs"]
 pub mod full_user;
+#[path = "core/hasher.rs"]
 pub mod hasher;
+#[path = "core/permission.rs"]
 pub mod permission;
+#[path = "core/permission_operators.rs"]
 pub mod permission_operators;
+#[path = "core/permissions_mixin.rs"]
 pub mod permissions_mixin;
+#[path = "core/user.rs"]
 pub mod user;
 
 // Re-export main types

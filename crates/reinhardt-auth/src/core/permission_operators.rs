@@ -4,7 +4,7 @@
 //! Supports both builder-style composition (`AndPermission::new()`) and
 //! operator-based composition (`&`, `|`, `!`).
 
-use crate::{Permission, PermissionContext};
+use crate::core::{Permission, PermissionContext};
 use async_trait::async_trait;
 use std::ops::{BitAnd, BitOr, Not};
 
@@ -396,7 +396,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{AllowAny, IsAdminUser, IsAuthenticated};
+	use crate::core::{AllowAny, IsAdminUser, IsAuthenticated};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_types::Request;

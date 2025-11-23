@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use unicode_normalization::UnicodeNormalization;
 
-use crate::hasher::PasswordHasher;
+use crate::core::hasher::PasswordHasher;
 
 /// BaseUser trait - Django-style authentication
 ///
