@@ -264,10 +264,11 @@ done
 description = "Build remote examples individually (auto-detect examples-* directories)"
 script = '''
 #!/bin/bash
-set -e
 
 # Change to examples/remote directory
 cd examples/remote
+
+EXIT_CODE=0
 
 # Find all directories starting with "examples-"
 for example_dir in examples-*; do
@@ -277,12 +278,37 @@ for example_dir in examples-*; do
     echo "========================================"
     echo "Building $example_name..."
     echo "========================================"
-    # Build each example from its own directory to avoid workspace conflicts
-    (cd "$example_dir" && cargo build --release) || {
-      echo "⚠️  Build failed for $example_name (expected if reinhardt not on crates.io)"
-    }
+
+    # Build and capture output to temporary file
+    BUILD_LOG=$(mktemp)
+
+    # Run build and capture both output and exit status
+    # Use PIPESTATUS to get cargo's exit code (not tee's)
+    (cd "$example_dir" && cargo build --release 2>&1 | tee "$BUILD_LOG"; exit ${PIPESTATUS[0]})
+    BUILD_STATUS=$?
+
+    if [ $BUILD_STATUS -eq 0 ]; then
+      # Build succeeded
+      echo "✅ $example_name built successfully"
+      rm -f "$BUILD_LOG"
+    else
+      # Build failed - check if it's a version/dependency issue
+      if grep -qE "failed to select a version|does not have that feature|no matching version|could not be found" "$BUILD_LOG"; then
+        # Version/dependency issue - skip
+        echo "⏭️  Skipping $example_name (dependency version mismatch)"
+      else
+        # Other error - treat as actual build failure
+        echo "❌ Build failed: $example_name"
+        echo "Last 30 lines of error:"
+        tail -n 30 "$BUILD_LOG"
+        EXIT_CODE=1
+      fi
+      rm -f "$BUILD_LOG"
+    fi
   fi
 done
+
+exit $EXIT_CODE
 '''
 
 [tasks.examples-build]
