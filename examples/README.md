@@ -245,12 +245,95 @@ async fn test_with_database() {
 - **Portable**: Works on any system with Docker installed
 - **Fast**: Containers start only when needed
 
+## 🧪 Testing Infrastructure
+
+### Standard Fixtures from reinhardt-test
+
+All examples now use **standard fixtures** from the `reinhardt-test` crate for consistent, maintainable testing. These fixtures provide automatic resource management and cleanup.
+
+#### Available Fixtures
+
+**`test_server_guard`** - Automatic test server lifecycle management
+- Starts test server on random available port
+- Provides `base_url()` for HTTP requests
+- Automatically cleans up resources after test
+- Usage with rstest:
+  ```rust
+  use reinhardt_test::fixtures::test_server_guard;
+  use rstest::*;
+
+  #[rstest]
+  #[tokio::test]
+  async fn test_endpoint(
+      #[future] test_server_guard: reinhardt_test::resource::TeardownGuard<
+          reinhardt_test::fixtures::TestServerGuard
+      >,
+  ) {
+      let server = test_server_guard.await;
+      let base_url = server.base_url();
+
+      let client = reqwest::Client::new();
+      let response = client.get(&format!("{}/", base_url)).send().await?;
+      assert_eq!(response.status(), reqwest::StatusCode::OK);
+  }
+  ```
+
+**`postgres_container`** - PostgreSQL TestContainer fixture
+- Automatically starts PostgreSQL container
+- Provides connection URL
+- Cleanup handled via RAII (container dropped automatically)
+
+**`test_user` / `admin_user`** - Authentication test users
+- Pre-configured test users with different permission levels
+- Used for testing authentication and authorization
+
+**`fixture_loader`** - Test data loading
+- Loads test data from files
+- Manages test data lifecycle
+
+**`mock_database_backend`** - Mockall-based database mocking
+- For unit tests without real database
+- Controllable mock behavior
+
+### Testing Best Practices
+
+**Use Standard Fixtures for E2E Tests:**
+```rust
+// ✅ GOOD: Using standard fixture
+#[rstest]
+#[tokio::test]
+async fn test_with_standard_fixture(
+    #[future] test_server_guard: TeardownGuard<TestServerGuard>,
+) {
+    let server = test_server_guard.await;
+    // Test code with automatic cleanup
+}
+
+// ❌ BAD: Manual server setup
+#[tokio::test]
+async fn test_with_manual_setup() {
+    let server = start_server().await;
+    // Test code
+    server.stop().await; // Manual cleanup required
+}
+```
+
+**Test Coverage Requirements:**
+- ✅ **Normal cases**: Test expected behavior
+- ✅ **Error cases**: Test 4xx/5xx responses
+- ✅ **Edge cases**: Test boundary conditions
+- ✅ **Cleanup**: All fixtures handle cleanup automatically
+
+See [Testing Standards](../docs/TESTING_STANDARDS.md) for comprehensive guidelines.
+
 ## 📚 Example Features
 
 ### examples-hello-world
 - Minimal configuration
 - Simple entry point
 - Basic Reinhardt usage
+- **E2E tests with standard fixtures**
+- **Test coverage**: Normal cases (GET /, GET /health) and error cases (404, 405)
 
 ### examples-rest-api
 - **Django-style project structure**: config/, settings/, apps.rs
