@@ -10,7 +10,7 @@ use crate::core::user::User;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{PermissionContext, AnonymousUser, User};
+/// use reinhardt_auth::{PermissionContext, AnonymousUser, User};
 /// use reinhardt_types::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -55,7 +55,7 @@ pub struct PermissionContext<'a> {
 /// Custom permission class:
 ///
 /// ```
-/// use reinhardt_core_auth::{Permission, PermissionContext};
+/// use reinhardt_auth::{Permission, PermissionContext};
 /// use async_trait::async_trait;
 ///
 /// struct IsOwner;
@@ -89,7 +89,7 @@ pub trait Permission: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{Permission, AllowAny, PermissionContext};
+/// use reinhardt_auth::{Permission, AllowAny, PermissionContext};
 /// use reinhardt_types::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -130,7 +130,7 @@ impl Permission for AllowAny {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{Permission, IsAuthenticated, PermissionContext, SimpleUser, User};
+/// use reinhardt_auth::{Permission, IsAuthenticated, PermissionContext, SimpleUser, User};
 /// use reinhardt_types::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -192,7 +192,7 @@ impl Permission for IsAuthenticated {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{Permission, IsAdminUser, PermissionContext, SimpleUser, User};
+/// use reinhardt_auth::{Permission, IsAdminUser, PermissionContext, SimpleUser, User};
 /// use reinhardt_types::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -262,7 +262,7 @@ impl Permission for IsAdminUser {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{Permission, IsActiveUser, PermissionContext};
+/// use reinhardt_auth::{Permission, IsActiveUser, PermissionContext};
 /// use reinhardt_types::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -316,7 +316,7 @@ impl Permission for IsActiveUser {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{Permission, IsAuthenticatedOrReadOnly, PermissionContext};
+/// use reinhardt_auth::{Permission, IsAuthenticatedOrReadOnly, PermissionContext};
 /// use reinhardt_types::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;

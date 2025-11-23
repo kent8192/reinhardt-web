@@ -10,7 +10,7 @@ use uuid::Uuid;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{User, SimpleUser};
+/// use reinhardt_auth::{User, SimpleUser};
 /// use uuid::Uuid;
 ///
 /// let user = SimpleUser {
@@ -75,7 +75,7 @@ pub trait User: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{User, SimpleUser};
+/// use reinhardt_auth::{User, SimpleUser};
 /// use uuid::Uuid;
 ///
 /// let user = SimpleUser {
@@ -141,7 +141,7 @@ impl User for SimpleUser {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{User, AnonymousUser};
+/// use reinhardt_auth::{User, AnonymousUser};
 ///
 /// let anon = AnonymousUser;
 ///

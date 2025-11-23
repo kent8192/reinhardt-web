@@ -5,9 +5,9 @@
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::PasswordHasher;
+/// use reinhardt_auth::PasswordHasher;
 /// #[cfg(feature = "argon2-hasher")]
-/// use reinhardt_core_auth::Argon2Hasher;
+/// use reinhardt_auth::Argon2Hasher;
 ///
 /// # #[cfg(feature = "argon2-hasher")]
 /// # {
@@ -57,7 +57,7 @@ pub trait PasswordHasher: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{PasswordHasher, Argon2Hasher};
+/// use reinhardt_auth::{PasswordHasher, Argon2Hasher};
 ///
 /// # #[cfg(feature = "argon2-hasher")]
 /// # {

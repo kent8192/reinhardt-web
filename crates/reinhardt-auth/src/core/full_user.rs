@@ -10,9 +10,9 @@ use crate::core::base_user::BaseUser;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{BaseUser, FullUser, PasswordHasher};
+/// use reinhardt_auth::{BaseUser, FullUser, PasswordHasher};
 /// #[cfg(feature = "argon2-hasher")]
-/// use reinhardt_core_auth::Argon2Hasher;
+/// use reinhardt_auth::Argon2Hasher;
 /// use uuid::Uuid;
 /// use chrono::{DateTime, Utc};
 /// use serde::{Serialize, Deserialize};
@@ -108,9 +108,9 @@ pub trait FullUser: BaseUser {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_core_auth::{BaseUser, FullUser, PasswordHasher};
+	/// # use reinhardt_auth::{BaseUser, FullUser, PasswordHasher};
 	/// # #[cfg(feature = "argon2-hasher")]
-	/// # use reinhardt_core_auth::Argon2Hasher;
+	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
 	/// # use serde::{Serialize, Deserialize};
@@ -171,9 +171,9 @@ pub trait FullUser: BaseUser {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_core_auth::{BaseUser, FullUser, PasswordHasher};
+	/// # use reinhardt_auth::{BaseUser, FullUser, PasswordHasher};
 	/// # #[cfg(feature = "argon2-hasher")]
-	/// # use reinhardt_core_auth::Argon2Hasher;
+	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
 	/// # use serde::{Serialize, Deserialize};

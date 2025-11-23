@@ -17,9 +17,9 @@ use std::collections::HashSet;
 /// Implementing PermissionsMixin for a custom user:
 ///
 /// ```
-/// use reinhardt_core_auth::{BaseUser, PermissionsMixin, PasswordHasher};
+/// use reinhardt_auth::{BaseUser, PermissionsMixin, PasswordHasher};
 /// #[cfg(feature = "argon2-hasher")]
-/// use reinhardt_core_auth::Argon2Hasher;
+/// use reinhardt_auth::Argon2Hasher;
 /// use uuid::Uuid;
 /// use chrono::{DateTime, Utc};
 /// use serde::{Serialize, Deserialize};

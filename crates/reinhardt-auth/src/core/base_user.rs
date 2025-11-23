@@ -18,9 +18,9 @@ use crate::core::hasher::PasswordHasher;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{BaseUser, PasswordHasher};
+/// use reinhardt_auth::{BaseUser, PasswordHasher};
 /// #[cfg(feature = "argon2-hasher")]
-/// use reinhardt_core_auth::Argon2Hasher;
+/// use reinhardt_auth::Argon2Hasher;
 /// use uuid::Uuid;
 /// use chrono::{DateTime, Utc};
 /// use serde::{Serialize, Deserialize};
@@ -105,10 +105,10 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_core_auth::BaseUser;
-	/// # use reinhardt_core_auth::PasswordHasher;
+	/// use reinhardt_auth::BaseUser;
+	/// # use reinhardt_auth::PasswordHasher;
 	/// # #[cfg(feature = "argon2-hasher")]
-	/// # use reinhardt_core_auth::Argon2Hasher;
+	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
 	/// # use serde::{Serialize, Deserialize};
@@ -143,10 +143,10 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_core_auth::BaseUser;
-	/// # use reinhardt_core_auth::PasswordHasher;
+	/// # use reinhardt_auth::BaseUser;
+	/// # use reinhardt_auth::PasswordHasher;
 	/// # #[cfg(feature = "argon2-hasher")]
-	/// # use reinhardt_core_auth::Argon2Hasher;
+	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
 	/// # use serde::{Serialize, Deserialize};
@@ -192,10 +192,10 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_core_auth::BaseUser;
-	/// # use reinhardt_core_auth::PasswordHasher;
+	/// # use reinhardt_auth::BaseUser;
+	/// # use reinhardt_auth::PasswordHasher;
 	/// # #[cfg(feature = "argon2-hasher")]
-	/// # use reinhardt_core_auth::Argon2Hasher;
+	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
 	/// # use serde::{Serialize, Deserialize};
@@ -251,10 +251,10 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_core_auth::BaseUser;
-	/// # use reinhardt_core_auth::PasswordHasher;
+	/// # use reinhardt_auth::BaseUser;
+	/// # use reinhardt_auth::PasswordHasher;
 	/// # #[cfg(feature = "argon2-hasher")]
-	/// # use reinhardt_core_auth::Argon2Hasher;
+	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
 	/// # use serde::{Serialize, Deserialize};
@@ -294,10 +294,10 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_core_auth::BaseUser;
-	/// # use reinhardt_core_auth::PasswordHasher;
+	/// # use reinhardt_auth::BaseUser;
+	/// # use reinhardt_auth::PasswordHasher;
 	/// # #[cfg(feature = "argon2-hasher")]
-	/// # use reinhardt_core_auth::Argon2Hasher;
+	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
 	/// # use serde::{Serialize, Deserialize};
@@ -350,10 +350,10 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_core_auth::BaseUser;
-	/// # use reinhardt_core_auth::PasswordHasher;
+	/// # use reinhardt_auth::BaseUser;
+	/// # use reinhardt_auth::PasswordHasher;
 	/// # #[cfg(feature = "argon2-hasher")]
-	/// # use reinhardt_core_auth::Argon2Hasher;
+	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
 	/// # use serde::{Serialize, Deserialize};

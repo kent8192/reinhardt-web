@@ -10,9 +10,9 @@ use crate::core::user::User;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{AuthBackend, User, SimpleUser, PasswordHasher};
+/// use reinhardt_auth::{AuthBackend, User, SimpleUser, PasswordHasher};
 /// #[cfg(feature = "argon2-hasher")]
-/// use reinhardt_core_auth::Argon2Hasher;
+/// use reinhardt_auth::Argon2Hasher;
 /// use async_trait::async_trait;
 /// use std::collections::HashMap;
 /// use uuid::Uuid;
@@ -111,7 +111,7 @@ pub trait AuthBackend: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::{CompositeAuthBackend, SimpleUser};
+/// use reinhardt_auth::{CompositeAuthBackend, SimpleUser};
 ///
 /// let backend: CompositeAuthBackend<SimpleUser> = CompositeAuthBackend::new();
 /// // Add custom backends with backend.add_backend(Box::new(my_backend))

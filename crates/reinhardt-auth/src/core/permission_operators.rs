@@ -15,8 +15,8 @@ use std::ops::{BitAnd, BitOr, Not};
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::permission_operators::AndPermission;
-/// use reinhardt_core_auth::permission::{IsAuthenticated, IsAdminUser, Permission, PermissionContext};
+/// use reinhardt_auth::permission_operators::AndPermission;
+/// use reinhardt_auth::{IsAuthenticated, IsAdminUser, Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Version};
 /// use reinhardt_types::Request;
@@ -65,8 +65,8 @@ impl<A, B> AndPermission<A, B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_core_auth::permission_operators::AndPermission;
-	/// use reinhardt_core_auth::permission::{IsAuthenticated, IsActiveUser};
+	/// use reinhardt_auth::permission_operators::AndPermission;
+	/// use reinhardt_auth::{IsAuthenticated, IsActiveUser};
 	///
 	/// let permission = AndPermission::new(IsAuthenticated, IsActiveUser);
 	/// ```
@@ -93,8 +93,8 @@ where
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::permission_operators::OrPermission;
-/// use reinhardt_core_auth::permission::{IsAuthenticated, AllowAny, Permission, PermissionContext};
+/// use reinhardt_auth::permission_operators::OrPermission;
+/// use reinhardt_auth::{IsAuthenticated, AllowAny, Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Version};
 /// use reinhardt_types::Request;
@@ -133,8 +133,8 @@ impl<A, B> OrPermission<A, B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_core_auth::permission_operators::OrPermission;
-	/// use reinhardt_core_auth::permission::{IsAdminUser, IsActiveUser};
+	/// use reinhardt_auth::permission_operators::OrPermission;
+	/// use reinhardt_auth::{IsAdminUser, IsActiveUser};
 	///
 	/// let permission = OrPermission::new(IsAdminUser, IsActiveUser);
 	/// ```
@@ -161,8 +161,8 @@ where
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core_auth::permission_operators::NotPermission;
-/// use reinhardt_core_auth::permission::{IsAuthenticated, Permission, PermissionContext};
+/// use reinhardt_auth::permission_operators::NotPermission;
+/// use reinhardt_auth::{IsAuthenticated, Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Version};
 /// use reinhardt_types::Request;
@@ -210,8 +210,8 @@ impl<P> NotPermission<P> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_core_auth::permission_operators::NotPermission;
-	/// use reinhardt_core_auth::permission::IsAdminUser;
+	/// use reinhardt_auth::permission_operators::NotPermission;
+	/// use reinhardt_auth::IsAdminUser;
 	///
 	/// let permission = NotPermission::new(IsAdminUser);
 	/// ```
