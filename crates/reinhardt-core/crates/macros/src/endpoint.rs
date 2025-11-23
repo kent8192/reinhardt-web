@@ -105,7 +105,7 @@ pub fn endpoint_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	}
 
 	// Add InjectionContext parameter
-	new_params.push(syn::parse_quote! { __di_ctx: &::reinhardt::reinhardt_di::InjectionContext });
+	new_params.push(syn::parse_quote! { __di_ctx: &::reinhardt_di::InjectionContext });
 
 	// Generate injection code
 	let mut injection_stmts = Vec::new();
@@ -115,7 +115,7 @@ pub fn endpoint_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 
 		let injection_code = if arg.use_cache {
 			quote! {
-				let #pat = ::reinhardt::reinhardt_di::Depends::<#ty>::builder()
+				let #pat = ::reinhardt_di::Depends::<#ty>::builder()
 					.resolve(__di_ctx)
 					.await
 					.map_err(|e| {
@@ -125,7 +125,7 @@ pub fn endpoint_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 			}
 		} else {
 			quote! {
-				let #pat = ::reinhardt::reinhardt_di::Depends::<#ty>::builder_no_cache()
+				let #pat = ::reinhardt_di::Depends::<#ty>::builder_no_cache()
 					.resolve(__di_ctx)
 					.await
 					.map_err(|e| {

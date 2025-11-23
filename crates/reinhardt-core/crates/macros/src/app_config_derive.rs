@@ -82,19 +82,19 @@ fn derive_impl(input: DeriveInput) -> Result<TokenStream> {
 
 	let config_builder = if let Some(verbose_name) = &config.verbose_name {
 		quote! {
-			::reinhardt::reinhardt_apps::AppConfig::new(#name, #label)
+			::reinhardt_apps::AppConfig::new(#name, #label)
 				.with_verbose_name(#verbose_name)
 		}
 	} else {
 		quote! {
-			::reinhardt::reinhardt_apps::AppConfig::new(#name, #label)
+			::reinhardt_apps::AppConfig::new(#name, #label)
 		}
 	};
 
 	let expanded = quote! {
 		impl #struct_name {
 			/// Create AppConfig instance
-			pub fn config() -> ::reinhardt::reinhardt_apps::AppConfig {
+			pub fn config() -> ::reinhardt_apps::AppConfig {
 				#config_builder
 			}
 		}
