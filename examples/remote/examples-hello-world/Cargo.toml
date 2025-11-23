@@ -4,19 +4,24 @@ version = "0.1.0-alpha.1"
 edition = "2024"
 publish = false
 
+# This package is NOT a workspace member to avoid dependency conflicts
+[workspace]
+
 [dependencies]
 # Uses crates.io by default
+# NOTE: This example requires reinhardt with features that are not yet published to crates.io.
+#       The build will fail until a new version is published.
 # For local development, use .cargo/config.toml to patch with local workspace
 # See ../.cargo/config.toml.example for instructions
-reinhardt = { version = "0.1.0-alpha.1" }
+reinhardt = { version = "^0.1.0", features = ["minimal", "core", "conf", "commands", "di"] }
 
 [dev-dependencies]
 example-test-macros = { path = "../test-macros" }
 example-common = { path = "../common" }
-tokio = { workspace = true }
+tokio = { version = "1", features = ["full", "rt-multi-thread", "macros"] }
 
 [build-dependencies]
-example-common = { path = "../common" }
+example-common = { path = "../common", features = ["build-check"] }
 
 [features]
 default = []
