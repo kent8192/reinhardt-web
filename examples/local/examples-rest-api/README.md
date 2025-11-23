@@ -123,6 +123,131 @@ export ALLOWED_HOSTS=example.com,www.example.com
 cargo run --bin manage runserver
 ```
 
+## Running Tests
+
+This example uses **standard fixtures** from `reinhardt-test` for E2E API testing with automatic test server management.
+
+### Integration Tests
+
+```bash
+# Run all API tests
+cargo nextest run --features with-reinhardt --test api_tests
+
+# Run specific test category
+cargo nextest run --features with-reinhardt --test api_tests test_create_article
+cargo nextest run --features with-reinhardt --test api_tests test_article_crud_workflow
+```
+
+### Test Coverage
+
+**Basic Endpoints:**
+- ✅ Root endpoint (GET /)
+- ✅ Health check endpoint (GET /health)
+
+**Article API - List:**
+- ✅ List articles (returns empty array initially)
+
+**Article API - Create:**
+- ✅ Create new article with valid data
+- ✅ Validation error handling (missing required fields)
+
+**Article API - Read:**
+- ✅ Get specific article by ID
+- ✅ Get non-existent article returns 404
+
+**Article API - Update:**
+- ✅ Update article with partial data
+- ✅ Update non-existent article returns 404
+
+**Article API - Delete:**
+- ✅ Delete article successfully
+- ✅ Delete non-existent article returns 404
+
+**Comprehensive Workflows:**
+- ✅ Full CRUD workflow (Create → Read → Update → Delete)
+
+**Error Handling:**
+- ✅ Invalid path parameter handling
+- ✅ Unsupported HTTP method returns 405
+- ✅ Non-existent route returns 404
+
+### Standard Fixtures Used
+
+**`test_server_guard`** - Automatic test server lifecycle management from `reinhardt-test`
+- Starts test server on random available port
+- Provides `base_url()` for HTTP requests to API endpoints
+- Automatically cleans up resources after test completion
+- Ensures isolated test environment for each test
+
+**Usage Example:**
+```rust
+use reinhardt_test::fixtures::test_server_guard;
+use reinhardt_test::resource::TeardownGuard;
+use rstest::*;
+
+#[rstest]
+#[example_test("*")]
+async fn test_api_endpoint(
+    #[future] test_server_guard: TeardownGuard<reinhardt_test::fixtures::TestServerGuard>,
+) {
+    let server = test_server_guard.await;
+    let base_url = server.base_url();
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&format!("{}/api/articles", base_url))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    // Server is automatically cleaned up when test completes
+}
+```
+
+### Testing Best Practices
+
+**✅ GOOD - Using Standard Fixture for E2E Tests:**
+```rust
+#[rstest]
+#[example_test("*")]
+async fn test_with_standard_fixture(
+    #[future] test_server_guard: TeardownGuard<TestServerGuard>,
+) {
+    let server = test_server_guard.await;
+    let base_url = server.base_url();
+
+    // Test HTTP endpoints with automatic cleanup
+    let client = reqwest::Client::new();
+    let response = client.get(&format!("{}/api/articles", base_url)).send().await?;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+```
+
+**❌ BAD - Manual Server Management:**
+```rust
+#[example_test("*")]
+async fn test_with_manual_setup() {
+    let server = start_test_server().await;
+    let port = server.port();
+
+    // Test code
+    let client = reqwest::Client::new();
+    let response = client.get(&format!("http://localhost:{}/api/articles", port)).send().await?;
+
+    server.stop().await; // Manual cleanup required
+}
+```
+
+**Test Organization:**
+- Basic endpoint tests verify server availability and health
+- CRUD tests cover all HTTP methods (GET, POST, PUT, DELETE)
+- Error handling tests ensure proper status codes (400, 404, 405)
+- Comprehensive workflow tests verify end-to-end functionality
+
+See [Testing Standards](../../../docs/TESTING_STANDARDS.md) for comprehensive guidelines.
+
 ## Customization
 
 ### Adding New Endpoints

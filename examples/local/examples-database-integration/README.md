@@ -207,6 +207,97 @@ pub fn all_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 ```
 
+## Running Tests
+
+This example uses **standard fixtures** from `reinhardt-test` for database testing with automatic TestContainers management.
+
+### Integration Tests
+
+```bash
+# Run all integration tests
+cargo nextest run --features with-reinhardt --test database_tests
+
+# Run specific test
+cargo nextest run --features with-reinhardt --test database_tests test_database_connection
+```
+
+### Test Coverage
+
+**Database Connection Tests:**
+- ✅ Basic database connection verification
+- ✅ Database readiness check
+- ✅ Connection pool functionality
+
+**Schema Tests:**
+- ✅ Table creation and schema verification
+- ✅ Column structure validation
+
+**CRUD Operations:**
+- ✅ CREATE: User insertion with RETURNING clause
+- ✅ READ: User querying and filtering
+- ✅ UPDATE: User data modification
+- ✅ DELETE: User removal with verification
+
+**Transaction Tests:**
+- ✅ Transaction commit verification
+- ✅ Transaction rollback verification
+- ✅ Data consistency after transactions
+
+### Standard Fixtures Used
+
+**`postgres_container`** - PostgreSQL TestContainer fixture from `reinhardt-test`
+- Automatically starts PostgreSQL 17 Alpine container
+- Provides connection pool (`Arc<sqlx::PgPool>`)
+- Provides connection URL and port
+- Automatic cleanup via RAII (container dropped after test)
+
+**Usage Example:**
+```rust
+use reinhardt_test::fixtures::postgres_container;
+use rstest::*;
+
+#[rstest]
+#[tokio::test]
+async fn test_with_database(
+    #[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+) {
+    let (_container, pool, port, database_url) = postgres_container.await;
+
+    // Use pool for database operations
+    let result = sqlx::query("SELECT 1").fetch_one(pool.as_ref()).await;
+    assert!(result.is_ok());
+
+    // Container is automatically cleaned up when dropped
+}
+```
+
+### Testing Best Practices
+
+**✅ GOOD - Using Standard Fixture:**
+```rust
+#[rstest]
+#[tokio::test]
+async fn test_with_standard_fixture(
+    #[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+) {
+    let (_container, pool, _port, _url) = postgres_container.await;
+    // Test code with automatic cleanup
+}
+```
+
+**❌ BAD - Manual Container Management:**
+```rust
+#[tokio::test]
+async fn test_with_manual_setup() {
+    let docker = Cli::default();
+    let container = docker.run(postgres_image);
+    // Test code
+    drop(container); // Manual cleanup required
+}
+```
+
+See [Testing Standards](../../../docs/TESTING_STANDARDS.md) for comprehensive guidelines.
+
 ## Troubleshooting
 
 ### Connection Errors
