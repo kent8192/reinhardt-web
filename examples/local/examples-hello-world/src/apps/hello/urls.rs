@@ -1,12 +1,12 @@
-//! URL configuration for hello app
+//! URL routing for hello app
 
-use reinhardt::UnifiedRouter;
+use hyper::Method;
+use reinhardt_routers::UnifiedRouter;
+
+use crate::apps::hello::views;
 
 pub fn url_patterns() -> UnifiedRouter {
-	let router = UnifiedRouter::new();
-
-	// Add hello world endpoint
-	// router.function("/", Method::GET, super::views::hello_world);
-
-	router
+	UnifiedRouter::new()
+		.function("/", Method::GET, views::hello_world)
+		.function("/health", Method::GET, views::health_check)
 }

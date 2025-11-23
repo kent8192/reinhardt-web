@@ -9,7 +9,7 @@ pub fn url_patterns() -> Arc<UnifiedRouter> {
 	let router = UnifiedRouter::new();
 
 	// Include hello app routes
-	// router.include("/", crate::apps::hello::urls::url_patterns());
+	let router = router.include("/", crate::apps::hello::urls::url_patterns());
 
 	Arc::new(router)
 }

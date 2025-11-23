@@ -64,7 +64,38 @@ pub fn get_settings() -> Settings {
 		// Lowest priority: Default values
 		.add_source(
 			DefaultSource::new()
+				.with_value(
+					"base_dir",
+					serde_json::Value::String(
+						base_dir
+							.to_str()
+							.expect("base_dir contains invalid UTF-8")
+							.to_string(),
+					),
+				)
 				.with_value("debug", serde_json::Value::Bool(true))
+				.with_value(
+					"secret_key",
+					serde_json::Value::String("insecure-dev-key-change-in-production".to_string()),
+				)
+				.with_value("allowed_hosts", serde_json::Value::Array(vec![]))
+				.with_value("installed_apps", serde_json::Value::Array(vec![]))
+				.with_value("middleware", serde_json::Value::Array(vec![]))
+				.with_value(
+					"root_urlconf",
+					serde_json::Value::String("config.urls".to_string()),
+				)
+				.with_value("databases", serde_json::json!({}))
+				.with_value("templates", serde_json::Value::Array(vec![]))
+				.with_value(
+					"static_url",
+					serde_json::Value::String("/static/".to_string()),
+				)
+				.with_value("staticfiles_dirs", serde_json::Value::Array(vec![]))
+				.with_value(
+					"media_url",
+					serde_json::Value::String("/media/".to_string()),
+				)
 				.with_value(
 					"language_code",
 					serde_json::Value::String("en-us".to_string()),
@@ -72,11 +103,21 @@ pub fn get_settings() -> Settings {
 				.with_value("time_zone", serde_json::Value::String("UTC".to_string()))
 				.with_value("use_i18n", serde_json::Value::Bool(false))
 				.with_value("use_tz", serde_json::Value::Bool(false))
-				.with_value("append_slash", serde_json::Value::Bool(false))
 				.with_value(
 					"default_auto_field",
 					serde_json::Value::String("reinhardt.db.models.BigAutoField".to_string()),
-				),
+				)
+				.with_value("secure_ssl_redirect", serde_json::Value::Bool(false))
+				.with_value(
+					"secure_hsts_include_subdomains",
+					serde_json::Value::Bool(false),
+				)
+				.with_value("secure_hsts_preload", serde_json::Value::Bool(false))
+				.with_value("session_cookie_secure", serde_json::Value::Bool(false))
+				.with_value("csrf_cookie_secure", serde_json::Value::Bool(false))
+				.with_value("append_slash", serde_json::Value::Bool(false))
+				.with_value("admins", serde_json::Value::Array(vec![]))
+				.with_value("managers", serde_json::Value::Array(vec![])),
 		)
 		// Low priority: Environment variables (for container overrides)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))

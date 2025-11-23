@@ -8,12 +8,24 @@ publish = false
 # Use local workspace version directly via path
 # package="reinhardt-web" maps the crate name to the actual package name
 reinhardt = { path = "../../..", package = "reinhardt-web", features = ["minimal", "core", "conf", "commands", "di"] }
+reinhardt-di = { path = "../../../crates/reinhardt-di" }
+reinhardt-apps = { path = "../../../crates/reinhardt-apps" }
+reinhardt-http = { path = "../../../crates/reinhardt-http" }
+reinhardt-routers = { path = "../../../crates/reinhardt-urls/crates/routers" }
+hyper = "1.8"
+serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
 example-test-macros = { path = "../../remote/test-macros" }
 example-common = { path = "../../remote/common" }
+reinhardt-test = { path = "../../../crates/reinhardt-test" }
+reinhardt-http = { path = "../../../crates/reinhardt-http" }
+rstest = "0.23"
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 tokio = { workspace = true }
 
 [build-dependencies]

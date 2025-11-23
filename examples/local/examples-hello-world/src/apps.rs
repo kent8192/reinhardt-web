@@ -2,5 +2,5 @@
 //!
 //! This module exports all applications in this project.
 
-#[path = "apps/hello/lib.rs"]
+#[path = "apps/hello.rs"]
 pub mod hello;

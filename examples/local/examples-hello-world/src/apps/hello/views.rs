@@ -1,17 +1,18 @@
-//! Views for hello app
-//!
-//! Simple hello world view
+//! View handlers for hello app
 
-use reinhardt::{Request, Response, StatusCode};
-use reinhardt::core::macros::endpoint;
+use reinhardt_http::{Request, Response};
+use serde_json::json;
 
-pub type ViewResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+/// Root endpoint - returns "Hello, World!"
+pub async fn hello_world(_req: Request) -> reinhardt::Result<Response> {
+	Ok(Response::ok().with_body("Hello, World!"))
+}
 
-/// Hello World view
-///
-/// Returns a simple "Hello, World!" response
-#[endpoint]
-pub async fn hello_world(_req: Request) -> ViewResult<Response> {
-	Ok(Response::new(StatusCode::OK)
-		.with_body("Hello, World!"))
+/// Health check endpoint - returns JSON status
+pub async fn health_check(_req: Request) -> reinhardt::Result<Response> {
+	let body = json!({
+		"status": "ok"
+	});
+
+	Response::ok().with_json(&body).map_err(Into::into)
 }
