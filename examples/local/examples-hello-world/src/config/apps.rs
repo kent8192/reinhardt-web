@@ -2,12 +2,12 @@
 //!
 //! This module defines the installed applications using compile-time validation.
 
-use reinhardt_macros::installed_apps;
+use reinhardt::installed_apps;
 
 // Define installed applications with compile-time validation
 // The macro will fail to compile if any referenced reinhardt.contrib.* app doesn't exist
 installed_apps! {
-	// hello: "hello", // User-defined app
+	hello: "hello", // User-defined app
 }
 
 /// Get the list of installed applications

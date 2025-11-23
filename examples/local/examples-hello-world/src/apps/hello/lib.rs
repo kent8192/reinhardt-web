@@ -2,7 +2,7 @@
 //!
 //! A simple hello world application
 
-use reinhardt_macros::AppConfig;
+use reinhardt::AppConfig;
 
 pub mod urls;
 pub mod views;

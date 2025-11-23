@@ -9,8 +9,9 @@ name = "manage"
 path = "src/bin/manage.rs"
 
 [dependencies]
-# Local development mode: patched with local workspace via Cargo.toml [patch.crates-io]
-reinhardt = { version = "0.1.0-alpha.1", features = ["core", "conf", "database", "commands"] }
+# Use local workspace version directly via path
+# package="reinhardt-web" maps the crate name to the actual package name
+reinhardt = { path = "../../..", package = "reinhardt-web", features = ["core", "conf", "database", "commands"] }
 
 # Common utilities for availability checking
 example-common = { path = "../../remote/common" }

@@ -5,10 +5,11 @@ edition = "2024"
 publish = false
 
 [dependencies]
-# Uses crates.io by default
-# For local development, use .cargo/config.toml to patch with local workspace
-# See ../.cargo/config.toml.example for instructions
-reinhardt = { version = "0.1.0-alpha.1" }
+# Use local workspace version directly via path
+# package="reinhardt-web" maps the crate name to the actual package name
+reinhardt = { path = "../../..", package = "reinhardt-web", features = ["minimal", "core", "conf", "commands", "di"] }
+serde_json = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 example-test-macros = { path = "../../remote/test-macros" }

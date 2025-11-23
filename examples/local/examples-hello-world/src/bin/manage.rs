@@ -2,7 +2,7 @@
 //!
 //! This is the project-specific management command interface (equivalent to Django's manage.py).
 
-use reinhardt_commands::execute_from_command_line;
+use reinhardt::commands::execute_from_command_line;
 use std::process;
 
 #[tokio::main]

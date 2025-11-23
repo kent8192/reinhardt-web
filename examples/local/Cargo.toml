@@ -6,6 +6,17 @@ members = [
 	"examples-database-integration",
 ]
 
+# Note: Each example has a binary named "manage"
+# This is intentional - examples are meant to be run individually:
+#   cd examples-hello-world && cargo run
+#   cd examples-rest-api && cargo run
+#   cd examples-database-integration && cargo run
+#
+# To avoid output filename collisions, default-members is set to build
+# only examples-hello-world by default. Use --workspace to build all.
+
+default-members = ["examples-hello-world"]
+
 # Local development mode: Uses local reinhardt workspace
 # Patches reinhardt with local workspace version
 
@@ -21,8 +32,3 @@ once_cell = "1"
 # Common utilities from remote (shared across local/remote)
 example-common = { path = "../remote/common" }
 example-test-macros = { path = "../remote/test-macros" }
-
-# Patch for local development
-# Use local workspace crates instead of crates.io
-[patch.crates-io]
-reinhardt = { path = "../..", package = "reinhardt-web", version = "0.1.0-alpha.1" }

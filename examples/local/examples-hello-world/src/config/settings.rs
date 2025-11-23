@@ -27,12 +27,8 @@
 //!
 //! If `REINHARDT_ENV` is not set, it defaults to `local`.
 
-use reinhardt_conf::settings::builder::SettingsBuilder;
-use reinhardt_conf::settings::profile::Profile;
-use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
-use reinhardt_core::Settings;
+use reinhardt::{SettingsBuilder, Profile, DefaultSource, LowPriorityEnvSource, TomlFileSource, Settings};
 use std::env;
-use std::str::FromStr;
 
 /// Get settings based on environment variable
 ///
@@ -56,7 +52,7 @@ use std::str::FromStr;
 /// - Required settings are missing
 pub fn get_settings() -> Settings {
 	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
-	let profile = Profile::from_str(&profile_str).unwrap_or(Profile::Development);
+	let profile = Profile::parse(&profile_str);
 
 	// Get the project root directory (parent of src/)
 	let base_dir = env::current_dir().expect("Failed to get current directory");
