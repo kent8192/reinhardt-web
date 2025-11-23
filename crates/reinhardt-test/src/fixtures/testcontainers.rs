@@ -238,10 +238,23 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 		.await
 		.expect("Failed to start PostgreSQL container");
 
-	let port = postgres
-		.get_host_port_ipv4(ContainerPort::Tcp(5432))
-		.await
-		.expect("Failed to get PostgreSQL port");
+	// Retry getting port with exponential backoff
+	let mut port_retry = 0;
+	let max_port_retries = 5;
+	let port = loop {
+		match postgres.get_host_port_ipv4(ContainerPort::Tcp(5432)).await {
+			Ok(p) => break p,
+			Err(_) if port_retry < max_port_retries => {
+				port_retry += 1;
+				let delay = tokio::time::Duration::from_millis(100 * 2_u64.pow(port_retry));
+				tokio::time::sleep(delay).await;
+			}
+			Err(e) => panic!(
+				"Failed to get PostgreSQL port after {} retries: {}",
+				max_port_retries, e
+			),
+		}
+	};
 
 	let database_url = format!("postgres://postgres@localhost:{}/postgres", port);
 

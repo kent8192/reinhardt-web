@@ -4,7 +4,7 @@
 //! with authentication, cookies, and headers support.
 
 use bytes::Bytes;
-use http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode};
+use http::{HeaderMap, HeaderValue, Method, Request, Response};
 use http_body_util::{BodyExt, Full};
 use serde::Serialize;
 use serde_json::Value;
@@ -28,6 +28,9 @@ pub enum ClientError {
 
 	#[error("Invalid header value: {0}")]
 	InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+
+	#[error("Reqwest error: {0}")]
+	Reqwest(#[from] reqwest::Error),
 
 	#[error("Request failed: {0}")]
 	RequestFailed(String),
@@ -423,12 +426,60 @@ impl APIClient {
 
 		// Execute request
 		let response = if let Some(handler) = &self.handler {
+			// Use custom handler if set
 			handler(request)
 		} else {
-			// Default mock response for testing without a handler
-			Response::builder()
-				.status(StatusCode::NOT_IMPLEMENTED)
-				.body(Full::new(Bytes::from("No handler set")))?
+			// Use reqwest for real HTTP requests when no handler is set
+			let (parts, body) = request.into_parts();
+
+			// Build reqwest request
+			let url = if parts.uri.scheme_str().is_some() {
+				// Absolute URL
+				parts.uri.to_string()
+			} else {
+				// Relative path - use base_url
+				format!(
+					"{}{}",
+					self.base_url.trim_end_matches('/'),
+					parts.uri.path()
+				)
+			};
+
+			let client = reqwest::Client::new();
+			let mut reqwest_request = client.request(
+				reqwest::Method::from_bytes(parts.method.as_str().as_bytes()).unwrap(),
+				&url,
+			);
+
+			// Copy headers
+			for (name, value) in parts.headers.iter() {
+				reqwest_request = reqwest_request.header(name.as_str(), value.as_bytes());
+			}
+
+			// Copy body
+			let body_bytes = body
+				.collect()
+				.await
+				.map(|c| c.to_bytes())
+				.unwrap_or_else(|_| Bytes::new());
+			if !body_bytes.is_empty() {
+				reqwest_request = reqwest_request.body(body_bytes.to_vec());
+			}
+
+			// Execute reqwest request
+			let reqwest_response = reqwest_request.send().await?;
+
+			// Convert reqwest response to http::Response
+			let status = reqwest_response.status();
+			let headers = reqwest_response.headers().clone();
+			let body_bytes = reqwest_response.bytes().await?;
+
+			let mut response_builder = Response::builder().status(status);
+			for (name, value) in headers.iter() {
+				response_builder = response_builder.header(name, value);
+			}
+
+			response_builder.body(Full::new(body_bytes))?
 		};
 
 		// Extract body from response using async collection
