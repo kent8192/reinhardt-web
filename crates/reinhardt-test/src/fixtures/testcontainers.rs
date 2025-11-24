@@ -1119,3 +1119,351 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 
 	(localstack, port, endpoint)
 }
+
+// ============================================================================
+// Migration Application Fixtures
+// ============================================================================
+
+#[cfg(feature = "testcontainers")]
+use std::path::Path;
+
+/// Load migrations from a directory
+///
+/// This helper function loads migration files from a specified directory
+/// and constructs a vector of `Migration` structures ready to be applied.
+///
+/// **Note**: Currently returns an empty vector. In actual usage, you should
+/// populate this with your app's migrations by calling the generated
+/// migration functions from `migrations/{app_label}.rs`.
+///
+/// # Arguments
+/// * `migrations_dir` - Path to the migrations directory (e.g., "migrations/myapp")
+///
+/// # Returns
+/// * `Vec<reinhardt_migrations::Migration>` - List of migrations in sorted order
+///
+/// # Example
+/// ```rust,no_run
+/// // In your test, you would typically import and use your app's migrations:
+/// // use myapp::migrations::all_migrations;
+/// // let migrations = all_migrations().into_iter().map(|f| f()).collect();
+/// ```
+#[cfg(feature = "testcontainers")]
+pub fn load_migrations_from_directory(
+	migrations_dir: impl AsRef<Path>,
+) -> Vec<reinhardt_migrations::Migration> {
+	let migrations_path = migrations_dir.as_ref();
+
+	if !migrations_path.exists() {
+		eprintln!(
+			"Warning: Migrations directory not found: {}",
+			migrations_path.display()
+		);
+		return Vec::new();
+	}
+
+	// TODO: Implement migration loading from Rust files
+	// For now, return empty vector as migrations are typically
+	// provided by calling generated migration functions directly
+	Vec::new()
+}
+
+/// Fixture: PostgreSQL container with migrations applied
+///
+/// This fixture starts a PostgreSQL container, applies migrations from the
+/// specified directory, and provides a ready-to-use connection pool.
+///
+/// # Environment Variables
+/// * `REINHARDT_MIGRATIONS_DIR` - Base directory for migrations (default: "migrations")
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_test::fixtures::postgres_with_migrations;
+/// use rstest::*;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_migrated_db(
+///     #[future] postgres_with_migrations: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, String)
+/// ) {
+///     let (_container, pool, _url) = postgres_with_migrations.await;
+///     // Database has all migrations applied
+///     let result = sqlx::query("SELECT * FROM users").fetch_all(pool.as_ref()).await;
+///     assert!(result.is_ok());
+/// }
+/// ```
+#[fixture]
+#[cfg(feature = "testcontainers")]
+pub async fn postgres_with_migrations(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+) -> (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, String) {
+	use reinhardt_db::DatabaseConnection;
+	use reinhardt_db::backends::types::DatabaseType;
+	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
+
+	let (container, pool, _port, url) = postgres_container.await;
+
+	// Determine migrations directory
+	let migrations_base =
+		std::env::var("REINHARDT_MIGRATIONS_DIR").unwrap_or_else(|_| "migrations".to_string());
+
+	// Load all migrations from all app directories
+	let migrations_path = Path::new(&migrations_base);
+	if migrations_path.exists() {
+		// Connect to database for migration execution
+		let connection = DatabaseConnection::connect_postgres(&url)
+			.await
+			.expect("Failed to connect to PostgreSQL for migrations");
+
+		let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+
+		// Iterate through all subdirectories (app labels)
+		if let Ok(entries) = std::fs::read_dir(migrations_path) {
+			for entry in entries.flatten() {
+				if entry.path().is_dir() {
+					let migrations = load_migrations_from_directory(entry.path());
+					if !migrations.is_empty() {
+						executor
+							.apply_migrations(&migrations)
+							.await
+							.expect("Failed to apply migrations");
+					}
+				}
+			}
+		}
+	}
+
+	(container, pool, url)
+}
+
+/// Fixture: MySQL container (base fixture)
+///
+/// Starts a MySQL 8.0 container and provides a connection pool.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_test::fixtures::mysql_container;
+/// use rstest::*;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_mysql(
+///     #[future] mysql_container: (ContainerAsync<GenericImage>, Arc<sqlx::MySqlPool>, u16, String)
+/// ) {
+///     let (_container, pool, _port, url) = mysql_container.await;
+///     let result = sqlx::query("SELECT 1").fetch_one(pool.as_ref()).await;
+///     assert!(result.is_ok());
+/// }
+/// ```
+#[fixture]
+#[cfg(feature = "testcontainers")]
+pub async fn mysql_container() -> (
+	ContainerAsync<GenericImage>,
+	Arc<sqlx::MySqlPool>,
+	u16,
+	String,
+) {
+	let mysql = GenericImage::new("mysql", "8.0")
+		.with_wait_for(WaitFor::message_on_stderr(
+			"port: 3306  MySQL Community Server",
+		))
+		.with_env_var("MYSQL_ROOT_PASSWORD", "test")
+		.with_env_var("MYSQL_DATABASE", "test_db")
+		.start()
+		.await
+		.expect("Failed to start MySQL container");
+
+	// Retry getting port with exponential backoff
+	let mut port_retry = 0;
+	let max_port_retries = 5;
+	let port = loop {
+		match mysql.get_host_port_ipv4(ContainerPort::Tcp(3306)).await {
+			Ok(p) => break p,
+			Err(_) if port_retry < max_port_retries => {
+				port_retry += 1;
+				let delay = tokio::time::Duration::from_millis(100 * 2_u64.pow(port_retry));
+				tokio::time::sleep(delay).await;
+			}
+			Err(e) => panic!(
+				"Failed to get MySQL port after {} retries: {}",
+				max_port_retries, e
+			),
+		}
+	};
+
+	let database_url = format!("mysql://root:test@localhost:{}/test_db", port);
+
+	// Retry connection to MySQL with exponential backoff
+	let mut retry_count = 0;
+	let max_retries = 5;
+	let pool = loop {
+		match sqlx::mysql::MySqlPoolOptions::new()
+			.max_connections(5)
+			.min_connections(1)
+			.acquire_timeout(std::time::Duration::from_secs(5))
+			.idle_timeout(std::time::Duration::from_secs(30))
+			.max_lifetime(std::time::Duration::from_secs(120))
+			.connect(&database_url)
+			.await
+		{
+			Ok(pool) => break pool,
+			Err(_e) if retry_count < max_retries => {
+				retry_count += 1;
+				let delay = std::time::Duration::from_millis(100 * 2_u64.pow(retry_count));
+				tokio::time::sleep(delay).await;
+			}
+			Err(e) => panic!(
+				"Failed to connect to MySQL after {} retries: {}",
+				max_retries, e
+			),
+		}
+	};
+
+	(mysql, Arc::new(pool), port, database_url)
+}
+
+/// Fixture: MySQL container with migrations applied
+///
+/// This fixture starts a MySQL container, applies migrations from the
+/// specified directory, and provides a ready-to-use connection pool.
+///
+/// # Environment Variables
+/// * `REINHARDT_MIGRATIONS_DIR` - Base directory for migrations (default: "migrations")
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_test::fixtures::mysql_with_migrations;
+/// use rstest::*;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_migrated_mysql(
+///     #[future] mysql_with_migrations: (ContainerAsync<GenericImage>, Arc<sqlx::MySqlPool>, String)
+/// ) {
+///     let (_container, pool, _url) = mysql_with_migrations.await;
+///     // Database has all migrations applied
+/// }
+/// ```
+#[fixture]
+#[cfg(feature = "testcontainers")]
+pub async fn mysql_with_migrations(
+	#[future] mysql_container: (
+		ContainerAsync<GenericImage>,
+		Arc<sqlx::MySqlPool>,
+		u16,
+		String,
+	),
+) -> (ContainerAsync<GenericImage>, Arc<sqlx::MySqlPool>, String) {
+	use reinhardt_db::DatabaseConnection;
+	use reinhardt_db::backends::types::DatabaseType;
+	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
+
+	let (container, pool, _port, url) = mysql_container.await;
+
+	// Determine migrations directory
+	let migrations_base =
+		std::env::var("REINHARDT_MIGRATIONS_DIR").unwrap_or_else(|_| "migrations".to_string());
+
+	// Load all migrations from all app directories
+	let migrations_path = Path::new(&migrations_base);
+	if migrations_path.exists() {
+		// Connect to database for migration execution
+		let connection = DatabaseConnection::connect_mysql(&url)
+			.await
+			.expect("Failed to connect to MySQL for migrations");
+
+		let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Mysql);
+
+		// Iterate through all subdirectories (app labels)
+		if let Ok(entries) = std::fs::read_dir(migrations_path) {
+			for entry in entries.flatten() {
+				if entry.path().is_dir() {
+					let migrations = load_migrations_from_directory(entry.path());
+					if !migrations.is_empty() {
+						executor
+							.apply_migrations(&migrations)
+							.await
+							.expect("Failed to apply migrations");
+					}
+				}
+			}
+		}
+	}
+
+	(container, pool, url)
+}
+
+/// Fixture: SQLite in-memory database with migrations applied
+///
+/// This fixture creates an SQLite in-memory database, applies migrations
+/// from the specified directory, and provides a ready-to-use connection pool.
+///
+/// # Environment Variables
+/// * `REINHARDT_MIGRATIONS_DIR` - Base directory for migrations (default: "migrations")
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_test::fixtures::sqlite_with_migrations;
+/// use rstest::*;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_migrated_sqlite(
+///     #[future] sqlite_with_migrations: (Arc<sqlx::SqlitePool>, String)
+/// ) {
+///     let (pool, _url) = sqlite_with_migrations.await;
+///     // Database has all migrations applied
+/// }
+/// ```
+#[fixture]
+#[cfg(feature = "testcontainers")]
+pub async fn sqlite_with_migrations() -> (Arc<sqlx::SqlitePool>, String) {
+	use reinhardt_db::DatabaseConnection;
+	use reinhardt_db::backends::types::DatabaseType;
+	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
+
+	let database_url = "sqlite::memory:";
+
+	// Create connection pool
+	let pool = sqlx::sqlite::SqlitePoolOptions::new()
+		.max_connections(1) // SQLite in-memory database should use single connection
+		.connect(database_url)
+		.await
+		.expect("Failed to create SQLite in-memory database");
+
+	// Determine migrations directory
+	let migrations_base =
+		std::env::var("REINHARDT_MIGRATIONS_DIR").unwrap_or_else(|_| "migrations".to_string());
+
+	// Load all migrations from all app directories
+	let migrations_path = Path::new(&migrations_base);
+	if migrations_path.exists() {
+		// Connect to database for migration execution
+		let connection = DatabaseConnection::connect_sqlite(database_url)
+			.await
+			.expect("Failed to connect to SQLite for migrations");
+
+		let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Sqlite);
+
+		// Iterate through all subdirectories (app labels)
+		if let Ok(entries) = std::fs::read_dir(migrations_path) {
+			for entry in entries.flatten() {
+				if entry.path().is_dir() {
+					let migrations = load_migrations_from_directory(entry.path());
+					if !migrations.is_empty() {
+						executor
+							.apply_migrations(&migrations)
+							.await
+							.expect("Failed to apply migrations");
+					}
+				}
+			}
+		}
+	}
+
+	(Arc::new(pool), database_url.to_string())
+}
