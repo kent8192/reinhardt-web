@@ -1,0 +1,20 @@
+# Staging environment settings for tutorial-rest example
+# Settings for staging/pre-production environment
+
+debug = false
+
+# Staging secret key (use environment variable in real deployment)
+secret_key = "staging-secret-key-use-env-var"
+
+# More restrictive allowed hosts for staging
+allowed_hosts = ["staging.example.com"]
+
+# Staging database configuration (override via environment variables)
+[database]
+engine = "postgresql"
+host = "staging-db.example.com"
+port = 5432
+name = "snippets_db_staging"
+user = "postgres"
+# Password should be set via REINHARDT_DATABASE__PASSWORD environment variable
+password = ""
