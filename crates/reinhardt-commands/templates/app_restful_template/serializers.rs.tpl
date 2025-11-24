@@ -2,6 +2,4 @@
 //!
 //! Re-exports all serializers from the serializers/ directory
 
-mod serializers;
-
 pub use serializers::*;
