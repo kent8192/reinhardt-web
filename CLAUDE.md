@@ -305,6 +305,8 @@ Before submitting code:
 
 @CLAUDE.local.md - Project-specific local preferences
 
+**Note**: When editing files in `examples/` directory, also refer to @examples/CLAUDE.md for examples-specific coding standards and dependency rules.
+
 ---
 
 ## Quick Reference

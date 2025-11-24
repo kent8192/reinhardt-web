@@ -285,37 +285,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
-## Quick Reference
+## Related Documentation
 
-**Critical Rules Summary:**
-
-### Execution
-
-- ❌ NO commits without explicit user instruction
-- ❌ NO pushing without explicit user instruction
-- ❌ NO committing .gitignore files
-- ❌ NO batch commits (multiple commits without user confirmation)
-- ❌ NO monolithic feature-level commits (e.g., "Implement authentication feature")
-- ❌ NO combining multiple intents in one commit (e.g., "Add JWT and OAuth support")
-- ✅ SPLIT commits by specific intent, not feature-level goals
-- ✅ KEEP each commit small enough to explain in one line
-- ✅ FOCUS on concrete implementation details, not broad feature names
-- ✅ USE `git add --patch` with patch files for partial file commits
-- ✅ CREATE one commit at a time with user confirmation between each
-
-### Message Format
-
-- ❌ NO vague descriptions
-- ❌ NO missing footer attribution
-- ✅ USE `type(scope): description` format
-- ✅ WRITE in English (body and subject)
-- ✅ INCLUDE file changes with line counts
-- ✅ ADD Features section for new capabilities
-- ✅ MAINTAIN one blank line before footer
-
-### Style
-
-- ✅ EXAMINE recent commits for style reference
-- ✅ BE SPECIFIC about changes
-- ✅ ORGANIZE by module/component
-- ✅ LIST removed files with reasons
+- **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)
+- **Main Standards**: @CLAUDE.md
