@@ -1,6 +1,6 @@
 //! Admin configuration for todos app
 
-use reinhardt_panel::ModelAdminConfig;
+use reinhardt::admin::panel::ModelAdminConfig;
 
 /// Admin configuration for Todo model
 ///

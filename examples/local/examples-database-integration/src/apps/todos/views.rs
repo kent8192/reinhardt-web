@@ -2,9 +2,8 @@
 //!
 //! CRUD operations for TODO items
 
-use reinhardt_http::{Request, Response, StatusCode, ViewResult};
-use reinhardt_macros::endpoint;
-use reinhardt_orm::Manager;
+use reinhardt::{Request, Response, StatusCode, ViewResult, endpoint};
+use reinhardt::db::orm::Manager;
 use crate::models::Todo;
 use chrono::Utc;
 use std::sync::Arc;
@@ -30,7 +29,7 @@ use std::sync::Arc;
 #[endpoint]
 pub async fn list_todos(
 	_req: Request,
-	#[inject] _db: Arc<reinhardt_db::DatabaseConnection>,
+	#[inject] _db: Arc<reinhardt::db::DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Query all todos from database using ORM
 	let manager = Manager::<Todo>::new();
@@ -60,7 +59,7 @@ pub async fn list_todos(
 #[endpoint]
 pub async fn create_todo(
 	mut req: Request,
-	#[inject] db: Arc<reinhardt_db::DatabaseConnection>,
+	#[inject] db: Arc<reinhardt::db::DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Parse request body
 	let body_bytes = std::mem::take(&mut req.body);
@@ -109,7 +108,7 @@ pub async fn create_todo(
 #[endpoint]
 pub async fn get_todo(
 	req: Request,
-	#[inject] db: Arc<reinhardt_db::DatabaseConnection>,
+	#[inject] db: Arc<reinhardt::db::DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Extract ID from path parameters
 	let id = req
@@ -148,7 +147,7 @@ pub async fn get_todo(
 #[endpoint]
 pub async fn update_todo(
 	mut req: Request,
-	#[inject] db: Arc<reinhardt_db::DatabaseConnection>,
+	#[inject] db: Arc<reinhardt::db::DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Extract ID from path parameters
 	let id = req
@@ -203,7 +202,7 @@ pub async fn update_todo(
 #[endpoint]
 pub async fn delete_todo(
 	req: Request,
-	#[inject] db: Arc<reinhardt_db::DatabaseConnection>,
+	#[inject] db: Arc<reinhardt::db::DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Extract ID from path parameters
 	let id = req

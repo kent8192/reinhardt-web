@@ -2,7 +2,7 @@
 //!
 //! A simple TODO list application demonstrating database integration
 
-use reinhardt_macros::AppConfig;
+use reinhardt::AppConfig;
 
 pub mod admin;
 pub mod models;

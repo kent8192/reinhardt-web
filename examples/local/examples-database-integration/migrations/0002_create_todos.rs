@@ -1,4 +1,4 @@
-use reinhardt_migrations::{ColumnDefinition, Migration, Operation};
+use reinhardt::db::migrations::{ColumnDefinition, Migration, Operation};
 
 pub fn migration() -> Migration {
 	Migration::new("0002_create_todos", "database_integration")
