@@ -384,6 +384,24 @@ impl From<http::Error> for Error {
 	}
 }
 
+impl From<String> for Error {
+	fn from(msg: String) -> Self {
+		Error::Internal(msg)
+	}
+}
+
+impl From<&str> for Error {
+	fn from(msg: &str) -> Self {
+		Error::Internal(msg.to_string())
+	}
+}
+
+impl From<validator::ValidationErrors> for Error {
+	fn from(err: validator::ValidationErrors) -> Self {
+		Error::Validation(format!("Validation failed: {}", err))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

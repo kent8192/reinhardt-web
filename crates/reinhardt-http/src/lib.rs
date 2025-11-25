@@ -72,4 +72,8 @@ pub use reinhardt_exception::{Error, Result};
 /// assert_eq!(response.status, hyper::StatusCode::OK);
 /// # }
 /// ```
-pub type ViewResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+/// Result type for view handlers using reinhardt's unified Error type.
+///
+/// This type alias ensures compatibility with `UnifiedRouter::function` which requires
+/// `Future<Output = Result<Response>>` where `Result` is `reinhardt_exception::Result`.
+pub type ViewResult<T> = reinhardt_exception::Result<T>;
