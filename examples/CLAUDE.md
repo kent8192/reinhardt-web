@@ -23,11 +23,18 @@ The `examples/` directory contains two types of example projects that serve diff
 **Dependency Resolution**:
 ```toml
 [dependencies]
-reinhardt = { path = "../../..", package = "reinhardt-web", features = ["standard"] }
+# Default uses 'full' feature (all features enabled)
+reinhardt = { path = "../../..", package = "reinhardt-web" }
+
+# Or with explicit feature selection:
+# reinhardt = { path = "../../..", package = "reinhardt-web", features = ["standard"] }
+# reinhardt = { path = "../../..", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 
 [patch.crates-io]
 reinhardt-web = { path = "../../.." }  # Always uses workspace version
 ```
+
+**Note**: ⚠️ Default feature changed from `standard` to `full`. Local examples now use all features by default for comprehensive testing.
 
 **Build Configuration**:
 ```rust

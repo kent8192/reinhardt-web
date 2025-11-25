@@ -10,6 +10,8 @@
 - [Usage Scenarios](#usage-scenarios)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
+- [Migration Guide](#migration-guide) ⚠️ **Breaking Changes**
+- [Summary](#summary)
 - [Quick Reference](#quick-reference)
 
 ---
@@ -33,11 +35,26 @@ Reinhardt employs a **highly granular feature flag system** with **70+ features*
 
 ## Basic Usage
 
-### Default (standard)
+### Default (full) ⚠️ Changed in v0.1.0-alpha.2
 
 ```toml
 [dependencies]
-reinhardt = "0.1.0-alpha.1"  # Enables standard bundle
+reinhardt = "0.1.0-alpha.1"  # Enables full bundle (all features)
+```
+
+**Note**: The default has changed from `standard` to `full`. See [Migration Guide](#migration-guide) for details.
+
+### Standard Configuration
+
+For a balanced setup without all features:
+
+```toml
+[dependencies]
+reinhardt = {
+	version = "0.1.0-alpha.1",
+	default-features = false,
+	features = ["standard"]
+}
 ```
 
 ### Custom Configuration
@@ -55,43 +72,57 @@ reinhardt = {
 
 ## Bundle Features
 
-### minimal
+### minimal ⚠️ Changed in v0.1.0-alpha.2
 
-**Empty bundle** for backward compatibility. Use as base for custom configurations.
+**Lightweight bundle** with essential features for microservices and simple APIs.
+
+**Includes**:
+- Core (types, macros, HTTP)
+- Dependency Injection
+- HTTP Server
+- URL routing (always included)
 
 ```toml
 reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal"] }
 ```
 
-**Binary**: ~5 MB | **Compile**: Very fast
+**Binary**: ~5-10 MB | **Compile**: Very fast
+
+**Equivalent to**: `reinhardt-micro` functionality (routing, DI, params, server)
 
 ---
 
-### standard (default)
+### standard
 
-Balanced configuration for most projects.
+Balanced configuration for most projects. ⚠️ PostgreSQL is now included by default.
 
 **Includes**:
-- Core, Database (ORM, migrations), REST API
-- Serializers, ViewSets, Auth, Middleware
-- Pagination, Filtering, Throttling, Signals
-- Parsers, Templates, Renderers, Versioning
+- `minimal` features
+- Database (ORM, migrations, PostgreSQL backend)
+- REST API (Serializers, ViewSets, Parsers, Renderers)
+- Auth, Middleware, Sessions
+- Pagination, Filtering, Throttling, Versioning
+- Templates, Signals
 
 ```toml
-reinhardt = "0.1.0-alpha.1"
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard"] }
 ```
 
 **Binary**: ~20-30 MB | **Compile**: Medium
 
+**Note**: `db-postgres` is now explicitly included. For other databases, use `db-mysql`, `db-sqlite`, or `db-mongodb`.
+
 ---
 
-### full
+### full (default) ⚠️ Now the default
 
 All features enabled (batteries-included).
 
 **Includes**: `standard` + admin, graphql, websockets, cache, i18n, mail, sessions, static-files, storage
 
 ```toml
+reinhardt = "0.1.0-alpha.1"  # default enables full
+# Or explicitly:
 reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }
 ```
 
@@ -257,13 +288,123 @@ reinhardt-cache = { version = "0.1.0-alpha.1", features = ["redis-cluster"] }
 
 ---
 
+## Migration Guide
+
+### Breaking Changes in v0.1.0-alpha.2
+
+#### 1. Default Feature Changed: `standard` → `full`
+
+**Before (v0.1.0-alpha.1):**
+```toml
+reinhardt = "0.1.0-alpha.1"  # Enabled: standard bundle
+```
+
+**Now (v0.1.0-alpha.2):**
+```toml
+reinhardt = "0.1.0-alpha.1"  # Enables: full bundle (all features)
+```
+
+**Impact:**
+- ⚠️ **Longer compile time**: Full bundle includes all features (admin, graphql, websockets, etc.)
+- ⚠️ **Larger binary size**: ~50+ MB (was ~20-30 MB with standard)
+- ✅ **More features available**: All Reinhardt features are immediately usable
+
+**To keep previous behavior:**
+```toml
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard"] }
+```
+
+#### 2. `minimal` Feature Now Includes Core Functionality
+
+**Before (v0.1.0-alpha.1):**
+```toml
+# minimal was empty - no features enabled
+features = ["minimal"]
+```
+
+**Now (v0.1.0-alpha.2):**
+```toml
+# minimal includes: core, di, server (equivalent to reinhardt-micro)
+features = ["minimal"]
+```
+
+**Impact:**
+- ✅ **More useful**: `minimal` now provides a working microservice framework
+- ✅ **Backward compatible**: Adding features is non-breaking
+
+**Equivalent to:**
+- `reinhardt-micro` functionality
+- Routing, DI, params, server, core
+
+#### 3. `standard` Now Includes PostgreSQL by Default
+
+**Before (v0.1.0-alpha.1):**
+```toml
+features = ["standard"]  # Database support, but no specific backend
+```
+
+**Now (v0.1.0-alpha.2):**
+```toml
+features = ["standard"]  # Includes db-postgres explicitly
+```
+
+**Impact:**
+- ✅ **Works out of the box**: Database features now work without additional configuration
+- ⚠️ **PostgreSQL dependency**: `libpq-dev` (or equivalent) required at build time
+
+**For other databases:**
+```toml
+# MySQL
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard", "db-mysql"] }
+
+# SQLite
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard", "db-sqlite"] }
+
+# MongoDB
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard", "db-mongodb"] }
+```
+
+#### 4. Removed Features
+
+The following features have been removed (they had no effect):
+
+- `serialize-json`
+- `serialize-xml`
+- `serialize-yaml`
+
+**Reason**: All three features enabled the same dependencies (`reinhardt-rest/serializers`), providing no actual format-specific control.
+
+**Impact:**
+- ⚠️ **Build may fail** if you explicitly used these features
+- ✅ **No functional impact**: Serialization still works via `reinhardt-rest/serializers`
+
+**Migration:**
+```toml
+# Before
+features = ["serialize-json", "serialize-xml"]
+
+# After
+features = ["reinhardt-rest", "reinhardt-rest/serializers"]
+# Or simply use "rest" or "standard" bundle
+```
+
+### Migration Checklist
+
+- [ ] Update `Cargo.toml` if you want to keep `standard` instead of `full`
+- [ ] Install PostgreSQL development libraries if using `standard` or `full`
+- [ ] Remove `serialize-*` features if explicitly specified
+- [ ] Test build with new configuration
+- [ ] Update documentation references
+
+---
+
 ## Summary
 
 Reinhardt provides **70+ features** with **3 granularity levels** (bundle, group, individual).
 
-**Default**: `standard` bundle (balanced for most projects)
+**Default**: `full` bundle (all features) ⚠️ Changed from `standard`
 
-**Key bundles**: `minimal` (base), `standard` (default), `full` (all features), `api-only`, `graphql-server`, `cli-tools`
+**Key bundles**: `minimal` (microservice), `standard` (balanced), `full` (all features, default), `api-only`, `graphql-server`, `cli-tools`
 
 **Auto-enabled dependencies**: `pool` → `reinhardt-di`, `middleware` → `sessions`, `auth-session` → `sessions`
 

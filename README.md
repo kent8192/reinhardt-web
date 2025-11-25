@@ -64,13 +64,22 @@ See [Available Components](#available-components) for complete list and [Getting
 Reinhardt is a modular framework. Choose your starting point:
 
 **Note on Crate Naming:**
-The main Reinhardt crate is published on crates.io as `reinhardt-web`, but you import it as `reinhardt` in your code using the `package` attribute:
+The main Reinhardt crate is published on crates.io as `reinhardt-web`, but you import it as `reinhardt` in your code using the `package` attribute.
+
+### Default: Full-Featured (Batteries Included) ⚠️ New Default
+
+Get all features with zero configuration:
 
 ```toml
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
-reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", features = ["standard"] }
+# Default enables ALL features (full bundle)
+reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web" }
 ```
+
+**Includes:** Database, Auth, REST API, Admin, GraphQL, WebSockets, Cache, i18n, Mail, Sessions, Static Files, Storage
+
+**Binary**: ~50+ MB | **Compile**: Slower, but everything works out of the box
 
 Then use in your code:
 ```rust
@@ -78,18 +87,37 @@ use reinhardt::prelude::*;
 use reinhardt::{Request, Response, StatusCode};
 ```
 
-### Option 1: Microservices (Minimal Setup)
+### Option 1: Standard Setup (Balanced)
+
+For most projects that don't need all features:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-features = false, features = ["standard"] }
+```
+
+**Includes:** Core, Database (PostgreSQL), REST API, Auth, Middleware, Templates
+
+**Binary**: ~20-30 MB | **Compile**: Medium
+
+### Option 2: Microservices (Minimal Setup)
 
 Lightweight and fast, perfect for simple APIs:
 
 ```toml
 [dependencies]
+# Standalone crate
 reinhardt-micro = "0.1.0-alpha.1"
+
+# Or via main crate
+reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
-**Includes:** HTTP, routing, DI, parameter extraction
+**Includes:** HTTP, routing, DI, parameter extraction, server
 
-### Option 2: Build Your Custom Stack
+**Binary**: ~5-10 MB | **Compile**: Very fast
+
+### Option 3: Build Your Custom Stack
 
 Install only the components you need:
 

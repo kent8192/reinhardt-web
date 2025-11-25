@@ -59,40 +59,51 @@ my-api/
 
 Reinhardt comes in three flavors. Choose the one that fits your needs:
 
-#### Option A: Micro (Lightweight)
+#### Option A: Full (Everything Included) - Default ⚠️ New Default
+
+All features enabled, best for learning and rapid prototyping:
+
+```toml
+[dependencies]
+# Default behavior - all features enabled
+reinhardt = "0.1.0-alpha.1"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+```
+
+**Includes:** Database, Auth, REST API, Admin, GraphQL, WebSockets, Cache, i18n, Mail, Sessions, Static Files, Storage
+
+#### Option B: Standard (Balanced)
+
+Balanced setup for most production projects:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+```
+
+**Includes:** Core, Database (PostgreSQL), REST API, Auth, Middleware, Templates
+
+#### Option C: Minimal (Lightweight)
 
 For microservices and simple APIs:
 
 ```toml
 [dependencies]
+# Standalone crate
 reinhardt-micro = "0.1.0-alpha.1"
+
+# Or via main crate
+reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 ```
 
-#### Option B: Standard (Recommended)
+**Includes:** HTTP, routing, DI, parameter extraction, server
 
-Balanced setup for most projects:
-
-```toml
-[dependencies]
-reinhardt = "0.1.0-alpha.1"  # or: { version = "0.1.0-alpha.1", features = ["standard"] }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-```
-
-#### Option C: Full (Everything Included)
-
-All features enabled:
-
-```toml
-[dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-```
-
-For this guide, we'll use the **Standard** flavor.
+For this guide, we'll use the **Full** flavor (default).
 
 **💡 Want more control?** See the [Feature Flags Guide](FEATURE_FLAGS.md) for detailed information on 70+ individual feature flags to fine-tune your build.
 

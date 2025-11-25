@@ -133,7 +133,6 @@ use reinhardt_test::fixtures::test_server_guard;
 use rstest::*;
 
 #[rstest]
-#[example_test("*")]
 async fn test_endpoint(
     #[future] test_server_guard: reinhardt_test::resource::TeardownGuard<
         reinhardt_test::fixtures::TestServerGuard
@@ -160,7 +159,6 @@ fn test_feature() {
 }
 
 // Test runs on any version
-#[example_test("*")]
 fn test_always() {
     // Test code
 }
@@ -172,7 +170,6 @@ fn test_always() {
 ```rust
 // ✅ GOOD: Using standard fixture
 #[rstest]
-#[example_test("*")]
 async fn test_with_standard_fixture(
     #[future] test_server_guard: TeardownGuard<TestServerGuard>,
 ) {
@@ -181,7 +178,6 @@ async fn test_with_standard_fixture(
 }
 
 // ❌ BAD: Manual server setup
-#[example_test("*")]
 async fn test_with_manual_setup() {
     let server = start_server().await;
     // Test code
