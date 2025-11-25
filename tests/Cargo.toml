@@ -14,6 +14,7 @@ reinhardt-graphql = { workspace = true }
 reinhardt-websockets = { workspace = true }
 reinhardt-i18n = { workspace = true }
 reinhardt-mail = { workspace = true }
+reinhardt-http = { workspace = true }
 reinhardt-core = { workspace = true, features = [
     "exception",
     "macros",

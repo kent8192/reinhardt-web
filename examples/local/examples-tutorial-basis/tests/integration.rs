@@ -9,7 +9,6 @@ mod tests {
 	use testcontainers_modules::postgres::Postgres;
 
 	// Basic unit tests for model construction
-	#[example_test("*")]
 	#[test]
 	fn test_question_model() {
 		use examples_tutorial_basis::apps::polls::models::Question;
@@ -19,7 +18,6 @@ mod tests {
 		assert!(question.was_published_recently());
 	}
 
-	#[example_test("*")]
 	#[test]
 	fn test_choice_model() {
 		use examples_tutorial_basis::apps::polls::models::Choice;
@@ -33,7 +31,6 @@ mod tests {
 	}
 
 	// Database integration tests
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_question_database_create(
@@ -58,7 +55,6 @@ mod tests {
 		assert_eq!(retrieved_text, question_text);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_question_database_read(
@@ -71,7 +67,7 @@ mod tests {
 		// Insert test data
 		let question_text = "Test question for reading";
 		let insert_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind(question_text)
 		.fetch_one(pool.as_ref())
@@ -81,12 +77,11 @@ mod tests {
 		let id: i64 = insert_result.unwrap().get("id");
 
 		// Read the question back
-		let read_result = sqlx::query(
-			"SELECT id, question_text, pub_date FROM polls_question WHERE id = $1"
-		)
-		.bind(id)
-		.fetch_one(pool.as_ref())
-		.await;
+		let read_result =
+			sqlx::query("SELECT id, question_text, pub_date FROM polls_question WHERE id = $1")
+				.bind(id)
+				.fetch_one(pool.as_ref())
+				.await;
 
 		assert!(read_result.is_ok());
 		let row = read_result.unwrap();
@@ -94,7 +89,6 @@ mod tests {
 		assert_eq!(retrieved_text, question_text);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_question_database_update(
@@ -105,7 +99,7 @@ mod tests {
 		// Insert initial data
 		let original_text = "Original question text";
 		let insert_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind(original_text)
 		.fetch_one(pool.as_ref())
@@ -116,30 +110,26 @@ mod tests {
 
 		// Update the question
 		let updated_text = "Updated question text";
-		let update_result = sqlx::query(
-			"UPDATE polls_question SET question_text = $1 WHERE id = $2"
-		)
-		.bind(updated_text)
-		.bind(id)
-		.execute(pool.as_ref())
-		.await;
+		let update_result =
+			sqlx::query("UPDATE polls_question SET question_text = $1 WHERE id = $2")
+				.bind(updated_text)
+				.bind(id)
+				.execute(pool.as_ref())
+				.await;
 
 		assert!(update_result.is_ok());
 
 		// Verify update
-		let verify_result = sqlx::query(
-			"SELECT question_text FROM polls_question WHERE id = $1"
-		)
-		.bind(id)
-		.fetch_one(pool.as_ref())
-		.await;
+		let verify_result = sqlx::query("SELECT question_text FROM polls_question WHERE id = $1")
+			.bind(id)
+			.fetch_one(pool.as_ref())
+			.await;
 
 		assert!(verify_result.is_ok());
 		let retrieved_text: String = verify_result.unwrap().get("question_text");
 		assert_eq!(retrieved_text, updated_text);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_question_database_delete(
@@ -150,7 +140,7 @@ mod tests {
 		// Insert test data
 		let question_text = "Question to be deleted";
 		let insert_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind(question_text)
 		.fetch_one(pool.as_ref())
@@ -160,28 +150,23 @@ mod tests {
 		let id: i64 = insert_result.unwrap().get("id");
 
 		// Delete the question
-		let delete_result = sqlx::query(
-			"DELETE FROM polls_question WHERE id = $1"
-		)
-		.bind(id)
-		.execute(pool.as_ref())
-		.await;
+		let delete_result = sqlx::query("DELETE FROM polls_question WHERE id = $1")
+			.bind(id)
+			.execute(pool.as_ref())
+			.await;
 
 		assert!(delete_result.is_ok());
 
 		// Verify deletion
-		let verify_result = sqlx::query(
-			"SELECT id FROM polls_question WHERE id = $1"
-		)
-		.bind(id)
-		.fetch_optional(pool.as_ref())
-		.await;
+		let verify_result = sqlx::query("SELECT id FROM polls_question WHERE id = $1")
+			.bind(id)
+			.fetch_optional(pool.as_ref())
+			.await;
 
 		assert!(verify_result.is_ok());
 		assert!(verify_result.unwrap().is_none());
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_choice_database_create(
@@ -191,7 +176,7 @@ mod tests {
 
 		// First create a question
 		let question_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind("Test question for choice")
 		.fetch_one(pool.as_ref())
@@ -219,7 +204,6 @@ mod tests {
 		assert_eq!(votes, 0);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_choice_database_read(
@@ -229,7 +213,7 @@ mod tests {
 
 		// Create question
 		let question_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind("Question for choice read test")
 		.fetch_one(pool.as_ref())
@@ -241,7 +225,7 @@ mod tests {
 		// Insert choice
 		let choice_text = "Choice to be read";
 		let insert_result = sqlx::query(
-			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3) RETURNING id"
+			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3) RETURNING id",
 		)
 		.bind(question_id)
 		.bind(choice_text)
@@ -254,7 +238,7 @@ mod tests {
 
 		// Read the choice back
 		let read_result = sqlx::query(
-			"SELECT id, question_id, choice_text, votes FROM polls_choice WHERE id = $1"
+			"SELECT id, question_id, choice_text, votes FROM polls_choice WHERE id = $1",
 		)
 		.bind(choice_id)
 		.fetch_one(pool.as_ref())
@@ -268,7 +252,6 @@ mod tests {
 		assert_eq!(retrieved_question_id, question_id);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_choice_database_update(
@@ -278,7 +261,7 @@ mod tests {
 
 		// Create question
 		let question_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind("Question for choice update test")
 		.fetch_one(pool.as_ref())
@@ -290,7 +273,7 @@ mod tests {
 		// Insert choice
 		let original_text = "Original choice text";
 		let insert_result = sqlx::query(
-			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3) RETURNING id"
+			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3) RETURNING id",
 		)
 		.bind(question_id)
 		.bind(original_text)
@@ -303,30 +286,25 @@ mod tests {
 
 		// Update the choice
 		let updated_text = "Updated choice text";
-		let update_result = sqlx::query(
-			"UPDATE polls_choice SET choice_text = $1 WHERE id = $2"
-		)
-		.bind(updated_text)
-		.bind(choice_id)
-		.execute(pool.as_ref())
-		.await;
+		let update_result = sqlx::query("UPDATE polls_choice SET choice_text = $1 WHERE id = $2")
+			.bind(updated_text)
+			.bind(choice_id)
+			.execute(pool.as_ref())
+			.await;
 
 		assert!(update_result.is_ok());
 
 		// Verify update
-		let verify_result = sqlx::query(
-			"SELECT choice_text FROM polls_choice WHERE id = $1"
-		)
-		.bind(choice_id)
-		.fetch_one(pool.as_ref())
-		.await;
+		let verify_result = sqlx::query("SELECT choice_text FROM polls_choice WHERE id = $1")
+			.bind(choice_id)
+			.fetch_one(pool.as_ref())
+			.await;
 
 		assert!(verify_result.is_ok());
 		let retrieved_text: String = verify_result.unwrap().get("choice_text");
 		assert_eq!(retrieved_text, updated_text);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_choice_database_delete(
@@ -336,7 +314,7 @@ mod tests {
 
 		// Create question
 		let question_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind("Question for choice delete test")
 		.fetch_one(pool.as_ref())
@@ -347,7 +325,7 @@ mod tests {
 
 		// Insert choice
 		let insert_result = sqlx::query(
-			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3) RETURNING id"
+			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3) RETURNING id",
 		)
 		.bind(question_id)
 		.bind("Choice to be deleted")
@@ -359,28 +337,23 @@ mod tests {
 		let choice_id: i64 = insert_result.unwrap().get("id");
 
 		// Delete the choice
-		let delete_result = sqlx::query(
-			"DELETE FROM polls_choice WHERE id = $1"
-		)
-		.bind(choice_id)
-		.execute(pool.as_ref())
-		.await;
+		let delete_result = sqlx::query("DELETE FROM polls_choice WHERE id = $1")
+			.bind(choice_id)
+			.execute(pool.as_ref())
+			.await;
 
 		assert!(delete_result.is_ok());
 
 		// Verify deletion
-		let verify_result = sqlx::query(
-			"SELECT id FROM polls_choice WHERE id = $1"
-		)
-		.bind(choice_id)
-		.fetch_optional(pool.as_ref())
-		.await;
+		let verify_result = sqlx::query("SELECT id FROM polls_choice WHERE id = $1")
+			.bind(choice_id)
+			.fetch_optional(pool.as_ref())
+			.await;
 
 		assert!(verify_result.is_ok());
 		assert!(verify_result.unwrap().is_none());
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_choice_vote_increment(
@@ -390,7 +363,7 @@ mod tests {
 
 		// Create question
 		let question_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind("Question for vote test")
 		.fetch_one(pool.as_ref())
@@ -401,7 +374,7 @@ mod tests {
 
 		// Insert choice with 0 votes
 		let insert_result = sqlx::query(
-			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3) RETURNING id"
+			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3) RETURNING id",
 		)
 		.bind(question_id)
 		.bind("Choice to vote for")
@@ -413,29 +386,24 @@ mod tests {
 		let choice_id: i64 = insert_result.unwrap().get("id");
 
 		// Increment votes
-		let update_result = sqlx::query(
-			"UPDATE polls_choice SET votes = votes + 1 WHERE id = $1"
-		)
-		.bind(choice_id)
-		.execute(pool.as_ref())
-		.await;
+		let update_result = sqlx::query("UPDATE polls_choice SET votes = votes + 1 WHERE id = $1")
+			.bind(choice_id)
+			.execute(pool.as_ref())
+			.await;
 
 		assert!(update_result.is_ok());
 
 		// Verify vote count
-		let verify_result = sqlx::query(
-			"SELECT votes FROM polls_choice WHERE id = $1"
-		)
-		.bind(choice_id)
-		.fetch_one(pool.as_ref())
-		.await;
+		let verify_result = sqlx::query("SELECT votes FROM polls_choice WHERE id = $1")
+			.bind(choice_id)
+			.fetch_one(pool.as_ref())
+			.await;
 
 		assert!(verify_result.is_ok());
 		let votes: i32 = verify_result.unwrap().get("votes");
 		assert_eq!(votes, 1);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_question_choice_foreign_key(
@@ -445,7 +413,7 @@ mod tests {
 
 		// Create question
 		let question_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind("Question for FK test")
 		.fetch_one(pool.as_ref())
@@ -456,7 +424,7 @@ mod tests {
 
 		// Insert multiple choices for the question
 		let choice1_result = sqlx::query(
-			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3)"
+			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3)",
 		)
 		.bind(question_id)
 		.bind("Choice 1")
@@ -467,7 +435,7 @@ mod tests {
 		assert!(choice1_result.is_ok());
 
 		let choice2_result = sqlx::query(
-			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3)"
+			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3)",
 		)
 		.bind(question_id)
 		.bind("Choice 2")
@@ -478,19 +446,17 @@ mod tests {
 		assert!(choice2_result.is_ok());
 
 		// Verify all choices belong to the question
-		let verify_result = sqlx::query(
-			"SELECT COUNT(*) as count FROM polls_choice WHERE question_id = $1"
-		)
-		.bind(question_id)
-		.fetch_one(pool.as_ref())
-		.await;
+		let verify_result =
+			sqlx::query("SELECT COUNT(*) as count FROM polls_choice WHERE question_id = $1")
+				.bind(question_id)
+				.fetch_one(pool.as_ref())
+				.await;
 
 		assert!(verify_result.is_ok());
 		let count: i64 = verify_result.unwrap().get("count");
 		assert_eq!(count, 2);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_question_cascade_delete(
@@ -500,7 +466,7 @@ mod tests {
 
 		// Create question
 		let question_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id",
 		)
 		.bind("Question for cascade delete test")
 		.fetch_one(pool.as_ref())
@@ -511,7 +477,7 @@ mod tests {
 
 		// Insert choices
 		sqlx::query(
-			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3)"
+			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3)",
 		)
 		.bind(question_id)
 		.bind("Choice 1")
@@ -521,7 +487,7 @@ mod tests {
 		.unwrap();
 
 		sqlx::query(
-			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3)"
+			"INSERT INTO polls_choice (question_id, choice_text, votes) VALUES ($1, $2, $3)",
 		)
 		.bind(question_id)
 		.bind("Choice 2")
@@ -531,29 +497,25 @@ mod tests {
 		.unwrap();
 
 		// Delete the question (should cascade to choices)
-		let delete_result = sqlx::query(
-			"DELETE FROM polls_question WHERE id = $1"
-		)
-		.bind(question_id)
-		.execute(pool.as_ref())
-		.await;
+		let delete_result = sqlx::query("DELETE FROM polls_question WHERE id = $1")
+			.bind(question_id)
+			.execute(pool.as_ref())
+			.await;
 
 		assert!(delete_result.is_ok());
 
 		// Verify choices were also deleted
-		let verify_result = sqlx::query(
-			"SELECT COUNT(*) as count FROM polls_choice WHERE question_id = $1"
-		)
-		.bind(question_id)
-		.fetch_one(pool.as_ref())
-		.await;
+		let verify_result =
+			sqlx::query("SELECT COUNT(*) as count FROM polls_choice WHERE question_id = $1")
+				.bind(question_id)
+				.fetch_one(pool.as_ref())
+				.await;
 
 		assert!(verify_result.is_ok());
 		let count: i64 = verify_result.unwrap().get("count");
 		assert_eq!(count, 0);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_question_recent_pub_date(
@@ -563,7 +525,7 @@ mod tests {
 
 		// Insert a recent question (published now)
 		let recent_result = sqlx::query(
-			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id, pub_date"
+			"INSERT INTO polls_question (question_text, pub_date) VALUES ($1, NOW()) RETURNING id, pub_date",
 		)
 		.bind("Recent question")
 		.fetch_one(pool.as_ref())

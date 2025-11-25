@@ -1,13 +1,12 @@
-use reinhardt_conf::settings::builder::SettingsBuilder;
-use reinhardt_conf::settings::profile::Profile;
-use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt::conf::settings::builder::SettingsBuilder;
+use reinhardt::conf::settings::profile::Profile;
+use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 use reinhardt::Settings;
 use std::env;
-use std::str::FromStr;
 
 pub fn get_settings() -> Settings {
 	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
-	let profile = Profile::from_str(&profile_str).unwrap_or(Profile::Development);
+	let profile = Profile::parse(&profile_str);
 
 	let base_dir = env::current_dir().expect("Failed to get current directory");
 	let settings_dir = base_dir.join("settings");

@@ -12,7 +12,7 @@ pub struct Snippet {
 	#[field(max_length = 100)]
 	pub title: String,
 
-	#[field]
+	#[field(max_length = 10000)]
 	pub code: String,
 
 	#[field(max_length = 50)]

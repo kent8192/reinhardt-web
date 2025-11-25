@@ -8,11 +8,7 @@ publish = false
 # Use local workspace version directly via path
 # package="reinhardt-web" maps the crate name to the actual package name
 reinhardt = { path = "../../..", package = "reinhardt-web", features = [
-    "minimal",
-    "core",
-    "conf",
-    "commands",
-    "di",
+    "full",
 ] }
 hyper = "1.8"
 serde = { version = "1.0.228", features = ["derive"] }

@@ -10,19 +10,15 @@ mod tests {
 	use testcontainers_modules::postgres::Postgres;
 
 	#[fixture]
-	async fn postgres_with_migrations(
-	) -> (ContainerAsync<Postgres>, Arc<PgPool>, String) {
-		reinhardt_test::fixtures::testcontainers::postgres_with_migrations(
-			"examples-tutorial-rest",
-		)
-		.await
+	async fn postgres_with_migrations() -> (ContainerAsync<Postgres>, Arc<PgPool>, String) {
+		reinhardt_test::fixtures::testcontainers::postgres_with_migrations("examples-tutorial-rest")
+			.await
 	}
 
 	// ============================================================================
 	// Unit Tests (2 tests)
 	// ============================================================================
 
-	#[example_test("*")]
 	#[test]
 	fn test_snippet_model() {
 		use examples_tutorial_rest::apps::snippets::models::Snippet;
@@ -39,7 +35,6 @@ mod tests {
 		assert!(snippet.id.is_none());
 	}
 
-	#[example_test("*")]
 	#[test]
 	fn test_snippet_serializer_validation() {
 		use examples_tutorial_rest::apps::snippets::serializers::SnippetSerializer;
@@ -74,15 +69,10 @@ mod tests {
 	// Database Integration Tests - CRUD Operations (4 tests)
 	// ============================================================================
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_create(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -106,15 +96,10 @@ mod tests {
 		assert_eq!(result.language, "rust");
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_read(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -152,15 +137,10 @@ mod tests {
 		assert_eq!(result.language, "rust");
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_update(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -202,15 +182,10 @@ mod tests {
 		assert_eq!(updated.language, "javascript");
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_delete(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -262,15 +237,10 @@ mod tests {
 	// Database Integration Tests - Query Operations (4 tests)
 	// ============================================================================
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_list_all(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -315,15 +285,10 @@ mod tests {
 		assert_eq!(snippets[2].title, "Snippet 3");
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_filter_by_language(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -369,15 +334,10 @@ mod tests {
 		assert_eq!(rust_snippets[1].title, "Another Rust");
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_search_by_title(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -423,15 +383,10 @@ mod tests {
 		assert_eq!(results[1].title, "Goodbye World");
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_pagination(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -494,15 +449,10 @@ mod tests {
 	// Database Integration Tests - Edge Cases (7 tests)
 	// ============================================================================
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_empty_database(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -520,15 +470,10 @@ mod tests {
 		assert_eq!(snippets.len(), 0);
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_nonexistent_id(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -548,15 +493,10 @@ mod tests {
 		assert!(result.is_none());
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_duplicate_title_allowed(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -606,15 +546,10 @@ mod tests {
 		assert_eq!(count.count, Some(2));
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_count(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -670,15 +605,10 @@ mod tests {
 		assert_eq!(rust_count.count, Some(2));
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_order_by_title(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -723,15 +653,10 @@ mod tests {
 		assert_eq!(results[2].title, "Charlie");
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_language_case_sensitivity(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 
@@ -785,15 +710,10 @@ mod tests {
 		assert_eq!(case_insensitive.count, Some(2));
 	}
 
-	#[example_test("*")]
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_update_nonexistent(
-		#[future] postgres_with_migrations: (
-			ContainerAsync<Postgres>,
-			Arc<PgPool>,
-			String,
-		),
+		#[future] postgres_with_migrations: (ContainerAsync<Postgres>, Arc<PgPool>, String),
 	) {
 		let (_container, pool, _url) = postgres_with_migrations.await;
 

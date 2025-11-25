@@ -2,10 +2,15 @@
 //!
 //! This crate provides common utilities for integration testing
 //! across multiple Reinhardt crates with HTTP framework integration.
+//!
+//! # Proc Macro Path Resolution
+//!
+//! The `reinhardt` dependency in Cargo.toml provides the paths that proc macros
+//! like `#[derive(Model)]` and `#[endpoint]` generate (e.g., `::reinhardt::db::orm::Model`).
 
 use bytes::Bytes;
-use reinhardt_core::http::Request;
 use reinhardt_core::types::Handler;
+use reinhardt_http::Request;
 use sqlx::{Pool, Postgres};
 // NOTE: AssertSqlSafe trait was removed in newer sqlx versions (v0.6+)
 // This import is no longer needed as the trait is not used in tests

@@ -4,7 +4,7 @@
 
 use reinhardt::{Request, Response, StatusCode, ViewResult, endpoint};
 use reinhardt::db::orm::Manager;
-use crate::models::Todo;
+use crate::apps::todos::models::Todo;
 use chrono::Utc;
 use std::sync::Arc;
 
@@ -40,10 +40,8 @@ pub async fn list_todos(
 		"results": todos
 	});
 
-	Ok(Response::new(
-		StatusCode::OK,
-		serde_json::to_vec(&response)?,
-	))
+	let body = serde_json::to_vec(&response)?;
+	Ok(Response::new(StatusCode::OK).with_body(body))
 }
 
 /// Create a new todo
@@ -59,11 +57,11 @@ pub async fn list_todos(
 #[endpoint]
 pub async fn create_todo(
 	mut req: Request,
-	#[inject] db: Arc<reinhardt::db::DatabaseConnection>,
+	#[inject] _db: Arc<reinhardt::db::DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Parse request body
-	let body_bytes = std::mem::take(&mut req.body);
-	let todo_data: serde_json::Value = serde_json::from_slice(&body_bytes)?;
+	let body_bytes = req.body();
+	let todo_data: serde_json::Value = serde_json::from_slice(body_bytes)?;
 
 	// Validate required fields
 	let title = todo_data
@@ -93,12 +91,10 @@ pub async fn create_todo(
 	};
 
 	let manager = Manager::<Todo>::new();
-	let created_todo = manager.create(todo).await?;
+	let created_todo = manager.create(&todo).await?;
 
-	Ok(Response::new(
-		StatusCode::CREATED,
-		serde_json::to_vec(&created_todo)?,
-	))
+	let body = serde_json::to_vec(&created_todo)?;
+	Ok(Response::new(StatusCode::CREATED).with_body(body))
 }
 
 /// Get a specific todo by ID
@@ -108,7 +104,7 @@ pub async fn create_todo(
 #[endpoint]
 pub async fn get_todo(
 	req: Request,
-	#[inject] db: Arc<reinhardt::db::DatabaseConnection>,
+	#[inject] _db: Arc<reinhardt::db::DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Extract ID from path parameters
 	let id = req
@@ -122,13 +118,12 @@ pub async fn get_todo(
 	let manager = Manager::<Todo>::new();
 	let todo = manager
 		.get(id)
-		.await
-		.map_err(|_| format!("Todo with id {} not found", id))?;
+		.first()
+		.await?
+		.ok_or_else(|| format!("Todo with id {} not found", id))?;
 
-	Ok(Response::new(
-		StatusCode::OK,
-		serde_json::to_vec(&todo)?,
-	))
+	let body = serde_json::to_vec(&todo)?;
+	Ok(Response::new(StatusCode::OK).with_body(body))
 }
 
 /// Update a todo
@@ -147,7 +142,7 @@ pub async fn get_todo(
 #[endpoint]
 pub async fn update_todo(
 	mut req: Request,
-	#[inject] db: Arc<reinhardt::db::DatabaseConnection>,
+	#[inject] _db: Arc<reinhardt::db::DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Extract ID from path parameters
 	let id = req
@@ -158,15 +153,16 @@ pub async fn update_todo(
 		.map_err(|_| "Invalid ID format")?;
 
 	// Parse request body
-	let body_bytes = std::mem::take(&mut req.body);
-	let update_data: serde_json::Value = serde_json::from_slice(&body_bytes)?;
+	let body_bytes = req.body();
+	let update_data: serde_json::Value = serde_json::from_slice(body_bytes)?;
 
 	// Get existing todo from database
 	let manager = Manager::<Todo>::new();
 	let mut todo = manager
 		.get(id)
-		.await
-		.map_err(|_| format!("Todo with id {} not found", id))?;
+		.first()
+		.await?
+		.ok_or_else(|| format!("Todo with id {} not found", id))?;
 
 	// Apply partial updates
 	if let Some(title) = update_data.get("title").and_then(|v| v.as_str()) {
@@ -184,12 +180,10 @@ pub async fn update_todo(
 	todo.updated_at = Utc::now();
 
 	// Save updated todo
-	let updated_todo = manager.update(todo).await?;
+	let updated_todo = manager.update(&todo).await?;
 
-	Ok(Response::new(
-		StatusCode::OK,
-		serde_json::to_vec(&updated_todo)?,
-	))
+	let body = serde_json::to_vec(&updated_todo)?;
+	Ok(Response::new(StatusCode::OK).with_body(body))
 }
 
 /// Delete a todo
@@ -202,7 +196,7 @@ pub async fn update_todo(
 #[endpoint]
 pub async fn delete_todo(
 	req: Request,
-	#[inject] db: Arc<reinhardt::db::DatabaseConnection>,
+	#[inject] _db: Arc<reinhardt::db::DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Extract ID from path parameters
 	let id = req
@@ -219,5 +213,5 @@ pub async fn delete_todo(
 		.await
 		.map_err(|_| format!("Todo with id {} not found", id))?;
 
-	Ok(Response::new(StatusCode::NO_CONTENT, Vec::new()))
+	Ok(Response::new(StatusCode::NO_CONTENT))
 }

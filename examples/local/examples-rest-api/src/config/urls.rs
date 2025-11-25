@@ -31,13 +31,7 @@ async fn list_users(_req: Request) -> Result<Response> {
 }
 
 pub fn url_patterns() -> UnifiedRouter {
-	let mut router = UnifiedRouter::new();
-
-	// Add example API endpoint
-	router.function("/api/users", Method::GET, list_users);
-
-	// Include api app routes
-	router.include("/api", crate::apps::api::urls::url_patterns());
-
-	router
+	UnifiedRouter::new()
+		.function("/api/users", Method::GET, list_users)
+		.include("/api", crate::apps::api::urls::url_patterns())
 }

@@ -4,7 +4,7 @@
 
 use reinhardt::{Request, Response, StatusCode, ViewResult, endpoint};
 use reinhardt::db::orm::Manager;
-use crate::models::Article;
+use crate::apps::api::models::Article;
 use chrono::Utc;
 use std::sync::Arc;
 use validator::Validate;

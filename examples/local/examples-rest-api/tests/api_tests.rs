@@ -7,12 +7,11 @@
 //!
 //! Uses standard fixtures from reinhardt-test for automatic test server management.
 
-use example_test_macros::example_test;
+use reinhardt::UnifiedRouter as Router;
 use reinhardt::test::client::APIClient;
 use reinhardt::test::fixtures::test_server_guard;
-use reinhardt::UnifiedRouter as Router;
 use rstest::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 // ============================================================================
@@ -32,7 +31,6 @@ async fn server() -> reinhardt::test::fixtures::TestServerGuard {
 /// Test root endpoint returns 200 OK
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
 async fn test_root_endpoint(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 	let client = APIClient::with_base_url(&server.url);
@@ -45,10 +43,7 @@ async fn test_root_endpoint(#[future] server: reinhardt::test::fixtures::TestSer
 /// Test health check endpoint returns JSON status
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_health_check_endpoint(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+async fn test_health_check_endpoint(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);
@@ -69,10 +64,8 @@ async fn test_health_check_endpoint(
 /// Test listing articles returns empty array initially
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_list_articles_empty(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+
+async fn test_list_articles_empty(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);
@@ -83,9 +76,7 @@ async fn test_list_articles_empty(
 
 	assert_eq!(response.status_code(), reqwest::StatusCode::OK);
 
-	let body: Value = response
-		.json()
-		.expect("Failed to parse JSON response");
+	let body: Value = response.json().expect("Failed to parse JSON response");
 
 	assert_eq!(body["count"], 0);
 	assert_eq!(body["results"].as_array().unwrap().len(), 0);
@@ -99,10 +90,7 @@ async fn test_list_articles_empty(
 /// Test creating a new article
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_create_article(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+async fn test_create_article(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);
@@ -135,7 +123,6 @@ async fn test_create_article(
 /// Test creating article with invalid data returns validation error
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
 async fn test_create_article_validation_error(
 	#[future] server: reinhardt::test::fixtures::TestServerGuard,
 ) {
@@ -166,10 +153,7 @@ async fn test_create_article_validation_error(
 /// Test getting a specific article by ID
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_get_article_by_id(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+async fn test_get_article_by_id(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);
@@ -200,9 +184,7 @@ async fn test_get_article_by_id(
 
 	assert_eq!(response.status_code(), reqwest::StatusCode::OK);
 
-	let body: Value = response
-		.json()
-		.expect("Failed to parse JSON response");
+	let body: Value = response.json().expect("Failed to parse JSON response");
 
 	assert_eq!(body["id"], article_id);
 	assert_eq!(body["title"], "Test Article");
@@ -214,7 +196,6 @@ async fn test_get_article_by_id(
 /// Test getting non-existent article returns 404
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
 async fn test_get_nonexistent_article(
 	#[future] server: reinhardt::test::fixtures::TestServerGuard,
 ) {
@@ -237,10 +218,7 @@ async fn test_get_nonexistent_article(
 /// Test updating an article
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_update_article(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+async fn test_update_article(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);
@@ -270,7 +248,11 @@ async fn test_update_article(
 	});
 
 	let response = client
-		.put(&format!("/api/articles/{}", article_id), &update_req, "json")
+		.put(
+			&format!("/api/articles/{}", article_id),
+			&update_req,
+			"json",
+		)
 		.await
 		.expect("Failed to send request");
 
@@ -289,7 +271,6 @@ async fn test_update_article(
 /// Test updating non-existent article returns 404
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
 async fn test_update_nonexistent_article(
 	#[future] server: reinhardt::test::fixtures::TestServerGuard,
 ) {
@@ -317,10 +298,7 @@ async fn test_update_nonexistent_article(
 /// Test deleting an article
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_delete_article(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+async fn test_delete_article(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);
@@ -364,7 +342,6 @@ async fn test_delete_article(
 /// Test deleting non-existent article returns 404
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
 async fn test_delete_nonexistent_article(
 	#[future] server: reinhardt::test::fixtures::TestServerGuard,
 ) {
@@ -387,10 +364,7 @@ async fn test_delete_nonexistent_article(
 /// Test full CRUD workflow
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_article_crud_workflow(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+async fn test_article_crud_workflow(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);
@@ -430,7 +404,11 @@ async fn test_article_crud_workflow(
 	// 4. Update
 	let update_req = json!({"published": true});
 	let update_response = client
-		.put(&format!("/api/articles/{}", article_id), &update_req, "json")
+		.put(
+			&format!("/api/articles/{}", article_id),
+			&update_req,
+			"json",
+		)
 		.await
 		.expect("Failed to update article");
 	assert_eq!(update_response.status_code(), 200);
@@ -462,10 +440,7 @@ async fn test_article_crud_workflow(
 /// Test invalid path parameter returns 400
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_invalid_path_parameter(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+async fn test_invalid_path_parameter(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);
@@ -474,20 +449,15 @@ async fn test_invalid_path_parameter(
 		.await
 		.expect("Failed to send request");
 
-	assert!(
-		response.status_code() == 400
-			|| response.status_code() == 404
-	);
+	assert!(response.status_code() == 400 || response.status_code() == 404);
 	println!("✅ Invalid path parameter handled correctly");
 }
 
 /// Test unsupported method returns 405
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_unsupported_method(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+
+async fn test_unsupported_method(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);
@@ -497,20 +467,14 @@ async fn test_unsupported_method(
 		.await
 		.expect("Failed to send request");
 
-	assert_eq!(
-		response.status_code(),
-		405
-	);
+	assert_eq!(response.status_code(), 405);
 	println!("✅ Unsupported method returns 405");
 }
 
 /// Test non-existent route returns 404
 #[rstest]
 #[tokio::test]
-#[example_test("*")]
-async fn test_nonexistent_route(
-	#[future] server: reinhardt::test::fixtures::TestServerGuard,
-) {
+async fn test_nonexistent_route(#[future] server: reinhardt::test::fixtures::TestServerGuard) {
 	let server = server.await;
 
 	let client = APIClient::with_base_url(&server.url);

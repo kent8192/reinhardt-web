@@ -1,6 +1,5 @@
 use reinhardt::prelude::*;
-use reinhardt::{endpoint, db::DatabaseConnection};
-use reinhardt_http::ViewResult;
+use reinhardt::{endpoint, db::DatabaseConnection, ViewResult};
 use serde_json::json;
 use std::sync::Arc;
 

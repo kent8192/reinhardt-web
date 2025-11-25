@@ -6,10 +6,42 @@
 //!
 //! These tests verify that the procedural macros correctly integrate with
 //! the DI system to inject dependencies into handler functions.
+//!
+//! # Router-Compatible Signature
+//!
+//! The macro-generated wrapper functions have signature `Fn(Request) -> Fut`
+//! to be compatible with `UnifiedRouter::function()`. The DI context is
+//! extracted from `Request.di_context()` inside the wrapper:
+//!
+//! ```ignore
+//! // Generated signature (router-compatible):
+//! async fn handler(request: Request) -> Result<T>
+//!
+//! // Inside the wrapper:
+//! let __di_ctx = request.di_context()
+//!     .ok_or_else(|| Error::internal_server_error("DI context not set"))?;
+//! ```
 
+use bytes::Bytes;
+use hyper::{HeaderMap, Method, Version};
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
-use reinhardt_macros::{endpoint, use_injection};
+use reinhardt_http::Request;
+use reinhardt_macros::use_injection;
 use std::sync::Arc;
+
+/// Helper to create a test Request with DI context attached
+fn create_test_request_with_di(ctx: Arc<InjectionContext>) -> Request {
+	let mut req = Request::builder()
+		.method(Method::GET)
+		.uri("/test")
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.build()
+		.expect("Failed to build request");
+	req.set_di_context(ctx);
+	req
+}
 
 // ========== Test Data Structures ==========
 
@@ -41,18 +73,24 @@ impl Injectable for CustomService {
 	}
 }
 
-// ========== Endpoint Macro Tests ==========
+// ========== use_injection Macro Tests ==========
+//
+// Note: Both #[endpoint] and #[use_injection] require a Request parameter
+// because they share the same implementation that extracts InjectionContext
+// from Request.extensions.
 
-#[endpoint]
+#[use_injection]
 async fn handler_with_inject(
+	_req: Request,
 	#[inject] db: Database,
 	regular_param: String,
 ) -> Result<String, reinhardt_di::DiError> {
 	Ok(format!("db: {:?}, param: {}", db, regular_param))
 }
 
-#[endpoint]
+#[use_injection]
 async fn handler_multiple_inject(
+	_req: Request,
 	#[inject] db: Database,
 	#[inject] config: Config,
 	regular_param: i32,
@@ -63,22 +101,27 @@ async fn handler_multiple_inject(
 	))
 }
 
-#[endpoint]
+#[use_injection]
 async fn handler_with_cache_control(
+	_req: Request,
 	#[inject] db: Database,
 	#[inject(cache = false)] service: CustomService,
 ) -> Result<i32, reinhardt_di::DiError> {
 	Ok(db.connection_string.len() as i32 + service.value)
 }
 
-#[endpoint]
-async fn handler_only_inject(#[inject] db: Database) -> Result<Database, reinhardt_di::DiError> {
-	// db is a Depends<Database>, deref to get &Database then clone
-	Ok((*db).clone())
+#[use_injection]
+async fn handler_only_inject(
+	_req: Request,
+	#[inject] db: Database,
+) -> Result<Database, reinhardt_di::DiError> {
+	// db is directly injected as Database type
+	Ok(db)
 }
 
-#[endpoint]
+#[use_injection]
 async fn handler_no_inject(
+	_req: Request,
 	regular_param1: String,
 	regular_param2: i32,
 ) -> Result<String, reinhardt_di::DiError> {
@@ -88,10 +131,13 @@ async fn handler_no_inject(
 #[tokio::test]
 async fn test_endpoint_with_single_inject() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// #[inject] parameters are removed by the macro, only pass regular params and &ctx at the end
-	let result = handler_with_inject("test_value".to_string(), &ctx)
+	let req = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request, regular_params...)
+	// DI context is extracted from Request.di_context() inside the wrapper
+	let result = handler_with_inject(req, "test_value".to_string())
 		.await
 		.unwrap();
 
@@ -103,10 +149,12 @@ async fn test_endpoint_with_single_inject() {
 #[tokio::test]
 async fn test_endpoint_with_multiple_inject() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// Both #[inject] params (db, config) are removed, only pass regular_param and &ctx
-	let result = handler_multiple_inject(100, &ctx).await.unwrap();
+	let req = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request, regular_params...)
+	let result = handler_multiple_inject(req, 100).await.unwrap();
 
 	// Check that it includes db, config, and regular param info
 	assert!(result.contains("db:"));
@@ -117,10 +165,12 @@ async fn test_endpoint_with_multiple_inject() {
 #[tokio::test]
 async fn test_endpoint_with_cache_control() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// Both #[inject] params (db, service) are removed, only pass &ctx
-	let result = handler_with_cache_control(&ctx).await.unwrap();
+	let req = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request)
+	let result = handler_with_cache_control(req).await.unwrap();
 
 	assert_eq!(result, 42); // service.value
 }
@@ -128,10 +178,12 @@ async fn test_endpoint_with_cache_control() {
 #[tokio::test]
 async fn test_endpoint_only_inject_params() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// Only #[inject] param (db) is removed, only pass &ctx
-	let result = handler_only_inject(&ctx).await.unwrap();
+	let req = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request)
+	let result = handler_only_inject(req).await.unwrap();
 
 	assert_eq!(result.connection_string, "");
 }
@@ -139,20 +191,23 @@ async fn test_endpoint_only_inject_params() {
 #[tokio::test]
 async fn test_endpoint_no_inject_params() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// No #[inject] params, so pass all regular params and &ctx at the end
-	let result = handler_no_inject("hello".to_string(), 42, &ctx)
+	let req = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request, regular_params...)
+	// Note: No DI context extraction needed when no #[inject] params
+	let result = handler_no_inject(req, "hello".to_string(), 42)
 		.await
 		.unwrap();
 
 	assert_eq!(result, "hello-42");
 }
 
-// ========== use_injection Macro Tests ==========
+// ========== Additional use_injection Macro Tests ==========
 
 #[use_injection]
-async fn process_data(#[inject] db: Database, data: String) -> DiResult<String> {
+async fn process_data(_req: Request, #[inject] db: Database, data: String) -> DiResult<String> {
 	Ok(format!(
 		"Processing {} with db: {:?}",
 		data, db.connection_string
@@ -161,6 +216,7 @@ async fn process_data(#[inject] db: Database, data: String) -> DiResult<String> 
 
 #[use_injection]
 async fn complex_handler(
+	_req: Request,
 	#[inject] db: Database,
 	#[inject] config: Config,
 	#[inject] logger: Logger,
@@ -174,6 +230,7 @@ async fn complex_handler(
 
 #[use_injection]
 async fn cache_control(
+	_req: Request,
 	#[inject] cached_db: Database,
 	#[inject(cache = false)] fresh_logger: Logger,
 ) -> DiResult<String> {
@@ -184,7 +241,7 @@ async fn cache_control(
 }
 
 #[use_injection]
-async fn validate_user(#[inject] _db: Database, user_id: u64) -> DiResult<bool> {
+async fn validate_user(_req: Request, #[inject] _db: Database, user_id: u64) -> DiResult<bool> {
 	// For testing purposes, just check user_id validity
 	// (db is injected to test DI functionality, not used in validation logic)
 	Ok(user_id > 0)
@@ -192,6 +249,7 @@ async fn validate_user(#[inject] _db: Database, user_id: u64) -> DiResult<bool> 
 
 #[use_injection]
 async fn calculate_report(
+	_req: Request,
 	#[inject] db: Database,
 	#[inject] config: Config,
 	year: i32,
@@ -206,20 +264,24 @@ async fn calculate_report(
 #[tokio::test]
 async fn test_simple_injection() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// #[inject] db param is removed, only pass data and &ctx
-	let result = process_data("test_data".to_string(), &ctx).await.unwrap();
+	let req = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request, regular_params...)
+	let result = process_data(req, "test_data".to_string()).await.unwrap();
 	assert!(result.contains("Processing test_data"));
 }
 
 #[tokio::test]
 async fn test_multiple_injections() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// All #[inject] params (db, config, logger) are removed, only pass input and &ctx
-	let result = complex_handler(42, &ctx).await.unwrap();
+	let req = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request, regular_params...)
+	let result = complex_handler(req, 42).await.unwrap();
 	assert!(result.contains("Input: 42"));
 	assert!(result.contains("DB:"));
 	assert!(result.contains("Config:"));
@@ -229,10 +291,12 @@ async fn test_multiple_injections() {
 #[tokio::test]
 async fn test_use_injection_cache_control() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// Both #[inject] params (cached_db, fresh_logger) are removed, only pass &ctx
-	let result = cache_control(&ctx).await.unwrap();
+	let req = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request)
+	let result = cache_control(req).await.unwrap();
 	assert!(result.contains("DB:"));
 	assert!(result.contains("Logger:"));
 }
@@ -240,23 +304,28 @@ async fn test_use_injection_cache_control() {
 #[tokio::test]
 async fn test_helper_function() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// #[inject] db param is removed, only pass user_id and &ctx
-	let valid = validate_user(12345, &ctx).await.unwrap();
+	let req1 = create_test_request_with_di(ctx.clone());
+	let req2 = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request, regular_params...)
+	let valid = validate_user(req1, 12345).await.unwrap();
 	assert!(valid);
 
-	let invalid = validate_user(0, &ctx).await.unwrap();
+	let invalid = validate_user(req2, 0).await.unwrap();
 	assert!(!invalid);
 }
 
 #[tokio::test]
 async fn test_business_logic() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// #[inject] params (db, config) are removed, only pass year, month, and &ctx
-	let result = calculate_report(2025, 10, &ctx).await.unwrap();
+	let req = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request, regular_params...)
+	let result = calculate_report(req, 2025, 10).await.unwrap();
 	assert!(result.contains("Report for 2025/10"));
 	assert!(result.contains("connections"));
 }
@@ -264,13 +333,16 @@ async fn test_business_logic() {
 #[tokio::test]
 async fn test_injection_caching() {
 	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
+	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	// #[inject] db param is removed, only pass data and &ctx
+	let req1 = create_test_request_with_di(ctx.clone());
+	let req2 = create_test_request_with_di(ctx);
+
+	// Router-compatible signature: handler(request, regular_params...)
 	// First call
-	let result1 = process_data("data1".to_string(), &ctx).await.unwrap();
+	let result1 = process_data(req1, "data1".to_string()).await.unwrap();
 	// Second call - should use cached context
-	let result2 = process_data("data2".to_string(), &ctx).await.unwrap();
+	let result2 = process_data(req2, "data2".to_string()).await.unwrap();
 
 	assert!(result1.contains("data1"));
 	assert!(result2.contains("data2"));

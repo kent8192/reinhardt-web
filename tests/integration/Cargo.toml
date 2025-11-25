@@ -6,6 +6,11 @@ publish = false
 autotests = true
 
 [dependencies]
+# Main reinhardt facade crate for proc macro path resolution.
+# Proc macros generate code with absolute paths like ::reinhardt::db::orm::Model
+# This dependency makes those paths resolvable in test files.
+reinhardt = { path = "../..", package = "reinhardt-web", features = ["full"] }
+
 # Reinhardt crates
 reinhardt-apps = { workspace = true }
 reinhardt-core = { workspace = true, features = [
@@ -16,7 +21,7 @@ reinhardt-core = { workspace = true, features = [
   "validators",
 ] }
 reinhardt-panel = { workspace = true }
-reinhardt-auth = { workspace = true, features = ["argon2-hasher", "jwt", "session", "token"] }
+reinhardt-auth = { workspace = true, features = ["argon2-hasher", "jwt", "sessions", "token"] }
 reinhardt-security = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-params = { workspace = true }

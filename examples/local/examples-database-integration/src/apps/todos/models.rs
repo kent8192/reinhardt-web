@@ -20,7 +20,7 @@ pub struct Todo {
 	pub title: String,
 
 	/// Task description
-	#[field(null = true)]
+	#[field(max_length = 1000, null = true)]
 	pub description: Option<String>,
 
 	/// Completion status

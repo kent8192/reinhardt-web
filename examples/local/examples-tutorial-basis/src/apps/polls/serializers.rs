@@ -18,7 +18,7 @@ pub struct QuestionResponse {
 }
 
 impl QuestionResponse {
-	pub fn from_model(model: &crate::models::Question) -> Self {
+	pub fn from_model(model: &crate::apps::polls::models::Question) -> Self {
 		Self {
 			id: model.id,
 			question_text: model.question_text.clone(),
@@ -47,7 +47,7 @@ pub struct ChoiceResponse {
 }
 
 impl ChoiceResponse {
-	pub fn from_model(model: &crate::models::Choice) -> Self {
+	pub fn from_model(model: &crate::apps::polls::models::Choice) -> Self {
 		Self {
 			id: model.id,
 			question_id: model.question_id,

@@ -3,7 +3,8 @@
 //! This file maintains the list of installed apps.
 
 // Re-export apps from the apps directory
-#[path = "apps/todos/lib.rs"]
 pub mod todos;
+pub mod users;
 
 pub use todos::TodosConfig;
+pub use users::models::User;

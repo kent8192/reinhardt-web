@@ -6,42 +6,70 @@
 //! - code: TEXT NOT NULL
 //! - language: TEXT NOT NULL
 
-use reinhardt::db::migrations::Migration;
-use reinhardt::Result;
-use sea_query::{ColumnDef, PostgresQueryBuilder, Table};
+use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 
-pub struct CreateSnippetsTable;
+/// Initial migration creating snippets table
+pub struct Migration;
 
-impl Migration for CreateSnippetsTable {
-	fn name(&self) -> &str {
-		"0001_initial"
-	}
-
-	fn up(&self) -> Result<String> {
-		let sql = Table::create()
-			.table("snippets")
+impl Migration {
+	/// Apply migration - create snippets table
+	pub fn up() -> String {
+		let snippets_table = Table::create()
+			.table(SnippetsTable::Table)
 			.if_not_exists()
 			.col(
-				ColumnDef::new("id")
+				ColumnDef::new(SnippetsTable::Id)
 					.big_integer()
 					.not_null()
 					.auto_increment()
 					.primary_key(),
 			)
-			.col(ColumnDef::new("title").text().not_null())
-			.col(ColumnDef::new("code").text().not_null())
-			.col(ColumnDef::new("language").text().not_null())
-			.build(PostgresQueryBuilder);
+			.col(ColumnDef::new(SnippetsTable::Title).text().not_null())
+			.col(ColumnDef::new(SnippetsTable::Code).text().not_null())
+			.col(ColumnDef::new(SnippetsTable::Language).text().not_null())
+			.to_owned();
 
-		Ok(sql)
+		snippets_table.to_string(PostgresQueryBuilder)
 	}
 
-	fn down(&self) -> Result<String> {
-		let sql = Table::drop()
-			.table("snippets")
+	/// Rollback migration - drop snippets table
+	pub fn down() -> String {
+		Table::drop()
+			.table(SnippetsTable::Table)
 			.if_exists()
-			.build(PostgresQueryBuilder);
+			.to_owned()
+			.to_string(PostgresQueryBuilder)
+	}
+}
 
-		Ok(sql)
+/// Snippets table identifier
+#[derive(Iden)]
+enum SnippetsTable {
+	Table,
+	Id,
+	Title,
+	Code,
+	Language,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_migration_up() {
+		let sql = Migration::up();
+		assert!(sql.contains("CREATE TABLE"));
+		assert!(sql.contains("snippets"));
+		assert!(sql.contains("title"));
+		assert!(sql.contains("code"));
+		assert!(sql.contains("language"));
+	}
+
+	#[test]
+	fn test_migration_down() {
+		let sql = Migration::down();
+		assert!(sql.contains("DROP TABLE"));
+		assert!(sql.contains("snippets"));
 	}
 }

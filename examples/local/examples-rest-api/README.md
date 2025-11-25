@@ -186,7 +186,6 @@ use reinhardt_test::resource::TeardownGuard;
 use rstest::*;
 
 #[rstest]
-#[example_test("*")]
 async fn test_api_endpoint(
     #[future] test_server_guard: TeardownGuard<reinhardt_test::fixtures::TestServerGuard>,
 ) {
@@ -211,7 +210,6 @@ async fn test_api_endpoint(
 **✅ GOOD - Using Standard Fixture for E2E Tests:**
 ```rust
 #[rstest]
-#[example_test("*")]
 async fn test_with_standard_fixture(
     #[future] test_server_guard: TeardownGuard<TestServerGuard>,
 ) {
@@ -227,7 +225,6 @@ async fn test_with_standard_fixture(
 
 **❌ BAD - Manual Server Management:**
 ```rust
-#[example_test("*")]
 async fn test_with_manual_setup() {
     let server = start_test_server().await;
     let port = server.port();

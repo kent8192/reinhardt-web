@@ -1,6 +1,5 @@
 use reinhardt::prelude::*;
-use reinhardt::{endpoint, db::DatabaseConnection};
-use reinhardt_http::ViewResult;
+use reinhardt::{endpoint, db::DatabaseConnection, ViewResult};
 use serde_json::json;
 use std::sync::Arc;
 use validator::Validate;
@@ -33,8 +32,8 @@ pub async fn create(
 	#[inject] _db: Arc<DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Parse request body
-	let body_bytes = std::mem::take(&mut req.body);
-	let serializer: SnippetSerializer = serde_json::from_slice(&body_bytes)?;
+	let body_bytes = req.body();
+	let serializer: SnippetSerializer = serde_json::from_slice(body_bytes)?;
 
 	// Validate
 	serializer.validate()?;
@@ -100,8 +99,8 @@ pub async fn update(
 		.map_err(|_| "Invalid id format")?;
 
 	// Parse request body
-	let body_bytes = std::mem::take(&mut req.body);
-	let serializer: SnippetSerializer = serde_json::from_slice(&body_bytes)?;
+	let body_bytes = req.body();
+	let serializer: SnippetSerializer = serde_json::from_slice(body_bytes)?;
 
 	// Validate
 	serializer.validate()?;

@@ -25,14 +25,14 @@ pub struct SnippetResponse {
 }
 
 impl SnippetResponse {
-	pub fn from_model(snippet: &super::models::Snippet) -> Option<Self> {
-		Some(Self {
-			id: snippet.id?,
+	pub fn from_model(snippet: &super::models::Snippet) -> Self {
+		Self {
+			id: snippet.id,
 			title: snippet.title.clone(),
 			code: snippet.code.clone(),
 			language: snippet.language.clone(),
 			highlighted: snippet.highlighted(),
-		})
+		}
 	}
 }
 

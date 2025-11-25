@@ -5,6 +5,7 @@
 use reinhardt::AppConfig;
 
 pub mod admin;
+pub mod migrations;
 pub mod models;
 pub mod serializers;
 pub mod urls;

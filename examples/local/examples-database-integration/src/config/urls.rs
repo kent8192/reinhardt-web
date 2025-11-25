@@ -2,7 +2,7 @@
 //!
 //! The `url_patterns` routes URLs to handlers.
 
-use reinhardt::{Request, Response, StatusCode, Method, UnifiedRouter, Error, Result};
+use reinhardt::{Error, Method, Request, Response, Result, StatusCode, UnifiedRouter};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,13 +31,7 @@ async fn list_users(_req: Request) -> Result<Response> {
 }
 
 pub fn url_patterns() -> UnifiedRouter {
-	let mut router = UnifiedRouter::new();
-
-	// Add example API endpoint
-	router.function("/api/users", Method::GET, list_users);
-
-	// Include todos app routes
-	router.include("/api/todos", crate::apps::todos::urls::url_patterns());
-
-	router
+	UnifiedRouter::new()
+		.function("/api/users", Method::GET, list_users)
+		.include("/api/todos", crate::apps::todos::urls::url_patterns())
 }

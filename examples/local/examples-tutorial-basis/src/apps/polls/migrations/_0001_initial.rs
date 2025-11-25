@@ -43,11 +43,10 @@ impl Migration {
 					.default(0),
 			)
 			.foreign_key(
-				ForeignKey::create()
+				&mut ForeignKey::create()
 					.from(ChoicesTable::Table, ChoicesTable::QuestionId)
 					.to(QuestionsTable::Table, QuestionsTable::Id)
 					.on_delete(ForeignKeyAction::Cascade)
-					.to_owned(),
 			)
 			.to_owned();
 

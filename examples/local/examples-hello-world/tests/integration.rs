@@ -13,7 +13,6 @@ use reinhardt::test::resource::TeardownGuard;
 use rstest::*;
 
 /// Test that reinhardt can be imported and basic functionality works
-#[example_test("*")]
 fn test_reinhardt_available() {
 	// If this compiles and runs, reinhardt is available
 	println!("✅ reinhardt is available from crates.io");
@@ -21,7 +20,6 @@ fn test_reinhardt_available() {
 }
 
 /// Test application initialization
-#[example_test("*")]
 fn test_application_initialization() {
 	let result = Application::builder().build();
 	assert!(result.is_ok(), "Failed to initialize reinhardt application");
@@ -34,7 +32,6 @@ fn test_application_initialization() {
 
 /// Test GET / endpoint returns "Hello, World!"
 #[rstest]
-#[example_test("*")]
 async fn test_hello_world_endpoint(
 	#[future] test_server_guard: TeardownGuard<reinhardt::test::fixtures::TestServerGuard>,
 ) {
@@ -42,10 +39,7 @@ async fn test_hello_world_endpoint(
 
 	// Send GET request to root endpoint
 	let client = APIClient::with_base_url(&server.url);
-	let response = client
-		.get("/")
-		.await
-		.expect("Failed to send request");
+	let response = client.get("/").await.expect("Failed to send request");
 
 	// Verify response
 	assert_eq!(response.status_code(), 200);
@@ -57,7 +51,6 @@ async fn test_hello_world_endpoint(
 
 /// Test GET /health endpoint returns JSON health status
 #[rstest]
-#[example_test("*")]
 async fn test_health_check_endpoint(
 	#[future] test_server_guard: TeardownGuard<reinhardt::test::fixtures::TestServerGuard>,
 ) {
@@ -65,10 +58,7 @@ async fn test_health_check_endpoint(
 
 	// Send GET request to health endpoint
 	let client = APIClient::with_base_url(&server.url);
-	let response = client
-		.get("/health")
-		.await
-		.expect("Failed to send request");
+	let response = client.get("/health").await.expect("Failed to send request");
 
 	// Verify response
 	assert_eq!(response.status_code(), 200);
@@ -83,9 +73,7 @@ async fn test_health_check_endpoint(
 		content_type
 	);
 
-	let body: serde_json::Value = response
-		.json()
-		.expect("Failed to parse JSON response");
+	let body: serde_json::Value = response.json().expect("Failed to parse JSON response");
 	assert_eq!(body["status"], "ok");
 
 	println!("✅ GET /health returned valid JSON health status");
@@ -97,7 +85,6 @@ async fn test_health_check_endpoint(
 
 /// Test 404 Not Found for non-existent endpoint
 #[rstest]
-#[example_test("*")]
 async fn test_404_not_found(
 	#[future] test_server_guard: TeardownGuard<reinhardt::test::fixtures::TestServerGuard>,
 ) {
@@ -118,7 +105,6 @@ async fn test_404_not_found(
 
 /// Test 405 Method Not Allowed for unsupported HTTP method
 #[rstest]
-#[example_test("*")]
 async fn test_405_method_not_allowed(
 	#[future] test_server_guard: TeardownGuard<reinhardt::test::fixtures::TestServerGuard>,
 ) {

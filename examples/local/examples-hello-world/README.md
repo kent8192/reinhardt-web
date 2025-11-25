@@ -130,7 +130,6 @@ use reinhardt_test::fixtures::test_server_guard;
 use rstest::*;
 
 #[rstest]
-#[example_test("*")]
 async fn test_hello_world_endpoint(
 	#[future] test_server_guard: reinhardt_test::resource::TeardownGuard<
 		reinhardt_test::fixtures::TestServerGuard
