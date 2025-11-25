@@ -35,7 +35,7 @@ pub mod xframe;
 // Re-export core middleware traits from reinhardt-types
 pub use reinhardt_core::types::{Handler, Middleware, MiddlewareChain};
 
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 pub use auth::AuthenticationMiddleware;
 pub use broken_link::{BrokenLinkConfig, BrokenLinkEmailsMiddleware};
 #[cfg(feature = "compression")]

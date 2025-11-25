@@ -1,17 +1,17 @@
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 use async_trait::async_trait;
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 use std::sync::Arc;
 
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 use reinhardt_core::{
 	Handler, Middleware,
 	http::{Request, Response, Result},
 };
 
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 use reinhardt_auth::session::{SESSION_KEY_USER_ID, SessionStore};
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 
 /// Authentication middleware
@@ -101,13 +101,13 @@ use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 ///     }
 /// }
 /// ```
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 pub struct AuthenticationMiddleware<S: SessionStore, A: AuthenticationBackend> {
 	session_store: Arc<S>,
 	auth_backend: Arc<A>,
 }
 
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
 	/// Create a new authentication middleware
 	///
@@ -188,7 +188,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
 	}
 }
 
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 #[async_trait]
 impl<S: SessionStore + 'static, A: AuthenticationBackend + 'static> Middleware
 	for AuthenticationMiddleware<S, A>
@@ -273,7 +273,7 @@ impl AuthState {
 	}
 }
 
-#[cfg(all(test, feature = "session"))]
+#[cfg(all(test, feature = "sessions"))]
 mod tests {
 	use super::*;
 	use bytes::Bytes;

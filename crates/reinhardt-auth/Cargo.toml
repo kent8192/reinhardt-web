@@ -11,7 +11,7 @@ default = []
 
 # Fine-grained authentication features
 jwt = []
-session = []
+sessions = []
 oauth = []
 token = []
 argon2-hasher = []

@@ -14,7 +14,7 @@ cors = []
 compression = []
 security = []
 rate-limit = []
-session = []
+sessions = []
 
 # Database support for certain middleware
 sqlx = ["dep:sqlx"]
@@ -26,7 +26,7 @@ reinhardt-core = { workspace = true, features = [
     "http",
     "security",
 ] }
-reinhardt-auth = { workspace = true, features = ["session"] }
+reinhardt-auth = { workspace = true, features = ["sessions"] }
 reinhardt-mail = { workspace = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }
 async-trait = { workspace = true }

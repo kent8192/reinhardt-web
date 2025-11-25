@@ -41,7 +41,7 @@ pub mod default_user_manager;
 pub mod drf_authentication;
 pub mod drf_permissions;
 pub mod group_management;
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 pub mod handlers;
 pub mod ip_permission;
 #[cfg(feature = "jwt")]
@@ -53,7 +53,7 @@ pub mod oauth2;
 pub mod object_permissions;
 pub mod rate_limit_permission;
 pub mod remote_user;
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 pub mod session;
 pub mod time_based_permission;
 #[cfg(any(feature = "jwt", feature = "token"))]
@@ -81,7 +81,7 @@ pub use drf_permissions::{
 pub use group_management::{
 	CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,
 };
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 pub use handlers::{LoginCredentials, LoginHandler, LogoutHandler, SESSION_COOKIE_NAME};
 pub use ip_permission::{CidrRange, IpBlacklistPermission, IpWhitelistPermission};
 #[cfg(feature = "jwt")]
@@ -102,7 +102,7 @@ pub use rate_limit_permission::{
 	RateLimitPermissionBuilder,
 };
 pub use remote_user::RemoteUserAuthentication as RemoteUserAuth;
-#[cfg(feature = "session")]
+#[cfg(feature = "sessions")]
 pub use session::{InMemorySessionStore, SESSION_KEY_USER_ID, Session, SessionId, SessionStore};
 pub use time_based_permission::{DateRange, TimeBasedPermission, TimeWindow};
 #[cfg(any(feature = "jwt", feature = "token"))]
