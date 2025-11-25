@@ -94,10 +94,16 @@
 //! ```
 
 // Re-export external crates for macro support
-#[cfg(feature = "core")]
+// Note: These are marked #[doc(hidden)] because they are internal dependencies
+// used by macro-generated code. Users should not use these directly.
+#[doc(hidden)]
 pub extern crate reinhardt_apps;
-#[cfg(feature = "di")]
+
+#[doc(hidden)]
 pub extern crate reinhardt_di;
+
+#[doc(hidden)]
+pub extern crate reinhardt_core;
 
 // Module re-exports following Django's structure
 #[cfg(feature = "core")]
@@ -108,13 +114,12 @@ pub mod commands;
 pub mod conf;
 #[cfg(feature = "core")]
 pub mod core;
-#[cfg(feature = "database")]
-pub mod db;
 #[cfg(feature = "di")]
 pub mod di;
 #[cfg(feature = "forms")]
 pub mod forms;
 pub mod http;
+#[cfg(any(feature = "standard", feature = "middleware"))]
 pub mod middleware;
 #[cfg(feature = "rest")]
 pub mod rest;
@@ -139,6 +144,17 @@ pub mod contrib {
 	pub use reinhardt_admin::panel as admin;
 }
 
+// Re-export admin at top level for convenience (accessible as reinhardt::admin)
+#[cfg(feature = "admin")]
+#[cfg_attr(docsrs, doc(cfg(feature = "admin")))]
+pub mod admin {
+	// Re-export panel module for direct access to types
+	pub use reinhardt_admin::panel;
+
+	// Re-export commonly used admin types at module level
+	pub use reinhardt_admin::panel::*;
+}
+
 // Re-export app types from reinhardt-apps
 #[cfg(feature = "core")]
 pub use reinhardt_apps::{
@@ -148,6 +164,10 @@ pub use reinhardt_apps::{
 // Re-export macros
 #[cfg(feature = "core")]
 pub use reinhardt_macros::{AppConfig, installed_apps};
+
+// Re-export Model derive macro (requires database feature)
+#[cfg(feature = "database")]
+pub use reinhardt_macros::Model;
 
 // Re-export endpoint macro
 pub use reinhardt_macros::endpoint;
@@ -966,6 +986,7 @@ pub mod prelude {
 	pub use crate::Settings;
 
 	// Middleware
+	#[cfg(any(feature = "standard", feature = "middleware"))]
 	pub use crate::LoggingMiddleware;
 
 	// Sessions feature
@@ -983,6 +1004,8 @@ pub mod prelude {
 		ActionRegistry,
 		AdminAction,
 		AdminError,
+		// Forms
+		AdminFieldType as FieldType,
 		AdminForm,
 		AdminResult,
 		AdminSite,
@@ -991,12 +1014,32 @@ pub mod prelude {
 		ChoiceFilter,
 		DateRangeFilter,
 		DeleteSelectedAction,
-		// Forms
-		FieldType,
 		FormBuilder,
 		FormField,
 		ListFilter,
 		ModelAdmin,
 		ModelAdminConfig,
 	};
+}
+
+// Re-export database modules for Model derive macro generated code
+// These must be available at `::reinhardt::db::*` for the macro to work correctly
+#[cfg(feature = "database")]
+pub mod db {
+	// Re-export commonly used types at module level for easier access
+	pub use reinhardt_db::DatabaseConnection;
+
+	// Explicitly re-export modules used by Model derive macro
+	pub mod migrations {
+		pub use reinhardt_db::migrations::*;
+	}
+
+	pub mod orm {
+		pub use reinhardt_db::orm::*;
+	}
+
+	// Re-export prelude for convenience
+	pub mod prelude {
+		pub use reinhardt_db::prelude::*;
+	}
 }

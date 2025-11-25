@@ -205,6 +205,10 @@ pub mod prelude {
 
 	#[cfg(feature = "contenttypes")]
 	pub use crate::contenttypes::*;
+
+	// Re-export types needed by Model derive macro
+	#[cfg(feature = "migrations")]
+	pub use crate::migrations::model_registry::{FieldMetadata, global_registry};
 }
 
 // Re-export top-level commonly used types
