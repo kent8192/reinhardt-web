@@ -13,13 +13,21 @@
 
 use reinhardt_db::orm::Model as ModelTrait;
 use reinhardt_di::{Injectable as InjectableTrait, InjectionContext, SingletonScope};
-use reinhardt_macros::{Injectable, Model, endpoint};
+use reinhardt_macros::{Injectable, Model};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-// Re-export reinhardt_di module so that the macro can find it
-mod reinhardt_di {
-	pub use reinhardt_di::*;
+// Allow this test crate to be referenced as `::reinhardt` for proc macro generated code.
+// The macros generate code with absolute paths like ::reinhardt::db::orm::Model
+extern crate self as reinhardt;
+
+// Re-export modules for proc macro generated code paths.
+pub mod db {
+	pub use ::reinhardt_db::*;
+}
+
+pub mod reinhardt_di {
+	pub use ::reinhardt_di::*;
 }
 
 // ========== Model Derive Macro Compilation Tests ==========
@@ -700,6 +708,32 @@ fn test_validation_fail_action_url_path_no_slash() {
 
 // ========== Macro Expansion Verification Tests ==========
 
+// Model definitions must be at module level for proc macro path resolution.
+// The #[derive(Model)] macro generates code with ::reinhardt::db::orm::Model paths.
+
+#[derive(Debug, Clone, Serialize, Deserialize, Model)]
+#[model(app_label = "expansion_test", table_name = "expansion_models")]
+struct ExpansionTestModel {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(max_length = 100)]
+	name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Model)]
+#[model(app_label = "metadata_test", table_name = "metadata_models")]
+struct MetadataTestModel {
+	#[field(primary_key = true)]
+	pk: Option<i64>,
+
+	#[field(max_length = 200)]
+	title: String,
+
+	#[field(null = true, max_length = 500)]
+	description: Option<String>,
+}
+
 /// Test Model derive macro expansion generates correct trait implementations
 ///
 /// Verifies:
@@ -709,16 +743,6 @@ fn test_validation_fail_action_url_path_no_slash() {
 /// - Primary key field method returns correct value
 #[test]
 fn test_model_macro_expansion_trait_implementation() {
-	#[derive(Debug, Clone, Serialize, Deserialize, Model)]
-	#[model(app_label = "expansion_test", table_name = "expansion_models")]
-	struct ExpansionTestModel {
-		#[field(primary_key = true)]
-		id: Option<i64>,
-
-		#[field(max_length = 100)]
-		name: String,
-	}
-
 	// Verify trait methods are implemented and return correct values
 	assert_eq!(ExpansionTestModel::table_name(), "expansion_models");
 	assert_eq!(ExpansionTestModel::app_label(), "expansion_test");
@@ -735,19 +759,6 @@ fn test_model_macro_expansion_trait_implementation() {
 #[test]
 fn test_model_macro_expansion_field_metadata() {
 	use reinhardt_db::orm::Model;
-
-	#[derive(Debug, Clone, Serialize, Deserialize, Model)]
-	#[model(app_label = "metadata_test", table_name = "metadata_models")]
-	struct MetadataTestModel {
-		#[field(primary_key = true)]
-		pk: Option<i64>,
-
-		#[field(max_length = 200)]
-		title: String,
-
-		#[field(null = true, max_length = 500)]
-		description: Option<String>,
-	}
 
 	let fields = <MetadataTestModel as Model>::field_metadata();
 	assert_eq!(fields.len(), 3, "Should have 3 fields");
@@ -804,6 +815,20 @@ async fn test_injectable_macro_expansion_inject_method() {
 
 // ========== Macros with Generic Types Tests ==========
 
+// Model with generic-like field types (Option<T>)
+#[derive(Debug, Clone, Serialize, Deserialize, Model)]
+#[model(app_label = "generic_test", table_name = "generic_models")]
+struct GenericLikeModel {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(null = true)]
+	optional_count: Option<i32>,
+
+	#[field(null = true, max_length = 255)]
+	optional_text: Option<String>,
+}
+
 /// Test Model derive macro with generic-like field types
 ///
 /// Verifies:
@@ -812,19 +837,6 @@ async fn test_injectable_macro_expansion_inject_method() {
 /// - Type inference for generic fields
 #[test]
 fn test_model_with_generic_like_fields() {
-	#[derive(Debug, Clone, Serialize, Deserialize, Model)]
-	#[model(app_label = "generic_test", table_name = "generic_models")]
-	struct GenericLikeModel {
-		#[field(primary_key = true)]
-		id: Option<i64>,
-
-		#[field(null = true)]
-		optional_count: Option<i32>,
-
-		#[field(null = true, max_length = 255)]
-		optional_text: Option<String>,
-	}
-
 	// Verify model compiles and metadata is correct
 	let fields = GenericLikeModel::field_metadata();
 	assert_eq!(fields.len(), 3);
@@ -838,32 +850,10 @@ fn test_model_with_generic_like_fields() {
 	assert!(optional_text_field.unwrap().nullable);
 }
 
-/// Test endpoint macro with generic return type
-///
-/// Verifies:
-/// - endpoint macro handles Result<T, E> return types
-/// - Generic error types are preserved
-/// - Type inference works correctly
-#[tokio::test]
-async fn test_endpoint_with_generic_return_type() {
-	#[derive(Clone, Default)]
-	struct GenericTestService;
-
-	#[endpoint]
-	async fn generic_endpoint(
-		#[inject] _service: GenericTestService,
-		value: i32,
-	) -> Result<String, reinhardt_di::DiError> {
-		Ok(format!("Value: {}", value))
-	}
-
-	let singleton = Arc::new(SingletonScope::new());
-	let ctx = InjectionContext::builder(singleton).build();
-
-	let result = generic_endpoint(42, &ctx).await;
-	assert!(result.is_ok());
-	assert_eq!(result.unwrap(), "Value: 42");
-}
+// Note: The endpoint macro test has been moved to tests/integration/tests/di/macros_integration.rs
+// because #[endpoint] macro requires module-level definitions and access to the reinhardt crate.
+// Testing #[endpoint] within a test function is not possible due to proc macro path resolution
+// limitations.
 
 /// Test Injectable with nested generic types
 ///

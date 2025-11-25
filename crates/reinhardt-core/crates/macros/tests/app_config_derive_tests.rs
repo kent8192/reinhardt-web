@@ -4,10 +4,13 @@
 
 use reinhardt_macros::AppConfig;
 
-// Re-export reinhardt_apps module so that the macro can find it
-#[allow(unused_imports)]
-mod reinhardt_apps {
-	pub use reinhardt_apps::*;
+// Allow this test crate to be referenced as `::reinhardt` for proc macro generated code.
+// The macro generates code with absolute paths like ::reinhardt::reinhardt_apps::AppConfig
+extern crate self as reinhardt;
+
+// Re-export module for proc macro generated code paths.
+pub mod reinhardt_apps {
+	pub use ::reinhardt_apps::*;
 }
 
 #[derive(AppConfig)]
