@@ -29,6 +29,13 @@ pub mod viewsets;
 #[cfg(feature = "testcontainers")]
 pub mod containers;
 
+// Re-export testcontainers crates for convenient access via reinhardt::test::testcontainers
+#[cfg(feature = "testcontainers")]
+pub use testcontainers;
+
+#[cfg(feature = "testcontainers")]
+pub use testcontainers_modules;
+
 #[cfg(feature = "static")]
 pub mod static_files;
 
