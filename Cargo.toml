@@ -89,7 +89,10 @@ conf = ["reinhardt-conf"]
 core = ["reinhardt-core", "reinhardt-apps"]
 rest = ["reinhardt-rest"]
 messages = ["reinhardt-core/messages"]
-di = ["reinhardt-di", "reinhardt-core/di"]
+# DI feature: Uses reinhardt-core/di which internally enables reinhardt-di/params
+# Also directly enables reinhardt-di/params for macro support (extern crate reinhardt_di)
+# reinhardt-db/di enables Injectable implementation for DatabaseConnection
+di = ["reinhardt-di", "reinhardt-di/params", "reinhardt-core/di", "reinhardt-db?/di"]
 test = ["reinhardt-test"]
 testcontainers = ["test", "reinhardt-test/testcontainers"]
 openapi = ["reinhardt-rest", "reinhardt-rest/openapi"]
