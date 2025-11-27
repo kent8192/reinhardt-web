@@ -1068,6 +1068,134 @@ fn test_modifies_state() {
 
 ---
 
+## Migration Registry Testing
+
+### MRT-1 (MUST): Use LocalRegistry for Unit Tests
+
+**NEVER** use the global migration registry in unit tests. Always use `LocalRegistry` for test isolation.
+
+**Why?** Global registry (using linkme's `distributed_slice`) causes "duplicate distributed_slice" errors when tests run in parallel.
+
+❌ **BAD - Global Registry in Tests:**
+```rust
+use reinhardt_migrations::registry::all_migrations;
+
+#[test]
+fn test_migration_registration() {
+    // ❌ Uses global registry - will conflict with other tests
+    let migrations = all_migrations();
+    assert!(!migrations.is_empty());
+}
+```
+
+✅ **GOOD - LocalRegistry for Isolation:**
+```rust
+use reinhardt_migrations::registry::{LocalRegistry, MigrationRegistry};
+
+#[test]
+fn test_migration_registration() {
+    let registry = LocalRegistry::new();
+
+    registry.register(Migration {
+        app_label: "polls".to_string(),
+        name: "0001_initial".to_string(),
+        operations: vec![],
+        dependencies: vec![],
+    }).unwrap();
+
+    assert_eq!(registry.all_migrations().len(), 1);
+}
+```
+
+### MRT-2 (SHOULD): Use reinhardt-test Fixtures
+
+For convenience, use the `migration_registry` fixture from `reinhardt-test`:
+
+```rust
+use reinhardt_test::fixtures::*;
+use reinhardt_migrations::Migration;
+use rstest::*;
+
+#[rstest]
+fn test_with_fixture(migration_registry: LocalRegistry) {
+    // Registry starts empty
+    assert!(migration_registry.all_migrations().is_empty());
+
+    migration_registry.register(Migration {
+        app_label: "polls".to_string(),
+        name: "0001_initial".to_string(),
+        operations: vec![],
+        dependencies: vec![],
+    }).unwrap();
+
+    assert_eq!(migration_registry.all_migrations().len(), 1);
+}
+```
+
+### MRT-3 (MUST): Global Registry Tests Must Use #[serial]
+
+When testing the global registry itself, use `#[serial(global_registry)]` to prevent concurrent access:
+
+```rust
+use serial_test::serial;
+
+#[test]
+#[serial(global_registry)]
+fn test_global_registry() {
+    let registry = global_registry();
+
+    // Clear before test to ensure clean state
+    registry.clear();
+
+    registry.register(migration).unwrap();
+
+    // Test code...
+
+    // Clean up after test
+    registry.clear();
+}
+```
+
+**Critical Rules:**
+- Always call `registry.clear()` at start and end of test
+- Never rely on global state from other tests
+- Use `#[serial(global_registry)]` on ALL global registry tests
+
+### MRT-4 (SHOULD): Test Migration Registration in Examples
+
+In example projects, register migrations via `collect_migrations!` macro:
+
+```rust
+// examples/my-project/src/apps/polls/migrations.rs
+pub mod _0001_initial;
+pub mod _0002_add_fields;
+
+reinhardt::collect_migrations!(
+    app_label = "polls",
+    _0001_initial,
+    _0002_add_fields,
+);
+```
+
+Then test the global registry in integration tests:
+
+```rust
+// examples/my-project/tests/migration_tests.rs
+use reinhardt_migrations::registry::{global_registry, MigrationRegistry};
+
+#[test]
+fn test_polls_migrations_registered() {
+    let registry = global_registry();
+    let polls_migrations = registry.migrations_for_app("polls");
+
+    assert_eq!(polls_migrations.len(), 2);
+    assert!(polls_migrations.iter().any(|m| m.name == "0001_initial"));
+    assert!(polls_migrations.iter().any(|m| m.name == "0002_add_fields"));
+}
+```
+
+---
+
 ## Related Documentation
 
 - **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)
