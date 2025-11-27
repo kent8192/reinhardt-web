@@ -627,7 +627,7 @@ impl RunServerCommand {
 		// Get registered router
 		if !reinhardt_urls::routers::is_router_registered() {
 			return Err(crate::CommandError::ExecutionError(
-                "No router registered. Call reinhardt_urls::routers::register_router() before running the server.".to_string()
+                "No router registered. Call reinhardt_urls::routers::register_router() or reinhardt_urls::routers::register_router_arc() before running the server.".to_string()
             ));
 		}
 
