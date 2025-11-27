@@ -26,8 +26,9 @@ serde_json = "1.0.145"
 chrono = { version = "0.4", features = ["serde"] }
 validator = { version = "0.20.0", features = ["derive"] }
 sea-query = "1.0.0-rc.20"
+syntect = "5.2"
 example-common = { path = "../../remote/common" }
-ctor = "0.2"
+ctor = "0.6.1"
 
 [dev-dependencies]
 example-test-macros = { path = "../../remote/test-macros" }
@@ -37,6 +38,7 @@ reinhardt = { path = "../../..", package = "reinhardt-web", features = [
     "testcontainers",
 ] }
 rstest = { version = "0.26", default-features = false }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
 
 [build-dependencies]
 example-common = { path = "../../remote/common" }
@@ -48,3 +50,6 @@ with-reinhardt = []
 [[test]]
 name = "integration"
 required-features = ["with-reinhardt"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(with_reinhardt)"] }

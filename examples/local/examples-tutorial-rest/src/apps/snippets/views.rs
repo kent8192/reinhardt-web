@@ -1,22 +1,57 @@
+use chrono::Utc;
 use reinhardt::prelude::*;
 use reinhardt::{endpoint, db::DatabaseConnection, ViewResult};
 use serde_json::json;
-use std::sync::Arc;
 use validator::Validate;
 
 use super::models::Snippet;
 use super::serializers::{SnippetResponse, SnippetSerializer};
 
+/// Helper function to get sample snippets for demonstration
+fn get_sample_snippets() -> Vec<Snippet> {
+	vec![
+		Snippet {
+			id: 1,
+			title: "Hello World".to_string(),
+			code: "fn main() {\n    println!(\"Hello, World!\");\n}".to_string(),
+			language: "rust".to_string(),
+			created_at: Utc::now(),
+		},
+		Snippet {
+			id: 2,
+			title: "Fibonacci".to_string(),
+			code: "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)".to_string(),
+			language: "python".to_string(),
+			created_at: Utc::now(),
+		},
+		Snippet {
+			id: 3,
+			title: "Quick Sort".to_string(),
+			code: "function quickSort(arr) {\n  if (arr.length <= 1) return arr;\n  const pivot = arr[0];\n  const left = arr.slice(1).filter(x => x < pivot);\n  const right = arr.slice(1).filter(x => x >= pivot);\n  return [...quickSort(left), pivot, ...quickSort(right)];\n}".to_string(),
+			language: "javascript".to_string(),
+			created_at: Utc::now(),
+		},
+	]
+}
+
 /// List all snippets
 #[endpoint]
 pub async fn list(
 	_req: Request,
-	#[inject] _db: Arc<DatabaseConnection>,
+	#[inject] _db: DatabaseConnection,
 ) -> ViewResult<Response> {
-	todo!("Database integration - Manager::<Snippet>::new().all().all().await");
+	// Production ORM usage:
+	// let snippets = Manager::<Snippet>::new().all().await?;
+
+	// Demo mode: Use sample data
+	let snippets = get_sample_snippets();
+	let snippet_responses: Vec<SnippetResponse> = snippets
+		.iter()
+		.map(SnippetResponse::from_model)
+		.collect();
 
 	let response_data = json!({
-		"snippets": []
+		"snippets": snippet_responses
 	});
 
 	let json = serde_json::to_string(&response_data)?;
@@ -29,7 +64,7 @@ pub async fn list(
 #[endpoint]
 pub async fn create(
 	mut req: Request,
-	#[inject] _db: Arc<DatabaseConnection>,
+	#[inject] _db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// Parse request body
 	let body_bytes = req.body();
@@ -38,17 +73,27 @@ pub async fn create(
 	// Validate
 	serializer.validate()?;
 
-	todo!("Database integration - Create snippet using Manager::<Snippet>::new().create()");
+	// Production ORM usage:
+	// let snippet = Manager::<Snippet>::new().create(Snippet {
+	//     id: 0, // Auto-generated
+	//     title: serializer.title.clone(),
+	//     code: serializer.code.clone(),
+	//     language: serializer.language.clone(),
+	//     created_at: Utc::now(),
+	// }).await?;
 
-	// Placeholder response
+	// Demo mode: Create a mock snippet with a sample ID
+	let snippet = Snippet {
+		id: 4, // Mock ID for demo
+		title: serializer.title.clone(),
+		code: serializer.code.clone(),
+		language: serializer.language.clone(),
+		created_at: Utc::now(),
+	};
+
 	let response_data = json!({
 		"message": "Snippet created",
-		"snippet": {
-			"id": 1,
-			"title": serializer.title,
-			"code": serializer.code,
-			"language": serializer.language
-		}
+		"snippet": SnippetResponse::from_model(&snippet)
 	});
 
 	let json = serde_json::to_string(&response_data)?;
@@ -61,7 +106,7 @@ pub async fn create(
 #[endpoint]
 pub async fn retrieve(
 	req: Request,
-	#[inject] _db: Arc<DatabaseConnection>,
+	#[inject] _db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// Extract snippet_id from path parameters
 	let snippet_id = req
@@ -71,11 +116,18 @@ pub async fn retrieve(
 		.parse::<i64>()
 		.map_err(|_| "Invalid id format")?;
 
-	todo!("Database integration - Manager::<Snippet>::new().get(snippet_id).await");
+	// Production ORM usage:
+	// let snippet = Manager::<Snippet>::new().get(snippet_id).await?;
+
+	// Demo mode: Find in sample data
+	let snippets = get_sample_snippets();
+	let snippet = snippets
+		.iter()
+		.find(|s| s.id == snippet_id)
+		.ok_or("Snippet not found")?;
 
 	let response_data = json!({
-		"message": "Snippet retrieve",
-		"snippet_id": snippet_id
+		"snippet": SnippetResponse::from_model(snippet)
 	});
 
 	let json = serde_json::to_string(&response_data)?;
@@ -88,7 +140,7 @@ pub async fn retrieve(
 #[endpoint]
 pub async fn update(
 	mut req: Request,
-	#[inject] _db: Arc<DatabaseConnection>,
+	#[inject] _db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// Extract snippet_id from path parameters
 	let snippet_id = req
@@ -105,11 +157,32 @@ pub async fn update(
 	// Validate
 	serializer.validate()?;
 
-	todo!("Database integration - Manager::<Snippet>::new().update(snippet_id, serializer).await");
+	// Production ORM usage:
+	// let snippet = Manager::<Snippet>::new().update(snippet_id, |s| {
+	//     s.title = serializer.title.clone();
+	//     s.code = serializer.code.clone();
+	//     s.language = serializer.language.clone();
+	// }).await?;
+
+	// Demo mode: Verify snippet exists and return updated version
+	let snippets = get_sample_snippets();
+	let existing = snippets
+		.iter()
+		.find(|s| s.id == snippet_id)
+		.ok_or("Snippet not found")?;
+
+	// Create updated snippet
+	let updated_snippet = Snippet {
+		id: existing.id,
+		title: serializer.title.clone(),
+		code: serializer.code.clone(),
+		language: serializer.language.clone(),
+		created_at: existing.created_at,
+	};
 
 	let response_data = json!({
 		"message": "Snippet updated",
-		"snippet_id": snippet_id
+		"snippet": SnippetResponse::from_model(&updated_snippet)
 	});
 
 	let json = serde_json::to_string(&response_data)?;
@@ -122,7 +195,7 @@ pub async fn update(
 #[endpoint]
 pub async fn delete(
 	req: Request,
-	#[inject] _db: Arc<DatabaseConnection>,
+	#[inject] _db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// Extract snippet_id from path parameters
 	let snippet_id = req
@@ -132,15 +205,16 @@ pub async fn delete(
 		.parse::<i64>()
 		.map_err(|_| "Invalid id format")?;
 
-	todo!("Database integration - Manager::<Snippet>::new().delete(snippet_id).await");
+	// Production ORM usage:
+	// Manager::<Snippet>::new().delete(snippet_id).await?;
 
-	let response_data = json!({
-		"message": "Snippet deleted",
-		"snippet_id": snippet_id
-	});
+	// Demo mode: Verify snippet exists
+	let snippets = get_sample_snippets();
+	let _existing = snippets
+		.iter()
+		.find(|s| s.id == snippet_id)
+		.ok_or("Snippet not found")?;
 
-	let json = serde_json::to_string(&response_data)?;
-	Ok(Response::new(StatusCode::NO_CONTENT)
-		.with_header("Content-Type", "application/json")
-		.with_body(json))
+	// Return 204 No Content for successful deletion
+	Ok(Response::new(StatusCode::NO_CONTENT))
 }
