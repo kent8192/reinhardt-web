@@ -25,7 +25,7 @@ pub mod method_field;
 pub mod model_serializer;
 pub mod nested;
 pub mod nested_config;
-pub mod nested_orm_integration;
+pub mod nested_orm;
 pub mod parsers;
 pub mod performance;
 pub mod pool_manager;
@@ -47,7 +47,7 @@ pub use method_field::{
 pub use model_serializer::ModelSerializer;
 pub use nested::{ListSerializer, NestedSerializer, WritableNestedSerializer};
 pub use nested_config::{NestedFieldConfig, NestedSerializerConfig};
-pub use nested_orm_integration::{
+pub use nested_orm::{
 	ManyToManyManager, NestedSaveContext, NestedSerializerSave, TransactionHelper,
 };
 pub use performance::{
