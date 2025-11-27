@@ -9,6 +9,10 @@ pub enum DatabaseError {
 	#[error("Feature '{feature}' is not supported by {database}")]
 	UnsupportedFeature { database: String, feature: String },
 
+	/// Operation not supported by this backend
+	#[error("Not supported: {0}")]
+	NotSupported(String),
+
 	/// SQL syntax error
 	#[error("SQL syntax error: {0}")]
 	SyntaxError(String),
