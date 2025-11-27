@@ -16,13 +16,13 @@ testcontainers = [
   "dep:tokio-util",
   "dep:redis",
   "dep:fs2",
-  "dep:reinhardt-migrations",
 ]
 static = ["reinhardt-utils/static"]
 websockets = ["dep:reinhardt-websockets"]
 
 [dependencies]
 reinhardt-db = { workspace = true, features = ["orm", "backends", "postgres", "mysql", "sqlite"] }
+reinhardt-migrations = { workspace = true }
 reinhardt-views = { workspace = true, features = ["viewsets"] }
 reinhardt-auth = { workspace = true }
 reinhardt-server = { workspace = true }
@@ -61,7 +61,6 @@ redis = { workspace = true, optional = true, features = [
   "cluster-async",
 ] }
 fs2 = { version = "0.4", optional = true }
-reinhardt-migrations = { workspace = true, optional = true }
 
 # Optional dependencies for static feature
 # Note: static feature is provided via reinhardt-utils
