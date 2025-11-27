@@ -114,6 +114,8 @@ mod tests {
 			name: "0001_initial".to_string(),
 			operations: vec![],
 			dependencies: vec![],
+			replaces: vec![],
+			atomic: true,
 		};
 
 		registry.register(migration.clone()).unwrap();
@@ -134,6 +136,8 @@ mod tests {
 				name: "0001_initial".to_string(),
 				operations: vec![],
 				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
 			})
 			.unwrap();
 
@@ -143,6 +147,8 @@ mod tests {
 				name: "0001_initial".to_string(),
 				operations: vec![],
 				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
 			})
 			.unwrap();
 
@@ -152,6 +158,8 @@ mod tests {
 				name: "0002_add_field".to_string(),
 				operations: vec![],
 				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
 			})
 			.unwrap();
 
@@ -176,6 +184,8 @@ mod tests {
 				name: "0001_initial".to_string(),
 				operations: vec![],
 				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
 			})
 			.unwrap();
 
@@ -185,6 +195,8 @@ mod tests {
 				name: "0001_initial".to_string(),
 				operations: vec![],
 				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
 			})
 			.unwrap();
 
@@ -194,6 +206,8 @@ mod tests {
 				name: "0002_add_field".to_string(),
 				operations: vec![],
 				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
 			})
 			.unwrap();
 
@@ -212,6 +226,8 @@ mod tests {
 				name: "0001_initial".to_string(),
 				operations: vec![],
 				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
 			})
 			.unwrap();
 
@@ -233,6 +249,8 @@ mod tests {
 				name: "0001_initial".to_string(),
 				operations: vec![],
 				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
 			})
 			.unwrap();
 
@@ -242,6 +260,8 @@ mod tests {
 				name: "0001_initial".to_string(),
 				operations: vec![],
 				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
 			})
 			.unwrap();
 
@@ -251,5 +271,40 @@ mod tests {
 
 		assert_eq!(registry2.all_migrations().len(), 1);
 		assert_eq!(registry2.all_migrations()[0].app_label, "app2");
+	}
+
+	#[test]
+	fn test_migrations_for_nonexistent_app_returns_empty() {
+		let registry = LocalRegistry::new();
+
+		// Register migrations for different apps
+		registry
+			.register(Migration {
+				app_label: "polls".to_string(),
+				name: "0001_initial".to_string(),
+				operations: vec![],
+				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
+			})
+			.unwrap();
+
+		registry
+			.register(Migration {
+				app_label: "users".to_string(),
+				name: "0001_initial".to_string(),
+				operations: vec![],
+				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
+			})
+			.unwrap();
+
+		// Query for non-existent app should return empty
+		let migrations = registry.migrations_for_app("nonexistent_app_12345");
+		assert!(
+			migrations.is_empty(),
+			"Expected empty result for non-existent app"
+		);
 	}
 }
