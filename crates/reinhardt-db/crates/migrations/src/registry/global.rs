@@ -39,7 +39,7 @@ impl GlobalRegistry {
 
 	/// Returns a static reference to the global registry instance
 	pub fn instance() -> &'static Self {
-		static INSTANCE: Lazy<GlobalRegistry> = Lazy::new(|| GlobalRegistry::new());
+		static INSTANCE: Lazy<GlobalRegistry> = Lazy::new(GlobalRegistry::new);
 		&INSTANCE
 	}
 
