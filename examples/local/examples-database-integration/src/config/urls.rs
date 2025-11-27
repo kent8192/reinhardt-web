@@ -2,7 +2,7 @@
 //!
 //! The `url_patterns` routes URLs to handlers.
 
-use reinhardt::{Error, Method, Request, Response, Result, StatusCode, UnifiedRouter};
+use reinhardt::{Method, Request, Response, Result, StatusCode, UnifiedRouter};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,7 +26,7 @@ async fn list_users(_req: Request) -> Result<Response> {
 		},
 	];
 
-	let json = serde_json::to_string(&users)?;
+	let _json = serde_json::to_string(&users)?;
 	Ok(Response::new(StatusCode::OK))
 }
 

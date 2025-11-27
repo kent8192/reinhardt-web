@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[model(app_label = "todos", table_name = "todos")]
 pub struct Todo {
-	/// Primary key
+	/// Primary key (None for auto-increment on insert)
 	#[field(primary_key = true)]
-	pub id: i64,
+	pub id: Option<i64>,
 
 	/// Task title
 	#[field(max_length = 255)]

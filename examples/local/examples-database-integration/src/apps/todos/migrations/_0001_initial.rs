@@ -1,6 +1,6 @@
 //! Initial migration for todos table
 
-use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
+use sea_query::{ColumnDef, Expr, Iden, PostgresQueryBuilder, Table};
 
 /// Initial migration creating todos table
 pub struct Migration;
@@ -9,33 +9,33 @@ impl Migration {
 	/// Apply migration - create todos table
 	pub fn up() -> String {
 		let todos_table = Table::create()
-			.table(TodosTable::Table)
+			.table(Todos::Table)
 			.col(
-				ColumnDef::new(TodosTable::Id)
+				ColumnDef::new(Todos::Id)
 					.big_integer()
 					.auto_increment()
 					.primary_key()
 					.not_null(),
 			)
-			.col(ColumnDef::new(TodosTable::Title).string_len(255).not_null())
-			.col(ColumnDef::new(TodosTable::Description).text())
+			.col(ColumnDef::new(Todos::Title).string_len(255).not_null())
+			.col(ColumnDef::new(Todos::Description).text())
 			.col(
-				ColumnDef::new(TodosTable::Completed)
+				ColumnDef::new(Todos::Completed)
 					.boolean()
 					.not_null()
 					.default(false),
 			)
 			.col(
-				ColumnDef::new(TodosTable::CreatedAt)
+				ColumnDef::new(Todos::CreatedAt)
 					.timestamp_with_time_zone()
 					.not_null()
-					.default("CURRENT_TIMESTAMP"),
+					.default(Expr::current_timestamp()),
 			)
 			.col(
-				ColumnDef::new(TodosTable::UpdatedAt)
+				ColumnDef::new(Todos::UpdatedAt)
 					.timestamp_with_time_zone()
 					.not_null()
-					.default("CURRENT_TIMESTAMP"),
+					.default(Expr::current_timestamp()),
 			)
 			.to_owned();
 
@@ -45,13 +45,15 @@ impl Migration {
 	/// Rollback migration - drop todos table
 	pub fn down() -> String {
 		Table::drop()
-			.table(TodosTable::Table)
+			.table(Todos::Table)
 			.to_owned()
 			.to_string(PostgresQueryBuilder)
 	}
 }
 
 /// Todos table identifier
+/// Note: SeaQuery's #[derive(Iden)] converts enum name to snake_case for Table variant
+/// e.g., Users::Table -> "users", Todos::Table -> "todos"
 #[derive(Iden)]
 enum TodosTable {
 	Table,

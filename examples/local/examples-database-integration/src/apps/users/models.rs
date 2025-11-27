@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[model(app_label = "users", table_name = "users")]
 pub struct User {
-	/// Primary key
+	/// Primary key (None for auto-increment on insert)
 	#[field(primary_key = true)]
-	pub id: i64,
+	pub id: Option<i64>,
 
 	/// User's full name
 	#[field(max_length = 255)]
