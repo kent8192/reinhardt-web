@@ -12,6 +12,8 @@ path = "src/bin/manage.rs"
 [dependencies]
 reinhardt = { path = "../../..", package = "reinhardt-web", features = [
     "full",
+    "conf",
+    "commands",
 ] }
 tokio = { version = "1.48.0", features = ["full"] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -41,3 +43,6 @@ with-reinhardt = []
 [[test]]
 name = "integration"
 required-features = ["with-reinhardt"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(with_reinhardt)"] }

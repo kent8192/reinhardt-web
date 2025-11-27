@@ -15,3 +15,12 @@ static_root = "staticfiles"
 
 # Template configuration
 template_debug = true
+
+# Database configuration
+[database]
+engine = "postgresql"
+host = "localhost"
+port = 5432
+name = "reinhardt_examples"
+user = "reinhardt"
+password = "reinhardt_dev"

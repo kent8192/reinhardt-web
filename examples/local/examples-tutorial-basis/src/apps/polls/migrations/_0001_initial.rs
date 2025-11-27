@@ -73,6 +73,7 @@ impl Migration {
 
 /// Questions table identifier
 #[derive(Iden)]
+#[iden = "polls_question"]
 enum QuestionsTable {
 	Table,
 	Id,
@@ -82,6 +83,7 @@ enum QuestionsTable {
 
 /// Choices table identifier
 #[derive(Iden)]
+#[iden = "polls_choice"]
 enum ChoicesTable {
 	Table,
 	Id,
@@ -98,8 +100,8 @@ mod tests {
 	fn test_migration_up() {
 		let sql = Migration::up();
 		assert!(sql.contains("CREATE TABLE"));
-		assert!(sql.contains("questions"));
-		assert!(sql.contains("choices"));
+		assert!(sql.contains("polls_question"));
+		assert!(sql.contains("polls_choice"));
 		assert!(sql.contains("question_text"));
 		assert!(sql.contains("pub_date"));
 		assert!(sql.contains("choice_text"));
@@ -111,7 +113,7 @@ mod tests {
 	fn test_migration_down() {
 		let sql = Migration::down();
 		assert!(sql.contains("DROP TABLE"));
-		assert!(sql.contains("choices"));
-		assert!(sql.contains("questions"));
+		assert!(sql.contains("polls_choice"));
+		assert!(sql.contains("polls_question"));
 	}
 }

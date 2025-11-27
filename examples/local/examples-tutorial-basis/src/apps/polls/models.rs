@@ -52,38 +52,6 @@ impl Choice {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use chrono::Duration;
-
-	// TODO: Add database integration tests using TestContainers
-	// Example:
-	// use reinhardt::db::orm::Manager;
-	// use reinhardt_test::fixtures::postgres_container;
-	// use rstest::*;
-	//
-	// #[rstest]
-	// #[tokio::test]
-	// async fn test_question_crud_operations(
-	//     #[future] postgres_container: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>)
-	// ) {
-	//     let (_container, db) = postgres_container.await;
-	//     let manager = Manager::<Question>::new();
-	//
-	//     // Test create
-	//     let question = Question {
-	//         id: 0,
-	//         question_text: "What's your favorite color?".to_string(),
-	//         pub_date: Utc::now(),
-	//     };
-	//     let created = manager.create(question).await.unwrap();
-	//
-	//     // Test was_published_recently
-	//     assert!(created.was_published_recently());
-	//
-	//     // Test with old date
-	//     let mut old_question = created.clone();
-	//     old_question.pub_date = Utc::now() - Duration::days(2);
-	//     assert!(!old_question.was_published_recently());
-	// }
 
 	#[test]
 	fn test_choice_vote() {
