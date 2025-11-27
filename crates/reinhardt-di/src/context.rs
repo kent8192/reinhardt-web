@@ -84,6 +84,34 @@ impl InjectionContextBuilder {
 		self
 	}
 
+	/// Register a singleton instance in the context.
+	///
+	/// This allows explicit registration of pre-configured instances
+	/// that will be shared across all requests.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_di::{InjectionContext, SingletonScope};
+	/// use std::sync::Arc;
+	///
+	/// #[derive(Debug, Clone)]
+	/// struct DatabaseConfig {
+	///     url: String,
+	/// }
+	///
+	/// let singleton_scope = Arc::new(SingletonScope::new());
+	/// let config = DatabaseConfig { url: "postgres://localhost".to_string() };
+	///
+	/// let ctx = InjectionContext::builder(singleton_scope)
+	///     .singleton(config)
+	///     .build();
+	/// ```
+	pub fn singleton<T: std::any::Any + Send + Sync>(self, instance: T) -> Self {
+		self.singleton_scope.set(instance);
+		self
+	}
+
 	/// Build the final `InjectionContext` instance.
 	///
 	/// # Examples

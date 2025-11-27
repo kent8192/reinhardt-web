@@ -65,6 +65,10 @@ pub trait Injectable: Sized + Send + Sync + 'static {
 ///
 /// This blanket implementation allows any type that is `Default + Clone + Send + Sync + 'static`
 /// to be automatically injectable without requiring manual implementation.
+///
+/// Note: This implementation is only for types that don't have a custom Injectable implementation.
+/// Types like `DatabaseConnection` that require custom initialization should implement
+/// Injectable directly.
 #[async_trait::async_trait]
 impl<T> Injectable for T
 where
