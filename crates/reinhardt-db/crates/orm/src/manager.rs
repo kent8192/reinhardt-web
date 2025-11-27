@@ -173,6 +173,42 @@ impl<M: Model> Manager<M> {
 	/// Create a new record using SeaQuery for SQL injection protection
 	pub async fn create(&self, model: &M) -> reinhardt_core::exception::Result<M> {
 		let conn = get_connection().await?;
+		self.create_with_conn(&conn, model).await
+	}
+
+	/// Create a new record with an explicit database connection
+	///
+	/// This method allows using a specific connection, which is essential for
+	/// transaction support. When operations are performed within a transaction,
+	/// the same connection must be used throughout.
+	///
+	/// # Arguments
+	///
+	/// * `conn` - The database connection to use
+	/// * `model` - The model to create
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # use reinhardt_orm::{Model, Manager, TransactionScope};
+	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
+	/// use reinhardt_orm::manager::get_connection;
+	///
+	/// let conn = get_connection().await?;
+	/// let tx = TransactionScope::begin(&conn).await?;
+	///
+	/// // Create within transaction
+	/// let created = manager.create_with_conn(&conn, model).await?;
+	///
+	/// tx.commit().await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn create_with_conn(
+		&self,
+		conn: &DatabaseConnection,
+		model: &M,
+	) -> reinhardt_core::exception::Result<M> {
 		let json = serde_json::to_value(model)
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 
@@ -268,6 +304,41 @@ impl<M: Model> Manager<M> {
 	/// Update an existing record using SeaQuery for SQL injection protection
 	pub async fn update(&self, model: &M) -> reinhardt_core::exception::Result<M> {
 		let conn = get_connection().await?;
+		self.update_with_conn(&conn, model).await
+	}
+
+	/// Update an existing record with an explicit database connection
+	///
+	/// This method allows using a specific connection, which is essential for
+	/// transaction support.
+	///
+	/// # Arguments
+	///
+	/// * `conn` - The database connection to use
+	/// * `model` - The model to update (must have primary key set)
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # use reinhardt_orm::{Model, Manager, TransactionScope};
+	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
+	/// use reinhardt_orm::manager::get_connection;
+	///
+	/// let conn = get_connection().await?;
+	/// let tx = TransactionScope::begin(&conn).await?;
+	///
+	/// // Update within transaction
+	/// let updated = manager.update_with_conn(&conn, model).await?;
+	///
+	/// tx.commit().await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn update_with_conn(
+		&self,
+		conn: &DatabaseConnection,
+		model: &M,
+	) -> reinhardt_core::exception::Result<M> {
 		let pk = model.primary_key().ok_or_else(|| {
 			reinhardt_core::exception::Error::Database("Model must have primary key".to_string())
 		})?;
@@ -312,7 +383,41 @@ impl<M: Model> Manager<M> {
 	/// Delete a record using SeaQuery for SQL injection protection
 	pub async fn delete(&self, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
 		let conn = get_connection().await?;
+		self.delete_with_conn(&conn, pk).await
+	}
 
+	/// Delete a record with an explicit database connection
+	///
+	/// This method allows using a specific connection, which is essential for
+	/// transaction support.
+	///
+	/// # Arguments
+	///
+	/// * `conn` - The database connection to use
+	/// * `pk` - The primary key of the record to delete
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # use reinhardt_orm::{Model, Manager, TransactionScope};
+	/// # async fn example<M: Model>(manager: Manager<M>, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
+	/// use reinhardt_orm::manager::get_connection;
+	///
+	/// let conn = get_connection().await?;
+	/// let tx = TransactionScope::begin(&conn).await?;
+	///
+	/// // Delete within transaction
+	/// manager.delete_with_conn(&conn, pk).await?;
+	///
+	/// tx.commit().await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn delete_with_conn(
+		&self,
+		conn: &DatabaseConnection,
+		pk: M::PrimaryKey,
+	) -> reinhardt_core::exception::Result<()> {
 		// Build SeaQuery DELETE statement
 		let mut stmt = Query::delete();
 		stmt.from_table(Alias::new(M::table_name()))
@@ -328,11 +433,46 @@ impl<M: Model> Manager<M> {
 	/// Count records using SeaQuery
 	pub async fn count(&self) -> reinhardt_core::exception::Result<i64> {
 		let conn = get_connection().await?;
+		self.count_with_conn(&conn).await
+	}
 
-		// Build SeaQuery SELECT COUNT(*) statement
+	/// Count records with an explicit database connection
+	///
+	/// This method allows using a specific connection, which is essential for
+	/// verifying data within a transaction before commit/rollback.
+	///
+	/// # Arguments
+	///
+	/// * `conn` - The database connection to use
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # use reinhardt_orm::{Model, Manager, TransactionScope};
+	/// # async fn example<M: Model>(manager: Manager<M>) -> reinhardt_core::exception::Result<()> {
+	/// use reinhardt_orm::manager::get_connection;
+	///
+	/// let conn = get_connection().await?;
+	/// let tx = TransactionScope::begin(&conn).await?;
+	///
+	/// // Count within transaction (sees uncommitted data)
+	/// let count = manager.count_with_conn(&conn).await?;
+	///
+	/// tx.commit().await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn count_with_conn(
+		&self,
+		conn: &DatabaseConnection,
+	) -> reinhardt_core::exception::Result<i64> {
+		// Build SeaQuery SELECT COUNT(*) statement with explicit alias
 		let stmt = Query::select()
 			.from(Alias::new(M::table_name()))
-			.expr(sea_query::Func::count(Expr::col(sea_query::Asterisk)))
+			.expr_as(
+				sea_query::Func::count(Expr::col(sea_query::Asterisk)),
+				Alias::new("count"),
+			)
 			.to_owned();
 
 		use sea_query::PostgresQueryBuilder;

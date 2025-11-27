@@ -7,7 +7,7 @@ use async_trait::async_trait;
 
 /// Re-export backends types
 pub use reinhardt_backends::connection::DatabaseConnection as BackendsConnection;
-pub use reinhardt_backends::types::{QueryValue, Row};
+pub use reinhardt_backends::types::{IsolationLevel, QueryValue, Row, TransactionExecutor};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseBackend {
@@ -60,8 +60,14 @@ impl QueryRow {
 		}
 	}
 
-	pub fn get<T>(&self, _key: &str) -> Option<T> {
-		None
+	/// Get a value from the row by column name
+	///
+	/// This method extracts a value from the row's JSON data by key.
+	/// Supports common types like i64, f64, bool, and String.
+	pub fn get<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
+		self.data
+			.get(key)
+			.and_then(|v| serde_json::from_value(v.clone()).ok())
 	}
 }
 
@@ -338,6 +344,67 @@ impl DatabaseConnection {
 		let sql = format!("ROLLBACK TO SAVEPOINT {}", name);
 		self.execute(&sql, vec![]).await?;
 		Ok(())
+	}
+
+	/// Begin a database transaction and return a dedicated executor
+	///
+	/// This method acquires a dedicated database connection and begins a
+	/// transaction on it. All queries executed through the returned
+	/// `TransactionExecutor` are guaranteed to run on the same physical
+	/// connection, ensuring proper transaction isolation.
+	///
+	/// # Returns
+	///
+	/// A boxed `TransactionExecutor` that holds the dedicated connection
+	/// and provides methods for executing queries within the transaction.
+	///
+	/// # Example
+	///
+	/// ```no_run
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// use reinhardt_orm::connection::DatabaseConnection;
+	///
+	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
+	/// let mut tx = conn.begin().await?;
+	///
+	/// tx.execute("INSERT INTO users (name) VALUES ($1)", vec!["Alice".into()]).await?;
+	/// tx.commit().await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn begin(&self) -> Result<Box<dyn TransactionExecutor>, anyhow::Error> {
+		Ok(self.inner.begin().await?)
+	}
+
+	/// Begin a transaction with a specific isolation level using TransactionExecutor
+	///
+	/// This method returns a `TransactionExecutor` that provides dedicated connection
+	/// semantics with the specified isolation level. All queries executed through
+	/// the returned executor are guaranteed to run on the same physical connection.
+	///
+	/// # Arguments
+	///
+	/// * `level` - The desired isolation level for the transaction
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// use reinhardt_orm::connection::{DatabaseConnection, IsolationLevel};
+	///
+	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
+	/// let mut tx = conn.begin_with_isolation(IsolationLevel::Serializable).await?;
+	///
+	/// tx.execute("INSERT INTO users (name) VALUES ($1)", vec!["Alice".into()]).await?;
+	/// tx.commit().await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn begin_with_isolation(
+		&self,
+		level: IsolationLevel,
+	) -> Result<Box<dyn TransactionExecutor>, anyhow::Error> {
+		Ok(self.inner.begin_with_isolation(level).await?)
 	}
 }
 

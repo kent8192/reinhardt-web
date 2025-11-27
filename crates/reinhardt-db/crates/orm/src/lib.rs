@@ -160,7 +160,10 @@ pub use manager::{get_connection, init_database, reinitialize_database};
 // Core exports - always available
 pub use aggregation::{Aggregate, AggregateFunc, AggregateResult, AggregateValue};
 pub use annotation::{Annotation, AnnotationValue, Expression, Value, When};
-pub use connection::{DatabaseBackend, DatabaseConnection, DatabaseExecutor, QueryRow};
+pub use connection::{
+	DatabaseBackend, DatabaseConnection, DatabaseExecutor, QueryRow, QueryValue, Row,
+	TransactionExecutor,
+};
 pub use constraints::{
 	CheckConstraint, Constraint, ForeignKeyConstraint, OnDelete, OnUpdate, UniqueConstraint,
 };
