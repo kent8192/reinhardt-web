@@ -128,6 +128,23 @@ pub enum Error {
 	#[error("Template not found: {0}")]
 	TemplateNotFound(String),
 
+	/// Method not allowed errors (status code: 405)
+	///
+	/// This error occurs when the HTTP method used is not supported for the
+	/// requested resource, even though the resource exists.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::MethodNotAllowed("Method PATCH not allowed for /api/articles/1".to_string());
+	/// assert_eq!(error.status_code(), 405);
+	/// assert!(error.to_string().contains("Method not allowed"));
+	/// ```
+	#[error("Method not allowed: {0}")]
+	MethodNotAllowed(String),
+
 	/// Internal server errors (status code: 500)
 	///
 	/// # Examples
@@ -264,6 +281,7 @@ pub enum ErrorKind {
 	Authentication,
 	Authorization,
 	NotFound,
+	MethodNotAllowed,
 	Internal,
 	ImproperlyConfigured,
 	BodyAlreadyConsumed,
@@ -282,7 +300,8 @@ impl Error {
 	/// - `Http`, `Serialization`, `Validation`, `BodyAlreadyConsumed`, `ParseError`: 400 (Bad Request)
 	/// - `Authentication`: 401 (Unauthorized)
 	/// - `Authorization`: 403 (Forbidden)
-	/// - `NotFound`: 404 (Not Found)
+	/// - `NotFound`, `TemplateNotFound`: 404 (Not Found)
+	/// - `MethodNotAllowed`: 405 (Method Not Allowed)
 	/// - `Database`, `Internal`, `ImproperlyConfigured`, `Other`: 500 (Internal Server Error)
 	///
 	/// # Examples
@@ -327,6 +346,7 @@ impl Error {
 			Error::Authorization(_) => 403,
 			Error::NotFound(_) => 404,
 			Error::TemplateNotFound(_) => 404,
+			Error::MethodNotAllowed(_) => 405,
 			Error::Internal(_) => 500,
 			Error::ImproperlyConfigured(_) => 500,
 			Error::BodyAlreadyConsumed => 400,
@@ -351,6 +371,7 @@ impl Error {
 			Error::Authorization(_) => ErrorKind::Authorization,
 			Error::NotFound(_) => ErrorKind::NotFound,
 			Error::TemplateNotFound(_) => ErrorKind::NotFound,
+			Error::MethodNotAllowed(_) => ErrorKind::MethodNotAllowed,
 			Error::Internal(_) => ErrorKind::Internal,
 			Error::ImproperlyConfigured(_) => ErrorKind::ImproperlyConfigured,
 			Error::BodyAlreadyConsumed => ErrorKind::BodyAlreadyConsumed,
@@ -468,6 +489,12 @@ mod tests {
 			ErrorKind::NotFound
 		);
 
+		// MethodNotAllowed errors
+		assert_eq!(
+			Error::MethodNotAllowed("test".to_string()).kind(),
+			ErrorKind::MethodNotAllowed
+		);
+
 		// Internal errors
 		assert_eq!(
 			Error::Internal("test".to_string()).kind(),
@@ -547,6 +574,12 @@ mod tests {
 		assert_eq!(
 			Error::TemplateNotFound("test".to_string()).status_code(),
 			404
+		);
+
+		// 405 error
+		assert_eq!(
+			Error::MethodNotAllowed("test".to_string()).status_code(),
+			405
 		);
 
 		// 500 errors
