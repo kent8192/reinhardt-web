@@ -37,7 +37,9 @@ use reinhardt_viewsets::{Action, ViewSet};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-pub use self::global::{clear_router, get_router, is_router_registered, register_router};
+pub use self::global::{
+	clear_router, get_router, is_router_registered, register_router, register_router_arc,
+};
 pub use self::handlers::FunctionHandler;
 pub use self::matching::{extract_params, path_matches};
 
@@ -201,6 +203,51 @@ pub(crate) struct ViewRoute {
 }
 
 impl UnifiedRouter {
+	/// Validate that a prefix for `mount`/`include` follows Django URL conventions.
+	///
+	/// # Panics
+	///
+	/// Panics if the prefix doesn't end with "/".
+	/// This matches Django's behavior where URL patterns must end with a trailing slash.
+	/// Use "/" for root mounting instead of an empty string "".
+	///
+	/// # Examples
+	///
+	/// ```should_panic
+	/// use reinhardt_routers::UnifiedRouter;
+	///
+	/// // This will panic because "api" doesn't end with "/"
+	/// let router = UnifiedRouter::new()
+	///     .include("api", UnifiedRouter::new());
+	/// ```
+	///
+	/// ```should_panic
+	/// use reinhardt_routers::UnifiedRouter;
+	///
+	/// // This will panic because "" is not allowed, use "/" instead
+	/// let router = UnifiedRouter::new()
+	///     .include("", UnifiedRouter::new());
+	/// ```
+	fn validate_prefix(prefix: &str) {
+		// Prefix must end with "/"
+		if !prefix.ends_with('/') {
+			if prefix.is_empty() {
+				panic!(
+					"URL route prefix cannot be an empty string. \
+					 Use '/' instead of ''. \
+					 This follows Django URL configuration conventions."
+				);
+			} else {
+				panic!(
+					"URL route '{}' must end with a trailing slash '/'. \
+					 Use '{}/' instead of '{}'. \
+					 This follows Django URL configuration conventions.",
+					prefix, prefix, prefix,
+				);
+			}
+		}
+	}
+
 	/// Create a new UnifiedRouter
 	///
 	/// # Examples
@@ -301,6 +348,11 @@ impl UnifiedRouter {
 
 	/// Mount a child router at the given prefix
 	///
+	/// # Panics
+	///
+	/// Panics if the prefix is non-empty, not "/" and doesn't end with "/".
+	/// This follows Django's URL configuration conventions.
+	///
 	/// # Examples
 	///
 	/// ```rust
@@ -311,12 +363,24 @@ impl UnifiedRouter {
 	///
 	/// let router = UnifiedRouter::new()
 	///     .with_prefix("/api")
-	///     .mount("/users", users_router);
+	///     .mount("/users/", users_router);  // Note: trailing slash required
 	///
 	/// // Verify the router was created successfully
 	/// assert_eq!(router.prefix(), "/api");
 	/// ```
+	///
+	/// Using "/" for root mounting is also valid:
+	///
+	/// ```rust
+	/// use reinhardt_routers::UnifiedRouter;
+	///
+	/// let app_router = UnifiedRouter::new();
+	/// let router = UnifiedRouter::new().mount("/", app_router);
+	/// ```
 	pub fn mount(mut self, prefix: &str, mut child: UnifiedRouter) -> Self {
+		// Validate prefix follows Django URL conventions
+		Self::validate_prefix(prefix);
+
 		// Set prefix if not already set
 		if child.prefix.is_empty() {
 			child.prefix = prefix.to_string();
@@ -344,6 +408,9 @@ impl UnifiedRouter {
 	/// router.mount_mut("/users", users_router);
 	/// ```
 	pub fn mount_mut(&mut self, prefix: &str, mut child: UnifiedRouter) {
+		// Validate prefix follows Django URL conventions
+		Self::validate_prefix(prefix);
+
 		if child.prefix.is_empty() {
 			child.prefix = prefix.to_string();
 		}
@@ -1159,7 +1226,9 @@ impl UnifiedRouter {
 	fn resolve(&self, path: &str, method: &Method) -> Option<RouteMatch> {
 		// 1. Check prefix
 		let remaining_path = if !self.prefix.is_empty() {
-			path.strip_prefix(&self.prefix)?
+			let stripped = path.strip_prefix(&self.prefix)?;
+			// Normalize empty path to "/" for root route matching
+			if stripped.is_empty() { "/" } else { stripped }
 		} else {
 			path
 		};
@@ -1187,7 +1256,10 @@ impl UnifiedRouter {
 	) -> Option<RouteMatch> {
 		// Check prefix
 		let remaining_path = if !self.prefix.is_empty() {
-			path.strip_prefix(&self.prefix)?
+			let stripped = path.strip_prefix(&self.prefix)?;
+			// Normalize empty path to "/" for root route matching
+			// e.g., include("/", child) with path "/" → stripped "" → normalized "/"
+			if stripped.is_empty() { "/" } else { stripped }
 		} else {
 			path
 		};
@@ -1276,6 +1348,56 @@ impl UnifiedRouter {
 
 		None
 	}
+
+	/// Check if a path exists in any HTTP method's router
+	///
+	/// This is used to determine whether to return 404 (path not found)
+	/// or 405 (method not allowed) when a route doesn't match.
+	fn path_exists_for_any_method(&self, path: &str) -> bool {
+		self.compile_routes();
+
+		// Apply prefix stripping logic (same as resolve method)
+		let remaining_path = if !self.prefix.is_empty() {
+			match path.strip_prefix(&self.prefix) {
+				Some(stripped) => {
+					if stripped.is_empty() {
+						"/"
+					} else {
+						stripped
+					}
+				}
+				None => return false, // Path doesn't match this router's prefix
+			}
+		} else {
+			path
+		};
+
+		let method_routers = [
+			&self.get_router,
+			&self.post_router,
+			&self.put_router,
+			&self.delete_router,
+			&self.patch_router,
+			&self.head_router,
+			&self.options_router,
+		];
+
+		for router_lock in method_routers {
+			let router = router_lock.read().expect("RwLock poisoned");
+			if router.at(remaining_path).is_ok() {
+				return true;
+			}
+		}
+
+		// Also check children routers with remaining path
+		for child in &self.children {
+			if child.path_exists_for_any_method(remaining_path) {
+				return true;
+			}
+		}
+
+		false
+	}
 }
 
 impl Default for UnifiedRouter {
@@ -1292,9 +1414,21 @@ impl Handler for UnifiedRouter {
 		let method = &req.method;
 
 		// Resolve route with HTTP method for matchit routing
-		let route_match = self
-			.resolve(path, method)
-			.ok_or_else(|| Error::NotFound(format!("No route for {} {}", method, path)))?;
+		let route_match = match self.resolve(path, method) {
+			Some(m) => m,
+			None => {
+				// Route not found for this method
+				// Check if path exists for any other method to determine 404 vs 405
+				if self.path_exists_for_any_method(path) {
+					return Err(Error::MethodNotAllowed(format!(
+						"Method {} not allowed for {}",
+						method, path
+					)));
+				} else {
+					return Err(Error::NotFound(format!("No route for {} {}", method, path)));
+				}
+			}
+		};
 
 		// Set path parameters in request
 		for (key, value) in route_match.params {
@@ -1364,7 +1498,7 @@ mod tests {
 	#[test]
 	fn test_mount() {
 		let child = UnifiedRouter::new();
-		let router = UnifiedRouter::new().mount("/users", child);
+		let router = UnifiedRouter::new().mount("/users/", child);
 		assert_eq!(router.children_count(), 1);
 	}
 
@@ -1377,7 +1511,7 @@ mod tests {
 		let child = UnifiedRouter::new();
 		let router = UnifiedRouter::new()
 			.with_di_context(di_ctx.clone())
-			.mount("/users", child);
+			.mount("/users/", child);
 
 		assert!(router.di_context.is_some());
 		assert_eq!(router.children_count(), 1);
@@ -1432,7 +1566,7 @@ mod tests {
 		let child = UnifiedRouter::new().with_namespace("users");
 		let parent = UnifiedRouter::new()
 			.with_namespace("v1")
-			.mount("/users", child);
+			.mount("/users/", child);
 
 		// Check that namespaces are properly nested
 		assert_eq!(parent.namespace(), Some("v1"));
@@ -1480,7 +1614,7 @@ mod tests {
 		let mut api = UnifiedRouter::new()
 			.with_namespace("v1")
 			.with_prefix("/api/v1")
-			.mount("/users", users);
+			.mount("/users/", users);
 
 		api.register_all_routes();
 
@@ -1493,7 +1627,9 @@ mod tests {
 	#[test]
 	fn test_mount_prefix_inheritance() {
 		let child = UnifiedRouter::new();
-		let parent = UnifiedRouter::new().with_prefix("/api").mount("/v1", child);
+		let parent = UnifiedRouter::new()
+			.with_prefix("/api")
+			.mount("/v1/", child);
 
 		assert_eq!(parent.children_count(), 1);
 		// Child should inherit the mount path as its prefix
@@ -1506,9 +1642,9 @@ mod tests {
 		let comments = UnifiedRouter::new().with_namespace("comments");
 
 		let router = UnifiedRouter::new()
-			.mount("/users", users)
-			.mount("/posts", posts)
-			.mount("/comments", comments);
+			.mount("/users/", users)
+			.mount("/posts/", posts)
+			.mount("/comments/", comments);
 
 		assert_eq!(router.children_count(), 3);
 	}
@@ -1518,9 +1654,9 @@ mod tests {
 		let resource = UnifiedRouter::new().with_namespace("resource");
 		let v2 = UnifiedRouter::new()
 			.with_namespace("v2")
-			.mount("/resource", resource);
-		let v1 = UnifiedRouter::new().with_namespace("v1").mount("/v2", v2);
-		let api = UnifiedRouter::new().with_namespace("api").mount("/v1", v1);
+			.mount("/resource/", resource);
+		let v1 = UnifiedRouter::new().with_namespace("v1").mount("/v2/", v2);
+		let api = UnifiedRouter::new().with_namespace("api").mount("/v1/", v1);
 
 		// Should support deep nesting
 		assert_eq!(api.children_count(), 1);
