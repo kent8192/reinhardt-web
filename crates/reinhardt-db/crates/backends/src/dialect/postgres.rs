@@ -1,13 +1,15 @@
 //! PostgreSQL dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{Column, PgPool, Row as SqlxRow, postgres::PgRow};
+use sqlx::{Column, PgPool, Postgres, Row as SqlxRow, Transaction, postgres::PgRow};
 use std::sync::Arc;
 
 use crate::{
 	backend::DatabaseBackend,
 	error::Result,
-	types::{DatabaseType, QueryResult, QueryValue, Row},
+	types::{
+		DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, Savepoint, TransactionExecutor,
+	},
 };
 
 /// PostgreSQL database backend
@@ -43,40 +45,7 @@ impl PostgresBackend {
 	}
 
 	fn convert_row(pg_row: PgRow) -> Result<Row> {
-		let mut row = Row::new();
-		for column in pg_row.columns() {
-			let column_name = column.name();
-			if let Ok(value) = pg_row.try_get::<bool, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::Bool(value));
-			} else if let Ok(value) = pg_row.try_get::<i64, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::Int(value));
-			} else if let Ok(value) = pg_row.try_get::<i32, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::Int(value as i64));
-			} else if let Ok(value) = pg_row.try_get::<f64, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::Float(value));
-			} else if let Ok(value) = pg_row.try_get::<String, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::String(value));
-			} else if let Ok(value) = pg_row.try_get::<Vec<u8>, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::Bytes(value));
-			} else if let Ok(value) = pg_row.try_get::<chrono::NaiveDateTime, _>(column_name) {
-				// PostgreSQL TIMESTAMP WITHOUT TIME ZONE is stored as NaiveDateTime
-				row.insert(
-					column_name.to_string(),
-					QueryValue::Timestamp(chrono::DateTime::from_naive_utc_and_offset(
-						value,
-						chrono::Utc,
-					)),
-				);
-			} else if let Ok(value) =
-				pg_row.try_get::<chrono::DateTime<chrono::Utc>, _>(column_name)
-			{
-				// PostgreSQL TIMESTAMP WITH TIME ZONE
-				row.insert(column_name.to_string(), QueryValue::Timestamp(value));
-			} else if pg_row.try_get::<Option<i32>, _>(column_name).is_ok() {
-				row.insert(column_name.to_string(), QueryValue::Null);
-			}
-		}
-		Ok(row)
+		Self::convert_row_internal(pg_row)
 	}
 }
 
@@ -136,7 +105,222 @@ impl DatabaseBackend for PostgresBackend {
 		row.map(Self::convert_row).transpose()
 	}
 
+	async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
+		let tx = self.pool.begin().await?;
+		Ok(Box::new(PgTransactionExecutor::new(tx)))
+	}
+
+	async fn begin_with_isolation(
+		&self,
+		isolation_level: IsolationLevel,
+	) -> Result<Box<dyn TransactionExecutor>> {
+		// PostgreSQL supports setting isolation level at transaction start
+		let mut tx = self.pool.begin().await?;
+
+		// Set the isolation level using PostgreSQL's SET TRANSACTION command
+		let sql = format!(
+			"SET TRANSACTION ISOLATION LEVEL {}",
+			isolation_level.to_sql(DatabaseType::Postgres)
+		);
+		sqlx::query(&sql).execute(&mut *tx).await?;
+
+		Ok(Box::new(PgTransactionExecutor::new(tx)))
+	}
+
 	fn as_any(&self) -> &dyn std::any::Any {
 		self
+	}
+}
+
+/// PostgreSQL transaction executor
+///
+/// This struct wraps a SQLx `Transaction` to ensure all queries
+/// within a transaction run on the same physical database connection.
+pub struct PgTransactionExecutor {
+	tx: Option<Transaction<'static, Postgres>>,
+}
+
+impl PgTransactionExecutor {
+	pub fn new(tx: Transaction<'static, Postgres>) -> Self {
+		Self { tx: Some(tx) }
+	}
+
+	fn bind_value<'q>(
+		query: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
+		value: &'q QueryValue,
+	) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
+		match value {
+			QueryValue::Null => query.bind(None::<i32>),
+			QueryValue::Bool(b) => query.bind(b),
+			QueryValue::Int(i) => query.bind(i),
+			QueryValue::Float(f) => query.bind(f),
+			QueryValue::String(s) => query.bind(s),
+			QueryValue::Bytes(b) => query.bind(b),
+			QueryValue::Timestamp(dt) => query.bind(dt),
+			QueryValue::Now => query.bind(chrono::Utc::now()),
+		}
+	}
+
+	fn convert_row(pg_row: PgRow) -> Result<Row> {
+		PostgresBackend::convert_row_internal(pg_row)
+	}
+}
+
+impl PostgresBackend {
+	/// Internal row conversion method shared between backend and transaction executor
+	pub(crate) fn convert_row_internal(pg_row: PgRow) -> Result<Row> {
+		let mut row = Row::new();
+		for column in pg_row.columns() {
+			let column_name = column.name();
+			if let Ok(value) = pg_row.try_get::<bool, _>(column_name) {
+				row.insert(column_name.to_string(), QueryValue::Bool(value));
+			} else if let Ok(value) = pg_row.try_get::<i64, _>(column_name) {
+				row.insert(column_name.to_string(), QueryValue::Int(value));
+			} else if let Ok(value) = pg_row.try_get::<i32, _>(column_name) {
+				row.insert(column_name.to_string(), QueryValue::Int(value as i64));
+			} else if let Ok(value) = pg_row.try_get::<f64, _>(column_name) {
+				row.insert(column_name.to_string(), QueryValue::Float(value));
+			} else if let Ok(value) = pg_row.try_get::<String, _>(column_name) {
+				row.insert(column_name.to_string(), QueryValue::String(value));
+			} else if let Ok(value) = pg_row.try_get::<Vec<u8>, _>(column_name) {
+				row.insert(column_name.to_string(), QueryValue::Bytes(value));
+			} else if let Ok(value) = pg_row.try_get::<chrono::NaiveDateTime, _>(column_name) {
+				row.insert(
+					column_name.to_string(),
+					QueryValue::Timestamp(chrono::DateTime::from_naive_utc_and_offset(
+						value,
+						chrono::Utc,
+					)),
+				);
+			} else if let Ok(value) =
+				pg_row.try_get::<chrono::DateTime<chrono::Utc>, _>(column_name)
+			{
+				row.insert(column_name.to_string(), QueryValue::Timestamp(value));
+			} else if pg_row.try_get::<Option<i32>, _>(column_name).is_ok() {
+				row.insert(column_name.to_string(), QueryValue::Null);
+			}
+		}
+		Ok(row)
+	}
+}
+
+#[async_trait]
+impl TransactionExecutor for PgTransactionExecutor {
+	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+
+		let mut query = sqlx::query(sql);
+		for param in &params {
+			query = Self::bind_value(query, param);
+		}
+		let result = query.execute(&mut **tx).await?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+		})
+	}
+
+	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+
+		let mut query = sqlx::query(sql);
+		for param in &params {
+			query = Self::bind_value(query, param);
+		}
+		let row = query.fetch_one(&mut **tx).await?;
+		Self::convert_row(row)
+	}
+
+	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+
+		let mut query = sqlx::query(sql);
+		for param in &params {
+			query = Self::bind_value(query, param);
+		}
+		let rows = query.fetch_all(&mut **tx).await?;
+		rows.into_iter().map(Self::convert_row).collect()
+	}
+
+	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+
+		let mut query = sqlx::query(sql);
+		for param in &params {
+			query = Self::bind_value(query, param);
+		}
+		let row = query.fetch_optional(&mut **tx).await?;
+		row.map(Self::convert_row).transpose()
+	}
+
+	async fn commit(mut self: Box<Self>) -> Result<()> {
+		let tx = self.tx.take().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+		tx.commit().await?;
+		Ok(())
+	}
+
+	async fn rollback(mut self: Box<Self>) -> Result<()> {
+		let tx = self.tx.take().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+		tx.rollback().await?;
+		Ok(())
+	}
+
+	async fn savepoint(&mut self, name: &str) -> Result<()> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+
+		let sp = Savepoint::new(name);
+		sqlx::query(&sp.to_sql()).execute(&mut **tx).await?;
+		Ok(())
+	}
+
+	async fn release_savepoint(&mut self, name: &str) -> Result<()> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+
+		let sp = Savepoint::new(name);
+		sqlx::query(&sp.release_sql()).execute(&mut **tx).await?;
+		Ok(())
+	}
+
+	async fn rollback_to_savepoint(&mut self, name: &str) -> Result<()> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+
+		let sp = Savepoint::new(name);
+		sqlx::query(&sp.rollback_sql()).execute(&mut **tx).await?;
+		Ok(())
 	}
 }

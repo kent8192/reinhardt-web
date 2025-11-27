@@ -21,13 +21,13 @@
 
 use async_trait::async_trait;
 use bson::{Bson, Document};
-use mongodb::{Client, Database};
+use mongodb::{Client, ClientSession, Database};
 use std::sync::Arc;
 
 use crate::{
 	backend::DatabaseBackend,
 	error::Result,
-	types::{DatabaseType, QueryResult, QueryValue, Row},
+	types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor},
 };
 
 /// MongoDB backend implementation
@@ -59,6 +59,102 @@ use crate::{
 pub struct MongoDBBackend {
 	client: Arc<Client>,
 	database_name: String,
+}
+
+/// MongoDB transaction executor
+///
+/// This struct wraps a MongoDB `ClientSession` to ensure all operations
+/// within a transaction run within the same session context.
+///
+/// # Note
+///
+/// MongoDB transactions require a replica set or sharded cluster.
+/// Standalone MongoDB instances do not support transactions.
+pub struct MongoDBTransactionExecutor {
+	/// The MongoDB session (Option for consume-on-commit/rollback pattern)
+	session: Option<ClientSession>,
+	/// Reference to the client for accessing database/collections
+	#[allow(dead_code)]
+	client: Arc<Client>,
+	/// Database name for operations
+	#[allow(dead_code)]
+	database_name: String,
+}
+
+impl MongoDBTransactionExecutor {
+	/// Create a new MongoDB transaction executor
+	pub fn new(session: ClientSession, client: Arc<Client>, database_name: String) -> Self {
+		Self {
+			session: Some(session),
+			client,
+			database_name,
+		}
+	}
+}
+
+#[async_trait]
+impl TransactionExecutor for MongoDBTransactionExecutor {
+	async fn execute(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
+		Err(crate::error::DatabaseError::UnsupportedFeature {
+			database: "MongoDB".to_string(),
+			feature: "SQL queries in transactions".to_string(),
+		})
+	}
+
+	async fn fetch_one(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
+		Err(crate::error::DatabaseError::UnsupportedFeature {
+			database: "MongoDB".to_string(),
+			feature: "SQL queries in transactions".to_string(),
+		})
+	}
+
+	async fn fetch_all(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
+		Err(crate::error::DatabaseError::UnsupportedFeature {
+			database: "MongoDB".to_string(),
+			feature: "SQL queries in transactions".to_string(),
+		})
+	}
+
+	async fn fetch_optional(
+		&mut self,
+		_sql: &str,
+		_params: Vec<QueryValue>,
+	) -> Result<Option<Row>> {
+		Err(crate::error::DatabaseError::UnsupportedFeature {
+			database: "MongoDB".to_string(),
+			feature: "SQL queries in transactions".to_string(),
+		})
+	}
+
+	async fn commit(mut self: Box<Self>) -> Result<()> {
+		let mut session = self.session.take().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+
+		session.commit_transaction().await.map_err(|e| {
+			crate::error::DatabaseError::TransactionError(format!(
+				"Failed to commit MongoDB transaction: {}",
+				e
+			))
+		})
+	}
+
+	async fn rollback(mut self: Box<Self>) -> Result<()> {
+		let mut session = self.session.take().ok_or_else(|| {
+			crate::error::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+
+		session.abort_transaction().await.map_err(|e| {
+			crate::error::DatabaseError::TransactionError(format!(
+				"Failed to rollback MongoDB transaction: {}",
+				e
+			))
+		})
+	}
 }
 
 /// Builder for configuring MongoDB connections
@@ -721,6 +817,30 @@ impl DatabaseBackend for MongoDBBackend {
 		Err(crate::error::DatabaseError::QueryError(
 			"MongoDB requires using the query builder instead of raw SQL".to_string(),
 		))
+	}
+
+	async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
+		// Start a new session from the client
+		let mut session = self.client.start_session().await.map_err(|e| {
+			crate::error::DatabaseError::ConnectionError(format!(
+				"Failed to start MongoDB session: {}",
+				e
+			))
+		})?;
+
+		// Begin the transaction on the session
+		session.start_transaction().await.map_err(|e| {
+			crate::error::DatabaseError::TransactionError(format!(
+				"Failed to start MongoDB transaction: {}",
+				e
+			))
+		})?;
+
+		Ok(Box::new(MongoDBTransactionExecutor::new(
+			session,
+			Arc::clone(&self.client),
+			self.database_name.clone(),
+		)))
 	}
 
 	fn as_any(&self) -> &dyn std::any::Any {
