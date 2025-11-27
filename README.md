@@ -46,7 +46,7 @@ Reinhardt brings together the best of three worlds:
 
 ## ✨ Key Features
 
-- **Type-Safe ORM** with compile-time validation (SeaQuery v1.0.0-rc1)
+- **Type-Safe ORM** with compile-time validation (SeaQuery v1.0.0-rc)
 - **Powerful Serializers** with automatic validation (serde + validator)
 - **FastAPI-Style DI** with type-safe dependency injection and caching
 - **ViewSets** for rapid CRUD API development
@@ -517,7 +517,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**Note**: Reinhardt uses [SeaQuery v1.0.0-rc1](https://crates.io/crates/sea-query) for SQL operations. The `#[derive(Model)]` macro automatically generates Model trait implementations, type-safe field accessors, and global model registry registration.
+**Note**: Reinhardt uses [SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query) for SQL operations. The `#[derive(Model)]` macro automatically generates Model trait implementations, type-safe field accessors, and global model registry registration.
 
 Register in `src/config/apps.rs`:
 
@@ -982,7 +982,7 @@ Reinhardt offers modular components you can mix and match:
 | Shortcuts           | `reinhardt-shortcuts`     | Common utility functions                    |
 | Microservices       | `reinhardt-micro`         | All-in-one minimal setup (HTTP + routing + DI) |
 | **Database**        |                           |                                             |
-| ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc1 integration             |
+| ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc integration             |
 | **Authentication**  |                           |                                             |
 | Auth                | `reinhardt-auth`          | JWT, Token, Session, Basic auth, User models|
 | **REST API**        |                           |                                             |
