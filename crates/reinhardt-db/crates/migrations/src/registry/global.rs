@@ -39,11 +39,21 @@ impl GlobalRegistry {
 
 	/// Collects migrations from linkme's distributed_slice
 	fn collect_compile_time_migrations(&self) -> Vec<Migration> {
-		let mut migrations = Vec::new();
-		for provider in MIGRATION_PROVIDERS {
-			migrations.extend(provider());
+		#[cfg(not(test))]
+		{
+			let mut migrations = Vec::new();
+			for provider in MIGRATION_PROVIDERS {
+				migrations.extend(provider());
+			}
+			migrations
 		}
-		migrations
+		#[cfg(test)]
+		{
+			// In test mode, do not access MIGRATION_PROVIDERS to avoid
+			// "duplicate distributed_slice" errors. Tests should use
+			// runtime registration via register() method instead.
+			Vec::new()
+		}
 	}
 
 	/// Merges compile-time and runtime migrations
@@ -142,6 +152,8 @@ mod tests {
 			name: "0001_initial".to_string(),
 			operations: vec![],
 			dependencies: vec![],
+			replaces: vec![],
+			atomic: true,
 		};
 
 		// Register migration
@@ -171,6 +183,8 @@ mod tests {
 			name: "0001_initial".to_string(),
 			operations: vec![],
 			dependencies: vec![],
+			replaces: vec![],
+			atomic: true,
 		};
 
 		registry.register(migration).unwrap();
@@ -190,5 +204,148 @@ mod tests {
 			runtime_only.is_empty(),
 			"Runtime migrations should be empty after clear"
 		);
+	}
+
+	#[test]
+	#[serial(global_registry)]
+	fn test_migrations_for_app_filtering() {
+		let registry = GlobalRegistry::instance();
+		registry.clear();
+
+		// Register migrations for different apps
+		registry
+			.register(Migration {
+				app_label: "polls".to_string(),
+				name: "0001_initial".to_string(),
+				operations: vec![],
+				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
+			})
+			.unwrap();
+
+		registry
+			.register(Migration {
+				app_label: "users".to_string(),
+				name: "0001_initial".to_string(),
+				operations: vec![],
+				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
+			})
+			.unwrap();
+
+		registry
+			.register(Migration {
+				app_label: "polls".to_string(),
+				name: "0002_add_field".to_string(),
+				operations: vec![],
+				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
+			})
+			.unwrap();
+
+		// Test filtering
+		let polls_migrations = registry.migrations_for_app("polls");
+		assert_eq!(
+			polls_migrations.len(),
+			2,
+			"Should have 2 polls migrations"
+		);
+		assert!(
+			polls_migrations.iter().all(|m| m.app_label == "polls"),
+			"All migrations should be from polls app"
+		);
+
+		let users_migrations = registry.migrations_for_app("users");
+		assert_eq!(
+			users_migrations.len(),
+			1,
+			"Should have 1 users migration"
+		);
+
+		// Cleanup
+		registry.clear();
+	}
+
+	#[test]
+	#[serial(global_registry)]
+	fn test_migrations_for_nonexistent_app_returns_empty() {
+		let registry = GlobalRegistry::instance();
+		registry.clear();
+
+		// Register some migrations
+		registry
+			.register(Migration {
+				app_label: "polls".to_string(),
+				name: "0001_initial".to_string(),
+				operations: vec![],
+				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
+			})
+			.unwrap();
+
+		// Query for non-existent app
+		let migrations = registry.migrations_for_app("nonexistent_app_12345");
+		assert!(
+			migrations.is_empty(),
+			"Expected empty result for non-existent app"
+		);
+
+		// Cleanup
+		registry.clear();
+	}
+
+	#[test]
+	#[serial(global_registry)]
+	fn test_registered_app_labels_no_duplicates() {
+		let registry = GlobalRegistry::instance();
+		registry.clear();
+
+		// Register multiple migrations for same apps
+		registry
+			.register(Migration {
+				app_label: "polls".to_string(),
+				name: "0001_initial".to_string(),
+				operations: vec![],
+				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
+			})
+			.unwrap();
+
+		registry
+			.register(Migration {
+				app_label: "polls".to_string(),
+				name: "0002_add_field".to_string(),
+				operations: vec![],
+				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
+			})
+			.unwrap();
+
+		registry
+			.register(Migration {
+				app_label: "users".to_string(),
+				name: "0001_initial".to_string(),
+				operations: vec![],
+				dependencies: vec![],
+				replaces: vec![],
+				atomic: true,
+			})
+			.unwrap();
+
+		// Get labels
+		let labels = registry.registered_app_labels();
+
+		// Should be sorted and deduplicated
+		assert_eq!(labels, vec!["polls", "users"]);
+		assert_eq!(labels.len(), 2, "Should have exactly 2 unique app labels");
+
+		// Cleanup
+		registry.clear();
 	}
 }
