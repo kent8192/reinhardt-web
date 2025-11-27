@@ -11,6 +11,157 @@ use reinhardt_backends::{connection::DatabaseConnection, types::DatabaseType};
 use sqlx::SqlitePool;
 use std::collections::HashSet;
 
+/// Split SQL string into individual statements while handling:
+/// - String literals (single/double quotes)
+/// - Comments (line and block)
+/// - PostgreSQL dollar-quotes ($$...$$)
+fn split_sql_statements(sql: &str) -> Vec<String> {
+	let mut statements = Vec::new();
+	let mut current = String::new();
+	let mut chars = sql.chars().peekable();
+
+	#[derive(Debug, PartialEq)]
+	enum State {
+		Normal,
+		SingleQuote,
+		DoubleQuote,
+		LineComment,
+		BlockComment,
+		DollarQuote(String),
+	}
+
+	let mut state = State::Normal;
+
+	while let Some(ch) = chars.next() {
+		match state {
+			State::Normal => {
+				if ch == '\'' {
+					current.push(ch);
+					state = State::SingleQuote;
+				} else if ch == '"' {
+					current.push(ch);
+					state = State::DoubleQuote;
+				} else if ch == '-' && chars.peek() == Some(&'-') {
+					current.push(ch);
+					current.push(chars.next().unwrap());
+					state = State::LineComment;
+				} else if ch == '/' && chars.peek() == Some(&'*') {
+					current.push(ch);
+					current.push(chars.next().unwrap());
+					state = State::BlockComment;
+				} else if ch == '$' {
+					// Potential dollar-quote start
+					let mut tag = String::from("$");
+					current.push(ch);
+
+					// Collect tag until next $
+					while let Some(&next_ch) = chars.peek() {
+						if next_ch == '$' {
+							tag.push(chars.next().unwrap());
+							current.push('$');
+							state = State::DollarQuote(tag);
+							break;
+						} else if next_ch.is_alphanumeric() || next_ch == '_' {
+							tag.push(chars.next().unwrap());
+							current.push(next_ch);
+						} else {
+							// Not a valid dollar-quote tag
+							break;
+						}
+					}
+				} else if ch == ';' {
+					// Statement separator - save current statement if non-empty
+					let trimmed = current.trim();
+					if !trimmed.is_empty() {
+						statements.push(trimmed.to_string());
+					}
+					current.clear();
+				} else {
+					current.push(ch);
+				}
+			}
+			State::SingleQuote => {
+				current.push(ch);
+				if ch == '\'' {
+					// Check for escaped quote ''
+					if chars.peek() == Some(&'\'') {
+						current.push(chars.next().unwrap());
+					} else {
+						state = State::Normal;
+					}
+				} else if ch == '\\' && chars.peek().is_some() {
+					// Escaped character
+					current.push(chars.next().unwrap());
+				}
+			}
+			State::DoubleQuote => {
+				current.push(ch);
+				if ch == '"' {
+					state = State::Normal;
+				} else if ch == '\\' && chars.peek().is_some() {
+					// Escaped character
+					current.push(chars.next().unwrap());
+				}
+			}
+			State::LineComment => {
+				current.push(ch);
+				if ch == '\n' {
+					state = State::Normal;
+				}
+			}
+			State::BlockComment => {
+				current.push(ch);
+				if ch == '*' && chars.peek() == Some(&'/') {
+					current.push(chars.next().unwrap());
+					state = State::Normal;
+				}
+			}
+			State::DollarQuote(ref tag) => {
+				current.push(ch);
+				// Check if we're at the closing tag
+				if ch == '$' {
+					let mut potential_close = String::from("$");
+					let mut temp_chars = vec![];
+
+					// Collect potential closing tag
+					while let Some(&next_ch) = chars.peek() {
+						if next_ch == '$' {
+							potential_close.push(chars.next().unwrap());
+							temp_chars.push('$');
+							break;
+						} else if potential_close.len() < tag.len()
+							&& (next_ch.is_alphanumeric() || next_ch == '_')
+						{
+							potential_close.push(chars.next().unwrap());
+							temp_chars.push(next_ch);
+						} else {
+							break;
+						}
+					}
+
+					// Add collected characters to current
+					for temp_ch in &temp_chars {
+						current.push(*temp_ch);
+					}
+
+					// Check if it matches the opening tag
+					if potential_close == *tag {
+						state = State::Normal;
+					}
+				}
+			}
+		}
+	}
+
+	// Add final statement if non-empty
+	let trimmed = current.trim();
+	if !trimmed.is_empty() {
+		statements.push(trimmed.to_string());
+	}
+
+	statements
+}
+
 pub struct ExecutionResult {
 	pub applied: Vec<String>,
 	pub failed: Option<String>,
@@ -133,7 +284,37 @@ impl MigrationExecutor {
 		// For now, we apply operations directly
 		for operation in &migration.operations {
 			let sql = operation.to_sql(&SqlDialect::Sqlite);
-			sqlx::query(&sql).execute(&self.pool).await?;
+
+			// 診断出力: 元のSQL
+			eprintln!("=== Original SQL ===");
+			eprintln!("{}", sql);
+			eprintln!("SQL length: {} characters", sql.len());
+			eprintln!("Semicolons: {}", sql.matches(';').count());
+
+			// Split SQL into individual statements to handle PostgreSQL's
+			// prepared statement limitation (cannot execute multiple commands)
+			let statements = split_sql_statements(&sql);
+
+			// 診断出力: 分割されたステートメント数
+			eprintln!("\n=== Split into {} statements ===", statements.len());
+
+			for (i, statement) in statements.iter().enumerate() {
+				if !statement.trim().is_empty() {
+					// 診断出力: 各ステートメント
+					eprintln!(
+						"\n--- Statement {} (length: {} chars) ---",
+						i + 1,
+						statement.len()
+					);
+					eprintln!("{}", statement);
+
+					sqlx::query(statement).execute(&self.pool).await?;
+
+					eprintln!("✅ Statement {} executed successfully", i + 1);
+				} else {
+					eprintln!("\n--- Statement {} (EMPTY - skipped) ---", i + 1);
+				}
+			}
 		}
 
 		Ok(())
@@ -173,7 +354,14 @@ impl MigrationExecutor {
 			// Apply migration
 			for operation in &migration.operations {
 				let sql = operation.to_sql(&SqlDialect::Sqlite);
-				sqlx::query(&sql).execute(&self.pool).await?;
+
+				// Split SQL into individual statements to handle PostgreSQL's
+				// prepared statement limitation (cannot execute multiple commands)
+				for statement in split_sql_statements(&sql) {
+					if !statement.trim().is_empty() {
+						sqlx::query(&statement).execute(&self.pool).await?;
+					}
+				}
 			}
 
 			// Record migration
@@ -298,7 +486,38 @@ impl DatabaseMigrationExecutor {
 
 		for operation in &migration.operations {
 			let sql = operation.to_sql(&dialect);
-			self.connection.execute(&sql, vec![]).await?;
+
+			// 診断出力: 元のSQL
+			eprintln!("=== DatabaseMigrationExecutor: Original SQL ===");
+			eprintln!("{}", sql);
+			eprintln!("SQL length: {} characters", sql.len());
+			eprintln!("Semicolons: {}", sql.matches(';').count());
+			eprintln!("Database type: {:?}", self.db_type);
+
+			// Split SQL into individual statements to handle PostgreSQL's
+			// prepared statement limitation (cannot execute multiple commands)
+			let statements = split_sql_statements(&sql);
+
+			// 診断出力: 分割されたステートメント数
+			eprintln!("\n=== Split into {} statements ===", statements.len());
+
+			for (i, statement) in statements.iter().enumerate() {
+				if !statement.trim().is_empty() {
+					// 診断出力: 各ステートメント
+					eprintln!(
+						"\n--- Statement {} (length: {} chars) ---",
+						i + 1,
+						statement.len()
+					);
+					eprintln!("{}", statement);
+
+					self.connection.execute(statement, vec![]).await?;
+
+					eprintln!("✅ Statement {} executed successfully", i + 1);
+				} else {
+					eprintln!("\n--- Statement {} (EMPTY - skipped) ---", i + 1);
+				}
+			}
 		}
 
 		Ok(())
@@ -354,7 +573,14 @@ impl DatabaseMigrationExecutor {
 			if !is_mongodb {
 				for operation in &migration.operations {
 					let sql = operation.to_sql(&dialect);
-					self.connection.execute(&sql, vec![]).await?;
+
+					// Split SQL into individual statements to handle PostgreSQL's
+					// prepared statement limitation (cannot execute multiple commands)
+					for statement in split_sql_statements(&sql) {
+						if !statement.trim().is_empty() {
+							self.connection.execute(&statement, vec![]).await?;
+						}
+					}
 				}
 			}
 			// For MongoDB, skip SQL operations (schemaless)
@@ -881,5 +1107,244 @@ mod optimizer_tests {
 
 		let optimized = optimizer.optimize(ops);
 		assert_eq!(optimized.len(), 3);
+	}
+
+	#[cfg(test)]
+	mod split_sql_tests {
+		use super::super::*;
+
+		#[test]
+		fn test_split_simple_statements() {
+			let sql = "CREATE TABLE t1 (id INT); CREATE TABLE t2 (id INT);";
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 2);
+			assert_eq!(result[0], "CREATE TABLE t1 (id INT)");
+			assert_eq!(result[1], "CREATE TABLE t2 (id INT)");
+		}
+
+		#[test]
+		fn test_split_with_string_literals() {
+			let sql = r#"INSERT INTO t VALUES ('a;b'); INSERT INTO t VALUES ('c;d');"#;
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 2);
+			assert_eq!(result[0], "INSERT INTO t VALUES ('a;b')");
+			assert_eq!(result[1], "INSERT INTO t VALUES ('c;d')");
+		}
+
+		#[test]
+		fn test_split_with_line_comments() {
+			// Line comment after semicolon becomes part of next statement
+			let sql =
+				"CREATE TABLE t1 (id INT); -- comment; with semicolon\nCREATE TABLE t2 (id INT);";
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 2);
+			assert_eq!(result[0], "CREATE TABLE t1 (id INT)");
+			assert!(result[1].contains("-- comment"));
+			assert!(result[1].contains("CREATE TABLE t2"));
+		}
+
+		#[test]
+		fn test_split_with_block_comments() {
+			let sql =
+				"CREATE TABLE t1 (id INT); /* comment; with semicolon */ CREATE TABLE t2 (id INT);";
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 2);
+			assert!(result[0].contains("CREATE TABLE t1"));
+			assert!(result[1].contains("CREATE TABLE t2"));
+		}
+
+		#[test]
+		fn test_split_with_dollar_quotes() {
+			let sql = r#"CREATE FUNCTION f() RETURNS text AS $$SELECT 'value; with semicolon';$$ LANGUAGE sql; CREATE TABLE t1 (id INT);"#;
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 2);
+			assert!(result[0].contains("CREATE FUNCTION"));
+			assert!(result[0].contains("value; with semicolon"));
+			assert!(result[1].contains("CREATE TABLE t1"));
+		}
+
+		#[test]
+		fn test_split_with_escaped_quotes() {
+			let sql = r#"INSERT INTO t VALUES ('it''s a test; value'); INSERT INTO t VALUES ('another');"#;
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 2);
+			assert!(result[0].contains("it''s a test; value"));
+			assert!(result[1].contains("another"));
+		}
+
+		#[test]
+		fn test_split_empty_statements() {
+			let sql = ";;; CREATE TABLE t1 (id INT); ;";
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 1);
+			assert_eq!(result[0], "CREATE TABLE t1 (id INT)");
+		}
+
+		#[test]
+		fn test_split_no_semicolon() {
+			let sql = "CREATE TABLE t1 (id INT)";
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 1);
+			assert_eq!(result[0], "CREATE TABLE t1 (id INT)");
+		}
+
+		#[test]
+		fn test_split_whitespace_handling() {
+			let sql = "  CREATE TABLE t1 (id INT)  ;  \n\n  CREATE TABLE t2 (id INT)  ;  ";
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 2);
+			assert_eq!(result[0], "CREATE TABLE t1 (id INT)");
+			assert_eq!(result[1], "CREATE TABLE t2 (id INT)");
+		}
+
+		#[test]
+		fn test_split_seaquery_migration_sql() {
+			// Actual SQL generated by SeaQuery for polls migration (from diagnostic test)
+			let sql = r#"CREATE TABLE "questions_table" ( "id" bigint GENERATED BY DEFAULT AS IDENTITY NOT NULL PRIMARY KEY, "question_text" text NOT NULL, "pub_date" timestamp with time zone NOT NULL );
+
+CREATE TABLE "choices_table" ( "id" bigint GENERATED BY DEFAULT AS IDENTITY NOT NULL PRIMARY KEY, "question_id" bigint NOT NULL, "choice_text" text NOT NULL, "votes" integer NOT NULL DEFAULT 0, FOREIGN KEY ("question_id") REFERENCES "questions_table" ("id") ON DELETE CASCADE );"#;
+			let result = split_sql_statements(sql);
+
+			// Should split into exactly 2 statements (not 3 with empty string)
+			assert_eq!(
+				result.len(),
+				2,
+				"Expected 2 statements, got {}",
+				result.len()
+			);
+
+			// First statement should be CREATE TABLE questions_table
+			assert!(
+				result[0].contains("questions_table"),
+				"First statement should contain 'questions_table'"
+			);
+			assert!(
+				result[0].contains("question_text"),
+				"First statement should contain 'question_text'"
+			);
+			assert!(
+				!result[0].contains("choices_table"),
+				"First statement should not contain 'choices_table'"
+			);
+
+			// Second statement should be CREATE TABLE choices_table
+			assert!(
+				result[1].contains("choices_table"),
+				"Second statement should contain 'choices_table'"
+			);
+			assert!(
+				result[1].contains("choice_text"),
+				"Second statement should contain 'choice_text'"
+			);
+			// FOREIGN KEY制約は参照先テーブル名を含むため、questions_tableへの参照を検証
+			assert!(
+				result[1].contains("FOREIGN KEY"),
+				"Second statement should contain FOREIGN KEY constraint"
+			);
+			assert!(
+				result[1].contains("REFERENCES \"questions_table\""),
+				"FOREIGN KEY should reference questions_table"
+			);
+		}
+
+		#[test]
+		fn test_split_multiple_foreign_keys() {
+			// テーブルが複数のFOREIGN KEY制約を持つケース
+			let sql = r#"CREATE TABLE "posts" ("id" bigint PRIMARY KEY);
+CREATE TABLE "users" ("id" bigint PRIMARY KEY);
+CREATE TABLE "comments" (
+	"id" bigint PRIMARY KEY,
+	"post_id" bigint,
+	"user_id" bigint,
+	FOREIGN KEY ("post_id") REFERENCES "posts" ("id"),
+	FOREIGN KEY ("user_id") REFERENCES "users" ("id")
+);"#;
+
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 3, "Expected 3 statements");
+
+			// 3番目のステートメントに2つのFOREIGN KEY制約が含まれる
+			assert_eq!(
+				result[2].matches("FOREIGN KEY").count(),
+				2,
+				"Third statement should contain 2 FOREIGN KEY constraints"
+			);
+			assert!(
+				result[2].contains("REFERENCES \"posts\""),
+				"Should reference posts table"
+			);
+			assert!(
+				result[2].contains("REFERENCES \"users\""),
+				"Should reference users table"
+			);
+		}
+
+		#[test]
+		fn test_split_mixed_constraints() {
+			// CHECK制約とFOREIGN KEYが混在するケース
+			let sql = r#"CREATE TABLE "tasks" ("id" bigint PRIMARY KEY);
+CREATE TABLE "task_status" (
+	"id" bigint PRIMARY KEY,
+	"task_id" bigint,
+	"status" text CHECK (status IN ('pending', 'completed')),
+	FOREIGN KEY ("task_id") REFERENCES "tasks" ("id")
+);"#;
+
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 2);
+
+			// 2番目のステートメントにCHECK制約とFOREIGN KEY制約の両方が含まれる
+			assert!(
+				result[1].contains("CHECK"),
+				"Second statement should contain CHECK constraint"
+			);
+			assert!(
+				result[1].contains("FOREIGN KEY"),
+				"Second statement should contain FOREIGN KEY constraint"
+			);
+		}
+
+		#[test]
+		fn test_split_self_referencing_foreign_key() {
+			// 自己参照FOREIGN KEYのケース
+			let sql = r#"CREATE TABLE "categories" (
+	"id" bigint PRIMARY KEY,
+	"parent_id" bigint,
+	FOREIGN KEY ("parent_id") REFERENCES "categories" ("id")
+);"#;
+
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 1);
+
+			// 同じテーブルを参照するFOREIGN KEY
+			assert!(
+				result[0].contains("REFERENCES \"categories\""),
+				"Should self-reference categories table"
+			);
+		}
+
+		#[test]
+		fn test_split_create_index_statements() {
+			// CREATE INDEXステートメントの分離
+			let sql = r#"CREATE TABLE "products" ("id" bigint PRIMARY KEY, "name" text);
+CREATE INDEX "idx_products_name" ON "products" ("name");
+CREATE UNIQUE INDEX "idx_products_id" ON "products" ("id");"#;
+
+			let result = split_sql_statements(sql);
+			assert_eq!(result.len(), 3);
+
+			assert!(
+				result[0].contains("CREATE TABLE"),
+				"First statement should be CREATE TABLE"
+			);
+			assert!(
+				result[1].contains("CREATE INDEX"),
+				"Second statement should be CREATE INDEX"
+			);
+			assert!(
+				result[2].contains("CREATE UNIQUE INDEX"),
+				"Third statement should be CREATE UNIQUE INDEX"
+			);
+		}
 	}
 }
