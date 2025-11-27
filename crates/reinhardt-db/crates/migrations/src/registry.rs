@@ -80,14 +80,14 @@
 //! ```
 
 // Module declarations (Rust 2024 Edition)
-pub mod traits;
 pub mod global;
 pub mod local;
+pub mod traits;
 
 // Re-export commonly used items
-pub use traits::MigrationRegistry;
-pub use global::{GlobalRegistry, global_registry, MIGRATION_PROVIDERS};
+pub use global::{GlobalRegistry, MIGRATION_PROVIDERS, global_registry};
 pub use local::LocalRegistry;
+pub use traits::MigrationRegistry;
 
 // Deprecated compatibility exports (to be removed in next major version)
 #[deprecated(
