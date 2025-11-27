@@ -169,6 +169,10 @@ pub use reinhardt_macros::{AppConfig, installed_apps};
 #[cfg(feature = "database")]
 pub use reinhardt_macros::Model;
 
+// Re-export collect_migrations macro (requires database feature)
+#[cfg(feature = "database")]
+pub use reinhardt_macros::collect_migrations;
+
 // Re-export endpoint macro
 pub use reinhardt_macros::endpoint;
 
@@ -303,8 +307,10 @@ pub use reinhardt_db::orm::{
 pub use reinhardt_db::orm::{
 	// Transaction management
 	IsolationLevel,
+	QueryValue,
 	Savepoint,
 	Transaction,
+	TransactionExecutor,
 	TransactionScope,
 	atomic,
 	atomic_with_isolation,
@@ -461,7 +467,7 @@ pub use reinhardt_views::viewsets::{
 // Re-export routers
 pub use reinhardt_urls::routers::{
 	DefaultRouter, PathMatcher, PathPattern, Route, Router, UnifiedRouter, clear_router,
-	get_router, is_router_registered, register_router,
+	get_router, is_router_registered, register_router, register_router_arc,
 };
 
 // Re-export auth
