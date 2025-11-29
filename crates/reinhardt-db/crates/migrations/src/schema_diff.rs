@@ -7,6 +7,7 @@
 //! - Constraint changes
 
 use crate::ColumnDefinition;
+use crate::introspection;
 use crate::operations::Operation;
 use std::collections::HashMap;
 
@@ -23,6 +24,92 @@ pub struct SchemaDiff {
 pub struct DatabaseSchema {
 	/// Table definitions
 	pub tables: HashMap<String, TableSchema>,
+}
+
+impl From<introspection::DatabaseSchema> for DatabaseSchema {
+	fn from(intro_schema: introspection::DatabaseSchema) -> Self {
+		let mut tables = HashMap::new();
+
+		for (table_name, intro_table) in intro_schema.tables {
+			let mut columns = HashMap::new();
+			for (col_name, intro_col) in intro_table.columns {
+				// Simplified conversion
+				columns.insert(
+					col_name.clone(),
+					ColumnSchema {
+						name: intro_col.name,
+						data_type: intro_col.column_type,
+						nullable: intro_col.nullable,
+						default: intro_col.default,
+						primary_key: intro_table.primary_key.contains(&col_name), // Check if column is in primary_key list
+						auto_increment: intro_col.auto_increment,
+						max_length: None, // Cannot easily get from intro_col, might need specific logic per DB type
+					},
+				);
+			}
+
+			let indexes: Vec<IndexSchema> = intro_table
+				.indexes
+				.values()
+				.map(|idx| IndexSchema {
+					name: idx.name.clone(),
+					columns: idx.columns.clone(),
+					unique: idx.unique,
+				})
+				.collect();
+
+			let mut constraints: Vec<ConstraintSchema> = intro_table
+				.unique_constraints
+				.iter()
+				.map(|uc| ConstraintSchema {
+					name: uc.name.clone(),
+					constraint_type: "UNIQUE".to_string(),
+					definition: format!(
+						"CONSTRAINT {} UNIQUE ({})",
+						uc.name,
+						uc.columns.join(", ")
+					),
+				})
+				.collect();
+
+			// Process foreign keys
+			for fk in &intro_table.foreign_keys {
+				let mut definition = format!(
+					"CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({})",
+					fk.name,
+					fk.columns.join(", "),
+					fk.referenced_table,
+					fk.referenced_columns.join(", ")
+				);
+
+				if let Some(ref on_delete) = fk.on_delete {
+					definition.push_str(&format!(" ON DELETE {}", on_delete));
+				}
+
+				if let Some(ref on_update) = fk.on_update {
+					definition.push_str(&format!(" ON UPDATE {}", on_update));
+				}
+
+				constraints.push(ConstraintSchema {
+					name: fk.name.clone(),
+					constraint_type: "FOREIGN KEY".to_string(),
+					definition,
+				});
+			}
+
+			tables.insert(
+				table_name,
+				TableSchema {
+					name: intro_table.name,
+					columns,
+					indexes,
+					constraints,
+				},
+			);
+		}
+
+		DatabaseSchema { tables }
+	}
 }
 
 /// Table schema

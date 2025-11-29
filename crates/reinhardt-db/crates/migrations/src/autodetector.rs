@@ -7,6 +7,35 @@ use regex::Regex;
 use std::collections::HashMap;
 use strsim::{jaro_winkler, levenshtein};
 
+/// Convert a name to snake_case
+///
+/// # Examples
+///
+/// ```
+/// # use reinhardt_migrations::to_snake_case;
+/// assert_eq!(to_snake_case("User"), "user");
+/// assert_eq!(to_snake_case("BlogPost"), "blog_post");
+/// assert_eq!(to_snake_case("HTTPResponse"), "http_response");
+/// ```
+pub fn to_snake_case(name: &str) -> String {
+	let mut result = String::new();
+	let chars = name.chars().peekable();
+
+	for ch in chars {
+		if ch.is_uppercase() {
+			// Add underscore before uppercase if not at start and previous char is lowercase
+			if !result.is_empty() && result.chars().last().is_some_and(|c| c.is_lowercase()) {
+				result.push('_');
+			}
+			result.push(ch.to_lowercase().next().unwrap());
+		} else {
+			result.push(ch);
+		}
+	}
+
+	result
+}
+
 /// Field state for migration detection
 #[derive(Debug, Clone)]
 pub struct FieldState {
@@ -36,6 +65,8 @@ pub struct ModelState {
 	pub app_label: String,
 	/// Model name (e.g., "User", "Post")
 	pub name: String,
+	/// Database table name (e.g., "users", "blog_posts")
+	pub table_name: String,
 	/// Fields: field_name -> FieldState
 	pub fields: std::collections::HashMap<String, FieldState>,
 	/// Model options (db_table, ordering, etc.)
@@ -87,12 +118,18 @@ impl ModelState {
 	/// let model = ModelState::new("myapp", "User");
 	/// assert_eq!(model.app_label, "myapp");
 	/// assert_eq!(model.name, "User");
+	/// assert_eq!(model.table_name, "user");
 	/// assert_eq!(model.fields.len(), 0);
 	/// ```
 	pub fn new(app_label: impl Into<String>, name: impl Into<String>) -> Self {
+		let name_str = name.into();
+		// Convert model name to table name (e.g., "User" -> "user", "BlogPost" -> "blog_post")
+		let table_name = to_snake_case(&name_str);
+
 		Self {
 			app_label: app_label.into(),
-			name: name.into(),
+			name: name_str,
+			table_name,
 			fields: std::collections::HashMap::new(),
 			options: std::collections::HashMap::new(),
 			base_model: None,
@@ -209,6 +246,61 @@ impl Default for ProjectState {
 }
 
 impl ProjectState {
+	pub fn to_database_schema(&self) -> crate::schema_diff::DatabaseSchema {
+		let mut tables = std::collections::HashMap::new();
+
+		for ((_app_label, _model_name), model_state) in &self.models {
+			let mut columns = std::collections::HashMap::new();
+			for (field_name, field_state) in &model_state.fields {
+				// Simplified conversion for now.
+				// This might need more sophisticated logic to map field_type and params
+				// to ColumnSchema's data_type, nullable, default, primary_key, auto_increment, max_length.
+				// For a first pass, let's make reasonable assumptions.
+				let data_type = field_state.field_type.clone(); // Directly use field_type
+				let nullable = field_state.nullable;
+				let primary_key = field_state
+					.params
+					.get("primary_key")
+					.is_some_and(|s| s == "true");
+				let auto_increment = field_state
+					.params
+					.get("auto_increment")
+					.is_some_and(|s| s == "true");
+				let max_length = field_state
+					.params
+					.get("max_length")
+					.and_then(|s| s.parse::<u32>().ok());
+				let default = field_state.params.get("default").cloned();
+
+				columns.insert(
+					field_name.clone(),
+					crate::schema_diff::ColumnSchema {
+						name: field_name.clone(),
+						data_type,
+						nullable,
+						default,
+						primary_key,
+						auto_increment,
+						max_length,
+					},
+				);
+			}
+			// For now, no indexes or constraints from ModelState are converted.
+			// This is a simplification that might need to be refined later.
+			tables.insert(
+				model_state.table_name.clone(),
+				crate::schema_diff::TableSchema {
+					name: model_state.table_name.clone(),
+					columns,
+					indexes: Vec::new(),
+					constraints: Vec::new(),
+				},
+			);
+		}
+
+		crate::schema_diff::DatabaseSchema { tables }
+	}
+
 	/// Create a new empty ProjectState
 	///
 	/// # Examples
@@ -3146,7 +3238,7 @@ impl MigrationAutodetector {
 				}
 
 				operations.push(crate::Operation::CreateTable {
-					name: model.name.clone(),
+					name: model.table_name.clone(),
 					columns,
 					constraints: Vec::new(),
 				});
@@ -3198,7 +3290,7 @@ impl MigrationAutodetector {
 		for (app_label, model_name) in &changes.deleted_models {
 			if let Some(model) = self.from_state.get_model(app_label, model_name) {
 				operations.push(crate::Operation::DropTable {
-					name: model.name.clone(),
+					name: model.table_name.clone(),
 				});
 			}
 		}
@@ -3276,7 +3368,7 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::CreateTable {
-						name: model.name.clone(),
+						name: model.table_name.clone(),
 						columns,
 						constraints: Vec::new(),
 					});
@@ -3292,7 +3384,7 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::AddColumn {
-						table: model.name.clone(),
+						table: model.table_name.clone(),
 						column: crate::ColumnDefinition::new(
 							field_name.clone(),
 							field.field_type.clone(),
@@ -3310,7 +3402,7 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::AlterColumn {
-						table: model.name.clone(),
+						table: model.table_name.clone(),
 						column: field_name.clone(),
 						new_definition: crate::ColumnDefinition::new(
 							field_name.clone(),
@@ -3327,7 +3419,7 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::DropColumn {
-						table: model.name.clone(),
+						table: model.table_name.clone(),
 						column: field_name.clone(),
 					});
 			}
@@ -3340,7 +3432,7 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::DropTable {
-						name: model.name.clone(),
+						name: model.table_name.clone(),
 					});
 			}
 		}
