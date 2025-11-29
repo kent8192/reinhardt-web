@@ -21,9 +21,8 @@ minimal = [
 # Standard feature set - balanced for most projects
 standard = [
   "minimal",
+  "database",                      # Includes ORM, migrations, contenttypes
   "db-postgres",                   # Default database backend
-  "reinhardt-db",
-  "reinhardt-db/orm",
   "reinhardt-rest",
   "reinhardt-rest/serializers",
   "reinhardt-views/viewsets",
@@ -49,6 +48,7 @@ database = [
   "reinhardt-db/orm",
   "reinhardt-db/migrations",
   "reinhardt-db/contenttypes",
+  "linkme",
 ]
 api = [
   "reinhardt-rest",
@@ -82,7 +82,7 @@ storage = ["reinhardt-utils/storage"]
 shortcuts = ["reinhardt-shortcuts"]
 tasks = ["reinhardt-tasks"]
 server = ["reinhardt-server"]
-commands = ["reinhardt-commands"]
+commands = ["reinhardt-commands", "reinhardt-commands/migrations"]
 
 # Parent crate features (new module structure)
 conf = ["reinhardt-conf"]
@@ -166,7 +166,7 @@ auth-token = ["auth", "reinhardt-auth/token"]
 # Fine-grained database support
 db-postgres = ["database", "reinhardt-db/postgres"]
 db-mysql = ["database", "reinhardt-db/mysql"]
-db-sqlite = ["database", "reinhardt-db/sqlite"]
+db-sqlite = ["database", "reinhardt-db/sqlite", "reinhardt-commands/sqlite"]
 db-mongodb = ["database", "reinhardt-db/mongodb-backend"]
 db-cockroachdb = ["database", "reinhardt-db/cockroachdb-backend"]
 
@@ -191,6 +191,7 @@ reinhardt-http = { workspace = true }
 reinhardt-macros = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }
+linkme = { workspace = true, optional = true }
 
 # Parent crate dependencies (new module structure)
 # These parent crates expose their subcrates via features
@@ -504,6 +505,11 @@ base64 = "0.22"
 # Template engine & syntax highlighting
 tera = { version = "1.20" }
 syntect = "5.2"
+
+# Proc macro dependencies
+syn = { version = "2.0", features = ["full", "parsing", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = "1.0"
 
 # Cryptography & Security
 aes-gcm = "0.11.0-rc.1"

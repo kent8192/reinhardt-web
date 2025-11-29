@@ -105,6 +105,10 @@ pub extern crate reinhardt_di;
 #[doc(hidden)]
 pub extern crate reinhardt_core;
 
+#[cfg(feature = "database")]
+#[doc(hidden)]
+pub extern crate linkme;
+
 // Module re-exports following Django's structure
 #[cfg(feature = "core")]
 pub mod apps;
@@ -172,6 +176,15 @@ pub use reinhardt_macros::Model;
 // Re-export collect_migrations macro (requires database feature)
 #[cfg(feature = "database")]
 pub use reinhardt_macros::collect_migrations;
+
+// Re-export reinhardt_migrations crate (used by collect_migrations! macro)
+#[cfg(feature = "database")]
+pub use reinhardt_db::migrations;
+
+// Alias for macro compatibility
+#[cfg(feature = "database")]
+#[doc(hidden)]
+pub use migrations as reinhardt_migrations;
 
 // Re-export endpoint macro
 pub use reinhardt_macros::endpoint;
@@ -791,9 +804,8 @@ pub use reinhardt_db::contenttypes::{
 };
 #[cfg(feature = "database")]
 pub use reinhardt_db::migrations::{
-	FieldState, MakeMigrationsCommand, MakeMigrationsOptions, Migration, MigrationAutodetector,
-	MigrationError, MigrationExecutor, MigrationLoader, MigrationPlan, MigrationRecorder,
-	MigrationWriter, ModelState, ProjectState,
+	FieldState, Migration, MigrationAutodetector, MigrationError, MigrationExecutor, MigrationPlan,
+	MigrationRecorder, ModelState, ProjectState,
 };
 
 // Re-export cache (cache feature)
