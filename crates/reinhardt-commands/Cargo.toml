@@ -13,8 +13,10 @@ reinhardt-static = { workspace = true }
 reinhardt-utils-core = { workspace = true }
 reinhardt-conf = { workspace = true }
 reinhardt-urls = { workspace = true, features = ["routers"], optional = true }
-reinhardt-db = { workspace = true, features = ["migrations"], optional = true }
+reinhardt-db = { workspace = true, features = ["migrations", "backends-settings"], optional = true }
+sqlx = { workspace = true, optional = true }
 reinhardt-server = { workspace = true, optional = true }
+chrono = { workspace = true }
 clap = { version = "4.5", features = ["derive", "cargo"] }
 tokio = { workspace = true }
 async-trait = { workspace = true }
@@ -71,3 +73,6 @@ shell-rhai = ["shell", "dep:rhai"]
 shell-pyo3 = ["shell", "dep:pyo3"]
 reinhardt-db = ["dep:reinhardt-db"]
 mongodb-backend = ["reinhardt-db?/mongodb-backend"]
+postgres = ["reinhardt-db?/postgres"]
+sqlite = ["reinhardt-db?/sqlite", "dep:sqlx", "sqlx/sqlite"]
+mysql = ["reinhardt-db?/mysql"]

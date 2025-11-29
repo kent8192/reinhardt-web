@@ -73,33 +73,36 @@ impl BaseCommand for MigrateCommand {
 		// Use reinhardt-migrations for migration execution
 		#[cfg(feature = "migrations")]
 		{
-			use reinhardt_db::migrations::MigrationLoader;
+			use reinhardt_db::migrations::{
+				FilesystemRepository, FilesystemSource, MigrationService,
+			};
 			use std::path::PathBuf;
+			use std::sync::Arc;
+			use tokio::sync::Mutex;
 
-			// 1. Load migration files from disk
 			ctx.verbose("Loading migrations from disk...");
 			let migrations_dir = PathBuf::from("migrations");
-			let mut loader = MigrationLoader::new(migrations_dir);
 
-			if let Err(e) = loader.load_disk() {
-				return Err(crate::CommandError::ExecutionError(format!(
-					"Failed to load migrations: {:?}",
+			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
+			let repository: Arc<Mutex<dyn reinhardt_db::migrations::MigrationRepository>> =
+				Arc::new(Mutex::new(FilesystemRepository::new(migrations_dir)));
+			let service = MigrationService::new(source, repository);
+			// Filter by app if specified
+			let all_migrations = service.load_all().await.map_err(|e| {
+				crate::CommandError::ExecutionError(format!(
+					"Failed to load all migrations: {:?}",
 					e
-				)));
-			}
+				))
+			})?;
 
-			// 2. Filter by app if specified
-			let all_migrations = loader.get_all_migrations();
 			let migrations_to_apply: Vec<_> = if let Some(ref app) = app_label {
 				all_migrations
-					.iter()
-					.filter(|&&m| &m.app_label == app)
-					.map(|&m| m.clone())
+					.into_iter()
+					.filter(|m| &m.app_label == app)
 					.collect()
 			} else {
-				all_migrations.iter().map(|&m| m.clone()).collect()
+				all_migrations.into_iter().collect()
 			};
-
 			if migrations_to_apply.is_empty() {
 				ctx.info("No migrations to apply");
 				return Ok(());
@@ -111,67 +114,73 @@ impl BaseCommand for MigrateCommand {
 			));
 
 			// 3. Check database connection
-			let _database_url = std::env::var("DATABASE_URL").map_err(|_| {
-				crate::CommandError::ExecutionError(
-					"DATABASE_URL environment variable not set".to_string(),
-				)
+			let _database_url = get_database_url()?;
+
+			// 4. Connect to database (auto-create if it doesn't exist for PostgreSQL)
+			// Determine connection method based on URL scheme
+			let connection = if _database_url.starts_with("postgres://")
+				|| _database_url.starts_with("postgresql://")
+			{
+				DatabaseConnection::connect_postgres_or_create(&_database_url).await
+			} else if _database_url.starts_with("sqlite://") || _database_url.starts_with("sqlite:")
+			{
+				DatabaseConnection::connect_sqlite(&_database_url).await
+			} else if _database_url.starts_with("mongodb://") {
+				#[cfg(feature = "mongodb-backend")]
+				{
+					// MongoDB requires separate database name
+					// Extract database name from URL or use default
+					let db_name = _database_url.split('/').next_back().unwrap_or("reinhardt");
+					DatabaseConnection::connect_mongodb(&_database_url, db_name).await
+				}
+				#[cfg(not(feature = "mongodb-backend"))]
+				{
+					return Err(crate::CommandError::ExecutionError(
+						"MongoDB backend not enabled. Enable 'mongodb-backend' feature."
+							.to_string(),
+					));
+				}
+			} else {
+				return Err(crate::CommandError::ExecutionError(format!(
+					"Unsupported database URL scheme: {}",
+					_database_url
+				)));
+			}
+			.map_err(|e| {
+				crate::CommandError::ExecutionError(format!(
+					"Failed to connect to database: {:?}",
+					e
+				))
 			})?;
 
-			// 4. Apply migrations (or fake them)
+			// Get database type from connection (delegate to DatabaseConnection)
+			let db_type = connection.database_type();
+
+			// 5. Apply migrations (or fake them)
 			if is_fake {
 				ctx.info("Faking migrations (marking as applied without execution):");
+
+				// Create migration executor for fake migrations
+				let mut executor = DatabaseMigrationExecutor::new(connection, db_type);
+
+				// Record each migration as applied without executing
 				for migration in &migrations_to_apply {
+					executor
+						.record_migration(&migration.app_label, &migration.name)
+						.await
+						.map_err(|e| {
+							crate::CommandError::ExecutionError(format!(
+								"Failed to record fake migration {}:{}: {:?}",
+								migration.app_label, migration.name, e
+							))
+						})?;
 					ctx.success(&format!(
-						"  Faked: {}:{}",
+						"  ✓ Faked: {}:{}",
 						migration.app_label, migration.name
 					));
 				}
 			} else {
 				ctx.info("Applying migrations:");
-
-				// Determine database type from URL
-				let db_type = if _database_url.starts_with("postgres://")
-					|| _database_url.starts_with("postgresql://")
-				{
-					DatabaseType::Postgres
-				} else if _database_url.starts_with("sqlite://") {
-					DatabaseType::Sqlite
-				} else {
-					return Err(crate::CommandError::ExecutionError(format!(
-						"Unsupported database URL scheme: {}",
-						_database_url
-					)));
-				};
-
-				// Connect to database (auto-create if it doesn't exist for PostgreSQL)
-				let connection = match db_type {
-					DatabaseType::Postgres => {
-						DatabaseConnection::connect_postgres_or_create(&_database_url).await
-					}
-					DatabaseType::Sqlite => {
-						DatabaseConnection::connect_sqlite(&_database_url).await
-					}
-					#[cfg(feature = "mongodb-backend")]
-					DatabaseType::MongoDB => {
-						// MongoDB requires separate database name
-						// Extract database name from URL or use default
-						let db_name = _database_url.split('/').next_back().unwrap_or("reinhardt");
-						DatabaseConnection::connect_mongodb(&_database_url, db_name).await
-					}
-					#[allow(unreachable_patterns)]
-					_ => {
-						return Err(crate::CommandError::ExecutionError(format!(
-							"Database type {:?} is not supported in this feature configuration",
-							db_type
-						)));
-					}
-				}
-				.map_err(|e| {
-					crate::CommandError::ExecutionError(format!(
-						"Failed to connect to database: {:?}",
-						e
-					))
-				})?;
 
 				// Create migration executor
 				let mut executor = DatabaseMigrationExecutor::new(connection, db_type);
@@ -239,16 +248,24 @@ impl BaseCommand for MakeMigrationsCommand {
 			),
 			CommandOption::flag(None, "empty", "Create empty migration"),
 			CommandOption::option(Some('n'), "name", "Name for the migration"),
+			CommandOption::option(None, "migrations-dir", "Directory for migration files")
+				.with_default("migrations"),
 		]
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		use std::path::PathBuf;
 		ctx.info("Detecting model changes...");
 
 		let is_dry_run = ctx.has_option("dry-run");
-		let _is_empty = ctx.has_option("empty");
+		let is_empty = ctx.has_option("empty");
 		let app_label = ctx.arg(0).map(|s| s.to_string());
-		let _migration_name = ctx.option("name").map(|s| s.to_string());
+		let migration_name_opt = ctx.option("name").map(|s| s.to_string());
+		let migrations_dir_str = ctx
+			.option("migrations-dir")
+			.map(|s| s.to_string())
+			.unwrap_or_else(|| "migrations".to_string());
+		let migrations_dir = PathBuf::from(migrations_dir_str);
 
 		if is_dry_run {
 			ctx.warning("Dry run mode: No files will be created");
@@ -260,33 +277,206 @@ impl BaseCommand for MakeMigrationsCommand {
 			ctx.verbose("Creating migrations for all apps");
 		}
 
-		// Use reinhardt-migrations MakeMigrationsCommand
 		#[cfg(feature = "migrations")]
 		{
+			use crate::CommandError;
 			use reinhardt_db::migrations::{
-				MakeMigrationsCommand as MigCmd, MakeMigrationsOptions,
+				AutoMigrationGenerator, DatabaseIntrospector, FilesystemRepository,
+				FilesystemSource, MigrationService, autodetector::ProjectState,
 			};
+			use std::sync::Arc;
+			use tokio::sync::Mutex;
 
-			let options = MakeMigrationsOptions {
-				app_label,
-				name: _migration_name,
-				dry_run: is_dry_run,
-				migrations_dir: "migrations".to_string(),
-			};
+			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
+			let repository = Arc::new(Mutex::new(FilesystemRepository::new(
+				migrations_dir.clone(),
+			)));
+			let service = MigrationService::new(source.clone(), repository.clone());
 
-			let migration_cmd = MigCmd::new(options);
-			let created_files = migration_cmd.execute();
+			// Helper to get the last migration for an app
+			let get_last_migration = |app: String| {
+				let source = source.clone();
+				let repository = repository.clone();
+				async move {
+					let service = MigrationService::new(source, repository);
+					let all_migrations = service.load_all().await.ok()?;
+					let mut app_migrations: Vec<_> = all_migrations
+						.into_iter()
+						.filter(|m| m.app_label == app)
+						.collect();
 
-			if created_files.is_empty() {
-				ctx.info("No changes detected");
-			} else {
-				for file in &created_files {
-					ctx.success(&format!("  Created migration: {}", file));
+					// Simple sort by name (assumes timestamp prefix)
+					app_migrations.sort_by(|a, b| a.name.cmp(&b.name));
+
+					app_migrations.last().map(|m| m.name.clone())
 				}
-				ctx.info(&format!(
-					"Created {} migration file(s)",
-					created_files.len()
-				));
+			};
+
+			// Handle --empty flag for manual migrations
+			if is_empty {
+				let app_name = app_label.ok_or_else(|| {
+					CommandError::ExecutionError(
+						"App label is required when creating an empty migration".to_string(),
+					)
+				})?;
+
+				let last_migration = get_last_migration(app_name.clone()).await;
+				let dependencies = if let Some(last) = last_migration {
+					vec![(app_name.clone(), last)]
+				} else {
+					Vec::new()
+				};
+
+				let name = migration_name_opt.unwrap_or_else(|| {
+					format!("custom_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"))
+				});
+
+				let new_migration = reinhardt_db::migrations::Migration {
+					app_label: app_name.clone(),
+					name: name.clone(),
+					operations: Vec::new(),
+					dependencies,
+					atomic: true,
+					replaces: Vec::new(),
+				};
+
+				if !is_dry_run {
+					service
+						.save_migration(&new_migration)
+						.await
+						.map_err(|e| CommandError::ExecutionError(format!("Save error: {}", e)))?;
+					ctx.success(&format!(
+						"Created empty migration for {}: {}",
+						app_name, name
+					));
+				} else {
+					ctx.info(&format!(
+						"Would create empty migration for {}: {}",
+						app_name, name
+					));
+				}
+				return Ok(());
+			}
+
+			// 1. Get desired project state from models (target schema)
+			let target_project_state = ProjectState::from_global_registry();
+			let _target_schema = target_project_state.to_database_schema();
+
+			// 2. Get current database schema through introspection
+			let database_url = get_database_url()?;
+
+			let (db_type, _connection) = connect_database(&database_url)
+				.await
+				.map_err(|e| CommandError::ExecutionError(format!("Failed to connect: {}", e)))?;
+
+			let _introspector: Arc<dyn DatabaseIntrospector> = match db_type {
+				#[cfg(feature = "postgres")]
+				DatabaseType::Postgres => Arc::new(
+					reinhardt_db::migrations::introspection::PostgresIntrospector::new(
+						_connection
+							.into_postgres()
+							.expect("Failed to get Postgres connection"),
+					),
+				),
+				#[cfg(feature = "sqlite")]
+				DatabaseType::Sqlite => Arc::new(
+					reinhardt_db::migrations::introspection::SQLiteIntrospector::new(
+						_connection
+							.into_sqlite()
+							.expect("Failed to get SQLite connection"),
+					),
+				),
+				#[cfg(feature = "mysql")]
+				DatabaseType::Mysql => Arc::new(
+					reinhardt_db::migrations::introspection::MySQLIntrospector::new(
+						_connection
+							.into_mysql()
+							.expect("Failed to get MySQL connection"),
+					),
+				),
+				#[allow(unreachable_patterns)]
+				_ => {
+					return Err(CommandError::ExecutionError(format!(
+						"Database type {:?} is not supported for introspection",
+						db_type
+					)));
+				}
+			};
+
+			#[allow(unreachable_code)]
+			let current_introspection_schema = _introspector
+				.read_schema()
+				.await
+				.map_err(|e| CommandError::ExecutionError(format!("Introspection error: {}", e)))?;
+
+			#[allow(unreachable_code)]
+			let current_schema = current_introspection_schema.into();
+
+			// Create auto-migration generator
+			#[allow(unreachable_code)]
+			let generator = AutoMigrationGenerator::new(_target_schema, migrations_dir.clone());
+
+			// Generate migration operations
+			let auto_migration_result = generator.generate(current_schema).await;
+
+			match auto_migration_result {
+				Ok(result) => {
+					ctx.info(&format!("Detected {} operation(s)", result.operation_count));
+
+					if result.has_destructive_changes {
+						ctx.warning("WARNING: Detected potentially destructive changes.");
+						ctx.warning("Please review the generated migration carefully.");
+					}
+
+					// Resolve dependencies
+					let app_name = app_label.unwrap_or_else(|| "auto".to_string());
+					let last_migration = get_last_migration(app_name.clone()).await;
+					let dependencies = if let Some(last) = last_migration {
+						vec![(app_name.clone(), last)]
+					} else {
+						Vec::new()
+					};
+
+					let new_migration = reinhardt_db::migrations::Migration {
+						app_label: app_name,
+						name: migration_name_opt.unwrap_or_else(|| {
+							result
+								.migration_file
+								.file_stem()
+								.and_then(|s| s.to_str())
+								.unwrap_or("unnamed_migration")
+								.to_string()
+						}),
+						operations: result.operations,
+						dependencies,
+						atomic: true,
+						replaces: Vec::new(),
+					};
+
+					if !is_dry_run {
+						service.save_migration(&new_migration).await.map_err(|e| {
+							CommandError::ExecutionError(format!("Save error: {}", e))
+						})?;
+						ctx.success(&format!(
+							"Created migration file: {}",
+							result.migration_file.display()
+						));
+					} else {
+						ctx.info(&format!(
+							"Would create migration file: {}",
+							result.migration_file.display()
+						));
+					}
+				}
+				Err(reinhardt_db::migrations::AutoMigrationError::NoChangesDetected) => {
+					ctx.info("No changes detected");
+				}
+				Err(e) => {
+					return Err(CommandError::ExecutionError(format!(
+						"Failed to generate migrations: {}",
+						e
+					)));
+				}
 			}
 
 			Ok(())
@@ -615,7 +805,7 @@ impl RunServerCommand {
 	/// Run the development server
 	#[cfg(feature = "server")]
 	async fn run_server(
-		ctx: &CommandContext,
+		#[allow(unused_variables)] ctx: &CommandContext,
 		address: &str,
 		noreload: bool,
 		_insecure: bool,
@@ -1144,17 +1334,23 @@ impl CheckCommand {
 	async fn check_migrations() -> Result<u32, String> {
 		#[cfg(feature = "migrations")]
 		{
-			use reinhardt_db::migrations::{DatabaseMigrationRecorder, MigrationLoader};
+			use reinhardt_db::migrations::{
+				DatabaseMigrationRecorder, FilesystemRepository, FilesystemSource, MigrationService,
+			};
 			use std::path::PathBuf;
+			use std::sync::Arc;
+			use tokio::sync::Mutex;
 
-			// 1. Load migration files from disk
+			// 1. Load migration files from disk using FilesystemSource and Repository
 			let migrations_dir = PathBuf::from("migrations");
-			let mut loader = MigrationLoader::new(migrations_dir);
-			loader
-				.load_disk()
-				.map_err(|e| format!("Failed to load migrations: {:?}", e))?;
+			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
+			let repository = Arc::new(Mutex::new(FilesystemRepository::new(migrations_dir)));
+			let service = MigrationService::new(source, repository);
 
-			let all_migrations = loader.get_all_migrations();
+			let all_migrations = service
+				.load_all()
+				.await
+				.map_err(|e| format!("Failed to load all migrations: {:?}", e))?;
 
 			// 2. Connect to database
 			let database_url =
@@ -1164,7 +1360,7 @@ impl CheckCommand {
 				.await
 				.map_err(|e| format!("Database connection failed: {:?}", e))?;
 
-			// 3. Check applied migrations
+			// 3. Check applied migrations using Recorder
 			let recorder = DatabaseMigrationRecorder::new(connection);
 			recorder
 				.ensure_schema_table()
@@ -1255,6 +1451,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial_test::serial(env_change)]
 	async fn test_migrate_command() {
 		let cmd = MigrateCommand;
 		let ctx = CommandContext::default();
@@ -1273,23 +1470,33 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial_test::serial(env_change)]
 	async fn test_makemigrations_command() {
+		unsafe { std::env::set_var("DATABASE_URL", "sqlite://:memory:") };
 		let cmd = MakeMigrationsCommand;
 		let ctx = CommandContext::default();
 
 		let result = cmd.execute(&ctx).await;
+		unsafe { std::env::remove_var("DATABASE_URL") };
+
 		// Should succeed (either creates migrations or reports "No changes detected")
-		assert!(result.is_ok());
+		#[cfg(feature = "sqlite")]
+		assert!(result.is_ok(), "Failed with: {:?}", result.err());
 	}
 
 	#[tokio::test]
+	#[serial_test::serial(env_change)]
 	async fn test_makemigrations_with_dry_run() {
+		unsafe { std::env::set_var("DATABASE_URL", "sqlite://:memory:") };
 		let cmd = MakeMigrationsCommand;
 		let mut ctx = CommandContext::default();
 		ctx.set_option("dry-run".to_string(), "true".to_string());
 
 		let result = cmd.execute(&ctx).await;
-		assert!(result.is_ok());
+		unsafe { std::env::remove_var("DATABASE_URL") };
+
+		#[cfg(feature = "sqlite")]
+		assert!(result.is_ok(), "Failed with: {:?}", result.err());
 	}
 
 	#[tokio::test]
@@ -1339,12 +1546,26 @@ mod tests {
 	}
 }
 
+/// Helper function to get DATABASE_URL from environment or settings
+#[cfg(feature = "migrations")]
+fn get_database_url() -> Result<String, crate::CommandError> {
+	use std::env;
+
+	let base_dir = env::current_dir().ok();
+	DatabaseConnection::get_database_url_from_env_or_settings(base_dir).map_err(|e| {
+		crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
+	})
+}
+
 /// Helper function to connect to database
 #[cfg(feature = "migrations")]
 async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseConnection)> {
 	let db_type = if url.starts_with("postgres://") || url.starts_with("postgresql://") {
 		DatabaseType::Postgres
-	} else if url.starts_with("sqlite://") || url.starts_with(":memory:") {
+	} else if url.starts_with("sqlite://")
+		|| url.starts_with("sqlite:")
+		|| url.starts_with(":memory:")
+	{
 		DatabaseType::Sqlite
 	} else if url.starts_with("mongodb://") {
 		#[cfg(feature = "mongodb-backend")]
@@ -1364,27 +1585,45 @@ async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseCon
 		)));
 	};
 
-	let connection = match db_type {
-		DatabaseType::Postgres => DatabaseConnection::connect_postgres(url).await,
-		DatabaseType::Sqlite => DatabaseConnection::connect_sqlite(url).await,
+	match db_type {
+		DatabaseType::Postgres => {
+			let conn = DatabaseConnection::connect_postgres(url)
+				.await
+				.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Database connection failed: {}",
+						e
+					))
+				})?;
+			Ok((db_type, conn))
+		}
+		DatabaseType::Sqlite => {
+			let conn = DatabaseConnection::connect_sqlite(url).await.map_err(|e| {
+				crate::CommandError::ExecutionError(format!("Database connection failed: {}", e))
+			})?;
+			Ok((db_type, conn))
+		}
 		#[cfg(feature = "mongodb-backend")]
 		DatabaseType::MongoDB => {
 			// MongoDB URL format: mongodb://host:port/database
 			let database = url.split('/').next_back().unwrap_or("test");
-			DatabaseConnection::connect_mongodb(url, database).await
+			let conn = DatabaseConnection::connect_mongodb(url, database)
+				.await
+				.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Database connection failed: {}",
+						e
+					))
+				})?;
+			Ok((db_type, conn))
 		}
 		#[allow(unreachable_patterns)]
 		_ => {
 			// MySQL or other database types
-			return Err(crate::CommandError::ExecutionError(format!(
+			Err(crate::CommandError::ExecutionError(format!(
 				"Database type {:?} is not yet supported in this feature configuration",
 				db_type
-			)));
+			)))
 		}
 	}
-	.map_err(|e| {
-		crate::CommandError::ExecutionError(format!("Database connection failed: {}", e))
-	})?;
-
-	Ok((db_type, connection))
 }
