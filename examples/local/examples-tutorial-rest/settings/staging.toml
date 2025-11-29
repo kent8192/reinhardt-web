@@ -11,10 +11,5 @@ allowed_hosts = ["staging.example.com"]
 
 # Staging database configuration (override via environment variables)
 [database]
-engine = "postgresql"
-host = "staging-db.example.com"
-port = 5432
-name = "snippets_db_staging"
-user = "postgres"
-# Password should be set via REINHARDT_DATABASE__PASSWORD environment variable
-password = ""
+engine = "sqlite"
+name = "db.sqlite3"

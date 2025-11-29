@@ -6,7 +6,6 @@
 //! - CRUD operations
 //! - ViewSets
 
-pub mod migrations;
 pub mod models;
 pub mod serializers;
 pub mod urls;

@@ -16,11 +16,7 @@ static_root = "staticfiles"
 # Template configuration
 template_debug = true
 
-# Database configuration (PostgreSQL)
+# Database configuration (SQLite)
 [database]
-engine = "postgresql"
-host = "localhost"
-port = 5432
-name = "snippets_db"
-user = "postgres"
-password = "postgres"
+engine = "sqlite"
+name = "db.sqlite3"

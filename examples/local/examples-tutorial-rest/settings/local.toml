@@ -8,9 +8,5 @@ secret_key = "local-dev-secret-key-change-this-in-production"
 
 # Local database configuration (can override DATABASE_URL via environment)
 [database]
-engine = "postgresql"
-host = "localhost"
-port = 5432
-name = "snippets_db"
-user = "postgres"
-password = "postgres"
+engine = "sqlite"
+name = "db.sqlite3"

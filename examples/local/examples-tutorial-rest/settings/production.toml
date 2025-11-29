@@ -14,10 +14,5 @@ template_debug = false
 
 # Production database configuration (override all via environment variables)
 [database]
-engine = "postgresql"
-host = "prod-db.example.com"
-port = 5432
-name = "snippets_db_prod"
-user = "postgres"
-# Password MUST be set via REINHARDT_DATABASE__PASSWORD environment variable
-password = ""
+engine = "sqlite"
+name = "db.sqlite3"
