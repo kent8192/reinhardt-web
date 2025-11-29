@@ -120,7 +120,7 @@ See @docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 - Use `gh api` for accessing GitHub API
 - **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
 
-See @CLAUDE.commit.md for detailed commit guidelines including:
+See @docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
 - Commit message format (CM-1 ~ CM-3)
 - Commit message style guide
@@ -157,7 +157,7 @@ See @CLAUDE.commit.md for detailed commit guidelines including:
 1. Update crate version in `Cargo.toml`
 2. Update crate's `CHANGELOG.md`
 3. Run all verification commands
-4. Commit version changes (see @CLAUDE.commit.md CE-5)
+4. Commit version changes (see @docs/COMMIT_GUIDELINE.md CE-5)
 5. Wait for explicit user authorization to proceed
 6. Run `cargo publish --dry-run -p <crate-name>`
 7. Wait for user confirmation after dry-run
@@ -297,7 +297,7 @@ Before submitting code:
    - [ ] Testing standards (@docs/TESTING_STANDARDS.md)
    - [ ] No anti-patterns (@docs/ANTI_PATTERNS.md)
    - [ ] Documentation updated (@docs/DOCUMENTATION_STANDARDS.md)
-   - [ ] Git commit policy (@CLAUDE.commit.md)
+   - [ ] Git commit policy (@docs/COMMIT_GUIDELINE.md)
 
 ---
 
@@ -354,7 +354,7 @@ For comprehensive guidelines, see:
 - **Testing**: @docs/TESTING_STANDARDS.md
 - **Anti-Patterns**: @docs/ANTI_PATTERNS.md
 - **Documentation**: @docs/DOCUMENTATION_STANDARDS.md
-- **Git Commits**: @CLAUDE.commit.md
+- **Git Commits**: @docs/COMMIT_GUIDELINE.md
 - **Release Process**: @docs/RELEASE_PROCESS.md
 - **Project Overview**: @README.md
 
