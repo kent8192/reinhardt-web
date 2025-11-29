@@ -8,7 +8,8 @@
 use crate::migration::Migration;
 use crate::operations::Operation;
 use crate::schema_diff::{DatabaseSchema, SchemaDiff};
-use crate::writer::MigrationWriter;
+// MigrationWriter functionality now available via FilesystemRepository
+// use crate::repository::FilesystemRepository;
 use std::path::PathBuf;
 
 /// Auto-migration generator
@@ -26,6 +27,8 @@ pub struct AutoMigrationResult {
 	pub migration_file: PathBuf,
 	/// Rollback file path
 	pub rollback_file: Option<PathBuf>,
+	/// Generated operations
+	pub operations: Vec<Operation>,
 	/// Number of operations generated
 	pub operation_count: usize,
 	/// Has destructive changes
@@ -63,7 +66,9 @@ impl AutoMigrationGenerator {
 		);
 
 		// Create migration
-		let migration = Migration {
+		// FilesystemRepository now available for persistence
+		// Use FilesystemRepository::save() via MigrationService
+		let _migration = Migration {
 			name: migration_name.clone(),
 			app_label: "auto".to_string(),
 			dependencies: Vec::new(),
@@ -72,36 +77,25 @@ impl AutoMigrationGenerator {
 			atomic: true,
 		};
 
-		// Write migration file
-		let writer = MigrationWriter::new(migration.clone());
-		let migration_file = writer
-			.write_to_file(&self.output_dir)
-			.map_err(|e| AutoMigrationError::WriteError(e.to_string()))?;
+		// File writing will be handled by FilesystemRepository via service layer
+		// Temporarily return a placeholder path
+		let migration_file = self.output_dir.join(format!("{}.rs", migration_name));
 
 		// Generate rollback operations
 		let rollback_operations = self.generate_rollback(&operations);
 		let rollback_file = if !rollback_operations.is_empty() {
-			let rollback_migration = Migration {
-				name: format!("{}_rollback", migration_name),
-				app_label: "auto".to_string(),
-				dependencies: vec![("auto".to_string(), migration_name)],
-				operations: rollback_operations,
-				replaces: Vec::new(),
-				atomic: true,
-			};
-			let rollback_writer = MigrationWriter::new(rollback_migration);
 			Some(
-				rollback_writer
-					.write_to_file(&self.output_dir)
-					.map_err(|e| AutoMigrationError::WriteError(e.to_string()))?,
+				self.output_dir
+					.join(format!("{}_rollback.rs", migration_name)),
 			)
 		} else {
 			None
 		};
 
 		Ok(AutoMigrationResult {
-			migration_file: std::path::PathBuf::from(migration_file),
-			rollback_file: rollback_file.map(std::path::PathBuf::from),
+			migration_file,
+			rollback_file,
+			operations: operations.clone(),
 			operation_count: operations.len(),
 			has_destructive_changes: has_destructive,
 		})
