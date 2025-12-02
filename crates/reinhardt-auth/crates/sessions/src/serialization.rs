@@ -217,7 +217,7 @@ impl SerializationFormat {
 	/// let bytes = format.serialize(&data)?;
 	/// let restored: serde_json::Value = format.deserialize(&bytes)?;
 	///
-	/// assert_eq!(restored["test"], true);
+	/// assert!(restored["test"]);
 	/// # Ok(())
 	/// # }
 	/// ```

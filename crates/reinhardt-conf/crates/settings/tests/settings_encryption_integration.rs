@@ -4,6 +4,7 @@
 //! including encryption key management, file-based encrypted storage, decryption on load,
 //! re-encryption on save, and performance characteristics with large settings.
 
+#![allow(clippy::field_reassign_with_default)]
 use reinhardt_settings::encryption::{ConfigEncryptor, EncryptedConfig};
 use rstest::*;
 use serde::{Deserialize, Serialize};

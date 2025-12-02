@@ -192,7 +192,7 @@ mod tests {
 
 		// Add messages that will exceed cookie size
 		for i in 0..20 {
-			storage.add(Message::new(Level::Info, &format!("Test message {}", i)));
+			storage.add(Message::new(Level::Info, format!("Test message {}", i)));
 		}
 
 		// Store should trigger fallback
@@ -200,7 +200,7 @@ mod tests {
 
 		// Should have messages in both storages if limit exceeded
 		let all_messages = storage.peek();
-		assert!(all_messages.len() > 0);
+		assert!(!all_messages.is_empty());
 	}
 
 	#[test]

@@ -30,6 +30,7 @@
 //! # }
 //! ```
 
+#![allow(clippy::field_reassign_with_default)]
 use crate::backends::{SessionBackend, SessionError};
 use crate::session::Session;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};

@@ -200,7 +200,7 @@ impl Settings {
 	///
 	/// assert_eq!(settings.base_dir, PathBuf::from("/app"));
 	/// assert_eq!(settings.secret_key, "my-secret-key-12345");
-	/// assert_eq!(settings.debug, true);
+	/// assert!(settings.debug);
 	/// assert_eq!(settings.time_zone, "UTC");
 	/// assert!(settings.installed_apps.contains(&"reinhardt.contrib.admin".to_string()));
 	/// ```
@@ -616,7 +616,7 @@ mod tests {
 	#[test]
 	fn test_settings_default_unit() {
 		let settings = Settings::default();
-		assert_eq!(settings.debug, true);
+		assert!(settings.debug);
 		assert_eq!(settings.language_code, "en-us");
 		assert_eq!(settings.time_zone, "UTC");
 	}

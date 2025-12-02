@@ -15,11 +15,11 @@ use url::Url;
 /// ```
 /// use reinhardt_settings::env_parser::parse_bool;
 ///
-/// assert_eq!(parse_bool("true").unwrap(), true);
-/// assert_eq!(parse_bool("1").unwrap(), true);
-/// assert_eq!(parse_bool("yes").unwrap(), true);
-/// assert_eq!(parse_bool("false").unwrap(), false);
-/// assert_eq!(parse_bool("0").unwrap(), false);
+/// assert!(parse_bool("true").unwrap());
+/// assert!(parse_bool("1").unwrap());
+/// assert!(parse_bool("yes").unwrap());
+/// assert!(!parse_bool("false").unwrap());
+/// assert!(!parse_bool("0").unwrap());
 /// assert!(parse_bool("invalid").is_err());
 /// ```
 pub fn parse_bool(value: &str) -> Result<bool, String> {
@@ -272,17 +272,17 @@ mod tests {
 
 	#[test]
 	fn test_parse_bool() {
-		assert_eq!(parse_bool("true").unwrap(), true);
-		assert_eq!(parse_bool("True").unwrap(), true);
-		assert_eq!(parse_bool("1").unwrap(), true);
-		assert_eq!(parse_bool("yes").unwrap(), true);
-		assert_eq!(parse_bool("on").unwrap(), true);
+		assert!(parse_bool("true").unwrap());
+		assert!(parse_bool("True").unwrap());
+		assert!(parse_bool("1").unwrap());
+		assert!(parse_bool("yes").unwrap());
+		assert!(parse_bool("on").unwrap());
 
-		assert_eq!(parse_bool("false").unwrap(), false);
-		assert_eq!(parse_bool("False").unwrap(), false);
-		assert_eq!(parse_bool("0").unwrap(), false);
-		assert_eq!(parse_bool("no").unwrap(), false);
-		assert_eq!(parse_bool("off").unwrap(), false);
+		assert!(!parse_bool("false").unwrap());
+		assert!(!parse_bool("False").unwrap());
+		assert!(!parse_bool("0").unwrap());
+		assert!(!parse_bool("no").unwrap());
+		assert!(!parse_bool("off").unwrap());
 
 		assert!(parse_bool("invalid").is_err());
 	}

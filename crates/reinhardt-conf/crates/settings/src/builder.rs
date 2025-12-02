@@ -359,7 +359,7 @@ impl MergedSettings {
 	///     .unwrap();
 	///
 	/// let config: AppConfig = settings.into_typed().unwrap();
-	/// assert_eq!(config.debug, true);
+	/// assert!(config.debug);
 	/// assert_eq!(config.port, 3000);
 	/// ```
 	pub fn into_typed<T: DeserializeOwned>(self) -> Result<T, GetError> {
@@ -443,7 +443,7 @@ mod tests {
 			.build()
 			.unwrap();
 
-		assert_eq!(settings.get::<bool>("debug").unwrap(), true);
+		assert!(settings.get::<bool>("debug").unwrap());
 		assert_eq!(settings.get::<String>("secret_key").unwrap(), "test-key");
 	}
 

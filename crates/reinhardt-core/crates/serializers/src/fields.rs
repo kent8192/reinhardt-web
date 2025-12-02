@@ -389,7 +389,7 @@ impl FloatField {
 	/// use reinhardt_core_serializers::fields::FloatField;
 	///
 	/// let field = FloatField::new();
-	/// assert!(field.validate(3.14).is_ok());
+	/// assert!(field.validate(3.15).is_ok());
 	/// ```
 	pub fn new() -> Self {
 		Self {

@@ -355,7 +355,7 @@ mod tests {
 
 		match result {
 			ParsedData::Json(value) => {
-				assert_eq!(value["uncompressed"], true);
+				assert!(value["uncompressed"].as_bool().unwrap());
 			}
 			_ => panic!("Expected JSON data"),
 		}

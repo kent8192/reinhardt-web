@@ -515,10 +515,7 @@ mod tests {
 			async move {
 				e.lock().push(format!(
 					"savepoint:{}:depth:{}",
-					ctx.savepoint_name
-						.as_ref()
-						.map(|s| s.as_str())
-						.unwrap_or(""),
+					ctx.savepoint_name.as_deref().unwrap_or(""),
 					ctx.savepoint_depth
 				));
 				Ok(())

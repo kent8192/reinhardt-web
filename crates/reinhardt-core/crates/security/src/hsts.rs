@@ -23,8 +23,8 @@ impl HstsConfig {
 	///
 	/// let config = HstsConfig::new(31536000); // 1 year
 	/// assert_eq!(config.max_age, 31536000);
-	/// assert_eq!(config.include_subdomains, false);
-	/// assert_eq!(config.preload, false);
+	/// assert!(!config.include_subdomains);
+	/// assert!(!config.preload);
 	/// ```
 	pub fn new(max_age: u64) -> Self {
 		Self {
@@ -41,7 +41,7 @@ impl HstsConfig {
 	/// use reinhardt_security::HstsConfig;
 	///
 	/// let config = HstsConfig::new(3600).with_subdomains(true);
-	/// assert_eq!(config.include_subdomains, true);
+	/// assert!(config.include_subdomains);
 	/// ```
 	pub fn with_subdomains(mut self, include: bool) -> Self {
 		self.include_subdomains = include;
@@ -55,7 +55,7 @@ impl HstsConfig {
 	/// use reinhardt_security::HstsConfig;
 	///
 	/// let config = HstsConfig::new(63072000).with_preload(true);
-	/// assert_eq!(config.preload, true);
+	/// assert!(config.preload);
 	/// ```
 	pub fn with_preload(mut self, preload: bool) -> Self {
 		self.preload = preload;
@@ -156,8 +156,8 @@ mod tests {
 	fn test_default_hsts_config() {
 		let config = HstsConfig::default();
 		assert_eq!(config.max_age, 31536000);
-		assert_eq!(config.include_subdomains, false);
-		assert_eq!(config.preload, false);
+		assert!(!config.include_subdomains);
+		assert!(!config.preload);
 	}
 
 	#[test]
@@ -196,8 +196,8 @@ mod tests {
 			.with_subdomains(true)
 			.with_preload(false);
 		assert_eq!(config.max_age, 31536000);
-		assert_eq!(config.include_subdomains, true);
-		assert_eq!(config.preload, false);
+		assert!(config.include_subdomains);
+		assert!(!config.preload);
 	}
 
 	#[test]
@@ -211,8 +211,8 @@ mod tests {
 	fn test_hsts_middleware_default() {
 		let middleware = HstsMiddleware::default();
 		assert_eq!(middleware.config().max_age, 31536000);
-		assert_eq!(middleware.config().include_subdomains, false);
-		assert_eq!(middleware.config().preload, false);
+		assert!(!middleware.config().include_subdomains);
+		assert!(!middleware.config().preload);
 	}
 
 	#[test]

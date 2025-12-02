@@ -249,10 +249,10 @@ mod tests {
 		}
 
 		let env = Env::new();
-		assert_eq!(env.bool("TEST_BOOL_TRUE").unwrap(), true);
-		assert_eq!(env.bool("TEST_BOOL_FALSE").unwrap(), false);
-		assert_eq!(env.bool("TEST_BOOL_1").unwrap(), true);
-		assert_eq!(env.bool("TEST_BOOL_0").unwrap(), false);
+		assert!(env.bool("TEST_BOOL_TRUE").unwrap());
+		assert!(!env.bool("TEST_BOOL_FALSE").unwrap());
+		assert!(env.bool("TEST_BOOL_1").unwrap());
+		assert!(!env.bool("TEST_BOOL_0").unwrap());
 
 		unsafe {
 			env::remove_var("TEST_BOOL_TRUE");
@@ -292,7 +292,7 @@ mod tests {
 			env::set_var("REINHARDT_DEBUG", "true");
 		}
 		let env = Env::new().with_prefix("REINHARDT_");
-		assert_eq!(env.bool("DEBUG").unwrap(), true);
+		assert!(env.bool("DEBUG").unwrap());
 		unsafe {
 			env::remove_var("REINHARDT_DEBUG");
 		}

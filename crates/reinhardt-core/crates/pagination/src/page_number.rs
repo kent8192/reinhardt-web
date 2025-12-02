@@ -154,7 +154,7 @@ impl PageNumberPagination {
 	///
 	/// let paginator = PageNumberPagination::new()
 	///     .allow_empty_first_page(false);
-	/// assert_eq!(paginator.allow_empty_first_page, false);
+	/// assert!(!paginator.allow_empty_first_page);
 	/// ```
 	pub fn allow_empty_first_page(mut self, allow: bool) -> Self {
 		self.allow_empty_first_page = allow;

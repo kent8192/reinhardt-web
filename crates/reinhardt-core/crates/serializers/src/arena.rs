@@ -353,7 +353,7 @@ mod tests {
 		let arena = SerializationArena::new();
 		let value = arena.allocate_field(&FieldValue::Boolean(true));
 		let json = arena.to_json(value);
-		assert_eq!(json, true);
+		assert!(json.as_bool().unwrap());
 	}
 
 	#[test]
@@ -457,7 +457,7 @@ mod tests {
 		let arena = SerializationArena::new();
 
 		// Create large array (1000 elements)
-		let arr: Vec<FieldValue> = (0..1000).map(|i| FieldValue::Integer(i)).collect();
+		let arr: Vec<FieldValue> = (0..1000).map(FieldValue::Integer).collect();
 
 		let value = arena.allocate_field(&FieldValue::Array(arr));
 		let json = arena.to_json(value);

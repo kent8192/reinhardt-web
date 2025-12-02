@@ -109,8 +109,8 @@ impl Profile {
 	/// ```
 	/// use reinhardt_settings::profile::Profile;
 	///
-	/// assert_eq!(Profile::Production.is_production(), true);
-	/// assert_eq!(Profile::Development.is_production(), false);
+	/// assert!(Profile::Production.is_production());
+	/// assert!(!Profile::Development.is_production());
 	/// ```
 	pub fn is_production(&self) -> bool {
 		matches!(self, Profile::Production)
@@ -122,8 +122,8 @@ impl Profile {
 	/// ```
 	/// use reinhardt_settings::profile::Profile;
 	///
-	/// assert_eq!(Profile::Development.is_development(), true);
-	/// assert_eq!(Profile::Production.is_development(), false);
+	/// assert!(Profile::Development.is_development());
+	/// assert!(!Profile::Production.is_development());
 	/// ```
 	pub fn is_development(&self) -> bool {
 		matches!(self, Profile::Development)
@@ -135,8 +135,8 @@ impl Profile {
 	/// ```
 	/// use reinhardt_settings::profile::Profile;
 	///
-	/// assert_eq!(Profile::Development.default_debug(), true);
-	/// assert_eq!(Profile::Production.default_debug(), false);
+	/// assert!(Profile::Development.default_debug());
+	/// assert!(!Profile::Production.default_debug());
 	/// ```
 	pub fn default_debug(&self) -> bool {
 		!self.is_production()
@@ -198,9 +198,9 @@ mod tests {
 
 	#[test]
 	fn test_default_debug() {
-		assert_eq!(Profile::Development.default_debug(), true);
-		assert_eq!(Profile::Staging.default_debug(), true);
-		assert_eq!(Profile::Production.default_debug(), false);
+		assert!(Profile::Development.default_debug());
+		assert!(Profile::Staging.default_debug());
+		assert!(!Profile::Production.default_debug());
 	}
 
 	#[test]

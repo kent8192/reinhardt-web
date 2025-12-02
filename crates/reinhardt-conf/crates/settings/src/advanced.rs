@@ -408,7 +408,6 @@ mod tests {
 	#[test]
 	fn test_settings_validation() {
 		let mut settings = AdvancedSettings::default();
-		settings.debug = false;
 
 		// Should fail with default secret key
 		assert!(settings.validate().is_err());

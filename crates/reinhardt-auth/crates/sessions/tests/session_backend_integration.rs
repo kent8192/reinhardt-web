@@ -843,7 +843,11 @@ async fn test_json_value_serialization(temp_dir: tempfile::TempDir) {
 	assert_eq!(deserialized["user"]["name"], "Alice");
 	assert_eq!(deserialized["user"]["preferences"]["theme"], "dark");
 	assert_eq!(deserialized["user"]["preferences"]["language"], "ja");
-	assert_eq!(deserialized["user"]["preferences"]["notifications"], true);
+	assert!(
+		deserialized["user"]["preferences"]["notifications"]
+			.as_bool()
+			.unwrap()
+	);
 	assert_eq!(deserialized["cart"][0]["item_id"], 1);
 	assert_eq!(deserialized["cart"][0]["quantity"], 2);
 	assert_eq!(deserialized["cart"][1]["item_id"], 5);

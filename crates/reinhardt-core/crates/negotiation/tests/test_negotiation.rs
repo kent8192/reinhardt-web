@@ -14,14 +14,8 @@ use reinhardt_negotiation::{
 // Mock renderers for testing
 fn create_mock_renderers() -> Vec<MediaType> {
 	vec![
-		{
-			let mt = MediaType::new("application", "json");
-			mt
-		},
-		{
-			let mt = MediaType::new("text", "html");
-			mt
-		},
+		MediaType::new("application", "json"),
+		MediaType::new("text", "html"),
 		{
 			let mut mt = MediaType::new("application", "openapi+json");
 			mt.parameters

@@ -26,7 +26,7 @@
 //!     .build();
 //!
 //! assert_eq!(config.cookie_name(), "my_session");
-//! assert_eq!(config.cookie_secure(), true);
+//! assert!(config.cookie_secure());
 //! ```
 
 use std::time::Duration;

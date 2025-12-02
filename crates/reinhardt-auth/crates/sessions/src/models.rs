@@ -178,7 +178,7 @@ impl SessionModel {
 	///
 	/// let mut session = SessionModel::new("key".to_string(), json!({}), 3600);
 	/// session.set_session_data(json!({"updated": true}));
-	/// assert_eq!(session.session_data()["updated"], true);
+	/// assert!(session.session_data()["updated"]);
 	/// ```
 	pub fn set_session_data(&mut self, data: serde_json::Value) {
 		self.session_data = data;

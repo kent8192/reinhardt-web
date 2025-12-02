@@ -252,7 +252,7 @@ ttl = 7200
 	assert_eq!(database_config.max_connections, Some(100));
 
 	let cache_config: CacheConfig = merged.get("cache").expect("Failed to get cache config");
-	assert_eq!(cache_config.enabled, false);
+	assert!(!cache_config.enabled);
 	assert_eq!(cache_config.ttl, 7200);
 }
 

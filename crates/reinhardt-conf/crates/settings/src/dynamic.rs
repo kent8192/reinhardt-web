@@ -30,7 +30,7 @@
 //!
 //! // Get a value
 //! let debug: bool = settings.get("debug").await?.unwrap();
-//! assert_eq!(debug, true);
+//! assert!(debug);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! # }).unwrap();
 //! # Ok(())
@@ -233,7 +233,7 @@ impl CachedValue {
 /// let name: String = settings.get("app.name").await.unwrap().unwrap();
 /// let debug: bool = settings.get("app.debug").await.unwrap().unwrap();
 /// assert_eq!(name, "MyApp");
-/// assert_eq!(debug, true);
+/// assert!(debug);
 ///
 /// // Subscribe to changes
 /// let sub_id = settings.subscribe(|key, value| {
@@ -811,7 +811,7 @@ mod tests {
 		let string: String = settings.get("string").await.unwrap().unwrap();
 
 		assert_eq!(number, 42);
-		assert_eq!(boolean, true);
+		assert!(boolean);
 		assert_eq!(string, "text");
 	}
 

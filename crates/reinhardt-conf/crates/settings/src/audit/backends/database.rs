@@ -277,7 +277,7 @@ mod tests {
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);
 
-		let row = sqlx::query(&*sql).fetch_one(&backend.pool).await.unwrap();
+		let row = sqlx::query(&sql).fetch_one(&backend.pool).await.unwrap();
 		let count: i64 = row.try_get(0).unwrap();
 
 		assert_eq!(count, 0);

@@ -495,7 +495,7 @@ mod tests {
 			ParsedData::Xml(value) => {
 				let root = value.get("root").unwrap();
 				let active = root.get("active").unwrap().get("#text").unwrap();
-				assert_eq!(active.as_bool().unwrap(), true);
+				assert!(active.as_bool().unwrap());
 			}
 			_ => panic!("Expected XML"),
 		}

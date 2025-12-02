@@ -2,7 +2,7 @@
 
 use thiserror::Error;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
 	#[error("Invalid email: {0}")]
 	InvalidEmail(String),
@@ -184,7 +184,7 @@ mod tests {
 	fn test_validation_result_ok() {
 		let result: ValidationResult<i32> = Ok(42);
 		assert!(result.is_ok());
-		assert_eq!(result.unwrap(), 42);
+		assert_eq!(result, Ok(42));
 	}
 
 	#[test]

@@ -40,7 +40,7 @@ fn main() {
 		integer_field: 42,
 		string_field: "test".to_string(),
 		boolean_field: true,
-		float_field: 3.14,
+		float_field: 3.15,
 		optional_int: None,
 		optional_string: Some("optional".to_string()),
 		has_default: false,

@@ -154,7 +154,7 @@ mod tests {
 			ParsedData::MessagePack(value) => {
 				assert_eq!(value["user"]["name"], "John Doe");
 				assert_eq!(value["user"]["age"], 30);
-				assert_eq!(value["user"]["active"], true);
+				assert!(value["user"]["active"].as_bool().unwrap());
 			}
 			_ => panic!("Expected MessagePack variant"),
 		}

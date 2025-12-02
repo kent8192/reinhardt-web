@@ -236,8 +236,8 @@ mod tests {
 
 		match result {
 			ParsedData::Yaml(value) => {
-				assert_eq!(value["active"], true);
-				assert_eq!(value["disabled"], false);
+				assert!(value["active"].as_bool().unwrap());
+				assert!(!value["disabled"].as_bool().unwrap());
 			}
 			_ => panic!("Expected YAML data"),
 		}
@@ -246,7 +246,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_yaml_parser_number_types() {
 		let parser = YamlParser::new();
-		let yaml = Bytes::from("integer: 42\nfloat: 3.14\n");
+		let yaml = Bytes::from("integer: 42\nfloat: 3.15\n");
 
 		let headers = HeaderMap::new();
 
@@ -258,7 +258,7 @@ mod tests {
 		match result {
 			ParsedData::Yaml(value) => {
 				assert_eq!(value["integer"], 42);
-				assert_eq!(value["float"], 3.14);
+				assert_eq!(value["float"], 3.15);
 			}
 			_ => panic!("Expected YAML data"),
 		}
@@ -337,7 +337,11 @@ user:
 				let roles = value["user"]["roles"].as_array().unwrap();
 				assert_eq!(roles.len(), 2);
 				assert_eq!(value["user"]["settings"]["theme"], "dark");
-				assert_eq!(value["user"]["settings"]["notifications"], true);
+				assert!(
+					value["user"]["settings"]["notifications"]
+						.as_bool()
+						.unwrap()
+				);
 			}
 			_ => panic!("Expected YAML data"),
 		}
