@@ -445,7 +445,7 @@ async fn test_pool_config_builder() {
 	assert_eq!(config.connect_timeout, Duration::from_secs(5));
 	assert_eq!(config.idle_timeout, Some(Duration::from_secs(300)));
 	assert_eq!(config.max_lifetime, Some(Duration::from_secs(1800)));
-	assert_eq!(config.test_before_acquire, true);
+	assert!(config.test_before_acquire);
 }
 
 #[tokio::test]

@@ -103,7 +103,7 @@ async fn test_csrf_safe_methods_bypass() {
 		let _request = create_test_request(method, "/api/test", true);
 		// Safe methods should not require CSRF token
 		// This would normally be handled by middleware
-		assert!(["GET", "HEAD", "OPTIONS", "TRACE"].contains(&method));
+		assert!(["GET", "HEAD", "OPTIONS", "TRACE"].contains(method));
 	}
 }
 
@@ -115,7 +115,7 @@ async fn test_csrf_unsafe_methods_require_token() {
 	for method in &unsafe_methods {
 		let _request = create_test_request(method, "/api/test", true);
 		// These methods should require CSRF validation
-		assert!(["POST", "PUT", "DELETE", "PATCH"].contains(&method));
+		assert!(["POST", "PUT", "DELETE", "PATCH"].contains(method));
 	}
 }
 

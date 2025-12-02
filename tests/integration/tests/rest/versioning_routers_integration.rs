@@ -253,7 +253,7 @@ async fn test_accept_header_versioning_with_routers() {
 	// Test v1 via explicit path (simulates Accept header routing)
 	let client = reqwest::Client::new();
 	let v1_response = client
-		.get(&format!("{}/api/v1/users", server.url))
+		.get(format!("{}/api/v1/users", server.url))
 		.header("Accept", "application/json; version=v1")
 		.send()
 		.await
@@ -274,7 +274,7 @@ async fn test_accept_header_versioning_with_routers() {
 
 	// Test v2 via explicit path (simulates Accept header routing)
 	let v2_response = client
-		.get(&format!("{}/api/v2/users", server.url))
+		.get(format!("{}/api/v2/users", server.url))
 		.header("Accept", "application/json; version=v2")
 		.send()
 		.await
@@ -651,7 +651,7 @@ async fn test_version_negotiation_with_multiple_strategies() {
 	// Test with explicit v2 path (simulates version negotiation result)
 	let client = reqwest::Client::new();
 	let v2_response = client
-		.get(&format!("{}/api/v2/users", server.url))
+		.get(format!("{}/api/v2/users", server.url))
 		.header("Accept", "application/json; version=v2")
 		.send()
 		.await

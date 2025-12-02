@@ -147,7 +147,7 @@ fn test_cookie_storage_size_limit() {
 	));
 
 	let unstored = storage.update();
-	assert!(unstored.len() > 0, "Some messages should be unstored");
+	assert!(!unstored.is_empty(), "Some messages should be unstored");
 }
 
 #[test]

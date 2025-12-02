@@ -54,7 +54,7 @@ async fn test_http2_server_creation() {
 	let server = Http2Server::new(handler);
 
 	// Verify server can be created
-	assert!(std::ptr::addr_of!(server).is_null() == false);
+	assert!(!std::ptr::addr_of!(server).is_null());
 }
 
 #[tokio::test]

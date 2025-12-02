@@ -160,7 +160,7 @@ fn test_expression_with_subquery() {
 	.with_expression(|| "(SELECT COUNT(*) FROM orders WHERE user_id = users.id)".to_string());
 
 	assert!(property.expression().unwrap().contains("SELECT"));
-	assert!(property.expression().unwrap().contains("subquery") == false);
+	assert!(!property.expression().unwrap().contains("subquery"));
 }
 
 #[test]

@@ -629,7 +629,7 @@ async fn test_large_number_of_messages_performance(
 			3 => Level::Warning,
 			_ => Level::Error,
 		};
-		messages.push(Message::new(level, &format!("Message {}", i)));
+		messages.push(Message::new(level, format!("Message {}", i)));
 	}
 
 	let template = r#"

@@ -58,18 +58,16 @@ async fn test_remember_me_token_integration(
 	let user_id = Uuid::new_v4();
 	let remember_me_token = Uuid::new_v4().to_string();
 	let mut session = Session::new(backend.clone());
-	session.set("_auth_user_id", &user_id.to_string()).unwrap();
-	session
-		.set("_auth_user_name", &"alice".to_string())
-		.unwrap();
+	session.set("_auth_user_id", user_id.to_string()).unwrap();
+	session.set("_auth_user_name", "alice".to_string()).unwrap();
 	session
 		.set("_remember_me_token", &remember_me_token)
 		.unwrap();
 	session
-		.set("_remember_me_created_at", &chrono::Utc::now().timestamp())
+		.set("_remember_me_created_at", chrono::Utc::now().timestamp())
 		.unwrap();
 	session
-		.set("_remember_me_expires_in_days", &30) // 30 days
+		.set("_remember_me_expires_in_days", 30) // 30 days
 		.unwrap();
 	session.save().await.expect("Failed to save session");
 	let old_session_key = session.session_key().unwrap();
@@ -100,16 +98,16 @@ async fn test_remember_me_token_integration(
 	// (In real implementation, this would check remember_me token from cookie)
 	let mut new_session = Session::new(backend.clone());
 	new_session
-		.set("_auth_user_id", &user_id.to_string())
+		.set("_auth_user_id", user_id.to_string())
 		.unwrap();
 	new_session
-		.set("_auth_user_name", &"alice".to_string())
+		.set("_auth_user_name", "alice".to_string())
 		.unwrap();
 	new_session
 		.set("_remember_me_token", &remember_me_token)
 		.unwrap();
 	new_session
-		.set("_auto_login_timestamp", &chrono::Utc::now().timestamp())
+		.set("_auto_login_timestamp", chrono::Utc::now().timestamp())
 		.unwrap();
 	new_session
 		.save()
@@ -172,19 +170,19 @@ async fn test_session_after_mfa_verification(
 	let user_id = Uuid::new_v4();
 	let mut partial_session = Session::new(backend.clone());
 	partial_session
-		.set("_auth_user_id", &user_id.to_string())
+		.set("_auth_user_id", user_id.to_string())
 		.unwrap();
 	partial_session
-		.set("_auth_user_name", &"bob".to_string())
+		.set("_auth_user_name", "bob".to_string())
 		.unwrap();
 	partial_session
-		.set("_mfa_pending", &true) // MFA not yet verified
+		.set("_mfa_pending", true) // MFA not yet verified
 		.unwrap();
 	partial_session
-		.set("_mfa_method", &"totp".to_string())
+		.set("_mfa_method", "totp".to_string())
 		.unwrap();
 	partial_session
-		.set("_password_verified_at", &chrono::Utc::now().timestamp())
+		.set("_password_verified_at", chrono::Utc::now().timestamp())
 		.unwrap();
 	partial_session
 		.save()
@@ -201,7 +199,7 @@ async fn test_session_after_mfa_verification(
 	let data_partial_str: String = result_partial.get("session_data");
 	let data_partial: serde_json::Value =
 		serde_json::from_str(&data_partial_str).expect("Failed to parse session data");
-	assert_eq!(data_partial["_mfa_pending"], true);
+	assert!(data_partial["_mfa_pending"].as_bool().unwrap());
 	assert_eq!(data_partial["_mfa_method"], "totp");
 	assert!(data_partial["_mfa_verified_at"].is_null());
 
@@ -209,11 +207,11 @@ async fn test_session_after_mfa_verification(
 	let mut full_session = Session::from_key(backend.clone(), session_key.to_string())
 		.await
 		.expect("Failed to load partial session");
-	full_session.set("_mfa_pending", &false).unwrap();
+	full_session.set("_mfa_pending", false).unwrap();
 	full_session
-		.set("_mfa_verified_at", &chrono::Utc::now().timestamp())
+		.set("_mfa_verified_at", chrono::Utc::now().timestamp())
 		.unwrap();
-	full_session.set("_fully_authenticated", &true).unwrap();
+	full_session.set("_fully_authenticated", true).unwrap();
 	full_session
 		.save()
 		.await
@@ -228,8 +226,8 @@ async fn test_session_after_mfa_verification(
 	let data_full_str: String = result_full.get("session_data");
 	let data_full: serde_json::Value =
 		serde_json::from_str(&data_full_str).expect("Failed to parse session data");
-	assert_eq!(data_full["_mfa_pending"], false);
-	assert_eq!(data_full["_fully_authenticated"], true);
+	assert!(!data_full["_mfa_pending"].as_bool().unwrap());
+	assert!(data_full["_fully_authenticated"].as_bool().unwrap());
 	assert!(data_full["_mfa_verified_at"].as_i64().is_some());
 
 	// Verify session key remains the same (no regeneration)
@@ -238,7 +236,7 @@ async fn test_session_after_mfa_verification(
 		.expect("Failed to load full session");
 	let fully_authenticated: bool = loaded_full.get("_fully_authenticated").unwrap().unwrap();
 	let mfa_verified_at: i64 = loaded_full.get("_mfa_verified_at").unwrap().unwrap();
-	assert_eq!(fully_authenticated, true);
+	assert!(fully_authenticated);
 	assert!(mfa_verified_at > 0);
 }
 
@@ -280,7 +278,7 @@ async fn test_invalidate_all_sessions_on_password_change(
 	let mut session_desktop = Session::new(backend.clone());
 	session_desktop.set("_auth_user_id", &user_id_str).unwrap();
 	session_desktop
-		.set("_device_type", &"desktop".to_string())
+		.set("_device_type", "desktop".to_string())
 		.unwrap();
 	session_desktop
 		.save()
@@ -292,7 +290,7 @@ async fn test_invalidate_all_sessions_on_password_change(
 	let mut session_mobile = Session::new(backend.clone());
 	session_mobile.set("_auth_user_id", &user_id_str).unwrap();
 	session_mobile
-		.set("_device_type", &"mobile".to_string())
+		.set("_device_type", "mobile".to_string())
 		.unwrap();
 	session_mobile
 		.save()
@@ -304,7 +302,7 @@ async fn test_invalidate_all_sessions_on_password_change(
 	let mut session_tablet = Session::new(backend.clone());
 	session_tablet.set("_auth_user_id", &user_id_str).unwrap();
 	session_tablet
-		.set("_device_type", &"tablet".to_string())
+		.set("_device_type", "tablet".to_string())
 		.unwrap();
 	session_tablet
 		.save()
@@ -420,35 +418,35 @@ async fn test_logout_complete_data_removal(
 
 	let mut session = Session::new(backend.clone());
 	// Authentication data
-	session.set("_auth_user_id", &user_id.to_string()).unwrap();
+	session.set("_auth_user_id", user_id.to_string()).unwrap();
 	session
-		.set("_auth_user_name", &"charlie".to_string())
+		.set("_auth_user_name", "charlie".to_string())
 		.unwrap();
 	session
-		.set("_auth_user_email", &"charlie@example.com".to_string())
+		.set("_auth_user_email", "charlie@example.com".to_string())
 		.unwrap();
-	session.set("_auth_user_is_admin", &true).unwrap();
+	session.set("_auth_user_is_admin", true).unwrap();
 	// Security data
 	session.set("_csrf_token", &csrf_token).unwrap();
-	session.set("_client_ip", &client_ip.to_string()).unwrap();
-	session.set("_user_agent", &user_agent.to_string()).unwrap();
+	session.set("_client_ip", client_ip.to_string()).unwrap();
+	session.set("_user_agent", user_agent.to_string()).unwrap();
 	// Session metadata
 	session
-		.set("_login_timestamp", &chrono::Utc::now().timestamp())
+		.set("_login_timestamp", chrono::Utc::now().timestamp())
 		.unwrap();
 	session
-		.set("_last_activity", &chrono::Utc::now().timestamp())
+		.set("_last_activity", chrono::Utc::now().timestamp())
 		.unwrap();
 	// User preferences
-	session.set("_user_language", &"en-US".to_string()).unwrap();
-	session.set("_user_timezone", &"UTC".to_string()).unwrap();
-	session.set("_user_theme", &"dark".to_string()).unwrap();
+	session.set("_user_language", "en-US".to_string()).unwrap();
+	session.set("_user_timezone", "UTC".to_string()).unwrap();
+	session.set("_user_theme", "dark".to_string()).unwrap();
 	// Application data
-	session.set("_cart_items", &vec![1, 2, 3, 4, 5]).unwrap();
+	session.set("_cart_items", vec![1, 2, 3, 4, 5]).unwrap();
 	session
 		.set(
 			"_user_preferences",
-			&serde_json::json!({"notifications": true, "emails": "daily"}),
+			serde_json::json!({"notifications": true, "emails": "daily"}),
 		)
 		.unwrap();
 
@@ -472,7 +470,7 @@ async fn test_logout_complete_data_removal(
 	);
 	assert_eq!(data_before["_auth_user_name"], "charlie");
 	assert_eq!(data_before["_auth_user_email"], "charlie@example.com");
-	assert_eq!(data_before["_auth_user_is_admin"], true);
+	assert!(data_before["_auth_user_is_admin"].as_bool().unwrap());
 	assert_eq!(data_before["_csrf_token"].as_str().unwrap(), csrf_token);
 	assert_eq!(data_before["_client_ip"], client_ip);
 	assert_eq!(data_before["_user_agent"], user_agent);

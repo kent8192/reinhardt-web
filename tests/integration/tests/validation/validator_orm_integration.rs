@@ -139,7 +139,7 @@ mod bulk_operation_validation_tests {
 		let username_validator = MinLengthValidator::new(3);
 
 		// Simulate bulk validation
-		let usernames = vec!["alice", "bob", "charlie", "david"];
+		let usernames = ["alice", "bob", "charlie", "david"];
 
 		let results: Vec<_> = usernames
 			.iter()
@@ -156,7 +156,7 @@ mod bulk_operation_validation_tests {
 		}
 
 		// Test with invalid usernames
-		let invalid_usernames = vec!["ab", "x", ""];
+		let invalid_usernames = ["ab", "x", ""];
 		let invalid_results: Vec<_> = invalid_usernames
 			.iter()
 			.map(|name| username_validator.validate(*name))
@@ -244,7 +244,7 @@ mod constraint_validation_tests {
 	fn test_unique_constraint_simulation() {
 		// This test verifies in-memory uniqueness checking
 		// For actual database UNIQUE constraint validation, see test_unique_constraint_database_violation
-		let existing_codes = vec!["PROD001", "PROD002", "PROD003"];
+		let existing_codes = ["PROD001", "PROD002", "PROD003"];
 
 		let new_code = "PROD004";
 		assert!(!existing_codes.contains(&new_code));

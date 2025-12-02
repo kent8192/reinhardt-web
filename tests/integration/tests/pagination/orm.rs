@@ -122,8 +122,8 @@ async fn test_first_page_with_queryset(#[future] db_pool: Pool<Sqlite>) {
 	assert_eq!(page.get(9).unwrap().title, "Article 10");
 
 	// Verify pagination metadata
-	assert_eq!(page.has_next(), true);
-	assert_eq!(page.has_previous(), false);
+	assert!(page.has_next());
+	assert!(!page.has_previous());
 	assert_eq!(page.start_index(), 1);
 	assert_eq!(page.end_index(), 10);
 
@@ -156,8 +156,8 @@ async fn test_last_page_with_queryset(#[future] db_pool: Pool<Sqlite>) {
 	assert_eq!(page.get(4).unwrap().title, "Article 25");
 
 	// Verify pagination metadata
-	assert_eq!(page.has_next(), false);
-	assert_eq!(page.has_previous(), true);
+	assert!(!page.has_next());
+	assert!(page.has_previous());
 	assert_eq!(page.start_index(), 21);
 	assert_eq!(page.end_index(), 25);
 

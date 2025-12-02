@@ -115,7 +115,7 @@ async fn test_registry_multiple_content_types(
 	let ct4 = registry.register(ContentType::new("auth", "User"));
 
 	// Verify all have unique IDs
-	let ids = vec![
+	let ids = [
 		ct1.id.unwrap(),
 		ct2.id.unwrap(),
 		ct3.id.unwrap(),

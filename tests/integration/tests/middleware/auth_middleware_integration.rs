@@ -246,7 +246,7 @@ async fn test_session_middleware_with_auth_state(
 
 	assert_eq!(stored_user_id, user_id);
 	assert_eq!(stored_data["user_id"], user_id);
-	assert_eq!(stored_data["authenticated"], true);
+	assert!(stored_data["authenticated"]);
 }
 
 /// Test session middleware logout

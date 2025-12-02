@@ -256,7 +256,7 @@ async fn test_raw_sql_with_orm_result_mapping(
 	assert!(!users.is_empty());
 	for user in users {
 		let age = user["age"].as_i64().unwrap();
-		assert!(age >= 22 && age <= 28, "Age should be between 22 and 28");
+		assert!((22..=28).contains(&age), "Age should be between 22 and 28");
 	}
 }
 

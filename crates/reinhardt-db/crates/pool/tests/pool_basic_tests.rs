@@ -33,7 +33,7 @@ async fn test_pool_with_custom_config() {
 
 	assert_eq!(pool.config().min_connections, 2);
 	assert_eq!(pool.config().max_connections, 5);
-	assert_eq!(pool.config().test_before_acquire, true);
+	assert!(pool.config().test_before_acquire);
 }
 
 #[tokio::test]
@@ -181,8 +181,10 @@ async fn test_pool_basic_config_validation() {
 async fn test_pool_config_zero_max() {
 	// Test that max_connections = 0 is rejected
 	let url = "sqlite::memory:";
-	let mut config = PoolConfig::default();
-	config.max_connections = 0;
+	let config = PoolConfig {
+		max_connections: 0,
+		..Default::default()
+	};
 
 	let result = ConnectionPool::<Sqlite>::new_sqlite(url, config).await;
 	assert!(result.is_err(), "Should reject max_connections = 0");

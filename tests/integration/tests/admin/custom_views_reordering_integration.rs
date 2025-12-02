@@ -12,7 +12,6 @@ use std::sync::Arc;
 /// Simple test model for reordering
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-#[allow(dead_code)]
 struct TestItem {
 	id: String,
 	name: String,

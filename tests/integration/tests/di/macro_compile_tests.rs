@@ -3,7 +3,6 @@
 //! Tests compile-time validation of DI macros using trybuild.
 
 /// Test: Compile-fail cases
-///
 /// Tests that invalid DI usage fails at compile time.
 /// TODO: These tests are timing out after 60 seconds - disabled temporarily
 // #[test]
@@ -18,10 +17,10 @@
 //
 // 	// Note: circular_dependency compiles but fails at runtime (tested in core_error_handling.rs)
 // }
-
 /// Test: Compile-pass cases
 ///
 /// Tests that valid DI usage compiles successfully.
+
 #[test]
 fn test_compile_pass_cases() {
 	let t = trybuild::TestCases::new();

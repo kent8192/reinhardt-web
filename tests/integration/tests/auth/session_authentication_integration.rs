@@ -17,17 +17,15 @@ async fn test_session_authentication_with_inmemory_backend() {
 	// Create a test session with user data
 	let user_id = Uuid::new_v4();
 	let mut session = Session::new(session_backend.clone());
-	session.set("_auth_user_id", &user_id.to_string()).unwrap();
+	session.set("_auth_user_id", user_id.to_string()).unwrap();
+	session.set("_auth_user_name", "alice".to_string()).unwrap();
 	session
-		.set("_auth_user_name", &"alice".to_string())
+		.set("_auth_user_email", "alice@example.com".to_string())
 		.unwrap();
-	session
-		.set("_auth_user_email", &"alice@example.com".to_string())
-		.unwrap();
-	session.set("_auth_user_is_active", &true).unwrap();
-	session.set("_auth_user_is_admin", &false).unwrap();
-	session.set("_auth_user_is_staff", &false).unwrap();
-	session.set("_auth_user_is_superuser", &false).unwrap();
+	session.set("_auth_user_is_active", true).unwrap();
+	session.set("_auth_user_is_admin", false).unwrap();
+	session.set("_auth_user_is_staff", false).unwrap();
+	session.set("_auth_user_is_superuser", false).unwrap();
 
 	// Save session to backend
 	session.save().await.unwrap();
@@ -121,7 +119,7 @@ async fn test_session_authentication_no_user_data() {
 
 	// Create a session without user data (but with some other data to make it valid)
 	let mut session = Session::new(session_backend.clone());
-	session.set("_some_data", &"value".to_string()).unwrap();
+	session.set("_some_data", "value".to_string()).unwrap();
 	session.save().await.unwrap();
 	let session_key = session.session_key().unwrap();
 
@@ -164,7 +162,7 @@ async fn test_session_authentication_custom_cookie_name() {
 	// Create a test session with user data
 	let user_id = Uuid::new_v4();
 	let mut session = Session::new(session_backend.clone());
-	session.set("_auth_user_id", &user_id.to_string()).unwrap();
+	session.set("_auth_user_id", user_id.to_string()).unwrap();
 	session.save().await.unwrap();
 	let session_key = session.session_key().unwrap();
 

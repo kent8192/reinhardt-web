@@ -251,6 +251,7 @@ async fn postgres_with_schema() -> (ContainerAsync<GenericImage>, Arc<PgPool>, E
 			),
 		)
 		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
+		.with_mapped_port(5432, 5432.tcp())
 		.start()
 		.await
 		.expect("Failed to start PostgreSQL container");
@@ -336,7 +337,7 @@ async fn test_subscription_setup_and_basic_event(
 	let data = event.data.into_json().unwrap();
 	assert_eq!(data["userCreated"]["name"], "Alice");
 	assert_eq!(data["userCreated"]["email"], "alice@example.com");
-	assert_eq!(data["userCreated"]["active"], true);
+	assert!(data["userCreated"]["active"].as_bool().unwrap());
 }
 
 #[rstest]
@@ -396,7 +397,7 @@ async fn test_realtime_updates_via_subscriptions(
 	assert!(event.errors.is_empty());
 	let data = event.data.into_json().unwrap();
 	assert_eq!(data["userUpdated"]["id"], user_id);
-	assert_eq!(data["userUpdated"]["active"], false);
+	assert!(!data["userUpdated"]["active"].as_bool().unwrap());
 }
 
 #[rstest]
@@ -599,7 +600,7 @@ async fn test_multiple_concurrent_subscriptions(
 		.expect("Stream2 should yield an event");
 	assert!(event2.errors.is_empty());
 	let data2 = event2.data.into_json().unwrap();
-	assert_eq!(data2["userUpdated"]["active"], false);
+	assert!(!data2["userUpdated"]["active"].as_bool().unwrap());
 
 	// Wait for delete event on stream3
 	let event3 = tokio::time::timeout(tokio::time::Duration::from_secs(2), stream3.next())

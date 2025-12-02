@@ -187,7 +187,7 @@ mod tests {
 
 		// Test that tags combine correctly (simulate extra tags)
 		let info_tag = config.get_tag_for_level(20).unwrap();
-		let extra_tags = vec!["extra1".to_string(), "extra2".to_string()];
+		let extra_tags = ["extra1".to_string(), "extra2".to_string()];
 		let combined_tags = format!("{} {}", info_tag, extra_tags.join(" "));
 		assert_eq!(combined_tags, "info extra1 extra2");
 	}

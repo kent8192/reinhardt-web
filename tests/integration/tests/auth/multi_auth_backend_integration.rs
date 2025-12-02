@@ -65,15 +65,15 @@ async fn create_authenticated_session(
 ) -> String {
 	// Clone the Arc to get a reference for Session
 	let mut session = Session::new((*session_backend).clone());
-	session.set("_auth_user_id", &user_id.to_string()).unwrap();
+	session.set("_auth_user_id", user_id.to_string()).unwrap();
 	session
-		.set("_auth_user_name", &username.to_string())
+		.set("_auth_user_name", username.to_string())
 		.unwrap();
-	session.set("_auth_user_email", &email.to_string()).unwrap();
-	session.set("_auth_user_is_active", &true).unwrap();
-	session.set("_auth_user_is_admin", &false).unwrap();
-	session.set("_auth_user_is_staff", &false).unwrap();
-	session.set("_auth_user_is_superuser", &false).unwrap();
+	session.set("_auth_user_email", email.to_string()).unwrap();
+	session.set("_auth_user_is_active", true).unwrap();
+	session.set("_auth_user_is_admin", false).unwrap();
+	session.set("_auth_user_is_staff", false).unwrap();
+	session.set("_auth_user_is_superuser", false).unwrap();
 
 	session.save().await.unwrap();
 	session.session_key().unwrap().to_string()
@@ -573,17 +573,17 @@ async fn test_session_backend_user_model() {
 	// Create session with comprehensive user data
 	let user_id = Uuid::new_v4();
 	let mut session = Session::new((*session_backend).clone());
-	session.set("_auth_user_id", &user_id.to_string()).unwrap();
+	session.set("_auth_user_id", user_id.to_string()).unwrap();
 	session
-		.set("_auth_user_name", &"session_user".to_string())
+		.set("_auth_user_name", "session_user".to_string())
 		.unwrap();
 	session
-		.set("_auth_user_email", &"session@example.com".to_string())
+		.set("_auth_user_email", "session@example.com".to_string())
 		.unwrap();
-	session.set("_auth_user_is_active", &true).unwrap();
-	session.set("_auth_user_is_admin", &true).unwrap();
-	session.set("_auth_user_is_staff", &true).unwrap();
-	session.set("_auth_user_is_superuser", &false).unwrap();
+	session.set("_auth_user_is_active", true).unwrap();
+	session.set("_auth_user_is_admin", true).unwrap();
+	session.set("_auth_user_is_staff", true).unwrap();
+	session.set("_auth_user_is_superuser", false).unwrap();
 
 	session.save().await.unwrap();
 	let session_key = session.session_key().unwrap();

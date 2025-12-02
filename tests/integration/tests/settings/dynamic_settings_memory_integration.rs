@@ -46,7 +46,7 @@ async fn test_memory_backend_multiple_types() {
 	// Set different types
 	settings.set("count", &42i32, None).await.unwrap();
 	settings.set("enabled", &true, None).await.unwrap();
-	settings.set("ratio", &3.14f64, None).await.unwrap();
+	settings.set("ratio", &3.15f64, None).await.unwrap();
 	settings
 		.set("tags", &vec!["rust", "framework"], None)
 		.await
@@ -60,7 +60,7 @@ async fn test_memory_backend_multiple_types() {
 	assert!(enabled);
 
 	let ratio: f64 = settings.get("ratio").await.unwrap().unwrap();
-	assert!((ratio - 3.14).abs() < 0.01);
+	assert!((ratio - 3.15).abs() < 0.01);
 
 	let tags: Vec<String> = settings.get("tags").await.unwrap().unwrap();
 	assert_eq!(tags, vec!["rust".to_string(), "framework".to_string()]);

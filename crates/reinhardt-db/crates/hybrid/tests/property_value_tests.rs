@@ -99,7 +99,7 @@ fn test_boolean_value() {
 
 	let property = HybridProperty::new(|p: &Product| p.price < 50.0);
 
-	assert_eq!(property.get(&product), true);
+	assert!(property.get(&product));
 }
 
 #[test]

@@ -155,7 +155,6 @@ mod template_exception_tests {
 mod form_rendering_tests {
 	use super::*;
 	use serde::{Deserialize, Serialize};
-	use serde_json;
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct FormData {

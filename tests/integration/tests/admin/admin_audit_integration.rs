@@ -268,7 +268,7 @@ async fn test_admin_audit_query_by_model(
 	let (_container, logger) = database_audit_logger.await;
 
 	// Record logs for different models
-	let models = vec!["User", "Article", "Comment"];
+	let models = ["User", "Article", "Comment"];
 	for (i, model) in models.iter().enumerate() {
 		let log = AuditLog::builder()
 			.user_id("admin".to_string())

@@ -473,5 +473,5 @@ async fn test_read_only_primary_key_related_field() {
 
 	// Verify children field is read-only
 	assert_eq!(post_fields["children"].read_only, Some(true));
-	assert_eq!(post_fields["children"].required, false);
+	assert!(!post_fields["children"].required);
 }

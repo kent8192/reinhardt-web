@@ -904,15 +904,9 @@ async fn test_session_state_isolation() {
 
 #[tokio::test]
 async fn test_graceful_service_failure() {
-	#[derive(Clone)]
+	#[derive(Clone, Default)]
 	struct FallibleService {
 		fail: bool,
-	}
-
-	impl Default for FallibleService {
-		fn default() -> Self {
-			Self { fail: false }
-		}
 	}
 
 	#[derive(Clone, Injectable)]

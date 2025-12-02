@@ -60,7 +60,7 @@ async fn test_full_graphql_workflow() {
 	let data = result.data.into_json().unwrap();
 	assert_eq!(data["user"]["name"], "Alice");
 	assert_eq!(data["user"]["email"], "alice@example.com");
-	assert_eq!(data["user"]["active"], true);
+	assert!(data["user"]["active"].as_bool().unwrap());
 
 	// Step 4: Update user status
 	let mutation = format!(
@@ -76,7 +76,7 @@ async fn test_full_graphql_workflow() {
 	);
 	let result = schema.execute(&mutation).await;
 	let data = result.data.into_json().unwrap();
-	assert_eq!(data["updateUserStatus"]["active"], false);
+	assert!(!data["updateUserStatus"]["active"].as_bool().unwrap());
 
 	// Step 5: Verify update
 	let query = format!(
@@ -91,7 +91,7 @@ async fn test_full_graphql_workflow() {
 	);
 	let result = schema.execute(&query).await;
 	let data = result.data.into_json().unwrap();
-	assert_eq!(data["user"]["active"], false);
+	assert!(!data["user"]["active"].as_bool().unwrap());
 
 	// Step 6: Query all users
 	let query = r#"
@@ -368,7 +368,7 @@ async fn test_subscription_lifecycle() {
 		.contains("sub-test-1"));
 	assert_eq!(data["userCreated"]["name"], "Subscription Test");
 	assert_eq!(data["userCreated"]["email"], "sub@test.com");
-	assert_eq!(data["userCreated"]["active"], true);
+	assert!(data["userCreated"]["active"].as_bool().unwrap());
 }
 
 #[tokio::test]
@@ -399,7 +399,7 @@ async fn test_context_propagation() {
 	let result = schema.execute(query).await;
 	assert!(result.errors.is_empty());
 	let data = result.data.into_json().unwrap();
-	assert!(data["users"].as_array().unwrap().len() > 0);
+	assert!(!data["users"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -570,7 +570,7 @@ async fn test_multiple_subscriptions() {
 		.unwrap()
 		.contains("multi-2"));
 	assert_eq!(data2["userUpdated"]["name"], "Updated User");
-	assert_eq!(data2["userUpdated"]["active"], false);
+	assert!(!data2["userUpdated"]["active"].as_bool().unwrap());
 
 	// Wait for and verify Deleted event on stream3
 	let event3 = tokio::time::timeout(tokio::time::Duration::from_secs(2), stream3.next())

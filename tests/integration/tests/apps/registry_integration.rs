@@ -220,7 +220,7 @@ fn test_get_relationships_for_nonexistent_model(
 #[serial(app_registry)]
 fn test_get_relationships_to_model(_relationship_cache: TeardownGuard<RelationshipCacheGuard>) {
 	let user_rels = get_relationships_to_model("auth.User");
-	assert!(user_rels.len() >= 1);
+	assert!(!user_rels.is_empty());
 
 	assert!(user_rels
 		.iter()

@@ -75,7 +75,7 @@ async fn test_unified_router_with_viewset() {
 
 	// Check that routes are generated
 	let routes = router.get_all_routes();
-	assert!(routes.len() > 0);
+	assert!(!routes.is_empty());
 }
 
 #[tokio::test]
@@ -156,7 +156,7 @@ async fn test_unified_router_multiple_children() {
 	assert_eq!(router.children_count(), 2);
 
 	let routes = router.get_all_routes();
-	assert!(routes.len() > 0);
+	assert!(!routes.is_empty());
 }
 
 #[tokio::test]
@@ -219,7 +219,7 @@ async fn test_unified_router_get_all_routes() {
 	// Check namespace combination in routes
 	let has_combined_namespace = routes
 		.iter()
-		.any(|(_, _, ns, _)| ns.as_ref().map_or(false, |n| n.contains(':')));
+		.any(|(_, _, ns, _)| ns.as_ref().is_some_and(|n| n.contains(':')));
 	assert!(has_combined_namespace);
 }
 

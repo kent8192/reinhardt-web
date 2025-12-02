@@ -82,7 +82,6 @@ async fn test_query_string_special_chars() {
 ///
 /// NOTE: This test documents Django's behavior where changing request encoding
 /// re-parses query parameters. In Rust, encoding is typically UTF-8 by default.
-
 /// Test: Query string with Unicode characters
 #[tokio::test]
 async fn test_query_string_unicode() {

@@ -415,22 +415,23 @@ mod relationship_tests {
 			parent_id: Option<i32>,
 		}
 
-		let mut categories = Vec::new();
-		categories.push(Category {
-			id: Some(1),
-			name: "Root".to_string(),
-			parent_id: None,
-		});
-		categories.push(Category {
-			id: Some(2),
-			name: "Child 1".to_string(),
-			parent_id: Some(1),
-		});
-		categories.push(Category {
-			id: Some(3),
-			name: "Child 2".to_string(),
-			parent_id: Some(1),
-		});
+		let categories = [
+			Category {
+				id: Some(1),
+				name: "Root".to_string(),
+				parent_id: None,
+			},
+			Category {
+				id: Some(2),
+				name: "Child 1".to_string(),
+				parent_id: Some(1),
+			},
+			Category {
+				id: Some(3),
+				name: "Child 2".to_string(),
+				parent_id: Some(1),
+			},
+		];
 
 		let children: Vec<_> = categories
 			.iter()

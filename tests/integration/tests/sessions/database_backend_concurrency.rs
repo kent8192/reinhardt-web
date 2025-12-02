@@ -102,7 +102,7 @@ async fn test_concurrent_session_write_conflict(
 	);
 	let write_id = data["write_id"].as_i64().unwrap();
 	assert!(
-		write_id >= 0 && write_id < 10,
+		(0..10).contains(&write_id),
 		"write_id should be in range 0-9"
 	);
 }
@@ -284,7 +284,7 @@ async fn test_session_key_collision_handling(
 	);
 	let version = data["version"].as_i64().unwrap();
 	assert!(
-		version >= 2 && version <= 5,
+		(2..=5).contains(&version),
 		"Version should be one of the updates (2-5)"
 	);
 }

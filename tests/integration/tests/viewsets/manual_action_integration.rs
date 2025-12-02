@@ -85,7 +85,7 @@ async fn test_action_metadata_properties() {
 		.with_url_name("custom-action");
 
 	assert_eq!(action.name, "test_action");
-	assert_eq!(action.detail, true);
+	assert!(action.detail);
 	assert_eq!(action.custom_name, Some("My Custom Action".to_string()));
 	assert_eq!(action.display_name(), "My Custom Action"); // custom_name takes precedence
 	assert_eq!(action.get_url_path(), "custom/path");
@@ -116,7 +116,7 @@ async fn test_action_helper() {
 	});
 
 	assert_eq!(my_action.name, "test");
-	assert_eq!(my_action.detail, false);
+	assert!(!my_action.detail);
 
 	// Test handler execution
 	let request = Request::builder()

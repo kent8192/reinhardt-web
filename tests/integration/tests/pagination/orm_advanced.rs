@@ -133,8 +133,8 @@ async fn test_page_out_of_bounds_zero(
 	assert_eq!(page.get(0).unwrap().title, "Article 1");
 	assert_eq!(page.start_index(), 1);
 	assert_eq!(page.end_index(), 10);
-	assert_eq!(page.has_previous(), false);
-	assert_eq!(page.has_next(), true);
+	assert!(!page.has_previous());
+	assert!(page.has_next());
 }
 
 /// Test 2: Page out of bounds - Negative page number (parsed as invalid)
@@ -158,8 +158,8 @@ async fn test_page_out_of_bounds_negative(
 	assert_eq!(page.number, 1);
 	assert_eq!(page.len(), 10);
 	assert_eq!(page.get(0).unwrap().title, "Article 1");
-	assert_eq!(page.has_previous(), false);
-	assert_eq!(page.has_next(), true);
+	assert!(!page.has_previous());
+	assert!(page.has_next());
 }
 
 /// Test 3: Page out of bounds - Beyond max page
@@ -186,8 +186,8 @@ async fn test_page_out_of_bounds_beyond_max(
 	assert_eq!(page.get(4).unwrap().title, "Article 25");
 	assert_eq!(page.start_index(), 21);
 	assert_eq!(page.end_index(), 25);
-	assert_eq!(page.has_previous(), true);
-	assert_eq!(page.has_next(), false);
+	assert!(page.has_previous());
+	assert!(!page.has_next());
 }
 
 /// Test 4: Dynamic page size change - Same dataset, different page sizes
@@ -267,9 +267,9 @@ async fn test_page_metadata_first_page(
 	assert_eq!(page.len(), 10);
 	assert_eq!(page.start_index(), 1);
 	assert_eq!(page.end_index(), 10);
-	assert_eq!(page.has_previous(), false);
-	assert_eq!(page.has_next(), true);
-	assert_eq!(page.has_other_pages(), true);
+	assert!(!page.has_previous());
+	assert!(page.has_next());
+	assert!(page.has_other_pages());
 
 	// Verify next_page_number() succeeds
 	assert_eq!(page.next_page_number().unwrap(), 2);
@@ -303,9 +303,9 @@ async fn test_page_metadata_middle_page(
 	assert_eq!(page.len(), 10);
 	assert_eq!(page.start_index(), 11);
 	assert_eq!(page.end_index(), 20);
-	assert_eq!(page.has_previous(), true);
-	assert_eq!(page.has_next(), true);
-	assert_eq!(page.has_other_pages(), true);
+	assert!(page.has_previous());
+	assert!(page.has_next());
+	assert!(page.has_other_pages());
 
 	// Verify both next and previous page numbers
 	assert_eq!(page.next_page_number().unwrap(), 3);
@@ -337,9 +337,9 @@ async fn test_page_metadata_last_page(
 	assert_eq!(page.len(), 10);
 	assert_eq!(page.start_index(), 21);
 	assert_eq!(page.end_index(), 30);
-	assert_eq!(page.has_previous(), true);
-	assert_eq!(page.has_next(), false);
-	assert_eq!(page.has_other_pages(), true);
+	assert!(page.has_previous());
+	assert!(!page.has_next());
+	assert!(page.has_other_pages());
 
 	// Verify previous_page_number() succeeds
 	assert_eq!(page.previous_page_number().unwrap(), 2);
@@ -373,9 +373,9 @@ async fn test_page_metadata_last_page_partial(
 	assert_eq!(page.len(), 5); // Only 5 items on last page
 	assert_eq!(page.start_index(), 21);
 	assert_eq!(page.end_index(), 25);
-	assert_eq!(page.has_previous(), true);
-	assert_eq!(page.has_next(), false);
-	assert_eq!(page.has_other_pages(), true);
+	assert!(page.has_previous());
+	assert!(!page.has_next());
+	assert!(page.has_other_pages());
 
 	// Verify item content
 	assert_eq!(page.get(0).unwrap().title, "Article 21");
@@ -407,9 +407,9 @@ async fn test_page_metadata_single_page(
 	assert_eq!(page.len(), 5);
 	assert_eq!(page.start_index(), 1);
 	assert_eq!(page.end_index(), 5);
-	assert_eq!(page.has_previous(), false);
-	assert_eq!(page.has_next(), false);
-	assert_eq!(page.has_other_pages(), false);
+	assert!(!page.has_previous());
+	assert!(!page.has_next());
+	assert!(!page.has_other_pages());
 
 	// Both methods should fail
 	assert!(page.previous_page_number().is_err());
@@ -443,9 +443,9 @@ async fn test_page_metadata_empty_dataset(
 	assert_eq!(page.len(), 0);
 	assert_eq!(page.start_index(), 0); // Empty page has start_index 0
 	assert_eq!(page.end_index(), 0); // Empty page has end_index 0
-	assert_eq!(page.has_previous(), false);
-	assert_eq!(page.has_next(), false);
-	assert_eq!(page.has_other_pages(), false);
+	assert!(!page.has_previous());
+	assert!(!page.has_next());
+	assert!(!page.has_other_pages());
 
 	// Both methods should fail
 	assert!(page.previous_page_number().is_err());
@@ -477,7 +477,7 @@ async fn test_page_metadata_exact_page_size(
 	assert_eq!(page.len(), 10);
 	assert_eq!(page.start_index(), 1);
 	assert_eq!(page.end_index(), 10);
-	assert_eq!(page.has_previous(), false);
-	assert_eq!(page.has_next(), false);
-	assert_eq!(page.has_other_pages(), false);
+	assert!(!page.has_previous());
+	assert!(!page.has_next());
+	assert!(!page.has_other_pages());
 }

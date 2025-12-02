@@ -39,7 +39,7 @@ async fn test_csv_filter_export_import_roundtrip() {
 	user3.insert("email".to_string(), "charlie@example.com".to_string());
 	user3.insert("is_active".to_string(), "true".to_string());
 
-	let all_data = vec![user1.clone(), user2.clone(), user3.clone()];
+	let all_data = [user1.clone(), user2.clone(), user3.clone()];
 
 	// Step 2: Apply filter (simulate filtering active users)
 	let _filter = BooleanFilter::new("is_active", "Active Status");
@@ -291,7 +291,7 @@ async fn test_filter_manager_export_integration() {
 	article2.insert("category".to_string(), "science".to_string());
 	article2.insert("is_published".to_string(), "false".to_string());
 
-	let data = vec![article1, article2];
+	let data = [article1, article2];
 
 	// Apply filters: published = true
 	let filtered: Vec<_> = data

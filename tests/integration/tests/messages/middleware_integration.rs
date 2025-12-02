@@ -308,7 +308,7 @@ mod tests {
 		impl Handler for AddMessageHandler {
 			async fn handle(&self, request: Request) -> reinhardt_exception::Result<Response> {
 				if let Some(container) = request.extensions.get::<MessagesContainer>() {
-					container.add(Message::new(self.level.clone(), &self.message_text));
+					container.add(Message::new(self.level, &self.message_text));
 				}
 				Ok(Response::new(StatusCode::OK))
 			}

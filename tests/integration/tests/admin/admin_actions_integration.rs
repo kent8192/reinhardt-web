@@ -21,7 +21,6 @@ use std::sync::Arc;
 // Test model for integration testing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)]
-#[allow(dead_code)]
 struct Article {
 	id: Option<i64>,
 	title: String,

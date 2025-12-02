@@ -94,7 +94,7 @@ async fn setup_test_db(
 		.expect("Failed to insert test article");
 
 		articles.push(TestArticle {
-			id: i as i32,
+			id: i,
 			title,
 			content,
 			author_id,

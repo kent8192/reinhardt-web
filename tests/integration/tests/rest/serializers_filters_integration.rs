@@ -301,7 +301,7 @@ async fn test_range_filter_with_database_query(
 		.collect();
 
 	// Verify all products are within range [100, 500]
-	assert!(products.len() > 0);
+	assert!(!products.is_empty());
 	for product in &products {
 		assert!(product.price >= 100);
 		assert!(product.price <= 500);
@@ -378,7 +378,7 @@ async fn test_custom_filter_backend_chaining(
 		.collect();
 
 	// Verify all products are Electronics
-	assert!(products.len() > 0);
+	assert!(!products.is_empty());
 	for product in &products {
 		assert_eq!(product.category, "Electronics");
 	}
@@ -458,7 +458,7 @@ async fn test_fuzzy_search_filter_integration(
 
 	// Verify fuzzy search found similar products
 	assert!(
-		fuzzy_results.len() > 0,
+		!fuzzy_results.is_empty(),
 		"Fuzzy search should find at least one product matching 'Labtop' typo"
 	);
 
@@ -555,7 +555,7 @@ async fn test_filter_with_pagination_serialization(
 		.collect();
 
 	// Verify page 2 has items
-	assert!(page2_products.len() > 0);
+	assert!(!page2_products.is_empty());
 
 	// Verify all items are Electronics
 	for product in &page2_products {

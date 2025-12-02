@@ -15,14 +15,14 @@ fn test_load_default_settings() {
 	let settings = Settings::default();
 
 	// Verify default values
-	assert_eq!(settings.debug, true);
+	assert!(settings.debug);
 	assert_eq!(settings.language_code, "en-us");
 	assert_eq!(settings.time_zone, "UTC");
-	assert_eq!(settings.use_i18n, true);
-	assert_eq!(settings.use_tz, true);
+	assert!(settings.use_i18n);
+	assert!(settings.use_tz);
 	assert_eq!(settings.static_url, "/static/");
 	assert_eq!(settings.media_url, "/media/");
-	assert_eq!(settings.append_slash, true);
+	assert!(settings.append_slash);
 }
 
 #[test]
@@ -31,7 +31,7 @@ fn test_load_custom_settings() {
 
 	assert_eq!(settings.base_dir, PathBuf::from("/app"));
 	assert_eq!(settings.secret_key, "super-secret-key");
-	assert_eq!(settings.debug, true); // Still defaults to true
+	assert!(settings.debug); // Still defaults to true
 }
 
 #[test]
@@ -71,21 +71,21 @@ fn test_add_middleware() {
 
 #[test]
 fn test_modify_security_settings() {
-	let mut settings = Settings::default();
-
-	// Modify security settings
-	settings.debug = false;
-	settings.secure_ssl_redirect = true;
-	settings.secure_hsts_seconds = Some(31536000);
-	settings.session_cookie_secure = true;
-	settings.csrf_cookie_secure = true;
+	let settings = Settings {
+		debug: false,
+		secure_ssl_redirect: true,
+		secure_hsts_seconds: Some(31536000),
+		session_cookie_secure: true,
+		csrf_cookie_secure: true,
+		..Default::default()
+	};
 
 	// Verify security configuration
-	assert_eq!(settings.debug, false);
-	assert_eq!(settings.secure_ssl_redirect, true);
+	assert!(!settings.debug);
+	assert!(settings.secure_ssl_redirect);
 	assert_eq!(settings.secure_hsts_seconds, Some(31536000));
-	assert_eq!(settings.session_cookie_secure, true);
-	assert_eq!(settings.csrf_cookie_secure, true);
+	assert!(settings.session_cookie_secure);
+	assert!(settings.csrf_cookie_secure);
 }
 
 // ============================================================================
@@ -123,7 +123,7 @@ fn test_template_config_default() {
 	let config = TemplateConfig::default();
 
 	assert_eq!(config.backend, "reinhardt.template.backends.jinja2.Jinja2");
-	assert_eq!(config.app_dirs, true);
+	assert!(config.app_dirs);
 	assert!(config.dirs.is_empty());
 	assert!(config.options.contains_key("context_processors"));
 }
@@ -200,7 +200,7 @@ fn test_settings_deserialization() {
     }"#;
 
 	let settings: Settings = serde_json::from_str(json).unwrap();
-	assert_eq!(settings.debug, false);
+	assert!(!settings.debug);
 	assert_eq!(settings.secret_key, "test-key");
 	assert_eq!(settings.allowed_hosts, vec!["example.com"]);
 }
@@ -211,21 +211,21 @@ fn test_settings_deserialization() {
 
 #[test]
 fn test_production_settings_validation() {
-	let mut settings = Settings::default();
-
-	// Simulate production configuration
-	settings.debug = false;
-	settings.allowed_hosts = vec!["example.com".to_string(), "www.example.com".to_string()];
-	settings.secure_ssl_redirect = true;
-	settings.session_cookie_secure = true;
-	settings.csrf_cookie_secure = true;
+	let settings = Settings {
+		debug: false,
+		allowed_hosts: vec!["example.com".to_string(), "www.example.com".to_string()],
+		secure_ssl_redirect: true,
+		session_cookie_secure: true,
+		csrf_cookie_secure: true,
+		..Default::default()
+	};
 
 	// Verify production settings
-	assert_eq!(settings.debug, false);
+	assert!(!settings.debug);
 	assert!(!settings.allowed_hosts.is_empty());
-	assert_eq!(settings.secure_ssl_redirect, true);
-	assert_eq!(settings.session_cookie_secure, true);
-	assert_eq!(settings.csrf_cookie_secure, true);
+	assert!(settings.secure_ssl_redirect);
+	assert!(settings.session_cookie_secure);
+	assert!(settings.csrf_cookie_secure);
 }
 
 #[test]
@@ -268,6 +268,6 @@ fn test_settings_immutability_pattern() {
 	modified_settings.debug = false;
 
 	// Original remains unchanged
-	assert_eq!(settings.debug, true);
-	assert_eq!(modified_settings.debug, false);
+	assert!(settings.debug);
+	assert!(!modified_settings.debug);
 }

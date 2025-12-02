@@ -354,7 +354,6 @@ async fn test_collection_proxy_uniqueness() {
 /// Test CollectionProxy bulk operations
 // TODO: Implement bulk_insert and clear operations tests after API stabilization
 // These operations require database source and are better tested with actual models
-
 /// Test AssociationProxy with None relationships
 #[tokio::test]
 async fn test_association_proxy_null_relationship() {

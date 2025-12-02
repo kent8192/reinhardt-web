@@ -69,12 +69,12 @@ async fn cleanup_xa_transactions(pool: &MySqlPool) {
 		.unwrap_or_default();
 
 	for row in rows {
-		if let Ok(data) = row.try_get::<Vec<u8>, _>("data") {
-			if let Ok(xid) = String::from_utf8(data) {
-				let _ = sqlx::query(&format!("XA ROLLBACK '{}'", xid))
-					.execute(pool)
-					.await;
-			}
+		if let Ok(data) = row.try_get::<Vec<u8>, _>("data")
+			&& let Ok(xid) = String::from_utf8(data)
+		{
+			let _ = sqlx::query(&format!("XA ROLLBACK '{}'", xid))
+				.execute(pool)
+				.await;
 		}
 	}
 }

@@ -220,7 +220,7 @@ async fn test_parameter_binding_various_types(
 		.bind(42_i32)
 		.bind(9999999999_i64)
 		.bind(true)
-		.bind(3.14_f32)
+		.bind(3.15_f32)
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to insert");
@@ -242,8 +242,8 @@ async fn test_parameter_binding_various_types(
 	assert_eq!(text_val, "test string");
 	assert_eq!(int_val, 42);
 	assert_eq!(bigint_val, 9999999999);
-	assert_eq!(bool_val, true);
-	assert!((float_val - 3.14).abs() < 0.01);
+	assert!(bool_val);
+	assert!((float_val - 3.15).abs() < 0.01);
 }
 
 /// Test NULL parameter binding

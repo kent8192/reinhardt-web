@@ -70,7 +70,7 @@ mod tests {
 			.add(Message::new(Level::Warning, "Session only message"));
 
 		let messages = storage.get_all();
-		assert!(messages.len() > 0);
+		assert!(!messages.is_empty());
 	}
 
 	#[test]
@@ -102,7 +102,7 @@ mod tests {
 		assert_eq!(unstored.len(), 0); // All should be stored using fallback
 
 		let messages = storage.peek();
-		assert!(messages.len() > 0);
+		assert!(!messages.is_empty());
 	}
 
 	#[test]

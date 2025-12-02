@@ -334,30 +334,30 @@ async fn test_readonly_viewset_restrictions() {
 #[tokio::test]
 async fn test_custom_actions() {
 	let list_action = Action::custom("custom_list", false);
-	assert_eq!(list_action.detail, false);
+	assert!(!list_action.detail);
 
 	let detail_action = Action::custom("custom_detail", true);
-	assert_eq!(detail_action.detail, true);
+	assert!(detail_action.detail);
 }
 
 /// Test action metadata
 #[tokio::test]
 async fn test_action_metadata() {
 	let list = Action::list();
-	assert_eq!(list.detail, false);
+	assert!(!list.detail);
 
 	let retrieve = Action::retrieve();
-	assert_eq!(retrieve.detail, true);
+	assert!(retrieve.detail);
 
 	let create = Action::create();
-	assert_eq!(create.detail, false);
+	assert!(!create.detail);
 
 	let update = Action::update();
-	assert_eq!(update.detail, true);
+	assert!(update.detail);
 
 	let partial_update = Action::partial_update();
-	assert_eq!(partial_update.detail, true);
+	assert!(partial_update.detail);
 
 	let destroy = Action::destroy();
-	assert_eq!(destroy.detail, true);
+	assert!(destroy.detail);
 }

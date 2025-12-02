@@ -45,7 +45,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, Row};
 use std::sync::Arc;
-use testcontainers::core::WaitFor;
+use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, GenericImage};
@@ -98,12 +98,13 @@ async fn test_multiple_database_connections(
 		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "testdb2")
+		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start second PostgreSQL container");
 
 	let port2 = postgres2
-		.get_host_port_ipv4(5432)
+		.get_host_port_ipv4(ContainerPort::Tcp(5432))
 		.await
 		.expect("Failed to get port for second container");
 	let url2 = format!("postgres://postgres:test@localhost:{}/testdb2", port2);
@@ -192,12 +193,13 @@ async fn test_data_migration_between_databases(
 		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "target_db")
+		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start target PostgreSQL container");
 
 	let port_target = postgres_target
-		.get_host_port_ipv4(5432)
+		.get_host_port_ipv4(ContainerPort::Tcp(5432))
 		.await
 		.expect("Failed to get target port");
 	let url_target = format!(
@@ -325,12 +327,13 @@ async fn test_read_replica_pattern(
 		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "replica_db")
+		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start replica PostgreSQL container");
 
 	let port_replica = postgres_replica
-		.get_host_port_ipv4(5432)
+		.get_host_port_ipv4(ContainerPort::Tcp(5432))
 		.await
 		.expect("Failed to get replica port");
 	let url_replica = format!(
@@ -433,17 +436,18 @@ async fn test_read_load_balancing_across_replicas(
 			.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 			.with_env_var("POSTGRES_PASSWORD", "test")
 			.with_env_var("POSTGRES_DB", format!("replica_{}", i))
+			.with_mapped_port(5432, ContainerPort::Tcp(5432))
 			.start()
 			.await
-			.expect(&format!("Failed to start replica {} container", i));
+			.unwrap_or_else(|_| panic!("Failed to start replica {} container", i));
 
 		// Wait for container to be fully ready
 		tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
 		let port = postgres_replica
-			.get_host_port_ipv4(5432)
+			.get_host_port_ipv4(ContainerPort::Tcp(5432))
 			.await
-			.expect(&format!("Failed to get replica {} port", i));
+			.unwrap_or_else(|_| panic!("Failed to get replica {} port", i));
 		let url = format!("postgres://postgres:test@localhost:{}/replica_{}", port, i);
 
 		let pool = Arc::new(
@@ -452,7 +456,7 @@ async fn test_read_load_balancing_across_replicas(
 				.acquire_timeout(std::time::Duration::from_secs(60))
 				.connect(&url)
 				.await
-				.expect(&format!("Failed to connect to replica {}", i)),
+				.unwrap_or_else(|_| panic!("Failed to connect to replica {}", i)),
 		);
 
 		replicas.push((postgres_replica, pool));
@@ -478,7 +482,7 @@ async fn test_read_load_balancing_across_replicas(
 		sqlx::query(create_table_sql)
 			.execute(pool.as_ref())
 			.await
-			.expect(&format!("Failed to create table in replica {}", i + 1));
+			.unwrap_or_else(|_| panic!("Failed to create table in replica {}", i + 1));
 	}
 
 	// Insert data into primary
@@ -511,7 +515,7 @@ async fn test_read_load_balancing_across_replicas(
 	}
 
 	// Distribute reads across replicas using round-robin
-	let mut read_counts = vec![0, 0];
+	let mut read_counts = [0, 0];
 	for i in 0..10 {
 		let replica_index = i % 2;
 		let (_container, pool) = &replicas[replica_index];
@@ -556,12 +560,13 @@ async fn test_primary_database_failover(
 		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "replica_db")
+		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start replica container");
 
 	let port_replica = postgres_replica
-		.get_host_port_ipv4(5432)
+		.get_host_port_ipv4(ContainerPort::Tcp(5432))
 		.await
 		.expect("Failed to get replica port");
 	let url_replica = format!(

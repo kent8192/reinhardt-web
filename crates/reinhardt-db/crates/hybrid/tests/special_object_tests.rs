@@ -177,7 +177,7 @@ fn test_query_three() {
 		.with_expression(|| "balance > 50".to_string());
 
 	let account = BankAccount::new(1, 100.0);
-	assert_eq!(property.get(&account), true);
+	assert!(property.get(&account));
 }
 
 #[test]

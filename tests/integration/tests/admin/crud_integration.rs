@@ -153,10 +153,7 @@ async fn insert_test_user_with_id(
 		})
 		.and_then(|row| row.get("id"))
 		.and_then(|v| v.as_i64())
-		.expect(&format!(
-			"Failed to get inserted user ID for username '{}'",
-			username
-		))
+		.unwrap_or_else(|| panic!("Failed to get inserted user ID for username '{}'", username))
 }
 
 #[rstest]

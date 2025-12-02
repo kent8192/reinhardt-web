@@ -105,7 +105,7 @@ impl Paginator for PageNumberPagination {
 		let page = self.get_page(request);
 		let page_size = self.get_page_size(request);
 		let total = items.len();
-		let total_pages = (total + page_size - 1) / page_size;
+		let total_pages = total.div_ceil(page_size);
 
 		let start = (page - 1) * page_size;
 		let end = (start + page_size).min(total);

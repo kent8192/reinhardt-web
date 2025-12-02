@@ -8,7 +8,6 @@ use tokio::task::JoinHandle;
 
 /// Spawn a test server on a random port and return the URL and server handle
 #[allow(dead_code)]
-#[allow(dead_code)]
 pub async fn spawn_test_server(handler: Arc<dyn Handler>) -> (String, JoinHandle<()>) {
 	// Bind to port 0 to get a random available port
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -48,7 +47,6 @@ pub async fn spawn_test_server(handler: Arc<dyn Handler>) -> (String, JoinHandle
 }
 
 /// Shutdown a test server
-#[allow(dead_code)]
 #[allow(dead_code)]
 pub async fn shutdown_test_server(handle: JoinHandle<()>) {
 	handle.abort();

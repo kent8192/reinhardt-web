@@ -60,7 +60,7 @@ mod tests {
 		let unstored = storage.update();
 
 		// Some messages should not fit
-		assert!(unstored.len() > 0, "Some messages should be unstored");
+		assert!(!unstored.is_empty(), "Some messages should be unstored");
 
 		// Get cookie value to verify remaining messages fit
 		let (cookie_value, _) = storage.get_cookie_value().unwrap();

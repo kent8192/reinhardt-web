@@ -133,7 +133,7 @@ async fn test_session_get_basic(
 	assert_eq!(user.username, "alice");
 	assert_eq!(user.email, "alice@example.com");
 	assert_eq!(user.age, Some(25));
-	assert_eq!(user.is_active, true);
+	assert!(user.is_active);
 }
 
 #[rstest]
@@ -176,7 +176,7 @@ async fn test_session_get_with_null_field(
 	assert_eq!(user.username, "bob");
 	assert_eq!(user.email, "bob@example.com");
 	assert_eq!(user.age, None, "NULL age should map to None");
-	assert_eq!(user.is_active, false);
+	assert!(!user.is_active);
 }
 
 #[rstest]
@@ -244,15 +244,15 @@ async fn test_session_get_multiple_users(
 	// Verify data
 	assert_eq!(user1.username, "user1");
 	assert_eq!(user1.age, Some(20));
-	assert_eq!(user1.is_active, true);
+	assert!(user1.is_active);
 
 	assert_eq!(user2.username, "user2");
 	assert_eq!(user2.age, Some(25));
-	assert_eq!(user2.is_active, false);
+	assert!(!user2.is_active);
 
 	assert_eq!(user3.username, "user3");
 	assert_eq!(user3.age, None);
-	assert_eq!(user3.is_active, true);
+	assert!(user3.is_active);
 }
 
 #[rstest]

@@ -162,7 +162,7 @@ async fn test_dashboard_multi_widget_audit_integration() {
 	let registry = WidgetRegistry::new();
 
 	// Create audit logs for different models
-	let models = vec!["User", "Post", "Comment"];
+	let models = ["User", "Post", "Comment"];
 	let mut counts_by_model = std::collections::HashMap::new();
 
 	for (idx, model) in models.iter().enumerate() {
@@ -245,7 +245,7 @@ async fn test_recent_activity_widget_filtering() {
 	let logger = MemoryAuditLogger::new();
 
 	// Create logs for different users
-	let users = vec!["alice", "bob", "charlie"];
+	let users = ["alice", "bob", "charlie"];
 	for (idx, user) in users.iter().enumerate() {
 		for i in 1..=5 {
 			let log = AuditLog::builder()
@@ -318,7 +318,7 @@ async fn test_table_widget_audit_summary() {
 	let logger = MemoryAuditLogger::new();
 
 	// Create various audit logs
-	let actions = vec![
+	let actions = [
 		(AuditAction::Create, 5),
 		(AuditAction::Update, 8),
 		(AuditAction::Delete, 2),

@@ -208,7 +208,7 @@ async fn test_pool_multiple_recreate() {
 	for i in 0..3 {
 		pool.recreate()
 			.await
-			.expect(&format!("Failed to recreate pool iteration {}", i));
+			.unwrap_or_else(|_| panic!("Failed to recreate pool iteration {}", i));
 
 		// Verify pool works after each recreation
 		let mut conn = pool
@@ -248,5 +248,5 @@ async fn test_pool_recreate_with_custom_config() {
 	assert_eq!(pool.config().acquire_timeout, Duration::from_secs(5));
 	assert_eq!(pool.config().idle_timeout, Some(Duration::from_secs(300)));
 	assert_eq!(pool.config().max_lifetime, Some(Duration::from_secs(900)));
-	assert_eq!(pool.config().test_before_acquire, true);
+	assert!(pool.config().test_before_acquire);
 }

@@ -200,7 +200,7 @@ async fn test_session_middleware_database_update(
 	let stored_data: serde_json::Value = result.get("data");
 
 	assert_eq!(stored_data["user_id"], 200);
-	assert_eq!(stored_data["authenticated"], true);
+	assert!(stored_data["authenticated"]);
 }
 
 // ============================================================================
