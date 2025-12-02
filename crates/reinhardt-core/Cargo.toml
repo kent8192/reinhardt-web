@@ -51,3 +51,32 @@ di = ["dep:reinhardt-di", "reinhardt-di/params"]
 negotiation = ["dep:reinhardt-negotiation"]
 parsers = ["dep:reinhardt-parsers"]
 pagination = ["dep:reinhardt-pagination"]
+
+# Aggregate all core features
+core-full = [
+  "types",
+  "types-http",
+  "exception",
+  "signals",
+  "macros",
+  "security",
+  "validators",
+  "serializers",
+  "http",
+  "messages",
+  "di",
+  "negotiation",
+  "parsers",
+  "pagination",
+  "reinhardt-types/full",
+  "reinhardt-exception/full",
+  "reinhardt-signals/full",
+  "reinhardt-macros/full",
+  "reinhardt-security/full",
+  "reinhardt-validators/full",
+  "reinhardt-core-serializers/full",
+  "reinhardt-messages/full",
+  "reinhardt-negotiation/full",
+  "reinhardt-parsers/full",
+  "reinhardt-pagination/full",
+]
