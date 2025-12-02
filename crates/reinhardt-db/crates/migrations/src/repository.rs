@@ -49,6 +49,7 @@ mod tests {
 			operations: vec![],
 			dependencies: vec![],
 			atomic: true,
+			initial: None,
 			replaces: vec![],
 		}
 	}
