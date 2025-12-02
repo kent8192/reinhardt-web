@@ -224,6 +224,7 @@ fn test_migration_with_no_operations() {
 		dependencies: vec![],
 		replaces: vec![],
 		atomic: true,
+		initial: None,
 	};
 
 	assert_eq!(migration.operations.len(), 0);

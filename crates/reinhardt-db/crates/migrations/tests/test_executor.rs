@@ -20,6 +20,7 @@ fn create_test_migration(
 		dependencies: vec![],
 		replaces: vec![],
 		atomic: true,
+		initial: None,
 	}
 }
 
@@ -277,6 +278,7 @@ async fn test_executor_with_dependencies() {
 		dependencies: vec![],
 		replaces: vec![],
 		atomic: true,
+		initial: None,
 	};
 
 	let migration2 = Migration {
@@ -299,6 +301,7 @@ async fn test_executor_with_dependencies() {
 		dependencies: vec![("app1", "0001_initial")],
 		replaces: vec![],
 		atomic: true,
+		initial: None,
 	};
 
 	// Apply in correct order
