@@ -635,7 +635,7 @@ fn test_generate_migrations() {
 	assert_eq!(migrations.len(), 2);
 
 	// Use HashSet for collection comparison with detailed error message
-	let actual_apps: HashSet<_> = migrations.iter().map(|m| m.app_label.as_str()).collect();
+	let actual_apps: HashSet<_> = migrations.iter().map(|m| m.app_label).collect();
 	let expected_apps: HashSet<_> = ["books", "authors"].iter().cloned().collect();
 	assert_eq!(
 		actual_apps, expected_apps,
@@ -1037,7 +1037,7 @@ fn test_change_tracker_pattern_frequency() {
 
 	// Should have high frequency for this pattern
 	let patterns = tracker.get_frequent_patterns(2);
-	assert!(patterns.len() >= 1);
+	assert!(!patterns.is_empty());
 	assert_eq!(patterns[0].frequency, 3);
 }
 

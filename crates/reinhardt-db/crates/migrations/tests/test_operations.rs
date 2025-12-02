@@ -3,11 +3,16 @@
 
 use reinhardt_migrations::{ColumnDefinition, Operation, SqlDialect};
 
+/// Helper function to leak a string to get a 'static lifetime
+fn leak_str(s: impl Into<String>) -> &'static str {
+	Box::leak(s.into().into_boxed_str())
+}
+
 #[test]
 fn test_create_table_basic() {
 	// Test basic CreateTable operation
 	let operation = Operation::CreateTable {
-		name: "test_table".to_string(),
+		name: leak_str("test_table"),
 		columns: vec![
 			ColumnDefinition::new("id", "INTEGER PRIMARY KEY"),
 			ColumnDefinition::new("name", "TEXT NOT NULL"),
@@ -43,12 +48,12 @@ fn test_create_table_basic() {
 fn test_create_table_with_constraints() {
 	// Test CreateTable with constraints
 	let operation = Operation::CreateTable {
-		name: "test_table".to_string(),
+		name: leak_str("test_table"),
 		columns: vec![
 			ColumnDefinition::new("id", "INTEGER PRIMARY KEY"),
 			ColumnDefinition::new("email", "TEXT NOT NULL"),
 		],
-		constraints: vec!["UNIQUE(email)".to_string()],
+		constraints: vec!["UNIQUE(email)"],
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -68,7 +73,7 @@ fn test_create_table_with_constraints() {
 fn test_drop_table() {
 	// Test DropTable operation
 	let operation = Operation::DropTable {
-		name: "test_table".to_string(),
+		name: leak_str("test_table"),
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -88,7 +93,7 @@ fn test_drop_table() {
 fn test_add_column() {
 	// Test AddColumn operation
 	let operation = Operation::AddColumn {
-		table: "test_table".to_string(),
+		table: leak_str("test_table"),
 		column: ColumnDefinition::new("new_field", "TEXT"),
 	};
 
@@ -114,7 +119,7 @@ fn test_add_column() {
 fn test_add_column_with_default() {
 	// Test AddColumn with default value
 	let operation = Operation::AddColumn {
-		table: "test_table".to_string(),
+		table: leak_str("test_table"),
 		column: ColumnDefinition::new("status", "TEXT DEFAULT 'pending'"),
 	};
 
@@ -135,8 +140,8 @@ fn test_add_column_with_default() {
 fn test_drop_column() {
 	// Test DropColumn operation
 	let operation = Operation::DropColumn {
-		table: "test_table".to_string(),
-		column: "old_field".to_string(),
+		table: leak_str("test_table"),
+		column: leak_str("old_field"),
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -161,8 +166,8 @@ fn test_drop_column() {
 fn test_alter_column() {
 	// Test AlterColumn operation
 	let operation = Operation::AlterColumn {
-		table: "test_table".to_string(),
-		column: "field_name".to_string(),
+		table: leak_str("test_table"),
+		column: leak_str("field_name"),
 		new_definition: ColumnDefinition::new("field_name", "INTEGER NOT NULL"),
 	};
 
@@ -215,8 +220,8 @@ fn test_alter_column() {
 fn test_rename_table() {
 	// Test RenameTable operation
 	let operation = Operation::RenameTable {
-		old_name: "old_table".to_string(),
-		new_name: "new_table".to_string(),
+		old_name: leak_str("old_table"),
+		new_name: leak_str("new_table"),
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -236,9 +241,9 @@ fn test_rename_table() {
 fn test_rename_column() {
 	// Test RenameColumn operation
 	let operation = Operation::RenameColumn {
-		table: "test_table".to_string(),
-		old_name: "old_col".to_string(),
-		new_name: "new_col".to_string(),
+		table: leak_str("test_table"),
+		old_name: leak_str("old_col"),
+		new_name: leak_str("new_col"),
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -253,8 +258,8 @@ fn test_rename_column() {
 fn test_run_sql() {
 	// Test RunSQL operation
 	let operation = Operation::RunSQL {
-		sql: "CREATE INDEX idx_name ON test_table(name)".to_string(),
-		reverse_sql: Some("DROP INDEX idx_name".to_string()),
+		sql: "CREATE INDEX idx_name ON test_table(name)",
+		reverse_sql: Some("DROP INDEX idx_name"),
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -274,8 +279,8 @@ fn test_run_sql() {
 fn test_create_index() {
 	// Test CreateIndex operation
 	let operation = Operation::CreateIndex {
-		table: "test_table".to_string(),
-		columns: vec!["status".to_string()],
+		table: leak_str("test_table"),
+		columns: vec!["status"],
 		unique: false,
 	};
 
@@ -296,8 +301,8 @@ fn test_create_index() {
 fn test_drop_index() {
 	// Test DropIndex operation
 	let operation = Operation::DropIndex {
-		table: "test_table".to_string(),
-		columns: vec!["status".to_string()],
+		table: leak_str("test_table"),
+		columns: vec!["status"],
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -317,8 +322,8 @@ fn test_drop_index() {
 fn test_add_constraint() {
 	// Test AddConstraint operation
 	let operation = Operation::AddConstraint {
-		table: "test_table".to_string(),
-		constraint_sql: "CONSTRAINT check_positive CHECK (value >= 0)".to_string(),
+		table: leak_str("test_table"),
+		constraint_sql: leak_str("CONSTRAINT check_positive CHECK (value >= 0)"),
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -338,8 +343,8 @@ fn test_add_constraint() {
 fn test_drop_constraint() {
 	// Test DropConstraint operation
 	let operation = Operation::DropConstraint {
-		table: "test_table".to_string(),
-		constraint_name: "check_positive".to_string(),
+		table: leak_str("test_table"),
+		constraint_name: leak_str("check_positive"),
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -354,7 +359,7 @@ fn test_drop_constraint() {
 fn test_postgres_sql_generation() {
 	// Test SQL generation for PostgreSQL
 	let operation = Operation::CreateTable {
-		name: "test_table".to_string(),
+		name: leak_str("test_table"),
 		columns: vec![
 			ColumnDefinition::new("id", "SERIAL PRIMARY KEY"),
 			ColumnDefinition::new("data", "JSONB"),
@@ -384,7 +389,7 @@ fn test_postgres_sql_generation() {
 fn test_mysql_sql_generation() {
 	// Test SQL generation for MySQL
 	let operation = Operation::CreateTable {
-		name: "test_table".to_string(),
+		name: leak_str("test_table"),
 		columns: vec![
 			ColumnDefinition::new("id", "INT AUTO_INCREMENT PRIMARY KEY"),
 			ColumnDefinition::new("name", "VARCHAR(100)"),
@@ -409,13 +414,13 @@ fn test_mysql_sql_generation() {
 fn test_operation_reversibility() {
 	// Test that operations can be reversed
 	let forward_op = Operation::CreateTable {
-		name: "test_table".to_string(),
+		name: leak_str("test_table"),
 		columns: vec![ColumnDefinition::new("id", "INTEGER PRIMARY KEY")],
 		constraints: vec![],
 	};
 
 	let reverse_op = Operation::DropTable {
-		name: "test_table".to_string(),
+		name: leak_str("test_table"),
 	};
 
 	let forward_sql = forward_op.to_sql(&SqlDialect::Sqlite);
@@ -437,7 +442,7 @@ fn test_operation_reversibility() {
 fn test_column_definition_with_multiple_constraints() {
 	// Test column with multiple constraints
 	let operation = Operation::CreateTable {
-		name: "users".to_string(),
+		name: leak_str("users"),
 		columns: vec![
 			ColumnDefinition::new("id", "INTEGER PRIMARY KEY"),
 			ColumnDefinition::new("email", "TEXT NOT NULL UNIQUE"),
@@ -468,12 +473,12 @@ fn test_column_definition_with_multiple_constraints() {
 fn test_migrations_foreign_key_constraint() {
 	// Test table creation with foreign key
 	let operation = Operation::CreateTable {
-		name: "orders".to_string(),
+		name: leak_str("orders"),
 		columns: vec![
 			ColumnDefinition::new("id", "INTEGER PRIMARY KEY"),
 			ColumnDefinition::new("user_id", "INTEGER NOT NULL"),
 		],
-		constraints: vec!["FOREIGN KEY (user_id) REFERENCES users(id)".to_string()],
+		constraints: vec!["FOREIGN KEY (user_id) REFERENCES users(id)"],
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -493,8 +498,8 @@ fn test_migrations_foreign_key_constraint() {
 fn test_migrations_operations_composite_index() {
 	// Test creating a composite index
 	let operation = Operation::CreateIndex {
-		table: "users".to_string(),
-		columns: vec!["name".to_string(), "email".to_string()],
+		table: leak_str("users"),
+		columns: vec!["name", "email"],
 		unique: false,
 	};
 
@@ -516,8 +521,8 @@ fn test_migrations_operations_composite_index() {
 fn test_alter_column_multi_db() {
 	// Test AlterColumn operation across all supported databases
 	let operation = Operation::AlterColumn {
-		table: "users".to_string(),
-		column: "status".to_string(),
+		table: leak_str("users"),
+		column: leak_str("status"),
 		new_definition: ColumnDefinition::new("status", "VARCHAR(20) NOT NULL"),
 	};
 
@@ -554,8 +559,8 @@ fn test_alter_column_multi_db() {
 fn test_drop_index_multi_db() {
 	// Test DropIndex operation across databases
 	let operation = Operation::DropIndex {
-		table: "users".to_string(),
-		columns: vec!["email".to_string()],
+		table: leak_str("users"),
+		columns: vec!["email"],
 	};
 
 	// PostgreSQL, SQLite, CockroachDB: DROP INDEX idx_name;
@@ -589,8 +594,8 @@ fn test_drop_index_multi_db() {
 fn test_alter_table_comment_multi_db() {
 	// Test AlterTableComment operation across databases
 	let operation = Operation::AlterTableComment {
-		table: "users".to_string(),
-		comment: Some("User account table".to_string()),
+		table: leak_str("users"),
+		comment: Some("User account table"),
 	};
 
 	// PostgreSQL and CockroachDB: COMMENT ON TABLE
@@ -622,13 +627,13 @@ fn test_alter_table_comment_multi_db() {
 fn test_create_table_same_across_databases() {
 	// Verify CreateTable generates identical SQL across databases
 	let operation = Operation::CreateTable {
-		name: "products".to_string(),
+		name: leak_str("products"),
 		columns: vec![
 			ColumnDefinition::new("id", "SERIAL PRIMARY KEY"),
 			ColumnDefinition::new("name", "VARCHAR(255) NOT NULL"),
 			ColumnDefinition::new("price", "DECIMAL(10,2)"),
 		],
-		constraints: vec!["UNIQUE(name)".to_string()],
+		constraints: vec!["UNIQUE(name)"],
 	};
 
 	let sql_pg = operation.to_sql(&SqlDialect::Postgres);

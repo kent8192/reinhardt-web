@@ -2,11 +2,20 @@ use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{ColumnDefinition, Migration, MigrationExecutor, Operation};
 use sqlx::{Row, SqlitePool};
 
+/// Helper function to leak a string to get a 'static lifetime
+fn leak_str(s: impl Into<String>) -> &'static str {
+	Box::leak(s.into().into_boxed_str())
+}
+
 /// Test helper to create a simple migration
-fn create_test_migration(app: &str, name: &str, operations: Vec<Operation>) -> Migration {
+fn create_test_migration(
+	app: &'static str,
+	name: &'static str,
+	operations: Vec<Operation>,
+) -> Migration {
 	Migration {
-		app_label: app.to_string(),
-		name: name.to_string(),
+		app_label: app,
+		name,
 		operations,
 		dependencies: vec![],
 		replaces: vec![],
@@ -28,11 +37,11 @@ async fn test_executor_basic_run() {
 		"testapp",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: "test_author".to_string(),
+			name: leak_str("test_author"),
 			columns: vec![
 				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: "INTEGER PRIMARY KEY".to_string(),
+					name: leak_str("id"),
+					type_definition: "INTEGER PRIMARY KEY",
 					not_null: false,
 					unique: false,
 					primary_key: false,
@@ -41,8 +50,8 @@ async fn test_executor_basic_run() {
 					max_length: None,
 				},
 				ColumnDefinition {
-					name: "name".to_string(),
-					type_definition: "TEXT NOT NULL".to_string(),
+					name: leak_str("name"),
+					type_definition: "TEXT NOT NULL",
 					not_null: false,
 					unique: false,
 					primary_key: false,
@@ -59,11 +68,11 @@ async fn test_executor_basic_run() {
 		"testapp",
 		"0002_add_book",
 		vec![Operation::CreateTable {
-			name: "test_book".to_string(),
+			name: leak_str("test_book"),
 			columns: vec![
 				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: "INTEGER PRIMARY KEY".to_string(),
+					name: leak_str("id"),
+					type_definition: "INTEGER PRIMARY KEY",
 					not_null: false,
 					unique: false,
 					primary_key: false,
@@ -72,8 +81,8 @@ async fn test_executor_basic_run() {
 					max_length: None,
 				},
 				ColumnDefinition {
-					name: "title".to_string(),
-					type_definition: "TEXT NOT NULL".to_string(),
+					name: leak_str("title"),
+					type_definition: "TEXT NOT NULL",
 					not_null: false,
 					unique: false,
 					primary_key: false,
@@ -82,8 +91,8 @@ async fn test_executor_basic_run() {
 					max_length: None,
 				},
 				ColumnDefinition {
-					name: "author_id".to_string(),
-					type_definition: "INTEGER".to_string(),
+					name: leak_str("author_id"),
+					type_definition: "INTEGER",
 					not_null: false,
 					unique: false,
 					primary_key: false,
@@ -136,10 +145,10 @@ async fn test_executor_rollback() {
 		"testapp",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: "rollback_test".to_string(),
+			name: leak_str("rollback_test"),
 			columns: vec![ColumnDefinition {
-				name: "id".to_string(),
-				type_definition: "INTEGER PRIMARY KEY".to_string(),
+				name: leak_str("id"),
+				type_definition: "INTEGER PRIMARY KEY",
 				not_null: false,
 				unique: false,
 				primary_key: false,
@@ -152,18 +161,18 @@ async fn test_executor_rollback() {
 	);
 
 	executor
-		.apply_migrations(&vec![migration1.clone()])
+		.apply_migrations(std::slice::from_ref(&migration1))
 		.await
 		.unwrap();
 
 	// Now rollback
 	let rollback_ops = vec![Operation::DropTable {
-		name: "rollback_test".to_string(),
+		name: leak_str("rollback_test"),
 	}];
 
 	let rollback_migration = create_test_migration("testapp", "0001_rollback", rollback_ops);
 
-	let result = executor.apply_migrations(&vec![rollback_migration]).await;
+	let result = executor.apply_migrations(&[rollback_migration]).await;
 	assert!(result.is_ok());
 
 	// Verify table was dropped
@@ -189,10 +198,10 @@ async fn test_executor_already_applied() {
 		"testapp",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: "skip_test".to_string(),
+			name: leak_str("skip_test"),
 			columns: vec![ColumnDefinition {
-				name: "id".to_string(),
-				type_definition: "INTEGER PRIMARY KEY".to_string(),
+				name: leak_str("id"),
+				type_definition: "INTEGER PRIMARY KEY",
 				not_null: false,
 				unique: false,
 				primary_key: false,
@@ -206,13 +215,13 @@ async fn test_executor_already_applied() {
 
 	// Apply once
 	executor
-		.apply_migrations(&vec![migration.clone()])
+		.apply_migrations(std::slice::from_ref(&migration))
 		.await
 		.unwrap();
 
 	// Apply again - should be skipped
 	let result = executor
-		.apply_migrations(&vec![migration.clone()])
+		.apply_migrations(std::slice::from_ref(&migration))
 		.await
 		.unwrap();
 
@@ -233,7 +242,7 @@ async fn test_executor_empty_plan() {
 
 	let mut executor = MigrationExecutor::new(pool);
 
-	let result = executor.apply_migrations(&vec![]).await;
+	let result = executor.apply_migrations(&[]).await;
 	let execution_result = result.unwrap();
 	assert_eq!(execution_result.applied.len(), 0);
 	assert!(execution_result.failed.is_none());
@@ -249,13 +258,13 @@ async fn test_executor_with_dependencies() {
 	let mut executor = MigrationExecutor::new(pool.clone());
 
 	let migration1 = Migration {
-		app_label: "app1".to_string(),
-		name: "0001_initial".to_string(),
+		app_label: "app1",
+		name: leak_str("0001_initial"),
 		operations: vec![Operation::CreateTable {
-			name: "dep_table1".to_string(),
+			name: leak_str("dep_table1"),
 			columns: vec![ColumnDefinition {
-				name: "id".to_string(),
-				type_definition: "INTEGER PRIMARY KEY".to_string(),
+				name: leak_str("id"),
+				type_definition: "INTEGER PRIMARY KEY",
 				not_null: false,
 				unique: false,
 				primary_key: false,
@@ -271,13 +280,13 @@ async fn test_executor_with_dependencies() {
 	};
 
 	let migration2 = Migration {
-		app_label: "app2".to_string(),
-		name: "0001_initial".to_string(),
+		app_label: "app2",
+		name: leak_str("0001_initial"),
 		operations: vec![Operation::CreateTable {
-			name: "dep_table2".to_string(),
+			name: leak_str("dep_table2"),
 			columns: vec![ColumnDefinition {
-				name: "id".to_string(),
-				type_definition: "INTEGER PRIMARY KEY".to_string(),
+				name: leak_str("id"),
+				type_definition: "INTEGER PRIMARY KEY",
 				not_null: false,
 				unique: false,
 				primary_key: false,
@@ -287,15 +296,13 @@ async fn test_executor_with_dependencies() {
 			}],
 			constraints: vec![],
 		}],
-		dependencies: vec![("app1".to_string(), "0001_initial".to_string())],
+		dependencies: vec![("app1", "0001_initial")],
 		replaces: vec![],
 		atomic: true,
 	};
 
 	// Apply in correct order
-	let result = executor
-		.apply_migrations(&vec![migration1, migration2])
-		.await;
+	let result = executor.apply_migrations(&[migration1, migration2]).await;
 	let execution_result = result.unwrap();
 	assert_eq!(execution_result.applied.len(), 2);
 }
@@ -348,11 +355,11 @@ async fn test_executor_add_column_migration() {
 		"testapp",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: "evolving_table".to_string(),
+			name: leak_str("evolving_table"),
 			columns: vec![
 				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: "INTEGER PRIMARY KEY".to_string(),
+					name: leak_str("id"),
+					type_definition: "INTEGER PRIMARY KEY",
 					not_null: false,
 					unique: false,
 					primary_key: false,
@@ -361,8 +368,8 @@ async fn test_executor_add_column_migration() {
 					max_length: None,
 				},
 				ColumnDefinition {
-					name: "name".to_string(),
-					type_definition: "TEXT".to_string(),
+					name: leak_str("name"),
+					type_definition: "TEXT",
 					not_null: false,
 					unique: false,
 					primary_key: false,
@@ -375,17 +382,17 @@ async fn test_executor_add_column_migration() {
 		}],
 	);
 
-	executor.apply_migrations(&vec![migration1]).await.unwrap();
+	executor.apply_migrations(&[migration1]).await.unwrap();
 
 	// Then add a column
 	let migration2 = create_test_migration(
 		"testapp",
 		"0002_add_email",
 		vec![Operation::AddColumn {
-			table: "evolving_table".to_string(),
+			table: leak_str("evolving_table"),
 			column: ColumnDefinition {
-				name: "email".to_string(),
-				type_definition: "TEXT".to_string(),
+				name: leak_str("email"),
+				type_definition: "TEXT",
 				not_null: false,
 				unique: false,
 				primary_key: false,
@@ -396,7 +403,7 @@ async fn test_executor_add_column_migration() {
 		}],
 	);
 
-	let result = executor.apply_migrations(&vec![migration2]).await;
+	let result = executor.apply_migrations(&[migration2]).await;
 	assert!(result.is_ok(), "Adding column should succeed");
 
 	// Verify column was added

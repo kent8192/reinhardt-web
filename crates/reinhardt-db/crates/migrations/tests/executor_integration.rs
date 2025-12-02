@@ -22,18 +22,26 @@ use reinhardt_migrations::{
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::{PgPool, Row};
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 use testcontainers::{ContainerAsync, GenericImage};
 
 // ============================================================================
 // Test Helper Functions
 // ============================================================================
 
+fn leak_str(s: impl Into<String>) -> &'static str {
+	Box::leak(s.into().into_boxed_str())
+}
+
 /// Create a simple migration for testing
-fn create_test_migration(app: &str, name: &str, operations: Vec<Operation>) -> Migration {
+fn create_test_migration(
+	app: &'static str,
+	name: &'static str,
+	operations: Vec<Operation>,
+) -> Migration {
 	Migration {
-		app_label: app.to_string(),
-		name: name.to_string(),
+		app_label: app,
+		name,
 		operations,
 		dependencies: vec![],
 		replaces: vec![],
@@ -42,10 +50,10 @@ fn create_test_migration(app: &str, name: &str, operations: Vec<Operation>) -> M
 }
 
 /// Create a basic column definition
-fn create_basic_column(name: &str, type_def: &str) -> ColumnDefinition {
+fn create_basic_column(name: &'static str, type_def: &'static str) -> ColumnDefinition {
 	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: type_def.to_string(),
+		name,
+		type_definition: type_def,
 		not_null: false,
 		unique: false,
 		primary_key: false,
@@ -87,7 +95,7 @@ async fn test_executor_basic_run(
 		"testapp",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: "test_author".to_string(),
+			name: leak_str("test_author"),
 			columns: vec![
 				create_basic_column("id", "SERIAL PRIMARY KEY"),
 				create_basic_column("name", "TEXT NOT NULL"),
@@ -100,7 +108,7 @@ async fn test_executor_basic_run(
 		"testapp",
 		"0002_add_book",
 		vec![Operation::CreateTable {
-			name: "test_book".to_string(),
+			name: leak_str("test_book"),
 			columns: vec![
 				create_basic_column("id", "SERIAL PRIMARY KEY"),
 				create_basic_column("title", "TEXT NOT NULL"),
@@ -166,14 +174,14 @@ async fn test_executor_rollback(
 		"testapp",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: "rollback_test".to_string(),
+			name: leak_str("rollback_test"),
 			columns: vec![create_basic_column("id", "SERIAL PRIMARY KEY")],
 			constraints: vec![],
 		}],
 	);
 
 	executor
-		.apply_migrations(&vec![migration1.clone()])
+		.apply_migrations(slice::from_ref(&migration1))
 		.await
 		.unwrap();
 
@@ -189,12 +197,12 @@ async fn test_executor_rollback(
 
 	// Now rollback
 	let rollback_ops = vec![Operation::DropTable {
-		name: "rollback_test".to_string(),
+		name: leak_str("rollback_test"),
 	}];
 
 	let rollback_migration = create_test_migration("testapp", "0001_rollback", rollback_ops);
 
-	let result = executor.apply_migrations(&vec![rollback_migration]).await;
+	let result = executor.apply_migrations(&[rollback_migration]).await;
 	assert!(result.is_ok());
 
 	// Verify table was dropped
@@ -235,7 +243,7 @@ async fn test_executor_already_applied(
 		"testapp",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: "skip_test".to_string(),
+			name: leak_str("skip_test"),
 			columns: vec![create_basic_column("id", "SERIAL PRIMARY KEY")],
 			constraints: vec![],
 		}],
@@ -243,14 +251,14 @@ async fn test_executor_already_applied(
 
 	// Apply once
 	let result1 = executor
-		.apply_migrations(&vec![migration.clone()])
+		.apply_migrations(slice::from_ref(&migration))
 		.await
 		.unwrap();
 	assert_eq!(result1.applied.len(), 1, "First apply should succeed");
 
 	// Apply again - should be skipped
 	let result2 = executor
-		.apply_migrations(&vec![migration.clone()])
+		.apply_migrations(slice::from_ref(&migration))
 		.await
 		.unwrap();
 
@@ -300,10 +308,10 @@ async fn test_executor_with_dependencies(
 	);
 
 	let migration1 = Migration {
-		app_label: "app1".to_string(),
-		name: "0001_initial".to_string(),
+		app_label: "app1",
+		name: leak_str("0001_initial"),
 		operations: vec![Operation::CreateTable {
-			name: "dep_table1".to_string(),
+			name: leak_str("dep_table1"),
 			columns: vec![create_basic_column("id", "SERIAL PRIMARY KEY")],
 			constraints: vec![],
 		}],
@@ -313,22 +321,20 @@ async fn test_executor_with_dependencies(
 	};
 
 	let migration2 = Migration {
-		app_label: "app2".to_string(),
-		name: "0001_initial".to_string(),
+		app_label: "app2",
+		name: leak_str("0001_initial"),
 		operations: vec![Operation::CreateTable {
-			name: "dep_table2".to_string(),
+			name: leak_str("dep_table2"),
 			columns: vec![create_basic_column("id", "SERIAL PRIMARY KEY")],
 			constraints: vec![],
 		}],
-		dependencies: vec![("app1".to_string(), "0001_initial".to_string())],
+		dependencies: vec![("app1", "0001_initial")],
 		replaces: vec![],
 		atomic: true,
 	};
 
 	// Apply in correct order
-	let result = executor
-		.apply_migrations(&vec![migration1, migration2])
-		.await;
+	let result = executor.apply_migrations(&[migration1, migration2]).await;
 	let execution_result = result.unwrap();
 	assert_eq!(execution_result.applied.len(), 2);
 
@@ -447,7 +453,7 @@ async fn test_executor_add_column_migration(
 		"testapp",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: "evolving_table".to_string(),
+			name: "evolving_table",
 			columns: vec![
 				create_basic_column("id", "SERIAL PRIMARY KEY"),
 				create_basic_column("name", "TEXT"),
@@ -456,7 +462,7 @@ async fn test_executor_add_column_migration(
 		}],
 	);
 
-	executor.apply_migrations(&vec![migration1]).await.unwrap();
+	executor.apply_migrations(&[migration1]).await.unwrap();
 
 	// Verify initial columns
 	let initial_columns = sqlx::query(
@@ -473,12 +479,12 @@ async fn test_executor_add_column_migration(
 		"testapp",
 		"0002_add_email",
 		vec![Operation::AddColumn {
-			table: "evolving_table".to_string(),
+			table: "evolving_table",
 			column: create_basic_column("email", "TEXT"),
 		}],
 	);
 
-	let result = executor.apply_migrations(&vec![migration2]).await;
+	let result = executor.apply_migrations(&[migration2]).await;
 	assert!(result.is_ok(), "Adding column should succeed");
 
 	// Verify column was added
@@ -534,7 +540,7 @@ async fn test_executor_complex_migration(
 		"0001_complex",
 		vec![
 			Operation::CreateTable {
-				name: "complex_table".to_string(),
+				name: "complex_table",
 				columns: vec![
 					create_basic_column("id", "SERIAL PRIMARY KEY"),
 					create_basic_column("username", "TEXT NOT NULL"),
@@ -542,13 +548,13 @@ async fn test_executor_complex_migration(
 				constraints: vec![],
 			},
 			Operation::AddColumn {
-				table: "complex_table".to_string(),
+				table: "complex_table",
 				column: create_basic_column("email", "TEXT"),
 			},
 		],
 	);
 
-	let result = executor.apply_migrations(&vec![migration]).await;
+	let result = executor.apply_migrations(&[migration]).await;
 	assert!(result.is_ok(), "Complex migration should succeed");
 
 	// Verify table and columns were created
