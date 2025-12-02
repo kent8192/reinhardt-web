@@ -66,87 +66,87 @@ use serde::{Deserialize, Serialize};
 /// This enum is maintained for backward compatibility with existing code.
 /// New code should use the specific operation types from the `models`, `fields`,
 /// and `special` modules instead.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum Operation {
 	CreateTable {
-		name: String,
+		name: &'static str,
 		columns: Vec<ColumnDefinition>,
 		#[serde(default)]
-		constraints: Vec<String>,
+		constraints: Vec<&'static str>,
 	},
 	DropTable {
-		name: String,
+		name: &'static str,
 	},
 	AddColumn {
-		table: String,
+		table: &'static str,
 		column: ColumnDefinition,
 	},
 	DropColumn {
-		table: String,
-		column: String,
+		table: &'static str,
+		column: &'static str,
 	},
 	AlterColumn {
-		table: String,
-		column: String,
+		table: &'static str,
+		column: &'static str,
 		new_definition: ColumnDefinition,
 	},
 	RenameTable {
-		old_name: String,
-		new_name: String,
+		old_name: &'static str,
+		new_name: &'static str,
 	},
 	RenameColumn {
-		table: String,
-		old_name: String,
-		new_name: String,
+		table: &'static str,
+		old_name: &'static str,
+		new_name: &'static str,
 	},
 	AddConstraint {
-		table: String,
-		constraint_sql: String,
+		table: &'static str,
+		constraint_sql: &'static str,
 	},
 	DropConstraint {
-		table: String,
-		constraint_name: String,
+		table: &'static str,
+		constraint_name: &'static str,
 	},
 	CreateIndex {
-		table: String,
-		columns: Vec<String>,
+		table: &'static str,
+		columns: Vec<&'static str>,
 		unique: bool,
 	},
 	DropIndex {
-		table: String,
-		columns: Vec<String>,
+		table: &'static str,
+		columns: Vec<&'static str>,
 	},
 	RunSQL {
-		sql: String,
-		reverse_sql: Option<String>,
+		sql: &'static str,
+		reverse_sql: Option<&'static str>,
 	},
 	RunRust {
-		code: String,
-		reverse_code: Option<String>,
+		code: &'static str,
+		reverse_code: Option<&'static str>,
 	},
 	AlterTableComment {
-		table: String,
-		comment: Option<String>,
+		table: &'static str,
+		comment: Option<&'static str>,
 	},
 	AlterUniqueTogether {
-		table: String,
-		unique_together: Vec<Vec<String>>,
+		table: &'static str,
+		unique_together: Vec<Vec<&'static str>>,
 	},
 	AlterModelOptions {
-		table: String,
-		options: std::collections::HashMap<String, String>,
+		table: &'static str,
+		options: std::collections::HashMap<&'static str, &'static str>,
 	},
 	CreateInheritedTable {
-		name: String,
+		name: &'static str,
 		columns: Vec<ColumnDefinition>,
-		base_table: String,
-		join_column: String,
+		base_table: &'static str,
+		join_column: &'static str,
 	},
 	AddDiscriminatorColumn {
-		table: String,
-		column_name: String,
-		default_value: String,
+		table: &'static str,
+		column_name: &'static str,
+		default_value: &'static str,
 	},
 }
 
@@ -155,10 +155,13 @@ impl Operation {
 	pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
 		match self {
 			Operation::CreateTable { name, columns, .. } => {
-				let mut model = ModelState::new(app_label, name);
+				let mut model = ModelState::new(app_label, *name);
 				for column in columns {
-					let field =
-						FieldState::new(column.name.clone(), column.type_definition.clone(), false);
+					let field = FieldState::new(
+						column.name.to_string(),
+						column.type_definition.to_string(),
+						false,
+					);
 					model.add_field(field);
 				}
 				state.add_model(model);
@@ -168,8 +171,11 @@ impl Operation {
 			}
 			Operation::AddColumn { table, column } => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
-					let field =
-						FieldState::new(column.name.clone(), column.type_definition.clone(), false);
+					let field = FieldState::new(
+						column.name.to_string(),
+						column.type_definition.to_string(),
+						false,
+					);
 					model.add_field(field);
 				}
 			}
@@ -185,15 +191,15 @@ impl Operation {
 			} => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
 					let field = FieldState::new(
-						column.clone(),
-						new_definition.type_definition.clone(),
+						column.to_string(),
+						new_definition.type_definition.to_string(),
 						false,
 					);
 					model.alter_field(column, field);
 				}
 			}
 			Operation::RenameTable { old_name, new_name } => {
-				state.rename_model(app_label, old_name, new_name.clone());
+				state.rename_model(app_label, old_name, new_name.to_string());
 			}
 			Operation::RenameColumn {
 				table,
@@ -201,7 +207,7 @@ impl Operation {
 				new_name,
 			} => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
-					model.rename_field(old_name, new_name.clone());
+					model.rename_field(old_name, new_name.to_string());
 				}
 			}
 			Operation::CreateInheritedTable {
@@ -210,20 +216,23 @@ impl Operation {
 				base_table,
 				join_column,
 			} => {
-				let mut model = ModelState::new(app_label, name);
-				model.base_model = Some(base_table.clone());
+				let mut model = ModelState::new(app_label, *name);
+				model.base_model = Some(base_table.to_string());
 				model.inheritance_type = Some("joined_table".to_string());
 
 				let join_field = FieldState::new(
-					join_column.clone(),
+					join_column.to_string(),
 					format!("INTEGER REFERENCES {}(id)", base_table),
 					false,
 				);
 				model.add_field(join_field);
 
 				for column in columns {
-					let field =
-						FieldState::new(column.name.clone(), column.type_definition.clone(), false);
+					let field = FieldState::new(
+						column.name.to_string(),
+						column.type_definition.to_string(),
+						false,
+					);
 					model.add_field(field);
 				}
 				state.add_model(model);
@@ -234,10 +243,10 @@ impl Operation {
 				default_value,
 			} => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
-					model.discriminator_column = Some(column_name.clone());
+					model.discriminator_column = Some(column_name.to_string());
 					model.inheritance_type = Some("single_table".to_string());
 					let field = FieldState::new(
-						column_name.clone(),
+						column_name.to_string(),
 						format!("VARCHAR(50) DEFAULT '{}'", default_value),
 						false,
 					);
@@ -358,7 +367,7 @@ impl Operation {
 					}
 				}
 			}
-			Operation::RunSQL { sql, .. } => sql.clone(),
+			Operation::RunSQL { sql, .. } => sql.to_string(),
 			Operation::RunRust { code, .. } => {
 				// For SQL generation, RunRust is a no-op comment
 				format!("-- RunRust: {}", code.lines().next().unwrap_or(""))
@@ -434,7 +443,7 @@ impl Operation {
 				"ALTER TABLE {} DROP COLUMN {};",
 				table, column.name
 			)),
-			Operation::RunSQL { reverse_sql, .. } => reverse_sql.clone(),
+			Operation::RunSQL { reverse_sql, .. } => reverse_sql.as_ref().map(|s| s.to_string()),
 			Operation::RunRust { reverse_code, .. } => reverse_code.as_ref().map(|code| {
 				format!(
 					"-- RunRust (reverse): {}",
@@ -447,10 +456,10 @@ impl Operation {
 }
 
 /// Column definition for legacy operations
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ColumnDefinition {
-	pub name: String,
-	pub type_definition: String,
+	pub name: &'static str,
+	pub type_definition: &'static str,
 	#[serde(default)]
 	pub not_null: bool,
 	#[serde(default)]
@@ -460,7 +469,7 @@ pub struct ColumnDefinition {
 	#[serde(default)]
 	pub auto_increment: bool,
 	#[serde(default)]
-	pub default: Option<String>,
+	pub default: Option<&'static str>,
 	#[serde(default)]
 	pub max_length: Option<u32>,
 }
@@ -469,8 +478,8 @@ impl ColumnDefinition {
 	/// Create a new column definition
 	pub fn new(name: impl Into<String>, type_def: impl Into<String>) -> Self {
 		Self {
-			name: name.into(),
-			type_definition: type_def.into(),
+			name: Box::leak(name.into().into_boxed_str()),
+			type_definition: Box::leak(type_def.into().into_boxed_str()),
 			not_null: false,
 			unique: false,
 			primary_key: false,
@@ -634,7 +643,7 @@ impl Operation {
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
 				OperationStatement::IndexDrop(self.build_drop_index(&idx_name))
 			}
-			Operation::RunSQL { sql, .. } => OperationStatement::RawSql(sql.clone()),
+			Operation::RunSQL { sql, .. } => OperationStatement::RawSql(sql.to_string()),
 			Operation::RunRust { code, .. } => {
 				// RunRust operations don't produce SQL
 				OperationStatement::RawSql(format!(
@@ -682,25 +691,25 @@ impl Operation {
 				join_column,
 			} => {
 				let mut stmt = Table::create();
-				stmt.table(Alias::new(name)).if_not_exists();
+				stmt.table(Alias::new(*name)).if_not_exists();
 
 				// Add join column (foreign key to base table)
-				let mut join_col = ColumnDef::new(Alias::new(join_column));
+				let mut join_col = ColumnDef::new(Alias::new(*join_column));
 				join_col.integer();
 				stmt.col(&mut join_col);
 
 				// Add other columns
 				for col in columns {
-					let mut column = ColumnDef::new(Alias::new(&col.name));
-					self.apply_column_type(&mut column, &col.type_definition, col.max_length);
+					let mut column = ColumnDef::new(Alias::new(col.name));
+					self.apply_column_type(&mut column, col.type_definition, col.max_length);
 					stmt.col(&mut column);
 				}
 
 				// Add foreign key
 				let mut fk = ForeignKey::create();
-				fk.from_tbl(Alias::new(name))
-					.from_col(Alias::new(join_column))
-					.to_tbl(Alias::new(base_table))
+				fk.from_tbl(Alias::new(*name))
+					.from_col(Alias::new(*join_column))
+					.to_tbl(Alias::new(*base_table))
 					.to_col(Alias::new("id"));
 				stmt.foreign_key(&mut fk);
 
@@ -712,10 +721,10 @@ impl Operation {
 				default_value,
 			} => {
 				let mut stmt = Table::alter();
-				stmt.table(Alias::new(table));
+				stmt.table(Alias::new(*table));
 
-				let mut col = ColumnDef::new(Alias::new(column_name));
-				col.string_len(50).default(default_value.clone());
+				let mut col = ColumnDef::new(Alias::new(*column_name));
+				col.string_len(50).default(default_value.to_string());
 				stmt.add_column(&mut col);
 
 				OperationStatement::TableAlter(stmt.to_owned())
@@ -728,14 +737,14 @@ impl Operation {
 		&self,
 		name: &str,
 		columns: &[ColumnDefinition],
-		_constraints: &[String],
+		_constraints: &[&'static str],
 	) -> TableCreateStatement {
 		let mut stmt = Table::create();
 		stmt.table(Alias::new(name)).if_not_exists();
 
 		for col in columns {
-			let mut column = ColumnDef::new(Alias::new(&col.name));
-			self.apply_column_type(&mut column, &col.type_definition, col.max_length);
+			let mut column = ColumnDef::new(Alias::new(col.name));
+			self.apply_column_type(&mut column, col.type_definition, col.max_length);
 
 			if col.not_null {
 				column.not_null();
@@ -749,7 +758,7 @@ impl Operation {
 			if col.auto_increment {
 				column.auto_increment();
 			}
-			if let Some(ref default) = col.default {
+			if let Some(default) = col.default {
 				column.default(self.convert_default_value(default));
 			}
 
@@ -773,13 +782,13 @@ impl Operation {
 		let mut stmt = Table::alter();
 		stmt.table(Alias::new(table));
 
-		let mut col_def = ColumnDef::new(Alias::new(&column.name));
-		self.apply_column_type(&mut col_def, &column.type_definition, column.max_length);
+		let mut col_def = ColumnDef::new(Alias::new(column.name));
+		self.apply_column_type(&mut col_def, column.type_definition, column.max_length);
 
 		if column.not_null {
 			col_def.not_null();
 		}
-		if let Some(ref default) = column.default {
+		if let Some(default) = column.default {
 			col_def.default(self.convert_default_value(default));
 		}
 
@@ -808,7 +817,7 @@ impl Operation {
 		let mut col_def = ColumnDef::new(Alias::new(column));
 		self.apply_column_type(
 			&mut col_def,
-			&new_definition.type_definition,
+			new_definition.type_definition,
 			new_definition.max_length,
 		);
 
@@ -832,14 +841,14 @@ impl Operation {
 		&self,
 		name: &str,
 		table: &str,
-		columns: &[String],
+		columns: &[&'static str],
 		unique: bool,
 	) -> IndexCreateStatement {
 		let mut stmt = Index::create();
 		stmt.name(name).table(Alias::new(table));
 
 		for col in columns {
-			stmt.col(Alias::new(col));
+			stmt.col(Alias::new(*col));
 		}
 
 		if unique {
@@ -1006,11 +1015,11 @@ mod tests {
 	#[test]
 	fn test_create_table_to_statement() {
 		let op = Operation::CreateTable {
-			name: "users".to_string(),
+			name: "users",
 			columns: vec![
 				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: "INTEGER".to_string(),
+					name: "id",
+					type_definition: "INTEGER",
 					not_null: false,
 					unique: false,
 					primary_key: true,
@@ -1019,8 +1028,8 @@ mod tests {
 					max_length: None,
 				},
 				ColumnDefinition {
-					name: "name".to_string(),
-					type_definition: "VARCHAR".to_string(),
+					name: "name",
+					type_definition: "VARCHAR",
 					not_null: true,
 					unique: false,
 					primary_key: false,
@@ -1053,9 +1062,7 @@ mod tests {
 
 	#[test]
 	fn test_drop_table_to_statement() {
-		let op = Operation::DropTable {
-			name: "users".to_string(),
-		};
+		let op = Operation::DropTable { name: "users" };
 
 		let stmt = op.to_statement();
 		let sql = stmt.to_sql_string();
@@ -1079,15 +1086,15 @@ mod tests {
 	#[test]
 	fn test_add_column_to_statement() {
 		let op = Operation::AddColumn {
-			table: "users".to_string(),
+			table: "users",
 			column: ColumnDefinition {
-				name: "email".to_string(),
-				type_definition: "VARCHAR".to_string(),
+				name: "email",
+				type_definition: "VARCHAR",
 				not_null: true,
 				unique: false,
 				primary_key: false,
 				auto_increment: false,
-				default: Some("''".to_string()),
+				default: Some("''"),
 				max_length: Some(255),
 			},
 		};
@@ -1119,8 +1126,8 @@ mod tests {
 	#[test]
 	fn test_drop_column_to_statement() {
 		let op = Operation::DropColumn {
-			table: "users".to_string(),
-			column: "email".to_string(),
+			table: "users",
+			column: "email",
 		};
 
 		let stmt = op.to_statement();
@@ -1150,11 +1157,11 @@ mod tests {
 	#[test]
 	fn test_alter_column_to_statement() {
 		let op = Operation::AlterColumn {
-			table: "users".to_string(),
-			column: "age".to_string(),
+			table: "users",
+			column: "age",
 			new_definition: ColumnDefinition {
-				name: "age".to_string(),
-				type_definition: "BIGINT".to_string(),
+				name: "age",
+				type_definition: "BIGINT",
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -1186,8 +1193,8 @@ mod tests {
 	#[test]
 	fn test_rename_table_to_statement() {
 		let op = Operation::RenameTable {
-			old_name: "users".to_string(),
-			new_name: "accounts".to_string(),
+			old_name: "users",
+			new_name: "accounts",
 		};
 
 		let stmt = op.to_statement();
@@ -1207,9 +1214,9 @@ mod tests {
 	#[test]
 	fn test_rename_column_to_statement() {
 		let op = Operation::RenameColumn {
-			table: "users".to_string(),
-			old_name: "name".to_string(),
-			new_name: "full_name".to_string(),
+			table: "users",
+			old_name: "name",
+			new_name: "full_name",
 		};
 
 		let stmt = op.to_statement();
@@ -1244,8 +1251,8 @@ mod tests {
 	#[test]
 	fn test_add_constraint_to_statement() {
 		let op = Operation::AddConstraint {
-			table: "users".to_string(),
-			constraint_sql: "CONSTRAINT age_check CHECK (age >= 0)".to_string(),
+			table: "users",
+			constraint_sql: "CONSTRAINT age_check CHECK (age >= 0)",
 		};
 
 		let stmt = op.to_statement();
@@ -1275,8 +1282,8 @@ mod tests {
 	#[test]
 	fn test_drop_constraint_to_statement() {
 		let op = Operation::DropConstraint {
-			table: "users".to_string(),
-			constraint_name: "age_check".to_string(),
+			table: "users",
+			constraint_name: "age_check",
 		};
 
 		let stmt = op.to_statement();
@@ -1306,8 +1313,8 @@ mod tests {
 	#[test]
 	fn test_create_index_to_statement() {
 		let op = Operation::CreateIndex {
-			table: "users".to_string(),
-			columns: vec!["email".to_string()],
+			table: "users",
+			columns: vec!["email"],
 			unique: false,
 		};
 
@@ -1333,8 +1340,8 @@ mod tests {
 	#[test]
 	fn test_create_unique_index_to_statement() {
 		let op = Operation::CreateIndex {
-			table: "users".to_string(),
-			columns: vec!["email".to_string()],
+			table: "users",
+			columns: vec!["email"],
 			unique: true,
 		};
 
@@ -1360,8 +1367,8 @@ mod tests {
 	#[test]
 	fn test_drop_index_to_statement() {
 		let op = Operation::DropIndex {
-			table: "users".to_string(),
-			columns: vec!["email".to_string()],
+			table: "users",
+			columns: vec!["email"],
 		};
 
 		let stmt = op.to_statement();
@@ -1381,8 +1388,8 @@ mod tests {
 	#[test]
 	fn test_run_sql_to_statement() {
 		let op = Operation::RunSQL {
-			sql: "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"".to_string(),
-			reverse_sql: Some("DROP EXTENSION \"uuid-ossp\"".to_string()),
+			sql: "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"",
+			reverse_sql: Some("DROP EXTENSION \"uuid-ossp\""),
 		};
 
 		let stmt = op.to_statement();
@@ -1402,8 +1409,8 @@ mod tests {
 	#[test]
 	fn test_alter_table_comment_to_statement() {
 		let op = Operation::AlterTableComment {
-			table: "users".to_string(),
-			comment: Some("User accounts table".to_string()),
+			table: "users",
+			comment: Some("User accounts table"),
 		};
 
 		let stmt = op.to_statement();
@@ -1428,7 +1435,7 @@ mod tests {
 	#[test]
 	fn test_alter_table_comment_null_to_statement() {
 		let op = Operation::AlterTableComment {
-			table: "users".to_string(),
+			table: "users",
 			comment: None,
 		};
 
@@ -1454,8 +1461,8 @@ mod tests {
 	#[test]
 	fn test_alter_unique_together_to_statement() {
 		let op = Operation::AlterUniqueTogether {
-			table: "users".to_string(),
-			unique_together: vec![vec!["email".to_string(), "username".to_string()]],
+			table: "users",
+			unique_together: vec![vec!["email", "username"]],
 		};
 
 		let stmt = op.to_statement();
@@ -1490,7 +1497,7 @@ mod tests {
 	#[test]
 	fn test_alter_unique_together_empty() {
 		let op = Operation::AlterUniqueTogether {
-			table: "users".to_string(),
+			table: "users",
 			unique_together: vec![],
 		};
 
@@ -1505,10 +1512,10 @@ mod tests {
 	#[test]
 	fn test_alter_model_options_to_statement() {
 		let mut options = std::collections::HashMap::new();
-		options.insert("db_table".to_string(), "custom_users".to_string());
+		options.insert("db_table", "custom_users");
 
 		let op = Operation::AlterModelOptions {
-			table: "users".to_string(),
+			table: "users",
 			options,
 		};
 
@@ -1520,19 +1527,19 @@ mod tests {
 	#[test]
 	fn test_create_inherited_table_to_statement() {
 		let op = Operation::CreateInheritedTable {
-			name: "admin_users".to_string(),
+			name: "admin_users",
 			columns: vec![ColumnDefinition {
-				name: "admin_level".to_string(),
-				type_definition: "INTEGER".to_string(),
+				name: "admin_level",
+				type_definition: "INTEGER",
 				not_null: true,
 				unique: false,
 				primary_key: false,
 				auto_increment: false,
-				default: Some("1".to_string()),
+				default: Some("1"),
 				max_length: None,
 			}],
-			base_table: "users".to_string(),
-			join_column: "user_id".to_string(),
+			base_table: "users",
+			join_column: "user_id",
 		};
 
 		let stmt = op.to_statement();
@@ -1557,9 +1564,9 @@ mod tests {
 	#[test]
 	fn test_add_discriminator_column_to_statement() {
 		let op = Operation::AddDiscriminatorColumn {
-			table: "users".to_string(),
-			column_name: "user_type".to_string(),
-			default_value: "regular".to_string(),
+			table: "users",
+			column_name: "user_type",
+			default_value: "regular",
 		};
 
 		let stmt = op.to_statement();
@@ -1590,11 +1597,11 @@ mod tests {
 	fn test_state_forwards_create_table() {
 		let mut state = ProjectState::new();
 		let op = Operation::CreateTable {
-			name: "users".to_string(),
+			name: "users",
 			columns: vec![
 				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: "INTEGER".to_string(),
+					name: "id",
+					type_definition: "INTEGER",
 					not_null: false,
 					unique: false,
 					primary_key: true,
@@ -1603,8 +1610,8 @@ mod tests {
 					max_length: None,
 				},
 				ColumnDefinition {
-					name: "name".to_string(),
-					type_definition: "VARCHAR".to_string(),
+					name: "name",
+					type_definition: "VARCHAR",
 					not_null: true,
 					unique: false,
 					primary_key: false,
@@ -1647,9 +1654,7 @@ mod tests {
 		));
 		state.add_model(model);
 
-		let op = Operation::DropTable {
-			name: "users".to_string(),
-		};
+		let op = Operation::DropTable { name: "users" };
 
 		op.state_forwards("myapp", &mut state);
 		assert!(
@@ -1670,10 +1675,10 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AddColumn {
-			table: "users".to_string(),
+			table: "users",
 			column: ColumnDefinition {
-				name: "email".to_string(),
-				type_definition: "VARCHAR".to_string(),
+				name: "email",
+				type_definition: "VARCHAR",
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -1714,8 +1719,8 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::DropColumn {
-			table: "users".to_string(),
-			column: "email".to_string(),
+			table: "users",
+			column: "email",
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -1744,8 +1749,8 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::RenameTable {
-			old_name: "users".to_string(),
-			new_name: "accounts".to_string(),
+			old_name: "users",
+			new_name: "accounts",
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -1771,9 +1776,9 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::RenameColumn {
-			table: "users".to_string(),
-			old_name: "name".to_string(),
-			new_name: "full_name".to_string(),
+			table: "users",
+			old_name: "name",
+			new_name: "full_name",
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -1791,7 +1796,7 @@ mod tests {
 	#[test]
 	fn test_to_reverse_sql_create_table() {
 		let op = Operation::CreateTable {
-			name: "users".to_string(),
+			name: "users",
 			columns: vec![],
 			constraints: vec![],
 		};
@@ -1816,9 +1821,7 @@ mod tests {
 
 	#[test]
 	fn test_to_reverse_sql_drop_table() {
-		let op = Operation::DropTable {
-			name: "users".to_string(),
-		};
+		let op = Operation::DropTable { name: "users" };
 
 		let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
 		assert!(
@@ -1830,10 +1833,10 @@ mod tests {
 	#[test]
 	fn test_to_reverse_sql_add_column() {
 		let op = Operation::AddColumn {
-			table: "users".to_string(),
+			table: "users",
 			column: ColumnDefinition {
-				name: "email".to_string(),
-				type_definition: "VARCHAR".to_string(),
+				name: "email",
+				type_definition: "VARCHAR",
 				not_null: false,
 				unique: false,
 				primary_key: false,
@@ -1864,8 +1867,8 @@ mod tests {
 	#[test]
 	fn test_to_reverse_sql_run_sql_with_reverse() {
 		let op = Operation::RunSQL {
-			sql: "CREATE INDEX idx_name ON users(name)".to_string(),
-			reverse_sql: Some("DROP INDEX idx_name".to_string()),
+			sql: "CREATE INDEX idx_name ON users(name)",
+			reverse_sql: Some("DROP INDEX idx_name"),
 		};
 
 		let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
@@ -1884,7 +1887,7 @@ mod tests {
 	#[test]
 	fn test_to_reverse_sql_run_sql_without_reverse() {
 		let op = Operation::RunSQL {
-			sql: "CREATE INDEX idx_name ON users(name)".to_string(),
+			sql: "CREATE INDEX idx_name ON users(name)",
 			reverse_sql: None,
 		};
 
@@ -1917,7 +1920,7 @@ mod tests {
 	#[test]
 	fn test_convert_default_value_null() {
 		let op = Operation::CreateTable {
-			name: "test".to_string(),
+			name: "test",
 			columns: vec![],
 			constraints: vec![],
 		};
@@ -1931,7 +1934,7 @@ mod tests {
 	#[test]
 	fn test_convert_default_value_bool() {
 		let op = Operation::CreateTable {
-			name: "test".to_string(),
+			name: "test",
 			columns: vec![],
 			constraints: vec![],
 		};
@@ -1951,7 +1954,7 @@ mod tests {
 	#[test]
 	fn test_convert_default_value_integer() {
 		let op = Operation::CreateTable {
-			name: "test".to_string(),
+			name: "test",
 			columns: vec![],
 			constraints: vec![],
 		};
@@ -1965,21 +1968,21 @@ mod tests {
 	#[test]
 	fn test_convert_default_value_float() {
 		let op = Operation::CreateTable {
-			name: "test".to_string(),
+			name: "test",
 			columns: vec![],
 			constraints: vec![],
 		};
-		let value = op.convert_default_value("3.14");
+		let value = op.convert_default_value("3.15");
 		assert!(
 			matches!(value, sea_query::Value::Double(_)),
-			"Float '3.14' should be converted to sea_query::Value::Double"
+			"Float '3.15' should be converted to sea_query::Value::Double"
 		);
 	}
 
 	#[test]
 	fn test_convert_default_value_string() {
 		let op = Operation::CreateTable {
-			name: "test".to_string(),
+			name: "test",
 			columns: vec![],
 			constraints: vec![],
 		};
@@ -1998,7 +2001,7 @@ mod tests {
 	#[test]
 	fn test_apply_column_type_integer() {
 		let op = Operation::CreateTable {
-			name: "test".to_string(),
+			name: "test",
 			columns: vec![],
 			constraints: vec![],
 		};
@@ -2011,7 +2014,7 @@ mod tests {
 	#[test]
 	fn test_apply_column_type_varchar_with_length() {
 		let op = Operation::CreateTable {
-			name: "test".to_string(),
+			name: "test",
 			columns: vec![],
 			constraints: vec![],
 		};
@@ -2024,7 +2027,7 @@ mod tests {
 	#[test]
 	fn test_apply_column_type_custom() {
 		let op = Operation::CreateTable {
-			name: "test".to_string(),
+			name: "test",
 			columns: vec![],
 			constraints: vec![],
 		};
@@ -2037,8 +2040,8 @@ mod tests {
 	#[test]
 	fn test_create_index_composite() {
 		let op = Operation::CreateIndex {
-			table: "users".to_string(),
-			columns: vec!["first_name".to_string(), "last_name".to_string()],
+			table: "users",
+			columns: vec!["first_name", "last_name"],
 			unique: false,
 		};
 
@@ -2063,8 +2066,8 @@ mod tests {
 	#[test]
 	fn test_alter_table_comment_with_quotes() {
 		let op = Operation::AlterTableComment {
-			table: "users".to_string(),
-			comment: Some("User's account table".to_string()),
+			table: "users",
+			comment: Some("User's account table"),
 		};
 
 		let stmt = op.to_statement();
@@ -2093,11 +2096,11 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AlterColumn {
-			table: "users".to_string(),
-			column: "age".to_string(),
+			table: "users",
+			column: "age",
 			new_definition: ColumnDefinition {
-				name: "age".to_string(),
-				type_definition: "BIGINT".to_string(),
+				name: "age",
+				type_definition: "BIGINT",
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -2121,10 +2124,10 @@ mod tests {
 	fn test_state_forwards_create_inherited_table() {
 		let mut state = ProjectState::new();
 		let op = Operation::CreateInheritedTable {
-			name: "admin_users".to_string(),
+			name: "admin_users",
 			columns: vec![ColumnDefinition {
-				name: "admin_level".to_string(),
-				type_definition: "INTEGER".to_string(),
+				name: "admin_level",
+				type_definition: "INTEGER",
 				not_null: true,
 				unique: false,
 				primary_key: false,
@@ -2132,8 +2135,8 @@ mod tests {
 				default: None,
 				max_length: None,
 			}],
-			base_table: "users".to_string(),
-			join_column: "user_id".to_string(),
+			base_table: "users",
+			join_column: "user_id",
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -2167,9 +2170,9 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AddDiscriminatorColumn {
-			table: "users".to_string(),
-			column_name: "user_type".to_string(),
-			default_value: "regular".to_string(),
+			table: "users",
+			column_name: "user_type",
+			default_value: "regular",
 		};
 
 		op.state_forwards("myapp", &mut state);

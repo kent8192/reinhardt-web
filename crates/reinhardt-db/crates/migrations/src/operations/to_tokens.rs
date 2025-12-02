@@ -14,23 +14,23 @@ impl ToTokens for Operation {
 				let constraints_tokens = constraints.iter();
 				tokens.extend(quote! {
 					Operation::CreateTable {
-						name: #name.to_string(),
+						name: #name,
 						columns: vec![#(#columns_tokens),*],
-						constraints: vec![#(#constraints_tokens.to_string()),*],
+						constraints: vec![#(#constraints_tokens),*],
 					}
 				});
 			}
 			Operation::DropTable { name } => {
 				tokens.extend(quote! {
 					Operation::DropTable {
-						name: #name.to_string(),
+						name: #name,
 					}
 				});
 			}
 			Operation::AddColumn { table, column } => {
 				tokens.extend(quote! {
 					Operation::AddColumn {
-						table: #table.to_string(),
+						table: #table,
 						column: #column,
 					}
 				});
@@ -38,8 +38,8 @@ impl ToTokens for Operation {
 			Operation::DropColumn { table, column } => {
 				tokens.extend(quote! {
 					Operation::DropColumn {
-						table: #table.to_string(),
-						column: #column.to_string(),
+						table: #table,
+						column: #column,
 					}
 				});
 			}
@@ -50,8 +50,8 @@ impl ToTokens for Operation {
 			} => {
 				tokens.extend(quote! {
 					Operation::AlterColumn {
-						table: #table.to_string(),
-						column: #column.to_string(),
+						table: #table,
+						column: #column,
 						new_definition: #new_definition,
 					}
 				});
@@ -59,8 +59,8 @@ impl ToTokens for Operation {
 			Operation::RenameTable { old_name, new_name } => {
 				tokens.extend(quote! {
 					Operation::RenameTable {
-						old_name: #old_name.to_string(),
-						new_name: #new_name.to_string(),
+						old_name: #old_name,
+						new_name: #new_name,
 					}
 				});
 			}
@@ -71,9 +71,9 @@ impl ToTokens for Operation {
 			} => {
 				tokens.extend(quote! {
 					Operation::RenameColumn {
-						table: #table.to_string(),
-						old_name: #old_name.to_string(),
-						new_name: #new_name.to_string(),
+						table: #table,
+						old_name: #old_name,
+						new_name: #new_name,
 					}
 				});
 			}
@@ -83,8 +83,8 @@ impl ToTokens for Operation {
 			} => {
 				tokens.extend(quote! {
 					Operation::AddConstraint {
-						table: #table.to_string(),
-						constraint_sql: #constraint_sql.to_string(),
+						table: #table,
+						constraint_sql: #constraint_sql,
 					}
 				});
 			}
@@ -94,8 +94,8 @@ impl ToTokens for Operation {
 			} => {
 				tokens.extend(quote! {
 					Operation::DropConstraint {
-						table: #table.to_string(),
-						constraint_name: #constraint_name.to_string(),
+						table: #table,
+						constraint_name: #constraint_name,
 					}
 				});
 			}
@@ -107,8 +107,8 @@ impl ToTokens for Operation {
 				let columns_iter = columns.iter();
 				tokens.extend(quote! {
 					Operation::CreateIndex {
-						table: #table.to_string(),
-						columns: vec![#(#columns_iter.to_string()),*],
+						table: #table,
+						columns: vec![#(#columns_iter),*],
 						unique: #unique,
 					}
 				});
@@ -117,43 +117,43 @@ impl ToTokens for Operation {
 				let columns_iter = columns.iter();
 				tokens.extend(quote! {
 					Operation::DropIndex {
-						table: #table.to_string(),
-						columns: vec![#(#columns_iter.to_string()),*],
+						table: #table,
+						columns: vec![#(#columns_iter),*],
 					}
 				});
 			}
 			Operation::RunSQL { sql, reverse_sql } => {
 				let reverse_sql_token = match reverse_sql {
-					Some(s) => quote! { Some(#s.to_string()) },
+					Some(s) => quote! { Some(#s) },
 					None => quote! { None },
 				};
 				tokens.extend(quote! {
 					Operation::RunSQL {
-						sql: #sql.to_string(),
+						sql: #sql,
 						reverse_sql: #reverse_sql_token,
 					}
 				});
 			}
 			Operation::RunRust { code, reverse_code } => {
 				let reverse_code_token = match reverse_code {
-					Some(s) => quote! { Some(#s.to_string()) },
+					Some(s) => quote! { Some(#s) },
 					None => quote! { None },
 				};
 				tokens.extend(quote! {
 					Operation::RunRust {
-						code: #code.to_string(),
+						code: #code,
 						reverse_code: #reverse_code_token,
 					}
 				});
 			}
 			Operation::AlterTableComment { table, comment } => {
 				let comment_token = match comment {
-					Some(s) => quote! { Some(#s.to_string()) },
+					Some(s) => quote! { Some(#s) },
 					None => quote! { None },
 				};
 				tokens.extend(quote! {
 					Operation::AlterTableComment {
-						table: #table.to_string(),
+						table: #table,
 						comment: #comment_token,
 					}
 				});
@@ -164,11 +164,11 @@ impl ToTokens for Operation {
 			} => {
 				let unique_together_tokens = unique_together.iter().map(|fields| {
 					let fields_iter = fields.iter();
-					quote! { vec![#(#fields_iter.to_string()),*] }
+					quote! { vec![#(#fields_iter),*] }
 				});
 				tokens.extend(quote! {
 					Operation::AlterUniqueTogether {
-						table: #table.to_string(),
+						table: #table,
 						unique_together: vec![#(#unique_together_tokens),*],
 					}
 				});
@@ -178,10 +178,10 @@ impl ToTokens for Operation {
 				let values = options.values();
 				tokens.extend(quote! {
 					Operation::AlterModelOptions {
-						table: #table.to_string(),
+						table: #table,
 						options: {
 							let mut map = std::collections::HashMap::new();
-							#(map.insert(#keys.to_string(), #values.to_string());)*
+							#(map.insert(#keys, #values);)*
 							map
 						},
 					}
@@ -196,10 +196,10 @@ impl ToTokens for Operation {
 				let columns_tokens = columns.iter();
 				tokens.extend(quote! {
 					Operation::CreateInheritedTable {
-						name: #name.to_string(),
+						name: #name,
 						columns: vec![#(#columns_tokens),*],
-						base_table: #base_table.to_string(),
-						join_column: #join_column.to_string(),
+						base_table: #base_table,
+						join_column: #join_column,
 					}
 				});
 			}
@@ -210,9 +210,9 @@ impl ToTokens for Operation {
 			} => {
 				tokens.extend(quote! {
 					Operation::AddDiscriminatorColumn {
-						table: #table.to_string(),
-						column_name: #column_name.to_string(),
-						default_value: #default_value.to_string(),
+						table: #table,
+						column_name: #column_name,
+						default_value: #default_value,
 					}
 				});
 			}
@@ -223,14 +223,15 @@ impl ToTokens for Operation {
 impl ToTokens for ColumnDefinition {
 	fn to_tokens(&self, tokens: &mut TokenStream) {
 		let name = &self.name;
-		let type_definition = &self.type_definition;
+		// Convert type_definition string to an identifier (e.g., "CharField" -> CharField)
+		let type_definition = syn::Ident::new(self.type_definition, proc_macro2::Span::call_site());
 		let not_null = self.not_null;
 		let unique = self.unique;
 		let primary_key = self.primary_key;
 		let auto_increment = self.auto_increment;
 
 		let default_token = match &self.default {
-			Some(s) => quote! { Some(#s.to_string()) },
+			Some(s) => quote! { Some(#s) },
 			None => quote! { None },
 		};
 
@@ -241,8 +242,8 @@ impl ToTokens for ColumnDefinition {
 
 		tokens.extend(quote! {
 			ColumnDefinition {
-				name: #name.to_string(),
-				type_definition: #type_definition.to_string(),
+				name: #name,
+				type_definition: #type_definition,
 				not_null: #not_null,
 				unique: #unique,
 				primary_key: #primary_key,

@@ -252,7 +252,7 @@ impl CreateModel {
 	///         FieldDefinition::new("tag_id", "INTEGER", false, false, Option::<&str>::None),
 	///     ],
 	/// )
-	/// .with_composite_primary_key(vec!["post_id".to_string(), "tag_id".to_string()])
+	/// .with_composite_primary_key(vec!["post_id", "tag_id"])
 	/// .expect("Valid composite primary key");
 	///
 	/// assert!(create.composite_primary_key.is_some());
@@ -772,12 +772,12 @@ mod tests {
 			)],
 		);
 		create.state_forwards("myapp", &mut state);
-		assert_eq!(state.get_model("myapp", "User").is_some(), true);
+		assert!(state.get_model("myapp", "User").is_some());
 
 		// Delete it
 		let delete = DeleteModel::new("User");
 		delete.state_forwards("myapp", &mut state);
-		assert_eq!(state.get_model("myapp", "User").is_none(), true);
+		assert!(state.get_model("myapp", "User").is_none());
 	}
 
 	#[test]
@@ -801,7 +801,7 @@ mod tests {
 		let rename = RenameModel::new("User", "Customer");
 		rename.state_forwards("myapp", &mut state);
 
-		assert_eq!(state.get_model("myapp", "User").is_none(), true);
+		assert!(state.get_model("myapp", "User").is_none());
 		let model = state.get_model("myapp", "Customer").unwrap();
 		assert_eq!(model.name, "Customer");
 	}
@@ -837,7 +837,7 @@ mod tests {
 		let field = FieldDefinition::new("email", "VARCHAR(255)", false, false, None::<String>)
 			.nullable(true);
 
-		assert_eq!(field.null, true);
+		assert!(field.null);
 		let sql = field.to_sql_definition();
 		assert_eq!(sql, "VARCHAR(255)");
 	}
@@ -949,15 +949,15 @@ mod tests {
 		create1.state_forwards("myapp", &mut state);
 		create2.state_forwards("myapp", &mut state);
 
-		assert_eq!(state.get_model("myapp", "User").is_some(), true);
-		assert_eq!(state.get_model("myapp", "Post").is_some(), true);
+		assert!(state.get_model("myapp", "User").is_some());
+		assert!(state.get_model("myapp", "Post").is_some());
 
 		// Delete only User
 		let delete = DeleteModel::new("User");
 		delete.state_forwards("myapp", &mut state);
 
-		assert_eq!(state.get_model("myapp", "User").is_none(), true);
-		assert_eq!(state.get_model("myapp", "Post").is_some(), true);
+		assert!(state.get_model("myapp", "User").is_none());
+		assert!(state.get_model("myapp", "Post").is_some());
 	}
 
 	#[test]
@@ -1001,15 +1001,15 @@ mod tests {
 			)],
 		);
 		create.state_forwards("myapp", &mut state);
-		assert_eq!(state.get_model("myapp", "User").is_some(), true);
+		assert!(state.get_model("myapp", "User").is_some());
 
 		// Move to auth app
 		let move_op = MoveModel::new("User", "myapp", "auth");
 		move_op.state_forwards("auth", &mut state);
 
 		// Check model is moved
-		assert_eq!(state.get_model("myapp", "User").is_none(), true);
-		assert_eq!(state.get_model("auth", "User").is_some(), true);
+		assert!(state.get_model("myapp", "User").is_none());
+		assert!(state.get_model("auth", "User").is_some());
 
 		// Check app_label is updated
 		let model = state.get_model("auth", "User").unwrap();
@@ -1062,14 +1062,14 @@ mod tests {
 
 		let move_op = MoveModel::new("User", "myapp", "auth");
 		move_op.state_forwards("auth", &mut state);
-		assert_eq!(state.get_model("auth", "User").is_some(), true);
+		assert!(state.get_model("auth", "User").is_some());
 
 		// Reverse the move
 		move_op.state_backwards("myapp", &mut state);
 
 		// Check model is back in original app
-		assert_eq!(state.get_model("auth", "User").is_none(), true);
-		assert_eq!(state.get_model("myapp", "User").is_some(), true);
+		assert!(state.get_model("auth", "User").is_none());
+		assert!(state.get_model("myapp", "User").is_some());
 
 		let model = state.get_model("myapp", "User").unwrap();
 		assert_eq!(model.app_label, "myapp");

@@ -148,7 +148,7 @@ impl ModelState {
 	/// use reinhardt_migrations::{ModelState, FieldState};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
-	/// let field = FieldState::new("email".to_string(), "VARCHAR(255)".to_string(), false);
+	/// let field = FieldState::new("email", "VARCHAR(255)", false);
 	/// model.add_field(field);
 	/// assert_eq!(model.fields.len(), 1);
 	/// assert!(model.has_field("email"));
@@ -165,7 +165,7 @@ impl ModelState {
 	/// use reinhardt_migrations::{ModelState, FieldState};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
-	/// let field = FieldState::new("email".to_string(), "VARCHAR(255)".to_string(), false);
+	/// let field = FieldState::new("email", "VARCHAR(255)", false);
 	/// model.add_field(field);
 	///
 	/// let retrieved = model.get_field("email");
@@ -184,7 +184,7 @@ impl ModelState {
 	/// use reinhardt_migrations::{ModelState, FieldState};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
-	/// let field = FieldState::new("email".to_string(), "VARCHAR(255)".to_string(), false);
+	/// let field = FieldState::new("email", "VARCHAR(255)", false);
 	/// model.add_field(field);
 	///
 	/// assert!(model.has_field("email"));
@@ -202,10 +202,10 @@ impl ModelState {
 	/// use reinhardt_migrations::{ModelState, FieldState};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
-	/// let field = FieldState::new("email".to_string(), "VARCHAR(255)".to_string(), false);
+	/// let field = FieldState::new("email", "VARCHAR(255)", false);
 	/// model.add_field(field);
 	///
-	/// model.rename_field("email", "email_address".to_string());
+	/// model.rename_field("email", "email_address");
 	/// assert!(!model.has_field("email"));
 	/// assert!(model.has_field("email_address"));
 	/// ```
@@ -228,7 +228,7 @@ impl ModelState {
 ///
 /// let mut state = ProjectState::new();
 /// let mut model = ModelState::new("myapp", "User");
-/// model.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
+/// model.add_field(FieldState::new("id", "INTEGER", false));
 /// state.add_model(model);
 ///
 /// assert!(state.get_model("myapp", "User").is_some());
@@ -275,7 +275,7 @@ impl ProjectState {
 				columns.insert(
 					field_name.clone(),
 					crate::schema_diff::ColumnSchema {
-						name: field_name.clone(),
+						name: Box::leak(field_name.clone().into_boxed_str()),
 						data_type,
 						nullable,
 						default,
@@ -290,12 +290,82 @@ impl ProjectState {
 			tables.insert(
 				model_state.table_name.clone(),
 				crate::schema_diff::TableSchema {
-					name: model_state.table_name.clone(),
+					name: Box::leak(model_state.table_name.clone().into_boxed_str()),
 					columns,
 					indexes: Vec::new(),
 					constraints: Vec::new(),
 				},
 			);
+		}
+
+		crate::schema_diff::DatabaseSchema { tables }
+	}
+
+	/// Convert ProjectState to DatabaseSchema for a specific app
+	///
+	/// This method filters models by app_label before converting to DatabaseSchema,
+	/// allowing per-app migration generation.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_migrations::ProjectState;
+	///
+	/// let state = ProjectState::from_global_registry();
+	/// let schema = state.to_database_schema_for_app("users");
+	/// // schema contains only tables for the "users" app
+	/// ```
+	pub fn to_database_schema_for_app(
+		&self,
+		app_label: &str,
+	) -> crate::schema_diff::DatabaseSchema {
+		let mut tables = std::collections::HashMap::new();
+
+		for ((this_app_label, _model_name), model_state) in &self.models {
+			// Filter by app_label
+			if this_app_label == app_label {
+				let mut columns = std::collections::HashMap::new();
+				for (field_name, field_state) in &model_state.fields {
+					let data_type = field_state.field_type.clone();
+					let nullable = field_state.nullable;
+					let primary_key = field_state
+						.params
+						.get("primary_key")
+						.is_some_and(|s| s == "true");
+					let auto_increment = field_state
+						.params
+						.get("auto_increment")
+						.is_some_and(|s| s == "true");
+					let max_length = field_state
+						.params
+						.get("max_length")
+						.and_then(|s| s.parse::<u32>().ok());
+					let default = field_state.params.get("default").cloned();
+
+					columns.insert(
+						field_name.clone(),
+						crate::schema_diff::ColumnSchema {
+							name: Box::leak(field_name.clone().into_boxed_str()),
+							data_type,
+							nullable,
+							default,
+							primary_key,
+							auto_increment,
+							max_length,
+						},
+					);
+				}
+
+				tables.insert(
+					model_state.table_name.clone(),
+					crate::schema_diff::TableSchema {
+						name: Box::leak(model_state.table_name.clone().into_boxed_str()),
+						columns,
+						indexes: Vec::new(),
+						constraints: Vec::new(),
+					},
+				);
+			}
 		}
 
 		crate::schema_diff::DatabaseSchema { tables }
@@ -368,7 +438,7 @@ impl ProjectState {
 	/// state.add_model(model);
 	///
 	/// if let Some(model) = state.get_model_mut("myapp", "User") {
-	///     let field = FieldState::new("email".to_string(), "VARCHAR(255)".to_string(), false);
+	///     let field = FieldState::new("email", "VARCHAR(255)", false);
 	///     model.add_field(field);
 	/// }
 	///
@@ -409,7 +479,7 @@ impl ProjectState {
 	/// let model = ModelState::new("myapp", "User");
 	/// state.add_model(model);
 	///
-	/// state.rename_model("myapp", "User", "Account".to_string());
+	/// state.rename_model("myapp", "User", "Account");
 	/// assert!(state.get_model("myapp", "User").is_none());
 	/// assert!(state.get_model("myapp", "Account").is_some());
 	/// ```
@@ -449,6 +519,160 @@ impl ProjectState {
 		}
 
 		state
+	}
+
+	/// Load ProjectState from a list of migrations
+	///
+	/// This method constructs a ProjectState by applying all operations
+	/// from the provided migrations in order. This is useful for determining
+	/// what the database schema should look like after applying all migrations.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_migrations::{ProjectState, Migration};
+	///
+	/// let migrations = vec![/* ... */];
+	/// let state = ProjectState::from_migrations(&migrations);
+	/// // state will contain all models as they would exist after applying all migrations
+	/// ```
+	pub fn from_migrations(migrations: &[crate::migration::Migration]) -> Self {
+		let mut state = Self::new();
+		for migration in migrations {
+			state.apply_migration_operations(&migration.operations);
+		}
+		state
+	}
+
+	/// Apply migration operations to this project state
+	///
+	/// This method processes each operation and updates the ProjectState accordingly.
+	/// It handles:
+	/// - CreateTable: Creates a new model
+	/// - DropTable: Removes a model
+	/// - AddColumn: Adds a field to a model
+	/// - DropColumn: Removes a field from a model
+	/// - AlterColumn: Modifies a field
+	/// - RenameTable: Renames a model's table
+	/// - RenameColumn: Renames a field
+	/// - Other operations are logged but not applied to state
+	fn apply_migration_operations(&mut self, operations: &[crate::operations::Operation]) {
+		use crate::operations::Operation;
+
+		for op in operations {
+			match op {
+				Operation::CreateTable { name, columns, .. } => {
+					// Create a new model from the table definition
+					// We'll use "auto" as the app_label since we don't have that info
+					let mut model = ModelState::new("auto", name.to_string());
+					model.table_name = name.to_string();
+
+					// Convert columns to fields
+					for col in columns {
+						let field = self.column_def_to_field_state(col);
+						model.add_field(field);
+					}
+
+					self.add_model(model);
+				}
+				Operation::DropTable { name } => {
+					// Find and remove the model with this table name
+					let keys_to_remove: Vec<_> = self
+						.models
+						.iter()
+						.filter(|(_, model)| model.table_name == *name)
+						.map(|(key, _)| key.clone())
+						.collect();
+
+					for key in keys_to_remove {
+						self.models.remove(&key);
+					}
+				}
+				Operation::AddColumn { table, column } => {
+					// Find the model with this table name and add the field
+					let field = self.column_def_to_field_state(column);
+					if let Some(model) = self.find_model_by_table_mut(table) {
+						model.add_field(field);
+					}
+				}
+				Operation::DropColumn { table, column } => {
+					// Find the model and remove the field
+					if let Some(model) = self.find_model_by_table_mut(table) {
+						model.fields.remove(*column);
+					}
+				}
+				Operation::AlterColumn {
+					table,
+					column,
+					new_definition,
+				} => {
+					// Find the model and update the field
+					let new_field = self.column_def_to_field_state(new_definition);
+					// Keep the old field name but update everything else
+					let mut updated_field = new_field;
+					updated_field.name = column.to_string();
+					if let Some(model) = self.find_model_by_table_mut(table) {
+						model.fields.insert(column.to_string(), updated_field);
+					}
+				}
+				Operation::RenameTable { old_name, new_name } => {
+					// Find the model with old table name and update it
+					if let Some(model) = self.find_model_by_table_mut(old_name) {
+						model.table_name = new_name.to_string();
+					}
+				}
+				Operation::RenameColumn {
+					table,
+					old_name,
+					new_name,
+				} => {
+					// Find the model and rename the field
+					if let Some(model) = self.find_model_by_table_mut(table) {
+						model.rename_field(old_name, new_name.to_string());
+					}
+				}
+				// Other operations don't affect the schema state in ways we track
+				_ => {
+					// Operations like CreateIndex, DropIndex, RunSQL, etc.
+					// are not currently tracked in ProjectState
+				}
+			}
+		}
+	}
+
+	/// Helper: Find a model by table name (mutable)
+	fn find_model_by_table_mut(&mut self, table_name: &str) -> Option<&mut ModelState> {
+		self.models
+			.values_mut()
+			.find(|model| model.table_name == table_name)
+	}
+
+	/// Helper: Convert ColumnDefinition to FieldState
+	fn column_def_to_field_state(&self, col: &crate::operations::ColumnDefinition) -> FieldState {
+		let mut params = std::collections::HashMap::new();
+
+		if col.primary_key {
+			params.insert("primary_key".to_string(), "true".to_string());
+		}
+		if col.auto_increment {
+			params.insert("auto_increment".to_string(), "true".to_string());
+		}
+		if col.unique {
+			params.insert("unique".to_string(), "true".to_string());
+		}
+		if let Some(max_length) = col.max_length {
+			params.insert("max_length".to_string(), max_length.to_string());
+		}
+		if let Some(default) = col.default {
+			params.insert("default".to_string(), default.to_string());
+		}
+
+		FieldState {
+			name: col.name.to_string(),
+			field_type: col.type_definition.to_string(),
+			nullable: !col.not_null,
+			params,
+		}
 	}
 }
 
@@ -654,7 +878,7 @@ impl Default for SimilarityConfig {
 ///
 // Add a new model to to_state
 /// let mut model = ModelState::new("myapp", "User");
-/// model.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
+/// model.add_field(FieldState::new("id", "INTEGER", false));
 /// to_state.add_model(model);
 ///
 /// let detector = MigrationAutodetector::new(from_state, to_state);
@@ -731,21 +955,21 @@ impl DetectedChanges {
 	/// use std::collections::HashMap;
 	///
 	/// let mut changes = DetectedChanges::default();
-	/// changes.created_models.push(("accounts".to_string(), "User".to_string()));
-	/// changes.created_models.push(("blog".to_string(), "Post".to_string()));
+	/// changes.created_models.push(("accounts", "User"));
+	/// changes.created_models.push(("blog", "Post"));
 	///
 	/// // Post depends on User
 	/// let mut deps = HashMap::new();
 	/// deps.insert(
-	///     ("blog".to_string(), "Post".to_string()),
-	///     vec![("accounts".to_string(), "User".to_string())],
+	///     ("blog", "Post"),
+	///     vec![("accounts", "User")],
 	/// );
 	/// changes.model_dependencies = deps;
 	///
 	/// let ordered = changes.order_models_by_dependency();
 	/// // User comes before Post
-	/// assert_eq!(ordered[0], ("accounts".to_string(), "User".to_string()));
-	/// assert_eq!(ordered[1], ("blog".to_string(), "Post".to_string()));
+	/// assert_eq!(ordered[0], ("accounts", "User"));
+	/// assert_eq!(ordered[1], ("blog", "Post"));
 	/// ```
 	pub fn order_models_by_dependency(&self) -> Vec<(String, String)> {
 		use std::collections::{HashMap, HashSet, VecDeque};
@@ -845,16 +1069,16 @@ impl DetectedChanges {
 	/// // Create circular dependency: A -> B -> C -> A
 	/// let mut deps = HashMap::new();
 	/// deps.insert(
-	///     ("app".to_string(), "A".to_string()),
-	///     vec![("app".to_string(), "B".to_string())],
+	///     ("app", "A"),
+	///     vec![("app", "B")],
 	/// );
 	/// deps.insert(
-	///     ("app".to_string(), "B".to_string()),
-	///     vec![("app".to_string(), "C".to_string())],
+	///     ("app", "B"),
+	///     vec![("app", "C")],
 	/// );
 	/// deps.insert(
-	///     ("app".to_string(), "C".to_string()),
-	///     vec![("app".to_string(), "A".to_string())],
+	///     ("app", "C"),
+	///     vec![("app", "A")],
 	/// );
 	/// changes.model_dependencies = deps;
 	///
@@ -933,8 +1157,8 @@ impl DetectedChanges {
 /// let entry = ChangeHistoryEntry {
 ///     timestamp: SystemTime::now(),
 ///     change_type: "RenameModel".to_string(),
-///     app_label: "blog".to_string(),
-///     model_name: "Post".to_string(),
+///     app_label: "blog",
+///     model_name: "Post",
 ///     field_name: None,
 ///     old_value: Some("BlogPost".to_string()),
 ///     new_value: Some("Post".to_string()),
@@ -2693,14 +2917,14 @@ impl MigrationAutodetector {
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut old_model = ModelState::new("myapp", "OldUser");
-	/// old_model.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
-	/// old_model.add_field(FieldState::new("name".to_string(), "VARCHAR".to_string(), false));
+	/// old_model.add_field(FieldState::new("id", "INTEGER", false));
+	/// old_model.add_field(FieldState::new("name", "VARCHAR", false));
 	/// from_state.add_model(old_model);
 	///
 	/// let mut to_state = ProjectState::new();
 	/// let mut new_model = ModelState::new("myapp", "NewUser");
-	/// new_model.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
-	/// new_model.add_field(FieldState::new("name".to_string(), "VARCHAR".to_string(), false));
+	/// new_model.add_field(FieldState::new("id", "INTEGER", false));
+	/// new_model.add_field(FieldState::new("name", "VARCHAR", false));
 	/// to_state.add_model(new_model);
 	///
 	/// let detector = MigrationAutodetector::new(from_state, to_state);
@@ -2781,12 +3005,12 @@ impl MigrationAutodetector {
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut old_model = ModelState::new("myapp", "User");
-	/// old_model.add_field(FieldState::new("old_email".to_string(), "VARCHAR".to_string(), false));
+	/// old_model.add_field(FieldState::new("old_email", "VARCHAR", false));
 	/// from_state.add_model(old_model);
 	///
 	/// let mut to_state = ProjectState::new();
 	/// let mut new_model = ModelState::new("myapp", "User");
-	/// new_model.add_field(FieldState::new("new_email".to_string(), "VARCHAR".to_string(), false));
+	/// new_model.add_field(FieldState::new("new_email", "VARCHAR", false));
 	/// to_state.add_model(new_model);
 	///
 	/// let detector = MigrationAutodetector::new(from_state, to_state);
@@ -2854,14 +3078,14 @@ impl MigrationAutodetector {
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut from_model = ModelState::new("myapp", "User");
-	/// from_model.add_field(FieldState::new("user_id".to_string(), "INTEGER".to_string(), false));
-	/// from_model.add_field(FieldState::new("user_email".to_string(), "VARCHAR".to_string(), false));
+	/// from_model.add_field(FieldState::new("user_id", "INTEGER", false));
+	/// from_model.add_field(FieldState::new("user_email", "VARCHAR", false));
 	/// from_state.add_model(from_model);
 	///
 	/// let mut to_state = ProjectState::new();
 	/// let mut to_model = ModelState::new("auth", "User");
-	/// to_model.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
-	/// to_model.add_field(FieldState::new("email".to_string(), "VARCHAR".to_string(), false));
+	/// to_model.add_field(FieldState::new("id", "INTEGER", false));
+	/// to_model.add_field(FieldState::new("email", "VARCHAR", false));
 	/// to_state.add_model(to_model);
 	///
 	/// let detector = MigrationAutodetector::new(from_state, to_state);
@@ -2938,8 +3162,8 @@ impl MigrationAutodetector {
 	/// let to_state = ProjectState::new();
 	/// let detector = MigrationAutodetector::new(from_state, to_state);
 	///
-	/// let from_field = FieldState::new("user_email".to_string(), "VARCHAR".to_string(), false);
-	/// let to_field = FieldState::new("email".to_string(), "VARCHAR".to_string(), false);
+	/// let from_field = FieldState::new("user_email", "VARCHAR", false);
+	/// let to_field = FieldState::new("email", "VARCHAR", false);
 	///
 	/// // High similarity (field name is similar and type matches)
 	/// // Jaro-Winkler ≈ 0.81, Levenshtein normalized ≈ 0.45
@@ -3005,12 +3229,12 @@ impl MigrationAutodetector {
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut old_model = ModelState::new("myapp", "User");
-	/// old_model.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
+	/// old_model.add_field(FieldState::new("id", "INTEGER", false));
 	/// from_state.add_model(old_model);
 	///
 	/// let mut to_state = ProjectState::new();
 	/// let mut new_model = ModelState::new("auth", "User");
-	/// new_model.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
+	/// new_model.add_field(FieldState::new("id", "INTEGER", false));
 	/// to_state.add_model(new_model);
 	///
 	/// let detector = MigrationAutodetector::new(from_state, to_state);
@@ -3214,7 +3438,7 @@ impl MigrationAutodetector {
 	///
 	// Add a new model to the target state
 	/// let mut model = ModelState::new("myapp", "User");
-	/// model.add_field(FieldState::new("id".to_string(), "IntegerField".to_string(), false));
+	/// model.add_field(FieldState::new("id", "IntegerField", false));
 	/// to_state.add_model(model);
 	///
 	/// let detector = MigrationAutodetector::new(from_state, to_state);
@@ -3238,7 +3462,7 @@ impl MigrationAutodetector {
 				}
 
 				operations.push(crate::Operation::CreateTable {
-					name: model.table_name.clone(),
+					name: Box::leak(model.table_name.clone().into_boxed_str()),
 					columns,
 					constraints: Vec::new(),
 				});
@@ -3251,7 +3475,7 @@ impl MigrationAutodetector {
 				&& let Some(field) = model.get_field(field_name)
 			{
 				operations.push(crate::Operation::AddColumn {
-					table: model.name.clone(),
+					table: Box::leak(model.name.clone().into_boxed_str()),
 					column: crate::ColumnDefinition::new(
 						field_name.clone(),
 						field.field_type.clone(),
@@ -3266,8 +3490,8 @@ impl MigrationAutodetector {
 				&& let Some(field) = model.get_field(field_name)
 			{
 				operations.push(crate::Operation::AlterColumn {
-					table: model.name.clone(),
-					column: field_name.clone(),
+					table: Box::leak(model.name.clone().into_boxed_str()),
+					column: Box::leak(field_name.clone().into_boxed_str()),
 					new_definition: crate::ColumnDefinition::new(
 						field_name.clone(),
 						field.field_type.clone(),
@@ -3280,8 +3504,8 @@ impl MigrationAutodetector {
 		for (app_label, model_name, field_name) in &changes.removed_fields {
 			if let Some(model) = self.from_state.get_model(app_label, model_name) {
 				operations.push(crate::Operation::DropColumn {
-					table: model.name.clone(),
-					column: field_name.clone(),
+					table: Box::leak(model.name.clone().into_boxed_str()),
+					column: Box::leak(field_name.clone().into_boxed_str()),
 				});
 			}
 		}
@@ -3290,7 +3514,7 @@ impl MigrationAutodetector {
 		for (app_label, model_name) in &changes.deleted_models {
 			if let Some(model) = self.from_state.get_model(app_label, model_name) {
 				operations.push(crate::Operation::DropTable {
-					name: model.table_name.clone(),
+					name: Box::leak(model.table_name.clone().into_boxed_str()),
 				});
 			}
 		}
@@ -3338,7 +3562,7 @@ impl MigrationAutodetector {
 	///
 	// Add a new model
 	/// let mut model = ModelState::new("blog", "Post");
-	/// model.add_field(FieldState::new("title".to_string(), "CharField".to_string(), false));
+	/// model.add_field(FieldState::new("title", "CharField", false));
 	/// to_state.add_model(model);
 	///
 	/// let detector = MigrationAutodetector::new(from_state, to_state);
@@ -3368,7 +3592,7 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::CreateTable {
-						name: model.table_name.clone(),
+						name: Box::leak(model.table_name.clone().into_boxed_str()),
 						columns,
 						constraints: Vec::new(),
 					});
@@ -3384,7 +3608,7 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::AddColumn {
-						table: model.table_name.clone(),
+						table: Box::leak(model.table_name.clone().into_boxed_str()),
 						column: crate::ColumnDefinition::new(
 							field_name.clone(),
 							field.field_type.clone(),
@@ -3402,8 +3626,8 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::AlterColumn {
-						table: model.table_name.clone(),
-						column: field_name.clone(),
+						table: Box::leak(model.table_name.clone().into_boxed_str()),
+						column: Box::leak(field_name.clone().into_boxed_str()),
 						new_definition: crate::ColumnDefinition::new(
 							field_name.clone(),
 							field.field_type.clone(),
@@ -3419,8 +3643,8 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::DropColumn {
-						table: model.table_name.clone(),
-						column: field_name.clone(),
+						table: Box::leak(model.table_name.clone().into_boxed_str()),
+						column: Box::leak(field_name.clone().into_boxed_str()),
 					});
 			}
 		}
@@ -3432,7 +3656,7 @@ impl MigrationAutodetector {
 					.entry(app_label.clone())
 					.or_default()
 					.push(crate::Operation::DropTable {
-						name: model.table_name.clone(),
+						name: Box::leak(model.table_name.clone().into_boxed_str()),
 					});
 			}
 		}
@@ -3509,22 +3733,22 @@ impl MigrationAutodetector {
 	///
 	/// // Create User model
 	/// let mut user = ModelState::new("accounts", "User");
-	/// user.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
+	/// user.add_field(FieldState::new("id", "INTEGER", false));
 	/// to_state.add_model(user);
 	///
 	/// // Create Post model that depends on User
 	/// let mut post = ModelState::new("blog", "Post");
-	/// post.add_field(FieldState::new("id".to_string(), "INTEGER".to_string(), false));
-	/// post.add_field(FieldState::new("author".to_string(), "ForeignKey(accounts.User)".to_string(), false));
+	/// post.add_field(FieldState::new("id", "INTEGER", false));
+	/// post.add_field(FieldState::new("author", "ForeignKey(accounts.User)", false));
 	/// to_state.add_model(post);
 	///
 	/// let detector = MigrationAutodetector::new(from_state, to_state);
 	/// let changes = detector.detect_changes();
 	///
 	/// // blog.Post depends on accounts.User
-	/// let post_deps = changes.model_dependencies.get(&("blog".to_string(), "Post".to_string()));
+	/// let post_deps = changes.model_dependencies.get(&("blog", "Post"));
 	/// assert!(post_deps.is_some());
-	/// assert!(post_deps.unwrap().contains(&("accounts".to_string(), "User".to_string())));
+	/// assert!(post_deps.unwrap().contains(&("accounts", "User")));
 	/// ```
 	fn detect_model_dependencies(&self, changes: &mut DetectedChanges) {
 		// Analyze all models in the final state
@@ -3640,7 +3864,7 @@ impl ModelState {
 	/// use reinhardt_migrations::{ModelState, FieldState};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
-	/// let field = FieldState::new("email".to_string(), "VARCHAR(255)".to_string(), false);
+	/// let field = FieldState::new("email", "VARCHAR(255)", false);
 	/// model.add_field(field);
 	/// assert!(model.has_field("email"));
 	///
@@ -3659,15 +3883,15 @@ impl ModelState {
 	/// use reinhardt_migrations::{ModelState, FieldState};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
-	/// let field = FieldState::new("email".to_string(), "VARCHAR(255)".to_string(), false);
+	/// let field = FieldState::new("email", "VARCHAR(255)", false);
 	/// model.add_field(field);
 	///
-	/// let new_field = FieldState::new("email".to_string(), "TEXT".to_string(), true);
+	/// let new_field = FieldState::new("email", "TEXT", true);
 	/// model.alter_field("email", new_field);
 	///
 	/// let altered = model.get_field("email").unwrap();
 	/// assert_eq!(altered.field_type, "TEXT");
-	/// assert_eq!(altered.nullable, true);
+	/// assert!(altered.nullable);
 	/// ```
 	pub fn alter_field(&mut self, name: &str, new_field: FieldState) {
 		self.fields.insert(name.to_string(), new_field);
