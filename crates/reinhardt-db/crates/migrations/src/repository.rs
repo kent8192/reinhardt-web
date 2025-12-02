@@ -42,10 +42,10 @@ mod tests {
 	use std::collections::HashMap;
 
 	/// Test helper to create a migration
-	fn create_test_migration(app_label: &str, name: &str) -> Migration {
+	fn create_test_migration(app_label: &'static str, name: &'static str) -> Migration {
 		Migration {
-			app_label: app_label.to_string(),
-			name: name.to_string(),
+			app_label,
+			name,
 			operations: vec![],
 			dependencies: vec![],
 			atomic: true,
@@ -69,7 +69,7 @@ mod tests {
 	#[async_trait]
 	impl MigrationRepository for TestRepository {
 		async fn save(&mut self, migration: &Migration) -> Result<()> {
-			let key = (migration.app_label.clone(), migration.name.clone());
+			let key = (migration.app_label.to_string(), migration.name.to_string());
 			self.migrations.insert(key, migration.clone());
 			Ok(())
 		}

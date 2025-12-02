@@ -57,7 +57,7 @@ impl CompositeSource {
 			let migrations = source.all_migrations().await?;
 
 			for migration in migrations {
-				let key = (migration.app_label.clone(), migration.name.clone());
+				let key = (migration.app_label.to_string(), migration.name.to_string());
 				merged.insert(key, migration);
 			}
 		}
@@ -113,10 +113,10 @@ mod tests {
 		}
 	}
 
-	fn create_test_migration(app_label: &str, name: &str) -> Migration {
+	fn create_test_migration(app_label: &'static str, name: &'static str) -> Migration {
 		Migration {
-			app_label: app_label.to_string(),
-			name: name.to_string(),
+			app_label,
+			name,
 			operations: vec![],
 			dependencies: vec![],
 			atomic: true,

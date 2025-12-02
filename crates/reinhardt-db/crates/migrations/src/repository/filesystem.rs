@@ -18,8 +18,8 @@ use syn::parse_quote;
 ///
 /// pub fn migration() -> Migration {
 ///     Migration {
-///         app_label: "app".to_string(),
-///         name: "0001_initial".to_string(),
+///         app_label: "app",
+///         name: "0001_initial",
 ///         operations: vec![],
 ///         dependencies: vec![],
 ///         atomic: true,
@@ -67,7 +67,7 @@ impl FilesystemRepository {
 			.dependencies
 			.iter()
 			.map(|(app, name)| {
-				quote! { (#app.to_string(), #name.to_string()) }
+				quote! { (#app, #name) }
 			})
 			.collect();
 
@@ -76,7 +76,7 @@ impl FilesystemRepository {
 			.replaces
 			.iter()
 			.map(|(app, name)| {
-				quote! { (#app.to_string(), #name.to_string()) }
+				quote! { (#app, #name) }
 			})
 			.collect();
 
@@ -94,8 +94,8 @@ impl FilesystemRepository {
 
 			pub fn migration() -> Migration {
 				Migration {
-					app_label: #app_label.to_string(),
-					name: #name.to_string(),
+					app_label: #app_label,
+					name: #name,
 					operations: #operations_code,
 					dependencies: vec![#(#deps),*],
 					atomic: #atomic,
@@ -104,16 +104,73 @@ impl FilesystemRepository {
 			}
 		};
 
-		// Format with prettyplease
-		let formatted = prettyplease::unparse(&file);
+		// Format with prettyplease first, then apply rustfmt
+		let prettyplease_output = prettyplease::unparse(&file);
+		let formatted = Self::format_with_rustfmt(&prettyplease_output)?;
 		Ok(formatted)
+	}
+
+	/// Format code with rustfmt, applying project's rustfmt.toml settings (hard_tabs = true)
+	///
+	/// Falls back to prettyplease output if rustfmt is not available or fails.
+	fn format_with_rustfmt(code: &str) -> Result<String> {
+		use std::io::Write;
+		use std::process::{Command, Stdio};
+
+		// Try to run rustfmt
+		let child = Command::new("rustfmt")
+			.arg("--edition=2024")
+			.stdin(Stdio::piped())
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.spawn();
+
+		match child {
+			Ok(mut child_process) => {
+				// Write code to stdin
+				if let Some(stdin) = child_process.stdin.as_mut() {
+					stdin.write_all(code.as_bytes()).map_err(|e| {
+						MigrationError::IoError(std::io::Error::other(format!(
+							"Failed to write to rustfmt stdin: {}",
+							e
+						)))
+					})?;
+				}
+
+				// Get formatted output
+				let output = child_process.wait_with_output().map_err(|e| {
+					MigrationError::IoError(std::io::Error::other(format!(
+						"Failed to read rustfmt output: {}",
+						e
+					)))
+				})?;
+
+				if output.status.success() {
+					String::from_utf8(output.stdout).map_err(|e| {
+						MigrationError::IoError(std::io::Error::other(format!(
+							"Invalid UTF-8 from rustfmt: {}",
+							e
+						)))
+					})
+				} else {
+					// rustfmt failed, fallback to prettyplease output
+					eprintln!("Warning: rustfmt failed, using prettyplease output");
+					Ok(code.to_string())
+				}
+			}
+			Err(_) => {
+				// rustfmt not available, use prettyplease output
+				eprintln!("Warning: rustfmt not found, using prettyplease output (space-indented)");
+				Ok(code.to_string())
+			}
+		}
 	}
 }
 
 #[async_trait]
 impl MigrationRepository for FilesystemRepository {
 	async fn save(&mut self, migration: &Migration) -> Result<()> {
-		let path = self.migration_path(&migration.app_label, &migration.name);
+		let path = self.migration_path(migration.app_label, migration.name);
 
 		// Create parent directories
 		if let Some(parent) = path.parent() {
@@ -238,14 +295,7 @@ mod tests {
 	use tempfile::TempDir;
 
 	fn create_test_migration(app_label: &str, name: &str) -> Migration {
-		Migration {
-			app_label: app_label.to_string(),
-			name: name.to_string(),
-			operations: vec![],
-			dependencies: vec![],
-			atomic: true,
-			replaces: vec![],
-		}
+		Migration::new(name, app_label)
 	}
 
 	#[tokio::test]
@@ -267,10 +317,10 @@ mod tests {
 
 		// Verify file exists
 		let path = repo.migration_path("polls", "0001_initial");
-		assert!(path.exists());
+		assert!(tokio::fs::try_exists(&path).await.unwrap());
 
 		// Verify file content is valid Rust
-		let content = std::fs::read_to_string(&path).unwrap();
+		let content = tokio::fs::read_to_string(&path).await.unwrap();
 		assert!(content.contains("pub fn migration() -> Migration"));
 		assert!(content.contains("app_label: \"polls\""));
 		assert!(content.contains("name: \"0001_initial\""));
@@ -344,13 +394,13 @@ mod tests {
 
 		// Verify it exists
 		let path = repo.migration_path("polls", "0001_initial");
-		assert!(path.exists());
+		assert!(tokio::fs::try_exists(&path).await.unwrap());
 
 		// Delete it
 		repo.delete("polls", "0001_initial").await.unwrap();
 
 		// Verify it's gone
-		assert!(!path.exists());
+		assert!(!tokio::fs::try_exists(&path).await.unwrap());
 	}
 
 	#[tokio::test]
@@ -370,20 +420,14 @@ mod tests {
 		let temp_dir = TempDir::new().unwrap();
 		let mut repo = FilesystemRepository::new(temp_dir.path());
 
-		let migration = Migration {
-			app_label: "polls".to_string(),
-			name: "0002_add_field".to_string(),
-			operations: vec![],
-			dependencies: vec![("polls".to_string(), "0001_initial".to_string())],
-			atomic: true,
-			replaces: vec![],
-		};
+		let migration =
+			Migration::new("0002_add_field", "polls").add_dependency("polls", "0001_initial");
 
 		repo.save(&migration).await.unwrap();
 
 		// Verify file contains dependencies
 		let path = repo.migration_path("polls", "0002_add_field");
-		let content = std::fs::read_to_string(&path).unwrap();
+		let content = tokio::fs::read_to_string(&path).await.unwrap();
 		assert!(content.contains("dependencies"));
 	}
 }
