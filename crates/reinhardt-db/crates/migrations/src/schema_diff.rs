@@ -9,7 +9,7 @@
 use crate::ColumnDefinition;
 use crate::introspection;
 use crate::operations::Operation;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Schema difference detector
 pub struct SchemaDiff {
@@ -22,16 +22,16 @@ pub struct SchemaDiff {
 /// Database schema representation
 #[derive(Debug, Clone, Default)]
 pub struct DatabaseSchema {
-	/// Table definitions
-	pub tables: HashMap<String, TableSchema>,
+	/// Table definitions (BTreeMap for deterministic iteration order)
+	pub tables: BTreeMap<String, TableSchema>,
 }
 
 impl From<introspection::DatabaseSchema> for DatabaseSchema {
 	fn from(intro_schema: introspection::DatabaseSchema) -> Self {
-		let mut tables = HashMap::new();
+		let mut tables = BTreeMap::new();
 
 		for (table_name, intro_table) in intro_schema.tables {
-			let mut columns = HashMap::new();
+			let mut columns = BTreeMap::new();
 			for (col_name, intro_col) in intro_table.columns {
 				// Simplified conversion
 				columns.insert(
@@ -128,7 +128,7 @@ impl DatabaseSchema {
 	/// // filtered contains only tables starting with "users_"
 	/// ```
 	pub fn filter_by_app(&self, app_label: &str) -> DatabaseSchema {
-		let mut filtered_tables = HashMap::new();
+		let mut filtered_tables = BTreeMap::new();
 		let prefix = format!("{}_", app_label);
 
 		for (table_name, table_schema) in &self.tables {
@@ -148,8 +148,8 @@ impl DatabaseSchema {
 pub struct TableSchema {
 	/// Table name
 	pub name: &'static str,
-	/// Column definitions
-	pub columns: HashMap<String, ColumnSchema>,
+	/// Column definitions (BTreeMap for deterministic iteration order)
+	pub columns: BTreeMap<String, ColumnSchema>,
 	/// Indexes
 	pub indexes: Vec<IndexSchema>,
 	/// Constraints
@@ -561,7 +561,7 @@ mod tests {
 			"users".to_string(),
 			TableSchema {
 				name: "users",
-				columns: HashMap::new(),
+				columns: BTreeMap::new(),
 				indexes: Vec::new(),
 				constraints: Vec::new(),
 			},
@@ -581,7 +581,7 @@ mod tests {
 			"users".to_string(),
 			TableSchema {
 				name: "users",
-				columns: HashMap::new(),
+				columns: BTreeMap::new(),
 				indexes: Vec::new(),
 				constraints: Vec::new(),
 			},
@@ -590,7 +590,7 @@ mod tests {
 		let mut target = DatabaseSchema::default();
 		let mut target_table = TableSchema {
 			name: "users",
-			columns: HashMap::new(),
+			columns: BTreeMap::new(),
 			indexes: Vec::new(),
 			constraints: Vec::new(),
 		};
@@ -622,7 +622,7 @@ mod tests {
 			"users".to_string(),
 			TableSchema {
 				name: "users",
-				columns: HashMap::new(),
+				columns: BTreeMap::new(),
 				indexes: Vec::new(),
 				constraints: Vec::new(),
 			},
