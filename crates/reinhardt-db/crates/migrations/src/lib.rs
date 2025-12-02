@@ -43,6 +43,7 @@ pub mod introspection;
 pub mod migration;
 pub mod model_registry;
 pub mod migration_namer;
+pub mod migration_numbering;
 pub mod operation_trait;
 pub mod operations;
 pub mod plan;
@@ -83,6 +84,7 @@ pub use executor::{
 pub use graph::{MigrationGraph, MigrationKey, MigrationNode};
 pub use migration::Migration;
 pub use migration_namer::MigrationNamer;
+pub use migration_numbering::MigrationNumbering;
 pub use model_registry::{FieldMetadata, ModelMetadata, ModelRegistry, global_registry};
 pub use operation_trait::MigrationOperation;
 pub use operations::{

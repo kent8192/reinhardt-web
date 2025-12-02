@@ -1,0 +1,259 @@
+//! Migration numbering system
+//!
+//! Provides app-specific sequential numbering for migrations (0001, 0002, 0003, ...).
+
+use std::collections::HashMap;
+use std::path::Path;
+
+/// Migration numbering system
+pub struct MigrationNumbering;
+
+impl MigrationNumbering {
+	/// Get next migration number for an app
+	///
+	/// Scans existing migration files in the app's migrations directory
+	/// and returns the next sequential number (4-digit zero-padded).
+	///
+	/// # Arguments
+	///
+	/// * `migrations_dir` - Path to the migrations directory (e.g., `migrations/`)
+	/// * `app_label` - App label (e.g., `"myapp"`)
+	///
+	/// # Returns
+	///
+	/// Next migration number as 4-digit zero-padded string (e.g., `"0001"`, `"0002"`)
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_migrations::MigrationNumbering;
+	/// use std::path::Path;
+	///
+	/// let next_num = MigrationNumbering::next_number(
+	///     Path::new("migrations"),
+	///     "myapp"
+	/// );
+	/// assert_eq!(next_num, "0001"); // First migration
+	/// ```
+	pub fn next_number(migrations_dir: &Path, app_label: &str) -> String {
+		let highest = Self::get_highest_number(migrations_dir, app_label);
+		format!("{:04}", highest + 1)
+	}
+
+	/// Get highest existing migration number for an app
+	///
+	/// Scans migration files matching the pattern `NNNN_*.rs` and returns
+	/// the highest number found, or 0 if no migrations exist.
+	///
+	/// # File Name Pattern
+	///
+	/// Expects migration files in format: `{app_label}/NNNN_*.rs`
+	/// - `NNNN`: 4-digit zero-padded number
+	/// - `*`: migration name (e.g., `initial`, `add_user_email`)
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// // Given files:
+	/// // migrations/myapp/0001_initial.rs
+	/// // migrations/myapp/0002_add_field.rs
+	/// // migrations/myapp/0003_remove_field.rs
+	///
+	/// let highest = MigrationNumbering::get_highest_number(
+	///     Path::new("migrations"),
+	///     "myapp"
+	/// );
+	/// assert_eq!(highest, 3);
+	/// ```
+	pub fn get_highest_number(migrations_dir: &Path, app_label: &str) -> u32 {
+		let app_migrations_dir = migrations_dir.join(app_label);
+
+		// If directory doesn't exist, this is the first migration
+		if !app_migrations_dir.exists() {
+			return 0;
+		}
+
+		let mut highest = 0;
+
+		// Scan for migration files matching NNNN_*.rs
+		if let Ok(entries) = std::fs::read_dir(&app_migrations_dir) {
+			for entry in entries.flatten() {
+				let path = entry.path();
+
+				// Only process .rs files
+				if path.extension().and_then(|s| s.to_str()) != Some("rs") {
+					continue;
+				}
+
+				// Extract filename
+				if let Some(filename) = path.file_stem().and_then(|s| s.to_str()) {
+					// Check if filename starts with 4 digits
+					if filename.len() >= 4
+						&& let Ok(num) = filename[..4].parse::<u32>()
+					{
+						highest = highest.max(num);
+					}
+				}
+			}
+		}
+
+		highest
+	}
+
+	/// Get all app migration numbers
+	///
+	/// Scans the migrations directory and returns a map of app labels
+	/// to their highest migration numbers.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// // Given structure:
+	/// // migrations/
+	/// //   myapp/0001_initial.rs
+	/// //   myapp/0002_add_field.rs
+	/// //   other_app/0001_initial.rs
+	///
+	/// let numbers = MigrationNumbering::get_all_numbers(Path::new("migrations"));
+	/// assert_eq!(numbers.get("myapp"), Some(&2));
+	/// assert_eq!(numbers.get("other_app"), Some(&1));
+	/// ```
+	pub fn get_all_numbers(migrations_dir: &Path) -> HashMap<String, u32> {
+		let mut result = HashMap::new();
+
+		// If directory doesn't exist, return empty map
+		if !migrations_dir.exists() {
+			return result;
+		}
+
+		// Scan for app directories
+		if let Ok(entries) = std::fs::read_dir(migrations_dir) {
+			for entry in entries.flatten() {
+				let path = entry.path();
+
+				// Only process directories
+				if !path.is_dir() {
+					continue;
+				}
+
+				// Extract app label from directory name
+				if let Some(app_label) = path.file_name().and_then(|s| s.to_str()) {
+					let highest = Self::get_highest_number(migrations_dir, app_label);
+					if highest > 0 {
+						result.insert(app_label.to_string(), highest);
+					}
+				}
+			}
+		}
+
+		result
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::fs;
+
+	#[test]
+	fn test_next_number_first_migration() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let migrations_dir = temp_dir.path().join("migrations");
+
+		let next = MigrationNumbering::next_number(&migrations_dir, "myapp");
+		assert_eq!(next, "0001");
+	}
+
+	#[test]
+	fn test_next_number_existing_migrations() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let migrations_dir = temp_dir.path().join("migrations");
+		let app_dir = migrations_dir.join("myapp");
+		fs::create_dir_all(&app_dir).unwrap();
+
+		// Create mock migration files
+		fs::write(app_dir.join("0001_initial.rs"), "").unwrap();
+		fs::write(app_dir.join("0002_add_field.rs"), "").unwrap();
+		fs::write(app_dir.join("0003_remove_field.rs"), "").unwrap();
+
+		let next = MigrationNumbering::next_number(&migrations_dir, "myapp");
+		assert_eq!(next, "0004");
+	}
+
+	#[test]
+	fn test_get_highest_number_no_migrations() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let migrations_dir = temp_dir.path().join("migrations");
+
+		let highest = MigrationNumbering::get_highest_number(&migrations_dir, "myapp");
+		assert_eq!(highest, 0);
+	}
+
+	#[test]
+	fn test_get_highest_number_with_migrations() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let migrations_dir = temp_dir.path().join("migrations");
+		let app_dir = migrations_dir.join("myapp");
+		fs::create_dir_all(&app_dir).unwrap();
+
+		// Create mock migration files
+		fs::write(app_dir.join("0001_initial.rs"), "").unwrap();
+		fs::write(app_dir.join("0005_add_field.rs"), "").unwrap();
+		fs::write(app_dir.join("0003_remove_field.rs"), "").unwrap();
+
+		let highest = MigrationNumbering::get_highest_number(&migrations_dir, "myapp");
+		assert_eq!(highest, 5);
+	}
+
+	#[test]
+	fn test_get_highest_number_ignores_non_migration_files() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let migrations_dir = temp_dir.path().join("migrations");
+		let app_dir = migrations_dir.join("myapp");
+		fs::create_dir_all(&app_dir).unwrap();
+
+		// Create mock files
+		fs::write(app_dir.join("0001_initial.rs"), "").unwrap();
+		fs::write(app_dir.join("README.md"), "").unwrap();
+		fs::write(app_dir.join("myapp.rs"), "").unwrap();
+		fs::write(app_dir.join("invalid_name.rs"), "").unwrap();
+
+		let highest = MigrationNumbering::get_highest_number(&migrations_dir, "myapp");
+		assert_eq!(highest, 1);
+	}
+
+	#[test]
+	fn test_get_all_numbers() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let migrations_dir = temp_dir.path().join("migrations");
+
+		// Create multiple apps
+		let app1_dir = migrations_dir.join("app1");
+		let app2_dir = migrations_dir.join("app2");
+		fs::create_dir_all(&app1_dir).unwrap();
+		fs::create_dir_all(&app2_dir).unwrap();
+
+		fs::write(app1_dir.join("0001_initial.rs"), "").unwrap();
+		fs::write(app1_dir.join("0002_add_field.rs"), "").unwrap();
+
+		fs::write(app2_dir.join("0001_initial.rs"), "").unwrap();
+
+		let all_numbers = MigrationNumbering::get_all_numbers(&migrations_dir);
+		assert_eq!(all_numbers.get("app1"), Some(&2));
+		assert_eq!(all_numbers.get("app2"), Some(&1));
+	}
+
+	#[test]
+	fn test_zero_padding() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let migrations_dir = temp_dir.path().join("migrations");
+		let app_dir = migrations_dir.join("myapp");
+		fs::create_dir_all(&app_dir).unwrap();
+
+		// Create migration with number 99
+		fs::write(app_dir.join("0099_test.rs"), "").unwrap();
+
+		let next = MigrationNumbering::next_number(&migrations_dir, "myapp");
+		assert_eq!(next, "0100");
+	}
+}
