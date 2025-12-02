@@ -98,7 +98,7 @@ impl BaseCommand for MigrateCommand {
 			let migrations_to_apply: Vec<_> = if let Some(ref app) = app_label {
 				all_migrations
 					.into_iter()
-					.filter(|m| &m.app_label == app)
+					.filter(|m| m.app_label == app)
 					.collect()
 			} else {
 				all_migrations.into_iter().collect()
@@ -166,7 +166,7 @@ impl BaseCommand for MigrateCommand {
 				// Record each migration as applied without executing
 				for migration in &migrations_to_apply {
 					executor
-						.record_migration(&migration.app_label, &migration.name)
+						.record_migration(migration.app_label, migration.name)
 						.await
 						.map_err(|e| {
 							crate::CommandError::ExecutionError(format!(
@@ -220,8 +220,10 @@ impl BaseCommand for MigrateCommand {
 }
 
 /// Make migrations command
+#[cfg(feature = "migrations")]
 pub struct MakeMigrationsCommand;
 
+#[cfg(feature = "migrations")]
 #[async_trait]
 impl BaseCommand for MakeMigrationsCommand {
 	fn name(&self) -> &str {
@@ -247,6 +249,7 @@ impl BaseCommand for MakeMigrationsCommand {
 				"Show what would be created without writing files",
 			),
 			CommandOption::flag(None, "empty", "Create empty migration"),
+			CommandOption::flag(Some('v'), "verbose", "Show detailed operation list"),
 			CommandOption::option(Some('n'), "name", "Name for the migration"),
 			CommandOption::option(None, "migrations-dir", "Directory for migration files")
 				.with_default("migrations"),
@@ -254,6 +257,72 @@ impl BaseCommand for MakeMigrationsCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		fn operation_description(operation: &reinhardt_db::migrations::Operation) -> String {
+			use reinhardt_db::migrations::Operation;
+
+			match operation {
+				// Table operations (corresponds to Model operations in Django)
+				Operation::CreateTable { name, .. } => format!("Create model {}", name),
+				Operation::DropTable { name } => format!("Delete model {}", name),
+				Operation::RenameTable { old_name, new_name } => {
+					format!("Rename model {} to {}", old_name, new_name)
+				}
+
+				// Column operations (corresponds to Field operations in Django)
+				Operation::AddColumn { table, column } => {
+					format!("Add field {} to {}", column.name, table)
+				}
+				Operation::DropColumn { table, column } => {
+					format!("Remove field {} from {}", column, table)
+				}
+				Operation::AlterColumn { table, column, .. } => {
+					format!("Alter field {} on {}", column, table)
+				}
+				Operation::RenameColumn {
+					table,
+					old_name,
+					new_name,
+				} => {
+					format!("Rename field {} to {} on {}", old_name, new_name, table)
+				}
+
+				// Index operations
+				Operation::CreateIndex {
+					table,
+					columns,
+					unique,
+				} => {
+					let index_type = if *unique { "unique index" } else { "index" };
+					format!(
+						"Create {} on {} ({})",
+						index_type,
+						table,
+						columns.join(", ")
+					)
+				}
+				Operation::DropIndex { table, columns } => {
+					format!("Remove index on {} ({})", table, columns.join(", "))
+				}
+
+				// Constraint operations
+				Operation::AddConstraint { table, .. } => {
+					format!("Add constraint on {}", table)
+				}
+				Operation::DropConstraint {
+					table,
+					constraint_name,
+				} => {
+					format!("Remove constraint {} from {}", constraint_name, table)
+				}
+
+				// Special operations
+				Operation::RunSQL { .. } => "Execute custom SQL".to_string(),
+				Operation::RunRust { .. } => "Execute custom Rust code".to_string(),
+
+				// Other operations
+				_ => format!("{:?}", operation),
+			}
+		}
 		use std::path::PathBuf;
 		ctx.info("Detecting model changes...");
 
@@ -306,9 +375,9 @@ impl BaseCommand for MakeMigrationsCommand {
 						.collect();
 
 					// Simple sort by name (assumes timestamp prefix)
-					app_migrations.sort_by(|a, b| a.name.cmp(&b.name));
+					app_migrations.sort_by(|a, b| a.name.cmp(b.name));
 
-					app_migrations.last().map(|m| m.name.clone())
+					app_migrations.last().cloned()
 				}
 			};
 
@@ -321,8 +390,8 @@ impl BaseCommand for MakeMigrationsCommand {
 				})?;
 
 				let last_migration = get_last_migration(app_name.clone()).await;
-				let dependencies = if let Some(last) = last_migration {
-					vec![(app_name.clone(), last)]
+				let dependencies = if let Some(ref last) = last_migration {
+					vec![(app_name.clone(), last.name)]
 				} else {
 					Vec::new()
 				};
@@ -332,10 +401,13 @@ impl BaseCommand for MakeMigrationsCommand {
 				});
 
 				let new_migration = reinhardt_db::migrations::Migration {
-					app_label: app_name.clone(),
-					name: name.clone(),
+					app_label: Box::leak(app_name.clone().into_boxed_str()),
+					name: Box::leak(name.clone().into_boxed_str()),
 					operations: Vec::new(),
-					dependencies,
+					dependencies: dependencies
+						.into_iter()
+						.map(|(a, n)| (Box::leak(a.into_boxed_str()) as &'static str, n))
+						.collect(),
 					atomic: true,
 					replaces: Vec::new(),
 				};
@@ -362,18 +434,73 @@ impl BaseCommand for MakeMigrationsCommand {
 			let target_project_state = ProjectState::from_global_registry();
 			let _target_schema = target_project_state.to_database_schema();
 
-			// 2. Get current database schema through introspection
+			// 2. Check for unapplied migrations before generating new ones
 			let database_url = get_database_url()?;
 
-			let (db_type, _connection) = connect_database(&database_url)
+			// First, check if there are existing migration files and connect to database
+			let all_migrations = service.load_all().await.map_err(|e| {
+				CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
+			})?;
+
+			// Connect to database for both migration check and introspection
+			let (db_type, connection) = connect_database(&database_url)
 				.await
 				.map_err(|e| CommandError::ExecutionError(format!("Failed to connect: {}", e)))?;
 
+			if !all_migrations.is_empty() {
+				// Check which migrations are applied
+				let executor = DatabaseMigrationExecutor::new(connection.clone(), db_type);
+
+				// Try to check for unapplied migrations
+				match executor.build_plan(&service).await {
+					Ok(unapplied_migrations) => {
+						if !unapplied_migrations.is_empty() {
+							ctx.warning(&format!(
+							"You have {} unapplied migration(s). Apply them first with 'migrate' before creating new migrations:",
+							unapplied_migrations.len()
+						));
+							for (app, name) in &unapplied_migrations {
+								ctx.warning(&format!("  - {}.{}", app, name));
+							}
+							return Err(CommandError::ExecutionError(
+							"Cannot create new migrations while there are unapplied migrations. Run 'migrate' first.".to_string(),
+						));
+						}
+					}
+					Err(e) => {
+						// If the error is about missing reinhardt_migrations table, database hasn't been initialized
+						// In this case, if migration files exist, warn the user to run migrate first
+						let error_msg = format!("{:?}", e);
+						if error_msg.contains("no such table")
+							|| error_msg.contains("reinhardt_migrations")
+						{
+							ctx.warning(&format!(
+								"Database not initialized, but {} migration file(s) exist.",
+								all_migrations.len()
+							));
+							ctx.warning(
+								"You should run 'migrate' to apply existing migrations before creating new ones.",
+							);
+							return Err(CommandError::ExecutionError(
+							"Run 'migrate' first to initialize the database and apply existing migrations.".to_string(),
+						));
+						} else {
+							// For other errors, return them
+							return Err(CommandError::ExecutionError(format!(
+								"Failed to check unapplied migrations: {}",
+								e
+							)));
+						}
+					}
+				}
+			}
+
+			// 3. Get current database schema through introspection
 			let _introspector: Arc<dyn DatabaseIntrospector> = match db_type {
 				#[cfg(feature = "postgres")]
 				DatabaseType::Postgres => Arc::new(
 					reinhardt_db::migrations::introspection::PostgresIntrospector::new(
-						_connection
+						connection
 							.into_postgres()
 							.expect("Failed to get Postgres connection"),
 					),
@@ -381,7 +508,7 @@ impl BaseCommand for MakeMigrationsCommand {
 				#[cfg(feature = "sqlite")]
 				DatabaseType::Sqlite => Arc::new(
 					reinhardt_db::migrations::introspection::SQLiteIntrospector::new(
-						_connection
+						connection
 							.into_sqlite()
 							.expect("Failed to get SQLite connection"),
 					),
@@ -389,12 +516,12 @@ impl BaseCommand for MakeMigrationsCommand {
 				#[cfg(feature = "mysql")]
 				DatabaseType::Mysql => Arc::new(
 					reinhardt_db::migrations::introspection::MySQLIntrospector::new(
-						_connection
+						connection
 							.into_mysql()
 							.expect("Failed to get MySQL connection"),
 					),
 				),
-				#[allow(unreachable_patterns)]
+				#[allow(unreachable_code)]
 				_ => {
 					return Err(CommandError::ExecutionError(format!(
 						"Database type {:?} is not supported for introspection",
@@ -409,74 +536,159 @@ impl BaseCommand for MakeMigrationsCommand {
 				.await
 				.map_err(|e| CommandError::ExecutionError(format!("Introspection error: {}", e)))?;
 
-			#[allow(unreachable_code)]
-			let current_schema = current_introspection_schema.into();
+			let current_schema: reinhardt_db::migrations::DatabaseSchema =
+				current_introspection_schema.into();
 
-			// Create auto-migration generator
-			#[allow(unreachable_code)]
-			let generator = AutoMigrationGenerator::new(_target_schema, migrations_dir.clone());
+			// Determine which apps to process
+			let app_names: Vec<String> = if let Some(label) = app_label {
+				// Explicit app label specified
+				vec![label]
+			} else {
+				// Extract all app labels from ProjectState
+				let changed_apps: Vec<String> = target_project_state
+					.models
+					.keys()
+					.map(|(app_label, _)| app_label.clone())
+					.collect::<std::collections::HashSet<_>>()
+					.into_iter()
+					.collect();
 
-			// Generate migration operations
-			let auto_migration_result = generator.generate(current_schema).await;
+				if changed_apps.is_empty() {
+					return Err(CommandError::ExecutionError(
+						"No models found. Cannot determine app_label automatically.".to_string(),
+					));
+				}
 
-			match auto_migration_result {
-				Ok(result) => {
-					ctx.info(&format!("Detected {} operation(s)", result.operation_count));
+				changed_apps
+			};
 
-					if result.has_destructive_changes {
-						ctx.warning("WARNING: Detected potentially destructive changes.");
-						ctx.warning("Please review the generated migration carefully.");
+			// Phase 1: Validate migrations for all apps (without writing files)
+			struct MigrationResult {
+				app_name: String,
+				migration: reinhardt_db::migrations::Migration,
+				file_path: PathBuf,
+			}
+
+			let mut results: Vec<MigrationResult> = Vec::new();
+			let mut had_errors = false;
+			let is_verbose = ctx.has_option("verbose");
+
+			for app_name in &app_names {
+				// Get app-specific schemas
+				let target_schema_for_app =
+					target_project_state.to_database_schema_for_app(app_name);
+				let current_schema_for_app = current_schema.filter_by_app(app_name);
+
+				// Create auto-migration generator for this app
+				let generator =
+					AutoMigrationGenerator::new(target_schema_for_app, migrations_dir.clone());
+
+				// Get last migration operations for duplicate detection
+				let last_migration_operations = get_last_migration(app_name.clone())
+					.await
+					.map(|m| m.operations);
+
+				// Generate migration operations
+				let auto_migration_result = generator
+					.generate(current_schema_for_app, last_migration_operations)
+					.await;
+
+				match auto_migration_result {
+					Ok(result) => {
+						if result.has_destructive_changes {
+							ctx.warning(&format!(
+								"[{}] WARNING: Detected potentially destructive changes.",
+								app_name
+							));
+						}
+
+						// Get last migration for dependency resolution
+						let last_migration = get_last_migration(app_name.clone()).await;
+						let dependencies = if let Some(ref last) = last_migration {
+							vec![(app_name.clone(), last.name)]
+						} else {
+							Vec::new()
+						};
+
+						let new_migration = reinhardt_db::migrations::Migration {
+							app_label: Box::leak(app_name.clone().into_boxed_str()),
+							name: Box::leak(
+								migration_name_opt
+									.clone()
+									.unwrap_or_else(|| {
+										result
+											.migration_file
+											.file_stem()
+											.and_then(|s| s.to_str())
+											.unwrap_or("unnamed_migration")
+											.to_string()
+									})
+									.into_boxed_str(),
+							),
+							operations: result.operations,
+							dependencies: dependencies
+								.into_iter()
+								.map(|(a, n)| (Box::leak(a.into_boxed_str()) as &'static str, n))
+								.collect(),
+							atomic: true,
+							replaces: Vec::new(),
+						};
+
+						results.push(MigrationResult {
+							app_name: app_name.clone(),
+							migration: new_migration,
+							file_path: result.migration_file,
+						});
 					}
+					Err(reinhardt_db::migrations::AutoMigrationError::NoChangesDetected) => {
+						// No changes for this app - skip
+					}
+					Err(e) => {
+						ctx.warning(&format!("[{}] Failed: {}", app_name, e));
+						had_errors = true;
+						break; // Stop immediately on first error (All-or-Nothing)
+					}
+				}
+			}
 
-					// Resolve dependencies
-					let app_name = app_label.unwrap_or_else(|| "auto".to_string());
-					let last_migration = get_last_migration(app_name.clone()).await;
-					let dependencies = if let Some(last) = last_migration {
-						vec![(app_name.clone(), last)]
-					} else {
-						Vec::new()
-					};
-
-					let new_migration = reinhardt_db::migrations::Migration {
-						app_label: app_name,
-						name: migration_name_opt.unwrap_or_else(|| {
-							result
-								.migration_file
-								.file_stem()
-								.and_then(|s| s.to_str())
-								.unwrap_or("unnamed_migration")
-								.to_string()
-						}),
-						operations: result.operations,
-						dependencies,
-						atomic: true,
-						replaces: Vec::new(),
-					};
+			// Phase 2: Write all migrations if no errors occurred
+			if !had_errors && !results.is_empty() {
+				for result in results {
+					ctx.info(&format!("Migrations for '{}':", result.app_name));
 
 					if !is_dry_run {
-						service.save_migration(&new_migration).await.map_err(|e| {
-							CommandError::ExecutionError(format!("Save error: {}", e))
-						})?;
-						ctx.success(&format!(
-							"Created migration file: {}",
-							result.migration_file.display()
-						));
+						service
+							.save_migration(&result.migration)
+							.await
+							.map_err(|e| {
+								CommandError::ExecutionError(format!("Save error: {}", e))
+							})?;
+						ctx.success(&format!("  {}", result.file_path.display()));
+
+						// Show detailed operations if --verbose
+						if is_verbose {
+							for operation in &result.migration.operations {
+								let description = operation_description(operation);
+								ctx.info(&format!("    - {}", description));
+							}
+						}
 					} else {
-						ctx.info(&format!(
-							"Would create migration file: {}",
-							result.migration_file.display()
-						));
+						ctx.info(&format!("  Would create: {}", result.file_path.display()));
+
+						if is_verbose {
+							for operation in &result.migration.operations {
+								let description = operation_description(operation);
+								ctx.info(&format!("    - {}", description));
+							}
+						}
 					}
 				}
-				Err(reinhardt_db::migrations::AutoMigrationError::NoChangesDetected) => {
-					ctx.info("No changes detected");
-				}
-				Err(e) => {
-					return Err(CommandError::ExecutionError(format!(
-						"Failed to generate migrations: {}",
-						e
-					)));
-				}
+			} else if had_errors {
+				return Err(CommandError::ExecutionError(
+					"Migration generation failed. No files were created.".to_string(),
+				));
+			} else {
+				ctx.info("No changes detected");
 			}
 
 			Ok(())
@@ -1281,7 +1493,6 @@ impl CheckCommand {
 						DatabaseType::MongoDB => {
 							// MongoDB connection is verified at connection time
 						}
-						#[allow(unreachable_patterns)]
 						_ => {
 							// MySQL or other database types that don't have SQL execution support yet
 						}
@@ -1371,7 +1582,7 @@ impl CheckCommand {
 			let mut unapplied_count = 0;
 			for migration in &all_migrations {
 				let is_applied = recorder
-					.is_applied(&migration.app_label, &migration.name)
+					.is_applied(migration.app_label, migration.name)
 					.await
 					.map_err(|e| format!("Failed to check migration: {}", e))?;
 
@@ -1411,138 +1622,6 @@ impl CheckCommand {
 		}
 
 		passed
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[tokio::test]
-	async fn test_check_command_basic() {
-		let cmd = CheckCommand;
-		let ctx = CommandContext::default();
-
-		// Should succeed when no DATABASE_URL is set (skips DB check)
-		let result = cmd.execute(&ctx).await;
-		// May fail if environment has strict checks, but should handle gracefully
-		assert!(result.is_ok() || result.is_err());
-	}
-
-	#[tokio::test]
-	async fn test_check_command_with_deploy_flag() {
-		let cmd = CheckCommand;
-		let mut ctx = CommandContext::default();
-		ctx.set_option("deploy".to_string(), "true".to_string());
-
-		// Deploy checks are stricter and may fail
-		let result = cmd.execute(&ctx).await;
-		assert!(result.is_ok() || result.is_err());
-	}
-
-	#[tokio::test]
-	#[cfg(feature = "routers")]
-	async fn test_showurls_command() {
-		let cmd = ShowUrlsCommand;
-		let ctx = CommandContext::default();
-
-		let result = cmd.execute(&ctx).await;
-		assert!(result.is_ok());
-	}
-
-	#[tokio::test]
-	#[serial_test::serial(env_change)]
-	async fn test_migrate_command() {
-		let cmd = MigrateCommand;
-		let ctx = CommandContext::default();
-
-		// Without migrations feature or DATABASE_URL, should handle gracefully
-		let result = cmd.execute(&ctx).await;
-		#[cfg(feature = "migrations")]
-		{
-			// May fail without DATABASE_URL, which is expected
-			assert!(result.is_ok() || result.is_err());
-		}
-		#[cfg(not(feature = "migrations"))]
-		{
-			assert!(result.is_ok());
-		}
-	}
-
-	#[tokio::test]
-	#[serial_test::serial(env_change)]
-	async fn test_makemigrations_command() {
-		unsafe { std::env::set_var("DATABASE_URL", "sqlite://:memory:") };
-		let cmd = MakeMigrationsCommand;
-		let ctx = CommandContext::default();
-
-		let result = cmd.execute(&ctx).await;
-		unsafe { std::env::remove_var("DATABASE_URL") };
-
-		// Should succeed (either creates migrations or reports "No changes detected")
-		#[cfg(feature = "sqlite")]
-		assert!(result.is_ok(), "Failed with: {:?}", result.err());
-	}
-
-	#[tokio::test]
-	#[serial_test::serial(env_change)]
-	async fn test_makemigrations_with_dry_run() {
-		unsafe { std::env::set_var("DATABASE_URL", "sqlite://:memory:") };
-		let cmd = MakeMigrationsCommand;
-		let mut ctx = CommandContext::default();
-		ctx.set_option("dry-run".to_string(), "true".to_string());
-
-		let result = cmd.execute(&ctx).await;
-		unsafe { std::env::remove_var("DATABASE_URL") };
-
-		#[cfg(feature = "sqlite")]
-		assert!(result.is_ok(), "Failed with: {:?}", result.err());
-	}
-
-	#[tokio::test]
-	#[serial_test::serial(runserver)]
-	async fn test_runserver_command() {
-		// Test without server feature - should show warnings
-		#[cfg(not(feature = "server"))]
-		{
-			let cmd = RunServerCommand;
-			let ctx = CommandContext::default();
-			let result = cmd.execute(&ctx).await;
-			assert!(result.is_ok());
-		}
-
-		// Test with server feature - spawn server with timeout
-		// Server blocks indefinitely, so timeout is expected
-		#[cfg(feature = "server")]
-		{
-			use reinhardt_urls::routers::UnifiedRouter;
-
-			// Register a dummy router for the test
-			let router = UnifiedRouter::new();
-			reinhardt_urls::routers::register_router(router);
-
-			// Create context with noreload option to disable autoreload
-			let mut ctx = CommandContext::default();
-			ctx.set_option("noreload".to_string(), "true".to_string());
-
-			// Spawn server in background task
-			let server_task = tokio::spawn(async move {
-				let cmd = RunServerCommand;
-				cmd.execute(&ctx).await
-			});
-
-			// Abort the server task (server blocks, so we need to abort)
-			server_task.abort();
-
-			// Wait for task to be aborted
-			let result = server_task.await;
-
-			// Cleanup: clear the registered router
-			reinhardt_urls::routers::clear_router();
-
-			// Task should have been cancelled
-			assert!(result.is_err(), "Server task should have been cancelled");
-		}
 	}
 }
 
@@ -1617,13 +1696,144 @@ async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseCon
 				})?;
 			Ok((db_type, conn))
 		}
-		#[allow(unreachable_patterns)]
 		_ => {
 			// MySQL or other database types
 			Err(crate::CommandError::ExecutionError(format!(
 				"Database type {:?} is not yet supported in this feature configuration",
 				db_type
 			)))
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[tokio::test]
+	async fn test_check_command_basic() {
+		let cmd = CheckCommand;
+		let ctx = CommandContext::default();
+
+		// Should succeed when no DATABASE_URL is set (skips DB check)
+		let result = cmd.execute(&ctx).await;
+		// May fail if environment has strict checks, but should handle gracefully
+		assert!(result.is_ok() || result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_check_command_with_deploy_flag() {
+		let cmd = CheckCommand;
+		let mut ctx = CommandContext::default();
+		ctx.set_option("deploy".to_string(), "true".to_string());
+
+		// Deploy checks are stricter and may fail
+		let result = cmd.execute(&ctx).await;
+		assert!(result.is_ok() || result.is_err());
+	}
+
+	#[tokio::test]
+	#[cfg(feature = "routers")]
+	async fn test_showurls_command() {
+		let cmd = ShowUrlsCommand;
+		let ctx = CommandContext::default();
+
+		let result = cmd.execute(&ctx).await;
+		assert!(result.is_ok());
+	}
+
+	#[tokio::test]
+	#[serial_test::serial(env_change)]
+	async fn test_migrate_command() {
+		let cmd = MigrateCommand;
+		let ctx = CommandContext::default();
+
+		// Without migrations feature or DATABASE_URL, should handle gracefully
+		let result = cmd.execute(&ctx).await;
+		#[cfg(feature = "migrations")]
+		{
+			// May fail without DATABASE_URL, which is expected
+			assert!(result.is_ok() || result.is_err());
+		}
+		#[cfg(not(feature = "migrations"))]
+		{
+			assert!(result.is_ok());
+		}
+	}
+
+	#[tokio::test]
+	#[serial_test::serial(env_change)]
+	async fn test_makemigrations_command() {
+		unsafe { std::env::set_var("DATABASE_URL", "sqlite://:memory:") };
+		let cmd = MakeMigrationsCommand;
+		let ctx = CommandContext::default();
+
+		let _result = cmd.execute(&ctx).await;
+		unsafe { std::env::remove_var("DATABASE_URL") };
+
+		// Should succeed (either creates migrations or reports "No changes detected")
+		#[cfg(feature = "sqlite")]
+		assert!(_result.is_ok(), "Failed with: {:?}", _result.err());
+	}
+
+	#[tokio::test]
+	#[serial_test::serial(env_change)]
+	async fn test_makemigrations_with_dry_run() {
+		unsafe { std::env::set_var("DATABASE_URL", "sqlite://:memory:") };
+		let cmd = MakeMigrationsCommand;
+		let mut ctx = CommandContext::default();
+		ctx.set_option("dry-run".to_string(), "true".to_string());
+
+		let _result = cmd.execute(&ctx).await;
+		unsafe { std::env::remove_var("DATABASE_URL") };
+
+		#[cfg(feature = "sqlite")]
+		assert!(_result.is_ok(), "Failed with: {:?}", _result.err());
+	}
+
+	#[tokio::test]
+	#[serial_test::serial(runserver)]
+	async fn test_runserver_command() {
+		// Test without server feature - should show warnings
+		#[cfg(not(feature = "server"))]
+		{
+			let cmd = RunServerCommand;
+			let ctx = CommandContext::default();
+			let result = cmd.execute(&ctx).await;
+			assert!(result.is_ok());
+		}
+
+		// Test with server feature - spawn server with timeout
+		// Server blocks indefinitely, so timeout is expected
+		#[cfg(feature = "server")]
+		{
+			use reinhardt_urls::routers::UnifiedRouter;
+
+			// Register a dummy router for the test
+			let router = UnifiedRouter::new();
+			reinhardt_urls::routers::register_router(router);
+
+			// Create context with noreload option to disable autoreload
+			let mut ctx = CommandContext::default();
+			ctx.set_option("noreload".to_string(), "true".to_string());
+
+			// Spawn server in background task
+			let server_task = tokio::spawn(async move {
+				let cmd = RunServerCommand;
+				cmd.execute(&ctx).await
+			});
+
+			// Abort the server task (server blocks, so we need to abort)
+			server_task.abort();
+
+			// Wait for task to be aborted
+			let result = server_task.await;
+
+			// Cleanup: clear the registered router
+			reinhardt_urls::routers::clear_router();
+
+			// Task should have been cancelled
+			assert!(result.is_err(), "Server task should have been cancelled");
 		}
 	}
 }

@@ -76,3 +76,18 @@ mongodb-backend = ["reinhardt-db?/mongodb-backend"]
 postgres = ["reinhardt-db?/postgres"]
 sqlite = ["reinhardt-db?/sqlite", "dep:sqlx", "sqlx/sqlite"]
 mysql = ["reinhardt-db?/mysql"]
+full = [
+  "migrations",
+  "routers",
+  "server",
+  "autoreload",
+  "cargo-watch-reload",
+  "shell",
+  "shell-rhai",
+  "shell-pyo3",
+  "reinhardt-db",
+  "mongodb-backend",
+  "postgres",
+  "sqlite",
+  "mysql",
+]
