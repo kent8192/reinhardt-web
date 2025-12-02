@@ -128,6 +128,85 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }
 
 **Binary**: ~50+ MB | **Compile**: Slow
 
+**Note**: The `full` feature now recursively enables all `-full` features in sub-crates, ensuring comprehensive activation of all functionality.
+
+---
+
+### Recursive `-full` Feature Structure
+
+Reinhardt implements a **recursive feature flag system** where each crate level provides its own `full` or `{module}-full` feature that aggregates all features from that crate and its sub-crates.
+
+**Three-Level Architecture:**
+
+1. **Sub-Crate Level**: Individual `full` features
+   - Example: `reinhardt-orm/full`, `reinhardt-sessions/full`
+   - Aggregates all features within that specific sub-crate
+
+2. **Parent Crate Level**: Module-specific `{module}-full` features
+   - Example: `reinhardt-db/database-full`, `reinhardt-core/core-full`, `reinhardt-rest/rest-full`
+   - Aggregates all module features + all sub-crate `full` features
+
+3. **Root Crate Level**: Top-level `full` feature
+   - Aggregates all parent `{module}-full` + all standalone crate `full` features
+   - Provides complete framework activation
+
+**Example Activation Chain:**
+
+```toml
+# Root level
+reinhardt = { features = ["full"] }
+# ↓ enables
+# reinhardt-db/database-full
+# ↓ enables
+# reinhardt-orm/full, reinhardt-migrations/full, etc.
+```
+
+**Parent Crate `-full` Features:**
+
+| Parent Crate | Full Feature | Includes |
+|--------------|--------------|----------|
+| `reinhardt-db` | `database-full` | All 8 database sub-crates with their `full` features |
+| `reinhardt-core` | `core-full` | All 11 core sub-crates with their `full` features |
+| `reinhardt-rest` | `rest-full` | All 9 REST sub-crates with their `full` features |
+| `reinhardt-template` | `template-full` | All 3 template sub-crates with their `full` features |
+| `reinhardt-urls` | `urls-full` | All 3 URL routing sub-crates with their `full` features |
+| `reinhardt-views` | `views-full` | ViewSets sub-crate with `full` feature |
+| `reinhardt-auth` | `auth-full` | Sessions sub-crate + all auth features |
+| `reinhardt-di` | `di-full` | Params sub-crate + DI features |
+| `reinhardt-utils` | `utils-full` | All 4 utility sub-crates with their `full` features |
+| `reinhardt-admin` | `admin-full` | Panel sub-crate with `full` feature |
+| `reinhardt-server` | `server-full` | Server sub-crate with `full` feature |
+
+**Direct Usage of Module-Specific Features:**
+
+You can directly use module-specific `-full` features for fine-grained control:
+
+```toml
+# Enable only database functionality with all sub-features
+reinhardt-db = { version = "0.1.0-alpha.1", features = ["database-full"] }
+
+# Enable only REST API functionality with all sub-features
+reinhardt-rest = { version = "0.1.0-alpha.1", features = ["rest-full"] }
+
+# Combine multiple module-full features
+reinhardt = {
+    version = "0.1.0-alpha.1",
+    default-features = false,
+    features = [
+        "minimal",
+        "reinhardt-db/database-full",
+        "reinhardt-rest/rest-full"
+    ]
+}
+```
+
+**Benefits:**
+
+- **Comprehensive Activation**: One `full` feature activates everything at that level and below
+- **Modular Control**: Use `{module}-full` for specific functional domains
+- **Predictable Behavior**: Clear hierarchy prevents missing features
+- **Easy Testing**: Quickly enable all features for a module during development
+
 ---
 
 ### Preset Bundles
