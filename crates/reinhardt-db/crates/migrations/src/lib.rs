@@ -42,6 +42,7 @@ pub mod graph;
 pub mod introspection;
 pub mod migration;
 pub mod model_registry;
+pub mod operation_trait;
 pub mod operations;
 pub mod plan;
 pub mod recorder;
@@ -81,6 +82,7 @@ pub use executor::{
 pub use graph::{MigrationGraph, MigrationKey, MigrationNode};
 pub use migration::Migration;
 pub use model_registry::{FieldMetadata, ModelMetadata, ModelRegistry, global_registry};
+pub use operation_trait::MigrationOperation;
 pub use operations::{
 	AddColumn, AlterColumn, ColumnDefinition, CreateTable, DropColumn, Operation, SqlDialect,
 };
