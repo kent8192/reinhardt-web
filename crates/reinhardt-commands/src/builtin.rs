@@ -351,7 +351,8 @@ impl BaseCommand for MakeMigrationsCommand {
 			use crate::CommandError;
 			use reinhardt_db::migrations::{
 				AutoMigrationGenerator, DatabaseIntrospector, FilesystemRepository,
-				FilesystemSource, MigrationService, autodetector::ProjectState,
+				FilesystemSource, MigrationNamer, MigrationNumbering, MigrationRepository,
+				MigrationService, autodetector::ProjectState,
 			};
 			use std::sync::Arc;
 			use tokio::sync::Mutex;
@@ -396,10 +397,10 @@ impl BaseCommand for MakeMigrationsCommand {
 					Vec::new()
 				};
 
-				let name = migration_name_opt.unwrap_or_else(|| {
-					format!("custom_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"))
-				});
-
+				// Generate migration name using new naming system
+				let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
+				let base_name = migration_name_opt.unwrap_or_else(|| "custom".to_string());
+				let name = format!("{}_{}", migration_number, base_name);
 				let new_migration = reinhardt_db::migrations::Migration {
 					app_label: Box::leak(app_name.clone().into_boxed_str()),
 					name: Box::leak(name.clone().into_boxed_str()),
@@ -410,6 +411,7 @@ impl BaseCommand for MakeMigrationsCommand {
 						.collect(),
 					atomic: true,
 					replaces: Vec::new(),
+				initial: None,
 				};
 
 				if !is_dry_run {
@@ -566,7 +568,6 @@ impl BaseCommand for MakeMigrationsCommand {
 			struct MigrationResult {
 				app_name: String,
 				migration: reinhardt_db::migrations::Migration,
-				file_path: PathBuf,
 			}
 
 			let mut results: Vec<MigrationResult> = Vec::new();
@@ -579,18 +580,22 @@ impl BaseCommand for MakeMigrationsCommand {
 					target_project_state.to_database_schema_for_app(app_name);
 				let current_schema_for_app = current_schema.filter_by_app(app_name);
 
-				// Create auto-migration generator for this app
-				let generator =
-					AutoMigrationGenerator::new(target_schema_for_app, migrations_dir.clone());
+				// Create repository for state management
+				let repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>> =
+					Arc::new(tokio::sync::Mutex::new(FilesystemRepository::new(
+						migrations_dir.clone(),
+					)));
 
-				// Get last migration operations for duplicate detection
-				let last_migration_operations = get_last_migration(app_name.clone())
-					.await
-					.map(|m| m.operations);
+				// Create auto-migration generator for this app
+				let generator = AutoMigrationGenerator::new(
+					target_schema_for_app,
+					migrations_dir.clone(),
+					repository,
+				);
 
 				// Generate migration operations
 				let auto_migration_result = generator
-					.generate(current_schema_for_app, last_migration_operations)
+					.generate(app_name, current_schema_for_app)
 					.await;
 
 				match auto_migration_result {
@@ -610,21 +615,21 @@ impl BaseCommand for MakeMigrationsCommand {
 							Vec::new()
 						};
 
+						// Determine if this is an initial migration
+						let is_initial = dependencies.is_empty();
+
+						// Generate migration number
+						let migration_number = MigrationNumbering::next_number(&migrations_dir, app_name);
+
+						// Generate migration name
+						let base_name = migration_name_opt
+							.clone()
+							.unwrap_or_else(|| MigrationNamer::generate_name(&result.operations, is_initial));
+						let final_name = format!("{}_{}", migration_number, base_name);
+
 						let new_migration = reinhardt_db::migrations::Migration {
 							app_label: Box::leak(app_name.clone().into_boxed_str()),
-							name: Box::leak(
-								migration_name_opt
-									.clone()
-									.unwrap_or_else(|| {
-										result
-											.migration_file
-											.file_stem()
-											.and_then(|s| s.to_str())
-											.unwrap_or("unnamed_migration")
-											.to_string()
-									})
-									.into_boxed_str(),
-							),
+							name: Box::leak(final_name.into_boxed_str()),
 							operations: result.operations,
 							dependencies: dependencies
 								.into_iter()
@@ -632,12 +637,12 @@ impl BaseCommand for MakeMigrationsCommand {
 								.collect(),
 							atomic: true,
 							replaces: Vec::new(),
+				initial: Some(is_initial),
 						};
 
 						results.push(MigrationResult {
 							app_name: app_name.clone(),
 							migration: new_migration,
-							file_path: result.migration_file,
 						});
 					}
 					Err(reinhardt_db::migrations::AutoMigrationError::NoChangesDetected) => {
@@ -656,6 +661,12 @@ impl BaseCommand for MakeMigrationsCommand {
 				for result in results {
 					ctx.info(&format!("Migrations for '{}':", result.app_name));
 
+					// Build the correct file path from migration name
+					let migration_file_path = migrations_dir
+						.join(&result.app_name)
+						.join("migrations")
+						.join(format!("{}.rs", result.migration.name));
+
 					if !is_dry_run {
 						service
 							.save_migration(&result.migration)
@@ -663,7 +674,7 @@ impl BaseCommand for MakeMigrationsCommand {
 							.map_err(|e| {
 								CommandError::ExecutionError(format!("Save error: {}", e))
 							})?;
-						ctx.success(&format!("  {}", result.file_path.display()));
+						ctx.success(&format!("  {}", migration_file_path.display()));
 
 						// Show detailed operations if --verbose
 						if is_verbose {
@@ -673,7 +684,7 @@ impl BaseCommand for MakeMigrationsCommand {
 							}
 						}
 					} else {
-						ctx.info(&format!("  Would create: {}", result.file_path.display()));
+						ctx.info(&format!("  Would create: {}", migration_file_path.display()));
 
 						if is_verbose {
 							for operation in &result.migration.operations {
