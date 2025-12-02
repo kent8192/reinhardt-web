@@ -55,8 +55,8 @@
 //!     let registry = LocalRegistry::new();
 //!
 //!     registry.register(Migration {
-//!         app_label: "polls".to_string(),
-//!         name: "0001_initial".to_string(),
+//!         app_label: "polls",
+//!         name: "0001_initial",
 //!         operations: vec![],
 //!         dependencies: vec![],
 //!     }).unwrap();

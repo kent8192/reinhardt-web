@@ -69,7 +69,7 @@ impl MigrationRegistry for LocalRegistry {
 			.map(|migrations| {
 				let mut labels: Vec<String> = migrations
 					.iter()
-					.map(|m| m.app_label.clone())
+					.map(|m| m.app_label.to_string())
 					.collect::<HashSet<_>>()
 					.into_iter()
 					.collect();
@@ -110,8 +110,8 @@ mod tests {
 		let registry = LocalRegistry::new();
 
 		let migration = Migration {
-			app_label: "polls".to_string(),
-			name: "0001_initial".to_string(),
+			app_label: "polls",
+			name: "0001_initial",
 			operations: vec![],
 			dependencies: vec![],
 			replaces: vec![],
@@ -132,8 +132,8 @@ mod tests {
 
 		registry
 			.register(Migration {
-				app_label: "polls".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "polls",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -143,8 +143,8 @@ mod tests {
 
 		registry
 			.register(Migration {
-				app_label: "users".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "users",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -154,8 +154,8 @@ mod tests {
 
 		registry
 			.register(Migration {
-				app_label: "polls".to_string(),
-				name: "0002_add_field".to_string(),
+				app_label: "polls",
+				name: "0002_add_field",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -178,8 +178,8 @@ mod tests {
 
 		registry
 			.register(Migration {
-				app_label: "polls".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "polls",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -189,8 +189,8 @@ mod tests {
 
 		registry
 			.register(Migration {
-				app_label: "users".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "users",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -200,8 +200,8 @@ mod tests {
 
 		registry
 			.register(Migration {
-				app_label: "polls".to_string(),
-				name: "0002_add_field".to_string(),
+				app_label: "polls",
+				name: "0002_add_field",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -220,8 +220,8 @@ mod tests {
 
 		registry
 			.register(Migration {
-				app_label: "polls".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "polls",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -243,8 +243,8 @@ mod tests {
 
 		registry1
 			.register(Migration {
-				app_label: "app1".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "app1",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -254,8 +254,8 @@ mod tests {
 
 		registry2
 			.register(Migration {
-				app_label: "app2".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "app2",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -278,8 +278,8 @@ mod tests {
 		// Register migrations for different apps
 		registry
 			.register(Migration {
-				app_label: "polls".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "polls",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
@@ -289,8 +289,8 @@ mod tests {
 
 		registry
 			.register(Migration {
-				app_label: "users".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "users",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				replaces: vec![],
