@@ -377,6 +377,68 @@ impl RenameField {
 	}
 }
 
+// MigrationOperation trait implementation for Django-style naming
+use crate::operation_trait::MigrationOperation;
+
+impl MigrationOperation for AddField {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!(
+			"{}_{}",
+			self.model_name.to_lowercase(),
+			self.field.name.to_lowercase()
+		))
+	}
+
+	fn describe(&self) -> String {
+		format!("Add field {} to {}", self.field.name, self.model_name)
+	}
+}
+
+impl MigrationOperation for RemoveField {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!(
+			"remove_{}_{}",
+			self.model_name.to_lowercase(),
+			self.field_name.to_lowercase()
+		))
+	}
+
+	fn describe(&self) -> String {
+		format!("Remove field {} from {}", self.field_name, self.model_name)
+	}
+}
+
+impl MigrationOperation for AlterField {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!(
+			"alter_{}_{}",
+			self.model_name.to_lowercase(),
+			self.field.name.to_lowercase()
+		))
+	}
+
+	fn describe(&self) -> String {
+		format!("Alter field {} on {}", self.field.name, self.model_name)
+	}
+}
+
+impl MigrationOperation for RenameField {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!(
+			"rename_{}_{}",
+			self.model_name.to_lowercase(),
+			self.new_name.to_lowercase()
+		))
+	}
+
+	fn describe(&self) -> String {
+		format!(
+			"Rename field {} to {} on {}",
+			self.old_name, self.new_name, self.model_name
+		)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

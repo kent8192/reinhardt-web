@@ -721,6 +721,60 @@ impl MoveModel {
 	}
 }
 
+// MigrationOperation trait implementation for Django-style naming
+use crate::operation_trait::MigrationOperation;
+
+impl MigrationOperation for CreateModel {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(self.name.to_lowercase())
+	}
+
+	fn describe(&self) -> String {
+		format!("Create model {}", self.name)
+	}
+}
+
+impl MigrationOperation for DeleteModel {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!("delete_{}", self.name.to_lowercase()))
+	}
+
+	fn describe(&self) -> String {
+		format!("Delete model {}", self.name)
+	}
+}
+
+impl MigrationOperation for RenameModel {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!(
+			"rename_{}_to_{}",
+			self.old_name.to_lowercase(),
+			self.new_name.to_lowercase()
+		))
+	}
+
+	fn describe(&self) -> String {
+		format!("Rename model {} to {}", self.old_name, self.new_name)
+	}
+}
+
+impl MigrationOperation for MoveModel {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!(
+			"move_{}_to_{}",
+			self.model_name.to_lowercase(),
+			self.to_app.to_lowercase()
+		))
+	}
+
+	fn describe(&self) -> String {
+		format!(
+			"Move model {} from {} to {}",
+			self.model_name, self.from_app, self.to_app
+		)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

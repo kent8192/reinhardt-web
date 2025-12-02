@@ -1008,6 +1008,238 @@ fn json_to_sea_value(json: &serde_json::Value) -> sea_query::Value {
 	}
 }
 
+// MigrationOperation trait implementation for legacy Operation enum
+use crate::operation_trait::MigrationOperation;
+
+impl MigrationOperation for Operation {
+	fn migration_name_fragment(&self) -> Option<String> {
+		match self {
+			Operation::CreateTable { name, .. } => Some(name.to_lowercase()),
+			Operation::DropTable { name } => Some(format!("delete_{}", name.to_lowercase())),
+			Operation::AddColumn { table, column } => Some(format!(
+				"{}_{}",
+				table.to_lowercase(),
+				column.name.to_lowercase()
+			)),
+			Operation::DropColumn { table, column } => Some(format!(
+				"remove_{}_{}",
+				table.to_lowercase(),
+				column.to_lowercase()
+			)),
+			Operation::AlterColumn { table, column, .. } => Some(format!(
+				"alter_{}_{}",
+				table.to_lowercase(),
+				column.to_lowercase()
+			)),
+			Operation::RenameTable { old_name, new_name } => Some(format!(
+				"rename_{}_to_{}",
+				old_name.to_lowercase(),
+				new_name.to_lowercase()
+			)),
+			Operation::RenameColumn {
+				table, new_name, ..
+			} => Some(format!(
+				"rename_{}_{}",
+				table.to_lowercase(),
+				new_name.to_lowercase()
+			)),
+			Operation::AddConstraint { table, .. } => {
+				Some(format!("add_constraint_{}", table.to_lowercase()))
+			}
+			Operation::DropConstraint {
+				table: _,
+				constraint_name,
+			} => Some(format!(
+				"drop_constraint_{}",
+				constraint_name.to_lowercase()
+			)),
+			Operation::CreateIndex { table, unique, .. } => {
+				if *unique {
+					Some(format!("create_unique_index_{}", table.to_lowercase()))
+				} else {
+					Some(format!("create_index_{}", table.to_lowercase()))
+				}
+			}
+			Operation::DropIndex { table, .. } => {
+				Some(format!("drop_index_{}", table.to_lowercase()))
+			}
+			Operation::RunSQL { .. } => None,  // Triggers auto-naming
+			Operation::RunRust { .. } => None, // Triggers auto-naming
+			Operation::AlterTableComment { table, .. } => {
+				Some(format!("alter_comment_{}", table.to_lowercase()))
+			}
+			Operation::AlterUniqueTogether { table, .. } => {
+				Some(format!("alter_unique_{}", table.to_lowercase()))
+			}
+			Operation::AlterModelOptions { table, .. } => {
+				Some(format!("alter_options_{}", table.to_lowercase()))
+			}
+			Operation::CreateInheritedTable { name, .. } => {
+				Some(format!("create_inherited_{}", name.to_lowercase()))
+			}
+			Operation::AddDiscriminatorColumn { table, .. } => {
+				Some(format!("add_discriminator_{}", table.to_lowercase()))
+			}
+		}
+	}
+
+	fn describe(&self) -> String {
+		match self {
+			Operation::CreateTable { name, .. } => format!("Create table {}", name),
+			Operation::DropTable { name } => format!("Drop table {}", name),
+			Operation::AddColumn { table, column } => {
+				format!("Add column {} to {}", column.name, table)
+			}
+			Operation::DropColumn { table, column } => {
+				format!("Drop column {} from {}", column, table)
+			}
+			Operation::AlterColumn { table, column, .. } => {
+				format!("Alter column {} on {}", column, table)
+			}
+			Operation::RenameTable { old_name, new_name } => {
+				format!("Rename table {} to {}", old_name, new_name)
+			}
+			Operation::RenameColumn {
+				table,
+				old_name,
+				new_name,
+			} => format!("Rename column {} to {} on {}", old_name, new_name, table),
+			Operation::AddConstraint { table, .. } => format!("Add constraint on {}", table),
+			Operation::DropConstraint {
+				table,
+				constraint_name,
+			} => format!("Drop constraint {} from {}", constraint_name, table),
+			Operation::CreateIndex { table, unique, .. } => {
+				if *unique {
+					format!("Create unique index on {}", table)
+				} else {
+					format!("Create index on {}", table)
+				}
+			}
+			Operation::DropIndex { table, .. } => format!("Drop index on {}", table),
+			Operation::RunSQL { sql, .. } => {
+				let preview = if sql.len() > 50 {
+					format!("{}...", &sql[..50])
+				} else {
+					(*sql).to_string()
+				};
+				format!("RunSQL: {}", preview)
+			}
+			Operation::RunRust { code, .. } => {
+				let preview = if code.len() > 50 {
+					format!("{}...", &code[..50])
+				} else {
+					(*code).to_string()
+				};
+				format!("RunRust: {}", preview)
+			}
+			Operation::AlterTableComment { table, comment } => match comment {
+				Some(c) => format!("Set comment on {} to '{}'", table, c),
+				None => format!("Remove comment from {}", table),
+			},
+			Operation::AlterUniqueTogether { table, .. } => {
+				format!("Alter unique_together on {}", table)
+			}
+			Operation::AlterModelOptions { table, .. } => {
+				format!("Alter model options on {}", table)
+			}
+			Operation::CreateInheritedTable {
+				name, base_table, ..
+			} => {
+				format!("Create inherited table {} from {}", name, base_table)
+			}
+			Operation::AddDiscriminatorColumn {
+				table, column_name, ..
+			} => format!("Add discriminator column {} to {}", column_name, table),
+		}
+	}
+
+	/// Normalize operation for semantic comparison
+	///
+	/// Returns a normalized version where order-independent elements are sorted.
+	/// This enables detection of semantically equivalent operations regardless of element ordering.
+	fn normalize(&self) -> Self
+	where
+		Self: Sized + Clone,
+	{
+		match self {
+			// CreateTable: Sort columns and constraints
+			Operation::CreateTable {
+				name,
+				columns,
+				constraints,
+			} => {
+				let mut sorted_columns = columns.clone();
+				sorted_columns.sort_by(|a, b| a.name.cmp(b.name));
+
+				let mut sorted_constraints = constraints.clone();
+				sorted_constraints.sort();
+
+				Operation::CreateTable {
+					name,
+					columns: sorted_columns,
+					constraints: sorted_constraints,
+				}
+			}
+			// CreateIndex: Sort columns
+			Operation::CreateIndex {
+				table,
+				columns,
+				unique,
+			} => {
+				let mut sorted_columns = columns.clone();
+				sorted_columns.sort();
+
+				Operation::CreateIndex {
+					table,
+					columns: sorted_columns,
+					unique: *unique,
+				}
+			}
+			// DropIndex: Sort columns
+			Operation::DropIndex { table, columns } => {
+				let mut sorted_columns = columns.clone();
+				sorted_columns.sort();
+
+				Operation::DropIndex {
+					table,
+					columns: sorted_columns,
+				}
+			}
+			// AlterUniqueTogether: Sort field lists and sort within each list
+			Operation::AlterUniqueTogether {
+				table,
+				unique_together,
+			} => {
+				let mut sorted_unique_together: Vec<Vec<&'static str>> = unique_together
+					.iter()
+					.map(|field_list| {
+						let mut sorted = field_list.clone();
+						sorted.sort();
+						sorted
+					})
+					.collect();
+				sorted_unique_together.sort();
+
+				Operation::AlterUniqueTogether {
+					table,
+					unique_together: sorted_unique_together,
+				}
+			}
+			// AlterModelOptions: HashMap cannot be sorted, but we can normalize by converting to sorted Vec
+			// However, since HashMap doesn't guarantee order and the operation uses HashMap,
+			// we'll just clone it as-is. For true semantic equality, this would need to be changed
+			// to a BTreeMap at the type level.
+			Operation::AlterModelOptions { table, options } => Operation::AlterModelOptions {
+				table,
+				options: options.clone(),
+			},
+			// All other operations: Return clone (order doesn't matter or not applicable)
+			_ => self.clone(),
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

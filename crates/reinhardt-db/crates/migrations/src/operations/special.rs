@@ -584,6 +584,47 @@ impl DataMigration {
 	}
 }
 
+// MigrationOperation trait implementation for Django-style naming
+use crate::operation_trait::MigrationOperation;
+
+impl MigrationOperation for RunSQL {
+	fn migration_name_fragment(&self) -> Option<String> {
+		// Return "run_sql" to indicate this is a custom SQL operation
+		Some("run_sql".to_string())
+	}
+
+	fn describe(&self) -> String {
+		let preview = if self.sql.len() > 50 {
+			format!("{}...", &self.sql[..50])
+		} else {
+			self.sql.clone()
+		};
+		format!("RunSQL: {}", preview)
+	}
+}
+
+impl MigrationOperation for RunCode {
+	fn migration_name_fragment(&self) -> Option<String> {
+		// Return "run_code" to indicate this is a custom code operation
+		Some("run_code".to_string())
+	}
+
+	fn describe(&self) -> String {
+		"RunCode: Custom code execution".to_string()
+	}
+}
+
+impl MigrationOperation for DataMigration {
+	fn migration_name_fragment(&self) -> Option<String> {
+		// Return "data_migration" to indicate this is a data transformation operation
+		Some("data_migration".to_string())
+	}
+
+	fn describe(&self) -> String {
+		format!("DataMigration: {}", self.description)
+	}
+}
+
 #[cfg(test)]
 mod data_migration_tests {
 	use super::*;

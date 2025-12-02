@@ -330,6 +330,39 @@ pub mod extensions {
 	}
 }
 
+// MigrationOperation trait implementation for Django-style naming
+use crate::operation_trait::MigrationOperation;
+
+impl MigrationOperation for CreateExtension {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!("create_extension_{}", self.name.to_lowercase()))
+	}
+
+	fn describe(&self) -> String {
+		format!("Create PostgreSQL extension {}", self.name)
+	}
+}
+
+impl MigrationOperation for DropExtension {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!("drop_extension_{}", self.name.to_lowercase()))
+	}
+
+	fn describe(&self) -> String {
+		format!("Drop PostgreSQL extension {}", self.name)
+	}
+}
+
+impl MigrationOperation for CreateCollation {
+	fn migration_name_fragment(&self) -> Option<String> {
+		Some(format!("create_collation_{}", self.name.to_lowercase()))
+	}
+
+	fn describe(&self) -> String {
+		format!("Create collation {}", self.name)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
