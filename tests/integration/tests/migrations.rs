@@ -12,3 +12,9 @@ mod composite_pk_db_execution;
 
 #[path = "migrations/composite_pk_migration_operations.rs"]
 mod composite_pk_migration_operations;
+
+#[path = "migrations/migration_naming_integration.rs"]
+mod migration_naming_integration;
+
+#[path = "migrations/duplicate_detection_integration.rs"]
+mod duplicate_detection_integration;

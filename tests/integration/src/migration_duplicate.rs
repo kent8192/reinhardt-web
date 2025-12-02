@@ -5,10 +5,71 @@
 
 #[cfg(test)]
 mod tests {
+	use async_trait::async_trait;
 	use reinhardt_db::migrations::{
-		AutoMigrationGenerator, DatabaseSchema, schema_diff::SchemaDiff,
+		schema_diff::SchemaDiff, AutoMigrationGenerator, DatabaseSchema, Migration,
+		MigrationRepository,
 	};
+	use std::collections::HashMap;
+	use std::sync::Arc;
 	use tempfile::TempDir;
+
+	/// Test repository implementation for integration tests
+	struct TestRepository {
+		migrations: HashMap<(String, String), Migration>,
+	}
+
+	impl TestRepository {
+		fn new() -> Self {
+			Self {
+				migrations: HashMap::new(),
+			}
+		}
+	}
+
+	#[async_trait]
+	impl MigrationRepository for TestRepository {
+		async fn save(&mut self, migration: &Migration) -> reinhardt_db::migrations::Result<()> {
+			let key = (migration.app_label.to_string(), migration.name.to_string());
+			self.migrations.insert(key, migration.clone());
+			Ok(())
+		}
+
+		async fn get(
+			&self,
+			app_label: &str,
+			name: &str,
+		) -> reinhardt_db::migrations::Result<Migration> {
+			let key = (app_label.to_string(), name.to_string());
+			self.migrations.get(&key).cloned().ok_or_else(|| {
+				reinhardt_db::migrations::MigrationError::NotFound(format!(
+					"{}.{}",
+					app_label, name
+				))
+			})
+		}
+
+		async fn list(&self, app_label: &str) -> reinhardt_db::migrations::Result<Vec<Migration>> {
+			Ok(self
+				.migrations
+				.values()
+				.filter(|m| m.app_label == app_label)
+				.cloned()
+				.collect())
+		}
+
+		async fn exists(
+			&self,
+			app_label: &str,
+			name: &str,
+		) -> reinhardt_db::migrations::Result<bool> {
+			Ok(self
+				.get(app_label, name)
+				.await
+				.map(|_| true)
+				.unwrap_or(false))
+		}
+	}
 
 	/// Test that system tables (like reinhardt_migrations) are excluded from schema diff
 	#[test]
@@ -126,10 +187,13 @@ mod tests {
 			tables: std::collections::HashMap::new(),
 		};
 
-		let generator = AutoMigrationGenerator::new(schema.clone(), output_dir);
+		let repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>> =
+			Arc::new(tokio::sync::Mutex::new(TestRepository::new()));
+
+		let generator = AutoMigrationGenerator::new(schema.clone(), output_dir, repository);
 
 		// Generate should return NoChangesDetected error
-		let result = generator.generate(schema, None).await;
+		let result = generator.generate("testapp", schema).await;
 
 		assert!(
 			matches!(
@@ -193,8 +257,12 @@ mod tests {
 		);
 
 		// Generate first migration
-		let generator = AutoMigrationGenerator::new(target_schema.clone(), output_dir);
-		let result = generator.generate(current_schema.clone(), None).await;
+		let repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>> =
+			Arc::new(tokio::sync::Mutex::new(TestRepository::new()));
+
+		let generator =
+			AutoMigrationGenerator::new(target_schema.clone(), output_dir, repository.clone());
+		let result = generator.generate("testapp", current_schema.clone()).await;
 
 		assert!(result.is_ok(), "First migration generation should succeed");
 		let migration_result = result.unwrap();
@@ -205,9 +273,12 @@ mod tests {
 
 		// Step 2: After "applying" migration, schemas should be identical
 		// Simulate post-migration state: current schema now has the table
-		let generator2 =
-			AutoMigrationGenerator::new(target_schema.clone(), temp_dir.path().to_path_buf());
-		let result2 = generator2.generate(target_schema, None).await;
+		let generator2 = AutoMigrationGenerator::new(
+			target_schema.clone(),
+			temp_dir.path().to_path_buf(),
+			repository,
+		);
+		let result2 = generator2.generate("testapp", target_schema).await;
 
 		// Should return NoChangesDetected
 		assert!(
