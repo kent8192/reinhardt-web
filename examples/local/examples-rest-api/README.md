@@ -60,8 +60,11 @@ cargo run --bin manage runserver 0.0.0.0:3000
 ### Management Commands
 
 ```bash
-# Create database migrations
+# Create database migrations (auto-detects app if single app has models)
 cargo run --bin manage makemigrations
+
+# Create database migrations for specific app (when multiple apps exist)
+cargo run --bin manage makemigrations <app_label>
 
 # Apply migrations
 cargo run --bin manage migrate
@@ -78,6 +81,11 @@ cargo run --bin manage collectstatic
 # Show URL list
 cargo run --bin manage showurls
 ```
+
+**Migration Auto-Detection:**
+- Single app project: App label is automatically detected from registered models
+- Multiple app project: Explicitly specify the app label (e.g., `makemigrations users`)
+- No models found: Error message with usage instructions will be displayed
 
 ## API Endpoints
 

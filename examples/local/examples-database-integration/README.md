@@ -100,8 +100,11 @@ export DATABASE_URL="sqlite://./db.sqlite3"
 ### Migration Management
 
 ```bash
-# Create new migration
+# Create new migration (auto-detects app if single app has models)
 cargo run --bin manage makemigrations
+
+# Create new migration for specific app (when multiple apps exist)
+cargo run --bin manage makemigrations <app_label>
 
 # Apply migrations
 cargo run --bin manage migrate
@@ -112,6 +115,15 @@ cargo run --bin manage migrate --plan
 # Apply up to specific migration
 cargo run --bin manage migrate app_name migration_name
 ```
+
+**Auto-Detection Behavior:**
+- If your project has only one app with models, the app label is automatically detected
+- If multiple apps have models, you must specify the app label explicitly:
+  ```bash
+  cargo run --bin manage makemigrations users
+  cargo run --bin manage makemigrations posts
+  ```
+- If no models are found, an error will be displayed with usage instructions
 
 ### Running Application
 
