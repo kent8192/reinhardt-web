@@ -212,7 +212,7 @@ async fn test_request_response_post_roundtrip() {
 			.and_then(|v| v.to_str().ok())
 			.unwrap_or("unknown");
 
-		let body_str = String::from_utf8_lossy(&req.body()).to_string();
+		let body_str = String::from_utf8_lossy(req.body()).to_string();
 
 		// Use serde_json to properly escape the received body
 		let response_data = serde_json::json!({

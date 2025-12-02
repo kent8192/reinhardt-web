@@ -380,7 +380,7 @@ async fn test_extensions_request_isolation() {
 
 	router = router.function("/isolated", Method::POST, |req: Request| async move {
 		// Extract request-specific ID from body
-		let body_str = String::from_utf8_lossy(&req.body());
+		let body_str = String::from_utf8_lossy(req.body());
 		let request_id: u64 = body_str.parse().unwrap_or(0);
 
 		// Insert request-specific data

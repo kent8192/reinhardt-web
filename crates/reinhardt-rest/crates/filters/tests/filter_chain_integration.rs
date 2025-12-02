@@ -534,6 +534,6 @@ async fn test_filter_chain_with_conflicts(
 	// Verify all results are within range
 	for row in &rows {
 		let price: i32 = row.try_get("price").expect("Failed to get price");
-		assert!(price >= 20000 && price <= 50000);
+		assert!((20000..=50000).contains(&price));
 	}
 }

@@ -660,10 +660,10 @@ async fn test_concurrent_access_to_same_file() {
 
 	for _ in 0..5 {
 		let storage_clone = storage.clone();
-		let handle = tokio::spawn(async move {
-			let content = storage_clone.lock().await.open("shared.txt").await.unwrap();
-			content
-		});
+		let handle =
+			tokio::spawn(
+				async move { storage_clone.lock().await.open("shared.txt").await.unwrap() },
+			);
 		read_handles.push(handle);
 	}
 

@@ -359,7 +359,7 @@ async fn test_serializer_retrieve_and_serialize(
 	assert_eq!(serialized["username"], "david");
 	assert_eq!(serialized["email"], "david@example.com");
 	assert_eq!(serialized["age"], 35);
-	assert_eq!(serialized["is_active"], true);
+	assert!(serialized["is_active"].as_bool().unwrap());
 }
 
 /// Test save method (create path)

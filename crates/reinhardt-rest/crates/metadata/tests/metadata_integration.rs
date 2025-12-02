@@ -156,7 +156,7 @@ async fn test_simple_metadata_generation(
 		FieldType::String,
 		"username should be String type"
 	);
-	assert_eq!(username.required, true, "username should be required");
+	assert!(username.required, "username should be required");
 	assert_eq!(
 		username.read_only,
 		Some(false),
@@ -170,7 +170,7 @@ async fn test_simple_metadata_generation(
 		FieldType::String,
 		"email should be String type"
 	);
-	assert_eq!(email.required, true, "email should be required");
+	assert!(email.required, "email should be required");
 
 	// Verify age field (optional)
 	let age = fields.get("age").expect("age field should exist");
@@ -179,7 +179,7 @@ async fn test_simple_metadata_generation(
 		FieldType::Integer,
 		"age should be Integer type"
 	);
-	assert_eq!(age.required, false, "age should be optional");
+	assert!(!age.required, "age should be optional");
 
 	// Verify created_at field (read-only)
 	let created_at = fields
@@ -190,7 +190,7 @@ async fn test_simple_metadata_generation(
 		FieldType::DateTime,
 		"created_at should be DateTime type"
 	);
-	assert_eq!(created_at.required, true, "created_at should be required");
+	assert!(created_at.required, "created_at should be required");
 	assert_eq!(
 		created_at.read_only,
 		Some(true),
@@ -222,7 +222,7 @@ async fn test_field_info_extraction(test_field_infos: HashMap<String, FieldInfo>
 		FieldType::String,
 		"username should be String type"
 	);
-	assert_eq!(username.required, true, "username should be required");
+	assert!(username.required, "username should be required");
 	assert_eq!(
 		username.label,
 		Some("Username".to_string()),
@@ -253,7 +253,7 @@ async fn test_field_info_extraction(test_field_infos: HashMap<String, FieldInfo>
 		FieldType::Email,
 		"email should be Email type"
 	);
-	assert_eq!(email.required, true, "email should be required");
+	assert!(email.required, "email should be required");
 	assert_eq!(
 		email.label,
 		Some("Email Address".to_string()),
@@ -267,7 +267,7 @@ async fn test_field_info_extraction(test_field_infos: HashMap<String, FieldInfo>
 		FieldType::Integer,
 		"age should be Integer type"
 	);
-	assert_eq!(age.required, false, "age should be optional");
+	assert!(!age.required, "age should be optional");
 	assert_eq!(age.min_value, Some(0.0), "age min_value should be 0.0");
 	assert_eq!(age.max_value, Some(150.0), "age max_value should be 150.0");
 
@@ -731,8 +731,8 @@ async fn test_options_request_integration(
 		FieldType::String,
 		"username should be String type in POST action"
 	);
-	assert_eq!(
-		username_field.required, true,
+	assert!(
+		username_field.required,
 		"username should be required in POST action"
 	);
 	assert_eq!(

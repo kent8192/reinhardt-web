@@ -265,7 +265,7 @@ async fn test_logging_multiple_listeners() {
 	reinhardt_test::poll_until(
 		Duration::from_millis(100),
 		Duration::from_millis(5),
-		|| async { memory1.get_records().len() >= 1 && memory2.get_records().len() >= 1 },
+		|| async { !memory1.get_records().is_empty() && !memory2.get_records().is_empty() },
 	)
 	.await
 	.expect("Records should be processed within 100ms");
@@ -306,7 +306,7 @@ async fn test_listener_with_multiple_handlers() {
 	reinhardt_test::poll_until(
 		Duration::from_millis(100),
 		Duration::from_millis(5),
-		|| async { memory1.get_records().len() >= 1 && memory2.get_records().len() >= 1 },
+		|| async { !memory1.get_records().is_empty() && !memory2.get_records().is_empty() },
 	)
 	.await
 	.expect("Record should be processed within 100ms");

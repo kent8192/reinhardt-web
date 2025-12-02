@@ -71,7 +71,7 @@ struct AgeValidator;
 impl FieldValidator for AgeValidator {
 	fn validate(&self, value: &Value) -> ValidationResult {
 		if let Some(age) = value.as_i64() {
-			if age >= 0 && age <= 150 {
+			if (0..=150).contains(&age) {
 				Ok(())
 			} else {
 				Err(ValidationError::field_error(
@@ -114,12 +114,12 @@ impl ObjectValidator for NameConsistencyValidator {
 		let first_name = data.get("first_name").and_then(|v| v.as_str());
 		let last_name = data.get("last_name").and_then(|v| v.as_str());
 
-		if let (Some(first), Some(last)) = (first_name, last_name) {
-			if first.is_empty() || last.is_empty() {
-				return Err(ValidationError::object_error(
-					"Both first name and last name are required",
-				));
-			}
+		if let (Some(first), Some(last)) = (first_name, last_name)
+			&& (first.is_empty() || last.is_empty())
+		{
+			return Err(ValidationError::object_error(
+				"Both first name and last name are required",
+			));
 		}
 
 		Ok(())
@@ -280,7 +280,7 @@ fn test_method_field_with_missing_data() {
 	let context = serializer.compute_method_fields(&incomplete_data);
 
 	// full_name should not be in context because last_name is missing
-	assert!(context.get("full_name").is_none());
+	assert!(!context.contains_key("full_name"));
 
 	// display_age should be present
 	assert_eq!(

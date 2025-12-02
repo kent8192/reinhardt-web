@@ -20,10 +20,7 @@ struct Session {
 
 impl Session {
 	fn new() -> Self {
-		let mut data = Vec::new();
-		data.push("foo".to_string());
-		data.push("bar".to_string());
-		data.push("baz".to_string());
+		let data = vec!["foo".to_string(), "bar".to_string(), "baz".to_string()];
 
 		Session {
 			data: Arc::new(Mutex::new(data)),

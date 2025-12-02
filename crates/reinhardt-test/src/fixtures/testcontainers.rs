@@ -234,6 +234,7 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 		))
 		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
 		.with_env_var("POSTGRES_INITDB_ARGS", "-c max_connections=200")
+		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start PostgreSQL container");
@@ -1536,7 +1537,7 @@ pub async fn postgres_with_apps_migrations(
 	let migrations: Vec<_> = global_registry()
 		.all_migrations()
 		.into_iter()
-		.filter(|m| app_labels.contains(&m.app_label.as_str()))
+		.filter(|m| app_labels.contains(&m.app_label))
 		.collect();
 
 	if !migrations.is_empty() {
@@ -1635,7 +1636,7 @@ pub async fn mysql_with_apps_migrations(
 	let migrations: Vec<_> = global_registry()
 		.all_migrations()
 		.into_iter()
-		.filter(|m| app_labels.contains(&m.app_label.as_str()))
+		.filter(|m| app_labels.contains(&m.app_label))
 		.collect();
 
 	if !migrations.is_empty() {
@@ -1725,7 +1726,7 @@ pub async fn sqlite_with_apps_migrations(
 	let migrations: Vec<_> = global_registry()
 		.all_migrations()
 		.into_iter()
-		.filter(|m| app_labels.contains(&m.app_label.as_str()))
+		.filter(|m| app_labels.contains(&m.app_label))
 		.collect();
 
 	if !migrations.is_empty() {

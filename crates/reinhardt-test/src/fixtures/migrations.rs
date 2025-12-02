@@ -191,7 +191,7 @@ impl InMemoryRepository {
 	pub fn with_migrations(migrations: Vec<Migration>) -> Self {
 		let mut repo = Self::new();
 		for migration in migrations {
-			let key = (migration.app_label.clone(), migration.name.clone());
+			let key = (migration.app_label.to_string(), migration.name.to_string());
 			repo.migrations.insert(key, migration);
 		}
 		repo
@@ -222,7 +222,7 @@ impl Default for InMemoryRepository {
 #[async_trait]
 impl MigrationRepository for InMemoryRepository {
 	async fn save(&mut self, migration: &Migration) -> Result<()> {
-		let key = (migration.app_label.clone(), migration.name.clone());
+		let key = (migration.app_label.to_string(), migration.name.to_string());
 		self.migrations.insert(key, migration.clone());
 		Ok(())
 	}
@@ -331,8 +331,8 @@ mod tests {
 
 		migration_registry
 			.register(Migration {
-				app_label: "test_app".to_string(),
-				name: "0001_initial".to_string(),
+				app_label: "test_app",
+				name: "0001_initial",
 				operations: vec![],
 				dependencies: vec![],
 				atomic: true,

@@ -63,6 +63,7 @@ impl SuiteResource for PostgresSuiteResource {
 #[cfg(feature = "testcontainers")]
 impl PostgresSuiteResource {
 	async fn init_async() -> Self {
+		use testcontainers::core::ContainerPort;
 		use testcontainers::{GenericImage, ImageExt, runners::AsyncRunner};
 
 		let postgres = GenericImage::new("postgres", "17-alpine")
@@ -70,6 +71,7 @@ impl PostgresSuiteResource {
 				"database system is ready to accept connections",
 			))
 			.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
+			.with_mapped_port(5432, ContainerPort::Tcp(5432))
 			.start()
 			.await
 			.expect("Failed to start PostgreSQL container");

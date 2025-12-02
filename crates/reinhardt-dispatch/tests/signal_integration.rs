@@ -34,7 +34,7 @@ async fn test_request_started_signal_emitted() {
 	let counter_clone = counter.clone();
 
 	// Register signal listener
-	let _connection = request_started().connect(move |_event| {
+	request_started().connect(move |_event| {
 		let counter = counter_clone.clone();
 		async move {
 			counter.fetch_add(1, Ordering::SeqCst);
@@ -73,7 +73,7 @@ async fn test_request_finished_signal_emitted() {
 	let counter_clone = counter.clone();
 
 	// Register signal listener
-	let _connection = request_finished().connect(move |_event| {
+	request_finished().connect(move |_event| {
 		let counter = counter_clone.clone();
 		async move {
 			counter.fetch_add(1, Ordering::SeqCst);
@@ -114,7 +114,7 @@ async fn test_both_signals_emitted_in_order() {
 	let finished_clone = finished_counter.clone();
 
 	// Register signal listeners
-	let _started_connection = request_started().connect(move |_event| {
+	request_started().connect(move |_event| {
 		let counter = started_clone.clone();
 		async move {
 			counter.fetch_add(1, Ordering::SeqCst);
@@ -122,7 +122,7 @@ async fn test_both_signals_emitted_in_order() {
 		}
 	});
 
-	let _finished_connection = request_finished().connect(move |_event| {
+	request_finished().connect(move |_event| {
 		let counter = finished_clone.clone();
 		async move {
 			counter.fetch_add(1, Ordering::SeqCst);
@@ -166,7 +166,7 @@ async fn test_signals_emitted_for_multiple_requests() {
 	let counter_clone = counter.clone();
 
 	// Register signal listener
-	let _connection = request_started().connect(move |_event| {
+	request_started().connect(move |_event| {
 		let counter = counter_clone.clone();
 		async move {
 			counter.fetch_add(1, Ordering::SeqCst);
@@ -207,7 +207,7 @@ async fn test_signal_listener_can_access_event_data() {
 	let event_clone = event_received.clone();
 
 	// Register signal listener that accesses event data
-	let _connection = request_started().connect(move |event| {
+	request_started().connect(move |event| {
 		let event_counter = event_clone.clone();
 		async move {
 			// Verify we can access event fields
@@ -250,7 +250,7 @@ async fn test_signals_still_emit_on_404() {
 	let finished_clone = finished_counter.clone();
 
 	// Register signal listeners
-	let _started_connection = request_started().connect(move |_event| {
+	request_started().connect(move |_event| {
 		let counter = started_clone.clone();
 		async move {
 			counter.fetch_add(1, Ordering::SeqCst);
@@ -258,7 +258,7 @@ async fn test_signals_still_emit_on_404() {
 		}
 	});
 
-	let _finished_connection = request_finished().connect(move |_event| {
+	request_finished().connect(move |_event| {
 		let counter = finished_clone.clone();
 		async move {
 			counter.fetch_add(1, Ordering::SeqCst);

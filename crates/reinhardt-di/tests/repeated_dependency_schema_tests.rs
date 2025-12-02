@@ -25,12 +25,14 @@ impl Injectable for SomeHeader {
 		// Extract from HTTP request if available
 		if let Some(request) = ctx.get_http_request() {
 			// Directly read from request headers (fixed header name: "X-Some-Header")
-			if let Some(value) = request.headers.get("X-Some-Header") {
-				if let Ok(header_str) = value.to_str() {
-					let header = SomeHeader(header_str.to_string());
-					ctx.set_request(header.clone());
-					return Ok(header);
-				}
+			if let Some(value) = request
+				.headers
+				.get("X-Some-Header")
+				.and_then(|v| v.to_str().ok())
+			{
+				let header = SomeHeader(value.to_string());
+				ctx.set_request(header.clone());
+				return Ok(header);
 			}
 			// Header not found, return error
 			return Err(DiError::ProviderError(

@@ -297,7 +297,7 @@ async fn test_memory_cache_layered_cleanup_strategy() {
 				Some(Duration::from_millis(100)),
 			)
 			.await
-			.expect(&format!("Failed to set key {}", i));
+			.unwrap_or_else(|_| panic!("Failed to set key {}", i));
 	}
 
 	// All keys should exist

@@ -190,6 +190,10 @@ where
 	}
 }
 
+// Implement WithValidation trait for Query
+#[cfg(feature = "validation")]
+impl<T> crate::validation::WithValidation for Query<T> {}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -203,7 +207,3 @@ mod tests {
 		search: Option<String>,
 	}
 }
-
-// Implement WithValidation trait for Query
-#[cfg(feature = "validation")]
-impl<T> crate::validation::WithValidation for Query<T> {}

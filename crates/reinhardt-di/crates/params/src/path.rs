@@ -210,6 +210,10 @@ where
 	}
 }
 
+// Implement WithValidation trait for Path
+#[cfg(feature = "validation")]
+impl<T> crate::validation::WithValidation for Path<T> {}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -338,7 +342,7 @@ mod tests {
 
 		let result = Path::<bool>::from_request(&req, &ctx).await;
 		assert!(result.is_ok(), "Failed to extract bool: {:?}", result.err());
-		assert_eq!(*result.unwrap(), true);
+		assert!(*result.unwrap());
 	}
 
 	#[tokio::test]
@@ -373,7 +377,3 @@ mod tests {
 		assert_eq!(params.post_id, 456);
 	}
 }
-
-// Implement WithValidation trait for Path
-#[cfg(feature = "validation")]
-impl<T> crate::validation::WithValidation for Path<T> {}

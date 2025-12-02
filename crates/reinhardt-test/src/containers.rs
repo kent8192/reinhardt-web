@@ -75,7 +75,7 @@
 //! let temp_url = sqlite::temp_file_url("my_test");
 //! ```
 
-use testcontainers::core::WaitFor;
+use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use testcontainers_modules::mysql::Mysql;
@@ -153,7 +153,8 @@ impl PostgresContainer {
 			))
 			.with_env_var("POSTGRES_USER", username)
 			.with_env_var("POSTGRES_PASSWORD", password)
-			.with_env_var("POSTGRES_DB", database);
+			.with_env_var("POSTGRES_DB", database)
+			.with_mapped_port(5432, ContainerPort::Tcp(5432));
 
 		let container = AsyncRunner::start(image)
 			.await

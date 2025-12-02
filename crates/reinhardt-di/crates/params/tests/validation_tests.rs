@@ -89,10 +89,10 @@ mod tests {
 
 	#[test]
 	fn test_float_validation() {
-		let path = Path(3.14f64);
+		let path = Path(3.15f64);
 		let constrained = path.min_value(0.0).max_value(10.0);
 
-		assert!(constrained.validate_number(&3.14).is_ok());
+		assert!(constrained.validate_number(&3.15).is_ok());
 		assert!(constrained.validate_number(&0.0).is_ok());
 		assert!(constrained.validate_number(&10.0).is_ok());
 		assert!(constrained.validate_number(&-0.1).is_err());

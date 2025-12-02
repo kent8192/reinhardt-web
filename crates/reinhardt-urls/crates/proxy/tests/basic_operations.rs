@@ -148,19 +148,18 @@ fn test_proxy_basic_scalar_conversions() {
 	);
 	assert!(i.as_string().is_err());
 
-	let f = ScalarValue::Float(3.14);
+	let f = ScalarValue::Float(3.15);
 	assert_eq!(
 		f.as_float().unwrap(),
-		3.14,
+		3.15,
 		"Float ScalarValue should convert to f64 correctly. Got: {}",
 		f.as_float().unwrap()
 	);
 	assert!(f.as_boolean().is_err());
 
 	let b = ScalarValue::Boolean(true);
-	assert_eq!(
+	assert!(
 		b.as_boolean().unwrap(),
-		true,
 		"Boolean ScalarValue should convert to bool correctly. Got: {}",
 		b.as_boolean().unwrap()
 	);
@@ -199,18 +198,17 @@ fn test_scalar_value_from_conversions() {
 		i.as_integer().unwrap()
 	);
 
-	let f: ScalarValue = 3.14f64.into();
+	let f: ScalarValue = 3.15f64.into();
 	assert_eq!(
 		f.as_float().unwrap(),
-		3.14,
+		3.15,
 		"From<f64> conversion should create valid Float ScalarValue. Got: {}",
 		f.as_float().unwrap()
 	);
 
 	let b: ScalarValue = true.into();
-	assert_eq!(
+	assert!(
 		b.as_boolean().unwrap(),
-		true,
 		"From<bool> conversion should create valid Boolean ScalarValue. Got: {}",
 		b.as_boolean().unwrap()
 	);

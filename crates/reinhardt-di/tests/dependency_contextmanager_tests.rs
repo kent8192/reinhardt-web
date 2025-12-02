@@ -228,10 +228,8 @@ impl AsyncGenTryDependency {
 	}
 
 	async fn cleanup_with_error(self, error: Option<&str>) {
-		if let Some(err) = error {
-			if err == "AsyncDependencyError" {
-				self.error_tracker.add_error("/async_raise");
-			}
+		if error == Some("AsyncDependencyError") {
+			self.error_tracker.add_error("/async_raise");
 		}
 		// Finally block
 		self.state.set("/async_raise", "asyncgen raise finalized");
@@ -463,10 +461,8 @@ impl SyncGenTryDependency {
 	}
 
 	fn cleanup_with_error(self, error: Option<&str>) {
-		if let Some(err) = error {
-			if err == "SyncDependencyError" {
-				self.error_tracker.add_error("/sync_raise");
-			}
+		if error == Some("SyncDependencyError") {
+			self.error_tracker.add_error("/sync_raise");
 		}
 		// Finally block
 		self.state.set("/sync_raise", "generator raise finalized");

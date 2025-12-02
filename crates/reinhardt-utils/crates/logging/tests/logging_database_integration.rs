@@ -108,14 +108,15 @@ impl DatabaseLogHandler {
 		let context_json = serde_json::to_value(&context).unwrap_or(json!({}));
 
 		let result = sqlx::query(
-			"INSERT INTO logs (level, logger_name, message, context)
-			 VALUES ($1, $2, $3, $4)
+			"INSERT INTO logs (level, logger_name, message, context, timestamp)
+			 VALUES ($1, $2, $3, $4, $5)
 			 RETURNING id",
 		)
 		.bind(Self::level_to_string(record.level))
 		.bind(&record.logger_name)
 		.bind(&record.message)
 		.bind(context_json)
+		.bind(chrono::Utc::now())
 		.fetch_one(&*self.pool)
 		.await?;
 
@@ -156,13 +157,14 @@ impl DatabaseLogHandler {
 			let context_json = serde_json::to_value(&context).unwrap_or(json!({}));
 
 			sqlx::query(
-				"INSERT INTO logs (level, logger_name, message, context)
-				 VALUES ($1, $2, $3, $4)",
+				"INSERT INTO logs (level, logger_name, message, context, timestamp)
+				 VALUES ($1, $2, $3, $4, $5)",
 			)
 			.bind(Self::level_to_string(record.level))
 			.bind(&record.logger_name)
 			.bind(&record.message)
 			.bind(context_json)
+			.bind(chrono::Utc::now())
 			.execute(&mut *tx)
 			.await?;
 		}
@@ -556,7 +558,7 @@ async fn test_log_querying_with_time_range(
 
 	// NOTE: Timestamp comparison may include the boundary log depending on DB clock precision
 	assert!(
-		recent_logs.len() >= 1,
+		!recent_logs.is_empty(),
 		"At least 1 log should be after mid_time (found {})",
 		recent_logs.len()
 	);

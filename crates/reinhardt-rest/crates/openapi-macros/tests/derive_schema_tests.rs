@@ -252,8 +252,8 @@ fn test_field_with_numeric_constraints() {
 			if let Some(rating_schema) = obj.properties.get("rating") {
 				match rating_schema {
 					utoipa::openapi::RefOr::T(Schema::Object(rating_obj)) => {
-						assert!(matches!(rating_obj.minimum, Some(_)));
-						assert!(matches!(rating_obj.maximum, Some(_)));
+						assert!(rating_obj.minimum.is_some());
+						assert!(rating_obj.maximum.is_some());
 					}
 					_ => panic!("Expected Object schema for rating field"),
 				}
@@ -469,45 +469,45 @@ fn test_complex_struct_with_all_features() {
 			assert!(obj.required.contains(&"password".to_string()));
 
 			// Verify id field (read-only)
-			if let Some(id_schema) = obj.properties.get("id") {
-				if let utoipa::openapi::RefOr::T(Schema::Object(id_obj)) = id_schema {
-					assert_eq!(id_obj.read_only, Some(true));
-					assert!(id_obj.example.is_some());
-				}
+			if let Some(utoipa::openapi::RefOr::T(Schema::Object(id_obj))) =
+				obj.properties.get("id")
+			{
+				assert_eq!(id_obj.read_only, Some(true));
+				assert!(id_obj.example.is_some());
 			}
 
 			// Verify username field (with pattern and length constraints)
-			if let Some(username_schema) = obj.properties.get("username") {
-				if let utoipa::openapi::RefOr::T(Schema::Object(username_obj)) = username_schema {
-					assert_eq!(username_obj.min_length, Some(3));
-					assert_eq!(username_obj.max_length, Some(50));
-					assert_eq!(username_obj.pattern, Some("^[a-zA-Z0-9_]+$".to_string()));
-				}
+			if let Some(utoipa::openapi::RefOr::T(Schema::Object(username_obj))) =
+				obj.properties.get("username")
+			{
+				assert_eq!(username_obj.min_length, Some(3));
+				assert_eq!(username_obj.max_length, Some(50));
+				assert_eq!(username_obj.pattern, Some("^[a-zA-Z0-9_]+$".to_string()));
 			}
 
 			// Verify email field (with format)
-			if let Some(email_schema) = obj.properties.get("email") {
-				if let utoipa::openapi::RefOr::T(Schema::Object(email_obj)) = email_schema {
-					assert!(matches!(
-						email_obj.format,
-						Some(SchemaFormat::Custom(ref s)) if s == "email"
-					));
-				}
+			if let Some(utoipa::openapi::RefOr::T(Schema::Object(email_obj))) =
+				obj.properties.get("email")
+			{
+				assert!(matches!(
+					email_obj.format,
+					Some(SchemaFormat::Custom(ref s)) if s == "email"
+				));
 			}
 
 			// Verify password field (write-only)
-			if let Some(password_schema) = obj.properties.get("password") {
-				if let utoipa::openapi::RefOr::T(Schema::Object(password_obj)) = password_schema {
-					assert_eq!(password_obj.write_only, Some(true));
-					assert_eq!(password_obj.min_length, Some(8));
-				}
+			if let Some(utoipa::openapi::RefOr::T(Schema::Object(password_obj))) =
+				obj.properties.get("password")
+			{
+				assert_eq!(password_obj.write_only, Some(true));
+				assert_eq!(password_obj.min_length, Some(8));
 			}
 
 			// Verify deprecated field
-			if let Some(legacy_schema) = obj.properties.get("legacy_field") {
-				if let utoipa::openapi::RefOr::T(Schema::Object(legacy_obj)) = legacy_schema {
-					assert!(matches!(legacy_obj.deprecated, Some(Deprecated::True)));
-				}
+			if let Some(utoipa::openapi::RefOr::T(Schema::Object(legacy_obj))) =
+				obj.properties.get("legacy_field")
+			{
+				assert!(matches!(legacy_obj.deprecated, Some(Deprecated::True)));
 			}
 		}
 		_ => panic!("Expected Object schema"),

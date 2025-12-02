@@ -392,8 +392,8 @@ impl ScalarValue {
 	/// ```
 	/// use reinhardt_proxy::ScalarValue;
 	///
-	/// let value = ScalarValue::Float(3.14);
-	/// assert_eq!(value.as_float().unwrap(), 3.14);
+	/// let value = ScalarValue::Float(3.15);
+	/// assert_eq!(value.as_float().unwrap(), 3.15);
 	///
 	/// let bool_value = ScalarValue::Boolean(true);
 	/// assert!(bool_value.as_float().is_err());
@@ -415,7 +415,7 @@ impl ScalarValue {
 	/// use reinhardt_proxy::ScalarValue;
 	///
 	/// let value = ScalarValue::Boolean(true);
-	/// assert_eq!(value.as_boolean().unwrap(), true);
+	/// assert!(value.as_boolean().unwrap());
 	///
 	/// let int_value = ScalarValue::Integer(1);
 	/// assert!(int_value.as_boolean().is_err());
@@ -459,11 +459,11 @@ mod tests {
 		let i = ScalarValue::Integer(42);
 		assert_eq!(i.as_integer().unwrap(), 42);
 
-		let f = ScalarValue::Float(3.14);
-		assert_eq!(f.as_float().unwrap(), 3.14);
+		let f = ScalarValue::Float(3.15);
+		assert_eq!(f.as_float().unwrap(), 3.15);
 
 		let b = ScalarValue::Boolean(true);
-		assert_eq!(b.as_boolean().unwrap(), true);
+		assert!(b.as_boolean().unwrap());
 	}
 
 	#[test]

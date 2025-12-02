@@ -174,7 +174,7 @@ async fn test_extract_path_primitive_bool() {
 
 	let result = Path::<bool>::from_request(&req, &ctx).await;
 	assert!(result.is_ok(), "Failed to extract bool: {:?}", result.err());
-	assert_eq!(*result.unwrap(), true);
+	assert!(*result.unwrap());
 }
 
 /// TestIntent: Verify extraction of multiple path parameters into struct

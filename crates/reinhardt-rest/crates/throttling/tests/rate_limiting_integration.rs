@@ -563,12 +563,12 @@ fn test_concurrent_requests() {
 
 	// Allow some tolerance due to concurrent request timing
 	assert!(
-		allowed_count >= 10 && allowed_count <= 13,
+		(10..=13).contains(&allowed_count),
 		"Expected 10-13 allowed requests due to race conditions, got {}",
 		allowed_count
 	);
 	assert!(
-		denied_count >= 7 && denied_count <= 10,
+		(7..=10).contains(&denied_count),
 		"Expected 7-10 denied requests due to race conditions, got {}",
 		denied_count
 	);

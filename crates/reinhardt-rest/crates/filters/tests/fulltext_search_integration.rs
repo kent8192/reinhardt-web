@@ -235,7 +235,7 @@ async fn test_boolean_mode_search(
 
 	// Should return articles about Rust with web or database topics
 	// Expected: "Web Development with Rust"
-	assert!(rows.len() >= 1);
+	assert!(!rows.is_empty());
 
 	// Verify results contain relevant keywords
 	for row in &rows {
@@ -317,7 +317,7 @@ async fn test_phrase_mode_search(
 
 	// Should return articles with exact phrase "systems programming language"
 	// Expected: "Introduction to Rust Programming"
-	assert!(rows.len() >= 1);
+	assert!(!rows.is_empty());
 
 	// Verify results contain the exact phrase
 	for row in &rows {

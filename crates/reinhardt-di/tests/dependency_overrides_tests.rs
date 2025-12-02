@@ -70,11 +70,11 @@ impl CommonParameters {
 impl Injectable for CommonParameters {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
 		// Check if there's an override
-		if let Some(app) = ctx.get_singleton::<App>() {
-			if let Some(override_params) = app.get_override::<CommonParameters>("common_parameters")
-			{
-				return Ok(override_params);
-			}
+		if let Some(override_params) = ctx
+			.get_singleton::<App>()
+			.and_then(|app| app.get_override::<CommonParameters>("common_parameters"))
+		{
+			return Ok(override_params);
 		}
 
 		// Default implementation - requires 'q' parameter

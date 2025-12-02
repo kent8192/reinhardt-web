@@ -802,8 +802,8 @@ mod tests {
 		let conv = FloatConverter::new();
 
 		// Valid conversions
-		let value = conv.convert("3.14159").unwrap();
-		assert!((value - 3.14159).abs() < 1e-6);
+		let value = conv.convert("3.17").unwrap();
+		assert!((value - 3.17).abs() < 1e-6);
 
 		let value = conv.convert("-67.89").unwrap();
 		assert!((value - (-67.89)).abs() < 1e-6);
