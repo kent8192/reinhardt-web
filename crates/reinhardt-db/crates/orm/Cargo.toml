@@ -21,6 +21,7 @@ integration-tests = []
 postgres = ["reinhardt-backends/postgres", "sqlx/postgres"]
 sqlite = ["reinhardt-backends/sqlite", "sqlx/sqlite"]
 mysql = ["reinhardt-backends/mysql", "sqlx/mysql"]
+full = ["pooling", "migrations", "advanced-queries", "postgres", "sqlite", "mysql"]
 
 [dependencies]
 reinhardt-core = { workspace = true, features = ["exception", "types", "validators", "macros"] }

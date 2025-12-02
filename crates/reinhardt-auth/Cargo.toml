@@ -20,6 +20,18 @@ argon2-hasher = []
 database = ["sqlx", "sea-query"]
 redis-sessions = ["redis"]
 
+# Aggregate all auth features
+auth-full = [
+  "jwt",
+  "sessions",
+  "oauth",
+  "token",
+  "argon2-hasher",
+  "database",
+  "redis-sessions",
+  "reinhardt-sessions/full",
+]
+
 [dependencies]
 reinhardt-sessions = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
@@ -49,7 +61,7 @@ reqwest = { version = "0.12", features = ["json"] }
 totp-lite = "2.0"
 data-encoding = "2.6"
 sqlx = { workspace = true, optional = true }
-sea-query = { version = "1.0.0-rc.20", features = [
+sea-query = { version = "1.0.0-rc.22", features = [
   "backend-postgres",
   "backend-mysql",
   "backend-sqlite",

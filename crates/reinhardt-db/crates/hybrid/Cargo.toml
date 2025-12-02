@@ -21,3 +21,6 @@ serde_json = { workspace = true }
 serial_test = { workspace = true }
 testcontainers-modules = { workspace = true }
 rust_decimal = { workspace = true }
+
+[features]
+full = []

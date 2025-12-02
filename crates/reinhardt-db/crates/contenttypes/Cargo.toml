@@ -10,6 +10,7 @@ repository.workspace = true
 [features]
 default = []
 database = ["sqlx", "sea-query", "async-trait", "thiserror", "parking_lot"]
+full = ["database"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

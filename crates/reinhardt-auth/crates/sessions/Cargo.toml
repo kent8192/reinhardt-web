@@ -21,7 +21,7 @@ chrono = { workspace = true }
 # Optional dependencies for different backends
 reinhardt-db = { workspace = true, optional = true, features = ["orm"] }
 sqlx = { workspace = true, features = ["any", "sqlite", "runtime-tokio"] }
-sea-query = { version = "1.0.0-rc.20", features = [
+sea-query = { version = "1.0.0-rc.22", features = [
   "backend-postgres",
   "backend-mysql",
   "backend-sqlite",
@@ -50,6 +50,7 @@ cookie = ["base64", "aes-gcm", "rand", "hmac", "sha2"]
 jwt = ["jsonwebtoken"]
 middleware = ["bytes"]
 messagepack = ["rmp-serde"]
+full = ["database", "file", "cookie", "jwt", "middleware", "messagepack"]
 
 [dev-dependencies]
 tokio = { workspace = true }

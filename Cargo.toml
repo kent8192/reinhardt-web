@@ -114,6 +114,31 @@ full = [
   "storage",
   "commands",
   "test",
+  # Parent crate -full features (recursive full feature activation)
+  "reinhardt-db/database-full",
+  "reinhardt-core/core-full",
+  "reinhardt-rest/rest-full",
+  "reinhardt-template/template-full",
+  "reinhardt-urls/urls-full",
+  "reinhardt-views/views-full",
+  "reinhardt-auth/auth-full",
+  "reinhardt-di/di-full",
+  "reinhardt-utils/utils-full",
+  "reinhardt-admin/admin-full",
+  "reinhardt-server/server-full",
+  # Standalone crates full features
+  "reinhardt-apps/full",
+  "reinhardt-commands/full",
+  "reinhardt-forms/full",
+  "reinhardt-http/full",
+  "reinhardt-i18n/full",
+  "reinhardt-mail/full",
+  "reinhardt-shortcuts/full",
+  "reinhardt-tasks/full",
+  "reinhardt-test/full",
+  "reinhardt-websockets/full",
+  "reinhardt-middleware/full",
+  "reinhardt-graphql/full",
 ]
 
 # API-only preset - REST without templates/forms
@@ -543,7 +568,7 @@ redis = { version = "0.32", features = ["tokio-comp", "connection-manager"] }
 
 # Connection pooling & migrations
 refinery = { version = "0.9.0", features = ["tokio-postgres"] }
-sea-query = { version = "1.0.0-rc.20", features = [
+sea-query = { version = "1.0.0-rc.22", features = [
   "with-json",
   "with-chrono",
   "with-rust_decimal",

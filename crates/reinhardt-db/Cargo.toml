@@ -28,7 +28,7 @@ sqlx = { version = "0.8", features = [
   "macros",
   "migrate",
 ] }
-sea-query = { version = "1.0.0-rc.20", features = [
+sea-query = { version = "1.0.0-rc.22", features = [
   "backend-postgres",
   "backend-mysql",
   "backend-sqlite",
@@ -61,10 +61,10 @@ default = [
 
 # Module features
 backends = ["dep:reinhardt-backends"]
-backends-settings = ["backends", "reinhardt-backends?/settings"]
+backends-settings = ["backends", "reinhardt-backends/settings"]
 
 # DI integration - enables Injectable implementation for DatabaseConnection
-di = ["reinhardt-backends?/di"]
+di = ["reinhardt-backends/di"]
 
 # Internal crate features
 pool = ["dep:reinhardt-backends-pool", "dep:reinhardt-pool"]
@@ -74,24 +74,46 @@ hybrid = ["dep:reinhardt-hybrid"]
 associations = ["dep:reinhardt-associations"]
 contenttypes = ["dep:reinhardt-contenttypes"]
 
+# Aggregate all database features
+database-full = [
+  "backends",
+  "backends-settings",
+  "di",
+  "pool",
+  "orm",
+  "migrations",
+  "hybrid",
+  "associations",
+  "contenttypes",
+  "all-databases",
+  "reinhardt-backends/full",
+  "reinhardt-backends-pool/full",
+  "reinhardt-pool/full",
+  "reinhardt-orm/full",
+  "reinhardt-migrations/full",
+  "reinhardt-hybrid/full",
+  "reinhardt-associations/full",
+  "reinhardt-contenttypes/full",
+]
+
 # Database-specific features
 postgres = [
   "sqlx/postgres",
-  "reinhardt-orm?/postgres",
-  "reinhardt-migrations?/postgres",
-  "reinhardt-backends?/postgres",
+  "reinhardt-orm/postgres",
+  "reinhardt-migrations/postgres",
+  "reinhardt-backends/postgres",
 ]
 sqlite = [
   "sqlx/sqlite",
-  "reinhardt-orm?/sqlite",
-  "reinhardt-migrations?/sqlite",
-  "reinhardt-backends?/sqlite",
+  "reinhardt-orm/sqlite",
+  "reinhardt-migrations/sqlite",
+  "reinhardt-backends/sqlite",
 ]
 mysql = [
   "sqlx/mysql",
-  "reinhardt-orm?/mysql",
-  "reinhardt-migrations?/mysql",
-  "reinhardt-backends?/mysql",
+  "reinhardt-orm/mysql",
+  "reinhardt-migrations/mysql",
+  "reinhardt-backends/mysql",
 ]
 mongodb-backend = []
 cockroachdb-backend = ["postgres"] # CockroachDB uses PostgreSQL protocol

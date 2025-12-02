@@ -15,7 +15,7 @@ chrono = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
 sqlx = { workspace = true, features = ["chrono", "runtime-tokio", "uuid"] }
-sea-query = { version = "1.0.0-rc.20", features = [
+sea-query = { version = "1.0.0-rc.22", features = [
   "backend-postgres",
   "backend-mysql",
   "backend-sqlite",
@@ -48,3 +48,4 @@ cockroachdb-backend = ["postgres"]
 di = ["reinhardt-di"]
 settings = ["dep:reinhardt-conf"]
 all-databases = ["postgres", "mysql", "sqlite", "mongodb-backend", "cockroachdb-backend"]
+full = ["all-databases", "di", "settings"]

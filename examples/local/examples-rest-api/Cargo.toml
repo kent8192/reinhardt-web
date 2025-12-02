@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [[bin]]
-name = "rest-api-manage"
+name = "manage"
 path = "src/bin/manage.rs"
 
 [dependencies]
@@ -24,7 +24,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 chrono = { version = "0.4", features = ["serde"] }
 validator = { version = "0.20.0", features = ["derive"] }
-sea-query = "1.0.0-rc.20"
+sea-query = "1.0.0-rc.22"
 clap = { version = "4", features = ["derive"] }
 console = "0.16.1"
 async-trait = "0.1"
