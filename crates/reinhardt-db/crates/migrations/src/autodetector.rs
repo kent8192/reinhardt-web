@@ -4,7 +4,7 @@ use petgraph::Undirected;
 use petgraph::graph::Graph;
 use petgraph::visit::EdgeRef;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use strsim::{jaro_winkler, levenshtein};
 
 /// Convert a name to snake_case
@@ -247,10 +247,10 @@ impl Default for ProjectState {
 
 impl ProjectState {
 	pub fn to_database_schema(&self) -> crate::schema_diff::DatabaseSchema {
-		let mut tables = std::collections::HashMap::new();
+		let mut tables = BTreeMap::new();
 
 		for ((_app_label, _model_name), model_state) in &self.models {
-			let mut columns = std::collections::HashMap::new();
+			let mut columns = BTreeMap::new();
 			for (field_name, field_state) in &model_state.fields {
 				// Simplified conversion for now.
 				// This might need more sophisticated logic to map field_type and params
@@ -319,12 +319,12 @@ impl ProjectState {
 		&self,
 		app_label: &str,
 	) -> crate::schema_diff::DatabaseSchema {
-		let mut tables = std::collections::HashMap::new();
+		let mut tables = BTreeMap::new();
 
 		for ((this_app_label, _model_name), model_state) in &self.models {
 			// Filter by app_label
 			if this_app_label == app_label {
-				let mut columns = std::collections::HashMap::new();
+				let mut columns = BTreeMap::new();
 				for (field_name, field_state) in &model_state.fields {
 					let data_type = field_state.field_type.clone();
 					let nullable = field_state.nullable;

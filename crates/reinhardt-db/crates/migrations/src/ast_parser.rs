@@ -36,6 +36,7 @@ pub fn extract_migration_metadata(ast: &File, app_label: &str, name: &str) -> Re
 				)
 			})
 			.collect(),
+		initial: None,
 	})
 }
 

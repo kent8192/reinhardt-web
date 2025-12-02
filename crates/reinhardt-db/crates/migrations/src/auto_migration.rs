@@ -6,11 +6,12 @@
 //! - Creates rollback scripts
 
 use crate::migration::Migration;
+use crate::migration_namer::MigrationNamer;
 use crate::operations::Operation;
+use crate::repository::MigrationRepository;
 use crate::schema_diff::{DatabaseSchema, SchemaDiff};
-// MigrationWriter functionality now available via FilesystemRepository
-// use crate::repository::FilesystemRepository;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Auto-migration generator
 pub struct AutoMigrationGenerator {
@@ -18,6 +19,8 @@ pub struct AutoMigrationGenerator {
 	target_schema: DatabaseSchema,
 	/// Migration output directory
 	output_dir: PathBuf,
+	/// Repository for checking existing migrations and saving new ones
+	repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>>,
 }
 
 /// Auto-migration result
@@ -37,18 +40,39 @@ pub struct AutoMigrationResult {
 
 impl AutoMigrationGenerator {
 	/// Create a new auto-migration generator
-	pub fn new(target_schema: DatabaseSchema, output_dir: PathBuf) -> Self {
+	///
+	/// # Arguments
+	///
+	/// * `target_schema` - The target schema from model definitions
+	/// * `output_dir` - Directory where migration files will be written
+	/// * `repository` - Repository for checking existing migrations and saving new ones
+	pub fn new(
+		target_schema: DatabaseSchema,
+		output_dir: PathBuf,
+		repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>>,
+	) -> Self {
 		Self {
 			target_schema,
 			output_dir,
+			repository,
 		}
 	}
 
 	/// Generate migration from current database state
+	///
+	/// # Arguments
+	///
+	/// * `app_label` - The app label for the migration
+	/// * `current_schema` - Current database schema
+	///
+	/// # Errors
+	///
+	/// Returns `AutoMigrationError::NoChangesDetected` if no changes are detected.
+	/// Returns `AutoMigrationError::DuplicateMigration` if identical operations already exist.
 	pub async fn generate(
 		&self,
+		app_label: &str,
 		current_schema: DatabaseSchema,
-		last_migration_operations: Option<Vec<Operation>>,
 	) -> Result<AutoMigrationResult, AutoMigrationError> {
 		// Detect schema differences
 		let diff = SchemaDiff::new(current_schema.clone(), self.target_schema.clone());
@@ -58,42 +82,66 @@ impl AutoMigrationGenerator {
 			return Err(AutoMigrationError::NoChangesDetected);
 		}
 
-		// Check for duplicate migration
-		if let Some(last_ops) = last_migration_operations
-			&& operations == last_ops
+		// Get existing migrations from repository
+		let repo = self.repository.lock().await;
+		let existing_migrations = repo
+			.list(app_label)
+			.await
+			.map_err(|e| AutoMigrationError::WriteError(e.to_string()))?;
+
+		// Check for duplicate operations (compare with last migration)
+		if let Some(last_migration) = existing_migrations.last()
+			&& self.is_duplicate_operations(&operations, &last_migration.operations)
 		{
 			return Err(AutoMigrationError::DuplicateMigration);
 		}
 
+		// Generate migration name using MigrationNamer
+		let migration_name = MigrationNamer::auto_name();
+
+		// Check if migration with this name already exists
+		if repo
+			.exists(app_label, &migration_name)
+			.await
+			.map_err(|e| AutoMigrationError::WriteError(e.to_string()))?
+		{
+			return Err(AutoMigrationError::DuplicateMigration);
+		}
+		drop(repo);
+
 		let has_destructive = diff.has_destructive_changes();
 
-		// Generate migration name based on timestamp
-		let migration_name = format!(
-			"auto_migration_{}",
-			chrono::Utc::now().format("%Y%m%d_%H%M%S")
-		);
-
 		// Create migration
-		// FilesystemRepository now available for persistence
-		// Use FilesystemRepository::save() via MigrationService
-		let _migration = Migration {
+		let migration = Migration {
 			name: Box::leak(migration_name.clone().into_boxed_str()),
-			app_label: "auto",
+			app_label: Box::leak(app_label.to_string().into_boxed_str()),
 			dependencies: Vec::new(),
 			operations: operations.clone(),
 			replaces: Vec::new(),
 			atomic: true,
+			initial: None,
 		};
 
-		// File writing will be handled by FilesystemRepository via service layer
-		// Temporarily return a placeholder path
-		let migration_file = self.output_dir.join(format!("{}.rs", migration_name));
+		// Save migration via repository
+		let mut repo = self.repository.lock().await;
+		repo.save(&migration)
+			.await
+			.map_err(|e| AutoMigrationError::WriteError(e.to_string()))?;
+		drop(repo);
+
+		let migration_file = self
+			.output_dir
+			.join(app_label)
+			.join("migrations")
+			.join(format!("{}.rs", migration_name));
 
 		// Generate rollback operations
 		let rollback_operations = self.generate_rollback(&operations);
 		let rollback_file = if !rollback_operations.is_empty() {
 			Some(
 				self.output_dir
+					.join(app_label)
+					.join("migrations")
 					.join(format!("{}_rollback.rs", migration_name)),
 			)
 		} else {
@@ -107,6 +155,24 @@ impl AutoMigrationGenerator {
 			operation_count: operations.len(),
 			has_destructive_changes: has_destructive,
 		})
+	}
+
+	/// Check if operations are duplicates
+	///
+	/// Compares operations using semantic equality, which normalizes order-independent
+	/// elements before comparison. This allows detection of duplicate migrations even
+	/// when the order of columns, constraints, or other elements differs.
+	fn is_duplicate_operations(&self, ops1: &[Operation], ops2: &[Operation]) -> bool {
+		use crate::operation_trait::MigrationOperation;
+
+		if ops1.len() != ops2.len() {
+			return false;
+		}
+
+		// Semantic equality check using normalize() and comparison
+		ops1.iter()
+			.zip(ops2.iter())
+			.all(|(op1, op2)| op1.semantically_equal(op2))
 	}
 
 	/// Generate rollback operations
@@ -261,12 +327,63 @@ impl From<std::io::Error> for AutoMigrationError {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use std::collections::HashMap;
+	use crate::repository::MigrationRepository;
+	use async_trait::async_trait;
+	use std::collections::{BTreeMap, HashMap};
+	use tokio::sync::Mutex;
+
+	/// Test repository implementation
+	struct TestRepository {
+		migrations: HashMap<(String, String), Migration>,
+	}
+
+	impl TestRepository {
+		fn new() -> Self {
+			Self {
+				migrations: HashMap::new(),
+			}
+		}
+	}
+
+	#[async_trait]
+	impl MigrationRepository for TestRepository {
+		async fn save(&mut self, migration: &Migration) -> crate::Result<()> {
+			let key = (migration.app_label.to_string(), migration.name.to_string());
+			self.migrations.insert(key, migration.clone());
+			Ok(())
+		}
+
+		async fn get(&self, app_label: &str, name: &str) -> crate::Result<Migration> {
+			let key = (app_label.to_string(), name.to_string());
+			self.migrations
+				.get(&key)
+				.cloned()
+				.ok_or_else(|| crate::MigrationError::NotFound(format!("{}.{}", app_label, name)))
+		}
+
+		async fn list(&self, app_label: &str) -> crate::Result<Vec<Migration>> {
+			Ok(self
+				.migrations
+				.values()
+				.filter(|m| m.app_label == app_label)
+				.cloned()
+				.collect())
+		}
+
+		async fn exists(&self, app_label: &str, name: &str) -> crate::Result<bool> {
+			Ok(self
+				.get(app_label, name)
+				.await
+				.map(|_| true)
+				.unwrap_or(false))
+		}
+	}
 
 	#[test]
 	fn test_rollback_generation() {
 		let target_schema = DatabaseSchema::default();
-		let generator = AutoMigrationGenerator::new(target_schema, PathBuf::from("/tmp"));
+		let repo = Arc::new(Mutex::new(TestRepository::new()));
+		let generator = AutoMigrationGenerator::new(target_schema, PathBuf::from("/tmp"), repo);
 
 		let operations = vec![Operation::CreateTable {
 			name: "users",
@@ -286,7 +403,7 @@ mod tests {
 		let mut current = DatabaseSchema::default();
 		let mut current_table = TableSchema {
 			name: "users",
-			columns: HashMap::new(),
+			columns: BTreeMap::new(),
 			indexes: Vec::new(),
 			constraints: Vec::new(),
 		};
@@ -307,7 +424,7 @@ mod tests {
 		let mut target = DatabaseSchema::default();
 		let mut target_table = TableSchema {
 			name: "users",
-			columns: HashMap::new(),
+			columns: BTreeMap::new(),
 			indexes: Vec::new(),
 			constraints: Vec::new(),
 		};
@@ -325,7 +442,8 @@ mod tests {
 		);
 		target.tables.insert("users".to_string(), target_table);
 
-		let generator = AutoMigrationGenerator::new(target, PathBuf::from("/tmp"));
+		let repo = Arc::new(Mutex::new(TestRepository::new()));
+		let generator = AutoMigrationGenerator::new(target, PathBuf::from("/tmp"), repo);
 		let validation = generator.validate(current);
 
 		assert!(!validation.is_valid);
