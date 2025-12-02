@@ -411,7 +411,7 @@ impl BaseCommand for MakeMigrationsCommand {
 						.collect(),
 					atomic: true,
 					replaces: Vec::new(),
-				initial: None,
+					initial: None,
 				};
 
 				if !is_dry_run {
@@ -581,10 +581,9 @@ impl BaseCommand for MakeMigrationsCommand {
 				let current_schema_for_app = current_schema.filter_by_app(app_name);
 
 				// Create repository for state management
-				let repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>> =
-					Arc::new(tokio::sync::Mutex::new(FilesystemRepository::new(
-						migrations_dir.clone(),
-					)));
+				let repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>> = Arc::new(
+					tokio::sync::Mutex::new(FilesystemRepository::new(migrations_dir.clone())),
+				);
 
 				// Create auto-migration generator for this app
 				let generator = AutoMigrationGenerator::new(
@@ -594,9 +593,8 @@ impl BaseCommand for MakeMigrationsCommand {
 				);
 
 				// Generate migration operations
-				let auto_migration_result = generator
-					.generate(app_name, current_schema_for_app)
-					.await;
+				let auto_migration_result =
+					generator.generate(app_name, current_schema_for_app).await;
 
 				match auto_migration_result {
 					Ok(result) => {
@@ -619,12 +617,13 @@ impl BaseCommand for MakeMigrationsCommand {
 						let is_initial = dependencies.is_empty();
 
 						// Generate migration number
-						let migration_number = MigrationNumbering::next_number(&migrations_dir, app_name);
+						let migration_number =
+							MigrationNumbering::next_number(&migrations_dir, app_name);
 
 						// Generate migration name
-						let base_name = migration_name_opt
-							.clone()
-							.unwrap_or_else(|| MigrationNamer::generate_name(&result.operations, is_initial));
+						let base_name = migration_name_opt.clone().unwrap_or_else(|| {
+							MigrationNamer::generate_name(&result.operations, is_initial)
+						});
 						let final_name = format!("{}_{}", migration_number, base_name);
 
 						let new_migration = reinhardt_db::migrations::Migration {
@@ -637,7 +636,7 @@ impl BaseCommand for MakeMigrationsCommand {
 								.collect(),
 							atomic: true,
 							replaces: Vec::new(),
-				initial: Some(is_initial),
+							initial: Some(is_initial),
 						};
 
 						results.push(MigrationResult {
@@ -684,7 +683,10 @@ impl BaseCommand for MakeMigrationsCommand {
 							}
 						}
 					} else {
-						ctx.info(&format!("  Would create: {}", migration_file_path.display()));
+						ctx.info(&format!(
+							"  Would create: {}",
+							migration_file_path.display()
+						));
 
 						if is_verbose {
 							for operation in &result.migration.operations {

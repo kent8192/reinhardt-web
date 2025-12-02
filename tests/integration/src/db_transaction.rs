@@ -7,9 +7,9 @@ use reinhardt_orm::connection::DatabaseConnection;
 use rstest::*;
 use std::sync::Arc;
 use testcontainers::{
+	GenericImage, ImageExt,
 	core::{ContainerPort, WaitFor},
 	runners::AsyncRunner,
-	GenericImage, ImageExt,
 };
 
 /// Database transaction fixture that automatically rolls back on drop

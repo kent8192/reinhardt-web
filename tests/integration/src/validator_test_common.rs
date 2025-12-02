@@ -10,9 +10,9 @@ use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};
 use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{
+	GenericImage, ImageExt,
 	core::{ContainerPort, WaitFor},
 	runners::AsyncRunner,
-	GenericImage, ImageExt,
 };
 
 /// Test database setup and management with TestContainers

@@ -7,8 +7,8 @@
 mod tests {
 	use async_trait::async_trait;
 	use reinhardt_db::migrations::{
-		schema_diff::SchemaDiff, AutoMigrationGenerator, DatabaseSchema, Migration,
-		MigrationRepository,
+		AutoMigrationGenerator, DatabaseSchema, Migration, MigrationRepository,
+		schema_diff::SchemaDiff,
 	};
 	use std::collections::HashMap;
 	use std::sync::Arc;
