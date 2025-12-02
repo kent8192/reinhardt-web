@@ -20,7 +20,7 @@ See README.md for project details.
 
 - **Language**: Rust 2024 Edition
 - **Module System**: MUST use 2024 edition (NO `mod.rs`)
-- **Database**: SeaQuery v1.0.0-rc1 for SQL operations
+- **Database**: SeaQuery v1.0.0-rc for building SQL queries
 - **Testing**: Rust's built-in framework + TestContainers for infrastructure
 - **Build**: Cargo workspace with multiple crates
 
@@ -32,7 +32,7 @@ See README.md for project details.
 **MUST use `module.rs` + `module/` directory structure (Rust 2024 Edition)**
 **NEVER use `mod.rs` files** (deprecated)
 
-See @docs/MODULE_SYSTEM.md for comprehensive module system standards including:
+See docs/MODULE_SYSTEM.md for comprehensive module system standards including:
 - Basic module patterns (small, medium, large)
 - Visibility control with `pub use`
 - Anti-patterns to avoid
@@ -55,7 +55,7 @@ See @docs/MODULE_SYSTEM.md for comprehensive module system standards including:
 - **KEEP** `unimplemented!()` for permanently excluded features
 - **NEVER** use alternative notations (`FIXME:`, `Implementation Note:`, etc.)
 
-See @docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
+See docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 
 ### Testing
 
@@ -71,7 +71,7 @@ See @docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 - Global state tests MUST use `#[serial(group_name)]`
 - Use strict assertions (`assert_eq!`) instead of loose matching (`contains`)
 
-See @docs/TESTING_STANDARDS.md for comprehensive testing standards including:
+See docs/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Testing philosophy (TP-1, TP-2)
 - Test organization (TO-1, TO-2)
 - Test implementation (TI-1 ~ TI-5)
@@ -99,7 +99,7 @@ See @docs/TESTING_STANDARDS.md for comprehensive testing standards including:
   - Avoid phrases like "User requested...", "As requested by...", "User asked..."
   - Focus on the "why" (technical rationale) not the "who asked"
 
-See @docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
+See docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 
 ### Git Workflow
 
@@ -120,7 +120,7 @@ See @docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 - Use `gh api` for accessing GitHub API
 - **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
 
-See @docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
+See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
 - Commit message format (CM-1 ~ CM-3)
 - Commit message style guide
@@ -157,7 +157,7 @@ See @docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 1. Update crate version in `Cargo.toml`
 2. Update crate's `CHANGELOG.md`
 3. Run all verification commands
-4. Commit version changes (see @docs/COMMIT_GUIDELINE.md CE-5)
+4. Commit version changes (see docs/COMMIT_GUIDELINE.md CE-5)
 5. Wait for explicit user authorization to proceed
 6. Run `cargo publish --dry-run -p <crate-name>`
 7. Wait for user confirmation after dry-run
@@ -350,13 +350,13 @@ Before submitting code:
 ### 📚 Detailed Standards
 
 For comprehensive guidelines, see:
-- **Module System**: @docs/MODULE_SYSTEM.md
-- **Testing**: @docs/TESTING_STANDARDS.md
-- **Anti-Patterns**: @docs/ANTI_PATTERNS.md
-- **Documentation**: @docs/DOCUMENTATION_STANDARDS.md
-- **Git Commits**: @docs/COMMIT_GUIDELINE.md
-- **Release Process**: @docs/RELEASE_PROCESS.md
-- **Project Overview**: @README.md
+- **Module System**: docs/MODULE_SYSTEM.md
+- **Testing**: docs/TESTING_STANDARDS.md
+- **Anti-Patterns**: docs/ANTI_PATTERNS.md
+- **Documentation**: docs/DOCUMENTATION_STANDARDS.md
+- **Git Commits**: docs/COMMIT_GUIDELINE.md
+- **Release Process**: docs/RELEASE_PROCESS.md
+- **Project Overview**: README.md
 
 ---
 
