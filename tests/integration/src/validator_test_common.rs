@@ -9,7 +9,11 @@ use reinhardt_core::validators::ValidationResult;
 use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};
 use sqlx::PgPool;
 use std::sync::Arc;
-use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
+use testcontainers::{
+	GenericImage, ImageExt,
+	core::{ContainerPort, WaitFor},
+	runners::AsyncRunner,
+};
 
 /// Test database setup and management with TestContainers
 pub struct TestDatabase {
@@ -37,10 +41,13 @@ impl TestDatabase {
 					.with_wait_for(WaitFor::message_on_stderr(
 						"database system is ready to accept connections",
 					))
-					.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
+					.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
+					.with_mapped_port(5432, ContainerPort::Tcp(5432));
 
 				let container = postgres_image.start().await?;
-				let port = container.get_host_port_ipv4(5432).await?;
+				let port = container
+					.get_host_port_ipv4(ContainerPort::Tcp(5432))
+					.await?;
 				let url = format!("postgres://postgres@127.0.0.1:{}/postgres", port);
 				(url, Some(container))
 			};

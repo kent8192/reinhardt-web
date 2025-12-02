@@ -26,6 +26,7 @@ pub mod messages_helpers;
 // New shared modules
 // pub mod flatpages_common;
 pub mod db_transaction;
+pub mod migration_duplicate;
 pub mod validator_test_common;
 
 /// Test database setup
@@ -47,7 +48,7 @@ pub async fn create_flatpages_tables(pool: &Pool<Postgres>) {
 	// Define flatpages migration with all required tables
 	let flatpages_migration = Migration::new("test_flatpages_schema", "test")
 		.add_operation(Operation::CreateTable {
-			name: "flatpages".to_string(),
+			name: "flatpages",
 			columns: vec![
 				ColumnDefinition::new("id", "BIGSERIAL PRIMARY KEY"),
 				ColumnDefinition::new("url", "VARCHAR(255) NOT NULL UNIQUE"),
@@ -62,7 +63,7 @@ pub async fn create_flatpages_tables(pool: &Pool<Postgres>) {
 			constraints: vec![],
 		})
 		.add_operation(Operation::CreateTable {
-			name: "sites".to_string(),
+			name: "sites",
 			columns: vec![
 				ColumnDefinition::new("id", "BIGSERIAL PRIMARY KEY"),
 				ColumnDefinition::new("domain", "VARCHAR(255) NOT NULL UNIQUE"),
@@ -71,16 +72,16 @@ pub async fn create_flatpages_tables(pool: &Pool<Postgres>) {
 			constraints: vec![],
 		})
 		.add_operation(Operation::CreateTable {
-			name: "flatpage_sites".to_string(),
+			name: "flatpage_sites",
 			columns: vec![
 				ColumnDefinition::new("id", "BIGSERIAL PRIMARY KEY"),
 				ColumnDefinition::new("flatpage_id", "BIGINT NOT NULL"),
 				ColumnDefinition::new("site_id", "BIGINT NOT NULL"),
 			],
 			constraints: vec![
-				"FOREIGN KEY (flatpage_id) REFERENCES flatpages(id) ON DELETE CASCADE".to_string(),
-				"FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE".to_string(),
-				"UNIQUE(flatpage_id, site_id)".to_string(),
+				"FOREIGN KEY (flatpage_id) REFERENCES flatpages(id) ON DELETE CASCADE",
+				"FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE",
+				"UNIQUE(flatpage_id, site_id)",
 			],
 		});
 
@@ -103,14 +104,10 @@ pub async fn cleanup_test_tables(pool: &Pool<Postgres>) {
 	// Define cleanup migration - drop tables in reverse order
 	let cleanup_migration = Migration::new("cleanup_test_schema", "test")
 		.add_operation(Operation::DropTable {
-			name: "flatpage_sites".to_string(),
+			name: "flatpage_sites",
 		})
-		.add_operation(Operation::DropTable {
-			name: "flatpages".to_string(),
-		})
-		.add_operation(Operation::DropTable {
-			name: "sites".to_string(),
-		});
+		.add_operation(Operation::DropTable { name: "flatpages" })
+		.add_operation(Operation::DropTable { name: "sites" });
 
 	// Generate and execute SQL for each operation
 	for operation in &cleanup_migration.operations {
