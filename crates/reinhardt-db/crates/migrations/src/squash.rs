@@ -179,7 +179,7 @@ impl MigrationSquasher {
 	///
 	/// ```rust
 	/// use reinhardt_migrations::squash::MigrationSquasher;
-	/// use reinhardt_migrations::{Operation, ColumnDefinition};
+	/// use reinhardt_migrations::{Operation, ColumnDefinition, FieldType};
 	///
 	/// let squasher = MigrationSquasher::new();
 	///
@@ -187,7 +187,7 @@ impl MigrationSquasher {
 	/// let ops = vec![
 	///     Operation::CreateTable {
 	///         name: "temp",
-	///         columns: vec![ColumnDefinition::new("id", "INTEGER")],
+	///         columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
 	///         constraints: vec![],
 	///     },
 	///     Operation::DropTable {
@@ -279,7 +279,7 @@ impl Default for MigrationSquasher {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ColumnDefinition;
+	use crate::{ColumnDefinition, FieldType};
 
 	#[test]
 	fn test_squash_basic() {
@@ -327,7 +327,7 @@ mod tests {
 		let ops = vec![
 			Operation::CreateTable {
 				name: "temp",
-				columns: vec![ColumnDefinition::new("id", "INTEGER")],
+				columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
 				constraints: vec![],
 			},
 			Operation::DropTable { name: "temp" },
@@ -344,7 +344,7 @@ mod tests {
 		let ops = vec![
 			Operation::AddColumn {
 				table: "users",
-				column: ColumnDefinition::new("temp_field", "VARCHAR(100)"),
+				column: ColumnDefinition::new("temp_field", FieldType::VarChar(100)),
 			},
 			Operation::DropColumn {
 				table: "users",
@@ -363,12 +363,12 @@ mod tests {
 		let ops = vec![
 			Operation::CreateTable {
 				name: "users",
-				columns: vec![ColumnDefinition::new("id", "INTEGER")],
+				columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
 				constraints: vec![],
 			},
 			Operation::AddColumn {
 				table: "users",
-				column: ColumnDefinition::new("name", "VARCHAR(100)"),
+				column: ColumnDefinition::new("name", FieldType::VarChar(100)),
 			},
 		];
 
@@ -381,7 +381,10 @@ mod tests {
 		let migration1 =
 			Migration::new("0001_initial", "myapp").add_operation(Operation::CreateTable {
 				name: "users",
-				columns: vec![ColumnDefinition::new("id", "INTEGER PRIMARY KEY")],
+				columns: vec![ColumnDefinition::new(
+					"id",
+					FieldType::Custom("INTEGER PRIMARY KEY".to_string()),
+				)],
 				constraints: vec![],
 			});
 
@@ -389,7 +392,7 @@ mod tests {
 			.add_dependency("myapp", "0001_initial")
 			.add_operation(Operation::AddColumn {
 				table: "users",
-				column: ColumnDefinition::new("name", "VARCHAR(100)"),
+				column: ColumnDefinition::new("name", FieldType::VarChar(100)),
 			});
 
 		let migrations = vec![migration1, migration2];

@@ -43,7 +43,6 @@ impl From<introspection::DatabaseSchema> for DatabaseSchema {
 						default: intro_col.default,
 						primary_key: intro_table.primary_key.contains(&col_name), // Check if column is in primary_key list
 						auto_increment: intro_col.auto_increment,
-						max_length: None, // Cannot easily get from intro_col, might need specific logic per DB type
 					},
 				);
 			}
@@ -162,7 +161,7 @@ pub struct ColumnSchema {
 	/// Column name
 	pub name: &'static str,
 	/// Data type
-	pub data_type: String,
+	pub data_type: crate::FieldType,
 	/// Nullable
 	pub nullable: bool,
 	/// Default value
@@ -171,8 +170,6 @@ pub struct ColumnSchema {
 	pub primary_key: bool,
 	/// Auto increment
 	pub auto_increment: bool,
-	/// Maximum length (for VARCHAR, CHAR, etc.)
-	pub max_length: Option<u32>,
 }
 
 /// Index schema
@@ -338,11 +335,10 @@ impl SchemaDiff {
 					.map(|(name, col)| {
 						let unique = self.extract_column_constraints(table_name, name);
 						let auto_increment = Self::is_auto_increment(col);
-						let max_length = Self::extract_max_length(&col.data_type);
 
 						ColumnDefinition {
 							name: Box::leak(name.clone().into_boxed_str()),
-							type_definition: Box::leak(col.data_type.clone().into_boxed_str()),
+							type_definition: col.data_type.clone(),
 							not_null: !col.nullable,
 							default: col
 								.default
@@ -351,7 +347,6 @@ impl SchemaDiff {
 							unique,
 							primary_key: col.primary_key,
 							auto_increment,
-							max_length,
 						}
 					})
 					.collect();
@@ -382,13 +377,12 @@ impl SchemaDiff {
 			{
 				let unique = self.extract_column_constraints(table_name, col_name);
 				let auto_increment = Self::is_auto_increment(col_schema);
-				let max_length = Self::extract_max_length(&col_schema.data_type);
 
 				operations.push(Operation::AddColumn {
 					table: table_name,
 					column: ColumnDefinition {
 						name: col_name,
-						type_definition: Box::leak(col_schema.data_type.clone().into_boxed_str()),
+						type_definition: col_schema.data_type.clone(),
 						not_null: !col_schema.nullable,
 						default: col_schema
 							.default
@@ -397,7 +391,6 @@ impl SchemaDiff {
 						unique,
 						primary_key: col_schema.primary_key,
 						auto_increment,
-						max_length,
 					},
 				});
 			}
@@ -443,32 +436,6 @@ impl SchemaDiff {
 		has_unique_constraint || has_unique_index
 	}
 
-	/// Extract max_length from column data type
-	fn extract_max_length(data_type: &str) -> Option<u32> {
-		let upper_type = data_type.to_uppercase();
-
-		// Match VARCHAR(N), CHAR(N) patterns
-		if (upper_type.contains("VARCHAR") || upper_type.contains("CHAR"))
-			&& let Some(start) = data_type.find('(')
-			&& let Some(end) = data_type.find(')')
-			&& let Ok(length) = data_type[start + 1..end].parse::<u32>()
-		{
-			return Some(length);
-		}
-
-		// Match DECIMAL(P, S), NUMERIC(P, S) patterns - extract precision (P)
-		if (upper_type.contains("DECIMAL") || upper_type.contains("NUMERIC"))
-			&& let Some(start) = data_type.find('(')
-			&& let Some(comma_pos) = data_type.find(',')
-			&& comma_pos > start + 1
-			&& let Ok(precision) = data_type[start + 1..comma_pos].trim().parse::<u32>()
-		{
-			return Some(precision);
-		}
-
-		None
-	}
-
 	/// Detect if column is auto-increment based on column properties and data type
 	fn is_auto_increment(column: &ColumnSchema) -> bool {
 		// If already marked as auto_increment, trust it
@@ -476,7 +443,7 @@ impl SchemaDiff {
 			return true;
 		}
 
-		let upper_type = column.data_type.to_uppercase();
+		let upper_type = column.data_type.to_sql_string().to_uppercase();
 
 		// PostgreSQL SERIAL types (SMALLSERIAL, SERIAL, BIGSERIAL)
 		if upper_type.contains("SERIAL") {
@@ -552,6 +519,7 @@ impl SchemaDiff {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::FieldType;
 
 	#[test]
 	fn test_detect_table_addition() {
@@ -598,12 +566,11 @@ mod tests {
 			"email".to_string(),
 			ColumnSchema {
 				name: "email",
-				data_type: "VARCHAR(255)".to_string(),
+				data_type: FieldType::VarChar(255),
 				nullable: false,
 				default: None,
 				primary_key: false,
 				auto_increment: false,
-				max_length: Some(255),
 			},
 		);
 		target.tables.insert("users".to_string(), target_table);

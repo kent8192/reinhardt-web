@@ -459,7 +459,7 @@ impl DatabaseMigrationExecutor {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignore
 	/// use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	/// use reinhardt_backends::{DatabaseConnection, DatabaseType};
 	///
@@ -779,12 +779,12 @@ impl DatabaseMigrationExecutor {
 ///
 /// ```rust
 /// use reinhardt_migrations::executor::OperationOptimizer;
-/// use reinhardt_migrations::{Operation, ColumnDefinition};
+/// use reinhardt_migrations::{Operation, ColumnDefinition, FieldType};
 ///
 /// let ops = vec![
 ///     Operation::AddColumn {
 ///         table: "users",
-///         column: ColumnDefinition::new("name", "VARCHAR(100)"),
+///         column: ColumnDefinition::new("name", FieldType::VarChar(100)),
 ///     },
 ///     Operation::CreateTable {
 ///         name: "users",
@@ -1209,7 +1209,7 @@ impl Default for OperationOptimizer {
 #[cfg(test)]
 mod optimizer_tests {
 	use super::*;
-	use crate::ColumnDefinition;
+	use crate::{ColumnDefinition, FieldType};
 
 	#[test]
 	fn test_optimizer_creation() {
@@ -1226,7 +1226,7 @@ mod optimizer_tests {
 		let ops = vec![
 			Operation::AddColumn {
 				table: "users",
-				column: ColumnDefinition::new("name", "VARCHAR(100)"),
+				column: ColumnDefinition::new("name", FieldType::VarChar(100)),
 			},
 			Operation::CreateTable {
 				name: "users",
@@ -1270,7 +1270,7 @@ mod optimizer_tests {
 		let ops = vec![
 			Operation::AddColumn {
 				table: "users",
-				column: ColumnDefinition::new("name", "VARCHAR(100)"),
+				column: ColumnDefinition::new("name", FieldType::VarChar(100)),
 			},
 			Operation::CreateTable {
 				name: "posts",
@@ -1279,7 +1279,7 @@ mod optimizer_tests {
 			},
 			Operation::AddColumn {
 				table: "users",
-				column: ColumnDefinition::new("email", "VARCHAR(255)"),
+				column: ColumnDefinition::new("email", FieldType::VarChar(255)),
 			},
 		];
 

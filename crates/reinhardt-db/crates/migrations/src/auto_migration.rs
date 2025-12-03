@@ -327,7 +327,7 @@ impl From<std::io::Error> for AutoMigrationError {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::repository::MigrationRepository;
+	use crate::{FieldType, repository::MigrationRepository};
 	use async_trait::async_trait;
 	use std::collections::{BTreeMap, HashMap};
 	use tokio::sync::Mutex;
@@ -411,12 +411,11 @@ mod tests {
 			"email".to_string(),
 			ColumnSchema {
 				name: "email",
-				data_type: "VARCHAR(255)".to_string(),
+				data_type: FieldType::VarChar(255),
 				nullable: true,
 				default: None,
 				primary_key: false,
 				auto_increment: false,
-				max_length: Some(255),
 			},
 		);
 		current.tables.insert("users".to_string(), current_table);
@@ -432,12 +431,11 @@ mod tests {
 			"email".to_string(),
 			ColumnSchema {
 				name: "email",
-				data_type: "VARCHAR(255)".to_string(),
+				data_type: FieldType::VarChar(255),
 				nullable: false, // Changed to non-nullable
 				default: None,
 				primary_key: false,
 				auto_increment: false,
-				max_length: Some(255),
 			},
 		);
 		target.tables.insert("users".to_string(), target_table);

@@ -81,6 +81,7 @@ pub use di_support::{MigrationConfig, MigrationService as DIMigrationService};
 pub use executor::{
 	DatabaseMigrationExecutor, ExecutionResult, MigrationExecutor, OperationOptimizer,
 };
+pub use fields::FieldType;
 pub use graph::{MigrationGraph, MigrationKey, MigrationNode};
 pub use migration::Migration;
 pub use migration_namer::MigrationNamer;

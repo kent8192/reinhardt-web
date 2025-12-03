@@ -38,7 +38,7 @@ pub struct ColumnInfo {
 	/// Column name
 	pub name: String,
 	/// Column type
-	pub column_type: String,
+	pub column_type: crate::FieldType,
 	/// Whether the column is nullable
 	pub nullable: bool,
 	/// Default value expression
@@ -108,51 +108,8 @@ impl PostgresIntrospector {
 		Self { pool }
 	}
 
-	fn convert_column_type(col_type: &sea_schema::postgres::def::Type) -> String {
-		use sea_schema::postgres::def::Type;
-		match col_type {
-			Type::Serial => "INTEGER".to_string(),
-			Type::BigSerial => "BIGINT".to_string(),
-			Type::SmallSerial => "SMALLINT".to_string(),
-			Type::Integer => "INTEGER".to_string(),
-			Type::BigInt => "BIGINT".to_string(),
-			Type::SmallInt => "SMALLINT".to_string(),
-			Type::Text => "TEXT".to_string(),
-			Type::Varchar(attr) => {
-				if let Some(len) = attr.length {
-					format!("VARCHAR({})", len)
-				} else {
-					"VARCHAR".to_string()
-				}
-			}
-			Type::Char(attr) => {
-				if let Some(len) = attr.length {
-					format!("CHAR({})", len)
-				} else {
-					"CHAR".to_string()
-				}
-			}
-			Type::Boolean => "BOOLEAN".to_string(),
-			Type::Date => "DATE".to_string(),
-			Type::Time(_) => "TIME".to_string(),
-			Type::TimeWithTimeZone(_) => "TIME WITH TIME ZONE".to_string(),
-			Type::Timestamp(_) => "TIMESTAMP".to_string(),
-			Type::TimestampWithTimeZone(_) => "TIMESTAMPTZ".to_string(),
-			Type::Numeric(attr) | Type::Decimal(attr) => {
-				if let (Some(precision), Some(scale)) = (attr.precision, attr.scale) {
-					format!("DECIMAL({}, {})", precision, scale)
-				} else {
-					"DECIMAL".to_string()
-				}
-			}
-			Type::Real => "REAL".to_string(),
-			Type::DoublePrecision => "DOUBLE PRECISION".to_string(),
-			Type::Uuid => "UUID".to_string(),
-			Type::Json => "JSON".to_string(),
-			Type::JsonBinary => "JSONB".to_string(),
-			Type::Bytea => "BYTEA".to_string(),
-			_ => "TEXT".to_string(), // fallback
-		}
+	fn convert_column_type(col_type: &sea_schema::postgres::def::Type) -> crate::FieldType {
+		col_type.into()
 	}
 
 	fn convert_table_def(table_def: &sea_schema::postgres::def::TableDef) -> Result<TableInfo> {
@@ -277,86 +234,8 @@ impl MySQLIntrospector {
 		Self { pool }
 	}
 
-	fn convert_column_type(col_type: &sea_schema::mysql::def::Type) -> String {
-		use sea_schema::mysql::def::Type;
-		match col_type {
-			Type::Serial => "BIGINT UNSIGNED AUTO_INCREMENT".to_string(),
-			Type::TinyInt(_) => "TINYINT".to_string(),
-			Type::Bool => "BOOLEAN".to_string(),
-			Type::SmallInt(_) => "SMALLINT".to_string(),
-			Type::MediumInt(_) => "MEDIUMINT".to_string(),
-			Type::Int(_) => "INT".to_string(),
-			Type::BigInt(_) => "BIGINT".to_string(),
-			Type::Decimal(attr) => {
-				if let (Some(precision), Some(scale)) = (attr.maximum, attr.decimal) {
-					format!("DECIMAL({}, {})", precision, scale)
-				} else {
-					"DECIMAL".to_string()
-				}
-			}
-			Type::Float(_) => "FLOAT".to_string(),
-			Type::Double(_) => "DOUBLE".to_string(),
-			Type::Char(attr) | Type::NChar(attr) => {
-				if let Some(len) = attr.length {
-					format!("CHAR({})", len)
-				} else {
-					"CHAR".to_string()
-				}
-			}
-			Type::Varchar(attr) | Type::NVarchar(attr) => {
-				if let Some(len) = attr.length {
-					format!("VARCHAR({})", len)
-				} else {
-					"VARCHAR".to_string()
-				}
-			}
-			Type::Binary(attr) => {
-				if let Some(len) = attr.length {
-					format!("BINARY({})", len)
-				} else {
-					"BINARY".to_string()
-				}
-			}
-			Type::Varbinary(attr) => {
-				if let Some(len) = attr.length {
-					format!("VARBINARY({})", len)
-				} else {
-					"VARBINARY".to_string()
-				}
-			}
-			Type::Text(_) => "TEXT".to_string(),
-			Type::TinyText(_) => "TINYTEXT".to_string(),
-			Type::MediumText(_) => "MEDIUMTEXT".to_string(),
-			Type::LongText(_) => "LONGTEXT".to_string(),
-			Type::Blob(_) => "BLOB".to_string(),
-			Type::TinyBlob => "TINYBLOB".to_string(),
-			Type::MediumBlob => "MEDIUMBLOB".to_string(),
-			Type::LongBlob => "LONGBLOB".to_string(),
-			Type::Date => "DATE".to_string(),
-			Type::Time(_) => "TIME".to_string(),
-			Type::DateTime(_) => "DATETIME".to_string(),
-			Type::Timestamp(_) => "TIMESTAMP".to_string(),
-			Type::Year => "YEAR".to_string(),
-			Type::Json => "JSON".to_string(),
-			Type::Enum(enum_def) => {
-				let values = enum_def.values.join("','");
-				format!("ENUM('{}')", values)
-			}
-			Type::Set(set_def) => {
-				let members = set_def.members.join("','");
-				format!("SET('{}')", members)
-			}
-			Type::Bit(_)
-			| Type::Geometry(_)
-			| Type::Point(_)
-			| Type::LineString(_)
-			| Type::Polygon(_)
-			| Type::MultiPoint(_)
-			| Type::MultiLineString(_)
-			| Type::MultiPolygon(_)
-			| Type::GeometryCollection(_) => format!("{:?}", col_type).to_uppercase(),
-			Type::Unknown(s) => s.clone(),
-		}
+	fn convert_column_type(col_type: &sea_schema::mysql::def::Type) -> crate::FieldType {
+		col_type.into()
 	}
 
 	fn convert_foreign_key_action(action: &sea_schema::mysql::def::ForeignKeyAction) -> String {
@@ -506,19 +385,8 @@ impl SQLiteIntrospector {
 		Self { pool }
 	}
 
-	fn convert_column_type(col_type: &sea_schema::sea_query::ColumnType) -> String {
-		use sea_schema::sea_query::ColumnType;
-		match col_type {
-			ColumnType::TinyInteger
-			| ColumnType::SmallInteger
-			| ColumnType::Integer
-			| ColumnType::BigInteger => "INTEGER".to_string(),
-			ColumnType::Float | ColumnType::Double | ColumnType::Decimal(_) => "REAL".to_string(),
-			ColumnType::String(_) | ColumnType::Text | ColumnType::Char(_) => "TEXT".to_string(),
-			ColumnType::Binary(_) => "BLOB".to_string(),
-			ColumnType::Boolean => "INTEGER".to_string(), // SQLite uses INTEGER for boolean
-			_ => "TEXT".to_string(),                      // fallback
-		}
+	fn convert_column_type(col_type: &sea_schema::sea_query::ColumnType) -> crate::FieldType {
+		col_type.into()
 	}
 
 	#[allow(dead_code)]
@@ -818,6 +686,7 @@ impl DatabaseIntrospector for SQLiteIntrospector {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::FieldType;
 
 	#[cfg(feature = "sqlite")]
 	#[tokio::test]
@@ -857,14 +726,14 @@ mod tests {
 		// Check id column
 		let id_col = &users_table.columns["id"];
 		assert_eq!(id_col.name, "id");
-		assert_eq!(id_col.column_type, "INTEGER");
+		assert_eq!(id_col.column_type, FieldType::Integer);
 		assert!(id_col.auto_increment);
 		assert!(!id_col.nullable);
 
 		// Check name column
 		let name_col = &users_table.columns["name"];
 		assert_eq!(name_col.name, "name");
-		assert_eq!(name_col.column_type, "TEXT");
+		assert_eq!(name_col.column_type, FieldType::Text);
 		assert!(!name_col.nullable);
 	}
 

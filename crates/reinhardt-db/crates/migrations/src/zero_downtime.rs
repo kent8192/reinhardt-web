@@ -468,7 +468,7 @@ impl ZeroDowntimeMigration {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ColumnDefinition;
+	use crate::{ColumnDefinition, FieldType};
 
 	#[test]
 	fn test_strategy_name() {
@@ -512,7 +512,7 @@ mod tests {
 		let migration =
 			Migration::new("0001_add_column", "myapp").add_operation(Operation::AddColumn {
 				table: "users",
-				column: ColumnDefinition::new("new_field", "VARCHAR(100)"),
+				column: ColumnDefinition::new("new_field", FieldType::VarChar(100)),
 			});
 
 		let zd = ZeroDowntimeMigration::new(migration, Strategy::ExpandContractPattern);
@@ -562,7 +562,7 @@ mod tests {
 			})
 			.add_operation(Operation::AddColumn {
 				table: "users",
-				column: ColumnDefinition::new("field", "VARCHAR(100)"),
+				column: ColumnDefinition::new("field", FieldType::VarChar(100)),
 			})
 			.add_operation(Operation::DropColumn {
 				table: "users",
@@ -580,7 +580,7 @@ mod tests {
 		let migration = Migration::new("0001_mixed", "myapp")
 			.add_operation(Operation::AddColumn {
 				table: "users",
-				column: ColumnDefinition::new("field", "VARCHAR(100)"),
+				column: ColumnDefinition::new("field", FieldType::VarChar(100)),
 			})
 			.add_operation(Operation::DropColumn {
 				table: "users",

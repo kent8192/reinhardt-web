@@ -71,11 +71,12 @@ impl ModelMetadata {
 	///
 	/// ```
 	/// use reinhardt_migrations::model_registry::{ModelMetadata, FieldMetadata};
+	/// use reinhardt_migrations::FieldType;
 	///
 	/// let mut metadata = ModelMetadata::new("myapp", "User", "myapp_user");
 	/// metadata.add_field(
 	///     "email".to_string(),
-	///     FieldMetadata::new("CharField").with_param("max_length", "255"),
+	///     FieldMetadata::new(FieldType::VarChar(255)).with_param("max_length", "255"),
 	/// );
 	///
 	/// let model_state = metadata.to_model_state();
@@ -113,16 +114,16 @@ impl ModelMetadata {
 /// Field metadata for registration
 #[derive(Debug, Clone)]
 pub struct FieldMetadata {
-	/// Field type (e.g., "CharField", "IntegerField", "ForeignKey")
-	pub field_type: String,
+	/// Field type (e.g., CharField, IntegerField, ForeignKey)
+	pub field_type: crate::FieldType,
 	/// Field parameters (max_length, null, blank, default, etc.)
 	pub params: HashMap<String, String>,
 }
 
 impl FieldMetadata {
-	pub fn new(field_type: impl Into<String>) -> Self {
+	pub fn new(field_type: crate::FieldType) -> Self {
 		Self {
-			field_type: field_type.into(),
+			field_type,
 			params: HashMap::new(),
 		}
 	}
@@ -286,6 +287,7 @@ pub fn global_registry() -> &'static ModelRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::FieldType;
 
 	#[test]
 	fn test_model_registry_new() {
@@ -359,7 +361,7 @@ mod tests {
 	fn test_model_metadata_to_model_state() {
 		let mut metadata = ModelMetadata::new("blog", "Post", "blog_post");
 
-		let mut title_field = FieldMetadata::new("CharField");
+		let mut title_field = FieldMetadata::new(FieldType::Custom("CharField".to_string()));
 		title_field
 			.params
 			.insert("max_length".to_string(), "200".to_string());
@@ -373,11 +375,11 @@ mod tests {
 
 	#[test]
 	fn test_field_metadata_builder() {
-		let field = FieldMetadata::new("CharField")
+		let field = FieldMetadata::new(FieldType::Custom("CharField".to_string()))
 			.with_param("max_length", "100")
 			.with_param("null", "False");
 
-		assert_eq!(field.field_type, "CharField");
+		assert_eq!(field.field_type, FieldType::Custom("CharField".to_string()));
 		assert_eq!(field.params.get("max_length").unwrap(), "100");
 		assert_eq!(field.params.get("null").unwrap(), "False");
 	}

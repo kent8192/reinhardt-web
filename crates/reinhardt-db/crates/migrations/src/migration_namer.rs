@@ -149,26 +149,24 @@ mod tests {
 				table: "users",
 				column: crate::ColumnDefinition {
 					name: "email",
-					type_definition: "VARCHAR(255)",
+					type_definition: crate::FieldType::Custom("VARCHAR(255)".to_string()),
 					not_null: false,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
 					default: None,
-					max_length: Some(255),
 				},
 			},
 			Operation::AddColumn {
 				table: "users",
 				column: crate::ColumnDefinition {
 					name: "phone",
-					type_definition: "VARCHAR(20)",
+					type_definition: crate::FieldType::Custom("VARCHAR(20)".to_string()),
 					not_null: false,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
 					default: None,
-					max_length: Some(20),
 				},
 			},
 		];
