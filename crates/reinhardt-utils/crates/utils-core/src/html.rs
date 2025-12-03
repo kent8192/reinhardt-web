@@ -206,9 +206,9 @@ pub fn format_html(template: &str, args: &[(&str, &str)]) -> String {
 /// ```
 /// use reinhardt_utils_core::html::conditional_escape;
 ///
-/// assert!(conditional_escape("<script>"), "&lt;script&gt;");
-/// assert!(!conditional_escape("<script>"), "<script>");
-/// assert!(conditional_escape("Hello"), "Hello");
+/// assert_eq!(conditional_escape("<script>", true), "&lt;script&gt;");
+/// assert_eq!(conditional_escape("<script>", false), "<script>");
+/// assert_eq!(conditional_escape("Hello", false), "Hello");
 /// ```
 pub fn conditional_escape(text: &str, autoescape: bool) -> Cow<'_, str> {
 	if autoescape {

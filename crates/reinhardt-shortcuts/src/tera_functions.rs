@@ -235,7 +235,7 @@ impl Function for StaticFunction {
 ///
 /// // Setup router
 /// let router = UnifiedRouter::new()
-///     .function_named("/users/:id", Method::GET, dummy_handler, "user_profile");
+///     .function_named("/users/{id}", Method::GET, dummy_handler, "user_profile");
 /// register_router(router);
 ///
 /// // Use in template function

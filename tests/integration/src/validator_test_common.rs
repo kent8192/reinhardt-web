@@ -41,8 +41,7 @@ impl TestDatabase {
 					.with_wait_for(WaitFor::message_on_stderr(
 						"database system is ready to accept connections",
 					))
-					.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
-					.with_mapped_port(5432, ContainerPort::Tcp(5432));
+					.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
 
 				let container = postgres_image.start().await?;
 				let port = container

@@ -35,7 +35,6 @@ pub async fn setup_test_db() -> Pool<Postgres> {
 
 	// Otherwise, use testcontainers to automatically start PostgreSQL
 	let container = GenericImage::new("postgres", "17-alpine")
-		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start PostgreSQL container");

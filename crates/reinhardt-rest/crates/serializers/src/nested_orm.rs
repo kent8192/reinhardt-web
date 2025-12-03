@@ -39,7 +39,7 @@ impl NestedSaveContext {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_orm_integration::NestedSaveContext;
+	/// use reinhardt_serializers::nested_orm::NestedSaveContext;
 	///
 	/// let context = NestedSaveContext::new();
 	/// // Verify context is initialized with default depth settings

@@ -98,7 +98,6 @@ async fn test_multiple_database_connections(
 		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "testdb2")
-		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start second PostgreSQL container");
@@ -193,7 +192,6 @@ async fn test_data_migration_between_databases(
 		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "target_db")
-		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start target PostgreSQL container");
@@ -327,7 +325,6 @@ async fn test_read_replica_pattern(
 		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "replica_db")
-		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start replica PostgreSQL container");
@@ -436,7 +433,6 @@ async fn test_read_load_balancing_across_replicas(
 			.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 			.with_env_var("POSTGRES_PASSWORD", "test")
 			.with_env_var("POSTGRES_DB", format!("replica_{}", i))
-			.with_mapped_port(5432, ContainerPort::Tcp(5432))
 			.start()
 			.await
 			.unwrap_or_else(|_| panic!("Failed to start replica {} container", i));
@@ -560,7 +556,6 @@ async fn test_primary_database_failover(
 		.with_wait_for(WaitFor::message_on_stderr("database system is ready"))
 		.with_env_var("POSTGRES_PASSWORD", "test")
 		.with_env_var("POSTGRES_DB", "replica_db")
-		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start replica container");

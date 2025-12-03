@@ -251,7 +251,6 @@ async fn postgres_with_schema() -> (ContainerAsync<GenericImage>, Arc<PgPool>, E
 			),
 		)
 		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
-		.with_mapped_port(5432, 5432.tcp())
 		.start()
 		.await
 		.expect("Failed to start PostgreSQL container");
