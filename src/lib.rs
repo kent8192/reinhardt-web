@@ -486,9 +486,13 @@ pub use reinhardt_urls::routers::{
 // Re-export auth
 #[cfg(feature = "auth")]
 pub use reinhardt_auth::{
-	AllowAny, AnonymousUser, AuthBackend, IsAdminUser, IsAuthenticated, PasswordHasher, Permission,
-	SimpleUser, User,
+	AllowAny, AnonymousUser, AuthBackend, BaseUser, FullUser, IsAdminUser, IsAuthenticated,
+	PasswordHasher, Permission, PermissionsMixin, SimpleUser, User,
 };
+
+#[cfg(feature = "auth")]
+#[cfg_attr(docsrs, doc(cfg(feature = "argon2-hasher")))]
+pub use reinhardt_auth::Argon2Hasher;
 
 #[cfg(feature = "auth-jwt")]
 pub use reinhardt_auth::{Claims, JwtAuth};
