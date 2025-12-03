@@ -57,7 +57,6 @@ pub async fn validator_test_db() -> (ContainerAsync<GenericImage>, Arc<sqlx::PgP
 		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
 		.with_env_var("POSTGRES_USER", "postgres")
 		.with_env_var("POSTGRES_DB", "test_db")
-		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start PostgreSQL container for validator tests");

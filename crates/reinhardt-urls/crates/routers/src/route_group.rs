@@ -276,10 +276,10 @@ impl RouteGroup {
 	/// use reinhardt_routers::RouteGroup;
 	///
 	/// let auth_group = RouteGroup::new()
-	///     .with_prefix("/auth");
+	///     .with_prefix("/auth/");
 	///
 	/// let group = RouteGroup::new()
-	///     .with_prefix("/api")
+	///     .with_prefix("/api/")
 	///     .nest(auth_group);
 	///
 	/// // RouteGroup with nested group created successfully
@@ -330,10 +330,10 @@ impl RouteGroup {
 	/// use reinhardt_routers::RouteGroup;
 	///
 	/// let auth_group = RouteGroup::new()
-	///     .with_prefix("/auth");
+	///     .with_prefix("/auth/");
 	///
 	/// let group = RouteGroup::new()
-	///     .with_prefix("/api")
+	///     .with_prefix("/api/")
 	///     .nest(auth_group);
 	///
 	/// assert_eq!(group.children_count(), 1);

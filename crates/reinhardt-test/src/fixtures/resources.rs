@@ -71,7 +71,6 @@ impl PostgresSuiteResource {
 				"database system is ready to accept connections",
 			))
 			.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
-			.with_mapped_port(5432, ContainerPort::Tcp(5432))
 			.start()
 			.await
 			.expect("Failed to start PostgreSQL container");

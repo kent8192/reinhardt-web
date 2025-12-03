@@ -71,7 +71,8 @@
 //!
 //! ```rust,no_run
 //! use reinhardt_test::fixtures::*;
-//! use reinhardt_migrations::{Migration, MigrationRegistry};
+//! use reinhardt_migrations::Migration;
+//! use reinhardt_migrations::registry::MigrationRegistry;
 //! use rstest::*;
 //!
 //! #[rstest]

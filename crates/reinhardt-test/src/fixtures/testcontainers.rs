@@ -228,13 +228,15 @@ impl Drop for FileLockGuard {
 #[fixture]
 pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String)
 {
+	use testcontainers::core::IntoContainerPort;
+
 	let postgres = GenericImage::new("postgres", "17-alpine")
+		.with_exposed_port(5432.tcp())
 		.with_wait_for(WaitFor::message_on_stderr(
 			"database system is ready to accept connections",
 		))
 		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
 		.with_env_var("POSTGRES_INITDB_ARGS", "-c max_connections=200")
-		.with_mapped_port(5432, ContainerPort::Tcp(5432))
 		.start()
 		.await
 		.expect("Failed to start PostgreSQL container");
@@ -243,7 +245,7 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 	let mut port_retry = 0;
 	let max_port_retries = 5;
 	let port = loop {
-		match postgres.get_host_port_ipv4(ContainerPort::Tcp(5432)).await {
+		match postgres.get_host_port_ipv4(5432).await {
 			Ok(p) => break p,
 			Err(_) if port_retry < max_port_retries => {
 				port_retry += 1;
@@ -290,7 +292,10 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 
 pub async fn cockroachdb_container()
 -> (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String) {
+	use testcontainers::core::IntoContainerPort;
+
 	let cockroachdb = GenericImage::new("cockroachdb/cockroach", "v23.1.0")
+		.with_exposed_port(26257.tcp())
 		.with_wait_for(WaitFor::message_on_stderr("initialized new cluster"))
 		.with_cmd(vec![
 			"start-single-node".to_string(),
@@ -302,7 +307,7 @@ pub async fn cockroachdb_container()
 		.expect("Failed to start CockroachDB container");
 
 	let port = cockroachdb
-		.get_host_port_ipv4(ContainerPort::Tcp(26257))
+		.get_host_port_ipv4(26257)
 		.await
 		.expect("Failed to get CockroachDB port");
 
@@ -396,12 +401,15 @@ pub async fn redis_container() -> (ContainerAsync<GenericImage>, u16, String) {
 
 async fn try_start_redis_container()
 -> Result<(ContainerAsync<GenericImage>, u16, String), Box<dyn std::error::Error>> {
+	use testcontainers::core::IntoContainerPort;
+
 	let redis = GenericImage::new("redis", "7-alpine")
+		.with_exposed_port(6379.tcp())
 		.with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
 		.start()
 		.await?;
 
-	let port = redis.get_host_port_ipv4(ContainerPort::Tcp(6379)).await?;
+	let port = redis.get_host_port_ipv4(6379).await?;
 
 	let url = format!("redis://localhost:{}", port);
 
@@ -1063,14 +1071,17 @@ pub async fn redis_cluster_fixture() -> (
 // ============================================================================
 
 pub async fn mongodb_container() -> (ContainerAsync<GenericImage>, String, u16) {
+	use testcontainers::core::IntoContainerPort;
+
 	let mongo = GenericImage::new("mongo", "7.0")
+		.with_exposed_port(27017.tcp())
 		.with_wait_for(WaitFor::message_on_stdout("Waiting for connections"))
 		.start()
 		.await
 		.expect("Failed to start MongoDB container");
 
 	let port = mongo
-		.get_host_port_ipv4(ContainerPort::Tcp(27017))
+		.get_host_port_ipv4(27017)
 		.await
 		.expect("Failed to get MongoDB port");
 
@@ -1104,7 +1115,10 @@ pub async fn mongodb_container() -> (ContainerAsync<GenericImage>, String, u16) 
 /// ```
 #[fixture]
 pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String) {
+	use testcontainers::core::IntoContainerPort;
+
 	let localstack = GenericImage::new("localstack/localstack", "latest")
+		.with_exposed_port(4566.tcp())
 		.with_wait_for(WaitFor::message_on_stdout("Ready."))
 		.with_env_var("SERVICES", "s3,dynamodb")
 		.start()
@@ -1112,7 +1126,7 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 		.expect("Failed to start LocalStack container");
 
 	let port = localstack
-		.get_host_port_ipv4(ContainerPort::Tcp(4566))
+		.get_host_port_ipv4(4566)
 		.await
 		.expect("Failed to get LocalStack port");
 
@@ -1228,7 +1242,10 @@ pub async fn mysql_container() -> (
 	u16,
 	String,
 ) {
+	use testcontainers::core::IntoContainerPort;
+
 	let mysql = GenericImage::new("mysql", "8.0")
+		.with_exposed_port(3306.tcp())
 		.with_wait_for(WaitFor::message_on_stderr(
 			"port: 3306  MySQL Community Server",
 		))
@@ -1242,7 +1259,7 @@ pub async fn mysql_container() -> (
 	let mut port_retry = 0;
 	let max_port_retries = 5;
 	let port = loop {
-		match mysql.get_host_port_ipv4(ContainerPort::Tcp(3306)).await {
+		match mysql.get_host_port_ipv4(3306).await {
 			Ok(p) => break p,
 			Err(_) if port_retry < max_port_retries => {
 				port_retry += 1;

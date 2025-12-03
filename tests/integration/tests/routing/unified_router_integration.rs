@@ -62,7 +62,7 @@ async fn test_unified_router_mount_child() {
 	let router = UnifiedRouter::new()
 		.with_prefix("/api")
 		.with_namespace("api")
-		.mount("/users", child);
+		.mount("/users/", child);
 
 	assert_eq!(router.children_count(), 1);
 }
@@ -87,7 +87,7 @@ async fn test_unified_router_hierarchical_namespace() {
 	let mut api = UnifiedRouter::new()
 		.with_namespace("v1")
 		.with_prefix("/api/v1")
-		.mount("/users", users);
+		.mount("/users/", users);
 
 	// Register all routes
 	api.register_all_routes();
@@ -124,9 +124,9 @@ async fn test_unified_router_nested_namespace_reversal() {
 
 	let v1 = UnifiedRouter::new()
 		.with_namespace("v1")
-		.mount("/users", users);
+		.mount("/users/", users);
 
-	let mut api = UnifiedRouter::new().with_namespace("api").mount("/v1", v1);
+	let mut api = UnifiedRouter::new().with_namespace("api").mount("/v1/", v1);
 
 	api.register_all_routes();
 
@@ -150,8 +150,8 @@ async fn test_unified_router_multiple_children() {
 
 	let router = UnifiedRouter::new()
 		.with_prefix("/api")
-		.mount("/users", users)
-		.mount("/posts", posts);
+		.mount("/users/", users)
+		.mount("/posts/", posts);
 
 	assert_eq!(router.children_count(), 2);
 
@@ -180,14 +180,14 @@ async fn test_unified_router_deep_nesting() {
 
 	let v2 = UnifiedRouter::new()
 		.with_namespace("v2")
-		.mount("/resource", resource);
+		.mount("/resource/", resource);
 
-	let v1 = UnifiedRouter::new().with_namespace("v1").mount("/v2", v2);
+	let v1 = UnifiedRouter::new().with_namespace("v1").mount("/v2/", v2);
 
 	let mut api = UnifiedRouter::new()
 		.with_namespace("api")
 		.with_prefix("/api")
-		.mount("/v1", v1);
+		.mount("/v1/", v1);
 
 	api.register_all_routes();
 
@@ -209,7 +209,7 @@ async fn test_unified_router_get_all_routes() {
 		.with_prefix("/api")
 		.with_namespace("api")
 		.function_named("/health", Method::GET, "health", health_handler)
-		.mount("/users", users);
+		.mount("/users/", users);
 
 	let routes = router.get_all_routes();
 
@@ -247,7 +247,7 @@ async fn test_unified_router_namespace_inheritance() {
 
 	let mut parent = UnifiedRouter::new()
 		.with_namespace("parent")
-		.mount("/child", child);
+		.mount("/child/", child);
 
 	parent.register_all_routes();
 

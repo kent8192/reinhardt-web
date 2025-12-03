@@ -40,7 +40,7 @@ async fn users_v2_handler(_req: Request) -> Result<Response, reinhardt_http::Err
 	)))
 }
 
-/// Handler for v1 users/:id/posts endpoint
+/// Handler for v1 users/{id}/posts endpoint
 async fn user_posts_v1_handler(req: Request) -> Result<Response, reinhardt_http::Error> {
 	let user_id = req
 		.path_params
@@ -53,7 +53,7 @@ async fn user_posts_v1_handler(req: Request) -> Result<Response, reinhardt_http:
 	))))
 }
 
-/// Handler for v2 users/:id/posts endpoint
+/// Handler for v2 users/{id}/posts endpoint
 async fn user_posts_v2_handler(req: Request) -> Result<Response, reinhardt_http::Error> {
 	let user_id = req
 		.path_params
@@ -151,23 +151,19 @@ async fn test_versioned_router_registration() {
 /// - `/v2/users/{id}/posts` correctly extracts user_id
 /// - Path parameters work with version prefixes
 /// - Version-specific response formats
-///
-/// NOTE: Currently ignored because UnifiedRouter doesn't support `:id` path parameters yet.
-/// This test will be enabled when path parameter routing is implemented.
 #[rstest]
 #[tokio::test]
-#[ignore = "UnifiedRouter doesn't support :id path parameters yet"]
 async fn test_url_path_versioning_with_nested_routes() {
 	// Create router with nested versioned routes
 	let router = Arc::new(
 		UnifiedRouter::new()
 			.function(
-				"/v1/users/:id/posts",
+				"/v1/users/{id}/posts",
 				hyper::Method::GET,
 				user_posts_v1_handler,
 			)
 			.function(
-				"/v2/users/:id/posts",
+				"/v2/users/{id}/posts",
 				hyper::Method::GET,
 				user_posts_v2_handler,
 			),
@@ -348,12 +344,8 @@ async fn test_accept_header_versioning_with_routers() {
 ///
 /// Note: This test uses URL path versioning as a proxy for middleware behavior
 /// since full middleware integration would require more complex setup.
-///
-/// NOTE: Currently ignored because UnifiedRouter doesn't support `:id` path parameters yet.
-/// This test will be enabled when path parameter routing is implemented.
 #[rstest]
 #[tokio::test]
-#[ignore = "UnifiedRouter doesn't support :id path parameters yet"]
 async fn test_middleware_versioning_with_route_groups() {
 	// Create URLPathVersioning strategy
 	let allowed_versions = vec!["v1".to_string(), "v2".to_string()];
@@ -368,13 +360,13 @@ async fn test_middleware_versioning_with_route_groups() {
 		UnifiedRouter::new()
 			.function("/v1/users", hyper::Method::GET, users_v1_handler)
 			.function(
-				"/v1/users/:id/posts",
+				"/v1/users/{id}/posts",
 				hyper::Method::GET,
 				user_posts_v1_handler,
 			)
 			.function("/v2/users", hyper::Method::GET, users_v2_handler)
 			.function(
-				"/v2/users/:id/posts",
+				"/v2/users/{id}/posts",
 				hyper::Method::GET,
 				user_posts_v2_handler,
 			),

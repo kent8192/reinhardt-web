@@ -331,6 +331,7 @@ mod tests {
 
 		migration_registry
 			.register(Migration {
+				initial: None,
 				app_label: "test_app",
 				name: "0001_initial",
 				operations: vec![],

@@ -5,11 +5,7 @@
 
 use reinhardt_serializers::BatchValidator;
 use sea_orm::{Database, DatabaseConnection};
-use testcontainers::{
-	GenericImage, ImageExt,
-	core::{ContainerPort, WaitFor},
-	runners::AsyncRunner,
-};
+use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
 /// Set up test database and create test tables
 ///
@@ -18,19 +14,19 @@ use testcontainers::{
 /// - Database URL string
 async fn setup_test_db() -> (testcontainers::ContainerAsync<GenericImage>, String) {
 	// Start PostgreSQL container
-	let postgres = GenericImage::new("postgres", "16-alpine")
+	let image = GenericImage::new("postgres", "16-alpine")
 		.with_wait_for(WaitFor::message_on_stderr(
 			"database system is ready to accept connections",
 		))
 		.with_env_var("POSTGRES_PASSWORD", "test")
-		.with_env_var("POSTGRES_DB", "test_db")
-		.with_mapped_port(5432, ContainerPort::Tcp(5432))
-		.start()
+		.with_env_var("POSTGRES_DB", "test_db");
+
+	let postgres = AsyncRunner::start(image)
 		.await
 		.expect("Failed to start PostgreSQL container");
 
 	let port = postgres
-		.get_host_port_ipv4(ContainerPort::Tcp(5432))
+		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get PostgreSQL port");
 

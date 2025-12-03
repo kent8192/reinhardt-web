@@ -100,25 +100,25 @@ pub(crate) struct RouteMatch {
 /// // Create a users sub-router
 /// let users_router = UnifiedRouter::new()
 ///     .with_namespace("users")
-///     .function("/export", Method::GET, |_req| async { Ok(Response::ok()) });
+///     .function("/export/", Method::GET, |_req| async { Ok(Response::ok()) });
 ///
 /// // Verify users router has namespace
 /// assert_eq!(users_router.namespace(), Some("users"));
 ///
 /// // Create root router
 /// let router = UnifiedRouter::new()
-///     .with_prefix("/api/v1")
+///     .with_prefix("/api/v1/")
 ///     .with_namespace("v1")
-///     .function("/health", Method::GET, |_req| async { Ok(Response::ok()) })
-///     .mount("/users", users_router);
+///     .function("/health/", Method::GET, |_req| async { Ok(Response::ok()) })
+///     .mount("/users/", users_router);
 ///
 /// // Verify root router configuration
-/// assert_eq!(router.prefix(), "/api/v1");
+/// assert_eq!(router.prefix(), "/api/v1/");
 /// assert_eq!(router.namespace(), Some("v1"));
 ///
 /// // Generated URLs:
-/// // /api/v1/health
-/// // /api/v1/users/export
+/// // /api/v1/health/
+/// // /api/v1/users/export/
 /// # Ok(())
 /// # }
 /// # tokio::runtime::Runtime::new().unwrap().block_on(example()).unwrap();
@@ -434,11 +434,11 @@ impl UnifiedRouter {
 	///     .with_namespace("users");
 	///
 	/// let router = UnifiedRouter::new()
-	///     .with_prefix("/api")
-	///     .include("/users", users_router);
+	///     .with_prefix("/api/")
+	///     .include("/users/", users_router);
 	///
 	/// // Verify the router was created successfully
-	/// assert_eq!(router.prefix(), "/api");
+	/// assert_eq!(router.prefix(), "/api/");
 	/// ```
 	pub fn include(self, prefix: &str, child: UnifiedRouter) -> Self {
 		self.mount(prefix, child)

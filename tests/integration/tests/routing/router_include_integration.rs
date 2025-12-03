@@ -10,7 +10,7 @@ async fn test_router_include_basic() {
 	// Use include() to mount child router
 	let router = UnifiedRouter::new()
 		.with_prefix("/api")
-		.include("/users", users_router);
+		.include("/users/", users_router);
 
 	// Verify router structure using public API
 	assert_eq!(router.prefix(), "/api");
@@ -27,8 +27,8 @@ async fn test_router_include_mut() {
 	let posts_router = UnifiedRouter::new().with_namespace("posts");
 
 	// Use include_mut() to mount child routers
-	router.include_mut("/users", users_router);
-	router.include_mut("/posts", posts_router);
+	router.include_mut("/users/", users_router);
+	router.include_mut("/posts/", posts_router);
 
 	// Verify router structure using public API
 	assert_eq!(router.prefix(), "/api");
@@ -41,13 +41,13 @@ async fn test_router_include_vs_mount_equivalence() {
 	let users_router1 = UnifiedRouter::new().with_namespace("users");
 	let router1 = UnifiedRouter::new()
 		.with_prefix("/api")
-		.mount("/users", users_router1);
+		.mount("/users/", users_router1);
 
 	// Create equivalent routers using include()
 	let users_router2 = UnifiedRouter::new().with_namespace("users");
 	let router2 = UnifiedRouter::new()
 		.with_prefix("/api")
-		.include("/users", users_router2);
+		.include("/users/", users_router2);
 
 	// Verify both routers have identical structure using public API
 	assert_eq!(router1.prefix(), router2.prefix());
@@ -61,11 +61,11 @@ async fn test_router_include_nested() {
 
 	let users_router = UnifiedRouter::new()
 		.with_namespace("users")
-		.include("/:id", detail_router);
+		.include("/{id}/", detail_router);
 
 	let api_router = UnifiedRouter::new()
 		.with_prefix("/api")
-		.include("/users", users_router);
+		.include("/users/", users_router);
 
 	// Verify nested structure using public API
 	assert_eq!(api_router.prefix(), "/api");
