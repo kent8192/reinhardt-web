@@ -9,7 +9,6 @@ path = "src/bin/manage.rs"
 
 [dependencies]
 reinhardt = { version = "{{ reinhardt_version }}", features = ["standard", "server"] }
-reinhardt-commands = { version = "{{ reinhardt_version }}" }
 tokio = { version = "1.41", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

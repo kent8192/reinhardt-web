@@ -1,6 +1,6 @@
 //! URL configuration for {{ project_name }}
 
-use reinhardt_routers::UnifiedRouter;
+use reinhardt::UnifiedRouter;
 use std::sync::Arc;
 
 /// Define URL patterns for the application

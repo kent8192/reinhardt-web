@@ -3,8 +3,8 @@
 //! This is the project-specific management command interface (equivalent to Django's manage.py).
 
 use {{ project_name }}::config::urls::url_patterns;
-use reinhardt_commands::execute_from_command_line;
-use reinhardt_urls::routers::register_router_arc;
+use reinhardt::commands::execute_from_command_line;
+use reinhardt::urls::routers::register_router_arc;
 use std::process;
 
 #[tokio::main]

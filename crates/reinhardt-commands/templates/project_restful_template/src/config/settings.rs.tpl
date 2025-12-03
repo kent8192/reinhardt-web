@@ -27,10 +27,10 @@
 //!
 //! If `REINHARDT_ENV` is not set, it defaults to `local`.
 
-use reinhardt_conf::settings::builder::SettingsBuilder;
-use reinhardt_conf::settings::profile::Profile;
-use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
-use reinhardt_core::Settings;
+use reinhardt::conf::settings::builder::SettingsBuilder;
+use reinhardt::conf::settings::profile::Profile;
+use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt::Settings;
 use std::env;
 use std::path::PathBuf;
 
@@ -79,7 +79,7 @@ pub fn get_settings() -> Settings {
                 .with_value("append_slash", serde_json::Value::Bool(true))
                 .with_value(
                     "default_auto_field",
-                    serde_json::Value::String("reinhardt.db.models.BigAutoField".to_string()),
+                    serde_json::Value::String("BigAutoField".to_string()),
                 ),
         )
         // Low priority: Environment variables (for container overrides)
