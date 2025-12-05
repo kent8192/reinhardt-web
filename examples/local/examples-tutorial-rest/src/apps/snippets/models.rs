@@ -3,7 +3,7 @@ use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Snippet model representing a code snippet
-#[derive(Model, Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "snippets", table_name = "snippets")]
 pub struct Snippet {
 	#[field(primary_key = true)]

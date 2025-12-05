@@ -1,11 +1,13 @@
 use chrono::Utc;
-use reinhardt::prelude::*;
-use reinhardt::{endpoint, db::DatabaseConnection, ViewResult};
-use serde_json::json;
+use reinhardt::core::serde::json;
+use reinhardt::{delete, get, post, put};
+use reinhardt::{Json, Path, Request, Response, StatusCode, ViewResult};
+use json::json;
 use validator::Validate;
 
 use super::models::Snippet;
 use super::serializers::{SnippetResponse, SnippetSerializer};
+
 
 /// Helper function to get sample snippets for demonstration
 fn get_sample_snippets() -> Vec<Snippet> {
@@ -35,11 +37,11 @@ fn get_sample_snippets() -> Vec<Snippet> {
 }
 
 /// List all snippets
-#[endpoint]
-pub async fn list(
-	_req: Request,
-	#[inject] _db: DatabaseConnection,
-) -> ViewResult<Response> {
+///
+/// GET /snippets/
+/// Success response: 200 OK with array of snippets
+#[get("/snippets/")]
+pub async fn list(_req: Request) -> ViewResult<Response> {
 	// Production ORM usage:
 	// let snippets = Manager::<Snippet>::new().all().await?;
 
@@ -54,22 +56,23 @@ pub async fn list(
 		"snippets": snippet_responses
 	});
 
-	let json = serde_json::to_string(&response_data)?;
+	let json = json::to_string(&response_data)?;
 	Ok(Response::new(StatusCode::OK)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))
 }
 
 /// Create a new snippet
-#[endpoint]
+///
+/// POST /snippets/
+/// Request body: JSON with title, code, language fields
+/// Success response: 201 Created with created snippet
+/// Error responses:
+/// - 422 Unprocessable Entity: Validation errors
+#[post("/snippets/")]
 pub async fn create(
-	mut req: Request,
-	#[inject] _db: DatabaseConnection,
+	Json(serializer): Json<SnippetSerializer>,
 ) -> ViewResult<Response> {
-	// Parse request body
-	let body_bytes = req.body();
-	let serializer: SnippetSerializer = serde_json::from_slice(body_bytes)?;
-
 	// Validate
 	serializer.validate()?;
 
@@ -96,26 +99,22 @@ pub async fn create(
 		"snippet": SnippetResponse::from_model(&snippet)
 	});
 
-	let json = serde_json::to_string(&response_data)?;
+	let json = json::to_string(&response_data)?;
 	Ok(Response::new(StatusCode::CREATED)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))
 }
 
 /// Retrieve a specific snippet
-#[endpoint]
+///
+/// GET /snippets/{id}/
+/// Success response: 200 OK with snippet data
+/// Error responses:
+/// - 404 Not Found: Snippet not found
+#[get("/snippets/{id}/")]
 pub async fn retrieve(
-	req: Request,
-	#[inject] _db: DatabaseConnection,
+	Path(snippet_id): Path<i64>,
 ) -> ViewResult<Response> {
-	// Extract snippet_id from path parameters
-	let snippet_id = req
-		.path_params
-		.get("id")
-		.ok_or("Missing id parameter")?
-		.parse::<i64>()
-		.map_err(|_| "Invalid id format")?;
-
 	// Production ORM usage:
 	// let snippet = Manager::<Snippet>::new().get(snippet_id).await?;
 
@@ -130,30 +129,25 @@ pub async fn retrieve(
 		"snippet": SnippetResponse::from_model(snippet)
 	});
 
-	let json = serde_json::to_string(&response_data)?;
+	let json = json::to_string(&response_data)?;
 	Ok(Response::new(StatusCode::OK)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))
 }
 
 /// Update a snippet
-#[endpoint]
+///
+/// PUT /snippets/{id}/
+/// Request body: JSON with title, code, language fields
+/// Success response: 200 OK with updated snippet
+/// Error responses:
+/// - 404 Not Found: Snippet not found
+/// - 422 Unprocessable Entity: Validation errors
+#[put("/snippets/{id}/")]
 pub async fn update(
-	mut req: Request,
-	#[inject] _db: DatabaseConnection,
+	Path(snippet_id): Path<i64>,
+	Json(serializer): Json<SnippetSerializer>,
 ) -> ViewResult<Response> {
-	// Extract snippet_id from path parameters
-	let snippet_id = req
-		.path_params
-		.get("id")
-		.ok_or("Missing id parameter")?
-		.parse::<i64>()
-		.map_err(|_| "Invalid id format")?;
-
-	// Parse request body
-	let body_bytes = req.body();
-	let serializer: SnippetSerializer = serde_json::from_slice(body_bytes)?;
-
 	// Validate
 	serializer.validate()?;
 
@@ -185,26 +179,22 @@ pub async fn update(
 		"snippet": SnippetResponse::from_model(&updated_snippet)
 	});
 
-	let json = serde_json::to_string(&response_data)?;
+	let json = json::to_string(&response_data)?;
 	Ok(Response::new(StatusCode::OK)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))
 }
 
 /// Delete a snippet
-#[endpoint]
+///
+/// DELETE /snippets/{id}/
+/// Success response: 204 No Content
+/// Error responses:
+/// - 404 Not Found: Snippet not found
+#[delete("/snippets/{id}/")]
 pub async fn delete(
-	req: Request,
-	#[inject] _db: DatabaseConnection,
+	Path(snippet_id): Path<i64>,
 ) -> ViewResult<Response> {
-	// Extract snippet_id from path parameters
-	let snippet_id = req
-		.path_params
-		.get("id")
-		.ok_or("Missing id parameter")?
-		.parse::<i64>()
-		.map_err(|_| "Invalid id format")?;
-
 	// Production ORM usage:
 	// Manager::<Snippet>::new().delete(snippet_id).await?;
 

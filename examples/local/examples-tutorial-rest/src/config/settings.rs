@@ -1,6 +1,7 @@
 use reinhardt::conf::settings::builder::SettingsBuilder;
 use reinhardt::conf::settings::profile::Profile;
 use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt::core::serde::json;
 use reinhardt::Settings;
 use std::env;
 
@@ -15,9 +16,9 @@ pub fn get_settings() -> Settings {
 		.profile(profile)
 		.add_source(
 			DefaultSource::new()
-				.with_value("debug", serde_json::Value::Bool(true))
-				.with_value("language_code", serde_json::Value::String("en-us".to_string()))
-				.with_value("time_zone", serde_json::Value::String("UTC".to_string()))
+				.with_value("debug", json::Value::Bool(true))
+				.with_value("language_code", json::Value::String("en-us".to_string()))
+				.with_value("time_zone", json::Value::String("UTC".to_string()))
 		)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))

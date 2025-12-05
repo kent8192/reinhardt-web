@@ -4,6 +4,7 @@
 
 use examples_tutorial_rest::config::urls::url_patterns;
 use reinhardt::commands::execute_from_command_line;
+use reinhardt::core::tokio;
 use reinhardt::urls::routers::register_router_arc;
 use std::process;
 
