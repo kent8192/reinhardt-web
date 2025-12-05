@@ -215,7 +215,7 @@ impl ZeroDowntimeMigration {
 	fn expand_contract_phases(&self) -> Result<Vec<MigrationPhase>> {
 		let mut phases = Vec::new();
 
-		// Phase 1: Expand - Add new schema elements
+		// Expand - Add new schema elements
 		let mut expand_migration = Migration::new(
 			format!("{}_expand", self.migration.name),
 			self.migration.app_label,
@@ -228,7 +228,7 @@ impl ZeroDowntimeMigration {
 				.requires_deployment(false),
 		);
 
-		// Phase 2: Dual-write - Application writes to both old and new schema
+		// Dual-write - Application writes to both old and new schema
 		phases.push(
 			MigrationPhase::new(
 				2,
@@ -241,7 +241,7 @@ impl ZeroDowntimeMigration {
 			.requires_deployment(true),
 		);
 
-		// Phase 3: Migrate data from old to new schema
+		// Migrate data from old to new schema
 		let mut migrate_migration = Migration::new(
 			format!("{}_migrate_data", self.migration.name),
 			self.migration.app_label,
@@ -253,7 +253,7 @@ impl ZeroDowntimeMigration {
 				.requires_deployment(false),
 		);
 
-		// Phase 4: Switch reads to new schema
+		// Switch reads to new schema
 		phases.push(
 			MigrationPhase::new(
 				4,
@@ -266,7 +266,7 @@ impl ZeroDowntimeMigration {
 			.requires_deployment(true),
 		);
 
-		// Phase 5: Contract - Remove old schema elements
+		// Contract - Remove old schema elements
 		let mut contract_migration = Migration::new(
 			format!("{}_contract", self.migration.name),
 			self.migration.app_label,
@@ -289,7 +289,7 @@ impl ZeroDowntimeMigration {
 	fn blue_green_phases(&self) -> Result<Vec<MigrationPhase>> {
 		let mut phases = Vec::new();
 
-		// Phase 1: Setup green environment
+		// Setup green environment
 		let mut green_migration = Migration::new(
 			format!("{}_green", self.migration.name),
 			self.migration.app_label,
@@ -305,7 +305,7 @@ impl ZeroDowntimeMigration {
 			.requires_deployment(false),
 		);
 
-		// Phase 2: Deploy application to green
+		// Deploy application to green
 		phases.push(
 			MigrationPhase::new(
 				2,
@@ -318,7 +318,7 @@ impl ZeroDowntimeMigration {
 			.requires_deployment(true),
 		);
 
-		// Phase 3: Switch traffic to green
+		// Switch traffic to green
 		phases.push(
 			MigrationPhase::new(
 				3,
@@ -338,7 +338,7 @@ impl ZeroDowntimeMigration {
 	fn rolling_phases(&self) -> Result<Vec<MigrationPhase>> {
 		let mut phases = Vec::new();
 
-		// Phase 1: Deploy backward-compatible schema changes
+		// Deploy backward-compatible schema changes
 		let mut compat_migration = Migration::new(
 			format!("{}_compatible", self.migration.name),
 			self.migration.app_label,
@@ -350,7 +350,7 @@ impl ZeroDowntimeMigration {
 				.requires_deployment(false),
 		);
 
-		// Phase 2: Rolling application deployment
+		// Rolling application deployment
 		phases.push(
 			MigrationPhase::new(
 				2,
@@ -370,7 +370,7 @@ impl ZeroDowntimeMigration {
 	fn shadow_mode_phases(&self) -> Result<Vec<MigrationPhase>> {
 		let mut phases = Vec::new();
 
-		// Phase 1: Create shadow schema
+		// Create shadow schema
 		let mut shadow_migration = Migration::new(
 			format!("{}_shadow", self.migration.name),
 			self.migration.app_label,
@@ -382,7 +382,7 @@ impl ZeroDowntimeMigration {
 				.requires_deployment(false),
 		);
 
-		// Phase 2: Deploy with shadow writes
+		// Deploy with shadow writes
 		phases.push(
 			MigrationPhase::new(
 				2,
@@ -395,7 +395,7 @@ impl ZeroDowntimeMigration {
 			.requires_deployment(true),
 		);
 
-		// Phase 3: Validate shadow data
+		// Validate shadow data
 		phases.push(
 			MigrationPhase::new(
 				3,
@@ -408,7 +408,7 @@ impl ZeroDowntimeMigration {
 			.requires_deployment(false),
 		);
 
-		// Phase 4: Switch to new schema
+		// Switch to new schema
 		phases.push(
 			MigrationPhase::new(
 				4,

@@ -14,7 +14,8 @@ use syn::parse_quote;
 /// This repository writes migrations to disk in the format:
 /// ```rust,ignore
 /// // <app_label>/migrations/<name>.rs
-/// use reinhardt_migrations::prelude::*;
+/// use reinhardt::db::migrations::prelude::*;
+/// use reinhardt::db::migrations::FieldType;
 ///
 /// pub fn migration() -> Migration {
 ///     Migration {
@@ -90,7 +91,8 @@ impl FilesystemRepository {
 
 		// Generate full migration file
 		let file: syn::File = parse_quote! {
-			use reinhardt_migrations::prelude::*;
+			use reinhardt::db::migrations::prelude::*;
+			use reinhardt::db::migrations::FieldType;
 
 			pub fn migration() -> Migration {
 				Migration {

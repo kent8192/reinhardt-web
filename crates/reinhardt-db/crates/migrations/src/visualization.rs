@@ -74,8 +74,8 @@ impl OutputFormat {
 /// use reinhardt_migrations::visualization::HistoryEntry;
 ///
 /// let entry = HistoryEntry {
-///     app_label: "myapp",
-///     migration_name: "0001_initial",
+///     app_label: "myapp".to_string(),
+///     migration_name: "0001_initial".to_string(),
 ///     applied_at: "2025-01-01 00:00:00".to_string(),
 ///     operations_count: 5,
 /// };
@@ -169,8 +169,8 @@ impl MigrationVisualizer {
 	///
 	/// let entries = vec![
 	///     HistoryEntry {
-	///         app_label: "myapp",
-	///         migration_name: "0001_initial",
+	///         app_label: "myapp".to_string(),
+	///         migration_name: "0001_initial".to_string(),
 	///         applied_at: "2025-01-01 00:00:00".to_string(),
 	///         operations_count: 3,
 	///     },

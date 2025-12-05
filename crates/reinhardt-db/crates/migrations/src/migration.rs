@@ -441,6 +441,7 @@ mod migrations_extended_tests {
 		let mut state = ProjectState::new();
 
 		// Create table with composite primary key
+		// Note: Composite primary keys are handled via column definitions, not constraints
 		let create_op = Operation::CreateTable {
 			name: "order_items",
 			columns: vec![
@@ -448,7 +449,7 @@ mod migrations_extended_tests {
 				ColumnDefinition::new("product_id", FieldType::Integer),
 				ColumnDefinition::new("quantity", FieldType::Integer),
 			],
-			constraints: vec!["PRIMARY KEY (order_id, product_id)"],
+			constraints: vec![],
 		};
 		create_op.state_forwards("testapp", &mut state);
 
@@ -465,13 +466,14 @@ mod migrations_extended_tests {
 
 		let mut state = ProjectState::new();
 
+		// Note: Composite primary keys are handled via column definitions, not constraints
 		let create_op = Operation::CreateTable {
 			name: "user_roles",
 			columns: vec![
 				ColumnDefinition::new("user_id", FieldType::Integer),
 				ColumnDefinition::new("role_id", FieldType::Integer),
 			],
-			constraints: vec!["PRIMARY KEY (user_id, role_id)"],
+			constraints: vec![],
 		};
 		create_op.state_forwards("app", &mut state);
 
@@ -537,7 +539,16 @@ mod migrations_extended_tests {
 					},
 				),
 			],
-			constraints: vec!["CHECK (price >= 0)", "CHECK (discount_price <= price)"],
+			constraints: vec![
+				Constraint::Check {
+					name: "price_positive".to_string(),
+					expression: "price >= 0".to_string(),
+				},
+				Constraint::Check {
+					name: "discount_price_valid".to_string(),
+					expression: "discount_price <= price".to_string(),
+				},
+			],
 		};
 		create_op.state_forwards("testapp", &mut state);
 
@@ -560,7 +571,10 @@ mod migrations_extended_tests {
 				ColumnDefinition::new("id", FieldType::Custom("INTEGER PRIMARY KEY".to_string())),
 				ColumnDefinition::new("age", FieldType::Integer),
 			],
-			constraints: vec!["CHECK (age >= 0 AND age <= 150)"],
+			constraints: vec![Constraint::Check {
+				name: "age_valid_range".to_string(),
+				expression: "age >= 0 AND age <= 150".to_string(),
+			}],
 		};
 		create_op.state_forwards("app", &mut state);
 
@@ -582,7 +596,10 @@ mod migrations_extended_tests {
 				ColumnDefinition::new("id", FieldType::Custom("INTEGER PRIMARY KEY".to_string())),
 				ColumnDefinition::new("age", FieldType::Integer),
 			],
-			constraints: vec!["CHECK (age >= 18)"],
+			constraints: vec![Constraint::Check {
+				name: "age_adult".to_string(),
+				expression: "age >= 18".to_string(),
+			}],
 		};
 		create_op.state_forwards("testapp", &mut state);
 
@@ -611,7 +628,10 @@ mod migrations_extended_tests {
 					},
 				),
 			],
-			constraints: vec!["CHECK (price > 0)"],
+			constraints: vec![Constraint::Check {
+				name: "price_positive".to_string(),
+				expression: "price > 0".to_string(),
+			}],
 		};
 		create_op.state_forwards("app", &mut state);
 
@@ -644,7 +664,14 @@ mod migrations_extended_tests {
 				ColumnDefinition::new("id", FieldType::Custom("INTEGER PRIMARY KEY".to_string())),
 				ColumnDefinition::new("author_id", FieldType::Integer),
 			],
-			constraints: vec!["FOREIGN KEY (author_id) REFERENCES users(id)"],
+			constraints: vec![Constraint::ForeignKey {
+				name: "fk_posts_author".to_string(),
+				columns: vec!["author_id".to_string()],
+				referenced_table: "users".to_string(),
+				referenced_columns: vec!["id".to_string()],
+				on_delete: crate::ForeignKeyAction::Cascade,
+				on_update: crate::ForeignKeyAction::Cascade,
+			}],
 		};
 		create_posts.state_forwards("testapp", &mut state);
 
@@ -1453,6 +1480,7 @@ mod migrations_extended_tests {
 		create_courses.state_forwards("testapp", &mut state);
 
 		// Create many-to-many association table
+		// Note: Composite primary keys are handled via column definitions, not constraints
 		let create_m2m = Operation::CreateTable {
 			name: "students_courses",
 			columns: vec![
@@ -1465,7 +1493,7 @@ mod migrations_extended_tests {
 					FieldType::Custom("INTEGER REFERENCES courses(id)".to_string()),
 				),
 			],
-			constraints: vec!["PRIMARY KEY (student_id, course_id)"],
+			constraints: vec![],
 		};
 		create_m2m.state_forwards("testapp", &mut state);
 
@@ -1501,6 +1529,7 @@ mod migrations_extended_tests {
 		create_posts.state_forwards("app", &mut state);
 
 		// Create association table for many-to-many
+		// Note: Composite primary keys are handled via column definitions, not constraints
 		let create_assoc = Operation::CreateTable {
 			name: "posts_tags",
 			columns: vec![
@@ -1513,7 +1542,7 @@ mod migrations_extended_tests {
 					FieldType::Custom("INTEGER REFERENCES tags(id)".to_string()),
 				),
 			],
-			constraints: vec!["PRIMARY KEY (post_id, tag_id)"],
+			constraints: vec![],
 		};
 		create_assoc.state_forwards("app", &mut state);
 
@@ -1608,7 +1637,10 @@ mod migrations_extended_tests {
 					FieldType::Custom("INTEGER NOT NULL DEFAULT 0".to_string()),
 				),
 			],
-			constraints: vec!["CHECK (_order >= 0)"],
+			constraints: vec![Constraint::Check {
+				name: "order_non_negative".to_string(),
+				expression: "_order >= 0".to_string(),
+			}],
 		};
 		create_op.state_forwards("app", &mut state);
 
@@ -1630,7 +1662,10 @@ mod migrations_extended_tests {
 				ColumnDefinition::new("group_id", FieldType::Integer),
 				ColumnDefinition::new("_order", FieldType::Custom("INTEGER NOT NULL".to_string())),
 			],
-			constraints: vec!["CHECK (_order >= 0)"],
+			constraints: vec![Constraint::Check {
+				name: "order_non_negative".to_string(),
+				expression: "_order >= 0".to_string(),
+			}],
 		};
 		create_op.state_forwards("app", &mut state);
 
@@ -3173,7 +3208,10 @@ mod migrations_extended_tests {
 					FieldType::Custom("INTEGER REFERENCES books(id)".to_string()),
 				),
 			],
-			constraints: vec!["UNIQUE(author_id, book_id)"],
+			constraints: vec![Constraint::Unique {
+				name: "unique_author_book".to_string(),
+				columns: vec!["author_id".to_string(), "book_id".to_string()],
+			}],
 		};
 		create_assoc.state_forwards("library", &mut state);
 

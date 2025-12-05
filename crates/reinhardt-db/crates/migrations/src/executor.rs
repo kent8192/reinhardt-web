@@ -946,30 +946,15 @@ impl OperationOptimizer {
 		ordered
 	}
 
-	/// Extract the referenced table name from a FOREIGN KEY constraint string
-	/// Example: "FOREIGN KEY (table1_id) REFERENCES table1(id)" -> Some("table1")
-	fn extract_foreign_key_reference(&self, constraint: &str) -> Option<String> {
-		// Simple regex-like parsing for "REFERENCES table_name"
-		const REFERENCES_KEYWORD: &str = "REFERENCES";
-		let constraint_upper = constraint.to_uppercase();
-
-		if let Some(references_pos) = constraint_upper.find(REFERENCES_KEYWORD) {
-			// Extract substring after "REFERENCES" keyword
-			let start_pos = references_pos + REFERENCES_KEYWORD.len();
-			let after_references = constraint[start_pos..].trim_start();
-
-			// Extract table name (everything before '(' or whitespace)
-			let table_name = after_references
-				.split(|c: char| c == '(' || c.is_whitespace())
-				.next()
-				.unwrap_or("")
-				.trim();
-
-			if !table_name.is_empty() {
-				return Some(table_name.to_string());
-			}
+	/// Extract the referenced table name from a FOREIGN KEY constraint
+	/// Returns the referenced table name if the constraint is a ForeignKey
+	fn extract_foreign_key_reference(&self, constraint: &crate::Constraint) -> Option<String> {
+		match constraint {
+			crate::Constraint::ForeignKey {
+				referenced_table, ..
+			} => Some(referenced_table.clone()),
+			_ => None,
 		}
-		None
 	}
 
 	/// Group similar operations together

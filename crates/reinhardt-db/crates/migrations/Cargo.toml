@@ -68,9 +68,12 @@ testcontainers = { workspace = true }
 serial_test = { workspace = true }
 
 [features]
-default = ["sqlite", "postgres", "mysql"]
+default = ["sqlite", "postgres", "mysql", "db-sqlite", "db-postgres", "db-mysql"]
 sqlite = []
 postgres = []
 mysql = []
+db-sqlite = []
+db-postgres = []
+db-mysql = []
 mongodb-backend = ["dep:mongodb", "dep:bson", "reinhardt-backends/mongodb-backend"]
-full = ["sqlite", "postgres", "mysql", "mongodb-backend"]
+full = ["sqlite", "postgres", "mysql", "mongodb-backend", "db-sqlite", "db-postgres", "db-mysql"]
