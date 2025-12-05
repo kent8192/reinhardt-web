@@ -12,9 +12,7 @@
 //! Each test uses trybuild to compile test files and verify expected outcomes.
 
 use reinhardt_db::orm::Model as ModelTrait;
-use reinhardt_di::{Injectable as InjectableTrait, InjectionContext, SingletonScope};
-use reinhardt_macros::{Injectable, Model};
-use serde::{Deserialize, Serialize};
+use reinhardt_di::{Injectable, InjectionContext, SingletonScope, injectable};
 use std::sync::Arc;
 
 // Allow this test crate to be referenced as `::reinhardt` for proc macro generated code.
@@ -22,6 +20,7 @@ use std::sync::Arc;
 extern crate self as reinhardt;
 
 // Re-export modules for proc macro generated code paths.
+#[allow(unused_imports)]
 pub mod db {
 	pub use ::reinhardt_db::*;
 }
@@ -708,31 +707,54 @@ fn test_validation_fail_action_url_path_no_slash() {
 
 // ========== Macro Expansion Verification Tests ==========
 
-// Model definitions must be at module level for proc macro path resolution.
-// The #[derive(Model)] macro generates code with ::reinhardt::db::orm::Model paths.
+// Model definitions must be in separate modules to avoid duplicate import conflicts.
+// The #[model] attribute macro generates use statements for serde, reinhardt_migrations, etc.
+// When multiple models are in the same scope, these imports would conflict.
 
-#[derive(Debug, Clone, Serialize, Deserialize, Model)]
-#[model(app_label = "expansion_test", table_name = "expansion_models")]
-struct ExpansionTestModel {
-	#[field(primary_key = true)]
-	id: Option<i64>,
+mod expansion_model {
+	extern crate self as reinhardt;
+	#[allow(unused_imports)]
+	pub mod db {
+		pub use ::reinhardt_db::*;
+	}
+	use reinhardt_macros::{Model, model};
+	use serde::{Deserialize, Serialize};
 
-	#[field(max_length = 100)]
-	name: String,
+	#[derive(Serialize, Deserialize)]
+	#[model(app_label = "expansion_test", table_name = "expansion_models")]
+	pub struct ExpansionTestModel {
+		#[field(primary_key = true)]
+		pub id: Option<i64>,
+
+		#[field(max_length = 100)]
+		pub name: String,
+	}
 }
+pub use expansion_model::ExpansionTestModel;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Model)]
-#[model(app_label = "metadata_test", table_name = "metadata_models")]
-struct MetadataTestModel {
-	#[field(primary_key = true)]
-	pk: Option<i64>,
+mod metadata_model {
+	extern crate self as reinhardt;
+	#[allow(unused_imports)]
+	pub mod db {
+		pub use ::reinhardt_db::*;
+	}
+	use reinhardt_macros::{Model, model};
+	use serde::{Deserialize, Serialize};
 
-	#[field(max_length = 200)]
-	title: String,
+	#[derive(Serialize, Deserialize)]
+	#[model(app_label = "metadata_test", table_name = "metadata_models")]
+	pub struct MetadataTestModel {
+		#[field(primary_key = true)]
+		pub pk: Option<i64>,
 
-	#[field(null = true, max_length = 500)]
-	description: Option<String>,
+		#[field(max_length = 200)]
+		pub title: String,
+
+		#[field(null = true, max_length = 500)]
+		pub description: Option<String>,
+	}
 }
+pub use metadata_model::MetadataTestModel;
 
 /// Test Model derive macro expansion generates correct trait implementations
 ///
@@ -744,9 +766,18 @@ struct MetadataTestModel {
 #[test]
 fn test_model_macro_expansion_trait_implementation() {
 	// Verify trait methods are implemented and return correct values
-	assert_eq!(ExpansionTestModel::table_name(), "expansion_models");
-	assert_eq!(ExpansionTestModel::app_label(), "expansion_test");
-	assert_eq!(ExpansionTestModel::primary_key_field(), "id");
+	assert_eq!(
+		<ExpansionTestModel as ModelTrait>::table_name(),
+		"expansion_models"
+	);
+	assert_eq!(
+		<ExpansionTestModel as ModelTrait>::app_label(),
+		"expansion_test"
+	);
+	assert_eq!(
+		<ExpansionTestModel as ModelTrait>::primary_key_field(),
+		"id"
+	);
 }
 
 /// Test Model derive macro expansion generates field metadata
@@ -790,16 +821,20 @@ fn test_model_macro_expansion_field_metadata() {
 #[tokio::test]
 async fn test_injectable_macro_expansion_inject_method() {
 	#[derive(Clone, Default)]
+	#[injectable]
 	struct TestService {
+		#[no_inject]
 		#[allow(dead_code)]
 		value: i32,
 	}
 
-	#[derive(Clone, Injectable)]
+	#[derive(Clone, Default)]
+	#[injectable]
 	struct InjectableExpansionTest {
 		#[inject]
 		#[allow(dead_code)]
 		service: TestService,
+		#[no_inject]
 		data: String,
 	}
 
@@ -815,19 +850,30 @@ async fn test_injectable_macro_expansion_inject_method() {
 
 // ========== Macros with Generic Types Tests ==========
 
-// Model with generic-like field types (Option<T>)
-#[derive(Debug, Clone, Serialize, Deserialize, Model)]
-#[model(app_label = "generic_test", table_name = "generic_models")]
-struct GenericLikeModel {
-	#[field(primary_key = true)]
-	id: Option<i64>,
+mod generic_model {
+	extern crate self as reinhardt;
+	#[allow(unused_imports)]
+	pub mod db {
+		pub use ::reinhardt_db::*;
+	}
+	use reinhardt_macros::{Model, model};
+	use serde::{Deserialize, Serialize};
 
-	#[field(null = true)]
-	optional_count: Option<i32>,
+	// Model with generic-like field types (Option<T>)
+	#[derive(Serialize, Deserialize)]
+	#[model(app_label = "generic_test", table_name = "generic_models")]
+	pub struct GenericLikeModel {
+		#[field(primary_key = true)]
+		pub id: Option<i64>,
 
-	#[field(null = true, max_length = 255)]
-	optional_text: Option<String>,
+		#[field(null = true)]
+		pub optional_count: Option<i32>,
+
+		#[field(null = true, max_length = 255)]
+		pub optional_text: Option<String>,
+	}
 }
+pub use generic_model::GenericLikeModel;
 
 /// Test Model derive macro with generic-like field types
 ///
@@ -838,7 +884,7 @@ struct GenericLikeModel {
 #[test]
 fn test_model_with_generic_like_fields() {
 	// Verify model compiles and metadata is correct
-	let fields = GenericLikeModel::field_metadata();
+	let fields = <GenericLikeModel as ModelTrait>::field_metadata();
 	assert_eq!(fields.len(), 3);
 
 	let optional_count_field = fields.iter().find(|f| f.name == "optional_count");
@@ -864,12 +910,15 @@ fn test_model_with_generic_like_fields() {
 #[tokio::test]
 async fn test_injectable_with_nested_generic_types() {
 	#[derive(Clone, Default)]
+	#[injectable]
 	struct NestedService1;
 
 	#[derive(Clone, Default)]
+	#[injectable]
 	struct NestedService2;
 
-	#[derive(Clone, Injectable)]
+	#[derive(Clone, Default)]
+	#[injectable]
 	struct NestedGenericInjectable {
 		#[inject]
 		#[allow(dead_code)]

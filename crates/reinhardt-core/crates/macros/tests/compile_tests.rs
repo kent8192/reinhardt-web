@@ -111,3 +111,52 @@ fn test_model_derive_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/model/fail/*.rs");
 }
+
+#[test]
+fn test_rel_attribute_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/rel/pass/*.rs");
+}
+
+#[test]
+fn test_rel_attribute_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/rel/fail/*.rs");
+}
+
+// Field attributes tests - Phase 1-3 attributes
+#[test]
+fn test_field_attributes_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/field_attributes/pass/*.rs");
+}
+
+#[test]
+fn test_field_attributes_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/field_attributes/fail/*.rs");
+}
+
+// PostgreSQL-specific field attributes
+#[cfg(feature = "db-postgres")]
+#[test]
+fn test_postgres_field_attributes() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/field_attributes/postgres/*.rs");
+}
+
+// MySQL-specific field attributes
+#[cfg(feature = "db-mysql")]
+#[test]
+fn test_mysql_field_attributes() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/field_attributes/mysql/*.rs");
+}
+
+// SQLite-specific field attributes
+#[cfg(feature = "db-sqlite")]
+#[test]
+fn test_sqlite_field_attributes() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/field_attributes/sqlite/*.rs");
+}

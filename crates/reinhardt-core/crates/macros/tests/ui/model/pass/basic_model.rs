@@ -1,15 +1,9 @@
 //! Basic model with required attributes
 
-use reinhardt_macros::Model;
+use reinhardt_macros::{model, Model};
 use serde::{Deserialize, Serialize};
 
-// Required by Model derive macro
-#[allow(unused_imports)]
-use reinhardt_db::migrations as _;
-#[allow(unused_imports)]
-use reinhardt_db::orm as _;
-
-#[derive(Debug, Clone, Serialize, Deserialize, Model)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "test", table_name = "users")]
 struct User {
 	#[field(primary_key = true)]

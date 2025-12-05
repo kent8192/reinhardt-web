@@ -1,9 +1,9 @@
 //! Model without app_label should fail to compile
 
-use reinhardt_macros::Model;
+use reinhardt_macros::{model, Model};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Model)]
+#[derive(Serialize, Deserialize)]
 #[model(table_name = "users")]
 struct User {
 	#[field(primary_key = true)]

@@ -1,15 +1,10 @@
 //! Model with various field types
 
-use reinhardt_macros::Model;
+use reinhardt_db::orm::Model as ModelTrait;
+use reinhardt_macros::{model, Model};
 use serde::{Deserialize, Serialize};
 
-// Required by Model derive macro
-#[allow(unused_imports)]
-use reinhardt_db::migrations as _;
-#[allow(unused_imports)]
-use reinhardt_db::orm::{self as _, Model as _};
-
-#[derive(Debug, Clone, Serialize, Deserialize, Model)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "test", table_name = "complex_model")]
 struct ComplexModel {
 	#[field(primary_key = true)]
@@ -47,10 +42,10 @@ fn main() {
 	};
 
 	// Verify Model trait is implemented
-	assert_eq!(ComplexModel::table_name(), "complex_model");
-	assert_eq!(ComplexModel::app_label(), "test");
+	assert_eq!(<ComplexModel as ModelTrait>::table_name(), "complex_model");
+	assert_eq!(<ComplexModel as ModelTrait>::app_label(), "test");
 
 	// Verify field metadata is generated
-	let fields = ComplexModel::field_metadata();
+	let fields = <ComplexModel as ModelTrait>::field_metadata();
 	assert_eq!(fields.len(), 8);
 }
