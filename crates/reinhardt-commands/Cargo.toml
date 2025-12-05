@@ -14,6 +14,7 @@ reinhardt-utils-core = { workspace = true }
 reinhardt-conf = { workspace = true }
 reinhardt-urls = { workspace = true, features = ["routers"], optional = true }
 reinhardt-db = { workspace = true, features = ["migrations", "backends-settings"], optional = true }
+reinhardt-di = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 reinhardt-server = { workspace = true, optional = true }
 chrono = { workspace = true }
@@ -64,6 +65,7 @@ rstest = { workspace = true }
 default = ["server"]
 migrations = ["dep:reinhardt-db"]
 routers = ["dep:reinhardt-urls"]
+di = ["dep:reinhardt-di"]
 server = ["dep:reinhardt-server", "routers"]
 autoreload = ["dep:notify", "server"]
 cargo-watch-reload = ["server"]
@@ -86,6 +88,7 @@ full = [
   "shell-rhai",
   "shell-pyo3",
   "reinhardt-db",
+  "di",
   "mongodb-backend",
   "postgres",
   "sqlite",

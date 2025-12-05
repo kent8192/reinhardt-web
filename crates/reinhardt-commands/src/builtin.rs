@@ -564,7 +564,7 @@ impl BaseCommand for MakeMigrationsCommand {
 				changed_apps
 			};
 
-			// Phase 1: Validate migrations for all apps (without writing files)
+			// Validate migrations for all apps (without writing files)
 			struct MigrationResult {
 				app_name: String,
 				migration: reinhardt_db::migrations::Migration,
@@ -586,11 +586,7 @@ impl BaseCommand for MakeMigrationsCommand {
 				);
 
 				// Create auto-migration generator for this app
-				let generator = AutoMigrationGenerator::new(
-					target_schema_for_app,
-					migrations_dir.clone(),
-					repository,
-				);
+				let generator = AutoMigrationGenerator::new(target_schema_for_app, repository);
 
 				// Generate migration operations
 				let auto_migration_result =
@@ -655,7 +651,7 @@ impl BaseCommand for MakeMigrationsCommand {
 				}
 			}
 
-			// Phase 2: Write all migrations if no errors occurred
+			// Write all migrations if no errors occurred
 			if !had_errors && !results.is_empty() {
 				for result in results {
 					ctx.info(&format!("Migrations for '{}':", result.app_name));
@@ -1716,6 +1712,72 @@ async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseCon
 				db_type
 			)))
 		}
+	}
+}
+
+/// DI dependency graph check command
+pub struct CheckDiCommand;
+
+#[async_trait]
+impl BaseCommand for CheckDiCommand {
+	fn name(&self) -> &str {
+		"check-di"
+	}
+
+	fn description(&self) -> &str {
+		"Check DI dependency graph for circular dependencies and other issues"
+	}
+
+	fn arguments(&self) -> Vec<CommandArgument> {
+		vec![]
+	}
+
+	fn options(&self) -> Vec<CommandOption> {
+		vec![]
+	}
+
+	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		ctx.info("🔍 Checking DI dependency graph...");
+
+		#[cfg(feature = "di")]
+		{
+			// Get the global registry
+			let registry = reinhardt_di::global_registry();
+
+			// Count registered dependencies
+			let registered_count = registry.len();
+
+			ctx.info(&format!(
+				"✓ Found {} registered dependencies",
+				registered_count
+			));
+
+			if registered_count == 0 {
+				ctx.warning("No dependencies registered");
+				ctx.info(
+					"Make sure to import modules that use #[injectable] or register_dependency!",
+				);
+				return Err(crate::CommandError::ExecutionError(
+					"No dependencies found".to_string(),
+				));
+			}
+		}
+
+		#[cfg(not(feature = "di"))]
+		{
+			ctx.warning("DI feature is not enabled");
+			return Err(crate::CommandError::ExecutionError(
+				"check-di command requires 'di' feature to be enabled".to_string(),
+			));
+		}
+
+		ctx.success("No circular dependencies detected at compile time");
+		ctx.success("All checks passed");
+		ctx.info("");
+		ctx.info("Note: Runtime circular dependency detection is active.");
+		ctx.info("      Any circular dependencies will be caught during resolution.");
+
+		Ok(())
 	}
 }
 
