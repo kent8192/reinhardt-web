@@ -46,10 +46,12 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_di::Depends;
+	/// use reinhardt_di::{Depends, injectable};
 	///
 	/// #[derive(Clone, Default)]
+	/// #[injectable]
 	/// struct Config {
+	///     #[no_inject]
 	///     value: String,
 	/// }
 	///
@@ -69,10 +71,12 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_di::Depends;
+	/// use reinhardt_di::{Depends, injectable};
 	///
 	/// #[derive(Clone, Default)]
+	/// #[injectable]
 	/// struct RequestData {
+	///     #[no_inject]
 	///     id: u32,
 	/// }
 	///
@@ -94,16 +98,17 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_di::{Depends, InjectionContext, SingletonScope};
-	/// use std::sync::Arc;
+	/// use reinhardt_di::{Depends, InjectionContext, SingletonScope, injectable};
 	///
 	/// #[derive(Clone, Default)]
+	/// #[injectable]
 	/// struct Config {
+	///     #[no_inject]
 	///     value: String,
 	/// }
 	///
 	/// # async fn example() {
-	/// let singleton_scope = Arc::new(SingletonScope::new());
+	/// let singleton_scope = SingletonScope::new();
 	/// let ctx = InjectionContext::builder(singleton_scope).build();
 	/// let result = Depends::<Config>::resolve(&ctx, true).await;
 	/// assert!(result.is_ok());
@@ -134,10 +139,12 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_di::Depends;
+	/// use reinhardt_di::{Depends, injectable};
 	///
 	/// #[derive(Clone, Default)]
+	/// #[injectable]
 	/// struct Config {
+	///     #[no_inject]
 	///     value: String,
 	/// }
 	///
@@ -160,10 +167,12 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_di::Depends;
+	/// use reinhardt_di::{Depends, injectable};
 	///
 	/// #[derive(Clone, Default)]
+	/// #[injectable]
 	/// struct Config {
+	///     #[no_inject]
 	///     value: String,
 	/// }
 	///
@@ -192,16 +201,17 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_di::{Depends, InjectionContext, SingletonScope};
-	/// use std::sync::Arc;
+	/// use reinhardt_di::{Depends, InjectionContext, SingletonScope, injectable};
 	///
 	/// #[derive(Clone, Default)]
+	/// #[injectable]
 	/// struct Config {
+	///     #[no_inject]
 	///     value: String,
 	/// }
 	///
 	/// # async fn example() {
-	/// let singleton_scope = Arc::new(SingletonScope::new());
+	/// let singleton_scope = SingletonScope::new();
 	/// let ctx = InjectionContext::builder(singleton_scope).build();
 	/// let builder = Depends::<Config>::builder();
 	/// let result = builder.resolve(&ctx).await;

@@ -10,6 +10,7 @@ pub enum Scope {
 	Singleton,
 }
 
+#[derive(Clone)]
 pub struct RequestScope {
 	cache: Arc<RwLock<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
 }

@@ -8,6 +8,7 @@ use std::sync::Arc;
 #[cfg(feature = "params")]
 pub use reinhardt_params::{ParamContext, Request};
 
+#[derive(Clone)]
 pub struct InjectionContext {
 	request_scope: RequestScope,
 	singleton_scope: Arc<SingletonScope>,
@@ -321,6 +322,119 @@ impl InjectionContext {
 	/// ```
 	pub fn set_singleton<T: Any + Send + Sync>(&self, value: T) {
 		self.singleton_scope.set(value);
+	}
+
+	/// Resolve a dependency from the global registry
+	///
+	/// This method implements the core dependency resolution logic:
+	/// 1. Check cache based on scope (Request or Singleton)
+	/// 2. If not cached, create using the factory from the global registry
+	/// 3. Cache the result according to the scope
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_di::{InjectionContext, SingletonScope};
+	///
+	/// let singleton_scope = Arc::new(SingletonScope::new());
+	/// let ctx = InjectionContext::builder(singleton_scope).build();
+	///
+	/// let config = ctx.resolve::<Config>().await?;
+	/// ```
+	pub async fn resolve<T: Any + Send + Sync + 'static>(&self) -> crate::DiResult<Arc<T>> {
+		use crate::cycle_detection::{begin_resolution, register_type_name};
+		use crate::registry::{DependencyScope, global_registry};
+
+		let type_id = std::any::TypeId::of::<T>();
+		let type_name = std::any::type_name::<T>();
+		let registry = global_registry();
+
+		// 型名を登録（エラーメッセージ用）
+		register_type_name::<T>(type_name);
+
+		// 【高速パス】キャッシュヒット時は循環検出をスキップ
+		let scope = registry
+			.get_scope::<T>()
+			.unwrap_or(DependencyScope::Singleton);
+		match scope {
+			DependencyScope::Singleton => {
+				if let Some(cached) = self.get_singleton::<T>() {
+					return Ok(cached); // ✓ < 5% オーバーヘッド
+				}
+			}
+			DependencyScope::Request => {
+				if let Some(cached) = self.get_request::<T>() {
+					return Ok(cached); // ✓ < 5% オーバーヘッド
+				}
+			}
+			_ => {}
+		}
+
+		// 【低速パス】キャッシュミス時のみ循環検出を実行
+		let _guard = begin_resolution(type_id, type_name)
+			.map_err(|e| crate::DiError::CircularDependency(e.to_string()))?;
+
+		// 実際の解決処理（既存ロジック）
+		self.resolve_internal::<T>(scope).await
+		// ガードがDropされると自動的にクリーンアップ
+	}
+
+	async fn resolve_internal<T: Any + Send + Sync + 'static>(
+		&self,
+		scope: crate::registry::DependencyScope,
+	) -> crate::DiResult<Arc<T>> {
+		use crate::registry::{DependencyScope, global_registry};
+
+		let registry = global_registry();
+
+		match scope {
+			DependencyScope::Singleton => {
+				// Create new instance
+				let instance = registry.create::<T>(self).await?;
+
+				// Cache in singleton scope
+				// Extract T from Arc<T> and store in scope's Arc
+				if let Ok(value) = Arc::try_unwrap(instance) {
+					self.set_singleton(value);
+					self.get_singleton::<T>()
+						.ok_or_else(|| crate::DiError::Internal {
+							message: "Failed to retrieve just-cached singleton".to_string(),
+						})
+				} else {
+					// Multiple references exist, cannot unwrap
+					Err(crate::DiError::Internal {
+						message: format!(
+							"Cannot cache singleton for {}: multiple Arc references exist",
+							std::any::type_name::<T>()
+						),
+					})
+				}
+			}
+			DependencyScope::Request => {
+				// Create new instance
+				let instance = registry.create::<T>(self).await?;
+
+				// Cache in request scope
+				if let Ok(value) = Arc::try_unwrap(instance) {
+					self.set_request(value);
+					self.get_request::<T>()
+						.ok_or_else(|| crate::DiError::Internal {
+							message: "Failed to retrieve just-cached request value".to_string(),
+						})
+				} else {
+					Err(crate::DiError::Internal {
+						message: format!(
+							"Cannot cache request dependency for {}: multiple Arc references exist",
+							std::any::type_name::<T>()
+						),
+					})
+				}
+			}
+			DependencyScope::Transient => {
+				// Never cache, always create new
+				registry.create::<T>(self).await
+			}
+		}
 	}
 }
 
