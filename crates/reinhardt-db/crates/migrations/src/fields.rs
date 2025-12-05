@@ -27,7 +27,10 @@ pub enum FieldType {
 	TimestampTz, // PostgreSQL TIMESTAMPTZ
 
 	// 数値型
-	Decimal { precision: u32, scale: u32 },
+	Decimal {
+		precision: u32,
+		scale: u32,
+	},
 	Float,
 	Double,
 	Real,
@@ -52,8 +55,26 @@ pub enum FieldType {
 	Year, // MySQL固有
 
 	// MySQL固有のコレクション型
-	Enum { values: Vec<String> },
-	Set { values: Vec<String> },
+	Enum {
+		values: Vec<String>,
+	},
+	Set {
+		values: Vec<String>,
+	},
+
+	// Relationship field types
+	/// OneToOne relationship field
+	OneToOne {
+		to: String, // "app.Model" format
+		on_delete: crate::ForeignKeyAction,
+		on_update: crate::ForeignKeyAction,
+	},
+
+	/// ManyToMany relationship field
+	ManyToMany {
+		to: String,              // "app.Model" format
+		through: Option<String>, // Intermediate table name (None for auto-generation)
+	},
 
 	// カスタム型
 	Custom(String),
@@ -109,6 +130,13 @@ impl FieldType {
 					.join(",");
 				format!("SET({})", values_str)
 			}
+			FieldType::OneToOne { to, .. } => {
+				format!("-- OneToOne relationship to {}", to)
+			}
+			FieldType::ManyToMany { to, through } => match through {
+				Some(table) => format!("-- ManyToMany through {}", table),
+				None => format!("-- ManyToMany to {} (auto-generated)", to),
+			},
 			FieldType::Custom(custom_type) => custom_type.clone(),
 		}
 	}

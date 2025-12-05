@@ -363,19 +363,239 @@ fn extract_columns_field(
 	None
 }
 
-/// Extract constraints (Vec<&'static str>) field from struct
+/// Extract a string field that may use .to_string() pattern
+fn extract_string_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+	field_name: &str,
+) -> Option<String> {
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == field_name
+		{
+			// Handle "string".to_string() pattern
+			if let Expr::MethodCall(method_call) = &field.expr
+				&& method_call.method == "to_string"
+			{
+				return extract_string_literal(&method_call.receiver);
+			}
+			// Handle direct string literal
+			return extract_string_literal(&field.expr);
+		}
+	}
+	None
+}
+
+/// Extract ForeignKeyAction enum from struct field
+fn extract_foreign_key_action_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+	field_name: &str,
+) -> Option<crate::ForeignKeyAction> {
+	use crate::ForeignKeyAction;
+
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == field_name
+			&& let Expr::Path(expr_path) = &field.expr
+			&& let Some(last_segment) = expr_path.path.segments.last()
+		{
+			let variant = last_segment.ident.to_string();
+			return match variant.as_str() {
+				"Restrict" => Some(ForeignKeyAction::Restrict),
+				"Cascade" => Some(ForeignKeyAction::Cascade),
+				"SetNull" => Some(ForeignKeyAction::SetNull),
+				"NoAction" => Some(ForeignKeyAction::NoAction),
+				"SetDefault" => Some(ForeignKeyAction::SetDefault),
+				_ => None,
+			};
+		}
+	}
+	None
+}
+
+/// Extract Vec<String> from vec!["str".to_string(), ...] pattern
+fn extract_string_vec_from_to_string(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+	field_name: &str,
+) -> Vec<String> {
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == field_name
+		{
+			return parse_string_vec_with_to_string(&field.expr);
+		}
+	}
+	Vec::new()
+}
+
+/// Parse Vec<String> from expression with .to_string() calls
+fn parse_string_vec_with_to_string(expr: &Expr) -> Vec<String> {
+	let mut result = Vec::new();
+
+	match expr {
+		Expr::Macro(expr_macro) if expr_macro.mac.path.is_ident("vec") => {
+			let tokens = &expr_macro.mac.tokens;
+			if let Ok(parsed) = syn::parse2::<syn::ExprArray>(quote::quote! { [#tokens] }) {
+				for elem in &parsed.elems {
+					// Handle "string".to_string() pattern
+					if let Expr::MethodCall(method_call) = elem
+						&& method_call.method == "to_string"
+					{
+						if let Some(s) = extract_string_literal(&method_call.receiver) {
+							result.push(s);
+						}
+					}
+					// Handle direct string literal
+					else if let Some(s) = extract_string_literal(elem) {
+						result.push(s);
+					}
+				}
+			}
+		}
+		Expr::Array(expr_array) => {
+			for elem in &expr_array.elems {
+				if let Expr::MethodCall(method_call) = elem
+					&& method_call.method == "to_string"
+				{
+					if let Some(s) = extract_string_literal(&method_call.receiver) {
+						result.push(s);
+					}
+				} else if let Some(s) = extract_string_literal(elem) {
+					result.push(s);
+				}
+			}
+		}
+		_ => {}
+	}
+
+	result
+}
+
+/// Parse a single Constraint from struct expression
+fn parse_single_constraint(expr: &Expr) -> Option<crate::Constraint> {
+	if let Expr::Struct(expr_struct) = expr {
+		let variant_name = expr_struct.path.segments.last()?.ident.to_string();
+
+		match variant_name.as_str() {
+			"ForeignKey" => {
+				let name = extract_string_field(&expr_struct.fields, "name")?;
+				let columns = extract_string_vec_from_to_string(&expr_struct.fields, "columns");
+				let referenced_table =
+					extract_string_field(&expr_struct.fields, "referenced_table")?;
+				let referenced_columns =
+					extract_string_vec_from_to_string(&expr_struct.fields, "referenced_columns");
+				let on_delete = extract_foreign_key_action_field(&expr_struct.fields, "on_delete")
+					.unwrap_or(crate::ForeignKeyAction::Restrict);
+				let on_update = extract_foreign_key_action_field(&expr_struct.fields, "on_update")
+					.unwrap_or(crate::ForeignKeyAction::Restrict);
+
+				return Some(crate::Constraint::ForeignKey {
+					name,
+					columns,
+					referenced_table,
+					referenced_columns,
+					on_delete,
+					on_update,
+				});
+			}
+			"Unique" => {
+				let name = extract_string_field(&expr_struct.fields, "name")?;
+				let columns = extract_string_vec_from_to_string(&expr_struct.fields, "columns");
+
+				return Some(crate::Constraint::Unique { name, columns });
+			}
+			"Check" => {
+				let name = extract_string_field(&expr_struct.fields, "name")?;
+				let expression = extract_string_field(&expr_struct.fields, "expression")?;
+
+				return Some(crate::Constraint::Check { name, expression });
+			}
+			"OneToOne" => {
+				let name = extract_string_field(&expr_struct.fields, "name")?;
+				let column = extract_string_field(&expr_struct.fields, "column")?;
+				let referenced_table =
+					extract_string_field(&expr_struct.fields, "referenced_table")?;
+				let referenced_column =
+					extract_string_field(&expr_struct.fields, "referenced_column")?;
+				let on_delete = extract_foreign_key_action_field(&expr_struct.fields, "on_delete")
+					.unwrap_or(crate::ForeignKeyAction::Restrict);
+				let on_update = extract_foreign_key_action_field(&expr_struct.fields, "on_update")
+					.unwrap_or(crate::ForeignKeyAction::NoAction);
+
+				return Some(crate::Constraint::OneToOne {
+					name,
+					column,
+					referenced_table,
+					referenced_column,
+					on_delete,
+					on_update,
+				});
+			}
+			"ManyToMany" => {
+				let name = extract_string_field(&expr_struct.fields, "name")?;
+				let through_table = extract_string_field(&expr_struct.fields, "through_table")?;
+				let source_column = extract_string_field(&expr_struct.fields, "source_column")?;
+				let target_column = extract_string_field(&expr_struct.fields, "target_column")?;
+				let target_table = extract_string_field(&expr_struct.fields, "target_table")?;
+
+				return Some(crate::Constraint::ManyToMany {
+					name,
+					through_table,
+					source_column,
+					target_column,
+					target_table,
+				});
+			}
+			_ => {
+				eprintln!(
+					"Warning: Unhandled constraint type in AST parser: {}",
+					variant_name
+				);
+			}
+		}
+	}
+
+	None
+}
+
+/// Parse constraints from vec![...] or array expression
+fn parse_constraints_vec(expr: &Expr) -> Vec<crate::Constraint> {
+	let mut constraints = Vec::new();
+
+	match expr {
+		// Handle vec![...] macro
+		Expr::Macro(expr_macro) if expr_macro.mac.path.is_ident("vec") => {
+			let tokens = &expr_macro.mac.tokens;
+			if let Ok(parsed) = syn::parse2::<syn::ExprArray>(quote::quote! { [#tokens] }) {
+				for elem in &parsed.elems {
+					if let Some(constraint) = parse_single_constraint(elem) {
+						constraints.push(constraint);
+					}
+				}
+			}
+		}
+		// Handle array literal [...]
+		Expr::Array(expr_array) => {
+			for elem in &expr_array.elems {
+				if let Some(constraint) = parse_single_constraint(elem) {
+					constraints.push(constraint);
+				}
+			}
+		}
+		_ => {}
+	}
+
+	constraints
+}
+
+/// Extract constraints from struct
 fn extract_constraints_field(
 	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
-) -> Vec<&'static str> {
+) -> Vec<crate::Constraint> {
 	for field in fields {
 		if let syn::Member::Named(ident) = &field.member
 			&& ident == "constraints"
 		{
-			let strings = extract_string_vec(&field.expr);
-			return strings
-				.into_iter()
-				.map(|s| Box::leak(s.into_boxed_str()) as &'static str)
-				.collect();
+			return parse_constraints_vec(&field.expr);
 		}
 	}
 	Vec::new()
@@ -653,28 +873,63 @@ fn extract_field_type(
 				}
 			}
 			// Handle FieldType::Decimal { precision, scale }
+			// Handle FieldType::OneToOne { to, on_delete, on_update }
+			// Handle FieldType::ManyToMany { to, through }
 			else if let Expr::Struct(expr_struct) = &field.expr {
-				if let Some(last_segment) = expr_struct.path.segments.last()
-					&& last_segment.ident == "Decimal"
-				{
-					let mut precision = 10u32;
-					let mut scale = 0u32;
+				if let Some(last_segment) = expr_struct.path.segments.last() {
+					let variant = last_segment.ident.to_string();
 
-					for field_value in &expr_struct.fields {
-						if let syn::Member::Named(field_ident) = &field_value.member
-							&& let Expr::Lit(expr_lit) = &field_value.expr
-							&& let syn::Lit::Int(lit_int) = &expr_lit.lit
-							&& let Ok(val) = lit_int.base10_parse::<u32>()
-						{
-							if field_ident == "precision" {
-								precision = val;
-							} else if field_ident == "scale" {
-								scale = val;
+					match variant.as_str() {
+						"Decimal" => {
+							let mut precision = 10u32;
+							let mut scale = 0u32;
+
+							for field_value in &expr_struct.fields {
+								if let syn::Member::Named(field_ident) = &field_value.member
+									&& let Expr::Lit(expr_lit) = &field_value.expr
+									&& let syn::Lit::Int(lit_int) = &expr_lit.lit
+									&& let Ok(val) = lit_int.base10_parse::<u32>()
+								{
+									if field_ident == "precision" {
+										precision = val;
+									} else if field_ident == "scale" {
+										scale = val;
+									}
+								}
 							}
-						}
-					}
 
-					return Some(FieldType::Decimal { precision, scale });
+							return Some(FieldType::Decimal { precision, scale });
+						}
+						"OneToOne" => {
+							// Extract required field: to
+							let to = extract_string_field(&expr_struct.fields, "to")?;
+
+							// Extract optional fields with defaults
+							let on_delete =
+								extract_foreign_key_action_field(&expr_struct.fields, "on_delete")
+									.unwrap_or(crate::ForeignKeyAction::Restrict);
+							let on_update =
+								extract_foreign_key_action_field(&expr_struct.fields, "on_update")
+									.unwrap_or(crate::ForeignKeyAction::NoAction);
+
+							return Some(FieldType::OneToOne {
+								to,
+								on_delete,
+								on_update,
+							});
+						}
+						"ManyToMany" => {
+							// Extract required field: to
+							let to = extract_string_field(&expr_struct.fields, "to")?;
+
+							// Extract optional field: through
+							let through =
+								extract_optional_str_field(&expr_struct.fields, "through");
+
+							return Some(FieldType::ManyToMany { to, through });
+						}
+						_ => {}
+					}
 				}
 			}
 			// Handle FieldType::Custom("...")
