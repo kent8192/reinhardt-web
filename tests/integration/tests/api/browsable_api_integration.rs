@@ -27,6 +27,7 @@ fn test_browsable_api_html_response() {
 		allowed_methods: vec!["GET".to_string(), "POST".to_string()],
 		request_form: None,
 		headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();
@@ -92,6 +93,7 @@ fn test_browsable_api_json_data_display() {
 		allowed_methods: vec!["GET".to_string(), "PUT".to_string(), "DELETE".to_string()],
 		request_form: None,
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();
@@ -169,6 +171,7 @@ fn test_browsable_api_form_rendering() {
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();
@@ -226,6 +229,7 @@ fn test_browsable_api_method_selection() {
 		],
 		request_form: None,
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();
@@ -273,6 +277,7 @@ fn test_browsable_api_authentication_ui() {
 		allowed_methods: vec!["GET".to_string()],
 		request_form: None,
 		headers: vec![("Authorization".to_string(), "Bearer token123".to_string())],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();
@@ -314,6 +319,7 @@ fn test_browsable_api_accepts_header() {
 		allowed_methods: vec!["GET".to_string()],
 		request_form: None,
 		headers: vec![("Accept".to_string(), "text/html".to_string())],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();
@@ -354,6 +360,7 @@ fn test_browsable_api_json_response_display() {
 		allowed_methods: vec!["GET".to_string()],
 		request_form: None,
 		headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();
@@ -404,6 +411,7 @@ fn test_browsable_api_error_response() {
 		allowed_methods: vec!["POST".to_string()],
 		request_form: None,
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();
@@ -448,6 +456,7 @@ fn test_browsable_api_success_created() {
 		allowed_methods: vec!["GET".to_string(), "POST".to_string()],
 		request_form: None,
 		headers: vec![("Location".to_string(), "/api/items/123/".to_string())],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();
@@ -525,6 +534,7 @@ fn test_browsable_api_various_field_types() {
 		allowed_methods: vec!["GET".to_string(), "PUT".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).unwrap();

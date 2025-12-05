@@ -4,8 +4,8 @@
 //! with the migration system.
 
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, MigrationNamer, MigrationNumbering, MigrationOperation,
-	Operation,
+	ColumnDefinition, Constraint, FieldType, Migration, MigrationNamer, MigrationNumbering,
+	MigrationOperation, Operation,
 };
 use std::fs;
 use tempfile::TempDir;
@@ -334,7 +334,10 @@ fn test_combined_workflow_new_migration() {
 					},
 				),
 			],
-			constraints: vec!["CHECK(price >= 0)"],
+			constraints: vec![Constraint::Check {
+				name: "check_price_positive".to_string(),
+				expression: "price >= 0".to_string(),
+			}],
 		},
 		Operation::CreateIndex {
 			table: leak_str("products"),

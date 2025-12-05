@@ -9,7 +9,6 @@ use reinhardt_migrations::{
 	Operation,
 };
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -140,16 +139,11 @@ async fn test_scenario_1_makemigrations_migrate_makemigrations() {
 	let app_label = "testapp";
 	let empty_schema = DatabaseSchema::default();
 	let target_schema = create_users_schema();
-	let output_dir = PathBuf::from("/tmp");
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 
 	// Step 1: First makemigrations (empty → users table)
-	let generator = AutoMigrationGenerator::new(
-		target_schema.clone(),
-		output_dir.clone(),
-		repository.clone(),
-	);
+	let generator = AutoMigrationGenerator::new(target_schema.clone(), repository.clone());
 
 	let result1 = generator
 		.generate(app_label, empty_schema.clone())
@@ -193,15 +187,10 @@ async fn test_scenario_2_rapid_successive_makemigrations() {
 	let app_label = "testapp";
 	let empty_schema = DatabaseSchema::default();
 	let target_schema = create_users_schema();
-	let output_dir = PathBuf::from("/tmp");
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 
-	let generator = AutoMigrationGenerator::new(
-		target_schema.clone(),
-		output_dir.clone(),
-		repository.clone(),
-	);
+	let generator = AutoMigrationGenerator::new(target_schema.clone(), repository.clone());
 
 	// First makemigrations
 	let result1 = generator
@@ -232,21 +221,18 @@ async fn test_nanosecond_precision_prevents_collision() {
 	let empty_schema = DatabaseSchema::default();
 	let schema1 = create_users_schema();
 	let schema2 = create_users_and_posts_schema();
-	let output_dir = PathBuf::from("/tmp");
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 
 	// Generate first migration (empty → users)
-	let generator1 =
-		AutoMigrationGenerator::new(schema1.clone(), output_dir.clone(), repository.clone());
+	let generator1 = AutoMigrationGenerator::new(schema1.clone(), repository.clone());
 	let result1 = generator1
 		.generate(app_label, empty_schema.clone())
 		.await
 		.expect("First migration should succeed");
 
 	// Generate second migration immediately (users → users + posts)
-	let generator2 =
-		AutoMigrationGenerator::new(schema2.clone(), output_dir.clone(), repository.clone());
+	let generator2 = AutoMigrationGenerator::new(schema2.clone(), repository.clone());
 	let result2 = generator2
 		.generate(app_label, schema1.clone())
 		.await
@@ -276,13 +262,11 @@ async fn test_different_operations_not_duplicate() {
 	let empty_schema = DatabaseSchema::default();
 	let schema1 = create_users_schema();
 	let schema2 = create_users_and_posts_schema();
-	let output_dir = PathBuf::from("/tmp");
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 
 	// First migration: empty → users
-	let generator1 =
-		AutoMigrationGenerator::new(schema1.clone(), output_dir.clone(), repository.clone());
+	let generator1 = AutoMigrationGenerator::new(schema1.clone(), repository.clone());
 	let result1 = generator1
 		.generate(app_label, empty_schema.clone())
 		.await
@@ -291,8 +275,7 @@ async fn test_different_operations_not_duplicate() {
 	assert_eq!(result1.operation_count, 1);
 
 	// Second migration: users → users + posts (different operations)
-	let generator2 =
-		AutoMigrationGenerator::new(schema2.clone(), output_dir.clone(), repository.clone());
+	let generator2 = AutoMigrationGenerator::new(schema2.clone(), repository.clone());
 	let result2 = generator2
 		.generate(app_label, schema1.clone())
 		.await
@@ -312,15 +295,10 @@ async fn test_duplicate_operations_detected() {
 	let app_label = "testapp";
 	let empty_schema = DatabaseSchema::default();
 	let target_schema = create_users_schema();
-	let output_dir = PathBuf::from("/tmp");
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 
-	let generator = AutoMigrationGenerator::new(
-		target_schema.clone(),
-		output_dir.clone(),
-		repository.clone(),
-	);
+	let generator = AutoMigrationGenerator::new(target_schema.clone(), repository.clone());
 
 	// First migration
 	let result1 = generator
@@ -345,7 +323,6 @@ async fn test_semantic_duplicate_with_different_column_order() {
 
 	let app_label = "testapp";
 	let empty_schema = DatabaseSchema::default();
-	let output_dir = PathBuf::from("/tmp");
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 
@@ -393,8 +370,7 @@ async fn test_semantic_duplicate_with_different_column_order() {
 	);
 	schema1.tables.insert("users".to_string(), table1);
 
-	let generator1 =
-		AutoMigrationGenerator::new(schema1.clone(), output_dir.clone(), repository.clone());
+	let generator1 = AutoMigrationGenerator::new(schema1.clone(), repository.clone());
 
 	// First migration
 	let result1 = generator1
@@ -449,8 +425,7 @@ async fn test_semantic_duplicate_with_different_column_order() {
 	);
 	schema2.tables.insert("users".to_string(), table2);
 
-	let generator2 =
-		AutoMigrationGenerator::new(schema2.clone(), output_dir.clone(), repository.clone());
+	let generator2 = AutoMigrationGenerator::new(schema2.clone(), repository.clone());
 
 	// Try to generate the same migration with different column order
 	// Should be detected as duplicate due to semantic equality
@@ -469,18 +444,13 @@ async fn test_schema_diff_determinism() {
 	let app_label = "testapp";
 	let empty_schema = DatabaseSchema::default();
 	let target_schema = create_users_schema();
-	let output_dir = PathBuf::from("/tmp");
 
 	// Generate migrations multiple times with the same schema
 	let mut operations_list = Vec::new();
 
 	for _ in 0..5 {
 		let repository = Arc::new(Mutex::new(TestRepository::new()));
-		let generator = AutoMigrationGenerator::new(
-			target_schema.clone(),
-			output_dir.clone(),
-			repository.clone(),
-		);
+		let generator = AutoMigrationGenerator::new(target_schema.clone(), repository.clone());
 
 		let result = generator
 			.generate(app_label, empty_schema.clone())

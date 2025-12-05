@@ -1,10 +1,10 @@
 //! Integration tests for validator support in Model derive macro
 
-use reinhardt_macros::Model;
+use reinhardt_macros::{model, Model};
 use reinhardt_orm::Model as ModelTrait;
 use serde::{Deserialize, Serialize};
 
-#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "test_app", table_name = "users")]
 struct User {
 	#[field(primary_key = true)]
@@ -95,7 +95,7 @@ fn test_min_max_value_validators() {
 
 #[test]
 fn test_multiple_validators_on_single_field() {
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "products")]
 	struct Product {
 		#[field(primary_key = true)]
@@ -132,7 +132,7 @@ fn test_multiple_validators_on_single_field() {
 
 #[test]
 fn test_no_validators() {
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "simple_model")]
 	struct SimpleModel {
 		#[field(primary_key = true)]

@@ -8,7 +8,7 @@
 //! Uses `reinhardt_test::fixtures::postgres_container` directly.
 //! Each test initializes its own database tables using the container's connection pool.
 
-use reinhardt_macros::Model;
+use reinhardt_macros::{model, Model};
 use reinhardt_orm::{composite_pk::PkValue, manager::reinitialize_database, QuerySet};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -18,7 +18,7 @@ use std::{collections::HashMap, sync::Arc};
 use testcontainers::{ContainerAsync, GenericImage};
 
 /// Test model with composite primary key
-#[derive(Model, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "test_app", table_name = "post_tags")]
 struct PostTag {
 	#[field(primary_key = true)]
@@ -38,7 +38,7 @@ impl std::fmt::Display for PostTag {
 }
 
 /// Another test model with composite primary key
-#[derive(Model, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "test_app", table_name = "user_roles")]
 struct UserRole {
 	#[field(primary_key = true)]
@@ -359,7 +359,7 @@ async fn test_get_composite_string_pk(
 	.expect("Failed to insert test data");
 
 	// Define temporary model
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "string_composite")]
 	struct StringComposite {
 		#[field(primary_key = true, max_length = 50)]

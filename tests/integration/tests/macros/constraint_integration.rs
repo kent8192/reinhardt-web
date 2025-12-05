@@ -1,10 +1,10 @@
 //! Integration tests for check constraint support in Model derive macro
 
-use reinhardt_macros::Model;
+use reinhardt_macros::{model, Model};
 use reinhardt_orm::Model as ModelTrait;
 use serde::{Deserialize, Serialize};
 
-#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "test_app", table_name = "products")]
 struct Product {
 	#[field(primary_key = true)]
@@ -44,7 +44,7 @@ fn test_constraint_metadata() {
 
 #[test]
 fn test_multiple_constraints() {
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "users")]
 	struct User {
 		#[field(primary_key = true)]
@@ -71,7 +71,7 @@ fn test_multiple_constraints() {
 
 #[test]
 fn test_no_constraints() {
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "simple_model")]
 	struct SimpleModel {
 		#[field(primary_key = true)]
@@ -87,7 +87,7 @@ fn test_no_constraints() {
 
 #[test]
 fn test_constraint_with_complex_expression() {
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "complex_constraints")]
 	struct ComplexConstraints {
 		#[field(primary_key = true)]

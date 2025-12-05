@@ -1,6 +1,6 @@
 //! Integration tests for composite primary key support
 
-use reinhardt_macros::Model;
+use reinhardt_macros::{model, Model};
 use serde::{Deserialize, Serialize};
 
 /// Test models module to avoid "Self" resolution issues with proc macros
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 mod test_models {
 	use super::*;
 
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "post_tags")]
 	pub struct PostTag {
 		#[field(primary_key = true)]
@@ -21,7 +21,7 @@ mod test_models {
 		pub description: String,
 	}
 
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "user_roles")]
 	pub struct UserRole {
 		#[field(primary_key = true)]
@@ -34,7 +34,7 @@ mod test_models {
 		pub granted_by: Option<String>,
 	}
 
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "users")]
 	pub struct User {
 		#[field(primary_key = true)]
@@ -50,7 +50,7 @@ mod test_models {
 		pub full_name: String,
 	}
 
-	#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "simple_models")]
 	pub struct SimpleModel {
 		#[field(primary_key = true)]

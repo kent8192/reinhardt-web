@@ -179,8 +179,7 @@ mod tests {
 	/// Test auto-migration generator with no changes
 	#[tokio::test]
 	async fn test_auto_migration_no_changes_detected() {
-		let temp_dir = TempDir::new().unwrap();
-		let output_dir = temp_dir.path().to_path_buf();
+		let _temp_dir = TempDir::new().unwrap();
 
 		// Create identical schemas
 		let schema = DatabaseSchema {
@@ -190,7 +189,7 @@ mod tests {
 		let repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>> =
 			Arc::new(tokio::sync::Mutex::new(TestRepository::new()));
 
-		let generator = AutoMigrationGenerator::new(schema.clone(), output_dir, repository);
+		let generator = AutoMigrationGenerator::new(schema.clone(), repository);
 
 		// Generate should return NoChangesDetected error
 		let result = generator.generate("testapp", schema).await;
@@ -219,8 +218,7 @@ mod tests {
 	/// operations from migration files (currently extract_operations returns empty vec)
 	#[tokio::test]
 	async fn test_makemigrations_workflow_unit() {
-		let temp_dir = TempDir::new().unwrap();
-		let output_dir = temp_dir.path().to_path_buf();
+		let _temp_dir = TempDir::new().unwrap();
 
 		// Step 1: Empty current schema, target has tables
 		let current_schema = DatabaseSchema {
@@ -259,8 +257,7 @@ mod tests {
 		let repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>> =
 			Arc::new(tokio::sync::Mutex::new(TestRepository::new()));
 
-		let generator =
-			AutoMigrationGenerator::new(target_schema.clone(), output_dir, repository.clone());
+		let generator = AutoMigrationGenerator::new(target_schema.clone(), repository.clone());
 		let result = generator.generate("testapp", current_schema.clone()).await;
 
 		assert!(result.is_ok(), "First migration generation should succeed");
@@ -272,11 +269,7 @@ mod tests {
 
 		// Step 2: After "applying" migration, schemas should be identical
 		// Simulate post-migration state: current schema now has the table
-		let generator2 = AutoMigrationGenerator::new(
-			target_schema.clone(),
-			temp_dir.path().to_path_buf(),
-			repository,
-		);
+		let generator2 = AutoMigrationGenerator::new(target_schema.clone(), repository);
 		let result2 = generator2.generate("testapp", target_schema).await;
 
 		// Should return NoChangesDetected

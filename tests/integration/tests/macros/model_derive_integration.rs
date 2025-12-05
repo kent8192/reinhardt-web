@@ -1,16 +1,16 @@
-//! Integration tests for the #[derive(Model)] macro
+//! Integration tests for the Model derive macro (via #[model] attribute)
 //!
 //! Tests the interaction between:
 //! - reinhardt-macros (Model derive macro)
 //! - reinhardt-orm (Model trait)
 //! - reinhardt-migrations (model_registry)
 
-use reinhardt_macros::Model;
+use reinhardt_macros::{model, Model};
 use reinhardt_migrations::model_registry::global_registry;
 use reinhardt_orm::Model as ModelTrait;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Model)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "test_app", table_name = "test_users")]
 struct TestUser {
 	#[field(primary_key = true)]
@@ -165,7 +165,7 @@ fn test_primary_key_access() {
 #[test]
 fn test_multiple_models_registration() {
 	// Define another model to ensure multiple models can be registered
-	#[derive(Debug, Clone, Serialize, Deserialize, Model)]
+	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "test_posts")]
 	#[allow(dead_code)]
 	struct TestPost {

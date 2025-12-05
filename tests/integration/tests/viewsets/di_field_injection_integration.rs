@@ -3,16 +3,17 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
-use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
+use reinhardt_di::{injectable, Injectable, InjectionContext, SingletonScope};
 use reinhardt_exception::Result;
-use reinhardt_macros::Injectable;
 use reinhardt_types::{Request, Response};
 use reinhardt_viewsets::{Action, ViewSet};
 use std::sync::Arc;
 
 /// Mock database dependency
 #[derive(Clone)]
+#[injectable]
 struct Database {
+	#[no_inject]
 	connection_string: String,
 }
 
@@ -26,7 +27,9 @@ impl Default for Database {
 
 /// Mock cache dependency
 #[derive(Clone)]
+#[injectable]
 struct RedisCache {
+	#[no_inject]
 	host: String,
 }
 
@@ -39,12 +42,14 @@ impl Default for RedisCache {
 }
 
 /// ViewSet with field-level dependency injection
-#[derive(Clone, Injectable)]
+#[derive(Clone)]
+#[injectable]
 struct UserViewSet {
 	#[inject]
 	db: Database,
 	#[inject]
 	cache: RedisCache,
+	#[no_inject]
 	#[allow(dead_code)]
 	name: String,
 }
@@ -121,7 +126,8 @@ async fn test_field_injection_with_viewset_dispatch() {
 }
 
 /// ViewSet with cache control on field injection
-#[derive(Clone, Injectable)]
+#[derive(Clone)]
+#[injectable]
 struct ServiceViewSet {
 	#[inject]
 	cached_db: Database,

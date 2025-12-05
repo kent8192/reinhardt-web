@@ -11,6 +11,7 @@
 use bytes::Bytes;
 use reinhardt_core::types::Handler;
 use reinhardt_http::Request;
+use reinhardt_migrations::{Constraint, ForeignKeyAction};
 use sqlx::{Pool, Postgres};
 // NOTE: AssertSqlSafe trait was removed in newer sqlx versions (v0.6+)
 // This import is no longer needed as the trait is not used in tests
@@ -106,9 +107,26 @@ pub async fn create_flatpages_tables(pool: &Pool<Postgres>) {
 				ColumnDefinition::new("site_id", FieldType::Custom("BIGINT NOT NULL".to_string())),
 			],
 			constraints: vec![
-				"FOREIGN KEY (flatpage_id) REFERENCES flatpages(id) ON DELETE CASCADE",
-				"FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE",
-				"UNIQUE(flatpage_id, site_id)",
+				Constraint::ForeignKey {
+					name: "fk_flatpages_sites_flatpage_id".to_string(),
+					columns: vec!["flatpage_id".to_string()],
+					referenced_table: "flatpages".to_string(),
+					referenced_columns: vec!["id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::Cascade,
+				},
+				Constraint::ForeignKey {
+					name: "fk_flatpages_sites_site_id".to_string(),
+					columns: vec!["site_id".to_string()],
+					referenced_table: "sites".to_string(),
+					referenced_columns: vec!["id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::Cascade,
+				},
+				Constraint::Unique {
+					name: "uq_flatpage_site".to_string(),
+					columns: vec!["flatpage_id".to_string(), "site_id".to_string()],
+				},
 			],
 		});
 
@@ -163,7 +181,7 @@ impl TestServer {
 			.expect("Failed to bind to address");
 		let addr = listener.local_addr().expect("Failed to get local address");
 
-		// Note: Server functionality temporarily disabled
+		// TODO: Server functionality temporarily disabled
 		// until reinhardt-server provides a proper Server type
 
 		// Give the server a moment to start

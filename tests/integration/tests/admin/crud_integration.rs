@@ -612,7 +612,7 @@ async fn test_admin_count_with_filters(
 	// Count all users
 	let total_count = db.count::<TestUser>("test_users", vec![]).await;
 
-	// Note: Current implementation returns 0 as placeholder
+	// TODO: Current implementation returns 0 as placeholder
 	// This test verifies the API works without errors
 	assert!(total_count.is_ok());
 

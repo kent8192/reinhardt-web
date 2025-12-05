@@ -25,7 +25,7 @@ reinhardt-auth = { workspace = true, features = ["argon2-hasher", "jwt", "sessio
 reinhardt-security = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-params = { workspace = true }
-reinhardt-di = { workspace = true }
+reinhardt-di = { workspace = true, features = ["macros"] }
 reinhardt-middleware = { workspace = true }
 reinhardt-templates = { workspace = true }
 reinhardt-routers = { workspace = true }
