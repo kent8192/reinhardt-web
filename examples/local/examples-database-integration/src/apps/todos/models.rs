@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Todo model
 ///
 /// Represents a single TODO item
-#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "todos", table_name = "todos")]
 pub struct Todo {
 	/// Primary key (None for auto-increment on insert)

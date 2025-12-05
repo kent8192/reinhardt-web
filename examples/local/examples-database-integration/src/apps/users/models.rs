@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// User model
 ///
 /// Represents a single user in the system
-#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "users", table_name = "users")]
 pub struct User {
 	/// Primary key (None for auto-increment on insert)
