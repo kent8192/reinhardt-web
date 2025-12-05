@@ -170,7 +170,6 @@ struct VaultSecretMetadata {
 	version: u64,
 }
 
-// Note: Struct reserved for future write operations to Vault
 #[derive(Debug, Serialize)]
 #[allow(dead_code)]
 struct VaultWriteRequest {
