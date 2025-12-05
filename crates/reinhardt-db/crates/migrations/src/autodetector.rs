@@ -7,6 +7,62 @@ use regex::Regex;
 use std::collections::{BTreeMap, HashMap};
 use strsim::{jaro_winkler, levenshtein};
 
+/// ForeignKey action for ON DELETE and ON UPDATE clauses
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub enum ForeignKeyAction {
+	/// Restricts deletion/update (default)
+	Restrict,
+	/// Cascades deletion/update to dependent rows
+	Cascade,
+	/// Sets foreign key to NULL
+	SetNull,
+	/// No action (similar to Restrict but deferred)
+	NoAction,
+	/// Sets foreign key to default value
+	SetDefault,
+}
+
+impl ForeignKeyAction {
+	/// Convert to SQL keyword for use in constraint definitions
+	pub fn to_sql_keyword(&self) -> &'static str {
+		match self {
+			ForeignKeyAction::Restrict => "RESTRICT",
+			ForeignKeyAction::Cascade => "CASCADE",
+			ForeignKeyAction::SetNull => "SET NULL",
+			ForeignKeyAction::NoAction => "NO ACTION",
+			ForeignKeyAction::SetDefault => "SET DEFAULT",
+		}
+	}
+}
+
+impl From<ForeignKeyAction> for sea_query::ForeignKeyAction {
+	fn from(action: ForeignKeyAction) -> Self {
+		match action {
+			ForeignKeyAction::Restrict => sea_query::ForeignKeyAction::Restrict,
+			ForeignKeyAction::Cascade => sea_query::ForeignKeyAction::Cascade,
+			ForeignKeyAction::SetNull => sea_query::ForeignKeyAction::SetNull,
+			ForeignKeyAction::NoAction => sea_query::ForeignKeyAction::NoAction,
+			ForeignKeyAction::SetDefault => sea_query::ForeignKeyAction::SetDefault,
+		}
+	}
+}
+
+impl From<sea_query::ForeignKeyAction> for ForeignKeyAction {
+	fn from(action: sea_query::ForeignKeyAction) -> Self {
+		match action {
+			sea_query::ForeignKeyAction::Restrict => ForeignKeyAction::Restrict,
+			sea_query::ForeignKeyAction::Cascade => ForeignKeyAction::Cascade,
+			sea_query::ForeignKeyAction::SetNull => ForeignKeyAction::SetNull,
+			sea_query::ForeignKeyAction::NoAction => ForeignKeyAction::NoAction,
+			sea_query::ForeignKeyAction::SetDefault => ForeignKeyAction::SetDefault,
+			// sea-query is marked as non-exhaustive, so we need a catch-all
+			_ => ForeignKeyAction::NoAction,
+		}
+	}
+}
+
 /// Convert a name to snake_case
 ///
 /// # Examples
@@ -36,6 +92,19 @@ pub fn to_snake_case(name: &str) -> String {
 	result
 }
 
+/// ForeignKey reference information
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForeignKeyInfo {
+	/// Referenced table name
+	pub referenced_table: String,
+	/// Referenced column name (usually "id")
+	pub referenced_column: String,
+	/// ON DELETE action (Cascade, SetNull, Restrict, NoAction, SetDefault)
+	pub on_delete: ForeignKeyAction,
+	/// ON UPDATE action (Cascade, SetNull, Restrict, NoAction, SetDefault)
+	pub on_update: ForeignKeyAction,
+}
+
 /// Field state for migration detection
 #[derive(Debug, Clone)]
 pub struct FieldState {
@@ -43,6 +112,8 @@ pub struct FieldState {
 	pub field_type: crate::FieldType,
 	pub nullable: bool,
 	pub params: std::collections::HashMap<String, String>,
+	/// ForeignKey information if this field is a foreign key
+	pub foreign_key: Option<ForeignKeyInfo>,
 }
 
 impl FieldState {
@@ -52,6 +123,23 @@ impl FieldState {
 			field_type,
 			nullable,
 			params: std::collections::HashMap::new(),
+			foreign_key: None,
+		}
+	}
+
+	/// Create a new FieldState with ForeignKey information
+	pub fn with_foreign_key(
+		name: impl Into<String>,
+		field_type: crate::FieldType,
+		nullable: bool,
+		foreign_key: ForeignKeyInfo,
+	) -> Self {
+		Self {
+			name: name.into(),
+			field_type,
+			nullable,
+			params: std::collections::HashMap::new(),
+			foreign_key: Some(foreign_key),
 		}
 	}
 }
@@ -105,6 +193,21 @@ pub struct ConstraintDefinition {
 	pub fields: Vec<String>,
 	/// Additional constraint expression (e.g., CHECK condition)
 	pub expression: Option<String>,
+	/// ForeignKey-specific information (only for foreign_key type)
+	pub foreign_key_info: Option<ForeignKeyConstraintInfo>,
+}
+
+/// ForeignKey constraint information
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForeignKeyConstraintInfo {
+	/// Referenced table name
+	pub referenced_table: String,
+	/// Referenced columns (usually ["id"])
+	pub referenced_columns: Vec<String>,
+	/// ON DELETE action
+	pub on_delete: ForeignKeyAction,
+	/// ON UPDATE action
+	pub on_update: ForeignKeyAction,
 }
 
 impl ModelState {
@@ -213,6 +316,49 @@ impl ModelState {
 		if let Some(mut field) = self.fields.remove(old_name) {
 			field.name = new_name.clone();
 			self.fields.insert(new_name, field);
+		}
+	}
+
+	/// Add a constraint to this model
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_migrations::{ModelState, ConstraintDefinition};
+	///
+	/// let mut model = ModelState::new("myapp", "User");
+	/// let constraint = ConstraintDefinition {
+	///     name: "unique_email".to_string(),
+	///     constraint_type: "unique".to_string(),
+	///     fields: vec!["email".to_string()],
+	///     expression: None,
+	///     foreign_key_info: None,
+	/// };
+	/// model.add_constraint(constraint);
+	/// assert_eq!(model.constraints.len(), 1);
+	/// ```
+	pub fn add_constraint(&mut self, constraint: ConstraintDefinition) {
+		self.constraints.push(constraint);
+	}
+
+	/// Add a ForeignKey constraint from field information
+	pub fn add_foreign_key_constraint_from_field(&mut self, field_name: &str) {
+		if let Some(field) = self.fields.get(field_name)
+			&& let Some(ref fk_info) = field.foreign_key
+		{
+			let constraint = ConstraintDefinition {
+				name: format!("fk_{}_{}", self.table_name, field_name),
+				constraint_type: "foreign_key".to_string(),
+				fields: vec![field_name.to_string()],
+				expression: None,
+				foreign_key_info: Some(ForeignKeyConstraintInfo {
+					referenced_table: fk_info.referenced_table.clone(),
+					referenced_columns: vec![fk_info.referenced_column.clone()],
+					on_delete: fk_info.on_delete,
+					on_update: fk_info.on_update,
+				}),
+			};
+			self.add_constraint(constraint);
 		}
 	}
 }
@@ -659,6 +805,7 @@ impl ProjectState {
 			field_type: col.type_definition.clone(),
 			nullable: !col.not_null,
 			params,
+			foreign_key: None,
 		}
 	}
 }
@@ -1126,7 +1273,7 @@ impl DetectedChanges {
 }
 
 // ============================================================================
-// Phase 2: Advanced Change Inference System
+// Advanced Change Inference System
 // ============================================================================
 
 /// Change history entry for temporal pattern analysis
@@ -1650,7 +1797,7 @@ impl Default for PatternMatcher {
 }
 
 // ============================================================================
-// Phase 2.3: Inference Types
+// Inference Types
 // ============================================================================
 
 /// Condition for an inference rule
@@ -2229,7 +2376,7 @@ impl InferenceEngine {
 }
 
 // ============================================================================
-// Phase 2.4: Interactive UI for User Confirmation
+// Interactive UI for User Confirmation
 // ============================================================================
 
 /// Interactive prompt system for user confirmation of ambiguous changes
@@ -3393,6 +3540,137 @@ impl MigrationAutodetector {
 		}
 	}
 
+	/// Generate intermediate table operation for ManyToMany field
+	///
+	/// Creates a through table for ManyToMany relationships with:
+	/// - id: BigInteger primary key with auto_increment
+	/// - {source}_id: BigInteger foreign key to source model
+	/// - {target}_id: BigInteger foreign key to target model
+	/// - Unique constraint on (source_id, target_id)
+	///
+	/// # Arguments
+	/// * `app_label` - The app label of the source model
+	/// * `model_name` - The source model name
+	/// * `field_name` - The ManyToMany field name
+	/// * `to_model` - The target model reference (e.g., "app.Model")
+	/// * `through_table` - Optional custom through table name
+	///
+	/// # Returns
+	/// Optional CreateTable operation for the intermediate table
+	fn generate_intermediate_table(
+		&self,
+		app_label: &str,
+		model_name: &str,
+		field_name: &str,
+		to_model: &str,
+		through_table: &Option<String>,
+	) -> Option<crate::Operation> {
+		// Generate table name
+		let table_name = if let Some(custom_name) = through_table {
+			custom_name.clone()
+		} else {
+			// Auto-generate: {app}_{model}_{field_name}
+			format!(
+				"{}_{}_{}",
+				to_snake_case(app_label),
+				to_snake_case(model_name),
+				to_snake_case(field_name)
+			)
+		};
+
+		// Parse target model to get table name
+		let (_target_app, target_model) = self.parse_model_reference(to_model, app_label)?;
+		let target_table = to_snake_case(&target_model);
+
+		// Handle self-referential relationships
+		let (source_column, target_column) = if model_name == target_model {
+			// Self-referential: use from_{model}_id and to_{model}_id
+			(
+				format!("from_{}_id", to_snake_case(model_name)),
+				format!("to_{}_id", to_snake_case(model_name)),
+			)
+		} else {
+			// Regular: use {source}_id and {target}_id
+			(
+				format!("{}_id", to_snake_case(model_name)),
+				format!("{}_id", to_snake_case(&target_model)),
+			)
+		};
+
+		// Create columns
+		let columns = vec![
+			// id column
+			crate::ColumnDefinition {
+				name: "id",
+				type_definition: crate::FieldType::BigInteger,
+				not_null: true,
+				unique: false,
+				primary_key: true,
+				auto_increment: true,
+				default: None,
+			},
+			// source_id column
+			crate::ColumnDefinition {
+				name: Box::leak(source_column.clone().into_boxed_str()),
+				type_definition: crate::FieldType::BigInteger,
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			// target_id column
+			crate::ColumnDefinition {
+				name: Box::leak(target_column.clone().into_boxed_str()),
+				type_definition: crate::FieldType::BigInteger,
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+		];
+
+		// Create constraints
+		let source_table = to_snake_case(model_name);
+		let constraints = vec![
+			// Foreign key to source table
+			crate::Constraint::ForeignKey {
+				name: format!("fk_{}_{}", table_name, source_column),
+				columns: vec![source_column.clone()],
+				referenced_table: source_table.clone(),
+				referenced_columns: vec!["id".to_string()],
+				on_delete: crate::ForeignKeyAction::Cascade,
+				on_update: crate::ForeignKeyAction::Cascade,
+			},
+			// Foreign key to target table
+			crate::Constraint::ForeignKey {
+				name: format!("fk_{}_{}", table_name, target_column),
+				columns: vec![target_column.clone()],
+				referenced_table: target_table.clone(),
+				referenced_columns: vec!["id".to_string()],
+				on_delete: crate::ForeignKeyAction::Cascade,
+				on_update: crate::ForeignKeyAction::Cascade,
+			},
+			// Unique constraint on (source_id, target_id)
+			crate::Constraint::Unique {
+				name: format!(
+					"uq_{}_{}_{}",
+					table_name,
+					source_column.replace("_id", ""),
+					target_column.replace("_id", "")
+				),
+				columns: vec![source_column, target_column],
+			},
+		];
+
+		Some(crate::Operation::CreateTable {
+			name: Box::leak(table_name.into_boxed_str()),
+			columns,
+			constraints,
+		})
+	}
+
 	/// Generate operations from detected changes
 	///
 	/// Converts DetectedChanges into a list of Operation objects that can be
@@ -3456,6 +3734,20 @@ impl MigrationAutodetector {
 			}
 		}
 
+		// Generate intermediate tables for ManyToMany fields in new models
+		for (app_label, model_name) in &changes.created_models {
+			if let Some(model) = self.to_state.get_model(app_label, model_name) {
+				for (field_name, field_state) in &model.fields {
+					if let crate::FieldType::ManyToMany { to, through } = &field_state.field_type
+						&& let Some(operation) = self.generate_intermediate_table(
+							app_label, model_name, field_name, to, through,
+						) {
+						operations.push(operation);
+					}
+				}
+			}
+		}
+
 		// Generate AddColumn operations for new fields
 		for (app_label, model_name, field_name) in &changes.added_fields {
 			if let Some(model) = self.to_state.get_model(app_label, model_name)
@@ -3468,6 +3760,18 @@ impl MigrationAutodetector {
 						field.field_type.clone(),
 					),
 				});
+			}
+		}
+
+		// Generate intermediate tables for ManyToMany fields being added
+		for (app_label, model_name, field_name) in &changes.added_fields {
+			if let Some(model) = self.to_state.get_model(app_label, model_name)
+				&& let Some(field) = model.get_field(field_name)
+				&& let crate::FieldType::ManyToMany { to, through } = &field.field_type
+				&& let Some(operation) =
+					self.generate_intermediate_table(app_label, model_name, field_name, to, through)
+			{
+				operations.push(operation);
 			}
 		}
 
