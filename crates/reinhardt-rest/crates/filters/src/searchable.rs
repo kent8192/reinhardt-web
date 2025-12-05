@@ -16,7 +16,7 @@ use reinhardt_db::orm::{Field, Model};
 /// use reinhardt_filters::SearchableModel;
 /// use reinhardt_db::orm::{Model, Field};
 ///
-/// #[derive(Model)]
+/// #[model(app_label = "posts", table_name = "posts")]
 /// struct Post {
 ///     id: i64,
 ///     title: String,

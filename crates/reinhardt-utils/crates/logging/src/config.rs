@@ -10,7 +10,7 @@ impl Default for LoggingConfig {
 	}
 }
 
-// Note: LoggingManager.config field was removed as it was unused
+// TODO: LoggingManager.config field was removed as it was unused
 // LoggingConfig is currently empty and not utilized in get_logger()
 // If configuration-based logger behavior is needed in the future,
 // LoggingConfig should be properly defined and utilized

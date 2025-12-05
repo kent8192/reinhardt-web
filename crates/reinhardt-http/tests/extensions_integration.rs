@@ -128,22 +128,22 @@ async fn test_extensions_lifecycle() {
 	router = router.function("/lifecycle", Method::GET, |_req: Request| async move {
 		let extensions = Extensions::new();
 
-		// Phase 1: Insert
+		// Insert
 		extensions.insert(UserId(100));
 		extensions.insert(SessionToken("token1".to_string()));
 
 		let phase1_has_user = extensions.contains::<UserId>();
 		let phase1_has_session = extensions.contains::<SessionToken>();
 
-		// Phase 2: Get
+		// Get
 		let user_id = extensions.get::<UserId>();
 		let session = extensions.get::<SessionToken>();
 
-		// Phase 3: Remove
+		// Remove
 		let removed_user = extensions.remove::<UserId>();
 		let phase3_has_user = extensions.contains::<UserId>();
 
-		// Phase 4: Clear
+		// Clear
 		extensions.clear();
 		let phase4_has_session = extensions.contains::<SessionToken>();
 

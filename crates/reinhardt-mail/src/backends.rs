@@ -311,7 +311,7 @@ impl SmtpBackend {
 			builder = builder.reply_to(mailbox);
 		}
 
-		// Note: Custom headers would need to be added using proper Header types
+		// TODO: Custom headers would need to be added using proper Header types
 		// This is a limitation of the lettre API - headers must implement the Header trait
 		// For now, we skip custom headers in the SMTP backend
 

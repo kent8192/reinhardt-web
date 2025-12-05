@@ -203,7 +203,7 @@ where
 
 	/// Invalidate all cached responses
 	pub async fn invalidate_all(&self) -> Result<()> {
-		// Note: This is a simplified implementation
+		// TODO: This is a simplified implementation
 		// A production implementation would use cache tags or patterns
 		self.cache.clear().await?;
 		Ok(())

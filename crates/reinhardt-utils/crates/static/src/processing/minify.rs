@@ -130,7 +130,7 @@ impl Processor for CssMinifier {
 /// JavaScript minifier
 ///
 /// Removes whitespace and comments from JavaScript files.
-/// Note: This is a basic minifier. For production use, consider using
+/// TODO: This is a basic minifier. For production use, consider using
 /// dedicated tools like swc or terser.
 pub struct JsMinifier {
 	/// Remove comments

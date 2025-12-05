@@ -25,10 +25,9 @@
 //! ```rust,ignore
 //! use reinhardt_orm::Model;
 //!
-//! #[derive(Model)]
-//! #[reinhardt(table_name = "users")]
+//! #[model(table_name = "users")]
 //! pub struct User {
-//!     #[reinhardt(primary_key)]
+//!     #[field(primary_key)]
 //!     pub id: i64,
 //!     pub username: String,
 //!     pub email: String,
@@ -101,14 +100,12 @@ pub mod model_admin;
 pub mod site;
 pub mod views;
 
-// Phase 2 modules - Advanced features
 pub mod bulk_edit;
 pub mod export;
 pub mod import;
 pub mod inline;
 pub mod widgets;
 
-// Phase 3 modules - Integration features
 pub mod audit;
 pub mod auth;
 pub mod custom_views;

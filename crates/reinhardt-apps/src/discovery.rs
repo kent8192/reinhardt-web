@@ -150,7 +150,7 @@ impl RelationMetadata {
 	/// ```
 	pub fn reverse_name(&self) -> &str {
 		// Return related_name if specified
-		// Note: Default name generation requires String allocation,
+		// TODO: Default name generation requires String allocation,
 		// which cannot be done in this method due to lifetime constraints.
 		// Callers should use create_reverse_relation() for full default name generation.
 		self.related_name.unwrap_or(self.field_name)
