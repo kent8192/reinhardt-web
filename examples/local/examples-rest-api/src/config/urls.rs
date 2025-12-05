@@ -3,6 +3,7 @@
 //! The `url_patterns` routes URLs to handlers.
 
 use reinhardt::{Method, Request, Response, Result, StatusCode, UnifiedRouter};
+use reinhardt::core::serde::json;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,8 +20,8 @@ async fn root(_req: Request) -> Result<Response> {
 
 /// Health check endpoint handler
 async fn health(_req: Request) -> Result<Response> {
-	let body = serde_json::json!({"status": "ok"});
-	let json = serde_json::to_string(&body)?;
+	let body = json::json!({"status": "ok"});
+	let json = json::to_string(&body)?;
 	Ok(Response::new(StatusCode::OK)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))
@@ -40,7 +41,7 @@ async fn list_users(_req: Request) -> Result<Response> {
 		},
 	];
 
-	let json = serde_json::to_string(&users)?;
+	let json = json::to_string(&users)?;
 	Ok(Response::new(StatusCode::OK)
 		.with_header("Content-Type", "application/json")
 		.with_body(json))

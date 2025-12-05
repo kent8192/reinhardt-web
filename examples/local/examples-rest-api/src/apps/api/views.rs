@@ -3,15 +3,19 @@
 //! RESTful API endpoints
 
 use chrono::Utc;
-use reinhardt::{Request, Response, StatusCode, ViewResult, endpoint};
+use reinhardt::core::serde::json;
+use reinhardt::{delete, get, post, put};
+use reinhardt::{Json, Path, Request, Response, StatusCode, ViewResult};
 use validator::Validate;
 
 use super::models::Article;
 use super::serializers::{ArticleListResponse, ArticleResponse, CreateArticleRequest};
 use super::storage;
 
+
 /// List all articles
 ///
+/// GET /articles/
 /// # Example Response
 /// ```json
 /// {
@@ -29,7 +33,7 @@ use super::storage;
 ///   ]
 /// }
 /// ```
-#[endpoint]
+#[get("/articles/")]
 pub async fn list_articles(_req: Request) -> ViewResult<Response> {
 	// Get all articles from in-memory storage
 	let articles = storage::get_all_articles();
@@ -41,11 +45,12 @@ pub async fn list_articles(_req: Request) -> ViewResult<Response> {
 		results,
 	};
 
-	Ok(Response::new(StatusCode::OK).with_body(serde_json::to_vec(&response)?))
+	Ok(Response::new(StatusCode::OK).with_body(json::to_vec(&response)?))
 }
 
 /// Create a new article
 ///
+/// POST /articles/
 /// # Request Body
 /// ```json
 /// {
@@ -55,12 +60,8 @@ pub async fn list_articles(_req: Request) -> ViewResult<Response> {
 ///   "published": true
 /// }
 /// ```
-#[endpoint]
-pub async fn create_article(req: Request) -> ViewResult<Response> {
-	// Parse request body
-	let body_bytes = req.body().clone();
-	let create_req: CreateArticleRequest = serde_json::from_slice(&body_bytes)?;
-
+#[post("/articles/")]
+pub async fn create_article(Json(create_req): Json<CreateArticleRequest>) -> ViewResult<Response> {
 	// Validate request
 	create_req.validate()?;
 
@@ -80,37 +81,16 @@ pub async fn create_article(req: Request) -> ViewResult<Response> {
 
 	let response: ArticleResponse = created_article.into();
 
-	Ok(Response::new(StatusCode::CREATED).with_body(serde_json::to_vec(&response)?))
+	Ok(Response::new(StatusCode::CREATED).with_body(json::to_vec(&response)?))
 }
 
 /// Get a specific article by ID
 ///
+/// GET /articles/{id}/
 /// # Path Parameters
 /// - `id`: Article ID (e.g., `/articles/1`)
-#[endpoint]
-pub async fn get_article(req: Request) -> ViewResult<Response> {
-	eprintln!(
-		"[DEBUG views::get_article] Called with path_params: {:?}",
-		req.path_params
-	);
-
-	// Extract ID from path parameters
-	let id_str = match req.path_params.get("id") {
-		Some(id) => id,
-		None => {
-			return Ok(Response::new(StatusCode::BAD_REQUEST)
-				.with_body(r#"{"error": "Missing path parameter: id"}"#.as_bytes().to_vec()));
-		}
-	};
-
-	let id = match id_str.parse::<i64>() {
-		Ok(id) => id,
-		Err(_) => {
-			return Ok(Response::new(StatusCode::BAD_REQUEST)
-				.with_body(r#"{"error": "Invalid ID format"}"#.as_bytes().to_vec()));
-		}
-	};
-
+#[get("/articles/{id}/")]
+pub async fn get_article(Path(id): Path<i64>) -> ViewResult<Response> {
 	eprintln!("[DEBUG views::get_article] Looking for article id={}", id);
 
 	// Get article from in-memory storage
@@ -125,11 +105,12 @@ pub async fn get_article(req: Request) -> ViewResult<Response> {
 
 	let response: ArticleResponse = article.into();
 
-	Ok(Response::new(StatusCode::OK).with_body(serde_json::to_vec(&response)?))
+	Ok(Response::new(StatusCode::OK).with_body(json::to_vec(&response)?))
 }
 
 /// Update an article
 ///
+/// PUT /articles/{id}/
 /// # Path Parameters
 /// - `id`: Article ID (e.g., `/articles/1`)
 ///
@@ -142,28 +123,11 @@ pub async fn get_article(req: Request) -> ViewResult<Response> {
 ///   "published": false
 /// }
 /// ```
-#[endpoint]
-pub async fn update_article(req: Request) -> ViewResult<Response> {
-	// Extract ID from path parameters
-	let id_str = match req.path_params.get("id") {
-		Some(id) => id,
-		None => {
-			return Ok(Response::new(StatusCode::BAD_REQUEST)
-				.with_body(r#"{"error": "Missing path parameter: id"}"#.as_bytes().to_vec()));
-		}
-	};
-
-	let id = match id_str.parse::<i64>() {
-		Ok(id) => id,
-		Err(_) => {
-			return Ok(Response::new(StatusCode::BAD_REQUEST)
-				.with_body(r#"{"error": "Invalid ID format"}"#.as_bytes().to_vec()));
-		}
-	};
-
-	// Parse request body
-	let body_bytes = req.body().clone();
-	let update_data: serde_json::Value = serde_json::from_slice(&body_bytes)?;
+#[put("/articles/{id}/")]
+pub async fn update_article(
+	Path(id): Path<i64>,
+	Json(update_data): Json<json::Value>,
+) -> ViewResult<Response> {
 
 	// Get existing article from storage
 	let mut article = match storage::get_article(id) {
@@ -202,34 +166,19 @@ pub async fn update_article(req: Request) -> ViewResult<Response> {
 
 	let response: ArticleResponse = updated_article.into();
 
-	Ok(Response::new(StatusCode::OK).with_body(serde_json::to_vec(&response)?))
+	Ok(Response::new(StatusCode::OK).with_body(json::to_vec(&response)?))
 }
 
 /// Delete an article
 ///
+/// DELETE /articles/{id}/
 /// # Path Parameters
 /// - `id`: Article ID (e.g., `/articles/1`)
 ///
 /// # Response
 /// Returns 204 No Content on success
-#[endpoint]
-pub async fn delete_article(req: Request) -> ViewResult<Response> {
-	// Extract ID from path parameters
-	let id_str = match req.path_params.get("id") {
-		Some(id) => id,
-		None => {
-			return Ok(Response::new(StatusCode::BAD_REQUEST)
-				.with_body(r#"{"error": "Missing path parameter: id"}"#.as_bytes().to_vec()));
-		}
-	};
-
-	let id = match id_str.parse::<i64>() {
-		Ok(id) => id,
-		Err(_) => {
-			return Ok(Response::new(StatusCode::BAD_REQUEST)
-				.with_body(r#"{"error": "Invalid ID format"}"#.as_bytes().to_vec()));
-		}
-	};
+#[delete("/articles/{id}/")]
+pub async fn delete_article(Path(id): Path<i64>) -> ViewResult<Response> {
 
 	// Delete article from in-memory storage
 	if !storage::delete_article(id) {

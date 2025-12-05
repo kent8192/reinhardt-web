@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Article model
 ///
 /// Represents a blog article or post
-#[derive(Model, Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize)]
 #[model(app_label = "api", table_name = "articles")]
 pub struct Article {
 	/// Primary key
