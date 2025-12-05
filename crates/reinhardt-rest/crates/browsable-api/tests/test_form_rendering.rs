@@ -34,6 +34,7 @@ mod posting_list_data_tests {
 			allowed_methods: vec!["GET".to_string(), "POST".to_string()],
 			request_form: None,
 			headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -114,6 +115,7 @@ mod posting_list_data_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -197,6 +199,7 @@ mod posting_list_data_tests {
 			allowed_methods: vec!["POST".to_string()],
 			request_form: None,
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -286,6 +289,7 @@ mod many_post_view_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -407,6 +411,7 @@ mod many_post_view_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -498,6 +503,7 @@ mod many_post_view_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -554,6 +560,7 @@ mod many_post_view_tests {
 			allowed_methods: vec!["GET".to_string()],
 			request_form: None,
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -641,6 +648,7 @@ mod form_field_rendering_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -739,6 +747,7 @@ mod form_field_rendering_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -848,6 +857,7 @@ mod form_field_rendering_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();

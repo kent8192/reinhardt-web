@@ -40,6 +40,7 @@ mod anonymous_user_tests {
 				("Content-Type".to_string(), "application/json".to_string()),
 				("WWW-Authenticate".to_string(), "Bearer".to_string()),
 			],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -96,6 +97,7 @@ mod anonymous_user_tests {
 			allowed_methods: vec![],
 			request_form: None,
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -165,6 +167,7 @@ mod dropdown_with_auth_tests {
 			allowed_methods: vec!["GET".to_string()],
 			request_form: None,
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -216,6 +219,7 @@ mod dropdown_with_auth_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -284,6 +288,7 @@ mod dropdown_with_auth_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -337,6 +342,7 @@ mod dropdown_with_auth_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -394,6 +400,7 @@ mod no_dropdown_without_auth_tests {
 			allowed_methods: vec!["GET".to_string()],
 			request_form: None,
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -434,6 +441,7 @@ mod no_dropdown_without_auth_tests {
 			allowed_methods: vec!["GET".to_string()],
 			request_form: None,
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -520,6 +528,7 @@ mod integration_tests {
 				("Content-Type".to_string(), "application/json".to_string()),
 				("Allow".to_string(), "GET, POST".to_string()),
 			],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();

@@ -141,6 +141,7 @@ impl BrowsableApiMiddleware {
 			allowed_methods: vec!["GET".to_string()], // Default, should be extracted from response
 			request_form: None,                       // Could be populated from OPTIONS response
 			headers,
+			csrf_token: None, // Can be populated from CSRF middleware if available
 		};
 
 		// Render HTML

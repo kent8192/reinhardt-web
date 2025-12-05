@@ -65,6 +65,9 @@
             <div class="form-section">
                 <h2>Make a Request</h2>
                 <form method="{{ request_form_text.submit_method }}" action="{{ request_form_text.submit_url | safe }}">
+                    {% if csrf_token %}
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                    {% endif %}
                     {% for field in request_form_text.fields %}
                     <div class="form-field">
                         <label for="{{ field.name }}">

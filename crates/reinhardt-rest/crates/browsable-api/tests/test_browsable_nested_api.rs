@@ -54,6 +54,7 @@ mod nested_serializers_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -138,6 +139,7 @@ mod nested_serializers_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -207,6 +209,7 @@ mod nested_serializers_tests {
 				submit_method: "PUT".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -286,6 +289,7 @@ mod nested_serializers_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -365,6 +369,7 @@ mod nested_serializers_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -447,6 +452,7 @@ mod list_create_view_tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();

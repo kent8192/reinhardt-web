@@ -35,6 +35,8 @@ pub struct ApiContext {
 	pub allowed_methods: Vec<String>,
 	pub request_form: Option<FormContext>,
 	pub headers: Vec<(String, String)>,
+	/// CSRF token for form protection
+	pub csrf_token: Option<String>,
 }
 
 /// Context for rendering request forms
@@ -254,6 +256,9 @@ impl BrowsableApiRenderer {
             <div class="form-section">
                 <h2>Make a Request</h2>
                 <form method="{{ request_form_text.submit_method }}" action="{{ request_form_text.submit_url | safe }}">
+                    {% if csrf_token %}
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                    {% endif %}
                     {% for field in request_form_text.fields %}
                     <div class="form-field">
                         <label for="{{ field.name }}">
@@ -337,6 +342,7 @@ mod tests {
 			allowed_methods: vec!["GET".to_string(), "POST".to_string()],
 			request_form: None,
 			headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -372,6 +378,7 @@ mod tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -419,6 +426,7 @@ mod tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();
@@ -468,6 +476,7 @@ mod tests {
 				submit_method: "POST".to_string(),
 			}),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).unwrap();

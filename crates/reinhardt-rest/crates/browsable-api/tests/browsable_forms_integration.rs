@@ -179,6 +179,7 @@ fn test_simple_text_field_rendering(
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(simple_form_context),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -229,6 +230,7 @@ fn test_multiple_field_types_rendering(
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(multi_field_form_context),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -288,6 +290,7 @@ fn test_select_field_with_options(
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(select_field_form_context),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -356,6 +359,7 @@ fn test_select_field_with_pre_selected_value(renderer: BrowsableApiRenderer) {
 		allowed_methods: vec!["PATCH".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -395,6 +399,7 @@ fn test_form_field_initial_values(
 		allowed_methods: vec!["GET".to_string(), "PUT".to_string(), "DELETE".to_string()],
 		request_form: Some(form_with_initial_values),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -439,6 +444,7 @@ fn test_textarea_with_initial_value(renderer: BrowsableApiRenderer) {
 		allowed_methods: vec!["PATCH".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -472,6 +478,7 @@ fn test_required_field_indicators(
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(multi_field_form_context),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -504,6 +511,7 @@ fn test_help_text_display(renderer: BrowsableApiRenderer, multi_field_form_conte
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(multi_field_form_context),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -530,10 +538,47 @@ async fn test_csrf_token_field_generation(
 	_temp_dir: tempfile::TempDir,
 ) {
 	// Test: Forms include CSRF token field when CSRF protection is enabled
-	// NOTE: Current implementation does not include CSRF token field
-	// This test documents the expected behavior for future CSRF integration
 
-	let context = ApiContext {
+	// Test case 1: Form with CSRF token
+	let context_with_csrf = ApiContext {
+		title: "Create User".to_string(),
+		description: None,
+		endpoint: "/api/users/".to_string(),
+		method: "POST".to_string(),
+		response_data: json!({}),
+		response_status: 200,
+		allowed_methods: vec!["POST".to_string()],
+		request_form: Some(simple_form_context.clone()),
+		headers: vec![],
+		csrf_token: Some("test-csrf-token-value".to_string()),
+	};
+
+	let html_with_csrf = renderer
+		.render(&context_with_csrf)
+		.expect("Failed to render with CSRF token");
+
+	// Verify CSRF token field is present
+	assert!(html_with_csrf.contains("<form"));
+	assert!(html_with_csrf.contains(r#"method="POST""#));
+	assert!(html_with_csrf.contains(r#"name="csrfmiddlewaretoken""#));
+	assert!(html_with_csrf.contains(r#"type="hidden""#));
+	assert!(html_with_csrf.contains(r#"value="test-csrf-token-value""#));
+
+	// Verify CSRF token field is placed within form tags
+	let form_start = html_with_csrf.find("<form").expect("Form tag not found");
+	let form_end = html_with_csrf
+		.find("</form>")
+		.expect("Form end tag not found");
+	let csrf_field = html_with_csrf
+		.find(r#"name="csrfmiddlewaretoken""#)
+		.expect("CSRF field not found");
+	assert!(
+		csrf_field > form_start && csrf_field < form_end,
+		"CSRF token field is not within form tags"
+	);
+
+	// Test case 2: Form without CSRF token (backward compatibility)
+	let context_without_csrf = ApiContext {
 		title: "Create User".to_string(),
 		description: None,
 		endpoint: "/api/users/".to_string(),
@@ -543,23 +588,17 @@ async fn test_csrf_token_field_generation(
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(simple_form_context),
 		headers: vec![],
+		csrf_token: None,
 	};
 
-	let html = renderer.render(&context).expect("Failed to render");
+	let html_without_csrf = renderer
+		.render(&context_without_csrf)
+		.expect("Failed to render without CSRF token");
 
-	// NOTE: CSRF token integration is planned for future implementation
-	// When implemented, the form should include:
-	// - Hidden input field with name="csrfmiddlewaretoken"
-	// - Token value from CSRF middleware
-	// - Proper placement within <form> tags
-
-	// For now, verify form exists without CSRF token
-	assert!(html.contains("<form"));
-	assert!(html.contains(r#"method="POST""#));
-
-	// Future assertion (currently will fail):
-	// assert!(html.contains(r#"name="csrfmiddlewaretoken""#));
-	// assert!(html.contains(r#"type="hidden""#));
+	// Verify form exists but CSRF token field is not present
+	assert!(html_without_csrf.contains("<form"));
+	assert!(html_without_csrf.contains(r#"method="POST""#));
+	assert!(!html_without_csrf.contains(r#"name="csrfmiddlewaretoken""#));
 }
 
 // =============================================================================
@@ -597,6 +636,7 @@ fn test_form_method_attribute(renderer: BrowsableApiRenderer) {
 			allowed_methods: vec![method.to_string()],
 			request_form: Some(form),
 			headers: vec![],
+			csrf_token: None,
 		};
 
 		let html = renderer.render(&context).expect("Failed to render");
@@ -626,6 +666,7 @@ fn test_form_action_url(renderer: BrowsableApiRenderer) {
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -688,6 +729,7 @@ fn test_nested_object_form_rendering(renderer: BrowsableApiRenderer) {
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -774,6 +816,7 @@ fn test_form_with_mixed_required_optional_fields(renderer: BrowsableApiRenderer)
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -822,6 +865,7 @@ fn test_empty_form_renders_only_submit_button(renderer: BrowsableApiRenderer) {
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -920,6 +964,7 @@ async fn test_form_rendering_with_database_backed_options(
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
@@ -989,6 +1034,7 @@ fn test_html_escaping_in_field_values(renderer: BrowsableApiRenderer) {
 		allowed_methods: vec!["POST".to_string()],
 		request_form: Some(form),
 		headers: vec![],
+		csrf_token: None,
 	};
 
 	let html = renderer.render(&context).expect("Failed to render");
