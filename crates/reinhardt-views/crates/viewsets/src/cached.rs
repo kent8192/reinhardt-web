@@ -7,8 +7,10 @@ use async_trait::async_trait;
 use reinhardt_core::http::{Request, Response, Result};
 use reinhardt_utils::cache::Cache;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 
 /// Cache configuration for ViewSets
 #[derive(Debug, Clone)]
@@ -166,6 +168,10 @@ pub struct CachedViewSet<V, C> {
 	cache: Arc<C>,
 	/// Cache configuration
 	config: CacheConfig,
+	/// Tag for cache invalidation (format: "viewset:{key_prefix}")
+	cache_tag: String,
+	/// Tracked cache keys for selective invalidation
+	cached_keys: Arc<RwLock<HashSet<String>>>,
 }
 
 impl<V, C> CachedViewSet<V, C>
@@ -174,11 +180,19 @@ where
 {
 	/// Create a new cached ViewSet
 	pub fn new(inner: V, cache: C, config: CacheConfig) -> Self {
+		let cache_tag = format!("viewset:{}", config.key_prefix);
 		Self {
 			inner: Arc::new(inner),
 			cache: Arc::new(cache),
 			config,
+			cache_tag,
+			cached_keys: Arc::new(RwLock::new(HashSet::new())),
 		}
+	}
+
+	/// Get the cache tag for this ViewSet
+	pub fn cache_tag(&self) -> &str {
+		&self.cache_tag
 	}
 
 	/// Get the cache key for a list operation
@@ -201,17 +215,42 @@ where
 		self.cache.clone()
 	}
 
-	/// Invalidate all cached responses
+	/// Invalidate all cached responses for this ViewSet
+	///
+	/// This method only invalidates cache entries created by this ViewSet,
+	/// not the entire cache. It uses tracked cache keys for selective invalidation.
 	pub async fn invalidate_all(&self) -> Result<()> {
-		// TODO: This is a simplified implementation
-		// A production implementation would use cache tags or patterns
-		self.cache.clear().await?;
+		// Get and clear the tracked keys
+		let keys: Vec<String> = {
+			let mut cached_keys = self.cached_keys.write().await;
+			cached_keys.drain().collect()
+		};
+
+		// Delete all tracked keys from the cache
+		for key in &keys {
+			// Ignore errors for individual key deletions (key may have expired)
+			let _ = self.cache.delete(key).await;
+		}
+
 		Ok(())
+	}
+
+	/// Track a cache key for later invalidation
+	async fn track_cache_key(&self, key: &str) {
+		let mut cached_keys = self.cached_keys.write().await;
+		cached_keys.insert(key.to_string());
 	}
 
 	/// Invalidate cached response for a specific item
 	pub async fn invalidate_item(&self, id: &str) -> Result<()> {
 		let key = self.retrieve_cache_key(id);
+
+		// Remove from tracked keys
+		{
+			let mut cached_keys = self.cached_keys.write().await;
+			cached_keys.remove(&key);
+		}
+
 		self.cache.delete(&key).await?;
 		Ok(())
 	}
@@ -257,8 +296,9 @@ where
 		let response = self.inner.list(request).await?;
 		let cached = CachedResponse::from_response(&response);
 
-		// Cache the response with configured TTL
+		// Cache the response with configured TTL and track the key
 		self.cache.set(&cache_key, &cached, self.config.ttl).await?;
+		self.track_cache_key(&cache_key).await;
 
 		Ok(response)
 	}
@@ -280,8 +320,9 @@ where
 		let response = self.inner.retrieve(request, id.clone()).await?;
 		let cached = CachedResponse::from_response(&response);
 
-		// Cache the response with configured TTL
+		// Cache the response with configured TTL and track the key
 		self.cache.set(&cache_key, &cached, self.config.ttl).await?;
+		self.track_cache_key(&cache_key).await;
 
 		Ok(response)
 	}
@@ -425,21 +466,31 @@ mod tests {
 
 		let cached_viewset = CachedViewSet::new(inner, cache.clone(), config);
 
-		// Set multiple cached values
+		// Set multiple cached values and track them
 		let cached_response = CachedResponse {
 			status: 200,
 			body: b"cached data".to_vec(),
 			headers: vec![],
 		};
 
+		// Set and track cache keys (simulating what cached_list/cached_retrieve do)
 		cache
 			.set("users:retrieve:123", &cached_response, None)
 			.await
 			.unwrap();
+		cached_viewset.track_cache_key("users:retrieve:123").await;
+
 		cache
 			.set("users:list:page=1", &cached_response, None)
 			.await
 			.unwrap();
+		cached_viewset.track_cache_key("users:list:page=1").await;
+
+		// Verify they exist
+		let cached1: Option<CachedResponse> = cache.get("users:retrieve:123").await.unwrap();
+		let cached2: Option<CachedResponse> = cache.get("users:list:page=1").await.unwrap();
+		assert!(cached1.is_some());
+		assert!(cached2.is_some());
 
 		// Invalidate all
 		cached_viewset.invalidate_all().await.unwrap();
@@ -449,6 +500,50 @@ mod tests {
 		let cached2: Option<CachedResponse> = cache.get("users:list:page=1").await.unwrap();
 		assert!(cached1.is_none());
 		assert!(cached2.is_none());
+	}
+
+	#[tokio::test]
+	async fn test_invalidate_all_does_not_affect_other_viewsets() {
+		#[derive(Debug, Clone)]
+		struct TestViewSet;
+
+		let cache = InMemoryCache::new();
+
+		// Create two ViewSets with different prefixes
+		let users_viewset =
+			CachedViewSet::new(TestViewSet, cache.clone(), CacheConfig::new("users"));
+		let posts_viewset =
+			CachedViewSet::new(TestViewSet, cache.clone(), CacheConfig::new("posts"));
+
+		let cached_response = CachedResponse {
+			status: 200,
+			body: b"cached data".to_vec(),
+			headers: vec![],
+		};
+
+		// Set and track cache keys for both viewsets
+		cache
+			.set("users:retrieve:1", &cached_response, None)
+			.await
+			.unwrap();
+		users_viewset.track_cache_key("users:retrieve:1").await;
+
+		cache
+			.set("posts:retrieve:1", &cached_response, None)
+			.await
+			.unwrap();
+		posts_viewset.track_cache_key("posts:retrieve:1").await;
+
+		// Invalidate only users viewset
+		users_viewset.invalidate_all().await.unwrap();
+
+		// Users cache should be gone
+		let users_cached: Option<CachedResponse> = cache.get("users:retrieve:1").await.unwrap();
+		assert!(users_cached.is_none());
+
+		// Posts cache should still exist
+		let posts_cached: Option<CachedResponse> = cache.get("posts:retrieve:1").await.unwrap();
+		assert!(posts_cached.is_some());
 	}
 
 	#[test]

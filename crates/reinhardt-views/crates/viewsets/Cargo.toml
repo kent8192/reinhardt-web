@@ -36,6 +36,7 @@ sqlx = { workspace = true, features = [
   "runtime-tokio",
   "tls-rustls",
 ] }
+tokio = { workspace = true, features = ["sync"] }
 inventory = "0.3"
 lazy_static = "1.4"
 urlencoding = "2.1"
