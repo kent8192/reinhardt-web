@@ -52,7 +52,8 @@ pub async fn spawn_test_server(handler: Arc<dyn Handler>) -> (String, JoinHandle
 					let handler_clone = server.handler();
 					tokio::spawn(async move {
 						if let Err(e) =
-							HttpServer::handle_connection(stream, socket_addr, handler_clone).await
+							HttpServer::handle_connection(stream, socket_addr, handler_clone, None)
+								.await
 						{
 							eprintln!("Error handling connection: {:?}", e);
 						}

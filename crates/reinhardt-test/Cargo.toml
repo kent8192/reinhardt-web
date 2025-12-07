@@ -69,6 +69,8 @@ fs2 = { version = "0.4", optional = true }
 
 # Optional dependencies for websockets feature
 # Note: websockets feature uses top-level reinhardt-websockets crate
+tokio-tungstenite = "0.21"
+lapin = "2.3"
 reinhardt-rest = { workspace = true, features = ["serializers", "parsers"] }
 reinhardt-core = { workspace = true, features = [
   "types",

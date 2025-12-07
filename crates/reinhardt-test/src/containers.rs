@@ -644,6 +644,250 @@ impl Drop for RedisClusterGuard {
 	}
 }
 
+/// RabbitMQ test container
+pub struct RabbitMQContainer {
+	#[allow(dead_code)]
+	container: ContainerAsync<GenericImage>,
+	host: String,
+	port: u16,
+	management_port: u16,
+}
+
+/// Helper function to start a RabbitMQ container
+///
+/// Returns a tuple of (container, connection_url, management_url).
+pub async fn start_rabbitmq() -> (RabbitMQContainer, String, String) {
+	let container = RabbitMQContainer::new().await;
+	let url = container.connection_url();
+	let mgmt_url = container.management_url();
+	(container, url, mgmt_url)
+}
+
+impl RabbitMQContainer {
+	/// Create a new RabbitMQ container
+	pub async fn new() -> Self {
+		Self::with_credentials("guest", "guest").await
+	}
+
+	/// Create a RabbitMQ container with custom credentials
+	pub async fn with_credentials(username: &str, password: &str) -> Self {
+		let image = GenericImage::new("rabbitmq", "3.12-management-alpine")
+			.with_wait_for(WaitFor::message_on_stdout("Server startup complete"))
+			.with_env_var("RABBITMQ_DEFAULT_USER", username)
+			.with_env_var("RABBITMQ_DEFAULT_PASS", password);
+
+		let container = AsyncRunner::start(image)
+			.await
+			.expect("Failed to start RabbitMQ container");
+
+		// RabbitMQ AMQP port (5672) and Management UI port (15672)
+		let port = container.get_host_port_ipv4(5672).await.unwrap();
+		let management_port = container.get_host_port_ipv4(15672).await.unwrap();
+
+		let rabbitmq_container = Self {
+			container,
+			host: "localhost".to_string(),
+			port,
+			management_port,
+		};
+
+		// Wait for RabbitMQ to be ready
+		rabbitmq_container
+			.wait_until_ready()
+			.await
+			.expect("RabbitMQ container failed to become ready");
+
+		rabbitmq_container
+	}
+
+	/// Wait for RabbitMQ server to be ready to accept connections
+	async fn wait_until_ready(&self) -> Result<(), Box<dyn std::error::Error>> {
+		use tokio::time::{Duration, sleep};
+
+		let connection_url = self.connection_url();
+
+		// Try to connect to RabbitMQ with retries (max 30 attempts, ~15 seconds total)
+		for attempt in 1..=30 {
+			match lapin::Connection::connect(
+				&connection_url,
+				lapin::ConnectionProperties::default(),
+			)
+			.await
+			{
+				Ok(conn) => {
+					// Successfully connected, close and return
+					let _ = conn.close(200, "OK").await;
+					return Ok(());
+				}
+				Err(e) if attempt < 30 => {
+					eprintln!("RabbitMQ connection attempt {}/30 failed: {}", attempt, e);
+					sleep(Duration::from_millis(500)).await;
+				}
+				Err(e) => {
+					return Err(Box::new(std::io::Error::new(
+						std::io::ErrorKind::ConnectionRefused,
+						format!("RabbitMQ failed to become ready after 30 attempts: {}", e),
+					)));
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	/// Get the AMQP connection URL for RabbitMQ
+	pub fn connection_url(&self) -> String {
+		format!("amqp://guest:guest@{}:{}", self.host, self.port)
+	}
+
+	/// Get the Management UI URL for RabbitMQ
+	pub fn management_url(&self) -> String {
+		format!("http://{}:{}", self.host, self.management_port)
+	}
+
+	/// Get the AMQP port
+	pub fn port(&self) -> u16 {
+		self.port
+	}
+
+	/// Get the Management UI port
+	pub fn management_port(&self) -> u16 {
+		self.management_port
+	}
+}
+
+/// Helper function to run a test with a RabbitMQ container
+pub async fn with_rabbitmq<F, Fut>(f: F) -> Result<(), Box<dyn std::error::Error>>
+where
+	F: FnOnce(RabbitMQContainer) -> Fut,
+	Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error>>>,
+{
+	let container = RabbitMQContainer::new().await;
+	f(container).await
+}
+
+/// MailHog test container for SMTP testing
+pub struct MailHogContainer {
+	#[allow(dead_code)]
+	container: ContainerAsync<GenericImage>,
+	host: String,
+	smtp_port: u16,
+	http_port: u16,
+}
+
+/// Helper function to start a MailHog container
+///
+/// Returns a tuple of (container, smtp_url, http_url).
+pub async fn start_mailhog() -> (MailHogContainer, String, String) {
+	let container = MailHogContainer::new().await;
+	let smtp_url = container.smtp_url();
+	let http_url = container.http_url();
+	(container, smtp_url, http_url)
+}
+
+impl MailHogContainer {
+	/// Create a new MailHog container
+	pub async fn new() -> Self {
+		let image = GenericImage::new("mailhog/mailhog", "latest");
+
+		let container = AsyncRunner::start(image)
+			.await
+			.expect("Failed to start MailHog container");
+
+		// MailHog SMTP port (1025) and HTTP API/UI port (8025)
+		let smtp_port = container.get_host_port_ipv4(1025).await.unwrap();
+		let http_port = container.get_host_port_ipv4(8025).await.unwrap();
+
+		let mailhog_container = Self {
+			container,
+			host: "localhost".to_string(),
+			smtp_port,
+			http_port,
+		};
+
+		// Wait for MailHog to be ready
+		mailhog_container
+			.wait_until_ready()
+			.await
+			.expect("MailHog container failed to become ready");
+
+		mailhog_container
+	}
+
+	/// Wait for MailHog server to be ready
+	async fn wait_until_ready(&self) -> Result<(), Box<dyn std::error::Error>> {
+		use tokio::time::{Duration, sleep};
+
+		let http_url = format!("{}/api/v2/messages", self.http_url());
+
+		// Try to access MailHog HTTP API with retries (max 30 attempts, ~15 seconds total)
+		for attempt in 1..=30 {
+			match reqwest::get(&http_url).await {
+				Ok(response) if response.status().is_success() => {
+					return Ok(());
+				}
+				Ok(response) if attempt < 30 => {
+					eprintln!(
+						"MailHog HTTP check attempt {}/30 failed with status: {}",
+						attempt,
+						response.status()
+					);
+					sleep(Duration::from_millis(500)).await;
+				}
+				Ok(response) => {
+					return Err(format!(
+						"MailHog HTTP API not ready after 30 attempts, last status: {}",
+						response.status()
+					)
+					.into());
+				}
+				Err(e) if attempt < 30 => {
+					eprintln!("MailHog HTTP check attempt {}/30 failed: {}", attempt, e);
+					sleep(Duration::from_millis(500)).await;
+				}
+				Err(e) => {
+					return Err(Box::new(std::io::Error::new(
+						std::io::ErrorKind::ConnectionRefused,
+						format!("MailHog failed to become ready after 30 attempts: {}", e),
+					)));
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	/// Get the SMTP URL for MailHog
+	pub fn smtp_url(&self) -> String {
+		format!("smtp://{}:{}", self.host, self.smtp_port)
+	}
+
+	/// Get the HTTP API/UI URL for MailHog
+	pub fn http_url(&self) -> String {
+		format!("http://{}:{}", self.host, self.http_port)
+	}
+
+	/// Get the SMTP port
+	pub fn smtp_port(&self) -> u16 {
+		self.smtp_port
+	}
+
+	/// Get the HTTP API/UI port
+	pub fn http_port(&self) -> u16 {
+		self.http_port
+	}
+}
+
+/// Helper function to run a test with a MailHog container
+pub async fn with_mailhog<F, Fut>(f: F) -> Result<(), Box<dyn std::error::Error>>
+where
+	F: FnOnce(MailHogContainer) -> Fut,
+	Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error>>>,
+{
+	let container = MailHogContainer::new().await;
+	f(container).await
+}
+
 /// SQLite test helpers
 pub mod sqlite {
 	/// Get a SQLite in-memory database URL for testing

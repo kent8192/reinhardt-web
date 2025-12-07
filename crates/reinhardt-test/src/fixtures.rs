@@ -132,10 +132,11 @@ pub use testcontainers::{
 	FileLockGuard, RedisClusterContainer, cockroachdb_container, localstack_fixture,
 	mongodb_container, mysql_container, mysql_with_all_migrations, mysql_with_apps_migrations,
 	mysql_with_migrations_from, postgres_container, postgres_with_all_migrations,
-	postgres_with_apps_migrations, postgres_with_migrations_from, redis_cluster,
-	redis_cluster_cleanup, redis_cluster_client, redis_cluster_container, redis_cluster_fixture,
-	redis_cluster_lock, redis_cluster_ports_ready, redis_cluster_urls, redis_container,
-	sqlite_with_all_migrations, sqlite_with_apps_migrations, sqlite_with_migrations_from,
+	postgres_with_apps_migrations, postgres_with_migrations_from, rabbitmq_container,
+	redis_cluster, redis_cluster_cleanup, redis_cluster_client, redis_cluster_container,
+	redis_cluster_fixture, redis_cluster_lock, redis_cluster_ports_ready, redis_cluster_urls,
+	redis_container, sqlite_with_all_migrations, sqlite_with_apps_migrations,
+	sqlite_with_migrations_from,
 };
 
 // From resources module (conditional on feature)

@@ -29,6 +29,8 @@ pub mod viewsets;
 #[cfg(feature = "testcontainers")]
 pub mod containers;
 
+pub mod websocket;
+
 // Re-export testcontainers crates for convenient access via reinhardt::test::testcontainers
 #[cfg(feature = "testcontainers")]
 pub use testcontainers;
@@ -81,12 +83,14 @@ pub use viewsets::{SimpleViewSet, TestViewSet};
 
 #[cfg(feature = "testcontainers")]
 pub use containers::{
-	MySqlContainer, PostgresContainer, RedisContainer, TestDatabase, with_mysql, with_postgres,
-	with_redis,
+	MailHogContainer, MySqlContainer, PostgresContainer, RabbitMQContainer, RedisContainer,
+	TestDatabase, with_mailhog, with_mysql, with_postgres, with_rabbitmq, with_redis,
 };
 
 #[cfg(feature = "static")]
 pub use static_files::*;
+
+pub use websocket::WebSocketTestClient;
 
 /// Re-export commonly used testing types
 pub mod prelude {

@@ -259,7 +259,10 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 		}
 	};
 
-	let database_url = format!("postgres://postgres@localhost:{}/postgres", port);
+	let database_url = format!(
+		"postgres://postgres@localhost:{}/postgres?sslmode=disable",
+		port
+	);
 
 	// Retry connection to PostgreSQL with exponential backoff
 	let mut retry_count = 0;
@@ -1204,7 +1207,7 @@ pub async fn postgres_with_migrations_from<P: reinhardt_migrations::MigrationPro
 
 	if !migrations.is_empty() {
 		let mut executor =
-			DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1360,7 +1363,8 @@ pub async fn mysql_with_migrations_from<P: reinhardt_migrations::MigrationProvid
 	let migrations = P::migrations();
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Mysql);
+		let mut executor =
+			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Mysql);
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1423,7 +1427,8 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_migrations::MigrationProvi
 	let migrations = P::migrations();
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Sqlite);
+		let mut executor =
+			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Sqlite);
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1500,7 +1505,7 @@ pub async fn postgres_with_all_migrations() -> (
 
 	if !migrations.is_empty() {
 		let mut executor =
-			DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1559,7 +1564,7 @@ pub async fn postgres_with_apps_migrations(
 
 	if !migrations.is_empty() {
 		let mut executor =
-			DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1613,7 +1618,8 @@ pub async fn mysql_with_all_migrations() -> (
 	let migrations = global_registry().all_migrations();
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Mysql);
+		let mut executor =
+			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Mysql);
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1657,7 +1663,8 @@ pub async fn mysql_with_apps_migrations(
 		.collect();
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Mysql);
+		let mut executor =
+			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Mysql);
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1707,7 +1714,8 @@ pub async fn sqlite_with_all_migrations() -> std::sync::Arc<reinhardt_db::Databa
 	let migrations = global_registry().all_migrations();
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Sqlite);
+		let mut executor =
+			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Sqlite);
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1747,7 +1755,8 @@ pub async fn sqlite_with_apps_migrations(
 		.collect();
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Sqlite);
+		let mut executor =
+			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Sqlite);
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1755,4 +1764,76 @@ pub async fn sqlite_with_apps_migrations(
 	}
 
 	Arc::new(connection)
+}
+
+// ============================================================================
+// RabbitMQ Container Fixtures
+// ============================================================================
+
+/// RabbitMQ container fixture for testing message queue operations
+///
+/// Returns a tuple of (container, port, url) where:
+/// - container: The running RabbitMQ container instance
+/// - port: The host port mapped to RabbitMQ's AMQP port (5672)
+/// - url: AMQP connection URL (e.g., "amqp://localhost:55001/%2f")
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_test::fixtures::rabbitmq_container;
+/// use rstest::*;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_rabbitmq(
+///     #[future] rabbitmq_container: (ContainerAsync<GenericImage>, u16, String)
+/// ) {
+///     let (_container, port, url) = rabbitmq_container.await;
+///     // Use RabbitMQ connection
+/// }
+/// ```
+#[fixture]
+pub async fn rabbitmq_container() -> (ContainerAsync<GenericImage>, u16, String) {
+	const MAX_RETRIES: u32 = 3;
+
+	let mut last_error = None;
+
+	for attempt in 0..MAX_RETRIES {
+		match try_start_rabbitmq_container().await {
+			Ok(result) => return result,
+			Err(e) => {
+				eprintln!(
+					"RabbitMQ container start attempt {} of {} failed: {:?}",
+					attempt + 1,
+					MAX_RETRIES,
+					e
+				);
+				last_error = Some(e);
+			}
+		}
+	}
+
+	panic!(
+		"Failed to start RabbitMQ container after {} attempts: {:?}",
+		MAX_RETRIES, last_error
+	);
+}
+
+async fn try_start_rabbitmq_container()
+-> Result<(ContainerAsync<GenericImage>, u16, String), Box<dyn std::error::Error>> {
+	use testcontainers::core::IntoContainerPort;
+
+	let rabbitmq = GenericImage::new("rabbitmq", "3-management-alpine")
+		.with_exposed_port(5672.tcp()) // AMQP port
+		.with_exposed_port(15672.tcp()) // Management UI port
+		.with_wait_for(WaitFor::message_on_stdout("Server startup complete"))
+		.start()
+		.await?;
+
+	let port = rabbitmq.get_host_port_ipv4(5672).await?;
+
+	// RabbitMQ default vhost is "/" which needs to be URL-encoded as "%2f"
+	let url = format!("amqp://localhost:{}/%2f", port);
+
+	Ok((rabbitmq, port, url))
 }

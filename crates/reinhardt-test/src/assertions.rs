@@ -743,3 +743,157 @@ mod tests {
 		assert_internal_error(result);
 	}
 }
+
+/// Task execution assertion utilities
+///
+/// Provides assertion helpers for testing task execution, completion, and failure scenarios.
+pub mod tasks {
+	use std::time::Duration;
+	use tokio::time::timeout;
+
+	/// Task status for assertion checks
+	#[derive(Debug, Clone, PartialEq, Eq)]
+	pub enum TaskStatus {
+		/// Task is pending execution
+		Pending,
+		/// Task is currently running
+		Running,
+		/// Task completed successfully
+		Completed,
+		/// Task failed with error
+		Failed,
+		/// Task was cancelled
+		Cancelled,
+	}
+
+	/// Assert that a task completes successfully within the given timeout
+	///
+	/// # Example
+	/// ```rust,no_run
+	/// use reinhardt_test::assertions::tasks::{assert_task_completed, TaskStatus};
+	/// use tokio::time::Duration;
+	///
+	/// #[tokio::test]
+	/// async fn test_task_execution() {
+	///     let task_id = "task-123";
+	///     // Simulate task status check
+	///     let check_status = async {
+	///         // In real implementation, this would query task backend
+	///         TaskStatus::Completed
+	///     };
+	///
+	///     assert_task_completed(task_id, check_status, Duration::from_secs(5)).await.unwrap();
+	/// }
+	/// ```
+	pub async fn assert_task_completed<F, Fut>(
+		task_id: &str,
+		status_check: F,
+		timeout_duration: Duration,
+	) -> Result<(), String>
+	where
+		F: Fn() -> Fut,
+		Fut: std::future::Future<Output = TaskStatus>,
+	{
+		match timeout(timeout_duration, async {
+			loop {
+				let status = status_check().await;
+				match status {
+					TaskStatus::Completed => return Ok(()),
+					TaskStatus::Failed => {
+						return Err(format!("Task {} failed during execution", task_id));
+					}
+					TaskStatus::Cancelled => return Err(format!("Task {} was cancelled", task_id)),
+					TaskStatus::Pending | TaskStatus::Running => {
+						tokio::time::sleep(Duration::from_millis(100)).await;
+					}
+				}
+			}
+		})
+		.await
+		{
+			Ok(result) => result,
+			Err(_) => Err(format!(
+				"Task {} did not complete within {:?}",
+				task_id, timeout_duration
+			)),
+		}
+	}
+
+	/// Assert that a task fails with expected status
+	pub async fn assert_task_failed<F, Fut>(
+		task_id: &str,
+		status_check: F,
+		timeout_duration: Duration,
+	) -> Result<(), String>
+	where
+		F: Fn() -> Fut,
+		Fut: std::future::Future<Output = TaskStatus>,
+	{
+		match timeout(timeout_duration, async {
+			loop {
+				let status = status_check().await;
+				match status {
+					TaskStatus::Failed => return Ok(()),
+					TaskStatus::Completed => {
+						return Err(format!(
+							"Task {} completed successfully, expected failure",
+							task_id
+						));
+					}
+					TaskStatus::Cancelled => {
+						return Err(format!("Task {} was cancelled, expected failure", task_id));
+					}
+					TaskStatus::Pending | TaskStatus::Running => {
+						tokio::time::sleep(Duration::from_millis(100)).await;
+					}
+				}
+			}
+		})
+		.await
+		{
+			Ok(result) => result,
+			Err(_) => Err(format!(
+				"Task {} did not fail within {:?}",
+				task_id, timeout_duration
+			)),
+		}
+	}
+
+	/// Assert that a task is in specific status
+	pub fn assert_task_status(actual: &TaskStatus, expected: &TaskStatus, task_id: &str) {
+		assert_eq!(
+			actual, expected,
+			"Task {} status mismatch: expected {:?}, got {:?}",
+			task_id, expected, actual
+		);
+	}
+
+	#[cfg(test)]
+	mod tests {
+		use super::*;
+
+		#[tokio::test]
+		async fn test_assert_task_completed_success() {
+			let task_id = "test-task-1";
+			let status_check = || async { TaskStatus::Completed };
+
+			let result = assert_task_completed(task_id, status_check, Duration::from_secs(1)).await;
+			assert!(result.is_ok());
+		}
+
+		#[tokio::test]
+		async fn test_assert_task_failed_success() {
+			let task_id = "test-task-2";
+			let status_check = || async { TaskStatus::Failed };
+
+			let result = assert_task_failed(task_id, status_check, Duration::from_secs(1)).await;
+			assert!(result.is_ok());
+		}
+
+		#[test]
+		fn test_assert_task_status() {
+			let status = TaskStatus::Completed;
+			assert_task_status(&status, &TaskStatus::Completed, "test-task");
+		}
+	}
+}
