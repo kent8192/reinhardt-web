@@ -2,15 +2,20 @@
 
 ## Overview
 
-Redis Cluster tests use the **grokzen/redis-cluster:7.0.10** Docker image with **fixed port mapping** and **serial test execution** to ensure reliable operation on both `cargo test` and `cargo nextest`.
+Redis Cluster tests use the **grokzen/redis-cluster:7.0.10** Docker image with
+**fixed port mapping** and **serial test execution** to ensure reliable
+operation on both `cargo test` and `cargo nextest`.
 
-**Key Constraint**: Redis Cluster requires **fixed port mapping** due to architectural limitations of `redis-rs` ClusterClient and `CLUSTER SLOTS` topology discovery.
+**Key Constraint**: Redis Cluster requires **fixed port mapping** due to
+architectural limitations of `redis-rs` ClusterClient and `CLUSTER SLOTS`
+topology discovery.
 
 ## Architecture
 
 ### Docker Image: grokzen/redis-cluster:7.0.10
 
-This image provides a pre-configured 6-node Redis Cluster (3 masters + 3 replicas) running in a **single container**:
+This image provides a pre-configured 6-node Redis Cluster (3 masters + 3
+replicas) running in a **single container**:
 
 ```
 Container Ports: 17000, 17001, 17002, 17003, 17004, 17005
@@ -20,7 +25,8 @@ Cluster Layout:  Master nodes: 17000, 17001, 17002
 
 ### Why Fixed Port Mapping is Required
 
-**Technical Constraint**: `redis-rs` ClusterClient uses `CLUSTER SLOTS` command to discover cluster topology:
+**Technical Constraint**: `redis-rs` ClusterClient uses `CLUSTER SLOTS` command
+to discover cluster topology:
 
 1. ClusterClient connects to initial node (e.g., `redis://127.0.0.1:17000`)
 2. Executes `CLUSTER SLOTS` to get topology information
@@ -28,6 +34,7 @@ Cluster Layout:  Master nodes: 17000, 17001, 17002
 4. ClusterClient connects to **ports from CLUSTER SLOTS response**
 
 **Problem with Random Port Mapping**:
+
 ```
 TestContainers random mapping: 17000 → 56722, 17001 → 56723, ...
 CLUSTER SLOTS response:        Lists nodes at 127.0.0.1:17000-17005
@@ -35,7 +42,8 @@ ClusterClient behavior:        Tries to connect to 17000-17005 from response
 Result:                        ❌ Connection fails (ports not accessible)
 ```
 
-**Investigation Result**: `redis-rs` ClusterClient (version 0.32.7) has **NO configuration options** to override CLUSTER SLOTS port mapping:
+**Investigation Result**: `redis-rs` ClusterClient (version 0.32.7) has **NO
+configuration options** to override CLUSTER SLOTS port mapping:
 
 ```rust
 // Available ClusterClientBuilder methods (none solve the issue):
@@ -47,21 +55,25 @@ ClusterClientBuilder::new(nodes)
     // ❌ No method to override CLUSTER SLOTS port mapping
 ```
 
-**Conclusion**: Fixed port mapping (host port = container port) is the **only viable solution** with the current `grokzen/redis-cluster` + `redis-rs` architecture.
+**Conclusion**: Fixed port mapping (host port = container port) is the **only
+viable solution** with the current `grokzen/redis-cluster` + `redis-rs`
+architecture.
 
 ### Why Ports 17000-17005?
 
 **Original Plan**: Use ports 7000-7005 (Redis Cluster default)
 
 **Blocker**: Port 7000 occupied by macOS ControlCenter system process:
+
 ```bash
 $ lsof -i :7000 | grep LISTEN
-ControlCe 898 kent8192  # System process, cannot be stopped
+ControlCe 898 <Root User Name>  # System process, cannot be stopped
 ```
 
 **Solution**: Automatic port selection with fallback strategy:
 
 **Default Port Range**: 17000-17005
+
 - ✅ Avoids system process conflicts (macOS ControlCenter on 7000)
 - ✅ Avoids common service ports (7000-7005 may be used by other apps)
 - ✅ Less likely to conflict with user applications
@@ -79,14 +91,17 @@ The `redis_cluster_base_port` fixture **automatically** finds available ports:
 6. **Fail**: Panic with clear error message if no available range found
 
 **Benefits**:
-- ✅ **Tests never fail due to port conflicts** (automatically finds alternative ports)
+
+- ✅ **Tests never fail due to port conflicts** (automatically finds alternative
+  ports)
 - ✅ **No manual intervention required** (works out of the box)
 - ✅ **CI/CD friendly** (handles different environments automatically)
 - ✅ **Developer friendly** (informative messages about which ports are used)
 
 **Manual Override** (optional):
 
-If you want to force a specific port range, use the `REDIS_CLUSTER_BASE_PORT` environment variable:
+If you want to force a specific port range, use the `REDIS_CLUSTER_BASE_PORT`
+environment variable:
 
 ```bash
 # Force using ports 27000-27005
@@ -110,6 +125,7 @@ Using Redis Cluster port range: 27000-27005
 ```
 
 **Port Range Selection Guidelines**:
+
 - Base port must be > 10000 (avoid well-known ports)
 - Ensure base_port + 5 < 65535 (valid port range)
 - Avoid commonly used ranges:
@@ -134,6 +150,7 @@ async fn test_redis_cluster_cache_basic_operations(
 ```
 
 **Why Serial Execution?**
+
 - **Fixed ports** mean only one container can run at a time
 - `#[serial]` prevents parallel test execution
 - No port conflicts between tests (container stops after each test)
@@ -172,21 +189,26 @@ async fn test_redis_cluster_operations(
 ### Running Tests
 
 **With cargo test**:
+
 ```bash
 cargo test --package reinhardt-cache --lib --features redis-cluster
 ```
 
 **With cargo nextest**:
+
 ```bash
 cargo nextest run --package reinhardt-cache --lib --features redis-cluster
 ```
 
-**Note**: No special flags needed - `#[serial(redis_cluster)]` ensures sequential execution.
+**Note**: No special flags needed - `#[serial(redis_cluster)]` ensures
+sequential execution.
 
 ### Test Execution Timing
 
 Each test takes approximately **8-12 seconds**:
-1. Container startup: ~5-8 seconds (including "Cluster state changed: ok" message)
+
+1. Container startup: ~5-8 seconds (including "Cluster state changed: ok"
+   message)
 2. Port readiness check: ~0.5-1 second (polls ports 17000-17005)
 3. Test execution: ~1-2 seconds
 4. Container cleanup: ~0.5 second (automatic on Drop)
@@ -197,7 +219,8 @@ Each test takes approximately **8-12 seconds**:
 
 ### Fixture: redis_cluster_base_port (NEW)
 
-Automatic port range finder with PID-based allocation for parallel test execution. Located in `crates/reinhardt-test/src/fixtures/testcontainers.rs`:
+Automatic port range finder with PID-based allocation for parallel test
+execution. Located in `crates/reinhardt-test/src/fixtures/testcontainers.rs`:
 
 ```rust
 #[fixture]
@@ -250,13 +273,18 @@ pub async fn redis_cluster_base_port() -> u16 {
 ```
 
 **Key Features**:
-- **PID-based automatic allocation**: Each test process gets a unique port range (e.g., PID 12345 → offset 50 → ports 17050-17055)
-- **Parallel execution support**: Up to 10 concurrent test processes can run without port conflicts (17000, 17010, 17020, ..., 17090)
-- **Environment variable override**: `REDIS_CLUSTER_BASE_PORT` takes highest priority
+
+- **PID-based automatic allocation**: Each test process gets a unique port range
+  (e.g., PID 12345 → offset 50 → ports 17050-17055)
+- **Parallel execution support**: Up to 10 concurrent test processes can run
+  without port conflicts (17000, 17010, 17020, ..., 17090)
+- **Environment variable override**: `REDIS_CLUSTER_BASE_PORT` takes highest
+  priority
 - **Automatic fallback**: If all preferred ranges occupied, searches 20000-60000
 - **Clear diagnostic messages**: Shows which port range is used and why
 
 **Example Output**:
+
 ```
 Using Redis Cluster port range: 17090-17095 (PID: 75689, offset: 90 [PID-based])
 ```
@@ -301,6 +329,7 @@ pub async fn redis_cluster_ports_ready(
 ```
 
 **Key Changes**:
+
 - Now depends on `redis_cluster_base_port` fixture for automatic port selection
 - Uses dynamically selected `base_port` instead of hardcoded 17000
 - Constructs 6 port mappings based on `base_port`
@@ -308,7 +337,8 @@ pub async fn redis_cluster_ports_ready(
 
 ### Fixture: redis_cluster_urls
 
-Located in `crates/reinhardt-test/src/fixtures/testcontainers.rs` (lines 448-488):
+Located in `crates/reinhardt-test/src/fixtures/testcontainers.rs` (lines
+448-488):
 
 ```rust
 #[fixture]
@@ -332,11 +362,12 @@ pub async fn redis_cluster_urls(
 
 ### Cleanup Fixture: redis_cluster_cleanup
 
-> **Note**: This fixture is currently **DISABLED**. TestContainers automatically cleans up
-> containers when they are dropped, making manual cleanup unnecessary and preventing conflicts
-> with other parallel tests.
+> **Note**: This fixture is currently **DISABLED**. TestContainers automatically
+> cleans up containers when they are dropped, making manual cleanup unnecessary
+> and preventing conflicts with other parallel tests.
 
-Located in `crates/reinhardt-test/src/fixtures/testcontainers.rs` (lines 356-381):
+Located in `crates/reinhardt-test/src/fixtures/testcontainers.rs` (lines
+356-381):
 
 ```rust
 #[fixture]
@@ -375,6 +406,7 @@ test result: ok. 82 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 ### Issue: "address already in use" error
 
 **Symptom**:
+
 ```
 Failed to start Redis cluster container: Client(StartContainer(DockerResponseServerError {
   status_code: 500,
@@ -382,7 +414,8 @@ Failed to start Redis cluster container: Client(StartContainer(DockerResponseSer
 }))
 ```
 
-**Root Cause**: Another process is using one or more ports in the range 17000-17005.
+**Root Cause**: Another process is using one or more ports in the range
+17000-17005.
 
 **Solutions (in order of preference)**:
 
@@ -415,7 +448,9 @@ Failed to start Redis cluster container: Client(StartContainer(DockerResponseSer
    - The fixture includes port polling logic (up to 15 seconds)
    - Try running the test again after waiting
 
-**Prevention**: Configure `REDIS_CLUSTER_BASE_PORT` in your shell profile to avoid conflicts:
+**Prevention**: Configure `REDIS_CLUSTER_BASE_PORT` in your shell profile to
+avoid conflicts:
+
 ```bash
 # Add to ~/.zshrc or ~/.bashrc
 export REDIS_CLUSTER_BASE_PORT=27000
@@ -449,6 +484,7 @@ export REDIS_CLUSTER_BASE_PORT=27000
 **Root Cause**: Port mapping mismatch (if using random ports)
 
 **Verification**: Ensure fixture uses **fixed port mapping**:
+
 ```rust
 .with_mapped_port(17000, ContainerPort::Tcp(17000))  // ✅ Correct
 // NOT:
@@ -460,21 +496,29 @@ export REDIS_CLUSTER_BASE_PORT=27000
 ### Why grokzen/redis-cluster:7.0.10?
 
 **Evaluated Alternatives**:
-1. **neohq/redis-cluster** - Uses internal Docker network IPs (172.17.0.x), inaccessible from host
+
+1. **neohq/redis-cluster** - Uses internal Docker network IPs (172.17.0.x),
+   inaccessible from host
 2. **bitnami/redis-cluster** - No ARM64 support as of 2024
-3. **grokzen/redis-cluster:7.0.10** - ✅ Works with both x86_64 and ARM64, uses 0.0.0.0 binding
+3. **grokzen/redis-cluster:7.0.10** - ✅ Works with both x86_64 and ARM64, uses
+   0.0.0.0 binding
 
 ### Why Not Random Port Mapping?
 
-Random port mapping is **technically impossible** due to the following architectural constraints:
+Random port mapping is **technically impossible** due to the following
+architectural constraints:
 
-1. **redis-rs limitation**: ClusterClient has no way to override CLUSTER SLOTS topology
-2. **grokzen/redis-cluster limitation**: Single container means CLUSTER SLOTS always returns internal ports
-3. **TestContainers limitation**: Random mapping incompatible with ClusterClient topology discovery
+1. **redis-rs limitation**: ClusterClient has no way to override CLUSTER SLOTS
+   topology
+2. **grokzen/redis-cluster limitation**: Single container means CLUSTER SLOTS
+   always returns internal ports
+3. **TestContainers limitation**: Random mapping incompatible with ClusterClient
+   topology discovery
 
 **Experimental Verification**:
 
-We implemented and tested a random port mapping approach to definitively prove why it cannot work:
+We implemented and tested a random port mapping approach to definitively prove
+why it cannot work:
 
 ```rust
 // Experimental implementation using random ports
@@ -490,6 +534,7 @@ let host_port = cluster.get_host_port_ipv4(7000).await.unwrap();
 ```
 
 **Test Result**:
+
 ```
 Random port mapping:
   Container port 7000 -> Host port 56803
@@ -501,35 +546,48 @@ Error: No connections found - ClusterConnectionNotFound
 ```
 
 **What Happened**:
+
 1. ✅ Initial connection to random port 56803 succeeded
 2. ✅ CLUSTER SLOTS command executed successfully
 3. ❌ CLUSTER SLOTS returned container ports 7000-7005 (not host ports)
 4. ❌ ClusterClient tried to connect to 7000-7005 from host
 5. ❌ Connection failed - only port 56803 is accessible from host
 
-**Conclusion**: Fixed port mapping is not a design choice but a **technical requirement**. The experiment definitively proved that even when initial connection succeeds with random ports, the CLUSTER SLOTS topology discovery process fails because:
-- ClusterClient cannot be configured to override the ports returned by CLUSTER SLOTS
-- The ports in CLUSTER SLOTS response (7000-7005) are container-internal and not accessible from the host when using random port mapping
+**Conclusion**: Fixed port mapping is not a design choice but a **technical
+requirement**. The experiment definitively proved that even when initial
+connection succeeds with random ports, the CLUSTER SLOTS topology discovery
+process fails because:
+
+- ClusterClient cannot be configured to override the ports returned by CLUSTER
+  SLOTS
+- The ports in CLUSTER SLOTS response (7000-7005) are container-internal and not
+  accessible from the host when using random port mapping
 
 ### Serial Execution Within Process, Parallel Across Processes
 
 **Why `#[serial(redis_cluster)]` is still needed**:
+
 - Each test process uses **fixed ports** for its Redis Cluster container
 - Within a single process, only one container can run at a time
-- `#[serial(redis_cluster)]` ensures sequential execution within the same process
+- `#[serial(redis_cluster)]` ensures sequential execution within the same
+  process
 
 **Parallel Execution Support** (NEW):
-- **Multiple test processes can run simultaneously** (e.g., `cargo nextest` with `-j 10`)
+
+- **Multiple test processes can run simultaneously** (e.g., `cargo nextest` with
+  `-j 10`)
 - Each process gets a **unique port range** via PID-based allocation
 - Example: Process A uses 17020-17025, Process B uses 17090-17095
 - Up to **10 concurrent test processes** supported (17000, 17010, ..., 17090)
 
 **Performance Impact**:
+
 - **Sequential (single process)**: 5 tests × ~10 seconds = ~50 seconds
 - **Parallel (cargo nextest -j 4)**: ~13 seconds (as shown in test output above)
 - **Parallel speedup**: ~3.8x with 4 parallel processes
 
 **How it works**:
+
 1. `cargo nextest -j 4` spawns 4 test processes
 2. Each process gets a unique PID (e.g., 75689, 75690, 75691, 75692)
 3. Each PID maps to a unique port range (17090, 17000, 17010, 17020)
@@ -538,39 +596,51 @@ Error: No connections found - ClusterConnectionNotFound
 ## Summary
 
 - ✅ **Docker Image**: grokzen/redis-cluster:7.0.10 (ARM64 + x86_64 support)
-- ✅ **Port Range**: PID-based automatic allocation (17000-17090 for up to 10 parallel processes)
-- ✅ **Port Selection**: Automatic via `redis_cluster_base_port` fixture with PID-based offset
-- ✅ **Port Mapping**: Fixed (host port = container port) - **technical requirement**
-- ✅ **Test Execution**: Serial (`#[serial(redis_cluster)]`) within each process, parallel across processes
+- ✅ **Port Range**: PID-based automatic allocation (17000-17090 for up to 10
+  parallel processes)
+- ✅ **Port Selection**: Automatic via `redis_cluster_base_port` fixture with
+  PID-based offset
+- ✅ **Port Mapping**: Fixed (host port = container port) - **technical
+  requirement**
+- ✅ **Test Execution**: Serial (`#[serial(redis_cluster)]`) within each
+  process, parallel across processes
 - ✅ **Test Results**: 5/5 tests passing
 - ✅ **Test Runners**: Both `cargo test` and `cargo nextest` supported
-- ✅ **Port Conflicts**: **Automatically resolved** via PID-based allocation (no manual intervention)
+- ✅ **Port Conflicts**: **Automatically resolved** via PID-based allocation (no
+  manual intervention)
 - ✅ **Parallel Execution**: Up to 10 concurrent test processes supported
 
-**Key Constraint**: Random port mapping is not possible due to redis-rs ClusterClient architecture.
+**Key Constraint**: Random port mapping is not possible due to redis-rs
+ClusterClient architecture.
 
 **Automatic Port Selection with PID-Based Allocation** (NEW):
-- **Each test process gets unique port range**: PID 12345 → offset 50 → ports 17050-17055
+
+- **Each test process gets unique port range**: PID 12345 → offset 50 → ports
+  17050-17055
 - **Priority order**:
   1. `REDIS_CLUSTER_BASE_PORT` environment variable (explicit override)
   2. PID-based port (automatic per-process allocation)
   3. Default 17000
   4. Fallback: 27000, 37000, 47000
   5. Search: 20000-60000 in steps of 1000
-- **Parallel execution**: Up to 10 concurrent processes (ports 17000, 17010, 17020, ..., 17090)
+- **Parallel execution**: Up to 10 concurrent processes (ports 17000, 17010,
+  17020, ..., 17090)
 - **Clear diagnostics**: Shows PID, offset, and selected port range
 
 **Manual Port Override** (optional):
+
 ```bash
 # Force specific port range if needed (overrides PID-based allocation)
 REDIS_CLUSTER_BASE_PORT=27000 cargo test --package reinhardt-cache --lib --features redis-cluster
 ```
 
 **Example Output**:
+
 ```
 Using Redis Cluster port range: 17090-17095 (PID: 75689, offset: 90 [PID-based])
 ```
 
 For implementation details, see:
+
 - `crates/reinhardt-test/src/fixtures/testcontainers.rs` (lines 356-488)
 - `crates/reinhardt-utils/crates/cache/src/redis_cluster.rs` (test module)
