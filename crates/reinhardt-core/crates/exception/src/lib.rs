@@ -145,6 +145,24 @@ pub enum Error {
 	#[error("Method not allowed: {0}")]
 	MethodNotAllowed(String),
 
+	/// Conflict errors (status code: 409)
+	///
+	/// This error occurs when the request could not be completed due to a
+	/// conflict with the current state of the resource. Commonly used for
+	/// duplicate resources or conflicting operations.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_exception::Error;
+	///
+	/// let error = Error::Conflict("User with this email already exists".to_string());
+	/// assert_eq!(error.status_code(), 409);
+	/// assert!(error.to_string().contains("Conflict"));
+	/// ```
+	#[error("Conflict: {0}")]
+	Conflict(String),
+
 	/// Internal server errors (status code: 500)
 	///
 	/// # Examples
@@ -282,6 +300,7 @@ pub enum ErrorKind {
 	Authorization,
 	NotFound,
 	MethodNotAllowed,
+	Conflict,
 	Internal,
 	ImproperlyConfigured,
 	BodyAlreadyConsumed,
@@ -302,6 +321,7 @@ impl Error {
 	/// - `Authorization`: 403 (Forbidden)
 	/// - `NotFound`, `TemplateNotFound`: 404 (Not Found)
 	/// - `MethodNotAllowed`: 405 (Method Not Allowed)
+	/// - `Conflict`: 409 (Conflict)
 	/// - `Database`, `Internal`, `ImproperlyConfigured`, `Other`: 500 (Internal Server Error)
 	///
 	/// # Examples
@@ -347,6 +367,7 @@ impl Error {
 			Error::NotFound(_) => 404,
 			Error::TemplateNotFound(_) => 404,
 			Error::MethodNotAllowed(_) => 405,
+			Error::Conflict(_) => 409,
 			Error::Internal(_) => 500,
 			Error::ImproperlyConfigured(_) => 500,
 			Error::BodyAlreadyConsumed => 400,
@@ -372,6 +393,7 @@ impl Error {
 			Error::NotFound(_) => ErrorKind::NotFound,
 			Error::TemplateNotFound(_) => ErrorKind::NotFound,
 			Error::MethodNotAllowed(_) => ErrorKind::MethodNotAllowed,
+			Error::Conflict(_) => ErrorKind::Conflict,
 			Error::Internal(_) => ErrorKind::Internal,
 			Error::ImproperlyConfigured(_) => ErrorKind::ImproperlyConfigured,
 			Error::BodyAlreadyConsumed => ErrorKind::BodyAlreadyConsumed,
