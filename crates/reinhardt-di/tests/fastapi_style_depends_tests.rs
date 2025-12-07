@@ -2,7 +2,7 @@
 
 #![cfg(feature = "macros")]
 
-use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope, injectable};
+use reinhardt_di::{Injectable, Injected, InjectionContext, SingletonScope, injectable};
 use serial_test::serial;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -48,19 +48,13 @@ impl Injectable for CountedService {
 }
 
 #[tokio::test]
-async fn test_depends_with_cache_default() {
+async fn test_injected_with_cache_default() {
 	let singleton = SingletonScope::new();
 	let ctx = InjectionContext::builder(singleton).build();
 
 	// Cache is enabled by default
-	let params1 = Depends::<CommonQueryParams>::builder()
-		.resolve(&ctx)
-		.await
-		.unwrap();
-	let params2 = Depends::<CommonQueryParams>::builder()
-		.resolve(&ctx)
-		.await
-		.unwrap();
+	let params1 = Injected::<CommonQueryParams>::resolve(&ctx).await.unwrap();
+	let params2 = Injected::<CommonQueryParams>::resolve(&ctx).await.unwrap();
 
 	// Returns the same instance
 	assert_eq!(*params1, *params2);
@@ -68,7 +62,7 @@ async fn test_depends_with_cache_default() {
 
 #[tokio::test]
 #[serial(counted_service)]
-async fn test_depends_no_cache() {
+async fn test_injected_no_cache() {
 	// Reset counter for this test
 	INSTANCE_COUNTER.store(0, Ordering::SeqCst);
 
@@ -76,12 +70,10 @@ async fn test_depends_no_cache() {
 	let ctx = InjectionContext::builder(singleton).build();
 
 	// Cache disabled
-	let service1 = Depends::<CountedService>::builder_no_cache()
-		.resolve(&ctx)
+	let service1 = Injected::<CountedService>::resolve_uncached(&ctx)
 		.await
 		.unwrap();
-	let service2 = Depends::<CountedService>::builder_no_cache()
-		.resolve(&ctx)
+	let service2 = Injected::<CountedService>::resolve_uncached(&ctx)
 		.await
 		.unwrap();
 
@@ -92,7 +84,7 @@ async fn test_depends_no_cache() {
 
 #[tokio::test]
 #[serial(counted_service)]
-async fn test_depends_with_cache_enabled() {
+async fn test_injected_with_cache_enabled() {
 	// Reset counter for this test
 	INSTANCE_COUNTER.store(0, Ordering::SeqCst);
 
@@ -100,38 +92,29 @@ async fn test_depends_with_cache_enabled() {
 	let ctx = InjectionContext::builder(singleton).build();
 
 	// Cache enabled (default)
-	let service1 = Depends::<CountedService>::builder()
-		.resolve(&ctx)
-		.await
-		.unwrap();
-	let service2 = Depends::<CountedService>::builder()
-		.resolve(&ctx)
-		.await
-		.unwrap();
+	let service1 = Injected::<CountedService>::resolve(&ctx).await.unwrap();
+	let service2 = Injected::<CountedService>::resolve(&ctx).await.unwrap();
 
 	// Returns the same instance (same ID)
 	assert_eq!(service1.instance_id, service2.instance_id);
 }
 
 #[tokio::test]
-async fn test_depends_from_value() {
+async fn test_injected_from_value() {
 	let db = Database {
 		connection_count: 10,
 	};
-	let depends = Depends::from_value(db);
+	let injected = Injected::from_value(db);
 
-	assert_eq!(depends.connection_count, 10);
+	assert_eq!(injected.connection_count, 10);
 }
 
 #[tokio::test]
-async fn test_depends_deref() {
+async fn test_injected_deref() {
 	let singleton = SingletonScope::new();
 	let ctx = InjectionContext::builder(singleton).build();
 
-	let params = Depends::<CommonQueryParams>::builder()
-		.resolve(&ctx)
-		.await
-		.unwrap();
+	let params = Injected::<CommonQueryParams>::resolve(&ctx).await.unwrap();
 
 	// Can access fields directly via Deref
 	assert_eq!(params.skip, 0);
@@ -139,14 +122,11 @@ async fn test_depends_deref() {
 }
 
 #[tokio::test]
-async fn test_fastapi_depends_clone() {
+async fn test_fastapi_injected_clone() {
 	let singleton = SingletonScope::new();
 	let ctx = InjectionContext::builder(singleton).build();
 
-	let params1 = Depends::<CommonQueryParams>::builder()
-		.resolve(&ctx)
-		.await
-		.unwrap();
+	let params1 = Injected::<CommonQueryParams>::resolve(&ctx).await.unwrap();
 	let params2 = params1.clone();
 
 	// Clone copies the reference (Arc::clone)
@@ -157,8 +137,8 @@ async fn test_fastapi_depends_clone() {
 #[tokio::test]
 async fn test_fastapi_style_usage() {
 	async fn endpoint_handler(
-		config: Depends<Config>,
-		params: Depends<CommonQueryParams>,
+		config: Injected<Config>,
+		params: Injected<CommonQueryParams>,
 	) -> String {
 		format!("API Key: {}, Skip: {}", config.api_key, params.skip)
 	}
@@ -167,11 +147,8 @@ async fn test_fastapi_style_usage() {
 	let ctx = InjectionContext::builder(singleton).build();
 
 	// Simulate endpoint usage
-	let config = Depends::<Config>::builder().resolve(&ctx).await.unwrap();
-	let params = Depends::<CommonQueryParams>::builder()
-		.resolve(&ctx)
-		.await
-		.unwrap();
+	let config = Injected::<Config>::resolve(&ctx).await.unwrap();
+	let params = Injected::<CommonQueryParams>::resolve(&ctx).await.unwrap();
 
 	let result = endpoint_handler(config, params).await;
 	assert_eq!(result, "API Key: , Skip: 0");

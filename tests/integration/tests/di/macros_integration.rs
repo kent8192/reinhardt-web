@@ -1,7 +1,7 @@
 //! Dependency injection macros integration tests
 //!
 //! Integration tests for reinhardt-macros' dependency injection macros
-//! (#[endpoint] and #[use_injection]) working with reinhardt-di's
+//! (#[endpoint] and #[use_inject]) working with reinhardt-di's
 //! injection context and scope management.
 //!
 //! These tests verify that the procedural macros correctly integrate with
@@ -27,7 +27,7 @@ use hyper::{HeaderMap, Method, Version};
 use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
 use reinhardt_exception::Result as ExceptionResult;
 use reinhardt_http::Request;
-use reinhardt_macros::use_injection;
+use reinhardt_macros::use_inject;
 use std::sync::Arc;
 
 /// Helper to create a test Request with DI context attached
@@ -74,13 +74,13 @@ impl Injectable for CustomService {
 	}
 }
 
-// ========== use_injection Macro Tests ==========
+// ========== use_inject Macro Tests ==========
 //
-// Note: Both #[endpoint] and #[use_injection] require a Request parameter
+// Note: Both #[endpoint] and #[use_inject] require a Request parameter
 // because they share the same implementation that extracts InjectionContext
 // from Request.extensions.
 
-#[use_injection]
+#[use_inject]
 async fn handler_with_inject(
 	_req: Request,
 	#[inject] db: Database,
@@ -89,7 +89,7 @@ async fn handler_with_inject(
 	Ok(format!("db: {:?}, param: {}", db, regular_param))
 }
 
-#[use_injection]
+#[use_inject]
 async fn handler_multiple_inject(
 	_req: Request,
 	#[inject] db: Database,
@@ -102,7 +102,7 @@ async fn handler_multiple_inject(
 	))
 }
 
-#[use_injection]
+#[use_inject]
 async fn handler_with_cache_control(
 	_req: Request,
 	#[inject] db: Database,
@@ -111,13 +111,13 @@ async fn handler_with_cache_control(
 	Ok(db.connection_string.len() as i32 + service.value)
 }
 
-#[use_injection]
+#[use_inject]
 async fn handler_only_inject(_req: Request, #[inject] db: Database) -> ExceptionResult<Database> {
 	// db is directly injected as Database type
 	Ok(db)
 }
 
-#[use_injection]
+#[use_inject]
 async fn handler_no_inject(
 	_req: Request,
 	regular_param1: String,
@@ -202,9 +202,9 @@ async fn test_endpoint_no_inject_params() {
 	assert_eq!(result, "hello-42");
 }
 
-// ========== Additional use_injection Macro Tests ==========
+// ========== Additional use_inject Macro Tests ==========
 
-#[use_injection]
+#[use_inject]
 async fn process_data(
 	_req: Request,
 	#[inject] db: Database,
@@ -216,7 +216,7 @@ async fn process_data(
 	))
 }
 
-#[use_injection]
+#[use_inject]
 async fn complex_handler(
 	_req: Request,
 	#[inject] db: Database,
@@ -230,7 +230,7 @@ async fn complex_handler(
 	))
 }
 
-#[use_injection]
+#[use_inject]
 async fn cache_control(
 	_req: Request,
 	#[inject] cached_db: Database,
@@ -242,7 +242,7 @@ async fn cache_control(
 	))
 }
 
-#[use_injection]
+#[use_inject]
 async fn validate_user(
 	_req: Request,
 	#[inject] _db: Database,
@@ -253,7 +253,7 @@ async fn validate_user(
 	Ok(user_id > 0)
 }
 
-#[use_injection]
+#[use_inject]
 async fn calculate_report(
 	_req: Request,
 	#[inject] db: Database,
@@ -295,7 +295,7 @@ async fn test_multiple_injections() {
 }
 
 #[tokio::test]
-async fn test_use_injection_cache_control() {
+async fn test_use_inject_cache_control() {
 	let singleton = Arc::new(SingletonScope::new());
 	let ctx = Arc::new(InjectionContext::builder(singleton).build());
 
