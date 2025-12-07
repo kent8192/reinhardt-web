@@ -214,9 +214,9 @@ pub(crate) fn model_attribute_impl(
 
 	// Add the helper attribute AFTER the derive
 	// Position depends on whether we merged into existing derive or created new one
-	let config_insert_pos = if existing_derive_idx.is_some() {
+	let config_insert_pos = if let Some(idx) = existing_derive_idx {
 		// Merged into existing derive, insert after it
-		existing_derive_idx.unwrap() + 1
+		idx + 1
 	} else {
 		// Created new derive at position 0, insert at position 1
 		1
