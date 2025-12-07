@@ -1,6 +1,0 @@
-error: Nested parameter at position 8
-       Parameters cannot be nested: use {outer} instead of {{inner}}
- --> tests/ui/nested_parameters.rs:5:20
-  |
-5 |     let _path = path!("/users/{{id}}/");
-  |                       ^^^^^^^^^^^^^^^^
