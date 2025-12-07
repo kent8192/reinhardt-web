@@ -1,8 +1,8 @@
-use reinhardt_macros::get;
+use reinhardt::prelude::*;
 
 #[get("/users")]
-async fn list_users() -> Result<(), ()> {
-	Ok(())
+async fn list_users() -> Result<Response> {
+	Ok(Response::ok())
 }
 
 fn main() {}

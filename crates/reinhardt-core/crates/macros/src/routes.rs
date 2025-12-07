@@ -295,8 +295,8 @@ fn generate_view_type(
 				#path
 			}
 
-			fn method() -> ::hyper::Method {
-				::hyper::Method::#method_ident
+			fn method() -> ::reinhardt::Method {
+				::reinhardt::Method::#method_ident
 			}
 
 			fn name() -> &'static str {
@@ -520,8 +520,8 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 				#path_str
 			}
 
-			fn method() -> ::hyper::Method {
-				::hyper::Method::#method_ident
+			fn method() -> ::reinhardt::Method {
+				::reinhardt::Method::#method_ident
 			}
 
 			fn name() -> &'static str {
