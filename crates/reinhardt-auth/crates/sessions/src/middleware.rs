@@ -5,7 +5,7 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt_sessions::middleware::{SessionMiddleware, HttpSessionConfig, SameSite};
 //! use reinhardt_sessions::backends::InMemorySessionBackend;
 //! use std::time::Duration;

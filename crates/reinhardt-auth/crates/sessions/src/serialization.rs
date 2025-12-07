@@ -127,7 +127,7 @@ impl Serializer for JsonSerializer {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust,no_run
 /// use reinhardt_sessions::serialization::{Serializer, MessagePackSerializer};
 /// use serde::{Serialize, Deserialize};
 ///
