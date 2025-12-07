@@ -1,0 +1,7 @@
+error: `for` attribute is required for model admin
+
+         = help: add `for = ModelType` to specify the model type
+ --> tests/ui/admin/fail/missing_for.rs:5:9
+  |
+5 | #[admin(model, name = "User")]
+  |         ^^^^^

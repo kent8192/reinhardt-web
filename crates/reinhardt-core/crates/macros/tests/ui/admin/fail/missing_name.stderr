@@ -1,0 +1,7 @@
+error: `name` attribute is required for model admin
+
+         = help: add `name = "ModelName"` to specify the model name
+  --> tests/ui/admin/fail/missing_name.rs:16:9
+   |
+16 | #[admin(model, for = User)]
+   |         ^^^^^

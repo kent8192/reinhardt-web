@@ -1,0 +1,7 @@
+error: expected `model` keyword in #[admin(...)]
+
+         = help: use `#[admin(model, for = ModelType, name = "ModelName", ...)]`
+  --> tests/ui/admin/fail/missing_model_keyword.rs:16:9
+   |
+16 | #[admin(for = User, name = "User")]
+   |         ^^^
