@@ -5,9 +5,8 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
-//! use reinhardt::di::{Depends, Injectable};
-//! use reinhardt::di::params::{Path, Query, Json};
+//! ```rust,no_run
+//! use reinhardt::di::{Injected, Injectable};
 //! ```
 
 #[cfg(feature = "di")]
@@ -15,4 +14,6 @@ pub use reinhardt_core::di::*;
 
 // Re-export reinhardt-di types for macro compatibility
 #[cfg(feature = "di")]
-pub use reinhardt_di::{Depends, DiError, DiResult, Injectable, InjectionContext};
+pub use reinhardt_di::{
+	DiError, DiResult, Injectable, Injected, InjectionContext, InjectionMetadata, OptionalInjected,
+};

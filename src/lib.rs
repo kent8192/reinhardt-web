@@ -60,9 +60,10 @@
 //!
 //! ## Quick Example
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt::prelude::*;
 //! use serde::{Serialize, Deserialize};
+//! use std::sync::Arc;
 //!
 //! // Define your model (using composition, not inheritance)
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,26 +95,50 @@
 //! ```
 
 // Re-export external crates for macro support
+// Macro-generated code uses paths like `::reinhardt::reinhardt_apps::AppConfig`
+// These wrapper modules provide the namespace structure that macros expect.
 // Note: These are marked #[doc(hidden)] because they are internal dependencies
 // used by macro-generated code. Users should not use these directly.
 #[doc(hidden)]
-pub extern crate reinhardt_apps;
+pub mod reinhardt_apps {
+	pub use reinhardt_apps::*;
+}
 
 #[doc(hidden)]
-pub extern crate reinhardt_di;
+pub mod reinhardt_di {
+	pub use reinhardt_di::*;
+}
 
 #[doc(hidden)]
-pub extern crate reinhardt_core;
+pub mod reinhardt_core {
+	pub use reinhardt_core::*;
+}
 
 #[doc(hidden)]
-pub extern crate reinhardt_http;
+pub mod reinhardt_http {
+	pub use reinhardt_http::*;
+}
 
 #[doc(hidden)]
-pub extern crate reinhardt_params;
+pub mod reinhardt_params {
+	pub use reinhardt_params::*;
+}
+
+#[doc(hidden)]
+pub mod reinhardt_types {
+	pub use reinhardt_types::*;
+}
+
+#[doc(hidden)]
+pub mod async_trait {
+	pub use async_trait::*;
+}
 
 #[cfg(feature = "database")]
 #[doc(hidden)]
-pub extern crate linkme;
+pub mod linkme {
+	pub use linkme::*;
+}
 
 // Module re-exports following Django's structure
 #[cfg(feature = "core")]
@@ -192,15 +217,12 @@ pub use reinhardt_db::migrations;
 #[doc(hidden)]
 pub use migrations as reinhardt_migrations;
 
-// Re-export endpoint macro
-pub use reinhardt_macros::endpoint;
-
 // Re-export HTTP method macros
 pub use reinhardt_macros::{api_view, delete, get, patch, post, put};
 
-// Re-export Injectable derive macro (DI feature)
-#[cfg(feature = "di")]
-pub use reinhardt_macros::Injectable;
+// Re-export admin attribute macro (requires admin feature)
+#[cfg(feature = "admin")]
+pub use reinhardt_macros::admin;
 
 // Re-export settings from dedicated crate
 #[cfg(feature = "conf")]
@@ -918,8 +940,8 @@ pub mod prelude {
 		m2m_changed, post_delete, post_save, pre_delete, pre_save,
 	};
 
-	// HTTP method macros and endpoint - always available
-	pub use crate::{api_view, delete, endpoint, get, patch, post, put};
+	// HTTP method macros - always available
+	pub use crate::{api_view, delete, get, patch, post, put};
 
 	// Database feature - ORM and Model macros
 	#[cfg(feature = "database")]
@@ -979,13 +1001,9 @@ pub mod prelude {
 	// Note: When 'openapi' feature is enabled, types are available at top level
 	// Example: use reinhardt::prelude::*; or use reinhardt::{OpenApi, ApiDoc, Schema};
 
-	// DI params - FastAPI-style parameter extraction and Injectable derive macro
+	// DI params - FastAPI-style parameter extraction
 	#[cfg(any(feature = "minimal", feature = "standard", feature = "di"))]
 	pub use crate::{Body, Cookie, Header, Json, Path, Query};
-
-	// Injectable derive macro for DI
-	#[cfg(feature = "di")]
-	pub use crate::Injectable;
 
 	// REST feature - serializers, parsers, pagination, throttling, versioning, metadata
 	#[cfg(feature = "rest")]
