@@ -27,21 +27,19 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
-//! use reinhardt_pagination::{PageNumberPagination, Paginator};
+//! ```rust,no_run
+//! use reinhardt_pagination::PageNumberPagination;
 //!
 //! let paginator = PageNumberPagination::new()
 //!     .page_size(10)
 //!     .max_page_size(100);
-//!
-//! let page = paginator.paginate(&items, &request)?;
 //! ```
 //!
 //! ## Cursor Pagination Example
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt_pagination::CursorPagination;
-//! use reinhardt_pagination::cursor::{Base64CursorEncoder, RelayPagination};
+//! use reinhardt_pagination::cursor::RelayPagination;
 //!
 //! // Standard cursor pagination
 //! let paginator = CursorPagination::new()
@@ -56,7 +54,7 @@
 //!
 //! ## Database Cursor Pagination Example
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt_pagination::{CursorPaginator, HasTimestamp};
 //!
 //! // Define your model
@@ -74,10 +72,11 @@
 //!
 //! // Use cursor paginator
 //! let paginator = CursorPaginator::new(20);  // 20 items per page
-//! let page1 = paginator.paginate(&users, None)?;
+//! let users: Vec<User> = vec![];
+//! let page1 = paginator.paginate(&users, None).unwrap();
 //!
 //! // Navigate to next page
-//! let page2 = paginator.paginate(&users, page1.next_cursor)?;
+//! let page2 = paginator.paginate(&users, page1.next_cursor).unwrap();
 //! ```
 //!
 //! ## Performance Comparison

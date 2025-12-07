@@ -6,12 +6,14 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
+//! ```rust,no_run
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_signals::distributed::{DistributedSignal, MessageBroker, RedisAdapter};
 //!
 //! // Create a distributed signal with Redis
 //! let broker = RedisAdapter::new("redis://localhost").await?;
-//! let signal = DistributedSignal::new("user_created", broker);
+//! let signal = DistributedSignal::<serde_json::Value, _>::new("user_created", broker);
 //!
 //! // Subscribe to signals from other services
 //! signal.subscribe(|event| async move {
@@ -20,8 +22,10 @@
 //! }).await?;
 //!
 //! // Publish signals to other services
+//! let user_event = serde_json::json!({"user_id": 123});
 //! signal.publish(user_event).await?;
-//! ```
+//! # Ok(())
+//! # }
 
 use crate::error::SignalError;
 use async_trait::async_trait;
