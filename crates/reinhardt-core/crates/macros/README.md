@@ -37,7 +37,10 @@ Provides compile-time code generation for common patterns.
 - **`#[patch]`** - PATCH method decorator with path validation
 - **`#[delete]`** - DELETE method decorator with path validation
 - All support compile-time URL pattern validation
+- **Dependency Injection**: Use `use_inject = true` option with `#[inject]` parameter attribute
+- Path syntax: Simple `{id}` or typed `{<uuid:id>}`, `{<int:id>}`, `{<str:name>}`, `{<slug:title>}`, `{<path:route>}`
 - Example: `#[get("/users/{id}")]`
+- Example with DI: `#[get("/users/{<uuid:id>}", use_inject = true)]`
 
 #### Permission System
 
@@ -49,12 +52,82 @@ Provides compile-time code generation for common patterns.
 
 #### Dependency Injection (FastAPI-style)
 
-- **`#[use_injection]`** / **`#[endpoint]`** - Automatic dependency injection
+##### Injectable Macro (Factory/Provider Pattern)
+
+- **`#[injectable]`** - Transform functions or structs into `Injectable` trait implementations
+
+  **Function Usage**: Factory functions for creating dependencies
+  - All parameters must be marked with `#[inject]`
+  - Supports both sync and async functions
+  - Cache control: `#[inject(cache = false)]`
+  - Scope control: `#[inject(scope = Singleton)]` or `#[inject(scope = Request)]`
+  - Example:
+    ```rust
+    #[injectable]
+    fn create_user_service(
+        #[inject] db: Arc<Database>,
+        #[inject] cache: Arc<Cache>,
+    ) -> UserService {
+        UserService { db, cache }
+    }
+    ```
+
+  **Struct Usage**: Auto-generate `Injectable` implementation
+  - All fields must have either `#[inject]` or `#[no_inject]` attribute
+  - Field attributes:
+    - `#[inject]` - Inject from DI container (cached by default)
+    - `#[inject(cache = false)]` - Inject without caching
+    - `#[inject(scope = Singleton)]` - Use singleton scope
+    - `#[no_inject(default = Default)]` - Initialize with `Default::default()`
+    - `#[no_inject(default = value)]` - Initialize with specific value
+    - `#[no_inject]` - Initialize with `None` (field must be `Option<T>`)
+  - Struct must implement `Clone` (required by `Injectable` trait)
+  - Example:
+    ```rust
+    #[injectable]
+    #[derive(Clone)]
+    struct UserViewSet {
+        #[inject]
+        db: Database,
+        #[inject]
+        cache: RedisCache,
+        #[no_inject(default = Default)]
+        config: Config,
+    }
+    ```
+
+##### HTTP Method Macros with Dependency Injection
+
+- **`#[get("/path", use_inject = true)]`** - GET with DI enabled
+- **`#[post("/path", use_inject = true)]`** - POST with DI enabled
+- **`#[put("/path", use_inject = true)]`** - PUT with DI enabled
+- **`#[patch("/path", use_inject = true)]`** - PATCH with DI enabled
+- **`#[delete("/path", use_inject = true)]`** - DELETE with DI enabled
   - FastAPI-style parameter attributes with `#[inject]`
   - Automatic resolution from `InjectionContext`
-  - Cache control with `#[inject(cache = false)]`
-  - Works with any function, not just endpoints
-  - Example: `#[use_injection] async fn handler(#[inject] db: Database)`
+  - `use_inject = true` is **required** when using `#[inject]` parameters
+  - Example:
+    ```rust
+    #[get("/users/{<uuid:id>}", use_inject = true)]
+    async fn get_user(
+        Path(id): Path<Uuid>,
+        #[inject] db: Arc<DatabaseConnection>,  // Injected from context
+    ) -> ViewResult<Response> {
+        // ...
+    }
+
+    #[post("/users", use_inject = true)]
+    async fn create_user(
+        Json(data): Json<CreateUserRequest>,
+        #[inject] db: Arc<DatabaseConnection>,
+    ) -> ViewResult<Response> {
+        // ...
+    }
+    ```
+
+**Pattern Comparison:**
+- `#[injectable]` - Creates an `Injectable` implementation for the return type (Factory/Provider pattern)
+- `#[<http_method>(..., use_inject = true)]` - Injects dependencies into function parameters
 
 #### Configuration Macros
 

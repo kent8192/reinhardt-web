@@ -1,6 +1,6 @@
 //! Tests for automatic derive trait addition in #[model(...)] attribute macro
 
-use reinhardt_macros::{Model, model};
+use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
 #[test]

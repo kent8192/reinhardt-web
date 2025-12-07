@@ -66,26 +66,24 @@ Tests for HTTP method decorators (`#[get]`, `#[post]`, `#[put]`, `#[patch]`, `#[
 
 #### 4. `endpoint_tests.rs`
 
-Tests for the `#[endpoint]` and `#[use_injection]` macros covering:
+Tests for HTTP method macros with `use_inject = true` covering:
 
-- Single injection
+- Single injection with `#[inject]`
 - Multiple injections
-- Cache control
+- Integration with Path, Json, Query extractors
 - Only inject parameters
 - No inject parameters
 
 **Test Count**: 5 tests
 
-#### 5. `use_injection_tests.rs`
+#### 5. `use_inject_tests.rs`
 
-Additional tests for dependency injection covering:
+Additional tests for dependency injection via HTTP method macros covering:
 
-- Simple injection
+- Simple injection with `use_inject = true`
 - Multiple injections
-- Cache control
-- Injection caching
 - Business logic integration
-- Helper functions
+- Helper functions with DI
 
 **Test Count**: 6 tests
 
@@ -275,7 +273,7 @@ cargo test --test api_view_tests
 cargo test --test action_tests
 cargo test --test http_method_tests
 cargo test --test endpoint_tests
-cargo test --test use_injection_tests
+cargo test --test use_inject_tests
 cargo test --test installed_apps_tests
 
 # Integration and specialized tests ✨ NEW

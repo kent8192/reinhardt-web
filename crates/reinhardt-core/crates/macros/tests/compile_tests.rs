@@ -124,6 +124,28 @@ fn test_rel_attribute_fail() {
 	t.compile_fail("tests/ui/rel/fail/*.rs");
 }
 
+// Admin macro tests
+#[test]
+fn test_admin_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/admin/pass/*.rs");
+}
+
+#[test]
+fn test_admin_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/admin/fail/*.rs");
+}
+
+// Injectable macro tests (#[injectable] and #[use_inject])
+// Note: pass tests are omitted because generated code requires Injectable implementations
+// which cannot be easily provided in trybuild tests
+#[test]
+fn test_injectable_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/injectable/fail/*.rs");
+}
+
 // Field attributes tests - Phase 1-3 attributes
 #[test]
 fn test_field_attributes_pass() {
