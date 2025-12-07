@@ -1,0 +1,6 @@
+error: Unmatched '}' at position 9
+       Found closing brace without matching opening brace
+ --> tests/ui/fail/unmatched_close_brace.rs:5:20
+  |
+5 |     let _path = path!("/users/id}/");
+  |                       ^^^^^^^^^^^^^
