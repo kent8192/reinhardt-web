@@ -70,26 +70,25 @@ pub(crate) fn model_attribute_impl(
 	let mut fk_id_fields: Vec<Field> = Vec::new();
 	if let syn::Fields::Named(ref fields) = input.fields {
 		for field in fields.named.iter() {
-			if let Some(field_name) = &field.ident {
-				if let Some(target_ty) = extract_fk_target_type(&field.ty) {
-					let id_field_name_str = format!("{}_id", field_name);
+			if let Some(field_name) = &field.ident
+				&& let Some(target_ty) = extract_fk_target_type(&field.ty)
+			{
+				let id_field_name_str = format!("{}_id", field_name);
 
-					// Only add if not already defined by user
-					if !existing_field_names.contains(&id_field_name_str) {
-						let id_field_name =
-							syn::Ident::new(&id_field_name_str, field_name.span());
+				// Only add if not already defined by user
+				if !existing_field_names.contains(&id_field_name_str) {
+					let id_field_name = syn::Ident::new(&id_field_name_str, field_name.span());
 
-						// Generate _id field with the target model's PrimaryKey type
-						// The type will be resolved at compile time via Model trait
-						// #[fk_id_field] marks this as auto-generated for Model derive to skip
-						let new_field: Field = syn::parse_quote! {
-							#[fk_id_field]
-							#[serde(default)]
-							pub #id_field_name: <#target_ty as ::reinhardt::db::orm::Model>::PrimaryKey
-						};
+					// Generate _id field with the target model's PrimaryKey type
+					// The type will be resolved at compile time via Model trait
+					// #[fk_id_field] marks this as auto-generated for Model derive to skip
+					let new_field: Field = syn::parse_quote! {
+						#[fk_id_field]
+						#[serde(default)]
+						pub #id_field_name: <#target_ty as ::reinhardt::db::orm::Model>::PrimaryKey
+					};
 
-						fk_id_fields.push(new_field);
-					}
+					fk_id_fields.push(new_field);
 				}
 			}
 		}
