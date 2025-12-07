@@ -1,10 +1,10 @@
 //! Model with non-Option primary key
 
-use reinhardt_macros::{model, Model};
+use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
 #[model(app_label = "test", table_name = "posts")]
+#[derive(Serialize, Deserialize)]
 struct Post {
 	#[field(primary_key = true)]
 	id: i64,

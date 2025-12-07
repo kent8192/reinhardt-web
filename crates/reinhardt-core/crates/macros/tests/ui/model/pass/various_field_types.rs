@@ -1,11 +1,11 @@
 //! Model with various field types
 
 use reinhardt_db::orm::Model as ModelTrait;
-use reinhardt_macros::{model, Model};
+use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
 #[model(app_label = "test", table_name = "complex_model")]
+#[derive(Serialize, Deserialize)]
 struct ComplexModel {
 	#[field(primary_key = true)]
 	id: Option<i64>,

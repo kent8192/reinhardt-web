@@ -1,10 +1,10 @@
 //! Basic model with required attributes
 
-use reinhardt_macros::{model, Model};
+use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
 #[model(app_label = "test", table_name = "users")]
+#[derive(Serialize, Deserialize)]
 struct User {
 	#[field(primary_key = true)]
 	id: Option<i32>,
