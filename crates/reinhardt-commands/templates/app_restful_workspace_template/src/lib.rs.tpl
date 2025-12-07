@@ -2,16 +2,14 @@
 //!
 //! A RESTful API application
 
-use reinhardt::prelude::*;
+use reinhardt::AppConfig;
 
+pub mod admin;
+pub mod models;
+pub mod serializers;
+pub mod urls;
+pub mod views;
+
+#[derive(AppConfig)]
+#[app_config(name = "{{ app_name }}", label = "{{ app_name }}")]
 pub struct {{ camel_case_app_name }}Config;
-
-impl AppConfig for {{ camel_case_app_name }}Config {
-    fn name(&self) -> &str {
-        "{{ app_name }}"
-    }
-
-    fn label(&self) -> &str {
-        "{{ app_name }}"
-    }
-}
