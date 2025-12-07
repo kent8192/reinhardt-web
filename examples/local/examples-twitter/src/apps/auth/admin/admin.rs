@@ -1,12 +1,18 @@
 //! Admin configuration for auth app models
 //!
-//! Note: Admin integration requires async_trait dependency.
-//! For now, we provide a placeholder implementation.
+//! Provides admin panel registration for the User model.
 
-use reinhardt::admin::panel::AdminSite;
+use reinhardt::admin::panel::{AdminSite, ModelAdminConfig};
 
 /// Register all admin configurations for auth app
-pub fn register_admins(_site: &AdminSite) {
-	// TODO: Add admin registration when async_trait is available
-	// site.register("User", UserAdmin);
+pub fn register_admins(site: &AdminSite) {
+	let user_admin = ModelAdminConfig::builder()
+		.model_name("User")
+		.list_display(vec!["id", "username", "email", "is_active"])
+		.list_filter(vec!["is_active"])
+		.search_fields(vec!["username", "email"])
+		.build();
+
+	site.register("User", user_admin)
+		.expect("Failed to register User admin");
 }

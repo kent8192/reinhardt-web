@@ -42,7 +42,11 @@ impl From<DMRoom> for RoomResponse {
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateMessageRequest {
 	/// Message content
-	#[validate(length(min = 1, max = 1000, message = "Content must be between 1 and 1000 characters"))]
+	#[validate(length(
+		min = 1,
+		max = 1000,
+		message = "Content must be between 1 and 1000 characters"
+	))]
 	pub content: String,
 }
 
@@ -62,6 +66,7 @@ impl From<DMMessage> for MessageResponse {
 	fn from(message: DMMessage) -> Self {
 		Self {
 			id: message.id,
+			// Use auto-generated _id fields from ForeignKeyField
 			room_id: message.room_id,
 			sender_id: message.sender_id,
 			content: message.content,

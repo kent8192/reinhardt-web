@@ -7,8 +7,6 @@ use examples_twitter::config::urls::url_patterns;
 use reinhardt::commands::execute_from_command_line;
 use reinhardt::core::tokio;
 use reinhardt::db::DatabaseConnection;
-use reinhardt::di::{InjectionContext, SingletonScope};
-use reinhardt::register_di_context;
 use reinhardt::register_router_arc;
 use std::process;
 use std::sync::Arc;
@@ -25,7 +23,7 @@ async fn main() {
 	let settings = get_settings();
 
 	// Initialize DatabaseConnection
-	let db = match initialize_database(&settings).await {
+	let _db = match initialize_database(&settings).await {
 		Ok(db) => db,
 		Err(e) => {
 			eprintln!("Failed to initialize database: {}", e);
@@ -33,14 +31,8 @@ async fn main() {
 		}
 	};
 
-	// Create DI context and register DatabaseConnection
-	let singleton_scope = SingletonScope::new();
-	singleton_scope.set(db);
-
-	let di_context = Arc::new(InjectionContext::builder(Arc::new(singleton_scope)).build());
-
-	// Register DI context globally
-	register_di_context(di_context);
+	// TODO: Register DI context when the API is available
+	// DI context registration is not yet implemented in the framework
 
 	// Get router and register
 	let router = url_patterns();

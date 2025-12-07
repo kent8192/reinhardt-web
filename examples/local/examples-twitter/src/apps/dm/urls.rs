@@ -14,6 +14,4 @@ pub fn url_patterns() -> UnifiedRouter {
 		.endpoint(views::list_messages)
 		.endpoint(views::send_message)
 		.endpoint(views::get_message)
-		.endpoint(views::mark_as_read)
-		.endpoint(views::delete_message)
 }

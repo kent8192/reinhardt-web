@@ -5,5 +5,5 @@
 pub mod messages;
 pub mod rooms;
 
-pub use messages::{delete_message, get_message, list_messages, mark_as_read, send_message};
+pub use messages::{get_message, list_messages, send_message};
 pub use rooms::{create_room, delete_room, get_room, list_rooms};

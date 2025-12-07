@@ -6,6 +6,23 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Query parameters for pagination
+#[derive(Debug, Deserialize, Default)]
+pub struct PaginationParams {
+	#[serde(default = "default_page")]
+	pub page: usize,
+	#[serde(default = "default_limit")]
+	pub limit: usize,
+}
+
+fn default_page() -> usize {
+	1
+}
+
+fn default_limit() -> usize {
+	20
+}
+
 /// Response for successful follow operation
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FollowResponse {
@@ -50,6 +67,16 @@ pub struct UserSummary {
 	pub id: Uuid,
 	pub username: String,
 	pub email: String,
+}
+
+impl From<crate::apps::auth::models::User> for UserSummary {
+	fn from(user: crate::apps::auth::models::User) -> Self {
+		Self {
+			id: user.id,
+			username: user.username,
+			email: user.email,
+		}
+	}
 }
 
 /// Paginated list response for followers

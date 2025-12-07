@@ -8,7 +8,7 @@ mod tests {
 	use tempfile::NamedTempFile;
 
 	#[fixture]
-	await fn sqlite_with_migrations() -> (NamedTempFile, Arc<SqlitePool>) {
+	async fn sqlite_with_migrations() -> (NamedTempFile, Arc<SqlitePool>) {
 		// Create temp file
 		let temp_file = NamedTempFile::new().expect("Failed to create temp file");
 		let db_path = temp_file.path().to_str().unwrap().to_string();
@@ -21,7 +21,7 @@ mod tests {
 		let pool = Arc::new(pool);
 
 		// Manual table creation (SQLite)
-		let create_snippets_table = r#""
+		let create_snippets_table = r#"
 			CREATE TABLE IF NOT EXISTS snippets (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				title VARCHAR(255) NOT NULL,
@@ -29,7 +29,7 @@ mod tests {
 				language VARCHAR(50) NOT NULL,
 				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 			)
-		""#;
+		"#;
 
 		sqlx::query(create_snippets_table)
 			.execute(pool.as_ref())
@@ -98,18 +98,18 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_create(
+	async fn test_snippet_create(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create a snippet
 		let result: (i64, String, String, String) = sqlx::query_as(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES ($1, $2, $3)
 			RETURNING id, title, code, language
-			""#,
+			"#,
 		)
 		.bind("Test Snippet")
 		.bind("fn main() {}")
@@ -125,18 +125,18 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_read(
+	async fn test_snippet_read(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create a snippet
 		let created: (i64,) = sqlx::query_as(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES ($1, $2, $3)
 			RETURNING id
-			""#,
+			"#,
 		)
 		.bind("Read Test")
 		.bind("println!(\"Hello\");")
@@ -147,11 +147,11 @@ mod tests {
 
 		// Read the snippet
 		let result: (i64, String, String, String) = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id, title, code, language
 			FROM snippets
 			WHERE id = $1
-			""#,
+			"#,
 		)
 		.bind(created.0)
 		.fetch_one(pool.as_ref())
@@ -166,18 +166,18 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_update(
+	async fn test_snippet_update(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create a snippet
 		let created: (i64,) = sqlx::query_as(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES ($1, $2, $3)
 			RETURNING id
-			""#,
+			"#,
 		)
 		.bind("Original Title")
 		.bind("original code")
@@ -188,12 +188,12 @@ mod tests {
 
 		// Update the snippet
 		let updated: (i64, String, String, String) = sqlx::query_as(
-			r#""
+			r#"
 			UPDATE snippets
 			SET title = $1, code = $2, language = $3
 			WHERE id = $4
 			RETURNING id, title, code, language
-			""#,
+			"#,
 		)
 		.bind("Updated Title")
 		.bind("updated code")
@@ -211,18 +211,18 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_delete(
+	async fn test_snippet_delete(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create a snippet
 		let created: (i64,) = sqlx::query_as(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES ($1, $2, $3)
 			RETURNING id
-			""#,
+			"#,
 		)
 		.bind("To Delete")
 		.bind("delete me")
@@ -233,10 +233,10 @@ mod tests {
 
 		// Delete the snippet
 		let deleted_rows = sqlx::query(
-			r#""
+			r#"
 			DELETE FROM snippets
 			WHERE id = $1
-			""#,
+			"#,
 		)
 		.bind(created.0)
 		.execute(pool.as_ref())
@@ -248,9 +248,9 @@ mod tests {
 
 		// Verify deletion
 		let result: Option<(i64,)> = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id FROM snippets WHERE id = $1
-			""#,
+			"#,
 		)
 		.bind(created.0)
 		.fetch_optional(pool.as_ref())
@@ -266,20 +266,20 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_list_all(
+	async fn test_snippet_list_all(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create multiple snippets
 		sqlx::query(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES
 				($1, $2, $3),
 				($4, $5, $6),
 				($7, $8, $9)
-			""#,
+			"#,
 		)
 		.bind("Snippet 1")
 		.bind("code 1")
@@ -296,11 +296,11 @@ mod tests {
 
 		// List all snippets
 		let snippets: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id, title, code, language
 			FROM snippets
 			ORDER BY id
-			""#,
+			"#,
 		)
 		.fetch_all(pool.as_ref())
 		.await
@@ -314,20 +314,20 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_filter_by_language(
+	async fn test_snippet_filter_by_language(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create snippets with different languages
 		sqlx::query(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES
 				($1, $2, $3),
 				($4, $5, $6),
 				($7, $8, $9)
-			""#,
+			"#,
 		)
 		.bind("Rust Snippet")
 		.bind("fn main() {}")
@@ -344,12 +344,12 @@ mod tests {
 
 		// Filter by language
 		let rust_snippets: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id, title, code, language
 			FROM snippets
 			WHERE language = $1
 			ORDER BY id
-			""#,
+			"#,
 		)
 		.bind("rust")
 		.fetch_all(pool.as_ref())
@@ -363,20 +363,20 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_search_by_title(
+	async fn test_snippet_search_by_title(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create snippets with searchable titles
 		sqlx::query(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES
 				($1, $2, $3),
 				($4, $5, $6),
 				($7, $8, $9)
-			""#,
+			"#,
 		)
 		.bind("Hello World")
 		.bind("println!(\"Hello\");")
@@ -393,12 +393,12 @@ mod tests {
 
 		// Search by title pattern
 		let results: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id, title, code, language
 			FROM snippets
 			WHERE title LIKE $1
 			ORDER BY id
-			""#,
+			"#,
 		)
 		.bind("%World%")
 		.fetch_all(pool.as_ref())
@@ -412,7 +412,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_pagination(
+	async fn test_snippet_pagination(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
@@ -420,10 +420,10 @@ mod tests {
 		// Create 5 snippets
 		for i in 1..=5 {
 			sqlx::query(
-				r#""
+				r#"
 				INSERT INTO snippets (title, code, language)
 				VALUES ($1, $2, $3)
-				""#,
+				"#,
 			)
 			.bind(format!("Snippet {}", i))
 			.bind(format!("code {}", i))
@@ -435,12 +435,12 @@ mod tests {
 
 		// First page (limit 2, offset 0)
 		let page1: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id, title, code, language
 			FROM snippets
 			ORDER BY id
 			LIMIT $1 OFFSET $2
-			""#,
+			"#,
 		)
 		.bind(2i64)
 		.bind(0i64)
@@ -454,12 +454,12 @@ mod tests {
 
 		// Second page (limit 2, offset 2)
 		let page2: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id, title, code, language
 			FROM snippets
 			ORDER BY id
 			LIMIT $1 OFFSET $2
-			""#,
+			"#,
 		)
 		.bind(2i64)
 		.bind(2i64)
@@ -478,17 +478,17 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_empty_database(
+	async fn test_snippet_empty_database(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Query empty database
 		let snippets: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id, title, code, language
 			FROM snippets
-			""#,
+			"#,
 		)
 		.fetch_all(pool.as_ref())
 		.await
@@ -499,18 +499,18 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_nonexistent_id(
+	async fn test_snippet_nonexistent_id(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Query with nonexistent ID
 		let result: Option<(i64, String, String, String)> = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id, title, code, language
 			FROM snippets
 			WHERE id = $1
-			""#,
+			"#,
 		)
 		.bind(99999i64)
 		.fetch_optional(pool.as_ref())
@@ -522,17 +522,17 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_duplicate_title_allowed(
+	async fn test_snippet_duplicate_title_allowed(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create first snippet
 		sqlx::query(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES ($1, $2, $3)
-			""#,
+			"#,
 		)
 		.bind("Duplicate Title")
 		.bind("code 1")
@@ -543,11 +543,11 @@ mod tests {
 
 		// Create second snippet with same title (should succeed - no unique constraint)
 		let result: Result<(i64,), _> = sqlx::query_as(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES ($1, $2, $3)
 			RETURNING id
-			""#,
+			"#,
 		)
 		.bind("Duplicate Title")
 		.bind("code 2")
@@ -559,11 +559,11 @@ mod tests {
 
 		// Verify both exist
 		let count: (i64,) = sqlx::query_as(
-			r#""
+			r#"
 			SELECT COUNT(*) as count
 			FROM snippets
 			WHERE title = $1
-			""#,
+			"#,
 		)
 		.bind("Duplicate Title")
 		.fetch_one(pool.as_ref())
@@ -575,20 +575,20 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_count(
+	async fn test_snippet_count(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create 3 snippets
 		sqlx::query(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES
 				($1, $2, $3),
 				($4, $5, $6),
 				($7, $8, $9)
-			""#,
+			"#,
 		)
 		.bind("Snippet 1")
 		.bind("code 1")
@@ -605,10 +605,10 @@ mod tests {
 
 		// Count all snippets
 		let total: (i64,) = sqlx::query_as(
-			r#""
+			r#"
 			SELECT COUNT(*) as count
 			FROM snippets
-			""#,
+			"#,
 		)
 		.fetch_one(pool.as_ref())
 		.await
@@ -618,11 +618,11 @@ mod tests {
 
 		// Count rust snippets
 		let rust_count: (i64,) = sqlx::query_as(
-			r#""
+			r#"
 			SELECT COUNT(*) as count
 			FROM snippets
 			WHERE language = $1
-			""#,
+			"#,
 		)
 		.bind("rust")
 		.fetch_one(pool.as_ref())
@@ -634,20 +634,20 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_order_by_title(
+	async fn test_snippet_order_by_title(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create snippets with different titles
 		sqlx::query(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES
 				($1, $2, $3),
 				($4, $5, $6),
 				($7, $8, $9)
-			""#,
+			"#,
 		)
 		.bind("Charlie")
 		.bind("code c")
@@ -664,11 +664,11 @@ mod tests {
 
 		// Order by title ascending
 		let results: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#""
+			r#"
 			SELECT id, title, code, language
 			FROM snippets
 			ORDER BY title ASC
-			""#,
+			"#,
 		)
 		.fetch_all(pool.as_ref())
 		.await
@@ -682,19 +682,19 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_language_case_sensitivity(
+	async fn test_snippet_language_case_sensitivity(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create snippets with different case languages
 		sqlx::query(
-			r#""
+			r#"
 			INSERT INTO snippets (title, code, language)
 			VALUES
 				($1, $2, $3),
 				($4, $5, $6)
-			""#,
+			"#,
 		)
 		.bind("Lowercase Rust")
 		.bind("code 1")
@@ -708,11 +708,11 @@ mod tests {
 
 		// Exact match (case-sensitive)
 		let exact: (i64,) = sqlx::query_as(
-			r#""
+			r#"
 			SELECT COUNT(*) as count
 			FROM snippets
 			WHERE language = $1
-			""#,
+			"#,
 		)
 		.bind("rust")
 		.fetch_one(pool.as_ref())
@@ -723,11 +723,11 @@ mod tests {
 
 		// Case-insensitive match
 		let case_insensitive: (i64,) = sqlx::query_as(
-			r#""
+			r#"
 			SELECT COUNT(*) as count
 			FROM snippets
 			WHERE LOWER(language) = LOWER($1)
-			""#,
+			"#,
 		)
 		.bind("rust")
 		.fetch_one(pool.as_ref())
@@ -739,18 +739,18 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	await fn test_snippet_update_nonexistent(
+	async fn test_snippet_update_nonexistent(
 		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
 	) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Try to update nonexistent snippet
 		let updated_rows = sqlx::query(
-			r#""
+			r#"
 			UPDATE snippets
 			SET title = $1
 			WHERE id = $2
-			""#,
+			"#,
 		)
 		.bind("New Title")
 		.bind(99999i64)

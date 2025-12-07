@@ -9,7 +9,7 @@ use std::sync::Arc;
 use super::views;
 
 pub fn url_patterns() -> Arc<UnifiedRouter> {
-	let router = UnifiedRouter::new()
+	let mut router = UnifiedRouter::new()
 		// Health check endpoint
 		.endpoint(views::health_check)
 		// Auth routes
@@ -33,9 +33,7 @@ pub fn url_patterns() -> Arc<UnifiedRouter> {
 		.endpoint(apps::dm::views::delete_room)
 		.endpoint(apps::dm::views::list_messages)
 		.endpoint(apps::dm::views::send_message)
-		.endpoint(apps::dm::views::get_message)
-		.endpoint(apps::dm::views::mark_as_read)
-		.endpoint(apps::dm::views::delete_message);
+		.endpoint(apps::dm::views::get_message);
 
 	// Register all routes before returning
 	router.register_all_routes();

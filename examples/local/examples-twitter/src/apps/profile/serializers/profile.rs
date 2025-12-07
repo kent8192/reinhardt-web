@@ -66,6 +66,7 @@ impl From<Profile> for ProfileResponse {
 	fn from(profile: Profile) -> Self {
 		ProfileResponse {
 			id: profile.id,
+			// Use auto-generated _id field from OneToOneField
 			user_id: profile.user_id,
 			bio: profile.bio,
 			avatar_url: profile.avatar_url,

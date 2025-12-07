@@ -86,14 +86,19 @@ pub async fn create_profile(
 		.await?
 		.ok_or_else(|| Error::Http("User not found".into()))?;
 
-	// Create new profile using generated new() function
-	let profile = Profile::new(
-		user_id,
-		create_req.bio.unwrap_or_default(),
-		create_req.avatar_url,
-		create_req.location,
-		create_req.website,
-	);
+	// Create new profile by initializing struct directly
+	// Note: OneToOneField is a marker type; the actual foreign key is stored via user_id
+	let profile = Profile {
+		id: Uuid::new_v4(),
+		user: reinhardt::db::associations::OneToOneField::new(),
+		user_id, // Auto-generated FK ID field
+		bio: create_req.bio.unwrap_or_default(),
+		avatar_url: create_req.avatar_url,
+		location: create_req.location,
+		website: create_req.website,
+		created_at: Utc::now(),
+		updated_at: Utc::now(),
+	};
 
 	// Create profile using Manager API
 	let profile_manager = Manager::<Profile>::new();

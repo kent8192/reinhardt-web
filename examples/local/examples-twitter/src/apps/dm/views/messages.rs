@@ -3,9 +3,10 @@
 use crate::apps::auth::models::User;
 use crate::apps::dm::models::{DMMessage, DMRoom};
 use crate::apps::dm::serializers::{CreateMessageRequest, MessageResponse};
-use reinhardt::db::orm::Model;
+use reinhardt::db::associations::ForeignKeyField;
+use reinhardt::db::orm::{ManyToManyAccessor, Manager, Model};
 use reinhardt::db::DatabaseConnection;
-use reinhardt::{delete, get, patch, post, Error, Json, Path, Response, StatusCode, ViewResult};
+use reinhardt::{get, post, CurrentUser, Json, Path, Response, StatusCode, ViewResult};
 use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
@@ -15,25 +16,29 @@ use validator::Validate;
 pub async fn list_messages(
 	Path(room_id): Path<Uuid>,
 	#[inject] db: Arc<DatabaseConnection>,
-	#[inject] current_user: Arc<User>,
+	#[inject] current_user: CurrentUser<User>,
 ) -> ViewResult<Response> {
-	// Verify room exists and user is a member
-	let room = DMRoom::objects()
-		.filter(DMRoom::field_id().eq(room_id))
-		.get(&db)
-		.await?
-		.ok_or_else(|| Error::NotFound("Room not found".into()))?;
+	// Get current user ID
+	let user_id = current_user.id().map_err(|e| e.to_string())?;
 
-	let is_member = room.members.contains(&db, current_user.id).await?;
+	// Verify room exists
+	let room = DMRoom::objects()
+		.filter_by(DMRoom::field_id().eq(room_id))
+		.get_with_db(&db)
+		.await?;
+
+	// Check membership using ManyToManyAccessor
+	let accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", (*db).clone());
+	let members = accessor.all().await.map_err(|e| e.to_string())?;
+	let is_member = members.iter().any(|m| m.id == user_id);
 	if !is_member {
-		return Err(Error::Forbidden("You are not a member of this room".into()));
+		return Err("Not a member of this room".into());
 	}
 
-	// Get messages for this room
+	// Get messages for this room using filter_by with the room's foreign key
 	let messages = DMMessage::objects()
-		.filter(DMMessage::field_room_id().eq(room_id))
-		.order_by("-created_at")
-		.all(&db)
+		.filter_by(DMMessage::field_room().eq(room_id))
+		.all_with_db(&db)
 		.await?;
 
 	let response: Vec<MessageResponse> = messages.into_iter().map(MessageResponse::from).collect();
@@ -47,29 +52,46 @@ pub async fn send_message(
 	Path(room_id): Path<Uuid>,
 	Json(request): Json<CreateMessageRequest>,
 	#[inject] db: Arc<DatabaseConnection>,
-	#[inject] current_user: Arc<User>,
+	#[inject] current_user: CurrentUser<User>,
 ) -> ViewResult<Response> {
 	request.validate()?;
 
-	// Verify room exists and user is a member
-	let room = DMRoom::objects()
-		.filter(DMRoom::field_id().eq(room_id))
-		.get(&db)
-		.await?
-		.ok_or_else(|| Error::NotFound("Room not found".into()))?;
+	// Get sender ID from current user
+	let sender_id = current_user.id().map_err(|e| e.to_string())?;
 
-	let is_member = room.members.contains(&db, current_user.id).await?;
+	// Verify room exists
+	let room = DMRoom::objects()
+		.filter_by(DMRoom::field_id().eq(room_id))
+		.get_with_db(&db)
+		.await?;
+
+	// Check membership using ManyToManyAccessor
+	let accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", (*db).clone());
+	let members = accessor.all().await.map_err(|e| e.to_string())?;
+	let is_member = members.iter().any(|m| m.id == sender_id);
 	if !is_member {
-		return Err(Error::Forbidden("You are not a member of this room".into()));
+		return Err("Not a member of this room".into());
 	}
 
-	// Create the message
-	let message = DMMessage::new(room_id, current_user.id, request.content);
+	// Create the message using struct initialization
+	// Note: ForeignKeyField is a marker type; the actual foreign key is stored via room_id/sender_id
+	let message = DMMessage {
+		id: Uuid::new_v4(),
+		room: ForeignKeyField::new(),
+		room_id, // Auto-generated FK ID field
+		sender: ForeignKeyField::new(),
+		sender_id, // From current_user
+		content: request.content,
+		is_read: false,
+		created_at: chrono::Utc::now(),
+		updated_at: chrono::Utc::now(),
+	};
 
-	// Save the message
-	message.save(&db).await?;
+	// Save the message using Manager
+	let manager = Manager::<DMMessage>::new();
+	let created = manager.create_with_conn(&db, &message).await?;
 
-	let response = MessageResponse::from(message);
+	let response = MessageResponse::from(created);
 	Response::new(StatusCode::CREATED)
 		.with_json(&response)
 		.map_err(Into::into)
@@ -80,87 +102,31 @@ pub async fn send_message(
 pub async fn get_message(
 	Path((room_id, message_id)): Path<(Uuid, Uuid)>,
 	#[inject] db: Arc<DatabaseConnection>,
-	#[inject] current_user: Arc<User>,
+	#[inject] current_user: CurrentUser<User>,
 ) -> ViewResult<Response> {
-	// Verify room exists and user is a member
-	let room = DMRoom::objects()
-		.filter(DMRoom::field_id().eq(room_id))
-		.get(&db)
-		.await?
-		.ok_or_else(|| Error::NotFound("Room not found".into()))?;
+	// Get current user ID
+	let user_id = current_user.id().map_err(|e| e.to_string())?;
 
-	let is_member = room.members.contains(&db, current_user.id).await?;
+	// Verify room exists
+	let room = DMRoom::objects()
+		.filter_by(DMRoom::field_id().eq(room_id))
+		.get_with_db(&db)
+		.await?;
+
+	// Check membership using ManyToManyAccessor
+	let accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", (*db).clone());
+	let members = accessor.all().await.map_err(|e| e.to_string())?;
+	let is_member = members.iter().any(|m| m.id == user_id);
 	if !is_member {
-		return Err(Error::Forbidden("You are not a member of this room".into()));
+		return Err("Not a member of this room".into());
 	}
 
 	// Get the message
 	let message = DMMessage::objects()
-		.filter(DMMessage::field_id().eq(message_id))
-		.filter(DMMessage::field_room_id().eq(room_id))
-		.get(&db)
-		.await?
-		.ok_or_else(|| Error::NotFound("Message not found".into()))?;
+		.filter_by(DMMessage::field_id().eq(message_id))
+		.get_with_db(&db)
+		.await?;
 
 	let response = MessageResponse::from(message);
 	Response::ok().with_json(&response).map_err(Into::into)
-}
-
-/// Mark a message as read
-#[patch("/rooms/{<uuid:room_id>}/messages/{<uuid:message_id>}/read", name = "dm_messages_mark_read", use_inject = true)]
-pub async fn mark_as_read(
-	Path((room_id, message_id)): Path<(Uuid, Uuid)>,
-	#[inject] db: Arc<DatabaseConnection>,
-	#[inject] current_user: Arc<User>,
-) -> ViewResult<Response> {
-	// Verify room exists and user is a member
-	let room = DMRoom::objects()
-		.filter(DMRoom::field_id().eq(room_id))
-		.get(&db)
-		.await?
-		.ok_or_else(|| Error::NotFound("Room not found".into()))?;
-
-	let is_member = room.members.contains(&db, current_user.id).await?;
-	if !is_member {
-		return Err(Error::Forbidden("You are not a member of this room".into()));
-	}
-
-	// Get and update the message
-	let mut message = DMMessage::objects()
-		.filter(DMMessage::field_id().eq(message_id))
-		.filter(DMMessage::field_room_id().eq(room_id))
-		.get(&db)
-		.await?
-		.ok_or_else(|| Error::NotFound("Message not found".into()))?;
-
-	message.is_read = true;
-	message.save(&db).await?;
-
-	let response = MessageResponse::from(message);
-	Response::ok().with_json(&response).map_err(Into::into)
-}
-
-/// Delete a message (only the sender can delete)
-#[delete("/rooms/{<uuid:room_id>}/messages/{<uuid:message_id>}", name = "dm_messages_delete", use_inject = true)]
-pub async fn delete_message(
-	Path((room_id, message_id)): Path<(Uuid, Uuid)>,
-	#[inject] db: Arc<DatabaseConnection>,
-	#[inject] current_user: Arc<User>,
-) -> ViewResult<Response> {
-	// Get the message
-	let message = DMMessage::objects()
-		.filter(DMMessage::field_id().eq(message_id))
-		.filter(DMMessage::field_room_id().eq(room_id))
-		.get(&db)
-		.await?
-		.ok_or_else(|| Error::NotFound("Message not found".into()))?;
-
-	// Only the sender can delete the message
-	if message.sender_id != current_user.id {
-		return Err(Error::Forbidden("Only the sender can delete this message".into()));
-	}
-
-	message.delete(&db).await?;
-
-	Ok(Response::new(StatusCode::NO_CONTENT))
 }
