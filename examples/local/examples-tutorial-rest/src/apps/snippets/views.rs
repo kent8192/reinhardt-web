@@ -1,7 +1,8 @@
 use chrono::Utc;
 use reinhardt::core::serde::json;
 use reinhardt::{delete, get, post, put};
-use reinhardt::{Json, Path, Request, Response, StatusCode, ViewResult};
+use reinhardt::{Json, Path, Response, StatusCode};
+use reinhardt::http::ViewResult;
 use json::json;
 use validator::Validate;
 
@@ -40,8 +41,8 @@ fn get_sample_snippets() -> Vec<Snippet> {
 ///
 /// GET /snippets/
 /// Success response: 200 OK with array of snippets
-#[get("/snippets/")]
-pub async fn list(_req: Request) -> ViewResult<Response> {
+#[get("/snippets/", name = "snippets_list")]
+pub async fn list() -> ViewResult<Response> {
 	// Production ORM usage:
 	// let snippets = Manager::<Snippet>::new().all().await?;
 
@@ -69,7 +70,7 @@ pub async fn list(_req: Request) -> ViewResult<Response> {
 /// Success response: 201 Created with created snippet
 /// Error responses:
 /// - 422 Unprocessable Entity: Validation errors
-#[post("/snippets/")]
+#[post("/snippets/", name = "snippets_create")]
 pub async fn create(
 	Json(serializer): Json<SnippetSerializer>,
 ) -> ViewResult<Response> {
@@ -111,7 +112,7 @@ pub async fn create(
 /// Success response: 200 OK with snippet data
 /// Error responses:
 /// - 404 Not Found: Snippet not found
-#[get("/snippets/{id}/")]
+#[get("/snippets/{id}/", name = "snippets_retrieve")]
 pub async fn retrieve(
 	Path(snippet_id): Path<i64>,
 ) -> ViewResult<Response> {
@@ -143,7 +144,7 @@ pub async fn retrieve(
 /// Error responses:
 /// - 404 Not Found: Snippet not found
 /// - 422 Unprocessable Entity: Validation errors
-#[put("/snippets/{id}/")]
+#[put("/snippets/{id}/", name = "snippets_update")]
 pub async fn update(
 	Path(snippet_id): Path<i64>,
 	Json(serializer): Json<SnippetSerializer>,
@@ -191,7 +192,7 @@ pub async fn update(
 /// Success response: 204 No Content
 /// Error responses:
 /// - 404 Not Found: Snippet not found
-#[delete("/snippets/{id}/")]
+#[delete("/snippets/{id}/", name = "snippets_delete")]
 pub async fn delete(
 	Path(snippet_id): Path<i64>,
 ) -> ViewResult<Response> {

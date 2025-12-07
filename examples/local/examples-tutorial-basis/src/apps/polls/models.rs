@@ -3,7 +3,7 @@ use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Question model representing a poll question
-#[derive(Serialize, Deserialize)]
+#[derive(Model, Serialize, Deserialize)]
 #[model(app_label = "polls", table_name = "questions")]
 pub struct Question {
 	#[field(primary_key = true)]
@@ -26,7 +26,7 @@ impl Question {
 }
 
 /// Choice model representing an answer option for a question
-#[derive(Serialize, Deserialize)]
+#[derive(Model, Serialize, Deserialize)]
 #[model(app_label = "polls", table_name = "choices")]
 pub struct Choice {
 	#[field(primary_key = true)]

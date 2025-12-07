@@ -1,0 +1,42 @@
+//! DMRoom model for direct messaging
+
+use chrono::{DateTime, Utc};
+use reinhardt::db::associations::ManyToManyField;
+use reinhardt::model;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+// User import is used by #[rel(many_to_many, to = User)] macro
+#[allow(unused_imports)]
+use crate::apps::auth::models::User;
+
+/// DMRoom model representing a chat room for direct messaging
+///
+/// Supports both 1-on-1 and group conversations through ManyToMany relationship.
+/// Room members are managed via the members ManyToManyField.
+#[model(app_label = "dm", table_name = "dm_room")]
+#[derive(Serialize, Deserialize)]
+pub struct DMRoom {
+	#[field(primary_key = true)]
+	pub id: Uuid,
+
+	/// Room name (optional, used for group chats)
+	#[field(max_length = 100)]
+	pub name: Option<String>,
+
+	/// Is this a group chat (more than 2 members)
+	#[field(default = false)]
+	pub is_group: bool,
+
+	/// Room members via ManyToMany relationship
+	/// Intermediate table: dm_room_members
+	#[serde(skip, default)]
+	#[rel(many_to_many, related_name = "rooms")]
+	pub members: ManyToManyField<DMRoom, User>,
+
+	#[field(auto_now_add = true)]
+	pub created_at: DateTime<Utc>,
+
+	#[field(auto_now = true)]
+	pub updated_at: DateTime<Utc>,
+}

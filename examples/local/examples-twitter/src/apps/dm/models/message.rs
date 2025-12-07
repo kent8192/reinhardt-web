@@ -1,0 +1,44 @@
+//! DMMessage model for direct messaging
+
+use chrono::{DateTime, Utc};
+use reinhardt::db::associations::ForeignKeyField;
+use reinhardt::model;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+// Imports used by ForeignKeyField<T> type inference
+#[allow(unused_imports)]
+use super::room::DMRoom;
+#[allow(unused_imports)]
+use crate::apps::auth::models::User;
+
+/// DMMessage model representing a message within a room
+///
+/// Each message belongs to a specific room and is sent by a user.
+/// ForeignKeyField<T> automatically generates the `_id` column.
+#[model(app_label = "dm", table_name = "dm_message")]
+#[derive(Serialize, Deserialize)]
+pub struct DMMessage {
+	#[field(primary_key = true)]
+	pub id: Uuid,
+
+	/// Room this message belongs to (generates room_id column)
+	#[rel(foreign_key, related_name = "messages")]
+	pub room: ForeignKeyField<DMRoom>,
+
+	/// User who sent the message (generates sender_id column)
+	#[rel(foreign_key, related_name = "sent_messages")]
+	pub sender: ForeignKeyField<User>,
+
+	#[field(max_length = 1000)]
+	pub content: String,
+
+	#[field(default = false, include_in_new = false)]
+	pub is_read: bool,
+
+	#[field(auto_now_add = true)]
+	pub created_at: DateTime<Utc>,
+
+	#[field(auto_now = true)]
+	pub updated_at: DateTime<Utc>,
+}
