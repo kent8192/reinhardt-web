@@ -2899,6 +2899,9 @@ impl MigrationAutodetector {
 		self.detect_added_constraints(&mut changes);
 		self.detect_removed_constraints(&mut changes);
 
+		// Detect ManyToMany intermediate tables
+		self.detect_created_many_to_many(&mut changes);
+
 		// Detect model dependencies for operation ordering
 		self.detect_model_dependencies(&mut changes);
 
@@ -4031,6 +4034,60 @@ impl MigrationAutodetector {
 	/// let mut post = ModelState::new("blog", "Post");
 	/// post.add_field(FieldState::new("id", FieldType::Integer, false));
 	/// post.add_field(FieldState::new("author", FieldType::Custom("ForeignKey(accounts.User)".to_string()), false));
+	/// to_state.add_model(post);
+	///
+	/// let detector = MigrationAutodetector::new(from_state, to_state);
+	/// let changes = detector.detect_changes();
+	///
+	/// // blog.Post depends on accounts.User
+	/// let post_deps = changes.model_dependencies.get(&("blog".to_string(), "Post".to_string()));
+	/// assert!(post_deps.is_some());
+	/// assert!(post_deps.unwrap().contains(&("accounts".to_string(), "User".to_string())));
+	/// ```
+	fn detect_created_many_to_many(&self, _changes: &mut DetectedChanges) {
+		// TODO: Implement ManyToMany detection
+		// This requires:
+		// 1. ModelMetadata to be accessible from ModelState
+		// 2. derive(Model) macro to populate many_to_many_fields
+		// 3. Proper intermediate table generation logic
+		//
+		// The implementation will:
+		// - Iterate through all models in self.to_state.models
+		// - Extract ManyToMany metadata from each model
+		// - Generate CreateTable operations for intermediate tables
+		// - Add foreign key constraints and unique constraints
+		// - Use Django naming convention: {app}_{model}_{field}
+		//
+		// See plan in /Users/kent8192/.claude/plans/buzzing-forging-lamport.md
+	}
+
+	/// Detect model dependencies for proper migration ordering
+	///
+	/// This method analyzes ForeignKey relationships between models to ensure
+	/// migrations are generated in the correct order. A model that references
+	/// another model via ForeignKey depends on that model being created first.
+	///
+	/// # Django Reference
+	/// Django's dependency detection is in `django/db/migrations/autodetector.py:1400`
+	/// Function: `_generate_through_model_map` and dependency tracking
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+	///
+	/// let mut from_state = ProjectState::new();
+	/// let mut to_state = ProjectState::new();
+	///
+	/// // Create User model
+	/// let mut user = ModelState::new("accounts", "User");
+	/// user.add_field(FieldState::new("id", FieldType::Integer, false));
+	/// to_state.add_model(user);
+	///
+	/// // Create Post model that references User
+	/// let mut post = ModelState::new("blog", "Post");
+	/// post.add_field(FieldState::new("id", FieldType::Integer, false));
+	/// post.add_field(FieldState::new("author_id", FieldType::Custom("ForeignKey(accounts.User)".into()), false));
 	/// to_state.add_model(post);
 	///
 	/// let detector = MigrationAutodetector::new(from_state, to_state);

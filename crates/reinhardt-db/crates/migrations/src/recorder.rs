@@ -206,7 +206,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
 	/// use reinhardt_backends::DatabaseConnection;
 	///
@@ -372,7 +372,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
 	/// use reinhardt_backends::DatabaseConnection;
 	///

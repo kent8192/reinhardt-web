@@ -2,31 +2,31 @@
 
 use serde::{Deserialize, Serialize};
 
-/// データベースフィールドタイプを表現
+/// Represents database field types
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FieldType {
-	// 整数型
+	// Integer types
 	BigInteger,
 	Integer,
 	SmallInteger,
-	TinyInt,   // MySQL固有
-	MediumInt, // MySQL固有
+	TinyInt,   // MySQL-specific
+	MediumInt, // MySQL-specific
 
-	// 文字列型（パラメータ付き）
+	// String types (with parameters)
 	Char(u32),
 	VarChar(u32),
 	Text,
-	TinyText,   // MySQL固有
-	MediumText, // MySQL固有
-	LongText,   // MySQL固有
+	TinyText,   // MySQL-specific
+	MediumText, // MySQL-specific
+	LongText,   // MySQL-specific
 
-	// 日時型
+	// Date/time types
 	Date,
 	Time,
 	DateTime,
 	TimestampTz, // PostgreSQL TIMESTAMPTZ
 
-	// 数値型
+	// Numeric types
 	Decimal {
 		precision: u32,
 		scale: u32,
@@ -35,26 +35,26 @@ pub enum FieldType {
 	Double,
 	Real,
 
-	// 真偽値型
+	// Boolean type
 	Boolean,
 
-	// バイナリ型
+	// Binary types
 	Binary,
-	Blob,       // MySQL固有
-	TinyBlob,   // MySQL固有
-	MediumBlob, // MySQL固有
-	LongBlob,   // MySQL固有
-	Bytea,      // PostgreSQL固有
+	Blob,       // MySQL-specific
+	TinyBlob,   // MySQL-specific
+	MediumBlob, // MySQL-specific
+	LongBlob,   // MySQL-specific
+	Bytea,      // PostgreSQL-specific
 
-	// JSON型
+	// JSON types
 	Json,
 	JsonBinary, // PostgreSQL JSONB
 
-	// その他
+	// Other types
 	Uuid,
-	Year, // MySQL固有
+	Year, // MySQL-specific
 
-	// MySQL固有のコレクション型
+	// MySQL-specific collection types
 	Enum {
 		values: Vec<String>,
 	},
@@ -76,7 +76,7 @@ pub enum FieldType {
 		through: Option<String>, // Intermediate table name (None for auto-generation)
 	},
 
-	// カスタム型
+	// Custom types
 	Custom(String),
 }
 

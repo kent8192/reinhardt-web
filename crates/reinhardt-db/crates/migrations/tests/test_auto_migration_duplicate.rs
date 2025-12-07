@@ -5,7 +5,7 @@
 
 use reinhardt_migrations::{
 	AutoMigrationError, AutoMigrationGenerator, ColumnDefinition, ColumnSchema, DatabaseSchema,
-	FieldType, FilesystemRepository, Operation, TableSchema,
+	FieldType, FilesystemRepository, Migration, MigrationRepository, Operation, TableSchema,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -67,8 +67,28 @@ async fn test_duplicate_migration_detection() {
 	let result1 = generator.generate("test_app", empty_schema.clone()).await;
 	assert!(result1.is_ok(), "First generation should succeed");
 
-	let operations = result1.unwrap().operations;
-	assert!(!operations.is_empty(), "Should generate operations");
+	let migration_result = result1.unwrap();
+	assert!(
+		!migration_result.operations.is_empty(),
+		"Should generate operations"
+	);
+
+	// Save the first migration to repository (this is what the caller would do)
+	let first_migration = Migration {
+		app_label: "test_app",
+		name: "0001_initial",
+		operations: migration_result.operations.clone(),
+		dependencies: vec![],
+		replaces: vec![],
+		atomic: true,
+		initial: Some(true),
+	};
+	{
+		let mut repo = repository.lock().await;
+		repo.save(&first_migration)
+			.await
+			.expect("Failed to save migration");
+	}
 
 	// Second generation with same schema should fail with DuplicateMigration error
 	let result2 = generator.generate("test_app", empty_schema).await;

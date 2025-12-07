@@ -40,6 +40,8 @@ pub struct ModelMetadata {
 	pub fields: HashMap<String, FieldMetadata>,
 	/// Model options (e.g., db_table, ordering)
 	pub options: HashMap<String, String>,
+	/// ManyToMany relationship definitions
+	pub many_to_many_fields: Vec<ManyToManyMetadata>,
 }
 
 impl ModelMetadata {
@@ -54,6 +56,7 @@ impl ModelMetadata {
 			table_name: table_name.into(),
 			fields: HashMap::new(),
 			options: HashMap::new(),
+			many_to_many_fields: Vec::new(),
 		}
 	}
 
@@ -63,6 +66,10 @@ impl ModelMetadata {
 
 	pub fn set_option(&mut self, key: String, value: String) {
 		self.options.insert(key, value);
+	}
+
+	pub fn add_many_to_many(&mut self, m2m: ManyToManyMetadata) {
+		self.many_to_many_fields.push(m2m);
 	}
 
 	/// Convert to ModelState for migrations
@@ -230,6 +237,73 @@ impl RelationshipMetadata {
 	/// Check if this is a ManyToMany relationship
 	pub fn is_many_to_many(&self) -> bool {
 		self.rel_type == "many_to_many" || self.rel_type == "polymorphic_many_to_many"
+	}
+}
+
+/// ManyToMany relationship metadata
+///
+/// This structure holds specific metadata for ManyToMany relationships,
+/// including through table information and custom field names.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManyToManyMetadata {
+	/// Field name
+	pub field_name: String,
+	/// Target model name (e.g., "Group", "User")
+	pub to_model: String,
+	/// Related name for reverse accessor
+	pub related_name: Option<String>,
+	/// Custom through table name (if specified)
+	pub through: Option<String>,
+	/// Source field name in through table (defaults to "{source_model}_id")
+	pub source_field: Option<String>,
+	/// Target field name in through table (defaults to "{target_model}_id")
+	pub target_field: Option<String>,
+	/// Database constraint prefix
+	pub db_constraint_prefix: Option<String>,
+}
+
+impl ManyToManyMetadata {
+	/// Create a new ManyToManyMetadata
+	pub fn new(field_name: impl Into<String>, to_model: impl Into<String>) -> Self {
+		Self {
+			field_name: field_name.into(),
+			to_model: to_model.into(),
+			related_name: None,
+			through: None,
+			source_field: None,
+			target_field: None,
+			db_constraint_prefix: None,
+		}
+	}
+
+	/// Set related name
+	pub fn with_related_name(mut self, related_name: impl Into<String>) -> Self {
+		self.related_name = Some(related_name.into());
+		self
+	}
+
+	/// Set through table name
+	pub fn with_through(mut self, through: impl Into<String>) -> Self {
+		self.through = Some(through.into());
+		self
+	}
+
+	/// Set source field name
+	pub fn with_source_field(mut self, source_field: impl Into<String>) -> Self {
+		self.source_field = Some(source_field.into());
+		self
+	}
+
+	/// Set target field name
+	pub fn with_target_field(mut self, target_field: impl Into<String>) -> Self {
+		self.target_field = Some(target_field.into());
+		self
+	}
+
+	/// Set database constraint prefix
+	pub fn with_db_constraint_prefix(mut self, prefix: impl Into<String>) -> Self {
+		self.db_constraint_prefix = Some(prefix.into());
+		self
 	}
 }
 

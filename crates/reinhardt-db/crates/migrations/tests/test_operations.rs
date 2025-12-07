@@ -701,5 +701,8 @@ fn test_create_table_same_across_databases() {
 		sql_pg.contains("id SERIAL PRIMARY KEY"),
 		"Should contain id column"
 	);
-	assert!(sql_pg.contains("UNIQUE(name)"), "Should contain constraint");
+	assert!(
+		sql_pg.contains("UNIQUE (name)"),
+		"Should contain constraint"
+	);
 }
