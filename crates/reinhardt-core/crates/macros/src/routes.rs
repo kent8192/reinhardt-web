@@ -480,10 +480,7 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 		.as_ref()
 		.map(|(p, _)| p.clone())
 		.unwrap_or_else(|| "/".to_string());
-	let route_name = options
-		.name
-		.clone()
-		.unwrap_or_else(|| fn_name.to_string());
+	let route_name = options.name.clone().unwrap_or_else(|| fn_name.to_string());
 	let view_type_name =
 		syn::Ident::new(&fn_name_to_view_type(&fn_name.to_string()), fn_name.span());
 	let method_ident = syn::Ident::new(method, Span::call_site());

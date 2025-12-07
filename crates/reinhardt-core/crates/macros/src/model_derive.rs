@@ -840,7 +840,6 @@ struct FieldInfo {
 	rel: Option<RelAttribute>,
 }
 
-
 /// Foreign key / One-to-one field information for automatic ID field generation
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // Fields will be used for accessor generation in future
@@ -2217,7 +2216,6 @@ fn is_many_to_many_field_type(ty: &Type) -> bool {
 	}
 	false
 }
-
 
 /// Check if a type is a ForeignKeyField
 fn is_foreign_key_field_type(ty: &Type) -> bool {
