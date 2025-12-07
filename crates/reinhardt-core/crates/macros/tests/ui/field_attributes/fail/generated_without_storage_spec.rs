@@ -1,4 +1,4 @@
-use reinhardt_macros::{model, Model};
+use reinhardt_macros::model;
 
 #[model(app_label = "test", table_name = "users")]
 struct User {
