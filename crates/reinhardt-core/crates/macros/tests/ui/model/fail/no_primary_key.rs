@@ -1,6 +1,6 @@
 //! Model without primary key should fail to compile
 
-use reinhardt_macros::{model, Model};
+use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]

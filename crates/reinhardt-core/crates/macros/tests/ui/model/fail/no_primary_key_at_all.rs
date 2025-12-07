@@ -1,6 +1,6 @@
 //! Test that models without any primary key fail to compile
 
-use reinhardt_macros::{model, Model};
+use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
