@@ -4109,7 +4109,7 @@ impl MigrationAutodetector {
 	///
 	/// Searches through to_state models to find the app that contains the model.
 	fn find_model_app(&self, model_name: &str) -> Option<String> {
-		for ((app_label, name), _) in &self.to_state.models {
+		for (app_label, name) in self.to_state.models.keys() {
 			if name == model_name {
 				return Some(app_label.clone());
 			}
