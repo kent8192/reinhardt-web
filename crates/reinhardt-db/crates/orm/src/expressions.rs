@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
 
+use crate::query::{Filter, FilterOperator, FilterValue};
+
 /// F expression - represents a database field reference
 /// Similar to Django's F() objects for database-side operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +167,78 @@ impl<M, T> FieldRef<M, T> {
 	/// ```
 	pub fn to_sql(&self) -> String {
 		self.name.to_string()
+	}
+
+	/// Create an equality filter for this field
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let filter = User::field_id().eq(42);
+	/// // Results in: WHERE id = 42
+	/// ```
+	pub fn eq<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(self.name.to_string(), FilterOperator::Eq, value.into())
+	}
+
+	/// Create a not-equal filter for this field
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let filter = User::field_status().ne("inactive");
+	/// // Results in: WHERE status != 'inactive'
+	/// ```
+	pub fn ne<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(self.name.to_string(), FilterOperator::Ne, value.into())
+	}
+
+	/// Create a greater-than filter for this field
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let filter = User::field_age().gt(18);
+	/// // Results in: WHERE age > 18
+	/// ```
+	pub fn gt<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(self.name.to_string(), FilterOperator::Gt, value.into())
+	}
+
+	/// Create a greater-than-or-equal filter for this field
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let filter = User::field_age().gte(18);
+	/// // Results in: WHERE age >= 18
+	/// ```
+	pub fn gte<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(self.name.to_string(), FilterOperator::Gte, value.into())
+	}
+
+	/// Create a less-than filter for this field
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let filter = User::field_age().lt(65);
+	/// // Results in: WHERE age < 65
+	/// ```
+	pub fn lt<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(self.name.to_string(), FilterOperator::Lt, value.into())
+	}
+
+	/// Create a less-than-or-equal filter for this field
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let filter = User::field_age().lte(65);
+	/// // Results in: WHERE age <= 65
+	/// ```
+	pub fn lte<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(self.name.to_string(), FilterOperator::Lte, value.into())
 	}
 }
 
