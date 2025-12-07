@@ -287,6 +287,11 @@ pub use reinhardt_db::orm::{
 	// Query expressions (equivalent to Django's F and Q)
 	Exists,
 	F,
+	FieldRef,
+	// Query filter types
+	Filter,
+	FilterOperator,
+	FilterValue,
 	OuterRef,
 	Q,
 	QOperator,
@@ -521,8 +526,8 @@ pub use reinhardt_urls::routers::{
 // Re-export auth
 #[cfg(feature = "auth")]
 pub use reinhardt_auth::{
-	AllowAny, AnonymousUser, AuthBackend, BaseUser, DefaultUser, FullUser, IsAdminUser,
-	IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, SimpleUser, User,
+	AllowAny, AnonymousUser, AuthBackend, BaseUser, CurrentUser, DefaultUser, FullUser,
+	IsAdminUser, IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, SimpleUser, User,
 };
 
 #[cfg(feature = "auth")]
