@@ -499,7 +499,7 @@ sqlx = { version = "0.8", features = [
 ] }
 
 # Authentication & Security
-argon2 = { version = "0.6.0-rc.2", features = ["std"] }
+argon2 = { version = "=0.6.0-rc.2", features = ["std"] }
 password-hash = "=0.6.0-rc.2"  # Pinned for argon2 0.6.0-rc.2 compatibility
 rand = "0.10.0-rc.0"
 rand_core = "0.9"

@@ -30,6 +30,12 @@ threads-required = 1
 filter = 'binary(examples-database-integration) & test(test_)'
 test-threads = 1
 
+# Trybuild compile-fail tests need longer timeout
+# The compiler takes significant time to produce error messages
+[[profile.default.overrides]]
+filter = 'test(compile_fail) | test(trybuild) | binary_id(~macro_compile)'
+timeout = "300s"
+
 # JUnit output for CI/CD integration
 [profile.default.junit]
 path = "target/nextest/junit.xml"
