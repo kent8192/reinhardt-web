@@ -8,8 +8,8 @@
 //! - `clear()` - Remove all relationships
 //! - `set()` - Replace all relationships
 
-use crate::connection::DatabaseConnection;
 use crate::Model;
+use crate::connection::DatabaseConnection;
 use sea_query::{Alias, BinOper, Expr, ExprTrait, PostgresQueryBuilder, Query};
 use serde::{Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;

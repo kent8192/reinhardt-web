@@ -159,20 +159,20 @@ macro_rules! impl_path_tuple2_from_str {
 
 // Common tuple combinations
 impl_path_tuple2_from_str!(
-    i64, i64;
-    String, i64;
-    i64, String;
-    String, String
+	i64, i64;
+	String, i64;
+	i64, String;
+	String, String
 );
 
 // Uuid tuple combinations when uuid feature is enabled
 #[cfg(feature = "uuid")]
 impl_path_tuple2_from_str!(
-    uuid::Uuid, uuid::Uuid;
-    uuid::Uuid, i64;
-    i64, uuid::Uuid;
-    uuid::Uuid, String;
-    String, uuid::Uuid
+	uuid::Uuid, uuid::Uuid;
+	uuid::Uuid, i64;
+	i64, uuid::Uuid;
+	uuid::Uuid, String;
+	String, uuid::Uuid
 );
 
 // Special implementation for String (no parsing needed)

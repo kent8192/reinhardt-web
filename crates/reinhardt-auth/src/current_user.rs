@@ -2,8 +2,8 @@
 //!
 //! Provides access to the authenticated user in endpoint handlers.
 
-use crate::BaseUser;
 use crate::AuthenticationError;
+use crate::BaseUser;
 use async_trait::async_trait;
 use reinhardt_di::{DiResult, Injectable, InjectionContext};
 use uuid::Uuid;
@@ -77,7 +77,9 @@ impl<U: BaseUser + Clone> CurrentUser<U> {
 	///
 	/// Returns `AuthenticationError::NotAuthenticated` if the user is not authenticated.
 	pub fn user(&self) -> Result<&U, AuthenticationError> {
-		self.user.as_ref().ok_or(AuthenticationError::NotAuthenticated)
+		self.user
+			.as_ref()
+			.ok_or(AuthenticationError::NotAuthenticated)
 	}
 
 	/// Returns the user ID if authenticated.

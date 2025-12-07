@@ -86,7 +86,10 @@ async fn test_pool_backend_url_parameters(
 
 	// Add connection string parameters (use & if URL already has query params)
 	let separator = if url.contains('?') { '&' } else { '?' };
-	let url_with_params = format!("{}{}connect_timeout=10&statement_timeout=5000", url, separator);
+	let url_with_params = format!(
+		"{}{}connect_timeout=10&statement_timeout=5000",
+		url, separator
+	);
 
 	let config = PoolConfig::default();
 	let pool = ConnectionPool::new_postgres(&url_with_params, config)
