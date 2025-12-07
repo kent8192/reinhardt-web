@@ -38,3 +38,4 @@ reinhardt-http = { workspace = true }
 async-trait = { workspace = true }
 reinhardt-apps = { workspace = true }
 reinhardt = { package = "reinhardt-web", path = "../../../../", version = "0.1.0-alpha.1", features = ["database"] }
+chrono = { workspace = true }

@@ -751,7 +751,7 @@ pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
 /// - Exactly one field must be marked with `primary_key = true`
 /// - String fields must specify `max_length`
 ///
-#[proc_macro_derive(Model, attributes(model, model_config, field, rel))]
+#[proc_macro_derive(Model, attributes(model, model_config, field, rel, fk_id_field))]
 pub fn derive_model(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as syn::DeriveInput);
 

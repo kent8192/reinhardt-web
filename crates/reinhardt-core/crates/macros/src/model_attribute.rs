@@ -2,7 +2,20 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Attribute, ItemStruct, Result};
+use syn::{Attribute, Field, ItemStruct, Result, Type};
+
+/// Extract target type from ForeignKeyField<T> or OneToOneField<T>
+fn extract_fk_target_type(ty: &Type) -> Option<&Type> {
+	if let Type::Path(type_path) = ty
+		&& let Some(last_segment) = type_path.path.segments.last()
+		&& (last_segment.ident == "ForeignKeyField" || last_segment.ident == "OneToOneField")
+		&& let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+		&& let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first()
+	{
+		return Some(inner_ty);
+	}
+	None
+}
 
 pub(crate) fn model_attribute_impl(
 	args: TokenStream,
@@ -41,7 +54,48 @@ pub(crate) fn model_attribute_impl(
 		})
 	}
 
-	// Process struct fields to add #[serde(skip)] to ManyToMany fields
+	// Collect existing field names to avoid duplicates
+	let existing_field_names: std::collections::HashSet<String> =
+		if let syn::Fields::Named(ref fields) = input.fields {
+			fields
+				.named
+				.iter()
+				.filter_map(|f| f.ident.as_ref().map(|i| i.to_string()))
+				.collect()
+		} else {
+			std::collections::HashSet::new()
+		};
+
+	// Collect FK fields and generate corresponding _id fields
+	let mut fk_id_fields: Vec<Field> = Vec::new();
+	if let syn::Fields::Named(ref fields) = input.fields {
+		for field in fields.named.iter() {
+			if let Some(field_name) = &field.ident {
+				if let Some(target_ty) = extract_fk_target_type(&field.ty) {
+					let id_field_name_str = format!("{}_id", field_name);
+
+					// Only add if not already defined by user
+					if !existing_field_names.contains(&id_field_name_str) {
+						let id_field_name =
+							syn::Ident::new(&id_field_name_str, field_name.span());
+
+						// Generate _id field with the target model's PrimaryKey type
+						// The type will be resolved at compile time via Model trait
+						// #[fk_id_field] marks this as auto-generated for Model derive to skip
+						let new_field: Field = syn::parse_quote! {
+							#[fk_id_field]
+							#[serde(default)]
+							pub #id_field_name: <#target_ty as ::reinhardt::db::orm::Model>::PrimaryKey
+						};
+
+						fk_id_fields.push(new_field);
+					}
+				}
+			}
+		}
+	}
+
+	// Process struct fields to add #[serde(skip)] to ManyToMany and ForeignKey fields
 	if let syn::Fields::Named(ref mut fields) = input.fields {
 		for field in fields.named.iter_mut() {
 			// Check if this field has #[rel(many_to_many, ...)] attribute
@@ -56,7 +110,10 @@ pub(crate) fn model_attribute_impl(
 				false
 			});
 
-			if has_many_to_many {
+			// Check if this is a ForeignKey or OneToOne field
+			let is_fk_field = extract_fk_target_type(&field.ty).is_some();
+
+			if has_many_to_many || is_fk_field {
 				// Check if #[serde(skip)] already exists
 				let has_serde_skip = field.attrs.iter().any(|attr| {
 					if attr.path().is_ident("serde")
@@ -74,6 +131,11 @@ pub(crate) fn model_attribute_impl(
 					field.attrs.push(serde_skip_attr);
 				}
 			}
+		}
+
+		// Add generated _id fields to the struct
+		for fk_field in fk_id_fields {
+			fields.named.push(fk_field);
 		}
 	}
 
@@ -111,24 +173,56 @@ pub(crate) fn model_attribute_impl(
 		}
 	}
 
-	// Create derive attribute with all required traits
-	let derive_attr: Attribute = if additional_traits.is_empty() {
-		// Only Model needed (user already has others)
-		syn::parse_quote! { #[derive(#model_path)] }
-	} else {
-		// Build attribute with Model and additional traits
-		let traits_str = additional_traits.join(", ");
-		let tokens: TokenStream = traits_str
-			.parse()
-			.expect("Failed to parse derive traits - this is a bug");
-		syn::parse_quote! { #[derive(#model_path, #tokens)] }
-	};
+	// Find existing derive attribute to merge with, or create a new one
+	// This prevents duplicate trait errors when user already has #[derive(...)]
+	let existing_derive_idx = input.attrs.iter().position(|attr| {
+		attr.path().is_ident("derive") && matches!(&attr.meta, syn::Meta::List(_))
+	});
 
-	// Insert at the beginning to ensure Model is processed first
-	input.attrs.insert(0, derive_attr);
+	if let Some(idx) = existing_derive_idx {
+		// Merge Model and additional traits into the existing derive attribute
+		// Only add traits that are not already present in the existing derive
+		if let syn::Meta::List(ref meta_list) = input.attrs[idx].meta {
+			let existing_tokens = &meta_list.tokens;
+			// Build the new derive attribute with Model first, then additional traits, then existing
+			let new_derive_attr: Attribute = if additional_traits.is_empty() {
+				// No additional traits needed, just add Model before existing
+				syn::parse_quote! { #[derive(#model_path, #existing_tokens)] }
+			} else {
+				// Add Model first, then only the additional traits not already present
+				let traits_str = additional_traits.join(", ");
+				let tokens: TokenStream = traits_str
+					.parse()
+					.expect("Failed to parse derive traits - this is a bug");
+				syn::parse_quote! { #[derive(#model_path, #tokens, #existing_tokens)] }
+			};
+			input.attrs[idx] = new_derive_attr;
+		}
+	} else {
+		// No existing derive attribute, create a new one
+		let derive_attr: Attribute = if additional_traits.is_empty() {
+			syn::parse_quote! { #[derive(#model_path)] }
+		} else {
+			let traits_str = additional_traits.join(", ");
+			let tokens: TokenStream = traits_str
+				.parse()
+				.expect("Failed to parse derive traits - this is a bug");
+			syn::parse_quote! { #[derive(#model_path, #tokens)] }
+		};
+		// Insert at the beginning to ensure Model is processed first
+		input.attrs.insert(0, derive_attr);
+	}
 
 	// Add the helper attribute AFTER the derive
-	input.attrs.insert(1, config_attr);
+	// Position depends on whether we merged into existing derive or created new one
+	let config_insert_pos = if existing_derive_idx.is_some() {
+		// Merged into existing derive, insert after it
+		existing_derive_idx.unwrap() + 1
+	} else {
+		// Created new derive at position 0, insert at position 1
+		1
+	};
+	input.attrs.insert(config_insert_pos, config_attr);
 
 	// Note: We don't generate auto-imports here because:
 	// 1. Each #[model] usage would generate duplicate imports in the same module
