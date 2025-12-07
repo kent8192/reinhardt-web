@@ -362,6 +362,7 @@ mod tests {
 
 	#[test]
 	fn test_foreign_key_field_default() {
+		#[derive(Debug, PartialEq)]
 		struct User;
 		let field1: ForeignKeyField<User> = ForeignKeyField::default();
 		let field2: ForeignKeyField<User> = ForeignKeyField::new();
@@ -376,6 +377,7 @@ mod tests {
 
 	#[test]
 	fn test_one_to_one_field_default() {
+		#[derive(Debug, PartialEq)]
 		struct User;
 		let field1: OneToOneField<User> = OneToOneField::default();
 		let field2: OneToOneField<User> = OneToOneField::new();

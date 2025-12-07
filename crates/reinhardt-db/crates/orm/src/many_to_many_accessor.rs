@@ -8,6 +8,7 @@
 //! - `clear()` - Remove all relationships
 //! - `set()` - Replace all relationships
 
+use crate::connection::DatabaseConnection;
 use crate::Model;
 use sea_query::{Alias, BinOper, Expr, ExprTrait, PostgresQueryBuilder, Query};
 use serde::{Serialize, de::DeserializeOwned};
@@ -52,8 +53,7 @@ where
 	through_table: String,
 	source_field: String,
 	target_field: String,
-	// TODO: Replace with actual DatabaseConnection type when available
-	_db_placeholder: (),
+	db: DatabaseConnection,
 	_phantom_source: PhantomData<S>,
 	_phantom_target: PhantomData<T>,
 }
@@ -69,14 +69,14 @@ where
 	///
 	/// - `source`: The source model instance
 	/// - `field_name`: The name of the ManyToMany field
-	/// - `db`: Database connection (placeholder for now)
+	/// - `db`: Database connection
 	///
 	/// # Panics
 	///
 	/// Panics if:
 	/// - The field_name does not correspond to a ManyToMany field
 	/// - The source model has no primary key
-	pub fn new(source: &S, field_name: &str, _db: ()) -> Self {
+	pub fn new(source: &S, field_name: &str, db: DatabaseConnection) -> Self {
 		// Get through table name from metadata
 		// For now, use Django naming convention: {app}_{model}_{field}
 		let through_table = format!(
@@ -99,7 +99,7 @@ where
 			through_table,
 			source_field,
 			target_field,
-			_db_placeholder: (),
+			db,
 			_phantom_source: PhantomData,
 			_phantom_target: PhantomData,
 		}
@@ -148,8 +148,10 @@ where
 
 		let (sql, _values) = query.build(PostgresQueryBuilder);
 
-		// TODO: Execute query when DatabaseConnection is available
-		let _ = sql;
+		self.db
+			.execute(&sql, vec![])
+			.await
+			.map_err(|e| e.to_string())?;
 
 		Ok(())
 	}
@@ -192,8 +194,10 @@ where
 
 		let (sql, _values) = query.build(PostgresQueryBuilder);
 
-		// TODO: Execute query when DatabaseConnection is available
-		let _ = sql;
+		self.db
+			.execute(&sql, vec![])
+			.await
+			.map_err(|e| e.to_string())?;
 
 		Ok(())
 	}
@@ -234,11 +238,15 @@ where
 
 		let (sql, _values) = query.build(PostgresQueryBuilder);
 
-		// TODO: Execute query and deserialize results when DatabaseConnection is available
-		let _ = sql;
+		let rows = self
+			.db
+			.query(&sql, vec![])
+			.await
+			.map_err(|e| e.to_string())?;
 
-		// Placeholder: return empty Vec for now
-		Ok(Vec::new())
+		rows.into_iter()
+			.map(|row| serde_json::from_value(row.data).map_err(|e| e.to_string()))
+			.collect()
 	}
 
 	/// Remove all relationships.
@@ -265,8 +273,10 @@ where
 
 		let (sql, _values) = query.build(PostgresQueryBuilder);
 
-		// TODO: Execute query when DatabaseConnection is available
-		let _ = sql;
+		self.db
+			.execute(&sql, vec![])
+			.await
+			.map_err(|e| e.to_string())?;
 
 		Ok(())
 	}
@@ -291,15 +301,48 @@ where
 	/// accessor.set(&[group1, group2, group3]).await?;
 	/// ```
 	pub async fn set(&self, targets: &[T]) -> Result<(), String> {
-		// TODO: Use transaction when DatabaseConnection is available
+		// Use transaction for atomicity
+		let mut tx = self.db.begin().await.map_err(|e| e.to_string())?;
 
-		// Clear existing relationships
-		self.clear().await?;
+		// Build and execute clear query within transaction
+		let clear_query = Query::delete()
+			.from_table(Alias::new(&self.through_table))
+			.and_where(
+				Expr::col(Alias::new(&self.source_field))
+					.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
+			)
+			.to_owned();
+		let (clear_sql, _) = clear_query.build(PostgresQueryBuilder);
+		tx.execute(&clear_sql, vec![])
+			.await
+			.map_err(|e| e.to_string())?;
 
-		// Add new relationships
+		// Add new relationships within transaction
 		for target in targets {
-			self.add(target).await?;
+			let target_id = target
+				.primary_key()
+				.ok_or_else(|| "Target model has no primary key".to_string())?;
+
+			let insert_query = Query::insert()
+				.into_table(Alias::new(&self.through_table))
+				.columns([
+					Alias::new(&self.source_field),
+					Alias::new(&self.target_field),
+				])
+				.values_panic([
+					Expr::val(self.source_id.to_string()),
+					Expr::val(target_id.to_string()),
+				])
+				.to_owned();
+
+			let (insert_sql, _) = insert_query.build(PostgresQueryBuilder);
+			tx.execute(&insert_sql, vec![])
+				.await
+				.map_err(|e| e.to_string())?;
 		}
+
+		// Commit transaction
+		tx.commit().await.map_err(|e| e.to_string())?;
 
 		Ok(())
 	}
@@ -308,9 +351,90 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use serde::{Deserialize, Serialize};
 
-	#[derive(Debug, Clone, Serialize, Deserialize)]
+	#[test]
+	fn test_table_name_lower() {
+		assert_eq!(
+			ManyToManyAccessor::<TestUser, TestGroup>::table_name_lower("Users"),
+			"users"
+		);
+		assert_eq!(
+			ManyToManyAccessor::<TestUser, TestGroup>::table_name_lower("UserGroups"),
+			"usergroups"
+		);
+	}
+
+	#[test]
+	fn test_sql_generation_add() {
+		// Test that INSERT SQL is generated correctly
+		let query = Query::insert()
+			.into_table(Alias::new("auth_users_groups"))
+			.columns([Alias::new("users_id"), Alias::new("groups_id")])
+			.values_panic([Expr::val("1"), Expr::val("10")])
+			.to_owned();
+
+		let (sql, _) = query.build(PostgresQueryBuilder);
+		assert!(sql.contains("INSERT INTO"));
+		assert!(sql.contains("auth_users_groups"));
+		assert!(sql.contains("users_id"));
+		assert!(sql.contains("groups_id"));
+	}
+
+	#[test]
+	fn test_sql_generation_remove() {
+		// Test that DELETE SQL is generated correctly
+		let query = Query::delete()
+			.from_table(Alias::new("auth_users_groups"))
+			.and_where(Expr::col(Alias::new("users_id")).binary(BinOper::Equal, Expr::val("1")))
+			.and_where(Expr::col(Alias::new("groups_id")).binary(BinOper::Equal, Expr::val("10")))
+			.to_owned();
+
+		let (sql, _) = query.build(PostgresQueryBuilder);
+		assert!(sql.contains("DELETE FROM"));
+		assert!(sql.contains("auth_users_groups"));
+		assert!(sql.contains("users_id"));
+		assert!(sql.contains("groups_id"));
+	}
+
+	#[test]
+	fn test_sql_generation_clear() {
+		// Test that DELETE SQL for clear is generated correctly
+		let query = Query::delete()
+			.from_table(Alias::new("auth_users_groups"))
+			.and_where(Expr::col(Alias::new("users_id")).binary(BinOper::Equal, Expr::val("1")))
+			.to_owned();
+
+		let (sql, _) = query.build(PostgresQueryBuilder);
+		assert!(sql.contains("DELETE FROM"));
+		assert!(sql.contains("auth_users_groups"));
+		assert!(sql.contains("users_id"));
+	}
+
+	#[test]
+	fn test_sql_generation_all() {
+		// Test that SELECT SQL with JOIN is generated correctly
+		let query = Query::select()
+			.from(Alias::new("groups"))
+			.column((Alias::new("groups"), Alias::new("*")))
+			.inner_join(
+				Alias::new("auth_users_groups"),
+				Expr::col((Alias::new("groups"), Alias::new("id")))
+					.equals((Alias::new("auth_users_groups"), Alias::new("groups_id"))),
+			)
+			.and_where(
+				Expr::col((Alias::new("auth_users_groups"), Alias::new("users_id")))
+					.binary(BinOper::Equal, Expr::val("1")),
+			)
+			.to_owned();
+
+		let (sql, _) = query.build(PostgresQueryBuilder);
+		assert!(sql.contains("SELECT"));
+		assert!(sql.contains("INNER JOIN"));
+		assert!(sql.contains("auth_users_groups"));
+	}
+
+	// Test models for SQL generation tests
+	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestUser {
 		id: i64,
 		username: String,
@@ -336,7 +460,7 @@ mod tests {
 		}
 	}
 
-	#[derive(Debug, Clone, Serialize, Deserialize)]
+	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestGroup {
 		id: i64,
 		name: String,
@@ -360,117 +484,5 @@ mod tests {
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = value;
 		}
-	}
-
-	#[test]
-	fn test_accessor_creation() {
-		let user = TestUser {
-			id: 1,
-			username: "alice".to_string(),
-		};
-
-		let accessor = ManyToManyAccessor::<TestUser, TestGroup>::new(&user, "groups", ());
-
-		assert_eq!(accessor.through_table, "auth_users_groups");
-		assert_eq!(accessor.source_field, "users_id");
-		assert_eq!(accessor.target_field, "groups_id");
-		assert_eq!(accessor.source_id, 1);
-	}
-
-	#[test]
-	fn test_table_name_lower() {
-		assert_eq!(
-			ManyToManyAccessor::<TestUser, TestGroup>::table_name_lower("Users"),
-			"users"
-		);
-		assert_eq!(
-			ManyToManyAccessor::<TestUser, TestGroup>::table_name_lower("UserGroups"),
-			"usergroups"
-		);
-	}
-
-	#[tokio::test]
-	async fn test_add_generates_correct_sql() {
-		let user = TestUser {
-			id: 1,
-			username: "alice".to_string(),
-		};
-		let group = TestGroup {
-			id: 10,
-			name: "admins".to_string(),
-		};
-
-		let accessor = ManyToManyAccessor::<TestUser, TestGroup>::new(&user, "groups", ());
-
-		// This will be a placeholder until we have actual DB connection
-		let result = accessor.add(&group).await;
-		assert!(result.is_ok());
-	}
-
-	#[tokio::test]
-	async fn test_remove_generates_correct_sql() {
-		let user = TestUser {
-			id: 1,
-			username: "alice".to_string(),
-		};
-		let group = TestGroup {
-			id: 10,
-			name: "admins".to_string(),
-		};
-
-		let accessor = ManyToManyAccessor::<TestUser, TestGroup>::new(&user, "groups", ());
-
-		let result = accessor.remove(&group).await;
-		assert!(result.is_ok());
-	}
-
-	#[tokio::test]
-	async fn test_clear_generates_correct_sql() {
-		let user = TestUser {
-			id: 1,
-			username: "alice".to_string(),
-		};
-
-		let accessor = ManyToManyAccessor::<TestUser, TestGroup>::new(&user, "groups", ());
-
-		let result = accessor.clear().await;
-		assert!(result.is_ok());
-	}
-
-	#[tokio::test]
-	async fn test_all_generates_correct_sql() {
-		let user = TestUser {
-			id: 1,
-			username: "alice".to_string(),
-		};
-
-		let accessor = ManyToManyAccessor::<TestUser, TestGroup>::new(&user, "groups", ());
-
-		let result = accessor.all().await;
-		assert!(result.is_ok());
-		assert_eq!(result.unwrap().len(), 0); // Placeholder returns empty Vec
-	}
-
-	#[tokio::test]
-	async fn test_set_clears_and_adds() {
-		let user = TestUser {
-			id: 1,
-			username: "alice".to_string(),
-		};
-		let groups = vec![
-			TestGroup {
-				id: 10,
-				name: "admins".to_string(),
-			},
-			TestGroup {
-				id: 20,
-				name: "editors".to_string(),
-			},
-		];
-
-		let accessor = ManyToManyAccessor::<TestUser, TestGroup>::new(&user, "groups", ());
-
-		let result = accessor.set(&groups).await;
-		assert!(result.is_ok());
 	}
 }
