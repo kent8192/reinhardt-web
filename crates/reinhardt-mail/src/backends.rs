@@ -1,3 +1,6 @@
+use crate::headers::{
+	ListUnsubscribe, ListUnsubscribePost, Precedence, XEntityRefId, XMailer, XPriority,
+};
 use crate::message::EmailMessage;
 use crate::{EmailError, EmailResult};
 use lettre::message::{Mailbox, MultiPart, SinglePart, header};
@@ -317,9 +320,40 @@ impl SmtpBackend {
 			builder = builder.reply_to(mailbox);
 		}
 
-		// TODO: Custom headers would need to be added using proper Header types
-		// This is a limitation of the lettre API - headers must implement the Header trait
-		// For now, we skip custom headers in the SMTP backend
+		// Add custom headers (only supported headers can be added due to lettre's Header trait design)
+		for (name, value) in &email.headers {
+			let name_lower = name.to_lowercase();
+			match name_lower.as_str() {
+				"x-mailer" => {
+					builder = builder.header(XMailer::new(value));
+				}
+				"x-priority" => {
+					builder = builder.header(XPriority::new(value));
+				}
+				"list-unsubscribe" => {
+					builder = builder.header(ListUnsubscribe::new(value));
+				}
+				"list-unsubscribe-post" => {
+					builder = builder.header(ListUnsubscribePost::new(value));
+				}
+				"x-entity-ref-id" => {
+					builder = builder.header(XEntityRefId::new(value));
+				}
+				"precedence" => {
+					builder = builder.header(Precedence::new(value));
+				}
+				_ => {
+					// Unsupported headers are skipped due to lettre's Header trait design
+					// (the name() method is static, so arbitrary headers cannot be added dynamically)
+					#[cfg(debug_assertions)]
+					eprintln!(
+						"Warning: Skipping unsupported header '{}'. Supported headers: {:?}",
+						name,
+						crate::headers::SUPPORTED_HEADERS
+					);
+				}
+			}
+		}
 
 		// Build the body
 		let message = if let Some(html) = &email.html_body {

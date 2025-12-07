@@ -172,6 +172,7 @@
 //! # }
 
 pub mod backends;
+pub mod headers;
 pub mod message;
 pub mod pooling;
 pub mod templates;

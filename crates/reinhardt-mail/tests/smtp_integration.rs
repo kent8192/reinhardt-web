@@ -260,11 +260,14 @@ async fn test_smtp_utf8_subject(#[future] mailhog_container: MailHogContainer) {
 	assert!(messages[0].content.headers.contains_key("Subject"));
 }
 
-/// Test: Custom headers (Note: Currently not implemented in SMTP backend)
+/// Test: Custom headers
 ///
-/// This test verifies that emails can be built with custom headers,
-/// but note that the SMTP backend does not currently send custom headers
-/// due to lettre API limitations (headers must implement the Header trait).
+/// This test verifies that emails can be built with custom headers.
+/// Supported headers: X-Mailer, X-Priority, List-Unsubscribe, List-Unsubscribe-Post,
+/// X-Entity-Ref-ID, Precedence.
+///
+/// Note: Arbitrary custom headers (e.g., X-Custom-Header) are not supported
+/// due to lettre API limitations (the Header trait's name() method is static).
 #[rstest]
 #[tokio::test]
 async fn test_smtp_custom_headers(#[future] mailhog_container: MailHogContainer) {
@@ -304,12 +307,15 @@ async fn test_smtp_custom_headers(#[future] mailhog_container: MailHogContainer)
 	let messages = fetch_mailhog_messages(&mailhog).await;
 	assert_eq!(messages.len(), 1);
 
-	// TODO: Once custom headers are implemented in SMTP backend, uncomment:
-	// assert!(
-	// 	messages[0].content.headers.contains_key("X-Custom-Header")
-	// 		|| messages[0].content.headers.contains_key("x-custom-header"),
-	// 	"Should contain custom header (case-insensitive)"
-	// );
+	// Verify X-Priority header is present (supported header)
+	assert!(
+		messages[0].content.headers.contains_key("X-Priority")
+			|| messages[0].content.headers.contains_key("x-priority"),
+		"Should contain X-Priority header (case-insensitive)"
+	);
+
+	// Note: X-Custom-Header is intentionally not verified because arbitrary
+	// custom headers are not supported due to lettre's Header trait design.
 }
 
 /// Test: Reply-To header
