@@ -8,8 +8,8 @@ use std::sync::Arc;
 pub fn url_patterns() -> Arc<UnifiedRouter> {
 	let router = UnifiedRouter::new();
 
-	// Include hello app routes
-	let router = router.include("/", crate::apps::hello::urls::url_patterns());
+	// Mount hello app routes
+	let router = router.mount("/", crate::apps::hello::urls::url_patterns());
 
 	Arc::new(router)
 }
