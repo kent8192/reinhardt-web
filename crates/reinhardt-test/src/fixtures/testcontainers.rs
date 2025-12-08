@@ -228,16 +228,14 @@ impl Drop for FileLockGuard {
 #[fixture]
 pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String)
 {
-	use testcontainers::core::IntoContainerPort;
-
-	let postgres = GenericImage::new("postgres", "17-alpine")
-		.with_exposed_port(5432.tcp())
+	let image = GenericImage::new("postgres", "17-alpine")
 		.with_wait_for(WaitFor::message_on_stderr(
 			"database system is ready to accept connections",
 		))
 		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
-		.with_env_var("POSTGRES_INITDB_ARGS", "-c max_connections=200")
-		.start()
+		.with_env_var("POSTGRES_INITDB_ARGS", "-c max_connections=200");
+
+	let postgres = AsyncRunner::start(image)
 		.await
 		.expect("Failed to start PostgreSQL container");
 

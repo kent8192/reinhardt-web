@@ -81,10 +81,26 @@ async fn mysql_container() -> (MySqlContainer, Arc<MySqlPool>, u16, String) {
 		.await
 		.expect("Failed to start MySQL container");
 
-	let port = mysql
-		.get_host_port_ipv4(3306)
-		.await
-		.expect("Failed to get MySQL port");
+	let port = {
+		let mut retries = 0;
+		let max_retries = 5;
+		loop {
+			match mysql.get_host_port_ipv4(3306).await {
+				Ok(p) => break p,
+				Err(e) => {
+					if retries >= max_retries {
+						panic!(
+							"Failed to get MySQL port after {} retries: {:?}",
+							max_retries, e
+						);
+					}
+					retries += 1;
+					let backoff = std::time::Duration::from_millis(100 * (1 << retries));
+					tokio::time::sleep(backoff).await;
+				}
+			}
+		}
+	};
 
 	let url = format!("mysql://root:test@localhost:{}/mysql", port);
 

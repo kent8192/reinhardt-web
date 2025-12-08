@@ -20,10 +20,26 @@ mod mongodb_tests {
 			.await
 			.expect("Failed to start MongoDB container");
 
-		let port = mongo
-			.get_host_port_ipv4(27017)
-			.await
-			.expect("Failed to get MongoDB port");
+		let port = {
+			let mut retries = 0;
+			let max_retries = 5;
+			loop {
+				match mongo.get_host_port_ipv4(27017).await {
+					Ok(p) => break p,
+					Err(e) => {
+						if retries >= max_retries {
+							panic!(
+								"Failed to get MongoDB port after {} retries: {:?}",
+								max_retries, e
+							);
+						}
+						retries += 1;
+						let backoff = std::time::Duration::from_millis(100 * (1 << retries));
+						tokio::time::sleep(backoff).await;
+					}
+				}
+			}
+		};
 
 		let connection_string = format!("mongodb://127.0.0.1:{}", port);
 
