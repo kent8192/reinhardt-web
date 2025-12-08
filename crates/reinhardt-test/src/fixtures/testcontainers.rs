@@ -1795,6 +1795,7 @@ pub async fn sqlite_with_apps_migrations(
 #[fixture]
 pub async fn rabbitmq_container() -> (ContainerAsync<GenericImage>, u16, String) {
 	const MAX_RETRIES: u32 = 3;
+	const RETRY_DELAY_MS: u64 = 2000;
 
 	let mut last_error = None;
 
@@ -1809,6 +1810,10 @@ pub async fn rabbitmq_container() -> (ContainerAsync<GenericImage>, u16, String)
 					e
 				);
 				last_error = Some(e);
+
+				if attempt < MAX_RETRIES - 1 {
+					tokio::time::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS)).await;
+				}
 			}
 		}
 	}
@@ -1827,10 +1832,32 @@ async fn try_start_rabbitmq_container()
 		.with_exposed_port(5672.tcp()) // AMQP port
 		.with_exposed_port(15672.tcp()) // Management UI port
 		.with_wait_for(WaitFor::message_on_stdout("Server startup complete"))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
 		.start()
 		.await?;
 
-	let port = rabbitmq.get_host_port_ipv4(5672).await?;
+	// Retry getting port with exponential backoff
+	let mut port_retry = 0;
+	let max_port_retries = 5;
+	let port = loop {
+		match rabbitmq.get_host_port_ipv4(5672).await {
+			Ok(p) => break p,
+			Err(_) if port_retry < max_port_retries => {
+				port_retry += 1;
+				let delay = std::time::Duration::from_millis(100 * 2_u64.pow(port_retry));
+				tokio::time::sleep(delay).await;
+			}
+			Err(e) => {
+				return Err(Box::new(std::io::Error::new(
+					std::io::ErrorKind::Other,
+					format!(
+						"Failed to get RabbitMQ port after {} retries: {}",
+						max_port_retries, e
+					),
+				)))
+			}
+		}
+	};
 
 	// RabbitMQ default vhost is "/" which needs to be URL-encoded as "%2f"
 	let url = format!("amqp://localhost:{}/%2f", port);
