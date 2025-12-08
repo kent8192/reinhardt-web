@@ -116,10 +116,26 @@ impl<U: BaseUser + Clone + Send + Sync + 'static> Injectable for CurrentUser<U> 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::PasswordHasher;
 	use chrono::{DateTime, Utc};
+	use serde::{Deserialize, Serialize};
+
+	/// Mock password hasher for testing
+	#[derive(Default)]
+	struct MockHasher;
+
+	impl PasswordHasher for MockHasher {
+		fn hash(&self, password: &str) -> Result<String, reinhardt_exception::Error> {
+			Ok(format!("hashed:{}", password))
+		}
+
+		fn verify(&self, password: &str, hash: &str) -> Result<bool, reinhardt_exception::Error> {
+			Ok(hash == format!("hashed:{}", password))
+		}
+	}
 
 	// Test user implementation for unit tests
-	#[derive(Clone)]
+	#[derive(Clone, Serialize, Deserialize)]
 	struct TestUser {
 		id: Uuid,
 		username: String,
@@ -128,6 +144,7 @@ mod tests {
 
 	impl BaseUser for TestUser {
 		type PrimaryKey = Uuid;
+		type Hasher = MockHasher;
 
 		fn get_username_field() -> &'static str {
 			"username"
