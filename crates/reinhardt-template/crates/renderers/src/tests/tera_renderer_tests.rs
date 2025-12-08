@@ -18,7 +18,6 @@
 use crate::strategy::{TemplateSource, TemplateStrategy, TemplateStrategySelector};
 use crate::template_html_renderer::TemplateHTMLRenderer;
 use crate::tera_renderer::{TeraRenderer, UserData, UserListTemplate, UserTemplate};
-use std::collections::HashMap;
 
 #[test]
 fn test_tera_user_template_basic() {
@@ -114,8 +113,9 @@ fn test_strategy_recommendation() {
 	assert_eq!(strategy, TemplateStrategy::Runtime);
 }
 
-#[test]
-fn test_runtime_vs_compile_time_correctness() {
+#[tokio::test]
+async fn test_runtime_vs_compile_time_correctness() {
+	// Test Tera compile-time embedded template
 	let tera_template =
 		UserTemplate::new("Test User".to_string(), "test@example.com".to_string(), 25);
 	let tera_html = tera_template.render_user().expect("Failed to render");
@@ -136,15 +136,19 @@ fn test_runtime_vs_compile_time_correctness() {
 		tera_html
 	);
 
-	let mut runtime_context = HashMap::new();
-	runtime_context.insert("name".to_string(), "Test User".to_string());
-	runtime_context.insert("email".to_string(), "test@example.com".to_string());
-	runtime_context.insert("age".to_string(), "25".to_string());
+	// Test TemplateHTMLRenderer (now using Tera internally)
+	let renderer = TemplateHTMLRenderer::new();
+	let context = serde_json::json!({
+		"template_string": "<h1>{{ name }}</h1><p>Email: {{ email }}</p><p>Age: {{ age }}</p>",
+		"name": "Test User",
+		"email": "test@example.com",
+		"age": 25
+	});
 
-	let template_str = "<h1>{{ name }}</h1><p>Email: {{ email }}</p><p>Age: {{ age }}</p>";
-	let runtime_html =
-		TemplateHTMLRenderer::substitute_variables_single_pass(template_str, &runtime_context);
+	let result = renderer.render_template(&context).await;
+	assert!(result.is_ok(), "Failed to render template: {:?}", result.err());
 
+	let runtime_html = result.unwrap();
 	assert!(
 		runtime_html.contains("Test User"),
 		"Runtime HTML must contain 'Test User'. Actual HTML: {}",
