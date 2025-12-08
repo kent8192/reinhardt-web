@@ -504,13 +504,13 @@ async fn test_expired_session_access_denied(
 ) {
 	let (_container, pool, _port, _url) = postgres_container.await;
 
-	// Create sessions table
+	// Create sessions table with TIMESTAMPTZ for proper timezone handling
 	sqlx::query(
 		r#"
 		CREATE TABLE IF NOT EXISTS sessions (
 			session_key VARCHAR(255) PRIMARY KEY,
 			session_data TEXT NOT NULL,
-			expire_date TIMESTAMP NOT NULL
+			expire_date TIMESTAMPTZ NOT NULL
 		)
 		"#,
 	)
@@ -518,13 +518,14 @@ async fn test_expired_session_access_denied(
 	.await
 	.expect("Failed to create sessions table");
 
-	// Create session with short TTL (100ms)
+	// Create session with short TTL (1 second for reliable expiration testing)
+	// Note: Using 1 second instead of 100ms for more reliable cross-environment testing
 	let session_key = Uuid::new_v4().to_string();
 	let mut session_data = HashMap::new();
 	session_data.insert("user_id".to_string(), serde_json::json!(777));
 
 	let serialized = serde_json::to_string(&session_data).expect("Failed to serialize");
-	let expire_date = chrono::Utc::now() + chrono::Duration::milliseconds(100);
+	let expire_date = chrono::Utc::now() + chrono::Duration::seconds(1);
 
 	sqlx::query(
 		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)",
@@ -549,7 +550,7 @@ async fn test_expired_session_access_denied(
 	assert_eq!(valid_count, 1, "Session should be valid before expiration");
 
 	// Wait for session to expire (wait longer than TTL to ensure expiration)
-	sleep(Duration::from_millis(200)).await;
+	sleep(Duration::from_secs(2)).await;
 
 	// Verify session is expired
 	let result = sqlx::query(
