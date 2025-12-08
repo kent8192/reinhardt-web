@@ -1,4 +1,6 @@
 #[cfg(feature = "db-mysql")]
+use chrono::{DateTime, Utc};
+#[cfg(feature = "db-mysql")]
 use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
@@ -18,10 +20,10 @@ struct Post {
 	title: String,
 
 	#[field(auto_now_add = true)]
-	created_at: i64,
+	created_at: DateTime<Utc>,
 
 	#[field(on_update_current_timestamp = true)]
-	updated_at: i64,
+	updated_at: DateTime<Utc>,
 }
 
 fn main() {}
