@@ -1848,13 +1848,10 @@ async fn try_start_rabbitmq_container()
 				tokio::time::sleep(delay).await;
 			}
 			Err(e) => {
-				return Err(Box::new(std::io::Error::new(
-					std::io::ErrorKind::Other,
-					format!(
-						"Failed to get RabbitMQ port after {} retries: {}",
-						max_port_retries, e
-					),
-				)))
+				return Err(Box::new(std::io::Error::other(format!(
+					"Failed to get RabbitMQ port after {} retries: {}",
+					max_port_retries, e
+				))));
 			}
 		}
 	};
