@@ -1,46 +1,18 @@
-error[E0599]: the function or associated item `inject` exists for struct `Arc<ServiceWithoutClone>`, but its trait bounds were not satisfied
-  --> tests/di/macro_compile_tests/fail/missing_clone_trait.rs:23:71
+error[E0277]: the trait bound `ServiceWithoutClone: Clone` is not satisfied
+  --> tests/di/macro_compile_tests/fail/missing_clone_trait.rs:18:25
    |
- 5 |   struct ServiceWithoutClone {
-   |   -------------------------- doesn't satisfy `ServiceWithoutClone: Clone`
-...
-23 |       let _service: Arc<ServiceWithoutClone> = Arc::<ServiceWithoutClone>::inject(&ctx).await.unwrap();
-   |                                                                            ^^^^^^ function or associated item cannot be called on `Arc<ServiceWithoutClone>` due to unsatisfied trait bounds
+18 |     let _arc = wrap_in_arc(service);
+   |                ----------- ^^^^^^^ the trait `Clone` is not implemented for `ServiceWithoutClone`
+   |                |
+   |                required by a bound introduced by this call
    |
-  ::: $RUST/alloc/src/sync.rs
+note: required by a bound in `wrap_in_arc`
+  --> tests/di/macro_compile_tests/fail/missing_clone_trait.rs:9:19
    |
-   | / pub struct Arc<
-   | |     T: ?Sized,
-   | |     #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global,
-   | | > {
-   | |_- doesn't satisfy `Arc<ServiceWithoutClone>: Injectable`
-   |
-note: if you're trying to build a new `Arc<ServiceWithoutClone>` consider using one of the following associated functions:
-      Arc::<T>::new
-      Arc::<T>::new_cyclic
-      Arc::<T>::try_new
-      Arc::<T, A>::new_in
-      and $N others
-  --> $RUST/alloc/src/sync.rs
-   |
-   |       pub fn new(data: T) -> Arc<T> {
-   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-...
-   | /     pub fn new_cyclic<F>(data_fn: F) -> Arc<T>
-   | |     where
-   | |         F: FnOnce(&Weak<T>) -> T,
-   | |_________________________________^
-...
-   |       pub fn try_new(data: T) -> Result<Arc<T>, AllocError> {
-   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-...
-   |       pub fn new_in(data: T, alloc: A) -> Arc<T, A> {
-   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   = note: the following trait bounds were not satisfied:
-           `ServiceWithoutClone: Clone`
-           which is required by `Arc<ServiceWithoutClone>: Injectable`
+ 9 | fn wrap_in_arc<T: Clone>(value: T) -> Arc<T> {
+   |                   ^^^^^ required by this bound in `wrap_in_arc`
 help: consider annotating `ServiceWithoutClone` with `#[derive(Clone)]`
    |
- 5 + #[derive(Clone)]
- 6 | struct ServiceWithoutClone {
+ 4 + #[derive(Clone)]
+ 5 | struct ServiceWithoutClone {
    |
