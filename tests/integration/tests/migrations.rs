@@ -18,3 +18,6 @@ mod migration_naming_integration;
 
 #[path = "migrations/duplicate_detection_integration.rs"]
 mod duplicate_detection_integration;
+
+#[path = "migrations/state_loader_integration.rs"]
+mod state_loader_integration;

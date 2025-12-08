@@ -474,6 +474,8 @@ impl DatabaseMigrationRecorder {
 				}
 			}
 			_ => {
+				use reinhardt_backends::types::DatabaseType;
+
 				let sql = "SELECT app, name, applied FROM reinhardt_migrations ORDER BY applied";
 
 				let rows = self
@@ -482,6 +484,7 @@ impl DatabaseMigrationRecorder {
 					.await
 					.map_err(crate::MigrationError::DatabaseError)?;
 
+				let db_type = self.connection.database_type();
 				let mut records = Vec::new();
 				for row in rows {
 					let app: String = row
@@ -492,9 +495,29 @@ impl DatabaseMigrationRecorder {
 						.map_err(crate::MigrationError::DatabaseError)?;
 
 					// Parse timestamp from database
-					let applied: DateTime<Utc> = row
-						.get("applied")
-						.map_err(crate::MigrationError::DatabaseError)?;
+					// SQLite stores CURRENT_TIMESTAMP as string "YYYY-MM-DD HH:MM:SS"
+					// PostgreSQL and MySQL return proper DateTime types
+					let applied: DateTime<Utc> = match db_type {
+						DatabaseType::Sqlite => {
+							let applied_str: String = row
+								.get("applied")
+								.map_err(crate::MigrationError::DatabaseError)?;
+							// Parse SQLite's CURRENT_TIMESTAMP format (no timezone info, assume UTC)
+							chrono::NaiveDateTime::parse_from_str(&applied_str, "%Y-%m-%d %H:%M:%S")
+								.map(|naive| naive.and_utc())
+								.map_err(|e| {
+									crate::MigrationError::DatabaseError(
+										reinhardt_backends::DatabaseError::TypeError(format!(
+											"Failed to parse SQLite timestamp '{}': {}",
+											applied_str, e
+										)),
+									)
+								})?
+						}
+						_ => row
+							.get("applied")
+							.map_err(crate::MigrationError::DatabaseError)?,
+					};
 
 					records.push(MigrationRecord { app, name, applied });
 				}

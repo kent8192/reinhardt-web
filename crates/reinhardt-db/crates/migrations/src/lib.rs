@@ -54,6 +54,7 @@ pub mod schema_diff;
 pub mod service;
 pub mod source;
 pub mod squash;
+pub mod state_loader;
 pub mod visualization;
 pub mod zero_downtime;
 
@@ -121,6 +122,7 @@ pub use source::{
 	registry::RegistrySource,
 };
 pub use squash::{MigrationSquasher, SquashOptions};
+pub use state_loader::MigrationStateLoader;
 pub use visualization::{HistoryEntry, MigrationStats, MigrationVisualizer, OutputFormat};
 pub use zero_downtime::{MigrationPhase, Strategy, ZeroDowntimeMigration};
 

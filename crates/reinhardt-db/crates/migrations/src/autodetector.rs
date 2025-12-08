@@ -697,7 +697,7 @@ impl ProjectState {
 	/// - RenameTable: Renames a model's table
 	/// - RenameColumn: Renames a field
 	/// - Other operations are logged but not applied to state
-	fn apply_migration_operations(&mut self, operations: &[crate::operations::Operation]) {
+	pub fn apply_migration_operations(&mut self, operations: &[crate::operations::Operation]) {
 		use crate::operations::Operation;
 
 		for op in operations {
