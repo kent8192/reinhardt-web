@@ -350,9 +350,9 @@ impl BaseCommand for MakeMigrationsCommand {
 		{
 			use crate::CommandError;
 			use reinhardt_db::migrations::{
-				AutoMigrationGenerator, DatabaseIntrospector, FilesystemRepository,
+				AutoMigrationGenerator, DatabaseMigrationRecorder, FilesystemRepository,
 				FilesystemSource, MigrationNamer, MigrationNumbering, MigrationRepository,
-				MigrationService, autodetector::ProjectState,
+				MigrationService, MigrationStateLoader, autodetector::ProjectState,
 			};
 			use std::sync::Arc;
 			use tokio::sync::Mutex;
@@ -497,49 +497,19 @@ impl BaseCommand for MakeMigrationsCommand {
 				}
 			}
 
-			// 3. Get current database schema through introspection
-			let _introspector: Arc<dyn DatabaseIntrospector> = match db_type {
-				#[cfg(feature = "postgres")]
-				DatabaseType::Postgres => Arc::new(
-					reinhardt_db::migrations::introspection::PostgresIntrospector::new(
-						connection
-							.into_postgres()
-							.expect("Failed to get Postgres connection"),
-					),
-				),
-				#[cfg(feature = "sqlite")]
-				DatabaseType::Sqlite => Arc::new(
-					reinhardt_db::migrations::introspection::SQLiteIntrospector::new(
-						connection
-							.into_sqlite()
-							.expect("Failed to get SQLite connection"),
-					),
-				),
-				#[cfg(feature = "mysql")]
-				DatabaseType::Mysql => Arc::new(
-					reinhardt_db::migrations::introspection::MySQLIntrospector::new(
-						connection
-							.into_mysql()
-							.expect("Failed to get MySQL connection"),
-					),
-				),
-				#[allow(unreachable_code)]
-				_ => {
-					return Err(CommandError::ExecutionError(format!(
-						"Database type {:?} is not supported for introspection",
-						db_type
-					)));
-				}
-			};
+			// 3. Get current schema state by replaying migration history (Django-style)
+			// Instead of introspecting the database directly, we build ProjectState
+			// by replaying all applied migrations. This ensures consistency between
+			// makemigrations and migrate commands.
+			let recorder = DatabaseMigrationRecorder::new(connection);
+			let migration_source = FilesystemSource::new(migrations_dir.clone());
+			let state_loader = MigrationStateLoader::new(recorder, migration_source);
 
-			#[allow(unreachable_code)]
-			let current_introspection_schema = _introspector
-				.read_schema()
-				.await
-				.map_err(|e| CommandError::ExecutionError(format!("Introspection error: {}", e)))?;
+			let current_project_state = state_loader.build_current_state().await.map_err(|e| {
+				CommandError::ExecutionError(format!("Failed to build current state: {}", e))
+			})?;
 
-			let current_schema: reinhardt_db::migrations::DatabaseSchema =
-				current_introspection_schema.into();
+			let current_schema = current_project_state.to_database_schema();
 
 			// Determine which apps to process
 			let app_names: Vec<String> = if let Some(label) = app_label {
