@@ -146,7 +146,11 @@ async fn test_runtime_vs_compile_time_correctness() {
 	});
 
 	let result = renderer.render_template(&context).await;
-	assert!(result.is_ok(), "Failed to render template: {:?}", result.err());
+	assert!(
+		result.is_ok(),
+		"Failed to render template: {:?}",
+		result.err()
+	);
 
 	let runtime_html = result.unwrap();
 	assert!(

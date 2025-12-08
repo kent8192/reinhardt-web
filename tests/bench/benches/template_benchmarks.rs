@@ -5,7 +5,7 @@
 //! - TemplateLoader registration and rendering
 //! - TemplateHTMLRenderer (Tera-based)
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use reinhardt_renderers::TemplateHTMLRenderer;
 use reinhardt_templates::FileSystemTemplateLoader;
 use std::fs;
@@ -146,9 +146,7 @@ fn benchmark_template_html_renderer(c: &mut Criterion) {
 			"title": "Hello World"
 		});
 
-		b.iter(|| {
-			rt.block_on(async { black_box(renderer.render_template(&context).await) })
-		});
+		b.iter(|| rt.block_on(async { black_box(renderer.render_template(&context).await) }));
 	});
 
 	// Conditional rendering
@@ -159,9 +157,7 @@ fn benchmark_template_html_renderer(c: &mut Criterion) {
 			"age": 25
 		});
 
-		b.iter(|| {
-			rt.block_on(async { black_box(renderer.render_template(&context).await) })
-		});
+		b.iter(|| rt.block_on(async { black_box(renderer.render_template(&context).await) }));
 	});
 
 	// List rendering
@@ -173,9 +169,7 @@ fn benchmark_template_html_renderer(c: &mut Criterion) {
 			"items": items
 		});
 
-		b.iter(|| {
-			rt.block_on(async { black_box(renderer.render_template(&context).await) })
-		});
+		b.iter(|| rt.block_on(async { black_box(renderer.render_template(&context).await) }));
 	});
 }
 
@@ -202,9 +196,7 @@ fn benchmark_tera_vs_renderer(c: &mut Criterion) {
 			"content": "Test content here"
 		});
 
-		b.iter(|| {
-			rt.block_on(async { black_box(renderer.render_template(&context).await) })
-		});
+		b.iter(|| rt.block_on(async { black_box(renderer.render_template(&context).await) }));
 	});
 }
 

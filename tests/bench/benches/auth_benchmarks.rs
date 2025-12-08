@@ -6,7 +6,7 @@
 //! - Claims creation and validation
 
 use chrono::Duration;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use reinhardt_auth::jwt::{Claims, JwtAuth};
 use std::hint::black_box;
 
@@ -44,9 +44,7 @@ fn benchmark_jwt_encoding(c: &mut Criterion) {
 
 	// Token generation (includes Claims creation)
 	c.bench_function("jwt_generate_token", |b| {
-		b.iter(|| {
-			black_box(jwt.generate_token("user_123".to_string(), "testuser".to_string()))
-		});
+		b.iter(|| black_box(jwt.generate_token("user_123".to_string(), "testuser".to_string())));
 	});
 }
 

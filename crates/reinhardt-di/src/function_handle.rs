@@ -160,7 +160,8 @@ mod tests {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = InjectionContext::builder(singleton).build();
 
-		ctx.dependency(create_string).override_with("mock".to_string());
+		ctx.dependency(create_string)
+			.override_with("mock".to_string());
 
 		assert!(ctx.dependency(create_string).has_override());
 		assert_eq!(
@@ -174,7 +175,8 @@ mod tests {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = InjectionContext::builder(singleton).build();
 
-		ctx.dependency(create_string).override_with("mock".to_string());
+		ctx.dependency(create_string)
+			.override_with("mock".to_string());
 		assert!(ctx.dependency(create_string).has_override());
 
 		ctx.dependency(create_string).clear_override();

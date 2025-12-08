@@ -5,7 +5,7 @@
 //! - Profile parsing and detection
 //! - SettingsBuilder operations
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use reinhardt_settings::builder::SettingsBuilder;
 use reinhardt_settings::env_loader::EnvLoader;
 use reinhardt_settings::profile::Profile;
@@ -122,13 +122,7 @@ fn benchmark_settings_builder(c: &mut Criterion) {
 
 	// SettingsBuilder build with profile
 	c.bench_function("settings_builder_build_with_profile", |b| {
-		b.iter(|| {
-			black_box(
-				SettingsBuilder::new()
-					.profile(Profile::Development)
-					.build(),
-			)
-		});
+		b.iter(|| black_box(SettingsBuilder::new().profile(Profile::Development).build()));
 	});
 }
 
