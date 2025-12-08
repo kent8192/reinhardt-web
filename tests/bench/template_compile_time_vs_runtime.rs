@@ -1,29 +1,40 @@
-//! Benchmark tests for Compile-time (Tera AOT) vs Runtime Template Rendering
+//! Benchmark tests for Template Rendering Performance
 //!
-//! This test suite verifies the performance characteristics of:
-//! - Tera template engine (runtime rendering)
-//! - TemplateHTMLRenderer (single-pass substitution)
+//! This test suite compares performance between:
+//! - Direct Tera::one_off() calls
+//! - TemplateHTMLRenderer (which uses Tera internally)
+//!
+//! Both approaches now use Tera as the underlying engine, so this benchmark
+//! measures the overhead of the TemplateHTMLRenderer abstraction layer.
 //!
 //! # Performance Characteristics
 //!
-//! - **Tera Runtime**: O(n + m) - Template parsing + rendering
-//! - **TemplateHTMLRenderer**: O(n + m) - Single-pass substitution
+//! - **Direct Tera**: Minimal overhead, direct template engine access
+//! - **TemplateHTMLRenderer**: Small overhead from JSON context conversion and abstraction
 //!
-//! Expected performance: Comparable for simple templates, Tera more powerful for complex logic
+//! # Template Features Supported
+//!
+//! Both approaches support full Tera template syntax:
+//! - Variable substitution: `{{ variable }}`
+//! - Conditionals: `{% if condition %}...{% endif %}`
+//! - Loops: `{% for item in items %}...{% endfor %}`
+//! - Filters: `{{ variable | filter }}`
 
-use reinhardt_renderers::{Post, TemplateHTMLRenderer};
-use std::collections::HashMap;
+use reinhardt_renderers::{Post, Renderer, TemplateHTMLRenderer};
+use serde_json::json;
 use std::time::Instant;
 use tera::{Context, Tera};
+use tokio::runtime::Runtime;
 
 /// Benchmark: Simple template with single variable
 ///
-/// Expected: Comparable performance for simple substitution
+/// Expected: Direct Tera slightly faster due to no abstraction overhead
 #[test]
-fn bench_simple_template_tera_vs_runtime() {
+fn bench_simple_template_direct_vs_renderer() {
 	let iterations = 10_000;
+	let rt = Runtime::new().unwrap();
 
-	// Tera - Pre-create contexts
+	// Direct Tera - Pre-create contexts
 	let contexts: Vec<_> = (0..iterations)
 		.map(|_| {
 			let mut context = Context::new();
@@ -40,41 +51,43 @@ fn bench_simple_template_tera_vs_runtime() {
 
 	let tera_duration = start.elapsed();
 
-	// Runtime (TemplateHTMLRenderer) - Pre-create contexts
+	// TemplateHTMLRenderer - Pre-create JSON contexts
+	let renderer = TemplateHTMLRenderer::new();
 	let runtime_contexts: Vec<_> = (0..iterations)
 		.map(|_| {
-			let mut context = HashMap::new();
-			context.insert("title".to_string(), "Hello World".to_string());
-			context
+			json!({
+				"template_string": "<h1>{{ title }}</h1>",
+				"title": "Hello World"
+			})
 		})
 		.collect();
 
 	let start = Instant::now();
 
 	for context in &runtime_contexts {
-		let _ =
-			TemplateHTMLRenderer::substitute_variables_single_pass("<h1>{{ title }}</h1>", context);
+		let _ = rt.block_on(renderer.render(context, None)).unwrap();
 	}
 
-	let runtime_duration = start.elapsed();
+	let renderer_duration = start.elapsed();
 
 	println!("\nSimple Template Benchmark:");
-	println!("  Tera: {:?}", tera_duration);
-	println!("  Runtime (TemplateHTMLRenderer): {:?}", runtime_duration);
+	println!("  Direct Tera: {:?}", tera_duration);
+	println!("  TemplateHTMLRenderer: {:?}", renderer_duration);
 	println!(
-		"  Ratio (Tera/Runtime): {:.2}x",
-		tera_duration.as_micros() as f64 / runtime_duration.as_micros() as f64
+		"  Ratio (Renderer/Direct): {:.2}x",
+		renderer_duration.as_micros() as f64 / tera_duration.as_micros() as f64
 	);
 }
 
 /// Benchmark: Complex template with 10 variables
 ///
-/// Expected: Tera slightly slower due to parsing overhead
+/// Expected: Similar overhead ratio as simple template
 #[test]
-fn bench_complex_template_tera_vs_runtime() {
+fn bench_complex_template_direct_vs_renderer() {
 	let iterations = 10_000;
+	let rt = Runtime::new().unwrap();
 
-	// Tera - Pre-create contexts
+	// Direct Tera - Pre-create contexts
 	let contexts: Vec<_> = (0..iterations)
 		.map(|_| {
 			let mut context = Context::new();
@@ -98,43 +111,42 @@ fn bench_complex_template_tera_vs_runtime() {
 
 	let tera_duration = start.elapsed();
 
-	// Runtime (TemplateHTMLRenderer) - Pre-create contexts
+	// TemplateHTMLRenderer - Pre-create JSON contexts
+	let renderer = TemplateHTMLRenderer::new();
 	let runtime_contexts: Vec<_> = (0..iterations)
 		.map(|_| {
-			let mut context = HashMap::new();
-			for i in 1..=10 {
-				context.insert(format!("v{}", i), format!("val{}", i));
-			}
-			context
+			json!({
+				"template_string": "<div>{{ v1 }}{{ v2 }}{{ v3 }}{{ v4 }}{{ v5 }}{{ v6 }}{{ v7 }}{{ v8 }}{{ v9 }}{{ v10 }}</div>",
+				"v1": "val1", "v2": "val2", "v3": "val3", "v4": "val4", "v5": "val5",
+				"v6": "val6", "v7": "val7", "v8": "val8", "v9": "val9", "v10": "val10"
+			})
 		})
 		.collect();
 
 	let start = Instant::now();
 
 	for context in &runtime_contexts {
-		let _ = TemplateHTMLRenderer::substitute_variables_single_pass(
-			"<div>{{ v1 }}{{ v2 }}{{ v3 }}{{ v4 }}{{ v5 }}{{ v6 }}{{ v7 }}{{ v8 }}{{ v9 }}{{ v10 }}</div>",
-			context,
-		);
+		let _ = rt.block_on(renderer.render(context, None)).unwrap();
 	}
 
-	let runtime_duration = start.elapsed();
+	let renderer_duration = start.elapsed();
 
 	println!("\nComplex Template (10 variables) Benchmark:");
-	println!("  Tera: {:?}", tera_duration);
-	println!("  Runtime (TemplateHTMLRenderer): {:?}", runtime_duration);
+	println!("  Direct Tera: {:?}", tera_duration);
+	println!("  TemplateHTMLRenderer: {:?}", renderer_duration);
 	println!(
-		"  Ratio (Tera/Runtime): {:.2}x",
-		tera_duration.as_micros() as f64 / runtime_duration.as_micros() as f64
+		"  Ratio (Renderer/Direct): {:.2}x",
+		renderer_duration.as_micros() as f64 / tera_duration.as_micros() as f64
 	);
 }
 
-/// Benchmark: List rendering with 100 items
+/// Benchmark: List rendering with for loop
 ///
-/// Expected: Comparable performance for list iteration
+/// Both approaches now support {% for %} loops
 #[test]
-fn bench_list_template_tera_vs_runtime() {
+fn bench_list_template_direct_vs_renderer() {
 	let iterations = 1_000;
+	let rt = Runtime::new().unwrap();
 
 	// Create 100 posts
 	let posts: Vec<_> = (0..100)
@@ -148,7 +160,9 @@ fn bench_list_template_tera_vs_runtime() {
 		})
 		.collect();
 
-	// Tera - Pre-create contexts with posts
+	let template = r#"<h1>All Posts</h1><ul>{% for post in posts %}<li><h2>{{ post.title }}</h2><p>{{ post.content }}</p><small>by {{ post.author }}</small></li>{% endfor %}</ul>"#;
+
+	// Direct Tera - Pre-create contexts with posts
 	let contexts: Vec<_> = (0..iterations)
 		.map(|_| {
 			let mut context = Context::new();
@@ -167,8 +181,6 @@ fn bench_list_template_tera_vs_runtime() {
 		})
 		.collect();
 
-	let template = r#"<h1>All Posts</h1><ul>{% for post in posts %}<li><h2>{{ post.title }}</h2><p>{{ post.content }}</p><small>by {{ post.author }}</small></li>{% endfor %}</ul>"#;
-
 	let start = Instant::now();
 
 	for context in &contexts {
@@ -177,48 +189,67 @@ fn bench_list_template_tera_vs_runtime() {
 
 	let tera_duration = start.elapsed();
 
-	// Runtime (TemplateHTMLRenderer) - Pre-build template strings
-	let template_strings: Vec<_> = (0..iterations)
+	// TemplateHTMLRenderer - Pre-create JSON contexts with posts
+	let renderer = TemplateHTMLRenderer::new();
+	let runtime_contexts: Vec<_> = (0..iterations)
 		.map(|_| {
-			let mut template_str = String::from("<h1>All Posts</h1><ul>");
-			for post in &posts {
-				template_str.push_str("<li>");
-				template_str.push_str(&format!("<h2>{}</h2>", post.title));
-				template_str.push_str(&format!("<p>{}</p>", post.content));
-				template_str.push_str(&format!("<small>by {}</small>", post.author));
-				template_str.push_str("</li>");
-			}
-			template_str.push_str("</ul>");
-			template_str
+			let post_data: Vec<_> = posts
+				.iter()
+				.map(|p| {
+					json!({
+						"title": p.title,
+						"content": p.content,
+						"author": p.author
+					})
+				})
+				.collect();
+			json!({
+				"template_string": template,
+				"posts": post_data
+			})
 		})
 		.collect();
 
-	let context = HashMap::new();
 	let start = Instant::now();
 
-	for template_str in &template_strings {
-		let _ = TemplateHTMLRenderer::substitute_variables_single_pass(template_str, &context);
+	for context in &runtime_contexts {
+		let _ = rt.block_on(renderer.render(context, None)).unwrap();
 	}
 
-	let runtime_duration = start.elapsed();
+	let renderer_duration = start.elapsed();
 
-	println!("\nList Template (100 items) Benchmark:");
-	println!("  Tera: {:?}", tera_duration);
-	println!("  Runtime (TemplateHTMLRenderer): {:?}", runtime_duration);
+	println!("\nList Template (100 items with for loop) Benchmark:");
+	println!("  Direct Tera: {:?}", tera_duration);
+	println!("  TemplateHTMLRenderer: {:?}", renderer_duration);
 	println!(
-		"  Ratio (Tera/Runtime): {:.2}x",
-		tera_duration.as_micros() as f64 / runtime_duration.as_micros() as f64
+		"  Ratio (Renderer/Direct): {:.2}x",
+		renderer_duration.as_micros() as f64 / tera_duration.as_micros() as f64
 	);
 }
 
-/// Benchmark: Real-world user profile template
+/// Benchmark: Real-world user profile template with conditional
 ///
-/// Expected: Tera provides better structure for complex templates
+/// Both approaches now support {% if %} conditionals
 #[test]
-fn bench_user_profile_tera_vs_runtime() {
+fn bench_user_profile_direct_vs_renderer() {
 	let iterations = 10_000;
+	let rt = Runtime::new().unwrap();
 
-	// Tera - Pre-create contexts
+	// Template with conditional logic - both approaches support this now
+	let template = r#"
+<div class="profile">
+    <h1>{{ name }}</h1>
+    <p>Email: {{ email }}</p>
+    <p>Age: {{ age }}</p>
+    {% if age >= 18 %}
+    <span class="adult">Adult</span>
+    {% else %}
+    <span class="minor">Minor</span>
+    {% endif %}
+</div>
+"#;
+
+	// Direct Tera - Pre-create contexts
 	let contexts: Vec<_> = (0..iterations)
 		.map(|_| {
 			let mut context = Context::new();
@@ -229,16 +260,66 @@ fn bench_user_profile_tera_vs_runtime() {
 		})
 		.collect();
 
-	let template = r#"
-<div class="profile">
-    <h1>{{ name }}</h1>
-    <p>Email: {{ email }}</p>
-    <p>Age: {{ age }}</p>
-    {% if age >= 18 %}
-    <span class="adult">Adult</span>
-    {% endif %}
-</div>
-"#;
+	let start = Instant::now();
+
+	for context in &contexts {
+		let _ = Tera::one_off(template, context, true).unwrap();
+	}
+
+	let tera_duration = start.elapsed();
+
+	// TemplateHTMLRenderer - Pre-create JSON contexts
+	let renderer = TemplateHTMLRenderer::new();
+	let runtime_contexts: Vec<_> = (0..iterations)
+		.map(|_| {
+			json!({
+				"template_string": template,
+				"name": "Alice",
+				"email": "alice@example.com",
+				"age": 25
+			})
+		})
+		.collect();
+
+	let start = Instant::now();
+
+	for context in &runtime_contexts {
+		let _ = rt.block_on(renderer.render(context, None)).unwrap();
+	}
+
+	let renderer_duration = start.elapsed();
+
+	println!("\nUser Profile Template (with conditional) Benchmark:");
+	println!("  Direct Tera: {:?}", tera_duration);
+	println!("  TemplateHTMLRenderer: {:?}", renderer_duration);
+	println!(
+		"  Ratio (Renderer/Direct): {:.2}x",
+		renderer_duration.as_micros() as f64 / tera_duration.as_micros() as f64
+	);
+}
+
+/// Benchmark: Template with filters
+///
+/// Tests Tera filter support
+#[test]
+fn bench_template_with_filters() {
+	let iterations = 10_000;
+	let rt = Runtime::new().unwrap();
+
+	let template = "<p>{{ name | upper }} - {{ description | truncate(length=20) }}</p>";
+
+	// Direct Tera
+	let contexts: Vec<_> = (0..iterations)
+		.map(|_| {
+			let mut context = Context::new();
+			context.insert("name", "alice");
+			context.insert(
+				"description",
+				"This is a very long description that should be truncated",
+			);
+			context
+		})
+		.collect();
 
 	let start = Instant::now();
 
@@ -248,42 +329,32 @@ fn bench_user_profile_tera_vs_runtime() {
 
 	let tera_duration = start.elapsed();
 
-	// Runtime (TemplateHTMLRenderer) - Pre-create contexts
+	// TemplateHTMLRenderer
+	let renderer = TemplateHTMLRenderer::new();
 	let runtime_contexts: Vec<_> = (0..iterations)
 		.map(|_| {
-			let mut context = HashMap::new();
-			context.insert("name".to_string(), "Alice".to_string());
-			context.insert("email".to_string(), "alice@example.com".to_string());
-			context.insert("age".to_string(), "25".to_string());
-			context
+			json!({
+				"template_string": template,
+				"name": "alice",
+				"description": "This is a very long description that should be truncated"
+			})
 		})
 		.collect();
-
-	// TODO: Runtime renderer doesn't support {% if %} blocks,
-	// so this is a simplified comparison without conditional logic
-	let template_str = r#"
-<div class="profile">
-    <h1>{{ name }}</h1>
-    <p>Email: {{ email }}</p>
-    <p>Age: {{ age }}</p>
-    <span class="adult">Adult</span>
-</div>
-"#;
 
 	let start = Instant::now();
 
 	for context in &runtime_contexts {
-		let _ = TemplateHTMLRenderer::substitute_variables_single_pass(template_str, context);
+		let _ = rt.block_on(renderer.render(context, None)).unwrap();
 	}
 
-	let runtime_duration = start.elapsed();
+	let renderer_duration = start.elapsed();
 
-	println!("\nUser Profile Template Benchmark:");
-	println!("  Tera: {:?}", tera_duration);
-	println!("  Runtime (TemplateHTMLRenderer): {:?}", runtime_duration);
+	println!("\nTemplate with Filters Benchmark:");
+	println!("  Direct Tera: {:?}", tera_duration);
+	println!("  TemplateHTMLRenderer: {:?}", renderer_duration);
 	println!(
-		"  Ratio (Tera/Runtime): {:.2}x",
-		tera_duration.as_micros() as f64 / runtime_duration.as_micros() as f64
+		"  Ratio (Renderer/Direct): {:.2}x",
+		renderer_duration.as_micros() as f64 / tera_duration.as_micros() as f64
 	);
 }
 
@@ -294,36 +365,33 @@ fn bench_user_profile_tera_vs_runtime() {
 fn bench_summary_report() {
 	println!("\n=== Template Rendering Performance Summary ===\n");
 
-	println!("Tera (Runtime):");
-	println!("  - Time Complexity: O(n + m) - Template parsing + rendering");
-	println!("  - Space Complexity: O(n) - Template AST storage");
-	println!("  - Type Safety: Runtime validation");
-	println!("  - Flexibility: Full template language support (conditionals, loops, filters)\n");
+	println!("Direct Tera:");
+	println!("  - Minimal abstraction overhead");
+	println!("  - Direct access to Tera context API");
+	println!("  - Best for performance-critical paths\n");
 
-	println!("TemplateHTMLRenderer:");
-	println!("  - Time Complexity: O(n + m) - Single-pass substitution");
-	println!("  - Space Complexity: O(n) - Template string storage");
-	println!("  - Type Safety: Runtime validation");
-	println!("  - Flexibility: Simple variable substitution only\n");
+	println!("TemplateHTMLRenderer (Tera internal):");
+	println!("  - JSON-based context (easier integration with web APIs)");
+	println!("  - Consistent interface with other renderers");
+	println!("  - Small overhead from JSON->Tera context conversion");
+	println!("  - Full Tera feature support (conditionals, loops, filters)\n");
 
-	println!("Performance Characteristics:");
-	println!("  - Simple templates: Comparable performance");
-	println!("  - Complex templates with logic: Tera provides richer features");
-	println!("  - List rendering: Comparable for simple iteration");
-	println!("  - Real-world templates: Tera better for maintainability\n");
+	println!("Template Features (both approaches):");
+	println!("  - Variable substitution: {{{{ variable }}}}");
+	println!("  - Conditionals: {{% if condition %}}...{{% endif %}}");
+	println!("  - Loops: {{% for item in items %}}...{{% endfor %}}");
+	println!("  - Filters: {{{{ variable | filter }}}}\n");
 
 	println!("Use Cases:");
-	println!("  Tera - Choose when:");
-	println!("    - Complex template logic required (if/else, loops, filters)");
-	println!("    - Template inheritance and includes needed");
-	println!("    - Better error messages and debugging desired");
-	println!("    - Examples: View templates, email templates, complex pages\n");
+	println!("  Direct Tera - Choose when:");
+	println!("    - Maximum performance required");
+	println!("    - Already working with Tera contexts");
+	println!("    - Pre-compiled templates needed\n");
 
 	println!("  TemplateHTMLRenderer - Choose when:");
-	println!("    - Only simple variable substitution needed");
-	println!("    - Minimal dependencies desired");
-	println!("    - Very simple use cases");
-	println!("    - Examples: Simple string formatting, basic templating\n");
+	println!("    - JSON-based context is convenient");
+	println!("    - Consistent renderer interface needed");
+	println!("    - Integration with Reinhardt REST framework\n");
 
-	println!("=== Tera provides powerful template features at runtime ===\n");
+	println!("=== Both approaches use Tera for full template power ===\n");
 }
