@@ -12,6 +12,8 @@ pub enum WebSocketError {
 	Receive(String),
 	#[error("Protocol error: {0}")]
 	Protocol(String),
+	#[error("Internal error: {0}")]
+	Internal(String),
 }
 
 pub type WebSocketResult<T> = Result<T, WebSocketError>;

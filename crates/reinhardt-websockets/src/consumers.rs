@@ -2,17 +2,46 @@
 //!
 //! This module provides consumer classes inspired by Django Channels,
 //! enabling structured WebSocket message handling with lifecycle hooks.
+//!
+//! # Dependency Injection Support
+//!
+//! When the `di` feature is enabled, `ConsumerContext` supports dependency injection:
+//!
+//! ```ignore
+//! use reinhardt_websockets::consumers::{ConsumerContext, WebSocketConsumer};
+//! use std::sync::Arc;
+//!
+//! async fn on_message(&self, ctx: &mut ConsumerContext, msg: Message) -> WebSocketResult<()> {
+//!     // Resolve dependencies from DI context
+//!     let db: Arc<DatabaseConnection> = ctx.resolve().await?;
+//!     let cache: CacheService = ctx.resolve_uncached().await?;
+//!
+//!     // Use the dependencies...
+//!     Ok(())
+//! }
+//! ```
 
-use crate::connection::{Message, WebSocketConnection, WebSocketResult};
+use crate::connection::{Message, WebSocketConnection, WebSocketError, WebSocketResult};
 use async_trait::async_trait;
 use std::sync::Arc;
 
+#[cfg(feature = "di")]
+use reinhardt_di::{Injectable, Injected, InjectionContext};
+
 /// Consumer context containing connection and message information
+///
+/// This context is passed to WebSocket consumer methods and provides access to:
+/// - The WebSocket connection for sending messages
+/// - Metadata for storing request-scoped data
+/// - Dependency injection (when the `di` feature is enabled)
 pub struct ConsumerContext {
 	/// The WebSocket connection
 	pub connection: Arc<WebSocketConnection>,
 	/// Additional metadata
 	pub metadata: std::collections::HashMap<String, String>,
+	/// DI context for dependency injection (when `di` feature is enabled)
+	#[cfg(feature = "di")]
+	di_context: Option<Arc<InjectionContext>>,
 }
 
 impl ConsumerContext {
@@ -34,6 +63,34 @@ impl ConsumerContext {
 		Self {
 			connection,
 			metadata: std::collections::HashMap::new(),
+			#[cfg(feature = "di")]
+			di_context: None,
+		}
+	}
+
+	/// Create a new consumer context with DI context
+	///
+	/// This constructor is used when dependency injection is needed in WebSocket handlers.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_websockets::consumers::ConsumerContext;
+	/// use reinhardt_di::InjectionContext;
+	/// use std::sync::Arc;
+	///
+	/// let di_ctx = Arc::new(InjectionContext::new());
+	/// let context = ConsumerContext::with_di_context(connection, di_ctx);
+	/// ```
+	#[cfg(feature = "di")]
+	pub fn with_di_context(
+		connection: Arc<WebSocketConnection>,
+		di_context: Arc<InjectionContext>,
+	) -> Self {
+		Self {
+			connection,
+			metadata: std::collections::HashMap::new(),
+			di_context: Some(di_context),
 		}
 	}
 
@@ -46,6 +103,123 @@ impl ConsumerContext {
 	/// Get metadata value
 	pub fn get_metadata(&self, key: &str) -> Option<&String> {
 		self.metadata.get(key)
+	}
+
+	/// Get the DI context if available
+	#[cfg(feature = "di")]
+	pub fn di_context(&self) -> Option<&Arc<InjectionContext>> {
+		self.di_context.as_ref()
+	}
+
+	/// Set the DI context
+	#[cfg(feature = "di")]
+	pub fn set_di_context(&mut self, ctx: Arc<InjectionContext>) {
+		self.di_context = Some(ctx);
+	}
+
+	/// Resolve a dependency with caching
+	///
+	/// This method extracts the dependency from the DI context. The resolved
+	/// dependency is cached for the duration of the connection.
+	///
+	/// # Errors
+	///
+	/// Returns an error if:
+	/// - The DI context is not set
+	/// - The dependency cannot be resolved
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let db: Arc<DatabaseConnection> = ctx.resolve().await?;
+	/// ```
+	#[cfg(feature = "di")]
+	pub async fn resolve<T>(&self) -> WebSocketResult<T>
+	where
+		T: Injectable + Clone + Send + Sync + 'static,
+	{
+		let ctx = self.di_context.as_ref().ok_or_else(|| {
+			WebSocketError::Internal(
+				"DI context not set. Ensure the WebSocket router is configured with DI".to_string(),
+			)
+		})?;
+
+		Injected::<T>::resolve(ctx)
+			.await
+			.map(|injected| injected.into_inner())
+			.map_err(|e| {
+				WebSocketError::Internal(format!(
+					"Dependency injection failed for {}: {:?}",
+					std::any::type_name::<T>(),
+					e
+				))
+			})
+	}
+
+	/// Resolve a dependency without caching
+	///
+	/// This method is similar to `resolve()` but creates a fresh instance
+	/// of the dependency each time.
+	///
+	/// # Errors
+	///
+	/// Returns an error if:
+	/// - The DI context is not set
+	/// - The dependency cannot be resolved
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let fresh_service: MyService = ctx.resolve_uncached().await?;
+	/// ```
+	#[cfg(feature = "di")]
+	pub async fn resolve_uncached<T>(&self) -> WebSocketResult<T>
+	where
+		T: Injectable + Clone + Send + Sync + 'static,
+	{
+		let ctx = self.di_context.as_ref().ok_or_else(|| {
+			WebSocketError::Internal(
+				"DI context not set. Ensure the WebSocket router is configured with DI".to_string(),
+			)
+		})?;
+
+		Injected::<T>::resolve_uncached(ctx)
+			.await
+			.map(|injected| injected.into_inner())
+			.map_err(|e| {
+				WebSocketError::Internal(format!(
+					"Dependency injection failed for {}: {:?}",
+					std::any::type_name::<T>(),
+					e
+				))
+			})
+	}
+
+	/// Try to resolve a dependency, returning None if DI context is not available
+	///
+	/// This is useful for optional dependencies or when you want to gracefully
+	/// handle the case where DI is not configured.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// if let Some(cache) = ctx.try_resolve::<CacheService>().await {
+	///     // Use cache
+	/// } else {
+	///     // Fallback without cache
+	/// }
+	/// ```
+	#[cfg(feature = "di")]
+	pub async fn try_resolve<T>(&self) -> Option<T>
+	where
+		T: Injectable + Clone + Send + Sync + 'static,
+	{
+		let ctx = self.di_context.as_ref()?;
+
+		Injected::<T>::resolve(ctx)
+			.await
+			.ok()
+			.map(|injected| injected.into_inner())
 	}
 }
 
