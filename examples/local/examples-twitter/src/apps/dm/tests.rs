@@ -1,3 +1,8 @@
-//! Tests for dm app
+//! DM endpoint tests
+//!
+//! Tests for DM room and message operations
 
-mod template;
+pub mod helpers;
+
+mod message_tests;
+mod room_tests;

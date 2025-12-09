@@ -19,7 +19,7 @@ use uuid::Uuid;
 /// - 401 Unauthorized: Not authenticated
 /// - 404 Not Found: User not found
 /// - 409 Conflict: Already blocking this user
-#[post("/accounts/rel/block/{<uuid:user_id>}/", name = "relationship_block", use_inject = true)]
+#[post("/accounts/rel/block/{<uuid:user_id>}/", name = "block", use_inject = true)]
 pub async fn block_user(
 	Path(blocked_id): Path<Uuid>,
 	#[inject] db: Arc<DatabaseConnection>,
@@ -56,7 +56,7 @@ pub async fn block_user(
 /// - 401 Unauthorized: Not authenticated
 /// - 404 Not Found: User not found or not blocking
 /// - 409 Conflict: Not blocking this user
-#[delete("/accounts/rel/block/{<uuid:user_id>}/", name = "relationship_unblock", use_inject = true)]
+#[delete("/accounts/rel/block/{<uuid:user_id>}/", name = "unblock", use_inject = true)]
 pub async fn unblock_user(
 	Path(blocked_id): Path<Uuid>,
 	#[inject] db: Arc<DatabaseConnection>,

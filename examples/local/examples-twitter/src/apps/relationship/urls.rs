@@ -5,6 +5,7 @@ use reinhardt::UnifiedRouter;
 
 pub fn url_patterns() -> UnifiedRouter {
 	UnifiedRouter::new()
+		.with_namespace("relationship")
 		// Follow/Unfollow endpoints
 		.endpoint(views::follow_user)
 		.endpoint(views::unfollow_user)

@@ -5,6 +5,7 @@ use reinhardt::UnifiedRouter;
 
 pub fn url_patterns() -> UnifiedRouter {
 	UnifiedRouter::new()
+		.with_namespace("dm")
 		// Room endpoints
 		.endpoint(views::list_rooms)
 		.endpoint(views::get_room)

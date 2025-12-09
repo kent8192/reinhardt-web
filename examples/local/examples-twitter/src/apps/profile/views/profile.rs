@@ -1,7 +1,7 @@
 //! Profile view handlers
 //!
 //! Handles profile CRUD endpoints.
-//! Uses reinhardt ORM (Manager/QuerySet) for database operations.
+//! Uses reinhardt ORM (Model::objects()) for database operations.
 
 use crate::apps::auth::models::User;
 use crate::apps::profile::models::Profile;
@@ -9,10 +9,9 @@ use crate::apps::profile::serializers::{
 	CreateProfileRequest, ProfileResponse, UpdateProfileRequest,
 };
 use chrono::Utc;
-use reinhardt::db::orm::{FilterOperator, FilterValue, Manager};
-use reinhardt::db::DatabaseConnection;
-use reinhardt::{get, patch, post};
-use reinhardt::{Error, Json, Path, Response, ViewResult};
+use reinhardt::prelude::*;
+use reinhardt::db::orm::{FilterOperator, FilterValue};
+use reinhardt::{Error, Json, Path};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -22,17 +21,14 @@ use validator::Validate;
 /// Success response: 200 OK with profile data
 /// Error responses:
 /// - 404 Not Found: Profile not found
-#[get("/{<uuid:user_id>}/", name = "profile_fetch", use_inject = true)]
+#[get("/{<uuid:user_id>}/", name = "fetch", use_inject = true)]
 pub async fn fetch_profile(
-	Path(user_id_str): Path<String>,
+	Path(user_id): Path<Uuid>,
 	#[inject] _db: DatabaseConnection,
 ) -> ViewResult<Response> {
-	let user_id = Uuid::parse_str(&user_id_str)
-		.map_err(|e| Error::Validation(format!("Invalid user_id format: {}", e)))?;
-
-	// Fetch profile using Manager/QuerySet API
-	let manager = Manager::<Profile>::new();
-	let profile = manager
+	// Fetch profile using Manager API
+	let profile_manager = Profile::objects();
+	let profile = profile_manager
 		.filter(
 			"user_id",
 			FilterOperator::Eq,
@@ -64,44 +60,41 @@ pub async fn fetch_profile(
 /// - 401 Unauthorized: Not authenticated
 /// - 404 Not Found: User not found
 /// - 422 Unprocessable Entity: Validation errors
-#[post("/{<uuid:user_id>}/", name = "profile_create", use_inject = true)]
+#[post("/{<uuid:user_id>}/", name = "create", use_inject = true)]
 pub async fn create_profile(
-	Path(user_id_str): Path<String>,
+	Path(user_id): Path<Uuid>,
 	Json(create_req): Json<CreateProfileRequest>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
-	let user_id = Uuid::parse_str(&user_id_str)
-		.map_err(|e| Error::Validation(format!("Invalid user_id format: {}", e)))?;
-
 	// Validate request (automatic JSON parsing by Json extractor)
 	create_req
 		.validate()
 		.map_err(|e| Error::Validation(format!("Validation failed: {}", e)))?;
 
-	// Verify user exists using Manager/QuerySet API
-	let user_manager = Manager::<User>::new();
+	// Verify user exists using Manager API
+	let user_manager = User::objects();
 	user_manager
-		.get(user_id)
+		.filter(
+			"id",
+			FilterOperator::Eq,
+			FilterValue::String(user_id.to_string()),
+		)
 		.first()
 		.await?
 		.ok_or_else(|| Error::Http("User not found".into()))?;
 
-	// Create new profile by initializing struct directly
-	// Note: OneToOneField is a marker type; the actual foreign key is stored via user_id
-	let profile = Profile {
-		id: Uuid::new_v4(),
-		user: reinhardt::db::associations::OneToOneField::new(),
-		user_id, // Auto-generated FK ID field
-		bio: create_req.bio.unwrap_or_default(),
-		avatar_url: create_req.avatar_url,
-		location: create_req.location,
-		website: create_req.website,
-		created_at: Utc::now(),
-		updated_at: Utc::now(),
-	};
+	// Create new profile using generated new() function
+	// new() accepts user_id and auto-generates id, timestamps, and OneToOneField instance
+	let profile = Profile::new(
+		user_id,
+		create_req.bio.unwrap_or_default(),
+		create_req.avatar_url,
+		create_req.location,
+		create_req.website,
+	);
 
 	// Create profile using Manager API
-	let profile_manager = Manager::<Profile>::new();
+	let profile_manager = Profile::objects();
 	let created = profile_manager.create_with_conn(&db, &profile).await?;
 
 	let response_data = ProfileResponse::from(created);
@@ -125,23 +118,20 @@ pub async fn create_profile(
 /// Error responses:
 /// - 404 Not Found: Profile not found
 /// - 422 Unprocessable Entity: Validation errors
-#[patch("/{<uuid:user_id>}/", name = "profile_patch", use_inject = true)]
+#[patch("/{<uuid:user_id>}/", name = "patch", use_inject = true)]
 pub async fn patch_profile(
-	Path(user_id_str): Path<String>,
+	Path(user_id): Path<Uuid>,
 	Json(update_req): Json<UpdateProfileRequest>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
-	let user_id = Uuid::parse_str(&user_id_str)
-		.map_err(|e| Error::Validation(format!("Invalid user_id format: {}", e)))?;
-
 	// Validate request (automatic JSON parsing by Json extractor)
 	update_req
 		.validate()
 		.map_err(|e| Error::Validation(format!("Validation failed: {}", e)))?;
 
-	// Fetch existing profile using Manager/QuerySet API
-	let manager = Manager::<Profile>::new();
-	let mut profile = manager
+	// Fetch existing profile using Manager API
+	let profile_manager = Profile::objects();
+	let mut profile = profile_manager
 		.filter(
 			"user_id",
 			FilterOperator::Eq,
@@ -167,7 +157,7 @@ pub async fn patch_profile(
 	profile.updated_at = Utc::now();
 
 	// Update profile using Manager API
-	let updated = manager.update_with_conn(&db, &profile).await?;
+	let updated = profile_manager.update_with_conn(&db, &profile).await?;
 
 	let response_data = ProfileResponse::from(updated);
 	Response::ok()

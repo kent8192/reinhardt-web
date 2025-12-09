@@ -18,7 +18,7 @@ use crate::apps::auth::models::User;
 /// One-to-one relationship with User model.
 /// OneToOneField<T> automatically generates the `_id` column with UNIQUE constraint.
 #[model(app_label = "profile", table_name = "profile_profile")]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Profile {
 	#[field(primary_key = true)]
 	pub id: Uuid,

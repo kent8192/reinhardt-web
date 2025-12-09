@@ -4,7 +4,7 @@ use crate::apps::auth::models::User;
 use crate::apps::dm::models::{DMMessage, DMRoom};
 use crate::apps::dm::serializers::{CreateMessageRequest, MessageResponse};
 use reinhardt::db::associations::ForeignKeyField;
-use reinhardt::db::orm::{ManyToManyAccessor, Manager, Model};
+use reinhardt::db::orm::{ManyToManyAccessor, Model};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::{get, post, CurrentUser, Json, Path, Response, StatusCode, ViewResult};
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 /// List all messages in a room
-#[get("/rooms/{<uuid:room_id>}/messages", name = "dm_messages_list", use_inject = true)]
+#[get("/rooms/{<uuid:room_id>}/messages", name = "messages_list", use_inject = true)]
 pub async fn list_messages(
 	Path(room_id): Path<Uuid>,
 	#[inject] db: Arc<DatabaseConnection>,
@@ -47,7 +47,7 @@ pub async fn list_messages(
 }
 
 /// Send a message to a room
-#[post("/rooms/{<uuid:room_id>}/messages", name = "dm_messages_send", use_inject = true)]
+#[post("/rooms/{<uuid:room_id>}/messages", name = "messages_send", use_inject = true)]
 pub async fn send_message(
 	Path(room_id): Path<Uuid>,
 	Json(request): Json<CreateMessageRequest>,
@@ -73,22 +73,12 @@ pub async fn send_message(
 		return Err("Not a member of this room".into());
 	}
 
-	// Create the message using struct initialization
-	// Note: ForeignKeyField is a marker type; the actual foreign key is stored via room_id/sender_id
-	let message = DMMessage {
-		id: Uuid::new_v4(),
-		room: ForeignKeyField::new(),
-		room_id, // Auto-generated FK ID field
-		sender: ForeignKeyField::new(),
-		sender_id, // From current_user
-		content: request.content,
-		is_read: false,
-		created_at: chrono::Utc::now(),
-		updated_at: chrono::Utc::now(),
-	};
+	// Create the message using generated new() function
+	// new() accepts FK IDs directly and auto-generates id, timestamps, and ForeignKeyField instances
+	let message = DMMessage::new(room_id, sender_id, request.content);
 
 	// Save the message using Manager
-	let manager = Manager::<DMMessage>::new();
+	let manager = DMMessage::objects();
 	let created = manager.create_with_conn(&db, &message).await?;
 
 	let response = MessageResponse::from(created);
@@ -98,7 +88,7 @@ pub async fn send_message(
 }
 
 /// Get a specific message
-#[get("/rooms/{<uuid:room_id>}/messages/{<uuid:message_id>}", name = "dm_messages_get", use_inject = true)]
+#[get("/rooms/{<uuid:room_id>}/messages/{<uuid:message_id>}", name = "messages_get", use_inject = true)]
 pub async fn get_message(
 	Path((room_id, message_id)): Path<(Uuid, Uuid)>,
 	#[inject] db: Arc<DatabaseConnection>,

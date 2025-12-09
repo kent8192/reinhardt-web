@@ -19,7 +19,7 @@ use uuid::Uuid;
 /// - 401 Unauthorized: Not authenticated
 /// - 404 Not Found: User not found
 /// - 409 Conflict: Already following this user
-#[post("/accounts/rel/follow/{<uuid:user_id>}/", name = "relationship_follow", use_inject = true)]
+#[post("/accounts/rel/follow/{<uuid:user_id>}/", name = "follow", use_inject = true)]
 pub async fn follow_user(
 	Path(followed_id): Path<Uuid>,
 	#[inject] db: Arc<DatabaseConnection>,
@@ -56,7 +56,7 @@ pub async fn follow_user(
 /// - 401 Unauthorized: Not authenticated
 /// - 404 Not Found: User not found or not following
 /// - 409 Conflict: Not following this user
-#[delete("/accounts/rel/follow/{<uuid:user_id>}/", name = "relationship_unfollow", use_inject = true)]
+#[delete("/accounts/rel/follow/{<uuid:user_id>}/", name = "unfollow", use_inject = true)]
 pub async fn unfollow_user(
 	Path(followed_id): Path<Uuid>,
 	#[inject] db: Arc<DatabaseConnection>,

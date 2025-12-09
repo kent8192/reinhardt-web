@@ -7,7 +7,7 @@ use crate::apps::relationship::serializers::{
 	BlockingListResponse, FollowerListResponse, FollowingListResponse, PaginationParams,
 	UserSummary,
 };
-use reinhardt::db::orm::{ManyToManyAccessor, Model};
+use reinhardt::db::orm::{FilterOperator, FilterValue, ManyToManyAccessor, Model};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::get;
 use reinhardt::{CurrentUser, Error, Query, Response, StatusCode, ViewResult};
@@ -19,7 +19,7 @@ use std::sync::Arc;
 /// Success response: 200 OK with paginated follower list
 /// Error responses:
 /// - 401 Unauthorized: Not authenticated
-#[get("/accounts/rel/followers/", name = "relationship_followers", use_inject = true)]
+#[get("/accounts/rel/followers/", name = "followers", use_inject = true)]
 pub async fn fetch_followers(
 	Query(params): Query<PaginationParams>,
 	#[inject] db: Arc<DatabaseConnection>,
@@ -28,30 +28,40 @@ pub async fn fetch_followers(
 	// Get authenticated user from CurrentUser
 	let user_id = current_user.id().map_err(|e| e.to_string())?;
 
-	// Load user from database
+	// Load user from database using Manager API
 	let user = User::objects()
-		.filter_by(User::field_id().eq(user_id))
-		.get_with_db(&db)
-		.await?;
+		.filter(
+			User::field_id(),
+			FilterOperator::Eq,
+			FilterValue::String(user_id.to_string()),
+		)
+		.first()
+		.await?
+		.ok_or_else(|| "User not found".to_string())?;
 
 	// Extract pagination params
 	let page = params.page;
 	let limit = params.limit;
+	let offset = (page - 1) * limit;
 
-	// Query followers from database using ManyToManyAccessor
-	// Note: "followers" is the reverse relationship of "following"
-	let accessor = ManyToManyAccessor::<User, User>::new(&user, "followers", (*db).clone());
+	// Get all followers using ManyToManyAccessor
+	// TODO: Implement database-level pagination using JOIN + LIMIT/OFFSET
+	// Current implementation uses in-memory pagination (not recommended for production)
+	let accessor = ManyToManyAccessor::<User, User>::new(&user, "following", (*db).clone());
 	let all_followers = accessor.all().await.map_err(|e| e.to_string())?;
-
-	// Apply pagination
 	let total_count = all_followers.len();
-	let start = (page - 1) * limit;
-	let followers: Vec<_> = all_followers.into_iter().skip(start).take(limit).collect();
+
+	// Apply in-memory pagination
+	let followers: Vec<User> = all_followers
+		.into_iter()
+		.skip(offset)
+		.take(limit)
+		.collect();
 
 	// Build response
 	let response_data = FollowerListResponse {
 		count: total_count,
-		next: if start + limit < total_count {
+		next: if offset + limit < total_count {
 			Some(format!("?page={}", page + 1))
 		} else {
 			None
@@ -74,7 +84,7 @@ pub async fn fetch_followers(
 /// Success response: 200 OK with paginated following list
 /// Error responses:
 /// - 401 Unauthorized: Not authenticated
-#[get("/accounts/rel/followings/", name = "relationship_followings", use_inject = true)]
+#[get("/accounts/rel/followings/", name = "followings", use_inject = true)]
 pub async fn fetch_followings(
 	Query(params): Query<PaginationParams>,
 	#[inject] db: Arc<DatabaseConnection>,
@@ -83,29 +93,40 @@ pub async fn fetch_followings(
 	// Get authenticated user from CurrentUser
 	let user_id = current_user.id().map_err(|e| e.to_string())?;
 
-	// Load user from database
+	// Load user from database using Manager API
 	let user = User::objects()
-		.filter_by(User::field_id().eq(user_id))
-		.get_with_db(&db)
-		.await?;
+		.filter(
+			User::field_id(),
+			FilterOperator::Eq,
+			FilterValue::String(user_id.to_string()),
+		)
+		.first()
+		.await?
+		.ok_or_else(|| "User not found".to_string())?;
 
 	// Extract pagination params
 	let page = params.page;
 	let limit = params.limit;
+	let offset = (page - 1) * limit;
 
-	// Query followings from database using ManyToManyAccessor
+	// Get all followings using ManyToManyAccessor
+	// TODO: Implement database-level pagination using JOIN + LIMIT/OFFSET
+	// Current implementation uses in-memory pagination (not recommended for production)
 	let accessor = ManyToManyAccessor::<User, User>::new(&user, "following", (*db).clone());
 	let all_followings = accessor.all().await.map_err(|e| e.to_string())?;
-
-	// Apply pagination
 	let total_count = all_followings.len();
-	let start = (page - 1) * limit;
-	let followings: Vec<_> = all_followings.into_iter().skip(start).take(limit).collect();
+
+	// Apply in-memory pagination
+	let followings: Vec<User> = all_followings
+		.into_iter()
+		.skip(offset)
+		.take(limit)
+		.collect();
 
 	// Build response
 	let response_data = FollowingListResponse {
 		count: total_count,
-		next: if start + limit < total_count {
+		next: if offset + limit < total_count {
 			Some(format!("?page={}", page + 1))
 		} else {
 			None
@@ -128,7 +149,7 @@ pub async fn fetch_followings(
 /// Success response: 200 OK with paginated blocking list
 /// Error responses:
 /// - 401 Unauthorized: Not authenticated
-#[get("/accounts/rel/blocking/", name = "relationship_blocking", use_inject = true)]
+#[get("/accounts/rel/blocking/", name = "blocking", use_inject = true)]
 pub async fn fetch_blockings(
 	Query(params): Query<PaginationParams>,
 	#[inject] db: Arc<DatabaseConnection>,
@@ -137,29 +158,40 @@ pub async fn fetch_blockings(
 	// Get authenticated user from CurrentUser
 	let user_id = current_user.id().map_err(|e| e.to_string())?;
 
-	// Load user from database
+	// Load user from database using Manager API
 	let user = User::objects()
-		.filter_by(User::field_id().eq(user_id))
-		.get_with_db(&db)
-		.await?;
+		.filter(
+			User::field_id(),
+			FilterOperator::Eq,
+			FilterValue::String(user_id.to_string()),
+		)
+		.first()
+		.await?
+		.ok_or_else(|| "User not found".to_string())?;
 
 	// Extract pagination params
 	let page = params.page;
 	let limit = params.limit;
+	let offset = (page - 1) * limit;
 
-	// Query blockings from database using ManyToManyAccessor
+	// Get all blocked users using ManyToManyAccessor
+	// TODO: Implement database-level pagination using JOIN + LIMIT/OFFSET
+	// Current implementation uses in-memory pagination (not recommended for production)
 	let accessor = ManyToManyAccessor::<User, User>::new(&user, "blocked_users", (*db).clone());
 	let all_blockings = accessor.all().await.map_err(|e| e.to_string())?;
-
-	// Apply pagination
 	let total_count = all_blockings.len();
-	let start = (page - 1) * limit;
-	let blockings: Vec<_> = all_blockings.into_iter().skip(start).take(limit).collect();
+
+	// Apply in-memory pagination
+	let blockings: Vec<User> = all_blockings
+		.into_iter()
+		.skip(offset)
+		.take(limit)
+		.collect();
 
 	// Build response
 	let response_data = BlockingListResponse {
 		count: total_count,
-		next: if start + limit < total_count {
+		next: if offset + limit < total_count {
 			Some(format!("?page={}", page + 1))
 		} else {
 			None
