@@ -65,6 +65,7 @@ pub mod collection;
 pub mod foreign_key;
 pub mod loading;
 pub mod many_to_many;
+pub mod many_to_many_manager;
 pub mod markers;
 pub mod one_to_many;
 pub mod one_to_one;
@@ -76,6 +77,7 @@ pub use collection::AssociationCollection;
 pub use foreign_key::{CascadeAction, ForeignKey};
 pub use loading::{EagerLoader, JoinedLoader, LazyLoader, LoadingStrategy, SelectInLoader};
 pub use many_to_many::ManyToMany;
+pub use many_to_many_manager::ManyToManyManager;
 pub use markers::{
 	ForeignKeyField, ManyToManyField, OneToManyField, OneToOneField, PolymorphicManyToManyField,
 };
@@ -94,6 +96,7 @@ pub mod prelude {
 	pub use crate::foreign_key::*;
 	pub use crate::loading::*;
 	pub use crate::many_to_many::*;
+	pub use crate::many_to_many_manager::*;
 	pub use crate::markers::*;
 	pub use crate::one_to_many::*;
 	pub use crate::one_to_one::*;

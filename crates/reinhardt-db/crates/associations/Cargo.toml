@@ -9,6 +9,9 @@ repository.workspace = true
 
 [dependencies]
 serde = { workspace = true }
+reinhardt-core = { workspace = true }
+reinhardt-orm = { workspace = true }  # For DatabaseConnection and QueryRow
+sea-query = { workspace = true }
 
 [dev-dependencies]
 reinhardt-test = { workspace = true, features = ["testcontainers"] }

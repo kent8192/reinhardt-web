@@ -32,6 +32,9 @@
 
 use std::marker::PhantomData;
 
+// Import DatabaseConnection and QueryRow for method signatures
+use reinhardt_orm::{DatabaseConnection, QueryRow};
+
 /// Marker type for ManyToMany relationship fields.
 ///
 /// This type is used as the field type for `#[rel(many_to_many, ...)]` attributes.
@@ -138,6 +141,238 @@ impl<Source, Target, S> ManyToManyField<Source, Target, S> {
 	#[inline]
 	pub const fn new() -> Self {
 		Self(PhantomData)
+	}
+}
+
+impl<Source, Target, S> ManyToManyField<Source, Target, S>
+where
+	Source: std::fmt::Display,
+	Target: std::fmt::Display,
+{
+	/// Get a manager for this ManyToMany relationship
+	///
+	/// This is an internal helper method that creates a `ManyToManyManager`
+	/// with the appropriate configuration for this field.
+	///
+	/// # Arguments
+	///
+	/// * `source_pk` - Primary key of the source instance
+	/// * `through_table` - Name of the junction table
+	/// * `source_field` - Column name for source FK in junction table
+	/// * `target_field` - Column name for target FK in junction table
+	///
+	/// # Type Parameters
+	///
+	/// * `PK` - Primary key type (must implement Display and Clone)
+	fn get_manager<PK>(
+		&self,
+		source_pk: PK,
+		through_table: String,
+		source_field: String,
+		target_field: String,
+	) -> crate::many_to_many_manager::ManyToManyManager<Source, Target, PK>
+	where
+		PK: std::fmt::Display + Clone,
+	{
+		crate::many_to_many_manager::ManyToManyManager::new(
+			source_pk,
+			through_table,
+			source_field,
+			target_field,
+		)
+	}
+
+	/// Add a target instance to this ManyToMany relationship
+	///
+	/// # Arguments
+	///
+	/// * `conn` - Database connection (placeholder)
+	/// * `source_pk` - Primary key of the source instance
+	/// * `target_pk` - Primary key of the target instance to add
+	/// * `through_table` - Name of the junction table
+	/// * `source_field` - Column name for source FK
+	/// * `target_field` - Column name for target FK
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// // Add a user to a group
+	/// group.members.add_with_db(
+	///     &db,
+	///     group.id,
+	///     user.id,
+	///     "auth_group_members".to_string(),
+	///     "group_id".to_string(),
+	///     "user_id".to_string(),
+	/// ).await?;
+	/// ```
+	pub async fn add_with_db<PK, TPK>(
+		&self,
+		conn: &DatabaseConnection,
+		source_pk: PK,
+		target_pk: TPK,
+		through_table: String,
+		source_field: String,
+		target_field: String,
+	) -> reinhardt_core::exception::Result<()>
+	where
+		PK: std::fmt::Display + Clone,
+		TPK: std::fmt::Display,
+	{
+		self.get_manager(source_pk, through_table, source_field, target_field)
+			.add_with_db(conn, target_pk)
+			.await
+	}
+
+	/// Remove a target instance from this ManyToMany relationship
+	///
+	/// # Arguments
+	///
+	/// * `conn` - Database connection (placeholder)
+	/// * `source_pk` - Primary key of the source instance
+	/// * `target_pk` - Primary key of the target instance to remove
+	/// * `through_table` - Name of the junction table
+	/// * `source_field` - Column name for source FK
+	/// * `target_field` - Column name for target FK
+	pub async fn remove_with_db<PK, TPK>(
+		&self,
+		conn: &DatabaseConnection,
+		source_pk: PK,
+		target_pk: TPK,
+		through_table: String,
+		source_field: String,
+		target_field: String,
+	) -> reinhardt_core::exception::Result<()>
+	where
+		PK: std::fmt::Display + Clone,
+		TPK: std::fmt::Display,
+	{
+		self.get_manager(source_pk, through_table, source_field, target_field)
+			.remove_with_db(conn, target_pk)
+			.await
+	}
+
+	/// Check if a target instance exists in this ManyToMany relationship
+	///
+	/// # Arguments
+	///
+	/// * `conn` - Database connection (placeholder)
+	/// * `source_pk` - Primary key of the source instance
+	/// * `target_pk` - Primary key of the target instance to check
+	/// * `through_table` - Name of the junction table
+	/// * `source_field` - Column name for source FK
+	/// * `target_field` - Column name for target FK
+	///
+	/// # Returns
+	///
+	/// * `Ok(true)` if the relationship exists
+	/// * `Ok(false)` if not
+	pub async fn contains_with_db<PK, TPK>(
+		&self,
+		conn: &DatabaseConnection,
+		source_pk: PK,
+		target_pk: TPK,
+		through_table: String,
+		source_field: String,
+		target_field: String,
+	) -> reinhardt_core::exception::Result<bool>
+	where
+		PK: std::fmt::Display + Clone,
+		TPK: std::fmt::Display,
+	{
+		self.get_manager(source_pk, through_table, source_field, target_field)
+			.contains_with_db(conn, target_pk)
+			.await
+	}
+
+	/// Get all target instances in this ManyToMany relationship
+	///
+	/// # Arguments
+	///
+	/// * `conn` - Database connection (placeholder)
+	/// * `source_pk` - Primary key of the source instance
+	/// * `through_table` - Name of the junction table
+	/// * `source_field` - Column name for source FK
+	/// * `target_field` - Column name for target FK
+	/// * `target_table` - Name of the target table
+	/// * `target_pk_field` - Name of primary key column in target table
+	///
+	/// # Returns
+	///
+	/// Vector of QueryRow representing all related target instances
+	///
+	/// Note: Returns `Vec<QueryRow>` instead of `Vec<Target>` for flexibility.
+	/// Callers can deserialize QueryRow to their target type as needed.
+	pub async fn all_with_db<PK>(
+		&self,
+		conn: &DatabaseConnection,
+		source_pk: PK,
+		through_table: String,
+		source_field: String,
+		target_field: String,
+		target_table: &str,
+		target_pk_field: &str,
+	) -> reinhardt_core::exception::Result<Vec<QueryRow>>
+	where
+		PK: std::fmt::Display + Clone,
+	{
+		self.get_manager(source_pk, through_table, source_field, target_field)
+			.all_with_db(conn, target_table, target_pk_field)
+			.await
+	}
+
+	/// Clear all relationships for the source instance
+	///
+	/// # Arguments
+	///
+	/// * `conn` - Database connection (placeholder)
+	/// * `source_pk` - Primary key of the source instance
+	/// * `through_table` - Name of the junction table
+	/// * `source_field` - Column name for source FK
+	/// * `target_field` - Column name for target FK
+	pub async fn clear_with_db<PK>(
+		&self,
+		conn: &DatabaseConnection,
+		source_pk: PK,
+		through_table: String,
+		source_field: String,
+		target_field: String,
+	) -> reinhardt_core::exception::Result<()>
+	where
+		PK: std::fmt::Display + Clone,
+	{
+		self.get_manager(source_pk, through_table, source_field, target_field)
+			.clear_with_db(conn)
+			.await
+	}
+
+	/// Count the number of related target instances
+	///
+	/// # Arguments
+	///
+	/// * `conn` - Database connection (placeholder)
+	/// * `source_pk` - Primary key of the source instance
+	/// * `through_table` - Name of the junction table
+	/// * `source_field` - Column name for source FK
+	/// * `target_field` - Column name for target FK
+	///
+	/// # Returns
+	///
+	/// Number of related instances
+	pub async fn count_with_db<PK>(
+		&self,
+		conn: &DatabaseConnection,
+		source_pk: PK,
+		through_table: String,
+		source_field: String,
+		target_field: String,
+	) -> reinhardt_core::exception::Result<usize>
+	where
+		PK: std::fmt::Display + Clone,
+	{
+		self.get_manager(source_pk, through_table, source_field, target_field)
+			.count_with_db(conn)
+			.await
 	}
 }
 
