@@ -37,10 +37,12 @@
 //!     .unwrap();
 //! ```
 
+pub mod auth_state;
 pub mod extensions;
 pub mod request;
 pub mod response;
 
+pub use auth_state::AuthState;
 pub use extensions::Extensions;
 pub use request::{Request, RequestBuilder};
 pub use response::{Response, StreamBody, StreamingResponse};
