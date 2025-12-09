@@ -62,15 +62,22 @@ fn detect_extractors(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<ExtractorInfo
 
 	for input in inputs {
 		if let FnArg::Typed(pat_type) = input {
-			// Detect patterns like Path(id): Path<i64>
-			if let Pat::TupleStruct(_) = &*pat_type.pat
-				&& let Type::Path(type_path) = &*pat_type.ty
+			// Skip parameters with #[inject] attribute
+			if pat_type.attrs.iter().any(is_inject_attr) {
+				continue;
+			}
+
+			if let Type::Path(type_path) = &*pat_type.ty
 				&& let Some(segment) = type_path.path.segments.last()
 			{
 				let type_name = segment.ident.to_string();
 				if matches!(
 					type_name.as_str(),
-					"Path" | "Json" | "Query" | "Header" | "Cookie" | "Form" | "Body"
+					"Path"
+						| "Json" | "Query" | "Header"
+						| "Cookie" | "Form"
+						| "Body" | "HeaderNamed"
+						| "CookieNamed"
 				) {
 					extractors.push(ExtractorInfo {
 						pat: pat_type.pat.clone(),
