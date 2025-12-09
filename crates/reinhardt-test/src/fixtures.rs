@@ -112,6 +112,9 @@ pub mod migrations;
 // Dependency Injection test fixtures
 pub mod di;
 
+// Twitter example application test fixtures
+pub mod twitter;
+
 // Re-export commonly used items from submodules
 
 // From loader module
@@ -157,3 +160,9 @@ pub use migrations::{
 
 // From di module
 pub use di::{injection_context, injection_context_with_overrides, singleton_scope};
+
+// From twitter module
+pub use twitter::{
+	User, Profile, create_test_profile, create_follow_relationship, create_block_relationship,
+	follow_relationship_exists, block_relationship_exists,
+};

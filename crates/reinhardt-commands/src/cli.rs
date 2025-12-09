@@ -93,10 +93,6 @@ pub enum Commands {
 		/// Show migration plan without applying
 		#[arg(long)]
 		plan: bool,
-
-		/// Migration directory
-		#[arg(long, default_value = "./migrations")]
-		migration_dir: PathBuf,
 	},
 
 	/// Start the development server
@@ -217,19 +213,8 @@ pub async fn run_command(
 			name,
 			check,
 			empty,
-			migration_dir,
-		} => {
-			execute_makemigrations(
-				app_labels,
-				dry_run,
-				name,
-				check,
-				empty,
-				migration_dir,
-				verbosity,
-			)
-			.await
-		}
+			migration_dir: _,
+		} => execute_makemigrations(app_labels, dry_run, name, check, empty, verbosity).await,
 		Commands::Migrate {
 			app_label,
 			migration_name,
@@ -237,7 +222,6 @@ pub async fn run_command(
 			fake,
 			fake_initial,
 			plan,
-			migration_dir,
 		} => {
 			execute_migrate(MigrateParams {
 				app_label,
@@ -246,7 +230,6 @@ pub async fn run_command(
 				fake,
 				fake_initial,
 				plan,
-				migration_dir,
 				verbosity,
 			})
 			.await
@@ -277,7 +260,6 @@ async fn execute_makemigrations(
 	name: Option<String>,
 	check: bool,
 	empty: bool,
-	_migration_dir: PathBuf,
 	verbosity: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let mut ctx = CommandContext::default();
@@ -315,8 +297,6 @@ struct MigrateParams {
 	fake: bool,
 	fake_initial: bool,
 	plan: bool,
-	#[allow(dead_code)]
-	migration_dir: PathBuf,
 	verbosity: u8,
 }
 

@@ -350,9 +350,8 @@ impl BaseCommand for MakeMigrationsCommand {
 		{
 			use crate::CommandError;
 			use reinhardt_db::migrations::{
-				AutoMigrationGenerator, DatabaseMigrationRecorder, FilesystemRepository,
-				FilesystemSource, MigrationNamer, MigrationNumbering, MigrationRepository,
-				MigrationService, MigrationStateLoader, autodetector::ProjectState,
+				FilesystemRepository, FilesystemSource, MigrationNamer, MigrationNumbering,
+				MigrationService, autodetector::ProjectState,
 			};
 			use std::sync::Arc;
 			use tokio::sync::Mutex;
@@ -432,84 +431,8 @@ impl BaseCommand for MakeMigrationsCommand {
 				return Ok(());
 			}
 
-			// 1. Get desired project state from models (target schema)
+			// 1. Get target project state from global model registry
 			let target_project_state = ProjectState::from_global_registry();
-			let _target_schema = target_project_state.to_database_schema();
-
-			// 2. Check for unapplied migrations before generating new ones
-			let database_url = get_database_url()?;
-
-			// First, check if there are existing migration files and connect to database
-			let all_migrations = service.load_all().await.map_err(|e| {
-				CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
-			})?;
-
-			// Connect to database for both migration check and introspection
-			let (db_type, connection) = connect_database(&database_url)
-				.await
-				.map_err(|e| CommandError::ExecutionError(format!("Failed to connect: {}", e)))?;
-
-			if !all_migrations.is_empty() {
-				// Check which migrations are applied
-				let executor = DatabaseMigrationExecutor::new(connection.clone(), db_type);
-
-				// Try to check for unapplied migrations
-				match executor.build_plan(&service).await {
-					Ok(unapplied_migrations) => {
-						if !unapplied_migrations.is_empty() {
-							ctx.warning(&format!(
-							"You have {} unapplied migration(s). Apply them first with 'migrate' before creating new migrations:",
-							unapplied_migrations.len()
-						));
-							for (app, name) in &unapplied_migrations {
-								ctx.warning(&format!("  - {}.{}", app, name));
-							}
-							return Err(CommandError::ExecutionError(
-							"Cannot create new migrations while there are unapplied migrations. Run 'migrate' first.".to_string(),
-						));
-						}
-					}
-					Err(e) => {
-						// If the error is about missing reinhardt_migrations table, database hasn't been initialized
-						// In this case, if migration files exist, warn the user to run migrate first
-						let error_msg = format!("{:?}", e);
-						if error_msg.contains("no such table")
-							|| error_msg.contains("reinhardt_migrations")
-						{
-							ctx.warning(&format!(
-								"Database not initialized, but {} migration file(s) exist.",
-								all_migrations.len()
-							));
-							ctx.warning(
-								"You should run 'migrate' to apply existing migrations before creating new ones.",
-							);
-							return Err(CommandError::ExecutionError(
-							"Run 'migrate' first to initialize the database and apply existing migrations.".to_string(),
-						));
-						} else {
-							// For other errors, return them
-							return Err(CommandError::ExecutionError(format!(
-								"Failed to check unapplied migrations: {}",
-								e
-							)));
-						}
-					}
-				}
-			}
-
-			// 3. Get current schema state by replaying migration history (Django-style)
-			// Instead of introspecting the database directly, we build ProjectState
-			// by replaying all applied migrations. This ensures consistency between
-			// makemigrations and migrate commands.
-			let recorder = DatabaseMigrationRecorder::new(connection);
-			let migration_source = FilesystemSource::new(migrations_dir.clone());
-			let state_loader = MigrationStateLoader::new(recorder, migration_source);
-
-			let current_project_state = state_loader.build_current_state().await.map_err(|e| {
-				CommandError::ExecutionError(format!("Failed to build current state: {}", e))
-			})?;
-
-			let current_schema = current_project_state.to_database_schema();
 
 			// Determine which apps to process
 			let app_names: Vec<String> = if let Some(label) = app_label {
@@ -534,75 +457,92 @@ impl BaseCommand for MakeMigrationsCommand {
 				changed_apps
 			};
 
-			// Validate migrations for all apps (without writing files)
+			let is_verbose = ctx.has_option("verbose");
+
+			// 2. Delete existing migration files and regenerate from scratch
+			// This approach ensures clean state without requiring DB connection
+			for app_name in &app_names {
+				let app_migrations_dir = migrations_dir.join(app_name).join("migrations");
+
+				if app_migrations_dir.exists() && !is_dry_run {
+					// Delete existing migration files (*.rs except entry point files)
+					if let Ok(entries) = std::fs::read_dir(&app_migrations_dir) {
+						for entry in entries.flatten() {
+							let path = entry.path();
+							if let Some(ext) = path.extension()
+								&& ext == "rs" && let Some(filename) =
+								path.file_name().and_then(|f| f.to_str())
+							{
+								// Delete migration files (start with 0, _, or digit)
+								// Keep only the entry point file (app_name.rs at parent level)
+								if filename.starts_with('0')
+									|| filename.starts_with('_')
+									|| filename.chars().next().is_some_and(|c| c.is_ascii_digit())
+								{
+									if let Err(e) = std::fs::remove_file(&path) {
+										ctx.warning(&format!(
+											"Failed to remove {}: {}",
+											path.display(),
+											e
+										));
+									} else {
+										ctx.verbose(&format!(
+											"Removed old migration: {}",
+											path.display()
+										));
+									}
+								}
+							}
+						}
+					}
+				} else if app_migrations_dir.exists() && is_dry_run {
+					ctx.info(&format!(
+						"Would delete existing migrations in {}",
+						app_migrations_dir.display()
+					));
+				}
+			}
+
+			// 3. Use MigrationAutodetector with empty from_state (full regeneration)
+			// This ensures all models are treated as new, generating complete migrations
 			struct MigrationResult {
 				app_name: String,
 				migration: reinhardt_db::migrations::Migration,
 			}
 
 			let mut results: Vec<MigrationResult> = Vec::new();
-			let mut had_errors = false;
-			let is_verbose = ctx.has_option("verbose");
 
 			for app_name in &app_names {
-				// Get app-specific schemas
-				let target_schema_for_app =
-					target_project_state.to_database_schema_for_app(app_name);
-				let current_schema_for_app = current_schema.filter_by_app(app_name);
+				// Filter target state for this app only
+				let app_target_state = target_project_state.filter_by_app(app_name);
 
-				// Create repository for state management
-				let repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>> = Arc::new(
-					tokio::sync::Mutex::new(FilesystemRepository::new(migrations_dir.clone())),
+				// Empty from_state means all models are "new" → full regeneration
+				let empty_from_state = ProjectState::new();
+
+				// Use MigrationAutodetector for proper ManyToMany support
+				let detector = reinhardt_db::migrations::MigrationAutodetector::new(
+					empty_from_state,
+					app_target_state,
 				);
+				let generated_migrations = detector.generate_migrations();
 
-				// Create auto-migration generator for this app
-				let generator = AutoMigrationGenerator::new(target_schema_for_app, repository);
-
-				// Generate migration operations
-				let auto_migration_result =
-					generator.generate(app_name, current_schema_for_app).await;
-
-				match auto_migration_result {
-					Ok(result) => {
-						if result.has_destructive_changes {
-							ctx.warning(&format!(
-								"[{}] WARNING: Detected potentially destructive changes.",
-								app_name
-							));
-						}
-
-						// Get last migration for dependency resolution
-						let last_migration = get_last_migration(app_name.clone()).await;
-						let dependencies = if let Some(ref last) = last_migration {
-							vec![(app_name.clone(), last.name)]
-						} else {
-							Vec::new()
-						};
-
-						// Determine if this is an initial migration
-						let is_initial = dependencies.is_empty();
-
-						// Generate migration number
-						let migration_number =
-							MigrationNumbering::next_number(&migrations_dir, app_name);
-
+				// Process generated migrations for this app
+				for migration in generated_migrations {
+					if migration.app_label == app_name.as_str() {
 						// Generate migration name
 						let base_name = migration_name_opt.clone().unwrap_or_else(|| {
-							MigrationNamer::generate_name(&result.operations, is_initial)
+							MigrationNamer::generate_name(&migration.operations, true)
 						});
-						let final_name = format!("{}_{}", migration_number, base_name);
+						let final_name = format!("0001_{}", base_name);
 
 						let new_migration = reinhardt_db::migrations::Migration {
 							app_label: Box::leak(app_name.clone().into_boxed_str()),
 							name: Box::leak(final_name.into_boxed_str()),
-							operations: result.operations,
-							dependencies: dependencies
-								.into_iter()
-								.map(|(a, n)| (Box::leak(a.into_boxed_str()) as &'static str, n))
-								.collect(),
+							operations: migration.operations,
+							dependencies: Vec::new(), // Initial migration has no dependencies
 							atomic: true,
 							replaces: Vec::new(),
-							initial: Some(is_initial),
+							initial: Some(true),
 						};
 
 						results.push(MigrationResult {
@@ -610,19 +550,11 @@ impl BaseCommand for MakeMigrationsCommand {
 							migration: new_migration,
 						});
 					}
-					Err(reinhardt_db::migrations::AutoMigrationError::NoChangesDetected) => {
-						// No changes for this app - skip
-					}
-					Err(e) => {
-						ctx.warning(&format!("[{}] Failed: {}", app_name, e));
-						had_errors = true;
-						break; // Stop immediately on first error (All-or-Nothing)
-					}
 				}
 			}
 
-			// Write all migrations if no errors occurred
-			if !had_errors && !results.is_empty() {
+			// 4. Write all migrations
+			if !results.is_empty() {
 				for result in results {
 					ctx.info(&format!("Migrations for '{}':", result.app_name));
 
@@ -662,10 +594,6 @@ impl BaseCommand for MakeMigrationsCommand {
 						}
 					}
 				}
-			} else if had_errors {
-				return Err(CommandError::ExecutionError(
-					"Migration generation failed. No files were created.".to_string(),
-				));
 			} else {
 				ctx.info("No changes detected");
 			}
