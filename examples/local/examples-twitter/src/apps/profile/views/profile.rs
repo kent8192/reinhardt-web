@@ -84,14 +84,16 @@ pub async fn create_profile(
 		.ok_or_else(|| Error::Http("User not found".into()))?;
 
 	// Create new profile using generated new() function
-	// new() accepts user_id and auto-generates id, timestamps, and OneToOneField instance
-	let profile = Profile::new(
-		user_id,
+	// new() auto-generates id, timestamps, and OneToOneField instance
+	let mut profile = Profile::new(
 		create_req.bio.unwrap_or_default(),
 		create_req.avatar_url,
 		create_req.location,
 		create_req.website,
 	);
+
+	// Manually set user_id (not included in constructor)
+	profile.user_id = user_id;
 
 	// Create profile using Manager API
 	let profile_manager = Profile::objects();

@@ -3,7 +3,6 @@
 use crate::apps::auth::models::User;
 use crate::apps::dm::models::DMRoom;
 use crate::apps::dm::serializers::{CreateRoomRequest, RoomResponse};
-use reinhardt::db::associations::ManyToManyField;
 use reinhardt::db::orm::{FilterOperator, FilterValue, ManyToManyAccessor, Model};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::{delete, get, post, CurrentUser, Json, Path, Response, StatusCode, ViewResult};

@@ -3,7 +3,6 @@
 use crate::apps::auth::models::User;
 use crate::apps::dm::models::{DMMessage, DMRoom};
 use crate::apps::dm::serializers::{CreateMessageRequest, MessageResponse};
-use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::db::orm::{ManyToManyAccessor, Model};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::{get, post, CurrentUser, Json, Path, Response, StatusCode, ViewResult};
@@ -74,8 +73,12 @@ pub async fn send_message(
 	}
 
 	// Create the message using generated new() function
-	// new() accepts FK IDs directly and auto-generates id, timestamps, and ForeignKeyField instances
-	let message = DMMessage::new(room_id, sender_id, request.content);
+	// new() auto-generates id, timestamps, and ForeignKeyField instances
+	let mut message = DMMessage::new(request.content);
+
+	// Manually set FK IDs (not included in constructor)
+	message.room_id = room_id;
+	message.sender_id = sender_id;
 
 	// Save the message using Manager
 	let manager = DMMessage::objects();

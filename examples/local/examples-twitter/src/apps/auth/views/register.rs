@@ -6,12 +6,10 @@
 
 use crate::apps::auth::models::User;
 use crate::apps::auth::serializers::RegisterRequest;
-use chrono::Utc;
 use reinhardt::db::orm::{FilterOperator, FilterValue, Model};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::post;
 use reinhardt::{BaseUser, Error, Json, Response, StatusCode, ViewResult};
-use uuid::Uuid;
 use validator::Validate;
 
 /// Register a new user
@@ -60,12 +58,12 @@ pub async fn register(
 	}
 
 	// Create new user using generated new() function
-	// new() auto-generates id, is_active, created_at, and ManyToManyField instances
+	// new() auto-generates id, last_login, created_at, and ManyToManyField instances
 	let mut new_user = User::new(
 		register_req.username.trim().to_string(),
 		register_req.email.trim().to_string(),
 		None, // password_hash will be set after hashing
-		None, // last_login
+		true, // is_active
 	);
 
 	// Hash password using BaseUser trait
