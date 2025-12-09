@@ -9,6 +9,7 @@ pub mod builder;
 pub mod cached;
 pub mod filtering_support;
 pub mod handler;
+pub mod injectable;
 pub mod metadata;
 pub mod middleware;
 pub mod mixins;
@@ -27,6 +28,7 @@ pub use builder::{RegisterViewSet, ViewSetBuilder};
 pub use cached::{CacheConfig, CachedResponse, CachedViewSet, CachedViewSetTrait};
 pub use filtering_support::{FilterConfig, FilterableViewSet, InMemoryFilter, OrderingConfig};
 pub use handler::{ModelViewSetHandler, ViewError, ViewSetHandler};
+pub use injectable::InjectableViewSet;
 pub use metadata::{ActionHandler, ActionMetadata, ActionRegistryEntry, FunctionActionHandler};
 pub use middleware::{
 	AuthenticationMiddleware, CompositeMiddleware, PermissionMiddleware, ViewSetMiddleware,

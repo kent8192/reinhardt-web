@@ -22,6 +22,7 @@ reinhardt-core = { workspace = true, features = [
   "pagination",
 ] }
 reinhardt-auth = { workspace = true }
+reinhardt-di = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["cache"] }
 reinhardt-serializers = { workspace = true }
 reinhardt-filters = { workspace = true }
