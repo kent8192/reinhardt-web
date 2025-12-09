@@ -149,12 +149,6 @@ impl ConditionalGetMiddleware {
 	fn parse_http_date(&self, value: &str) -> Option<DateTime<Utc>> {
 		httpdate::parse_http_date(value).ok().map(DateTime::from)
 	}
-
-	/// Format HTTP date
-	#[allow(dead_code)]
-	fn format_http_date(&self, dt: DateTime<Utc>) -> String {
-		httpdate::fmt_http_date(dt.into())
-	}
 }
 
 impl Default for ConditionalGetMiddleware {

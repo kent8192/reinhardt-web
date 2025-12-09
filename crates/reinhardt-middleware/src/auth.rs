@@ -207,71 +207,27 @@ impl<S: SessionStore + 'static, A: AuthenticationBackend + 'static> Middleware
 		let is_active = user.is_active();
 		let user_id = user.id();
 
-		request.extensions.insert(user_id);
+		// Insert individual values for backward compatibility
+		request.extensions.insert(user_id.clone());
 		request.extensions.insert(is_authenticated);
 		request.extensions.insert(is_admin);
 		request.extensions.insert(is_active);
+
+		// Insert AuthState object for CurrentUser and new code
+		let auth_state = if is_authenticated {
+			AuthState::authenticated(user_id, is_admin, is_active)
+		} else {
+			AuthState::anonymous()
+		};
+		request.extensions.insert(auth_state);
 
 		next.handle(request).await
 	}
 }
 
-/// Helper struct to store authentication state in request extensions
-#[derive(Clone, Debug)]
-pub struct AuthState {
-	pub user_id: String,
-	pub is_authenticated: bool,
-	pub is_admin: bool,
-	pub is_active: bool,
-}
-
-impl AuthState {
-	/// Create auth state from request extensions
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_middleware::auth::AuthState;
-	/// use reinhardt_core::http::Extensions;
-	///
-	/// let extensions = Extensions::new();
-	/// extensions.insert("user123".to_string());
-	/// extensions.insert(true); // is_authenticated
-	/// extensions.insert(false); // is_admin
-	/// extensions.insert(true); // is_active
-	///
-	/// let auth_state = AuthState::from_extensions(&extensions);
-	/// assert!(auth_state.is_some());
-	/// ```
-	pub fn from_extensions(extensions: &reinhardt_core::http::Extensions) -> Option<Self> {
-		Some(Self {
-			user_id: extensions.get::<String>()?,
-			is_authenticated: extensions.get::<bool>()?,
-			is_admin: false,
-			is_active: false,
-		})
-	}
-
-	/// Check if user is anonymous
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_middleware::auth::AuthState;
-	///
-	/// let anon_state = AuthState {
-	///     user_id: String::new(),
-	///     is_authenticated: false,
-	///     is_admin: false,
-	///     is_active: false,
-	/// };
-	///
-	/// assert!(anon_state.is_anonymous());
-	/// ```
-	pub fn is_anonymous(&self) -> bool {
-		!self.is_authenticated
-	}
-}
+// Re-export AuthState from reinhardt-http for backward compatibility.
+// AuthState is the canonical type for storing authentication state in extensions.
+pub use reinhardt_core::http::AuthState;
 
 #[cfg(all(test, feature = "sessions"))]
 mod tests {

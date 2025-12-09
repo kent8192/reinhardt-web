@@ -189,43 +189,6 @@ impl ETagMiddleware {
 			format!("\"{}\"", short_hash)
 		}
 	}
-
-	/// Check If-None-Match header
-	#[allow(dead_code)]
-	fn check_if_none_match(&self, request: &Request, etag: &str) -> bool {
-		if let Some(if_none_match) = request.headers.get("if-none-match")
-			&& let Ok(value) = if_none_match.to_str()
-		{
-			// * matches everything
-			if value == "*" {
-				return true;
-			}
-
-			// Check comma-separated ETag list
-			let etags: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
-			return etags.contains(&etag);
-		}
-		false
-	}
-
-	/// Check If-Match header
-	#[allow(dead_code)]
-	fn check_if_match(&self, request: &Request, etag: &str) -> bool {
-		if let Some(if_match) = request.headers.get("if-match")
-			&& let Ok(value) = if_match.to_str()
-		{
-			// * matches everything
-			if value == "*" {
-				return true;
-			}
-
-			// Check comma-separated ETag list
-			let etags: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
-			return etags.contains(&etag);
-		}
-		// Always true if If-Match header is absent
-		true
-	}
 }
 
 impl Default for ETagMiddleware {
