@@ -170,10 +170,7 @@ pub trait StreamingRenderer: Send + Sync {
 /// assert_eq!(parsed.as_array().unwrap().len(), 3);
 /// # }
 /// ```
-pub struct StreamingJSONRenderer {
-	#[allow(dead_code)]
-	config: StreamingConfig,
-}
+pub struct StreamingJSONRenderer {}
 
 impl StreamingJSONRenderer {
 	/// Creates a new StreamingJSONRenderer with default configuration
@@ -186,9 +183,7 @@ impl StreamingJSONRenderer {
 	/// let renderer = StreamingJSONRenderer::new();
 	/// ```
 	pub fn new() -> Self {
-		Self {
-			config: StreamingConfig::default(),
-		}
+		Self {}
 	}
 
 	/// Creates a new StreamingJSONRenderer with custom configuration
@@ -201,8 +196,8 @@ impl StreamingJSONRenderer {
 	/// let config = StreamingConfig::new().with_buffer_size(8192);
 	/// let renderer = StreamingJSONRenderer::with_config(config);
 	/// ```
-	pub fn with_config(config: StreamingConfig) -> Self {
-		Self { config }
+	pub fn with_config(_config: StreamingConfig) -> Self {
+		Self {}
 	}
 }
 

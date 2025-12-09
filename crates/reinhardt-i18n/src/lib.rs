@@ -198,14 +198,4 @@ impl TranslationState {
 	fn add_catalog(&mut self, locale: String, catalog: MessageCatalog) {
 		self.catalogs.insert(locale, catalog);
 	}
-
-	#[allow(dead_code)]
-	fn remove_catalog(&mut self, locale: &str) {
-		self.catalogs.remove(locale);
-	}
-
-	#[allow(dead_code)]
-	fn has_catalog(&self, locale: &str) -> bool {
-		self.catalogs.contains_key(locale)
-	}
 }

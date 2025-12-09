@@ -28,19 +28,16 @@ pub struct LazyString {
 	plural_message: Option<String>,
 	count: Option<usize>,
 	context: Option<String>,
-	#[allow(dead_code)]
-	is_plural: bool,
 }
 
 impl LazyString {
 	/// Create a new lazy translation string
-	pub fn new(message: String, context: Option<String>, is_plural: bool) -> Self {
+	pub fn new(message: String, context: Option<String>, _is_plural: bool) -> Self {
 		Self {
 			message,
 			plural_message: None,
 			count: None,
 			context,
-			is_plural,
 		}
 	}
 
@@ -56,7 +53,6 @@ impl LazyString {
 			plural_message: Some(plural),
 			count: Some(count),
 			context,
-			is_plural: true,
 		}
 	}
 

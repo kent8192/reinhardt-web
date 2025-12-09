@@ -131,8 +131,6 @@ impl Default for MemcachedConfig {
 /// Memcached-based cache backend with multi-server support.
 pub struct MemcachedCache {
 	servers: Vec<Mutex<MemcachedProtocol>>,
-	#[allow(dead_code)]
-	config: MemcachedConfig,
 }
 
 impl MemcachedCache {
@@ -175,10 +173,7 @@ impl MemcachedCache {
 			}));
 		}
 
-		Ok(Self {
-			servers: protocols,
-			config,
-		})
+		Ok(Self { servers: protocols })
 	}
 
 	/// Helper method to connect to a single Memcached server.

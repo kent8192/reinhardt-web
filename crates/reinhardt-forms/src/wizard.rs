@@ -12,8 +12,6 @@ pub struct FormWizard {
 	steps: Vec<WizardStep>,
 	current_step: usize,
 	session_data: WizardSessionData,
-	#[allow(dead_code)]
-	prefix: String,
 }
 
 /// A single step in the wizard
@@ -87,12 +85,11 @@ impl FormWizard {
 	/// assert_eq!(wizard.current_step(), 0);
 	/// assert!(wizard.steps().is_empty());
 	/// ```
-	pub fn new(prefix: String) -> Self {
+	pub fn new(_prefix: String) -> Self {
 		Self {
 			steps: vec![],
 			current_step: 0,
 			session_data: HashMap::new(),
-			prefix,
 		}
 	}
 

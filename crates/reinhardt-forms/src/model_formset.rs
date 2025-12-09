@@ -146,8 +146,6 @@ impl ModelFormSetConfig {
 pub struct ModelFormSet<T: FormModel> {
 	model_forms: Vec<ModelForm<T>>,
 	formset: FormSet,
-	#[allow(dead_code)]
-	config: ModelFormSetConfig,
 	_phantom: PhantomData<T>,
 }
 
@@ -190,7 +188,6 @@ impl<T: FormModel> ModelFormSet<T> {
 		Self {
 			model_forms,
 			formset,
-			config,
 			_phantom: PhantomData,
 		}
 	}

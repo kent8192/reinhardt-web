@@ -47,10 +47,8 @@ where
 	M: Model + serde::de::DeserializeOwned + 'static,
 	M::PrimaryKey: ToString,
 {
-	use reinhardt_db::prelude::Manager;
-
 	// Get the manager for this model
-	let manager = Manager::<M>::new();
+	let manager = M::objects();
 
 	// Query by primary key
 	let queryset = manager.get(pk);
