@@ -18,7 +18,7 @@ pub struct VoteRequest {
 /// Index view - List all polls
 #[get("/polls/", name = "polls_index")]
 pub async fn index() -> ViewResult<Response> {
-	let manager = Manager::<Question>::new();
+	let manager = Question::objects();
 	let questions = manager.all().all().await?;
 	let latest_questions: Vec<_> = questions.into_iter().take(5).collect();
 
@@ -38,17 +38,17 @@ pub async fn index() -> ViewResult<Response> {
 /// GET /polls/{question_id}/
 #[get("/polls/{question_id}/", name = "polls_detail")]
 pub async fn detail(Path(question_id): Path<i64>) -> ViewResult<Response> {
-	let question_manager = Manager::<Question>::new();
+	let question_manager = Question::objects();
 	let question = question_manager
 		.get(question_id)
 		.first()
 		.await?
 		.ok_or("Question not found")?;
 
-	let choice_manager = Manager::<Choice>::new();
+	let choice_manager = Choice::objects();
 	let choices = choice_manager
 		.filter(
-			"question_id",
+			Choice::field_question_id(),
 			FilterOperator::Eq,
 			FilterValue::Int(question_id),
 		)
@@ -71,17 +71,17 @@ pub async fn detail(Path(question_id): Path<i64>) -> ViewResult<Response> {
 /// GET /polls/{question_id}/results/
 #[get("/polls/{question_id}/results/", name = "polls_results")]
 pub async fn results(Path(question_id): Path<i64>) -> ViewResult<Response> {
-	let question_manager = Manager::<Question>::new();
+	let question_manager = Question::objects();
 	let question = question_manager
 		.get(question_id)
 		.first()
 		.await?
 		.ok_or("Question not found")?;
 
-	let choice_manager = Manager::<Choice>::new();
+	let choice_manager = Choice::objects();
 	let choices = choice_manager
 		.filter(
-			"question_id",
+			Choice::field_question_id(),
 			FilterOperator::Eq,
 			FilterValue::Int(question_id),
 		)
@@ -112,7 +112,7 @@ pub async fn vote(
 ) -> ViewResult<Response> {
 	let choice_id = vote_req.choice_id;
 
-	let choice_manager = Manager::<Choice>::new();
+	let choice_manager = Choice::objects();
 	let mut choice = choice_manager
 		.get(choice_id)
 		.first()
