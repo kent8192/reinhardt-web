@@ -1,11 +1,27 @@
 //! CurrentUser Injectable for dependency injection
 //!
 //! Provides access to the authenticated user in endpoint handlers.
+//!
+//! This module integrates with the authentication middleware to provide
+//! type-safe access to the currently authenticated user via dependency injection.
+//!
+//! # How it works
+//!
+//! 1. The authentication middleware (e.g., `AuthenticationMiddleware`) validates
+//!    the user and stores an `AuthState` in the request extensions.
+//! 2. When a handler requests `CurrentUser<U>`, the injectable implementation:
+//!    - Extracts `AuthState` from request extensions
+//!    - Parses the user_id to the model's primary key type
+//!    - Loads the user from the database using `Model::objects().get(pk)`
+//! 3. Returns `CurrentUser::authenticated(user, user_id)` or `CurrentUser::anonymous()`
 
 use crate::AuthenticationError;
 use crate::BaseUser;
 use async_trait::async_trait;
+use reinhardt_db::orm::{DatabaseConnection, Model};
 use reinhardt_di::{DiResult, Injectable, InjectionContext};
+use reinhardt_http::AuthState;
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// Wrapper type representing the currently authenticated user for DI.
@@ -102,14 +118,72 @@ impl<U: BaseUser + Clone> CurrentUser<U> {
 }
 
 #[async_trait]
-impl<U: BaseUser + Clone + Send + Sync + 'static> Injectable for CurrentUser<U> {
-	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
-		// Current implementation returns anonymous user.
-		// Session integration will be added in future phases:
-		// 1. Extract session from Request
-		// 2. Get user_id from session
-		// 3. Load user from database
-		Ok(Self::anonymous())
+impl<U> Injectable for CurrentUser<U>
+where
+	U: BaseUser + Model + Clone + Send + Sync + 'static,
+	// Ensure BaseUser::PrimaryKey and Model::PrimaryKey are the same type
+	<U as BaseUser>::PrimaryKey: std::str::FromStr + ToString + Send + Sync,
+	<<U as BaseUser>::PrimaryKey as std::str::FromStr>::Err: std::fmt::Debug,
+	<U as Model>::PrimaryKey: From<<U as BaseUser>::PrimaryKey>,
+{
+	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+		// 1. Get HTTP request from context
+		#[cfg(feature = "params")]
+		let request = match ctx.get_http_request() {
+			Some(req) => req,
+			None => return Ok(Self::anonymous()),
+		};
+
+		#[cfg(not(feature = "params"))]
+		return Ok(Self::anonymous());
+
+		// 2. Get AuthState from request extensions
+		#[cfg(feature = "params")]
+		let auth_state: AuthState = match request.extensions.get() {
+			Some(state) => state,
+			None => return Ok(Self::anonymous()),
+		};
+
+		// 3. Check if authenticated
+		#[cfg(feature = "params")]
+		if !auth_state.is_authenticated {
+			return Ok(Self::anonymous());
+		}
+
+		// 4. Parse user_id to PrimaryKey type
+		#[cfg(feature = "params")]
+		let base_pk: <U as BaseUser>::PrimaryKey = match auth_state.user_id.parse() {
+			Ok(pk) => pk,
+			Err(_) => return Ok(Self::anonymous()),
+		};
+
+		// Convert BaseUser::PrimaryKey to Model::PrimaryKey
+		#[cfg(feature = "params")]
+		let model_pk: <U as Model>::PrimaryKey = base_pk.into();
+
+		// 5. Get DatabaseConnection from DI context
+		#[cfg(feature = "params")]
+		let db: Arc<DatabaseConnection> = match ctx.resolve::<DatabaseConnection>().await {
+			Ok(conn) => conn,
+			Err(_) => return Ok(Self::anonymous()),
+		};
+
+		// 6. Load user from database using Model::objects() (Django-style ORM)
+		#[cfg(feature = "params")]
+		let user: U = match U::objects().get(model_pk).first_with_db(&db).await {
+			Ok(Some(u)) => u,
+			Ok(None) | Err(_) => return Ok(Self::anonymous()),
+		};
+
+		// 7. Parse UUID for CurrentUser (Uuid is commonly used for user IDs)
+		#[cfg(feature = "params")]
+		let user_id = match Uuid::parse_str(&auth_state.user_id) {
+			Ok(id) => id,
+			Err(_) => Uuid::nil(),
+		};
+
+		#[cfg(feature = "params")]
+		Ok(Self::authenticated(user, user_id))
 	}
 }
 

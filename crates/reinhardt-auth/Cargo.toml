@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = []
+default = ["params"]
+
+# Parameter extraction support for CurrentUser DI
+params = ["reinhardt-di/params"]
 
 # Fine-grained authentication features
 jwt = []
@@ -22,6 +25,7 @@ redis-sessions = ["redis"]
 
 # Aggregate all auth features
 auth-full = [
+  "params",
   "jwt",
   "sessions",
   "oauth",

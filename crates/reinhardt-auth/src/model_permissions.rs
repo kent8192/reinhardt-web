@@ -57,9 +57,6 @@ type PermissionMap = Arc<RwLock<HashMap<String, Vec<String>>>>;
 pub struct DjangoModelPermissions {
 	/// User permissions map (username -> list of permissions)
 	user_permissions: PermissionMap,
-	/// Method to action mapping
-	#[allow(dead_code)]
-	method_actions: HashMap<String, String>,
 }
 
 impl DjangoModelPermissions {
@@ -73,18 +70,8 @@ impl DjangoModelPermissions {
 	/// let perm = DjangoModelPermissions::new();
 	/// ```
 	pub fn new() -> Self {
-		let mut method_actions = HashMap::new();
-		method_actions.insert("GET".to_string(), "view".to_string());
-		method_actions.insert("HEAD".to_string(), "view".to_string());
-		method_actions.insert("OPTIONS".to_string(), "view".to_string());
-		method_actions.insert("POST".to_string(), "add".to_string());
-		method_actions.insert("PUT".to_string(), "change".to_string());
-		method_actions.insert("PATCH".to_string(), "change".to_string());
-		method_actions.insert("DELETE".to_string(), "delete".to_string());
-
 		Self {
 			user_permissions: Arc::new(RwLock::new(HashMap::new())),
-			method_actions,
 		}
 	}
 
@@ -135,12 +122,6 @@ impl DjangoModelPermissions {
 			return user_perms.iter().any(|p| p == permission);
 		}
 		false
-	}
-
-	/// Get action from HTTP method
-	#[allow(dead_code)]
-	fn get_action(&self, method: &str) -> Option<&str> {
-		self.method_actions.get(method).map(|s| s.as_str())
 	}
 }
 
