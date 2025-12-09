@@ -146,11 +146,11 @@ pub(crate) fn model_attribute_impl(
 		syn::parse_quote! { #[model_config(#args)] }
 	};
 
-	// Build derive attribute with Model using fully qualified path
+	// Build derive attribute with Model derive macro
 	// Model must be first for proper attribute processing
-	// Use reinhardt::Model for examples, reinhardt_macros::Model for internal use
-	// Try reinhardt first (for external users), fall back to reinhardt_macros (for internal)
-	let model_path: TokenStream = "reinhardt::Model"
+	// Use ::reinhardt::macros::Model for hierarchical imports
+	// (reinhardt::Model refers to the trait, not the derive macro)
+	let model_path: TokenStream = "::reinhardt::macros::Model"
 		.parse()
 		.expect("Failed to parse Model path");
 
