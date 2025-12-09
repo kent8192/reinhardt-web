@@ -2,9 +2,11 @@
 //!
 //! Provides automatic `Model` trait implementation and registration to the global ModelRegistry.
 
+use std::collections::HashMap;
+
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, Result, Type, parse_quote};
+use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Result, Type, parse_quote};
 use syn::{Ident, LitStr, bracketed, parenthesized};
 
 use crate::rel::RelAttribute;
@@ -1254,8 +1256,13 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 	let field_metadata_items = generate_field_metadata(&field_infos, &fk_field_infos)?;
 
 	// Generate auto-registration code
-	let registration_code =
-		generate_registration_code(struct_name, app_label, table_name, &field_infos)?;
+	let registration_code = generate_registration_code(
+		struct_name,
+		app_label,
+		table_name,
+		&field_infos,
+		&fk_field_infos,
+	)?;
 
 	// Generate primary_key() and set_primary_key() implementations
 	let (pk_impl, set_pk_impl, composite_pk_impl) = if is_composite_pk {
@@ -1809,6 +1816,7 @@ fn generate_registration_code(
 	app_label: &str,
 	table_name: &str,
 	field_infos: &[FieldInfo],
+	fk_field_infos: &[ForeignKeyFieldInfo],
 ) -> Result<TokenStream> {
 	let model_name = struct_name.to_string();
 	let register_fn_name = syn::Ident::new(
@@ -1917,48 +1925,101 @@ fn generate_registration_code(
 	for field_info in &m2m_fields {
 		let field_name = field_info.name.to_string();
 
-		if let Some(rel) = &field_info.rel {
-			let to_model = if let Some(to_type) = &rel.to {
-				quote! { #to_type }.to_string()
+		// Get target model name: from #[rel(to = "...")] or infer from ManyToManyField<Source, Target>
+		let to_model = if let Some(rel) = &field_info.rel
+			&& let Some(to_type) = &rel.to
+		{
+			// Explicit 'to' parameter in #[rel(...)]
+			quote! { #to_type }.to_string()
+		} else if let Some(target_ty) = extract_m2m_target_type(&field_info.ty) {
+			// Infer from ManyToManyField<Source, Target> - extract Target type name
+			if let Type::Path(type_path) = target_ty
+				&& let Some(last_segment) = type_path.path.segments.last()
+			{
+				last_segment.ident.to_string()
 			} else {
-				continue; // Skip if no 'to' parameter
-			};
+				continue; // Skip if cannot extract target type
+			}
+		} else {
+			continue; // Skip if no 'to' parameter and cannot infer from type
+		};
 
-			let related_name = rel
-				.related_name
-				.as_ref()
-				.map(|r| quote! { Some(#r.to_string()) })
-				.unwrap_or(quote! { None });
-			let through = rel
-				.through
-				.as_ref()
-				.map(|t| quote! { Some(#t.to_string()) })
-				.unwrap_or(quote! { None });
-			let source_field = rel
-				.source_field
-				.as_ref()
-				.map(|s| quote! { Some(#s.to_string()) })
-				.unwrap_or(quote! { None });
-			let target_field = rel
-				.target_field
-				.as_ref()
-				.map(|t| quote! { Some(#t.to_string()) })
-				.unwrap_or(quote! { None });
+		// Get relationship attributes (may be None if no #[rel(...)] attribute)
+		let related_name = field_info
+			.rel
+			.as_ref()
+			.and_then(|r| r.related_name.as_ref())
+			.map(|r| quote! { Some(#r.to_string()) })
+			.unwrap_or(quote! { None });
+		let through = field_info
+			.rel
+			.as_ref()
+			.and_then(|r| r.through.as_ref())
+			.map(|t| quote! { Some(#t.to_string()) })
+			.unwrap_or(quote! { None });
+		let source_field = field_info
+			.rel
+			.as_ref()
+			.and_then(|r| r.source_field.as_ref())
+			.map(|s| quote! { Some(#s.to_string()) })
+			.unwrap_or(quote! { None });
+		let target_field = field_info
+			.rel
+			.as_ref()
+			.and_then(|r| r.target_field.as_ref())
+			.map(|t| quote! { Some(#t.to_string()) })
+			.unwrap_or(quote! { None });
 
-			m2m_registrations.push(quote! {
-				metadata.add_many_to_many(
-					::reinhardt::db::migrations::model_registry::ManyToManyMetadata {
-						field_name: #field_name.to_string(),
-						to_model: #to_model.to_string(),
-						related_name: #related_name,
-						through: #through,
-						source_field: #source_field,
-						target_field: #target_field,
-						db_constraint_prefix: None,
-					}
-				);
-			});
-		}
+		m2m_registrations.push(quote! {
+			metadata.add_many_to_many(
+				::reinhardt::db::migrations::model_registry::ManyToManyMetadata {
+					field_name: #field_name.to_string(),
+					to_model: #to_model.to_string(),
+					related_name: #related_name,
+					through: #through,
+					source_field: #source_field,
+					target_field: #target_field,
+					db_constraint_prefix: None,
+				}
+			);
+		});
+	}
+
+	// Generate FK _id field registration code
+	let mut fk_id_registrations = Vec::new();
+	for fk_info in fk_field_infos {
+		let id_column_name = &fk_info.id_column_name;
+		let nullable = fk_info.rel_attr.null.unwrap_or(false);
+		let unique = fk_info.is_one_to_one; // OneToOne fields have UNIQUE constraint
+		let db_index = fk_info.rel_attr.db_index.unwrap_or(true); // FK fields are indexed by default
+		let nullable_str = nullable.to_string();
+		let unique_str = unique.to_string();
+		let db_index_str = db_index.to_string();
+
+		// ForeignKeyField<User> → "User" を抽出
+		let target_model_name = if let Type::Path(type_path) = &fk_info.target_type {
+			type_path
+				.path
+				.segments
+				.last()
+				.map(|seg| seg.ident.to_string())
+				.unwrap_or_else(|| "Unknown".to_string())
+		} else {
+			"Unknown".to_string()
+		};
+
+		fk_id_registrations.push(quote! {
+			metadata.add_field(
+				#id_column_name.to_string(),
+				::reinhardt::db::migrations::model_registry::FieldMetadata::new(
+					::reinhardt::db::migrations::FieldType::Uuid
+				)
+					.with_param("null", #nullable_str)
+					.with_param("unique", #unique_str)
+					.with_param("db_index", #db_index_str)
+					.with_param("fk_target", #target_model_name)
+			);
+		});
 	}
 
 	// Generate type path for global model registry
@@ -1977,6 +2038,7 @@ fn generate_registration_code(
 			);
 
 			#(#field_registrations)*
+			#(#fk_id_registrations)*
 			#(#m2m_registrations)*
 
 			::reinhardt::db::migrations::model_registry::global_registry().register_model(metadata);
@@ -2267,9 +2329,57 @@ fn extract_fk_target_type(ty: &Type) -> Option<&Type> {
 	None
 }
 
+/// Extract target type from ManyToManyField<Source, Target>
+/// Returns the second generic argument (Target model)
+fn extract_m2m_target_type(ty: &Type) -> Option<&Type> {
+	if let Type::Path(type_path) = ty
+		&& let Some(last_segment) = type_path.path.segments.last()
+		&& last_segment.ident == "ManyToManyField"
+		&& let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+		&& args.args.len() >= 2
+		&& let Some(syn::GenericArgument::Type(target_ty)) = args.args.iter().nth(1)
+	{
+		return Some(target_ty);
+	}
+	None
+}
+
 /// Check if a type is a relationship field type (ForeignKeyField or OneToOneField)
 fn is_relationship_field_type(ty: &Type) -> bool {
 	is_foreign_key_field_type(ty) || is_one_to_one_field_type(ty)
+}
+
+/// Check if a field is a timestamp field that should be auto-set to Utc::now()
+fn is_timestamp_field(field: &FieldInfo) -> bool {
+	let config = &field.config;
+
+	// 1. 明示的な属性指定
+	if config.auto_now_add == Some(true) || config.auto_now == Some(true) {
+		return true;
+	}
+
+	// 2. フィールド名による自動検出
+	let field_name = field.name.to_string();
+	matches!(
+		field_name.as_str(),
+		"created_at" | "updated_at" | "date_joined" | "last_login" | "last_modified"
+	)
+}
+
+/// Extract the target model type from ForeignKeyField<T> or OneToOneField<T>
+fn extract_foreign_key_target_type(ty: &Type) -> Type {
+	// ForeignKeyField<User> -> User
+	if let Type::Path(type_path) = ty {
+		if let Some(segment) = type_path.path.segments.last() {
+			if let PathArguments::AngleBracketed(args) = &segment.arguments {
+				if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
+					return inner_ty.clone();
+				}
+			}
+		}
+	}
+	// フォールバック: 型全体を返す
+	ty.clone()
 }
 
 /// Determine if a field should be auto-generated (excluded from new() function arguments)
@@ -2286,8 +2396,8 @@ fn is_auto_generated_field(field: &FieldInfo) -> bool {
 		return false;
 	}
 
-	// Time-related auto-generation
-	if config.auto_now_add == Some(true) || config.auto_now == Some(true) {
+	// タイムスタンプフィールドの自動検出（新規追加）
+	if is_timestamp_field(field) {
 		return true;
 	}
 
@@ -2364,8 +2474,8 @@ fn get_auto_field_default_value(field: &FieldInfo) -> TokenStream {
 		return quote! { ::std::default::Default::default() };
 	}
 
-	// auto_now_add or auto_now - use Utc::now()
-	if config.auto_now_add == Some(true) || config.auto_now == Some(true) {
+	// Timestamp fields - use Utc::now()（修正：is_timestamp_fieldを使用）
+	if is_timestamp_field(field) {
 		return quote! { ::chrono::Utc::now() };
 	}
 
@@ -2401,26 +2511,91 @@ fn generate_new_function(
 		.filter(|f| is_auto_generated_field(f))
 		.collect();
 
-	// Generate parameter list for new() function
-	let params: Vec<_> = user_fields
+	// FK_idフィールドのマップを作成（例: room_id -> room）
+	let fk_id_to_fk_field: HashMap<String, String> = fk_id_field_names
 		.iter()
-		.map(|f| {
-			let name = &f.name;
-			let ty = &f.ty;
-			quote! { #name: #ty }
+		.filter_map(|id_name| {
+			let id_str = id_name.to_string();
+			if id_str.ends_with("_id") {
+				let fk_name = id_str.trim_end_matches("_id").to_string();
+				Some((id_str, fk_name))
+			} else {
+				None
+			}
 		})
 		.collect();
 
-	// Generate user field assignments (shorthand syntax)
+	// パラメータリストの生成
+	let mut params = Vec::new();
+	let mut where_clauses = Vec::new();
+	let mut generic_params = Vec::new();
+	let mut fk_field_assignments = Vec::new();
+	let mut fk_id_assignments = Vec::new();
+
+	// ジェネリック型パラメータのカウンター（F0, F1, F2, ...）
+	let mut generic_counter = 0;
+
+	for f in user_fields.iter() {
+		let field_name = &f.name;
+		let field_name_str = field_name.to_string();
+
+		// このフィールドがFK _idフィールドかチェック
+		if let Some(fk_field_name) = fk_id_to_fk_field.get(&field_name_str) {
+			// これはFK _idフィールド（例: room_id）
+			// ジェネリック型パラメータを使用
+			let generic_param = syn::Ident::new(&format!("F{}", generic_counter), field_name.span());
+			generic_counter += 1;
+
+			// 対応するFKフィールドを見つける
+			let fk_field_info = field_infos.iter().find(|fi| fi.name.to_string() == *fk_field_name);
+
+			if let Some(fk_info) = fk_field_info {
+				// ForeignKeyField<T>からT を抽出
+				let related_model_type = extract_foreign_key_target_type(&fk_info.ty);
+
+				// パラメータ: fk_field_name: GenericParam
+				let fk_field_ident = syn::Ident::new(fk_field_name, field_name.span());
+				params.push(quote! { #fk_field_ident: #generic_param });
+
+				// Where句: GenericParam: IntoPrimaryKey<RelatedModel>
+				where_clauses.push(quote! {
+					#generic_param: ::reinhardt::db::orm::IntoPrimaryKey<#related_model_type>
+				});
+
+				// ジェネリックパラメータリスト
+				generic_params.push(quote! { #generic_param });
+
+				// フィールド割り当て: room_id: fk_field_name.into_primary_key()
+				fk_id_assignments.push(quote! {
+					#field_name: #fk_field_ident.into_primary_key()
+				});
+			}
+		} else {
+			// 通常のユーザーフィールド
+			let ty = &f.ty;
+			params.push(quote! { #field_name: #ty });
+		}
+	}
+
+	// ForeignKeyFieldフィールドの割り当て（ForeignKeyField::new()）
+	for (_fk_id_str, fk_name_str) in fk_id_to_fk_field.iter() {
+		let fk_name = syn::Ident::new(fk_name_str, proc_macro2::Span::call_site());
+		fk_field_assignments.push(quote! {
+			#fk_name: ::std::default::Default::default()
+		});
+	}
+
+	// 通常のユーザーフィールドの割り当て（FK関連以外）
 	let user_field_assignments: Vec<_> = user_fields
 		.iter()
+		.filter(|f| !fk_id_to_fk_field.contains_key(&f.name.to_string()))
 		.map(|f| {
 			let name = &f.name;
 			quote! { #name }
 		})
 		.collect();
 
-	// Generate auto field assignments with default values
+	// Auto-generatedフィールドの割り当て
 	let auto_field_assignments: Vec<_> = auto_fields
 		.iter()
 		.map(|f| {
@@ -2430,30 +2605,45 @@ fn generate_new_function(
 		})
 		.collect();
 
-	// Generate FK _id field assignments with Default::default()
-	// These fields are auto-generated by #[model] attribute macro
-	let fk_id_assignments: Vec<_> = fk_id_field_names
-		.iter()
-		.map(|name| {
-			quote! { #name: ::std::default::Default::default() }
-		})
-		.collect();
+	// ジェネリック関数シグネチャの生成
+	let generic_signature = if generic_params.is_empty() {
+		quote! {}
+	} else {
+		quote! { <#(#generic_params),*> }
+	};
+
+	let where_clause = if where_clauses.is_empty() {
+		quote! {}
+	} else {
+		quote! { where #(#where_clauses),* }
+	};
 
 	quote! {
 		impl #struct_name {
 			/// Create a new instance with user-specified fields.
 			///
-			/// Auto-generated fields (timestamps, UUIDs, relationships) are initialized automatically:
+			/// Auto-generated fields are initialized automatically:
 			/// - UUID primary keys: Generated with `Uuid::new_v4()`
-			/// - `auto_now_add`/`auto_now` fields: Set to `Utc::now()`
+			/// - Timestamp fields (created_at, updated_at, etc.): Set to `Utc::now()`
+			/// - Fields with `#[field(auto_now_add)]` or `#[field(auto_now)]`: Set to `Utc::now()`
 			/// - ManyToManyField: Initialized with `Default::default()`
-			/// - ForeignKey _id fields: Initialized with `Default::default()`
+			/// - ForeignKeyField: Initialized with `Default::default()`
 			/// - Identity/AutoIncrement fields: Set to `Default::default()` (DB assigns value)
-			pub fn new(#(#params),*) -> Self {
+			///
+			/// # Foreign Key Parameters
+			///
+			/// Foreign key fields accept either:
+			/// - The related model instance (e.g., `User { ... }`)
+			/// - A reference to the related model (e.g., `&user`)
+			/// - The primary key value directly (e.g., `user_id: Uuid`)
+			pub fn new #generic_signature(#(#params),*) -> Self
+			#where_clause
+			{
 				Self {
 					#(#user_field_assignments,)*
-					#(#auto_field_assignments,)*
 					#(#fk_id_assignments,)*
+					#(#fk_field_assignments,)*
+					#(#auto_field_assignments,)*
 				}
 			}
 		}
