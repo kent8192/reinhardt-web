@@ -1,0 +1,7 @@
+[build]
+target-dir = "target"
+
+# rust-analyzerの設定
+# すべてのフィーチャを有効にして、エディタでの型チェックを改善
+[env]
+RUST_ANALYZER_CARGO_FEATURES = "all"
