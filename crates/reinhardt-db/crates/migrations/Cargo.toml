@@ -51,6 +51,7 @@ reinhardt-core = { workspace = true, features = ["exception"] }
 reinhardt-settings = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 futures = { workspace = true }
+tracing = { workspace = true }
 
 # AST dependencies for robust migration file generation
 syn = { version = "2.0", features = ["full", "parsing"] }

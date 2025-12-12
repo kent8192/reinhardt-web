@@ -91,7 +91,7 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection (placeholder for now)
+	/// * `conn` - Database connection
 	/// * `target_pk` - Primary key of the target instance
 	///
 	/// # Returns
@@ -123,7 +123,7 @@ where
 
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		// 実際のSQL実行
+		// Execute SQL
 		conn.execute(&sql, vec![]).await?;
 		Ok(())
 	}
@@ -134,7 +134,7 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection (placeholder for now)
+	/// * `conn` - Database connection
 	/// * `target_pk` - Primary key of the target instance
 	///
 	/// # Returns
@@ -152,7 +152,7 @@ where
 
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		// 実際のSQL実行
+		// Execute SQL
 		conn.execute(&sql, vec![]).await?;
 		Ok(())
 	}
@@ -161,7 +161,7 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection (placeholder for now)
+	/// * `conn` - Database connection
 	/// * `target_pk` - Primary key of the target instance
 	///
 	/// # Returns
@@ -185,7 +185,7 @@ where
 
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		// 実際のSQL実行
+		// Execute SQL
 		let rows = conn.query(&sql, vec![]).await?;
 		Ok(!rows.is_empty())
 	}
@@ -196,7 +196,7 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection (placeholder for now)
+	/// * `conn` - Database connection
 	/// * `target_table` - Name of the target table
 	/// * `target_pk_field` - Name of the primary key column in target table
 	///
@@ -217,7 +217,7 @@ where
 				Expr::col((Alias::new(&self.through_table), Alias::new(&self.target_field)))
 					.equals((Alias::new(target_table), Alias::new(target_pk_field))),
 			)
-			// ターゲットテーブルのすべてのカラムを選択
+			// Select all columns from target table
 			.columns([(Alias::new(target_table), Asterisk)])
 			.and_where(
 				Expr::col((Alias::new(&self.through_table), Alias::new(&self.source_field)))
@@ -226,7 +226,7 @@ where
 
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		// 実際のSQL実行
+		// Execute SQL
 		conn.query(&sql, vec![])
 			.await
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
@@ -238,7 +238,7 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection (placeholder for now)
+	/// * `conn` - Database connection
 	///
 	/// # Returns
 	///
@@ -251,7 +251,7 @@ where
 
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		// 実際のSQL実行
+		// Execute SQL
 		conn.execute(&sql, vec![]).await?;
 		Ok(())
 	}
@@ -260,7 +260,7 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection (placeholder for now)
+	/// * `conn` - Database connection
 	///
 	/// # Returns
 	///
@@ -274,10 +274,10 @@ where
 
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		// 実際のSQL実行
+		// Execute SQL
 		let row = conn.query_one(&sql, vec![]).await?;
 
-		// カウント値を取得（カラム名で取得）
+		// Get count value (retrieve by column name)
 		let count_value = row
 			.get::<i64>("count")
 			.or_else(|| row.get::<i64>("COUNT"))

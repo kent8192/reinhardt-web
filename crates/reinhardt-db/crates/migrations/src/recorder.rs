@@ -222,7 +222,6 @@ impl DatabaseMigrationRecorder {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn is_applied(&self, app: &str, name: &str) -> crate::Result<bool> {
-		#[cfg(feature = "mongodb-backend")]
 		use reinhardt_backends::types::DatabaseType;
 
 		match self.connection.database_type() {
@@ -259,7 +258,7 @@ impl DatabaseMigrationRecorder {
 					))
 				}
 			}
-			_ => {
+			DatabaseType::Postgres | DatabaseType::Mysql | DatabaseType::Sqlite => {
 				let sql = "SELECT EXISTS(SELECT 1 FROM reinhardt_migrations WHERE app = $1 AND name = $2) as exists_flag";
 				let params = vec![
 					QueryValue::String(app.to_string()),
@@ -312,7 +311,6 @@ impl DatabaseMigrationRecorder {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn record_applied(&self, app: &str, name: &str) -> crate::Result<()> {
-		#[cfg(feature = "mongodb-backend")]
 		use reinhardt_backends::types::DatabaseType;
 
 		match self.connection.database_type() {
@@ -351,7 +349,7 @@ impl DatabaseMigrationRecorder {
 					))
 				}
 			}
-			_ => {
+			DatabaseType::Postgres | DatabaseType::Mysql | DatabaseType::Sqlite => {
 				let sql = "INSERT INTO reinhardt_migrations (app, name, applied) VALUES ($1, $2, CURRENT_TIMESTAMP)";
 				let params = vec![
 					QueryValue::String(app.to_string()),
@@ -388,7 +386,6 @@ impl DatabaseMigrationRecorder {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn get_applied_migrations(&self) -> crate::Result<Vec<MigrationRecord>> {
-		#[cfg(feature = "mongodb-backend")]
 		use reinhardt_backends::types::DatabaseType;
 
 		match self.connection.database_type() {
@@ -473,7 +470,7 @@ impl DatabaseMigrationRecorder {
 					))
 				}
 			}
-			_ => {
+			DatabaseType::Postgres | DatabaseType::Mysql | DatabaseType::Sqlite => {
 				use reinhardt_backends::types::DatabaseType;
 
 				let sql = "SELECT app, name, applied FROM reinhardt_migrations ORDER BY applied";
@@ -531,7 +528,6 @@ impl DatabaseMigrationRecorder {
 	///
 	/// Used when rolling back migrations.
 	pub async fn unapply(&self, app: &str, name: &str) -> crate::Result<()> {
-		#[cfg(feature = "mongodb-backend")]
 		use reinhardt_backends::types::DatabaseType;
 
 		match self.connection.database_type() {
@@ -568,7 +564,7 @@ impl DatabaseMigrationRecorder {
 					))
 				}
 			}
-			_ => {
+			DatabaseType::Postgres | DatabaseType::Mysql | DatabaseType::Sqlite => {
 				let sql = "DELETE FROM reinhardt_migrations WHERE app = $1 AND name = $2";
 				let params = vec![
 					QueryValue::String(app.to_string()),

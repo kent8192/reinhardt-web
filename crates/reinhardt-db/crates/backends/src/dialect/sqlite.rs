@@ -157,7 +157,7 @@ impl DatabaseBackend for SqliteBackend {
 
 		// SQLite requires special handling - we can't use pool.begin() directly
 		// when we want to specify a transaction type
-		// For now, we use pool.begin() and document the limitation
+		// TODO: For now, we use pool.begin() and document the limitation
 		// SQLite in WAL mode provides serializable isolation by default anyway
 
 		let tx = self.pool.begin().await?;

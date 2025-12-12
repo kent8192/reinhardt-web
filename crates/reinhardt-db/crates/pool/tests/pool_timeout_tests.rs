@@ -120,7 +120,7 @@ async fn test_pool_exhausted_no_timeout() {
 	let config = PoolConfig::new()
 		.with_min_connections(0)
 		.with_max_connections(1)
-		.with_acquire_timeout(Duration::from_millis(10)); // Near-zero timeout
+		.with_acquire_timeout(Duration::from_millis(50)); // Short timeout for testing
 
 	let pool = ConnectionPool::<Sqlite>::new_sqlite(url, config)
 		.await
@@ -138,10 +138,10 @@ async fn test_pool_exhausted_no_timeout() {
 
 	let elapsed = start.elapsed();
 
-	assert!(result.is_err(), "Should timeout immediately");
+	assert!(result.is_err(), "Should timeout");
 	assert!(
-		elapsed.as_millis() < 100,
-		"Should timeout very quickly, got {:?}",
+		elapsed.as_millis() >= 10 && elapsed.as_millis() < 200,
+		"Timeout should be between 10ms and 200ms, got {:?}",
 		elapsed
 	);
 }

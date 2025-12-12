@@ -84,11 +84,17 @@ async fn cleanup_xa_transactions(pool: &MySqlPool) {
 		.await
 		.unwrap_or_default();
 
+	// Helper function to escape XID for SQL
+	fn escape_xid(xid: &str) -> String {
+		xid.replace('\'', "''")
+	}
+
 	for row in rows {
 		if let Ok(data) = row.try_get::<Vec<u8>, _>("data")
 			&& let Ok(xid) = String::from_utf8(data)
 		{
-			let _ = sqlx::query(&format!("XA ROLLBACK '{}'", xid))
+			let escaped_xid = escape_xid(&xid);
+			let _ = sqlx::query(&format!("XA ROLLBACK '{}'", escaped_xid))
 				.execute(pool)
 				.await;
 		}

@@ -640,7 +640,7 @@ impl Q {
 	///
 	pub fn from_sql(sql: &str) -> Self {
 		// Parse simple SQL condition like "field = value"
-		// For now, store it as a raw condition
+		// TODO: For now, store it as a raw condition
 		Self::Condition {
 			field: String::new(),
 			operator: String::new(),

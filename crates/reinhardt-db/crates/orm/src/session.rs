@@ -534,7 +534,7 @@ impl Session {
 							if let Ok(row) = self.execute_returning(&sql, &values).await {
 								// Update identity map with generated ID
 								// This would require modifying the entry.data
-								// For now, we skip this optimization
+								// TODO: For now, we skip this optimization
 								let _ = row;
 							}
 						} else {

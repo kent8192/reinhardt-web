@@ -111,7 +111,7 @@ impl BaseDatabaseSchemaEditor for SQLiteSchemaEditor {
 	/// The actual implementation of table recreation should be handled by the
 	/// migration system in a future update.
 	///
-	/// For now, this serves as a clear indicator that SQLite requires special handling.
+	/// TODO: For now, this serves as a clear indicator that SQLite requires special handling.
 	fn alter_column_statement(&self, table: &str, _column: &str, _new_type: &str) -> String {
 		self.alter_column_note(table)
 	}

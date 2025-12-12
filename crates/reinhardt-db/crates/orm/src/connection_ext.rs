@@ -8,8 +8,11 @@ use sea_query::{DeleteStatement, InsertStatement, SelectStatement, UpdateStateme
 
 use crate::query_types::{DbBackend, QueryStatement};
 
-/// Row type (placeholder - will be replaced with actual row type)
-pub type Row = sqlx::postgres::PgRow;
+/// Universal row type supporting multiple database backends
+///
+/// This type supports PostgreSQL, MySQL, and SQLite through sqlx's unified interface.
+/// The row type is automatically selected based on the database backend in use.
+pub type Row = sqlx::any::AnyRow;
 
 /// Result type for database operations
 pub type DbResult<T> = Result<T, reinhardt_core::exception::Error>;

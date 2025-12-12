@@ -18,7 +18,7 @@ pub struct PooledConnection {
 	pub created_at: Instant,
 	pub last_used: Instant,
 	// In a production implementation, this would contain the actual database connection
-	// For now, we keep metadata for testing and demonstration purposes
+	// TODO: For now, we keep metadata for testing and demonstration purposes
 }
 
 #[derive(Debug)]

@@ -515,7 +515,7 @@ impl SchemaDiff {
 				}
 				"foreign_key" | "one_to_one" => {
 					// ForeignKey constraints need more information to properly construct
-					// For now, we skip them as they require referenced_table info
+					// TODO: For now, we skip them as they require referenced_table info
 					// They are handled separately in the autodetector
 				}
 				"check" => {

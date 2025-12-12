@@ -2845,7 +2845,7 @@ impl InteractiveAutodetector for MigrationAutodetector {
 					// 1. Adding operation IDs or tracking metadata to DetectedChanges
 					// 2. Maintaining the mapping in InferredIntent
 					// 3. Implementing removal logic for each operation type
-					// For now, skipped intents are logged but the underlying operations remain
+					// TODO: For now, skipped intents are logged but the underlying operations remain
 					// in DetectedChanges, which may result in migration operations being
 					// generated despite user rejection. This should be addressed in a future
 					// refactoring of the intent inference system.
@@ -3955,7 +3955,7 @@ impl MigrationAutodetector {
 		// Future enhancement: Add MoveModel variant to Operation enum or
 		// use a separate operation handling path for cross-app moves.
 
-		// For now, cross-app moves will be handled separately in generate_migrations()
+		// TODO: For now, cross-app moves will be handled separately in generate_migrations()
 		// where we can use the new operations API directly.
 
 		operations
