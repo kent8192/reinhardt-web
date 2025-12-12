@@ -4,6 +4,8 @@
 //! as well as compile-time validated database identifier types.
 
 pub mod color;
+pub mod composition;
+pub mod conditional;
 pub mod credit_card;
 pub mod custom_regex;
 pub mod email;
@@ -12,26 +14,32 @@ pub mod existence;
 pub mod file_type;
 pub mod iban;
 pub mod identifier;
+pub mod image;
 pub mod ip_address;
 pub mod numeric;
 pub mod phone_number;
+pub mod postal_code;
 pub mod reserved;
 pub mod string;
 pub mod uniqueness;
 pub mod url;
 
 pub use color::{ColorFormat, ColorValidator};
+pub use composition::{AndValidator, OrValidator};
+pub use conditional::ConditionalValidator;
 pub use credit_card::{CardType, CreditCardValidator};
 pub use custom_regex::CustomRegexValidator;
 pub use email::EmailValidator;
 pub use errors::{ValidationError, ValidationResult};
 pub use existence::ExistsValidator;
-pub use file_type::FileTypeValidator;
+pub use file_type::{FileSizeValidator, FileTypeValidator};
 pub use iban::IBANValidator;
 pub use identifier::{ConstraintName, FieldName, IdentifierValidationError, TableName};
+pub use image::ImageDimensionValidator;
 pub use ip_address::IPAddressValidator;
 pub use numeric::{MaxValueValidator, MinValueValidator, RangeValidator};
 pub use phone_number::PhoneNumberValidator;
+pub use postal_code::{Country, PostalCodeValidator};
 pub use string::{
 	DateTimeValidator, DateValidator, JSONValidator, MaxLengthValidator, MinLengthValidator,
 	RegexValidator, SlugValidator, TimeValidator, UUIDValidator,
@@ -42,6 +50,8 @@ pub use url::UrlValidator;
 /// Re-export commonly used types
 pub mod prelude {
 	pub use crate::color::*;
+	pub use crate::composition::*;
+	pub use crate::conditional::*;
 	pub use crate::credit_card::*;
 	pub use crate::custom_regex::*;
 	pub use crate::email::*;
@@ -50,9 +60,11 @@ pub mod prelude {
 	pub use crate::file_type::*;
 	pub use crate::iban::*;
 	pub use crate::identifier::*;
+	pub use crate::image::*;
 	pub use crate::ip_address::*;
 	pub use crate::numeric::*;
 	pub use crate::phone_number::*;
+	pub use crate::postal_code::*;
 	pub use crate::string::*;
 	pub use crate::uniqueness::*;
 	pub use crate::url::*;

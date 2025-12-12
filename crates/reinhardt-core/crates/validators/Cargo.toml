@@ -12,6 +12,7 @@ full = []
 
 [dependencies]
 chrono = { workspace = true }
+image = "0.25"
 regex = "1.11"
 serde_json = "1.0"
 thiserror = "2.0"
