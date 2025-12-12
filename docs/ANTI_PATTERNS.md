@@ -2,7 +2,9 @@
 
 ## Purpose
 
-This document explicitly lists common mistakes, anti-patterns, and practices to avoid in the Reinhardt project. Use this as a quick reference for code review and development.
+This document explicitly lists common mistakes, anti-patterns, and practices to
+avoid in the Reinhardt project. Use this as a quick reference for code review
+and development.
 
 ---
 
@@ -11,30 +13,36 @@ This document explicitly lists common mistakes, anti-patterns, and practices to 
 ### ❌ Using `mod.rs` Files
 
 **DON'T:**
+
 ```
 src/database/mod.rs  // ❌ Old Rust 2015 style
 ```
 
 **DO:**
+
 ```
 src/database.rs      // ✅ Rust 2024 style
 ```
 
-**Why?** `mod.rs` is deprecated and makes file navigation harder. See @docs/MODULE_SYSTEM.md
+**Why?** `mod.rs` is deprecated and makes file navigation harder. See
+@docs/MODULE_SYSTEM.md
 
 ### ❌ Glob Imports
 
 **DON'T:**
+
 ```rust
 pub use database::*;  // ❌ Pollutes namespace
 ```
 
 **DO:**
+
 ```rust
 pub use database::{Pool, Connection, PoolConfig};  // ✅ Explicit
 ```
 
 **Exception**: Test modules may use `use super::*;` for convenience:
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -47,11 +55,14 @@ mod tests {
 }
 ```
 
-**Why?** Makes it unclear what's exported and causes naming conflicts. However, in test modules, the scope is limited and readability benefits outweigh the risks.
+**Why?** Makes it unclear what's exported and causes naming conflicts. However,
+in test modules, the scope is limited and readability benefits outweigh the
+risks.
 
 ### ❌ Circular Module Dependencies
 
 **DON'T:**
+
 ```rust
 // module_a.rs
 use crate::module_b::TypeB;  // ❌ A → B
@@ -61,6 +72,7 @@ use crate::module_a::TypeA;  // ❌ B → A (circular!)
 ```
 
 **DO:**
+
 ```rust
 // types.rs - Extract common types
 pub struct TypeA;
@@ -78,6 +90,7 @@ use crate::types::{TypeA, TypeB};  // ✅ No cycle
 ### ❌ Excessive Flat Structure
 
 **DON'T:**
+
 ```
 src/
 ├── user_handler.rs      // ❌ Related files
@@ -89,6 +102,7 @@ src/
 ```
 
 **DO:**
+
 ```
 src/
 ├── user.rs              // ✅ Grouped by
@@ -108,12 +122,14 @@ src/
 ### ❌ Deep Relative Paths
 
 **DON'T:**
+
 ```rust
 use crate::../../config/settings.toml;  // ❌ Goes up 2+ levels
 use super::super::super::utils;         // ❌ Confusing
 ```
 
 **DO:**
+
 ```rust
 use crate::config::Settings;  // ✅ Absolute from crate root
 use super::sibling_module;    // ✅ One level up is OK
@@ -128,6 +144,7 @@ use super::sibling_module;    // ✅ One level up is OK
 ### ❌ Excessive `.to_string()` Calls
 
 **DON'T:**
+
 ```rust
 fn process_name(name: &str) -> String {
     let greeting = format!("Hello, {}", name.to_string());  // ❌ Unnecessary
@@ -136,6 +153,7 @@ fn process_name(name: &str) -> String {
 ```
 
 **DO:**
+
 ```rust
 fn process_name(name: &str) -> String {
     format!("Hello, {}", name)  // ✅ name is already &str
@@ -158,6 +176,7 @@ fn process_name(name: &str) -> Cow<str> {
 ### ❌ Leaving Obsolete Code
 
 **DON'T:**
+
 ```rust
 // fn old_implementation() {  // ❌ Commented out code
 //     // ...
@@ -169,6 +188,7 @@ pub fn new_implementation() {
 ```
 
 **DO:**
+
 ```rust
 pub fn new_implementation() {  // ✅ Old code deleted
     // ...
@@ -180,6 +200,7 @@ pub fn new_implementation() {  // ✅ Old code deleted
 ### ❌ Deletion Record Comments
 
 **DON'T:**
+
 ```rust
 // Removed empty test: test_foo - This test was empty  // ❌ Don't document deletions
 // Deleted: old_module.rs (deprecated)                  // ❌ Git history has this
@@ -190,6 +211,7 @@ pub fn active_function() {
 ```
 
 **DO:**
+
 ```rust
 pub fn active_function() {  // ✅ No deletion comments
     // ...
@@ -203,6 +225,7 @@ pub fn active_function() {  // ✅ No deletion comments
 ### ❌ Using Alternative TODO Notations
 
 **DON'T:**
+
 ```rust
 // Implementation Note: This needs to be completed    // ❌ Custom notation
 // FIXME: Add validation                              // ❌ Use TODO instead
@@ -210,6 +233,7 @@ pub fn active_function() {  // ✅ No deletion comments
 ```
 
 **DO:**
+
 ```rust
 // TODO: Implement input validation logic
 fn validate_input(data: &str) -> Result<()> {
@@ -222,11 +246,13 @@ fn legacy_feature() {
 }
 ```
 
-**Why?** Standardized notation (`TODO`, `todo!()`, `unimplemented!()`) is searchable and clear.
+**Why?** Standardized notation (`TODO`, `todo!()`, `unimplemented!()`) is
+searchable and clear.
 
 ### ❌ Unmarked Placeholder Implementations
 
 **DON'T:**
+
 ```rust
 pub fn get_cache_config() -> CacheConfig {
     CacheConfig::default()  // ❌ Looks like production code!
@@ -239,6 +265,7 @@ pub fn send_email(to: &str, body: &str) -> Result<()> {
 ```
 
 **DO:**
+
 ```rust
 pub fn get_cache_config() -> CacheConfig {
     todo!("Implement cache configuration loading from settings")
@@ -253,6 +280,59 @@ pub fn send_email(to: &str, body: &str) -> Result<()> {
 
 **Why?** Unmarked placeholders can be mistaken for production code.
 
+### ❌ Undocumented `#[allow(...)]` Attributes
+
+**DON'T:**
+
+```rust
+// No explanation why this is allowed
+#[allow(dead_code)]
+struct ReservedField {
+	future_field: Option<String>,  // ❌ Why is this unused?
+}
+
+// No explanation for macro-required imports
+#[allow(unused_imports)]
+use crate::models::User;  // ❌ Why is this "unused"?
+```
+
+**DO:**
+
+```rust
+// SQLite-specific fields are parsed but intentionally excluded
+// from current implementation. Reserved for future constraint generation.
+#[allow(dead_code)]
+struct ModelConfig {
+	strict: Option<bool>,        // Will be used in future
+	without_rowid: Option<bool>, // Will be used in future
+}
+
+// Used by #[model] macro for type inference in ForeignKeyField<User>.
+// The macro requires this type in scope for generating relationship metadata.
+#[allow(unused_imports)]
+use crate::models::User;
+```
+
+**Why?** `#[allow(...)]` attributes suppress important compiler warnings. Every
+suppression must be justified with a clear comment explaining:
+
+- **For future implementation**: What will use it and when
+- **For macro requirements**: Which macro needs it and why
+- **For test code**: What test pattern requires it
+- **For Clippy rules**: Why the rule doesn't apply here
+
+**Common Valid Use Cases:**
+
+1. **Macro Type Inference**: `ForeignKeyField<T>`, `ManyToManyField<T, U>`
+   require type imports
+2. **Test Fixtures**: Test models used only by macro expansion
+3. **Future Implementation**: Fields reserved with `todo!()` for planned
+   features
+4. **Recursive Functions**: Clippy warnings that don't apply to algorithm
+   requirements
+5. **Intentionally Excluded**: Features marked with `unimplemented!()` for
+   architectural reasons
+
 ---
 
 ## Testing Anti-Patterns
@@ -261,31 +341,38 @@ pub fn send_email(to: &str, body: &str) -> Result<()> {
 
 Tests without meaningful assertions that always pass.
 
-**Why?** Tests must be capable of failing. See @docs/TESTING_STANDARDS.md TP-1 for detailed examples.
+**Why?** Tests must be capable of failing. See @docs/TESTING_STANDARDS.md TP-1
+for detailed examples.
 
 ### ❌ Tests Without Reinhardt Components
 
 Tests that only verify standard library or third-party behavior.
 
-**Why?** Every test must verify at least one Reinhardt component. See @docs/TESTING_STANDARDS.md TP-2.
+**Why?** Every test must verify at least one Reinhardt component. See
+@docs/TESTING_STANDARDS.md TP-2.
 
 ### ❌ Tests Without Cleanup
 
 Tests that create files/resources without cleaning up.
 
-**Why?** Test artifacts must be cleaned up. See @docs/TESTING_STANDARDS.md TI-3 for cleanup techniques.
+**Why?** Test artifacts must be cleaned up. See @docs/TESTING_STANDARDS.md TI-3
+for cleanup techniques.
 
 ### ❌ Global State Tests Without Serialization
 
 Tests modifying global state without `#[serial]` attribute.
 
-**Why?** Global state tests can conflict if run in parallel. See @docs/TESTING_STANDARDS.md TI-4 for serial test patterns.
+**Why?** Global state tests can conflict if run in parallel. See
+@docs/TESTING_STANDARDS.md TI-4 for serial test patterns.
 
 ### ❌ Loose Assertions
 
-Using `contains()`, range checks, or loose pattern matching instead of exact value assertions.
+Using `contains()`, range checks, or loose pattern matching instead of exact
+value assertions.
 
-**Why?** Loose assertions can pass with incorrect values. See @docs/TESTING_STANDARDS.md TI-5 for assertion strictness guidelines and acceptable exceptions.
+**Why?** Loose assertions can pass with incorrect values. See
+@docs/TESTING_STANDARDS.md TI-5 for assertion strictness guidelines and
+acceptable exceptions.
 
 ---
 
@@ -294,6 +381,7 @@ Using `contains()`, range checks, or loose pattern matching instead of exact val
 ### ❌ Saving Files to Project Directory
 
 **DON'T:**
+
 ```bash
 # Script execution
 ./analyze.sh > results.md          # ❌ Saved to project root
@@ -301,6 +389,7 @@ python3 process.py > output.txt    # ❌ Saved to project root
 ```
 
 **DO:**
+
 ```bash
 # Script execution
 ./analyze.sh > /tmp/results.md     # ✅ Use /tmp
@@ -315,6 +404,7 @@ rm /tmp/results.md /tmp/output.txt
 ### ❌ Leaving Backup Files
 
 **DON'T:**
+
 ```bash
 # After editing
 ls
@@ -325,6 +415,7 @@ script.sh~         # ❌ Temporary backup
 ```
 
 **DO:**
+
 ```bash
 # Clean up immediately
 rm file.rs.bak config.toml.old script.sh~  # ✅ Delete backups
@@ -335,6 +426,7 @@ rm file.rs.bak config.toml.old script.sh~  # ✅ Delete backups
 ### ❌ Not Cleaning Up /tmp Files
 
 **DON'T:**
+
 ```bash
 # Create temp files
 echo "data" > /tmp/analysis_results.md
@@ -346,6 +438,7 @@ echo "data" > /tmp/analysis_results.md
 ```
 
 **DO:**
+
 ```bash
 # Create temp files
 echo "data" > /tmp/analysis_results.md
@@ -366,6 +459,7 @@ rm /tmp/analysis_results.md /tmp/output.txt
 ### ❌ Committing Without User Instruction
 
 **DON'T:**
+
 ```bash
 # ❌ AI creates commit automatically
 git add .
@@ -373,6 +467,7 @@ git commit -m "feat: Add feature"
 ```
 
 **DO:**
+
 ```bash
 # ✅ Wait for explicit user instruction
 # User: "Please commit these changes"
@@ -385,12 +480,14 @@ git commit -m "..."
 ### ❌ Batch Operations Without Dry-Run
 
 **DON'T:**
+
 ```bash
 # ❌ Bulk replace without verification
 sed -i 's/old_pattern/new_pattern/g' **/*.rs
 ```
 
 **DO:**
+
 ```bash
 # ✅ Create dry-run script first
 cat > /tmp/dryrun.sh << 'EOF'
@@ -413,6 +510,7 @@ rm /tmp/dryrun.sh /tmp/replace.sh
 ### ❌ Monolithic Commits
 
 **DON'T:**
+
 ```bash
 # ❌ One huge commit for entire feature
 git add .
@@ -421,6 +519,7 @@ git commit -m "feat(auth): Implement authentication feature"
 ```
 
 **DO:**
+
 ```bash
 # ✅ Split into specific intents
 git add src/auth/password.rs
@@ -442,6 +541,7 @@ git commit -m "feat(auth): Create session storage middleware"
 ### ❌ Outdated Documentation After Code Changes
 
 **DON'T:**
+
 ```rust
 // Code changes from sync to async
 pub async fn fetch_data() -> Result<Data> {
@@ -451,11 +551,14 @@ pub async fn fetch_data() -> Result<Data> {
 
 ```markdown
 <!-- README.md still says: -->
+
 ## Usage
-Use `fetch_data()` synchronously...  // ❌ Outdated!
+
+Use `fetch_data()` synchronously... // ❌ Outdated!
 ```
 
 **DO:**
+
 ```rust
 pub async fn fetch_data() -> Result<Data> {
     // ...
@@ -464,8 +567,10 @@ pub async fn fetch_data() -> Result<Data> {
 
 ```markdown
 <!-- README.md updated: -->
+
 ## Usage
-Use `fetch_data().await` asynchronously...  // ✅ Current!
+
+Use `fetch_data().await` asynchronously... // ✅ Current!
 ```
 
 **Why?** Documentation must be updated with code changes in the same workflow.
@@ -473,18 +578,23 @@ Use `fetch_data().await` asynchronously...  // ✅ Current!
 ### ❌ Planned Features in README
 
 **DON'T:**
+
 ```markdown
 <!-- README.md -->
+
 ## Features
+
 - User authentication ✅
 - Database migrations ✅
 
 ### Planned Features
+
 - GraphQL support
 - WebSockets
 ```
 
 **DO:**
+
 ```rust
 //! crates/reinhardt-api/src/lib.rs
 //!
@@ -496,12 +606,15 @@ Use `fetch_data().await` asynchronously...  // ✅ Current!
 
 ```markdown
 <!-- README.md - Only implemented features -->
+
 ## Features
+
 - User authentication ✅
 - Database migrations ✅
 ```
 
-**Why?** Planned features belong in `lib.rs`, README shows implemented features only.
+**Why?** Planned features belong in `lib.rs`, README shows implemented features
+only.
 
 ---
 

@@ -2,14 +2,20 @@
 
 ## Overview
 
-Reinhardt provides a flexible and powerful configuration management system. By combining TOML-format configuration files with environment variables, it enables consistent configuration management across all environments, from development to production.
+Reinhardt provides a flexible and powerful configuration management system. By
+combining TOML-format configuration files with environment variables, it enables
+consistent configuration management across all environments, from development to
+production.
 
 ## Key Features
 
 1. **TOML Format**: Easy-to-read and write configuration files
-2. **Environment-Specific Settings**: Different configurations for local, staging, production, etc.
-3. **Priority System**: Integrates settings from multiple sources with clear priority rules
-4. **No Recompilation Required**: No need to rebuild Rust code when changing settings
+2. **Environment-Specific Settings**: Different configurations for local,
+   staging, production, etc.
+3. **Priority System**: Integrates settings from multiple sources with clear
+   priority rules
+4. **No Recompilation Required**: No need to rebuild Rust code when changing
+   settings
 5. **Secure**: Protects sensitive information with `.gitignore`
 6. **Extensible**: Easy to add custom sources and configuration items
 
@@ -19,7 +25,8 @@ Reinhardt provides a flexible and powerful configuration management system. By c
 
 ### 1. Project Setup
 
-Projects created with the `reinhardt-admin startproject` command already include a `settings/` directory:
+Projects created with the `reinhardt-admin startproject` command already include
+a `settings/` directory:
 
 ```
 my-project/
@@ -48,6 +55,7 @@ cp production.example.toml production.toml
 ### 3. Editing Configuration Files
 
 `settings/base.toml`:
+
 ```toml
 debug = false
 secret_key = "your-secret-key-here"
@@ -62,6 +70,7 @@ password = "change-this"
 ```
 
 `settings/local.toml`:
+
 ```toml
 debug = true
 secret_key = "development-secret-key"
@@ -87,17 +96,20 @@ REINHARDT_ENV=production cargo run --bin runserver
 
 ## Settings Priority
 
-Settings are merged based on the **priority value** of each source. Sources with higher priority values override sources with lower priority values.
+Settings are merged based on the **priority value** of each source. Sources with
+higher priority values override sources with lower priority values.
 
 ### Priority Values by Source Type
 
-| Source Type | Priority Value | Description |
-|------------|---------------|-------------|
-| `EnvSource` | 100 | High-priority environment variables (override TOML files) |
-| `DotEnvSource` | 90 | .env file variables |
-| `TomlFileSource` | 50 | TOML configuration files |
-| `LowPriorityEnvSource` | 40 | Low-priority environment variables (overridden by TOML files) |
-| `DefaultSource` | 0 | Default values defined in code |
+The table below lists sources in order of priority (highest to lowest):
+
+| Source Type            | Priority Value | Description                                                               |
+| ---------------------- | -------------- | ------------------------------------------------------------------------- |
+| `EnvSource`            | 100            | **Highest priority** - Environment variables (override all other sources) |
+| `DotEnvSource`         | 90             | .env file variables (override TOML and defaults)                          |
+| `TomlFileSource`       | 50             | TOML configuration files (override defaults and low-priority env vars)    |
+| `LowPriorityEnvSource` | 40             | Low-priority environment variables (overridden by TOML files)             |
+| `DefaultSource`        | 0              | **Lowest priority** - Default values defined in code                      |
 
 ### Common Configuration Pattern
 
@@ -113,12 +125,15 @@ SettingsBuilder::new()
 
 **Priority order for this pattern (highest priority first):**
 
-1. **Environment-Specific TOML Files** (`local.toml`, `staging.toml`, `production.toml`) - Priority 50
+1. **Environment-Specific TOML Files** (`local.toml`, `staging.toml`,
+   `production.toml`) - Priority 50
 2. **Base TOML File** (`base.toml`) - Priority 50
-3. **Low-Priority Environment Variables** (`REINHARDT_` prefix with `LowPriorityEnvSource`) - Priority 40
+3. **Low-Priority Environment Variables** (`REINHARDT_` prefix with
+   `LowPriorityEnvSource`) - Priority 40
 4. **Default Values** (defined in code) - Priority 0
 
-**Note:** When multiple sources have the same priority (e.g., `base.toml` and `local.toml`), sources added later override earlier ones.
+**Note:** When multiple sources have the same priority (e.g., `base.toml` and
+`local.toml`), sources added later override earlier ones.
 
 ### Environment Variable Priority Options
 
@@ -129,6 +144,7 @@ You can choose between two environment variable sources depending on your needs:
 ```rust
 .add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 ```
+
 - Priority: 40 (lower than TOML files)
 - TOML files override environment variables
 - Useful for setting defaults that can be overridden by configuration files
@@ -138,9 +154,11 @@ You can choose between two environment variable sources depending on your needs:
 ```rust
 .add_source(EnvSource::new().with_prefix("REINHARDT_"))
 ```
+
 - Priority: 100 (higher than TOML files)
 - Environment variables override TOML files
-- Useful for production deployments where environment variables should take precedence
+- Useful for production deployments where environment variables should take
+  precedence
 
 ### Example with LowPriorityEnvSource
 
@@ -168,16 +186,20 @@ export REINHARDT_DATABASE_PORT=5433
 ```
 
 **Result with LowPriorityEnvSource:**
+
 - `debug = true` (local.toml overrides base.toml)
 - `secret_key = "base-secret"` (not defined in local.toml, uses base.toml value)
 - `database.host = "127.0.0.1"` (local.toml overrides base.toml)
-- `database.port = 5432` (base.toml overrides environment variable because TOML has higher priority than LowPriorityEnvSource)
+- `database.port = 5432` (base.toml overrides environment variable because TOML
+  has higher priority than LowPriorityEnvSource)
 
 **Result if using EnvSource instead:**
+
 - `debug = true` (local.toml value)
 - `secret_key = "base-secret"` (base.toml value)
 - `database.host = "127.0.0.1"` (local.toml value)
-- `database.port = 5433` (environment variable overrides TOML because EnvSource has higher priority)
+- `database.port = 5433` (environment variable overrides TOML because EnvSource
+  has higher priority)
 
 ---
 
@@ -284,12 +306,15 @@ format = "json"
 
 ## Configuration via Environment Variables
 
-You can configure settings using environment variables. The priority of environment variables depends on which source you use:
+You can configure settings using environment variables. The priority of
+environment variables depends on which source you use:
 
-- **`LowPriorityEnvSource`** (Priority: 40): TOML files override environment variables
+- **`LowPriorityEnvSource`** (Priority: 40): TOML files override environment
+  variables
 - **`EnvSource`** (Priority: 100): Environment variables override TOML files
 
-The examples in this document use `LowPriorityEnvSource`, which means **TOML files have higher priority** than environment variables.
+The examples in this document use `LowPriorityEnvSource`, which means **TOML
+files have higher priority** than environment variables.
 
 ### Naming Convention
 
@@ -322,6 +347,7 @@ export REINHARDT_STATIC_URL=/static/
 ### Choosing Between EnvSource and LowPriorityEnvSource
 
 #### Use `LowPriorityEnvSource` when:
+
 - You want TOML files to override environment variables
 - You're in development and want configuration files to take precedence
 - You want environment variables as fallback defaults
@@ -336,9 +362,11 @@ SettingsBuilder::new()
 ```
 
 #### Use `EnvSource` when:
+
 - You want environment variables to override TOML files
 - You're in production and want environment variables to take precedence
-- You're deploying to cloud platforms (Heroku, AWS, etc.) that use environment variables
+- You're deploying to cloud platforms (Heroku, AWS, etc.) that use environment
+  variables
 
 ```rust
 SettingsBuilder::new()
@@ -351,7 +379,8 @@ SettingsBuilder::new()
 
 ### Managing Configuration with Environment Variables Only
 
-If you want to manage configuration using only environment variables without TOML files, use `EnvSource`:
+If you want to manage configuration using only environment variables without
+TOML files, use `EnvSource`:
 
 ```rust
 use reinhardt_conf::settings::prelude::*;
@@ -421,6 +450,7 @@ fn main() {
 ### 1. `.gitignore` Configuration
 
 `settings/.gitignore`:
+
 ```gitignore
 # Actual configuration files are not tracked by Git
 *.toml
@@ -430,6 +460,7 @@ fn main() {
 ```
 
 Project root `.gitignore`:
+
 ```gitignore
 # Configuration files
 settings/*.toml
@@ -466,7 +497,8 @@ password = "CHANGE_THIS"
 
 ### 3. Managing Sensitive Information
 
-For production environments, it's recommended not to write sensitive information directly in TOML files:
+For production environments, it's recommended not to write sensitive information
+directly in TOML files:
 
 #### Option 1: Environment Variables (lower priority)
 
@@ -511,6 +543,7 @@ pub struct FeatureFlags {
 ### 2. Adding to TOML Files
 
 `settings/base.toml`:
+
 ```toml
 [custom]
 api_timeout = 30
@@ -522,6 +555,7 @@ enable_websockets = false
 ```
 
 `settings/local.toml`:
+
 ```toml
 [custom]
 api_timeout = 60
@@ -622,15 +656,18 @@ pub fn get_settings() -> Settings {
 ### Issue 1: Configuration File Not Found
 
 **Error:**
+
 ```
 Failed to build settings: Source error in 'TOML file: settings/base.toml'
 ```
 
 **Cause:**
+
 - `settings/` directory doesn't exist
 - Required TOML files haven't been created
 
 **Solution:**
+
 ```bash
 ls settings/
 # Verify base.toml, local.toml, etc. exist
@@ -642,16 +679,19 @@ cp settings/base.example.toml settings/base.toml
 ### Issue 2: TOML Syntax Error
 
 **Error:**
+
 ```
 Failed to build settings: Parse error
 ```
 
 **Cause:**
+
 - Incorrect TOML syntax
 - Invalid quotes
 - Duplicate section names
 
 **Solution:**
+
 ```bash
 # Use TOML validation tool
 cargo install toml-cli
@@ -664,14 +704,17 @@ toml get settings/base.toml .
 ### Issue 3: Type Conversion Error
 
 **Error:**
+
 ```
 Failed to deserialize key 'debug': invalid type
 ```
 
 **Cause:**
+
 - Setting value type doesn't match expected type
 
 **Solution:**
+
 ```toml
 # ✅ Correct types
 debug = true          # Boolean
@@ -687,14 +730,17 @@ port = "5432"         # String (Integer expected)
 ### Issue 4: Missing Required Field
 
 **Error:**
+
 ```
 Failed to convert to Settings: missing field 'secret_key'
 ```
 
 **Cause:**
+
 - Required field not defined in TOML file
 
 **Solution:**
+
 ```toml
 # Add required field to base.toml
 secret_key = "your-secret-key-here"
@@ -703,10 +749,12 @@ secret_key = "your-secret-key-here"
 ### Issue 5: Environment Variables Not Working
 
 **Cause:**
+
 - TOML files have higher priority than environment variables
 - Environment variable name is incorrect
 
 **Solution:**
+
 ```bash
 # 1. Remove the setting from TOML file (if you want environment variable to take priority)
 
@@ -753,7 +801,9 @@ pub struct Settings {
 
 ### Example 2: Feature Flag Management
 
-**Note:** This example shows runtime feature flags (application settings). For compile-time feature flags (Cargo features), see the [Feature Flags Guide](FEATURE_FLAGS.md).
+**Note:** This example shows runtime feature flags (application settings). For
+compile-time feature flags (Cargo features), see the
+[Feature Flags Guide](FEATURE_FLAGS.md).
 
 ```toml
 # base.toml
@@ -853,17 +903,21 @@ let debug = settings.debug;
 
 Reinhardt's settings system is:
 
-- ✅ **Flexible**: Supports multiple sources including TOML, JSON, and environment variables
-- ✅ **Secure**: Protects sensitive information with `.gitignore`, type-safe access
+- ✅ **Flexible**: Supports multiple sources including TOML, JSON, and
+  environment variables
+- ✅ **Secure**: Protects sensitive information with `.gitignore`, type-safe
+  access
 - ✅ **Efficient**: No recompilation required, settings loaded only once
-- ✅ **Environment-Aware**: Separates configuration for local, staging, production, etc.
+- ✅ **Environment-Aware**: Separates configuration for local, staging,
+  production, etc.
 - ✅ **Extensible**: Easy to add custom sources and configuration items
 
 ## Next Steps
 
 - [Getting Started Guide](GETTING_STARTED.md) - Basic usage of Reinhardt
 - [Example Projects](../examples/) - Real project examples
-- [reinhardt-settings API Documentation](https://docs.rs/reinhardt-settings) - Detailed API specification
+- [reinhardt-settings API Documentation](https://docs.rs/reinhardt-settings) -
+  Detailed API specification
 
 ---
 

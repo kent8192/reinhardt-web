@@ -1,12 +1,14 @@
 # Getting Started with Reinhardt
 
-Welcome to Reinhardt! This guide will help you set up your first Reinhardt project and build a simple REST API.
+Welcome to Reinhardt! This guide will help you set up your first Reinhardt
+project and build a simple REST API.
 
 ## Prerequisites
 
 Before you begin, make sure you have:
 
-- **Rust** 1.75 or later ([Install Rust](https://www.rust-lang.org/tools/install))
+- **Rust** 1.91.1 or later (2024 Edition required)
+  ([Install Rust](https://www.rust-lang.org/tools/install))
 - **PostgreSQL** (optional, for database features)
 - Basic familiarity with Rust and async programming
 
@@ -18,7 +20,8 @@ Before you begin, make sure you have:
 cargo install reinhardt-admin-cli
 ```
 
-**Note:** After installation, the command is `reinhardt-admin`, not `reinhardt-admin-cli`.
+**Note:** After installation, the command is `reinhardt-admin`, not
+`reinhardt-admin-cli`.
 
 ### Step 2: Create a New Project
 
@@ -71,7 +74,8 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 ```
 
-**Includes:** Database, Auth, REST API, Admin, GraphQL, WebSockets, Cache, i18n, Mail, Sessions, Static Files, Storage
+**Includes:** Database, Auth, REST API, Admin, GraphQL, WebSockets, Cache, i18n,
+Mail, Sessions, Static Files, Storage
 
 #### Option B: Standard (Balanced)
 
@@ -105,9 +109,11 @@ serde = { version = "1.0", features = ["derive"] }
 
 For this guide, we'll use the **Full** flavor (default).
 
-**💡 Want more control?** See the [Feature Flags Guide](FEATURE_FLAGS.md) for detailed information on 70+ individual feature flags to fine-tune your build.
+**💡 Want more control?** See the [Feature Flags Guide](FEATURE_FLAGS.md) for
+detailed information on 70+ individual feature flags to fine-tune your build.
 
-The project template already includes all necessary dependencies in `Cargo.toml`.
+The project template already includes all necessary dependencies in
+`Cargo.toml`.
 
 ## Your First API
 
@@ -123,7 +129,8 @@ cargo run --bin runserver
 cargo run --bin manage runserver
 ```
 
-Visit `http://127.0.0.1:8000/` in your browser. You should see a welcome message.
+Visit `http://127.0.0.1:8000/` in your browser. You should see a welcome
+message.
 
 ### Step 5: Create Your First Endpoint
 
@@ -154,7 +161,8 @@ pub async fn hello_world(_req: Request) -> ViewResult<Response> {
 }
 ```
 
-Register in `hello/urls.rs`, `src/config/urls.rs`, and `src/config/apps.rs` (see project template for examples).
+Register in `hello/urls.rs`, `src/config/urls.rs`, and `src/config/apps.rs` (see
+project template for examples).
 
 Test: `curl http://127.0.0.1:8000/hello`
 
@@ -166,7 +174,8 @@ Create a CRUD API using ViewSets:
 cargo run --bin manage startapp todos --template-type restful
 ```
 
-Define model (`todos/models.rs`), serializer (`todos/serializers.rs`), and ViewSet (`todos/views.rs`):
+Define model (`todos/models.rs`), serializer (`todos/serializers.rs`), and
+ViewSet (`todos/views.rs`):
 
 ```rust
 // todos/views.rs
@@ -205,7 +214,8 @@ curl http://127.0.0.1:8000/api/todos/
 
 ## Project Management Commands
 
-The generated project includes `src/bin/manage.rs` for Django-style management commands.
+The generated project includes `src/bin/manage.rs` for Django-style management
+commands.
 
 ### Common Commands
 
@@ -236,7 +246,9 @@ cargo run --bin manage collectstatic
 cargo run --bin manage shell
 ```
 
-**Note on makemigrations:** The command now automatically detects the app label when only one app has registered models. For projects with multiple apps, you must specify the app label explicitly.
+**Note on makemigrations:** The command now automatically detects the app label
+when only one app has registered models. For projects with multiple apps, you
+must specify the app label explicitly.
 
 ### Global CLI Tool
 
@@ -251,11 +263,13 @@ reinhardt-admin startproject myweb --template-type mtv
 reinhardt-admin startapp myapp --template-type restful
 ```
 
-For more details, see the [reinhardt-commands documentation](../crates/reinhardt-commands/README.md).
+For more details, see the
+[reinhardt-commands documentation](../crates/reinhardt-commands/README.md).
 
 ## Next Steps
 
-Congratulations! You've built your first Reinhardt API. Here's what to explore next:
+Congratulations! You've built your first Reinhardt API. Here's what to explore
+next:
 
 ### 📚 Tutorials
 
@@ -266,10 +280,11 @@ Congratulations! You've built your first Reinhardt API. Here's what to explore n
 
 ### 🎛️ Advanced Features
 
-- [Dependency Injection](tutorials/en/07-dependency-injection.md) - FastAPI-style DI
+- **Dependency Injection** - FastAPI-style DI (Tutorial coming soon)
 - [Feature Flags Guide](FEATURE_FLAGS.md) - Optimize your build
 - [Database Integration](#database-integration) - Connect to PostgreSQL/MySQL
-- [Management Commands](../crates/reinhardt-commands/README.md) - Django-style CLI
+- [Management Commands](../crates/reinhardt-commands/README.md) - Django-style
+  CLI
 
 ### 🔌 Database Integration
 
@@ -288,14 +303,14 @@ Check out the [ORM documentation](api/README.md) for more details.
 ## Getting Help
 
 - 📖 [API Reference](https://docs.rs/reinhardt)
-- 💬 [GitHub Discussions](https://github.com/kent8192/reinhardt/discussions)
-- 🐛 [Report Issues](https://github.com/kent8192/reinhardt/issues)
+- 💬 [GitHub Discussions](https://github.com/kent8192/reinhardt-rs/discussions)
+- 🐛 [Report Issues](https://github.com/kent8192/reinhardt-rs/issues)
 
 ## Common Issues
 
 **Port Already in Use**: Change the port in `serve()` function
 
-**Compilation Errors**: Ensure Rust 1.75+ (`rustc --version`)
+**Compilation Errors**: Ensure Rust 1.91.1+ (`rustc --version`)
 
 **Async Runtime**: Add `#[tokio::main]` to your main function
 
