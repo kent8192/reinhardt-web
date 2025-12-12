@@ -132,27 +132,44 @@ mod room_tests {
 			}
 		};
 
-		// Get all rooms where user is a member
-		let sql = format!(
-			r#"SELECT r.id, r.name, r.is_group, r.created_at
-			FROM dm_room r
-			INNER JOIN dm_room_members m ON r.id = m.dmroom_id
-			WHERE m.user_id = '{}'"#,
-			current_user_id
-		);
+		// Get user model
+		use crate::apps::auth::models::User;
+		use reinhardt::db::orm::{FilterOperator, FilterValue};
 
-		let rows = db.query(&sql, vec![]).await.unwrap_or_default();
-		let rooms: Vec<RoomResponse> = rows
+		let user = User::objects()
+			.filter(
+				User::field_id(),
+				FilterOperator::Eq,
+				FilterValue::String(current_user_id.to_string()),
+			)
+			.first()
+			.await
+			.map_err(|e| Error::Http(e.to_string()))?
+			.ok_or_else(|| Error::Http("User not found".into()))?;
+
+		// Use filter_by_target() API - single JOIN query
+		use reinhardt::db::orm::ManyToManyAccessor;
+
+		let rooms = ManyToManyAccessor::<DMRoom, User>::filter_by_target(
+			&DMRoom::objects(),
+			"members",
+			&user,
+			db.clone(),
+		)
+		.await
+		.map_err(|e| Error::Http(e))?;
+
+		let response: Vec<RoomResponse> = rooms
 			.into_iter()
-			.map(|row| RoomResponse {
-				id: row.get("id"),
-				name: row.get("name"),
-				is_group: row.get("is_group"),
-				created_at: row.get("created_at"),
+			.map(|room| RoomResponse {
+				id: room.id,
+				name: room.name,
+				is_group: room.is_group,
+				created_at: room.created_at,
 			})
 			.collect();
 
-		Ok(rooms)
+		Ok(response)
 	}
 
 	/// Helper to call get_room endpoint directly

@@ -9,7 +9,9 @@ use reinhardt::model;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// Imports used by OneToOneField<T> type inference
+// Used by #[model] macro for type inference in OneToOneField<User> relationship field.
+// The macro requires this type to be in scope for generating the correct column type with UNIQUE constraint
+// and relationship metadata, even though it appears unused to the compiler.
 #[allow(unused_imports)]
 use crate::apps::auth::models::User;
 

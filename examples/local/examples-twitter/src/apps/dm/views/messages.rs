@@ -3,7 +3,7 @@
 use crate::apps::auth::models::User;
 use crate::apps::dm::models::{DMMessage, DMRoom};
 use crate::apps::dm::serializers::{CreateMessageRequest, MessageResponse};
-use reinhardt::db::orm::{ManyToManyAccessor, Model};
+use reinhardt::db::orm::Model;
 use reinhardt::db::DatabaseConnection;
 use reinhardt::{get, post, CurrentUser, Json, Path, Response, StatusCode, ViewResult};
 use std::sync::Arc;
@@ -26,8 +26,8 @@ pub async fn list_messages(
 		.get_with_db(&db)
 		.await?;
 
-	// Check membership using ManyToManyAccessor
-	let accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", (*db).clone());
+	// Check membership using generated accessor method
+	let accessor = room.members_accessor((*db).clone());
 	let members = accessor.all().await.map_err(|e| e.to_string())?;
 	let is_member = members.iter().any(|m| m.id == user_id);
 	if !is_member {
@@ -64,8 +64,8 @@ pub async fn send_message(
 		.get_with_db(&db)
 		.await?;
 
-	// Check membership using ManyToManyAccessor
-	let accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", (*db).clone());
+	// Check membership using generated accessor method
+	let accessor = room.members_accessor((*db).clone());
 	let members = accessor.all().await.map_err(|e| e.to_string())?;
 	let is_member = members.iter().any(|m| m.id == sender_id);
 	if !is_member {
@@ -106,8 +106,8 @@ pub async fn get_message(
 		.get_with_db(&db)
 		.await?;
 
-	// Check membership using ManyToManyAccessor
-	let accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", (*db).clone());
+	// Check membership using generated accessor method
+	let accessor = room.members_accessor((*db).clone());
 	let members = accessor.all().await.map_err(|e| e.to_string())?;
 	let is_member = members.iter().any(|m| m.id == user_id);
 	if !is_member {

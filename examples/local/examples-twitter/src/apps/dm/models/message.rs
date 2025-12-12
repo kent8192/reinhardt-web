@@ -6,7 +6,9 @@ use reinhardt::model;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// Imports used by ForeignKeyField<T> type inference
+// Used by #[model] macro for type inference in ForeignKeyField<T> relationship fields.
+// The macro requires these types to be in scope for generating the correct column types
+// and relationship metadata, even though they appear unused to the compiler.
 #[allow(unused_imports)]
 use super::room::DMRoom;
 #[allow(unused_imports)]

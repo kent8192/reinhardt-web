@@ -3,7 +3,7 @@
 use crate::apps::auth::models::User;
 use crate::apps::dm::models::DMRoom;
 use crate::apps::dm::serializers::{CreateRoomRequest, RoomResponse};
-use reinhardt::db::orm::{FilterOperator, FilterValue, ManyToManyAccessor, Model};
+use reinhardt::db::orm::{FilterOperator, FilterValue, Model};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::{delete, get, post, CurrentUser, Json, Path, Response, StatusCode, ViewResult};
 use std::sync::Arc;
@@ -19,19 +19,26 @@ pub async fn list_rooms(
 	// Get current user ID
 	let user_id = current_user.id().map_err(|e| e.to_string())?;
 
-	// TODO: Implement JOIN-based query to avoid N+1 problem
-	// Current implementation loads all rooms then filters in memory
-	// For production, use direct SQL JOIN on dm_dmroom_members table
-	let all_rooms = DMRoom::objects().all().all().await?;
+	// Get current user model
+	let user = User::objects()
+		.filter(
+			User::field_id(),
+			FilterOperator::Eq,
+			FilterValue::String(user_id.to_string()),
+		)
+		.first()
+		.await?
+		.ok_or_else(|| "User not found".to_string())?;
 
-	let mut user_rooms = Vec::new();
-	for room in all_rooms {
-		let accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", (*db).clone());
-		let members = accessor.all().await.map_err(|e| e.to_string())?;
-		if members.iter().any(|m| m.id == user_id) {
-			user_rooms.push(room);
-		}
-	}
+	// Use filter_by_target() - single JOIN query to avoid N+1 problem
+	let user_rooms = ManyToManyAccessor::<DMRoom, User>::filter_by_target(
+		&DMRoom::objects(),
+		"members",
+		&user,
+		(*db).clone(),
+	)
+	.await
+	.map_err(|e| e.to_string())?;
 
 	let response: Vec<RoomResponse> = user_rooms.into_iter().map(RoomResponse::from).collect();
 
@@ -59,8 +66,8 @@ pub async fn get_room(
 		.await?
 		.ok_or_else(|| "Room not found".to_string())?;
 
-	// Verify user is a member
-	let accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", (*db).clone());
+	// Verify user is a member using generated accessor method
+	let accessor = room.members_accessor((*db).clone());
 	let members = accessor.all().await.map_err(|e| e.to_string())?;
 	if !members.iter().any(|m| m.id == user_id) {
 		return Err("Not a member of this room".into());
@@ -90,8 +97,8 @@ pub async fn create_room(
 	// Save the room using Manager
 	let created = DMRoom::objects().create_with_conn(&db, &room).await?;
 
-	// Add members using ManyToManyAccessor
-	let accessor = ManyToManyAccessor::<DMRoom, User>::new(&created, "members", (*db).clone());
+	// Add members using generated accessor method
+	let accessor = created.members_accessor((*db).clone());
 
 	// Add the creator as a member
 	let creator = User::objects()
@@ -160,8 +167,8 @@ pub async fn delete_room(
 		.await?
 		.ok_or_else(|| "Room not found".to_string())?;
 
-	// Verify user is a member
-	let accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", (*db).clone());
+	// Verify user is a member using generated accessor method
+	let accessor = room.members_accessor((*db).clone());
 	let members = accessor.all().await.map_err(|e| e.to_string())?;
 	if !members.iter().any(|m| m.id == user_id) {
 		return Err("Not a member of this room".into());

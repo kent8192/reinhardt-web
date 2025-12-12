@@ -9,7 +9,9 @@ use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// Import used by ForeignKeyField<T> type inference
+// Used by #[model] macro for type inference in ForeignKeyField<User> relationship field.
+// The macro requires this type to be in scope for generating the correct foreign key column
+// and relationship metadata, even though it appears unused to the compiler.
 #[allow(unused_imports)]
 use super::user::User;
 

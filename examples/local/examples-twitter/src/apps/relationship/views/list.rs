@@ -44,19 +44,19 @@ pub async fn fetch_followers(
 	let limit = params.limit;
 	let offset = (page - 1) * limit;
 
-	// Get all followers using ManyToManyAccessor
-	// TODO: Implement database-level pagination using JOIN + LIMIT/OFFSET
-	// Current implementation uses in-memory pagination (not recommended for production)
+	// Database-level pagination using LIMIT/OFFSET
 	let accessor = ManyToManyAccessor::<User, User>::new(&user, "following", (*db).clone());
-	let all_followers = accessor.all().await.map_err(|e| e.to_string())?;
-	let total_count = all_followers.len();
 
-	// Apply in-memory pagination
-	let followers: Vec<User> = all_followers
-		.into_iter()
-		.skip(offset)
-		.take(limit)
-		.collect();
+	// Get total count (separate query)
+	let total_count = accessor.count().await.map_err(|e| e.to_string())?;
+
+	// Get paginated results
+	let followers = accessor
+		.limit(limit)
+		.offset(offset)
+		.all()
+		.await
+		.map_err(|e| e.to_string())?;
 
 	// Build response
 	let response_data = FollowerListResponse {
@@ -109,19 +109,19 @@ pub async fn fetch_followings(
 	let limit = params.limit;
 	let offset = (page - 1) * limit;
 
-	// Get all followings using ManyToManyAccessor
-	// TODO: Implement database-level pagination using JOIN + LIMIT/OFFSET
-	// Current implementation uses in-memory pagination (not recommended for production)
+	// Database-level pagination using LIMIT/OFFSET
 	let accessor = ManyToManyAccessor::<User, User>::new(&user, "following", (*db).clone());
-	let all_followings = accessor.all().await.map_err(|e| e.to_string())?;
-	let total_count = all_followings.len();
 
-	// Apply in-memory pagination
-	let followings: Vec<User> = all_followings
-		.into_iter()
-		.skip(offset)
-		.take(limit)
-		.collect();
+	// Get total count (separate query)
+	let total_count = accessor.count().await.map_err(|e| e.to_string())?;
+
+	// Get paginated results
+	let followings = accessor
+		.limit(limit)
+		.offset(offset)
+		.all()
+		.await
+		.map_err(|e| e.to_string())?;
 
 	// Build response
 	let response_data = FollowingListResponse {
@@ -174,19 +174,19 @@ pub async fn fetch_blockings(
 	let limit = params.limit;
 	let offset = (page - 1) * limit;
 
-	// Get all blocked users using ManyToManyAccessor
-	// TODO: Implement database-level pagination using JOIN + LIMIT/OFFSET
-	// Current implementation uses in-memory pagination (not recommended for production)
+	// Database-level pagination using LIMIT/OFFSET
 	let accessor = ManyToManyAccessor::<User, User>::new(&user, "blocked_users", (*db).clone());
-	let all_blockings = accessor.all().await.map_err(|e| e.to_string())?;
-	let total_count = all_blockings.len();
 
-	// Apply in-memory pagination
-	let blockings: Vec<User> = all_blockings
-		.into_iter()
-		.skip(offset)
-		.take(limit)
-		.collect();
+	// Get total count (separate query)
+	let total_count = accessor.count().await.map_err(|e| e.to_string())?;
+
+	// Get paginated results
+	let blockings = accessor
+		.limit(limit)
+		.offset(offset)
+		.all()
+		.await
+		.map_err(|e| e.to_string())?;
 
 	// Build response
 	let response_data = BlockingListResponse {

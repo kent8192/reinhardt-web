@@ -6,7 +6,9 @@ use reinhardt::model;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// User import is used by #[rel(many_to_many, to = User)] macro
+// Used by #[model] macro for type inference in ManyToManyField<DMRoom, User> relationship field.
+// The macro requires this type to be in scope for generating the correct intermediate table schema
+// and relationship metadata, even though it appears unused to the compiler.
 #[allow(unused_imports)]
 use crate::apps::auth::models::User;
 

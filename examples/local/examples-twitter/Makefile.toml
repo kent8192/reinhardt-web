@@ -18,10 +18,10 @@ command = "cargo"
 args = ["run", "--bin", "manage", "runserver"]
 
 [tasks.runserver-watch]
-description = "Start the development server with auto-reload (requires cargo-watch)"
-command = "cargo"
-args = ["watch", "-x", "run --bin manage runserver"]
-dependencies = ["install-cargo-watch"]
+description = "Start the development server with auto-reload (requires bacon)"
+command = "bacon"
+args = ["runserver"]
+dependencies = ["install-bacon"]
 
 # ============================================================================
 # Database Migrations
@@ -93,10 +93,10 @@ args = ["nextest", "run", "--test", "*", "--all-features"]
 dependencies = ["install-nextest"]
 
 [tasks.test-watch]
-description = "Run tests with auto-reload (requires cargo-watch)"
-command = "cargo"
-args = ["watch", "-x", "nextest run --all-features"]
-dependencies = ["install-cargo-watch", "install-nextest"]
+description = "Run tests with auto-reload (requires bacon)"
+command = "bacon"
+args = ["test"]
+dependencies = ["install-bacon", "install-nextest"]
 
 # ============================================================================
 # Code Quality
@@ -165,21 +165,21 @@ else
 fi
 '''
 
-[tasks.install-cargo-watch]
-description = "Install cargo-watch if not already installed"
+[tasks.install-bacon]
+description = "Install bacon if not already installed"
 script = '''
-if ! command -v cargo-watch &> /dev/null
+if ! command -v bacon &> /dev/null
 then
-	echo "Installing cargo-watch..."
-	cargo install cargo-watch
+	echo "Installing bacon..."
+	cargo install --locked bacon
 else
-	echo "cargo-watch is already installed"
+	echo "bacon is already installed"
 fi
 '''
 
 [tasks.install-tools]
 description = "Install all required development tools"
-dependencies = ["install-nextest", "install-cargo-watch"]
+dependencies = ["install-nextest", "install-bacon"]
 
 # ============================================================================
 # Development Workflow
