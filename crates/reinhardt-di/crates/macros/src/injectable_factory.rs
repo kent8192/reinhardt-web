@@ -1,5 +1,6 @@
 //! Implementation of the `#[injectable_factory]` macro
 
+use crate::crate_paths::get_reinhardt_di_crate;
 use crate::utils::{extract_scope_from_args, is_inject_attr};
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -101,6 +102,9 @@ pub fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Result<Token
 		.map(|(pat, ty)| quote! { #pat: #ty })
 		.collect();
 
+	// Get dynamic crate path
+	let di_crate = get_reinhardt_di_crate();
+
 	// Generate type name for registration
 	let type_name = quote! { #return_type }.to_string();
 
@@ -114,8 +118,8 @@ pub fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Result<Token
 		// Public wrapper factory function
 		#(#fn_attrs)*
 		#fn_vis async fn #fn_name(
-			ctx: ::std::sync::Arc<::reinhardt_di::InjectionContext>,
-		) -> ::reinhardt_di::DiResult<#return_type> {
+			ctx: ::std::sync::Arc<#di_crate::InjectionContext>,
+		) -> #di_crate::DiResult<#return_type> {
 			// Resolve #[inject] dependencies
 			#(#inject_resolutions)*
 
@@ -125,8 +129,8 @@ pub fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Result<Token
 		}
 
 		// Register with inventory
-		::reinhardt_di::inventory::submit! {
-			::reinhardt_di::DependencyRegistration::new::<#return_type, _, _>(
+		#di_crate::inventory::submit! {
+			#di_crate::DependencyRegistration::new::<#return_type, _, _>(
 				#type_name,
 				#scope_tokens,
 				#fn_name

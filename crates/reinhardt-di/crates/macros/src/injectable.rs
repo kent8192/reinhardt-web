@@ -1,5 +1,6 @@
 //! Implementation of the `#[injectable]` macro
 
+use crate::crate_paths::get_reinhardt_di_crate;
 use crate::utils::extract_scope_from_args;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -161,12 +162,15 @@ pub fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<TokenStr
 				has_inject_fields = true;
 				let use_cache = should_use_cache(field);
 
+				// Get dynamic crate path once per field
+				let di_crate = get_reinhardt_di_crate();
+
 				// Generate Injected::<T>::resolve() call based on injection type
 				let resolve_call = match injection_type {
 					InjectionType::Injected(inner_ty) => {
 						if use_cache {
 							quote! {
-								::reinhardt_di::Injected::<#inner_ty>::resolve(__di_ctx)
+								#di_crate::Injected::<#inner_ty>::resolve(__di_ctx)
 									.await
 									.map_err(|e| {
 										eprintln!("Dependency injection failed for {} in {}: {:?}",
@@ -176,7 +180,7 @@ pub fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<TokenStr
 							}
 						} else {
 							quote! {
-								::reinhardt_di::Injected::<#inner_ty>::resolve_uncached(__di_ctx)
+								#di_crate::Injected::<#inner_ty>::resolve_uncached(__di_ctx)
 									.await
 									.map_err(|e| {
 										eprintln!("Dependency injection failed for {} in {}: {:?}",
@@ -189,13 +193,13 @@ pub fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<TokenStr
 					InjectionType::OptionalInjected(inner_ty) => {
 						if use_cache {
 							quote! {
-								::reinhardt_di::Injected::<#inner_ty>::resolve(__di_ctx)
+								#di_crate::Injected::<#inner_ty>::resolve(__di_ctx)
 									.await
 									.ok()
 							}
 						} else {
 							quote! {
-								::reinhardt_di::Injected::<#inner_ty>::resolve_uncached(__di_ctx)
+								#di_crate::Injected::<#inner_ty>::resolve_uncached(__di_ctx)
 									.await
 									.ok()
 							}
@@ -226,13 +230,16 @@ pub fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<TokenStr
 		}
 	}
 
+	// Get dynamic crate path
+	let di_crate = get_reinhardt_di_crate();
+
 	// Generate the Injectable implementation
 	let injectable_impl = if has_inject_fields {
 		// With field injection
 		quote! {
 			#[async_trait::async_trait]
-			impl #impl_generics ::reinhardt_di::Injectable for #struct_name #ty_generics #where_clause {
-				async fn inject(__di_ctx: &::reinhardt_di::InjectionContext) -> ::reinhardt_di::DiResult<Self> {
+			impl #impl_generics #di_crate::Injectable for #struct_name #ty_generics #where_clause {
+				async fn inject(__di_ctx: &#di_crate::InjectionContext) -> #di_crate::DiResult<Self> {
 					#(#inject_stmts)*
 
 					Ok(Self {
@@ -245,8 +252,8 @@ pub fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<TokenStr
 		// Without field injection - use Default::default()
 		quote! {
 			#[async_trait::async_trait]
-			impl #impl_generics ::reinhardt_di::Injectable for #struct_name #ty_generics #where_clause {
-				async fn inject(_ctx: &::reinhardt_di::InjectionContext) -> ::reinhardt_di::DiResult<Self> {
+			impl #impl_generics #di_crate::Injectable for #struct_name #ty_generics #where_clause {
+				async fn inject(_ctx: &#di_crate::InjectionContext) -> #di_crate::DiResult<Self> {
 					// Use Default::default() for types without field injection
 					Ok(<Self as ::std::default::Default>::default())
 				}

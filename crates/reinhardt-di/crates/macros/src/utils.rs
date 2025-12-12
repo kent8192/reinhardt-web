@@ -1,5 +1,6 @@
 //! Common utilities for DI macros
 
+use crate::crate_paths::get_reinhardt_di_crate;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Attribute, MetaNameValue, Result, Token, parse::Parse, punctuated::Punctuated};
@@ -16,10 +17,11 @@ pub enum Scope {
 impl Scope {
 	/// Convert to TokenStream for code generation
 	pub fn into_tokens(self) -> TokenStream {
+		let di_crate = get_reinhardt_di_crate();
 		match self {
-			Scope::Singleton => quote! { ::reinhardt_di::DependencyScope::Singleton },
-			Scope::Request => quote! { ::reinhardt_di::DependencyScope::Request },
-			Scope::Transient => quote! { ::reinhardt_di::DependencyScope::Transient },
+			Scope::Singleton => quote! { #di_crate::DependencyScope::Singleton },
+			Scope::Request => quote! { #di_crate::DependencyScope::Request },
+			Scope::Transient => quote! { #di_crate::DependencyScope::Transient },
 		}
 	}
 }

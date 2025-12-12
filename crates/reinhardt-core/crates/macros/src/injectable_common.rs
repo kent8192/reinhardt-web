@@ -3,6 +3,9 @@
 //! This module contains shared logic for both function-based (#[injectable] on functions)
 //! and struct-based (#[injectable] on structs) dependency injection.
 
+use crate::crate_paths::{
+	get_reinhardt_core_crate, get_reinhardt_di_crate, get_reinhardt_signals_crate,
+};
 use syn::{Expr, Token, punctuated::Punctuated};
 
 /// Scope for dependency injection
@@ -160,13 +163,11 @@ pub fn parse_no_inject_options(attrs: &[syn::Attribute]) -> Option<NoInjectOptio
 // ============================================================================
 
 use proc_macro2::TokenStream;
-use quote::quote;
 
 /// Information about #[inject] parameters (for code generation)
 ///
 /// This struct is part of the DI code generation infrastructure and will be used
 /// by macro extensions like #[action] and #[receiver] with use_inject support.
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct InjectParamInfo {
 	/// Parameter pattern (variable name)
@@ -177,11 +178,16 @@ pub struct InjectParamInfo {
 	pub options: InjectOptions,
 }
 
-/// Detect parameters with #[inject] attribute from function arguments
+/// Detects parameters with #[inject] attribute from function arguments.
 ///
-/// This function is part of the DI code generation infrastructure and will be used
+/// This function is part of the DI code generation infrastructure and is used
 /// by macro extensions like #[action] and #[receiver] with use_inject support.
-#[allow(dead_code)]
+///
+/// # Integration
+///
+/// - #[action] macro: Controller action methods with automatic DI
+/// - #[receiver] macro: Signal receiver functions with injected dependencies
+/// - use_inject flag: Enable DI for custom macros
 pub fn detect_inject_params(
 	inputs: &syn::punctuated::Punctuated<syn::FnArg, Token![,]>,
 ) -> Vec<InjectParamInfo> {
@@ -205,36 +211,46 @@ pub fn detect_inject_params(
 	inject_params
 }
 
-/// Generate DI context extraction code from a Request
+/// Generates DI context extraction code from a Request.
 ///
 /// Generates code like:
 /// ```ignore
 /// let __di_ctx = request.get_di_context::<Arc<InjectionContext>>()
 ///     .ok_or_else(|| Error::Internal("DI context not set".to_string()))?;
 /// ```
-#[allow(dead_code)]
+///
+/// This function is used by #[action] and #[receiver] macros to extract
+/// the DI context from request objects for dependency resolution.
 pub fn generate_di_context_extraction(request_ident: &syn::Ident) -> TokenStream {
-	quote! {
-		let __di_ctx = #request_ident.get_di_context::<::std::sync::Arc<::reinhardt::reinhardt_di::InjectionContext>>()
-			.ok_or_else(|| ::reinhardt::reinhardt_core::exception::Error::Internal(
+	let di_crate = get_reinhardt_di_crate();
+	let core_crate = get_reinhardt_core_crate();
+
+	quote::quote! {
+		let __di_ctx = #request_ident.get_di_context::<::std::sync::Arc<#di_crate::InjectionContext>>()
+			.ok_or_else(|| #core_crate::exception::Error::Internal(
 				"DI context not set. Ensure the router is configured with .with_di_context()".to_string()
 			))?;
 	}
 }
 
-/// Generate DI context extraction code from an optional Arc<InjectionContext>
+/// Generates DI context extraction code from an optional Arc<InjectionContext>.
 ///
-/// Used for Signal receivers where DI context is passed as an Option
-#[allow(dead_code)]
+/// Used for Signal receivers where DI context is passed as an Option.
+/// This function enables #[receiver] macros to handle optional DI contexts
+/// in signal dispatch scenarios.
 pub fn generate_di_context_extraction_from_option(ctx_ident: &syn::Ident) -> TokenStream {
-	quote! {
-		let __di_ctx = #ctx_ident.ok_or_else(|| ::reinhardt::reinhardt_core::exception::Error::Internal(
-			"DI context is required but not provided. Use send_with_context() instead of send()".to_string()
-		))?;
+	let signals_crate = get_reinhardt_signals_crate();
+
+	quote::quote! {
+		let __di_ctx = #ctx_ident
+			.as_ref()
+			.ok_or_else(|| #signals_crate::SignalError::new(
+				"DI context not available. Use signal.send_with_di_context() to enable injection"
+			))?;
 	}
 }
 
-/// Generate injection resolution calls for a list of inject parameters
+/// Generates injection resolution calls for a list of inject parameters.
 ///
 /// Generates code like:
 /// ```ignore
@@ -243,8 +259,13 @@ pub fn generate_di_context_extraction_from_option(ctx_ident: &syn::Ident) -> Tok
 ///     .map_err(|e| Error::Internal(...))?
 ///     .into_inner();
 /// ```
-#[allow(dead_code)]
+///
+/// This function is used by #[action] and #[receiver] macros to generate
+/// dependency injection code for parameters marked with #[inject].
 pub fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec<TokenStream> {
+	let di_crate = get_reinhardt_di_crate();
+	let core_crate = get_reinhardt_core_crate();
+
 	inject_params
 		.iter()
 		.map(|param| {
@@ -253,19 +274,19 @@ pub fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec<TokenS
 			let use_cache = param.options.use_cache;
 
 			if use_cache {
-				quote! {
-					let #pat: #ty = ::reinhardt::reinhardt_di::Injected::<#ty>::resolve(&__di_ctx)
+				quote::quote! {
+					let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
 						.await
-						.map_err(|e| ::reinhardt::reinhardt_core::exception::Error::Internal(
+						.map_err(|e| #core_crate::exception::Error::Internal(
 							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
 						))?
 						.into_inner();
 				}
 			} else {
-				quote! {
-					let #pat: #ty = ::reinhardt::reinhardt_di::Injected::<#ty>::resolve_uncached(&__di_ctx)
+				quote::quote! {
+					let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
 						.await
-						.map_err(|e| ::reinhardt::reinhardt_core::exception::Error::Internal(
+						.map_err(|e| #core_crate::exception::Error::Internal(
 							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
 						))?
 						.into_inner();
@@ -275,10 +296,11 @@ pub fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec<TokenS
 		.collect()
 }
 
-/// Generate injection resolution calls with a custom error type
+/// Generates injection resolution calls with a custom error type.
 ///
-/// Used for WebSocket handlers and Signal receivers that use different error types
-#[allow(dead_code)]
+/// Used for WebSocket handlers and Signal receivers that use different error types.
+/// This function enables #[action] and #[receiver] macros to generate error
+/// handling code compatible with their specific error types.
 pub fn generate_injection_calls_with_error<F>(
 	inject_params: &[InjectParamInfo],
 	error_mapper: F,
@@ -286,26 +308,28 @@ pub fn generate_injection_calls_with_error<F>(
 where
 	F: Fn(&syn::Type) -> TokenStream,
 {
+	let di_crate = get_reinhardt_di_crate();
+
 	inject_params
 		.iter()
 		.map(|param| {
 			let pat = &param.pat;
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
-			let error_code = error_mapper(ty);
+			let error_conversion = error_mapper(ty);
 
 			if use_cache {
-				quote! {
-					let #pat: #ty = ::reinhardt::reinhardt_di::Injected::<#ty>::resolve(&__di_ctx)
+				quote::quote! {
+					let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
 						.await
-						.map_err(|e| #error_code)?
+						.map_err(|e| #error_conversion)?
 						.into_inner();
 				}
 			} else {
-				quote! {
-					let #pat: #ty = ::reinhardt::reinhardt_di::Injected::<#ty>::resolve_uncached(&__di_ctx)
+				quote::quote! {
+					let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
 						.await
-						.map_err(|e| #error_code)?
+						.map_err(|e| #error_conversion)?
 						.into_inner();
 				}
 			}
@@ -313,10 +337,11 @@ where
 		.collect()
 }
 
-/// Remove #[inject] attributes from function arguments
+/// Removes #[inject] attributes from function arguments.
 ///
-/// Returns a new list of FnArg with #[inject] attributes stripped
-#[allow(dead_code)]
+/// Returns a new list of FnArg with #[inject] attributes stripped.
+/// This function is used by #[action] and #[receiver] macros to clean up
+/// function signatures after processing #[inject] attributes for code generation.
 pub fn strip_inject_attrs(
 	inputs: &syn::punctuated::Punctuated<syn::FnArg, Token![,]>,
 ) -> Vec<syn::FnArg> {
