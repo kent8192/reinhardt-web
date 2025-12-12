@@ -633,7 +633,7 @@ impl<M: Model, R: Model> Serializer for WritableNestedSerializer<M, R> {
 			// ```
 		}
 
-		// For now, deserialize parent model only
+		// TODO: For now, deserialize parent model only
 		serde_json::from_str(output).map_err(|e| SerializerError::Other {
 			message: format!("Deserialization error: {}", e),
 		})

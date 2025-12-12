@@ -234,7 +234,7 @@ async fn test_security_logger_with_different_levels() {
 	sec_logger.log_security_error(&error).await;
 
 	// If we had lower-severity security events, they would also be logged
-	// For now, just verify ERROR level works
+	// TODO: For now, just verify ERROR level works
 
 	let records = memory.get_records();
 	assert_eq!(records.len(), 1);

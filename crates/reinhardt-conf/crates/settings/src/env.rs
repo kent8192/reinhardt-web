@@ -19,7 +19,7 @@ pub struct Env {
 	/// Whether to enable variable expansion (e.g., $VAR)
 	pub interpolate: bool,
 
-	/// Cached environment variables
+	/// Cached environment variables (reserved for future use)
 	#[allow(dead_code)]
 	cache: IndexMap<String, String>,
 }

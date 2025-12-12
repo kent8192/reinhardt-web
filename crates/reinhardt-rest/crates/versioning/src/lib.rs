@@ -513,7 +513,7 @@ impl HostNameVersioning {
 	// The versioning will match v1.api.example.com to version "v1"
 	/// ```
 	pub fn with_hostname_pattern(mut self, version: &str, _hostname: &str) -> Self {
-		// For now, we'll use a simple approach - store the mapping in allowed_versions
+		// TODO: For now, we'll use a simple approach - store the mapping in allowed_versions
 		// In a full implementation, this would maintain a separate mapping
 		self.allowed_versions.insert(version.to_string());
 		self

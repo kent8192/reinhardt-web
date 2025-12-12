@@ -46,6 +46,7 @@ reinhardt-exception = { workspace = true }
 reinhardt-http = { workspace = true }
 hyper = { workspace = true }
 argon2 = { workspace = true }
+password-hash = { workspace = true }
 rand = { workspace = true }
 jsonwebtoken = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }

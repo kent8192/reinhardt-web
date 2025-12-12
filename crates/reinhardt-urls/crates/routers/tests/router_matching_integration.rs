@@ -491,7 +491,7 @@ fn test_query_string_ignored_in_matching() {
 	// Note: Implementation might need to strip query string before matching
 	// This documents expected behavior
 	// If PathMatcher expects clean paths, this test should use "/search/" only
-	// For now, we test the ideal behavior (query string is stripped)
+	// TODO: For now, we test the ideal behavior (query string is stripped)
 	assert!(result.is_some() || result.is_none());
 	// If implementation handles query strings:
 	// assert!(result.is_some());

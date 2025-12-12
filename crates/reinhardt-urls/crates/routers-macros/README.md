@@ -205,11 +205,6 @@ error: URL path must start with '/'
 - Route registration macros are planned but not yet available
 - ViewSet routing macros are planned but not yet available
 
-**Planned Features:**
-- `route!` - Route registration macro
-- `url!` - URL pattern macro with automatic name generation
-- `viewset_routes!` - Automatic ViewSet route generation
-
 ## License
 
 Licensed under either of Apache License, Version 2.0 or MIT license at your option.

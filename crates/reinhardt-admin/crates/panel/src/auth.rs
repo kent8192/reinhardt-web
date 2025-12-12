@@ -107,7 +107,7 @@ impl AdminAuthBackend {
 		// Check Django-style model permission: "admin.action_model"
 		let _permission = format!("admin.{}_{}", action.as_str(), model.to_lowercase());
 
-		// For now, grant all permissions to staff users who are not superusers.
+		// TODO: For now, grant all permissions to staff users who are not superusers.
 		// In a full implementation, this would check against a permission context
 		// or database to verify the user actually has this specific permission.
 		//

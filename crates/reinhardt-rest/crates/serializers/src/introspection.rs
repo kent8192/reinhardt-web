@@ -53,8 +53,10 @@ impl FieldInfo {
 
 /// Field introspector for extracting model field information
 ///
-/// This is a placeholder for future proc-macro implementation.
-/// Currently requires manual registration of fields.
+/// # Manual Registration Approach
+///
+/// The current implementation requires explicit `register_field()` calls.
+/// This provides full control over introspection behavior and field metadata.
 ///
 /// # Examples
 ///
@@ -63,7 +65,7 @@ impl FieldInfo {
 ///
 /// let mut introspector = FieldIntrospector::new();
 ///
-/// // Register fields manually (proc-macro will do this automatically in the future)
+/// // Register fields manually
 /// introspector.register_field(
 ///     FieldInfo::new("id", "i64").optional().primary_key()
 /// );
@@ -74,6 +76,20 @@ impl FieldInfo {
 /// let fields = introspector.get_fields();
 /// assert_eq!(fields.len(), 2);
 /// ```
+///
+/// # Future Enhancement
+///
+/// A proc-macro implementation is planned to automate field registration:
+///
+/// ```ignore
+/// #[derive(Introspectable)]
+/// struct User {
+///     id: i64,
+///     username: String,
+/// }
+/// ```
+///
+/// This would eliminate manual registration while maintaining the same functionality.
 pub struct FieldIntrospector {
 	fields: Vec<FieldInfo>,
 	field_map: HashMap<String, FieldInfo>,

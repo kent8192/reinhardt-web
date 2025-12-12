@@ -598,7 +598,7 @@ rstest = "0.26.1"
 mockall = "0.14.0"
 scopeguard = "1.2.0"
 tempfile = "3.15.0"
-trybuild = "1.0"
+trybuild = "1.0.114"
 url = "2.5.4"
 
 # Note: num-bigint-dig v0.8.x has a future incompatibility warning

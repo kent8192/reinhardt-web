@@ -222,7 +222,7 @@ mod tests {
 
 		// In non-strict mode, these should parse (though JSON doesn't natively support these)
 		// Note: serde_json doesn't parse raw Infinity/NaN strings, so we need to handle them specially
-		// For now, we test that strict=false doesn't reject valid JSON
+		// TODO: For now, we test that strict=false doesn't reject valid JSON
 		let parser_non_strict = JSONParser::new().strict(false);
 		let valid_json = Bytes::from(r#"{"value": 1.0}"#);
 		let result = parser_non_strict

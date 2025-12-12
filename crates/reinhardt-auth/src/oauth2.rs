@@ -320,7 +320,7 @@ impl AuthenticationBackend for OAuth2Authentication {
 
 	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
 		// In a production system, this would query a user database
-		// For now, we create a simple user object
+		// TODO: For now, we create a simple user object
 		Ok(Some(Box::new(SimpleUser {
 			id: Uuid::new_v4(),
 			username: user_id.to_string(),

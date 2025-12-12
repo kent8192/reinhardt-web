@@ -259,7 +259,7 @@ impl MessageMiddleware {
 	/// Extract session ID from request
 	///
 	/// In production, this should integrate with reinhardt-sessions.
-	/// For now, we extract from cookie.
+	/// TODO: For now, we extract from cookie.
 	fn get_session_id(request: &Request) -> String {
 		request
 			.headers

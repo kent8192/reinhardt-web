@@ -309,7 +309,7 @@ impl TaskBackend for RabbitMQBackend {
 	async fn get_status(&self, _task_id: TaskId) -> Result<TaskStatus, TaskExecutionError> {
 		// NOTE: RabbitMQ is a message queue, not a data store
 		// Task status tracking requires additional storage (Redis, database, etc.)
-		// For now, return Pending as tasks are consumed from queue
+		// TODO: For now, return Pending as tasks are consumed from queue
 		Ok(TaskStatus::Pending)
 	}
 

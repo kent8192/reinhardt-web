@@ -96,22 +96,11 @@ impl Default for Argon2Hasher {
 #[cfg(feature = "argon2-hasher")]
 impl PasswordHasher for Argon2Hasher {
 	fn hash(&self, password: &str) -> Result<String, reinhardt_exception::Error> {
-		use argon2::{
-			Argon2,
-			password_hash::{PasswordHasher as _, SaltString},
-		};
+		use argon2::Argon2;
+		use password_hash::{PasswordHasher as _, phc::Salt};
 
-		// Use rand crate's rng which provides OsRng-backed randomness
-		let mut rng = rand::rng();
-
-		// Generate salt bytes directly
-		let mut salt_bytes = [0u8; 16];
-		use rand::RngCore;
-		rng.fill_bytes(&mut salt_bytes);
-
-		// Create salt string from bytes
-		let salt = SaltString::encode_b64(&salt_bytes)
-			.map_err(|e| reinhardt_exception::Error::Authentication(e.to_string()))?;
+		// Generate salt using cryptographically secure randomness
+		let salt = Salt::generate();
 
 		let argon2 = Argon2::default();
 
@@ -122,10 +111,8 @@ impl PasswordHasher for Argon2Hasher {
 	}
 
 	fn verify(&self, password: &str, hash: &str) -> Result<bool, reinhardt_exception::Error> {
-		use argon2::{
-			Argon2,
-			password_hash::{PasswordHash, PasswordVerifier},
-		};
+		use argon2::Argon2;
+		use password_hash::{PasswordVerifier, phc::PasswordHash};
 
 		let parsed_hash = PasswordHash::new(hash)
 			.map_err(|e| reinhardt_exception::Error::Authentication(e.to_string()))?;

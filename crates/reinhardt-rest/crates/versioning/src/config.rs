@@ -372,7 +372,7 @@ mod tests {
 	#[test]
 	fn test_settings_from_env() {
 		// This test would require setting environment variables
-		// For now, just test that the method doesn't panic
+		// TODO: For now, just test that the method doesn't panic
 		let result = VersioningConfig::from_env();
 		assert!(result.is_ok());
 	}

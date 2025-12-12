@@ -164,7 +164,7 @@ pub trait CustomView: Send + Sync {
 			let _auth_backend = AdminAuthBackend::new();
 			if let Some(_permission) = &config.permission {
 				// Check if user has the required permission
-				// For now, check if user is staff
+				// TODO: For now, check if user is staff
 				simple_user.is_staff()
 			} else {
 				true
@@ -575,10 +575,8 @@ mod tests {
 	}
 
 	// Test model for reordering
-	#[allow(dead_code)]
 	struct TestModel {
 		id: i64,
-		name: String,
 		order: i32,
 	}
 
@@ -690,11 +688,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_reorderable_model() {
-		let mut model = TestModel {
-			id: 1,
-			name: "Test".to_string(),
-			order: 5,
-		};
+		let mut model = TestModel { id: 1, order: 5 };
 
 		assert_eq!(model.get_order().await, 5);
 		assert_eq!(model.get_id(), "1");
@@ -826,17 +820,9 @@ mod tests {
 		let conn = create_mock_connection();
 		let handler = ReorderHandler::new(config, conn, "test_table", "id");
 
-		let mut model1 = TestModel {
-			id: 1,
-			name: "First".to_string(),
-			order: 0,
-		};
+		let mut model1 = TestModel { id: 1, order: 0 };
 
-		let mut model2 = TestModel {
-			id: 2,
-			name: "Second".to_string(),
-			order: 1,
-		};
+		let mut model2 = TestModel { id: 2, order: 1 };
 
 		let result = handler.reorder_adjacent(&mut model1, &mut model2).await;
 

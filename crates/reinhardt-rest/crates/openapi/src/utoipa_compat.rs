@@ -407,7 +407,7 @@ fn convert_security_scheme(
 			}
 		}
 		crate::openapi::SecurityScheme::OAuth2 { flows: _ } => {
-			// For now, create a basic OAuth2 scheme
+			// TODO: For now, create a basic OAuth2 scheme
 			// Full implementation would need to convert flows properly
 			use utoipa::openapi::security::{Flow, Implicit, OAuth2, Scopes};
 

@@ -326,7 +326,7 @@ fn test_catalog_loader_json_not_found() {
 	// In production, this would return Err when catalog files are not found
 	let result = loader.load(&locale.to_string());
 
-	// For now, verify the loader can be called without panicking
+	// TODO: For now, verify the loader can be called without panicking
 	assert!(result.is_ok());
 
 	// Cleanup is automatic with TempDir

@@ -26,10 +26,11 @@
 //! ```
 
 #[cfg(feature = "di")]
-use reinhardt_di::{Injectable, Injected, InjectionContext};
-use std::sync::Arc;
-
 use crate::error::SignalError;
+#[cfg(feature = "di")]
+use reinhardt_di::{Injectable, Injected, InjectionContext};
+#[cfg(feature = "di")]
+use std::sync::Arc;
 
 /// Context passed to signal receivers, optionally containing DI context
 ///

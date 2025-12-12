@@ -23,9 +23,6 @@ impl EncryptedConfig {
 pub struct ConfigEncryptor {
 	#[cfg(feature = "encryption")]
 	cipher: Aes256Gcm,
-	#[cfg(not(feature = "encryption"))]
-	#[allow(dead_code)]
-	key: Vec<u8>,
 }
 
 impl std::fmt::Debug for ConfigEncryptor {
@@ -61,10 +58,11 @@ impl ConfigEncryptor {
 		}
 		#[cfg(not(feature = "encryption"))]
 		{
+			// バリデーションのみ実行、keyは保存しない
 			if key.is_empty() {
 				return Err("Encryption key cannot be empty".to_string());
 			}
-			Ok(Self { key })
+			Ok(Self {})
 		}
 	}
 

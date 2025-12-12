@@ -20,6 +20,20 @@ type ReceiverFn =
 #[derive(Clone)]
 pub struct SyncSignal {
 	receivers: Arc<RwLock<Vec<SignalReceiver>>>,
+	/// Caching flag reserved for future optimization
+	///
+	/// This field is intentionally excluded from current implementation.
+	/// The caching mechanism is designed but not used in the current send() implementation.
+	///
+	/// Planned usage:
+	/// - Cache resolved receiver functions to avoid repeated lookups
+	/// - Optimize signal dispatch performance for frequently-fired signals
+	/// - Implement cache invalidation on receiver registration/deregistration
+	///
+	/// Implementation requires:
+	/// - Cache storage design (per-signal or global)
+	/// - Cache invalidation strategy
+	/// - Thread-safety considerations for cached function pointers
 	#[allow(dead_code)]
 	use_caching: bool,
 }

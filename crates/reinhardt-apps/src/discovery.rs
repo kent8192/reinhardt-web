@@ -177,10 +177,9 @@ impl RelationMetadata {
 /// 3. Generates appropriate reverse accessor names
 /// 4. Creates reverse relation descriptors
 ///
-/// **Current Limitation**: The actual relationship metadata extraction from models
-/// is not yet implemented, as the ORM system does not currently expose relationship
-/// metadata through the model registry. This will be implemented once the ORM
-/// provides a mechanism to introspect model relationships.
+/// The `#[model(...)]` macro automatically detects relationship fields
+/// (ForeignKeyField, OneToOneField, ManyToManyField) and generates registration
+/// code for the global RELATIONSHIPS registry.
 ///
 /// # Examples
 ///

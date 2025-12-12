@@ -4,7 +4,9 @@ Authentication and authorization system for Reinhardt framework.
 
 ## Overview
 
-Comprehensive authentication and authorization system inspired by Django and Django REST Framework. Provides JWT tokens, permission classes, user models, and password hashing with Argon2.
+Comprehensive authentication and authorization system inspired by Django and
+Django REST Framework. Provides JWT tokens, permission classes, user models, and
+password hashing with Argon2.
 
 ## Implemented ✓
 
@@ -12,7 +14,8 @@ Comprehensive authentication and authorization system inspired by Django and Dja
 
 #### JWT (JSON Web Token) Authentication
 
-- **Claims Management**: `Claims` struct with user identification, expiration, and issue times
+- **Claims Management**: `Claims` struct with user identification, expiration,
+  and issue times
 - **Token Generation**: Automatic 24-hour expiration by default
 - **Token Verification**: Built-in expiration checking and signature validation
 - **Encode/Decode**: Full JWT token encoding and decoding support
@@ -31,7 +34,8 @@ let claims = jwt_auth.verify_token(&token).unwrap();
 - **BasicAuthentication**: HTTP Basic auth backend with user management
 - **Base64 Encoding/Decoding**: Standard HTTP Basic auth header parsing
 - **User Registration**: Add users with username/password pairs
-- **Request Authentication**: Extract and verify credentials from Authorization headers
+- **Request Authentication**: Extract and verify credentials from Authorization
+  headers
 
 ```rust
 use reinhardt_auth::{HttpBasicAuth, AuthenticationBackend};
@@ -49,12 +53,14 @@ let result = auth.authenticate(&request).unwrap();
 
 - **Core User Interface**: Unified trait for authenticated and anonymous users
 - **User Identification**: `id()`, `username()`, `get_username()` methods
-- **Authentication Status**: `is_authenticated()`, `is_active()`, `is_admin()` checks
+- **Authentication Status**: `is_authenticated()`, `is_active()`, `is_admin()`
+  checks
 - **Django Compatibility**: Methods compatible with Django's user interface
 
 #### User Implementations
 
-- **SimpleUser**: Fully-featured user with UUID, username, email, active/admin flags
+- **SimpleUser**: Fully-featured user with UUID, username, email, active/admin
+  flags
 - **AnonymousUser**: Zero-sized type representing unauthenticated visitors
 - **Serialization Support**: Serde integration for SimpleUser
 
@@ -78,17 +84,24 @@ assert!(!user.is_admin());
 
 #### BaseUser Trait (AbstractBaseUser equivalent)
 
-- **Minimal Authentication Interface**: Minimal set of fields for user authentication
-- **Automatic Password Hashing**: Argon2id hashing by default, fully customizable
-- **Associated Type Default**: `type Hasher: PasswordHasher + Default = Argon2Hasher`
+- **Minimal Authentication Interface**: Minimal set of fields for user
+  authentication
+- **Automatic Password Hashing**: Argon2id hashing by default, fully
+  customizable
+- **Associated Type Default**:
+  `type Hasher: PasswordHasher + Default = Argon2Hasher`
 - **Password Management**:
   - `set_password()`: Automatically hashes with configured hasher
   - `check_password()`: Verifies password against hash
-  - `set_unusable_password()`: Marks password as unusable (for OAuth-only accounts)
+  - `set_unusable_password()`: Marks password as unusable (for OAuth-only
+    accounts)
   - `has_usable_password()`: Checks if user can log in with password
-- **Session Authentication**: `get_session_auth_hash()` for session invalidation on password change
-- **Username Normalization**: NFKC Unicode normalization to prevent homograph attacks
-- **Django Compatibility**: Method names and behavior match Django's AbstractBaseUser
+- **Session Authentication**: `get_session_auth_hash()` for session invalidation
+  on password change
+- **Username Normalization**: NFKC Unicode normalization to prevent homograph
+  attacks
+- **Django Compatibility**: Method names and behavior match Django's
+  AbstractBaseUser
 
 ```rust
 use reinhardt_auth::BaseUser;
@@ -212,10 +225,12 @@ assert!(user.has_module_perms("blog"));
 
 #### DefaultUser Struct
 
-- **Ready-to-Use Implementation**: Combines BaseUser, FullUser, and PermissionsMixin
+- **Ready-to-Use Implementation**: Combines BaseUser, FullUser, and
+  PermissionsMixin
 - **Database Model**: `#[derive(Model)]` for ORM integration
 - **Table Name**: `auth_user` (Django-compatible)
-- **All Fields Included**: Username, email, names, passwords, permissions, groups, flags, timestamps
+- **All Fields Included**: Username, email, names, passwords, permissions,
+  groups, flags, timestamps
 - **Zero Configuration**: Works out of the box with automatic Argon2id hashing
 
 ```rust
@@ -261,7 +276,8 @@ assert!(admin.is_superuser);
 - **In-Memory Implementation**: Built-in manager for DefaultUser
 - **Thread-Safe**: Uses `Arc<RwLock<HashMap>>` for concurrent access
 - **User Lookup**: `get_by_id()` and `get_by_username()` methods
-- **Demonstration Purpose**: For testing and prototyping (use ORM-based manager in production)
+- **Demonstration Purpose**: For testing and prototyping (use ORM-based manager
+  in production)
 
 ### Password Security
 
@@ -320,7 +336,8 @@ let user = composite.authenticate("alice", "password").await;
 - **IsAuthenticated**: Require authenticated user
 - **IsAdminUser**: Require authenticated admin user
 - **IsActiveUser**: Require authenticated and active user
-- **IsAuthenticatedOrReadOnly**: Authenticated for write, read-only for anonymous users
+- **IsAuthenticatedOrReadOnly**: Authenticated for write, read-only for
+  anonymous users
 
 ```rust
 use reinhardt_auth::{Permission, IsAuthenticated, PermissionContext};
@@ -387,7 +404,8 @@ if let Some(user) = auth.get_user("user_id").await? {
 
 - **MFAAuthentication**: Time-based one-time password (TOTP) authentication
 - **Secret Management**: Secure per-user secret storage
-- **QR Code Generation**: Generate TOTP URLs for authenticator apps (Google Authenticator, Authy)
+- **QR Code Generation**: Generate TOTP URLs for authenticator apps (Google
+  Authenticator, Authy)
 - **Code Verification**: Verify TOTP codes with configurable time window
 - **Registration Flow**: User enrollment with secret generation
 - **Time Window**: Configurable tolerance for time skew (default: 1 time step)
@@ -411,7 +429,8 @@ assert!(mfa.verify_code("alice", code).await?);
 #### OAuth2 Authentication
 
 - **OAuth2Authentication**: Full OAuth2 provider implementation
-- **Grant Types**: Authorization Code, Client Credentials, Refresh Token, Implicit
+- **Grant Types**: Authorization Code, Client Credentials, Refresh Token,
+  Implicit
 - **Application Management**: `OAuth2Application` with client credentials
 - **Token Management**: `OAuth2Token` with access and refresh tokens
 - **Authorization Flow**:
@@ -422,9 +441,9 @@ assert!(mfa.verify_code("alice", code).await?);
 - **InMemoryTokenStore**: Built-in in-memory token storage
 
 ```rust
-use reinhardt_auth::{OAuth2Authentication, GrantType, InMemoryTokenStore};
+use reinhardt_auth::{OAuth2Authentication, GrantType, InMemoryOAuth2Store};
 
-let store = InMemoryTokenStore::new();
+let store = InMemoryOAuth2Store::new();
 let oauth2 = OAuth2Authentication::new(store);
 
 // Register OAuth2 application
@@ -473,7 +492,9 @@ use reinhardt_auth::{
 
 // Token blacklist
 let blacklist = InMemoryBlacklist::new();
-blacklist.blacklist("old_token", BlacklistReason::Logout).await?;
+use chrono::{Utc, Duration};
+let expires_at = Utc::now() + Duration::hours(24);
+blacklist.blacklist("old_token", expires_at, BlacklistReason::Logout).await?;
 assert!(blacklist.is_blacklisted("old_token").await?);
 
 // Token rotation
@@ -488,7 +509,8 @@ let new_token = rotation_manager.rotate_token("old_refresh_token", "user123").aw
 #### Header-Based Authentication
 
 - **RemoteUserAuthentication**: Authenticate via trusted HTTP headers
-- **Reverse Proxy Integration**: Support for authentication proxies (nginx, Apache, etc.)
+- **Reverse Proxy Integration**: Support for authentication proxies (nginx,
+  Apache, etc.)
 - **Header Configuration**: Configurable header name (default: `REMOTE_USER`)
 - **Header Validation**: Verify header presence and format
 - **Automatic Logout**: Optional force logout when header is missing
@@ -569,7 +591,7 @@ impl AuthBackend for MyAuthBackend {
         &self,
         username: &str,
         password: &str,
-    ) -> reinhardt_apps::Result<Option<Self::User>> {
+    ) -> Result<Option<Self::User>, reinhardt_exception::Error> {
         if let Some((hash, user)) = self.users.get(username) {
             if self.hasher.verify(password, hash)? {
                 return Ok(Some(user.clone()));
@@ -579,7 +601,7 @@ impl AuthBackend for MyAuthBackend {
     }
 
     async fn get_user(&self, user_id: &str)
-        -> reinhardt_apps::Result<Option<Self::User>> {
+        -> Result<Option<Self::User>, reinhardt_exception::Error> {
         Ok(self.users.values()
             .find(|(_, u)| u.id.to_string() == user_id)
             .map(|(_, u)| u.clone()))
@@ -591,7 +613,9 @@ impl AuthBackend for MyAuthBackend {
 
 Licensed under either of:
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](../../LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](../../LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](../../LICENSE-APACHE) or
+  http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](../../LICENSE-MIT) or
+  http://opensource.org/licenses/MIT)
 
 at your option.

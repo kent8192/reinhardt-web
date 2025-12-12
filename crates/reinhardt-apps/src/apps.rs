@@ -301,7 +301,7 @@ impl Apps {
 
 		// 4. Build reverse relations between models
 		// This would require analyzing foreign key relationships
-		// For now, this is deferred until ORM relationship system is fully implemented
+		// TODO: For now, this is deferred until ORM relationship system is fully implemented
 
 		// Mark as models_ready
 		*self.models_ready.lock().unwrap() = true;
