@@ -50,7 +50,7 @@
 //! assert!(validator.validate_mime_type("application/msword").is_ok());
 //! ```
 
-use crate::{ValidationError, ValidationResult};
+use crate::{ValidationError, ValidationResult, Validator};
 
 /// File type validator for MIME types and file extensions
 ///
@@ -351,6 +351,103 @@ impl Default for FileTypeValidator {
 	}
 }
 
+/// File size validator with min/max/range constraints
+///
+/// Validates file sizes in bytes with flexible configuration options.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_validators::{FileSizeValidator, Validator};
+///
+/// // Minimum size
+/// let validator = FileSizeValidator::min(FileSizeValidator::from_kb(100)); // 100 KB minimum
+/// assert!(validator.validate(&(1024 * 1024)).is_ok()); // 1 MB
+/// assert!(validator.validate(&(1024 * 50)).is_err()); // 50 KB
+///
+/// // Maximum size
+/// let validator = FileSizeValidator::max(FileSizeValidator::from_mb(10)); // 10 MB maximum
+/// assert!(validator.validate(&(1024 * 1024)).is_ok()); // 1 MB
+/// assert!(validator.validate(&(1024 * 1024 * 20)).is_err()); // 20 MB
+///
+/// // Range
+/// let validator = FileSizeValidator::range(
+///     FileSizeValidator::from_kb(100),
+///     FileSizeValidator::from_mb(10)
+/// );
+/// assert!(validator.validate(&(1024 * 1024)).is_ok()); // 1 MB
+/// ```
+#[derive(Debug, Clone)]
+pub struct FileSizeValidator {
+	min_bytes: Option<u64>,
+	max_bytes: Option<u64>,
+}
+
+impl FileSizeValidator {
+	/// Create a validator with minimum size constraint
+	pub fn min(min_bytes: u64) -> Self {
+		Self {
+			min_bytes: Some(min_bytes),
+			max_bytes: None,
+		}
+	}
+
+	/// Create a validator with maximum size constraint
+	pub fn max(max_bytes: u64) -> Self {
+		Self {
+			min_bytes: None,
+			max_bytes: Some(max_bytes),
+		}
+	}
+
+	/// Create a validator with both min and max constraints
+	pub fn range(min_bytes: u64, max_bytes: u64) -> Self {
+		Self {
+			min_bytes: Some(min_bytes),
+			max_bytes: Some(max_bytes),
+		}
+	}
+
+	/// Helper: Convert kilobytes to bytes
+	pub fn from_kb(kb: u64) -> u64 {
+		kb * 1024
+	}
+
+	/// Helper: Convert megabytes to bytes
+	pub fn from_mb(mb: u64) -> u64 {
+		mb * 1024 * 1024
+	}
+
+	/// Helper: Convert gigabytes to bytes
+	pub fn from_gb(gb: u64) -> u64 {
+		gb * 1024 * 1024 * 1024
+	}
+}
+
+impl Validator<u64> for FileSizeValidator {
+	fn validate(&self, value: &u64) -> ValidationResult<()> {
+		if let Some(min) = self.min_bytes
+			&& *value < min
+		{
+			return Err(ValidationError::FileSizeTooSmall {
+				size_bytes: *value,
+				min_bytes: min,
+			});
+		}
+
+		if let Some(max) = self.max_bytes
+			&& *value > max
+		{
+			return Err(ValidationError::FileSizeTooLarge {
+				size_bytes: *value,
+				max_bytes: max,
+			});
+		}
+
+		Ok(())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -603,5 +700,102 @@ mod tests {
 		// Empty whitelist should reject everything
 		assert!(validator.validate_filename("file.txt").is_err());
 		assert!(validator.validate_mime_type("text/plain").is_err());
+	}
+
+	// FileSizeValidator tests
+	#[test]
+	fn test_file_size_min_validator() {
+		let validator = FileSizeValidator::min(1024); // 1 KB minimum
+		assert!(validator.validate(&2048).is_ok()); // 2 KB
+		assert!(validator.validate(&1024).is_ok()); // Exactly 1 KB
+		assert!(validator.validate(&512).is_err()); // 512 bytes
+	}
+
+	#[test]
+	fn test_file_size_max_validator() {
+		let validator = FileSizeValidator::max(1024 * 1024); // 1 MB maximum
+		assert!(validator.validate(&(1024 * 512)).is_ok()); // 512 KB
+		assert!(validator.validate(&(1024 * 1024)).is_ok()); // Exactly 1 MB
+		assert!(validator.validate(&(1024 * 1024 * 2)).is_err()); // 2 MB
+	}
+
+	#[test]
+	fn test_file_size_range_validator() {
+		let validator = FileSizeValidator::range(1024, 1024 * 1024); // 1 KB to 1 MB
+		assert!(validator.validate(&(1024 * 512)).is_ok()); // 512 KB
+		assert!(validator.validate(&1024).is_ok()); // Exactly 1 KB (min)
+		assert!(validator.validate(&(1024 * 1024)).is_ok()); // Exactly 1 MB (max)
+		assert!(validator.validate(&512).is_err()); // Too small
+		assert!(validator.validate(&(1024 * 1024 * 2)).is_err()); // Too large
+	}
+
+	#[test]
+	fn test_file_size_helper_kb() {
+		assert_eq!(FileSizeValidator::from_kb(1), 1024);
+		assert_eq!(FileSizeValidator::from_kb(100), 102400);
+	}
+
+	#[test]
+	fn test_file_size_helper_mb() {
+		assert_eq!(FileSizeValidator::from_mb(1), 1024 * 1024);
+		assert_eq!(FileSizeValidator::from_mb(10), 10 * 1024 * 1024);
+	}
+
+	#[test]
+	fn test_file_size_helper_gb() {
+		assert_eq!(FileSizeValidator::from_gb(1), 1024 * 1024 * 1024);
+		assert_eq!(FileSizeValidator::from_gb(2), 2 * 1024 * 1024 * 1024);
+	}
+
+	#[test]
+	fn test_file_size_zero_bytes() {
+		let validator = FileSizeValidator::min(1);
+		assert!(validator.validate(&0).is_err());
+	}
+
+	#[test]
+	fn test_file_size_u64_max() {
+		let validator = FileSizeValidator::max(u64::MAX);
+		assert!(validator.validate(&u64::MAX).is_ok());
+		assert!(validator.validate(&(u64::MAX - 1)).is_ok());
+	}
+
+	#[test]
+	fn test_file_size_error_messages() {
+		let validator = FileSizeValidator::min(1024);
+		match validator.validate(&512) {
+			Err(ValidationError::FileSizeTooSmall {
+				size_bytes,
+				min_bytes,
+			}) => {
+				assert_eq!(size_bytes, 512);
+				assert_eq!(min_bytes, 1024);
+			}
+			_ => panic!("Expected FileSizeTooSmall error"),
+		}
+
+		let validator = FileSizeValidator::max(1024);
+		match validator.validate(&2048) {
+			Err(ValidationError::FileSizeTooLarge {
+				size_bytes,
+				max_bytes,
+			}) => {
+				assert_eq!(size_bytes, 2048);
+				assert_eq!(max_bytes, 1024);
+			}
+			_ => panic!("Expected FileSizeTooLarge error"),
+		}
+	}
+
+	#[test]
+	fn test_file_size_boundary_values() {
+		let validator = FileSizeValidator::range(100, 200);
+		// Boundary tests
+		assert!(validator.validate(&99).is_err()); // Just below min
+		assert!(validator.validate(&100).is_ok()); // Exactly min
+		assert!(validator.validate(&101).is_ok()); // Just above min
+		assert!(validator.validate(&199).is_ok()); // Just below max
+		assert!(validator.validate(&200).is_ok()); // Exactly max
+		assert!(validator.validate(&201).is_err()); // Just above max
 	}
 }

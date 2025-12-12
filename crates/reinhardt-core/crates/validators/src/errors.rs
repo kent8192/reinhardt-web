@@ -97,6 +97,55 @@ pub enum ValidationError {
 		table: String,
 	},
 
+	#[error("File size too small: {size_bytes} bytes (minimum: {min_bytes} bytes)")]
+	FileSizeTooSmall { size_bytes: u64, min_bytes: u64 },
+
+	#[error("File size too large: {size_bytes} bytes (maximum: {max_bytes} bytes)")]
+	FileSizeTooLarge { size_bytes: u64, max_bytes: u64 },
+
+	#[error("All validators failed: {errors}")]
+	AllValidatorsFailed { errors: String },
+
+	#[error("Validation failed: {0}")]
+	CompositeValidationFailed(String),
+
+	#[error("Invalid postal code: {postal_code}")]
+	InvalidPostalCode { postal_code: String },
+
+	#[error("Postal code country not recognized: {postal_code}")]
+	PostalCodeCountryNotRecognized { postal_code: String },
+
+	#[error("Country not allowed: {country} (allowed: {allowed_countries})")]
+	PostalCodeCountryNotAllowed {
+		country: String,
+		allowed_countries: String,
+	},
+
+	#[error("Image width too small: {width}px (minimum: {min_width}px)")]
+	ImageWidthTooSmall { width: u32, min_width: u32 },
+
+	#[error("Image width too large: {width}px (maximum: {max_width}px)")]
+	ImageWidthTooLarge { width: u32, max_width: u32 },
+
+	#[error("Image height too small: {height}px (minimum: {min_height}px)")]
+	ImageHeightTooSmall { height: u32, min_height: u32 },
+
+	#[error("Image height too large: {height}px (maximum: {max_height}px)")]
+	ImageHeightTooLarge { height: u32, max_height: u32 },
+
+	#[error(
+		"Invalid aspect ratio: {actual_width}:{actual_height} (expected: {expected_width}:{expected_height})"
+	)]
+	InvalidAspectRatio {
+		actual_width: u32,
+		actual_height: u32,
+		expected_width: u32,
+		expected_height: u32,
+	},
+
+	#[error("Cannot read image: {0}")]
+	ImageReadError(String),
+
 	#[error("Custom validation error: {0}")]
 	Custom(String),
 }
