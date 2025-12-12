@@ -1,11 +1,13 @@
 # Database Integration Example
 
-This example demonstrates database ORM, migrations, and database connection integration in the Reinhardt framework.
+This example demonstrates database ORM, migrations, and database connection
+integration in the Reinhardt framework.
 
 ## Features
 
 - **Django-style project structure**: Uses config/, settings/, apps.rs
-- **Database configuration management**: Environment-specific database connection settings
+- **Database configuration management**: Environment-specific database
+  connection settings
 - **Migration system**: Database schema version control
 - **manage CLI**: Database management commands (`cargo run --bin manage`)
 
@@ -80,7 +82,8 @@ No additional setup required for SQLite.
 cargo build --package examples-database-integration
 ```
 
-**Note**: This example will be buildable after reinhardt is published to crates.io (version ^0.1).
+**Note**: This example will be buildable after reinhardt is published to
+crates.io (version ^0.1).
 
 ## Usage
 
@@ -117,7 +120,9 @@ cargo run --bin manage migrate app_name migration_name
 ```
 
 **Auto-Detection Behavior:**
-- If your project has only one app with models, the app label is automatically detected
+
+- If your project has only one app with models, the app label is automatically
+  detected
 - If multiple apps have models, you must specify the app label explicitly:
   ```bash
   cargo run --bin manage makemigrations users
@@ -132,6 +137,7 @@ cargo run --package examples-database-integration
 ```
 
 Output example:
+
 ```
 Database Integration Example
 ✅ Application initialized
@@ -145,7 +151,7 @@ Database URL: postgres://reinhardt:reinhardt_dev@localhost:5432/reinhardt_exampl
 ### Configuration in local.rs
 
 ```rust
-use reinhardt_core::DatabaseConfig;
+use reinhardt::DatabaseConfig;
 
 settings.database = Some(DatabaseConfig {
     url: database_url,
@@ -158,11 +164,11 @@ settings.database = Some(DatabaseConfig {
 
 ### Environment-Specific Settings
 
-| Environment | File | Database URL | Connection Pool |
-|-------------|------|--------------|-----------------|
-| local | local.rs | Env var or default | 10 connections |
-| staging | staging.rs | Env var required | 20 connections |
-| production | production.rs | Env var required | 50 connections |
+| Environment | File          | Database URL       | Connection Pool |
+| ----------- | ------------- | ------------------ | --------------- |
+| local       | local.rs      | Env var or default | 10 connections  |
+| staging     | staging.rs    | Env var required   | 20 connections  |
+| production  | production.rs | Env var required   | 50 connections  |
 
 ## Creating Migrations
 
@@ -221,7 +227,8 @@ pub fn all_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 ## Running Tests
 
-This example uses **standard fixtures** from `reinhardt-test` for database testing with automatic TestContainers management.
+This example uses **standard fixtures** from `reinhardt-test` for database
+testing with automatic TestContainers management.
 
 ### Integration Tests
 
@@ -236,36 +243,43 @@ cargo nextest run --features with-reinhardt --test database_tests test_database_
 ### Test Coverage
 
 **Database Connection Tests:**
+
 - ✅ Basic database connection verification
 - ✅ Database readiness check
 - ✅ Connection pool functionality
 
 **Schema Tests:**
+
 - ✅ Table creation and schema verification
 - ✅ Column structure validation
 
 **CRUD Operations:**
+
 - ✅ CREATE: User insertion with RETURNING clause
 - ✅ READ: User querying and filtering
 - ✅ UPDATE: User data modification
 - ✅ DELETE: User removal with verification
 
 **Transaction Tests:**
+
 - ✅ Transaction commit verification
 - ✅ Transaction rollback verification
 - ✅ Data consistency after transactions
 
 ### Standard Fixtures Used
 
-**`postgres_container`** - PostgreSQL TestContainer fixture from `reinhardt-test`
+**`postgres_container`** - PostgreSQL TestContainer fixture from
+`reinhardt-test`
+
 - Automatically starts PostgreSQL 17 Alpine container
 - Provides connection pool (`Arc<sqlx::PgPool>`)
 - Provides connection URL and port
 - Automatic cleanup via RAII (container dropped after test)
 
 **Usage Example:**
+
 ```rust
-use reinhardt_test::fixtures::postgres_container;
+use reinhardt::test::fixtures::postgres_container;
 use rstest::*;
 
 #[rstest]
@@ -286,6 +300,7 @@ async fn test_with_database(
 ### Testing Best Practices
 
 **✅ GOOD - Using Standard Fixture:**
+
 ```rust
 #[rstest]
 #[tokio::test]
@@ -298,6 +313,7 @@ async fn test_with_standard_fixture(
 ```
 
 **❌ BAD - Manual Container Management:**
+
 ```rust
 #[tokio::test]
 async fn test_with_manual_setup() {
@@ -308,7 +324,8 @@ async fn test_with_manual_setup() {
 }
 ```
 
-See [Testing Standards](../../../docs/TESTING_STANDARDS.md) for comprehensive guidelines.
+See [Testing Standards](../../../docs/TESTING_STANDARDS.md) for comprehensive
+guidelines.
 
 ## Troubleshooting
 
@@ -319,6 +336,7 @@ Error: Database connection failed
 ```
 
 **Solutions:**
+
 1. Verify database server is running
 2. Check DATABASE_URL environment variable is set correctly
 3. Verify credentials (username, password) are correct
@@ -330,6 +348,7 @@ Error: Migration failed: table already exists
 ```
 
 **Solutions:**
+
 1. Mark migration as applied using `--fake` option
 2. Or skip initial migration only with `--fake-initial`
 
@@ -346,4 +365,5 @@ cargo run --bin manage migrate --fake-initial
 
 ## License
 
-This example is provided as part of the Reinhardt project under MIT/Apache-2.0 license.
+This example is provided as part of the Reinhardt project under MIT/Apache-2.0
+license.

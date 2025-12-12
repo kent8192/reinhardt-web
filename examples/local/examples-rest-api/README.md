@@ -1,11 +1,13 @@
 # REST API Example
 
-This example demonstrates how to build a RESTful API with the Reinhardt framework.
+This example demonstrates how to build a RESTful API with the Reinhardt
+framework.
 
 ## Features
 
 - **Django-style project structure**: Uses config/, settings/, apps.rs
-- **Environment-specific configuration**: Separated settings for local, staging, production
+- **Environment-specific configuration**: Separated settings for local, staging,
+  production
 - **manage CLI**: Django-style management commands (`cargo run --bin manage`)
 - **URL routing**: Simple API endpoint definitions
 
@@ -43,7 +45,8 @@ src/
 cargo build --package examples-rest-api
 ```
 
-**Note**: This example will be buildable after reinhardt is published to crates.io (version ^0.1).
+**Note**: This example will be buildable after reinhardt is published to
+crates.io (version ^0.1).
 
 ## Usage
 
@@ -83,8 +86,10 @@ cargo run --bin manage showurls
 ```
 
 **Migration Auto-Detection:**
+
 - Single app project: App label is automatically detected from registered models
-- Multiple app project: Explicitly specify the app label (e.g., `makemigrations users`)
+- Multiple app project: Explicitly specify the app label (e.g.,
+  `makemigrations users`)
 - No models found: Error message with usage instructions will be displayed
 
 ## API Endpoints
@@ -94,18 +99,19 @@ cargo run --bin manage showurls
 Sample endpoint returning user list
 
 **Response example:**
+
 ```json
 [
-  {
-    "id": 1,
-    "name": "Alice",
-    "email": "alice@example.com"
-  },
-  {
-    "id": 2,
-    "name": "Bob",
-    "email": "bob@example.com"
-  }
+    {
+        "id": 1,
+        "name": "Alice",
+        "email": "alice@example.com"
+    },
+    {
+        "id": 2,
+        "name": "Bob",
+        "email": "bob@example.com"
+    }
 ]
 ```
 
@@ -133,7 +139,8 @@ cargo run --bin manage runserver
 
 ## Running Tests
 
-This example uses **standard fixtures** from `reinhardt-test` for E2E API testing with automatic test server management.
+This example uses **standard fixtures** from `reinhardt-test` for E2E API
+testing with automatic test server management.
 
 ### Integration Tests
 
@@ -149,53 +156,65 @@ cargo nextest run --features with-reinhardt --test api_tests test_article_crud_w
 ### Test Coverage
 
 **Basic Endpoints:**
+
 - ✅ Root endpoint (GET /)
 - ✅ Health check endpoint (GET /health)
 
 **Article API - List:**
+
 - ✅ List articles (returns empty array initially)
 
 **Article API - Create:**
+
 - ✅ Create new article with valid data
 - ✅ Validation error handling (missing required fields)
 
 **Article API - Read:**
+
 - ✅ Get specific article by ID
 - ✅ Get non-existent article returns 404
 
 **Article API - Update:**
+
 - ✅ Update article with partial data
 - ✅ Update non-existent article returns 404
 
 **Article API - Delete:**
+
 - ✅ Delete article successfully
 - ✅ Delete non-existent article returns 404
 
 **Comprehensive Workflows:**
+
 - ✅ Full CRUD workflow (Create → Read → Update → Delete)
 
 **Error Handling:**
+
 - ✅ Invalid path parameter handling
 - ✅ Unsupported HTTP method returns 405
 - ✅ Non-existent route returns 404
 
 ### Standard Fixtures Used
 
-**`test_server_guard`** - Automatic test server lifecycle management from `reinhardt-test`
+**`test_server_guard`** - Automatic test server lifecycle management from
+`reinhardt-test`
+
 - Starts test server on random available port
 - Provides `base_url()` for HTTP requests to API endpoints
 - Automatically cleans up resources after test completion
 - Ensures isolated test environment for each test
 
 **Usage Example:**
+
 ```rust
-use reinhardt_test::fixtures::test_server_guard;
-use reinhardt_test::resource::TeardownGuard;
+use reinhardt::test::fixtures::test_server_guard;
+use reinhardt::test::resource::TeardownGuard;
+use reinhardt::test::fixtures::TestServerGuard;
 use rstest::*;
 
 #[rstest]
 async fn test_api_endpoint(
-    #[future] test_server_guard: TeardownGuard<reinhardt_test::fixtures::TestServerGuard>,
+    #[future] test_server_guard: TeardownGuard<TestServerGuard>,
 ) {
     let server = test_server_guard.await;
     let base_url = server.base_url();
@@ -216,6 +235,7 @@ async fn test_api_endpoint(
 ### Testing Best Practices
 
 **✅ GOOD - Using Standard Fixture for E2E Tests:**
+
 ```rust
 #[rstest]
 async fn test_with_standard_fixture(
@@ -232,6 +252,7 @@ async fn test_with_standard_fixture(
 ```
 
 **❌ BAD - Manual Server Management:**
+
 ```rust
 async fn test_with_manual_setup() {
     let server = start_test_server().await;
@@ -246,12 +267,14 @@ async fn test_with_manual_setup() {
 ```
 
 **Test Organization:**
+
 - Basic endpoint tests verify server availability and health
 - CRUD tests cover all HTTP methods (GET, POST, PUT, DELETE)
 - Error handling tests ensure proper status codes (400, 404, 405)
 - Comprehensive workflow tests verify end-to-end functionality
 
-See [Testing Standards](../../../docs/TESTING_STANDARDS.md) for comprehensive guidelines.
+See [Testing Standards](../../../docs/TESTING_STANDARDS.md) for comprehensive
+guidelines.
 
 ## Customization
 
@@ -286,4 +309,5 @@ pub fn url_patterns() -> Arc<UnifiedRouter> {
 
 ## License
 
-This example is provided as part of the Reinhardt project under MIT/Apache-2.0 license.
+This example is provided as part of the Reinhardt project under MIT/Apache-2.0
+license.

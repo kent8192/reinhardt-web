@@ -45,6 +45,7 @@ cargo run --bin manage runserver
 Server starts at `http://127.0.0.1:8000`
 
 **Available Endpoints:**
+
 - `GET /` - Returns "Hello, World!"
 - `GET /health` - Returns JSON health status
 
@@ -75,10 +76,12 @@ cargo nextest run --features with-reinhardt --test integration test_hello_world_
 ### Test Coverage
 
 **Normal Cases:**
+
 - ✅ Root endpoint returns "Hello, World!"
 - ✅ Health endpoint returns JSON `{"status": "ok"}`
 
 **Error Cases:**
+
 - ✅ Non-existent routes return 404
 - ✅ Unsupported methods return 405
 
@@ -94,7 +97,7 @@ cargo nextest run --features with-reinhardt --test integration test_hello_world_
 ### View Handler (views.rs)
 
 ```rust
-use reinhardt_http::{Request, Response};
+use reinhardt::{Request, Response};
 use serde_json::json;
 
 /// Root endpoint - returns "Hello, World!"
@@ -112,8 +115,7 @@ pub async fn health_check(_req: Request) -> reinhardt::Result<Response> {
 ### URL Routing (urls.rs)
 
 ```rust
-use hyper::Method;
-use reinhardt_routers::UnifiedRouter;
+use reinhardt::{Method, UnifiedRouter};
 use crate::apps::hello::views;
 
 pub fn url_patterns() -> UnifiedRouter {
@@ -126,14 +128,14 @@ pub fn url_patterns() -> UnifiedRouter {
 ### Integration Test Example
 
 ```rust
-use reinhardt_test::fixtures::test_server_guard;
+use reinhardt::test::fixtures::test_server_guard;
+use reinhardt::test::resource::TeardownGuard;
+use reinhardt::test::fixtures::TestServerGuard;
 use rstest::*;
 
 #[rstest]
 async fn test_hello_world_endpoint(
-	#[future] test_server_guard: reinhardt_test::resource::TeardownGuard<
-		reinhardt_test::fixtures::TestServerGuard
-	>,
+	#[future] test_server_guard: TeardownGuard<TestServerGuard>,
 ) {
 	let server = test_server_guard.await;
 	let base_url = server.base_url();
@@ -187,7 +189,8 @@ pub async fn my_view(req: Request) -> reinhardt::Result<Response> {
 
 ### Router Chaining
 
-`UnifiedRouter` methods consume `self` and return `Self`, enabling method chaining:
+`UnifiedRouter` methods consume `self` and return `Self`, enabling method
+chaining:
 
 ```rust
 UnifiedRouter::new()
@@ -198,10 +201,13 @@ UnifiedRouter::new()
 
 ## Learning Path
 
-This example demonstrates the foundation for building Reinhardt applications. Next steps:
+This example demonstrates the foundation for building Reinhardt applications.
+Next steps:
 
-1. **database-integration**: Learn database operations with ORM and TestContainers
-2. **rest-api**: Build RESTful APIs with serializers, viewsets, and authentication
+1. **database-integration**: Learn database operations with ORM and
+   TestContainers
+2. **rest-api**: Build RESTful APIs with serializers, viewsets, and
+   authentication
 3. Explore advanced features (middleware, dependency injection, etc.)
 
 ## References
