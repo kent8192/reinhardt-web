@@ -96,10 +96,19 @@ impl HttpServer {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	/// use reinhardt_di::{InjectionContext, SingletonScope};
-	/// use std::sync::Arc;
-	///
+	/// ```rust,no_run
+	/// # use reinhardt_di::{InjectionContext, SingletonScope};
+	/// # use std::sync::Arc;
+	/// # struct Router;
+	/// # struct HttpServer { di_context: Option<Arc<InjectionContext>> }
+	/// # impl HttpServer {
+	/// #     fn new(_router: Router) -> Self { Self { di_context: None } }
+	/// #     fn with_di_context(mut self, context: Arc<InjectionContext>) -> Self {
+	/// #         self.di_context = Some(context);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # let router = Router;
 	/// let singleton = Arc::new(SingletonScope::new());
 	/// let di_context = Arc::new(InjectionContext::builder(singleton).build());
 	///
