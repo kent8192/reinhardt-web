@@ -170,17 +170,20 @@ pub enum Commands {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_commands::execute_from_command_line;
 ///
 /// #[tokio::main]
-/// async fn main() {
-///     std::env::set_var("REINHARDT_SETTINGS_MODULE", "myproject.config.settings");
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     unsafe {
+///         std::env::set_var("REINHARDT_SETTINGS_MODULE", "myproject.config.settings");
+///     }
 ///
 ///     if let Err(e) = execute_from_command_line().await {
 ///         eprintln!("Error: {}", e);
 ///         std::process::exit(1);
 ///     }
+///     Ok(())
 /// }
 /// ```
 pub async fn execute_from_command_line() -> Result<(), Box<dyn std::error::Error>> {

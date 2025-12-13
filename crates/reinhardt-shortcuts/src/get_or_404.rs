@@ -44,7 +44,7 @@ impl From<GetError> for Response {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_shortcuts::get_or_404_response;
 ///
 /// // In a view handler:
@@ -74,7 +74,7 @@ pub fn get_or_404_response<T>(result: Result<Option<T>, String>) -> Result<T, Ge
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_shortcuts::get_list_or_404_response;
 ///
 /// let results = query_database_list(filters);

@@ -38,7 +38,9 @@ use tera::Context;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::render_template;
 /// use std::collections::HashMap;
 ///
@@ -119,7 +121,9 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::render_to_response;
 /// use std::collections::HashMap;
 ///
@@ -253,7 +257,9 @@ mod tests {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::{render_template_with_context, TemplateContext};
 /// use reinhardt_core::http::Request;
 ///
@@ -329,7 +335,9 @@ pub fn render_template_with_context(
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::{render_to_response_with_context, TemplateContext};
 /// use reinhardt_core::http::Request;
 ///

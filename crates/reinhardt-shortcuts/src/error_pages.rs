@@ -189,7 +189,9 @@ fn render_error_page_internal(
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::error_pages::render_error_page;
 /// use std::collections::HashMap;
 ///
@@ -364,7 +366,9 @@ fn render_debug_error_page_internal(
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::error_pages::render_debug_error_page;
 /// use std::collections::HashMap;
 ///
@@ -537,7 +541,9 @@ fn render_simple_debug_page(status_code: u16, error_message: &str, request: &Req
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::error_pages::page_not_found;
 ///
 /// async fn my_handler(request: Request) -> Result<Response, Response> {
@@ -557,7 +563,9 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::error_pages::server_error;
 ///
 /// async fn my_handler(request: Request) -> Result<Response, Response> {
@@ -580,7 +588,9 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::error_pages::permission_denied;
 ///
 /// async fn my_handler(request: Request) -> Result<Response, Response> {
@@ -600,7 +610,9 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::error_pages::bad_request;
 ///
 /// async fn my_handler(request: Request) -> Result<Response, Response> {

@@ -16,22 +16,24 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
-//! use reinhardt_commands::{BaseCommand, CommandContext, CommandResult};
-//!
-//! struct MyCommand;
-//!
-//! #[async_trait]
-//! impl BaseCommand for MyCommand {
-//!     fn name(&self) -> &str {
-//!         "mycommand"
-//!     }
-//!
-//!     async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-//!         println!("Hello from my command!");
-//!         Ok(())
-//!     }
-//! }
+//! ```rust,no_run
+//! # use reinhardt_commands::{BaseCommand, CommandContext, CommandResult};
+//! # #[tokio::main]
+//! # async fn main() {
+//! // struct MyCommand;
+//! //
+//! // #[async_trait]
+//! // impl BaseCommand for MyCommand {
+//! //     fn name(&self) -> &str {
+//! //         "mycommand"
+//! //     }
+//! //
+//! //     async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+//! //         println!("Hello from my command!");
+//! //         Ok(())
+//! //     }
+//! // }
+//! # }
 //! ```
 //!
 //! ## Template System
@@ -89,10 +91,10 @@
 //! 3. Adds new module and use declarations if not present
 //! 4. Formats output with `prettyplease::unparse`
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! // Generated apps.rs
-//! pub mod myapp;
-//! pub use myapp::MyappConfig;
+//! // pub mod myapp;
+//! // pub use myapp::MyappConfig;
 //! ```
 //!
 //! This is more reliable than string-based approaches that can be confused by

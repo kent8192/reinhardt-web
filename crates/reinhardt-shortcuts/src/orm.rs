@@ -17,7 +17,9 @@ use reinhardt_db::prelude::Model;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::get_object_or_404;
 /// use reinhardt_db::orm::Model;
 ///
@@ -72,7 +74,9 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_shortcuts::get_list_or_404;
 /// use reinhardt_db::orm::{Model, QuerySet};
 ///

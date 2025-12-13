@@ -225,7 +225,7 @@ impl Function for StaticFunction {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_urls::routers::{UnifiedRouter, register_router};
 /// use reinhardt_shortcuts::tera_functions::UrlFunction;
 /// use tera::Function;

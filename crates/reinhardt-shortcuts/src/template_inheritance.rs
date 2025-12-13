@@ -39,7 +39,7 @@ const DYNAMIC_TEMPLATE_NAME: &str = "_dynamic";
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_shortcuts::template_inheritance::get_tera_engine;
 ///
 /// let tera = get_tera_engine();
@@ -156,7 +156,7 @@ fn register_custom_functions(tera: &mut Tera) {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use std::collections::HashMap;
 /// use reinhardt_shortcuts::template_inheritance::render_with_inheritance;
 ///
@@ -259,7 +259,7 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_shortcuts::template_inheritance::template_exists;
 ///
 /// if template_exists("custom.html") {

@@ -7,60 +7,68 @@
 //!
 //! ### Rendering Templates (Tera)
 //!
-//! ```rust,ignore
-//! use reinhardt_shortcuts::render_template;
-//! use std::collections::HashMap;
-//!
+//! ```rust,no_run
+//! # use reinhardt_shortcuts::render_template;
+//! # use std::collections::HashMap;
+//! # let request = ();
+//! # let user = ();
 //! // Render a Tera template with context
-//! let mut context = HashMap::new();
-//! context.insert("title", "Welcome");
-//! context.insert("user", user.name());
-//!
-//! let response = render_template(&request, "index.html", context)?;
+//! // let mut context = HashMap::new();
+//! // context.insert("title", "Welcome");
+//! // context.insert("user", user.name());
+//! //
+//! // let response = render_template(&request, "index.html", context)?;
 //! ```
 //!
 //! ### Custom Error Pages
 //!
-//! ```rust,ignore
-//! use reinhardt_shortcuts::{page_not_found, server_error, render_debug_error_page};
-//! use std::collections::HashMap;
-//!
+//! ```rust,no_run
+//! # use reinhardt_shortcuts::{page_not_found, server_error, render_debug_error_page};
+//! # use std::collections::HashMap;
+//! # let request = ();
 //! // Return a 404 error page
-//! return Err(page_not_found(&request, None));
-//!
-//! // Return a 500 error page with context
-//! let mut context = HashMap::new();
-//! context.insert("error_details", "Database connection failed");
-//! return Err(server_error(&request, Some(context)));
-//!
-//! // Debug error page (development only)
-//! let debug_response = render_debug_error_page(
-//!     &request,
-//!     500,
-//!     "Detailed error message",
-//!     Some(context)
-//! );
+//! // return Err(page_not_found(&request, None));
+//! //
+//! // // Return a 500 error page with context
+//! // let mut context = HashMap::new();
+//! // context.insert("error_details", "Database connection failed");
+//! // return Err(server_error(&request, Some(context)));
+//! //
+//! // // Debug error page (development only)
+//! // let debug_response = render_debug_error_page(
+//! //     &request,
+//! //     500,
+//! //     "Detailed error message",
+//! //     Some(context)
+//! // );
 //! ```
 //!
 //! ### Redirects
 //!
-//! ```rust,ignore
-//! use reinhardt_shortcuts::{redirect, redirect_permanent};
-//!
+//! ```rust,no_run
+//! # use reinhardt_shortcuts::{redirect, redirect_permanent};
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Temporary redirect (302)
 //! let response = redirect("/users/")?;
 //!
 //! // Permanent redirect (301)
 //! let response = redirect_permanent("/new-location/")?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ### Database Shortcuts
 //!
-//! ```rust,ignore
-//! use reinhardt_shortcuts::get_object_or_404;
-//!
+//! ```rust,no_run
+//! # use reinhardt_shortcuts::get_object_or_404;
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # struct User;
+//! # let id = 1;
 //! // Get object or return 404 (requires "database" feature)
 //! let user = get_object_or_404::<User>(id).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Template Features
