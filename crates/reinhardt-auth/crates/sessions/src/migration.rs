@@ -4,7 +4,7 @@
 //!
 //! ## Example
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_sessions::migration::{SessionMigrator, Migrator};
 //! use reinhardt_sessions::backends::{InMemorySessionBackend};
 //!
@@ -184,7 +184,9 @@ pub trait Migrator {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_sessions::migration::{SessionMigrator, MigrationConfig, Migrator};
 /// use reinhardt_sessions::backends::InMemorySessionBackend;
 ///

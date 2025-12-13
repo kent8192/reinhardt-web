@@ -41,14 +41,14 @@ pub const SESSION_COOKIE_NAME: &str = "sessionid";
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,ignore
 /// use reinhardt_auth::handlers::LoginHandler;
 /// use reinhardt_auth::session::InMemorySessionStore;
-/// use reinhardt_auth::backend::AuthBackend;
+/// use reinhardt_auth::core::backend::AuthenticationBackend;
 /// use std::sync::Arc;
 ///
 /// let session_store = Arc::new(InMemorySessionStore::new());
-/// // AuthBackend is a trait - use a concrete implementation
+/// // AuthenticationBackend is a trait - use a concrete implementation
 /// let auth_backend = Arc::new(YourAuthBackendImpl::new());
 /// let handler = LoginHandler::new(session_store, auth_backend);
 /// ```

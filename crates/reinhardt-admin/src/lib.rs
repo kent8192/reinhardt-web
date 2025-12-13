@@ -16,10 +16,9 @@
 //!
 //! ### Using the admin panel
 //!
-//! ```rust,ignore
-//! use reinhardt_admin::panel::AdminSite;
-//!
-//! let site = AdminSite::new();
+//! ```rust,no_run
+//! # use reinhardt_admin::panel::AdminSite;
+//! let site = AdminSite::new("Admin");
 //! // Register models...
 //! ```
 //!

@@ -22,7 +22,9 @@ use std::collections::HashMap;
 ///
 /// Implementing a simple in-memory user manager:
 ///
-/// ```ignore
+/// ```rust,ignore
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use reinhardt_auth::{BaseUser, BaseUserManager, Argon2Hasher};
 /// use reinhardt_exception::Result;
 /// use async_trait::async_trait;
@@ -96,6 +98,8 @@ use std::collections::HashMap;
 ///         Ok(user)
 ///     }
 /// }
+/// # Ok(())
+/// # }
 /// ```
 #[async_trait]
 pub trait BaseUserManager<U: BaseUser>: Send + Sync {

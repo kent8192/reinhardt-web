@@ -103,12 +103,12 @@ pub struct UpdateUserData {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,ignore
 /// use reinhardt_auth::user_management::{UserManager, CreateUserData};
 /// use reinhardt_auth::Argon2Hasher;
 ///
 /// #[tokio::main]
-/// async fn main() {
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let hasher = Argon2Hasher::new();
 ///     let mut manager = UserManager::new(hasher);
 ///
@@ -131,6 +131,7 @@ pub struct UpdateUserData {
 ///     // Delete user
 ///     manager.delete_user(&user.id.to_string()).await.unwrap();
 ///     assert!(manager.get_user(&user.id.to_string()).await.is_err());
+///     Ok(())
 /// }
 /// ```
 pub struct UserManager<H: PasswordHasher> {

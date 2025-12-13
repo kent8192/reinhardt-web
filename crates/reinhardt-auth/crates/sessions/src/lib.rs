@@ -57,6 +57,7 @@ pub mod csrf;
 pub mod middleware;
 pub mod migration;
 pub mod models;
+#[cfg(feature = "replication")]
 pub mod replication;
 pub mod rotation;
 pub mod serialization;
@@ -109,6 +110,7 @@ pub use analytics::{
 #[cfg(feature = "analytics-prometheus")]
 pub use analytics::PrometheusAnalytics;
 
+#[cfg(feature = "replication")]
 pub use replication::{ReplicatedSessionBackend, ReplicationConfig, ReplicationStrategy};
 pub use session::Session;
 pub use tenant::{TenantConfig, TenantSessionBackend, TenantSessionOperations};

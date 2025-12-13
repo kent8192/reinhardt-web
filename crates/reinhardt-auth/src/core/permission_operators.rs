@@ -238,7 +238,14 @@ where
 /// Macro to implement BitAnd, BitOr, and Not operators for permission types.
 ///
 /// This allows natural composition syntax like:
-/// ```ignore
+/// ```rust,ignore
+/// # use reinhardt_auth::core::permission::Permission;
+/// # struct IsAuthenticated;
+/// # struct IsActiveUser;
+/// # struct IsAdminUser;
+/// # impl Permission for IsAuthenticated { fn check(&self, _user: Option<&dyn std::any::Any>) -> bool { false } }
+/// # impl Permission for IsActiveUser { fn check(&self, _user: Option<&dyn std::any::Any>) -> bool { false } }
+/// # impl Permission for IsAdminUser { fn check(&self, _user: Option<&dyn std::any::Any>) -> bool { false } }
 /// let permission = IsAuthenticated & IsActiveUser;
 /// let permission = IsAdminUser | IsActiveUser;
 /// let permission = !IsAuthenticated;

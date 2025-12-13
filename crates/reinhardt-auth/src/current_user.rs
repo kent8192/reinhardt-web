@@ -33,16 +33,20 @@ use uuid::Uuid;
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt::prelude::*;
-/// use reinhardt::CurrentUser;
+/// use reinhardt_auth::CurrentUser;
+/// use reinhardt_auth::DefaultUser;
+/// use reinhardt_core::endpoint;
+/// use reinhardt_http::Response;
 ///
 /// #[endpoint]
 /// async fn my_handler(
-///     #[inject] current_user: CurrentUser<User>,
-/// ) -> ViewResult<Response> {
-///     let user = current_user.user()?;
-///     let user_id = current_user.id()?;
-///     // Use user data...
+///     #[inject] current_user: CurrentUser<DefaultUser>,
+/// ) -> Result<Response, Box<dyn std::error::Error>> {
+///     if current_user.is_authenticated() {
+///         let user = current_user.user()?;
+///         let user_id = current_user.id()?;
+///         println!("Authenticated user: {} (ID: {})", user.get_username(), user_id);
+///     }
 ///     Ok(Response::ok())
 /// }
 /// ```

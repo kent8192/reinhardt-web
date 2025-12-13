@@ -34,6 +34,9 @@
 
 use super::{SerializationError, Serializer};
 use serde::{Deserialize, Serialize};
+// bincode v2 API
+use bincode::config;
+use bincode::serde::{decode_from_slice, encode_to_vec};
 
 /// Bincode serializer (requires "bincode" feature)
 ///
@@ -69,15 +72,17 @@ pub struct BincodeSerializer;
 
 impl Serializer for BincodeSerializer {
 	fn serialize<T: Serialize>(&self, data: &T) -> Result<Vec<u8>, SerializationError> {
-		bincode::serialize(data).map_err(|e| SerializationError::SerializationFailed(e.to_string()))
+		encode_to_vec(data, config::standard())
+			.map_err(|e| SerializationError::SerializationFailed(e.to_string()))
 	}
 
 	fn deserialize<T: for<'de> Deserialize<'de>>(
 		&self,
 		bytes: &[u8],
 	) -> Result<T, SerializationError> {
-		bincode::deserialize(bytes)
-			.map_err(|e| SerializationError::DeserializationFailed(e.to_string()))
+		let (result, _len) = decode_from_slice(bytes, config::standard())
+			.map_err(|e| SerializationError::DeserializationFailed(e.to_string()))?;
+		Ok(result)
 	}
 }
 

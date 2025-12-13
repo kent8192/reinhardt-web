@@ -828,7 +828,9 @@ impl AuditLogger for MemoryAuditLogger {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_panel::audit::{DatabaseAuditLogger, AuditLogger};
 /// use reinhardt_panel::AdminDatabase;
 /// use std::sync::Arc;

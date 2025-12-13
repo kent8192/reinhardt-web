@@ -200,13 +200,13 @@ impl<B: SessionBackend + CleanupableBackend> SessionCleanupTask<B> {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_sessions::cleanup::SessionCleanupTask;
-	/// use reinhardt_sessions::backends::DatabaseSessionBackend;
+	/// # use reinhardt_sessions::backends::InMemorySessionBackend;
 	/// use std::time::Duration;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let backend = DatabaseSessionBackend::new(/* connection */);
+	/// # let backend = InMemorySessionBackend::new();
 	/// let cleanup = SessionCleanupTask::new(backend, Duration::from_secs(3600));
 	///
 	/// let removed = cleanup.run_cleanup_with_metadata().await?;
@@ -223,9 +223,10 @@ impl<B: SessionBackend + CleanupableBackend> SessionCleanupTask<B> {
 		for chunk in all_keys.chunks(self.config.batch_size) {
 			for key in chunk {
 				if let Some(metadata) = self.backend.get_metadata(key).await? {
-					let check_time = metadata.last_accessed.unwrap_or(metadata.created_at);
-					if check_time < cutoff_time {
-						self.backend.delete(key).await?;
+					// Check if session is expired based on last_accessed time
+					if metadata.last_accessed < Some(cutoff_time)
+						&& self.backend.delete(key).await.is_ok()
+					{
 						removed_count += 1;
 					}
 				}
