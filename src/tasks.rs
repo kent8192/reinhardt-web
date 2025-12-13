@@ -4,7 +4,7 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt::tasks::{Task, TaskQueue};
 //! ```
 

@@ -76,9 +76,9 @@ Available features:
 
 ### Template Rendering
 
-```rust,ignore
-use tera::{Context, Tera};
-
+```rust,no_run
+# use tera::{Context, Tera};
+# fn example() -> Result<(), Box<dyn std::error::Error>> {
 // Create Tera instance
 let mut tera = Tera::default();
 tera.add_raw_template("index.html", "Hello {{ user }}!")?;
@@ -89,6 +89,8 @@ context.insert("user", "John");
 
 // Render template
 let html = tera.render("index.html", &context)?;
+# Ok(())
+# }
 ```
 
 ### File System Templates

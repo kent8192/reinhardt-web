@@ -4,8 +4,8 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
-//! use reinhardt::middleware::{CorsMiddleware, AuthenticationMiddleware};
+//! ```rust,no_run
+//! use reinhardt::middleware::CorsMiddleware;
 //! ```
 
 pub use reinhardt_middleware::*;

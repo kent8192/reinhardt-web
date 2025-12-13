@@ -5,10 +5,11 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
+//! ```rust,no_run
+//! # #[cfg(feature = "core")]
 //! use reinhardt::core::exception::Error;
+//! # #[cfg(feature = "core")]
 //! use reinhardt::core::signals::{Signal, pre_save};
-//! use reinhardt::core::validators::EmailValidator;
 //! ```
 
 #[cfg(feature = "core")]

@@ -5,9 +5,11 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
-//! use reinhardt::conf::{Settings, SettingsBuilder};
+//! ```rust,no_run
+//! # #[cfg(feature = "conf")]
+//! use reinhardt::conf::Settings;
 //!
+//! # #[cfg(feature = "conf")]
 //! let settings = Settings::default();
 //! ```
 

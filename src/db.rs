@@ -5,10 +5,11 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
+//! ```rust,no_run
+//! # #[cfg(feature = "database")]
 //! use reinhardt::db::orm::{Model, QuerySet};
-//! use reinhardt::db::migrations::Migration;
-//! use reinhardt::db::hybrid::HybridProperty;
+//! # #[cfg(feature = "database")]
+//! # use reinhardt::db::migrations::Migration;
 //! ```
 
 #[cfg(feature = "database")]

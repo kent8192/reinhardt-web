@@ -285,10 +285,9 @@ Context information passed to renderers during rendering.
 
 **Example:**
 
-```rust,ignore
-use reinhardt_renderers::TeraRenderer;
-use serde_json::json;
-
+```rust,no_run
+# use reinhardt_renderers::TeraRenderer;
+# use serde_json::json;
 let renderer = TeraRenderer::new();
 let context = json!({
     "name": "Alice",
@@ -309,10 +308,9 @@ let html = renderer.render_template("user.tpl", &context)
 
 TeraRenderer provides runtime template rendering with full Jinja2 compatibility:
 
-```rust,ignore
-use reinhardt_renderers::TeraRenderer;
-use serde_json::json;
-
+```rust,no_run
+# use reinhardt_renderers::TeraRenderer;
+# use serde_json::json;
 let renderer = TeraRenderer::new();
 
 // Render with context
@@ -322,6 +320,7 @@ let context = json!({
 });
 
 let html = renderer.render_template("index.tpl", &context)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 See the [TeraRenderer documentation](src/tera_renderer.rs) for detailed usage and examples.

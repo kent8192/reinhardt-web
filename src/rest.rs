@@ -5,7 +5,7 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt::rest::serializers::Serializer;
 //! use reinhardt::rest::pagination::PageNumberPagination;
 //! use reinhardt::rest::filters::FilterBackend;

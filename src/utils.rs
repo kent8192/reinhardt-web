@@ -5,10 +5,9 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
-//! use reinhardt::utils::logging::Logger;
-//! use reinhardt::utils::cache::Cache;
-//! use reinhardt::utils::storage::Storage;
+//! ```rust,no_run
+//! # use reinhardt::utils::logging::Logger;
+//! # struct MyLogger;
 //! ```
 
 pub use reinhardt_utils::*;

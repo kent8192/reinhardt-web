@@ -4,7 +4,7 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt::template::templates::Template;
 //! use reinhardt::template::renderers::JSONRenderer;
 //! ```

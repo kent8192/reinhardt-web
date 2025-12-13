@@ -4,8 +4,9 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
-//! use reinhardt::http::{Request, Response, StatusCode};
+//! ```rust,no_run
+//! # #[cfg(feature = "core")]
+//! use reinhardt::http::{Request, Response};
 //! ```
 
 #[cfg(feature = "core")]

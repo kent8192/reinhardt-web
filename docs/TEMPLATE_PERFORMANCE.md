@@ -102,10 +102,9 @@ Reinhardt uses Tera for runtime template rendering, providing a flexible and pow
 
 **Rust Code**:
 
-```rust,ignore
-use reinhardt_renderers::TeraRenderer;
-use serde_json::json;
-
+```rust,no_run
+# use reinhardt_renderers::TeraRenderer;
+# use serde_json::json;
 // Create renderer
 let renderer = TeraRenderer::new();
 
@@ -118,13 +117,18 @@ let context = json!({
 
 // Render template
 let html = renderer.render_template("user.tpl", &context)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 ### Dynamic Template from Database
 
-```rust,ignore
-use tera::{Context, Tera};
-
+```rust,no_run
+# use tera::{Context, Tera};
+# struct Db;
+# impl Db {
+#     fn get_template(&self, _name: &str) -> Result<String, Box<dyn std::error::Error>> { Ok(String::new()) }
+# }
+# fn example(db: Db) -> Result<(), Box<dyn std::error::Error>> {
 // Load template from database
 let template_str = db.get_template("user_email")?;
 
@@ -139,28 +143,31 @@ context.insert("activation_link", "https://example.com/activate/token");
 
 // Render
 let email_html = tera.render("user_email", &context)?;
+# Ok(())
+# }
 ```
 
 ## Template Loading Strategies
 
 ### File-based Templates
 
-```rust,ignore
-use tera::Tera;
-
+```rust,no_run
+# use tera::Tera;
+# use serde_json::json;
 // Load all templates from directory
 let tera = Tera::new("templates/**/*.tpl")?;
 
 // Render specific template
 let context = json!({"title": "Welcome"});
 let html = tera.render("index.tpl", &context)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 ### Dynamic Templates
 
-```rust,ignore
-use tera::Tera;
-
+```rust,no_run
+# use tera::Tera;
+# use serde_json::json;
 // Add template at runtime
 let mut tera = Tera::default();
 tera.add_raw_template("dynamic", "Hello {{ name }}!")?;
@@ -168,13 +175,21 @@ tera.add_raw_template("dynamic", "Hello {{ name }}!")?;
 // Render
 let context = json!({"name": "World"});
 let result = tera.render("dynamic", &context)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 ### Database Templates
 
-```rust,ignore
-use tera::Tera;
-
+```rust,no_run
+# use tera::Tera;
+# use serde_json::json;
+# struct Db;
+# impl Db {
+#     fn get_template(&self, _name: &str) -> Result<String, Box<dyn std::error::Error>> { Ok(String::new()) }
+# }
+# struct User { name: String }
+# struct Notification { text: String }
+# fn example(db: Db, user: User, notification: Notification) -> Result<(), Box<dyn std::error::Error>> {
 // Load from database
 let template_content = db.get_template("email_notification")?;
 
@@ -186,6 +201,8 @@ let context = json!({
     "user_name": user.name,
     "notification_text": notification.text
 });
+# Ok(())
+# }
 
 let email_body = tera.render("email", &context)?;
 ```

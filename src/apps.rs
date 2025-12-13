@@ -5,8 +5,8 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
-//! use reinhardt::apps::{AppConfig, Apps};
+//! ```rust,no_run
+//! use reinhardt::apps::AppConfig;
 //!
 //! let app_config = AppConfig::new("myapp");
 //! ```

@@ -627,11 +627,10 @@ let bundle = bundler.bundle_files(&[
 
 #### Processing with Storage Integration
 
-```rust,ignore
-use reinhardt_static::processing::{ProcessingPipeline, ProcessingConfig};
-use reinhardt_static::ManifestStaticFilesStorage;
-use std::path::PathBuf;
-
+```rust,no_run
+# use reinhardt_static::processing::{ProcessingPipeline, ProcessingConfig};
+# use reinhardt_static::ManifestStaticFilesStorage;
+# use std::path::PathBuf;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create pipeline

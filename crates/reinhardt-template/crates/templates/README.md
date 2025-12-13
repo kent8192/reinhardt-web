@@ -126,9 +126,9 @@ Basic i18n support with placeholder implementations:
 
 ### Basic Template Usage
 
-```rust,ignore
-use tera::{Context, Tera};
-
+```rust,no_run
+# use tera::{Context, Tera};
+# fn example() -> Result<(), Box<dyn std::error::Error>> {
 let mut tera = Tera::default();
 tera.add_raw_template("hello", "Hello {{ name }}!")?;
 
@@ -137,6 +137,8 @@ context.insert("name", "World");
 
 let result = tera.render("hello", &context)?;
 assert_eq!(result, "Hello World!");
+# Ok(())
+# }
 ```
 
 ### Template Loader

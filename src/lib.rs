@@ -277,9 +277,8 @@ pub use reinhardt_db::orm::{
 //
 // # Examples
 //
-// ```rust,ignore
-// use reinhardt::{F, Q};
-//
+// ```rust,no_run
+// # use reinhardt::{F, Q};
 // // Reference a field (like Django's F object)
 // let price_expr = F::field("price");
 //
@@ -313,9 +312,17 @@ pub use reinhardt_db::orm::{
 //
 // # Examples
 //
-// ```rust,ignore
-// use reinhardt::{Annotation, Aggregate};
-//
+// ```rust,no_run
+// # use reinhardt::{Annotation, Aggregate, F};
+// # struct User;
+// # impl User { fn objects() -> QueryBuilder { QueryBuilder } }
+// # struct Product;
+// # impl Product { fn objects() -> QueryBuilder { QueryBuilder } }
+// # struct QueryBuilder;
+// # impl QueryBuilder {
+// #     fn annotate(self, _name: &str, _val: Annotation) -> Self { self }
+// #     fn aggregate(self, _name: &str, _val: Aggregate) -> Self { self }
+// # }
 // // Annotate query results with computed values
 // let query = User::objects()
 //     .annotate("full_name", Annotation::concat(vec![
@@ -347,21 +354,26 @@ pub use reinhardt_db::orm::{
 //
 // # Examples
 //
-// ```rust,ignore
-// use reinhardt::{atomic, IsolationLevel, Transaction};
-//
+// ```rust,no_run
+// # use reinhardt::{atomic, IsolationLevel, atomic_with_isolation};
+// # #[tokio::main]
+// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+// # struct User;
+// # struct Profile;
+// # let data = ();
 // // Use atomic decorator for transactions
-// let result = atomic(|| async {
-//     let user = User::create(data).await?;
-//     let profile = Profile::create(user.id).await?;
-//     Ok((user, profile))
-// }).await?;
+// // let result = atomic(|| async {
+// //     let user = User::create(data).await?;
+// //     let profile = Profile::create(user.id).await?;
+// //     Ok((user, profile))
+// // }).await?;
 //
 // // Or with specific isolation level
-// use reinhardt::atomic_with_isolation;
-// let result = atomic_with_isolation(IsolationLevel::Serializable, || async {
-//     // Your transaction code
-// }).await?;
+// // let result = atomic_with_isolation(IsolationLevel::Serializable, || async {
+// //     // Your transaction code
+// // }).await?;
+// # Ok(())
+// # }
 // ```
 #[cfg(feature = "database")]
 pub use reinhardt_db::orm::{
@@ -384,9 +396,15 @@ pub use reinhardt_db::orm::{
 //
 // # Examples
 //
-// ```rust,ignore
-// use reinhardt::{Concat, Upper, Lower, Now};
-//
+// ```rust,no_run
+// # use reinhardt::{Concat, Upper, Lower, Now, F, Q};
+// # struct User;
+// # impl User { fn objects() -> QueryBuilder { QueryBuilder } }
+// # struct QueryBuilder;
+// # impl QueryBuilder {
+// #     fn annotate(self, _name: &str, _val: impl std::any::Any) -> Self { self }
+// #     fn filter(self, _q: impl std::any::Any) -> Self { self }
+// # }
 // // String functions
 // let query = User::objects()
 //     .annotate("full_name", Concat::new(vec![
@@ -440,9 +458,16 @@ pub use reinhardt_db::orm::{
 //
 // # Examples
 //
-// ```rust,ignore
-// use reinhardt::{Window, RowNumber, Rank};
-//
+// ```rust,no_run
+// # use reinhardt::{Window, RowNumber, Rank};
+// # struct Product;
+// # impl Product { fn objects() -> QueryBuilder { QueryBuilder } }
+// # struct Sale;
+// # impl Sale { fn objects() -> QueryBuilder { QueryBuilder } }
+// # struct QueryBuilder;
+// # impl QueryBuilder {
+// #     fn annotate(self, _name: &str, _val: impl std::any::Any) -> Self { self }
+// # }
 // // Add row numbers to query results
 // let query = Product::objects()
 //     .annotate("row_num", RowNumber::new()
@@ -484,9 +509,8 @@ pub use reinhardt_db::orm::{
 //
 // # Examples
 //
-// ```rust,ignore
-// use reinhardt::{UniqueConstraint, Index, BTreeIndex};
-//
+// ```rust,no_run
+// # use reinhardt::{UniqueConstraint, BTreeIndex};
 // // Define constraints programmatically
 // let constraint = UniqueConstraint::new(vec!["email"]);
 //
@@ -552,25 +576,28 @@ pub use reinhardt_auth::{Claims, JwtAuth};
 //
 // # Examples
 //
-// ```rust,ignore
-// use reinhardt::{UserManager, GroupManager, ObjectPermission};
-//
+// ```rust,no_run
+// # use reinhardt::{UserManager, GroupManager, ObjectPermission, CreateUserData, CreateGroupData};
+// # #[tokio::main]
+// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 // // User management
 // let user_manager = UserManager::new();
-// let user = user_manager.create_user(CreateUserData {
-//     username: "alice".to_string(),
-//     email: "alice@example.com".to_string(),
-//     password: "secret".to_string(),
-// }).await?;
+// // let user = user_manager.create_user(CreateUserData {
+// //     username: "alice".to_string(),
+// //     email: "alice@example.com".to_string(),
+// //     password: "secret".to_string(),
+// // }).await?;
 //
 // // Group management
 // let group_manager = GroupManager::new();
-// let group = group_manager.create_group(CreateGroupData {
-//     name: "editors".to_string(),
-// }).await?;
+// // let group = group_manager.create_group(CreateGroupData {
+// //     name: "editors".to_string(),
+// // }).await?;
 //
 // // Object-level permissions
-// let perm = ObjectPermission::new("edit", user, article);
+// // let perm = ObjectPermission::new("edit", user, article);
+// # Ok(())
+// # }
 // ```
 #[cfg(feature = "auth")]
 pub use reinhardt_auth::{
@@ -697,17 +724,18 @@ pub use reinhardt_browsable_api as browsable_api;
 //
 // # Examples
 //
-// ```rust,ignore
-// use reinhardt::{OpenApi, ApiDoc};
-//
-// // Define API documentation
-// #[derive(OpenApi)]
-// #[openapi(paths(get_users, create_user))]
-// struct ApiDoc;
-//
-// // Generate OpenAPI schema
-// let openapi = ApiDoc::openapi();
-// let json = serde_json::to_string_pretty(&openapi)?;
+// ```rust,no_run
+// # // Note: This example requires the openapi feature
+// // use reinhardt::{OpenApi, ApiDoc};
+// //
+// // // Define API documentation
+// // #[derive(OpenApi)]
+// // #[openapi(paths(get_users, create_user))]
+// // struct ApiDoc;
+// //
+// // // Generate OpenAPI schema
+// // let openapi = ApiDoc::openapi();
+// // let json = serde_json::to_string_pretty(&openapi)?;
 // ```
 #[cfg(feature = "openapi")]
 pub use reinhardt_rest::openapi::*;
