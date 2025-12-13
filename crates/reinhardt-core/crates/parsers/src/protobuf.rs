@@ -265,7 +265,7 @@ impl Parser for ProtobufParser {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use prost::Message;
 /// use reinhardt_parsers::protobuf::ProtobufMessage;
 ///

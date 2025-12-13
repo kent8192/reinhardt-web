@@ -13,9 +13,14 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt_security::{CsrfMiddleware, SecurityHeadersMiddleware};
 //!
+//! # struct App;
+//! # impl App {
+//! #     fn add_middleware<T>(&mut self, _middleware: T) {}
+//! # }
+//! # let mut app = App;
 //! // Add CSRF protection
 //! app.add_middleware(CsrfMiddleware::new());
 //!

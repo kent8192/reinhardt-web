@@ -13,7 +13,7 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt_messages::{Message, middleware::MessagesMiddleware, storage::MemoryStorage};
 //!
 //! // Create middleware with memory storage
@@ -21,6 +21,8 @@
 //! let middleware = MessagesMiddleware::new(storage);
 //!
 //! // Add messages during request processing
+//! # use reinhardt_messages::middleware::MessagesContainer;
+//! # let mut container = MessagesContainer::new(vec![]);
 //! container.add(Message::success("Operation completed successfully!"));
 //! container.add(Message::warning("Please review your settings"));
 //! ```

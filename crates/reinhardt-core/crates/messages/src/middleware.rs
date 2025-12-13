@@ -5,12 +5,12 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
+//! ```rust
 //! use reinhardt_messages::middleware::MessagesMiddleware;
-//! use reinhardt_messages::storage::SessionStorage;
+//! use reinhardt_messages::storage::MemoryStorage;
 //!
 //! // Create message storage backend
-//! let storage = SessionStorage::new();
+//! let storage = MemoryStorage::new();
 //!
 //! // Create middleware
 //! let middleware = MessagesMiddleware::new(storage);

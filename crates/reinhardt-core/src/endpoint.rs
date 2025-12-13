@@ -15,7 +15,13 @@ use hyper::Method;
 ///
 /// The HTTP Method Macro generates a View type that implements this trait:
 ///
-/// ```rust,ignore
+/// ```rust,no_run
+/// # use reinhardt_macros::get;
+/// # use reinhardt_di::params::Path;
+/// # use reinhardt_views::ViewResult;
+/// # use reinhardt_http::Response;
+/// # use reinhardt_core::endpoint::EndpointInfo;
+/// # use hyper::Method;
 /// #[get("/users/{id}/", name = "get_user")]
 /// pub async fn get_user(Path(id): Path<i64>) -> ViewResult<Response> {
 ///     Ok(Response::ok())

@@ -24,11 +24,16 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
-//! use reinhardt_parsers::{JSONParser, Parser};
+//! ```rust,no_run
+//! use reinhardt_parsers::{JSONParser, Parser, ParseRequest};
 //!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # let request = ParseRequest::default();
 //! let parser = JSONParser::new();
-//! let data = parser.parse(&request, &headers).await?;
+//! let data = parser.parse(request).await?;
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod compressed;
