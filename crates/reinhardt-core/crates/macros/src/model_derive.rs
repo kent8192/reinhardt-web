@@ -13,51 +13,13 @@
 //!
 //! # Type-Safe ManyToMany Accessor Methods
 //!
-//! The `#[model(...)]` macro automatically generates type-safe accessor methods for each `ManyToManyField`:
-//!
-//! ```rust
-//! use reinhardt::prelude::*;
-//!
-//! #[model(app_label = "users", table_name = "users")]
-//! pub struct User {
-//!     #[field(primary_key = true)]
-//!     pub id: Uuid,
-//!
-//!     #[field(many_to_many)]
-//!     pub following: ManyToManyField<User, User>,
-//! }
-//!
-//! // Auto-generated accessor method (compile-time type safety)
-//! async fn example(user: &User, db: DatabaseConnection) {
-//!     let accessor = user.following_accessor(db);
-//!     let followers = accessor.all().await?;
-//! }
-//! ```
+//! The `#[model(...)]` macro automatically generates type-safe accessor methods for each `ManyToManyField`.
 //!
 //! **Benefits:**
 //! - Compile-time field name validation (no typos)
 //! - Type inference for Source and Target models
 //! - IDE auto-completion support
 //! - Cleaner, more idiomatic API
-//!
-//! ## Examples
-//!
-//! ```rust
-//! use reinhardt::prelude::*;
-//!
-//! #[model(app_label = "blog", table_name = "posts")]
-//! pub struct Post {
-//!     #[field(primary_key = true)]
-//!     pub id: i64,
-//!
-//!     #[field(max_length = 200)]
-//!     pub title: String,
-//!
-//!     // Automatically detected and registered as ForeignKey relationship
-//!     #[rel(related_name = "posts", db_column = "author_id")]
-//!     pub author: ForeignKeyField<User>,
-//! }
-//! ```
 //!
 //! The macro generates linkme distributed_slice registrations for each relationship,
 //! enabling `build_reverse_relations()` to construct reverse accessors at runtime.
@@ -1064,7 +1026,18 @@ fn extract_option_type(ty: &Type) -> (bool, &Type) {
 /// Generate field accessor methods that return FieldRef<M, T>
 ///
 /// Generates const methods like:
-/// ```ignore
+/// ```rust,ignore
+/// use reinhardt_db::orm::expressions::FieldRef;
+/// use reinhardt_macros::model;
+///
+/// #[model(app_label = "users", table_name = "users")]
+/// struct User {
+///     #[field(primary_key = true)]
+///     id: i64,
+///     name: String,
+/// }
+///
+/// // The #[model] attribute macro automatically generates:
 /// impl User {
 ///     pub const fn field_id() -> FieldRef<User, i64> { FieldRef::new("id") }
 ///     pub const fn field_name() -> FieldRef<User, String> { FieldRef::new("name") }
@@ -1102,44 +1075,10 @@ fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo])
 
 /// Generate accessor methods for ManyToMany relationships.
 ///
-/// For each `ManyToManyField<Source, Target>` field, generates a method:
-/// ```ignore
-/// pub fn {field_name}_accessor(
-///     &self,
-///     db: DatabaseConnection
-/// ) -> ManyToManyAccessor<Source, Target>
-/// ```
-///
 /// The generated accessor method internally calls `ManyToManyAccessor::new()`
 /// with the field name, providing compile-time field name validation and
 /// improved IDE support.
 ///
-/// # Example
-///
-/// Given:
-/// ```ignore
-/// #[model(app_label = "app", table_name = "users")]
-/// pub struct User {
-///     #[field(primary_key = true)]
-///     pub id: i64,
-///
-///     #[rel(many_to_many, related_name = "followers")]
-///     pub following: ManyToManyField<User, User>,
-/// }
-/// ```
-///
-/// Generates:
-/// ```ignore
-/// impl User {
-///     /// Create a ManyToManyAccessor for the 'following' relationship
-///     pub fn following_accessor(
-///         &self,
-///         db: DatabaseConnection
-///     ) -> ManyToManyAccessor<User, User> {
-///         ManyToManyAccessor::new(self, "following", db)
-///     }
-/// }
-/// ```
 ///
 /// # Generated Code Characteristics
 ///

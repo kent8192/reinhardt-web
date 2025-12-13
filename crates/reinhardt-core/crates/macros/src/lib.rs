@@ -9,16 +9,6 @@
 //! - `#[get]`, `#[post]`, etc. - HTTP method decorators
 //! - `#[permission_required]` - Permission decorator
 //!
-//! ## Example
-//!
-//! ```rust,ignore
-//! use reinhardt_macros::api_view;
-//!
-//! #[api_view(methods = ["GET", "POST"])]
-//! async fn my_view(request: Request) -> Result<Response> {
-//!     Ok(Response::ok())
-//! }
-//! ```
 
 use proc_macro::TokenStream;
 use syn::{ItemFn, ItemStruct, parse_macro_input};
@@ -64,19 +54,6 @@ use schema::derive_schema_impl;
 use use_inject::use_inject_impl;
 
 /// Decorator for function-based API views
-///
-/// # Example
-///
-/// ```ignore
-/// #[api_view(methods = ["GET", "POST"])]
-/// async fn my_view(request: Request) -> Result<Response> {
-///     match request.method.as_str() {
-///         "GET" => Ok(Response::json(&data)?),
-///         "POST" => Ok(Response::created()),
-///         _ => Ok(Response::method_not_allowed()),
-///     }
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn api_view(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
@@ -87,18 +64,6 @@ pub fn api_view(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// Decorator for ViewSet custom actions
-///
-/// # Example
-///
-/// ```ignore
-/// impl MyViewSet {
-///     #[action(methods = ["POST"], detail = true)]
-///     async fn activate(&self, request: Request, pk: i64) -> Result<Response> {
-///         // Custom action implementation
-///         Ok(Response::ok())
-///     }
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn action(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
@@ -109,15 +74,6 @@ pub fn action(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// GET method decorator
-///
-/// # Example
-///
-/// ```ignore
-/// #[get("/users")]
-/// async fn list_users(request: Request) -> Result<Response> {
-///     Ok(Response::json(&users)?)
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn get(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
@@ -168,15 +124,6 @@ pub fn delete(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// Permission required decorator
-///
-/// # Example
-///
-/// ```ignore
-/// #[permission_required("users.view_user")]
-/// async fn view_user(request: Request) -> Result<Response> {
-///     Ok(Response::ok())
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn permission_required(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
@@ -190,22 +137,6 @@ pub fn permission_required(args: TokenStream, input: TokenStream) -> TokenStream
 ///
 /// This macro creates a type-safe list of installed applications and validates
 /// that referenced applications exist at compile time.
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_macros::installed_apps;
-///
-/// installed_apps! {
-///     auth: "reinhardt.contrib.auth",
-///     contenttypes: "reinhardt.contrib.contenttypes",
-///     sessions: "reinhardt.contrib.sessions",
-///     myapp: "apps.myapp",
-/// }
-///
-// Use in settings
-/// let apps = InstalledApp::all_apps();
-/// ```
 ///
 /// # Compile-time Validation
 ///
@@ -225,21 +156,6 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// This macro validates URL pattern syntax at compile time, catching common errors
 /// before they reach runtime. It supports both simple parameters and Django-style
 /// typed parameters.
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_macros::path;
-///
-// Simple parameter
-/// let pattern = path!("polls/{id}/");
-///
-// Typed parameter (Django-style)
-/// let pattern = path!("polls/{<int:question_id>}/");
-///
-// Multiple parameters
-/// let pattern = path!("users/{user_id}/posts/{post_id}/");
-/// ```
 ///
 /// # Compile-time Validation
 ///
@@ -270,28 +186,6 @@ pub fn path(input: TokenStream) -> TokenStream {
 /// This macro provides Django-style `@receiver` decorator functionality for Rust.
 /// It automatically registers the function as a signal receiver at startup.
 ///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_macros::receiver;
-/// use reinhardt_signals::post_save;
-///
-/// #[receiver(signal = post_save::<User>())]
-/// async fn on_user_saved(instance: Arc<User>) -> Result<(), SignalError> {
-///     println!("User saved: {:?}", instance);
-///     Ok(())
-/// }
-/// ```
-///
-/// # With Sender Filtering
-///
-/// ```ignore
-/// #[receiver(signal = post_save::<Article>(), sender = "Blog")]
-/// async fn on_blog_article_saved(instance: Arc<Article>) -> Result<(), SignalError> {
-///     println!("Blog article saved");
-///     Ok(())
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn receiver(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
@@ -306,52 +200,6 @@ pub fn receiver(args: TokenStream, input: TokenStream) -> TokenStream {
 /// This macro enables FastAPI-style dependency injection using parameter attributes.
 /// Parameters marked with `#[inject]` will be automatically resolved from the
 /// `InjectionContext`. Can be used with any function, not just endpoints.
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_macros::use_inject;
-/// use reinhardt_di::{Injectable, InjectionContext};
-///
-/// #[derive(Clone, Default)]
-/// struct Database;
-///
-/// #[derive(Clone, Default)]
-/// struct Config;
-///
-/// #[use_inject]
-/// async fn my_handler(
-///     #[inject] db: Database,
-///     #[inject] config: Config,
-///     regular_param: String,
-/// ) -> Result<String> {
-///     // db and config are automatically injected
-///     Ok(format!("Handler with db and config"))
-/// }
-///
-// Works with any function
-/// #[use_inject]
-/// async fn process_data(
-///     #[inject] db: Database,
-///     data: Vec<u8>,
-/// ) -> Result<()> {
-///     Ok(())
-/// }
-/// ```
-///
-/// # Cache Control
-///
-/// You can disable caching for specific dependencies:
-///
-/// ```ignore
-/// #[use_inject]
-/// async fn handler(
-///     #[inject] db: Database,              // Cached (default)
-///     #[inject(cache = false)] fresh: Data,  // Not cached
-/// ) -> Result<()> {
-///     Ok(())
-/// }
-/// ```
 ///
 /// # Generated Code
 ///
@@ -373,32 +221,6 @@ pub fn use_inject(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// Automatically generates field accessor methods for models, enabling
 /// compile-time validated field lookups.
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_orm::prelude::*;
-///
-/// #[model(app_label = "users", table_name = "users")]
-/// #[derive(QueryFields)]
-/// struct User {
-///     id: i64,
-///     email: String,
-///     age: i32,
-///     created_at: DateTime,
-/// }
-///
-// Type-safe queries with compile-time validation
-/// QuerySet::<User>::new()
-///     .filter(User::email().lower().contains("example.com"))
-///     .filter(User::age().gte(18))
-///     .filter(User::created_at().year().eq(2025));
-///
-// These would cause compile errors:
-// User::age().contains(18);     // ERROR: contains() only for String
-// User::email().year();          // ERROR: year() only for DateTime
-// User::emai();                  // ERROR: field doesn't exist
-/// ```
 ///
 /// # Generated Methods
 ///
@@ -422,28 +244,6 @@ pub fn derive_query_fields(input: TokenStream) -> TokenStream {
 ///
 /// Automatically implements the `ToSchema` trait for structs and enums,
 /// generating OpenAPI 3.0 schemas from Rust type definitions.
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_macros::Schema;
-/// use reinhardt_openapi::ToSchema;
-///
-/// #[derive(Schema)]
-/// struct User {
-///     /// User's unique identifier
-///     id: i64,
-///     /// User's email address
-///     email: String,
-///     /// Optional phone number
-///     phone: Option<String>,
-///     /// List of roles
-///     roles: Vec<String>,
-/// }
-///
-// Schema is automatically generated
-/// let schema = User::schema();
-/// ```
 ///
 /// # Supported Types
 ///
@@ -473,99 +273,6 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 ///
 /// This macro can be applied to both functions and structs to enable dependency injection.
 ///
-/// # Function Usage
-///
-/// Transforms a factory/provider function into an `Injectable` trait implementation
-/// for its return type.
-///
-/// ```ignore
-/// use reinhardt_macros::injectable;
-/// use reinhardt_di::Injectable;
-///
-/// struct UserService {
-///     db: Arc<Database>,
-///     cache: Arc<Cache>,
-/// }
-///
-/// #[injectable]
-/// fn create_user_service(
-///     #[inject] db: Arc<Database>,
-///     #[inject] cache: Arc<Cache>,
-/// ) -> UserService {
-///     UserService { db, cache }
-/// }
-/// ```
-///
-/// # Struct Usage
-///
-/// Generates an `Injectable` trait implementation for structs with `#[inject]` fields.
-///
-/// ```ignore
-/// #[injectable]
-/// #[derive(Clone)]
-/// struct UserViewSet {
-///     #[inject]
-///     db: Database,
-///     #[inject]
-///     cache: RedisCache,
-///     #[no_inject(default = Default)]
-///     name: String,
-/// }
-/// ```
-///
-/// # Async Support
-///
-/// Both sync and async provider functions are supported:
-///
-/// ```ignore
-/// #[injectable]
-/// async fn get_config() -> Config {
-///     Config::load().await
-/// }
-/// ```
-///
-/// # Cache Control
-///
-/// You can disable caching for specific dependencies:
-///
-/// ```ignore
-/// // Function
-/// #[injectable]
-/// fn create_service(
-///     #[inject] db: Database,                // Cached (default)
-///     #[inject(cache = false)] fresh: Data,  // Not cached
-/// ) -> MyService {
-///     MyService { db, fresh }
-/// }
-///
-/// // Struct
-/// #[injectable]
-/// #[derive(Clone)]
-/// struct MyService {
-///     #[inject]
-///     db: Database,              // Cached (default)
-///     #[inject(cache = false)]
-///     fresh_data: FreshData,     // Not cached
-/// }
-/// ```
-///
-/// # Scope Control
-///
-/// You can control the injection scope:
-///
-/// ```ignore
-/// #[injectable]
-/// #[derive(Clone)]
-/// struct AppConfig {
-///     #[inject(scope = Singleton)]
-///     global_settings: Settings,  // Singleton scope
-///     #[inject(scope = Request)]
-///     request_data: RequestData,  // Request scope (default)
-///     #[no_inject(default = Default)]
-///     config_name: String,
-/// }
-/// ```
-///
 /// # Field Attributes (Struct Only)
 ///
 /// All struct fields must have either `#[inject]` or `#[no_inject]` attribute:
@@ -576,29 +283,6 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 /// - **`#[no_inject(default = Default)]`**: Initialize with `Default::default()`
 /// - **`#[no_inject(default = value)]`**: Initialize with specific value
 /// - **`#[no_inject]`**: Initialize with `None` (field must be `Option<T>`)
-///
-/// **Examples:**
-///
-/// ```ignore
-/// #[injectable]
-/// #[derive(Clone)]
-/// struct MyService {
-///     #[inject]
-///     db: Database,
-///
-///     #[no_inject(default = Default)]
-///     config: Config,
-///
-///     #[no_inject(default = 42)]
-///     max_retries: i32,
-///
-///     #[no_inject(default = "localhost")]
-///     host: &'static str,
-///
-///     #[no_inject]
-///     optional_cache: Option<Cache>,
-/// }
-/// ```
 ///
 /// # Restrictions
 ///
@@ -657,27 +341,6 @@ pub fn injectable(_args: TokenStream, input: TokenStream) -> TokenStream {
 /// This provides a cleaner syntax by eliminating the need to explicitly write
 /// `#[derive(Model)]` on every model struct.
 ///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_macros::model;
-/// use serde::{Serialize, Deserialize};
-///
-/// // Recommended pattern:
-/// #[model(app_label = "blog", table_name = "posts")]
-/// #[derive(Serialize, Deserialize)]
-/// struct Post {
-///     #[field(primary_key = true)]
-///     id: i64,
-///
-///     #[field(max_length = 200)]
-///     title: String,
-///
-///     #[field(null = true)]
-///     content: Option<String>,
-/// }
-/// ```
-///
 /// # Model Attributes
 ///
 /// Same as `#[derive(Model)]`. See [`derive_model`] for details.
@@ -695,26 +358,6 @@ pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// Automatically implements the `Model` trait and registers the model with the global
 /// ModelRegistry for automatic migration generation.
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_macros::model;
-/// use serde::{Serialize, Deserialize};
-///
-/// #[model(app_label = "blog", table_name = "posts")]
-/// #[derive(Serialize, Deserialize)]
-/// struct Post {
-///     #[field(primary_key = true)]
-///     id: i64,
-///
-///     #[field(max_length = 200)]
-///     title: String,
-///
-///     #[field(null = true)]
-///     content: Option<String>,
-/// }
-/// ```
 ///
 /// # Model Attributes
 ///
@@ -782,23 +425,6 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
 /// - `#[orm_relationship(type = "scalar")]` - Mark as scalar relationship
 /// - `#[orm_ignore]` - Exclude field from reflection
 ///
-/// ## Example
-///
-/// ```rust,ignore
-/// use reinhardt_core::proxy::orm_integration::OrmReflectable;
-///
-/// #[derive(Clone, reinhardt_macros::OrmReflectable)]
-/// struct User {
-///     id: i64,                      // Inferred as Integer field
-///     name: String,                 // Inferred as String field
-///     posts: Vec<Post>,             // Inferred as Collection relationship
-///     profile: Option<UserProfile>, // Inferred as Scalar relationship
-///
-///     #[orm_ignore]
-///     internal_cache: String,       // Excluded from reflection
-/// }
-/// ```
-///
 /// ## Supported Field Types
 ///
 /// - **Integer**: i8, i16, i32, i64, i128, u8, u16, u32, u64, u128
@@ -816,41 +442,11 @@ pub fn derive_orm_reflectable(input: TokenStream) -> TokenStream {
 /// Automatically generates a `config()` method that returns an `AppConfig` instance
 /// with the specified name and label.
 ///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_macros::AppConfig;
-///
-/// #[derive(AppConfig)]
-/// #[app_config(name = "api", label = "api")]
-/// pub struct ApiConfig;
-///
-/// // With verbose_name
-/// #[derive(AppConfig)]
-/// #[app_config(name = "todos", label = "todos", verbose_name = "TODO Application")]
-/// pub struct TodosConfig;
-///
-/// // Usage
-/// let config = ApiConfig::config();
-/// assert_eq!(config.name, "api");
-/// assert_eq!(config.label, "api");
-/// ```
-///
 /// # Attributes
 ///
 /// - `name`: Application name (required, string literal)
 /// - `label`: Application label (required, string literal)
 /// - `verbose_name`: Verbose name (optional, string literal)
-///
-/// # Generated Code
-///
-/// ```ignore
-/// impl ApiConfig {
-///     pub fn config() -> reinhardt_apps::AppConfig {
-///         reinhardt_apps::AppConfig::new("api", "api")
-///     }
-/// }
-/// ```
 ///
 #[proc_macro_derive(AppConfig, attributes(app_config))]
 pub fn derive_app_config(input: TokenStream) -> TokenStream {
@@ -861,61 +457,6 @@ pub fn derive_app_config(input: TokenStream) -> TokenStream {
 ///
 /// This macro generates a `MigrationProvider` implementation and automatically
 /// registers it with the global migration registry using `linkme::distributed_slice`.
-///
-/// # Example
-///
-/// ```ignore
-/// // In your app's migrations.rs or migrations/mod.rs
-/// pub mod _0001_initial;
-/// pub mod _0002_add_fields;
-///
-/// reinhardt::collect_migrations!(
-///     app_label = "polls",
-///     _0001_initial,
-///     _0002_add_fields,
-/// );
-/// ```
-///
-/// # Generated Code
-///
-/// The macro generates:
-/// 1. A struct named `{AppLabel}Migrations` (e.g., `PollsMigrations`)
-/// 2. Implementation of `MigrationProvider` trait for the struct
-/// 3. Registration with the global `MIGRATION_PROVIDERS` slice
-///
-/// ```ignore
-/// // Generated code equivalent:
-/// pub struct PollsMigrations;
-///
-/// impl MigrationProvider for PollsMigrations {
-///     fn migrations() -> Vec<Migration> {
-///         vec![
-///             _0001_initial::migration(),
-///             _0002_add_fields::migration(),
-///         ]
-///     }
-/// }
-///
-/// #[linkme::distributed_slice(MIGRATION_PROVIDERS)]
-/// static __POLLS_MIGRATIONS_PROVIDER: MigrationProviderFn = PollsMigrations::migrations;
-/// ```
-///
-/// # Usage in Tests
-///
-/// After registering migrations with this macro, you can use the non-generic fixtures:
-///
-/// ```ignore
-/// use reinhardt_test::fixtures::*;
-///
-/// #[rstest]
-/// #[tokio::test]
-/// async fn test_with_all_migrations(
-///     #[future] postgres_with_all_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>)
-/// ) {
-///     let (_container, db) = postgres_with_all_migrations.await;
-///     // All migrations from all apps are applied
-/// }
-/// ```
 ///
 /// # Requirements
 ///
@@ -933,25 +474,6 @@ pub fn collect_migrations(input: TokenStream) -> TokenStream {
 ///
 /// Automatically implements the `ModelAdmin` trait for a struct with compile-time
 /// field validation against the specified model type.
-///
-/// # Example
-///
-/// ```ignore
-/// use crate::models::User;
-///
-/// #[admin(model,
-///     for = User,
-///     name = "User",
-///     list_display = [id, username, email, is_active, created_at],
-///     search_fields = [username, email],
-///     list_filter = [is_active, created_at],
-///     ordering = [(created_at, desc)],
-///     readonly_fields = [id, created_at, last_login],
-///     fields = [username, email, is_active],
-///     list_per_page = 50
-/// )]
-/// pub struct UserAdmin;
-/// ```
 ///
 /// # Attributes
 ///

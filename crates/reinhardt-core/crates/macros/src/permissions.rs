@@ -28,36 +28,7 @@ fn validate_permission(permission: &str, span: Span) -> Result<()> {
 ///
 /// # Examples
 ///
-/// With Request parameter (recommended):
-///
-/// ```ignore
-/// use reinhardt_macros::permission_required;
-/// use reinhardt_http::{Request, Response, ViewResult};
-/// use std::sync::Arc;
-/// use reinhardt_auth::PermissionsMixin;
-///
-/// #[permission_required("auth.view_user")]
-/// async fn view_user(request: Request) -> ViewResult<Response> {
-///     // Runtime permission check is automatically injected here
-///     // User is extracted from request.extensions as Arc<dyn PermissionsMixin>
-///     // The authentication middleware must store the user in this format:
-///     // request.extensions.insert(Arc::new(user) as Arc<dyn PermissionsMixin>);
-///     Ok(Response::ok())
-/// }
-/// ```
-///
-/// Without Request parameter (compile-time only):
-///
-/// ```ignore
-/// use reinhardt_macros::permission_required;
-///
-/// #[permission_required("auth.view_user")]
-/// async fn view_user() -> Result<(), ()> {
-///     // Only compile-time validation
-///     // Runtime checking must be done elsewhere (e.g., middleware)
-///     Ok(())
-/// }
-/// ```
+/// See the authentication documentation for usage examples.
 pub fn permission_required_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let mut permissions = Vec::new();
 

@@ -64,17 +64,7 @@ fn parse_receiver_args(args: TokenStream) -> Result<ReceiverArgs> {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use reinhardt_macros::receiver;
-/// use reinhardt_signals::SignalError;
-/// use std::sync::Arc;
-///
-/// #[receiver(signal = "post_save")]
-/// async fn on_user_saved(instance: Arc<User>) -> Result<(), SignalError> {
-///     println!("User saved: {:?}", instance);
-///     Ok(())
-/// }
-/// ```
+/// See the signals documentation for usage examples.
 pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let _reinhardt = get_reinhardt_crate();
 

@@ -24,39 +24,9 @@ struct InjectParamInfo {
 /// for its return type. This enables the function's return type to be automatically
 /// resolved from the DI container.
 ///
-/// # Example
-///
-/// ```ignore
-/// #[injectable]
-/// fn create_user_service(
-///     #[inject] db: Arc<DB>,
-///     #[inject] cache: Arc<Cache>,
-/// ) -> UserService {
-///     UserService { db, cache }
-/// }
-///
-/// // Generated:
-/// // fn create_user_service_impl(db: Arc<DB>, cache: Arc<Cache>) -> UserService { ... }
-/// //
-/// // impl Injectable for UserService {
-/// //     async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-/// //         let db = ctx.resolve::<Arc<DB>>().await?;
-/// //         let cache = ctx.resolve::<Arc<Cache>>().await?;
-/// //         Ok(create_user_service_impl(db, cache))
-/// //     }
-/// // }
-/// ```
-///
 /// # Async Support
 ///
-/// Both sync and async functions are supported:
-///
-/// ```ignore
-/// #[injectable]
-/// async fn get_config() -> Config {
-///     Config::load().await
-/// }
-/// ```
+/// Both sync and async functions are supported.
 pub fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let fn_name = &input.sig.ident;
 	let is_async = input.sig.asyncness.is_some();
@@ -205,8 +175,14 @@ pub fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 		///
 		/// # Examples
 		///
-		/// ```rust,ignore
-		/// ctx.dependency(#fn_name).override_with(mock_value);
+		/// ```rust,no_run
+		/// # use reinhardt_di::{InjectionContext, SingletonScope};
+		/// # use std::sync::Arc;
+		/// # let singleton = Arc::new(SingletonScope::new());
+		/// # let ctx = InjectionContext::builder(singleton).build();
+		/// # fn get_database() -> String { String::new() }
+		/// # let mock_value = String::from("mock");
+		/// ctx.dependency(get_database).override_with(mock_value);
 		/// ```
 		#[allow(dead_code)]
 		pub fn #fn_name() -> #return_type {

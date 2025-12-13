@@ -213,12 +213,6 @@ pub fn detect_inject_params(
 
 /// Generates DI context extraction code from a Request.
 ///
-/// Generates code like:
-/// ```ignore
-/// let __di_ctx = request.get_di_context::<Arc<InjectionContext>>()
-///     .ok_or_else(|| Error::Internal("DI context not set".to_string()))?;
-/// ```
-///
 /// This function is used by #[action] and #[receiver] macros to extract
 /// the DI context from request objects for dependency resolution.
 pub fn generate_di_context_extraction(request_ident: &syn::Ident) -> TokenStream {
@@ -251,14 +245,6 @@ pub fn generate_di_context_extraction_from_option(ctx_ident: &syn::Ident) -> Tok
 }
 
 /// Generates injection resolution calls for a list of inject parameters.
-///
-/// Generates code like:
-/// ```ignore
-/// let db: Arc<DatabaseConnection> = Injected::<Arc<DatabaseConnection>>::resolve(&__di_ctx)
-///     .await
-///     .map_err(|e| Error::Internal(...))?
-///     .into_inner();
-/// ```
 ///
 /// This function is used by #[action] and #[receiver] macros to generate
 /// dependency injection code for parameters marked with #[inject].
