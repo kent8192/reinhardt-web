@@ -195,10 +195,10 @@ impl MongoDBBackendBuilder {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// use reinhardt_db::backends::mongodb::MongoDBBackendBuilder;
-	///
+	/// ```rust
+	/// # use reinhardt_backends::drivers::mongodb::connection::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new();
+	/// // Builder successfully created with default settings
 	/// ```
 	pub fn new() -> Self {
 		Self {
@@ -214,11 +214,11 @@ impl MongoDBBackendBuilder {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// use reinhardt_db::backends::mongodb::MongoDBBackendBuilder;
-	///
+	/// ```rust
+	/// # use reinhardt_backends::drivers::mongodb::connection::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .url("mongodb://localhost:27017");
+	/// // URL successfully set
 	/// ```
 	pub fn url(mut self, url: impl Into<String>) -> Self {
 		self.url = url.into();
@@ -229,11 +229,11 @@ impl MongoDBBackendBuilder {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// use reinhardt_db::backends::mongodb::MongoDBBackendBuilder;
-	///
+	/// ```rust
+	/// # use reinhardt_backends::drivers::mongodb::connection::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .database("mydb");
+	/// // Database name successfully set
 	/// ```
 	pub fn database(mut self, database: impl Into<String>) -> Self {
 		self.database = database.into();
@@ -244,11 +244,11 @@ impl MongoDBBackendBuilder {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// use reinhardt_db::backends::mongodb::MongoDBBackendBuilder;
-	///
+	/// ```rust
+	/// # use reinhardt_backends::drivers::mongodb::connection::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .max_pool_size(100);
+	/// // Max pool size successfully set
 	/// ```
 	pub fn max_pool_size(mut self, size: u32) -> Self {
 		self.max_pool_size = Some(size);
@@ -259,11 +259,11 @@ impl MongoDBBackendBuilder {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// use reinhardt_db::backends::mongodb::MongoDBBackendBuilder;
-	///
+	/// ```rust
+	/// # use reinhardt_backends::drivers::mongodb::connection::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .min_pool_size(10);
+	/// // Min pool size successfully set
 	/// ```
 	pub fn min_pool_size(mut self, size: u32) -> Self {
 		self.min_pool_size = Some(size);
@@ -274,11 +274,11 @@ impl MongoDBBackendBuilder {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// use reinhardt_db::backends::mongodb::MongoDBBackendBuilder;
-	///
+	/// ```rust
+	/// # use reinhardt_backends::drivers::mongodb::connection::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .max_idle_time_secs(300);
+	/// // Max idle time successfully set
 	/// ```
 	pub fn max_idle_time_secs(mut self, secs: u64) -> Self {
 		self.max_idle_time_secs = Some(secs);
