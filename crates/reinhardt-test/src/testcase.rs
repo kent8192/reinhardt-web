@@ -16,7 +16,9 @@ use tokio::sync::RwLock;
 /// - Optional TestContainer database integration
 ///
 /// # Example
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_test::testcase::APITestCase;
 /// use reinhardt_test::resource::AsyncTeardownGuard;
 /// use rstest::*;
@@ -85,7 +87,9 @@ impl AsyncTestResource for APITestCase {
 /// Helper macro for defining test cases with automatic setup/teardown
 ///
 /// # Example
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// test_case! {
 ///     async fn test_get_users(case: &APITestCase) {
 ///         let client = case.client().await;
@@ -160,7 +164,9 @@ macro_rules! authenticated_test_case {
 ///
 /// ## PostgreSQL Example
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_test::test_case_with_db;
 /// use reinhardt_test::testcase::APITestCase;
 ///
@@ -178,7 +184,7 @@ macro_rules! authenticated_test_case {
 ///
 /// ## MySQL Example
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_test::test_case_with_db;
 /// use reinhardt_test::testcase::APITestCase;
 ///

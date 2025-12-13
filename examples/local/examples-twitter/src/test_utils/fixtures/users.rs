@@ -85,10 +85,14 @@ fn hash_password(password: &str) -> String {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// let db = Arc::new(connection);
 /// let user = create_test_user(&db, TestUserParams::default()).await;
 /// assert_eq!(user.is_active, true);
+///
+/// # }
 /// ```
 pub async fn create_test_user(db: &DatabaseConnection, params: TestUserParams) -> User {
 	let id = Uuid::new_v4();
@@ -129,9 +133,13 @@ pub async fn create_test_user(db: &DatabaseConnection, params: TestUserParams) -
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// let users = create_test_users(&db, 5).await;
 /// assert_eq!(users.len(), 5);
+///
+/// # }
 /// ```
 pub async fn create_test_users(db: &DatabaseConnection, count: usize) -> Vec<User> {
 	let mut users = Vec::with_capacity(count);
@@ -150,7 +158,9 @@ pub async fn create_test_users(db: &DatabaseConnection, count: usize) -> Vec<Use
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// #[rstest]
 /// #[tokio::test]
 /// async fn my_test(#[future] test_user: (User, TestDatabase)) {

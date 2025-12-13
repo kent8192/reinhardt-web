@@ -27,10 +27,12 @@ use testcontainers::{
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use rstest::*;
-/// use reinhardt_integration_tests::db_transaction::db_transaction_fixture;
-///
+/// ```rust,no_run
+/// # use rstest::*;
+/// # use reinhardt_integration_tests::db_transaction::db_transaction_fixture;
+/// # use reinhardt_orm::connection::DatabaseConnection;
+/// # use testcontainers::GenericImage;
+/// # use std::sync::Arc;
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_with_transaction(

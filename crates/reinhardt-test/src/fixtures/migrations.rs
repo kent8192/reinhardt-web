@@ -7,23 +7,22 @@
 //!
 //! In your tests, use the `migration_registry` fixture for an empty isolated registry:
 //!
-//! ```rust,ignore
-//! use reinhardt_test::fixtures::*;
-//! use reinhardt_migrations::Migration;
-//! use rstest::*;
-//!
-//! #[rstest]
-//! fn test_migration_registration(migration_registry: LocalRegistry) {
-//!     let migration = Migration {
-//!         app_label: "polls".to_string(),
-//!         name: "0001_initial".to_string(),
-//!         operations: vec![],
-//!         dependencies: vec![],
-//!     };
-//!
-//!     migration_registry.register(migration).unwrap();
-//!     assert_eq!(migration_registry.all_migrations().len(), 1);
-//! }
+//! ```rust,no_run
+//! # use reinhardt_test::fixtures::*;
+//! # use reinhardt_migrations::Migration;
+//! # use rstest::*;
+//! // #[rstest]
+//! // fn test_migration_registration(migration_registry: LocalRegistry) {
+//! //     let migration = Migration {
+//! //         app_label: "polls".to_string(),
+//! //         name: "0001_initial".to_string(),
+//! //         operations: vec![],
+//! //         dependencies: vec![],
+//! //     };
+//! //
+//! //     migration_registry.register(migration).unwrap();
+//! //     assert_eq!(migration_registry.all_migrations().len(), 1);
+//! // }
 //! ```
 //!
 //! For production code or examples, use the `collect_migrations!` macro to register
@@ -43,27 +42,26 @@ use std::collections::HashMap;
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::*;
-/// use reinhardt_migrations::Migration;
-/// use rstest::*;
-///
-/// #[rstest]
-/// fn test_migration_operations(migration_registry: LocalRegistry) {
-///     // Registry starts empty
-///     assert!(migration_registry.all_migrations().is_empty());
-///
-///     // Register a migration
-///     migration_registry.register(Migration {
-///         app_label: "polls".to_string(),
-///         name: "0001_initial".to_string(),
-///         operations: vec![],
-///         dependencies: vec![],
-///     }).unwrap();
-///
-///     // Verify registration
-///     assert_eq!(migration_registry.all_migrations().len(), 1);
-/// }
+/// ```rust,no_run
+/// # use reinhardt_test::fixtures::*;
+/// # use reinhardt_migrations::Migration;
+/// # use rstest::*;
+/// // #[rstest]
+/// // fn test_migration_operations(migration_registry: LocalRegistry) {
+/// //     // Registry starts empty
+/// //     assert!(migration_registry.all_migrations().is_empty());
+/// //
+/// //     // Register a migration
+/// //     migration_registry.register(Migration {
+/// //         app_label: "polls".to_string(),
+/// //         name: "0001_initial".to_string(),
+/// //         operations: vec![],
+/// //         dependencies: vec![],
+/// //     }).unwrap();
+/// //
+/// //     // Verify registration
+/// //     assert_eq!(migration_registry.all_migrations().len(), 1);
+/// // }
 /// ```
 #[fixture]
 pub fn migration_registry() -> LocalRegistry {
@@ -78,23 +76,28 @@ pub fn migration_registry() -> LocalRegistry {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::TestMigrationSource;
-/// use reinhardt_migrations::{Migration, MigrationSource};
+/// ```rust,no_run
+/// # use reinhardt_test::fixtures::TestMigrationSource;
+/// # use reinhardt_migrations::{Migration, MigrationSource};
+/// # #[tokio::main]
+/// # async fn main() {
+/// // #[tokio::test]
+/// // async fn test_source() {
+/// let mut source = TestMigrationSource::new();
+/// source.add_migration(Migration {
+///     app_label: "polls".to_string(),
+///     name: "0001_initial".to_string(),
+///     operations: vec![],
+///     dependencies: vec![],
+///     initial: None,
+///     atomic: true,
+///     replaces: vec![],
+/// });
 ///
-/// #[tokio::test]
-/// async fn test_source() {
-///     let mut source = TestMigrationSource::new();
-///     source.add_migration(Migration {
-///         app_label: "polls".to_string(),
-///         name: "0001_initial".to_string(),
-///         operations: vec![],
-///         dependencies: vec![],
-///     });
-///
-///     let migrations = source.all_migrations().await.unwrap();
-///     assert_eq!(migrations.len(), 1);
-/// }
+/// let migrations = source.all_migrations().await.unwrap();
+/// assert_eq!(migrations.len(), 1);
+/// // }
+/// # }
 /// ```
 pub struct TestMigrationSource {
 	migrations: Vec<Migration>,
@@ -155,25 +158,30 @@ impl MigrationSource for TestMigrationSource {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::InMemoryRepository;
-/// use reinhardt_migrations::{Migration, MigrationRepository};
+/// ```rust,no_run
+/// # use reinhardt_test::fixtures::InMemoryRepository;
+/// # use reinhardt_migrations::{Migration, MigrationRepository};
+/// # #[tokio::main]
+/// # async fn main() {
+/// // #[tokio::test]
+/// // async fn test_repository() {
+/// let mut repo = InMemoryRepository::new();
 ///
-/// #[tokio::test]
-/// async fn test_repository() {
-///     let mut repo = InMemoryRepository::new();
+/// let migration = Migration {
+///     app_label: "polls".to_string(),
+///     name: "0001_initial".to_string(),
+///     operations: vec![],
+///     dependencies: vec![],
+///     initial: None,
+///     atomic: true,
+///     replaces: vec![],
+/// };
 ///
-///     let migration = Migration {
-///         app_label: "polls".to_string(),
-///         name: "0001_initial".to_string(),
-///         operations: vec![],
-///         dependencies: vec![],
-///     };
-///
-///     repo.save(&migration).await.unwrap();
-///     let retrieved = repo.get("polls", "0001_initial").await.unwrap();
-///     assert_eq!(retrieved.name, "0001_initial");
-/// }
+/// repo.save(&migration).await.unwrap();
+/// let retrieved = repo.get("polls", "0001_initial").await.unwrap();
+/// assert_eq!(retrieved.name, "0001_initial");
+/// // }
+/// # }
 /// ```
 pub struct InMemoryRepository {
 	migrations: HashMap<(String, String), Migration>,
@@ -258,24 +266,30 @@ impl MigrationRepository for InMemoryRepository {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::*;
-/// use reinhardt_migrations::{Migration, MigrationSource};
-/// use rstest::*;
+/// ```rust,no_run
+/// # use reinhardt_test::fixtures::*;
+/// # use reinhardt_migrations::{Migration, MigrationSource};
+/// # use rstest::*;
+/// # #[tokio::main]
+/// # async fn main() {
+/// // #[rstest]
+/// // #[tokio::test]
+/// // async fn test_with_source(mut test_migration_source: TestMigrationSource) {
+/// let mut test_migration_source = TestMigrationSource::new();
+/// test_migration_source.add_migration(Migration {
+///     app_label: "polls".to_string(),
+///     name: "0001_initial".to_string(),
+///     operations: vec![],
+///     dependencies: vec![],
+///     initial: None,
+///     atomic: true,
+///     replaces: vec![],
+/// });
 ///
-/// #[rstest]
-/// #[tokio::test]
-/// async fn test_with_source(mut test_migration_source: TestMigrationSource) {
-///     test_migration_source.add_migration(Migration {
-///         app_label: "polls".to_string(),
-///         name: "0001_initial".to_string(),
-///         operations: vec![],
-///         dependencies: vec![],
-///     });
-///
-///     let migrations = test_migration_source.all_migrations().await.unwrap();
-///     assert_eq!(migrations.len(), 1);
-/// }
+/// let migrations = test_migration_source.all_migrations().await.unwrap();
+/// assert_eq!(migrations.len(), 1);
+/// // }
+/// # }
 /// ```
 #[fixture]
 pub fn test_migration_source() -> TestMigrationSource {
@@ -288,15 +302,17 @@ pub fn test_migration_source() -> TestMigrationSource {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::*;
-/// use reinhardt_migrations::{Migration, MigrationRepository};
-/// use rstest::*;
-///
-/// #[rstest]
-/// #[tokio::test]
-/// async fn test_with_repository(mut in_memory_repository: InMemoryRepository) {
-///     let migration = Migration {
+/// ```rust,no_run
+/// # use reinhardt_test::fixtures::*;
+/// # use reinhardt_migrations::{Migration, MigrationRepository};
+/// # use rstest::*;
+/// # #[tokio::main]
+/// # async fn main() {
+/// // #[rstest]
+/// // #[tokio::test]
+/// // async fn test_with_repository(mut in_memory_repository: InMemoryRepository) {
+/// let mut in_memory_repository = InMemoryRepository::new();
+/// let migration = Migration {
 ///         app_label: "polls".to_string(),
 ///         name: "0001_initial".to_string(),
 ///         operations: vec![],

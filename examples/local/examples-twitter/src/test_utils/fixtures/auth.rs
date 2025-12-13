@@ -13,7 +13,7 @@ use reinhardt::{Claims, JwtAuth};
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```rust,no_run
 /// let token = generate_test_token(&user);
 /// // Use token in Authorization header: "Bearer {token}"
 /// ```
@@ -31,7 +31,7 @@ pub fn generate_test_token(user: &User) -> String {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```rust,no_run
 /// let expired_token = generate_expired_token(&user);
 /// // This token will fail verification due to expiration
 /// ```
@@ -53,7 +53,7 @@ pub fn generate_expired_token(user: &User) -> String {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```rust,no_run
 /// let invalid_token = generate_invalid_token(&user);
 /// // This token will fail verification due to invalid signature
 /// ```

@@ -1202,30 +1202,32 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt::collect_migrations;
-/// use reinhardt_test::fixtures::postgres_with_migrations_from;
-/// use reinhardt_migrations::MigrationProvider;
-///
+/// ```rust,no_run
+/// # use reinhardt::collect_migrations;
+/// # use reinhardt_test::fixtures::postgres_with_migrations_from;
+/// # use reinhardt_migrations::MigrationProvider;
+/// # #[tokio::main]
+/// # async fn main() {
 /// // In your app's migrations.rs, use collect_migrations! macro
-/// pub mod _0001_initial;
-/// pub mod _0002_add_field;
+/// // pub mod _0001_initial;
+/// // pub mod _0002_add_field;
 ///
-/// collect_migrations!(
-///     app_label = "myapp",
-///     _0001_initial,
-///     _0002_add_field,
-/// );
+/// // collect_migrations!(
+/// //     app_label = "myapp",
+/// //     _0001_initial,
+/// //     _0002_add_field,
+/// // );
 ///
 /// // Migrations are automatically registered in global registry via linkme
 ///
-/// #[tokio::test]
-/// async fn test_with_migrations() {
-///     let (container, db) = postgres_with_migrations_from::<MyappMigrations>().await;
-///     // Database has all migrations applied from MyappMigrations provider
-///     let result = db.fetch_all("SELECT * FROM my_table", vec![]).await;
-///     assert!(result.is_ok());
-/// }
+/// // #[tokio::test]
+/// // async fn test_with_migrations() {
+/// //     let (container, db) = postgres_with_migrations_from::<MyappMigrations>().await;
+/// //     // Database has all migrations applied from MyappMigrations provider
+/// //     let result = db.fetch_all("SELECT * FROM my_table", vec![]).await;
+/// //     assert!(result.is_ok());
+/// // }
+/// # }
 /// ```
 #[cfg(feature = "testcontainers")]
 pub async fn postgres_with_migrations_from<P: reinhardt_migrations::MigrationProvider>() -> (
@@ -1363,26 +1365,28 @@ pub async fn mysql_container() -> (
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt::collect_migrations;
-/// use reinhardt_test::fixtures::mysql_with_migrations_from;
-/// use reinhardt_migrations::MigrationProvider;
-///
+/// ```rust,no_run
+/// # use reinhardt::collect_migrations;
+/// # use reinhardt_test::fixtures::mysql_with_migrations_from;
+/// # use reinhardt_migrations::MigrationProvider;
+/// # #[tokio::main]
+/// # async fn main() {
 /// // In your app's migrations.rs, use collect_migrations! macro
-/// pub mod _0001_initial;
+/// // pub mod _0001_initial;
 ///
-/// collect_migrations!(
-///     app_label = "myapp",
-///     _0001_initial,
-/// );
+/// // collect_migrations!(
+/// //     app_label = "myapp",
+/// //     _0001_initial,
+/// // );
 ///
 /// // Migrations are automatically registered in global registry via linkme
 ///
-/// #[tokio::test]
-/// async fn test_with_migrations() {
-///     let (container, db) = mysql_with_migrations_from::<MyappMigrations>().await;
-///     // Database has all migrations applied from MyappMigrations provider
-/// }
+/// // #[tokio::test]
+/// // async fn test_with_migrations() {
+/// //     let (container, db) = mysql_with_migrations_from::<MyappMigrations>().await;
+/// //     // Database has all migrations applied from MyappMigrations provider
+/// // }
+/// # }
 /// ```
 #[cfg(feature = "testcontainers")]
 pub async fn mysql_with_migrations_from<P: reinhardt_migrations::MigrationProvider>() -> (
@@ -1430,26 +1434,28 @@ pub async fn mysql_with_migrations_from<P: reinhardt_migrations::MigrationProvid
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt::collect_migrations;
-/// use reinhardt_test::fixtures::sqlite_with_migrations_from;
-/// use reinhardt_migrations::MigrationProvider;
-///
+/// ```rust,no_run
+/// # use reinhardt::collect_migrations;
+/// # use reinhardt_test::fixtures::sqlite_with_migrations_from;
+/// # use reinhardt_migrations::MigrationProvider;
+/// # #[tokio::main]
+/// # async fn main() {
 /// // In your app's migrations.rs, use collect_migrations! macro
-/// pub mod _0001_initial;
+/// // pub mod _0001_initial;
 ///
-/// collect_migrations!(
-///     app_label = "myapp",
-///     _0001_initial,
-/// );
+/// // collect_migrations!(
+/// //     app_label = "myapp",
+/// //     _0001_initial,
+/// // );
 ///
 /// // Migrations are automatically registered in global registry via linkme
 ///
-/// #[tokio::test]
-/// async fn test_with_migrations() {
-///     let db = sqlite_with_migrations_from::<MyappMigrations>().await;
-///     // Database has all migrations applied from MyappMigrations provider
-/// }
+/// // #[tokio::test]
+/// // async fn test_with_migrations() {
+/// //     let db = sqlite_with_migrations_from::<MyappMigrations>().await;
+/// //     // Database has all migrations applied from MyappMigrations provider
+/// // }
+/// # }
 /// ```
 #[cfg(feature = "testcontainers")]
 pub async fn sqlite_with_migrations_from<P: reinhardt_migrations::MigrationProvider>()
@@ -1495,10 +1501,12 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_migrations::MigrationProvi
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::*;
-/// use rstest::*;
-///
+/// ```rust,no_run
+/// # use reinhardt_test::fixtures::*;
+/// # use rstest::*;
+/// # use std::sync::Arc;
+/// # use reinhardt_db::DatabaseConnection;
+/// # use testcontainers::{ContainerAsync, GenericImage};
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_with_all_migrations(
@@ -1515,13 +1523,13 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_migrations::MigrationProvi
 ///
 /// Your app must register migrations using `collect_migrations!`:
 ///
-/// ```rust,ignore
+/// ```rust,no_run
 /// // In your app's migrations.rs
-/// reinhardt::collect_migrations!(
-///     app_label = "polls",
-///     _0001_initial,
-///     _0002_add_fields,
-/// );
+/// // reinhardt::collect_migrations!(
+/// //     app_label = "polls",
+/// //     _0001_initial,
+/// //     _0002_add_fields,
+/// // );
 /// ```
 #[cfg(feature = "testcontainers")]
 #[rstest::fixture]
@@ -1568,14 +1576,16 @@ pub async fn postgres_with_all_migrations() -> (
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::postgres_with_apps_migrations;
-///
-/// #[tokio::test]
-/// async fn test_polls_only() {
-///     let (_container, db) = postgres_with_apps_migrations(&["polls"]).await;
-///     // Only polls app migrations are applied
-/// }
+/// ```rust,no_run
+/// # use reinhardt_test::fixtures::postgres_with_apps_migrations;
+/// # #[tokio::main]
+/// # async fn main() {
+/// // #[tokio::test]
+/// // async fn test_polls_only() {
+/// let (_container, db) = postgres_with_apps_migrations(&["polls"]).await;
+/// // Only polls app migrations are applied
+/// // }
+/// # }
 /// ```
 #[cfg(feature = "testcontainers")]
 pub async fn postgres_with_apps_migrations(
@@ -1624,10 +1634,12 @@ pub async fn postgres_with_apps_migrations(
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::*;
-/// use rstest::*;
-///
+/// ```rust,no_run
+/// # use reinhardt_test::fixtures::*;
+/// # use rstest::*;
+/// # use std::sync::Arc;
+/// # use reinhardt_db::DatabaseConnection;
+/// # use testcontainers::{ContainerAsync, GenericImage};
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_with_all_migrations(
@@ -1724,10 +1736,11 @@ pub async fn mysql_with_apps_migrations(
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_test::fixtures::*;
-/// use rstest::*;
-///
+/// ```rust,no_run
+/// # use reinhardt_test::fixtures::*;
+/// # use rstest::*;
+/// # use std::sync::Arc;
+/// # use reinhardt_db::DatabaseConnection;
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_with_all_migrations(

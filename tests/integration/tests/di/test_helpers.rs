@@ -17,10 +17,10 @@ use std::sync::Arc;
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_di::{Injectable, InjectionContext, DiResult};
-/// use std::sync::Arc;
-///
+/// ```rust,no_run
+/// # use reinhardt_di::{Injectable, InjectionContext, DiResult, SingletonScope};
+/// # use std::sync::Arc;
+/// # async fn example() -> DiResult<()> {
 /// struct MyService;
 ///
 /// #[async_trait::async_trait]
@@ -30,8 +30,11 @@ use std::sync::Arc;
 ///     }
 /// }
 ///
+/// # let singleton_scope = Arc::new(SingletonScope::new());
 /// let ctx = InjectionContext::builder(singleton_scope).build();
 /// let service = resolve_injectable::<MyService>(&ctx).await?;
+/// # Ok(())
+/// # }
 /// ```
 pub async fn resolve_injectable<T>(ctx: &InjectionContext) -> DiResult<Arc<T>>
 where

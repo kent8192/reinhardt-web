@@ -14,7 +14,7 @@
 //!
 //! ## PostgresContainer
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_test::containers::PostgresContainer;
 //!
 //! let container = PostgresContainer::new();
@@ -24,7 +24,7 @@
 //!
 //! ## MySqlContainer
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_test::containers::MySqlContainer;
 //!
 //! let container = MySqlContainer::new();
@@ -33,7 +33,7 @@
 //!
 //! ## RedisContainer
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_test::containers::RedisContainer;
 //!
 //! let container = RedisContainer::new();
@@ -44,7 +44,7 @@
 //!
 //! ## Quick Start Functions
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_test::containers::{start_postgres, start_redis};
 //!
 //! let (pg_container, pg_url) = start_postgres();
@@ -53,7 +53,7 @@
 //!
 //! ## Test Wrapper Functions
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_test::containers::with_postgres;
 //!
 //! #[tokio::test]
@@ -68,7 +68,7 @@
 //!
 //! ## SQLite Helpers
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_test::containers::sqlite;
 //!
 //! let memory_url = sqlite::memory_url();
@@ -519,7 +519,9 @@ where
 /// Helper function to run a test with a database container
 ///
 /// # Example
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_test::containers::{with_postgres, PostgresContainer};
 ///
 /// #[tokio::test]
@@ -571,13 +573,17 @@ where
 /// even if the test panics. No manual cleanup is required.
 ///
 /// # Example
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_test::containers::RedisClusterGuard;
 ///
 /// let cluster = RedisClusterGuard::new(container, urls).await?;
 /// let mut conn = cluster.get_async_connection().await?;
 /// conn.set("key", "value").await?;
 /// // Cluster is automatically cleaned up when guard drops
+///
+/// # }
 /// ```
 #[cfg(feature = "testcontainers")]
 pub struct RedisClusterGuard {

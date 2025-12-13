@@ -44,11 +44,15 @@ pub type RequestHandler = Arc<dyn Fn(Request<Full<Bytes>>) -> Response<Full<Byte
 /// Test client for making API requests
 ///
 /// # Example
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// let client = APIClient::new();
 /// client.login("username", "password").await?;
 /// let response = client.get("/api/users/").await?;
 /// assert_eq!(response.status(), StatusCode::OK);
+///
+/// # }
 /// ```
 pub struct APIClient {
 	/// Base URL for requests (e.g., "http://testserver")

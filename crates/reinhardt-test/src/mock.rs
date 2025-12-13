@@ -506,7 +506,7 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_test::mock::MockSchemaEditor;
 /// use reinhardt_db_backends::schema::BaseDatabaseSchemaEditor;
 /// use sea_query::PostgresQueryBuilder;
