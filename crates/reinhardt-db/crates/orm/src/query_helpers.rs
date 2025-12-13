@@ -12,9 +12,28 @@ use crate::model::Model;
 /// Build SELECT COUNT(*) query for a model
 ///
 /// # Example
-/// ```rust,ignore
+/// ```rust
+/// # use reinhardt_orm::Model;
+/// # use sea_query::{PostgresQueryBuilder, Query, Alias, Asterisk, Expr, ExprTrait, Func, SelectStatement};
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct User { id: i64 }
+/// # impl Model for User {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "users" }
+/// #     fn primary_key_field() -> &'static str { "id" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
+/// # fn build_count_query<M: Model>() -> SelectStatement {
+/// #     Query::select()
+/// #         .expr(Func::count(Expr::col(Asterisk)))
+/// #         .from(Alias::new(M::table_name()))
+/// #         .to_owned()
+/// # }
 /// let stmt = build_count_query::<User>();
-/// // SELECT COUNT(*) FROM users
+/// let sql = stmt.to_string(PostgresQueryBuilder);
+/// assert!(sql.contains("COUNT"));
+/// assert!(sql.contains("users"));
 /// ```
 pub fn build_count_query<M: Model>() -> SelectStatement {
 	Query::select()
@@ -26,9 +45,34 @@ pub fn build_count_query<M: Model>() -> SelectStatement {
 /// Build SELECT * WHERE pk = ? LIMIT 1 query for a model
 ///
 /// # Example
-/// ```rust,ignore
-/// let stmt = build_get_query::<User>(1);
-/// // SELECT * FROM users WHERE id = $1 LIMIT 1
+/// ```rust
+/// # use reinhardt_orm::Model;
+/// # use sea_query::{PostgresQueryBuilder, Query, Alias, Asterisk, Expr, ExprTrait, SelectStatement};
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct User { id: i64 }
+/// # impl Model for User {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "users" }
+/// #     fn primary_key_field() -> &'static str { "id" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
+/// # fn build_get_query<M: Model, V>(pk: V) -> SelectStatement
+/// # where
+/// #     V: Into<sea_query::Value>,
+/// # {
+/// #     Query::select()
+/// #         .from(Alias::new(M::table_name()))
+/// #         .columns([Asterisk])
+/// #         .and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk.into()))
+/// #         .limit(1)
+/// #         .to_owned()
+/// # }
+/// let stmt = build_get_query::<User, _>(1);
+/// let (sql, _values) = stmt.build(PostgresQueryBuilder);
+/// assert!(sql.contains("SELECT"));
+/// assert!(sql.contains("users"));
+/// assert!(sql.contains("LIMIT"));
 /// ```
 pub fn build_get_query<M: Model, V>(pk: V) -> SelectStatement
 where
@@ -45,9 +89,32 @@ where
 /// Build DELETE WHERE pk = ? query for a model
 ///
 /// # Example
-/// ```rust,ignore
-/// let stmt = build_delete_query::<User>(1);
-/// // DELETE FROM users WHERE id = $1
+/// ```rust
+/// # use reinhardt_orm::Model;
+/// # use sea_query::{PostgresQueryBuilder, Query, Alias, Expr, ExprTrait, DeleteStatement};
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct User { id: i64 }
+/// # impl Model for User {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "users" }
+/// #     fn primary_key_field() -> &'static str { "id" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
+/// # fn build_delete_query<M: Model, V>(pk: V) -> DeleteStatement
+/// # where
+/// #     V: Into<sea_query::Value>,
+/// # {
+/// #     Query::delete()
+/// #         .from_table(Alias::new(M::table_name()))
+/// #         .and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk.into()))
+/// #         .to_owned()
+/// # }
+/// let stmt = build_delete_query::<User, _>(1);
+/// let (sql, values) = stmt.build(PostgresQueryBuilder);
+/// assert!(sql.contains("DELETE"));
+/// assert!(sql.contains("users"));
+/// assert_eq!(values.0.len(), 1);
 /// ```
 pub fn build_delete_query<M: Model, V>(pk: V) -> DeleteStatement
 where
@@ -62,12 +129,41 @@ where
 /// Build INSERT INTO table (columns...) VALUES (values...) query
 ///
 /// # Example
-/// ```rust,ignore
+/// ```rust
+/// # use reinhardt_orm::Model;
+/// # use sea_query::{PostgresQueryBuilder, Query, Alias, Expr, ExprTrait, InsertStatement};
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct User { id: i64 }
+/// # impl Model for User {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "users" }
+/// #     fn primary_key_field() -> &'static str { "id" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
+/// # fn build_insert_query<M: Model>(
+/// #     columns: Vec<&str>,
+/// #     values: Vec<sea_query::Value>,
+/// # ) -> InsertStatement {
+/// #     let mut stmt = Query::insert()
+/// #         .into_table(Alias::new(M::table_name()))
+/// #         .to_owned();
+/// #     let col_refs: Vec<_> = columns.iter().map(|c| Alias::new(*c)).collect();
+/// #     stmt.columns(col_refs);
+/// #     if !values.is_empty() {
+/// #         let exprs: Vec<_> = values.into_iter().map(Expr::val).collect();
+/// #         stmt.values_panic(exprs);
+/// #     }
+/// #     stmt
+/// # }
 /// let stmt = build_insert_query::<User>(
 ///     vec!["name", "email"],
 ///     vec!["Alice".into(), "alice@example.com".into()]
 /// );
-/// // INSERT INTO users (name, email) VALUES ($1, $2)
+/// let (sql, values) = stmt.build(PostgresQueryBuilder);
+/// assert!(sql.contains("INSERT"));
+/// assert!(sql.contains("users"));
+/// assert_eq!(values.0.len(), 2);
 /// ```
 pub fn build_insert_query<M: Model>(
 	columns: Vec<&str>,
@@ -94,12 +190,42 @@ pub fn build_insert_query<M: Model>(
 /// Build UPDATE table SET columns = values WHERE pk = ? query
 ///
 /// # Example
-/// ```rust,ignore
-/// let stmt = build_update_query::<User>(
+/// ```rust
+/// # use reinhardt_orm::Model;
+/// # use sea_query::{PostgresQueryBuilder, Query, Alias, Expr, ExprTrait, UpdateStatement};
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct User { id: i64 }
+/// # impl Model for User {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "users" }
+/// #     fn primary_key_field() -> &'static str { "id" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
+/// # fn build_update_query<M: Model, V>(
+/// #     updates: Vec<(&str, sea_query::Value)>,
+/// #     pk: V,
+/// # ) -> UpdateStatement
+/// # where
+/// #     V: Into<sea_query::Value>,
+/// # {
+/// #     let mut stmt = Query::update()
+/// #         .table(Alias::new(M::table_name()))
+/// #         .to_owned();
+/// #     for (col, val) in updates {
+/// #         stmt.value(Alias::new(col), val);
+/// #     }
+/// #     stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk.into()))
+/// #         .to_owned()
+/// # }
+/// let stmt = build_update_query::<User, _>(
 ///     vec![("name", "Bob".into()), ("email", "bob@example.com".into())],
 ///     1
 /// );
-/// // UPDATE users SET name = $1, email = $2 WHERE id = $3
+/// let (sql, values) = stmt.build(PostgresQueryBuilder);
+/// assert!(sql.contains("UPDATE"));
+/// assert!(sql.contains("users"));
+/// assert_eq!(values.0.len(), 3); // 2 updates + 1 where condition
 /// ```
 pub fn build_update_query<M: Model, V>(
 	updates: Vec<(&str, sea_query::Value)>,
@@ -123,13 +249,19 @@ where
 /// Build SELECT EXISTS(...) query
 ///
 /// # Example
-/// ```rust,ignore
+/// ```rust
+/// # use sea_query::{PostgresQueryBuilder, Query, Alias, Expr, ExprTrait, SelectStatement};
+/// # fn build_exists_query(inner: SelectStatement) -> SelectStatement {
+/// #     Query::select().expr(Expr::exists(inner)).to_owned()
+/// # }
 /// let inner = Query::select()
 ///     .from(Alias::new("users"))
 ///     .and_where(Expr::col("id").eq(1))
 ///     .to_owned();
 /// let stmt = build_exists_query(inner);
-/// // SELECT EXISTS(SELECT * FROM users WHERE id = 1)
+/// let sql = stmt.to_string(PostgresQueryBuilder);
+/// assert!(sql.contains("EXISTS"));
+/// assert!(sql.contains("SELECT"));
 /// ```
 pub fn build_exists_query(inner: SelectStatement) -> SelectStatement {
 	Query::select().expr(Expr::exists(inner)).to_owned()
@@ -138,9 +270,31 @@ pub fn build_exists_query(inner: SelectStatement) -> SelectStatement {
 /// Build SELECT * FROM table WHERE column IN (values...) query
 ///
 /// # Example
-/// ```rust,ignore
+/// ```rust
+/// # use reinhardt_orm::Model;
+/// # use sea_query::{PostgresQueryBuilder, Query, Alias, Asterisk, Expr, ExprTrait, SelectStatement};
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct User { id: i64 }
+/// # impl Model for User {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "users" }
+/// #     fn primary_key_field() -> &'static str { "id" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
+/// # fn build_in_query<M: Model>(column: &str, values: Vec<sea_query::Value>) -> SelectStatement {
+/// #     Query::select()
+/// #         .from(Alias::new(M::table_name()))
+/// #         .columns([Asterisk])
+/// #         .and_where(Expr::col(Alias::new(column)).is_in(values))
+/// #         .to_owned()
+/// # }
 /// let stmt = build_in_query::<User>("id", vec![1.into(), 2.into(), 3.into()]);
-/// // SELECT * FROM users WHERE id IN ($1, $2, $3)
+/// let (sql, values) = stmt.build(PostgresQueryBuilder);
+/// assert!(sql.contains("SELECT"));
+/// assert!(sql.contains("users"));
+/// assert!(sql.contains("IN"));
+/// assert_eq!(values.0.len(), 3);
 /// ```
 pub fn build_in_query<M: Model>(column: &str, values: Vec<sea_query::Value>) -> SelectStatement {
 	Query::select()
