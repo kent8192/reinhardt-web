@@ -17,10 +17,17 @@ use serde::{Deserialize, Serialize};
 ///
 /// ## Example
 ///
-/// ```rust,ignore
-// User has many posts, access all post titles directly
-/// let titles_proxy = CollectionProxy::new("posts", "title");
-/// let titles: Vec<String> = titles_proxy.get_values(&user).await?;
+/// ```rust,no_run
+/// # use crate::CollectionProxy;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # struct User;
+/// # let user = User;
+/// // User has many posts, access all post titles directly
+/// let titles_proxy: CollectionProxy = CollectionProxy::new("posts", "title");
+/// // let titles: Vec<String> = titles_proxy.get_values(&user).await?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone)]
 pub struct CollectionProxy {

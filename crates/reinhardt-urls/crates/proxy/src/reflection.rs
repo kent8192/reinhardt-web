@@ -13,7 +13,10 @@ use std::any::Any;
 ///
 /// ## Example
 ///
-/// ```rust,ignore
+/// ```rust,no_run
+/// # use crate::{Reflectable, ScalarValue, ProxyResult};
+/// # use std::any::Any;
+/// # struct Post;
 /// struct User {
 ///     id: i64,
 ///     name: String,
@@ -27,7 +30,7 @@ use std::any::Any;
 ///             _ => None,
 ///         }
 ///     }
-///
+/// #     fn get_relationship_mut(&mut self, _name: &str) -> Option<&mut dyn Any> { None }
 ///     fn get_attribute(&self, name: &str) -> Option<ScalarValue> {
 ///         match name {
 ///             "name" => Some(ScalarValue::String(self.name.clone())),
@@ -35,6 +38,8 @@ use std::any::Any;
 ///             _ => None,
 ///         }
 ///     }
+/// #     fn set_attribute(&mut self, _name: &str, _value: ScalarValue) -> ProxyResult<()> { Ok(()) }
+/// #     fn set_relationship_attribute(&mut self, _rel: &str, _attr: &str, _val: ScalarValue) -> ProxyResult<()> { Ok(()) }
 /// }
 /// ```
 pub trait Reflectable {
@@ -106,8 +111,17 @@ pub trait Reflectable {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use reinhardt_proxy::{ReflectableFactory, Reflectable, ScalarValue, ProxyResult};
+/// ```rust,no_run
+/// use reinhardt_proxy::{ReflectableFactory, Reflectable, ScalarValue, ProxyResult, ProxyError};
+/// # use std::any::Any;
+/// # struct Tag { id: Option<i64>, name: String }
+/// # impl Reflectable for Tag {
+/// #     fn get_relationship(&self, _name: &str) -> Option<Box<dyn Any + 'static>> { None }
+/// #     fn get_relationship_mut(&mut self, _name: &str) -> Option<&mut dyn Any> { None }
+/// #     fn get_attribute(&self, _name: &str) -> Option<ScalarValue> { None }
+/// #     fn set_attribute(&mut self, _name: &str, _value: ScalarValue) -> ProxyResult<()> { Ok(()) }
+/// #     fn set_relationship_attribute(&mut self, _rel: &str, _attr: &str, _val: ScalarValue) -> ProxyResult<()> { Ok(()) }
+/// # }
 ///
 /// struct TagFactory;
 ///

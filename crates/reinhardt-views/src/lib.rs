@@ -16,51 +16,35 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
-//! use reinhardt_views::{ListView, DetailView, View};
-//! use reinhardt_serializers::JsonSerializer;
-//! use reinhardt_db::orm::{Model, QuerySet};
-//! use reinhardt_core::http::{Request, Response};
-//! use serde::{Serialize, Deserialize};
+//! ```rust,no_run
+//! use reinhardt_views::{ListView, DetailView};
+//! # use reinhardt_core::http::{Request, Response};
+//! # use reinhardt_exception::Error;
 //!
-//! #[derive(Debug, Clone, Serialize, Deserialize)]
-//! struct User {
-//!     id: Option<i64>,
-//!     username: String,
-//!     email: String,
-//! }
-//!
-//! impl Model for User {
-//!     type PrimaryKey = i64;
-//!     fn table_name() -> &'static str { "users" }
-//!     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
-//!     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
-//! }
+//! # #[derive(Debug, Clone)]
+//! # struct User {
+//! #     id: Option<i64>,
+//! #     username: String,
+//! #     email: String,
+//! # }
 //!
 //! // Create a ListView to display paginated users
-//! let users = vec![
-//!     User { id: Some(1), username: "alice".to_string(), email: "alice@example.com".to_string() },
-//!     User { id: Some(2), username: "bob".to_string(), email: "bob@example.com".to_string() },
-//! ];
-//!
-//! let list_view = ListView::<User, JsonSerializer<User>>::new()
-//!     .with_objects(users.clone())
+//! let list_view = ListView::<User>::new()
 //!     .with_paginate_by(10)
 //!     .with_ordering(vec!["-id".to_string()]);
 //!
 //! // Create a DetailView to display a single user
-//! let detail_view = DetailView::<User, JsonSerializer<User>>::new()
-//!     .with_object(users[0].clone())
+//! let detail_view = DetailView::<User>::new()
 //!     .with_context_object_name("user");
 //!
 //! // Use the views in request handlers
-//! async fn handle_list(request: Request) -> Result<Response, reinhardt_exception::Error> {
-//!     list_view.dispatch(request).await
-//! }
-//!
-//! async fn handle_detail(request: Request) -> Result<Response, reinhardt_exception::Error> {
-//!     detail_view.dispatch(request).await
-//! }
+//! # async fn handle_list(request: Request) -> Result<Response, Error> {
+//! #     list_view.dispatch(request).await
+//! # }
+//! #
+//! # async fn handle_detail(request: Request) -> Result<Response, Error> {
+//! #     detail_view.dispatch(request).await
+//! # }
 //! ```
 
 // Module declarations from merged views-core

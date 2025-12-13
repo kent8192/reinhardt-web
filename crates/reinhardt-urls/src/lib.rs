@@ -15,25 +15,18 @@
 //! Per-route middleware configuration is now available. You can attach middleware
 //! to specific routes or route groups:
 //!
-//! ```rust,ignore
-//! use reinhardt_routers::{UnifiedRouter, RouteGroup};
-//! use reinhardt_middleware::LoggingMiddleware;
-//! use hyper::Method;
-//! use std::sync::Arc;
-//! # use reinhardt_apps::{Request, Response, Result};
+//! ```rust,no_run
+//! # use reinhardt_routers::UnifiedRouter;
+//! # use hyper::Method;
+//! # use reinhardt_core::http::{Request, Response, Result};
 //!
 //! # async fn handler(_req: Request) -> Result<Response> { Ok(Response::ok()) }
 //! # async fn users_handler(_req: Request) -> Result<Response> { Ok(Response::ok()) }
 //! # async fn settings_handler(_req: Request) -> Result<Response> { Ok(Response::ok()) }
 //! let router = UnifiedRouter::new()
 //!     .function("/public", Method::GET, handler)
-//!     .function("/protected", Method::GET, handler)
-//!         .with_route_middleware(Arc::new(LoggingMiddleware)) // Route-specific middleware
-//!     .mount("/admin", RouteGroup::new()
-//!         .with_middleware(Arc::new(LoggingMiddleware)) // Group middleware
-//!         .function("/users", Method::GET, users_handler)
-//!         .function("/settings", Method::GET, settings_handler)
-//!         .build());
+//!     .function("/protected", Method::GET, handler);
+//!     // .with_route_middleware(...) // Route-specific middleware
 //! ```
 //!
 //! **Features**:

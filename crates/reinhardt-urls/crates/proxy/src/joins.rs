@@ -229,7 +229,8 @@ impl Default for NestedProxy {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```rust,no_run
+/// # use reinhardt_proxy::RelationshipPath;
 /// // Valid path: user -> posts -> comments
 /// let path = RelationshipPath::new()
 ///     .through("posts")

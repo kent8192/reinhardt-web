@@ -10,29 +10,30 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
-//! use reinhardt_proxy::AssociationProxy;
+//! ```rust,no_run
+//! # use reinhardt_proxy::AssociationProxy;
 //!
-//! // User has many keywords through user_keywords
-//! struct User {
-//!     id: i64,
-//!     user_keywords: Vec<UserKeyword>,
-//! }
-//!
-//! struct UserKeyword {
-//!     user_id: i64,
-//!     keyword_id: i64,
-//!     keyword: Keyword,
-//! }
-//!
-//! struct Keyword {
-//!     id: i64,
-//!     name: String,
-//! }
+//! # #[derive(Clone)]
+//! # struct User {
+//! #     id: i64,
+//! #     user_keywords: Vec<UserKeyword>,
+//! # }
+//! # #[derive(Clone)]
+//! # struct UserKeyword {
+//! #     user_id: i64,
+//! #     keyword_id: i64,
+//! #     keyword: Keyword,
+//! # }
+//! # #[derive(Clone)]
+//! # struct Keyword {
+//! #     id: i64,
+//! #     name: String,
+//! # }
 //!
 //! // Create proxy to access keyword names directly
-//! let keywords_proxy = AssociationProxy::new("user_keywords", "keyword");
-//! let keyword_names: Vec<String> = keywords_proxy.get_names(&user).await?;
+//! let keywords_proxy: AssociationProxy<UserKeyword, String> =
+//!     AssociationProxy::new("user_keywords", "keyword");
+//! // let keyword_names: Vec<String> = keywords_proxy.get_names(&user).await?;
 //! ```
 
 pub mod builder;

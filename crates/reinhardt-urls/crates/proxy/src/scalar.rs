@@ -12,10 +12,18 @@ use crate::proxy::ScalarValue;
 ///
 /// ## Example
 ///
-/// ```rust,ignore
-// User has one profile, access profile.bio directly
+/// ```rust,no_run
+/// # use crate::ScalarProxy;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # #[derive(Clone)]
+/// # struct User;
+/// # let user = User;
+/// // User has one profile, access profile.bio directly
 /// let bio_proxy = ScalarProxy::new("profile", "bio");
-/// let bio: Option<String> = bio_proxy.get_value(&user).await?;
+/// // let bio: Option<String> = bio_proxy.get_value(&user).await?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct ScalarProxy {

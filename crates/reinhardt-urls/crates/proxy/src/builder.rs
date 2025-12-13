@@ -16,12 +16,20 @@ pub type ValidatorFn<U> = fn(&U) -> Result<(), crate::ProxyError>;
 ///
 /// ## Example
 ///
-/// ```rust,ignore
+/// ```rust
+/// # use reinhardt_proxy::ProxyBuilder;
+/// # #[derive(Clone)]
+/// # struct UserKeyword { keyword: String }
+/// # impl UserKeyword {
+/// #     fn new(keyword: String) -> Self { UserKeyword { keyword } }
+/// # }
 /// let proxy = ProxyBuilder::new()
 ///     .relationship("user_keywords")
 ///     .attribute("keyword")
-///     .creator(|keyword| UserKeyword::new(keyword))
+///     .creator(|keyword: String| UserKeyword::new(keyword))
 ///     .build();
+/// assert_eq!(proxy.relationship, "user_keywords");
+/// assert_eq!(proxy.attribute, "keyword");
 /// ```
 pub struct ProxyBuilder<T, U> {
 	name: Option<String>,
@@ -402,7 +410,8 @@ impl<T, U> ProxyBuilder<T, U> {
 ///
 /// ## Example
 ///
-/// ```rust,ignore
+/// ```rust,no_run
+/// # use crate::association_proxy;
 /// let proxy = association_proxy("user_keywords", "keyword");
 /// ```
 pub fn association_proxy<T, U>(relationship: &str, attribute: &str) -> AssociationProxy<T, U> {

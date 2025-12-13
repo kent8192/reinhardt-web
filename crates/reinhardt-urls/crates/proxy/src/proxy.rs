@@ -11,10 +11,20 @@ use crate::{ProxyError, ProxyResult};
 ///
 /// ## Example
 ///
-/// ```rust,ignore
-// Access keyword names through user_keywords relationship
-/// let proxy = AssociationProxy::new("user_keywords", "keyword");
-/// let names = proxy.get_collection(&user).await?;
+/// ```rust,no_run
+/// # use crate::AssociationProxy;
+/// # #[derive(Clone)]
+/// # struct UserKeyword;
+/// # #[derive(Clone)]
+/// # struct User;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let user = User;
+/// // Access keyword names through user_keywords relationship
+/// let proxy: AssociationProxy<UserKeyword, String> = AssociationProxy::new("user_keywords", "keyword");
+/// // let names = proxy.get_collection(&user).await?;
+/// # Ok(())
+/// # }
 /// ```
 pub struct AssociationProxy<T, U> {
 	/// Optional name/alias for this proxy

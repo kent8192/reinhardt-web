@@ -15,7 +15,7 @@ static GLOBAL_ROUTER: OnceCell<StdRwLock<Option<Arc<UnifiedRouter>>>> = OnceCell
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_routers::{UnifiedRouter, register_router};
 /// use hyper::Method;
 ///
@@ -46,7 +46,7 @@ pub fn register_router_arc(router: Arc<UnifiedRouter>) {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_routers::get_router;
 ///
 /// if let Some(router) = get_router() {
@@ -64,7 +64,7 @@ pub fn get_router() -> Option<Arc<UnifiedRouter>> {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_routers::is_router_registered;
 ///
 /// if !is_router_registered() {
@@ -82,7 +82,7 @@ pub fn is_router_registered() -> bool {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_routers::clear_router;
 ///
 /// clear_router();

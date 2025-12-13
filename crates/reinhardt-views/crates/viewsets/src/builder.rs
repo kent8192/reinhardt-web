@@ -86,23 +86,30 @@ impl<V: ViewSet + 'static> ViewSetBuilder<V> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	/// use reinhardt_routers::UnifiedRouter;
-	/// use reinhardt_viewsets::ModelViewSet;
-	/// use hyper::Method;
-	/// # use serde::{Serialize, Deserialize};
-	/// # #[derive(Serialize, Deserialize, Clone)]
+	/// ```rust,no_run
+	/// # use crate::ViewSet;
+	/// # use hyper::Method;
+	/// # use reinhardt_core::exception::Error;
+	/// # use std::sync::Arc;
+	/// # #[derive(Clone)]
 	/// # struct User { id: i64, name: String }
-	/// # struct UserSerializer;
+	/// # struct UserViewSet;
+	/// # impl ViewSet for UserViewSet {
+	/// #     type Context = ();
+	/// # }
+	/// # struct Router;
+	/// # impl crate::builder::RegisterViewSet for Router {
+	/// #     fn register_handler(&mut self, _path: &str, _handler: Arc<dyn reinhardt_core::Handler>) {}
+	/// # }
 	///
-	/// let mut router = UnifiedRouter::new();
-	/// let viewset: ModelViewSet<User, UserSerializer> = ModelViewSet::new("users");
+	/// let mut router = Router;
+	/// let viewset = UserViewSet;
 	///
-	/// viewset.as_view()
+	/// crate::builder::ViewSetBuilder::new(viewset)
 	///     .action(Method::GET, "list")
 	///     .action(Method::POST, "create")
 	///     .register_to(&mut router, "/users")?;
-	/// # Ok::<(), reinhardt_core::exception::Error>(())
+	/// # Ok::<(), Error>(())
 	/// ```
 	pub fn register_to<R>(self, router: &mut R, path: &str) -> Result<()>
 	where

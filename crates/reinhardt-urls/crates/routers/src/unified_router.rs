@@ -648,18 +648,26 @@ impl UnifiedRouter {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	/// use reinhardt::prelude::*;
+	/// ```rust,no_run
+	/// # use reinhardt_core::{EndpointInfo, Handler, http::{Request, Response}};
+	/// # use hyper::Method;
+	/// # struct ListUsers;
+	/// # impl EndpointInfo for ListUsers {
+	/// #     fn path() -> &'static str { "/users" }
+	/// #     fn method() -> Method { Method::GET }
+	/// #     fn name() -> &'static str { "list_users" }
+	/// # }
+	/// # #[async_trait::async_trait]
+	/// # impl Handler for ListUsers {
+	/// #     async fn handle(&self, _req: Request) -> Result<Response, reinhardt_core::http::Error> {
+	/// #         Ok(Response::ok())
+	/// #     }
+	/// # }
+	/// # fn list_users() -> ListUsers { ListUsers }
 	///
-	/// // In views.rs - the #[get] macro generates a View type
-	/// #[get("/users", name = "list_users")]
-	/// pub async fn list_users(req: Request) -> ViewResult<Response> {
-	///     Ok(Response::ok())
-	/// }
-	///
-	/// // In urls.rs - pass the function directly (no () needed)
+	/// // Pass the function directly (no () needed)
 	/// let router = UnifiedRouter::new()
-	///     .endpoint(views::list_users);
+	///     .endpoint(list_users);
 	/// ```
 	pub fn endpoint<F, E>(mut self, f: F) -> Self
 	where
