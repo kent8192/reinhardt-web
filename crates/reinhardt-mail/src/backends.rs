@@ -215,16 +215,18 @@ impl SmtpConfig {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_mail::{SmtpBackend, SmtpConfig, SmtpSecurity};
-/// use std::time::Duration;
-///
+/// ```rust,no_run
+/// # use reinhardt_mail::{SmtpBackend, SmtpConfig, SmtpSecurity};
+/// # use std::time::Duration;
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = SmtpConfig::new("smtp.gmail.com", 587)
 ///     .with_credentials("user@gmail.com".to_string(), "password".to_string())
 ///     .with_security(SmtpSecurity::StartTls)
 ///     .with_timeout(Duration::from_secs(30));
 ///
 /// let backend = SmtpBackend::new(config)?;
+/// # Ok(())
+/// # }
 /// ```
 pub struct SmtpBackend {
 	config: SmtpConfig,

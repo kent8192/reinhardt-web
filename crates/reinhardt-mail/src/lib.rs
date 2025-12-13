@@ -61,6 +61,7 @@
 //! ).await?;
 //! # Ok(())
 //! # }
+//! ```
 //!
 //! ### Email with Attachments
 //!
@@ -117,6 +118,7 @@
 //!     .build()?;
 //! # Ok(())
 //! # }
+//! ```
 //!
 //! ### SMTP with TLS
 //!
@@ -143,6 +145,7 @@
 //! email.send(&backend).await?;
 //! # Ok(())
 //! # }
+//! ```
 //!
 //! ### Bulk Sending with Connection Pool
 //!

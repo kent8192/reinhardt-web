@@ -74,7 +74,7 @@ pub async fn send_mail(
 ///     &backend,
 /// ).await?;
 ///
-/// assert_eq!(backend.count(), 1);
+/// assert_eq!(backend.count().await, 1);
 /// # Ok(())
 /// # }
 /// ```
@@ -133,7 +133,7 @@ pub async fn send_mail_with_backend(
 ///
 /// let results = send_mass_mail(messages, &backend).await?;
 /// assert_eq!(results, 2);
-/// assert_eq!(backend.count(), 2);
+/// assert_eq!(backend.count().await, 2);
 /// # Ok(())
 /// # }
 /// ```
@@ -173,8 +173,8 @@ pub async fn send_mass_mail(
 ///     &backend,
 /// ).await?;
 ///
-/// assert_eq!(backend.count(), 1);
-/// let messages = backend.get_messages();
+/// assert_eq!(backend.count().await, 1);
+/// let messages = backend.get_messages().await;
 /// assert!(messages[0].subject.starts_with("[ALERT]"));
 /// # Ok(())
 /// # }
@@ -255,8 +255,8 @@ pub async fn mail_admins(
 ///     &backend,
 /// ).await?;
 ///
-/// assert_eq!(backend.count(), 1);
-/// let messages = backend.get_messages();
+/// assert_eq!(backend.count().await, 1);
+/// let messages = backend.get_messages().await;
 /// assert!(messages[0].subject.starts_with("[INFO]"));
 /// # Ok(())
 /// # }

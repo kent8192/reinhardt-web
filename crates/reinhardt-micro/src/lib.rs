@@ -17,7 +17,7 @@
 //!
 //! Reinhardt Micro provides builder-style middleware configuration:
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_micro::{App, CorsConfig, RateLimitConfig, LoggingConfig, MetricsConfig};
 //! use std::time::Duration;
 //!
@@ -38,7 +38,7 @@
 //!
 //! ## Quick Start
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_micro::App;
 //!
 //! #[tokio::main]

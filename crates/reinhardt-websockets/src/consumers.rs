@@ -7,7 +7,7 @@
 //!
 //! When the `di` feature is enabled, `ConsumerContext` supports dependency injection:
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_websockets::consumers::{ConsumerContext, WebSocketConsumer};
 //! use std::sync::Arc;
 //!
@@ -76,10 +76,11 @@ impl ConsumerContext {
 	///
 	/// ```ignore
 	/// use reinhardt_websockets::consumers::ConsumerContext;
-	/// use reinhardt_di::InjectionContext;
+	/// use reinhardt_di::{InjectionContext, SingletonScope};
 	/// use std::sync::Arc;
 	///
-	/// let di_ctx = Arc::new(InjectionContext::new());
+	/// let singleton = Arc::new(SingletonScope::new());
+	/// let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 	/// let context = ConsumerContext::with_di_context(connection, di_ctx);
 	/// ```
 	#[cfg(feature = "di")]
