@@ -12,9 +12,26 @@ pub trait FieldOrderingExt<M: Model, T> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust
+	/// # use reinhardt_filters::{field_extensions::FieldOrderingExt, OrderDirection};
+	/// # use reinhardt_db::orm::{Field, Model};
+	/// #
+	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	/// # struct Post {
+	/// #     id: i64,
+	/// #     title: String,
+	/// # }
+	/// #
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// # }
 	/// let order = Field::<Post, String>::new(vec!["title"]).asc();
-	// Generates: ORDER BY title ASC
+	/// // Generates: ORDER BY title ASC
+	/// assert_eq!(order.direction(), OrderDirection::Asc);
+	/// assert_eq!(order.to_sql(), "title ASC");
 	/// ```
 	fn asc(self) -> OrderingField<M>;
 
@@ -22,9 +39,26 @@ pub trait FieldOrderingExt<M: Model, T> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust
+	/// # use reinhardt_filters::{field_extensions::FieldOrderingExt, OrderDirection};
+	/// # use reinhardt_db::orm::{Field, Model};
+	/// #
+	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	/// # struct Post {
+	/// #     id: i64,
+	/// #     created_at: String,
+	/// # }
+	/// #
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// # }
 	/// let order = Field::<Post, String>::new(vec!["created_at"]).desc();
-	// Generates: ORDER BY created_at DESC
+	/// // Generates: ORDER BY created_at DESC
+	/// assert_eq!(order.direction(), OrderDirection::Desc);
+	/// assert_eq!(order.to_sql(), "created_at DESC");
 	/// ```
 	fn desc(self) -> OrderingField<M>;
 }

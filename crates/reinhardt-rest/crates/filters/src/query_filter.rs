@@ -17,14 +17,29 @@ use std::marker::PhantomData;
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_filters::QueryFilter;
-/// use reinhardt_db::orm::Field;
-///
+/// ```rust
+/// # use reinhardt_filters::QueryFilter;
+/// # use reinhardt_db::orm::{Field, Model};
+/// # use reinhardt_filters::field_extensions::FieldOrderingExt;
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct Post {
+/// #     id: i64,
+/// #     title: String,
+/// #     created_at: String,
+/// # }
+/// # impl Model for Post {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "posts" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
 /// let filter = QueryFilter::<Post>::new()
-///     .add(Field::new(vec!["title"]).icontains("rust"))
-///     .add(Field::new(vec!["created_at"]).year().gte(2024))
-///     .order_by(Field::new(vec!["title"]).asc());
+///     .with_lookup(Field::new(vec!["title"]).icontains("rust"))
+///     .with_lookup(Field::<Post, i32>::new(vec!["created_at"]).gte(2024))
+///     .order_by(Field::<Post, String>::new(vec!["title"]).asc());
+/// // Verify filter was constructed successfully
+/// assert_eq!(filter.lookups().len(), 2);
+/// assert_eq!(filter.ordering().len(), 1);
 /// ```
 pub struct QueryFilter<M: Model> {
 	lookups: Vec<Lookup<M>>,
@@ -50,10 +65,25 @@ impl<M: Model> QueryFilter<M> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust
+	/// # use reinhardt_filters::QueryFilter;
+	/// # use reinhardt_db::orm::{Field, Model};
+	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	/// # struct Post {
+	/// #     id: i64,
+	/// #     title: String,
+	/// #     age: i32,
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// # }
 	/// let filter = QueryFilter::<Post>::new()
 	///     .with_lookup(Field::new(vec!["title"]).icontains("rust"))
 	///     .with_lookup(Field::new(vec!["age"]).gte(18));
+	/// assert_eq!(filter.lookups().len(), 2);
 	/// ```
 	pub fn with_lookup(mut self, lookup: Lookup<M>) -> Self {
 		self.lookups.push(lookup);
@@ -72,10 +102,26 @@ impl<M: Model> QueryFilter<M> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust
+	/// # use reinhardt_filters::QueryFilter;
+	/// # use reinhardt_db::orm::{Field, Model};
+	/// # use reinhardt_filters::field_extensions::FieldOrderingExt;
+	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	/// # struct Post {
+	/// #     id: i64,
+	/// #     title: String,
+	/// #     created_at: String,
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// # }
 	/// let filter = QueryFilter::<Post>::new()
-	///     .order_by(Field::new(vec!["created_at"]).desc())
-	///     .order_by(Field::new(vec!["title"]).asc());
+	///     .order_by(Field::<Post, String>::new(vec!["created_at"]).desc())
+	///     .order_by(Field::<Post, String>::new(vec!["title"]).asc());
+	/// assert_eq!(filter.ordering().len(), 2);
 	/// ```
 	pub fn order_by(mut self, field: OrderingField<M>) -> Self {
 		self.ordering.push(field);
@@ -92,13 +138,29 @@ impl<M: Model> QueryFilter<M> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	// (title ICONTAINS 'rust' OR content ICONTAINS 'rust')
+	/// ```rust
+	/// # use reinhardt_filters::QueryFilter;
+	/// # use reinhardt_db::orm::{Field, Model};
+	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	/// # struct Post {
+	/// #     id: i64,
+	/// #     title: String,
+	/// #     content: String,
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// # }
+	/// // (title ICONTAINS 'rust' OR content ICONTAINS 'rust')
 	/// let filter = QueryFilter::<Post>::new()
 	///     .add_or_group(vec![
 	///         Field::new(vec!["title"]).icontains("rust"),
 	///         Field::new(vec!["content"]).icontains("rust"),
 	///     ]);
+	/// assert_eq!(filter.or_groups().len(), 1);
+	/// assert_eq!(filter.or_groups()[0].len(), 2);
 	/// ```
 	pub fn add_or_group(mut self, lookups: Vec<Lookup<M>>) -> Self {
 		if !lookups.is_empty() {
@@ -113,13 +175,28 @@ impl<M: Model> QueryFilter<M> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	/// use reinhardt_filters::MultiTermSearch;
-	///
-	/// let terms = vec!["rust", "web"];
-	/// let term_lookups = MultiTermSearch::search_terms::<Post>(terms);
+	/// ```rust
+	/// # use reinhardt_filters::QueryFilter;
+	/// # use reinhardt_db::orm::{Field, Model};
+	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	/// # struct Post {
+	/// #     id: i64,
+	/// #     title: String,
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// # }
+	/// // Simulate multi-term search
+	/// let term_lookups = vec![
+	///     vec![Field::new(vec!["title"]).icontains("rust")],
+	///     vec![Field::new(vec!["title"]).icontains("web")],
+	/// ];
 	/// let filter = QueryFilter::<Post>::new()
 	///     .add_multi_term(term_lookups);
+	/// assert_eq!(filter.or_groups().len(), 2);
 	/// ```
 	pub fn add_multi_term(mut self, term_lookups: Vec<Vec<Lookup<M>>>) -> Self {
 		for lookups in term_lookups {
@@ -128,6 +205,21 @@ impl<M: Model> QueryFilter<M> {
 			}
 		}
 		self
+	}
+
+	/// Get the list of lookups
+	pub fn lookups(&self) -> &[Lookup<M>] {
+		&self.lookups
+	}
+
+	/// Get the list of OR groups
+	pub fn or_groups(&self) -> &[Vec<Lookup<M>>] {
+		&self.or_groups
+	}
+
+	/// Get the list of ordering fields
+	pub fn ordering(&self) -> &[OrderingField<M>] {
+		&self.ordering
 	}
 
 	/// Compile lookups to SQL WHERE clause

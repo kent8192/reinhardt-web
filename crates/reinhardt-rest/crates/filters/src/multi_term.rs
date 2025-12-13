@@ -8,15 +8,41 @@ use reinhardt_db::orm::{Field, Lookup, Model};
 
 /// Combines multiple search terms across multiple fields
 ///
+/// Search for posts containing "rust" AND "programming".
+/// This creates: `(title ICONTAINS 'rust' OR content ICONTAINS 'rust') AND (title ICONTAINS 'programming' OR content ICONTAINS 'programming')`
+///
 /// # Examples
 ///
-/// ```rust,ignore
-// Search for posts containing "rust" AND "programming"
+/// ```rust
+/// # use reinhardt_filters::{MultiTermSearch, SearchableModel};
+/// # use reinhardt_db::orm::{Field, Model};
+/// #
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct Post {
+/// #     id: i64,
+/// #     title: String,
+/// #     content: String,
+/// # }
+/// #
+/// # impl Model for Post {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "posts" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
+/// #
+/// # impl SearchableModel for Post {
+/// #     fn searchable_fields() -> Vec<Field<Self, String>> {
+/// #         vec![
+/// #             Field::<Post, String>::new(vec!["title"]),
+/// #             Field::<Post, String>::new(vec!["content"]),
+/// #         ]
+/// #     }
+/// # }
 /// let terms = vec!["rust", "programming"];
 /// let lookups = MultiTermSearch::search_terms::<Post>(terms);
-///
-// This creates: (title ICONTAINS 'rust' OR content ICONTAINS 'rust')
-//           AND (title ICONTAINS 'programming' OR content ICONTAINS 'programming')
+/// assert_eq!(lookups.len(), 2); // Two terms
+/// assert_eq!(lookups[0].len(), 2); // Two fields per term
 /// ```
 pub struct MultiTermSearch;
 

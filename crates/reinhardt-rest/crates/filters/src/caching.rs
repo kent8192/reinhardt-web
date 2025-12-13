@@ -6,7 +6,7 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_filters::{CachedFilterBackend, FilterBackend};
 //! use reinhardt_utils::cache::InMemoryCache;
 //! use std::time::Duration;
@@ -86,7 +86,9 @@ struct CachedResult {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use reinhardt_filters::{CachedFilterBackend, FilterBackend};
 /// use reinhardt_utils::cache::InMemoryCache;
 /// use std::time::Duration;
@@ -106,6 +108,8 @@ struct CachedResult {
 /// let result2 = backend.filter_queryset(&params, sql).await.unwrap();
 ///
 /// assert_eq!(result1, result2);
+/// # }
+/// # Ok(())
 /// # }
 /// ```
 #[cfg(feature = "caching")]

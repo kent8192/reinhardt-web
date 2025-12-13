@@ -22,17 +22,32 @@ pub enum OrderDirection {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_filters::OrderingField;
-/// use reinhardt_db::orm::Field;
-///
-// Create ascending ordering - call .asc() on Field
+/// ```rust
+/// # use reinhardt_filters::{OrderingField, OrderDirection, field_extensions::FieldOrderingExt};
+/// # use reinhardt_db::orm::{Field, Model};
+/// #
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct Post {
+/// #     id: i64,
+/// #     title: String,
+/// #     created_at: String,
+/// # }
+/// #
+/// # impl Model for Post {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "posts" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
+/// // Create ascending ordering - call .asc() on Field
 /// let field = Field::<Post, String>::new(vec!["title"]);
 /// let asc_order = field.asc();
+/// assert_eq!(asc_order.direction(), OrderDirection::Asc);
 ///
-// Create descending ordering - call .desc() on Field
+/// // Create descending ordering - call .desc() on Field
 /// let field = Field::<Post, String>::new(vec!["created_at"]);
 /// let desc_order = field.desc();
+/// assert_eq!(desc_order.direction(), OrderDirection::Desc);
 /// ```
 pub struct OrderingField<M: Model> {
 	pub(crate) field_path: Vec<&'static str>,
@@ -53,10 +68,22 @@ impl<M: Model> OrderingField<M> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	/// use reinhardt_filters::OrderingField;
-	/// use reinhardt_db::orm::Field;
-	///
+	/// ```rust
+	/// # use reinhardt_filters::field_extensions::FieldOrderingExt;
+	/// # use reinhardt_db::orm::{Field, Model};
+	/// #
+	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	/// # struct Post {
+	/// #     id: i64,
+	/// #     title: String,
+	/// # }
+	/// #
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// # }
 	/// let field = Field::<Post, String>::new(vec!["title"]);
 	/// let order = field.asc();
 	/// assert_eq!(order.field_path(), &["title"]);
@@ -68,10 +95,22 @@ impl<M: Model> OrderingField<M> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	/// use reinhardt_filters::{OrderingField, OrderDirection};
-	/// use reinhardt_db::orm::Field;
-	///
+	/// ```rust
+	/// # use reinhardt_filters::{OrderDirection, field_extensions::FieldOrderingExt};
+	/// # use reinhardt_db::orm::{Field, Model};
+	/// #
+	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	/// # struct Post {
+	/// #     id: i64,
+	/// #     created_at: String,
+	/// # }
+	/// #
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// # }
 	/// let field = Field::<Post, String>::new(vec!["created_at"]);
 	/// let order = field.desc();
 	/// assert_eq!(order.direction(), OrderDirection::Desc);
@@ -84,11 +123,27 @@ impl<M: Model> OrderingField<M> {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	/// let order = OrderingField::asc(Post::title());
+	/// ```rust
+	/// # use reinhardt_filters::field_extensions::FieldOrderingExt;
+	/// # use reinhardt_db::orm::{Field, Model};
+	/// #
+	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	/// # struct Post {
+	/// #     id: i64,
+	/// #     title: String,
+	/// #     created_at: String,
+	/// # }
+	/// #
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// # }
+	/// let order = Field::<Post, String>::new(vec!["title"]).asc();
 	/// assert_eq!(order.to_sql(), "title ASC");
 	///
-	/// let order = OrderingField::desc(Post::created_at());
+	/// let order = Field::<Post, String>::new(vec!["created_at"]).desc();
 	/// assert_eq!(order.to_sql(), "created_at DESC");
 	/// ```
 	pub fn to_sql(&self) -> String {

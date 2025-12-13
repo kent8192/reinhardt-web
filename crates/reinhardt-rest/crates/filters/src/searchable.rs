@@ -12,18 +12,25 @@ use reinhardt_db::orm::{Field, Model};
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_filters::SearchableModel;
-/// use reinhardt_db::orm::{Model, Field};
-///
-/// #[model(app_label = "posts", table_name = "posts")]
-/// struct Post {
-///     id: i64,
-///     title: String,
-///     content: String,
-///     created_at: DateTime,
-/// }
-///
+/// ```rust
+/// # use reinhardt_filters::{SearchableModel, field_extensions::FieldOrderingExt, OrderingField};
+/// # use reinhardt_db::orm::{Model, Field};
+/// #
+/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// # struct Post {
+/// #     id: i64,
+/// #     title: String,
+/// #     content: String,
+/// #     created_at: String,
+/// # }
+/// #
+/// # impl Model for Post {
+/// #     type PrimaryKey = i64;
+/// #     fn table_name() -> &'static str { "posts" }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// # }
+/// #
 /// impl SearchableModel for Post {
 ///     fn searchable_fields() -> Vec<Field<Self, String>> {
 ///         vec![
@@ -33,10 +40,15 @@ use reinhardt_db::orm::{Field, Model};
 ///     }
 ///
 ///     fn default_ordering() -> Vec<OrderingField<Self>> {
-///         use reinhardt_filters::FieldOrderingExt;
-///         vec![Field::new(vec!["created_at"]).desc()]
+///         vec![Field::<Self, String>::new(vec!["created_at"]).desc()]
 ///     }
 /// }
+///
+/// // Verify the implementation
+/// let fields = Post::searchable_fields();
+/// assert_eq!(fields.len(), 2);
+/// let ordering = Post::default_ordering();
+/// assert_eq!(ordering.len(), 1);
 /// ```
 pub trait SearchableModel: Model {
 	/// Get the list of searchable string fields
