@@ -149,10 +149,51 @@ impl<T: Model> SelectQuery<T> {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_orm::{Model, query_fields::Field, typed_join::TypedJoin, sqlalchemy_query::select};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64> }
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct Comment { id: Option<i64> }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     fn app_label() -> &'static str { "app" }
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn primary_key_field() -> &'static str { "id" }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     fn app_label() -> &'static str { "app" }
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn primary_key_field() -> &'static str { "id" }
+	/// # }
+	/// # impl Model for Comment {
+	/// #     type PrimaryKey = i64;
+	/// #     fn app_label() -> &'static str { "app" }
+	/// #     fn table_name() -> &'static str { "comments" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn primary_key_field() -> &'static str { "id" }
+	/// # }
+	/// # impl User {
+	/// #     fn id() -> Field<Self, i64> { Field::new(vec!["id"]) }
+	/// # }
+	/// # impl Post {
+	/// #     fn user_id() -> Field<Self, i64> { Field::new(vec!["user_id"]) }
+	/// # }
+	/// # impl Comment {
+	/// #     fn user_id() -> Field<Self, i64> { Field::new(vec!["user_id"]) }
+	/// # }
 	/// select::<User>()
 	///     .join_on(TypedJoin::on(User::id(), Post::user_id()))
-	///     .join_on(TypedJoin::left_on(User::id(), Comment::user_id()))
+	///     .join_on(TypedJoin::left_on(User::id(), Comment::user_id()));
 	/// ```
 	///
 	/// # Type Safety
@@ -179,10 +220,26 @@ impl<T: Model> SelectQuery<T> {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_orm::{Model, query_fields::Field, sqlalchemy_query::select};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     fn app_label() -> &'static str { "app" }
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn primary_key_field() -> &'static str { "id" }
+	/// # }
+	/// # impl User {
+	/// #     fn email() -> Field<Self, String> { Field::new(vec!["email"]) }
+	/// #     fn age() -> Field<Self, i32> { Field::new(vec!["age"]) }
+	/// # }
 	/// select::<User>()
 	///     .order_by_field(User::email(), true)  // ASC
-	///     .order_by_field(User::age(), false)   // DESC
+	///     .order_by_field(User::age(), false);   // DESC
 	/// ```
 	pub fn order_by_field<F>(mut self, field: Field<T, F>, ascending: bool) -> Self {
 		let field_path = field.path().join(".");
@@ -289,10 +346,26 @@ impl<T: Model> SelectQuery<T> {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_orm::{Model, query_fields::Field, sqlalchemy_query::select};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     fn app_label() -> &'static str { "app" }
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn primary_key_field() -> &'static str { "id" }
+	/// # }
+	/// # impl User {
+	/// #     fn email() -> Field<Self, String> { Field::new(vec!["email"]) }
+	/// #     fn age() -> Field<Self, i32> { Field::new(vec!["age"]) }
+	/// # }
 	/// select::<User>()
 	///     .filter_lookup(User::email().lower().contains("example.com"))
-	///     .filter_lookup(User::age().gte(18))
+	///     .filter_lookup(User::age().gte(18));
 	/// ```
 	///
 	/// # Type Safety
