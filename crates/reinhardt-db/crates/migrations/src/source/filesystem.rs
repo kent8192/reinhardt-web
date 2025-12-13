@@ -26,7 +26,8 @@ impl FilesystemSource {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// use reinhardt_migrations::FilesystemSource;
 	/// let source = FilesystemSource::new("./migrations");
 	/// ```
 	pub fn new<P: AsRef<Path>>(root_dir: P) -> Self {

@@ -16,11 +16,20 @@ use std::sync::RwLock;
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_migrations::registry::LocalRegistry;
-///
+/// ```rust,no_run
+/// use reinhardt_migrations::registry::{LocalRegistry, MigrationRegistry};
+/// use reinhardt_migrations::Migration;
+/// let migration = Migration {
+///     app_label: "test",
+///     name: "0001_initial",
+///     operations: vec![],
+///     dependencies: vec![],
+///     replaces: vec![],
+///     atomic: true,
+///     initial: None,
+/// };
 /// let registry = LocalRegistry::new();
-/// registry.register(migration);
+/// registry.register(migration).unwrap();
 /// let migrations = registry.all_migrations();
 /// ```
 pub struct LocalRegistry {

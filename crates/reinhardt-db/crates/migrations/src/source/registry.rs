@@ -13,10 +13,8 @@ use async_trait::async_trait;
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_migrations::source::RegistrySource;
-/// use reinhardt_migrations::MigrationSource;
-///
+/// ```rust,no_run
+/// use reinhardt_migrations::{RegistrySource, MigrationSource};
 /// #[tokio::test]
 /// async fn test_registry_source() {
 ///     let source = RegistrySource::new();

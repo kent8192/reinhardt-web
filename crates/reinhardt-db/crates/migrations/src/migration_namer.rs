@@ -29,9 +29,8 @@ impl MigrationNamer {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationNamer, Operation, CreateModel};
-	///
+	/// ```rust
+	/// # use reinhardt_migrations::{MigrationNamer, Operation};
 	/// // Initial migration
 	/// assert_eq!(
 	///     MigrationNamer::generate_name(&[], true),
@@ -39,24 +38,53 @@ impl MigrationNamer {
 	/// );
 	///
 	/// // Single operation
-	/// let ops = vec![Operation::CreateModel(CreateModel { name: "User".into(), .. })];
+	/// let ops = vec![Operation::CreateTable {
+	///     name: "users",
+	///     columns: vec![],
+	///     constraints: vec![],
+	/// }];
 	/// assert_eq!(
 	///     MigrationNamer::generate_name(&ops, false),
-	///     "user"
+	///     "users"
 	/// );
 	///
 	/// // Multiple operations
 	/// let ops = vec![
-	///     Operation::AddField(AddField { model_name: "User".into(), field_name: "email".into(), .. }),
-	///     Operation::AddField(AddField { model_name: "User".into(), field_name: "phone".into(), .. }),
+	///     Operation::AddColumn {
+	///         table: "users",
+	///         column: reinhardt_migrations::ColumnDefinition {
+	///             name: "email",
+	///             type_definition: reinhardt_migrations::FieldType::Custom("VARCHAR(255)".to_string()),
+	///             not_null: false,
+	///             unique: false,
+	///             primary_key: false,
+	///             auto_increment: false,
+	///             default: None,
+	///         },
+	///     },
+	///     Operation::AddColumn {
+	///         table: "users",
+	///         column: reinhardt_migrations::ColumnDefinition {
+	///             name: "phone",
+	///             type_definition: reinhardt_migrations::FieldType::Custom("VARCHAR(20)".to_string()),
+	///             not_null: false,
+	///             unique: false,
+	///             primary_key: false,
+	///             auto_increment: false,
+	///             default: None,
+	///         },
+	///     },
 	/// ];
 	/// assert_eq!(
 	///     MigrationNamer::generate_name(&ops, false),
-	///     "user_email_user_phone"
+	///     "users_email_users_phone"
 	/// );
 	///
 	/// // No fragments (RunSQL)
-	/// let ops = vec![Operation::RunSQL(RunSQL { sql: "SELECT 1".into(), .. })];
+	/// let ops = vec![Operation::RunSQL {
+	///     sql: "SELECT 1",
+	///     reverse_sql: None,
+	/// }];
 	/// assert!(
 	///     MigrationNamer::generate_name(&ops, false).starts_with("auto_")
 	/// );

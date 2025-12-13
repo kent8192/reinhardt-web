@@ -25,7 +25,7 @@ impl MigrationNumbering {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_migrations::MigrationNumbering;
 	/// use std::path::Path;
 	///
@@ -53,7 +53,9 @@ impl MigrationNumbering {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_migrations::MigrationNumbering;
+	/// # use std::path::Path;
 	/// // Given files:
 	/// // migrations/myapp/0001_initial.rs
 	/// // migrations/myapp/0002_add_field.rs
@@ -107,7 +109,9 @@ impl MigrationNumbering {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_migrations::MigrationNumbering;
+	/// # use std::path::Path;
 	/// // Given structure:
 	/// // migrations/
 	/// //   myapp/0001_initial.rs

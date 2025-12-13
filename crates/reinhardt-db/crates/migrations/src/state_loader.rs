@@ -20,16 +20,18 @@ use crate::{
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_migrations::state_loader::MigrationStateLoader;
-/// use reinhardt_migrations::{DatabaseMigrationRecorder, FilesystemSource};
+/// ```rust,no_run
+/// use reinhardt_migrations::{MigrationStateLoader, DatabaseMigrationRecorder, FilesystemSource};
+/// async fn example() -> reinhardt_migrations::Result<()> {
+///     let connection = reinhardt_backends::DatabaseConnection::connect_sqlite("sqlite::memory:").await.unwrap();
+///     let recorder = DatabaseMigrationRecorder::new(connection);
+///     let source = FilesystemSource::new("./migrations");
+///     let loader = MigrationStateLoader::new(recorder, source);
 ///
-/// let recorder = DatabaseMigrationRecorder::new(connection);
-/// let source = FilesystemSource::new("./migrations");
-/// let loader = MigrationStateLoader::new(recorder, source);
-///
-/// // Build current state by replaying applied migrations
-/// let current_state = loader.build_current_state().await?;
+///     // Build current state by replaying applied migrations
+///     let current_state = loader.build_current_state().await?;
+///     Ok(())
+/// }
 /// ```
 pub struct MigrationStateLoader<S: MigrationSource> {
 	recorder: DatabaseMigrationRecorder,

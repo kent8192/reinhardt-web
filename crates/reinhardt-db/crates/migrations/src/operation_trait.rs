@@ -16,9 +16,8 @@
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_migrations::operation_trait::MigrationOperation;
-///
+/// ```rust,no_run
+/// # use reinhardt_migrations::operation_trait::MigrationOperation;
 /// struct AddField {
 ///     model_name: String,
 ///     field_name: String,
@@ -100,14 +99,21 @@ pub trait MigrationOperation {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_migrations::operation_trait::MigrationOperation;
+	/// # #[derive(Clone, PartialEq)]
+	/// # struct CreateIndex { table: &'static str, columns: Vec<&'static str> }
+	/// # impl MigrationOperation for CreateIndex {
+	/// #     fn migration_name_fragment(&self) -> Option<String> { None }
+	/// #     fn describe(&self) -> String { String::new() }
+	/// # }
 	/// let op1 = CreateIndex {
 	///     table: "users",
 	///     columns: vec!["email", "name"],
 	/// };
 	/// let op2 = CreateIndex {
 	///     table: "users",
-	///     columns: vec!["name", "email"],  // Different order
+	///     columns: vec!["name", "email"],
 	/// };
 	///
 	/// assert!(op1.semantically_equal(&op2));

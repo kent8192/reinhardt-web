@@ -12,10 +12,11 @@ use syn::parse_quote;
 /// Repository that persists migrations as `.rs` files
 ///
 /// This repository writes migrations to disk in the format:
-/// ```rust,ignore
+/// ```rust,no_run
 /// // <app_label>/migrations/<name>.rs
-/// use reinhardt::db::migrations::prelude::*;
-/// use reinhardt::db::migrations::FieldType;
+/// use reinhardt_migrations::Migration;
+/// // use reinhardt::db::migrations::prelude::*;
+/// // use reinhardt::db::migrations::FieldType;
 ///
 /// pub fn migration() -> Migration {
 ///     Migration {
@@ -25,6 +26,7 @@ use syn::parse_quote;
 ///         dependencies: vec![],
 ///         atomic: true,
 ///         replaces: vec![],
+///         initial: None,
 ///     }
 /// }
 /// ```
@@ -42,7 +44,8 @@ impl FilesystemRepository {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// use reinhardt_migrations::FilesystemRepository;
 	/// let repo = FilesystemRepository::new("./migrations");
 	/// ```
 	pub fn new<P: AsRef<Path>>(root_dir: P) -> Self {

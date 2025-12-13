@@ -120,9 +120,8 @@ impl MigrationRegistry for GlobalRegistry {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_migrations::registry::global_registry;
-///
+/// ```rust,no_run
+/// use reinhardt_migrations::registry::{global_registry, MigrationRegistry};
 /// let registry = global_registry();
 /// let all_migrations = registry.all_migrations();
 /// ```

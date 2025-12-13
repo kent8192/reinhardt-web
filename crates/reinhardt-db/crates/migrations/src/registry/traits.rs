@@ -30,11 +30,12 @@ pub trait MigrationRegistry: Send + Sync {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// use reinhardt_migrations::registry::MigrationRegistry;
-	///
+	/// ```rust,no_run
+	/// # use reinhardt_migrations::registry::MigrationRegistry;
+	/// # fn example(registry: &dyn MigrationRegistry) {
 	/// let polls_migrations = registry.migrations_for_app("polls");
 	/// assert!(polls_migrations.iter().all(|m| m.app_label == "polls"));
+	/// # }
 	/// ```
 	fn migrations_for_app(&self, app_label: &str) -> Vec<Migration>;
 
@@ -44,11 +45,14 @@ pub trait MigrationRegistry: Send + Sync {
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_migrations::registry::MigrationRegistry;
+	/// # fn example(registry: &dyn MigrationRegistry) {
 	/// let apps = registry.registered_app_labels();
 	/// for app in apps {
 	///     println!("App with migrations: {}", app);
 	/// }
+	/// # }
 	/// ```
 	fn registered_app_labels(&self) -> Vec<String>;
 

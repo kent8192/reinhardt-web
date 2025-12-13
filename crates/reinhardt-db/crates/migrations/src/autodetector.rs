@@ -2000,15 +2000,26 @@ pub struct InferenceRule {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use reinhardt_migrations::InferenceEngine;
 ///
 /// let mut engine = InferenceEngine::new();
 /// engine.add_default_rules();
 ///
-/// // Analyze changes
-/// let changes = vec!["AddIndex:users:email", "AlterField:users:email"];
-/// let intents = engine.infer_intents(&changes);
+/// // Analyze changes with proper arguments
+/// let model_renames = vec![];
+/// let model_moves = vec![];
+/// let field_additions = vec![
+///     ("users".to_string(), "User".to_string(), "email".to_string())
+/// ];
+/// let field_renames = vec![];
+///
+/// let intents = engine.infer_intents(
+///     &model_renames,
+///     &model_moves,
+///     &field_additions,
+///     &field_renames
+/// );
 /// ```
 #[derive(Debug, Clone)]
 pub struct InferenceEngine {
