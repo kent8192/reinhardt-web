@@ -6,16 +6,16 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
-//! use reinhardt_signals::orm_integration::{OrmSignalAdapter, connect_orm_signals};
-//! use reinhardt_signals::{pre_save, post_save};
+//! ```rust,no_run
+//! use reinhardt_signals::orm_integration::OrmSignalAdapter;
 //!
-//! // Automatically connect ORM events to signals
-//! let adapter = OrmSignalAdapter::new();
-//! adapter.register_for_model::<User>().await;
-//!
-//! // Or manually connect specific operations
-//! connect_orm_signals::<User>().await;
+//! # #[tokio::main]
+//! # async fn main() {
+//! # struct User;
+//! // Create ORM signal adapter
+//! let adapter = OrmSignalAdapter::<User>::new();
+//! let count = adapter.signal_count();
+//! # }
 //! ```
 
 use crate::error::SignalError;
@@ -114,11 +114,15 @@ impl<T: Send + Sync + 'static> Default for OrmSignalAdapter<T> {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_signals::orm_integration::dispatch_pre_save;
-///
+/// ```rust,no_run
+/// # use reinhardt_signals::orm_integration::dispatch_pre_save;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # #[derive(Clone)] struct User { id: i32, name: String }
 /// let user = User { id: 1, name: "Alice".into() };
 /// dispatch_pre_save(user).await?;
+/// # Ok(())
+/// # }
 /// ```
 pub async fn dispatch_pre_save<T: Send + Sync + Clone + 'static>(
 	instance: T,
@@ -132,11 +136,15 @@ pub async fn dispatch_pre_save<T: Send + Sync + Clone + 'static>(
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_signals::orm_integration::dispatch_post_save;
-///
+/// ```rust,no_run
+/// # use reinhardt_signals::orm_integration::dispatch_post_save;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # #[derive(Clone)] struct User { id: i32, name: String }
 /// let user = User { id: 1, name: "Alice".into() };
 /// dispatch_post_save(user, false).await?;
+/// # Ok(())
+/// # }
 /// ```
 pub async fn dispatch_post_save<T: Send + Sync + Clone + 'static>(
 	instance: T,
@@ -151,11 +159,15 @@ pub async fn dispatch_post_save<T: Send + Sync + Clone + 'static>(
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_signals::orm_integration::dispatch_pre_delete;
-///
+/// ```rust,no_run
+/// # use reinhardt_signals::orm_integration::dispatch_pre_delete;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # #[derive(Clone)] struct User { id: i32, name: String }
 /// let user = User { id: 1, name: "Alice".into() };
 /// dispatch_pre_delete(user).await?;
+/// # Ok(())
+/// # }
 /// ```
 pub async fn dispatch_pre_delete<T: Send + Sync + Clone + 'static>(
 	instance: T,
@@ -169,11 +181,15 @@ pub async fn dispatch_pre_delete<T: Send + Sync + Clone + 'static>(
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use reinhardt_signals::orm_integration::dispatch_post_delete;
-///
+/// ```rust,no_run
+/// # use reinhardt_signals::orm_integration::dispatch_post_delete;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # #[derive(Clone)] struct User { id: i32, name: String }
 /// let user = User { id: 1, name: "Alice".into() };
 /// dispatch_post_delete(user).await?;
+/// # Ok(())
+/// # }
 /// ```
 pub async fn dispatch_post_delete<T: Send + Sync + Clone + 'static>(
 	instance: T,

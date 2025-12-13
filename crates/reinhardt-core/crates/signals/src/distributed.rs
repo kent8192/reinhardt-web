@@ -275,13 +275,17 @@ where
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::distributed::{DistributedSignal, InMemoryBroker};
 	///
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let broker = InMemoryBroker::new();
 	/// let signal = DistributedSignal::new("user_created", broker, "api-service");
 	///
 	/// signal.publish("User data".to_string()).await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn publish(&self, payload: T) -> Result<(), SignalError> {
 		let event = DistributedEvent::new(&self.signal_name, payload, &self.service_id);
@@ -295,16 +299,20 @@ where
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::distributed::{DistributedSignal, InMemoryBroker};
 	///
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let broker = InMemoryBroker::new();
-	/// let signal = DistributedSignal::new("user_created", broker, "worker-service");
+	/// let signal = DistributedSignal::<String, _>::new("user_created", broker, "worker-service");
 	///
-	/// signal.subscribe(|event| async move {
+	/// signal.subscribe(|event| {
 	///     println!("Received: {:?}", event);
 	///     Ok(())
 	/// }).await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn subscribe<F>(&self, handler: F) -> Result<(), SignalError>
 	where
@@ -326,13 +334,17 @@ where
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::distributed::{DistributedSignal, InMemoryBroker};
 	///
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let broker = InMemoryBroker::new();
-	/// let signal = DistributedSignal::new("user_created", broker, "worker-service");
+	/// let signal = DistributedSignal::<String, _>::new("user_created", broker, "worker-service");
 	///
 	/// signal.unsubscribe().await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn unsubscribe(&self) -> Result<(), SignalError> {
 		self.broker.unsubscribe(&self.signal_name).await

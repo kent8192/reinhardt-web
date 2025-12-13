@@ -86,7 +86,9 @@ inventory::collect!(ReceiverRegistryEntry);
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use reinhardt_signals::auto_connect_receivers;
 ///
 /// #[tokio::main]

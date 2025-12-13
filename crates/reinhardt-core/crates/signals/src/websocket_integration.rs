@@ -5,9 +5,15 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
-//! use reinhardt_signals::websocket_integration::{WebSocketSignalBridge, WebSocketMessage};
+//! ```rust,no_run
+//! use reinhardt_signals::websocket_integration::WebSocketSignalBridge;
+//! use reinhardt_signals::post_save;
 //!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), reinhardt_signals::SignalError> {
+//! # #[derive(Clone, serde::Serialize)]
+//! # struct User;
+//! # let user = User;
 //! // Create a WebSocket bridge
 //! let bridge = WebSocketSignalBridge::new();
 //!
@@ -16,6 +22,8 @@
 //!
 //! // When a signal is emitted, it will be broadcast to WebSocket clients
 //! post_save::<User>().send(user).await?;
+//! # Ok(())
+//! # }
 //! ```
 
 use crate::error::SignalError;
@@ -309,12 +317,19 @@ impl WebSocketSignalBridge {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::websocket_integration::WebSocketSignalBridge;
 	/// use reinhardt_signals::post_save;
 	///
+	/// # #[tokio::main]
+	/// # async fn main() {
+	/// # #[derive(Clone, serde::Serialize)]
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
 	/// let bridge = WebSocketSignalBridge::new();
 	/// bridge.connect_signal(post_save::<User>(), "user.saved").await;
+	/// # }
 	/// ```
 	pub async fn connect_signal<T>(&self, signal: Signal<T>, event_type: impl Into<String>)
 	where

@@ -5,21 +5,30 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt_signals::graphql_integration::{GraphQLSubscriptionBridge, SubscriptionEvent};
+//! use reinhardt_signals::Signal;
+//! use reinhardt_signals::core::SignalName;
 //!
+//! # #[tokio::main]
+//! # async fn main() {
+//! # struct User;
+//! # fn post_save() -> Signal<User> {
+//! #     Signal::new(SignalName::custom("post_save"))
+//! # }
 //! // Create a GraphQL subscription bridge
 //! let bridge = GraphQLSubscriptionBridge::new();
 //!
 //! // Connect a signal to a GraphQL subscription
 //! bridge.connect_signal(
-//!     post_save::<User>(),
+//!     post_save(),
 //!     "userUpdated",
-//!     |user| SubscriptionEvent::new("userUpdated", user)
+//!     |_user| SubscriptionEvent::new("userUpdated", ())
 //! ).await;
 //!
 //! // Subscribe to GraphQL subscription
-//! let stream = bridge.subscribe("userUpdated").await;
+//! let _stream = bridge.subscribe("userUpdated").await;
+//! # }
 //! ```
 
 use crate::error::SignalError;
@@ -225,16 +234,26 @@ impl GraphQLSubscriptionBridge {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::graphql_integration::{GraphQLSubscriptionBridge, SubscriptionEvent};
-	/// use reinhardt_signals::post_save;
+	/// use reinhardt_signals::Signal;
+	/// use reinhardt_signals::core::SignalName;
 	///
+	/// # #[tokio::main]
+	/// # async fn main() {
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # fn post_save() -> Signal<User> {
+	/// #     Signal::new(SignalName::custom("post_save"))
+	/// # }
 	/// let bridge = GraphQLSubscriptionBridge::new();
 	/// bridge.connect_signal(
-	///     post_save::<User>(),
+	///     post_save(),
 	///     "userSaved",
-	///     |user| SubscriptionEvent::new("userSaved", user)
+	///     |_user| SubscriptionEvent::new("userSaved", ())
 	/// ).await;
+	/// # }
 	/// ```
 	pub async fn connect_signal<T, F, E>(
 		&self,
@@ -358,9 +377,11 @@ where
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::graphql_integration::{GraphQLSubscriptionBridge, TypedSubscription};
 	///
+	/// # #[tokio::main]
+	/// # async fn main() {
 	/// let bridge = GraphQLSubscriptionBridge::new();
 	/// let subscription = TypedSubscription::<String>::new(bridge, "messages");
 	///
@@ -368,6 +389,7 @@ where
 	/// while let Ok(event) = receiver.recv().await {
 	///     println!("Received: {:?}", event);
 	/// }
+	/// # }
 	/// ```
 	pub async fn subscribe(&self) -> broadcast::Receiver<String> {
 		self.bridge.subscribe(&self.subscription_name).await

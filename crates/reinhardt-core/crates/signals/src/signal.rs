@@ -195,14 +195,23 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	/// When this signal is sent, it will also trigger the chained signal
 	///
 	/// # Example
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_signals::Signal;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let signal_a = Signal::<User>::new("user_created");
 	/// let signal_b = Signal::<User>::new("user_notified");
 	///
 	/// signal_a.chain(&signal_b);
 	///
 	/// // Now sending signal_a will also trigger signal_b
+	/// # let user = User;
 	/// signal_a.send(user).await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn chain(&self, next: &Signal<T>)
 	where
@@ -222,8 +231,19 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	/// Allows transforming the instance before passing to the next signal
 	///
 	/// # Example
-	/// ```rust,ignore
-	/// signal_a.chain_with(signal_b, |user| {
+	/// ```rust,no_run
+	/// # use reinhardt_signals::Signal;
+	/// # use std::sync::Arc;
+	/// # struct User { id: i64 }
+	/// # struct NotificationPayload { user_id: i64 }
+	/// # impl From<Arc<User>> for NotificationPayload {
+	/// #     fn from(user: Arc<User>) -> Self {
+	/// #         Self { user_id: user.id }
+	/// #     }
+	/// # }
+	/// # let signal_a = Signal::<User>::new("user_created");
+	/// # let signal_b = Signal::<NotificationPayload>::new("notification");
+	/// signal_a.chain_with(&signal_b, |user| {
 	///     // Transform User to NotificationPayload
 	///     NotificationPayload::from(user)
 	/// });
@@ -249,13 +269,24 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	/// Returns a new signal that triggers when any of the source signals trigger
 	///
 	/// # Example
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_signals::Signal;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// # let signal_a = Signal::<User>::new("a");
+	/// # let signal_b = Signal::<User>::new("b");
+	/// # let signal_c = Signal::<User>::new("c");
 	/// let merged = Signal::merge(vec![&signal_a, &signal_b, &signal_c]);
 	///
 	/// merged.connect(|instance| async move {
 	///     println!("Any of the three signals was triggered!");
 	///     Ok(())
 	/// });
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn merge(signals: Vec<&Signal<T>>) -> Signal<T>
 	where
@@ -281,13 +312,20 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	/// Returns a new signal that only triggers when the predicate returns true
 	///
 	/// # Example
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_signals::Signal;
+	/// # struct User { is_admin: bool }
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// # let user_signal = Signal::<User>::new("user");
 	/// let admin_only = user_signal.filter(|user| user.is_admin);
 	///
 	/// admin_only.connect(|admin_user| async move {
 	///     println!("Admin user action!");
 	///     Ok(())
 	/// });
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter<P>(&self, predicate: P) -> Signal<T>
 	where
@@ -302,7 +340,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
 			let filtered = filtered_clone.clone();
 			let predicate = predicate.clone();
 			async move {
-				if predicate(&instance) {
+				if predicate(&*instance) {
 					let value = (*instance).clone();
 					filtered.send(value).await
 				} else {
@@ -314,17 +352,25 @@ impl<T: Send + Sync + 'static> Signal<T> {
 		filtered
 	}
 
-	/// Map signal emissions through a transformation function
+	/// Transform signal values
 	/// Returns a new signal with transformed values
 	///
 	/// # Example
-	/// ```rust,ignore
+	/// ```rust,no_run
+	/// # use reinhardt_signals::Signal;
+	/// # use std::sync::Arc;
+	/// # struct User { id: i64 }
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// # let user_signal = Signal::<User>::new("user");
 	/// let user_ids = user_signal.map(|user| user.id);
 	///
 	/// user_ids.connect(|id| async move {
 	///     println!("User ID: {}", id);
 	///     Ok(())
 	/// });
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn map<U, F>(&self, transform: F) -> Signal<U>
 	where

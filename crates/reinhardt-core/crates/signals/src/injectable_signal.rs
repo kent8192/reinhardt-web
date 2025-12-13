@@ -5,9 +5,9 @@
 //!
 //! # Usage
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_signals::{Signal, SignalName, InjectableSignal, ReceiverContext};
-//! use reinhardt_di::InjectionContext;
+//! use reinhardt_di::{InjectionContext, SingletonScope};
 //! use std::sync::Arc;
 //!
 //! // Create a signal
@@ -21,7 +21,8 @@
 //! });
 //!
 //! // Send signal with DI context
-//! let di_ctx = Arc::new(InjectionContext::new());
+//! let singleton = Arc::new(SingletonScope::new());
+//! let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 //! signal.send_with_di_context(user, di_ctx).await?;
 //! ```
 
@@ -54,7 +55,8 @@ pub trait InjectableSignal<T: Send + Sync + 'static> {
 	/// # Examples
 	///
 	/// ```ignore
-	/// let di_ctx = Arc::new(InjectionContext::new());
+	/// let singleton = Arc::new(SingletonScope::new());
+	/// let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 	/// signal.send_with_di_context(user, di_ctx).await?;
 	/// ```
 	#[cfg(feature = "di")]

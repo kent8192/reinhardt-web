@@ -5,14 +5,15 @@
 //!
 //! # Usage
 //!
-//! ```ignore
+//! ```rust,no_run
 //! use reinhardt_signals::{Signal, ReceiverContext};
-//! use reinhardt_di::InjectionContext;
+//! use reinhardt_di::{InjectionContext, SingletonScope};
 //! use std::sync::Arc;
 //!
 //! // Create a signal and send with DI context
 //! let signal = Signal::<User>::new(SignalName::custom("user_created"));
-//! let di_ctx = Arc::new(InjectionContext::new());
+//! let singleton = Arc::new(SingletonScope::new());
+//! let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 //!
 //! // Send signal with DI context
 //! signal.send_with_di_context(user, di_ctx).await?;

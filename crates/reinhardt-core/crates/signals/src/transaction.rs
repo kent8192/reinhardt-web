@@ -5,9 +5,11 @@
 //!
 //! # Examples
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use reinhardt_signals::transaction::{on_commit, on_rollback, TransactionSignals};
 //!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Connect to transaction commit
 //! on_commit().connect(|ctx| async move {
 //!     println!("Transaction committed: {:?}", ctx);
@@ -18,6 +20,8 @@
 //! let tx_signals = TransactionSignals::new("tx_1");
 //! tx_signals.send_begin().await?;
 //! tx_signals.send_commit().await?;
+//! # Ok(())
+//! # }
 //! ```
 
 use crate::core::SignalName;
@@ -204,11 +208,15 @@ impl TransactionSignals {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::transaction::TransactionSignals;
 	///
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let signals = TransactionSignals::new("tx_001");
 	/// signals.send_begin().await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn send_begin(&self) -> Result<(), SignalError> {
 		on_begin().send(self.context.clone()).await
@@ -218,11 +226,15 @@ impl TransactionSignals {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::transaction::TransactionSignals;
 	///
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let signals = TransactionSignals::new("tx_001");
 	/// signals.send_commit().await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn send_commit(&self) -> Result<(), SignalError> {
 		on_commit().send(self.context.clone()).await
@@ -232,11 +244,15 @@ impl TransactionSignals {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::transaction::TransactionSignals;
 	///
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let signals = TransactionSignals::new("tx_001");
 	/// signals.send_rollback().await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn send_rollback(&self) -> Result<(), SignalError> {
 		on_rollback().send(self.context.clone()).await
@@ -246,11 +262,15 @@ impl TransactionSignals {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::transaction::TransactionSignals;
 	///
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut signals = TransactionSignals::new("tx_001");
 	/// signals.enter_savepoint("checkpoint_1").await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn enter_savepoint(&mut self, name: impl Into<String>) -> Result<(), SignalError> {
 		self.context.enter_savepoint(name);
@@ -261,11 +281,15 @@ impl TransactionSignals {
 	///
 	/// # Examples
 	///
-	/// ```rust,ignore
+	/// ```rust,no_run
 	/// use reinhardt_signals::transaction::TransactionSignals;
 	///
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut signals = TransactionSignals::nested("tx_001", 1, "sp_1");
 	/// signals.exit_savepoint().await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn exit_savepoint(&mut self) -> Result<(), SignalError> {
 		self.context.exit_savepoint();

@@ -28,17 +28,24 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
-//! use reinhardt_signals::{Signal, post_save};
+//! ```rust,no_run
+//! use reinhardt_signals::post_save;
 //!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), reinhardt_signals::SignalError> {
+//! # #[derive(Clone)]
+//! # struct User;
+//! # let user = User;
 //! // Connect a receiver
-//! post_save::<User>().connect(|sender, instance| async move {
-//!     println!("User saved: {:?}", instance);
+//! post_save::<User>().connect(|_instance| async move {
+//!     println!("User saved");
 //!     Ok(())
 //! });
 //!
 //! // Send signal
-//! post_save::<User>().send(&user).await?;
+//! post_save::<User>().send(user).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Implemented Integration Features
@@ -120,13 +127,16 @@ pub use dispatch::{SyncReceiverFn, SyncSignal};
 ///
 /// # Example
 ///
-/// ```ignore
-/// use reinhardt_signals::{connect_receiver, post_save};
+/// ```rust,no_run
+/// use reinhardt_signals::{connect_receiver, post_save, SignalError};
+/// use std::sync::Arc;
 ///
+/// # #[derive(Clone)]
+/// # struct User;
 /// connect_receiver!(post_save::<User>(), on_user_saved);
 ///
-/// async fn on_user_saved(instance: Arc<User>) -> Result<(), SignalError> {
-///     println!("User saved: {:?}", instance);
+/// async fn on_user_saved(_instance: Arc<User>) -> Result<(), SignalError> {
+///     println!("User saved");
 ///     Ok(())
 /// }
 /// ```
