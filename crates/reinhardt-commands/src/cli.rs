@@ -14,6 +14,7 @@ use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 use serde_json::Value;
 use std::env;
+#[allow(unused)]
 use std::path::PathBuf;
 
 #[cfg(feature = "routers")]

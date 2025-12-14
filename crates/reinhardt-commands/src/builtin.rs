@@ -901,7 +901,7 @@ impl RunServerCommand {
 	/// Run the development server
 	#[cfg(feature = "server")]
 	async fn run_server(
-		ctx: &CommandContext,
+		#[allow(unused_variables)] ctx: &CommandContext,
 		address: &str,
 		noreload: bool,
 		_insecure: bool,
