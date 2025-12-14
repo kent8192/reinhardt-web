@@ -306,6 +306,63 @@ impl InMemoryCache {
 		}
 	}
 
+	/// Inspect cache entry timestamps without deserializing the value
+	///
+	/// Returns the creation and last access timestamps for a cache entry.
+	/// This is useful for session metadata retrieval without deserializing the full session data.
+	///
+	/// # Arguments
+	///
+	/// * `key` - The cache key to inspect
+	///
+	/// # Returns
+	///
+	/// * `Ok(Some((created_at, accessed_at)))` - Entry found with timestamps
+	/// * `Ok(None)` - Entry not found or expired
+	/// * `Err(Error)` - Error occurred during inspection
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_cache::InMemoryCache;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let cache = InMemoryCache::new();
+	/// cache.set("session_123", &"session_data", None).await?;
+	///
+	/// if let Some((created, accessed)) = cache.inspect_entry_with_timestamps("session_123").await? {
+	///     println!("Created at: {:?}", created);
+	///     println!("Last accessed: {:?}", accessed);
+	/// }
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn inspect_entry_with_timestamps(
+		&self,
+		key: &str,
+	) -> Result<Option<(SystemTime, Option<SystemTime>)>> {
+		match self.cleanup_strategy {
+			CleanupStrategy::Naive => {
+				let store = self.store.read().await;
+
+				if let Some(entry) = store.get(key) {
+					if entry.is_expired() {
+						return Ok(None);
+					}
+
+					Ok(Some((entry.created_at, entry.accessed_at)))
+				} else {
+					Ok(None)
+				}
+			}
+			CleanupStrategy::Layered => {
+				// TODO: Layered store doesn't support timestamp inspection yet
+				// This would require extending LayeredCacheStore to track timestamps
+				Ok(None)
+			}
+		}
+	}
+
 	/// Inspect a cache entry
 	///
 	/// Returns detailed information about a specific cache entry,
@@ -440,16 +497,18 @@ impl Cache for InMemoryCache {
 	{
 		match self.cleanup_strategy {
 			CleanupStrategy::Naive => {
-				let store = self.store.read().await;
+				// Use write lock to update accessed timestamp
+				let mut store = self.store.write().await;
 
-				if let Some(entry) = store.get(key) {
+				if let Some(entry) = store.get_mut(key) {
 					if entry.is_expired() {
 						// Entry expired, count as miss
 						self.misses.fetch_add(1, Ordering::Relaxed);
 						return Ok(None);
 					}
 
-					// Cache hit
+					// Cache hit - update access timestamp
+					entry.touch();
 					self.hits.fetch_add(1, Ordering::Relaxed);
 
 					let value = serde_json::from_slice(&entry.value)
