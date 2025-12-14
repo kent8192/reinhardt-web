@@ -7,6 +7,9 @@ description = "A full-stack API framework for Rust, inspired by Django and Djang
 repository.workspace = true
 authors.workspace = true
 
+[lib]
+name = "reinhardt"
+
 [features]
 default = ["full"]
 
