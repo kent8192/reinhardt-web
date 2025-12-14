@@ -1,0 +1,19 @@
+{
+	"rust-analyzer.check.overrideCommand": [
+		"bacon",
+		"clippy",
+		"--message-format=json"
+	],
+	"rust-analyzer.check.workspace": true,
+	"rust-analyzer.diagnostics.enable": false,
+	"rust-analyzer.checkOnSave": false,
+	"bacon-ls.logLevel": "info",
+	"bacon-ls.runBaconInBackground": true,
+	"bacon-ls.runBaconInBackgroundCommand": "bacon",
+	"bacon-ls.runBaconInBackgroundCommandArguments": [
+		"--headless",
+		"-j",
+		"bacon-ls"
+	],
+	"bacon-ls.updateOnChange": true
+}
