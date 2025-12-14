@@ -121,7 +121,7 @@ all-databases = [
   "postgres",
   "sqlite",
   "mysql",
-  "mongodb-backend",
+  # "mongodb-backend", # Temporarily disabled: Missing bson dependencies
   "cockroachdb-backend",
 ]
 
