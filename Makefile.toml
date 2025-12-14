@@ -99,7 +99,7 @@ dependencies = ["fmt-fix", "clippy-fix"]
 [tasks.doc-test]
 description = "Run only documentation tests"
 command = "cargo"
-args = ["test", "--workspace", "--doc", "--all-features", "--no-fail-fast"]
+args = ["test", "--workspace", "--doc", "--quiet", "--all-features", "--no-fail-fast"]
 
 [tasks.bench]
 description = "Run benchmark tests in tests/bench"
