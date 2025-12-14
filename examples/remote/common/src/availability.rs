@@ -101,7 +101,10 @@ pub fn check_crates_io_availability(
 	// 1. Query crates.io API
 	let url = format!("https://crates.io/api/v1/crates/{}", crate_name);
 
-	let response: CratesIoResponse = match ureq::get(&url).timeout(std::time::Duration::from_secs(10)).call() {
+	let response: CratesIoResponse = match ureq::get(&url)
+		.timeout(std::time::Duration::from_secs(10))
+		.call()
+	{
 		Ok(resp) => resp.into_json()?,
 		Err(ureq::Error::Status(404, _)) => {
 			// Crate not found
