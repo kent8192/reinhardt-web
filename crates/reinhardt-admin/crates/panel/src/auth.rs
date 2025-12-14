@@ -4,9 +4,10 @@
 //! for admin operations.
 
 use crate::{AdminError, AdminResult};
-use reinhardt_auth::{DjangoModelPermissions, IsAdminUser, SimpleUser, User};
+use reinhardt_auth::{DjangoModelPermissions, SimpleUser, User};
 use std::any::Any;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Permission action types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,16 +52,14 @@ impl PermissionAction {
 /// # }
 /// ```
 pub struct AdminAuthBackend {
-	_model_permissions: Arc<DjangoModelPermissions>,
-	_admin_checker: Arc<IsAdminUser>,
+	model_permissions: Arc<RwLock<DjangoModelPermissions>>,
 }
 
 impl AdminAuthBackend {
 	/// Create a new admin auth backend
 	pub fn new() -> Self {
 		Self {
-			_model_permissions: Arc::new(DjangoModelPermissions::new()),
-			_admin_checker: Arc::new(IsAdminUser),
+			model_permissions: Arc::new(RwLock::new(DjangoModelPermissions::new())),
 		}
 	}
 
@@ -105,18 +104,14 @@ impl AdminAuthBackend {
 		}
 
 		// Check Django-style model permission: "admin.action_model"
-		let _permission = format!("admin.{}_{}", action.as_str(), model.to_lowercase());
+		let permission = format!("admin.{}_{}", action.as_str(), model.to_lowercase());
 
-		// TODO: For now, grant all permissions to staff users who are not superusers.
-		// In a full implementation, this would check against a permission context
-		// or database to verify the user actually has this specific permission.
-		//
-		// Future enhancement: Integrate with PermissionContext to check actual permissions:
-		// self.permission_context.as_ref()
-		//     .map(|ctx| ctx.has_permission(user, &permission))
-		//     .unwrap_or(false)
-
-		true // Grant permission to all staff users for now
+		// Check permission using DjangoModelPermissions
+		self.model_permissions
+			.read()
+			.await
+			.user_has_permission(&user.username, &permission)
+			.await
 	}
 
 	/// Check if user is admin (staff member)
@@ -128,6 +123,58 @@ impl AdminAuthBackend {
 	/// Check if user is superuser
 	pub fn is_superuser(&self, user: &dyn User) -> bool {
 		user.is_superuser()
+	}
+
+	/// Add permission to a user
+	///
+	/// Grants a specific permission to the user. The permission should be in
+	/// Django-style format: "admin.action_model" (e.g., "admin.view_user", "admin.change_article").
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_panel::{AdminAuthBackend, PermissionAction};
+	/// use reinhardt_auth::SimpleUser;
+	///
+	/// # async fn example() {
+	/// let mut auth = AdminAuthBackend::new();
+	/// auth.add_user_permission("alice", "admin.view_user").await;
+	/// auth.add_user_permission("alice", "admin.change_article").await;
+	/// # }
+	/// ```
+	pub async fn add_user_permission(&self, username: &str, permission: &str) {
+		let mut perms = self.model_permissions.write().await;
+		perms.add_user_permission(username, permission);
+	}
+
+	/// Create AdminAuthBackend with pre-configured permissions
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_panel::AdminAuthBackend;
+	/// use std::collections::HashMap;
+	///
+	/// # async fn example() {
+	/// let mut permissions = HashMap::new();
+	/// permissions.insert("alice".to_string(), vec!["admin.view_user".to_string()]);
+	/// permissions.insert("bob".to_string(), vec!["admin.change_article".to_string()]);
+	///
+	/// let auth = AdminAuthBackend::with_permissions(permissions).await;
+	/// # }
+	/// ```
+	pub async fn with_permissions(
+		permissions: std::collections::HashMap<String, Vec<String>>,
+	) -> Self {
+		let backend = Self::new();
+
+		for (username, perms) in permissions {
+			for permission in perms {
+				backend.add_user_permission(&username, &permission).await;
+			}
+		}
+
+		backend
 	}
 
 	/// Extract SimpleUser from Any type
@@ -160,6 +207,11 @@ impl AdminPermissionChecker {
 			backend: Arc::new(AdminAuthBackend::new()),
 			user,
 		}
+	}
+
+	/// Create a permission checker with a custom backend
+	pub fn with_backend(user: SimpleUser, backend: Arc<AdminAuthBackend>) -> Self {
+		Self { backend, user }
 	}
 
 	/// Check view permission
@@ -340,10 +392,20 @@ mod tests {
 		assert!(!auth.is_superuser(&user as &dyn User));
 	}
 
-	#[tokio::test]
+	#[tokio::test(flavor = "multi_thread")]
 	async fn test_permission_checker() {
 		let user = create_staff_user();
-		let checker = AdminPermissionChecker::new(user);
+		let backend = Arc::new(AdminAuthBackend::new());
+
+		// Grant permissions to staff user
+		backend
+			.add_user_permission("staff", "admin.view_article")
+			.await;
+		backend
+			.add_user_permission("staff", "admin.add_article")
+			.await;
+
+		let checker = AdminPermissionChecker::with_backend(user, backend);
 
 		assert!(checker.can_view("Article").await);
 		assert!(checker.can_add("Article").await);
@@ -383,5 +445,161 @@ mod tests {
 		let extracted = AdminAuthBackend::extract_user(any_user);
 		assert!(extracted.is_some());
 		assert_eq!(extracted.unwrap().username, "staff");
+	}
+
+	#[tokio::test(flavor = "multi_thread")]
+	async fn test_staff_user_with_permission_allowed() {
+		let auth = AdminAuthBackend::new();
+		let user = create_staff_user();
+
+		// Grant specific permissions to staff user
+		auth.add_user_permission("staff", "admin.view_user").await;
+		auth.add_user_permission("staff", "admin.change_article")
+			.await;
+
+		// Should have granted permissions
+		assert!(
+			auth.check_permission(&user, "User", PermissionAction::View)
+				.await
+		);
+		assert!(
+			auth.check_permission(&user, "Article", PermissionAction::Change)
+				.await
+		);
+
+		// Should not have un-granted permissions
+		assert!(
+			!auth
+				.check_permission(&user, "User", PermissionAction::Delete)
+				.await
+		);
+	}
+
+	#[tokio::test]
+	async fn test_staff_user_without_permission_denied() {
+		let auth = AdminAuthBackend::new();
+		let user = create_staff_user();
+
+		// No permissions granted
+
+		// Should be denied for all actions
+		assert!(
+			!auth
+				.check_permission(&user, "User", PermissionAction::View)
+				.await
+		);
+		assert!(
+			!auth
+				.check_permission(&user, "User", PermissionAction::Add)
+				.await
+		);
+		assert!(
+			!auth
+				.check_permission(&user, "User", PermissionAction::Change)
+				.await
+		);
+		assert!(
+			!auth
+				.check_permission(&user, "User", PermissionAction::Delete)
+				.await
+		);
+	}
+
+	#[tokio::test(flavor = "multi_thread")]
+	async fn test_staff_user_partial_permissions() {
+		let auth = AdminAuthBackend::new();
+		let user = create_staff_user();
+
+		// Grant only view and change permissions
+		auth.add_user_permission("staff", "admin.view_article")
+			.await;
+		auth.add_user_permission("staff", "admin.change_article")
+			.await;
+
+		// Should have view and change
+		assert!(
+			auth.check_permission(&user, "Article", PermissionAction::View)
+				.await
+		);
+		assert!(
+			auth.check_permission(&user, "Article", PermissionAction::Change)
+				.await
+		);
+
+		// Should not have add and delete
+		assert!(
+			!auth
+				.check_permission(&user, "Article", PermissionAction::Add)
+				.await
+		);
+		assert!(
+			!auth
+				.check_permission(&user, "Article", PermissionAction::Delete)
+				.await
+		);
+	}
+
+	#[tokio::test(flavor = "multi_thread")]
+	async fn test_with_permissions_constructor() {
+		use std::collections::HashMap;
+
+		let mut permissions = HashMap::new();
+		permissions.insert(
+			"alice".to_string(),
+			vec![
+				"admin.view_user".to_string(),
+				"admin.change_user".to_string(),
+			],
+		);
+		permissions.insert("bob".to_string(), vec!["admin.view_article".to_string()]);
+
+		let auth = AdminAuthBackend::with_permissions(permissions).await;
+
+		// Create users
+		let alice = SimpleUser {
+			id: uuid::Uuid::from_u128(10),
+			username: "alice".to_string(),
+			email: "alice@example.com".to_string(),
+			is_staff: true,
+			is_superuser: false,
+			is_active: true,
+			is_admin: true,
+		};
+
+		let bob = SimpleUser {
+			id: uuid::Uuid::from_u128(11),
+			username: "bob".to_string(),
+			email: "bob@example.com".to_string(),
+			is_staff: true,
+			is_superuser: false,
+			is_active: true,
+			is_admin: true,
+		};
+
+		// Alice should have user permissions
+		assert!(
+			auth.check_permission(&alice, "User", PermissionAction::View)
+				.await
+		);
+		assert!(
+			auth.check_permission(&alice, "User", PermissionAction::Change)
+				.await
+		);
+		assert!(
+			!auth
+				.check_permission(&alice, "User", PermissionAction::Delete)
+				.await
+		);
+
+		// Bob should have article view permission
+		assert!(
+			auth.check_permission(&bob, "Article", PermissionAction::View)
+				.await
+		);
+		assert!(
+			!auth
+				.check_permission(&bob, "Article", PermissionAction::Change)
+				.await
+		);
 	}
 }
