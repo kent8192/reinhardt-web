@@ -186,7 +186,8 @@ fn parse_single_operation(expr: &Expr) -> Option<crate::Operation> {
 			"AlterColumn" => {
 				let table = extract_static_str_field(&expr_struct.fields, "table")?;
 				let column = extract_static_str_field(&expr_struct.fields, "column")?;
-				let new_definition = extract_column_definition_field(&expr_struct.fields, "new_definition")?;
+				let new_definition =
+					extract_column_definition_field(&expr_struct.fields, "new_definition")?;
 				return Some(crate::Operation::AlterColumn {
 					table: Box::leak(table.into_boxed_str()),
 					column: Box::leak(column.into_boxed_str()),
