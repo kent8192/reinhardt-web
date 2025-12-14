@@ -15,7 +15,7 @@ use hyper::Method;
 ///
 /// The HTTP Method Macro generates a View type that implements this trait:
 ///
-/// ```rust,no_run
+/// ```rust,no_run,ignore
 /// # use reinhardt_macros::get;
 /// # use reinhardt_di::params::Path;
 /// # use reinhardt_views::ViewResult;

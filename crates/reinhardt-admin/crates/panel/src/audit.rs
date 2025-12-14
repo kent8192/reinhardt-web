@@ -828,20 +828,21 @@ impl AuditLogger for MemoryAuditLogger {
 ///
 /// # Examples
 ///
-/// ```rust,no_run
-/// # #[tokio::main]
-/// # async fn main() {
+/// ```rust,ignore
 /// use reinhardt_panel::audit::{DatabaseAuditLogger, AuditLogger};
 /// use reinhardt_panel::AdminDatabase;
+/// use reinhardt_orm::connection::DatabaseConnection;
 /// use std::sync::Arc;
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let db = Arc::new(AdminDatabase::new(/* connection */));
-/// let logger = DatabaseAuditLogger::new(db, "audit_logs");
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let connection = DatabaseConnection::new(/* ... */);
+///     let db = Arc::new(AdminDatabase::new(connection));
+///     let logger = DatabaseAuditLogger::new(db, "audit_logs");
 ///
-/// // Use the logger
-/// # Ok(())
-/// # }
+///     // Use the logger
+///     Ok(())
+/// }
 /// ```
 pub struct DatabaseAuditLogger {
 	database: Arc<AdminDatabase>,

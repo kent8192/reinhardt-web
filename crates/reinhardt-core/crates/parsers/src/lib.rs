@@ -25,13 +25,16 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use reinhardt_parsers::{JSONParser, Parser, ParseRequest};
+//! use reinhardt_parsers::{JSONParser, Parser};
+//! use bytes::Bytes;
+//! use http::HeaderMap;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let request = ParseRequest::default();
 //! let parser = JSONParser::new();
-//! let data = parser.parse(request).await?;
+//! let body = Bytes::from(r#"{"key":"value"}"#);
+//! let headers = HeaderMap::new();
+//! let data = parser.parse(Some("application/json"), body, &headers).await?;
 //! # Ok(())
 //! # }
 //! ```

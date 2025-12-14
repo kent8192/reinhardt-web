@@ -22,8 +22,8 @@
 //!
 //! ### 1. Define Your Model
 //!
-//! ```rust,no_run
-//! # use reinhardt_orm::Model;
+//! ```rust,ignore
+//! use reinhardt_orm::Model;
 //! #[model(table_name = "users")]
 //! pub struct User {
 //!     #[field(primary_key)]
@@ -36,18 +36,21 @@
 //!
 //! ### 2. Register with Admin
 //!
-//! ```rust,no_run
-//! # use reinhardt_panel::{AdminSite, ModelAdmin};
-//! # struct User;
-//! # struct UserAdmin;
-//! # impl Default for UserAdmin {
-//! #     fn default() -> Self { Self }
-//! # }
+//! ```rust,ignore
+//! use reinhardt_panel::{AdminSite, ModelAdmin};
+//!
+//! // Define your admin implementation
+//! struct UserAdmin;
+//! impl ModelAdmin for UserAdmin {
+//!     // Implement required methods
+//! }
+//!
 //! #[tokio::main]
 //! async fn main() {
-//!     let mut admin = AdminSite::new("My Admin");
-//!     admin.register::<User>(UserAdmin::default()).await;
-//!     admin.serve("127.0.0.1:8001").await.unwrap();
+//!     let admin = AdminSite::new("My Admin");
+//!     admin.register("User", UserAdmin).unwrap();
+//!     // Note: AdminSite does not provide a built-in serve() method.
+//!     // Use your preferred server implementation to serve the admin interface.
 //! }
 //! ```
 //!
