@@ -722,7 +722,11 @@ impl ProjectState {
 	/// assert!(retrieved.is_some());
 	/// assert_eq!(retrieved.unwrap().name, "User");
 	/// ```
-	pub fn get_model_by_table_name(&self, app_label: &str, table_name: &str) -> Option<&ModelState> {
+	pub fn get_model_by_table_name(
+		&self,
+		app_label: &str,
+		table_name: &str,
+	) -> Option<&ModelState> {
 		self.models
 			.values()
 			.find(|model| model.app_label == app_label && model.table_name == table_name)
@@ -888,28 +892,30 @@ impl ProjectState {
 
 		// Generate model name: PascalCase version of field_name
 		// Example: "following" -> "UserFollowing"
-		let model_name = format!(
-			"{}{}",
-			source_model_name,
-			to_pascal_case(&m2m.field_name)
-		);
+		let model_name = format!("{}{}", source_model_name, to_pascal_case(&m2m.field_name));
 
 		let mut model_state = ModelState::new(source_app_label, &model_name);
 		model_state.table_name = table_name.clone();
 
 		// Add primary key field: id
 		let mut id_field = FieldState::new("id".to_string(), FieldType::Integer, false);
-		id_field.params.insert("primary_key".to_string(), "true".to_string());
-		id_field.params.insert("auto_increment".to_string(), "true".to_string());
+		id_field
+			.params
+			.insert("primary_key".to_string(), "true".to_string());
+		id_field
+			.params
+			.insert("auto_increment".to_string(), "true".to_string());
 		model_state.add_field(id_field);
 
 		// Determine source and target field names
-		let source_field_name = m2m.source_field.clone().unwrap_or_else(|| {
-			format!("from_{}_id", to_snake_case(source_model_name))
-		});
-		let target_field_name = m2m.target_field.clone().unwrap_or_else(|| {
-			format!("to_{}_id", to_snake_case(&m2m.to_model))
-		});
+		let source_field_name = m2m
+			.source_field
+			.clone()
+			.unwrap_or_else(|| format!("from_{}_id", to_snake_case(source_model_name)));
+		let target_field_name = m2m
+			.target_field
+			.clone()
+			.unwrap_or_else(|| format!("to_{}_id", to_snake_case(&m2m.to_model)));
 
 		// Determine source model's primary key type by checking the registry
 		// For now, assume Uuid based on examples
@@ -917,8 +923,11 @@ impl ProjectState {
 		let target_pk_type = FieldType::Uuid;
 
 		// Add foreign key to source model: from_{source_model}_id
-		let mut from_field = FieldState::new(source_field_name.clone(), source_pk_type.clone(), false);
-		from_field.params.insert("not_null".to_string(), "true".to_string());
+		let mut from_field =
+			FieldState::new(source_field_name.clone(), source_pk_type.clone(), false);
+		from_field
+			.params
+			.insert("not_null".to_string(), "true".to_string());
 		from_field.foreign_key = Some(ForeignKeyInfo {
 			referenced_table: source_table_name.to_string(),
 			referenced_column: "id".to_string(),
@@ -931,7 +940,9 @@ impl ProjectState {
 		// Need to determine target table name - for now use pattern: {app_label}_{model_name_snake_case}
 		let target_table_name = format!("{}_{}", source_app_label, to_snake_case(&m2m.to_model));
 		let mut to_field = FieldState::new(target_field_name.clone(), target_pk_type, false);
-		to_field.params.insert("not_null".to_string(), "true".to_string());
+		to_field
+			.params
+			.insert("not_null".to_string(), "true".to_string());
 		to_field.foreign_key = Some(ForeignKeyInfo {
 			referenced_table: target_table_name,
 			referenced_column: "id".to_string(),
