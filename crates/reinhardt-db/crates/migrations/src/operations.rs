@@ -370,7 +370,8 @@ impl Operation {
 			} => {
 				let mut parts = Vec::new();
 				for col in columns {
-					parts.push(format!("  {} {}", col.name, col.type_definition));
+					let sql_type = col.type_definition.to_sql_for_dialect(dialect);
+					parts.push(format!("  {} {}", col.name, sql_type));
 				}
 				for constraint in constraints {
 					parts.push(format!("  {}", constraint));
@@ -379,9 +380,10 @@ impl Operation {
 			}
 			Operation::DropTable { name } => format!("DROP TABLE {};", name),
 			Operation::AddColumn { table, column } => {
+				let sql_type = column.type_definition.to_sql_for_dialect(dialect);
 				format!(
 					"ALTER TABLE {} ADD COLUMN {} {};",
-					table, column.name, column.type_definition
+					table, column.name, sql_type
 				)
 			}
 			Operation::DropColumn { table, column } => {
@@ -391,26 +393,29 @@ impl Operation {
 				table,
 				column,
 				new_definition,
-			} => match dialect {
-				SqlDialect::Postgres | SqlDialect::Cockroachdb => {
-					format!(
-						"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
-						table, column, new_definition.type_definition
-					)
+			} => {
+				let sql_type = new_definition.type_definition.to_sql_for_dialect(dialect);
+				match dialect {
+					SqlDialect::Postgres | SqlDialect::Cockroachdb => {
+						format!(
+							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
+							table, column, sql_type
+						)
+					}
+					SqlDialect::Mysql => {
+						format!(
+							"ALTER TABLE {} MODIFY COLUMN {} {};",
+							table, column, sql_type
+						)
+					}
+					SqlDialect::Sqlite => {
+						format!(
+							"-- SQLite does not support ALTER COLUMN, table recreation required for {}",
+							table
+						)
+					}
 				}
-				SqlDialect::Mysql => {
-					format!(
-						"ALTER TABLE {} MODIFY COLUMN {} {};",
-						table, column, new_definition.type_definition
-					)
-				}
-				SqlDialect::Sqlite => {
-					format!(
-						"-- SQLite does not support ALTER COLUMN, table recreation required for {}",
-						table
-					)
-				}
-			},
+			}
 			Operation::RenameColumn {
 				table,
 				old_name,

@@ -96,7 +96,13 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 				.iter()
 				.find(|m| m.app_label == key.app_label && m.name == key.name)
 			{
-				state.apply_migration_operations(&migration.operations);
+				eprintln!("[DEBUG] Applying migration: {}/{}", migration.app_label, migration.name);
+				eprintln!("[DEBUG]   Operations count: {}", migration.operations.len());
+				state.apply_migration_operations(&migration.operations, migration.app_label);
+				eprintln!("[DEBUG]   State after applying - models count: {}", state.models.len());
+				for ((app, model_name), _) in &state.models {
+					eprintln!("[DEBUG]     - {}/{}", app, model_name);
+				}
 			}
 		}
 
@@ -222,7 +228,7 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 				.iter()
 				.find(|m| m.app_label == key.app_label && m.name == key.name)
 			{
-				state.apply_migration_operations(&migration.operations);
+				state.apply_migration_operations(&migration.operations, migration.app_label);
 			}
 		}
 

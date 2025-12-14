@@ -81,7 +81,46 @@ pub enum FieldType {
 }
 
 impl FieldType {
+	/// Convert FieldType to SQL string for a specific dialect
+	///
+	/// This method returns database-specific SQL types.
+	/// Use this method when generating SQL for a specific database.
+	pub fn to_sql_for_dialect(&self, dialect: &crate::operations::SqlDialect) -> String {
+		use crate::operations::SqlDialect;
+
+		match self {
+			FieldType::DateTime => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "TIMESTAMP".to_string(),
+				SqlDialect::Mysql | SqlDialect::Sqlite => "DATETIME".to_string(),
+			},
+			FieldType::TimestampTz => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "TIMESTAMPTZ".to_string(),
+				SqlDialect::Mysql => "DATETIME".to_string(), // MySQL doesn't have TIMESTAMPTZ
+				SqlDialect::Sqlite => "DATETIME".to_string(), // SQLite doesn't have TIMESTAMPTZ
+			},
+			FieldType::Boolean => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "BOOLEAN".to_string(),
+				SqlDialect::Mysql => "TINYINT(1)".to_string(), // MySQL uses TINYINT for boolean
+				SqlDialect::Sqlite => "INTEGER".to_string(),   // SQLite uses INTEGER for boolean
+			},
+			FieldType::Uuid => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "UUID".to_string(),
+				SqlDialect::Mysql => "CHAR(36)".to_string(), // MySQL doesn't have native UUID
+				SqlDialect::Sqlite => "TEXT".to_string(),    // SQLite doesn't have native UUID
+			},
+			FieldType::JsonBinary => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "JSONB".to_string(),
+				SqlDialect::Mysql | SqlDialect::Sqlite => "JSON".to_string(), // Fallback to JSON
+			},
+			// For all other types, use the generic SQL type
+			_ => self.to_sql_string(),
+		}
+	}
+
 	/// FieldTypeをSQL文字列に変換
+	///
+	/// This method returns generic SQL types that may not be compatible with all databases.
+	/// For database-specific SQL generation, use `to_sql_for_dialect()` instead.
 	pub fn to_sql_string(&self) -> String {
 		match self {
 			FieldType::BigInteger => "BIGINT".to_string(),

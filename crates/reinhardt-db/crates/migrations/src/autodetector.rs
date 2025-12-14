@@ -94,6 +94,31 @@ pub fn to_snake_case(name: &str) -> String {
 	result
 }
 
+/// Convert a snake_case name to PascalCase
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_migrations::autodetector::to_pascal_case;
+///
+/// assert_eq!(to_pascal_case("user"), "User");
+/// assert_eq!(to_pascal_case("blog_post"), "BlogPost");
+/// assert_eq!(to_pascal_case("http_response"), "HttpResponse");
+/// assert_eq!(to_pascal_case("following"), "Following");
+/// assert_eq!(to_pascal_case("blocked_users"), "BlockedUsers");
+/// ```
+pub fn to_pascal_case(name: &str) -> String {
+	name.split('_')
+		.map(|word| {
+			let mut chars = word.chars();
+			match chars.next() {
+				Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+				None => String::new(),
+			}
+		})
+		.collect()
+}
+
 /// ForeignKey reference information
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForeignKeyInfo {
@@ -681,6 +706,28 @@ impl ProjectState {
 			.get_mut(&(app_label.to_string(), model_name.to_string()))
 	}
 
+	/// Get a model by table name
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_migrations::{ProjectState, ModelState};
+	///
+	/// let mut state = ProjectState::new();
+	/// let mut model = ModelState::new("myapp", "User");
+	/// model.table_name = "myapp_user".to_string();
+	/// state.add_model(model);
+	///
+	/// let retrieved = state.get_model_by_table_name("myapp", "myapp_user");
+	/// assert!(retrieved.is_some());
+	/// assert_eq!(retrieved.unwrap().name, "User");
+	/// ```
+	pub fn get_model_by_table_name(&self, app_label: &str, table_name: &str) -> Option<&ModelState> {
+		self.models
+			.values()
+			.find(|model| model.app_label == app_label && model.table_name == table_name)
+	}
+
 	/// Filter models by app_label and return a new ProjectState containing only those models
 	///
 	/// This method is used to create app-specific ProjectState for per-app migration generation.
@@ -774,13 +821,140 @@ impl ProjectState {
 		let models_metadata = registry.get_models();
 
 		let mut state = ProjectState::new();
+		let mut intermediate_tables = Vec::new();
 
-		for metadata in models_metadata {
+		// First, add all regular models
+		for metadata in &models_metadata {
 			let model_state = metadata.to_model_state();
 			state.add_model(model_state);
 		}
 
+		// Then, generate intermediate tables for ManyToMany relationships
+		for metadata in &models_metadata {
+			for m2m in &metadata.many_to_many_fields {
+				// Generate intermediate table for this ManyToMany relationship
+				let intermediate_table = Self::create_intermediate_table_for_m2m(
+					&metadata.app_label,
+					&metadata.model_name,
+					&metadata.table_name,
+					m2m,
+				);
+				intermediate_tables.push(intermediate_table);
+			}
+		}
+
+		// Add all intermediate tables to state
+		for table in intermediate_tables {
+			state.add_model(table);
+		}
+
 		state
+	}
+
+	/// Create an intermediate table ModelState for a ManyToMany relationship
+	///
+	/// This generates a ModelState representing the intermediate/junction table
+	/// for a ManyToMany relationship.
+	///
+	/// # Arguments
+	///
+	/// * `source_app_label` - The app label of the source model (e.g., "auth")
+	/// * `source_model_name` - The name of the source model (e.g., "User")
+	/// * `source_table_name` - The table name of the source model (e.g., "auth_user")
+	/// * `m2m` - ManyToMany relationship metadata
+	///
+	/// # Returns
+	///
+	/// A `ModelState` representing the intermediate table with:
+	/// - Auto-increment primary key `id`
+	/// - Foreign key to source model: `from_{source_model}_id`
+	/// - Foreign key to target model: `to_{target_model}_id`
+	/// - Foreign key constraints with CASCADE
+	/// - Unique constraint on (from_id, to_id)
+	fn create_intermediate_table_for_m2m(
+		source_app_label: &str,
+		source_model_name: &str,
+		source_table_name: &str,
+		m2m: &crate::model_registry::ManyToManyMetadata,
+	) -> ModelState {
+		use crate::FieldType;
+
+		// Generate table name: {source_table_name}_{field_name}
+		// Example: "auth_user" + "_" + "following" = "auth_user_following"
+		let table_name = m2m
+			.through
+			.clone()
+			.unwrap_or_else(|| format!("{}_{}", source_table_name, m2m.field_name));
+
+		// Generate model name: PascalCase version of field_name
+		// Example: "following" -> "UserFollowing"
+		let model_name = format!(
+			"{}{}",
+			source_model_name,
+			to_pascal_case(&m2m.field_name)
+		);
+
+		let mut model_state = ModelState::new(source_app_label, &model_name);
+		model_state.table_name = table_name.clone();
+
+		// Add primary key field: id
+		let mut id_field = FieldState::new("id".to_string(), FieldType::Integer, false);
+		id_field.params.insert("primary_key".to_string(), "true".to_string());
+		id_field.params.insert("auto_increment".to_string(), "true".to_string());
+		model_state.add_field(id_field);
+
+		// Determine source and target field names
+		let source_field_name = m2m.source_field.clone().unwrap_or_else(|| {
+			format!("from_{}_id", to_snake_case(source_model_name))
+		});
+		let target_field_name = m2m.target_field.clone().unwrap_or_else(|| {
+			format!("to_{}_id", to_snake_case(&m2m.to_model))
+		});
+
+		// Determine source model's primary key type by checking the registry
+		// For now, assume Uuid based on examples
+		let source_pk_type = FieldType::Uuid;
+		let target_pk_type = FieldType::Uuid;
+
+		// Add foreign key to source model: from_{source_model}_id
+		let mut from_field = FieldState::new(source_field_name.clone(), source_pk_type.clone(), false);
+		from_field.params.insert("not_null".to_string(), "true".to_string());
+		from_field.foreign_key = Some(ForeignKeyInfo {
+			referenced_table: source_table_name.to_string(),
+			referenced_column: "id".to_string(),
+			on_delete: ForeignKeyAction::Cascade,
+			on_update: ForeignKeyAction::Cascade,
+		});
+		model_state.add_field(from_field);
+
+		// Add foreign key to target model: to_{target_model}_id
+		// Need to determine target table name - for now use pattern: {app_label}_{model_name_snake_case}
+		let target_table_name = format!("{}_{}", source_app_label, to_snake_case(&m2m.to_model));
+		let mut to_field = FieldState::new(target_field_name.clone(), target_pk_type, false);
+		to_field.params.insert("not_null".to_string(), "true".to_string());
+		to_field.foreign_key = Some(ForeignKeyInfo {
+			referenced_table: target_table_name,
+			referenced_column: "id".to_string(),
+			on_delete: ForeignKeyAction::Cascade,
+			on_update: ForeignKeyAction::Cascade,
+		});
+		model_state.add_field(to_field);
+
+		// Add foreign key constraints
+		model_state.add_foreign_key_constraint_from_field(&source_field_name);
+		model_state.add_foreign_key_constraint_from_field(&target_field_name);
+
+		// Add unique constraint on (from_id, to_id)
+		let unique_constraint = ConstraintDefinition {
+			name: format!("{}_unique", table_name),
+			constraint_type: "unique".to_string(),
+			fields: vec![source_field_name, target_field_name],
+			expression: None,
+			foreign_key_info: None,
+		};
+		model_state.constraints.push(unique_constraint);
+
+		model_state
 	}
 
 	/// Load ProjectState from a list of migrations
@@ -801,7 +975,7 @@ impl ProjectState {
 	pub fn from_migrations(migrations: &[crate::migration::Migration]) -> Self {
 		let mut state = Self::new();
 		for migration in migrations {
-			state.apply_migration_operations(&migration.operations);
+			state.apply_migration_operations(&migration.operations, migration.app_label);
 		}
 		state
 	}
@@ -818,15 +992,21 @@ impl ProjectState {
 	/// - RenameTable: Renames a model's table
 	/// - RenameColumn: Renames a field
 	/// - Other operations are logged but not applied to state
-	pub fn apply_migration_operations(&mut self, operations: &[crate::operations::Operation]) {
+	pub fn apply_migration_operations(
+		&mut self,
+		operations: &[crate::operations::Operation],
+		app_label: &str,
+	) {
 		use crate::operations::Operation;
 
 		for op in operations {
 			match op {
 				Operation::CreateTable { name, columns, .. } => {
 					// Create a new model from the table definition
-					// We'll use "auto" as the app_label since we don't have that info
-					let mut model = ModelState::new("auto", name.to_string());
+					// Use the provided app_label instead of hardcoding "auto"
+					// Convert table name to model name (PascalCase)
+					let model_name = Self::table_name_to_model_name(name, app_label);
+					let mut model = ModelState::new(app_label, model_name);
 					model.table_name = name.to_string();
 
 					// Convert columns to fields
@@ -873,8 +1053,19 @@ impl ProjectState {
 					// Keep the old field name but update everything else
 					let mut updated_field = new_field;
 					updated_field.name = column.to_string();
+
+					// If model exists, update the field
 					if let Some(model) = self.find_model_by_table_mut(table) {
 						model.fields.insert(column.to_string(), updated_field);
+					} else {
+						// If model doesn't exist, create it and add the field
+						// This handles the case where AlterColumn is used in initial migrations
+						// before CreateTable (which shouldn't happen, but does in some legacy migrations)
+						let model_name = Self::table_name_to_model_name(table, app_label);
+						let mut model = ModelState::new(app_label, model_name);
+						model.table_name = table.to_string();
+						model.add_field(updated_field);
+						self.add_model(model);
 					}
 				}
 				Operation::RenameTable { old_name, new_name } => {
@@ -907,6 +1098,36 @@ impl ProjectState {
 		self.models
 			.values_mut()
 			.find(|model| model.table_name == table_name)
+	}
+
+	/// Helper: Convert table name to model name (PascalCase)
+	///
+	/// Examples:
+	/// - `auth_user` → `User` (with app_label="auth")
+	/// - `auth_password_reset_token` → `PasswordResetToken`
+	/// - `dm_message` → `DMMessage`
+	/// - `dm_room` → `DMRoom`
+	/// - `profile_profile` → `Profile`
+	fn table_name_to_model_name(table_name: &str, app_label: &str) -> String {
+		// Remove app_label prefix if present (e.g., "auth_user" → "user")
+		let prefix = format!("{}_", app_label);
+		let name_without_prefix = if table_name.starts_with(&prefix) {
+			&table_name[prefix.len()..]
+		} else {
+			table_name
+		};
+
+		// Convert snake_case to PascalCase
+		name_without_prefix
+			.split('_')
+			.map(|word| {
+				let mut chars = word.chars();
+				match chars.next() {
+					Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+					None => String::new(),
+				}
+			})
+			.collect()
 	}
 
 	/// Helper: Convert ColumnDefinition to FieldState
@@ -3052,11 +3273,12 @@ impl MigrationAutodetector {
 	///
 	/// Django reference: `generate_created_models()` in django/db/migrations/autodetector.py:800
 	fn detect_created_models(&self, changes: &mut DetectedChanges) {
-		for (app_label, model_name) in self.to_state.models.keys() {
-			if !self
+		for ((app_label, model_name), to_model) in &self.to_state.models {
+			// Check if the model exists in from_state by table name
+			if self
 				.from_state
-				.models
-				.contains_key(&(app_label.clone(), model_name.clone()))
+				.get_model_by_table_name(app_label, &to_model.table_name)
+				.is_none()
 			{
 				changes
 					.created_models
@@ -3069,11 +3291,12 @@ impl MigrationAutodetector {
 	///
 	/// Django reference: `generate_deleted_models()` in django/db/migrations/autodetector.py:900
 	fn detect_deleted_models(&self, changes: &mut DetectedChanges) {
-		for (app_label, model_name) in self.from_state.models.keys() {
-			if !self
+		for ((app_label, model_name), from_model) in &self.from_state.models {
+			// Check if the model exists in to_state by table name
+			if self
 				.to_state
-				.models
-				.contains_key(&(app_label.clone(), model_name.clone()))
+				.get_model_by_table_name(app_label, &from_model.table_name)
+				.is_none()
 			{
 				changes
 					.deleted_models
@@ -3087,8 +3310,11 @@ impl MigrationAutodetector {
 	/// Django reference: `generate_added_fields()` in django/db/migrations/autodetector.py:1000
 	fn detect_added_fields(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			// Only check models that exist in both states
-			if let Some(from_model) = self.from_state.get_model(app_label, model_name) {
+			// Only check models that exist in both states (by table name)
+			if let Some(from_model) = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name)
+			{
 				for field_name in to_model.fields.keys() {
 					if !from_model.fields.contains_key(field_name) {
 						changes.added_fields.push((
@@ -3107,8 +3333,11 @@ impl MigrationAutodetector {
 	/// Django reference: `generate_removed_fields()` in django/db/migrations/autodetector.py:1100
 	fn detect_removed_fields(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
-			// Only check models that exist in both states
-			if let Some(to_model) = self.to_state.get_model(app_label, model_name) {
+			// Only check models that exist in both states (by table name)
+			if let Some(to_model) = self
+				.to_state
+				.get_model_by_table_name(app_label, &from_model.table_name)
+			{
 				for field_name in from_model.fields.keys() {
 					if !to_model.fields.contains_key(field_name) {
 						changes.removed_fields.push((
@@ -3127,8 +3356,11 @@ impl MigrationAutodetector {
 	/// Django reference: `generate_altered_fields()` in django/db/migrations/autodetector.py:1200
 	fn detect_altered_fields(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			// Only check models that exist in both states
-			if let Some(from_model) = self.from_state.get_model(app_label, model_name) {
+			// Only check models that exist in both states (by table name)
+			if let Some(from_model) = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name)
+			{
 				for (field_name, to_field) in &to_model.fields {
 					if let Some(from_field) = from_model.fields.get(field_name) {
 						// Check if field definition has changed
