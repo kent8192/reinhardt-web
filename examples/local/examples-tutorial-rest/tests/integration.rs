@@ -125,9 +125,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_snippet_read(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
-	) {
+	async fn test_snippet_read(#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>)) {
 		let (_file, pool) = sqlite_with_migrations.await;
 
 		// Create a snippet

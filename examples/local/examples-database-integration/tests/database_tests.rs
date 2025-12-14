@@ -14,9 +14,9 @@
 //! For simplicity and performance, we use a temporary file.
 
 use chrono::Utc;
-use reinhardt::db::orm::{reinitialize_database, Manager};
-use reinhardt::prelude::*;
 use reinhardt::TransactionScope;
+use reinhardt::db::orm::{Manager, reinitialize_database};
+use reinhardt::prelude::*;
 use rstest::*;
 use serial_test::serial;
 use std::sync::Arc;
@@ -129,9 +129,7 @@ async fn test_database_ready(
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_create_user(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
-) {
+async fn test_create_user(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
 	let (_file, _conn) = db_with_migrations.await;
 	let manager = User::objects();
 
@@ -156,9 +154,7 @@ async fn test_create_user(
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_read_users(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
-) {
+async fn test_read_users(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
 	let (_file, _conn) = db_with_migrations.await;
 	let manager = User::objects();
 
@@ -191,9 +187,7 @@ async fn test_read_users(
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_update_user(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
-) {
+async fn test_update_user(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
 	let (_file, _conn) = db_with_migrations.await;
 	let manager = User::objects();
 
@@ -220,9 +214,7 @@ async fn test_update_user(
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_delete_user(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
-) {
+async fn test_delete_user(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
 	let (_file, conn) = db_with_migrations.await;
 	let manager = User::objects();
 
@@ -430,9 +422,7 @@ async fn test_orm_list_todos(
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_orm_get_todo(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
-) {
+async fn test_orm_get_todo(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
 	let (_file, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
@@ -547,7 +537,10 @@ async fn test_todo_default_values(
 
 	// Verify defaults
 	assert!(!created.completed, "Default completed should be false");
-	assert!(created.description.is_none(), "Default description should be None");
+	assert!(
+		created.description.is_none(),
+		"Default description should be None"
+	);
 }
 
 /// Test timestamp auto-update behavior
@@ -603,44 +596,47 @@ async fn test_complete_crud_cycle(
 	let (_file, conn) = db_with_migrations.await;
 
 	// Use transaction for entire CRUD cycle
-	let final_count: std::result::Result<usize, anyhow::Error> =
-		atomic(&conn, || {
-			Box::pin(async move {
-				let manager = Todo::objects();
+	let final_count: std::result::Result<usize, anyhow::Error> = atomic(&conn, || {
+		Box::pin(async move {
+			let manager = Todo::objects();
 
-				// Create
-				let new_todo = Todo {
-					id: None,
-					title: "CRUD Test".to_string(),
-					description: Some("Testing full cycle".to_string()),
-					completed: false,
-					created_at: Utc::now(),
-					updated_at: Utc::now(),
-				};
-				let created = manager.create(&new_todo).await?;
+			// Create
+			let new_todo = Todo {
+				id: None,
+				title: "CRUD Test".to_string(),
+				description: Some("Testing full cycle".to_string()),
+				completed: false,
+				created_at: Utc::now(),
+				updated_at: Utc::now(),
+			};
+			let created = manager.create(&new_todo).await?;
 
-				// Read
-				let todos = manager.all().all().await?;
-				assert_eq!(todos.len(), 1);
+			// Read
+			let todos = manager.all().all().await?;
+			assert_eq!(todos.len(), 1);
 
-				// Update
-				let mut updated = created.clone();
-				updated.completed = true;
-				manager.update(&updated).await?;
+			// Update
+			let mut updated = created.clone();
+			updated.completed = true;
+			manager.update(&updated).await?;
 
-				// Verify update
-				let todos_after_update = manager.all().all().await?;
-				assert!(todos_after_update[0].completed);
+			// Verify update
+			let todos_after_update = manager.all().all().await?;
+			assert!(todos_after_update[0].completed);
 
-				// Delete
-				manager.delete(created.id.unwrap()).await?;
+			// Delete
+			manager.delete(created.id.unwrap()).await?;
 
-				// Verify deletion
-				let final_todos = manager.all().all().await?;
-				Ok(final_todos.len())
-			})
+			// Verify deletion
+			let final_todos = manager.all().all().await?;
+			Ok(final_todos.len())
 		})
-		.await;
+	})
+	.await;
 
-	assert_eq!(final_count.unwrap(), 0, "All operations should complete successfully");
+	assert_eq!(
+		final_count.unwrap(),
+		0,
+		"All operations should complete successfully"
+	);
 }

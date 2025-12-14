@@ -94,13 +94,12 @@ mod tests {
 		.expect("Failed to insert question");
 
 		// Read the question back
-		let retrieved_text: String = sqlx::query_scalar(
-			"SELECT question_text FROM polls_question WHERE id = $1"
-		)
-		.bind(id)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to read question");
+		let retrieved_text: String =
+			sqlx::query_scalar("SELECT question_text FROM polls_question WHERE id = $1")
+				.bind(id)
+				.fetch_one(pool.as_ref())
+				.await
+				.expect("Failed to read question");
 
 		assert_eq!(retrieved_text, question_text);
 	}
@@ -132,13 +131,12 @@ mod tests {
 			.expect("Failed to update question");
 
 		// Verify update
-		let retrieved_text: String = sqlx::query_scalar(
-			"SELECT question_text FROM polls_question WHERE id = $1",
-		)
-		.bind(id)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to verify update");
+		let retrieved_text: String =
+			sqlx::query_scalar("SELECT question_text FROM polls_question WHERE id = $1")
+				.bind(id)
+				.fetch_one(pool.as_ref())
+				.await
+				.expect("Failed to verify update");
 
 		assert_eq!(retrieved_text, updated_text);
 	}
@@ -323,13 +321,12 @@ mod tests {
 			.expect("Failed to update choice");
 
 		// Verify update
-		let retrieved_text: String = sqlx::query_scalar(
-			"SELECT choice_text FROM polls_choice WHERE id = $1",
-		)
-		.bind(choice_id)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to verify update");
+		let retrieved_text: String =
+			sqlx::query_scalar("SELECT choice_text FROM polls_choice WHERE id = $1")
+				.bind(choice_id)
+				.fetch_one(pool.as_ref())
+				.await
+				.expect("Failed to verify update");
 
 		assert_eq!(retrieved_text, updated_text);
 	}
@@ -370,12 +367,11 @@ mod tests {
 		assert!(delete_result.is_ok());
 
 		// Verify deletion
-		let verify_result = sqlx::query_scalar::<_, i64>(
-			"SELECT id FROM polls_choice WHERE id = $1",
-		)
-		.bind(choice_id)
-		.fetch_optional(pool.as_ref())
-		.await;
+		let verify_result =
+			sqlx::query_scalar::<_, i64>("SELECT id FROM polls_choice WHERE id = $1")
+				.bind(choice_id)
+				.fetch_optional(pool.as_ref())
+				.await;
 
 		assert!(verify_result.is_ok());
 		assert!(verify_result.unwrap().is_none());
@@ -409,23 +405,19 @@ mod tests {
 		.expect("Failed to insert choice");
 
 		// Increment votes
-		let update_result = sqlx::query(
-			"UPDATE polls_choice SET votes = votes + 1 WHERE id = $1",
-		)
-		.bind(choice_id)
-		.execute(pool.as_ref())
-		.await;
+		let update_result = sqlx::query("UPDATE polls_choice SET votes = votes + 1 WHERE id = $1")
+			.bind(choice_id)
+			.execute(pool.as_ref())
+			.await;
 
 		assert!(update_result.is_ok());
 
 		// Verify vote count
-		let votes: i32 = sqlx::query_scalar(
-			"SELECT votes FROM polls_choice WHERE id = $1",
-		)
-		.bind(choice_id)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to verify votes");
+		let votes: i32 = sqlx::query_scalar("SELECT votes FROM polls_choice WHERE id = $1")
+			.bind(choice_id)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to verify votes");
 
 		assert_eq!(votes, 1);
 	}

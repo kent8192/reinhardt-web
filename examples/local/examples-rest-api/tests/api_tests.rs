@@ -9,11 +9,11 @@
 //!
 //! Note: Tests must be run serially due to shared in-memory storage.
 
-use reinhardt::test::client::APIClient;
+use json::{Value, json};
 use reinhardt::core::serde::json;
+use reinhardt::test::client::APIClient;
 use reinhardt::test::fixtures::test_server_guard;
 use rstest::*;
-use json::{Value, json};
 use serial_test::serial;
 use std::sync::Arc;
 
