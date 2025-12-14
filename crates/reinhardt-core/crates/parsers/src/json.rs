@@ -6,6 +6,23 @@ use serde_json::Value;
 use crate::parser::{ParseError, ParseResult, ParsedData, Parser};
 
 /// JSON parser for application/json content type
+///
+/// ## Strict Mode
+///
+/// The `strict` flag controls validation of parsed JSON values:
+/// - `strict = true`: Rejects non-finite float values (Infinity, -Infinity, NaN)
+/// - `strict = false`: Allows any valid JSON (but still rejects invalid JSON)
+///
+/// ## Limitations
+///
+/// Due to serde_json's adherence to JSON RFC 8259, literal `Infinity`, `-Infinity`,
+/// and `NaN` values are **not valid JSON** and will be rejected during parsing
+/// regardless of the `strict` flag. The strict validation only affects **post-parse**
+/// validation of float values.
+///
+/// In other words:
+/// - Invalid JSON input (e.g., raw `Infinity` literal) → Always rejected by serde_json
+/// - Valid JSON with non-finite values → Rejected only if `strict = true`
 #[derive(Debug, Clone)]
 pub struct JSONParser {
 	/// Whether to allow empty bodies (returns null)
@@ -104,6 +121,12 @@ impl Parser for JSONParser {
 
 impl JSONParser {
 	/// Validate that JSON doesn't contain non-finite float values (Infinity, -Infinity, NaN)
+	///
+	/// # Note
+	///
+	/// This validation is performed **after** serde_json parsing. Due to serde_json's
+	/// strict RFC 8259 compliance, literal `Infinity`/`NaN` strings are already rejected
+	/// during parsing. This method validates the **parsed** numeric values.
 	fn validate_strict_json(value: &Value) -> ParseResult<()> {
 		match value {
 			Value::Number(n) => {
@@ -210,24 +233,158 @@ mod tests {
 		let headers = HeaderMap::new();
 
 		// In strict mode, these should fail
+		// Note: These fail during serde_json parsing (not strict validation)
+		// because Infinity/NaN literals are not valid JSON per RFC 8259
 		for value in ["Infinity", "-Infinity", "NaN"] {
 			let body = Bytes::from(value);
 			let result = parser.parse(Some("application/json"), body, &headers).await;
 			assert!(
 				result.is_err(),
-				"Expected error for {} in strict mode",
+				"Expected error for {} (invalid JSON literal)",
 				value
 			);
 		}
 
-		// In non-strict mode, these should parse (though JSON doesn't natively support these)
-		// Note: serde_json doesn't parse raw Infinity/NaN strings, so we need to handle them specially
-		// TODO: For now, we test that strict=false doesn't reject valid JSON
+		// In non-strict mode, valid JSON should still parse
+		// (strict only affects post-parse validation of float values)
 		let parser_non_strict = JSONParser::new().strict(false);
 		let valid_json = Bytes::from(r#"{"value": 1.0}"#);
 		let result = parser_non_strict
 			.parse(Some("application/json"), valid_json, &headers)
 			.await;
-		assert!(result.is_ok());
+		assert!(result.is_ok(), "Valid JSON should parse in non-strict mode");
+	}
+
+	#[tokio::test]
+	async fn test_json_edge_case_large_numbers() {
+		// Test extremely large numbers near floating-point limits
+		let parser = JSONParser::new();
+		let headers = HeaderMap::new();
+
+		// Maximum finite f64 value (approximately 1.7976931348623157e308)
+		let large_number = Bytes::from(r#"{"value": 1e308}"#);
+		let result = parser
+			.parse(Some("application/json"), large_number, &headers)
+			.await;
+		assert!(result.is_ok(), "Should parse very large finite numbers");
+
+		// Negative large number
+		let large_negative = Bytes::from(r#"{"value": -1e308}"#);
+		let result = parser
+			.parse(Some("application/json"), large_negative, &headers)
+			.await;
+		assert!(result.is_ok(), "Should parse very large negative numbers");
+	}
+
+	#[tokio::test]
+	async fn test_json_edge_case_small_numbers() {
+		// Test extremely small numbers near zero
+		let parser = JSONParser::new();
+		let headers = HeaderMap::new();
+
+		// Minimum positive normalized f64 value (approximately 2.2250738585072014e-308)
+		let small_number = Bytes::from(r#"{"value": 2.2250738585072014e-308}"#);
+		let result = parser
+			.parse(Some("application/json"), small_number, &headers)
+			.await;
+		assert!(result.is_ok(), "Should parse very small finite numbers");
+
+		// Very small negative number
+		let small_negative = Bytes::from(r#"{"value": -2.2250738585072014e-308}"#);
+		let result = parser
+			.parse(Some("application/json"), small_negative, &headers)
+			.await;
+		assert!(result.is_ok(), "Should parse very small negative numbers");
+	}
+
+	#[tokio::test]
+	async fn test_json_scientific_notation() {
+		// Test various scientific notation formats
+		let parser = JSONParser::new();
+		let headers = HeaderMap::new();
+
+		let test_cases = vec![
+			r#"{"value": 1.5e10}"#,      // Basic scientific notation
+			r#"{"value": 1.5E10}"#,      // Uppercase E
+			r#"{"value": 1.5e+10}"#,     // Explicit positive exponent
+			r#"{"value": 1.5e-10}"#,     // Negative exponent
+			r#"{"array": [1e5, 2e-5]}"#, // Multiple scientific notations
+		];
+
+		for test_case in test_cases {
+			let body = Bytes::from(test_case);
+			let result = parser.parse(Some("application/json"), body, &headers).await;
+			assert!(
+				result.is_ok(),
+				"Should parse scientific notation: {}",
+				test_case
+			);
+		}
+	}
+
+	#[tokio::test]
+	async fn test_json_nested_float_validation() {
+		// Test strict validation in nested structures
+		let parser_strict = JSONParser::new(); // strict = true by default
+		let headers = HeaderMap::new();
+
+		// This will be rejected by serde_json (not by strict validation)
+		// because Infinity is not valid JSON
+		let nested_infinity = Bytes::from(r#"{"outer": {"inner": Infinity}}"#);
+		let result = parser_strict
+			.parse(Some("application/json"), nested_infinity, &headers)
+			.await;
+		assert!(
+			result.is_err(),
+			"Nested Infinity literal should be rejected by serde_json"
+		);
+
+		// Valid nested structure with finite floats
+		let nested_valid = Bytes::from(r#"{"outer": {"inner": 123.456}}"#);
+		let result = parser_strict
+			.parse(Some("application/json"), nested_valid, &headers)
+			.await;
+		assert!(result.is_ok(), "Valid nested floats should be accepted");
+	}
+
+	#[tokio::test]
+	async fn test_json_array_float_validation() {
+		// Test strict validation in arrays
+		let parser_strict = JSONParser::new();
+		let parser_non_strict = JSONParser::new().strict(false);
+		let headers = HeaderMap::new();
+
+		// Valid array with finite floats
+		let valid_array = Bytes::from(r#"[1.0, 2.5, 3.14159, 100.0]"#);
+		let result = parser_strict
+			.parse(Some("application/json"), valid_array.clone(), &headers)
+			.await;
+		assert!(result.is_ok(), "Valid float arrays should be accepted");
+
+		let result = parser_non_strict
+			.parse(Some("application/json"), valid_array, &headers)
+			.await;
+		assert!(
+			result.is_ok(),
+			"Valid float arrays should be accepted in non-strict mode"
+		);
+
+		// Invalid: Array with Infinity literal (rejected by serde_json)
+		let invalid_array = Bytes::from(r#"[1.0, Infinity, 3.0]"#);
+		let result = parser_strict
+			.parse(Some("application/json"), invalid_array.clone(), &headers)
+			.await;
+		assert!(
+			result.is_err(),
+			"Infinity literal in array should be rejected"
+		);
+
+		let result = parser_non_strict
+			.parse(Some("application/json"), invalid_array, &headers)
+			.await;
+		assert!(
+			result.is_err(),
+			"Infinity literal in array should be rejected even in non-strict mode"
+		);
 	}
 }
