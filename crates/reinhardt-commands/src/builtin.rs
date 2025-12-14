@@ -219,6 +219,125 @@ impl BaseCommand for MigrateCommand {
 	}
 }
 
+/// Build from_state from database history (優先アプローチ)
+#[cfg(feature = "migrations")]
+async fn build_from_state_from_db(
+	migrations_dir: &std::path::Path,
+) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
+	use reinhardt_db::DatabaseConnection;
+	use reinhardt_db::migrations::{
+		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
+	};
+
+	// 1. Get database URL using the same method as migrate command
+	let database_url = get_database_url()?;
+	eprintln!("[DEBUG] Database URL: {}", database_url);
+
+	// 2. Connect to database
+	let connection = DatabaseConnection::connect(&database_url).await.map_err(|e| {
+		crate::CommandError::ExecutionError(format!("Database connection failed: {}", e))
+	})?;
+	eprintln!("[DEBUG] Database connection successful");
+
+	// 3. Build state from database history
+	let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+	let applied_records = recorder.get_applied_migrations().await.map_err(|e| {
+		crate::CommandError::ExecutionError(format!("Failed to get applied migrations: {}", e))
+	})?;
+	eprintln!("[DEBUG] Applied migrations count: {}", applied_records.len());
+	for record in &applied_records {
+		eprintln!("[DEBUG]   - {}/{}", record.app, record.name);
+	}
+
+	let source = FilesystemSource::new(migrations_dir);
+	let all_migrations = source.all_migrations().await.map_err(|e| {
+		crate::CommandError::ExecutionError(format!("Failed to load migrations from disk: {}", e))
+	})?;
+	eprintln!("[DEBUG] Migrations on disk: {}", all_migrations.len());
+	for migration in &all_migrations {
+		eprintln!("[DEBUG]   - {}/{}", migration.app_label, migration.name);
+	}
+
+	let loader = MigrationStateLoader::new(recorder, source);
+
+	let state = loader
+		.build_current_state()
+		.await
+		.map_err(|e| crate::CommandError::ExecutionError(format!("Failed to build state: {}", e)))?;
+
+	eprintln!("[DEBUG] Built state - models count: {}", state.models.len());
+	for ((app, model_name), _) in &state.models {
+		eprintln!("[DEBUG]   - {}/{}", app, model_name);
+	}
+
+	Ok(state)
+}
+
+/// Build from_state from TestContainers (デフォルト方式)
+///
+/// Note: TestContainers integration requires the 'testcontainers' feature to be enabled.
+#[cfg(all(feature = "migrations", feature = "testcontainers"))]
+async fn build_from_state_from_testcontainers(
+	migrations_dir: &std::path::Path,
+) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
+	use reinhardt_db::backends::DatabaseConnection;
+	use reinhardt_db::backends::types::DatabaseType;
+	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
+	use reinhardt_db::migrations::{
+		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
+	};
+	use reinhardt_test::fixtures::postgres_container;
+
+	// 1. Start temporary PostgreSQL container
+	let (_container, _pool, _port, url) = postgres_container().await;
+
+	// 2. Connect to temporary database
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!("TestContainers connection failed: {}", e))
+		})?;
+
+	// 3. Load all existing migrations
+	let source = FilesystemSource::new(migrations_dir);
+	let all_migrations = source.all_migrations().await.map_err(|e| {
+		crate::CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
+	})?;
+
+	// 4. Apply all existing migrations
+	if !all_migrations.is_empty() {
+		let mut executor =
+			DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+		executor
+			.apply_migrations(&all_migrations)
+			.await
+			.map_err(|e| {
+				crate::CommandError::ExecutionError(format!("Failed to apply migrations: {}", e))
+			})?;
+	}
+
+	// 5. Build current state from applied migrations
+	let recorder = DatabaseMigrationRecorder::new(connection.clone());
+	let loader = MigrationStateLoader::new(recorder, source);
+
+	loader.build_current_state().await.map_err(|e| {
+		crate::CommandError::ExecutionError(format!(
+			"Failed to build state from TestContainers: {}",
+			e
+		))
+	})
+}
+
+/// Build from_state from TestContainers (stub when feature not enabled)
+#[cfg(all(feature = "migrations", not(feature = "testcontainers")))]
+async fn build_from_state_from_testcontainers(
+	_migrations_dir: &std::path::Path,
+) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
+	Err(crate::CommandError::ExecutionError(
+		"TestContainers feature not enabled. Enable with --features testcontainers".to_string(),
+	))
+}
+
 /// Make migrations command
 #[cfg(feature = "migrations")]
 pub struct MakeMigrationsCommand;
@@ -249,6 +368,11 @@ impl BaseCommand for MakeMigrationsCommand {
 				"Show what would be created without writing files",
 			),
 			CommandOption::flag(None, "empty", "Create empty migration"),
+			CommandOption::flag(
+				None,
+				"from-db",
+				"Use database history instead of TestContainers for state building",
+			),
 			CommandOption::flag(Some('v'), "verbose", "Show detailed operation list"),
 			CommandOption::option(Some('n'), "name", "Name for the migration"),
 			CommandOption::option(None, "migrations-dir", "Directory for migration files")
@@ -459,51 +583,7 @@ impl BaseCommand for MakeMigrationsCommand {
 
 			let is_verbose = ctx.has_option("verbose");
 
-			// 2. Delete existing migration files and regenerate from scratch
-			// This approach ensures clean state without requiring DB connection
-			for app_name in &app_names {
-				let app_migrations_dir = migrations_dir.join(app_name).join("migrations");
-
-				if app_migrations_dir.exists() && !is_dry_run {
-					// Delete existing migration files (*.rs except entry point files)
-					if let Ok(entries) = std::fs::read_dir(&app_migrations_dir) {
-						for entry in entries.flatten() {
-							let path = entry.path();
-							if let Some(ext) = path.extension()
-								&& ext == "rs" && let Some(filename) =
-								path.file_name().and_then(|f| f.to_str())
-							{
-								// Delete migration files (start with 0, _, or digit)
-								// Keep only the entry point file (app_name.rs at parent level)
-								if filename.starts_with('0')
-									|| filename.starts_with('_')
-									|| filename.chars().next().is_some_and(|c| c.is_ascii_digit())
-								{
-									if let Err(e) = std::fs::remove_file(&path) {
-										ctx.warning(&format!(
-											"Failed to remove {}: {}",
-											path.display(),
-											e
-										));
-									} else {
-										ctx.verbose(&format!(
-											"Removed old migration: {}",
-											path.display()
-										));
-									}
-								}
-							}
-						}
-					}
-				} else if app_migrations_dir.exists() && is_dry_run {
-					ctx.info(&format!(
-						"Would delete existing migrations in {}",
-						app_migrations_dir.display()
-					));
-				}
-			}
-
-			// 3. Use MigrationAutodetector with empty from_state (full regeneration)
+			// 2. Build from_state from database history or TestContainers
 			// This ensures all models are treated as new, generating complete migrations
 			struct MigrationResult {
 				app_name: String,
@@ -512,16 +592,74 @@ impl BaseCommand for MakeMigrationsCommand {
 
 			let mut results: Vec<MigrationResult> = Vec::new();
 
+			// Build from_state based on strategy (default: TestContainers)
+			let from_db_flag = ctx.has_option("from-db");
+			let from_state = if from_db_flag {
+				// --from-db フラグが指定された場合: DB履歴優先
+				match build_from_state_from_db(&migrations_dir).await {
+					Ok(state) => {
+						ctx.verbose("Built state from database history");
+						state
+					}
+					Err(e) => {
+						ctx.warning(&format!("Failed to connect to database: {}", e));
+						ctx.info("Falling back to TestContainers...");
+						match build_from_state_from_testcontainers(&migrations_dir).await {
+							Ok(state) => {
+								ctx.verbose("Built state from TestContainers");
+								state
+							}
+							Err(e) => {
+								ctx.warning(&format!("Failed to use TestContainers: {}", e));
+								ctx.info("Using empty state (full regeneration)");
+								ProjectState::new()
+							}
+						}
+					}
+				}
+			} else {
+				// デフォルト: TestContainers優先
+				match build_from_state_from_testcontainers(&migrations_dir).await {
+					Ok(state) => {
+						ctx.verbose("Built state from TestContainers");
+						state
+					}
+					Err(e) => {
+						ctx.warning(&format!("Failed to use TestContainers: {}", e));
+						ctx.info("Falling back to database history...");
+						match build_from_state_from_db(&migrations_dir).await {
+							Ok(state) => {
+								ctx.verbose("Built state from database history");
+								state
+							}
+							Err(e) => {
+								ctx.warning(&format!("Failed to connect to database: {}", e));
+								ctx.info("Using empty state (full regeneration)");
+								ProjectState::new()
+							}
+						}
+					}
+				}
+			};
+
 			for app_name in &app_names {
 				// Filter target state for this app only
 				let app_target_state = target_project_state.filter_by_app(app_name);
+				eprintln!("[DEBUG] app_target_state for '{}': {} models", app_name, app_target_state.models.len());
+				for ((app, model_name), model_state) in &app_target_state.models {
+					eprintln!("[DEBUG]   - {}/{} ({} fields)", app, model_name, model_state.fields.len());
+				}
 
-				// Empty from_state means all models are "new" → full regeneration
-				let empty_from_state = ProjectState::new();
+				// Filter from_state for this app only
+				let app_from_state = from_state.filter_by_app(app_name);
+				eprintln!("[DEBUG] app_from_state for '{}': {} models", app_name, app_from_state.models.len());
+				for ((app, model_name), model_state) in &app_from_state.models {
+					eprintln!("[DEBUG]   - {}/{} ({} fields)", app, model_name, model_state.fields.len());
+				}
 
 				// Use MigrationAutodetector for proper ManyToMany support
 				let detector = reinhardt_db::migrations::MigrationAutodetector::new(
-					empty_from_state,
+					app_from_state,
 					app_target_state,
 				);
 				let generated_migrations = detector.generate_migrations();
@@ -533,16 +671,60 @@ impl BaseCommand for MakeMigrationsCommand {
 						let base_name = migration_name_opt.clone().unwrap_or_else(|| {
 							MigrationNamer::generate_name(&migration.operations, true)
 						});
-						let final_name = format!("0001_{}", base_name);
+						let migration_number =
+							MigrationNumbering::next_number(&migrations_dir, app_name);
+						let final_name = format!("{}_{}", migration_number, base_name);
+
+						// Determine dependencies
+						let dependencies = if migration_number == "0001" {
+							Vec::new() // Initial migration has no dependencies
+						} else {
+							// Get previous migration number
+							let prev_number_int = migration_number.parse::<u32>().unwrap() - 1;
+							let prev_number = format!("{:04}", prev_number_int);
+							// Find the previous migration by scanning the directory
+							let prev_migration_name = if let Ok(entries) =
+								std::fs::read_dir(migrations_dir.join(app_name).join("migrations"))
+							{
+								let mut prev_names: Vec<String> = entries
+									.filter_map(|entry| {
+										let path = entry.ok()?.path();
+										let filename = path.file_stem()?.to_str()?.to_string();
+										if filename.starts_with(&prev_number) {
+											Some(filename)
+										} else {
+											None
+										}
+									})
+									.collect();
+								prev_names.sort();
+								prev_names.first().cloned()
+							} else {
+								None
+							};
+
+							if let Some(prev_name) = prev_migration_name {
+								vec![(
+									Box::leak(app_name.clone().into_boxed_str()) as &'static str,
+									Box::leak(prev_name.into_boxed_str()) as &'static str,
+								)]
+							} else {
+								Vec::new()
+							}
+						};
 
 						let new_migration = reinhardt_db::migrations::Migration {
 							app_label: Box::leak(app_name.clone().into_boxed_str()),
 							name: Box::leak(final_name.into_boxed_str()),
 							operations: migration.operations,
-							dependencies: Vec::new(), // Initial migration has no dependencies
+							dependencies,
 							atomic: true,
 							replaces: Vec::new(),
-							initial: Some(true),
+							initial: if migration_number == "0001" {
+								Some(true)
+							} else {
+								None
+							},
 						};
 
 						results.push(MigrationResult {
