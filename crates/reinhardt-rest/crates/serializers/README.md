@@ -255,8 +255,12 @@ Provides serializers for converting between Rust types and various formats (JSON
 ```rust
 use reinhardt_serializers::HyperlinkedModelSerializer;
 
-let serializer = HyperlinkedModelSerializer::<User>::new("user-detail");
+let serializer = HyperlinkedModelSerializer::<User>::new("user-detail", None);
 // Generates URLs like: {"url": "/api/users/123/", "username": "alice"}
+
+// UrlReverserを使用する場合
+// let reverser: Arc<dyn UrlReverser> = Arc::new(MyUrlReverser);
+// let serializer = HyperlinkedModelSerializer::<User>::new("user-detail", Some(reverser));
 ```
 
 #### Nested Serializers
