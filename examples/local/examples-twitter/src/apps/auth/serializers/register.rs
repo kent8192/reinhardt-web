@@ -2,11 +2,12 @@
 //!
 //! Serializers for user registration endpoints
 
+use reinhardt::rest::{Schema, ToSchema};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 /// Request data for user registration
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Schema)]
 pub struct RegisterRequest {
 	/// User's email address
 	#[validate(email(message = "Invalid email format"))]
@@ -57,7 +58,7 @@ fn validate_no_whitespace(s: &str) -> Result<(), validator::ValidationError> {
 }
 
 /// Response data for successful registration
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct RegisterResponse {
 	/// Success message
 	pub message: String,

@@ -2,11 +2,12 @@
 //!
 //! Serializers for user signin endpoints
 
+use reinhardt::rest::{Schema, ToSchema};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 /// Request data for user signin
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Schema)]
 pub struct SigninRequest {
 	/// User's email address
 	#[validate(email(message = "Invalid email format"))]
@@ -19,7 +20,7 @@ pub struct SigninRequest {
 }
 
 /// Response data for successful signin
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct SigninResponse {
 	/// JWT token for API authentication
 	pub token: String,
@@ -28,7 +29,7 @@ pub struct SigninResponse {
 }
 
 /// User information returned in signin response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct SigninUserInfo {
 	/// User's unique identifier
 	pub id: String,

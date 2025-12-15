@@ -3,12 +3,13 @@
 //! Serializers for profile CRUD operations
 
 use crate::apps::profile::models::Profile;
+use reinhardt::rest::{Schema, ToSchema};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
 /// Request data for creating a profile (POST)
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Schema)]
 pub struct CreateProfileRequest {
 	/// Biography (up to 500 characters)
 	#[validate(length(max = 500, message = "Bio must be at most 500 characters"))]
@@ -30,7 +31,7 @@ pub struct CreateProfileRequest {
 }
 
 /// Request data for updating a profile (PATCH)
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Schema)]
 pub struct UpdateProfileRequest {
 	/// Biography (up to 500 characters)
 	#[validate(length(max = 500, message = "Bio must be at most 500 characters"))]
@@ -52,7 +53,7 @@ pub struct UpdateProfileRequest {
 }
 
 /// Response data for profile retrieval
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct ProfileResponse {
 	pub id: Uuid,
 	pub user_id: Uuid,

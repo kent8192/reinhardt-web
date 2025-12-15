@@ -2,11 +2,12 @@
 //!
 //! Serializers for password change endpoints
 
+use reinhardt::rest::{Schema, ToSchema};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 /// Request data for password change
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Schema)]
 pub struct ChangePasswordRequest {
 	/// Current password
 	#[validate(length(min = 1, message = "Current password cannot be empty"))]
@@ -44,7 +45,7 @@ fn validate_no_whitespace(s: &str) -> Result<(), validator::ValidationError> {
 }
 
 /// Response data for successful password change
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct ChangePasswordResponse {
 	/// Success message
 	pub message: String,

@@ -2,11 +2,12 @@
 //!
 //! Serializers for password reset endpoints
 
+use reinhardt::rest::{Schema, ToSchema};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 /// Request data for password reset
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Schema)]
 pub struct ResetPasswordRequest {
 	/// User's email address
 	#[validate(email(message = "Invalid email format"))]
@@ -18,14 +19,14 @@ pub struct ResetPasswordRequest {
 ///
 /// Note: In production, the reset_token should NOT be returned in the response.
 /// Instead, it should be sent via email. This is for development/testing purposes only.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct ResetPasswordResponse {
 	/// Password reset token (for development only - in production, send via email)
 	pub reset_token: String,
 }
 
 /// Request data for confirming password reset with new password
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Schema)]
 pub struct ResetPasswordConfirmRequest {
 	/// Password reset token received via email
 	#[validate(length(min = 1, message = "Token cannot be empty"))]
@@ -51,7 +52,7 @@ impl ResetPasswordConfirmRequest {
 }
 
 /// Response data for password reset confirmation
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct ResetPasswordConfirmResponse {
 	/// Success message
 	pub message: String,

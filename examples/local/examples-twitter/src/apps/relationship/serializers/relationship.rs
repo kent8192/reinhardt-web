@@ -3,11 +3,12 @@
 //! Response serializers for relationship endpoints
 
 use chrono::{DateTime, Utc};
+use reinhardt::rest::{Schema, ToSchema};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Query parameters for pagination
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Schema)]
 pub struct PaginationParams {
 	#[serde(default = "default_page")]
 	pub page: usize,
@@ -24,7 +25,7 @@ fn default_limit() -> usize {
 }
 
 /// Response for successful follow operation
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct FollowResponse {
 	pub follower_id: Uuid,
 	pub followed_id: Uuid,
@@ -43,7 +44,7 @@ impl FollowResponse {
 }
 
 /// Response for successful block operation
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct BlockResponse {
 	pub blocker_id: Uuid,
 	pub blocked_id: Uuid,
@@ -62,7 +63,7 @@ impl BlockResponse {
 }
 
 /// Simple user info for list responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct UserSummary {
 	pub id: Uuid,
 	pub username: String,
@@ -80,7 +81,7 @@ impl From<crate::apps::auth::models::User> for UserSummary {
 }
 
 /// Paginated list response for followers
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct FollowerListResponse {
 	pub count: usize,
 	pub next: Option<String>,
@@ -89,7 +90,7 @@ pub struct FollowerListResponse {
 }
 
 /// Paginated list response for followings
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct FollowingListResponse {
 	pub count: usize,
 	pub next: Option<String>,
@@ -98,7 +99,7 @@ pub struct FollowingListResponse {
 }
 
 /// Paginated list response for blocked users
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct BlockingListResponse {
 	pub count: usize,
 	pub next: Option<String>,

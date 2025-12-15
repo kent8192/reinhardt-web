@@ -2,11 +2,12 @@
 //!
 //! Serializers for password verification endpoints
 
+use reinhardt::rest::{Schema, ToSchema};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 /// Request data for password verification
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Schema)]
 pub struct VerifyPasswordRequest {
 	/// Password to verify
 	#[validate(length(min = 1, message = "Password cannot be empty"))]
@@ -14,7 +15,7 @@ pub struct VerifyPasswordRequest {
 }
 
 /// Response data for password verification
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Schema)]
 pub struct VerifyPasswordResponse {
 	/// Whether the password is valid
 	pub valid: bool,

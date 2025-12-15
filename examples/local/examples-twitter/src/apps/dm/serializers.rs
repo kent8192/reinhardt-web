@@ -1,6 +1,7 @@
 //! Serializers module for dm app (RESTful)
 
 use chrono::{DateTime, Utc};
+use reinhardt::rest::{Schema, ToSchema};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
@@ -8,7 +9,7 @@ use validator::Validate;
 use crate::apps::dm::models::{DMMessage, DMRoom};
 
 /// Request to create a new DM room
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, Schema)]
 pub struct CreateRoomRequest {
 	/// Optional name for the room (for group chats)
 	#[validate(length(max = 255))]
@@ -19,7 +20,7 @@ pub struct CreateRoomRequest {
 }
 
 /// Response for a DM room
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Schema)]
 pub struct RoomResponse {
 	pub id: Uuid,
 	pub name: Option<String>,
@@ -39,7 +40,7 @@ impl From<DMRoom> for RoomResponse {
 }
 
 /// Request to create a new message
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, Schema)]
 pub struct CreateMessageRequest {
 	/// Message content
 	#[validate(length(
@@ -51,7 +52,7 @@ pub struct CreateMessageRequest {
 }
 
 /// Response for a DM message
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Schema)]
 pub struct MessageResponse {
 	pub id: Uuid,
 	pub room_id: Uuid,
