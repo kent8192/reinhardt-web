@@ -569,7 +569,7 @@ mod tests {
 
 			let operations = vec![create_table_operation("users", vec!["id", "name", "email"])];
 
-			state.apply_migration_operations(&operations);
+			state.apply_migration_operations(&operations, "testapp");
 
 			assert_eq!(state.models.len(), 1);
 			let model = state.models.values().next().unwrap();
@@ -586,11 +586,11 @@ mod tests {
 
 			// First create the table
 			let create_ops = vec![create_table_operation("users", vec!["id", "name"])];
-			state.apply_migration_operations(&create_ops);
+			state.apply_migration_operations(&create_ops, "testapp");
 
 			// Then add a column
 			let add_ops = vec![add_column_operation("users", "email")];
-			state.apply_migration_operations(&add_ops);
+			state.apply_migration_operations(&add_ops, "testapp");
 
 			let model = state.models.values().next().unwrap();
 			assert_eq!(model.fields.len(), 3);
@@ -606,14 +606,14 @@ mod tests {
 
 			// Create table with multiple columns
 			let create_ops = vec![create_table_operation("users", vec!["id", "name", "email"])];
-			state.apply_migration_operations(&create_ops);
+			state.apply_migration_operations(&create_ops, "testapp");
 
 			// Drop a column
 			let drop_ops = vec![Operation::DropColumn {
 				table: "users",
 				column: "email",
 			}];
-			state.apply_migration_operations(&drop_ops);
+			state.apply_migration_operations(&drop_ops, "testapp");
 
 			let model = state.models.values().next().unwrap();
 			assert_eq!(model.fields.len(), 2);
@@ -632,13 +632,13 @@ mod tests {
 				create_table_operation("users", vec!["id"]),
 				create_table_operation("posts", vec!["id"]),
 			];
-			state.apply_migration_operations(&create_ops);
+			state.apply_migration_operations(&create_ops, "testapp");
 
 			assert_eq!(state.models.len(), 2);
 
 			// Drop one table
 			let drop_ops = vec![Operation::DropTable { name: "users" }];
-			state.apply_migration_operations(&drop_ops);
+			state.apply_migration_operations(&drop_ops, "testapp");
 
 			assert_eq!(state.models.len(), 1);
 			let model = state.models.values().next().unwrap();
@@ -651,13 +651,13 @@ mod tests {
 			let mut state = ProjectState::default();
 
 			let create_ops = vec![create_table_operation("old_users", vec!["id"])];
-			state.apply_migration_operations(&create_ops);
+			state.apply_migration_operations(&create_ops, "testapp");
 
 			let rename_ops = vec![Operation::RenameTable {
 				old_name: "old_users",
 				new_name: "users",
 			}];
-			state.apply_migration_operations(&rename_ops);
+			state.apply_migration_operations(&rename_ops, "testapp");
 
 			let model = state.models.values().next().unwrap();
 			assert_eq!(model.table_name, "users");
@@ -669,14 +669,14 @@ mod tests {
 			let mut state = ProjectState::default();
 
 			let create_ops = vec![create_table_operation("users", vec!["id", "user_name"])];
-			state.apply_migration_operations(&create_ops);
+			state.apply_migration_operations(&create_ops, "testapp");
 
 			let rename_ops = vec![Operation::RenameColumn {
 				table: "users",
 				old_name: "user_name",
 				new_name: "name",
 			}];
-			state.apply_migration_operations(&rename_ops);
+			state.apply_migration_operations(&rename_ops, "testapp");
 
 			let model = state.models.values().next().unwrap();
 			assert!(!model.fields.contains_key("user_name"));
@@ -690,15 +690,15 @@ mod tests {
 
 			// Migration 1: Create initial table
 			let migration1_ops = vec![create_table_operation("users", vec!["id", "name"])];
-			state.apply_migration_operations(&migration1_ops);
+			state.apply_migration_operations(&migration1_ops, "testapp");
 
 			// Migration 2: Add email column
 			let migration2_ops = vec![add_column_operation("users", "email")];
-			state.apply_migration_operations(&migration2_ops);
+			state.apply_migration_operations(&migration2_ops, "testapp");
 
 			// Migration 3: Add created_at column
 			let migration3_ops = vec![add_column_operation("users", "created_at")];
-			state.apply_migration_operations(&migration3_ops);
+			state.apply_migration_operations(&migration3_ops, "testapp");
 
 			let model = state.models.values().next().unwrap();
 			assert_eq!(model.fields.len(), 4);
