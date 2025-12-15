@@ -111,11 +111,28 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 	// Get dynamic crate path
 	let openapi_crate = get_reinhardt_openapi_crate();
 
+	// Generate inventory registration only for non-generic types
+	// Generic types cannot be registered at compile time since they don't have a concrete type
+	let inventory_registration = if generics.params.is_empty() {
+		quote! {
+			// Automatic schema registration via inventory
+			// This allows the framework to discover all schemas at compile time
+			::inventory::submit! {
+				#openapi_crate::SchemaRegistration::new(
+					#struct_name,
+					#name::schema
+				)
+			}
+		}
+	} else {
+		quote! {}
+	};
+
 	let expanded = quote! {
 		impl #impl_generics #openapi_crate::ToSchema for #name #ty_generics #where_clause {
 			fn schema() -> #openapi_crate::Schema {
 				use #openapi_crate::Schema;
-				use ::utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
+				use #openapi_crate::utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 
 				let mut builder = ObjectBuilder::new()
 					.schema_type(SchemaType::Type(Type::Object));
@@ -130,6 +147,8 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 				Some(#struct_name.to_string())
 			}
 		}
+
+		#inventory_registration
 	};
 
 	TokenStream::from(expanded)
@@ -181,7 +200,7 @@ fn build_field_schema(field_type: &syn::Type, attrs: &FieldAttributes) -> proc_m
 	if let Some(ref format) = attrs.format {
 		modifications.push(quote! {
 			if let Schema::Object(mut obj) = schema {
-				obj.format = Some(::utoipa::openapi::schema::SchemaFormat::Custom(#format.to_string()));
+				obj.format = Some(#openapi_crate::utoipa::openapi::schema::SchemaFormat::Custom(#format.to_string()));
 				schema = Schema::Object(obj);
 			}
 		});
@@ -208,7 +227,7 @@ fn build_field_schema(field_type: &syn::Type, attrs: &FieldAttributes) -> proc_m
 	if attrs.deprecated {
 		modifications.push(quote! {
 			if let Schema::Object(mut obj) = schema {
-				obj.deprecated = Some(::utoipa::openapi::Deprecated::True);
+				obj.deprecated = Some(#openapi_crate::utoipa::openapi::Deprecated::True);
 				schema = Schema::Object(obj);
 			}
 		});
@@ -217,7 +236,7 @@ fn build_field_schema(field_type: &syn::Type, attrs: &FieldAttributes) -> proc_m
 	if let Some(min) = attrs.minimum {
 		modifications.push(quote! {
 			if let Schema::Object(mut obj) = schema {
-				obj.minimum = Some(::utoipa::Number::from(#min as f64));
+				obj.minimum = Some(#openapi_crate::utoipa::Number::from(#min as f64));
 				schema = Schema::Object(obj);
 			}
 		});
@@ -226,7 +245,7 @@ fn build_field_schema(field_type: &syn::Type, attrs: &FieldAttributes) -> proc_m
 	if let Some(max) = attrs.maximum {
 		modifications.push(quote! {
 			if let Schema::Object(mut obj) = schema {
-				obj.maximum = Some(::utoipa::Number::from(#max as f64));
+				obj.maximum = Some(#openapi_crate::utoipa::Number::from(#max as f64));
 				schema = Schema::Object(obj);
 			}
 		});
