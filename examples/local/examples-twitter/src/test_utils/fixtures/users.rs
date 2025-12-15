@@ -4,10 +4,8 @@
 
 use crate::apps::auth::models::User;
 use crate::test_utils::fixtures::{TestDatabase, test_database};
-use argon2::password_hash::{SaltString, rand_core::OsRng};
-use argon2::{Argon2, PasswordHasher};
-use chrono::Utc;
 use reinhardt::db::DatabaseConnection;
+use reinhardt::{BaseUser, Model};
 use rstest::*;
 use uuid::Uuid;
 
@@ -58,20 +56,9 @@ impl TestUserParams {
 	}
 }
 
-/// Hash a password using Argon2.
-fn hash_password(password: &str) -> String {
-	let salt = SaltString::generate(&mut OsRng);
-	let argon2 = Argon2::default();
-	argon2
-		.hash_password(password.as_bytes(), &salt)
-		.expect("Failed to hash password")
-		.to_string()
-}
-
 /// Create a test user in the database.
 ///
-/// Uses raw SQL for insertion to avoid ORM complexity in tests.
-/// This is acceptable for test fixtures.
+/// Uses reinhardt ORM for type-safe insertion with SQL injection protection.
 ///
 /// # Arguments
 ///
@@ -94,38 +81,24 @@ fn hash_password(password: &str) -> String {
 /// # }
 /// ```
 pub async fn create_test_user(db: &DatabaseConnection, params: TestUserParams) -> User {
-	let id = Uuid::new_v4();
-	let password_hash = hash_password(&params.password);
-	let now = Utc::now();
-
-	// Insert user into database using raw SQL
-	// This is acceptable for test fixtures to avoid ORM complexity
-	let sql = format!(
-		r#"INSERT INTO auth_user (id, username, email, password_hash, is_active, created_at)
-		VALUES ('{}', '{}', '{}', '{}', {}, '{}')"#,
-		id,
+	// Create user using User::new() which auto-generates id, created_at, and ManyToManyFields
+	let mut user = User::new(
 		params.username,
 		params.email,
-		password_hash,
+		None, // password_hash will be set after hashing
 		params.is_active,
-		now.format("%Y-%m-%d %H:%M:%S%.6f")
+		None, // bio (optional)
 	);
 
-	db.execute(&sql, vec![])
-		.await
-		.expect("Failed to create test user");
+	// Hash password using BaseUser trait
+	user.set_password(&params.password)
+		.expect("Failed to hash password");
 
-	User {
-		id,
-		username: params.username,
-		email: params.email,
-		password_hash: Some(password_hash),
-		is_active: params.is_active,
-		last_login: None,
-		created_at: now,
-		following: Default::default(),
-		blocked_users: Default::default(),
-	}
+	// Create user in database using ORM
+	User::objects()
+		.create_with_conn(db, &user)
+		.await
+		.expect("Failed to create test user")
 }
 
 /// Create multiple test users.
