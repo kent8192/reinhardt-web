@@ -12,14 +12,16 @@ reinhardt-mail = { workspace = true }
 reinhardt-static = { workspace = true }
 reinhardt-utils-core = { workspace = true }
 reinhardt-conf = { workspace = true }
+reinhardt-dentdelion = { workspace = true, features = ["cli"], optional = true }
 reinhardt-urls = { workspace = true, features = ["routers"], optional = true }
-reinhardt-db = { workspace = true, features = ["migrations", "backends-settings"], optional = true }
+reinhardt-db = { workspace = true, features = ["migrations", "backends-settings", "orm"], optional = true }
 reinhardt-test = { workspace = true, optional = true }
 reinhardt-di = { workspace = true, optional = true }
 reinhardt-openapi = { workspace = true, optional = true }
 reinhardt-types = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 reinhardt-server = { workspace = true, optional = true }
+reinhardt-middleware = { workspace = true, optional = true }
 chrono = { workspace = true }
 clap = { version = "4.5", features = ["derive", "cargo"] }
 tokio = { workspace = true }
@@ -38,6 +40,7 @@ rand = { workspace = true }
 regex = { workspace = true }
 rust-embed = "8.5"
 glob = "0.3"
+inventory = "0.3"
 notify = { version = "8.2.0", optional = true }
 rustyline = { version = "17.0.2", optional = true }
 rhai = { version = "1.20", optional = true }
@@ -65,12 +68,12 @@ serial_test = { workspace = true }
 rstest = { workspace = true }
 
 [features]
-default = ["server"]
+default = ["server", "autoreload"]
 migrations = ["dep:reinhardt-db"]
 routers = ["dep:reinhardt-urls"]
 di = ["dep:reinhardt-di"]
 openapi = ["dep:reinhardt-openapi", "dep:reinhardt-types"]
-server = ["dep:reinhardt-server", "routers"]
+server = ["dep:reinhardt-server", "dep:reinhardt-middleware", "routers", "di"]
 autoreload = ["dep:notify", "server"]
 shell = ["dep:rustyline"]
 shell-rhai = ["shell", "dep:rhai"]
@@ -81,6 +84,7 @@ postgres = ["reinhardt-db?/postgres"]
 sqlite = ["reinhardt-db?/sqlite", "dep:sqlx", "sqlx/sqlite"]
 mysql = ["reinhardt-db?/mysql"]
 testcontainers = ["dep:reinhardt-test", "reinhardt-test?/testcontainers"]
+plugins = ["dep:reinhardt-dentdelion"]
 full = [
   "migrations",
   "routers",
@@ -97,4 +101,5 @@ full = [
   "sqlite",
   "mysql",
   "testcontainers",
+  "plugins",
 ]
