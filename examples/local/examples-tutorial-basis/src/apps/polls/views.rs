@@ -1,7 +1,8 @@
 use json::json;
+use reinhardt::Model;
 use reinhardt::StatusCode;
 use reinhardt::core::serde::json;
-use reinhardt::db::orm::{FilterOperator, FilterValue, Manager};
+use reinhardt::db::orm::{FilterOperator, FilterValue};
 use reinhardt::http::ViewResult;
 use reinhardt::{Json, Path};
 use reinhardt::{Response, get, post};

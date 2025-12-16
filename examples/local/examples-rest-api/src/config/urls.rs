@@ -3,6 +3,7 @@
 //! The `url_patterns` routes URLs to handlers.
 
 use reinhardt::UnifiedRouter;
+use reinhardt::register_url_patterns;
 
 use super::views;
 
@@ -13,3 +14,6 @@ pub fn url_patterns() -> UnifiedRouter {
 		.endpoint(views::list_users)
 		.mount("/api/", crate::apps::api::urls::url_patterns())
 }
+
+// Register URL patterns for automatic discovery by the framework
+register_url_patterns!();

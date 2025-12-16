@@ -3,6 +3,7 @@
 //! The `url_patterns` routes URLs to handlers.
 
 use reinhardt::prelude::*;
+use reinhardt::register_url_patterns;
 use std::sync::Arc;
 
 pub fn url_patterns() -> Arc<UnifiedRouter> {
@@ -13,3 +14,6 @@ pub fn url_patterns() -> Arc<UnifiedRouter> {
 
 	Arc::new(router)
 }
+
+// Register URL patterns for automatic discovery by the framework
+register_url_patterns!();

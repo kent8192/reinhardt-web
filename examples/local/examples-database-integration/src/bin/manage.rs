@@ -2,10 +2,8 @@
 //!
 //! This is the project-specific management command interface (equivalent to Django's manage.py).
 
-use examples_database_integration::config::urls::url_patterns;
 use reinhardt::commands::execute_from_command_line;
 use reinhardt::core::tokio;
-use reinhardt::urls::routers::register_router;
 use std::process;
 
 #[tokio::main]
@@ -19,8 +17,8 @@ async fn main() {
 		);
 	}
 
-	// Register router before executing commands
-	register_router(url_patterns());
+	// Router registration is now automatic via register_url_patterns! macro
+	// in src/config/urls.rs
 
 	// Execute command from command line
 	if let Err(e) = execute_from_command_line().await {
