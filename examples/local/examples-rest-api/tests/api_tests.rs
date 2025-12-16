@@ -126,7 +126,7 @@ async fn test_create_article(#[future] server: reinhardt::test::fixtures::TestSe
 	assert!(body["id"].as_i64().unwrap() > 0);
 	assert_eq!(body["title"], "Introduction to Reinhardt");
 	assert_eq!(body["author"], "John Doe");
-	assert!(body["published"]);
+	assert_eq!(body["published"], true);
 
 	println!("✅ Article created successfully");
 }
@@ -281,7 +281,7 @@ async fn test_update_article(#[future] server: reinhardt::test::fixtures::TestSe
 
 	assert_eq!(body["id"], article_id);
 	assert_eq!(body["title"], "Updated Title");
-	assert!(body["published"]);
+	assert_eq!(body["published"], true);
 	assert_eq!(body["author"], "Bob"); // Unchanged field
 
 	println!("✅ Article updated successfully");
@@ -441,7 +441,7 @@ async fn test_article_crud_workflow(#[future] server: reinhardt::test::fixtures:
 	assert_eq!(update_response.status_code(), 200);
 
 	let updated: Value = update_response.json().unwrap();
-	assert!(updated["published"]);
+	assert_eq!(updated["published"], true);
 
 	// 5. Delete
 	let delete_response = client

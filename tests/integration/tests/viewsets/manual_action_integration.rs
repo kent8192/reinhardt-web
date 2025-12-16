@@ -2,7 +2,10 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::{Request, Response};
-use reinhardt_viewsets::{action, register_action, ActionMetadata, FunctionActionHandler, ViewSet};
+use reinhardt_viewsets::{
+	action, clear_actions, register_action, ActionMetadata, FunctionActionHandler, ViewSet,
+};
+use serial_test::serial;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
@@ -33,9 +36,13 @@ impl ViewSet for TestViewSet {
 	}
 }
 
-/// Test manual action registration
+/// Test manual action registration with proper registry cleanup
 #[tokio::test]
+#[serial(action_registry)]
 async fn test_manual_action_registration() {
+	// Clear registry before test
+	clear_actions();
+
 	// Register actions manually
 	let viewset_type = std::any::type_name::<TestViewSet>();
 
@@ -59,7 +66,7 @@ async fn test_manual_action_registration() {
 	let viewset = TestViewSet::new("test");
 	let actions = viewset.get_extra_actions();
 
-	assert_eq!(actions.len(), 2);
+	assert_eq!(actions.len(), 2, "Should have exactly 2 registered actions");
 
 	// Use HashSet for order-independent comparison
 	let actual_names: HashSet<String> = actions.iter().map(|a| a.name.clone()).collect();
@@ -72,6 +79,9 @@ async fn test_manual_action_registration() {
 		"アクション名が期待値と一致しません。期待: {:?}, 実際: {:?}",
 		expected_names, actual_names
 	);
+
+	// Cleanup after test
+	clear_actions();
 }
 
 /// Test action metadata properties
@@ -133,16 +143,62 @@ async fn test_action_helper() {
 	assert_eq!(response.unwrap().status, StatusCode::OK);
 }
 
-/// Test ViewSet without actions
+/// Test ViewSet without actions - registry should be empty after clear
 #[tokio::test]
+#[serial(action_registry)]
 async fn test_viewset_no_actions() {
+	// Clear registry to ensure isolation from other tests
+	clear_actions();
+
 	let viewset = TestViewSet::new("empty");
 	let actions = viewset.get_extra_actions();
 
-	// Should not include actions from previous tests (different type instance)
-	// In practice, we'd need to clear the registry between tests
-	// TODO: For now, just verify it returns a vec (len() is always >= 0, so no assertion needed)
-	let _ = actions.len(); // May contain actions from other tests
+	// After clearing, there should be no actions registered
+	assert_eq!(
+		actions.len(),
+		0,
+		"After clearing registry, ViewSet should have no extra actions"
+	);
+}
+
+/// Test that clearing actions works correctly
+#[tokio::test]
+#[serial(action_registry)]
+async fn test_clear_actions_functionality() {
+	// Start clean
+	clear_actions();
+
+	let viewset_type = std::any::type_name::<TestViewSet>();
+
+	// Register some actions
+	register_action(
+		viewset_type,
+		ActionMetadata::new("action1").with_handler(FunctionActionHandler::new(|_req| {
+			Box::pin(async { Ok(Response::ok()) })
+		})),
+	);
+	register_action(
+		viewset_type,
+		ActionMetadata::new("action2").with_handler(FunctionActionHandler::new(|_req| {
+			Box::pin(async { Ok(Response::ok()) })
+		})),
+	);
+
+	// Verify actions are registered
+	let viewset = TestViewSet::new("test");
+	let actions_before = viewset.get_extra_actions();
+	assert_eq!(
+		actions_before.len(),
+		2,
+		"Should have 2 actions before clear"
+	);
+
+	// Clear all actions
+	clear_actions();
+
+	// Verify actions are cleared
+	let actions_after = viewset.get_extra_actions();
+	assert_eq!(actions_after.len(), 0, "Should have 0 actions after clear");
 }
 
 /// Test get_extra_action_url_map (should return empty for base ViewSet)

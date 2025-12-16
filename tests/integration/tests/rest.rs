@@ -4,6 +4,7 @@
 
 mod rest {
 	mod openapi_schema_generation_integration;
+	mod schema_integration_tests;
 	mod serializers_filters_integration;
 	mod versioning_routers_integration;
 }

@@ -475,8 +475,12 @@ fn test_root_path_trailing_slash() {
 // Query String Preservation Tests
 // ============================================================
 
-/// Test Intent: Verify query string does not affect path matching
-/// Integration Point: PathMatcher + query string separation
+/// Test Intent: Verify PathMatcher receives clean paths (without query string)
+/// Integration Point: PathMatcher expects paths without query strings
+///
+/// Note: In actual HTTP request handling, `hyper::Uri::path()` automatically
+/// strips the query string. PathMatcher only receives the path component.
+/// This test documents this architectural decision.
 
 #[test]
 fn test_query_string_ignored_in_matching() {
@@ -486,16 +490,20 @@ fn test_query_string_ignored_in_matching() {
 		"search".to_string(),
 	);
 
-	// Path matching should ignore query string
-	let result = matcher.match_path("/search/?q=test&page=1");
-	// Note: Implementation might need to strip query string before matching
-	// This documents expected behavior
-	// If PathMatcher expects clean paths, this test should use "/search/" only
-	// TODO: For now, we test the ideal behavior (query string is stripped)
-	assert!(result.is_some() || result.is_none());
-	// If implementation handles query strings:
-	// assert!(result.is_some());
-	// assert_eq!(result.unwrap().0, "search");
+	// PathMatcher receives clean paths (query string already stripped by HTTP layer)
+	// In production: req.uri.path() returns "/search/" (not "/search/?q=test")
+	let result = matcher.match_path("/search/");
+	assert!(result.is_some(), "Clean path should match");
+	assert_eq!(result.unwrap().0, "search");
+
+	// PathMatcher does NOT handle query strings internally
+	// This is by design - query string parsing is handled by the HTTP layer
+	// and extracted into request.query_params HashMap
+	let result_with_query = matcher.match_path("/search/?q=test&page=1");
+	assert!(
+		result_with_query.is_none(),
+		"PathMatcher expects clean paths; query strings should be stripped by HTTP layer"
+	);
 }
 
 /// Test Intent: Verify query string with path parameters

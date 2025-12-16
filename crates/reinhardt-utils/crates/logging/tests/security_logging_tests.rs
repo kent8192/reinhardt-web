@@ -4,69 +4,10 @@
 //! Based on Django's security logging tests.
 
 use reinhardt_logging::handlers::MemoryHandler;
-use reinhardt_logging::{LogLevel, Logger};
+use reinhardt_logging::{LogLevel, Logger, SecurityError, SecurityLogger};
 use std::sync::Arc;
 
-/// Security exception types for testing
-#[derive(Debug)]
-pub enum SecurityError {
-	SuspiciousOperation(String),
-	DisallowedHost(String),
-	SuspiciousFileOperation(String),
-}
-
-impl std::fmt::Display for SecurityError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			SecurityError::SuspiciousOperation(msg) => {
-				write!(f, "SuspiciousOperation: {}", msg)
-			}
-			SecurityError::DisallowedHost(host) => write!(f, "DisallowedHost: {}", host),
-			SecurityError::SuspiciousFileOperation(path) => {
-				write!(f, "SuspiciousFileOperation: {}", path)
-			}
-		}
-	}
-}
-
-impl std::error::Error for SecurityError {}
-
-/// Security logger wrapper that logs security events
-pub struct SecurityLogger {
-	logger: Arc<Logger>,
-}
-
-impl SecurityLogger {
-	pub fn new(logger: Arc<Logger>) -> Self {
-		Self { logger }
-	}
-
-	pub async fn log_security_error(&self, error: &SecurityError) {
-		self.logger
-			.error(format!("Security Error: {}", error))
-			.await;
-	}
-
-	pub async fn log_disallowed_host(&self, host: &str, request_path: &str) {
-		self.logger
-			.error(format!(
-				"Invalid HTTP_HOST header: '{}'. You may need to add '{}' to ALLOWED_HOSTS. Request path: {}",
-				host, host, request_path
-			))
-			.await;
-	}
-
-	pub async fn log_suspicious_file_operation(&self, operation: &str, path: &str) {
-		self.logger
-			.error(format!(
-				"Attempted access to '{}' denied. Operation: {}",
-				path, operation
-			))
-			.await;
-	}
-}
-
-#[allow(dead_code)]
+#[tokio::test]
 async fn test_suspicious_operation_logged() {
 	// SuspiciousOperation should be logged at ERROR level
 	let logger = Arc::new(Logger::new("reinhardt.security".to_string()));
@@ -90,7 +31,7 @@ async fn test_suspicious_operation_logged() {
 	);
 }
 
-#[allow(dead_code)]
+#[tokio::test]
 async fn test_disallowed_host_logged() {
 	// DisallowedHost errors should be logged with helpful message
 	let logger = Arc::new(Logger::new("reinhardt.security.DisallowedHost".to_string()));
@@ -111,7 +52,7 @@ async fn test_disallowed_host_logged() {
 	);
 }
 
-#[allow(dead_code)]
+#[tokio::test]
 async fn test_suspicious_file_operation_logged() {
 	// Suspicious file operations should be logged
 	let logger = Arc::new(Logger::new(
@@ -136,7 +77,7 @@ async fn test_suspicious_file_operation_logged() {
 	);
 }
 
-#[allow(dead_code)]
+#[tokio::test]
 async fn test_security_logger_separation() {
 	// Security logger should be separate from main logger
 	let main_logger = Arc::new(Logger::new("myapp.main".to_string()));
@@ -173,7 +114,7 @@ async fn test_security_logger_separation() {
 	);
 }
 
-#[allow(dead_code)]
+#[tokio::test]
 async fn test_multiple_security_violations() {
 	// Multiple security violations should all be logged
 	let logger = Arc::new(Logger::new("reinhardt.security".to_string()));
@@ -219,7 +160,7 @@ async fn test_multiple_security_violations() {
 
 #[tokio::test]
 async fn test_security_logger_with_different_levels() {
-	// Security logger should respect different log levels
+	// Security logger should log at appropriate levels based on event type
 	let logger = Arc::new(Logger::new("reinhardt.security".to_string()));
 	let handler = MemoryHandler::new(LogLevel::Debug);
 	let memory = handler.clone();
@@ -229,19 +170,59 @@ async fn test_security_logger_with_different_levels() {
 
 	let sec_logger = SecurityLogger::new(logger.clone());
 
-	// Log at ERROR level (should appear)
+	// Log at ERROR level (security violation)
 	let error = SecurityError::SuspiciousOperation("Test".to_string());
 	sec_logger.log_security_error(&error).await;
 
-	// If we had lower-severity security events, they would also be logged
-	// TODO: For now, just verify ERROR level works
+	// Log at WARNING level (auth failure)
+	sec_logger
+		.log_auth_event("hacker", false, Some("10.0.0.1"))
+		.await;
+
+	// Log at INFO level (successful auth)
+	sec_logger
+		.log_auth_event("admin", true, Some("192.168.1.1"))
+		.await;
 
 	let records = memory.get_records();
-	assert_eq!(records.len(), 1);
+	assert_eq!(records.len(), 3);
 	assert_eq!(records[0].level, LogLevel::Error);
+	assert_eq!(records[1].level, LogLevel::Warning);
+	assert_eq!(records[2].level, LogLevel::Info);
 }
 
-#[allow(dead_code)]
+#[tokio::test]
+async fn test_security_info_filtered_by_level() {
+	// INFO level security events should be filtered when logger level is WARNING
+	let logger = Arc::new(Logger::new("reinhardt.security".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Warning);
+	let memory = handler.clone();
+
+	logger.add_handler(Arc::new(handler)).await;
+	logger.set_level(LogLevel::Warning).await;
+
+	let sec_logger = SecurityLogger::new(logger.clone());
+
+	// Log at INFO level (should be filtered)
+	sec_logger
+		.log_auth_event("admin", true, Some("192.168.1.1"))
+		.await;
+
+	// Log at WARNING level (should appear)
+	sec_logger
+		.log_auth_event("hacker", false, Some("10.0.0.1"))
+		.await;
+
+	// Log at ERROR level (should appear)
+	sec_logger.log_csrf_violation("/api/transfer").await;
+
+	let records = memory.get_records();
+	assert_eq!(records.len(), 2);
+	assert_eq!(records[0].level, LogLevel::Warning);
+	assert_eq!(records[1].level, LogLevel::Error);
+}
+
+#[tokio::test]
 async fn test_security_error_types() {
 	// Test all security error types can be logged
 	let logger = Arc::new(Logger::new("reinhardt.security".to_string()));
@@ -258,6 +239,10 @@ async fn test_security_error_types() {
 		SecurityError::SuspiciousOperation("Test operation".to_string()),
 		SecurityError::DisallowedHost("test.com".to_string()),
 		SecurityError::SuspiciousFileOperation("/test/path".to_string()),
+		SecurityError::AuthenticationFailed("invalid password".to_string()),
+		SecurityError::AuthorizationDenied("no permission".to_string()),
+		SecurityError::RateLimitExceeded("user123".to_string()),
+		SecurityError::CsrfViolation("missing token".to_string()),
 	];
 
 	for error in errors {
@@ -265,7 +250,7 @@ async fn test_security_error_types() {
 	}
 
 	let records = memory.get_records();
-	assert_eq!(records.len(), 3);
+	assert_eq!(records.len(), 7);
 	assert_eq!(
 		records[0].message,
 		"Security Error: SuspiciousOperation: Test operation"
@@ -278,4 +263,88 @@ async fn test_security_error_types() {
 		records[2].message,
 		"Security Error: SuspiciousFileOperation: /test/path"
 	);
+	assert_eq!(
+		records[3].message,
+		"Security Error: AuthenticationFailed: invalid password"
+	);
+	assert_eq!(
+		records[4].message,
+		"Security Error: AuthorizationDenied: no permission"
+	);
+	assert_eq!(
+		records[5].message,
+		"Security Error: RateLimitExceeded: user123"
+	);
+	assert_eq!(
+		records[6].message,
+		"Security Error: CsrfViolation: missing token"
+	);
+}
+
+#[tokio::test]
+async fn test_rate_limit_exceeded_logged() {
+	// Rate limit exceeded should be logged at WARNING level
+	let logger = Arc::new(Logger::new("reinhardt.security".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Debug);
+	let memory = handler.clone();
+
+	logger.add_handler(Arc::new(handler)).await;
+	logger.set_level(LogLevel::Debug).await;
+
+	let sec_logger = SecurityLogger::new(logger.clone());
+	sec_logger
+		.log_rate_limit_exceeded("192.168.1.100", 1000)
+		.await;
+
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert_eq!(records[0].level, LogLevel::Warning);
+	assert!(
+		records[0]
+			.message
+			.contains("Rate limit exceeded for '192.168.1.100'")
+	);
+	assert!(records[0].message.contains("1000"));
+}
+
+#[tokio::test]
+async fn test_csrf_violation_logged() {
+	// CSRF violation should be logged at ERROR level
+	let logger = Arc::new(Logger::new("reinhardt.security".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Debug);
+	let memory = handler.clone();
+
+	logger.add_handler(Arc::new(handler)).await;
+	logger.set_level(LogLevel::Debug).await;
+
+	let sec_logger = SecurityLogger::new(logger.clone());
+	sec_logger.log_csrf_violation("/api/bank/transfer").await;
+
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert_eq!(records[0].level, LogLevel::Error);
+	assert!(
+		records[0]
+			.message
+			.contains("CSRF validation failed for request")
+	);
+	assert!(records[0].message.contains("/api/bank/transfer"));
+}
+
+#[tokio::test]
+async fn test_auth_event_with_unknown_ip() {
+	// Auth event should handle unknown IP gracefully
+	let logger = Arc::new(Logger::new("reinhardt.security".to_string()));
+	let handler = MemoryHandler::new(LogLevel::Debug);
+	let memory = handler.clone();
+
+	logger.add_handler(Arc::new(handler)).await;
+	logger.set_level(LogLevel::Debug).await;
+
+	let sec_logger = SecurityLogger::new(logger.clone());
+	sec_logger.log_auth_event("admin", true, None).await;
+
+	let records = memory.get_records();
+	assert_eq!(records.len(), 1);
+	assert!(records[0].message.contains("from IP unknown"));
 }

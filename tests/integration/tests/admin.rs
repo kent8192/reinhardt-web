@@ -19,6 +19,9 @@ mod custom_views_reordering_integration;
 #[path = "admin/database_audit_logger.rs"]
 mod database_audit_logger;
 
+#[path = "admin/filter_condition_integration.rs"]
+mod filter_condition_integration;
+
 #[path = "admin/filters_export_import_integration.rs"]
 mod filters_export_import_integration;
 

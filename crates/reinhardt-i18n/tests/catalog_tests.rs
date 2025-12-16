@@ -2,7 +2,7 @@
 //!
 //! Tests based on Django's i18n catalog functionality
 
-use reinhardt_i18n::{CatalogLoader, MessageCatalog};
+use reinhardt_i18n::{CatalogLoader, I18nError, MessageCatalog};
 use serial_test::serial;
 use std::fs;
 use tempfile::TempDir;
@@ -211,34 +211,6 @@ fn test_catalog_locale() {
 
 #[test]
 #[serial(i18n)]
-fn test_catalog_loader_json() {
-	let temp_dir = TempDir::new().unwrap();
-	let locale_dir = temp_dir.path().join("locale");
-
-	fs::create_dir_all(&locale_dir).unwrap();
-
-	// Create a catalog loader with the locale directory as base path
-	let loader = CatalogLoader::new(&locale_dir);
-
-	let locale: LanguageIdentifier = "fr-FR".parse().unwrap();
-
-	// The current CatalogLoader::load() implementation returns an empty catalog
-	// This test verifies the loader can be created and called
-	let catalog = loader.load(&locale.to_string()).unwrap();
-
-	// Verify the catalog has the correct locale
-	assert_eq!(catalog.locale(), "fr-FR");
-
-	// The loader successfully loads .po files when they exist in the expected locations:
-	// - {base_path}/{locale}/LC_MESSAGES/django.po
-	// - {base_path}/{locale}/LC_MESSAGES/messages.po
-	// If no .po file is found, it returns an empty catalog (as verified in this test)
-
-	// Cleanup is automatic with TempDir
-}
-
-#[test]
-#[serial(i18n)]
 fn test_catalog_loader_loads_po_file() {
 	let temp_dir = TempDir::new().unwrap();
 
@@ -314,7 +286,7 @@ msgstr "ありがとう"
 
 #[test]
 #[serial(i18n)]
-fn test_catalog_loader_json_not_found() {
+fn test_catalog_loader_not_found_returns_error() {
 	let temp_dir = TempDir::new().unwrap();
 
 	// Create a catalog loader with a temporary directory as base path
@@ -322,12 +294,30 @@ fn test_catalog_loader_json_not_found() {
 
 	let locale: LanguageIdentifier = "xx-XX".parse().unwrap();
 
-	// The current CatalogLoader::load() implementation always returns Ok with an empty catalog
-	// In production, this would return Err when catalog files are not found
+	// CatalogLoader::load() returns an error when no .po file is found
 	let result = loader.load(&locale.to_string());
 
-	// TODO: For now, verify the loader can be called without panicking
-	assert!(result.is_ok());
+	assert!(result.is_err());
+	assert!(matches!(result, Err(I18nError::CatalogNotFound(_))));
+
+	// Cleanup is automatic with TempDir
+}
+
+#[test]
+#[serial(i18n)]
+fn test_catalog_loader_load_or_empty_returns_empty_catalog() {
+	let temp_dir = TempDir::new().unwrap();
+
+	// Create a catalog loader with a temporary directory as base path
+	let loader = CatalogLoader::new(temp_dir.path());
+
+	let locale: LanguageIdentifier = "xx-XX".parse().unwrap();
+
+	// load_or_empty() returns an empty catalog when no .po file is found
+	let catalog = loader.load_or_empty(&locale.to_string());
+
+	assert_eq!(catalog.locale(), "xx-XX");
+	assert_eq!(catalog.get("nonexistent"), None);
 
 	// Cleanup is automatic with TempDir
 }
@@ -350,10 +340,10 @@ fn test_catalog_loader_multiple_dirs() {
 
 	let locale: LanguageIdentifier = "fr-FR".parse().unwrap();
 
-	// The current implementation returns empty catalogs
+	// Use load_or_empty() since no .po files exist in these directories
 	// This test verifies both loaders can be created and used independently
-	let catalog1 = loader1.load(&locale.to_string()).unwrap();
-	let catalog2 = loader2.load(&locale.to_string()).unwrap();
+	let catalog1 = loader1.load_or_empty(&locale.to_string());
+	let catalog2 = loader2.load_or_empty(&locale.to_string());
 
 	// Verify both catalogs have the correct locale
 	assert_eq!(catalog1.locale(), "fr-FR");

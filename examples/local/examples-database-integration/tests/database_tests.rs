@@ -7,77 +7,62 @@
 //!
 //! Uses Reinhardt ORM Manager<T> for all database operations.
 //!
-//! ## Architecture Note: SQLite Test
+//! ## Architecture Note: PostgreSQL Test with TestContainers
 //!
-//! This test uses a temporary SQLite database file for each test run (or shared if configured).
-//! Since we are using `serial_test`, we can use a shared file or one per test.
-//! For simplicity and performance, we use a temporary file.
+//! This test uses PostgreSQL via TestContainers for realistic database testing.
+//! The MigrationProvider pattern is used to apply migrations automatically.
 
 use chrono::Utc;
 use reinhardt::TransactionScope;
-use reinhardt::db::orm::{Manager, reinitialize_database};
+use reinhardt::db::orm::reinitialize_database;
 use reinhardt::prelude::*;
+use reinhardt_test::fixtures::{ContainerAsync, GenericImage};
 use rstest::*;
 use serial_test::serial;
 use std::sync::Arc;
-use tempfile::NamedTempFile;
 
-// Import models from the library crate (uses #[derive(Model)] macro)
-use examples_database_integration::{Todo, User};
+// Import models and migrations from the library crate
+use examples_database_integration::{ExampleMigrations, Todo, User};
+
+// Import MigrationProvider trait for .migrations() method
+use reinhardt_db::migrations::MigrationProvider;
 
 // ============================================================================
-// Custom Fixtures with Migrations
+// Custom Fixtures with Migrations (PostgreSQL)
 // ============================================================================
 
-/// SQLite fixture with migrations applied
+/// PostgreSQL fixture with migrations applied via MigrationProvider
 #[fixture]
-async fn db_with_migrations() -> (NamedTempFile, Arc<DatabaseConnection>) {
-	// Create a temporary file for the database
-	let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-	let db_path = temp_file.path().to_str().unwrap().to_string();
-	let database_url = format!("sqlite://{}?mode=rwc", db_path);
+async fn db_with_migrations() -> (ContainerAsync<GenericImage>, Arc<DatabaseConnection>) {
+	use reinhardt_backends::types::DatabaseType;
+	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
+	use reinhardt_test::fixtures::postgres_container;
 
-	// Connect to SQLite
+	// Start PostgreSQL container and get URL
+	let (container, _pool, _port, database_url) = postgres_container().await;
+
+	// Connect to database
 	let conn = DatabaseConnection::connect(&database_url)
 		.await
-		.expect("Failed to connect to SQLite");
+		.expect("Failed to connect to PostgreSQL");
 
-	// Apply migrations using new migration system
-	// TODO: For now, we manually create tables for testing
-	let create_users_table = r#"
-		CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name VARCHAR(255) NOT NULL,
-			email VARCHAR(255) NOT NULL,
-			created_at DATETIME NOT NULL
-		)
-	"#;
-
-	let create_todos_table = r#"
-		CREATE TABLE IF NOT EXISTS todos (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			title VARCHAR(255) NOT NULL,
-			description TEXT,
-			completed BOOLEAN NOT NULL DEFAULT 0,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	"#;
-
-	conn.execute(create_users_table, vec![])
-		.await
-		.expect("Failed to create users table");
-
-	conn.execute(create_todos_table, vec![])
-		.await
-		.expect("Failed to create todos table");
+	// Apply migrations manually using ExampleMigrations
+	let migrations = ExampleMigrations::migrations();
+	if !migrations.is_empty() {
+		let mut executor =
+			DatabaseMigrationExecutor::new(conn.inner().clone(), DatabaseType::Postgres);
+		executor
+			.apply_migrations(&migrations)
+			.await
+			.expect("Failed to apply migrations");
+	}
 
 	// Initialize global database state for Manager<T> operations
 	reinitialize_database(&database_url)
 		.await
 		.expect("Failed to initialize global database state");
 
-	(temp_file, Arc::new(conn))
+	(container, Arc::new(conn))
 }
 
 // ============================================================================
@@ -89,9 +74,9 @@ async fn db_with_migrations() -> (NamedTempFile, Arc<DatabaseConnection>) {
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_database_connection(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, _conn) = db_with_migrations.await;
+	let (_container, _conn) = db_with_migrations.await;
 
 	// Verify connection by querying users table
 	let manager = User::objects();
@@ -104,9 +89,9 @@ async fn test_database_connection(
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_database_ready(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, _conn) = db_with_migrations.await;
+	let (_container, _conn) = db_with_migrations.await;
 
 	// Verify users table is accessible
 	let user_manager = User::objects();
@@ -129,8 +114,10 @@ async fn test_database_ready(
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_create_user(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
-	let (_file, _conn) = db_with_migrations.await;
+async fn test_create_user(
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+) {
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = User::objects();
 
 	let new_user = User {
@@ -154,8 +141,10 @@ async fn test_create_user(#[future] db_with_migrations: (NamedTempFile, Arc<Data
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_read_users(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
-	let (_file, _conn) = db_with_migrations.await;
+async fn test_read_users(
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+) {
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = User::objects();
 
 	// Create test users
@@ -187,8 +176,10 @@ async fn test_read_users(#[future] db_with_migrations: (NamedTempFile, Arc<Datab
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_update_user(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
-	let (_file, _conn) = db_with_migrations.await;
+async fn test_update_user(
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+) {
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = User::objects();
 
 	// Create user
@@ -214,8 +205,10 @@ async fn test_update_user(#[future] db_with_migrations: (NamedTempFile, Arc<Data
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_delete_user(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
-	let (_file, conn) = db_with_migrations.await;
+async fn test_delete_user(
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+) {
+	let (_container, conn) = db_with_migrations.await;
 	let manager = User::objects();
 
 	// Create user
@@ -251,9 +244,9 @@ async fn test_delete_user(#[future] db_with_migrations: (NamedTempFile, Arc<Data
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_transaction_commit(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, conn) = db_with_migrations.await;
+	let (_container, conn) = db_with_migrations.await;
 
 	// Start transaction with TransactionScope
 	let tx = TransactionScope::begin(&conn)
@@ -301,9 +294,9 @@ async fn test_transaction_commit(
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_transaction_rollback(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, conn) = db_with_migrations.await;
+	let (_container, conn) = db_with_migrations.await;
 
 	// Start transaction with TransactionScope
 	let mut tx = TransactionScope::begin(&conn)
@@ -357,9 +350,9 @@ async fn test_transaction_rollback(
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_orm_create_todo(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, _conn) = db_with_migrations.await;
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
 	let new_todo = Todo {
@@ -384,9 +377,9 @@ async fn test_orm_create_todo(
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_orm_list_todos(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, _conn) = db_with_migrations.await;
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
 	// Create test todos
@@ -422,8 +415,10 @@ async fn test_orm_list_todos(
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
-async fn test_orm_get_todo(#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>)) {
-	let (_file, _conn) = db_with_migrations.await;
+async fn test_orm_get_todo(
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+) {
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
 	// Create todo
@@ -452,9 +447,9 @@ async fn test_orm_get_todo(#[future] db_with_migrations: (NamedTempFile, Arc<Dat
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_orm_update_todo(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, _conn) = db_with_migrations.await;
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
 	// Create todo
@@ -486,9 +481,9 @@ async fn test_orm_update_todo(
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_orm_delete_todo(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, _conn) = db_with_migrations.await;
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
 	// Create todo
@@ -519,9 +514,9 @@ async fn test_orm_delete_todo(
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_todo_default_values(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, _conn) = db_with_migrations.await;
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
 	let new_todo = Todo {
@@ -548,9 +543,9 @@ async fn test_todo_default_values(
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_todo_timestamp_behavior(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, _conn) = db_with_migrations.await;
+	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
 	let new_todo = Todo {
@@ -591,9 +586,9 @@ async fn test_todo_timestamp_behavior(
 #[tokio::test(flavor = "multi_thread")]
 #[serial(database)]
 async fn test_complete_crud_cycle(
-	#[future] db_with_migrations: (NamedTempFile, Arc<DatabaseConnection>),
+	#[future] db_with_migrations: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
 ) {
-	let (_file, conn) = db_with_migrations.await;
+	let (_container, conn) = db_with_migrations.await;
 
 	// Use transaction for entire CRUD cycle
 	let final_count: std::result::Result<usize, anyhow::Error> = atomic(&conn, || {

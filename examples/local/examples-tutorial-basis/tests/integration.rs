@@ -442,7 +442,8 @@ mod tests {
 
 		// Verify it's recent (within last minute)
 		let now = chrono::Utc::now().naive_utc();
-		let diff_seconds = (now.timestamp() - recent_pub_date.timestamp()).abs();
+		let diff_seconds =
+			(now.and_utc().timestamp() - recent_pub_date.and_utc().timestamp()).abs();
 		assert!(diff_seconds < 60);
 
 		// Insert an old question (published 2 days ago)
@@ -457,7 +458,8 @@ mod tests {
 		let old_pub_date = old_row.1;
 
 		// Verify it's old (more than 1 day ago)
-		let old_diff_seconds = (now.timestamp() - old_pub_date.timestamp()).abs();
+		let old_diff_seconds =
+			(now.and_utc().timestamp() - old_pub_date.and_utc().timestamp()).abs();
 		assert!(old_diff_seconds >= 86400); // 1 day in seconds
 	}
 }

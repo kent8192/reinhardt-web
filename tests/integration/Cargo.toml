@@ -147,6 +147,9 @@ testcontainers = "0.25.0"
 testcontainers-modules = { version = "0.13", features = ["redis", "postgres"] }
 image = { version = "0.25.9", default-features = false, features = ["png"] }
 
+# Macro runtime requirements
+inventory = "0.3"
+
 [features]
 default = ["postgres", "sqlite", "caching", "hot-reload"]
 testcontainers = []
