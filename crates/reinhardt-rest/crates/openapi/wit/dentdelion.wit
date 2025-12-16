@@ -1,0 +1,202 @@
+// Dentdelion Plugin Interface
+//
+// This WIT file defines the interface between the host (Reinhardt framework)
+// and guest (WASM plugins) using the WebAssembly Component Model.
+//
+// Constraints:
+// - Memory limit: 128MB default (configurable via WasmPluginConfig)
+// - Execution timeout: 30 seconds default (configurable)
+// - Models capability is NOT supported (requires compile-time integration)
+// - HTTP/DB access requires capability-based permission checks
+
+package reinhardt:dentdelion@0.1.0;
+
+/// Common types shared between host and plugin interfaces.
+interface types {
+	/// Plugin metadata describing the plugin's identity and properties.
+	record plugin-metadata {
+		/// Unique identifier for the plugin (e.g., "auth-delion")
+		name: string,
+		/// Semantic version string (e.g., "1.0.0")
+		version: string,
+		/// Human-readable description
+		description: option<string>,
+		/// List of authors
+		authors: list<string>,
+		/// SPDX license identifier
+		license: option<string>,
+		/// Repository URL
+		repository: option<string>,
+		/// Homepage URL
+		homepage: option<string>,
+	}
+
+	/// Plugin capabilities that define what a plugin can provide.
+	/// Note: Models capability is NOT available for WASM plugins.
+	variant capability {
+		/// HTTP middleware
+		middleware,
+		/// CLI commands
+		commands,
+		/// REST API ViewSets
+		view-sets,
+		/// Custom signals
+		signals,
+		/// DI service registration
+		services,
+		/// Authentication backends
+		auth,
+		/// Template engines
+		templates,
+		/// Static file handlers
+		static-files,
+		/// URL routing
+		routing,
+		/// Signal receivers
+		signal-receivers,
+		/// HTTP handlers
+		handlers,
+		/// Network/HTTP access for external requests
+		network-access,
+		/// Database access for SQL queries
+		database-access,
+		/// Custom capability defined by the plugin
+		custom(string),
+	}
+
+	/// Configuration value variants for plugin settings.
+	variant config-value {
+		string-val(string),
+		int-val(s64),
+		float-val(f64),
+		bool-val(bool),
+		list-val(list<config-value>),
+		map-val(list<tuple<string, config-value>>),
+	}
+
+	/// Error information returned from plugin operations.
+	record plugin-error {
+		/// Error code (0 = success, non-zero = error)
+		code: u32,
+		/// Human-readable error message
+		message: string,
+		/// Optional additional details
+		details: option<string>,
+	}
+
+	/// HTTP response from host API calls.
+	record http-response {
+		/// HTTP status code
+		status: u16,
+		/// Response headers
+		headers: list<tuple<string, string>>,
+		/// Response body
+		body: list<u8>,
+	}
+}
+
+/// Host API - Functions provided by the Reinhardt host to plugins.
+///
+/// These functions allow plugins to interact with the host environment
+/// in a controlled and sandboxed manner.
+interface host {
+	use types.{config-value, plugin-error, http-response};
+
+	// ===== Configuration Access =====
+
+	/// Get a configuration value by key.
+	get-config: func(key: string) -> option<config-value>;
+
+	/// Set a configuration value.
+	/// Returns error if the key is read-only or invalid.
+	set-config: func(key: string, value: config-value) -> result<_, plugin-error>;
+
+	// ===== Logging =====
+
+	/// Log a debug message.
+	log-debug: func(message: string);
+
+	/// Log an info message.
+	log-info: func(message: string);
+
+	/// Log a warning message.
+	log-warn: func(message: string);
+
+	/// Log an error message.
+	log-error: func(message: string);
+
+	// ===== Service Registration =====
+
+	/// Register a service with the DI container.
+	/// Data is MessagePack-serialized service state.
+	register-service: func(name: string, data: list<u8>) -> result<_, plugin-error>;
+
+	/// Get a registered service by name.
+	/// Returns MessagePack-serialized service state.
+	get-service: func(name: string) -> option<list<u8>>;
+
+	/// Unregister a service from the DI container.
+	unregister-service: func(name: string) -> result<_, plugin-error>;
+
+	// ===== HTTP Client (requires capability check) =====
+
+	/// Perform an HTTP GET request.
+	/// Requires: Plugin must have appropriate network capability.
+	http-get: func(url: string, headers: list<tuple<string, string>>) -> result<http-response, plugin-error>;
+
+	/// Perform an HTTP POST request.
+	/// Requires: Plugin must have appropriate network capability.
+	http-post: func(url: string, body: list<u8>, headers: list<tuple<string, string>>) -> result<http-response, plugin-error>;
+
+	// ===== Database Access (requires capability check) =====
+
+	/// Execute a SQL query and return results.
+	/// Params is MessagePack-serialized query parameters.
+	/// Returns MessagePack-serialized result rows.
+	/// Requires: Plugin must have database capability.
+	db-query: func(sql: string, params: list<u8>) -> result<list<u8>, plugin-error>;
+
+	/// Execute a SQL statement (INSERT, UPDATE, DELETE).
+	/// Returns number of affected rows.
+	/// Requires: Plugin must have database capability.
+	db-execute: func(sql: string, params: list<u8>) -> result<u64, plugin-error>;
+}
+
+/// Plugin API - Functions that plugins must export.
+///
+/// These functions are called by the host to manage the plugin lifecycle
+/// and query plugin information.
+interface plugin {
+	use types.{plugin-metadata, capability, plugin-error};
+
+	/// Get the plugin's metadata.
+	get-metadata: func() -> plugin-metadata;
+
+	/// Get the list of capabilities this plugin provides.
+	get-capabilities: func() -> list<capability>;
+
+	/// Called when the plugin is loaded.
+	/// Config is MessagePack-serialized plugin configuration.
+	on-load: func(config: list<u8>) -> result<_, plugin-error>;
+
+	/// Called when the plugin is enabled.
+	on-enable: func() -> result<_, plugin-error>;
+
+	/// Called when the plugin is disabled.
+	on-disable: func() -> result<_, plugin-error>;
+
+	/// Called when the plugin is unloaded.
+	on-unload: func() -> result<_, plugin-error>;
+}
+
+/// World definition for Dentdelion plugins.
+///
+/// A WASM component implementing this world can be loaded as a
+/// Dentdelion plugin in the Reinhardt framework.
+world dentdelion-plugin {
+	/// Import host functions
+	import host;
+
+	/// Export plugin functions
+	export plugin;
+}
