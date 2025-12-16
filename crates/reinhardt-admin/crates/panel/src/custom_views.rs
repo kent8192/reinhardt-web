@@ -148,9 +148,15 @@ pub trait CustomView: Send + Sync {
 	async fn render(&self, context: HashMap<String, String>) -> String;
 
 	/// Check if the given user has permission to access this view
+	///
+	/// Permission checking follows this logic:
+	/// 1. If no permission requirement is configured, allow access
+	/// 2. Superusers always have access
+	/// 3. Non-staff users are denied
+	/// 4. Staff users must have the specific permission configured for this view
 	async fn has_permission(&self, user: &(dyn std::any::Any + Send + Sync)) -> bool {
 		use crate::auth::AdminAuthBackend;
-		use reinhardt_auth::{SimpleUser, User};
+		use reinhardt_auth::SimpleUser;
 
 		let config = self.config();
 
@@ -161,11 +167,22 @@ pub trait CustomView: Send + Sync {
 
 		// Check user permission
 		if let Some(simple_user) = user.downcast_ref::<SimpleUser>() {
-			let _auth_backend = AdminAuthBackend::new();
-			if let Some(_permission) = &config.permission {
-				// Check if user has the required permission
-				// TODO: For now, check if user is staff
-				simple_user.is_staff()
+			// Quick check: superusers always have access
+			if simple_user.is_superuser {
+				return true;
+			}
+
+			// Non-staff users cannot access admin views
+			if !simple_user.is_staff {
+				return false;
+			}
+
+			// Check specific permission using AdminAuthBackend
+			if let Some(permission) = &config.permission {
+				let auth_backend = AdminAuthBackend::new();
+				auth_backend
+					.check_custom_permission(simple_user, permission)
+					.await
 			} else {
 				true
 			}
@@ -842,5 +859,163 @@ mod tests {
 		let html = view.render(context).await;
 
 		assert_eq!(html, "<h1>Test View</h1>");
+	}
+
+	// ==================== has_permission tests ====================
+
+	use reinhardt_auth::SimpleUser;
+
+	fn create_superuser() -> SimpleUser {
+		SimpleUser {
+			id: uuid::Uuid::from_u128(1),
+			username: "admin".to_string(),
+			email: "admin@example.com".to_string(),
+			is_staff: true,
+			is_superuser: true,
+			is_active: true,
+			is_admin: true,
+		}
+	}
+
+	fn create_staff_user() -> SimpleUser {
+		SimpleUser {
+			id: uuid::Uuid::from_u128(2),
+			username: "staff".to_string(),
+			email: "staff@example.com".to_string(),
+			is_staff: true,
+			is_superuser: false,
+			is_active: true,
+			is_admin: true,
+		}
+	}
+
+	fn create_regular_user() -> SimpleUser {
+		SimpleUser {
+			id: uuid::Uuid::from_u128(3),
+			username: "user".to_string(),
+			email: "user@example.com".to_string(),
+			is_staff: false,
+			is_superuser: false,
+			is_active: true,
+			is_admin: false,
+		}
+	}
+
+	#[tokio::test]
+	async fn test_has_permission_no_requirement() {
+		// View with no permission requirement
+		let view = TestView {
+			config: ViewConfig::builder()
+				.path("public")
+				.name("Public View")
+				.build(), // No permission set
+		};
+
+		// Any user type should be allowed when no permission is required
+		let user = create_regular_user();
+		let user_any: &(dyn std::any::Any + Send + Sync) = &user;
+		assert!(view.has_permission(user_any).await);
+
+		let staff = create_staff_user();
+		let staff_any: &(dyn std::any::Any + Send + Sync) = &staff;
+		assert!(view.has_permission(staff_any).await);
+
+		let superuser = create_superuser();
+		let superuser_any: &(dyn std::any::Any + Send + Sync) = &superuser;
+		assert!(view.has_permission(superuser_any).await);
+	}
+
+	#[tokio::test]
+	async fn test_has_permission_superuser() {
+		// View with permission requirement
+		let view = TestView {
+			config: ViewConfig::builder()
+				.path("reports")
+				.name("Reports")
+				.permission("admin.view_reports")
+				.build(),
+		};
+
+		// Superuser should always have access, even without explicit permission grant
+		let user = create_superuser();
+		let user_any: &(dyn std::any::Any + Send + Sync) = &user;
+		assert!(view.has_permission(user_any).await);
+	}
+
+	#[tokio::test]
+	async fn test_has_permission_non_staff() {
+		// View with permission requirement
+		let view = TestView {
+			config: ViewConfig::builder()
+				.path("reports")
+				.name("Reports")
+				.permission("admin.view_reports")
+				.build(),
+		};
+
+		// Non-staff user should be denied
+		let user = create_regular_user();
+		let user_any: &(dyn std::any::Any + Send + Sync) = &user;
+		assert!(!view.has_permission(user_any).await);
+	}
+
+	#[tokio::test]
+	async fn test_has_permission_staff_without_permission() {
+		// View with permission requirement
+		let view = TestView {
+			config: ViewConfig::builder()
+				.path("reports")
+				.name("Reports")
+				.permission("admin.view_reports")
+				.build(),
+		};
+
+		// Staff user without the specific permission should be denied
+		let user = create_staff_user();
+		let user_any: &(dyn std::any::Any + Send + Sync) = &user;
+		assert!(!view.has_permission(user_any).await);
+	}
+
+	#[tokio::test]
+	async fn test_has_permission_invalid_user_type() {
+		// View with permission requirement
+		let view = TestView {
+			config: ViewConfig::builder()
+				.path("reports")
+				.name("Reports")
+				.permission("admin.view_reports")
+				.build(),
+		};
+
+		// Use a different type that can't be downcast to SimpleUser
+		let invalid_user: String = "not a user".to_string();
+		let user_any: &(dyn std::any::Any + Send + Sync) = &invalid_user;
+		assert!(!view.has_permission(user_any).await);
+	}
+
+	#[tokio::test]
+	async fn test_has_permission_inactive_superuser() {
+		// View with permission requirement
+		let view = TestView {
+			config: ViewConfig::builder()
+				.path("reports")
+				.name("Reports")
+				.permission("admin.view_reports")
+				.build(),
+		};
+
+		// Inactive superuser should still be allowed (superuser check happens before active check)
+		let user = SimpleUser {
+			id: uuid::Uuid::from_u128(4),
+			username: "inactive_admin".to_string(),
+			email: "inactive_admin@example.com".to_string(),
+			is_staff: true,
+			is_superuser: true,
+			is_active: false, // Inactive
+			is_admin: true,
+		};
+		let user_any: &(dyn std::any::Any + Send + Sync) = &user;
+		// Note: has_permission checks superuser before checking if active
+		assert!(view.has_permission(user_any).await);
 	}
 }
