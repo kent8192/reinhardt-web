@@ -45,6 +45,12 @@ Supports task scheduling, retries, task priorities, and multiple worker processe
   - Task storage in SQLite database
   - Automatic table creation
   - FIFO-based task retrieval
+- **RabbitMQBackend** (feature: `rabbitmq-backend`): RabbitMQ-based message queue
+  - AMQP protocol for reliable messaging
+  - Persistent task storage with durable queues
+  - Prefetch count for worker concurrency control
+  - Delivery mode configuration (persistent/transient)
+  - Metadata store abstraction for task tracking
 
 #### Task Queue
 
@@ -132,6 +138,85 @@ Supports task scheduling, retries, task priorities, and multiple worker processe
   - Max retries exceeded (`MaxRetriesExceeded`)
 - **TaskExecutionError**: Backend execution errors
   - Execution failure, task not found, backend error
+
+### RabbitMQ Backend
+
+The RabbitMQ backend provides production-ready message queue integration:
+
+```rust
+use reinhardt_tasks::backends::rabbitmq::{RabbitMQBackend, RabbitMQConfig, DeliveryMode};
+
+let config = RabbitMQConfig {
+    uri: "amqp://localhost:5672".to_string(),
+    queue_name: "my_tasks".to_string(),
+    prefetch_count: 10,
+    delivery_mode: DeliveryMode::Persistent,
+};
+
+let backend = RabbitMQBackend::new(config).await?;
+```
+
+#### Configuration Options
+
+- `uri`: RabbitMQ connection URI (e.g., `amqp://user:pass@host:5672/vhost`)
+- `queue_name`: Name of the queue to use for tasks
+- `prefetch_count`: Number of tasks to prefetch per worker (default: 1)
+- `delivery_mode`: Persistent or Transient message delivery
+
+#### Delivery Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `Persistent` | Messages survive broker restart | Production tasks |
+| `Transient` | Messages lost on broker restart | Low-priority tasks |
+
+### Metadata Store
+
+The metadata store provides task metadata persistence separate from the task queue:
+
+```rust
+use reinhardt_tasks::backends::metadata_store::{MetadataStore, TaskMetadata, TaskStatus};
+
+// Store task metadata
+let metadata = TaskMetadata {
+    id: "task-123".to_string(),
+    name: "process_order".to_string(),
+    status: TaskStatus::Pending,
+    created_at: Utc::now(),
+    updated_at: Utc::now(),
+    task_data: serde_json::json!({"order_id": 456}),
+};
+
+store.store(metadata)?;
+
+// Update task status
+store.update_status("task-123", TaskStatus::Running)?;
+
+// Retrieve metadata
+let metadata = store.get("task-123")?;
+```
+
+#### Available Implementations
+
+- **InMemoryMetadataStore**: In-memory storage for testing and development
+
+### Backend Comparison
+
+| Backend | Persistence | Scalability | Use Case |
+|---------|-------------|-------------|----------|
+| **Dummy** | No | - | Unit testing |
+| **Immediate** | No | Single process | Development, synchronous tasks |
+| **Redis** | Yes | High | Production, caching |
+| **RabbitMQ** | Yes | Very High | Production, messaging, complex routing |
+| **SQLite** | Yes | Low | Small-scale production, embedded |
+
+#### Choosing a Backend
+
+- **Development**: Use `ImmediateBackend` for simplicity
+- **Testing**: Use `DummyBackend` or `InMemoryMetadataStore`
+- **Small-scale production**: Use `SqliteBackend`
+- **Large-scale production**: Use `RabbitMQBackend` or `RedisTaskBackend`
+- **Complex routing needs**: Use `RabbitMQBackend` for exchange-based routing
 
 ## Testing
 

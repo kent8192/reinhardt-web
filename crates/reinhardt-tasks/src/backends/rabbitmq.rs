@@ -1,11 +1,56 @@
 //! RabbitMQ-based task backend implementation
 //!
 //! This module provides a RabbitMQ-based task queue backend using the AMQP protocol.
-//! It stores tasks in RabbitMQ queues with status tracking in message properties.
+//! It uses RabbitMQ for message queuing and a pluggable metadata store for task
+//! status tracking.
+//!
+//! # Architecture
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │                    RabbitMQ Backend                         │
+//! │  ┌───────────────────┐    ┌───────────────────────────────┐ │
+//! │  │   RabbitMQ Queue  │    │     Metadata Store            │ │
+//! │  │                   │    │  (InMemory, Redis, DB, etc.)  │ │
+//! │  │  • Task messages  │    │  • Status tracking            │ │
+//! │  │  • FIFO delivery  │    │  • Task data retrieval        │ │
+//! │  └───────────────────┘    └───────────────────────────────┘ │
+//! └─────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! # Examples
+//!
+//! ## Using default in-memory metadata store
+//!
+//! ```no_run
+//! use reinhardt_tasks::{RabbitMQBackend, RabbitMQConfig};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let config = RabbitMQConfig::new("amqp://localhost:5672/%2f");
+//! let backend = RabbitMQBackend::new(config).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Using custom metadata store
+//!
+//! ```no_run
+//! use reinhardt_tasks::{RabbitMQBackend, RabbitMQConfig};
+//! use reinhardt_tasks::backends::metadata_store::InMemoryMetadataStore;
+//! use std::sync::Arc;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let config = RabbitMQConfig::new("amqp://localhost:5672/%2f");
+//! let custom_store = Arc::new(InMemoryMetadataStore::new());
+//! let backend = RabbitMQBackend::with_metadata_store(config, custom_store).await?;
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::{
 	Task, TaskId, TaskStatus,
 	backend::{TaskBackend, TaskExecutionError},
+	backends::metadata_store::{InMemoryMetadataStore, MetadataStore, TaskMetadata},
 	registry::SerializedTask,
 };
 use async_trait::async_trait;
@@ -17,15 +62,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Task metadata for RabbitMQ storage
+/// Message payload for RabbitMQ queue
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct TaskMetadata {
+struct QueueMessage {
 	id: TaskId,
 	name: String,
-	status: TaskStatus,
 	created_at: i64,
-	updated_at: i64,
-	task_data: Option<SerializedTask>,
 }
 
 /// RabbitMQ configuration
@@ -121,10 +163,21 @@ impl Default for RabbitMQConfig {
 	}
 }
 
-/// RabbitMQ-based task backend
+/// RabbitMQ-based task backend with pluggable metadata storage
 ///
-/// Uses RabbitMQ as a message queue for task distribution and stores task
-/// metadata in message properties.
+/// Uses RabbitMQ as a message queue for task distribution and a configurable
+/// metadata store for task status tracking and data retrieval.
+///
+/// # Architecture
+///
+/// - **Queue**: RabbitMQ handles task message delivery (FIFO)
+/// - **Metadata Store**: Tracks task status and stores task data
+///
+/// # Default Behavior
+///
+/// By default, uses `InMemoryMetadataStore` which is suitable for
+/// development and testing. For production, consider using a persistent
+/// store like Redis or a database.
 ///
 /// # Examples
 ///
@@ -141,10 +194,12 @@ pub struct RabbitMQBackend {
 	connection: Arc<Connection>,
 	channel: Arc<RwLock<Channel>>,
 	config: RabbitMQConfig,
+	/// Pluggable metadata store for task status and data
+	metadata_store: Arc<dyn MetadataStore>,
 }
 
 impl RabbitMQBackend {
-	/// Create a new RabbitMQ backend
+	/// Create a new RabbitMQ backend with default in-memory metadata store
 	///
 	/// # Arguments
 	///
@@ -163,6 +218,40 @@ impl RabbitMQBackend {
 	/// # }
 	/// ```
 	pub async fn new(config: RabbitMQConfig) -> Result<Self, LapinError> {
+		let metadata_store = Arc::new(InMemoryMetadataStore::new());
+		Self::with_metadata_store(config, metadata_store).await
+	}
+
+	/// Create a new RabbitMQ backend with custom metadata store
+	///
+	/// Use this method when you need persistent storage for task metadata,
+	/// such as Redis or a database.
+	///
+	/// # Arguments
+	///
+	/// * `config` - RabbitMQ configuration
+	/// * `metadata_store` - Custom metadata store implementation
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_tasks::{RabbitMQBackend, RabbitMQConfig};
+	/// use reinhardt_tasks::backends::metadata_store::InMemoryMetadataStore;
+	/// use std::sync::Arc;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// // Using a shared metadata store across multiple backends
+	/// let shared_store = Arc::new(InMemoryMetadataStore::new());
+	///
+	/// let config = RabbitMQConfig::new("amqp://localhost:5672/%2f");
+	/// let backend = RabbitMQBackend::with_metadata_store(config, shared_store).await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn with_metadata_store(
+		config: RabbitMQConfig,
+		metadata_store: Arc<dyn MetadataStore>,
+	) -> Result<Self, LapinError> {
 		let connection = Connection::connect(&config.url, ConnectionProperties::default()).await?;
 		let channel = connection.create_channel().await?;
 
@@ -182,24 +271,8 @@ impl RabbitMQBackend {
 			connection: Arc::new(connection),
 			channel: Arc::new(RwLock::new(channel)),
 			config,
+			metadata_store,
 		})
-	}
-
-	/// Create task metadata
-	fn create_metadata(
-		&self,
-		task_id: TaskId,
-		task_name: String,
-		task_data: Option<SerializedTask>,
-	) -> TaskMetadata {
-		TaskMetadata {
-			id: task_id,
-			name: task_name,
-			status: TaskStatus::Pending,
-			created_at: chrono::Utc::now().timestamp(),
-			updated_at: chrono::Utc::now().timestamp(),
-			task_data,
-		}
 	}
 
 	/// Ensure connection is healthy, reconnect if necessary
@@ -256,9 +329,21 @@ impl TaskBackend for RabbitMQBackend {
 		let task_id = task.id();
 		let task_name = task.name().to_string();
 
-		let metadata = self.create_metadata(task_id, task_name, None);
+		// Store metadata in the pluggable store
+		let metadata = TaskMetadata::new(task_id, task_name.clone());
+		self.metadata_store
+			.store(metadata)
+			.await
+			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
-		let metadata_json = serde_json::to_string(&metadata)
+		// Create queue message
+		let queue_message = QueueMessage {
+			id: task_id,
+			name: task_name,
+			created_at: chrono::Utc::now().timestamp(),
+		};
+
+		let message_json = serde_json::to_string(&queue_message)
 			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
 		let channel = self.get_channel().await?;
@@ -269,7 +354,7 @@ impl TaskBackend for RabbitMQBackend {
 				&self.config.exchange_name,
 				&self.config.routing_key,
 				BasicPublishOptions::default(),
-				metadata_json.as_bytes(),
+				message_json.as_bytes(),
 				BasicProperties::default().with_delivery_mode(2), // Persistent
 			)
 			.await
@@ -291,8 +376,14 @@ impl TaskBackend for RabbitMQBackend {
 
 		match delivery {
 			Some(delivery) => {
-				let metadata: TaskMetadata = serde_json::from_slice(&delivery.data)
+				let queue_message: QueueMessage = serde_json::from_slice(&delivery.data)
 					.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+
+				// Update status to Running in metadata store
+				let _ = self
+					.metadata_store
+					.update_status(queue_message.id, TaskStatus::Running)
+					.await;
 
 				// Acknowledge message
 				delivery
@@ -300,41 +391,119 @@ impl TaskBackend for RabbitMQBackend {
 					.await
 					.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
-				Ok(Some(metadata.id))
+				Ok(Some(queue_message.id))
 			}
 			None => Ok(None),
 		}
 	}
 
-	async fn get_status(&self, _task_id: TaskId) -> Result<TaskStatus, TaskExecutionError> {
-		// NOTE: RabbitMQ is a message queue, not a data store
-		// Task status tracking requires additional storage (Redis, database, etc.)
-		// TODO: For now, return Pending as tasks are consumed from queue
-		Ok(TaskStatus::Pending)
+	async fn get_status(&self, task_id: TaskId) -> Result<TaskStatus, TaskExecutionError> {
+		let metadata = self
+			.metadata_store
+			.get(task_id)
+			.await
+			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+
+		match metadata {
+			Some(m) => Ok(m.status),
+			None => Err(TaskExecutionError::NotFound(task_id)),
+		}
 	}
 
 	async fn update_status(
 		&self,
-		_task_id: TaskId,
-		_status: TaskStatus,
+		task_id: TaskId,
+		status: TaskStatus,
 	) -> Result<(), TaskExecutionError> {
-		// NOTE: RabbitMQ is a message queue, not a data store
-		// Status updates require additional storage backend
-		// This is intentionally a no-op for pure queue-based backend
+		self.metadata_store
+			.update_status(task_id, status)
+			.await
+			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 		Ok(())
 	}
 
 	async fn get_task_data(
 		&self,
-		_task_id: TaskId,
+		task_id: TaskId,
 	) -> Result<Option<SerializedTask>, TaskExecutionError> {
-		// NOTE: RabbitMQ is a message queue, not a data store
-		// Task data is retrieved during dequeue operation
-		// Cannot retrieve by task_id without additional storage
-		Ok(None)
+		let metadata = self
+			.metadata_store
+			.get(task_id)
+			.await
+			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+
+		match metadata {
+			Some(m) => {
+				// Return task_data if stored, otherwise construct from metadata
+				if let Some(task_data) = m.task_data {
+					Ok(Some(task_data))
+				} else {
+					// Return a basic SerializedTask with just the name
+					Ok(Some(SerializedTask::new(m.name, "{}".to_string())))
+				}
+			}
+			None => Ok(None),
+		}
 	}
 
 	fn backend_name(&self) -> &str {
 		"rabbitmq"
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_rabbitmq_config_new() {
+		let config = RabbitMQConfig::new("amqp://localhost:5672/%2f");
+		assert_eq!(config.url, "amqp://localhost:5672/%2f");
+		assert_eq!(config.queue_name, "reinhardt_tasks");
+		assert_eq!(config.exchange_name, "");
+		assert_eq!(config.routing_key, "reinhardt_tasks");
+	}
+
+	#[test]
+	fn test_rabbitmq_config_with_queue_name() {
+		let config =
+			RabbitMQConfig::new("amqp://localhost:5672/%2f").with_queue_name("custom_queue");
+		assert_eq!(config.queue_name, "custom_queue");
+		assert_eq!(config.routing_key, "custom_queue");
+	}
+
+	#[test]
+	fn test_rabbitmq_config_with_exchange() {
+		let config = RabbitMQConfig::new("amqp://localhost:5672/%2f").with_exchange("my_exchange");
+		assert_eq!(config.exchange_name, "my_exchange");
+	}
+
+	#[test]
+	fn test_rabbitmq_config_with_routing_key() {
+		let config =
+			RabbitMQConfig::new("amqp://localhost:5672/%2f").with_routing_key("my_routing_key");
+		assert_eq!(config.routing_key, "my_routing_key");
+	}
+
+	#[test]
+	fn test_rabbitmq_config_default() {
+		let config = RabbitMQConfig::default();
+		assert_eq!(config.url, "amqp://localhost:5672/%2f");
+	}
+
+	#[test]
+	fn test_queue_message_serialization() {
+		let message = QueueMessage {
+			id: TaskId::new(),
+			name: "test_task".to_string(),
+			created_at: 1234567890,
+		};
+
+		let json = serde_json::to_string(&message).unwrap();
+		let deserialized: QueueMessage = serde_json::from_str(&json).unwrap();
+
+		assert_eq!(deserialized.id, message.id);
+		assert_eq!(deserialized.name, message.name);
+		assert_eq!(deserialized.created_at, message.created_at);
 	}
 }
