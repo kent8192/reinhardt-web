@@ -48,6 +48,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{AnyPool, Row};
 use std::sync::Arc;
 
+use crate::{CleanupableBackend, SessionMetadata};
+
 use super::cache::{SessionBackend, SessionError};
 
 #[cfg(feature = "database")]
@@ -427,5 +429,91 @@ impl SessionBackend for DatabaseSessionBackend {
 			})?;
 
 		Ok(row.is_some())
+	}
+}
+
+#[async_trait]
+impl CleanupableBackend for DatabaseSessionBackend {
+	async fn get_all_keys(&self) -> Result<Vec<String>, SessionError> {
+		// Use existing implementation if available, otherwise needs to be implemented
+		todo!("Implement get_all_keys for DatabaseSessionBackend")
+	}
+
+	async fn get_metadata(
+		&self,
+		session_key: &str,
+	) -> Result<Option<SessionMetadata>, SessionError> {
+		// Use existing implementation if available, otherwise needs to be implemented
+		let _ = session_key;
+		todo!("Implement get_metadata for DatabaseSessionBackend")
+	}
+
+	async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, SessionError> {
+		use sea_query::{Expr, Query, SqliteQueryBuilder};
+
+		let pattern = format!("{}%", prefix);
+		let stmt = Query::select()
+			.column(Alias::new("session_key"))
+			.from(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("session_key")).like(&pattern))
+			.to_owned();
+
+		let sql = stmt.to_string(SqliteQueryBuilder);
+
+		let rows = sqlx::query(&sql)
+			.fetch_all(&*self.pool)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to list session keys: {}", e)))?;
+
+		let keys: Vec<String> = rows
+			.into_iter()
+			.filter_map(|row| row.try_get::<String, _>("session_key").ok())
+			.collect();
+
+		Ok(keys)
+	}
+
+	async fn count_keys_with_prefix(&self, prefix: &str) -> Result<usize, SessionError> {
+		use sea_query::{Expr, Func, Query, SqliteQueryBuilder};
+
+		let pattern = format!("{}%", prefix);
+		let stmt = Query::select()
+			.expr(Func::count(Expr::col(Alias::new("session_key"))))
+			.from(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("session_key")).like(&pattern))
+			.to_owned();
+
+		let sql = stmt.to_string(SqliteQueryBuilder);
+
+		let row = sqlx::query(&sql)
+			.fetch_one(&*self.pool)
+			.await
+			.map_err(|e| {
+				SessionError::CacheError(format!("Failed to count session keys: {}", e))
+			})?;
+
+		let count: i64 = row
+			.try_get(0)
+			.map_err(|e| SessionError::CacheError(format!("Failed to extract count: {}", e)))?;
+
+		Ok(count as usize)
+	}
+
+	async fn delete_keys_with_prefix(&self, prefix: &str) -> Result<usize, SessionError> {
+		use sea_query::{Expr, Query, SqliteQueryBuilder};
+
+		let pattern = format!("{}%", prefix);
+		let stmt = Query::delete()
+			.from_table(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("session_key")).like(&pattern))
+			.to_owned();
+
+		let sql = stmt.to_string(SqliteQueryBuilder);
+
+		let result = sqlx::query(&sql).execute(&*self.pool).await.map_err(|e| {
+			SessionError::CacheError(format!("Failed to delete session keys: {}", e))
+		})?;
+
+		Ok(result.rows_affected() as usize)
 	}
 }

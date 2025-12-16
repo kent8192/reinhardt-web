@@ -35,6 +35,7 @@
 //! ```
 
 use crate::backends::{SessionBackend, SessionError};
+use crate::cleanup::CleanupableBackend;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -289,7 +290,7 @@ where
 #[async_trait]
 impl<B> SessionBackend for TenantSessionBackend<B>
 where
-	B: SessionBackend + Clone,
+	B: SessionBackend + CleanupableBackend + Clone,
 {
 	async fn load<T>(&self, session_id: &str) -> Result<Option<T>, SessionError>
 	where
@@ -356,26 +357,37 @@ pub trait TenantSessionOperations: SessionBackend {
 #[async_trait]
 impl<B> TenantSessionOperations for TenantSessionBackend<B>
 where
-	B: SessionBackend + Clone,
+	B: SessionBackend + CleanupableBackend + Clone,
 {
 	async fn list_sessions(&self) -> Result<Vec<String>, SessionError> {
-		// Note: This is a placeholder implementation
-		// Real implementation would depend on the backend's capabilities
-		// For example, Redis supports SCAN with pattern matching
-		todo!("Backend-specific implementation required for listing sessions")
+		let prefix = self
+			.config
+			.key_prefix
+			.replace("{tenant_id}", &self.tenant_id);
+		let keys = self.backend.list_keys_with_prefix(&prefix).await?;
+
+		// Remove prefix and return only session IDs
+		Ok(keys
+			.iter()
+			.filter_map(|key| self.extract_session_id(key))
+			.map(String::from)
+			.collect())
 	}
 
 	async fn count_sessions(&self) -> Result<usize, SessionError> {
-		// Note: This is a placeholder implementation
-		// Real implementation would use backend-specific counting
-		// For now, we return 0 to allow tests to pass
-		Ok(0)
+		let prefix = self
+			.config
+			.key_prefix
+			.replace("{tenant_id}", &self.tenant_id);
+		self.backend.count_keys_with_prefix(&prefix).await
 	}
 
 	async fn delete_all_sessions(&self) -> Result<usize, SessionError> {
-		// Note: This is a placeholder implementation
-		// Real implementation would depend on the backend's capabilities
-		todo!("Backend-specific implementation required for bulk deletion")
+		let prefix = self
+			.config
+			.key_prefix
+			.replace("{tenant_id}", &self.tenant_id);
+		self.backend.delete_keys_with_prefix(&prefix).await
 	}
 }
 

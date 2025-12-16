@@ -81,6 +81,47 @@ pub trait CleanupableBackend: SessionBackend {
 		&self,
 		session_key: &str,
 	) -> Result<Option<SessionMetadata>, SessionError>;
+
+	/// Get list of keys filtered by prefix
+	///
+	/// Default implementation uses get_all_keys() for filtering.
+	/// Backends may provide more efficient implementations (e.g., database LIKE queries).
+	async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, SessionError> {
+		// Default implementation: filter using get_all_keys()
+		let all_keys = self.get_all_keys().await?;
+		Ok(all_keys
+			.into_iter()
+			.filter(|key| key.starts_with(prefix))
+			.collect())
+	}
+
+	/// Count keys filtered by prefix
+	///
+	/// Default implementation uses list_keys_with_prefix().
+	/// Backends may provide more efficient implementations (e.g., COUNT queries).
+	async fn count_keys_with_prefix(&self, prefix: &str) -> Result<usize, SessionError> {
+		let keys = self.list_keys_with_prefix(prefix).await?;
+		Ok(keys.len())
+	}
+
+	/// Delete all keys matching prefix
+	///
+	/// Default implementation uses list_keys_with_prefix() and delete().
+	/// Backends may provide more efficient implementations (e.g., bulk DELETE).
+	///
+	/// # Returns
+	///
+	/// Returns the number of deleted sessions.
+	async fn delete_keys_with_prefix(&self, prefix: &str) -> Result<usize, SessionError> {
+		let keys = self.list_keys_with_prefix(prefix).await?;
+		let mut deleted = 0;
+		for key in keys {
+			if self.delete(&key).await.is_ok() {
+				deleted += 1;
+			}
+		}
+		Ok(deleted)
+	}
 }
 
 /// Session metadata for cleanup
