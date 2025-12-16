@@ -628,14 +628,19 @@ impl Q {
 	/// Create a Q object from raw SQL condition
 	/// Used internally by the type-safe query builder
 	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_orm::expressions::Q;
+	///
+	/// let q = Q::from_sql("age > 18");
+	/// let q = Q::from_sql("name LIKE '%John%'");
+	/// let q = Q::from_sql("email IS NOT NULL");
+	/// let q = Q::from_sql("status IN ('active', 'pending')");
+	/// let q = Q::from_sql("age BETWEEN 18 AND 65");
+	/// ```
 	pub fn from_sql(sql: &str) -> Self {
-		// Parse simple SQL condition like "field = value"
-		// TODO: For now, store it as a raw condition
-		Self::Condition {
-			field: String::new(),
-			operator: String::new(),
-			value: sql.to_string(),
-		}
+		crate::sql_condition_parser::SqlConditionParser::parse(sql)
 	}
 	/// Create an empty Q object (always true condition)
 	///

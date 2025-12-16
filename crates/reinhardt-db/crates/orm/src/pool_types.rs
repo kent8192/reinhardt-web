@@ -5,6 +5,21 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex as TokioMutex, Semaphore};
 
+/// Trait for database connection handles
+///
+/// This trait abstracts over different database connection types,
+/// allowing the pool to work with any backend (PostgreSQL, MySQL, SQLite).
+pub trait ConnectionHandle: Send + Sync + std::fmt::Debug {
+	/// Check if the connection is still valid
+	fn is_valid(&self) -> bool;
+
+	/// Get the database type identifier
+	fn database_type(&self) -> &str;
+
+	/// Get a unique identifier for this connection
+	fn connection_id(&self) -> &str;
+}
+
 pub trait ConnectionPool: Send + Sync {
 	fn get_connection(&self) -> Result<PooledConnection, PoolError>;
 	fn return_connection(&self, conn: PooledConnection);
@@ -12,13 +27,79 @@ pub trait ConnectionPool: Send + Sync {
 	fn active_connections(&self) -> usize;
 }
 
+/// A pooled database connection with metadata and optional handle
+///
+/// This struct contains connection metadata for pool management,
+/// and optionally holds an actual database connection handle.
 #[derive(Clone)]
 pub struct PooledConnection {
+	/// Unique identifier for this connection within the pool
 	pub id: usize,
+	/// When this connection was first created
 	pub created_at: Instant,
+	/// When this connection was last used
 	pub last_used: Instant,
-	// In a production implementation, this would contain the actual database connection
-	// TODO: For now, we keep metadata for testing and demonstration purposes
+	/// Actual database connection handle (optional)
+	handle: Option<Arc<dyn ConnectionHandle>>,
+}
+
+impl PooledConnection {
+	/// Create a new pooled connection with metadata only (no actual handle)
+	pub fn new(id: usize) -> Self {
+		let now = Instant::now();
+		Self {
+			id,
+			created_at: now,
+			last_used: now,
+			handle: None,
+		}
+	}
+
+	/// Create a new pooled connection with an actual database handle
+	pub fn with_handle(id: usize, handle: Arc<dyn ConnectionHandle>) -> Self {
+		let now = Instant::now();
+		Self {
+			id,
+			created_at: now,
+			last_used: now,
+			handle: Some(handle),
+		}
+	}
+
+	/// Get a reference to the connection handle, if present
+	pub fn handle(&self) -> Option<&Arc<dyn ConnectionHandle>> {
+		self.handle.as_ref()
+	}
+
+	/// Check if this connection has an actual database handle
+	pub fn has_handle(&self) -> bool {
+		self.handle.is_some()
+	}
+
+	/// Check if the connection handle is still valid
+	pub fn is_valid(&self) -> bool {
+		self.handle.as_ref().is_none_or(|h| h.is_valid())
+	}
+
+	/// Get the database type, if a handle is present
+	pub fn database_type(&self) -> Option<&str> {
+		self.handle.as_ref().map(|h| h.database_type())
+	}
+
+	/// Update the last_used timestamp
+	pub fn touch(&mut self) {
+		self.last_used = Instant::now();
+	}
+
+	/// Get the age of this connection (time since creation)
+	pub fn age(&self) -> Duration {
+		self.created_at.elapsed()
+	}
+
+	/// Get the idle time (time since last use)
+	pub fn idle_time(&self) -> Duration {
+		self.last_used.elapsed()
+	}
 }
 
 #[derive(Debug)]
@@ -69,11 +150,7 @@ impl QueuePool {
 	}
 
 	fn create_connection(&self, id: usize) -> PooledConnection {
-		PooledConnection {
-			id,
-			created_at: Instant::now(),
-			last_used: Instant::now(),
-		}
+		PooledConnection::new(id)
 	}
 }
 
@@ -155,11 +232,7 @@ impl ConnectionPool for NullPool {
 		let conn_id = *id;
 		*id += 1;
 
-		Ok(PooledConnection {
-			id: conn_id,
-			created_at: Instant::now(),
-			last_used: Instant::now(),
-		})
+		Ok(PooledConnection::new(conn_id))
 	}
 
 	fn return_connection(&self, _conn: PooledConnection) {
@@ -210,11 +283,7 @@ impl ConnectionPool for StaticPool {
 
 		// If connection doesn't exist, create it
 		if conn_opt.is_none() {
-			*conn_opt = Some(PooledConnection {
-				id: 1,
-				created_at: Instant::now(),
-				last_used: Instant::now(),
-			});
+			*conn_opt = Some(PooledConnection::new(1));
 		}
 
 		// Clone the connection (it's always the same logical connection)
@@ -281,11 +350,7 @@ impl ConnectionPool for SingletonThreadPool {
 		let id = *next_id;
 		*next_id += 1;
 
-		let conn = PooledConnection {
-			id,
-			created_at: Instant::now(),
-			last_used: Instant::now(),
-		};
+		let conn = PooledConnection::new(id);
 
 		connections.insert(thread_id, conn.clone());
 		Ok(conn)
@@ -369,11 +434,7 @@ impl AsyncAdaptedQueuePool {
 
 		std::mem::forget(_permit); // Keep permit alive
 
-		Ok(PooledConnection {
-			id,
-			created_at: Instant::now(),
-			last_used: Instant::now(),
-		})
+		Ok(PooledConnection::new(id))
 	}
 
 	/// Asynchronously return a connection to the pool
@@ -633,45 +694,45 @@ mod tests {
 
 	#[test]
 	fn test_pooled_connection_creation() {
-		let now = Instant::now();
-		let conn = PooledConnection {
-			id: 1,
-			created_at: now,
-			last_used: now,
-		};
+		let conn = PooledConnection::new(1);
 
 		assert_eq!(conn.id, 1);
 		assert!(conn.created_at.elapsed().as_secs() < 1);
+		assert!(!conn.has_handle());
 	}
 
 	#[test]
 	fn test_pooled_connection_different_ids() {
-		let now = Instant::now();
-		let conn1 = PooledConnection {
-			id: 1,
-			created_at: now,
-			last_used: now,
-		};
-		let conn2 = PooledConnection {
-			id: 2,
-			created_at: now,
-			last_used: now,
-		};
+		let conn1 = PooledConnection::new(1);
+		let conn2 = PooledConnection::new(2);
 
 		assert_ne!(conn1.id, conn2.id);
 	}
 
 	#[test]
 	fn test_pooled_connection_age() {
-		let now = Instant::now();
-		let conn = PooledConnection {
-			id: 1,
-			created_at: now,
-			last_used: now,
-		};
+		let conn = PooledConnection::new(1);
 
 		std::thread::sleep(std::time::Duration::from_millis(10));
-		assert!(conn.created_at.elapsed().as_millis() >= 10);
+		assert!(conn.age().as_millis() >= 10);
+	}
+
+	#[test]
+	fn test_pooled_connection_idle_time() {
+		let mut conn = PooledConnection::new(1);
+
+		std::thread::sleep(std::time::Duration::from_millis(10));
+		assert!(conn.idle_time().as_millis() >= 10);
+
+		conn.touch();
+		assert!(conn.idle_time().as_millis() < 5);
+	}
+
+	#[test]
+	fn test_pooled_connection_is_valid_without_handle() {
+		let conn = PooledConnection::new(1);
+		assert!(conn.is_valid()); // No handle means always valid
+		assert!(conn.database_type().is_none());
 	}
 
 	#[test]

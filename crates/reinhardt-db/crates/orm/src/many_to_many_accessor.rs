@@ -11,6 +11,7 @@
 use crate::Manager;
 use crate::Model;
 use crate::connection::DatabaseConnection;
+use crate::relationship::RelationshipType;
 use sea_query::{Alias, Asterisk, BinOper, Expr, ExprTrait, Func, PostgresQueryBuilder, Query};
 use serde::{Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;
@@ -84,22 +85,39 @@ where
 	/// - The field_name does not correspond to a ManyToMany field
 	/// - The source model has no primary key
 	pub fn new(source: &S, field_name: &str, db: DatabaseConnection) -> Self {
-		// Get through table name from metadata
-		// TODO: For now, use Django naming convention: {app}_{model}_{field}
-		let through_table = format!(
-			"{}_{}_{}",
-			S::app_label(),
-			Self::table_name_lower(S::table_name()),
-			field_name
-		);
+		// Try to get through table info from model metadata
+		let rel_info = S::relationship_metadata()
+			.into_iter()
+			.find(|r| r.name == field_name && r.relationship_type == RelationshipType::ManyToMany);
+
+		// Get through table name from metadata or use Django naming convention
+		let through_table = rel_info
+			.as_ref()
+			.and_then(|r| r.through_table.clone())
+			.unwrap_or_else(|| {
+				format!(
+					"{}_{}_{}",
+					S::app_label(),
+					Self::table_name_lower(S::table_name()),
+					field_name
+				)
+			});
 
 		let source_id = source
 			.primary_key()
 			.expect("Source model must have primary key")
 			.clone();
 
-		let source_field = format!("{}_id", Self::table_name_lower(S::table_name()));
-		let target_field = format!("{}_id", Self::table_name_lower(T::table_name()));
+		// Get source/target field names from metadata or use default naming
+		let source_field = rel_info
+			.as_ref()
+			.and_then(|r| r.source_field.clone())
+			.unwrap_or_else(|| format!("{}_id", Self::table_name_lower(S::table_name())));
+
+		let target_field = rel_info
+			.as_ref()
+			.and_then(|r| r.target_field.clone())
+			.unwrap_or_else(|| format!("{}_id", Self::table_name_lower(T::table_name())));
 
 		Self {
 			source_id,

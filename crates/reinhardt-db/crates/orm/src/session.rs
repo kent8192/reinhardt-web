@@ -532,10 +532,17 @@ impl Session {
 						// Execute and get generated ID if available
 						if backend == DbBackend::Postgres {
 							if let Ok(row) = self.execute_returning(&sql, &values).await {
-								// Update identity map with generated ID
-								// This would require modifying the entry.data
-								// TODO: For now, we skip this optimization
-								let _ = row;
+								// Extract the generated ID
+								let generated_id: i64 = row.try_get("id").map_err(|e| {
+									SessionError::FlushError(format!("Failed to extract ID: {}", e))
+								})?;
+
+								// Update the identity map
+								self.update_identity_map_with_generated_id(
+									key,
+									table_name,
+									generated_id,
+								)?;
 							}
 						} else {
 							self.execute_with_values(&sql, &values).await?;
@@ -580,6 +587,41 @@ impl Session {
 		self.deleted_objects.clear();
 
 		Ok(())
+	}
+
+	/// Update identity map with generated ID from RETURNING clause
+	///
+	/// This method is called after executing an INSERT with RETURNING clause
+	/// to update the identity map entry with the generated primary key value.
+	///
+	/// # Arguments
+	///
+	/// * `old_key` - The current identity key (e.g., "table_name:null")
+	/// * `table_name` - The name of the table
+	/// * `generated_id` - The generated primary key value from the database
+	fn update_identity_map_with_generated_id(
+		&mut self,
+		old_key: &str,
+		table_name: &str,
+		generated_id: i64,
+	) -> Result<(), SessionError> {
+		if let Some(mut entry) = self.identity_map.remove(old_key) {
+			// // JSON updateJSON更新
+			if let Some(obj) = entry.data.as_object_mut() {
+				obj.insert("id".to_string(), serde_json::Value::from(generated_id));
+			}
+
+			entry.is_dirty = false;
+			let new_key = format!("{}:{}", table_name, generated_id);
+			self.identity_map.insert(new_key, entry);
+			self.dirty_objects.remove(old_key);
+
+			Ok(())
+		} else {
+			Err(SessionError::InvalidState(
+				"Entry not found in identity map".to_string(),
+			))
+		}
 	}
 
 	/// Get database backend type from pool

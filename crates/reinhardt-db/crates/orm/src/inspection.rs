@@ -180,6 +180,12 @@ pub struct RelationInfo {
 	pub related_model: String,
 	/// Back reference name
 	pub back_populates: Option<String>,
+	/// Through table name for ManyToMany relationships
+	pub through_table: Option<String>,
+	/// Source field name in through table (for ManyToMany)
+	pub source_field: Option<String>,
+	/// Target field name in through table (for ManyToMany)
+	pub target_field: Option<String>,
 }
 
 impl RelationInfo {
@@ -211,6 +217,9 @@ impl RelationInfo {
 			foreign_key: None,
 			related_model: related_model.into(),
 			back_populates: None,
+			through_table: None,
+			source_field: None,
+			target_field: None,
 		}
 	}
 
@@ -223,6 +232,24 @@ impl RelationInfo {
 	/// Set the back reference name
 	pub fn with_back_populates(mut self, back_populates: impl Into<String>) -> Self {
 		self.back_populates = Some(back_populates.into());
+		self
+	}
+
+	/// Set the through table name for ManyToMany relationships
+	pub fn with_through_table(mut self, through_table: impl Into<String>) -> Self {
+		self.through_table = Some(through_table.into());
+		self
+	}
+
+	/// Set the source field name in the through table
+	pub fn with_source_field(mut self, source_field: impl Into<String>) -> Self {
+		self.source_field = Some(source_field.into());
+		self
+	}
+
+	/// Set the target field name in the through table
+	pub fn with_target_field(mut self, target_field: impl Into<String>) -> Self {
+		self.target_field = Some(target_field.into());
 		self
 	}
 }
