@@ -227,6 +227,9 @@ pub mod macros {
 // Re-export HTTP method macros
 pub use reinhardt_macros::{api_view, delete, get, patch, post, put};
 
+// Re-export URL patterns registration macro (always available for framework setup)
+pub use reinhardt_macros::register_url_patterns;
+
 // Re-export admin attribute macro (requires admin feature)
 #[cfg(feature = "admin")]
 pub use reinhardt_macros::admin;
@@ -262,6 +265,10 @@ pub use reinhardt_core::{
 // Re-export ViewResult from reinhardt-http
 #[cfg(feature = "core")]
 pub use reinhardt_http::ViewResult;
+
+// Re-export inventory crate (used by HTTP method macros for endpoint registration)
+#[cfg(feature = "core")]
+pub use inventory;
 
 // Re-export ORM
 #[cfg(feature = "database")]
@@ -551,8 +558,8 @@ pub use reinhardt_views::viewsets::{
 
 // Re-export routers
 pub use reinhardt_urls::routers::{
-	DefaultRouter, PathMatcher, PathPattern, Route, Router, UnifiedRouter, clear_router,
-	get_router, is_router_registered, register_router, register_router_arc,
+	DefaultRouter, PathMatcher, PathPattern, Route, Router, UnifiedRouter, UrlPatternsRegistration,
+	clear_router, get_router, is_router_registered, register_router, register_router_arc,
 };
 
 // Re-export auth
