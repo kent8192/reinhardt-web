@@ -41,6 +41,24 @@ impl ImportFormat {
 			_ => None,
 		}
 	}
+
+	/// Detect format from Content-Type header
+	///
+	/// Supports standard MIME types and common variations.
+	pub fn from_content_type(content_type: &str) -> Option<Self> {
+		// Extract the main MIME type (ignore charset and other parameters)
+		let mime_type = content_type.split(';').next()?.trim().to_lowercase();
+
+		match mime_type.as_str() {
+			// JSON formats
+			"application/json" | "text/json" => Some(ImportFormat::JSON),
+			// CSV formats
+			"text/csv" | "application/csv" => Some(ImportFormat::CSV),
+			// TSV formats
+			"text/tab-separated-values" | "text/tsv" => Some(ImportFormat::TSV),
+			_ => None,
+		}
+	}
 }
 
 /// Import configuration
@@ -765,5 +783,126 @@ mod tests {
 		result.add_failed(ImportError::new(1, "Test error".to_string()));
 		assert!(!result.is_successful());
 		assert_eq!(result.failed_count, 1);
+	}
+
+	// ==================== from_content_type tests ====================
+
+	#[test]
+	fn test_from_content_type_json() {
+		assert_eq!(
+			ImportFormat::from_content_type("application/json"),
+			Some(ImportFormat::JSON)
+		);
+	}
+
+	#[test]
+	fn test_from_content_type_csv() {
+		assert_eq!(
+			ImportFormat::from_content_type("text/csv"),
+			Some(ImportFormat::CSV)
+		);
+	}
+
+	#[test]
+	fn test_from_content_type_tsv() {
+		assert_eq!(
+			ImportFormat::from_content_type("text/tab-separated-values"),
+			Some(ImportFormat::TSV)
+		);
+	}
+
+	#[test]
+	fn test_from_content_type_with_charset() {
+		// Content-Type with charset parameter should still be parsed correctly
+		assert_eq!(
+			ImportFormat::from_content_type("application/json; charset=utf-8"),
+			Some(ImportFormat::JSON)
+		);
+		assert_eq!(
+			ImportFormat::from_content_type("text/csv; charset=utf-8"),
+			Some(ImportFormat::CSV)
+		);
+		assert_eq!(
+			ImportFormat::from_content_type("text/tab-separated-values; charset=utf-8"),
+			Some(ImportFormat::TSV)
+		);
+	}
+
+	#[test]
+	fn test_from_content_type_unknown() {
+		assert_eq!(ImportFormat::from_content_type("text/html"), None);
+		assert_eq!(ImportFormat::from_content_type("application/xml"), None);
+		assert_eq!(ImportFormat::from_content_type("image/png"), None);
+	}
+
+	#[test]
+	fn test_from_content_type_empty() {
+		assert_eq!(ImportFormat::from_content_type(""), None);
+	}
+
+	#[test]
+	fn test_from_content_type_case_insensitive() {
+		// Content-Type header values should be case-insensitive per RFC
+		assert_eq!(
+			ImportFormat::from_content_type("Application/JSON"),
+			Some(ImportFormat::JSON)
+		);
+		assert_eq!(
+			ImportFormat::from_content_type("TEXT/CSV"),
+			Some(ImportFormat::CSV)
+		);
+		assert_eq!(
+			ImportFormat::from_content_type("Text/Tab-Separated-Values"),
+			Some(ImportFormat::TSV)
+		);
+	}
+
+	#[test]
+	fn test_from_content_type_text_json() {
+		// text/json is an alternative MIME type for JSON
+		assert_eq!(
+			ImportFormat::from_content_type("text/json"),
+			Some(ImportFormat::JSON)
+		);
+	}
+
+	#[test]
+	fn test_from_content_type_application_csv() {
+		// application/csv is an alternative MIME type for CSV
+		assert_eq!(
+			ImportFormat::from_content_type("application/csv"),
+			Some(ImportFormat::CSV)
+		);
+	}
+
+	#[test]
+	fn test_from_content_type_text_tsv() {
+		// text/tsv is an alternative MIME type for TSV
+		assert_eq!(
+			ImportFormat::from_content_type("text/tsv"),
+			Some(ImportFormat::TSV)
+		);
+	}
+
+	#[test]
+	fn test_from_content_type_with_extra_parameters() {
+		// Content-Type with multiple parameters
+		assert_eq!(
+			ImportFormat::from_content_type("application/json; charset=utf-8; boundary=something"),
+			Some(ImportFormat::JSON)
+		);
+	}
+
+	#[test]
+	fn test_from_content_type_whitespace() {
+		// Content-Type with whitespace variations
+		assert_eq!(
+			ImportFormat::from_content_type("  application/json  "),
+			Some(ImportFormat::JSON)
+		);
+		assert_eq!(
+			ImportFormat::from_content_type("application/json ;charset=utf-8"),
+			Some(ImportFormat::JSON)
+		);
 	}
 }
