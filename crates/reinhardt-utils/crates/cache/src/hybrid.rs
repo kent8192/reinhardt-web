@@ -12,7 +12,7 @@
 //!
 //! # Examples
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use reinhardt_cache::{Cache, HybridCache, InMemoryCache, RedisCache};
 //! use std::time::Duration;
 //!

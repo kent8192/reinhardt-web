@@ -116,17 +116,20 @@ impl LayeredCacheStore {
 	///
 	/// Returns `None` if the key doesn't exist or is expired.
 	/// Expired entries are automatically deleted on access.
+	/// The `accessed_at` timestamp is updated on successful access.
 	///
 	/// Time complexity: O(1)
 	pub async fn get(&self, key: &str) -> Option<Vec<u8>> {
 		let mut store = self.store.write().await;
 
-		if let Some(entry) = store.get(key) {
+		if let Some(entry) = store.get_mut(key) {
 			if entry.is_expired() {
 				// Passive expiration - delete expired entry
 				store.remove(key);
 				return None;
 			}
+			// Update access timestamp
+			entry.touch();
 			return Some(entry.value.clone());
 		}
 		None
@@ -223,6 +226,28 @@ impl LayeredCacheStore {
 	pub(crate) async fn get_entry(&self, key: &str) -> Option<CacheEntry> {
 		let store = self.store.read().await;
 		store.get(key).cloned()
+	}
+
+	/// Get entry timestamps without deserializing value or updating access time
+	///
+	/// Returns `(created_at, accessed_at)` tuple if the key exists and is not expired.
+	/// This method is useful for inspecting cache entry metadata without affecting
+	/// the entry's `accessed_at` timestamp.
+	///
+	/// Time complexity: O(1)
+	pub async fn get_entry_timestamps(
+		&self,
+		key: &str,
+	) -> Option<(SystemTime, Option<SystemTime>)> {
+		let store = self.store.read().await;
+		if let Some(entry) = store.get(key) {
+			if entry.is_expired() {
+				return None;
+			}
+			Some((entry.created_at, entry.accessed_at))
+		} else {
+			None
+		}
 	}
 
 	/// Layer 2: Active Sampling Cleanup

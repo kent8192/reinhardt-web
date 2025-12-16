@@ -339,6 +339,60 @@ async fn handler(
 | `storage` | Storage abstraction | reinhardt-utils/storage |
 | `tasks` | Background jobs | reinhardt-tasks |
 | `shortcuts` | Django-style helpers | reinhardt-shortcuts |
+| `plugin` | Plugin system | reinhardt-dentdelion |
+
+---
+
+### Plugin System
+
+| Feature | Description | Key Features |
+|---------|-------------|--------------|
+| `plugin` | Plugin system foundation | Static plugin registration, plugin registry |
+| `plugin-wasm` | WASM plugin support | Dynamic plugin loading, wasmtime integration |
+| `plugin-cli` | CLI integration | crates.io integration, plugin management commands |
+
+The plugin system allows extending Reinhardt applications through static and dynamic plugins:
+
+```toml
+# Static plugins only
+reinhardt-dentdelion = { version = "0.1", default-features = false }
+
+# With WASM support
+reinhardt-dentdelion = { version = "0.1", features = ["wasm"] }
+
+# Full plugin system (static + WASM + CLI)
+reinhardt-dentdelion = { version = "0.1", features = ["full"] }
+```
+
+See [`reinhardt plugin`](../crates/reinhardt-commands/README.md#plugin-command-system) commands for managing plugins.
+
+---
+
+### Task Backends
+
+The `tasks` feature provides background job processing with multiple backend options:
+
+| Feature | Backend | Persistence | Scalability | Use Case |
+|---------|---------|-------------|-------------|----------|
+| `tasks` | Immediate/Dummy | No | - | Development/Testing |
+| `tasks-redis` | Redis | Yes | High | Production (caching) |
+| `tasks-rabbitmq` | RabbitMQ | Yes | Very High | Production (messaging) |
+| `tasks-sqlite` | SQLite | Yes | Low | Small-scale production |
+
+**Configuration Example**:
+
+```toml
+# Redis backend
+reinhardt-tasks = { version = "0.1", features = ["redis-backend"] }
+
+# RabbitMQ backend (recommended for production)
+reinhardt-tasks = { version = "0.1", features = ["rabbitmq-backend"] }
+
+# SQLite backend
+reinhardt-tasks = { version = "0.1", features = ["database-backend"] }
+```
+
+See [Task Backends Documentation](../crates/reinhardt-tasks/README.md#backend-comparison) for detailed comparison.
 
 ---
 
@@ -355,6 +409,9 @@ async fn handler(
 | `reinhardt-middleware` | None | `cors`, `compression`, `security`, `rate-limit` |
 | `reinhardt-sessions` | None | `database`, `file`, `cookie`, `jwt` |
 | `reinhardt-test` | None | `testcontainers`, `static`, `websockets` |
+| `reinhardt-dentdelion` | None | `wasm`, `cli`, `full` |
+| `reinhardt-tasks` | None | `redis-backend`, `rabbitmq-backend`, `database-backend` |
+| `reinhardt-panel` | None | `templates`, `file-uploads`, `full` |
 
 **Auto-enabled dependencies**:
 - `di` feature → `reinhardt-di/params` (parameter extraction types)

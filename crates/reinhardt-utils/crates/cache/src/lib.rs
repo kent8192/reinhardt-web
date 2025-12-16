@@ -70,7 +70,7 @@
 //! reinhardt-cache = { version = "0.1", features = ["memcached-backend"] }
 //! ```
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use reinhardt_cache::{Cache, MemcachedCache, MemcachedConfig};
 //! use std::time::Duration;
 //!

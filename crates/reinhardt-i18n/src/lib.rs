@@ -80,6 +80,11 @@ impl CatalogLoader {
 	/// - `{base_path}/{locale}/LC_MESSAGES/django.po`
 	/// - `{base_path}/{locale}/LC_MESSAGES/messages.po`
 	///
+	/// # Errors
+	///
+	/// Returns `I18nError::CatalogNotFound` if no .po file is found for the locale.
+	/// Returns `I18nError::LoadError` if the file cannot be opened or parsed.
+	///
 	/// # Example
 	/// ```no_run
 	/// use reinhardt_i18n::CatalogLoader;
@@ -87,7 +92,7 @@ impl CatalogLoader {
 	/// let loader = CatalogLoader::new("locale");
 	/// let catalog = loader.load("fr").unwrap();
 	/// ```
-	pub fn load(&self, locale: &str) -> Result<MessageCatalog, String> {
+	pub fn load(&self, locale: &str) -> Result<MessageCatalog, I18nError> {
 		// Try multiple common .po file locations
 		let possible_paths = vec![
 			self.base_path
@@ -102,16 +107,36 @@ impl CatalogLoader {
 
 		for path in possible_paths {
 			if path.exists() {
-				let file = std::fs::File::open(&path)
-					.map_err(|e| format!("Failed to open .po file at {:?}: {}", path, e))?;
+				let file = std::fs::File::open(&path).map_err(|e| {
+					I18nError::LoadError(format!("Failed to open .po file at {:?}: {}", path, e))
+				})?;
 
 				return po_parser::parse_po_file(file, locale)
-					.map_err(|e| format!("Failed to parse .po file: {}", e));
+					.map_err(|e| I18nError::LoadError(format!("Failed to parse .po file: {}", e)));
 			}
 		}
 
-		// If no .po file found, return an empty catalog
-		Ok(MessageCatalog::new(locale))
+		// If no .po file found, return an error
+		Err(I18nError::CatalogNotFound(locale.to_string()))
+	}
+
+	/// Load a catalog for the given locale, returning an empty catalog if not found
+	///
+	/// This is a convenience method that falls back to an empty catalog when
+	/// no .po file is found. Use `load()` instead if you want to handle
+	/// missing catalogs explicitly.
+	///
+	/// # Example
+	/// ```
+	/// use reinhardt_i18n::CatalogLoader;
+	///
+	/// let loader = CatalogLoader::new("locale");
+	/// // Returns empty catalog if no .po file exists
+	/// let catalog = loader.load_or_empty("fr");
+	/// ```
+	pub fn load_or_empty(&self, locale: &str) -> MessageCatalog {
+		self.load(locale)
+			.unwrap_or_else(|_| MessageCatalog::new(locale))
 	}
 
 	/// Load a catalog from a specific .po file path

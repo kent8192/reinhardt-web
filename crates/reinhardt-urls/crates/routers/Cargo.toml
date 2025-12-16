@@ -13,6 +13,7 @@ reinhardt-viewsets = { workspace = true }
 reinhardt-routers-macros = { path = "../routers-macros", version = "0.1.0-alpha.1" }
 reinhardt-middleware = { workspace = true, optional = true }
 reinhardt-core = { workspace = true, features = ["exception", "types", "di"] }
+reinhardt-db = { workspace = true, optional = true }
 regex = { workspace = true }
 nom = { workspace = true }
 async-trait = { workspace = true }
@@ -25,11 +26,13 @@ serde_json = { workspace = true }
 serde_yaml = "0.9"
 matchit = "0.9.0"
 aho-corasick = "1.1"
+inventory = "0.3"
 
 [features]
 default = ["unified-router"]
 unified-router = ["reinhardt-middleware"]
-full = ["unified-router"]
+database = ["dep:reinhardt-db"]
+full = ["unified-router", "database"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

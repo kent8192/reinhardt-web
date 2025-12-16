@@ -324,7 +324,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::InMemoryCache;
+	/// use reinhardt_cache::{Cache, InMemoryCache};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let cache = InMemoryCache::new();
@@ -356,9 +356,11 @@ impl InMemoryCache {
 				}
 			}
 			CleanupStrategy::Layered => {
-				// TODO: Layered store doesn't support timestamp inspection yet
-				// This would require extending LayeredCacheStore to track timestamps
-				Ok(None)
+				if let Some(ref layered_store) = self.layered_store {
+					Ok(layered_store.get_entry_timestamps(key).await)
+				} else {
+					Ok(None)
+				}
 			}
 		}
 	}

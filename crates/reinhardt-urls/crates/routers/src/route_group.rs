@@ -422,7 +422,7 @@ mod tests {
 
 	#[test]
 	fn test_route_group_with_middleware() {
-		let group = RouteGroup::new().with_middleware(LoggingMiddleware);
+		let group = RouteGroup::new().with_middleware(LoggingMiddleware::new());
 		let _router = group.build();
 		// Middleware is correctly added, verified in integration tests
 	}
@@ -450,8 +450,8 @@ mod tests {
 	#[test]
 	fn test_route_group_multiple_middleware() {
 		let group = RouteGroup::new()
-			.with_middleware(LoggingMiddleware)
-			.with_middleware(LoggingMiddleware)
+			.with_middleware(LoggingMiddleware::new())
+			.with_middleware(LoggingMiddleware::new())
 			.function("/test", Method::GET, test_handler);
 
 		let _router = group.build();
