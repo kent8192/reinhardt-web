@@ -9,6 +9,7 @@ authors.workspace = true
 description = "Parameter extraction system for Reinhardt, inspired by FastAPI"
 
 [dependencies]
+reinhardt-exception = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-validators = { workspace = true, optional = true }
 serde = { workspace = true }

@@ -8,7 +8,9 @@ use serde::de::DeserializeOwned;
 use std::fmt::{self, Debug};
 use std::ops::Deref;
 
-use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
+use crate::{
+	ParamContext, ParamError, ParamErrorContext, ParamResult, ParamType, extract::FromRequest,
+};
 
 /// Extract a single value from the URL path
 ///
@@ -70,24 +72,30 @@ macro_rules! impl_path_from_str {
                 async fn from_request(_req: &Request, ctx: &ParamContext) -> ParamResult<Self> {
                     // For primitive types, extract the single value directly
                     if ctx.path_params.len() != 1 {
-                        return Err(ParamError::InvalidParameter {
-                            name: "path".to_string(),
-                            message: format!(
-                                "Expected exactly 1 path parameter for primitive type, found {}",
-                                ctx.path_params.len()
-                            ),
-                        });
+                        return Err(ParamError::InvalidParameter(Box::new(
+                            ParamErrorContext::new(
+                                ParamType::Path,
+                                format!(
+                                    "Expected exactly 1 path parameter for primitive type, found {}",
+                                    ctx.path_params.len()
+                                ),
+                            )
+                            .with_expected_type::<$ty>(),
+                        )));
                     }
 
                     let value = ctx.path_params.values().next().unwrap();
                     value.parse::<$ty>()
                         .map(Path)
-                        .map_err(|e| ParamError::ParseError {
-                            name: "path".to_string(),
-                            source: Box::new(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                format!("Failed to parse '{}' as {}: {}", value, stringify!($ty), e)
-                            )),
+                        .map_err(|e| {
+                            ParamError::parse::<$ty>(
+                                ParamType::Path,
+                                format!("Failed to parse '{}' as {}: {}", value, stringify!($ty), e),
+                                Box::new(std::io::Error::new(
+                                    std::io::ErrorKind::InvalidData,
+                                    e.to_string(),
+                                )),
+                            )
                         })
                 }
             }
@@ -113,41 +121,61 @@ macro_rules! impl_path_tuple2_from_str {
             impl FromRequest for Path<($t1, $t2)> {
                 async fn from_request(_req: &Request, ctx: &ParamContext) -> ParamResult<Self> {
                     if ctx.path_params.len() != 2 {
-                        return Err(ParamError::InvalidParameter {
-                            name: "path".to_string(),
-                            message: format!(
-                                "Expected exactly 2 path parameters for tuple type, found {}",
-                                ctx.path_params.len()
-                            ),
-                        });
+                        return Err(ParamError::InvalidParameter(Box::new(
+                            ParamErrorContext::new(
+                                ParamType::Path,
+                                format!(
+                                    "Expected exactly 2 path parameters for tuple type, found {}",
+                                    ctx.path_params.len()
+                                ),
+                            )
+                            .with_expected_type::<($t1, $t2)>(),
+                        )));
                     }
 
                     // Get values in order (HashMap iteration order is not guaranteed,
                     // but we assume the router provides them in order)
                     let values: Vec<_> = ctx.path_params.values().collect();
                     if values.len() != 2 {
-                        return Err(ParamError::InvalidParameter {
-                            name: "path".to_string(),
-                            message: "Expected exactly 2 path parameters".to_string(),
-                        });
+                        return Err(ParamError::InvalidParameter(Box::new(
+                            ParamErrorContext::new(
+                                ParamType::Path,
+                                "Expected exactly 2 path parameters".to_string(),
+                            )
+                            .with_expected_type::<($t1, $t2)>(),
+                        )));
                     }
 
                     let v1 = values[0].parse::<$t1>()
-                        .map_err(|e| ParamError::ParseError {
-                            name: "path[0]".to_string(),
-                            source: Box::new(std::io::Error::new(
+                        .map_err(|e| {
+                            let ctx = ParamErrorContext::new(
+                                ParamType::Path,
+                                format!("Failed to parse '{}' as {}: {}", values[0], stringify!($t1), e),
+                            )
+                            .with_field("path[0]")
+                            .with_expected_type::<$t1>()
+                            .with_raw_value(values[0].as_str())
+                            .with_source(Box::new(std::io::Error::new(
                                 std::io::ErrorKind::InvalidData,
-                                format!("Failed to parse '{}' as {}: {}", values[0], stringify!($t1), e)
-                            )),
+                                e.to_string(),
+                            )));
+                            ParamError::ParseError(Box::new(ctx))
                         })?;
 
                     let v2 = values[1].parse::<$t2>()
-                        .map_err(|e| ParamError::ParseError {
-                            name: "path[1]".to_string(),
-                            source: Box::new(std::io::Error::new(
+                        .map_err(|e| {
+                            let ctx = ParamErrorContext::new(
+                                ParamType::Path,
+                                format!("Failed to parse '{}' as {}: {}", values[1], stringify!($t2), e),
+                            )
+                            .with_field("path[1]")
+                            .with_expected_type::<$t2>()
+                            .with_raw_value(values[1].as_str())
+                            .with_source(Box::new(std::io::Error::new(
                                 std::io::ErrorKind::InvalidData,
-                                format!("Failed to parse '{}' as {}: {}", values[1], stringify!($t2), e)
-                            )),
+                                e.to_string(),
+                            )));
+                            ParamError::ParseError(Box::new(ctx))
                         })?;
 
                     Ok(Path((v1, v2)))
@@ -180,13 +208,16 @@ impl_path_tuple2_from_str!(
 impl FromRequest for Path<String> {
 	async fn from_request(_req: &Request, ctx: &ParamContext) -> ParamResult<Self> {
 		if ctx.path_params.len() != 1 {
-			return Err(ParamError::InvalidParameter {
-				name: "path".to_string(),
-				message: format!(
-					"Expected exactly 1 path parameter for String, found {}",
-					ctx.path_params.len()
-				),
-			});
+			return Err(ParamError::InvalidParameter(Box::new(
+				ParamErrorContext::new(
+					ParamType::Path,
+					format!(
+						"Expected exactly 1 path parameter for String, found {}",
+						ctx.path_params.len()
+					),
+				)
+				.with_expected_type::<String>(),
+			)));
 		}
 
 		let value = ctx.path_params.values().next().unwrap().clone();
@@ -272,18 +303,20 @@ where
 	async fn from_request(_req: &Request, ctx: &ParamContext) -> ParamResult<Self> {
 		// Convert path params HashMap to URL-encoded format for deserialization
 		// This enables proper type coercion from strings (e.g., "42" -> 42)
-		let encoded =
-			serde_urlencoded::to_string(&ctx.path_params).map_err(|e| ParamError::ParseError {
-				name: "path".to_string(),
-				source: Box::new(e),
-			})?;
+		let encoded = serde_urlencoded::to_string(&ctx.path_params).map_err(|e| {
+			ParamError::ParseError(Box::new(
+				ParamErrorContext::new(
+					ParamType::Path,
+					format!("Failed to encode path params: {}", e),
+				)
+				.with_expected_type::<T>()
+				.with_source(Box::new(e)),
+			))
+		})?;
 
 		serde_urlencoded::from_str(&encoded)
 			.map(PathStruct)
-			.map_err(|e| ParamError::ParseError {
-				name: "path".to_string(),
-				source: Box::new(e),
-			})
+			.map_err(|e| ParamError::url_encoding::<T>(ParamType::Path, e, Some(encoded.clone())))
 	}
 }
 

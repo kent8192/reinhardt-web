@@ -20,7 +20,7 @@
 //! ```
 
 #[cfg(feature = "multipart")]
-use crate::{FromRequest, ParamContext, ParamError, ParamResult};
+use crate::{FromRequest, ParamContext, ParamError, ParamErrorContext, ParamResult, ParamType};
 #[cfg(feature = "multipart")]
 use async_trait::async_trait;
 #[cfg(feature = "multipart")]
@@ -71,17 +71,26 @@ impl FromRequest for Multipart {
 			.headers
 			.get(http::header::CONTENT_TYPE)
 			.and_then(|v| v.to_str().ok())
-			.ok_or_else(|| ParamError::InvalidParameter {
-				name: "content-type".to_string(),
-				message: "Missing Content-Type header".to_string(),
+			.ok_or_else(|| {
+				ParamError::InvalidParameter(Box::new(
+					ParamErrorContext::new(
+						ParamType::Header,
+						"Missing Content-Type header".to_string(),
+					)
+					.with_field("content-type"),
+				))
 			})?;
 
 		// Parse boundary from content-type
-		let boundary =
-			multer::parse_boundary(content_type).map_err(|e| ParamError::InvalidParameter {
-				name: "content-type".to_string(),
-				message: format!("Failed to parse boundary: {}", e),
-			})?;
+		let boundary = multer::parse_boundary(content_type).map_err(|e| {
+			ParamError::InvalidParameter(Box::new(
+				ParamErrorContext::new(
+					ParamType::Header,
+					format!("Failed to parse boundary: {}", e),
+				)
+				.with_field("content-type"),
+			))
+		})?;
 
 		// Read body
 		let body = req

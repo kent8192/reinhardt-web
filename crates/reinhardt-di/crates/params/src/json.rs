@@ -90,9 +90,10 @@ where
 			.read_body()
 			.map_err(|e| ParamError::BodyError(format!("Failed to read body: {}", e)))?;
 
-		// Deserialize JSON from body bytes
-		serde_json::from_slice(&body_bytes)
-			.map(Json)
-			.map_err(ParamError::DeserializationError)
+		// Deserialize JSON from body bytes with detailed error context
+		serde_json::from_slice(&body_bytes).map(Json).map_err(|e| {
+			let raw_value = String::from_utf8_lossy(&body_bytes).into_owned();
+			ParamError::json_deserialization::<T>(e, Some(raw_value))
+		})
 	}
 }

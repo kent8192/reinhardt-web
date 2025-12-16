@@ -6,7 +6,7 @@ use serde::de::DeserializeOwned;
 use std::fmt::{self, Debug};
 use std::ops::Deref;
 
-use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
+use crate::{ParamContext, ParamError, ParamResult, ParamType, extract::FromRequest};
 
 #[cfg(feature = "multi-value-arrays")]
 use std::collections::HashMap;
@@ -173,19 +173,31 @@ where
 			let json_value = multi_value_to_json_value(&multi_map);
 
 			serde_json::from_value(json_value).map(Query).map_err(|e| {
-				ParamError::InvalidParameter {
-					name: "query".to_string(),
-					message: e.to_string(),
+				let raw_value = if query_string.is_empty() {
+					None
+				} else {
+					Some(query_string.to_string())
+				};
+				let mut ctx = crate::ParamErrorContext::new(ParamType::Query, e.to_string())
+					.with_expected_type::<T>()
+					.with_source(Box::new(e));
+				if let Some(raw) = raw_value {
+					ctx = ctx.with_raw_value(raw);
 				}
+				ParamError::InvalidParameter(Box::new(ctx))
 			})
 		};
 
 		#[cfg(not(feature = "multi-value-arrays"))]
 		let result = serde_urlencoded::from_str(query_string)
 			.map(Query)
-			.map_err(|e| ParamError::InvalidParameter {
-				name: "query".to_string(),
-				message: e.to_string(),
+			.map_err(|e| {
+				let raw_value = if query_string.is_empty() {
+					None
+				} else {
+					Some(query_string.to_string())
+				};
+				ParamError::url_encoding::<T>(ParamType::Query, e, raw_value)
 			});
 
 		result

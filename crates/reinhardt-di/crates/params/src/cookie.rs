@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::ops::Deref;
 
-use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
+use crate::{
+	ParamContext, ParamError, ParamErrorContext, ParamResult, ParamType, extract::FromRequest,
+};
 
 /// Extract a value from cookies
 pub struct Cookie<T>(pub T);
@@ -144,17 +146,18 @@ where
 		let cookies_map = parse_cookies(cookie_header);
 
 		// Convert to JSON for deserialization
-		let json_value =
-			serde_json::to_value(&cookies_map).map_err(|e| ParamError::InvalidParameter {
-				name: "cookies".to_string(),
-				message: e.to_string(),
-			})?;
+		let json_value = serde_json::to_value(&cookies_map).map_err(|e| {
+			ParamError::InvalidParameter(Box::new(
+				ParamErrorContext::new(ParamType::Cookie, e.to_string()).with_field("cookies"),
+			))
+		})?;
 
 		serde_json::from_value(json_value)
 			.map(CookieStruct)
-			.map_err(|e| ParamError::InvalidParameter {
-				name: "cookies".to_string(),
-				message: e.to_string(),
+			.map_err(|e| {
+				ParamError::InvalidParameter(Box::new(
+					ParamErrorContext::new(ParamType::Cookie, e.to_string()).with_field("cookies"),
+				))
 			})
 	}
 }

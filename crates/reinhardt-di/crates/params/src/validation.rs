@@ -142,12 +142,12 @@ impl<T, V> Validated<T, V> {
 		T: AsRef<U>,
 		U: ?Sized,
 	{
-		validator
-			.validate(inner.as_ref())
-			.map_err(|e| crate::ParamError::ValidationError {
-				name: "parameter".to_string(),
-				message: e.to_string(),
-			})?;
+		validator.validate(inner.as_ref()).map_err(|e| {
+			crate::ParamError::ValidationError(Box::new(
+				crate::ParamErrorContext::new(crate::ParamType::Form, e.to_string())
+					.with_field("parameter"),
+			))
+		})?;
 
 		Ok(Self {
 			inner,

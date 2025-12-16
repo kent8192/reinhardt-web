@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::ops::Deref;
 
-use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
+use crate::{
+	ParamContext, ParamError, ParamErrorContext, ParamResult, ParamType, extract::FromRequest,
+};
 
 /// Extract a value from request headers
 pub struct Header<T>(pub T);
@@ -126,18 +128,20 @@ where
 
 		// Use serde_urlencoded for proper string-to-type deserialization
 		// This handles type coercion naturally (e.g., "123" -> i64)
-		let encoded =
-			serde_urlencoded::to_string(&headers_map).map_err(|e| ParamError::ParseError {
-				name: "headers".to_string(),
-				source: Box::new(e),
-			})?;
+		let encoded = serde_urlencoded::to_string(&headers_map).map_err(|e| {
+			ParamError::ParseError(Box::new(
+				ParamErrorContext::new(
+					ParamType::Header,
+					format!("Failed to encode headers: {}", e),
+				)
+				.with_expected_type::<T>()
+				.with_source(Box::new(e)),
+			))
+		})?;
 
 		serde_urlencoded::from_str(&encoded)
 			.map(HeaderStruct)
-			.map_err(|e| ParamError::ParseError {
-				name: "headers".to_string(),
-				source: Box::new(e),
-			})
+			.map_err(|e| ParamError::url_encoding::<T>(ParamType::Header, e, Some(encoded.clone())))
 	}
 }
 

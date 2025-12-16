@@ -6,7 +6,9 @@ use serde::de::DeserializeOwned;
 use std::fmt::{self, Debug};
 use std::ops::Deref;
 
-use crate::{ParamContext, ParamError, ParamResult, extract::FromRequest};
+use crate::{
+	ParamContext, ParamError, ParamErrorContext, ParamResult, ParamType, extract::FromRequest,
+};
 
 #[cfg(feature = "multipart")]
 use futures_util::{future::ready, stream::once};
@@ -59,17 +61,21 @@ impl<T> Form<T> {
 			.headers
 			.get(http::header::CONTENT_TYPE)
 			.and_then(|v| v.to_str().ok())
-			.ok_or_else(|| ParamError::InvalidParameter {
-				name: "content-type".to_string(),
-				message: "Missing Content-Type header".to_string(),
+			.ok_or_else(|| {
+				ParamError::InvalidParameter(Box::new(
+					ParamErrorContext::new(ParamType::Form, "Missing Content-Type header")
+						.with_field("Content-Type"),
+				))
 			})?;
 
 		// Parse boundary
-		let boundary =
-			multer::parse_boundary(content_type).map_err(|e| ParamError::InvalidParameter {
-				name: "content-type".to_string(),
-				message: format!("Failed to parse boundary: {}", e),
-			})?;
+		let boundary = multer::parse_boundary(content_type).map_err(|e| {
+			ParamError::InvalidParameter(Box::new(
+				ParamErrorContext::new(ParamType::Form, format!("Failed to parse boundary: {}", e))
+					.with_field("Content-Type")
+					.with_raw_value(content_type),
+			))
+		})?;
 
 		// Read body
 		let body = req
@@ -106,8 +112,16 @@ impl<T> Form<T> {
 		}
 
 		// Deserialize the fields map into T
-		let data: T = serde_json::from_value(Value::Object(fields))
-			.map_err(ParamError::DeserializationError)?;
+		let json_str = serde_json::to_string(&Value::Object(fields.clone())).ok();
+		let data: T = serde_json::from_value(Value::Object(fields)).map_err(|e| {
+			let mut ctx = ParamErrorContext::new(ParamType::Form, e.to_string())
+				.with_expected_type::<T>()
+				.with_source(Box::new(e));
+			if let Some(raw) = json_str {
+				ctx = ctx.with_raw_value(raw);
+			}
+			ParamError::DeserializationError(Box::new(ctx))
+		})?;
 
 		Ok(Form(data))
 	}
@@ -145,13 +159,17 @@ where
 		if !content_type.contains("application/x-www-form-urlencoded")
 			&& !content_type.contains("multipart/form-data")
 		{
-			return Err(ParamError::InvalidParameter {
-				name: "Content-Type".to_string(),
-				message: format!(
-					"Expected application/x-www-form-urlencoded or multipart/form-data, got {}",
-					content_type
-				),
-			});
+			return Err(ParamError::InvalidParameter(Box::new(
+				ParamErrorContext::new(
+					ParamType::Form,
+					format!(
+						"Expected application/x-www-form-urlencoded or multipart/form-data, got {}",
+						content_type
+					),
+				)
+				.with_field("Content-Type")
+				.with_expected_type::<T>(),
+			)));
 		}
 
 		// Parse the body as form data
@@ -163,9 +181,14 @@ where
 			let body_str = std::str::from_utf8(&body_bytes)
 				.map_err(|e| ParamError::BodyError(format!("Invalid UTF-8 in body: {}", e)))?;
 
+			let raw_value = if body_str.is_empty() {
+				None
+			} else {
+				Some(body_str.to_string())
+			};
 			serde_urlencoded::from_str(body_str)
 				.map(Form)
-				.map_err(|e| e.into())
+				.map_err(|e| ParamError::url_encoding::<T>(ParamType::Form, e, raw_value))
 		} else if content_type.contains("multipart/form-data") {
 			#[cfg(feature = "multipart")]
 			{
@@ -178,10 +201,14 @@ where
 				))
 			}
 		} else {
-			Err(ParamError::InvalidParameter {
-				name: "Content-Type".to_string(),
-				message: format!("Unsupported content type: {}", content_type),
-			})
+			Err(ParamError::InvalidParameter(Box::new(
+				ParamErrorContext::new(
+					ParamType::Form,
+					format!("Unsupported content type: {}", content_type),
+				)
+				.with_field("Content-Type")
+				.with_expected_type::<T>(),
+			)))
 		}
 	}
 }
