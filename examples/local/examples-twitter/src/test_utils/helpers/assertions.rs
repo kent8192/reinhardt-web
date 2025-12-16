@@ -3,9 +3,9 @@
 //! Provides trait extensions for common test assertions.
 
 use crate::apps::auth::models::User;
-use reinhardt::db::orm::{FilterOperator, FilterValue};
-use reinhardt::db::DatabaseConnection;
 use reinhardt::Model;
+use reinhardt::db::DatabaseConnection;
+use reinhardt::db::orm::{FilterOperator, FilterValue};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -28,15 +28,17 @@ impl DbAssertions {
 
 	/// Get a user from the database by ID.
 	pub async fn get_user_by_id(db: &DatabaseConnection, id: Uuid) -> Option<User> {
-		User::objects().get(id).first_with_db(db).await.ok().flatten()
+		User::objects()
+			.get(id)
+			.first_with_db(db)
+			.await
+			.ok()
+			.flatten()
 	}
 
 	/// Count users in the database.
 	pub async fn count_users(db: &DatabaseConnection) -> i64 {
-		User::objects()
-			.count_with_conn(db)
-			.await
-			.unwrap_or(0)
+		User::objects().count_with_conn(db).await.unwrap_or(0)
 	}
 
 	/// Delete all users from the database (for cleanup).

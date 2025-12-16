@@ -3,13 +3,49 @@
 //! The `url_patterns` routes URLs to handlers.
 
 use crate::apps;
+use reinhardt::db::DatabaseConnection;
 use reinhardt::prelude::*;
+use reinhardt::register_url_patterns;
 use std::sync::Arc;
 
-use super::views;
+use super::{admin, views};
 
+/// Build URL patterns without admin panel
+///
+/// Use this when database connection is not available
+/// or when you don't need the admin panel.
 pub fn url_patterns() -> Arc<UnifiedRouter> {
-	let mut router = UnifiedRouter::new()
+	let mut router = build_api_router();
+
+	// Register all routes before returning
+	router.register_all_routes();
+
+	Arc::new(router)
+}
+
+/// Build URL patterns with admin panel
+///
+/// Includes the admin panel under `/admin` prefix.
+///
+/// # Arguments
+///
+/// * `db` - Database connection for admin CRUD operations
+pub fn url_patterns_with_admin(db: DatabaseConnection) -> Arc<UnifiedRouter> {
+	let mut router = build_api_router();
+
+	// Include admin panel under /admin prefix
+	let admin_router = admin::configure_admin(db);
+	router = router.include("/admin/", admin_router);
+
+	// Register all routes before returning
+	router.register_all_routes();
+
+	Arc::new(router)
+}
+
+/// Build the base API router
+fn build_api_router() -> UnifiedRouter {
+	UnifiedRouter::new()
 		// Health check endpoint
 		.endpoint(views::health_check)
 		// Auth routes
@@ -33,10 +69,8 @@ pub fn url_patterns() -> Arc<UnifiedRouter> {
 		.endpoint(apps::dm::views::delete_room)
 		.endpoint(apps::dm::views::list_messages)
 		.endpoint(apps::dm::views::send_message)
-		.endpoint(apps::dm::views::get_message);
-
-	// Register all routes before returning
-	router.register_all_routes();
-
-	Arc::new(router)
+		.endpoint(apps::dm::views::get_message)
 }
+
+// Register URL patterns with admin panel for automatic discovery by the framework
+register_url_patterns!(admin);
