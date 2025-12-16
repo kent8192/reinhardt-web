@@ -74,3 +74,55 @@ Includes request logging, error logging, and integration with external logging s
   - `attach_memory_handler()`: Easy test handler attachment
 - **Type Safety**: Strongly-typed configuration and log levels
 - **Async Support**: Built on Tokio for async runtime compatibility
+
+#### Security Logging
+
+- **SecurityLogger**: Dedicated logger for security-related events
+  - Authentication events (success/failure)
+  - Authorization violations
+  - CSRF violations
+  - Rate limit exceeded events
+  - Suspicious file operations
+  - Disallowed host access
+- **SecurityError**: Enum for categorizing security events
+  - `AuthenticationFailed`, `AuthorizationFailed`, `InvalidToken`
+  - `RateLimitExceeded`, `SuspiciousActivity`, `CsrfViolation`
+  - `InvalidInput`, `AccessDenied`, `DisallowedHost`
+
+**Usage Example**:
+
+```rust
+use reinhardt_logging::security::{SecurityLogger, SecurityError};
+
+let logger = SecurityLogger::new();
+
+// Log authentication events
+logger.log_auth_event(true, "user@example.com");  // INFO level
+logger.log_auth_event(false, "attacker@evil.com"); // WARNING level
+
+// Log security errors
+logger.log_security_error(&SecurityError::CsrfViolation);  // ERROR level
+
+// Log CSRF violation with details
+logger.log_csrf_violation("http://evil.com");
+
+// Log rate limit exceeded
+logger.log_rate_limit_exceeded("192.168.1.1", 100);
+
+// Log suspicious file operations
+logger.log_suspicious_file_operation("delete", Path::new("/etc/passwd"));
+
+// Log disallowed host access
+logger.log_disallowed_host("malicious.com");
+```
+
+**Log Level Mapping**:
+
+| Event | Log Level |
+|-------|-----------|
+| Authentication success | INFO |
+| Authentication failure | WARNING |
+| CSRF violation | ERROR |
+| Rate limit exceeded | WARNING |
+| Authorization failure | WARNING |
+| Suspicious activity | ERROR |

@@ -6,6 +6,7 @@ pub mod formatters;
 pub mod handlers;
 pub mod logger;
 pub mod params;
+pub mod security;
 
 pub use config::{HandlerConfig, LoggerConfig, LoggingConfig, LoggingManager};
 pub use filters::{CallbackFilter, Filter, RequireDebugFalse, RequireDebugTrue};
@@ -13,6 +14,7 @@ pub use formatters::{Formatter, ServerFormatter, StandardFormatter, escape_contr
 pub use handlers::{ConsoleHandler, FileHandler, JsonHandler, MemoryHandler};
 pub use logger::{LogHandler, LogLevel, LogRecord, Logger};
 pub use params::{ReprParamsConfig, repr_params, truncate_param};
+pub use security::{SecurityError, SecurityLogger};
 
 // ----------------------------------------------------------------------------
 // Global logging manager and convenience APIs

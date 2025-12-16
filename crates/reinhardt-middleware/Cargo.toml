@@ -49,6 +49,7 @@ log = "0.4"
 url = "2.5"
 uuid = { workspace = true }
 tokio = { workspace = true }
+colored = "3.0"
 
 [dev-dependencies]
 reinhardt-test = { workspace = true }

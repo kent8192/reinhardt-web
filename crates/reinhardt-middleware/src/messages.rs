@@ -2,6 +2,18 @@
 //!
 //! Provides Django-style flash messages for one-time notifications.
 //! Messages can be stored in sessions or cookies and are displayed once.
+//!
+//! # Middleware Ordering
+//!
+//! For best results, ensure `SessionMiddleware` runs before `MessageMiddleware`:
+//!
+//! ```ignore
+//! app.middleware(SessionMiddleware::new(config))
+//!    .middleware(MessageMiddleware::new(storage));
+//! ```
+//!
+//! This allows `MessageMiddleware` to use the session ID from
+//! `SessionMiddleware` via request extensions.
 
 use async_trait::async_trait;
 use hyper::header::COOKIE;
@@ -12,6 +24,8 @@ use reinhardt_core::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+
+use crate::session::SessionData;
 
 /// Message header for passing messages between middleware and handlers
 pub const MESSAGE_HEADER: &str = "X-Messages";
@@ -258,9 +272,15 @@ impl MessageMiddleware {
 
 	/// Extract session ID from request
 	///
-	/// In production, this should integrate with reinhardt-sessions.
-	/// TODO: For now, we extract from cookie.
+	/// This method first checks for `SessionData` in request extensions
+	/// (set by `SessionMiddleware`), then falls back to cookie extraction.
 	fn get_session_id(request: &Request) -> String {
+		// Check for SessionData set by SessionMiddleware
+		if let Some(session_data) = request.extensions.get::<SessionData>() {
+			return session_data.id.clone();
+		}
+
+		// Fallback: extract from cookie
 		request
 			.headers
 			.get(COOKIE)

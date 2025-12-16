@@ -62,7 +62,7 @@ pub use flatpages::{Flatpage, FlatpageStore, FlatpagesConfig, FlatpagesMiddlewar
 pub use gzip::{GZipConfig, GZipMiddleware};
 pub use https_redirect::{HttpsRedirectConfig, HttpsRedirectMiddleware};
 pub use locale::{LocaleConfig, LocaleMiddleware};
-pub use logging::LoggingMiddleware;
+pub use logging::{LoggingConfig, LoggingMiddleware};
 pub use messages::{CookieStorage, Message, MessageLevel, MessageStorage, SessionStorage};
 pub use metrics::{MetricsConfig, MetricsMiddleware, MetricsStore};
 #[cfg(feature = "rate-limit")]
