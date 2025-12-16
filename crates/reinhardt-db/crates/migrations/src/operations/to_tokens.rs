@@ -310,6 +310,33 @@ impl ToTokens for Operation {
 					}
 				});
 			}
+			Operation::MoveModel {
+				model_name,
+				from_app,
+				to_app,
+				rename_table,
+				old_table_name,
+				new_table_name,
+			} => {
+				let old_table_token = match old_table_name {
+					Some(s) => quote! { Some(#s) },
+					None => quote! { None },
+				};
+				let new_table_token = match new_table_name {
+					Some(s) => quote! { Some(#s) },
+					None => quote! { None },
+				};
+				tokens.extend(quote! {
+					Operation::MoveModel {
+						model_name: #model_name,
+						from_app: #from_app,
+						to_app: #to_app,
+						rename_table: #rename_table,
+						old_table_name: #old_table_token,
+						new_table_name: #new_table_token,
+					}
+				});
+			}
 		}
 	}
 }

@@ -240,6 +240,28 @@ pub enum Operation {
 		column_name: &'static str,
 		default_value: &'static str,
 	},
+	/// Move a model from one app to another
+	///
+	/// This operation handles cross-app model moves by:
+	/// 1. Optionally renaming the table (if naming convention changes between apps)
+	/// 2. Updating FK references to use the new table name
+	///
+	/// Note: This generates a RenameTable SQL if table name changes.
+	/// The state tracking (from_app -> to_app) is handled at the ProjectState level.
+	MoveModel {
+		/// Name of the model being moved
+		model_name: &'static str,
+		/// Source app label
+		from_app: &'static str,
+		/// Target app label
+		to_app: &'static str,
+		/// Whether to rename the underlying table
+		rename_table: bool,
+		/// Old table name (if rename_table is true)
+		old_table_name: Option<&'static str>,
+		/// New table name (if rename_table is true)
+		new_table_name: Option<&'static str>,
+	},
 }
 
 impl Operation {
@@ -357,6 +379,33 @@ impl Operation {
 			| Operation::AlterTableComment { .. }
 			| Operation::AlterUniqueTogether { .. }
 			| Operation::AlterModelOptions { .. } => {}
+			Operation::MoveModel {
+				model_name,
+				from_app,
+				to_app,
+				rename_table,
+				old_table_name,
+				new_table_name,
+			} => {
+				// Move the model from one app to another in the project state
+				// First get the model, then remove it from the old location
+				if let Some(model) = state.get_model(from_app, model_name).cloned() {
+					state.remove_model(from_app, model_name);
+
+					// Create a new model with updated app label
+					let mut new_model = model;
+					new_model.app_label = to_app.to_string();
+
+					// Update table name if rename_table is true
+					if *rename_table
+						&& let (Some(_old_name), Some(new_name)) = (old_table_name, new_table_name)
+					{
+						new_model.table_name = new_name.to_string();
+					}
+
+					state.add_model(new_model);
+				}
+			}
 		}
 	}
 
@@ -530,6 +579,32 @@ impl Operation {
 					"ALTER TABLE {} ADD COLUMN {} VARCHAR(50) DEFAULT '{}';",
 					table, column_name, default_value
 				)
+			}
+			Operation::MoveModel {
+				rename_table,
+				old_table_name,
+				new_table_name,
+				..
+			} => {
+				// MoveModel generates a RenameTable SQL if table name changes
+				// Otherwise it's a state-only operation (no SQL needed)
+				if *rename_table {
+					if let (Some(old_name), Some(new_name)) = (old_table_name, new_table_name) {
+						match dialect {
+							SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
+								format!("ALTER TABLE {} RENAME TO {};", old_name, new_name)
+							}
+							SqlDialect::Mysql => {
+								format!("RENAME TABLE {} TO {};", old_name, new_name)
+							}
+						}
+					} else {
+						"-- MoveModel: No table rename specified".to_string()
+					}
+				} else {
+					// State-only operation, no SQL needed
+					"-- MoveModel: State-only operation (no table rename)".to_string()
+				}
 			}
 		}
 	}
@@ -825,6 +900,25 @@ impl Operation {
 				stmt.add_column(&mut col);
 
 				OperationStatement::TableAlter(stmt.to_owned())
+			}
+			Operation::MoveModel {
+				rename_table,
+				old_table_name,
+				new_table_name,
+				..
+			} => {
+				// MoveModel generates a table rename if table name changes
+				if *rename_table {
+					if let (Some(old_name), Some(new_name)) = (old_table_name, new_table_name) {
+						OperationStatement::TableRename(self.build_rename_table(old_name, new_name))
+					} else {
+						// No table rename needed
+						OperationStatement::RawSql("-- MoveModel: State-only operation".to_string())
+					}
+				} else {
+					// State-only operation, no SQL
+					OperationStatement::RawSql("-- MoveModel: State-only operation".to_string())
+				}
 			}
 		}
 	}
@@ -1225,6 +1319,18 @@ impl MigrationOperation for Operation {
 			Operation::AddDiscriminatorColumn { table, .. } => {
 				Some(format!("add_discriminator_{}", table.to_lowercase()))
 			}
+			Operation::MoveModel {
+				model_name,
+				from_app,
+				to_app,
+				..
+			} => Some(format!(
+				"move_{}_{}_{}_{}",
+				from_app.to_lowercase(),
+				model_name.to_lowercase(),
+				to_app.to_lowercase(),
+				model_name.to_lowercase()
+			)),
 		}
 	}
 
@@ -1296,6 +1402,12 @@ impl MigrationOperation for Operation {
 			Operation::AddDiscriminatorColumn {
 				table, column_name, ..
 			} => format!("Add discriminator column {} to {}", column_name, table),
+			Operation::MoveModel {
+				model_name,
+				from_app,
+				to_app,
+				..
+			} => format!("Move model {} from {} to {}", model_name, from_app, to_app),
 		}
 	}
 

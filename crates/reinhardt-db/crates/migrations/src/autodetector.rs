@@ -535,6 +535,7 @@ impl ProjectState {
 					name: c.name.clone(),
 					constraint_type: c.constraint_type.clone(),
 					definition: c.fields.join(", "),
+					foreign_key_info: None,
 				})
 				.collect();
 
@@ -610,6 +611,7 @@ impl ProjectState {
 						name: c.name.clone(),
 						constraint_type: c.constraint_type.clone(),
 						definition: c.fields.join(", "),
+						foreign_key_info: None,
 					})
 					.collect();
 
@@ -706,6 +708,67 @@ impl ProjectState {
 			.get_mut(&(app_label.to_string(), model_name.to_string()))
 	}
 
+	/// Get primary key field type for a model
+	///
+	/// Returns the field type of the primary key, defaulting to Uuid if not found
+	/// or if the model is not in the state.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_migrations::{ProjectState, ModelState, FieldState, FieldType};
+	///
+	/// let mut state = ProjectState::new();
+	/// let mut model = ModelState::new("myapp", "User");
+	/// model.add_field(FieldState::new("id", FieldType::Integer, false));
+	/// state.add_model(model);
+	///
+	/// let pk_type = state.get_primary_key_type("myapp", "User");
+	/// assert_eq!(pk_type, FieldType::Integer);
+	/// ```
+	fn get_primary_key_type(&self, app_label: &str, model_name: &str) -> crate::FieldType {
+		// JSON update
+		if let Some(model_state) = self.get_model(app_label, model_name) {
+			// Search the “id” field (by default primary key name)
+			if let Some((_, id_field)) = model_state
+				.fields
+				.iter()
+				.find(|(name, _)| name.as_str() == "id")
+			{
+				return id_field.field_type.clone();
+			}
+
+			// Search fields with the primary_key parameter
+			if let Some((_, pk_field)) = model_state
+				.fields
+				.iter()
+				.find(|(_, f)| f.params.get("primary_key").map(String::as_str) == Some("true"))
+			{
+				return pk_field.field_type.clone();
+			}
+		}
+
+		// If not found in to_state, search the global registry
+		if let Some(model_meta) =
+			crate::model_registry::global_registry().get_model(app_label, model_name)
+		{
+			// Search the “id” fields
+			if let Some(id_field) = model_meta.fields.get("id") {
+				return id_field.field_type.clone();
+			}
+
+			// Search fields with the primary_key parameter
+			for field_meta in model_meta.fields.values() {
+				if field_meta.params.get("primary_key").map(String::as_str) == Some("true") {
+					return field_meta.field_type.clone();
+				}
+			}
+		}
+
+		// The default is UUID (current hardcoded value)
+		crate::FieldType::Uuid
+	}
+
 	/// Get a model by table name
 	///
 	/// # Examples
@@ -776,9 +839,9 @@ impl ProjectState {
 	/// state.remove_model("myapp", "User");
 	/// assert!(state.get_model("myapp", "User").is_none());
 	/// ```
-	pub fn remove_model(&mut self, app_label: &str, model_name: &str) {
+	pub fn remove_model(&mut self, app_label: &str, model_name: &str) -> Option<ModelState> {
 		self.models
-			.remove(&(app_label.to_string(), model_name.to_string()));
+			.remove(&(app_label.to_string(), model_name.to_string()))
 	}
 
 	/// Rename a model
@@ -837,7 +900,7 @@ impl ProjectState {
 		for metadata in &models_metadata {
 			for m2m in &metadata.many_to_many_fields {
 				// Generate intermediate table for this ManyToMany relationship
-				let intermediate_table = Self::create_intermediate_table_for_m2m(
+				let intermediate_table = state.create_intermediate_table_for_m2m(
 					&metadata.app_label,
 					&metadata.model_name,
 					&metadata.table_name,
@@ -876,13 +939,12 @@ impl ProjectState {
 	/// - Foreign key constraints with CASCADE
 	/// - Unique constraint on (from_id, to_id)
 	fn create_intermediate_table_for_m2m(
+		&self,
 		source_app_label: &str,
 		source_model_name: &str,
 		source_table_name: &str,
 		m2m: &crate::model_registry::ManyToManyMetadata,
 	) -> ModelState {
-		use crate::FieldType;
-
 		// Generate table name: {source_table_name}_{field_name}
 		// Example: "auth_user" + "_" + "following" = "auth_user_following"
 		let table_name = m2m
@@ -898,7 +960,7 @@ impl ProjectState {
 		model_state.table_name = table_name.clone();
 
 		// Add primary key field: id
-		let mut id_field = FieldState::new("id".to_string(), FieldType::Integer, false);
+		let mut id_field = FieldState::new("id".to_string(), crate::FieldType::Integer, false);
 		id_field
 			.params
 			.insert("primary_key".to_string(), "true".to_string());
@@ -917,10 +979,19 @@ impl ProjectState {
 			.clone()
 			.unwrap_or_else(|| format!("to_{}_id", to_snake_case(&m2m.to_model)));
 
-		// Determine source model's primary key type by checking the registry
-		// For now, assume Uuid based on examples
-		let source_pk_type = FieldType::Uuid;
-		let target_pk_type = FieldType::Uuid;
+		// Determine the primary key type for the source and target from the registry
+		let source_pk_type = self.get_primary_key_type(source_app_label, source_model_name);
+		let target_pk_type = {
+			// The target_model may be in the format “app_label.ModelName”.
+			let (target_app, target_model) = if m2m.to_model.contains('.') {
+				let parts: Vec<&str> = m2m.to_model.split('.').collect();
+				(parts[0], parts[1])
+			} else {
+				// Assuming the model is within the same application
+				(source_app_label, m2m.to_model.as_str())
+			};
+			self.get_primary_key_type(target_app, target_model)
+		};
 
 		// Add foreign key to source model: from_{source_model}_id
 		let mut from_field =
@@ -1631,6 +1702,124 @@ impl DetectedChanges {
 
 		Ok(())
 	}
+
+	/// Remove operations from DetectedChanges based on OperationRef list
+	///
+	/// This method is called when a user rejects an inferred intent during
+	/// interactive migration detection. It removes the specific operations
+	/// that the rejected intent was tracking, preventing them from being
+	/// included in the generated migration.
+	///
+	/// # Arguments
+	///
+	/// * `refs` - Slice of OperationRef indicating which operations to remove
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_migrations::{DetectedChanges, OperationRef};
+	///
+	/// let mut changes = DetectedChanges::default();
+	/// changes.renamed_models.push((
+	///     "blog".to_string(),
+	///     "Post".to_string(),
+	///     "BlogPost".to_string(),
+	/// ));
+	/// changes.added_fields.push((
+	///     "blog".to_string(),
+	///     "BlogPost".to_string(),
+	///     "slug".to_string(),
+	/// ));
+	///
+	/// // Remove the renamed model operation
+	/// changes.remove_operations(&[OperationRef::RenamedModel {
+	///     app_label: "blog".to_string(),
+	///     old_name: "Post".to_string(),
+	///     new_name: "BlogPost".to_string(),
+	/// }]);
+	///
+	/// assert!(changes.renamed_models.is_empty());
+	/// // added_fields is not affected
+	/// assert_eq!(changes.added_fields.len(), 1);
+	/// ```
+	pub fn remove_operations(&mut self, refs: &[OperationRef]) {
+		for op_ref in refs {
+			match op_ref {
+				OperationRef::RenamedModel {
+					app_label,
+					old_name,
+					new_name,
+				} => {
+					self.renamed_models.retain(|(app, old, new)| {
+						!(app == app_label && old == old_name && new == new_name)
+					});
+				}
+				OperationRef::MovedModel {
+					from_app,
+					to_app,
+					model_name,
+				} => {
+					// MovedModelInfo is (from_app, to_app, model_name, rename_table, old_table, new_table)
+					self.moved_models.retain(|info| {
+						!(&info.0 == from_app && &info.1 == to_app && &info.2 == model_name)
+					});
+				}
+				OperationRef::AddedField {
+					app_label,
+					model_name,
+					field_name,
+				} => {
+					self.added_fields.retain(|(app, model, field)| {
+						!(app == app_label && model == model_name && field == field_name)
+					});
+				}
+				OperationRef::RenamedField {
+					app_label,
+					model_name,
+					old_name,
+					new_name,
+				} => {
+					self.renamed_fields.retain(|(app, model, old, new)| {
+						!(app == app_label
+							&& model == model_name
+							&& old == old_name && new == new_name)
+					});
+				}
+				OperationRef::RemovedField {
+					app_label,
+					model_name,
+					field_name,
+				} => {
+					self.removed_fields.retain(|(app, model, field)| {
+						!(app == app_label && model == model_name && field == field_name)
+					});
+				}
+				OperationRef::AlteredField {
+					app_label,
+					model_name,
+					field_name,
+				} => {
+					self.altered_fields.retain(|(app, model, field)| {
+						!(app == app_label && model == model_name && field == field_name)
+					});
+				}
+				OperationRef::CreatedModel {
+					app_label,
+					model_name,
+				} => {
+					self.created_models
+						.retain(|(app, model)| !(app == app_label && model == model_name));
+				}
+				OperationRef::DeletedModel {
+					app_label,
+					model_name,
+				} => {
+					self.deleted_models
+						.retain(|(app, model)| !(app == app_label && model == model_name));
+				}
+			}
+		}
+	}
 }
 
 // ============================================================================
@@ -2187,6 +2376,61 @@ pub enum RuleCondition {
 	},
 }
 
+/// Reference to a specific operation in DetectedChanges
+///
+/// Used to track which operations an inferred intent relates to,
+/// enabling removal of operations when the user rejects an intent.
+#[derive(Debug, Clone, PartialEq)]
+pub enum OperationRef {
+	/// Reference to a renamed model: (app_label, old_name, new_name)
+	RenamedModel {
+		app_label: String,
+		old_name: String,
+		new_name: String,
+	},
+	/// Reference to a moved model: (from_app, to_app, model_name)
+	MovedModel {
+		from_app: String,
+		to_app: String,
+		model_name: String,
+	},
+	/// Reference to an added field: (app_label, model_name, field_name)
+	AddedField {
+		app_label: String,
+		model_name: String,
+		field_name: String,
+	},
+	/// Reference to a renamed field: (app_label, model_name, old_name, new_name)
+	RenamedField {
+		app_label: String,
+		model_name: String,
+		old_name: String,
+		new_name: String,
+	},
+	/// Reference to a removed field: (app_label, model_name, field_name)
+	RemovedField {
+		app_label: String,
+		model_name: String,
+		field_name: String,
+	},
+	/// Reference to an altered field: (app_label, model_name, field_name)
+	AlteredField {
+		app_label: String,
+		model_name: String,
+		field_name: String,
+	},
+	/// Reference to a created model: (app_label, model_name)
+	CreatedModel {
+		app_label: String,
+		model_name: String,
+	},
+	/// Reference to a deleted model: (app_label, model_name)
+	DeletedModel {
+		app_label: String,
+		model_name: String,
+	},
+}
+
 /// Inferred intent from detected changes
 #[derive(Debug, Clone, PartialEq)]
 pub struct InferredIntent {
@@ -2198,6 +2442,11 @@ pub struct InferredIntent {
 	pub description: String,
 	/// Evidence supporting this intent
 	pub evidence: Vec<String>,
+	/// References to operations in DetectedChanges that this intent relates to
+	///
+	/// When the user rejects this intent, these operations will be removed
+	/// from DetectedChanges to prevent migration generation.
+	pub related_operations: Vec<OperationRef>,
 }
 
 /// Rule for inferring intent from change patterns
@@ -2588,6 +2837,7 @@ impl InferenceEngine {
 				confidence,
 				description: format!("Detected: {}", rule.name),
 				evidence,
+				related_operations: Vec::new(),
 			});
 		}
 
@@ -2652,12 +2902,91 @@ impl InferenceEngine {
 			.collect();
 
 		// Run inference on extracted changes
-		self.infer_intents(
+		let mut intents = self.infer_intents(
 			&model_renames,
 			&model_moves,
 			&field_additions,
 			&field_renames,
-		)
+		);
+
+		// Post-process: populate related_operations for each intent based on evidence
+		for intent in &mut intents {
+			// Parse evidence to determine which operations are related
+			// Evidence strings contain information about which changes triggered the intent
+			for evidence_str in &intent.evidence {
+				// Model rename evidence: "Model renamed: app.old → app.new ..."
+				if evidence_str.starts_with("Model renamed:") {
+					for (app, old_name, new_name) in &changes.renamed_models {
+						intent.related_operations.push(OperationRef::RenamedModel {
+							app_label: app.clone(),
+							old_name: old_name.clone(),
+							new_name: new_name.clone(),
+						});
+					}
+				}
+				// Model move evidence: "Model moved: from_app.model → to_app.model ..."
+				else if evidence_str.starts_with("Model moved:") {
+					for (from_app, to_app, model, _, _, _) in &changes.moved_models {
+						intent.related_operations.push(OperationRef::MovedModel {
+							from_app: from_app.clone(),
+							to_app: to_app.clone(),
+							model_name: model.clone(),
+						});
+					}
+				}
+				// Field added evidence: "Field added: app.model.field ..."
+				else if evidence_str.starts_with("Field added:") {
+					for (app, model, field) in &changes.added_fields {
+						intent.related_operations.push(OperationRef::AddedField {
+							app_label: app.clone(),
+							model_name: model.clone(),
+							field_name: field.clone(),
+						});
+					}
+				}
+				// Field renamed evidence: "Field renamed: app.model.old → new ..."
+				else if evidence_str.starts_with("Field renamed:") {
+					for (app, model, old_name, new_name) in &changes.renamed_fields {
+						intent.related_operations.push(OperationRef::RenamedField {
+							app_label: app.clone(),
+							model_name: model.clone(),
+							old_name: old_name.clone(),
+							new_name: new_name.clone(),
+						});
+					}
+				}
+				// Multiple model renames evidence
+				else if evidence_str.starts_with("Multiple model renames:") {
+					for (app, old_name, new_name) in &changes.renamed_models {
+						intent.related_operations.push(OperationRef::RenamedModel {
+							app_label: app.clone(),
+							old_name: old_name.clone(),
+							new_name: new_name.clone(),
+						});
+					}
+				}
+				// Multiple field additions or optional field added evidence
+				else if evidence_str.starts_with("Multiple field additions:")
+					|| evidence_str.starts_with("Optional field added:")
+				{
+					for (app, model, field) in &changes.added_fields {
+						intent.related_operations.push(OperationRef::AddedField {
+							app_label: app.clone(),
+							model_name: model.clone(),
+							field_name: field.clone(),
+						});
+					}
+				}
+			}
+
+			// Deduplicate related_operations
+			intent
+				.related_operations
+				.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+			intent.related_operations.dedup();
+		}
+
+		intents
 	}
 
 	/// Record a model rename in the change tracker
@@ -3081,17 +3410,15 @@ impl InteractiveAutodetector for MigrationAutodetector {
 
 				if !confirmed {
 					println!("✗ Skipped: {}", intent.description);
-					// Note: Removing operations from DetectedChanges requires establishing
-					// a bidirectional mapping between InferredIntent and the specific operations
-					// (e.g., renamed_models, added_fields, etc.). This is a complex refactoring
-					// that would require:
-					// 1. Adding operation IDs or tracking metadata to DetectedChanges
-					// 2. Maintaining the mapping in InferredIntent
-					// 3. Implementing removal logic for each operation type
-					// TODO: For now, skipped intents are logged but the underlying operations remain
-					// in DetectedChanges, which may result in migration operations being
-					// generated despite user rejection. This should be addressed in a future
-					// refactoring of the intent inference system.
+					// Remove the related operations from DetectedChanges
+					// This prevents rejected intents from generating migration operations
+					if !intent.related_operations.is_empty() {
+						changes.remove_operations(&intent.related_operations);
+						println!(
+							"  → Removed {} related operation(s) from migration",
+							intent.related_operations.len()
+						);
+					}
 				}
 			}
 		}
@@ -4227,13 +4554,8 @@ impl MigrationAutodetector {
 		}
 
 		// Note: MoveModel operations for cross-app moves are detected in moved_models
-		// but cannot be directly converted to legacy Operation enum.
-		// Use the new operations API (operations::models::MoveModel) instead.
-		// Future enhancement: Add MoveModel variant to Operation enum or
-		// use a separate operation handling path for cross-app moves.
-
-		// TODO: For now, cross-app moves will be handled separately in generate_migrations()
-		// where we can use the new operations API directly.
+		// and handled in generate_migrations() using Operation::MoveModel variant.
+		// The MoveModel variant was added to the Operation enum to support this use case.
 
 		operations
 	}
@@ -4495,6 +4817,67 @@ impl MigrationAutodetector {
 				});
 		}
 
+		// Handle model renames (same app)
+		for (app_label, old_name, new_name) in &changes.renamed_models {
+			if let Some(model) = self.to_state.get_model(app_label, new_name) {
+				// Get the old table name from from_state
+				let old_table_name = self
+					.from_state
+					.get_model(app_label, old_name)
+					.map(|m| m.table_name.clone())
+					.unwrap_or_else(|| format!("{}_{}", app_label, old_name.to_lowercase()));
+
+				migrations_by_app
+					.entry(app_label.clone())
+					.or_default()
+					.push(crate::Operation::RenameTable {
+						old_name: Box::leak(old_table_name.into_boxed_str()),
+						new_name: Box::leak(model.table_name.clone().into_boxed_str()),
+					});
+			}
+		}
+
+		// Handle cross-app model moves
+		// MovedModelInfo: (from_app, to_app, model_name, rename_table, old_table, new_table)
+		for (from_app, to_app, model_name, rename_table, old_table, new_table) in
+			&changes.moved_models
+		{
+			// Get table names
+			let old_table_name = old_table.clone().unwrap_or_else(|| {
+				self.from_state
+					.get_model(from_app, model_name)
+					.map(|m| m.table_name.clone())
+					.unwrap_or_else(|| format!("{}_{}", from_app, model_name.to_lowercase()))
+			});
+
+			let new_table_name = new_table.clone().unwrap_or_else(|| {
+				self.to_state
+					.get_model(to_app, model_name)
+					.map(|m| m.table_name.clone())
+					.unwrap_or_else(|| format!("{}_{}", to_app, model_name.to_lowercase()))
+			});
+
+			// Add MoveModel operation to the target app's migrations
+			migrations_by_app.entry(to_app.clone()).or_default().push(
+				crate::Operation::MoveModel {
+					model_name: Box::leak(model_name.clone().into_boxed_str()),
+					from_app: Box::leak(from_app.clone().into_boxed_str()),
+					to_app: Box::leak(to_app.clone().into_boxed_str()),
+					rename_table: *rename_table,
+					old_table_name: if *rename_table {
+						Some(Box::leak(old_table_name.into_boxed_str()))
+					} else {
+						None
+					},
+					new_table_name: if *rename_table {
+						Some(Box::leak(new_table_name.into_boxed_str()))
+					} else {
+						None
+					},
+				},
+			);
+		}
+
 		// Create Migration objects for each app
 		let mut migrations = Vec::new();
 		for (app_label, operations) in migrations_by_app {
@@ -4525,6 +4908,26 @@ impl MigrationAutodetector {
 					}
 					crate::Operation::DropTable { name, .. } => {
 						format!("0001_delete_{}", name.to_lowercase())
+					}
+					crate::Operation::RenameTable { old_name, new_name } => {
+						format!(
+							"0001_rename_{}_to_{}",
+							old_name.to_lowercase(),
+							new_name.to_lowercase()
+						)
+					}
+					crate::Operation::MoveModel {
+						model_name,
+						from_app,
+						to_app,
+						..
+					} => {
+						format!(
+							"0001_move_{}_from_{}_to_{}",
+							model_name.to_lowercase(),
+							from_app.to_lowercase(),
+							to_app.to_lowercase()
+						)
 					}
 					_ => "0001_auto".to_string(),
 				}
