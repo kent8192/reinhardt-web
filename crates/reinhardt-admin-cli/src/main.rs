@@ -19,7 +19,9 @@
 
 use clap::{Parser, Subcommand};
 use reinhardt_commands::{
-	BaseCommand, CommandContext, CommandResult, StartAppCommand, StartProjectCommand,
+	BaseCommand, CommandContext, CommandResult, PluginDisableCommand, PluginEnableCommand,
+	PluginInfoCommand, PluginInstallCommand, PluginListCommand, PluginRemoveCommand,
+	PluginSearchCommand, PluginUpdateCommand, StartAppCommand, StartProjectCommand,
 };
 use std::process;
 
@@ -68,15 +70,139 @@ enum Commands {
 		template_type: String,
 	},
 
-	/// Display help information for a specific command
-	Help {
-		/// Command name to get help for
-		#[arg(value_name = "COMMAND")]
-		command: Option<String>,
+	/// Manage Reinhardt plugins (Dentdelion)
+	Plugin {
+		#[command(subcommand)]
+		subcommand: PluginCommands,
+	},
+}
+
+/// Plugin management subcommands
+#[derive(Subcommand)]
+enum PluginCommands {
+	/// List installed plugins
+	List {
+		/// Show detailed information
+		#[arg(short, long)]
+		verbose: bool,
+
+		/// Show only enabled plugins
+		#[arg(long)]
+		enabled: bool,
+
+		/// Show only disabled plugins
+		#[arg(long)]
+		disabled: bool,
+
+		/// Project root directory
+		#[arg(long)]
+		project_root: Option<String>,
 	},
 
-	/// Display version information
-	Version,
+	/// Show plugin information
+	Info {
+		/// Plugin name (e.g., auth-delion)
+		#[arg(value_name = "NAME")]
+		name: String,
+
+		/// Fetch info from crates.io instead of local
+		#[arg(long)]
+		remote: bool,
+
+		/// Project root directory
+		#[arg(long)]
+		project_root: Option<String>,
+	},
+
+	/// Install a plugin from crates.io
+	Install {
+		/// Plugin name (e.g., auth-delion)
+		#[arg(value_name = "NAME")]
+		name: String,
+
+		/// Specific version to install
+		#[arg(long)]
+		version: Option<String>,
+
+		/// Skip confirmation prompt
+		#[arg(short, long)]
+		yes: bool,
+
+		/// Project root directory
+		#[arg(long)]
+		project_root: Option<String>,
+	},
+
+	/// Remove a plugin
+	Remove {
+		/// Plugin name to remove
+		#[arg(value_name = "NAME")]
+		name: String,
+
+		/// Also remove plugin configuration
+		#[arg(long)]
+		purge: bool,
+
+		/// Skip confirmation prompt
+		#[arg(short, long)]
+		yes: bool,
+
+		/// Project root directory
+		#[arg(long)]
+		project_root: Option<String>,
+	},
+
+	/// Enable a disabled plugin
+	Enable {
+		/// Plugin name to enable
+		#[arg(value_name = "NAME")]
+		name: String,
+
+		/// Project root directory
+		#[arg(long)]
+		project_root: Option<String>,
+	},
+
+	/// Disable an enabled plugin
+	Disable {
+		/// Plugin name to disable
+		#[arg(value_name = "NAME")]
+		name: String,
+
+		/// Project root directory
+		#[arg(long)]
+		project_root: Option<String>,
+	},
+
+	/// Search for plugins on crates.io
+	Search {
+		/// Search query
+		#[arg(value_name = "QUERY")]
+		query: String,
+
+		/// Maximum number of results
+		#[arg(long, default_value = "10")]
+		limit: u64,
+	},
+
+	/// Update plugin(s) to latest version
+	Update {
+		/// Plugin name (omit for --all)
+		#[arg(value_name = "NAME")]
+		name: Option<String>,
+
+		/// Update all plugins
+		#[arg(long)]
+		all: bool,
+
+		/// Skip confirmation prompt
+		#[arg(short, long)]
+		yes: bool,
+
+		/// Project root directory
+		#[arg(long)]
+		project_root: Option<String>,
+	},
 }
 
 #[tokio::main]
@@ -94,14 +220,7 @@ async fn main() {
 			directory,
 			template_type,
 		} => run_startapp(name, directory, template_type, cli.verbosity).await,
-		Commands::Help { command } => {
-			show_help(command);
-			Ok(())
-		}
-		Commands::Version => {
-			show_version();
-			Ok(())
-		}
+		Commands::Plugin { subcommand } => run_plugin(subcommand, cli.verbosity).await,
 	};
 
 	if let Err(e) = result {
@@ -146,29 +265,132 @@ async fn run_startapp(
 	cmd.execute(&ctx).await
 }
 
-fn show_help(command: Option<String>) {
-	if let Some(cmd) = command {
-		println!("Help for command: {}", cmd);
-		println!();
-		println!("Use --help with the command for detailed information:");
-		println!("  reinhardt-admin {} --help", cmd);
-	} else {
-		println!("Reinhardt Admin - Project Management Utility");
-		println!();
-		println!("Usage: reinhardt-admin <COMMAND> [OPTIONS]");
-		println!();
-		println!("Available commands:");
-		println!("  startproject    Create a new Reinhardt project");
-		println!("  startapp        Create a new Reinhardt app");
-		println!("  help            Display help information");
-		println!("  version         Display version information");
-		println!();
-		println!("For more information on a specific command, use:");
-		println!("  reinhardt-admin <COMMAND> --help");
+async fn run_plugin(subcommand: PluginCommands, verbosity: u8) -> CommandResult<()> {
+	match subcommand {
+		PluginCommands::List {
+			verbose,
+			enabled,
+			disabled,
+			project_root,
+		} => {
+			let mut ctx = CommandContext::default();
+			ctx.set_verbosity(verbosity);
+			if verbose {
+				ctx.set_option("verbose".to_string(), "true".to_string());
+			}
+			if enabled {
+				ctx.set_option("enabled".to_string(), "true".to_string());
+			}
+			if disabled {
+				ctx.set_option("disabled".to_string(), "true".to_string());
+			}
+			if let Some(root) = project_root {
+				ctx.set_option("project-root".to_string(), root);
+			}
+			PluginListCommand.execute(&ctx).await
+		}
+		PluginCommands::Info {
+			name,
+			remote,
+			project_root,
+		} => {
+			let mut ctx = CommandContext::default();
+			ctx.set_verbosity(verbosity);
+			ctx.add_arg(name);
+			if remote {
+				ctx.set_option("remote".to_string(), "true".to_string());
+			}
+			if let Some(root) = project_root {
+				ctx.set_option("project-root".to_string(), root);
+			}
+			PluginInfoCommand.execute(&ctx).await
+		}
+		PluginCommands::Install {
+			name,
+			version,
+			yes,
+			project_root,
+		} => {
+			let mut ctx = CommandContext::default();
+			ctx.set_verbosity(verbosity);
+			ctx.add_arg(name);
+			if let Some(v) = version {
+				ctx.set_option("version".to_string(), v);
+			}
+			if yes {
+				ctx.set_option("yes".to_string(), "true".to_string());
+			}
+			if let Some(root) = project_root {
+				ctx.set_option("project-root".to_string(), root);
+			}
+			PluginInstallCommand.execute(&ctx).await
+		}
+		PluginCommands::Remove {
+			name,
+			purge,
+			yes,
+			project_root,
+		} => {
+			let mut ctx = CommandContext::default();
+			ctx.set_verbosity(verbosity);
+			ctx.add_arg(name);
+			if purge {
+				ctx.set_option("purge".to_string(), "true".to_string());
+			}
+			if yes {
+				ctx.set_option("yes".to_string(), "true".to_string());
+			}
+			if let Some(root) = project_root {
+				ctx.set_option("project-root".to_string(), root);
+			}
+			PluginRemoveCommand.execute(&ctx).await
+		}
+		PluginCommands::Enable { name, project_root } => {
+			let mut ctx = CommandContext::default();
+			ctx.set_verbosity(verbosity);
+			ctx.add_arg(name);
+			if let Some(root) = project_root {
+				ctx.set_option("project-root".to_string(), root);
+			}
+			PluginEnableCommand.execute(&ctx).await
+		}
+		PluginCommands::Disable { name, project_root } => {
+			let mut ctx = CommandContext::default();
+			ctx.set_verbosity(verbosity);
+			ctx.add_arg(name);
+			if let Some(root) = project_root {
+				ctx.set_option("project-root".to_string(), root);
+			}
+			PluginDisableCommand.execute(&ctx).await
+		}
+		PluginCommands::Search { query, limit } => {
+			let mut ctx = CommandContext::default();
+			ctx.set_verbosity(verbosity);
+			ctx.add_arg(query);
+			ctx.set_option("limit".to_string(), limit.to_string());
+			PluginSearchCommand.execute(&ctx).await
+		}
+		PluginCommands::Update {
+			name,
+			all,
+			yes,
+			project_root,
+		} => {
+			let mut ctx = CommandContext::default();
+			ctx.set_verbosity(verbosity);
+			if let Some(n) = name {
+				ctx.add_arg(n);
+			}
+			if all {
+				ctx.set_option("all".to_string(), "true".to_string());
+			}
+			if yes {
+				ctx.set_option("yes".to_string(), "true".to_string());
+			}
+			if let Some(root) = project_root {
+				ctx.set_option("project-root".to_string(), root);
+			}
+			PluginUpdateCommand.execute(&ctx).await
+		}
 	}
-}
-
-fn show_version() {
-	println!("reinhardt-admin {}", env!("CARGO_PKG_VERSION"));
-	println!("Reinhardt Framework");
 }
