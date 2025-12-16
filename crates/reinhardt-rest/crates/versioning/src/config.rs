@@ -294,7 +294,24 @@ impl Default for VersioningManager {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use serial_test::serial;
 	use std::collections::HashMap;
+	use std::env;
+
+	/// Clear all versioning-related environment variables
+	///
+	/// # Safety
+	/// This function modifies environment variables. It should only be called
+	/// in single-threaded test contexts with `#[serial]` attribute.
+	unsafe fn clear_versioning_env_vars() {
+		// SAFETY: This is inside an unsafe fn and the caller ensures serial execution
+		unsafe {
+			env::remove_var("REINHARDT_VERSIONING_DEFAULT_VERSION");
+			env::remove_var("REINHARDT_VERSIONING_ALLOWED_VERSIONS");
+			env::remove_var("REINHARDT_VERSIONING_STRATEGY");
+			env::remove_var("REINHARDT_VERSIONING_STRICT_MODE");
+		}
+	}
 
 	#[test]
 	fn test_versioning_config_default() {
@@ -370,10 +387,223 @@ mod tests {
 	}
 
 	#[test]
-	fn test_settings_from_env() {
-		// This test would require setting environment variables
-		// TODO: For now, just test that the method doesn't panic
-		let result = VersioningConfig::from_env();
-		assert!(result.is_ok());
+	#[serial(versioning_env)]
+	fn test_from_env_default_values() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+
+		assert_eq!(config.default_version, "1.0");
+		assert!(config.allowed_versions.is_empty());
+		assert!(matches!(config.strategy, VersioningStrategy::AcceptHeader));
+		assert!(config.strict_mode);
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_custom_default_version() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_DEFAULT_VERSION", "2.0");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+		assert_eq!(config.default_version, "2.0");
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_allowed_versions_parsing() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_ALLOWED_VERSIONS", "1.0, 2.0, 3.0");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+		assert_eq!(config.allowed_versions.len(), 3);
+		assert!(config.allowed_versions.contains(&"1.0".to_string()));
+		assert!(config.allowed_versions.contains(&"2.0".to_string()));
+		assert!(config.allowed_versions.contains(&"3.0".to_string()));
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_strategy_url_path() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_STRATEGY", "url_path");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::URLPath { .. }
+		));
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_strategy_query_parameter() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_STRATEGY", "query_parameter");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::QueryParameter { .. }
+		));
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_strategy_hostname() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_STRATEGY", "hostname");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::HostName { .. }
+		));
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_strategy_namespace() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_STRATEGY", "namespace");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::Namespace { .. }
+		));
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_strict_mode_false() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_STRICT_MODE", "false");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+		assert!(!config.strict_mode);
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_strict_mode_true_explicit() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_STRICT_MODE", "true");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+		assert!(config.strict_mode);
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_combined_settings() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_DEFAULT_VERSION", "3.0");
+			env::set_var("REINHARDT_VERSIONING_ALLOWED_VERSIONS", "2.0,3.0,4.0");
+			env::set_var("REINHARDT_VERSIONING_STRATEGY", "url_path");
+			env::set_var("REINHARDT_VERSIONING_STRICT_MODE", "false");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+
+		assert_eq!(config.default_version, "3.0");
+		assert_eq!(config.allowed_versions.len(), 3);
+		assert!(matches!(
+			config.strategy,
+			VersioningStrategy::URLPath { .. }
+		));
+		assert!(!config.strict_mode);
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
+	}
+
+	#[test]
+	#[serial(versioning_env)]
+	fn test_from_env_unknown_strategy_defaults_to_accept_header() {
+		// SAFETY: This test runs serially with #[serial] attribute
+		unsafe {
+			clear_versioning_env_vars();
+			env::set_var("REINHARDT_VERSIONING_STRATEGY", "unknown_strategy");
+		}
+
+		let config = VersioningConfig::from_env().unwrap();
+		assert!(matches!(config.strategy, VersioningStrategy::AcceptHeader));
+
+		// SAFETY: Cleanup after test
+		unsafe {
+			clear_versioning_env_vars();
+		}
 	}
 }

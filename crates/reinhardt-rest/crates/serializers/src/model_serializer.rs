@@ -8,8 +8,10 @@ use crate::meta::MetaConfig;
 use crate::nested_config::{NestedFieldConfig, NestedSerializerConfig};
 use crate::validator_config::ValidatorConfig;
 use crate::validators::{UniqueTogetherValidator, UniqueValidator};
-use crate::{Serializer, SerializerError};
+use crate::{Serializer, SerializerError, ValidatorError};
 use reinhardt_db::orm::Model;
+use sqlx::{Pool, Postgres};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 /// ModelSerializer provides automatic serialization for ORM models
@@ -428,8 +430,112 @@ where
 	/// assert!(serializer.validate(&user).is_ok());
 	/// ```
 	pub fn validate(&self, _instance: &M) -> Result<(), SerializerError> {
-		// Base validation - can be extended with validators
-		// TODO: For now, just return Ok
+		// Base synchronous validation - for non-database validators
+		// For database-level validation (unique constraints), use validate_async()
+		Ok(())
+	}
+
+	/// Validate a model instance asynchronously with database checks
+	///
+	/// This method executes all configured validators including those that
+	/// require database access (e.g., UniqueValidator, UniqueTogetherValidator).
+	///
+	/// # Arguments
+	///
+	/// * `pool` - PostgreSQL database connection pool
+	/// * `instance` - The model instance to validate
+	///
+	/// # Returns
+	///
+	/// Returns `Ok(())` if all validations pass, or `Err(SerializerError)` with
+	/// details about the first validation failure.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # use reinhardt_serializers::ModelSerializer;
+	/// # use reinhardt_auth::DefaultUser;
+	/// # use sqlx::{Pool, Postgres};
+	/// # use uuid::Uuid;
+	/// #
+	/// # async fn example(pool: Pool<Postgres>) {
+	/// let serializer = ModelSerializer::<DefaultUser>::new();
+	/// let user = DefaultUser {
+	///     id: Uuid::new_v4(),
+	///     username: "alice".to_string(),
+	///     ..Default::default()
+	/// };
+	///
+	/// match serializer.validate_async(&pool, &user).await {
+	///     Ok(()) => println!("Validation passed"),
+	///     Err(e) => println!("Validation failed: {}", e),
+	/// }
+	/// # }
+	/// ```
+	pub async fn validate_async(
+		&self,
+		pool: &Pool<Postgres>,
+		instance: &M,
+	) -> Result<(), SerializerError>
+	where
+		M::PrimaryKey: std::fmt::Display,
+	{
+		// Convert instance to JSON for field extraction
+		let json_value = serde_json::to_value(instance).map_err(|e| SerializerError::Serde {
+			message: format!("Failed to serialize instance for validation: {}", e),
+		})?;
+
+		// Execute unique validators
+		for validator in self.validator_config.unique_validators() {
+			let field_name = validator.field_name();
+
+			// Extract field value from JSON
+			if let Some(field_value) = json_value.get(field_name) {
+				let value_str = match field_value {
+					serde_json::Value::String(s) => s.clone(),
+					other => other.to_string().trim_matches('"').to_string(),
+				};
+
+				validator
+					.validate(pool, &value_str, instance.primary_key())
+					.await
+					.map_err(|e| {
+						SerializerError::Validation(ValidatorError::UniqueViolation {
+							field_name: field_name.to_string(),
+							value: value_str.clone(),
+							message: e.to_string(),
+						})
+					})?;
+			}
+		}
+
+		// Execute unique together validators
+		for validator in self.validator_config.unique_together_validators() {
+			let field_names = validator.field_names();
+			let mut values: HashMap<String, String> = HashMap::new();
+
+			for field_name in field_names {
+				if let Some(field_value) = json_value.get(field_name) {
+					let value_str = match field_value {
+						serde_json::Value::String(s) => s.clone(),
+						other => other.to_string().trim_matches('"').to_string(),
+					};
+					values.insert(field_name.to_string(), value_str);
+				}
+			}
+
+			validator
+				.validate(pool, &values, instance.primary_key())
+				.await
+				.map_err(|e| {
+					SerializerError::Validation(ValidatorError::UniqueTogetherViolation {
+						field_names: field_names.iter().map(|s| s.to_string()).collect(),
+						values: values.clone(),
+						message: e.to_string(),
+					})
+				})?;
+		}
+
 		Ok(())
 	}
 }

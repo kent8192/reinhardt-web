@@ -50,7 +50,7 @@ pub use reverse::{
 	ApiDocFormat, ApiDocUrlBuilder, UrlReverseManager, VersionedUrlBuilder,
 	VersioningStrategy as ReverseVersioningStrategy,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use thiserror::Error as ThisError;
 
 #[derive(Debug, ThisError)]
@@ -407,6 +407,9 @@ pub struct HostNameVersioning {
 	pub default_version: Option<String>,
 	pub allowed_versions: HashSet<String>,
 	pub hostname_regex: Regex,
+	/// Maps specific hostnames to their API versions.
+	/// Takes precedence over regex extraction.
+	pub hostname_to_version: HashMap<String, String>,
 }
 
 impl HostNameVersioning {
@@ -425,6 +428,7 @@ impl HostNameVersioning {
 			default_version: None,
 			allowed_versions: HashSet::new(),
 			hostname_regex: Regex::new(r"^([a-zA-Z0-9]+)\.").unwrap(),
+			hostname_to_version: HashMap::new(),
 		}
 	}
 	/// Set the default version to use when no version is found in hostname
@@ -501,7 +505,8 @@ impl HostNameVersioning {
 
 	/// Set hostname patterns for version mapping (for configuration compatibility)
 	///
-	/// This allows mapping specific versions to hostnames.
+	/// This allows mapping specific hostnames to their API versions.
+	/// The hostname mapping takes precedence over regex extraction when determining version.
 	///
 	/// # Examples
 	///
@@ -509,13 +514,15 @@ impl HostNameVersioning {
 	/// use reinhardt_versioning::HostNameVersioning;
 	///
 	/// let versioning = HostNameVersioning::new()
-	///     .with_hostname_pattern("v1", "v1.api.example.com");
-	// The versioning will match v1.api.example.com to version "v1"
+	///     .with_hostname_pattern("v1", "v1.api.example.com")
+	///     .with_hostname_pattern("v2", "v2.api.example.com");
+	/// // Request to v1.api.example.com will resolve to version "v1"
+	/// // Request to v2.api.example.com will resolve to version "v2"
 	/// ```
-	pub fn with_hostname_pattern(mut self, version: &str, _hostname: &str) -> Self {
-		// TODO: For now, we'll use a simple approach - store the mapping in allowed_versions
-		// In a full implementation, this would maintain a separate mapping
+	pub fn with_hostname_pattern(mut self, version: &str, hostname: &str) -> Self {
 		self.allowed_versions.insert(version.to_string());
+		self.hostname_to_version
+			.insert(hostname.to_string(), version.to_string());
 		self
 	}
 }
@@ -538,7 +545,14 @@ impl BaseVersioning for HostNameVersioning {
 			// Remove port if present
 			let hostname = host_str.split(':').next().unwrap_or(host_str);
 
-			// Try to extract version from hostname
+			// Priority 1: Check explicit hostname→version mapping
+			if let Some(version) = self.hostname_to_version.get(hostname)
+				&& self.is_allowed_version(version)
+			{
+				return Ok(version.clone());
+			}
+
+			// Priority 2: Try to extract version from hostname using regex
 			if let Some(captures) = self.hostname_regex.captures(hostname)
 				&& let Some(version_match) = captures.get(1)
 			{

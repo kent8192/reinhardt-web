@@ -29,3 +29,4 @@ reinhardt-routers = { workspace = true }
 reinhardt-server = { workspace = true }
 rstest = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
+serial_test = { workspace = true }

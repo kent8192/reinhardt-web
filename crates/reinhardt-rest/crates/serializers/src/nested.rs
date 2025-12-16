@@ -660,7 +660,11 @@ impl<M: Model, R: Model> Serializer for WritableNestedSerializer<M, R> {
 			// ```
 		}
 
-		// TODO: For now, deserialize parent model only
+		// This method intentionally deserializes only the parent model.
+		// Following Django REST Framework's separation of concerns:
+		// - Serializer: Validates JSON structure and permissions
+		// - ORM Layer: Handles database operations (caller's responsibility)
+		// - Use extract_nested_data() and is_create_operation() for nested processing
 		serde_json::from_str(output).map_err(|e| SerializerError::Other {
 			message: format!("Deserialization error: {}", e),
 		})

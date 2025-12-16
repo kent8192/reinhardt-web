@@ -27,3 +27,4 @@ reinhardt-openapi = { path = "../openapi" }
 utoipa = "^5.4.0"
 trybuild = "1.0"
 serde_json = "1.0"
+inventory = "0.3"
