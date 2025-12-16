@@ -225,6 +225,96 @@ This crate is part of the Reinhardt framework and integrates with:
 - `reinhardt-di`: Dependency injection system
 - `reinhardt-orm`: Object-relational mapping (future integration)
 
+## Advanced Features
+
+### Schema Editor
+
+The `SchemaEditor` provides low-level control over database schema changes with transaction support:
+
+```rust
+use reinhardt_migrations::schema_editor::{SchemaEditor, EditorMode};
+
+// Atomic mode: all operations in a single transaction
+let mut editor = SchemaEditor::new(pool.clone(), EditorMode::Atomic).await?;
+
+// Execute schema changes
+editor.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)").await?;
+editor.execute("CREATE INDEX idx_users_email ON users(email)").await?;
+
+// Commit all changes atomically
+editor.finish().await?;
+
+// Or rollback if needed
+// editor.rollback().await?;
+```
+
+#### Editor Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `Atomic` | All operations in single transaction | Production migrations |
+| `Deferred` | Queue operations, execute on finish | Batch operations |
+
+#### Methods
+
+- `execute(sql)` - Execute SQL immediately (Atomic) or queue (Deferred)
+- `defer(sql)` - Queue SQL for later execution
+- `finish()` - Commit transaction or execute deferred statements
+- `rollback()` - Rollback all changes
+- `is_atomic()` - Check if database supports transactions
+- `database_type()` - Get database dialect (SQLite, PostgreSQL, MySQL)
+
+### Foreign Key Actions
+
+Define how foreign key constraints behave on parent row changes:
+
+```rust
+use reinhardt_migrations::ForeignKeyAction;
+
+Operation::CreateTable {
+    name: "posts".to_string(),
+    columns: vec![
+        ColumnDefinition::new("id", "INTEGER PRIMARY KEY"),
+        ColumnDefinition::new("author_id", "INTEGER"),
+    ],
+    constraints: vec![
+        Constraint::ForeignKey {
+            columns: vec!["author_id".to_string()],
+            references_table: "users".to_string(),
+            references_columns: vec!["id".to_string()],
+            on_delete: ForeignKeyAction::Cascade,
+            on_update: ForeignKeyAction::Restrict,
+        }
+    ],
+}
+```
+
+#### Available Actions
+
+| Action | Description | Behavior |
+|--------|-------------|----------|
+| `Cascade` | Propagate changes | Delete/update child rows automatically |
+| `Restrict` | Prevent changes | Raise error if child rows exist |
+| `SetNull` | Nullify references | Set foreign key column to NULL |
+| `SetDefault` | Use default value | Set foreign key column to its default |
+| `NoAction` | No automatic action | Similar to Restrict (database-dependent) |
+
+#### Examples
+
+```rust
+// Cascade delete: deleting a user deletes all their posts
+on_delete: ForeignKeyAction::Cascade
+
+// Prevent deletion if posts exist
+on_delete: ForeignKeyAction::Restrict
+
+// Set author_id to NULL when user is deleted
+on_delete: ForeignKeyAction::SetNull
+
+// Set author_id to default value when user is deleted
+on_delete: ForeignKeyAction::SetDefault
+```
+
 ## Testing
 
 ### Prerequisites
