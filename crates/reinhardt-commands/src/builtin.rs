@@ -11,6 +11,14 @@ use reinhardt_db::migrations::DatabaseMigrationExecutor;
 #[cfg(feature = "migrations")]
 use reinhardt_db::backends::{DatabaseConnection, DatabaseType};
 
+// Import backends' DatabaseConnection for get_database_url helper (without migrations feature)
+#[cfg(all(feature = "reinhardt-db", not(feature = "migrations")))]
+use reinhardt_db::backends::DatabaseConnection;
+
+// Import DatabaseType for connect_database helper
+#[cfg(all(feature = "reinhardt-db", not(feature = "migrations")))]
+use reinhardt_db::backends::DatabaseType;
+
 /// Database migration command
 pub struct MigrateCommand;
 
@@ -219,7 +227,7 @@ impl BaseCommand for MigrateCommand {
 	}
 }
 
-/// Build from_state from database history (優先アプローチ)
+/// Build from_state from database history (preferred approach)
 #[cfg(feature = "migrations")]
 async fn build_from_state_from_db(
 	migrations_dir: &std::path::Path,
@@ -277,7 +285,7 @@ async fn build_from_state_from_db(
 	Ok(state)
 }
 
-/// Build from_state from TestContainers (デフォルト方式)
+/// Build from_state from TestContainers (default approach)
 ///
 /// Note: TestContainers integration requires the 'testcontainers' feature to be enabled.
 #[cfg(all(feature = "migrations", feature = "testcontainers"))]
@@ -599,7 +607,7 @@ impl BaseCommand for MakeMigrationsCommand {
 			// Build from_state based on strategy (default: TestContainers)
 			let from_db_flag = ctx.has_option("from-db");
 			let from_state = if from_db_flag {
-				// --from-db フラグが指定された場合: DB履歴優先
+				// When --from-db flag is specified: prioritize database history
 				match build_from_state_from_db(&migrations_dir).await {
 					Ok(state) => {
 						ctx.verbose("Built state from database history");
@@ -622,7 +630,7 @@ impl BaseCommand for MakeMigrationsCommand {
 					}
 				}
 			} else {
-				// デフォルト: TestContainers優先
+				// Default: prioritize TestContainers
 				match build_from_state_from_testcontainers(&migrations_dir).await {
 					Ok(state) => {
 						ctx.verbose("Built state from TestContainers");
@@ -1171,24 +1179,60 @@ impl RunServerCommand {
 				address
 			));
 			ctx.info("");
-			ctx.info("💡 To enable automatic OpenAPI mounting, add to your router:");
-			ctx.info(
-				"   use reinhardt_openapi::endpoints::{swagger_docs, redoc_docs, openapi_json};",
-			);
-			ctx.info("   router.get(\"/docs\", swagger_docs);");
-			ctx.info("   router.get(\"/docs-redoc\", redoc_docs);");
-			ctx.info("   router.get(\"/api-docs/openapi.json\", openapi_json);");
-			ctx.info("");
 		}
 
-		// Create HTTP server
-		let server = HttpServer::new(router);
+		// Create DI context for dependency injection
+		let singleton_scope = std::sync::Arc::new(reinhardt_di::SingletonScope::new());
+
+		// Register DatabaseConnection as singleton when database feature is enabled
+		#[cfg(feature = "reinhardt-db")]
+		{
+			use reinhardt_db::DatabaseConnection;
+
+			// Try to connect to database and register connection
+			match get_database_url() {
+				Ok(url) => {
+					ctx.info(&format!(
+						"Connecting to database: {}...",
+						&url[..url.len().min(50)]
+					));
+					match DatabaseConnection::connect(&url).await {
+						Ok(db_conn) => {
+							// Register DatabaseConnection directly (not wrapped in Arc)
+							// The DI system wraps it in Arc internally via SingletonScope::set
+							singleton_scope.set(db_conn);
+							ctx.info("✅ Database connection registered in DI context");
+						}
+						Err(e) => {
+							ctx.warning(&format!(
+								"⚠️ Failed to connect to database: {}. DI injection for DatabaseConnection will fail.",
+								e
+							));
+						}
+					}
+				}
+				Err(e) => {
+					ctx.warning(&format!(
+						"⚠️ No DATABASE_URL configured: {}. DI injection for DatabaseConnection will fail.",
+						e
+					));
+				}
+			}
+		}
+
+		let di_context =
+			std::sync::Arc::new(reinhardt_di::InjectionContext::builder(singleton_scope).build());
+
+		// Create HTTP server with DI context and logging middleware
+		let server = HttpServer::new(router)
+			.with_di_context(di_context)
+			.with_middleware(reinhardt_middleware::LoggingMiddleware::new());
 
 		// Run with or without auto-reload
 		if !noreload {
 			#[cfg(feature = "autoreload")]
 			{
-				Self::run_with_autoreload(ctx, server, addr, coordinator).await
+				Self::run_with_autoreload(ctx, address, _insecure, no_docs).await
 			}
 			#[cfg(not(feature = "autoreload"))]
 			{
@@ -1209,75 +1253,192 @@ impl RunServerCommand {
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	async fn run_with_autoreload(
 		ctx: &CommandContext,
-		server: reinhardt_server::HttpServer,
-		addr: std::net::SocketAddr,
-		coordinator: reinhardt_server::ShutdownCoordinator,
+		address: &str,
+		insecure: bool,
+		no_docs: bool,
 	) -> CommandResult<()> {
-		use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
-		use std::path::Path;
-		use std::sync::mpsc::channel;
+		use std::time::{Duration, Instant};
 
-		ctx.verbose("Setting up file watcher for auto-reload...");
+		ctx.info("Starting autoreload mode...");
+		ctx.verbose("Watching for file changes in src/ and Cargo.toml");
 
-		// Create file watcher
-		let (tx, rx) = channel();
-		let mut watcher: RecommendedWatcher = Watcher::new(tx, Config::default()).map_err(|e| {
-			crate::CommandError::ExecutionError(format!("Failed to create file watcher: {}", e))
-		})?;
+		let mut restart_count = 0;
+		let max_restarts_per_minute = 10;
+		let mut last_restart_time = Instant::now();
 
-		// Watch current directory for changes
-		let watch_path = Path::new(".");
-		watcher
-			.watch(watch_path, RecursiveMode::Recursive)
-			.map_err(|e| {
-				crate::CommandError::ExecutionError(format!("Failed to watch directory: {}", e))
-			})?;
-
-		ctx.success(&format!(
-			"Watching for file changes in {}",
-			watch_path.display()
-		));
-
-		// Spawn file watcher task
-		let shutdown_for_reload = coordinator.clone();
-		tokio::task::spawn_blocking(move || {
-			for res in rx {
-				match res {
-					Ok(Event { kind, paths, .. }) => {
-						// Only reload on modify or create events
-						if matches!(
-							kind,
-							notify::EventKind::Modify(_) | notify::EventKind::Create(_)
-						) {
-							// Filter out temporary files and build artifacts
-							let should_reload = paths.iter().any(|p| {
-								let path_str = p.to_string_lossy();
-								!path_str.contains("/target/")
-									&& !path_str.contains("/.git/")
-									&& !path_str.ends_with('~') && !path_str.ends_with(".swp")
-									&& (path_str.ends_with(".rs") || path_str.ends_with(".toml"))
-							});
-
-							if should_reload {
-								println!("\n📝 File changed, triggering reload...");
-								shutdown_for_reload.shutdown();
-								break;
-							}
-						}
-					}
-					Err(e) => eprintln!("Watch error: {:?}", e),
-				}
+		// Ctrl+C ハンドラのセットアップ
+		let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+		let ctx_clone = ctx.clone();
+		tokio::spawn(async move {
+			if let Err(e) = tokio::signal::ctrl_c().await {
+				eprintln!("Failed to listen for Ctrl+C: {}", e);
+				return;
 			}
+			ctx_clone.info("\nReceived Ctrl+C, shutting down...");
+			let _ = shutdown_tx.send(());
 		});
 
-		// Run server
-		let result = server
-			.listen_with_shutdown(addr, coordinator)
-			.await
-			.map_err(|e| crate::CommandError::ExecutionError(e.to_string()));
+		loop {
+			// 再起動頻度制限チェック（1分間に10回以上再起動しようとしたら停止）
+			if restart_count >= max_restarts_per_minute {
+				let elapsed = last_restart_time.elapsed();
+				if elapsed < Duration::from_secs(60) {
+					return Err(crate::CommandError::ExecutionError(format!(
+						"Too many restarts ({} in {:?}). Aborting to prevent infinite loop.",
+						restart_count, elapsed
+					)));
+				} else {
+					// 1分以上経過していたらカウンタリセット
+					restart_count = 0;
+					last_restart_time = Instant::now();
+				}
+			}
 
-		ctx.info("Auto-reload detected code change. Please restart the server.");
-		result
+			// 子プロセス起動
+			ctx.verbose("Starting server subprocess...");
+			let mut child = Self::spawn_server_process(address, insecure, no_docs)?;
+			restart_count += 1;
+
+			// ファイル変更 or 子プロセス終了 or Ctrl+Cを待機
+			tokio::select! {
+				change_result = Self::watch_files_async() => {
+					match change_result {
+						Ok(_) => {
+							ctx.info("\n📝 File change detected. Restarting server...");
+							// 子プロセスを停止
+							if let Err(e) = child.kill().await {
+								ctx.warning(&format!("Failed to kill child process: {}", e));
+							}
+							// wait()で確実に回収（ゾンビプロセス防止）
+							let _ = child.wait().await;
+
+							// ポート解放待ち + debounce
+							tokio::time::sleep(Duration::from_millis(500)).await;
+							continue; // ループ先頭に戻って再起動
+						}
+						Err(e) => {
+							return Err(crate::CommandError::ExecutionError(format!(
+								"File watcher error: {}",
+								e
+							)));
+						}
+					}
+				}
+
+				exit_status = child.wait() => {
+					match exit_status {
+						Ok(status) if status.success() => {
+							ctx.info("Server process exited cleanly.");
+							break; // 正常終了なら親も終了
+						}
+						Ok(status) => {
+							return Err(crate::CommandError::ExecutionError(format!(
+								"Server process crashed with status: {}",
+								status
+							)));
+						}
+						Err(e) => {
+							return Err(crate::CommandError::ExecutionError(format!(
+								"Failed to wait for child process: {}",
+								e
+							)));
+						}
+					}
+				}
+
+				_ = &mut shutdown_rx => {
+					ctx.info("Shutdown signal received. Stopping server...");
+					let _ = child.kill().await;
+					let _ = child.wait().await;
+					break;
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	/// 子プロセスでサーバーを起動
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn spawn_server_process(
+		address: &str,
+		insecure: bool,
+		no_docs: bool,
+	) -> CommandResult<tokio::process::Child> {
+		let current_exe = std::env::current_exe().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
+		})?;
+
+		let mut cmd = tokio::process::Command::new(current_exe);
+		cmd.arg("runserver").arg(address).arg("--noreload");
+
+		if insecure {
+			cmd.arg("--insecure");
+		}
+		if no_docs {
+			cmd.arg("--no-docs");
+		}
+
+		// 環境変数で子プロセスであることを示す（ログ重複防止など）
+		cmd.env("REINHARDT_IS_AUTORELOAD_CHILD", "1");
+
+		// 標準出力/エラーを親プロセスに継承
+		cmd.stdout(std::process::Stdio::inherit());
+		cmd.stderr(std::process::Stdio::inherit());
+
+		cmd.spawn().map_err(|e| {
+			crate::CommandError::ExecutionError(format!("Failed to spawn server process: {}", e))
+		})
+	}
+
+	/// ファイル変更を非同期で監視
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	async fn watch_files_async() -> Result<(), notify::Error> {
+		use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+		use std::path::Path;
+
+		let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+
+		let mut watcher = RecommendedWatcher::new(
+			move |res: Result<Event, notify::Error>| {
+				if let Ok(event) = res {
+					let _ = tx.blocking_send(event);
+				}
+			},
+			Config::default(),
+		)?;
+
+		// 監視対象ディレクトリ
+		watcher.watch(Path::new("src"), RecursiveMode::Recursive)?;
+		watcher.watch(Path::new("Cargo.toml"), RecursiveMode::NonRecursive)?;
+
+		// 最初の関連する変更イベントを待つ
+		while let Some(event) = rx.recv().await {
+			if Self::is_relevant_change(&event) {
+				return Ok(());
+			}
+		}
+
+		Ok(())
+	}
+
+	/// 変更イベントが関連するものかチェック
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn is_relevant_change(event: &notify::Event) -> bool {
+		use notify::EventKind;
+
+		matches!(
+			event.kind,
+			EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
+		) && event.paths.iter().any(|p| {
+			let path_str = p.to_string_lossy();
+			!path_str.contains("/target/")
+				&& !path_str.contains("/.git/")
+				&& !path_str.ends_with('~')
+				&& !path_str.ends_with(".swp")
+				&& !path_str.ends_with(".tmp")
+				&& (path_str.ends_with(".rs") || path_str.ends_with(".toml"))
+		})
 	}
 }
 
@@ -1659,7 +1820,7 @@ impl CheckCommand {
 }
 
 /// Helper function to get DATABASE_URL from environment or settings
-#[cfg(feature = "migrations")]
+#[cfg(feature = "reinhardt-db")]
 fn get_database_url() -> Result<String, crate::CommandError> {
 	use std::env;
 
@@ -1670,7 +1831,7 @@ fn get_database_url() -> Result<String, crate::CommandError> {
 }
 
 /// Helper function to connect to database
-#[cfg(feature = "migrations")]
+#[cfg(feature = "reinhardt-db")]
 async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseConnection)> {
 	let db_type = if url.starts_with("postgres://") || url.starts_with("postgresql://") {
 		DatabaseType::Postgres
