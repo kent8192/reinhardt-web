@@ -3,9 +3,11 @@
 //! The `AdminSite` is the central registry for all admin models and provides
 //! routing, authentication, and rendering functionality.
 
-use crate::{AdminError, AdminResult, ModelAdmin};
+use crate::{AdminError, AdminResult, AdminRouter, ModelAdmin};
 use dashmap::DashMap;
 use parking_lot::RwLock;
+use reinhardt_db::orm::DatabaseConnection;
+use reinhardt_urls::routers::UnifiedRouter;
 use std::sync::Arc;
 
 /// The main admin site that manages all registered models
@@ -266,6 +268,66 @@ impl AdminSite {
 	/// ```
 	pub fn clear(&self) {
 		self.registry.clear();
+	}
+
+	/// Build a UnifiedRouter from this admin site
+	///
+	/// Creates HTTP endpoints for all registered models including:
+	/// - `GET /` - Dashboard (list of registered models)
+	/// - `GET /favicon.ico` - Favicon
+	/// - `GET /{model}/` - List model instances
+	/// - `GET /{model}/{id}/` - Get model instance detail
+	/// - `POST /{model}/` - Create model instance
+	/// - `PUT /{model}/{id}/` - Update model instance
+	/// - `DELETE /{model}/{id}/` - Delete model instance
+	/// - `POST /{model}/bulk-delete/` - Bulk delete model instances
+	/// - `GET /{model}/export/` - Export model data
+	/// - `POST /{model}/import/` - Import model data
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_panel::{AdminSite, ModelAdminConfig};
+	/// use reinhardt_db::orm::DatabaseConnection;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let admin = AdminSite::new("My Admin");
+	/// admin.register("User", ModelAdminConfig::new("User"))?;
+	///
+	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
+	/// let router = admin.get_urls(conn);
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub fn get_urls(self, db: DatabaseConnection) -> UnifiedRouter {
+		let url_prefix = self.url_prefix.clone();
+		AdminRouter::new(self, db).build().with_prefix(&url_prefix)
+	}
+
+	/// Get an AdminRouter for more control over route building
+	///
+	/// Use this when you need to customize the router before building,
+	/// such as setting a custom favicon.
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_panel::{AdminSite, ModelAdminConfig};
+	/// use reinhardt_db::orm::DatabaseConnection;
+	///
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let admin = AdminSite::new("My Admin");
+	/// admin.register("User", ModelAdminConfig::new("User"))?;
+	///
+	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
+	/// let router = admin.get_router(conn)
+	///     .with_favicon_file("branding/logo.png")
+	///     .build();
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub fn get_router(self, db: DatabaseConnection) -> AdminRouter {
+		AdminRouter::new(self, db)
 	}
 }
 

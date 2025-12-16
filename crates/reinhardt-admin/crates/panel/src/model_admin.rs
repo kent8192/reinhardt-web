@@ -12,6 +12,22 @@ pub trait ModelAdmin: Send + Sync {
 	/// Get the model name
 	fn model_name(&self) -> &str;
 
+	/// Get the database table name
+	///
+	/// By default, returns the model name in lowercase.
+	fn table_name(&self) -> &str {
+		// Default implementation returns empty string
+		// Override in implementations to return actual table name
+		""
+	}
+
+	/// Get the primary key field name
+	///
+	/// By default, returns "id".
+	fn pk_field(&self) -> &str {
+		"id"
+	}
+
 	/// Fields to display in list view
 	fn list_display(&self) -> Vec<&str> {
 		vec!["id"]
@@ -129,6 +145,8 @@ pub trait ModelAdmin: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct ModelAdminConfig {
 	model_name: String,
+	table_name: Option<String>,
+	pk_field: String,
 	list_display: Vec<String>,
 	list_filter: Vec<String>,
 	search_fields: Vec<String>,
@@ -152,6 +170,8 @@ impl ModelAdminConfig {
 	pub fn new(model_name: impl Into<String>) -> Self {
 		Self {
 			model_name: model_name.into(),
+			table_name: None,
+			pk_field: "id".into(),
 			list_display: vec!["id".into()],
 			list_filter: vec![],
 			search_fields: vec![],
@@ -203,6 +223,16 @@ impl ModelAdmin for ModelAdminConfig {
 		&self.model_name
 	}
 
+	fn table_name(&self) -> &str {
+		self.table_name
+			.as_deref()
+			.unwrap_or(self.model_name.as_str())
+	}
+
+	fn pk_field(&self) -> &str {
+		&self.pk_field
+	}
+
 	fn list_display(&self) -> Vec<&str> {
 		self.list_display.iter().map(|s| s.as_str()).collect()
 	}
@@ -238,6 +268,8 @@ impl ModelAdmin for ModelAdminConfig {
 #[derive(Debug, Default)]
 pub struct ModelAdminConfigBuilder {
 	model_name: Option<String>,
+	table_name: Option<String>,
+	pk_field: Option<String>,
 	list_display: Option<Vec<String>>,
 	list_filter: Option<Vec<String>>,
 	search_fields: Option<Vec<String>>,
@@ -251,6 +283,22 @@ impl ModelAdminConfigBuilder {
 	/// Set the model name
 	pub fn model_name(mut self, name: impl Into<String>) -> Self {
 		self.model_name = Some(name.into());
+		self
+	}
+
+	/// Set the database table name
+	///
+	/// If not set, defaults to the model name.
+	pub fn table_name(mut self, name: impl Into<String>) -> Self {
+		self.table_name = Some(name.into());
+		self
+	}
+
+	/// Set the primary key field name
+	///
+	/// If not set, defaults to "id".
+	pub fn pk_field(mut self, field: impl Into<String>) -> Self {
+		self.pk_field = Some(field.into());
 		self
 	}
 
@@ -304,6 +352,8 @@ impl ModelAdminConfigBuilder {
 	pub fn build(self) -> ModelAdminConfig {
 		ModelAdminConfig {
 			model_name: self.model_name.expect("model_name is required"),
+			table_name: self.table_name,
+			pk_field: self.pk_field.unwrap_or_else(|| "id".into()),
 			list_display: self.list_display.unwrap_or_else(|| vec!["id".into()]),
 			list_filter: self.list_filter.unwrap_or_default(),
 			search_fields: self.search_fields.unwrap_or_default(),
