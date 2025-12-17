@@ -136,14 +136,43 @@ where
 impl<M, S> View for ListCreateAPIView<M, S>
 where
 	M: Model + Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone + 'static,
-	S: Serializer<Input = M, Output = String> + Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Send + Sync + 'static + Default,
 {
 	async fn dispatch(&self, request: Request) -> Result<Response> {
 		match request.method {
 			Method::GET | Method::HEAD => {
-				// Delegate to list logic
-				// TODO: Implement full list logic (copied from ListAPIView)
-				Response::ok().with_json(&serde_json::json!([]))
+				// List logic (from ListAPIView pattern)
+				let objects = self.get_objects(&request).await?;
+
+				// Serialize the objects
+				let serializer = S::default();
+				let serialized = objects
+					.iter()
+					.map(|obj| {
+						serializer
+							.serialize(obj)
+							.map_err(|e| Error::Http(e.to_string()))
+					})
+					.collect::<Result<Vec<_>>>()?;
+
+				// Build response with pagination metadata
+				let response_body = if self.pagination_config.is_some() {
+					serde_json::json!({
+						"count": serialized.len(),
+						"results": serialized.iter()
+							.filter_map(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+							.collect::<Vec<_>>()
+					})
+				} else {
+					serde_json::json!(
+						serialized
+							.iter()
+							.filter_map(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+							.collect::<Vec<_>>()
+					)
+				};
+
+				Response::ok().with_json(&response_body)
 			}
 			Method::POST => {
 				// Delegate to create logic
