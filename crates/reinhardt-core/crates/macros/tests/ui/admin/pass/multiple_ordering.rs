@@ -1,6 +1,6 @@
 //! Admin macro with multiple ordering specifications
 
-use reinhardt::admin::panel::ModelAdmin;
+use reinhardt_admin_api::ModelAdmin;
 use reinhardt_macros::{admin, model};
 use serde::{Deserialize, Serialize};
 

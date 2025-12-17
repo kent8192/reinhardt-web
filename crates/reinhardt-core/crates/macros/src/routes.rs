@@ -370,9 +370,9 @@ fn generate_view_type(
 		.unwrap_or((quote!(None), quote!(None)));
 
 	let metadata_submission = quote! {
-		::reinhardt::inventory::submit! {
+		#reinhardt::inventory::submit! {
 			#[allow(non_upper_case_globals)]
-			::reinhardt::EndpointMetadata {
+			#reinhardt::EndpointMetadata {
 				path: #path,
 				method: #method,
 				name: #metadata_name,
@@ -621,9 +621,9 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 		.unwrap_or((quote!(None), quote!(None)));
 
 	let metadata_submission = quote! {
-		::reinhardt::inventory::submit! {
+		#reinhardt::inventory::submit! {
 			#[allow(non_upper_case_globals)]
-			::reinhardt::EndpointMetadata {
+			#reinhardt::EndpointMetadata {
 				path: #path_str,
 				method: #method,
 				name: #metadata_name,
