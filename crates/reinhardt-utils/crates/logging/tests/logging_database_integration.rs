@@ -619,7 +619,11 @@ async fn test_log_archival_to_archive_table(
 	let (_container, _pool, _port, url) = postgres_container.await;
 	let handler = DatabaseLogHandler::new(&url).await.unwrap();
 
-	// Insert logs
+	// Capture baseline timestamp BEFORE inserting logs
+	// This ensures all inserted logs have timestamps >= baseline
+	let baseline = Utc::now();
+
+	// Insert logs (timestamps will be >= baseline)
 	for i in 0..3 {
 		handler
 			.write(&LogRecord {
@@ -632,10 +636,9 @@ async fn test_log_archival_to_archive_table(
 			.unwrap();
 	}
 
-	// Archive logs older than now (should archive none)
-	// Use past timestamp to avoid race condition with DB timestamp
-	let past = Utc::now() - chrono::Duration::milliseconds(100);
-	let archived = handler.archive_logs(past).await.unwrap();
+	// Archive logs older than baseline (should archive none)
+	// Since all logs were inserted after baseline, none should be archived
+	let archived = handler.archive_logs(baseline).await.unwrap();
 	assert_eq!(
 		archived, 0,
 		"Logs just inserted should not be archived with past timestamp"
