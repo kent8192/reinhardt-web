@@ -97,10 +97,15 @@ pub struct SessionModel {
 /// CREATE TABLE sessions (
 ///     session_key VARCHAR(255) PRIMARY KEY,
 ///     session_data TEXT NOT NULL,
-///     expire_date TIMESTAMP NOT NULL
+///     expire_date BIGINT NOT NULL,
+///     created_at BIGINT NOT NULL,
+///     last_accessed BIGINT
 /// );
 /// CREATE INDEX idx_sessions_expire_date ON sessions(expire_date);
 /// ```
+///
+/// Note: Timestamps are stored as Unix timestamps (milliseconds since epoch) in BIGINT columns
+/// for compatibility with sqlx's `Any` driver across different database backends.
 ///
 /// ## Example
 ///
@@ -210,7 +215,7 @@ impl DatabaseSessionBackend {
 			})?;
 
 		// Use sea-query for CREATE TABLE
-		// Note: Using INTEGER for expire_date to store Unix timestamp (compatible with AnyPool)
+		// Note: Using INTEGER for timestamps to store Unix timestamp (compatible with AnyPool)
 		let create_table_stmt = Table::create()
 			.table(Alias::new("sessions"))
 			.if_not_exists()
@@ -226,6 +231,12 @@ impl DatabaseSessionBackend {
 					.big_integer()
 					.not_null(),
 			)
+			.col(
+				ColumnDef::new(Alias::new("created_at"))
+					.big_integer()
+					.not_null(),
+			)
+			.col(ColumnDef::new(Alias::new("last_accessed")).big_integer())
 			.to_owned();
 		let create_table_sql = create_table_stmt.to_string(PostgresQueryBuilder);
 
