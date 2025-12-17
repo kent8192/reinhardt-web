@@ -253,10 +253,12 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 				let delay = tokio::time::Duration::from_millis(100 * 2_u64.pow(port_retry));
 				tokio::time::sleep(delay).await;
 			}
-			Err(e) => panic!(
-				"Failed to get PostgreSQL port after {} retries: {}",
-				max_port_retries, e
-			),
+			Err(e) => {
+				panic!(
+					"Failed to get PostgreSQL port after {} retries: {}",
+					max_port_retries, e
+				);
+			}
 		}
 	};
 
@@ -284,10 +286,12 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 				let delay = std::time::Duration::from_millis(100 * 2_u64.pow(retry_count));
 				tokio::time::sleep(delay).await;
 			}
-			Err(e) => panic!(
-				"Failed to connect to PostgreSQL after {} retries: {}",
-				max_retries, e
-			),
+			Err(e) => {
+				panic!(
+					"Failed to connect to PostgreSQL after {} retries: {}",
+					max_retries, e
+				);
+			}
 		}
 	};
 
@@ -1229,10 +1233,13 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 /// # }
 /// ```
 #[cfg(feature = "testcontainers")]
-pub async fn postgres_with_migrations_from<P: reinhardt_migrations::MigrationProvider>() -> (
-	ContainerAsync<GenericImage>,
-	std::sync::Arc<reinhardt_db::DatabaseConnection>,
-) {
+pub async fn postgres_with_migrations_from<P: reinhardt_migrations::MigrationProvider>() -> Result<
+	(
+		ContainerAsync<GenericImage>,
+		std::sync::Arc<reinhardt_db::DatabaseConnection>,
+	),
+	Box<dyn std::error::Error>,
+> {
 	use reinhardt_db::DatabaseConnection;
 	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
@@ -1244,7 +1251,7 @@ pub async fn postgres_with_migrations_from<P: reinhardt_migrations::MigrationPro
 	// Connect to database
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
-		.expect("Failed to connect to PostgreSQL for migrations");
+		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
 
 	// Get migrations from provider
 	let migrations = P::migrations();
@@ -1255,10 +1262,10 @@ pub async fn postgres_with_migrations_from<P: reinhardt_migrations::MigrationPro
 		executor
 			.apply_migrations(&migrations)
 			.await
-			.expect("Failed to apply migrations");
+			.map_err(|e| format!("Failed to apply migrations: {}", e))?;
 	}
 
-	(container, Arc::new(connection))
+	Ok((container, Arc::new(connection)))
 }
 
 /// Fixture: MySQL container (base fixture)
@@ -1530,10 +1537,13 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_migrations::MigrationProvi
 /// ```
 #[cfg(feature = "testcontainers")]
 #[rstest::fixture]
-pub async fn postgres_with_all_migrations() -> (
-	ContainerAsync<GenericImage>,
-	std::sync::Arc<reinhardt_db::DatabaseConnection>,
-) {
+pub async fn postgres_with_all_migrations() -> Result<
+	(
+		ContainerAsync<GenericImage>,
+		std::sync::Arc<reinhardt_db::DatabaseConnection>,
+	),
+	Box<dyn std::error::Error>,
+> {
 	use reinhardt_db::DatabaseConnection;
 	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
@@ -1546,7 +1556,7 @@ pub async fn postgres_with_all_migrations() -> (
 	// Connect to database
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
-		.expect("Failed to connect to PostgreSQL for migrations");
+		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
 
 	// Get migrations from global registry
 	let migrations = global_registry().all_migrations();
@@ -1557,10 +1567,10 @@ pub async fn postgres_with_all_migrations() -> (
 		executor
 			.apply_migrations(&migrations)
 			.await
-			.expect("Failed to apply migrations");
+			.map_err(|e| format!("Failed to apply migrations: {}", e))?;
 	}
 
-	(container, Arc::new(connection))
+	Ok((container, Arc::new(connection)))
 }
 
 /// PostgreSQL container with migrations from specific apps
@@ -1587,10 +1597,13 @@ pub async fn postgres_with_all_migrations() -> (
 #[cfg(feature = "testcontainers")]
 pub async fn postgres_with_apps_migrations(
 	app_labels: &[&str],
-) -> (
-	ContainerAsync<GenericImage>,
-	std::sync::Arc<reinhardt_db::DatabaseConnection>,
-) {
+) -> Result<
+	(
+		ContainerAsync<GenericImage>,
+		std::sync::Arc<reinhardt_db::DatabaseConnection>,
+	),
+	Box<dyn std::error::Error>,
+> {
 	use reinhardt_db::DatabaseConnection;
 	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
@@ -1603,7 +1616,7 @@ pub async fn postgres_with_apps_migrations(
 	// Connect to database
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
-		.expect("Failed to connect to PostgreSQL for migrations");
+		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
 
 	// Get migrations from global registry, filtered by app labels
 	let migrations: Vec<_> = global_registry()
@@ -1618,10 +1631,10 @@ pub async fn postgres_with_apps_migrations(
 		executor
 			.apply_migrations(&migrations)
 			.await
-			.expect("Failed to apply migrations");
+			.map_err(|e| format!("Failed to apply migrations: {}", e))?;
 	}
 
-	(container, Arc::new(connection))
+	Ok((container, Arc::new(connection)))
 }
 
 /// MySQL container with ALL registered migrations applied
