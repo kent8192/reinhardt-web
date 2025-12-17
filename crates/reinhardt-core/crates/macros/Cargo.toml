@@ -40,5 +40,6 @@ async-trait = { workspace = true }
 reinhardt-apps = { workspace = true }
 reinhardt = { package = "reinhardt-web", path = "../../../../", version = "0.1.0-alpha.1", features = ["database"] }
 reinhardt-associations = { path = "../../../reinhardt-db/crates/associations", version = "0.1.0-alpha.1" }
+reinhardt-admin-api = { workspace = true }
 chrono = { workspace = true }
 linkme = { workspace = true }
