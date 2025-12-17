@@ -519,11 +519,17 @@ mod tests {
 		// First session should succeed
 		tenant_backend.save("session_1", &data, None).await.unwrap();
 
-		// Second session should fail due to limit (but count_sessions returns 0 in placeholder)
-		// In real implementation, this would fail
+		// Second session should fail due to max_sessions=1 limit
 		let result = tenant_backend.save("session_2", &data, None).await;
-		// For now, it succeeds because count_sessions returns 0
-		assert!(result.is_ok());
+		assert!(result.is_err());
+
+		// Verify error message
+		if let Err(SessionError::CacheError(msg)) = result {
+			assert!(msg.contains("maximum session limit"));
+			assert!(msg.contains("tenant_123"));
+		} else {
+			panic!("Expected CacheError with maximum session limit message");
+		}
 	}
 
 	#[tokio::test]

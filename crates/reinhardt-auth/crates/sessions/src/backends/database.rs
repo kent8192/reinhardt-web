@@ -367,13 +367,37 @@ impl SessionBackend for DatabaseSessionBackend {
 		let session_data = serde_json::to_string(data)
 			.map_err(|e| SessionError::SerializationError(format!("Serialization error: {}", e)))?;
 
+		let now = Utc::now();
 		let expire_date = match ttl {
-			Some(seconds) => Utc::now() + Duration::seconds(seconds as i64),
-			None => Utc::now() + Duration::days(14), // Default 14 days
+			Some(seconds) => now + Duration::seconds(seconds as i64),
+			None => now + Duration::days(14), // Default 14 days
 		};
 
 		// Convert to UNIX timestamp for INTEGER column compatibility
+		let now_timestamp = now.timestamp_millis();
 		let expire_timestamp = expire_date.timestamp_millis();
+
+		// Use a transaction to ensure atomicity when handling created_at preservation
+		let mut tx =
+			self.pool.begin().await.map_err(|e| {
+				SessionError::CacheError(format!("Failed to begin transaction: {}", e))
+			})?;
+
+		// Check if session exists to determine created_at value
+		let select_stmt = Query::select()
+			.column(Alias::new("created_at"))
+			.from(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
+			.to_owned();
+		let select_sql = select_stmt.to_string(SqliteQueryBuilder);
+
+		let existing_created_at = sqlx::query(&select_sql)
+			.fetch_optional(&mut *tx)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to check session: {}", e)))?
+			.and_then(|row| row.try_get::<i64, _>("created_at").ok());
+
+		let created_at_timestamp = existing_created_at.unwrap_or(now_timestamp);
 
 		// Use sea-query for INSERT with ON CONFLICT (upsert, SQLite compatible)
 		let stmt = Query::insert()
@@ -382,24 +406,36 @@ impl SessionBackend for DatabaseSessionBackend {
 				Alias::new("session_key"),
 				Alias::new("session_data"),
 				Alias::new("expire_date"),
+				Alias::new("created_at"),
+				Alias::new("last_accessed"),
 			])
 			.values_panic(vec![
 				session_key.into(),
 				session_data.into(),
 				expire_timestamp.into(),
+				created_at_timestamp.into(),
+				now_timestamp.into(),
 			])
 			.on_conflict(
 				OnConflict::column(Alias::new("session_key"))
-					.update_columns([Alias::new("session_data"), Alias::new("expire_date")])
+					.update_columns([
+						Alias::new("session_data"),
+						Alias::new("expire_date"),
+						Alias::new("last_accessed"),
+					])
 					.to_owned(),
 			)
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);
 
 		sqlx::query(&sql)
-			.execute(&*self.pool)
+			.execute(&mut *tx)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to save session: {}", e)))?;
+
+		tx.commit().await.map_err(|e| {
+			SessionError::CacheError(format!("Failed to commit transaction: {}", e))
+		})?;
 
 		Ok(())
 	}
@@ -446,17 +482,62 @@ impl SessionBackend for DatabaseSessionBackend {
 #[async_trait]
 impl CleanupableBackend for DatabaseSessionBackend {
 	async fn get_all_keys(&self) -> Result<Vec<String>, SessionError> {
-		// Use existing implementation if available, otherwise needs to be implemented
-		todo!("Implement get_all_keys for DatabaseSessionBackend")
+		let stmt = Query::select()
+			.column(Alias::new("session_key"))
+			.from(Alias::new("sessions"))
+			.to_owned();
+		let sql = stmt.to_string(SqliteQueryBuilder);
+
+		let rows = sqlx::query(&sql)
+			.fetch_all(&*self.pool)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to get all keys: {}", e)))?;
+
+		let keys: Vec<String> = rows
+			.into_iter()
+			.filter_map(|row| row.try_get::<String, _>("session_key").ok())
+			.collect();
+
+		Ok(keys)
 	}
 
 	async fn get_metadata(
 		&self,
 		session_key: &str,
 	) -> Result<Option<SessionMetadata>, SessionError> {
-		// Use existing implementation if available, otherwise needs to be implemented
-		let _ = session_key;
-		todo!("Implement get_metadata for DatabaseSessionBackend")
+		let stmt = Query::select()
+			.columns([Alias::new("created_at"), Alias::new("last_accessed")])
+			.from(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
+			.to_owned();
+		let sql = stmt.to_string(SqliteQueryBuilder);
+
+		let row = sqlx::query(&sql)
+			.fetch_optional(&*self.pool)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to get metadata: {}", e)))?;
+
+		match row {
+			Some(row) => {
+				let created_at_timestamp: i64 = row
+					.try_get("created_at")
+					.map_err(|e| SessionError::CacheError(format!("Invalid created_at: {}", e)))?;
+
+				let last_accessed_timestamp: Option<i64> = row.try_get("last_accessed").ok();
+
+				let created_at =
+					DateTime::from_timestamp_millis(created_at_timestamp).unwrap_or_else(Utc::now);
+
+				let last_accessed =
+					last_accessed_timestamp.and_then(DateTime::from_timestamp_millis);
+
+				Ok(Some(SessionMetadata {
+					created_at,
+					last_accessed,
+				}))
+			}
+			None => Ok(None),
+		}
 	}
 
 	async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, SessionError> {
