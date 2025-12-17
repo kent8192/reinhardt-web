@@ -4456,10 +4456,9 @@ impl MigrationAutodetector {
 			if let Some(model) = self.to_state.get_model(app_label, model_name) {
 				let mut columns = Vec::new();
 				for (field_name, field_state) in &model.fields {
-					columns.push(crate::ColumnDefinition::new(
-						field_name.clone(),
-						field_state.field_type.clone(),
-					));
+					let col_def =
+						crate::ColumnDefinition::from_field_state(field_name.clone(), field_state);
+					columns.push(col_def);
 				}
 
 				// Convert model constraints to operation constraints
@@ -4498,10 +4497,7 @@ impl MigrationAutodetector {
 			{
 				operations.push(crate::Operation::AddColumn {
 					table: Box::leak(model.name.clone().into_boxed_str()),
-					column: crate::ColumnDefinition::new(
-						field_name.clone(),
-						field.field_type.clone(),
-					),
+					column: crate::ColumnDefinition::from_field_state(field_name.clone(), field),
 				});
 			}
 		}
@@ -4526,9 +4522,9 @@ impl MigrationAutodetector {
 				operations.push(crate::Operation::AlterColumn {
 					table: Box::leak(model.name.clone().into_boxed_str()),
 					column: Box::leak(field_name.clone().into_boxed_str()),
-					new_definition: crate::ColumnDefinition::new(
+					new_definition: crate::ColumnDefinition::from_field_state(
 						field_name.clone(),
-						field.field_type.clone(),
+						field,
 					),
 				});
 			}
@@ -4611,9 +4607,9 @@ impl MigrationAutodetector {
 			if let Some(model) = self.to_state.get_model(app_label, model_name) {
 				let mut columns = Vec::new();
 				for (field_name, field_state) in &model.fields {
-					columns.push(crate::ColumnDefinition::new(
+					columns.push(crate::ColumnDefinition::from_field_state(
 						field_name.clone(),
-						field_state.field_type.clone(),
+						field_state,
 					));
 				}
 
@@ -4645,9 +4641,9 @@ impl MigrationAutodetector {
 					.or_default()
 					.push(crate::Operation::AddColumn {
 						table: Box::leak(model.table_name.clone().into_boxed_str()),
-						column: crate::ColumnDefinition::new(
+						column: crate::ColumnDefinition::from_field_state(
 							field_name.clone(),
-							field.field_type.clone(),
+							field,
 						),
 					});
 			}
@@ -4664,9 +4660,9 @@ impl MigrationAutodetector {
 					.push(crate::Operation::AlterColumn {
 						table: Box::leak(model.table_name.clone().into_boxed_str()),
 						column: Box::leak(field_name.clone().into_boxed_str()),
-						new_definition: crate::ColumnDefinition::new(
+						new_definition: crate::ColumnDefinition::from_field_state(
 							field_name.clone(),
-							field.field_type.clone(),
+							field,
 						),
 					});
 			}
