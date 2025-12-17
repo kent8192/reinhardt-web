@@ -61,11 +61,9 @@ api = [
 auth = ["reinhardt-auth"]
 admin = [
   "reinhardt-admin",
-  "reinhardt-admin/panel",
   "reinhardt-forms",
   "reinhardt-template",
 ]
-admin-panel = ["reinhardt-admin/panel"]
 forms = ["reinhardt-forms"]
 graphql = ["reinhardt-graphql"]
 templates = ["reinhardt-template"]
@@ -127,7 +125,6 @@ full = [
   "reinhardt-auth/auth-full",
   "reinhardt-di/di-full",
   "reinhardt-utils/utils-full",
-  "reinhardt-admin/admin-full",
   "reinhardt-server/server-full",
   # Standalone crates full features
   "reinhardt-apps/full",
