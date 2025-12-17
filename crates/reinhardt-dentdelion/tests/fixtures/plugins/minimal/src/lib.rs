@@ -1,0 +1,54 @@
+//! Minimal WASM Plugin for Dentdelion Testing
+//!
+//! This is a minimal test plugin that implements all required lifecycle functions
+//! with no additional capabilities. It serves as a basic fixture for integration tests.
+
+#[allow(warnings)]
+mod bindings;
+
+use bindings::exports::reinhardt::dentdelion::plugin::{Capability, Guest, PluginError, PluginMetadata};
+
+struct MinimalPlugin;
+
+impl Guest for MinimalPlugin {
+	/// Returns plugin metadata.
+	fn get_metadata() -> PluginMetadata {
+		PluginMetadata {
+			name: "minimal".to_string(),
+			version: "0.1.0".to_string(),
+			description: Some("Minimal test plugin for Dentdelion".to_string()),
+			authors: vec!["Reinhardt Test".to_string()],
+			license: Some("MIT".to_string()),
+			repository: None,
+			homepage: None,
+		}
+	}
+
+	/// Returns empty capabilities list (minimal plugin provides no capabilities).
+	fn get_capabilities() -> Vec<Capability> {
+		vec![]
+	}
+
+	/// Called when the plugin is loaded.
+	/// For minimal plugin, simply accept any configuration.
+	fn on_load(_config: Vec<u8>) -> Result<(), PluginError> {
+		Ok(())
+	}
+
+	/// Called when the plugin is enabled.
+	fn on_enable() -> Result<(), PluginError> {
+		Ok(())
+	}
+
+	/// Called when the plugin is disabled.
+	fn on_disable() -> Result<(), PluginError> {
+		Ok(())
+	}
+
+	/// Called when the plugin is unloaded.
+	fn on_unload() -> Result<(), PluginError> {
+		Ok(())
+	}
+}
+
+bindings::export!(MinimalPlugin with_types_in bindings);
