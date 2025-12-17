@@ -822,7 +822,11 @@ pub async fn start_mailhog() -> (MailHogContainer, String, String) {
 impl MailHogContainer {
 	/// Create a new MailHog container
 	pub async fn new() -> Self {
-		let image = GenericImage::new("mailhog/mailhog", "latest");
+		use testcontainers::core::IntoContainerPort;
+
+		let image = GenericImage::new("mailhog/mailhog", "latest")
+			.with_exposed_port(1025.tcp())      // SMTP port
+			.with_exposed_port(8025.tcp());     // HTTP API/UI port
 
 		let container = AsyncRunner::start(image)
 			.await
