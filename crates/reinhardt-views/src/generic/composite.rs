@@ -4,14 +4,16 @@ use async_trait::async_trait;
 use hyper::Method;
 use reinhardt_core::exception::{Error, Result};
 use reinhardt_core::http::{Request, Response};
-use reinhardt_db::orm::{Model, QuerySet};
+use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, Manager, Model, QuerySet};
 use reinhardt_serializers::Serializer;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
 use crate::core::View;
 
-// TODO: These types will be properly defined when fully integrating with pagination/filtering/validation systems
+// Placeholder types for pagination, filtering, and validation configuration.
+// These can be replaced with reinhardt_viewsets::{PaginationConfig, FilterConfig}
+// when full integration with the viewsets pagination/filtering system is needed.
 type PaginationConfig = ();
 type FilterConfig = ();
 type ValidationConfig = ();
@@ -94,6 +96,29 @@ where
 	pub fn with_ordering(mut self, ordering: Vec<String>) -> Self {
 		self.ordering = Some(ordering);
 		self
+	}
+
+	/// Gets the queryset, creating a default one if not set
+	fn get_queryset(&self) -> QuerySet<M> {
+		self.queryset.clone().unwrap_or_default()
+	}
+
+	/// Gets the objects to display
+	async fn get_objects(&self, _request: &Request) -> Result<Vec<M>> {
+		let mut queryset = self.get_queryset();
+
+		// Apply ordering if configured
+		if let Some(ref ordering) = self.ordering {
+			let order_fields: Vec<&str> = ordering.iter().map(|s| s.as_str()).collect();
+			queryset = queryset.order_by(&order_fields);
+		}
+
+		// TODO: Apply filtering based on request parameters
+
+		// TODO: Apply pagination based on request parameters
+
+		// For now, return all objects (pagination will be added later)
+		queryset.all().await.map_err(|e| Error::Http(e.to_string()))
 	}
 }
 
