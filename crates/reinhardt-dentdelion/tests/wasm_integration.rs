@@ -55,7 +55,7 @@ mod wasm_tests {
 			.expect("Failed to load minimal plugin");
 
 		// Test lifecycle
-		let ctx = PluginContext::default();
+		let ctx = PluginContext::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
 
 		// on_load
 		instance
@@ -103,7 +103,7 @@ mod wasm_tests {
 			.await
 			.expect("Failed to load plugin");
 
-		let ctx = PluginContext::default();
+		let ctx = PluginContext::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
 
 		// Try to enable before loading - should fail
 		let result = instance.on_enable(&ctx).await;
@@ -145,7 +145,7 @@ mod wasm_tests {
 			.await
 			.expect("Failed to load plugin");
 
-		let ctx = PluginContext::default();
+		let ctx = PluginContext::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
 
 		// Full cycle
 		instance
@@ -199,7 +199,7 @@ mod wasm_tests {
 			.await
 			.expect("Failed to load logging plugin");
 
-		let ctx = PluginContext::default();
+		let ctx = PluginContext::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
 
 		// Logging plugin should call host logging APIs during lifecycle
 		// The test passes if no errors occur during the lifecycle calls
@@ -251,7 +251,7 @@ mod wasm_tests {
 			.await
 			.expect("Failed to load config plugin");
 
-		let ctx = PluginContext::default();
+		let ctx = PluginContext::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
 
 		// Config plugin should call host config APIs during lifecycle
 		instance
