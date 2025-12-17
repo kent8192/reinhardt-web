@@ -25,7 +25,7 @@
 //! ```
 
 use crate::error::{PluginError, PluginResult};
-use crates_io_api::{CratesQuery, SyncClient};
+use crates_io_api::{AsyncClient, CratesQuery};
 
 /// The suffix for Reinhardt plugin names.
 pub const PLUGIN_SUFFIX: &str = "-delion";
@@ -77,7 +77,7 @@ pub struct DependencyInfo {
 
 /// Client for interacting with the crates.io API.
 pub struct CratesIoClient {
-	client: SyncClient,
+	client: crates_io_api::AsyncClient,
 }
 
 impl CratesIoClient {
@@ -87,7 +87,7 @@ impl CratesIoClient {
 	///
 	/// Returns an error if the client cannot be initialized.
 	pub fn new() -> PluginResult<Self> {
-		let client = SyncClient::new(
+		let client = AsyncClient::new(
 			"reinhardt-dentdelion (contact@example.com)",
 			std::time::Duration::from_millis(1000),
 		)
@@ -105,11 +105,11 @@ impl CratesIoClient {
 	/// # Errors
 	///
 	/// Returns an error if the crate cannot be found or the API request fails.
-	pub fn get_crate_info(&self, name: &str) -> PluginResult<CrateInfo> {
-		let response = self
-			.client
-			.get_crate(name)
-			.map_err(|e| PluginError::Network(format!("Failed to fetch crate '{name}': {e}")))?;
+	pub async fn get_crate_info(&self, name: &str) -> PluginResult<CrateInfo> {
+		let response =
+			self.client.get_crate(name).await.map_err(|e| {
+				PluginError::Network(format!("Failed to fetch crate '{name}': {e}"))
+			})?;
 
 		let crate_data = response.crate_data;
 		let versions = response
@@ -143,8 +143,8 @@ impl CratesIoClient {
 	/// # Errors
 	///
 	/// Returns an error if the crate cannot be found or the API request fails.
-	pub fn get_versions(&self, name: &str) -> PluginResult<Vec<VersionInfo>> {
-		let response = self.client.get_crate(name).map_err(|e| {
+	pub async fn get_versions(&self, name: &str) -> PluginResult<Vec<VersionInfo>> {
+		let response = self.client.get_crate(name).await.map_err(|e| {
 			PluginError::Network(format!("Failed to fetch versions for '{name}': {e}"))
 		})?;
 
@@ -170,8 +170,8 @@ impl CratesIoClient {
 	/// # Errors
 	///
 	/// Returns an error if the crate cannot be found or has no valid versions.
-	pub fn get_latest_version(&self, name: &str) -> PluginResult<String> {
-		let versions = self.get_versions(name)?;
+	pub async fn get_latest_version(&self, name: &str) -> PluginResult<String> {
+		let versions = self.get_versions(name).await?;
 
 		versions
 			.into_iter()
@@ -195,7 +195,7 @@ impl CratesIoClient {
 	/// # Errors
 	///
 	/// Returns an error if the API request fails.
-	pub fn search_plugins(&self, query: &str, limit: u64) -> PluginResult<Vec<CrateInfo>> {
+	pub async fn search_plugins(&self, query: &str, limit: u64) -> PluginResult<Vec<CrateInfo>> {
 		// Search for crates matching the query with -delion suffix
 		let search_query = format!("{query} -delion");
 
@@ -207,6 +207,7 @@ impl CratesIoClient {
 		let response = self
 			.client
 			.crates(crates_query)
+			.await
 			.map_err(|e| PluginError::Network(format!("Failed to search crates.io: {e}")))?;
 
 		let plugins: Vec<CrateInfo> = response
@@ -239,7 +240,7 @@ impl CratesIoClient {
 	/// # Errors
 	///
 	/// Returns an error if the API request fails.
-	pub fn list_all_plugins(&self, limit: u64) -> PluginResult<Vec<CrateInfo>> {
+	pub async fn list_all_plugins(&self, limit: u64) -> PluginResult<Vec<CrateInfo>> {
 		let crates_query = CratesQuery::builder()
 			.search("-delion")
 			.page_size(limit.min(100))
@@ -248,6 +249,7 @@ impl CratesIoClient {
 		let response = self
 			.client
 			.crates(crates_query)
+			.await
 			.map_err(|e| PluginError::Network(format!("Failed to list plugins: {e}")))?;
 
 		let plugins: Vec<CrateInfo> = response
@@ -278,8 +280,8 @@ impl CratesIoClient {
 	/// # Returns
 	///
 	/// `true` if the plugin exists, `false` otherwise.
-	pub fn plugin_exists(&self, name: &str) -> bool {
-		self.client.get_crate(name).is_ok()
+	pub async fn plugin_exists(&self, name: &str) -> bool {
+		self.client.get_crate(name).await.is_ok()
 	}
 
 	/// Validate that a crate name follows the plugin naming convention.
@@ -322,12 +324,16 @@ impl CratesIoClient {
 	/// # Errors
 	///
 	/// Returns an error if the dependencies cannot be fetched.
-	pub fn get_dependencies(&self, name: &str, version: &str) -> PluginResult<Vec<String>> {
-		let deps = self.client.crate_dependencies(name, version).map_err(|e| {
-			PluginError::Network(format!(
-				"Failed to fetch dependencies for '{name}@{version}': {e}"
-			))
-		})?;
+	pub async fn get_dependencies(&self, name: &str, version: &str) -> PluginResult<Vec<String>> {
+		let deps = self
+			.client
+			.crate_dependencies(name, version)
+			.await
+			.map_err(|e| {
+				PluginError::Network(format!(
+					"Failed to fetch dependencies for '{name}@{version}': {e}"
+				))
+			})?;
 
 		Ok(deps.into_iter().map(|d| d.crate_id).collect())
 	}
@@ -345,16 +351,20 @@ impl CratesIoClient {
 	/// # Errors
 	///
 	/// Returns an error if the dependencies cannot be fetched.
-	pub fn get_dependencies_detailed(
+	pub async fn get_dependencies_detailed(
 		&self,
 		name: &str,
 		version: &str,
 	) -> PluginResult<Vec<DependencyInfo>> {
-		let deps = self.client.crate_dependencies(name, version).map_err(|e| {
-			PluginError::Network(format!(
-				"Failed to fetch dependencies for '{name}@{version}': {e}"
-			))
-		})?;
+		let deps = self
+			.client
+			.crate_dependencies(name, version)
+			.await
+			.map_err(|e| {
+				PluginError::Network(format!(
+					"Failed to fetch dependencies for '{name}@{version}': {e}"
+				))
+			})?;
 
 		Ok(deps
 			.into_iter()
@@ -387,13 +397,13 @@ impl CratesIoClient {
 	///
 	/// Returns an error if version information cannot be fetched or if
 	/// version parsing fails.
-	pub fn check_compatibility(
+	pub async fn check_compatibility(
 		&self,
 		name: &str,
 		version: &str,
 		reinhardt_version: &str,
 	) -> PluginResult<bool> {
-		let deps = self.get_dependencies_detailed(name, version)?;
+		let deps = self.get_dependencies_detailed(name, version).await?;
 
 		// Find reinhardt dependencies
 		let reinhardt_deps: Vec<_> = deps
