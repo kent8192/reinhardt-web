@@ -9,22 +9,11 @@ description = "Admin panel functionality for Reinhardt framework"
 publish = true
 
 [dependencies]
-# Internal crates (optional)
-reinhardt-panel = { path = "crates/panel", version = "0.1.0-alpha.1", optional = true }
 
 [features]
-default = ["panel"]
-
-# Module features
-panel = ["dep:reinhardt-panel"]
+default = []
 
 # All features
-all = ["panel"]
-
-# Aggregate all admin features
-admin-full = [
-  "panel",
-  "reinhardt-panel/full",
-]
+all = []
 
 [dev-dependencies]
