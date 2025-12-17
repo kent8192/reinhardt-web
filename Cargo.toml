@@ -313,7 +313,9 @@ members = [
   "crates/reinhardt-auth",
   "crates/reinhardt-auth/crates/sessions",
   "crates/reinhardt-admin",                            # Admin panel functionality
-  "crates/reinhardt-admin/crates/panel",
+  "crates/reinhardt-admin/crates/types",
+  "crates/reinhardt-admin/crates/api",
+  "crates/reinhardt-admin/crates/ui",                  # Admin panel WASM UI
   "crates/reinhardt-admin-cli",                        # Admin CLI tool
   "crates/reinhardt-grpc",
   "crates/reinhardt-commands",
