@@ -419,8 +419,11 @@ pub async fn start_memcached() -> (MemcachedContainer, String) {
 impl MemcachedContainer {
 	/// Create a new Memcached container
 	pub async fn new() -> Self {
+		use testcontainers::core::IntoContainerPort;
+
 		// Start Memcached container without WaitFor (we'll handle it manually)
-		let image = GenericImage::new("memcached", "1.6-alpine");
+		let image = GenericImage::new("memcached", "1.6-alpine")
+			.with_exposed_port(11211.tcp());
 
 		let container = AsyncRunner::start(image)
 			.await
