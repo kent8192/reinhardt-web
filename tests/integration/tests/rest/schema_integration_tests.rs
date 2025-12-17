@@ -169,7 +169,7 @@ fn test_endpoint_inspector_uses_registered_schema() {
 	// Note: We can't directly test create_request_body as it's private,
 	// but we can verify the behavior through extract_paths
 
-	// For now, just verify the metadata is correct
+	// TODO: For now, just verify the metadata is correct
 	assert_eq!(metadata.request_body_type, Some("CreateUserRequest"));
 	assert_eq!(metadata.request_content_type, Some("application/json"));
 	assert_eq!(metadata.method, "POST");

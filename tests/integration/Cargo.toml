@@ -20,7 +20,6 @@ reinhardt-core = { workspace = true, features = [
   "di",
   "validators",
 ] }
-reinhardt-panel = { workspace = true }
 reinhardt-auth = { workspace = true, features = ["argon2-hasher", "jwt", "sessions", "token"] }
 reinhardt-security = { workspace = true }
 reinhardt-http = { workspace = true }
