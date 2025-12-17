@@ -183,7 +183,7 @@ impl BaseCommand for PluginInfoCommand {
 				CommandError::ExecutionError(format!("Failed to connect to crates.io: {e}"))
 			})?;
 
-			let info = client.get_crate_info(name).map_err(|e| {
+			let info = client.get_crate_info(name).await.map_err(|e| {
 				CommandError::ExecutionError(format!("Failed to fetch plugin info: {e}"))
 			})?;
 
@@ -334,12 +334,12 @@ impl BaseCommand for PluginInstallCommand {
 		let version = if let Some(v) = ctx.option("version") {
 			v.to_string()
 		} else {
-			client.get_latest_version(&plugin_name).map_err(|e| {
+			client.get_latest_version(&plugin_name).await.map_err(|e| {
 				CommandError::ExecutionError(format!("Failed to fetch version: {e}"))
 			})?
 		};
 
-		let info = client.get_crate_info(&plugin_name).map_err(|e| {
+		let info = client.get_crate_info(&plugin_name).await.map_err(|e| {
 			CommandError::ExecutionError(format!("Failed to fetch plugin info: {e}"))
 		})?;
 
@@ -615,6 +615,7 @@ impl BaseCommand for PluginSearchCommand {
 
 		let plugins = client
 			.search_plugins(query, limit)
+			.await
 			.map_err(|e| CommandError::ExecutionError(format!("Search failed: {e}")))?;
 
 		if plugins.is_empty() {
@@ -721,7 +722,7 @@ impl BaseCommand for PluginUpdateCommand {
 				}
 			};
 
-			let latest_version = match client.get_latest_version(name) {
+			let latest_version = match client.get_latest_version(name).await {
 				Ok(v) => v,
 				Err(e) => {
 					ctx.warning(&format!("Failed to fetch latest version for '{name}': {e}"));
