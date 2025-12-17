@@ -120,7 +120,7 @@ args = [
   "--no-fail-fast",
   "--show-progress=none",
   "--status-level=none",
-  "--final-status-level=none"
+  "--final-status-level=none",
 ]
 
 [tasks.intra-crate-integration-test]
