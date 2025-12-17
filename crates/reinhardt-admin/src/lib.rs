@@ -2,34 +2,21 @@
 //!
 //! Admin functionality for Reinhardt framework.
 //!
-//! This crate provides two main components:
-//! - **Panel**: Django-style web admin panel for managing models
-//! - **CLI**: Command-line tool for project management
+//! This crate serves as a workspace for admin-related functionality:
+//! - **types**: Shared type definitions for admin API
+//! - **api**: Backend JSON API for admin panel
+//! - **ui**: WASM-based admin panel UI (Dominator + futures-signals)
 //!
 //! ## Features
 //!
-//! - `panel` (default): Web admin panel
-//! - `cli`: Command-line interface
+//! - `default`: No features enabled by default
 //! - `all`: All admin functionality
 //!
 //! ## Examples
 //!
-//! ### Using the admin panel
-//!
-//! ```rust,no_run
-//! # use reinhardt_admin::panel::AdminSite;
-//! let site = AdminSite::new("Admin");
-//! // Register models...
-//! ```
-//!
-//! ### Using the CLI
-//!
-//! ```bash
-//! reinhardt-admin startproject my_project
-//! ```
+//! See individual subcrates for usage examples:
+//! - `reinhardt-admin-types` - Type definitions
+//! - `reinhardt-admin-api` - Backend API
+//! - `reinhardt-admin-ui` - Frontend UI
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
-
-#[cfg(feature = "panel")]
-#[cfg_attr(docsrs, doc(cfg(feature = "panel")))]
-pub use reinhardt_panel as panel;
