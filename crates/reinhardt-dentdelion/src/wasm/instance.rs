@@ -158,6 +158,7 @@ impl WasmPluginInstance {
 		plugin
 			.reinhardt_dentdelion_plugin()
 			.call_on_load(&mut store, config)
+			.await
 			.map_err(|e| {
 				PluginError::WasmExecutionError(format!(
 					"WASM trap in on_load for {}: {}",
@@ -193,6 +194,7 @@ impl WasmPluginInstance {
 		plugin
 			.reinhardt_dentdelion_plugin()
 			.call_on_enable(&mut store)
+			.await
 			.map_err(|e| {
 				PluginError::WasmExecutionError(format!(
 					"WASM trap in on_enable for {}: {}",
@@ -228,6 +230,7 @@ impl WasmPluginInstance {
 		plugin
 			.reinhardt_dentdelion_plugin()
 			.call_on_disable(&mut store)
+			.await
 			.map_err(|e| {
 				PluginError::WasmExecutionError(format!(
 					"WASM trap in on_disable for {}: {}",
@@ -263,6 +266,7 @@ impl WasmPluginInstance {
 		plugin
 			.reinhardt_dentdelion_plugin()
 			.call_on_unload(&mut store)
+			.await
 			.map_err(|e| {
 				PluginError::WasmExecutionError(format!(
 					"WASM trap in on_unload for {}: {}",

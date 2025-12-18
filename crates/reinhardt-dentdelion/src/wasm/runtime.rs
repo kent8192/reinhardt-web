@@ -9,9 +9,14 @@
 //! - Execution timeout: 30 seconds default (configurable)
 
 // Generate Rust bindings from WIT definition
+// Configure async support for both imports and exports:
+// - exports: async enables .await on plugin's exported functions
+// - imports: async | trappable enables async host functions and safe ResourceTable interaction
 wasmtime::component::bindgen!({
 	world: "dentdelion-plugin",
 	path: "wit",
+	exports: { default: async },
+	imports: { default: async | trappable },
 });
 
 // Re-export generated module for use in other modules
@@ -27,6 +32,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store};
+use wasmtime_wasi::p2;
 
 use super::host::HostState;
 
@@ -162,6 +168,18 @@ impl WasmRuntime {
 
 		// Create the linker and add host functions
 		let mut linker = Linker::new(&engine);
+
+		// Add WASI P2 interfaces to linker (wasi:cli/environment, etc.)
+		// This is required for plugins that use WASI P2 imports
+		if config.async_support {
+			p2::add_to_linker_async(&mut linker).map_err(|e| {
+				PluginError::WasmLoadError(format!("Failed to add WASI P2 to linker: {}", e))
+			})?;
+		} else {
+			p2::add_to_linker_sync(&mut linker).map_err(|e| {
+				PluginError::WasmLoadError(format!("Failed to add WASI P2 to linker: {}", e))
+			})?;
+		}
 
 		// Add host functions from WIT definition
 		// Use the generated DentdelionPlugin::add_to_linker function
