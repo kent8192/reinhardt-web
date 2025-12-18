@@ -7,7 +7,7 @@
 
 use reinhardt_tasks::backend::TaskBackend;
 use reinhardt_tasks::backends::rabbitmq::{RabbitMQBackend, RabbitMQConfig};
-use reinhardt_tasks::{Task, TaskId, TaskPriority, TaskStatus};
+use reinhardt_tasks::{Task, TaskExecutionError, TaskId, TaskPriority};
 use serial_test::serial;
 use testcontainers::{
 	core::{ContainerPort, WaitFor},
@@ -121,12 +121,12 @@ async fn test_rabbitmq_backend_get_status() {
 		.await
 		.expect("Failed to connect to RabbitMQ");
 
-	// get_status returns Pending for queue-based backend
-	let status = backend
-		.get_status(TaskId::new())
-		.await
-		.expect("Failed to get status");
-	assert_eq!(status, TaskStatus::Pending);
+	// get_status returns NotFound for non-existent task ID
+	let status_result = backend.get_status(TaskId::new()).await;
+	assert!(
+		matches!(status_result, Err(TaskExecutionError::NotFound(_))),
+		"Expected NotFound error for non-existent task ID"
+	);
 }
 
 #[tokio::test]
