@@ -46,21 +46,6 @@ async fn test_session_creation_on_login(
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
-	// Create sessions table
-	sqlx::query(
-		r#"
-		CREATE TABLE IF NOT EXISTS sessions (
-			session_key TEXT PRIMARY KEY,
-			session_data TEXT NOT NULL,
-			expire_date BIGINT NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
-		"#,
-	)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to create sessions table");
-
 	// Create database session backend
 	let backend = DatabaseSessionBackend::new(&database_url)
 		.await
@@ -248,20 +233,6 @@ async fn test_session_invalidation_on_logout(
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
-	// Create sessions table
-	sqlx::query(
-		r#"
-		CREATE TABLE IF NOT EXISTS sessions (
-			session_key TEXT PRIMARY KEY,
-			session_data TEXT NOT NULL,
-			expire_date BIGINT NOT NULL
-		)
-		"#,
-	)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to create sessions table");
-
 	// Create database session backend
 	let backend = DatabaseSessionBackend::new(&database_url)
 		.await
@@ -322,20 +293,6 @@ async fn test_session_invalidation_clears_all_data(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
-
-	// Create sessions table
-	sqlx::query(
-		r#"
-		CREATE TABLE IF NOT EXISTS sessions (
-			session_key TEXT PRIMARY KEY,
-			session_data TEXT NOT NULL,
-			expire_date BIGINT NOT NULL
-		)
-		"#,
-	)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to create sessions table");
 
 	// Create database session backend
 	let backend = DatabaseSessionBackend::new(&database_url)
@@ -964,22 +921,7 @@ async fn test_session_user_agent_binding(
 async fn test_session_timeout_and_idle_detection(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, database_url) = postgres_container.await;
-
-	// Create sessions table with last_activity column
-	sqlx::query(
-		r#"
-		CREATE TABLE IF NOT EXISTS sessions (
-			session_key TEXT PRIMARY KEY,
-			session_data TEXT NOT NULL,
-			expire_date BIGINT NOT NULL,
-			last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
-		"#,
-	)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to create sessions table");
+	let (_container, _pool, _port, database_url) = postgres_container.await;
 
 	// Create database session backend
 	let backend = DatabaseSessionBackend::new(&database_url)
