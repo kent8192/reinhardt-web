@@ -10,27 +10,11 @@ use syn::{
 	Expr, ExprLit, FnArg, ItemFn, Lit, Meta, Result, Token, parse::Parser, punctuated::Punctuated,
 };
 
-/// Resolves the path to the Reinhardt crate dynamically.
-fn get_reinhardt_crate() -> TokenStream {
-	use proc_macro_crate::{FoundCrate, crate_name};
-
-	match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
-		Ok(FoundCrate::Itself) => quote!(crate),
-		Ok(FoundCrate::Name(name)) => {
-			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
-			quote!(::#ident)
-		}
-		Err(_) => quote!(::reinhardt),
-	}
-}
-
 /// Implementation of the `action` procedural macro
 ///
 /// This function is used internally by the `#[action]` attribute macro.
 /// Users should not call this function directly.
 pub fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
-	let _reinhardt = get_reinhardt_crate();
-
 	let mut methods = Vec::new();
 	let mut detail = false;
 	let mut _url_path: Option<String> = None;

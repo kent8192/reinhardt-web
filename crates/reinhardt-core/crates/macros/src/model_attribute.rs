@@ -1,5 +1,6 @@
 //! Attribute macro implementation for `#[model(...)]`
 
+use crate::crate_paths::{get_reinhardt_crate, get_reinhardt_orm_crate};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Attribute, Field, ItemStruct, Result, Type};
@@ -21,6 +22,10 @@ pub(crate) fn model_attribute_impl(
 	args: TokenStream,
 	mut input: ItemStruct,
 ) -> Result<TokenStream> {
+	// Get dynamic crate paths for code generation
+	let reinhardt = get_reinhardt_crate();
+	let orm_crate = get_reinhardt_orm_crate();
+
 	// Check if #[derive(Model)] already exists (avoid double processing)
 	let has_derive_model = input.attrs.iter().any(|attr| {
 		if attr.path().is_ident("derive")
@@ -85,7 +90,7 @@ pub(crate) fn model_attribute_impl(
 					let new_field: Field = syn::parse_quote! {
 						#[fk_id_field]
 						#[serde(default)]
-						pub #id_field_name: <#target_ty as ::reinhardt::db::orm::Model>::PrimaryKey
+						pub #id_field_name: <#target_ty as #orm_crate::Model>::PrimaryKey
 					};
 
 					fk_id_fields.push(new_field);
@@ -148,11 +153,9 @@ pub(crate) fn model_attribute_impl(
 
 	// Build derive attribute with Model derive macro
 	// Model must be first for proper attribute processing
-	// Use ::reinhardt::macros::Model for hierarchical imports
+	// Use reinhardt::macros::Model for hierarchical imports
 	// (reinhardt::Model refers to the trait, not the derive macro)
-	let model_path: TokenStream = "::reinhardt::macros::Model"
-		.parse()
-		.expect("Failed to parse Model path");
+	let model_path = quote!(#reinhardt::macros::Model);
 
 	// Check which common traits need to be added
 	// Note: Eq and Hash are NOT included by default because:

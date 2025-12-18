@@ -31,7 +31,9 @@ use quote::quote;
 use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Result, Type, parse_quote};
 use syn::{Ident, LitStr, bracketed, parenthesized};
 
-use crate::crate_paths::get_reinhardt_crate;
+use crate::crate_paths::{
+	get_reinhardt_crate, get_reinhardt_migrations_crate, get_reinhardt_orm_crate,
+};
 use crate::rel::RelAttribute;
 
 /// Constraint specification from #[model(constraints = [...])]
@@ -947,7 +949,7 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 
 /// Map Rust type to ORM field type
 fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream> {
-	let reinhardt = get_reinhardt_crate();
+	let migrations_crate = get_reinhardt_migrations_crate();
 
 	// Extract the inner type if it's Option<T>
 	let (_is_option, inner_ty) = extract_option_type(ty);
@@ -962,37 +964,37 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 
 			match last_segment.ident.to_string().as_str() {
 				"i32" => {
-					quote! { #reinhardt::db::migrations::FieldType::Integer }
+					quote! { #migrations_crate::FieldType::Integer }
 				}
 				"i64" => {
-					quote! { #reinhardt::db::migrations::FieldType::BigInteger }
+					quote! { #migrations_crate::FieldType::BigInteger }
 				}
 				"String" => {
 					let max_length = config.max_length.ok_or_else(|| {
 						syn::Error::new_spanned(ty, "String fields require max_length attribute")
 					})? as u32;
-					quote! { #reinhardt::db::migrations::FieldType::VarChar(#max_length) }
+					quote! { #migrations_crate::FieldType::VarChar(#max_length) }
 				}
 				"bool" => {
-					quote! { #reinhardt::db::migrations::FieldType::Boolean }
+					quote! { #migrations_crate::FieldType::Boolean }
 				}
 				"DateTime" => {
-					quote! { #reinhardt::db::migrations::FieldType::DateTime }
+					quote! { #migrations_crate::FieldType::DateTime }
 				}
 				"Date" => {
-					quote! { #reinhardt::db::migrations::FieldType::Date }
+					quote! { #migrations_crate::FieldType::Date }
 				}
 				"Time" => {
-					quote! { #reinhardt::db::migrations::FieldType::Time }
+					quote! { #migrations_crate::FieldType::Time }
 				}
 				"f32" => {
-					quote! { #reinhardt::db::migrations::FieldType::Float }
+					quote! { #migrations_crate::FieldType::Float }
 				}
 				"f64" => {
-					quote! { #reinhardt::db::migrations::FieldType::Double }
+					quote! { #migrations_crate::FieldType::Double }
 				}
 				"Uuid" => {
-					quote! { #reinhardt::db::migrations::FieldType::Uuid }
+					quote! { #migrations_crate::FieldType::Uuid }
 				}
 				_ => {
 					return Err(syn::Error::new_spanned(
@@ -1044,7 +1046,7 @@ fn extract_option_type(ty: &Type) -> (bool, &Type) {
 /// }
 /// ```
 fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo]) -> TokenStream {
-	let reinhardt = get_reinhardt_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 
 	let accessor_methods: Vec<_> = field_infos
 		.iter()
@@ -1059,8 +1061,8 @@ fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo])
 				///
 				/// Returns a `FieldRef<#struct_name, #field_type>` that provides compile-time
 				/// type safety for field operations.
-				pub const fn #method_name() -> #reinhardt::db::orm::expressions::FieldRef<#struct_name, #field_type> {
-					#reinhardt::db::orm::expressions::FieldRef::new(#field_name_str)
+				pub const fn #method_name() -> #orm_crate::expressions::FieldRef<#struct_name, #field_type> {
+					#orm_crate::expressions::FieldRef::new(#field_name_str)
 				}
 			}
 		})
@@ -1090,7 +1092,7 @@ fn generate_m2m_accessor_methods(
 	struct_name: &syn::Ident,
 	field_infos: &[FieldInfo],
 ) -> TokenStream {
-	let reinhardt = get_reinhardt_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 
 	let accessor_methods: Vec<_> = field_infos
 		.iter()
@@ -1118,9 +1120,9 @@ fn generate_m2m_accessor_methods(
 				#[doc = #doc_comment]
 				pub fn #method_name(
 					&self,
-					db: #reinhardt::db::orm::connection::DatabaseConnection
-				) -> #reinhardt::db::orm::ManyToManyAccessor<#struct_name, #target_ty> {
-					#reinhardt::db::orm::ManyToManyAccessor::new(
+					db: #orm_crate::connection::DatabaseConnection
+				) -> #orm_crate::ManyToManyAccessor<#struct_name, #target_ty> {
+					#orm_crate::ManyToManyAccessor::new(
 						self,
 						#field_name_str,
 						db
@@ -1143,8 +1145,9 @@ fn generate_m2m_accessor_methods(
 
 /// Implementation of the `Model` derive macro
 pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
-	// Get the dynamically resolved reinhardt crate path
-	let reinhardt = get_reinhardt_crate();
+	// Get the dynamically resolved crate paths
+	let _reinhardt = get_reinhardt_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 
 	let struct_name = &input.ident;
 	let generics = &input.generics;
@@ -1535,7 +1538,7 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 		// Generate ManyToMany accessor methods
 		#m2m_accessor_methods
 
-		impl #generics #reinhardt::db::orm::Model for #struct_name #generics #where_clause {
+		impl #generics #orm_crate::Model for #struct_name #generics #where_clause {
 			type PrimaryKey = #pk_type;
 
 			fn table_name() -> &'static str {
@@ -1556,17 +1559,17 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 
 			#composite_pk_impl
 
-			fn field_metadata() -> Vec<#reinhardt::db::orm::inspection::FieldInfo> {
+			fn field_metadata() -> Vec<#orm_crate::inspection::FieldInfo> {
 				vec![
 					#(#field_metadata_items),*
 				]
 			}
 
-			fn index_metadata() -> Vec<#reinhardt::db::orm::inspection::IndexInfo> {
+			fn index_metadata() -> Vec<#orm_crate::inspection::IndexInfo> {
 				vec![
 					#(
-						#reinhardt::db::orm::inspection::IndexInfo {
-							name: format!("{}_{}_idx", <Self as #reinhardt::db::orm::Model>::table_name(), #indexed_fields),
+						#orm_crate::inspection::IndexInfo {
+							name: format!("{}_{}_idx", <Self as #orm_crate::Model>::table_name(), #indexed_fields),
 							fields: vec![#indexed_fields.to_string()],
 							unique: false,
 							condition: None,
@@ -1575,21 +1578,21 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 				]
 			}
 
-			fn constraint_metadata() -> Vec<#reinhardt::db::orm::inspection::ConstraintInfo> {
+			fn constraint_metadata() -> Vec<#orm_crate::inspection::ConstraintInfo> {
 				let mut constraints = Vec::new();
 				// Check constraints
 				#(
-					constraints.push(#reinhardt::db::orm::inspection::ConstraintInfo {
+					constraints.push(#orm_crate::inspection::ConstraintInfo {
 						name: #check_constraint_names.to_string(),
-						constraint_type: #reinhardt::db::orm::inspection::ConstraintType::Check,
+						constraint_type: #orm_crate::inspection::ConstraintType::Check,
 						definition: #check_constraint_expressions.to_string(),
 					});
 				)*
 				// Unique constraints
 				#(
-					constraints.push(#reinhardt::db::orm::inspection::ConstraintInfo {
+					constraints.push(#orm_crate::inspection::ConstraintInfo {
 						name: #unique_constraint_names.to_string(),
-						constraint_type: #reinhardt::db::orm::inspection::ConstraintType::Unique,
+						constraint_type: #orm_crate::inspection::ConstraintType::Unique,
 						definition: #unique_constraint_definitions.to_string(),
 					});
 				)*
@@ -1635,11 +1638,11 @@ fn generate_field_metadata(
 		})
 		.collect();
 
-	let reinhardt = get_reinhardt_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 
 	// If there are no regular fields, return empty vec
 	if regular_fields.is_empty() {
-		let _ = &reinhardt; // Suppress unused warning
+		let _ = &orm_crate; // Suppress unused warning
 	}
 
 	for field_info in regular_fields {
@@ -1661,7 +1664,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"max_length".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Uint(#max_length)
+					#orm_crate::fields::FieldKwarg::Uint(#max_length)
 				);
 			});
 		}
@@ -1673,7 +1676,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"email".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(true)
+					#orm_crate::fields::FieldKwarg::Bool(true)
 				);
 			});
 		}
@@ -1683,7 +1686,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"url".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(true)
+					#orm_crate::fields::FieldKwarg::Bool(true)
 				);
 			});
 		}
@@ -1691,7 +1694,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"min_length".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Uint(#min_length)
+					#orm_crate::fields::FieldKwarg::Uint(#min_length)
 				);
 			});
 		}
@@ -1699,7 +1702,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"min_value".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Int(#min_value)
+					#orm_crate::fields::FieldKwarg::Int(#min_value)
 				);
 			});
 		}
@@ -1707,7 +1710,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"max_value".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Int(#max_value)
+					#orm_crate::fields::FieldKwarg::Int(#max_value)
 				);
 			});
 		}
@@ -1717,7 +1720,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"generated".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::String(#generated_expr.to_string())
+					#orm_crate::fields::FieldKwarg::String(#generated_expr.to_string())
 				);
 			});
 		}
@@ -1725,7 +1728,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"generated_stored".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#generated_stored)
+					#orm_crate::fields::FieldKwarg::Bool(#generated_stored)
 				);
 			});
 		}
@@ -1734,7 +1737,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"generated_virtual".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#generated_virtual)
+					#orm_crate::fields::FieldKwarg::Bool(#generated_virtual)
 				);
 			});
 		}
@@ -1745,7 +1748,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"identity_always".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#identity_always)
+					#orm_crate::fields::FieldKwarg::Bool(#identity_always)
 				);
 			});
 		}
@@ -1754,7 +1757,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"identity_by_default".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#identity_by_default)
+					#orm_crate::fields::FieldKwarg::Bool(#identity_by_default)
 				);
 			});
 		}
@@ -1763,7 +1766,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"auto_increment".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#auto_increment)
+					#orm_crate::fields::FieldKwarg::Bool(#auto_increment)
 				);
 			});
 		}
@@ -1772,7 +1775,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"autoincrement".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#autoincrement)
+					#orm_crate::fields::FieldKwarg::Bool(#autoincrement)
 				);
 			});
 		}
@@ -1782,7 +1785,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"collate".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::String(#collate.to_string())
+					#orm_crate::fields::FieldKwarg::String(#collate.to_string())
 				);
 			});
 		}
@@ -1791,7 +1794,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"character_set".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::String(#character_set.to_string())
+					#orm_crate::fields::FieldKwarg::String(#character_set.to_string())
 				);
 			});
 		}
@@ -1802,7 +1805,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"comment".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::String(#comment.to_string())
+					#orm_crate::fields::FieldKwarg::String(#comment.to_string())
 				);
 			});
 		}
@@ -1819,7 +1822,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"storage".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::String(#storage_str.to_string())
+					#orm_crate::fields::FieldKwarg::String(#storage_str.to_string())
 				);
 			});
 		}
@@ -1832,7 +1835,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"compression".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::String(#compression_str.to_string())
+					#orm_crate::fields::FieldKwarg::String(#compression_str.to_string())
 				);
 			});
 		}
@@ -1843,7 +1846,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"on_update_current_timestamp".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#on_update_current_timestamp)
+					#orm_crate::fields::FieldKwarg::Bool(#on_update_current_timestamp)
 				);
 			});
 		}
@@ -1854,7 +1857,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"invisible".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#invisible)
+					#orm_crate::fields::FieldKwarg::Bool(#invisible)
 				);
 			});
 		}
@@ -1865,7 +1868,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"fulltext".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#fulltext)
+					#orm_crate::fields::FieldKwarg::Bool(#fulltext)
 				);
 			});
 		}
@@ -1876,7 +1879,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"unsigned".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#unsigned)
+					#orm_crate::fields::FieldKwarg::Bool(#unsigned)
 				);
 			});
 		}
@@ -1885,7 +1888,7 @@ fn generate_field_metadata(
 			attrs.push(quote! {
 				attributes.insert(
 					"zerofill".to_string(),
-					#reinhardt::db::orm::fields::FieldKwarg::Bool(#zerofill)
+					#orm_crate::fields::FieldKwarg::Bool(#zerofill)
 				);
 			});
 		}
@@ -1900,7 +1903,7 @@ fn generate_field_metadata(
 				let mut attributes = ::std::collections::HashMap::new();
 				#(#attrs)*
 
-				#reinhardt::db::orm::inspection::FieldInfo {
+				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
 					field_type: #field_type_path.to_string(),
 					nullable: #nullable,
@@ -1922,8 +1925,6 @@ fn generate_field_metadata(
 
 	// Generate _id field metadata for ForeignKeyField and OneToOneField
 	for fk_info in fk_field_infos {
-		let reinhardt = &reinhardt;
-
 		let name = &fk_info.id_column_name;
 		let nullable = fk_info.rel_attr.null.unwrap_or(false);
 		let unique = fk_info.is_one_to_one; // OneToOne fields have UNIQUE constraint
@@ -1939,11 +1940,11 @@ fn generate_field_metadata(
 				if #db_index {
 					attributes.insert(
 						"db_index".to_string(),
-						#reinhardt::db::orm::fields::FieldKwarg::Bool(true)
+						#orm_crate::fields::FieldKwarg::Bool(true)
 					);
 				}
 
-				#reinhardt::db::orm::inspection::FieldInfo {
+				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
 					field_type: #field_type_path.to_string(),
 					nullable: #nullable,
@@ -1974,7 +1975,8 @@ fn generate_registration_code(
 	field_infos: &[FieldInfo],
 	fk_field_infos: &[ForeignKeyFieldInfo],
 ) -> Result<TokenStream> {
-	let reinhardt = get_reinhardt_crate();
+	let migrations_crate = get_reinhardt_migrations_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 	let model_name = struct_name.to_string();
 	let register_fn_name = syn::Ident::new(
 		&format!(
@@ -2037,13 +2039,13 @@ fn generate_registration_code(
 							// Extract last segment of type path and convert to snake_case
 							let type_name = #type_name_str;
 							let last_segment = type_name.split("::").last().unwrap_or(&type_name);
-							let referenced_table = #reinhardt::db::migrations::to_snake_case(last_segment);
+							let referenced_table = #migrations_crate::to_snake_case(last_segment);
 
-							#reinhardt::db::migrations::ForeignKeyInfo {
+							#migrations_crate::ForeignKeyInfo {
 								referenced_table,
 								referenced_column: "id".to_string(),
-								on_delete: #reinhardt::db::migrations::ForeignKeyAction::Cascade,
-								on_update: #reinhardt::db::migrations::ForeignKeyAction::Cascade,
+								on_delete: #migrations_crate::ForeignKeyAction::Cascade,
+								on_update: #migrations_crate::ForeignKeyAction::Cascade,
 							}
 						})
 					}
@@ -2054,11 +2056,11 @@ fn generate_registration_code(
 				} => {
 					let table_name_str = format!("{}_{}", app_label, model_name.to_lowercase());
 					quote! {
-						.with_foreign_key(#reinhardt::db::migrations::ForeignKeyInfo {
+						.with_foreign_key(#migrations_crate::ForeignKeyInfo {
 							referenced_table: #table_name_str.to_string(),
 							referenced_column: "id".to_string(),
-							on_delete: #reinhardt::db::migrations::ForeignKeyAction::Cascade,
-							on_update: #reinhardt::db::migrations::ForeignKeyAction::Cascade,
+							on_delete: #migrations_crate::ForeignKeyAction::Cascade,
+							on_update: #migrations_crate::ForeignKeyAction::Cascade,
 						})
 					}
 				}
@@ -2070,7 +2072,7 @@ fn generate_registration_code(
 		field_registrations.push(quote! {
 			metadata.add_field(
 				#field_name.to_string(),
-				#reinhardt::db::migrations::model_registry::FieldMetadata::new(#field_type)
+				#migrations_crate::model_registry::FieldMetadata::new(#field_type)
 					#(#params)*
 					#fk_registration
 			);
@@ -2129,7 +2131,7 @@ fn generate_registration_code(
 
 		m2m_registrations.push(quote! {
 			metadata.add_many_to_many(
-				#reinhardt::db::migrations::model_registry::ManyToManyMetadata {
+				#migrations_crate::model_registry::ManyToManyMetadata {
 					field_name: #field_name.to_string(),
 					to_model: #to_model.to_string(),
 					related_name: #related_name,
@@ -2168,8 +2170,8 @@ fn generate_registration_code(
 		fk_id_registrations.push(quote! {
 			metadata.add_field(
 				#id_column_name.to_string(),
-				#reinhardt::db::migrations::model_registry::FieldMetadata::new(
-					#reinhardt::db::migrations::FieldType::Uuid
+				#migrations_crate::model_registry::FieldMetadata::new(
+					#migrations_crate::FieldType::Uuid
 				)
 					.with_param("null", #nullable_str)
 					.with_param("unique", #unique_str)
@@ -2185,7 +2187,7 @@ fn generate_registration_code(
 	let code = quote! {
 		#[::ctor::ctor]
 		fn #register_fn_name() {
-			use #reinhardt::db::migrations::model_registry::ModelMetadata;
+			use #migrations_crate::model_registry::ModelMetadata;
 
 			// Register in migration registry
 			let mut metadata = ModelMetadata::new(
@@ -2198,11 +2200,11 @@ fn generate_registration_code(
 			#(#fk_id_registrations)*
 			#(#m2m_registrations)*
 
-			#reinhardt::db::migrations::model_registry::global_registry().register_model(metadata);
+			#migrations_crate::model_registry::global_registry().register_model(metadata);
 
 			// Register in global model registry for foreign_key resolution
-			#reinhardt::db::orm::registry::global_model_registry().register(
-				#reinhardt::db::orm::registry::ModelInfo {
+			#orm_crate::registry::global_model_registry().register(
+				#orm_crate::registry::ModelInfo {
 					app_label: #app_label.to_string(),
 					model_name: #model_name.to_string(),
 					type_path: #type_path.to_string(),
@@ -2238,6 +2240,7 @@ fn generate_relationship_registrations(
 	fk_field_infos: &[ForeignKeyFieldInfo],
 ) -> TokenStream {
 	let reinhardt = get_reinhardt_crate();
+	let _orm_crate = get_reinhardt_orm_crate();
 	let mut registrations = Vec::new();
 	let model_name = struct_name.to_string();
 
@@ -2395,21 +2398,21 @@ fn generate_relationship_registrations(
 
 /// Generate composite primary key implementation
 fn generate_composite_pk_impl(pk_fields: &[&FieldInfo]) -> TokenStream {
-	let reinhardt = get_reinhardt_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 
 	let field_name_strings: Vec<String> = pk_fields.iter().map(|f| f.name.to_string()).collect();
 
 	quote! {
-		fn composite_primary_key() -> Option<#reinhardt::db::orm::composite_pk::CompositePrimaryKey> {
+		fn composite_primary_key() -> Option<#orm_crate::composite_pk::CompositePrimaryKey> {
 			Some(
-				#reinhardt::db::orm::composite_pk::CompositePrimaryKey::new(
+				#orm_crate::composite_pk::CompositePrimaryKey::new(
 					vec![#(#field_name_strings.to_string()),*]
 				)
 				.expect("Invalid composite primary key")
 			)
 		}
 
-		fn get_composite_pk_values(&self) -> ::std::collections::HashMap<String, #reinhardt::db::orm::composite_pk::PkValue> {
+		fn get_composite_pk_values(&self) -> ::std::collections::HashMap<String, #orm_crate::composite_pk::PkValue> {
 			// Use the generated composite PK type's to_pk_values() method
 			if let Some(pk) = self.primary_key() {
 				pk.to_pk_values()
@@ -2428,7 +2431,7 @@ fn generate_composite_pk_impl(pk_fields: &[&FieldInfo]) -> TokenStream {
 /// - From/Into conversions for tuple types
 /// - Individual PkValue conversions for each field
 fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]) -> TokenStream {
-	let reinhardt = get_reinhardt_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 
 	// Generate composite PK struct name: {ModelName}CompositePk
 	let composite_pk_name =
@@ -2459,7 +2462,7 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 			quote! {
 				values.insert(
 					stringify!(#name).to_string(),
-					#reinhardt::db::orm::composite_pk::PkValue::from(&self.#name)
+					#orm_crate::composite_pk::PkValue::from(&self.#name)
 				);
 			}
 		})
@@ -2481,7 +2484,7 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 			}
 
 			/// Convert to a HashMap of PkValues for database operations
-			pub fn to_pk_values(&self) -> ::std::collections::HashMap<String, #reinhardt::db::orm::composite_pk::PkValue> {
+			pub fn to_pk_values(&self) -> ::std::collections::HashMap<String, #orm_crate::composite_pk::PkValue> {
 				let mut values = ::std::collections::HashMap::new();
 				#(#pk_value_conversions)*
 				values
@@ -2534,11 +2537,11 @@ fn generate_relationship_metadata(
 	_struct_name: &Ident,
 ) -> TokenStream {
 	use crate::rel::RelationType;
-	let reinhardt = get_reinhardt_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 
 	if rel_fields.is_empty() {
 		return quote! {
-			fn relationship_metadata() -> Vec<#reinhardt::db::orm::inspection::RelationInfo> {
+			fn relationship_metadata() -> Vec<#orm_crate::inspection::RelationInfo> {
 				Vec::new()
 			}
 		};
@@ -2552,20 +2555,20 @@ fn generate_relationship_metadata(
 			// Map RelationType to RelationshipType
 			let relationship_type = match rel.rel_type {
 				RelationType::ForeignKey => {
-					quote! { #reinhardt::db::orm::relationship::RelationshipType::ManyToOne }
+					quote! { #orm_crate::relationship::RelationshipType::ManyToOne }
 				}
 				RelationType::OneToOne => {
-					quote! { #reinhardt::db::orm::relationship::RelationshipType::OneToOne }
+					quote! { #orm_crate::relationship::RelationshipType::OneToOne }
 				}
 				RelationType::OneToMany => {
-					quote! { #reinhardt::db::orm::relationship::RelationshipType::OneToMany }
+					quote! { #orm_crate::relationship::RelationshipType::OneToMany }
 				}
 				RelationType::ManyToMany | RelationType::PolymorphicManyToMany => {
-					quote! { #reinhardt::db::orm::relationship::RelationshipType::ManyToMany }
+					quote! { #orm_crate::relationship::RelationshipType::ManyToMany }
 				}
 				RelationType::Polymorphic => {
 					// Polymorphic is treated as ManyToOne for now
-					quote! { #reinhardt::db::orm::relationship::RelationshipType::ManyToOne }
+					quote! { #orm_crate::relationship::RelationshipType::ManyToOne }
 				}
 			};
 
@@ -2609,7 +2612,7 @@ fn generate_relationship_metadata(
 				.map_or_else(|| quote! { None }, |t| quote! { Some(#t.to_string()) });
 
 			quote! {
-				#reinhardt::db::orm::inspection::RelationInfo {
+				#orm_crate::inspection::RelationInfo {
 					name: #field_name_str.to_string(),
 					relationship_type: #relationship_type,
 					foreign_key: #foreign_key,
@@ -2624,7 +2627,7 @@ fn generate_relationship_metadata(
 		.collect();
 
 	quote! {
-		fn relationship_metadata() -> Vec<#reinhardt::db::orm::inspection::RelationInfo> {
+		fn relationship_metadata() -> Vec<#orm_crate::inspection::RelationInfo> {
 			vec![
 				#(#relation_info_items),*
 			]
@@ -2897,7 +2900,7 @@ fn generate_new_function(
 	field_infos: &[FieldInfo],
 	fk_id_field_names: &[syn::Ident],
 ) -> TokenStream {
-	let reinhardt = get_reinhardt_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 	// Separate user-specified fields from auto-generated fields
 	let user_fields: Vec<_> = field_infos
 		.iter()
@@ -2958,7 +2961,7 @@ fn generate_new_function(
 
 				// Where句: GenericParam: IntoPrimaryKey<RelatedModel>
 				where_clauses.push(quote! {
-					#generic_param: #reinhardt::db::orm::IntoPrimaryKey<#related_model_type>
+					#generic_param: #orm_crate::IntoPrimaryKey<#related_model_type>
 				});
 
 				// ジェネリックパラメータリスト

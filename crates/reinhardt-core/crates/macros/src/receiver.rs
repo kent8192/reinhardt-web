@@ -1,4 +1,4 @@
-use crate::crate_paths::get_reinhardt_crate;
+use crate::crate_paths::get_reinhardt_signals_crate;
 use crate::injectable_common::{
 	detect_inject_params, generate_di_context_extraction_from_option,
 	generate_injection_calls_with_error, strip_inject_attrs,
@@ -66,9 +66,8 @@ fn parse_receiver_args(args: TokenStream) -> Result<ReceiverArgs> {
 ///
 /// See the signals documentation for usage examples.
 pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
-	let _reinhardt = get_reinhardt_crate();
-
 	let args = parse_receiver_args(args)?;
+	let signals_crate = get_reinhardt_signals_crate();
 
 	let fn_name = &input.sig.ident;
 	let fn_vis = &input.vis;
@@ -137,9 +136,12 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 		let di_extraction = generate_di_context_extraction_from_option(&ctx_ident);
 
 		// Signal用のエラーマッパー
-		let error_mapper = |_ty: &syn::Type| {
+		// Clone signals_crate for use in closure
+		let signals_crate_for_mapper = signals_crate.clone();
+		let error_mapper = move |_ty: &syn::Type| {
+			let sc = signals_crate_for_mapper.clone();
 			quote! {
-				::reinhardt_signals::SignalError::new(
+				#sc::SignalError::new(
 					format!("Dependency injection failed for {}: {:?}", stringify!(#_ty), e)
 				)
 			}
@@ -165,8 +167,8 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 			|| -> ::std::sync::Arc<
 				dyn Fn(
 					::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,
-					::reinhardt_signals::ReceiverContext
-				) -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = Result<(), reinhardt_signals::SignalError>> + Send>>
+					#signals_crate::ReceiverContext
+				) -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = Result<(), #signals_crate::SignalError>> + Send>>
 					+ Send + Sync
 			> {
 				::std::sync::Arc::new(|data, ctx| {
@@ -180,7 +182,7 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 		let expanded = quote! {
 			// 元の関数（リネーム）
 			#(#fn_attrs)*
-			async fn #original_fn_name(#stripped_inputs) -> Result<(), ::reinhardt_signals::SignalError> {
+			async fn #original_fn_name(#stripped_inputs) -> Result<(), #signals_crate::SignalError> {
 				#fn_block
 			}
 
@@ -188,8 +190,8 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 			#(#fn_attrs)*
 			#fn_vis async fn #fn_name(
 				instance: ::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,
-				__receiver_ctx: ::reinhardt_signals::ReceiverContext,
-			) -> Result<(), ::reinhardt_signals::SignalError> {
+				__receiver_ctx: #signals_crate::ReceiverContext,
+			) -> Result<(), #signals_crate::SignalError> {
 				// DI context抽出
 				#di_extraction
 
@@ -202,7 +204,7 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 
 			// Generate static registration
 			::inventory::submit! {
-				reinhardt_signals::ReceiverRegistryEntry::new(
+				#signals_crate::ReceiverRegistryEntry::new(
 					#signal_name,
 					#receiver_name,
 					#factory_fn,
@@ -219,7 +221,7 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 		let factory_fn = quote! {
 			|| -> ::std::sync::Arc<
 				dyn Fn(::std::sync::Arc<dyn ::std::any::Any + Send + Sync>)
-					-> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = Result<(), reinhardt_signals::SignalError>> + Send>>
+					-> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = Result<(), #signals_crate::SignalError>> + Send>>
 					+ Send + Sync
 			> {
 				::std::sync::Arc::new(|data| {
@@ -239,7 +241,7 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 
 			// Generate static registration
 			::inventory::submit! {
-				reinhardt_signals::ReceiverRegistryEntry::new(
+				#signals_crate::ReceiverRegistryEntry::new(
 					#signal_name,
 					#receiver_name,
 					#factory_fn,

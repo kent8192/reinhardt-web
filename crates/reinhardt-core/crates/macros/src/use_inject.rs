@@ -8,23 +8,10 @@
 //! with `UnifiedRouter::function()`. The `InjectionContext` is extracted from
 //! `Request.get_di_context()` which is set by the router before dispatching.
 
+use crate::crate_paths::{get_reinhardt_core_crate, get_reinhardt_di_crate};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Attribute, FnArg, ItemFn, Pat, PatType, Result, Type};
-
-/// Resolves the path to the Reinhardt crate dynamically.
-fn get_reinhardt_crate() -> TokenStream {
-	use proc_macro_crate::{FoundCrate, crate_name};
-
-	match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
-		Ok(FoundCrate::Itself) => quote!(crate),
-		Ok(FoundCrate::Name(name)) => {
-			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
-			quote!(::#ident)
-		}
-		Err(_) => quote!(::reinhardt),
-	}
-}
 
 /// Check if an attribute is #[inject]
 fn is_inject_attr(attr: &Attribute) -> bool {
@@ -110,7 +97,8 @@ impl ProcessedArg {
 /// - If present: DI context is extracted from that request
 /// - If not present: A Request parameter is automatically added to the wrapper
 pub fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream> {
-	let _reinhardt = get_reinhardt_crate();
+	let di_crate = get_reinhardt_di_crate();
+	let core_crate = get_reinhardt_core_crate();
 
 	let ItemFn {
 		attrs,
@@ -208,8 +196,8 @@ pub fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream>
 	// Generate DI context extraction (from Request)
 	let di_context_extraction = if !inject_params.is_empty() {
 		quote! {
-			let __di_ctx = #request_pat.get_di_context::<::std::sync::Arc<::reinhardt_di::InjectionContext>>()
-				.ok_or_else(|| ::reinhardt_core::exception::Error::Internal(
+			let __di_ctx = #request_pat.get_di_context::<::std::sync::Arc<#di_crate::InjectionContext>>()
+				.ok_or_else(|| #core_crate::exception::Error::Internal(
 					"DI context not set. Ensure the router is configured with .with_di_context()".to_string()
 				))?;
 		}
@@ -225,11 +213,11 @@ pub fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream>
 
 		let injection_code = if arg.use_cache {
 			quote! {
-				let #pat: #ty = ::reinhardt_di::Injected::<#ty>::resolve(&__di_ctx)
+				let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
 					.await
 					.map_err(|e| {
 						eprintln!("Dependency injection failed for {}: {:?}", stringify!(#ty), e);
-						::reinhardt_core::exception::Error::Internal(
+						#core_crate::exception::Error::Internal(
 							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
 						)
 					})?
@@ -237,11 +225,11 @@ pub fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream>
 			}
 		} else {
 			quote! {
-				let #pat: #ty = ::reinhardt_di::Injected::<#ty>::resolve_uncached(&__di_ctx)
+				let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
 					.await
 					.map_err(|e| {
 						eprintln!("Dependency injection failed for {}: {:?}", stringify!(#ty), e);
-						::reinhardt_core::exception::Error::Internal(
+						#core_crate::exception::Error::Internal(
 							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
 						)
 					})?

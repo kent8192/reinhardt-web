@@ -1,8 +1,8 @@
 //! HTTP method route macros
 
 use crate::crate_paths::{
-	get_reinhardt_core_crate, get_reinhardt_crate, get_reinhardt_di_crate,
-	get_reinhardt_http_crate, get_reinhardt_params_crate,
+	get_reinhardt_core_crate, get_reinhardt_di_crate, get_reinhardt_http_crate,
+	get_reinhardt_params_crate,
 };
 use crate::injectable_common::{InjectOptions, is_inject_attr, parse_inject_options};
 use crate::path_macro;
@@ -334,7 +334,6 @@ fn generate_view_type(
 	extractors: &[ExtractorInfo],
 	inject_params: &[InjectInfo],
 ) -> Result<TokenStream> {
-	let reinhardt = get_reinhardt_crate();
 	let core_crate = get_reinhardt_core_crate();
 	let http_crate = get_reinhardt_http_crate();
 
@@ -370,9 +369,9 @@ fn generate_view_type(
 		.unwrap_or((quote!(None), quote!(None)));
 
 	let metadata_submission = quote! {
-		#reinhardt::inventory::submit! {
+		::inventory::submit! {
 			#[allow(non_upper_case_globals)]
-			#reinhardt::EndpointMetadata {
+			#core_crate::EndpointMetadata {
 				path: #path,
 				method: #method,
 				name: #metadata_name,
@@ -399,8 +398,8 @@ fn generate_view_type(
 				#path
 			}
 
-			fn method() -> #reinhardt::Method {
-				#reinhardt::Method::#method_ident
+			fn method() -> ::hyper::Method {
+				::hyper::Method::#method_ident
 			}
 
 			fn name() -> &'static str {
@@ -408,9 +407,9 @@ fn generate_view_type(
 			}
 		}
 
-		#[#reinhardt::async_trait::async_trait]
+		#[::async_trait::async_trait]
 		impl #core_crate::Handler for #view_type_name {
-			async fn handle(&self, req: #reinhardt::Request) -> #http_crate::Result<#reinhardt::Response> {
+			async fn handle(&self, req: #http_crate::Request) -> #http_crate::Result<#http_crate::Response> {
 				#view_type_name::#fn_name(req).await
 			}
 		}
@@ -418,7 +417,7 @@ fn generate_view_type(
 		impl #view_type_name {
 			/// Handler function for this view
 			#(#fn_attrs)*
-			#fn_vis #asyncness fn #fn_name(req: #reinhardt::Request) #output {
+			#fn_vis #asyncness fn #fn_name(req: #http_crate::Request) #output {
 				#wrapper_body
 			}
 		}
@@ -433,7 +432,6 @@ fn generate_view_type(
 }
 
 fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStream> {
-	let reinhardt = get_reinhardt_crate();
 	let core_crate = get_reinhardt_core_crate();
 	let http_crate = get_reinhardt_http_crate();
 
@@ -602,12 +600,12 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 	// Wrapper function signature and body based on whether original takes request
 	let (wrapper_sig, wrapper_body) = if has_request_param {
 		(
-			quote! { req: #reinhardt::Request },
+			quote! { req: #http_crate::Request },
 			quote! { #original_fn_name(req).await },
 		)
 	} else {
 		(
-			quote! { _req: #reinhardt::Request },
+			quote! { _req: #http_crate::Request },
 			quote! { #original_fn_name().await },
 		)
 	};
@@ -621,9 +619,9 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 		.unwrap_or((quote!(None), quote!(None)));
 
 	let metadata_submission = quote! {
-		#reinhardt::inventory::submit! {
+		::inventory::submit! {
 			#[allow(non_upper_case_globals)]
-			#reinhardt::EndpointMetadata {
+			#core_crate::EndpointMetadata {
 				path: #path_str,
 				method: #method,
 				name: #metadata_name,
@@ -654,8 +652,8 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 				#path_str
 			}
 
-			fn method() -> #reinhardt::Method {
-				#reinhardt::Method::#method_ident
+			fn method() -> ::hyper::Method {
+				::hyper::Method::#method_ident
 			}
 
 			fn name() -> &'static str {
@@ -663,9 +661,9 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 			}
 		}
 
-		#[#reinhardt::async_trait::async_trait]
+		#[::async_trait::async_trait]
 		impl #core_crate::Handler for #view_type_name {
-			async fn handle(&self, req: #reinhardt::Request) -> #http_crate::Result<#reinhardt::Response> {
+			async fn handle(&self, req: #http_crate::Request) -> #http_crate::Result<#http_crate::Response> {
 				#view_type_name::#fn_name(req).await
 			}
 		}

@@ -53,6 +53,7 @@
 //! }
 //! ```
 
+use crate::crate_paths::get_reinhardt_crate;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
@@ -104,12 +105,13 @@ impl Parse for RegisterInput {
 /// Generated code as a `TokenStream`
 pub fn register_url_patterns_impl(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as RegisterInput);
+	let reinhardt = get_reinhardt_crate();
 
 	let registration = if input.has_admin {
 		// Admin-enabled: register both url_patterns and url_patterns_with_admin
 		quote! {
-			::reinhardt::inventory::submit! {
-				::reinhardt::UrlPatternsRegistration {
+			#reinhardt::inventory::submit! {
+				#reinhardt::UrlPatternsRegistration {
 					get_router: url_patterns,
 					get_admin_router: Some(url_patterns_with_admin),
 				}
@@ -118,8 +120,8 @@ pub fn register_url_patterns_impl(input: TokenStream) -> TokenStream {
 	} else {
 		// Standard: register only url_patterns
 		quote! {
-			::reinhardt::inventory::submit! {
-				::reinhardt::UrlPatternsRegistration {
+			#reinhardt::inventory::submit! {
+				#reinhardt::UrlPatternsRegistration {
 					get_router: url_patterns,
 					get_admin_router: None,
 				}

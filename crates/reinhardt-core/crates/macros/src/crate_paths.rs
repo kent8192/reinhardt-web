@@ -8,8 +8,7 @@ use quote::quote;
 pub fn get_reinhardt_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
-	// Try "reinhardt" first, then fall back to "reinhardt-web"
-	match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+	match crate_name("reinhardt") {
 		Ok(FoundCrate::Itself) => quote!(crate),
 		Ok(FoundCrate::Name(name)) => {
 			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -32,7 +31,7 @@ pub fn get_reinhardt_di_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_di),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -60,7 +59,7 @@ pub fn get_reinhardt_core_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_core),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -88,7 +87,7 @@ pub fn get_reinhardt_openapi_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_openapi),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -116,7 +115,7 @@ pub fn get_reinhardt_orm_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_orm),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -144,7 +143,7 @@ pub fn get_reinhardt_signals_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_signals),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -172,7 +171,7 @@ pub fn get_reinhardt_params_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_params),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -215,7 +214,7 @@ pub fn get_reinhardt_apps_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_apps),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -243,7 +242,7 @@ pub fn get_reinhardt_migrations_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_migrations),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -271,7 +270,7 @@ pub fn get_reinhardt_proxy_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_proxy),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -299,7 +298,7 @@ pub fn get_reinhardt_http_crate() -> TokenStream {
 		}
 		Err(_) => {
 			// Try via reinhardt crate
-			match crate_name("reinhardt").or_else(|_| crate_name("reinhardt-web")) {
+			match crate_name("reinhardt") {
 				Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_http),
 				Ok(FoundCrate::Name(name)) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
