@@ -70,12 +70,11 @@ regex = "1.10"
 smallvec = "1.13"
 
 [dev-dependencies]
-reinhardt = { path = "../../../..", package = "reinhardt-web" }
 reinhardt-migrations = { path = "../migrations", version = "0.1.0-alpha.1" }
+reinhardt-test = { workspace = true }
 ctor = "0.6.1"
 serial_test = { workspace = true }
 tokio-test = "0.4"
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 rstest = { workspace = true }
-reinhardt-test = { workspace = true }
