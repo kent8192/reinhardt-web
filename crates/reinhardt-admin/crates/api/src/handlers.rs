@@ -8,11 +8,11 @@ use crate::{
 	ImportFormat, ImportResult,
 };
 use hyper::StatusCode;
+use reinhardt_admin_types::*;
+use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 use reinhardt_http::{Request, Response, ViewResult};
 use reinhardt_macros::{delete, get, post, put};
 use reinhardt_params::{Json, Path, Query};
-use reinhardt_admin_types::*;
-use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,8 +26,19 @@ pub struct ExportQueryParams {
 }
 
 /// Dashboard handler - returns list of registered models
-#[get("/", name = "admin_dashboard", use_inject = true)]
-pub async fn dashboard(#[inject] site: Arc<AdminSite>) -> ViewResult<Response> {
+#[get("/", name = "admin_dashboard")]
+pub async fn dashboard(req: Request) -> ViewResult<Response> {
+	// Manually resolve dependencies from DI context
+	let di_ctx = req
+		.extensions
+		.get::<reinhardt_di::InjectionContext>()
+		.ok_or_else(|| AdminError::ValidationError("DI context not found".into()))?;
+
+	let site = di_ctx
+		.resolve::<AdminSite>()
+		.await
+		.map_err(|e| AdminError::ValidationError(format!("Failed to resolve AdminSite: {}", e)))?;
+
 	// Collect model information
 	let models: Vec<ModelInfo> = site
 		.registered_models()
@@ -38,13 +49,15 @@ pub async fn dashboard(#[inject] site: Arc<AdminSite>) -> ViewResult<Response> {
 		})
 		.collect();
 
+	// Generate CSRF token from request session
+	let csrf_token = generate_csrf_token_from_request(&req);
+
 	// Build JSON response
-	// TODO: Generate actual CSRF token from session in Phase 8
 	let response = DashboardResponse {
 		site_name: site.name().to_string(),
 		url_prefix: site.url_prefix().to_string(),
 		models,
-		csrf_token: None,
+		csrf_token,
 	};
 
 	// Return JSON response
@@ -93,7 +106,7 @@ fn detect_favicon_content_type(data: &[u8]) -> &'static str {
 }
 
 /// List handler - returns paginated list of model instances
-#[get("/{model}/", name = "admin_list", use_inject = true)]
+#[get("/{<str:model>}/", name = "admin_list", use_inject = true)]
 pub async fn list(
 	Path(model_name): Path<String>,
 	Query(params): Query<ListQueryParams>,
@@ -274,7 +287,7 @@ fn generate_mock_filters(
 }
 
 /// Detail handler - returns single model instance
-#[get("/{model}/{id}/", name = "admin_detail", use_inject = true)]
+#[get("/{<str:model>}/{<str:id>}/", name = "admin_detail", use_inject = true)]
 pub async fn detail(
 	Path((model_name, id)): Path<(String, String)>,
 	#[inject] site: Arc<AdminSite>,
@@ -303,7 +316,7 @@ pub async fn detail(
 }
 
 /// Create handler - creates new model instance
-#[post("/{model}/", name = "admin_create", use_inject = true)]
+#[post("/{<str:model>}/", name = "admin_create", use_inject = true)]
 pub async fn create(
 	Path(model_name): Path<String>,
 	Json(request): Json<MutationRequest>,
@@ -331,7 +344,7 @@ pub async fn create(
 }
 
 /// Update handler - updates existing model instance
-#[put("/{model}/{id}/", name = "admin_update", use_inject = true)]
+#[put("/{<str:model>}/{<str:id>}/", name = "admin_update", use_inject = true)]
 pub async fn update(
 	Path((model_name, id)): Path<(String, String)>,
 	Json(request): Json<MutationRequest>,
@@ -370,7 +383,7 @@ pub async fn update(
 }
 
 /// Delete handler - deletes model instance
-#[delete("/{model}/{id}/", name = "admin_delete", use_inject = true)]
+#[delete("/{<str:model>}/{<str:id>}/", name = "admin_delete", use_inject = true)]
 pub async fn delete(
 	Path((model_name, id)): Path<(String, String)>,
 	#[inject] site: Arc<AdminSite>,
@@ -408,7 +421,11 @@ pub async fn delete(
 }
 
 /// Bulk delete handler - deletes multiple model instances
-#[post("/{model}/bulk-delete/", name = "admin_bulk_delete", use_inject = true)]
+#[post(
+	"/{<str:model>}/bulk-delete/",
+	name = "admin_bulk_delete",
+	use_inject = true
+)]
 pub async fn bulk_delete(
 	Path(model_name): Path<String>,
 	Json(request): Json<BulkDeleteRequest>,
@@ -436,7 +453,7 @@ pub async fn bulk_delete(
 }
 
 /// Export handler - exports model data
-#[get("/{model}/export/", name = "admin_export", use_inject = true)]
+#[get("/{<str:model>}/export/", name = "admin_export", use_inject = true)]
 pub async fn export(
 	Path(model_name): Path<String>,
 	Query(params): Query<ExportQueryParams>,
@@ -545,7 +562,7 @@ pub async fn export(
 /// # Returns
 ///
 /// Returns an `ImportResponse` with counts of imported/skipped/failed records.
-#[post("/{model}/import/", name = "admin_import", use_inject = true)]
+#[post("/{<str:model>}/import/", name = "admin_import", use_inject = true)]
 pub async fn import(req: Request) -> ViewResult<Response> {
 	// Extract model_name from path
 	let model_name = req
@@ -661,6 +678,53 @@ fn json_response<T: Serialize>(status: StatusCode, body: &T) -> AdminResult<Resp
 		.with_body(json);
 
 	Ok(response)
+}
+
+/// Extract session ID from request cookies
+///
+/// Parses the Cookie header and extracts the session ID value.
+/// Returns None if no session cookie is found.
+fn extract_session_id_from_request(req: &Request) -> Option<String> {
+	req.headers
+		.get(hyper::header::COOKIE)
+		.and_then(|v| v.to_str().ok())
+		.and_then(|cookie_str| {
+			for part in cookie_str.split(';') {
+				let mut iter = part.trim().splitn(2, '=');
+				if let (Some(name), Some(value)) = (iter.next(), iter.next())
+					&& name == "sessionid"
+				{
+					return Some(value.to_string());
+				}
+			}
+			None
+		})
+}
+
+/// Generate CSRF token from request session
+///
+/// This function generates a UUID-based CSRF token for each request.
+/// In a full implementation with session store access, this would:
+/// 1. Extract session ID from cookies
+/// 2. Look up session in session store
+/// 3. Get or create CSRF token in session
+///
+/// For now, we generate a unique token per request as a placeholder.
+/// The token can be validated on subsequent requests by embedding it
+/// in both the response and a cookie.
+fn generate_csrf_token_from_request(req: &Request) -> Option<String> {
+	// Try to extract session ID from request
+	let session_id = extract_session_id_from_request(req);
+
+	// Generate a unique token
+	// In production, this should be tied to the session and stored
+	// For now, we generate a new UUID-based token
+	if session_id.is_some() {
+		Some(format!("csrf_{}", uuid::Uuid::new_v4()))
+	} else {
+		// Even without session, generate a token for demonstration purposes
+		Some(format!("csrf_{}", uuid::Uuid::new_v4()))
+	}
 }
 
 #[cfg(test)]

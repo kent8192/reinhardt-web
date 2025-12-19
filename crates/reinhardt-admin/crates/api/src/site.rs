@@ -12,6 +12,9 @@ use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
 use reinhardt_urls::routers::UnifiedRouter;
 use std::sync::Arc;
 
+#[cfg(feature = "contenttypes")]
+use reinhardt_db::contenttypes::{ContentType, PermissionAction};
+
 /// The main admin site that manages all registered models
 ///
 /// # Examples
@@ -358,6 +361,161 @@ impl AdminSite {
 	/// ```
 	pub fn get_router(self, _db: DatabaseConnection) -> AdminRouter {
 		AdminRouter::from_arc(Arc::new(self))
+	}
+
+	/// Get all registered model admins as a vector
+	///
+	/// Returns a vector of all registered model admins, useful for iterating
+	/// over all models.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_admin_api::{AdminSite, ModelAdminConfig};
+	///
+	/// let admin = AdminSite::new("Admin");
+	/// admin.register("User", ModelAdminConfig::new("User")).unwrap();
+	/// admin.register("Post", ModelAdminConfig::new("Post")).unwrap();
+	///
+	/// let admins = admin.get_all_model_admins();
+	/// assert_eq!(admins.len(), 2);
+	/// ```
+	pub fn get_all_model_admins(&self) -> Vec<Arc<dyn ModelAdmin>> {
+		self.registry
+			.iter()
+			.map(|entry| Arc::clone(entry.value()))
+			.collect()
+	}
+
+	/// Get ContentTypes for all registered models
+	///
+	/// Returns a vector of ContentType instances for all registered model admins.
+	/// This is useful for permission checking and generic relations.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_admin_api::{AdminSite, ModelAdminConfig, ModelAdmin};
+	///
+	/// let admin = AdminSite::new("Admin");
+	/// admin.register("User", ModelAdminConfig::new("User").with_app_label("accounts")).unwrap();
+	/// admin.register("Post", ModelAdminConfig::new("Post").with_app_label("blog")).unwrap();
+	///
+	/// let content_types = admin.get_registered_content_types();
+	/// assert_eq!(content_types.len(), 2);
+	/// ```
+	#[cfg(feature = "contenttypes")]
+	pub fn get_registered_content_types(&self) -> Vec<ContentType> {
+		self.registry
+			.iter()
+			.map(|entry| entry.value().get_content_type())
+			.collect()
+	}
+
+	/// Get model admins accessible to a user based on a permission action
+	///
+	/// Returns only the model admins where the user has the specified permission.
+	/// This is useful for building filtered navigation menus in the admin interface.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_admin_api::{AdminSite, ModelAdminConfig};
+	/// use reinhardt_db::contenttypes::{PermissionAction, PermissionContext};
+	///
+	/// # async fn example() {
+	/// let admin = AdminSite::new("Admin");
+	/// admin.register("User", ModelAdminConfig::new("User")).unwrap();
+	///
+	/// let ctx = PermissionContext::authenticated("admin_user");
+	/// let user: Box<dyn std::any::Any + Send + Sync> = Box::new(());
+	///
+	/// let accessible = admin.get_accessible_models(PermissionAction::View, &*user).await;
+	/// # }
+	/// ```
+	#[cfg(feature = "contenttypes")]
+	pub async fn get_accessible_models(
+		&self,
+		action: PermissionAction,
+		user: &(dyn std::any::Any + Send + Sync),
+	) -> Vec<Arc<dyn ModelAdmin>> {
+		let mut accessible = Vec::new();
+
+		for entry in self.registry.iter() {
+			let model_admin = entry.value();
+			if model_admin.has_content_type_permission(action, user).await {
+				accessible.push(Arc::clone(model_admin));
+			}
+		}
+
+		accessible
+	}
+
+	/// Check if a user has a specific permission for any registered model
+	///
+	/// Returns true if the user has the specified permission for at least one model.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_admin_api::{AdminSite, ModelAdminConfig};
+	/// use reinhardt_db::contenttypes::PermissionAction;
+	///
+	/// # async fn example() {
+	/// let admin = AdminSite::new("Admin");
+	/// admin.register("User", ModelAdminConfig::new("User")).unwrap();
+	///
+	/// let user: Box<dyn std::any::Any + Send + Sync> = Box::new(());
+	/// let has_any = admin.has_any_permission(PermissionAction::View, &*user).await;
+	/// # }
+	/// ```
+	#[cfg(feature = "contenttypes")]
+	pub async fn has_any_permission(
+		&self,
+		action: PermissionAction,
+		user: &(dyn std::any::Any + Send + Sync),
+	) -> bool {
+		for entry in self.registry.iter() {
+			if entry
+				.value()
+				.has_content_type_permission(action, user)
+				.await
+			{
+				return true;
+			}
+		}
+		false
+	}
+
+	/// Get all permission codenames for registered models
+	///
+	/// Returns all permission strings (e.g., "admin.view_user", "admin.add_user")
+	/// for all registered models and all permission actions.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_admin_api::{AdminSite, ModelAdminConfig};
+	///
+	/// let admin = AdminSite::new("Admin");
+	/// admin.register("User", ModelAdminConfig::new("User")).unwrap();
+	///
+	/// let permissions = admin.get_all_permissions();
+	/// // Contains: ["admin.view_user", "admin.add_user", "admin.change_user", "admin.delete_user"]
+	/// assert_eq!(permissions.len(), 4);
+	/// ```
+	#[cfg(feature = "contenttypes")]
+	pub fn get_all_permissions(&self) -> Vec<String> {
+		let mut permissions = Vec::new();
+
+		for entry in self.registry.iter() {
+			let model_admin = entry.value();
+			for action in PermissionAction::all() {
+				permissions.push(model_admin.get_permission_codename(action));
+			}
+		}
+
+		permissions
 	}
 
 	/// Configure dependency injection container for admin panel

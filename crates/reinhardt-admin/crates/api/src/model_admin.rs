@@ -4,6 +4,9 @@
 
 use async_trait::async_trait;
 
+#[cfg(feature = "contenttypes")]
+use reinhardt_db::contenttypes::{ContentType, PermissionAction};
+
 /// Trait for configuring model administration
 ///
 /// Implement this trait to customize how a model is displayed and edited in the admin.
@@ -94,6 +97,45 @@ pub trait ModelAdmin: Send + Sync {
 	async fn has_delete_permission(&self, _user: &(dyn std::any::Any + Send + Sync)) -> bool {
 		true
 	}
+
+	/// Get the application label for this model
+	///
+	/// Used for permission checking and ContentType registration.
+	/// By default, returns "admin".
+	fn app_label(&self) -> &str {
+		"admin"
+	}
+
+	/// Get the ContentType for this model
+	///
+	/// Returns a ContentType based on the app_label and model_name.
+	/// This is used for permission checking and generic relations.
+	#[cfg(feature = "contenttypes")]
+	fn get_content_type(&self) -> ContentType {
+		ContentType::new(self.app_label(), self.model_name())
+	}
+
+	/// Check if user has a specific permission for this model's ContentType
+	///
+	/// Uses the ContentType-based permission system for fine-grained access control.
+	/// Default implementation always returns true.
+	#[cfg(feature = "contenttypes")]
+	async fn has_content_type_permission(
+		&self,
+		_action: PermissionAction,
+		_user: &(dyn std::any::Any + Send + Sync),
+	) -> bool {
+		true
+	}
+
+	/// Get the permission string for a specific action
+	///
+	/// Returns a Django-style permission string like "app_label.action_model".
+	#[cfg(feature = "contenttypes")]
+	fn get_permission_codename(&self, action: PermissionAction) -> String {
+		use reinhardt_db::contenttypes::ContentTypePermission;
+		ContentTypePermission::format(&self.get_content_type(), action)
+	}
 }
 
 /// Configuration-based model admin implementation
@@ -117,6 +159,7 @@ pub trait ModelAdmin: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct ModelAdminConfig {
 	model_name: String,
+	app_label: String,
 	table_name: Option<String>,
 	pk_field: String,
 	list_display: Vec<String>,
@@ -138,10 +181,12 @@ impl ModelAdminConfig {
 	///
 	/// let admin = ModelAdminConfig::new("User");
 	/// assert_eq!(admin.model_name(), "User");
+	/// assert_eq!(admin.app_label(), "admin");
 	/// ```
 	pub fn new(model_name: impl Into<String>) -> Self {
 		Self {
 			model_name: model_name.into(),
+			app_label: "admin".into(),
 			table_name: None,
 			pk_field: "id".into(),
 			list_display: vec!["id".into()],
@@ -152,6 +197,21 @@ impl ModelAdminConfig {
 			ordering: vec!["-id".into()],
 			list_per_page: None,
 		}
+	}
+
+	/// Set the application label
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_admin_api::{ModelAdminConfig, ModelAdmin};
+	///
+	/// let admin = ModelAdminConfig::new("User").with_app_label("accounts");
+	/// assert_eq!(admin.app_label(), "accounts");
+	/// ```
+	pub fn with_app_label(mut self, label: impl Into<String>) -> Self {
+		self.app_label = label.into();
+		self
 	}
 
 	/// Start building a model admin configuration
@@ -193,6 +253,10 @@ impl ModelAdminConfig {
 impl ModelAdmin for ModelAdminConfig {
 	fn model_name(&self) -> &str {
 		&self.model_name
+	}
+
+	fn app_label(&self) -> &str {
+		&self.app_label
 	}
 
 	fn table_name(&self) -> &str {
@@ -240,6 +304,7 @@ impl ModelAdmin for ModelAdminConfig {
 #[derive(Debug, Default)]
 pub struct ModelAdminConfigBuilder {
 	model_name: Option<String>,
+	app_label: Option<String>,
 	table_name: Option<String>,
 	pk_field: Option<String>,
 	list_display: Option<Vec<String>>,
@@ -255,6 +320,14 @@ impl ModelAdminConfigBuilder {
 	/// Set the model name
 	pub fn model_name(mut self, name: impl Into<String>) -> Self {
 		self.model_name = Some(name.into());
+		self
+	}
+
+	/// Set the application label
+	///
+	/// If not set, defaults to "admin".
+	pub fn app_label(mut self, label: impl Into<String>) -> Self {
+		self.app_label = Some(label.into());
 		self
 	}
 
@@ -324,6 +397,7 @@ impl ModelAdminConfigBuilder {
 	pub fn build(self) -> ModelAdminConfig {
 		ModelAdminConfig {
 			model_name: self.model_name.expect("model_name is required"),
+			app_label: self.app_label.unwrap_or_else(|| "admin".into()),
 			table_name: self.table_name,
 			pk_field: self.pk_field.unwrap_or_else(|| "id".into()),
 			list_display: self.list_display.unwrap_or_else(|| vec!["id".into()]),
