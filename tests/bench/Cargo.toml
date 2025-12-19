@@ -9,9 +9,6 @@ publish = false
 reinhardt-test = { workspace = true }
 reinhardt-proxy = { workspace = true }
 reinhardt-orm = { workspace = true }
-reinhardt-template = { workspace = true }
-reinhardt-templates = { workspace = true }
-reinhardt-renderers = { workspace = true }
 reinhardt-auth = { workspace = true, features = ["jwt"] }
 reinhardt-serializers = { workspace = true }
 reinhardt-apps = { workspace = true }
@@ -39,15 +36,8 @@ tempfile = "3.14"
 futures = "0.3"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 
-# Template engines
-tera = "1.20"
-
 [[bench]]
 name = "performance_benchmarks"
-harness = false
-
-[[bench]]
-name = "template_benchmarks"
 harness = false
 
 [[bench]]
