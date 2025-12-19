@@ -53,7 +53,8 @@ pub struct Parameter {
 /// Type specifier for parameters
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeSpec {
-	/// Integer type
+	// === Basic types (legacy) ===
+	/// Integer type (unsigned, legacy compatibility)
 	Int,
 	/// String type
 	Str,
@@ -63,29 +64,90 @@ pub enum TypeSpec {
 	Slug,
 	/// Path type (can include slashes)
 	Path,
+
+	// === Signed integer types ===
+	/// 8-bit signed integer
+	I8,
+	/// 16-bit signed integer
+	I16,
+	/// 32-bit signed integer
+	I32,
+	/// 64-bit signed integer
+	I64,
+
+	// === Unsigned integer types ===
+	/// 8-bit unsigned integer
+	U8,
+	/// 16-bit unsigned integer
+	U16,
+	/// 32-bit unsigned integer
+	U32,
+	/// 64-bit unsigned integer
+	U64,
+
+	// === Floating point types ===
+	/// 32-bit floating point
+	F32,
+	/// 64-bit floating point
+	F64,
+
+	// === Other types ===
+	/// Boolean type (true/false/1/0)
+	Bool,
+	/// Email address format
+	Email,
+	/// ISO 8601 date format (YYYY-MM-DD)
+	Date,
 }
 
 impl TypeSpec {
 	/// Get all valid type specifier names
 	///
 	/// Returns an array of valid type specifiers for URL parameters:
-	/// - `int`: Integer type
+	/// - `int`: Integer type (unsigned, legacy)
 	/// - `str`: String type
 	/// - `uuid`: UUID type
 	/// - `slug`: Slug type (alphanumeric + hyphens/underscores)
 	/// - `path`: Path type (can include slashes)
+	/// - `i8`, `i16`, `i32`, `i64`: Signed integer types
+	/// - `u8`, `u16`, `u32`, `u64`: Unsigned integer types
+	/// - `f32`, `f64`: Floating point types
+	/// - `bool`: Boolean type
+	/// - `email`: Email address format
+	/// - `date`: ISO 8601 date format
 	pub fn valid_types() -> &'static [&'static str] {
-		&["int", "str", "uuid", "slug", "path"]
+		&[
+			"int", "str", "uuid", "slug", "path", "i8", "i16", "i32", "i64", "u8", "u16", "u32",
+			"u64", "f32", "f64", "bool", "email", "date",
+		]
 	}
 
 	/// Convert from string to TypeSpec
 	fn from_str(s: &str) -> Option<Self> {
 		match s {
+			// Basic types (legacy)
 			"int" => Some(TypeSpec::Int),
 			"str" => Some(TypeSpec::Str),
 			"uuid" => Some(TypeSpec::Uuid),
 			"slug" => Some(TypeSpec::Slug),
 			"path" => Some(TypeSpec::Path),
+			// Signed integers
+			"i8" => Some(TypeSpec::I8),
+			"i16" => Some(TypeSpec::I16),
+			"i32" => Some(TypeSpec::I32),
+			"i64" => Some(TypeSpec::I64),
+			// Unsigned integers
+			"u8" => Some(TypeSpec::U8),
+			"u16" => Some(TypeSpec::U16),
+			"u32" => Some(TypeSpec::U32),
+			"u64" => Some(TypeSpec::U64),
+			// Floating point
+			"f32" => Some(TypeSpec::F32),
+			"f64" => Some(TypeSpec::F64),
+			// Other types
+			"bool" => Some(TypeSpec::Bool),
+			"email" => Some(TypeSpec::Email),
+			"date" => Some(TypeSpec::Date),
 			_ => None,
 		}
 	}
@@ -104,14 +166,39 @@ fn identifier(input: &str) -> IResult<&str, &str> {
 	.parse(input)
 }
 
-/// Parse a type specifier (int, str, uuid, slug, path)
+/// Parse a type specifier
+///
+/// Supported types:
+/// - Basic: int, str, uuid, slug, path
+/// - Signed integers: i8, i16, i32, i64
+/// - Unsigned integers: u8, u16, u32, u64
+/// - Floating point: f32, f64
+/// - Other: bool, email, date
 fn type_spec(input: &str) -> IResult<&str, TypeSpec> {
 	alt((
+		// Basic types (legacy)
 		value(TypeSpec::Int, tag("int")),
 		value(TypeSpec::Str, tag("str")),
 		value(TypeSpec::Uuid, tag("uuid")),
 		value(TypeSpec::Slug, tag("slug")),
 		value(TypeSpec::Path, tag("path")),
+		// Signed integers (order matters: i64 before i6, etc.)
+		value(TypeSpec::I64, tag("i64")),
+		value(TypeSpec::I32, tag("i32")),
+		value(TypeSpec::I16, tag("i16")),
+		value(TypeSpec::I8, tag("i8")),
+		// Unsigned integers
+		value(TypeSpec::U64, tag("u64")),
+		value(TypeSpec::U32, tag("u32")),
+		value(TypeSpec::U16, tag("u16")),
+		value(TypeSpec::U8, tag("u8")),
+		// Floating point
+		value(TypeSpec::F64, tag("f64")),
+		value(TypeSpec::F32, tag("f32")),
+		// Other types
+		value(TypeSpec::Bool, tag("bool")),
+		value(TypeSpec::Email, tag("email")),
+		value(TypeSpec::Date, tag("date")),
 	))
 	.parse(input)
 }

@@ -32,6 +32,8 @@ trybuild = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reinhardt-db = { workspace = true, features = ["orm", "migrations"] }
+reinhardt-migrations = { workspace = true }
+reinhardt-orm = { workspace = true }
 reinhardt-signals = { path = "../signals", version = "0.1.0-alpha.1" }
 serial_test = { workspace = true }
 reinhardt-di = { workspace = true }
