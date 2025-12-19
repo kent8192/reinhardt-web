@@ -12,9 +12,16 @@
 //! - **Generic relations**: Type-safe polymorphic relationships
 //! - **Database persistence**: Store content types in database with caching
 
+pub mod cleanup;
 pub mod contenttypes;
 pub mod generic_fk;
+pub mod inspect;
+pub mod migration;
+pub mod permissions;
 pub mod persistence;
+pub mod serialization;
+pub mod shortcuts;
+pub mod sync;
 
 #[cfg(feature = "database")]
 pub mod multi_db;
@@ -28,6 +35,8 @@ pub use contenttypes::{
 };
 
 pub use generic_fk::GenericForeignKeyField;
+
+pub use permissions::{ContentTypePermission, PermissionAction, PermissionContext};
 
 #[cfg(feature = "database")]
 pub use generic_fk::constraints;
