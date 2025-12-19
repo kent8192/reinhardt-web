@@ -1,0 +1,9 @@
+{
+  "user_id": 1,
+  "username": "testuser",
+  "email": "test@example.com",
+  "is_authenticated": true,
+  "is_staff": false,
+  "is_superuser": false,
+  "permissions": ["view_post", "create_post", "edit_own_post"]
+}

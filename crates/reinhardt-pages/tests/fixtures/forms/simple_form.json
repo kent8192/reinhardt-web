@@ -1,0 +1,17 @@
+{
+  "name": "LoginForm",
+  "fields": [
+    {
+      "name": "username",
+      "type": "text",
+      "required": true,
+      "validators": ["required", "min_length:3"]
+    },
+    {
+      "name": "password",
+      "type": "password",
+      "required": true,
+      "validators": ["required", "min_length:8"]
+    }
+  ]
+}
