@@ -1,0 +1,42 @@
+[package]
+name = "reinhardt-admin-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Server Functions for Reinhardt admin panel"
+keywords = ["reinhardt", "admin", "server-functions", "web", "framework"]
+categories = ["web-programming"]
+
+[features]
+default = []
+# All features
+full = []
+
+[dependencies]
+# Shared type definitions
+reinhardt-admin-types = { workspace = true }
+
+# Core logic
+reinhardt-admin-core = { path = "../core" }
+
+# Reinhardt dependencies
+reinhardt-pages = { workspace = true }
+reinhardt-di = { workspace = true }
+reinhardt-http = { workspace = true }
+reinhardt-db = { workspace = true, features = ["orm"] }
+
+# Core dependencies
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_urlencoded = { workspace = true }
+csv = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+rstest = { workspace = true }
