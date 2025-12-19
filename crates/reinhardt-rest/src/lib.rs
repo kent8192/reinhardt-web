@@ -5,30 +5,24 @@
 //! This crate provides a complete REST API framework by integrating:
 //! - **Serializers**: Data serialization and validation (from reinhardt-serializers)
 //! - **Parsers**: Request body parsing (from reinhardt-parsers)
-//! - **Renderers**: Response rendering (from reinhardt-renderers)
 //! - **Authentication**: JWT, Token, Session, Basic auth (from reinhardt-auth)
 //! - **Routers**: Automatic URL routing for ViewSets (from reinhardt-routers)
 //! - **Browsable API**: HTML interface for API exploration (from reinhardt-browsable-api)
 //!
 //! ## Features
 //!
-//! - **default**: Enables serializers, parsers, and renderers
+//! - **default**: Enables serializers and parsers
 //! - **serializers**: Data serialization and validation components
 //! - **parsers**: Request body parsing (JSON, Form, Multipart)
-//! - **renderers**: Response rendering (JSON, XML, YAML, CSV, etc.)
 //!
 //! ## Example
 //!
 //! ```rust
 //! use reinhardt_rest::parsers::JSONParser;
-//! use reinhardt_rest::renderers::JSONRenderer;
 //! use reinhardt_rest::routers::DefaultRouter;
 //!
 //! // Create a JSON parser
 //! let parser = JSONParser::new();
-//!
-//! // Create a JSON renderer
-//! let renderer = JSONRenderer::new();
 //!
 //! // Create a router
 //! let router = DefaultRouter::new();
@@ -50,10 +44,6 @@ pub use reinhardt_serializers as serializers;
 // Parsers module - now part of reinhardt-rest
 #[cfg(feature = "parsers")]
 pub use reinhardt_core::parsers;
-
-// Renderers module
-#[cfg(feature = "renderers")]
-pub use reinhardt_renderers as renderers;
 
 // Re-export other internal crates
 pub use reinhardt_core::negotiation;
@@ -102,9 +92,6 @@ pub use reinhardt_core::parsers::{
 	FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
 	Parser,
 };
-
-#[cfg(feature = "renderers")]
-pub use reinhardt_browsable_api::BrowsableApiRenderer as BrowsableAPIRenderer;
 
 // OpenAPI module - from crates/openapi
 #[cfg(feature = "openapi")]
@@ -158,15 +145,6 @@ mod tests {
 		{
 			use crate::JSONParser;
 			let _parser = JSONParser::new();
-		}
-	}
-
-	#[test]
-	fn test_renderers_module_available() {
-		#[cfg(feature = "renderers")]
-		{
-			use crate::renderers::JSONRenderer;
-			let _renderer = JSONRenderer::new();
 		}
 	}
 }

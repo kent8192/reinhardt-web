@@ -7,10 +7,9 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["serializers", "parsers", "renderers"]
+default = ["serializers", "parsers"]
 serializers = ["reinhardt-db"]
 parsers = []
-renderers = ["reinhardt-renderers"]
 jwt = ["reinhardt-auth/jwt"]
 # Subcrate features (always enabled as non-optional dependencies, but exposed as features for compatibility)
 pagination = []
@@ -26,7 +25,6 @@ openapi = ["reinhardt-openapi"]
 rest-full = [
   "serializers",
   "parsers",
-  "renderers",
   "jwt",
   "pagination",
   "filters",
@@ -90,11 +88,10 @@ sqlx = { workspace = true }
 # Multipart parsing (for parsers)
 multer = "3.0"
 
-# Rendering (for renderers)
+# Rendering
 quick-xml = { version = "0.38.3", features = ["serialize"] }
 csv = "1.3"
 utoipa = { version = "5.4", features = ["yaml"] }
-reinhardt-renderers = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
