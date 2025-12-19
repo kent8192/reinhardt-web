@@ -49,6 +49,7 @@ mod composite;
 mod create_api;
 mod destroy_api;
 mod list_api;
+mod retrieve_api;
 mod update_api;
 
 // Re-export all API views
@@ -58,6 +59,7 @@ pub use composite::{
 pub use create_api::CreateAPIView;
 pub use destroy_api::DestroyAPIView;
 pub use list_api::ListAPIView;
+pub use retrieve_api::RetrieveAPIView;
 pub use update_api::UpdateAPIView;
 
 // Unit tests
