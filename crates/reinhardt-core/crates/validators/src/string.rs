@@ -1,5 +1,6 @@
 //! String validators
 
+use crate::lazy_patterns::{SLUG_ASCII_REGEX, SLUG_UNICODE_REGEX, UUID_REGEX};
 use crate::{ValidationError, ValidationResult, Validator};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use regex::Regex;
@@ -7,6 +8,7 @@ use regex::Regex;
 /// Minimum length validator
 pub struct MinLengthValidator {
 	min: usize,
+	message: Option<String>,
 }
 
 impl MinLengthValidator {
@@ -22,7 +24,30 @@ impl MinLengthValidator {
 	/// assert!(validator.validate("hi").is_err());
 	/// ```
 	pub fn new(min: usize) -> Self {
-		Self { min }
+		Self { min, message: None }
+	}
+
+	/// Sets a custom error message for the validator.
+	///
+	/// When set, this message will be used instead of the default error message.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{MinLengthValidator, Validator, ValidationError};
+	///
+	/// let validator = MinLengthValidator::new(5)
+	///     .with_message("Username must be at least 5 characters");
+	///
+	/// let result = validator.validate("hi");
+	/// assert!(result.is_err());
+	/// if let Err(ValidationError::Custom(msg)) = result {
+	///     assert_eq!(msg, "Username must be at least 5 characters");
+	/// }
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
 	}
 }
 
@@ -30,6 +55,8 @@ impl Validator<String> for MinLengthValidator {
 	fn validate(&self, value: &String) -> ValidationResult<()> {
 		if value.len() >= self.min {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::TooShort {
 				length: value.len(),
@@ -43,6 +70,8 @@ impl Validator<str> for MinLengthValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
 		if value.len() >= self.min {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::TooShort {
 				length: value.len(),
@@ -55,6 +84,7 @@ impl Validator<str> for MinLengthValidator {
 /// Maximum length validator
 pub struct MaxLengthValidator {
 	max: usize,
+	message: Option<String>,
 }
 
 impl MaxLengthValidator {
@@ -70,7 +100,30 @@ impl MaxLengthValidator {
 	/// assert!(validator.validate("hello world").is_err());
 	/// ```
 	pub fn new(max: usize) -> Self {
-		Self { max }
+		Self { max, message: None }
+	}
+
+	/// Sets a custom error message for the validator.
+	///
+	/// When set, this message will be used instead of the default error message.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{MaxLengthValidator, Validator, ValidationError};
+	///
+	/// let validator = MaxLengthValidator::new(10)
+	///     .with_message("Username must be at most 10 characters");
+	///
+	/// let result = validator.validate("this is way too long");
+	/// assert!(result.is_err());
+	/// if let Err(ValidationError::Custom(msg)) = result {
+	///     assert_eq!(msg, "Username must be at most 10 characters");
+	/// }
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
 	}
 }
 
@@ -78,6 +131,8 @@ impl Validator<String> for MaxLengthValidator {
 	fn validate(&self, value: &String) -> ValidationResult<()> {
 		if value.len() <= self.max {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::TooLong {
 				length: value.len(),
@@ -91,6 +146,8 @@ impl Validator<str> for MaxLengthValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
 		if value.len() <= self.max {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::TooLong {
 				length: value.len(),
@@ -168,8 +225,8 @@ impl Validator<str> for RegexValidator {
 ///
 /// Slugs can contain lowercase letters, numbers, hyphens, and underscores.
 pub struct SlugValidator {
-	regex: Regex,
 	allow_unicode: bool,
+	message: Option<String>,
 }
 
 impl SlugValidator {
@@ -187,8 +244,8 @@ impl SlugValidator {
 	/// ```
 	pub fn new() -> Self {
 		Self {
-			regex: Regex::new(r"^[-a-zA-Z0-9_]+$").unwrap(),
 			allow_unicode: false,
+			message: None,
 		}
 	}
 
@@ -204,9 +261,24 @@ impl SlugValidator {
 	/// ```
 	pub fn allow_unicode(mut self, allow: bool) -> Self {
 		self.allow_unicode = allow;
-		if allow {
-			self.regex = Regex::new(r"^[-\w]+$").unwrap();
-		}
+		self
+	}
+
+	/// Sets a custom error message for the validator.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{SlugValidator, Validator, ValidationError};
+	///
+	/// let validator = SlugValidator::new()
+	///     .with_message("Invalid URL slug format");
+	///
+	/// let result = validator.validate("invalid slug!");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
 		self
 	}
 }
@@ -226,13 +298,25 @@ impl Validator<String> for SlugValidator {
 impl Validator<str> for SlugValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
 		if value.is_empty() {
-			return Err(ValidationError::InvalidSlug(
-				"Slug cannot be empty".to_string(),
-			));
+			return if let Some(ref msg) = self.message {
+				Err(ValidationError::Custom(msg.clone()))
+			} else {
+				Err(ValidationError::InvalidSlug(
+					"Slug cannot be empty".to_string(),
+				))
+			};
 		}
 
-		if self.regex.is_match(value) {
+		let is_valid = if self.allow_unicode {
+			SLUG_UNICODE_REGEX.is_match(value)
+		} else {
+			SLUG_ASCII_REGEX.is_match(value)
+		};
+
+		if is_valid {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::InvalidSlug(format!(
 				"Slug must contain only letters, numbers, hyphens, and underscores{}",
@@ -249,6 +333,7 @@ impl Validator<str> for SlugValidator {
 /// UUID validator - validates UUID formats (v1-v5)
 pub struct UUIDValidator {
 	version: Option<u8>,
+	message: Option<String>,
 }
 
 impl UUIDValidator {
@@ -263,7 +348,10 @@ impl UUIDValidator {
 	/// assert!(validator.validate("550e8400-e29b-41d4-a716-446655440000").is_ok());
 	/// ```
 	pub fn new() -> Self {
-		Self { version: None }
+		Self {
+			version: None,
+			message: None,
+		}
 	}
 
 	/// Specifies the UUID version to validate (1-5).
@@ -278,6 +366,22 @@ impl UUIDValidator {
 	/// ```
 	pub fn version(mut self, version: u8) -> Self {
 		self.version = Some(version);
+		self
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{UUIDValidator, Validator};
+	///
+	/// let validator = UUIDValidator::new().with_message("Please enter a valid UUID");
+	/// let result = validator.validate("not-a-uuid");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
 		self
 	}
 }
@@ -296,32 +400,41 @@ impl Validator<String> for UUIDValidator {
 
 impl Validator<str> for UUIDValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
-		// UUID format: 8-4-4-4-12 hex digits
-		let uuid_regex =
-			Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").unwrap();
-
-		if !uuid_regex.is_match(&value.to_lowercase()) {
-			return Err(ValidationError::InvalidUUID(
-				"Invalid UUID format".to_string(),
-			));
+		// UUID format: 8-4-4-4-12 hex digits (uses pre-compiled lazy pattern)
+		if !UUID_REGEX.is_match(&value.to_lowercase()) {
+			return if let Some(ref msg) = self.message {
+				Err(ValidationError::Custom(msg.clone()))
+			} else {
+				Err(ValidationError::InvalidUUID(
+					"Invalid UUID format".to_string(),
+				))
+			};
 		}
 
 		if let Some(version) = self.version {
 			let parts: Vec<&str> = value.split('-').collect();
 			if parts.len() != 5 {
-				return Err(ValidationError::InvalidUUID(
-					"Invalid UUID format".to_string(),
-				));
+				return if let Some(ref msg) = self.message {
+					Err(ValidationError::Custom(msg.clone()))
+				} else {
+					Err(ValidationError::InvalidUUID(
+						"Invalid UUID format".to_string(),
+					))
+				};
 			}
 
 			let version_part = parts[2];
 			if let Some(first_char) = version_part.chars().next() {
 				let uuid_version = first_char.to_digit(16).unwrap_or(0) as u8;
 				if uuid_version != version {
-					return Err(ValidationError::InvalidUUID(format!(
-						"Expected UUID version {}, got version {}",
-						version, uuid_version
-					)));
+					return if let Some(ref msg) = self.message {
+						Err(ValidationError::Custom(msg.clone()))
+					} else {
+						Err(ValidationError::InvalidUUID(format!(
+							"Expected UUID version {}, got version {}",
+							version, uuid_version
+						)))
+					};
 				}
 			}
 		}
@@ -333,6 +446,7 @@ impl Validator<str> for UUIDValidator {
 /// Date validator - validates date strings
 pub struct DateValidator {
 	format: String,
+	message: Option<String>,
 }
 
 impl DateValidator {
@@ -350,6 +464,7 @@ impl DateValidator {
 	pub fn new() -> Self {
 		Self {
 			format: "%Y-%m-%d".to_string(),
+			message: None,
 		}
 	}
 
@@ -365,6 +480,22 @@ impl DateValidator {
 	/// ```
 	pub fn with_format(mut self, format: &str) -> Self {
 		self.format = format.to_string();
+		self
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{DateValidator, Validator};
+	///
+	/// let validator = DateValidator::new().with_message("Invalid date format");
+	/// let result = validator.validate("not-a-date");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
 		self
 	}
 }
@@ -385,13 +516,20 @@ impl Validator<str> for DateValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
 		NaiveDate::parse_from_str(value, &self.format)
 			.map(|_| ())
-			.map_err(|_| ValidationError::InvalidDate(format!("Expected format: {}", self.format)))
+			.map_err(|_| {
+				if let Some(ref msg) = self.message {
+					ValidationError::Custom(msg.clone())
+				} else {
+					ValidationError::InvalidDate(format!("Expected format: {}", self.format))
+				}
+			})
 	}
 }
 
 /// Time validator - validates time strings
 pub struct TimeValidator {
 	format: String,
+	message: Option<String>,
 }
 
 impl TimeValidator {
@@ -409,6 +547,7 @@ impl TimeValidator {
 	pub fn new() -> Self {
 		Self {
 			format: "%H:%M:%S".to_string(),
+			message: None,
 		}
 	}
 
@@ -424,6 +563,22 @@ impl TimeValidator {
 	/// ```
 	pub fn with_format(mut self, format: &str) -> Self {
 		self.format = format.to_string();
+		self
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{TimeValidator, Validator};
+	///
+	/// let validator = TimeValidator::new().with_message("Invalid time format");
+	/// let result = validator.validate("not-a-time");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
 		self
 	}
 }
@@ -444,13 +599,20 @@ impl Validator<str> for TimeValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
 		NaiveTime::parse_from_str(value, &self.format)
 			.map(|_| ())
-			.map_err(|_| ValidationError::InvalidTime(format!("Expected format: {}", self.format)))
+			.map_err(|_| {
+				if let Some(ref msg) = self.message {
+					ValidationError::Custom(msg.clone())
+				} else {
+					ValidationError::InvalidTime(format!("Expected format: {}", self.format))
+				}
+			})
 	}
 }
 
 /// DateTime validator - validates datetime strings
 pub struct DateTimeValidator {
 	format: String,
+	message: Option<String>,
 }
 
 impl DateTimeValidator {
@@ -468,6 +630,7 @@ impl DateTimeValidator {
 	pub fn new() -> Self {
 		Self {
 			format: "%Y-%m-%d %H:%M:%S".to_string(),
+			message: None,
 		}
 	}
 
@@ -483,6 +646,22 @@ impl DateTimeValidator {
 	/// ```
 	pub fn with_format(mut self, format: &str) -> Self {
 		self.format = format.to_string();
+		self
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{DateTimeValidator, Validator};
+	///
+	/// let validator = DateTimeValidator::new().with_message("Invalid datetime format");
+	/// let result = validator.validate("not-a-datetime");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
 		self
 	}
 }
@@ -504,13 +683,19 @@ impl Validator<str> for DateTimeValidator {
 		NaiveDateTime::parse_from_str(value, &self.format)
 			.map(|_| ())
 			.map_err(|_| {
-				ValidationError::InvalidDateTime(format!("Expected format: {}", self.format))
+				if let Some(ref msg) = self.message {
+					ValidationError::Custom(msg.clone())
+				} else {
+					ValidationError::InvalidDateTime(format!("Expected format: {}", self.format))
+				}
 			})
 	}
 }
 
 /// JSON validator - validates JSON structure
-pub struct JSONValidator;
+pub struct JSONValidator {
+	message: Option<String>,
+}
 
 impl JSONValidator {
 	/// Creates a new JSONValidator.
@@ -525,7 +710,23 @@ impl JSONValidator {
 	/// assert!(validator.validate("invalid-json").is_err());
 	/// ```
 	pub fn new() -> Self {
-		Self
+		Self { message: None }
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{JSONValidator, Validator};
+	///
+	/// let validator = JSONValidator::new().with_message("Invalid JSON format");
+	/// let result = validator.validate("not-json");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
 	}
 }
 
@@ -545,7 +746,13 @@ impl Validator<str> for JSONValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
 		serde_json::from_str::<serde_json::Value>(value)
 			.map(|_| ())
-			.map_err(|e| ValidationError::InvalidJSON(format!("JSON parse error: {}", e)))
+			.map_err(|e| {
+				if let Some(ref msg) = self.message {
+					ValidationError::Custom(msg.clone())
+				} else {
+					ValidationError::InvalidJSON(format!("JSON parse error: {}", e))
+				}
+			})
 	}
 }
 

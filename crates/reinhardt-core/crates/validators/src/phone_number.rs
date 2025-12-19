@@ -2,8 +2,8 @@
 //!
 //! This module provides validators for international phone numbers in E.164 format.
 
+use crate::lazy_patterns::{PHONE_E164_REGEX, PHONE_EXTENSION_REGEX};
 use crate::{ValidationError, ValidationResult, Validator};
-use regex::Regex;
 
 /// Phone number validator for international phone numbers
 ///
@@ -13,8 +13,7 @@ pub struct PhoneNumberValidator {
 	pub country_codes: Option<Vec<String>>,
 	/// Whether to allow extension numbers
 	pub allow_extensions: bool,
-	regex: Regex,
-	extension_regex: Regex,
+	message: Option<String>,
 }
 
 impl PhoneNumberValidator {
@@ -33,10 +32,7 @@ impl PhoneNumberValidator {
 		Self {
 			country_codes: None,
 			allow_extensions: false,
-			// E.164 format: + followed by country code (1-3 digits starting with non-zero) and number
-			// Allows optional hyphens, spaces, dots, and parentheses for readability
-			regex: Regex::new(r"^\+([1-9]\d{0,2})[\s.\-()]*\d+[\s.\-\d()]*$").unwrap(),
-			extension_regex: Regex::new(r"^(.+?)(?:\s*(?:ext\.?|x|extension)\s*(\d+))?$").unwrap(),
+			message: None,
 		}
 	}
 
@@ -61,8 +57,7 @@ impl PhoneNumberValidator {
 		Self {
 			country_codes: Some(codes),
 			allow_extensions: false,
-			regex: Regex::new(r"^\+([1-9]\d{0,2})[\s.\-()]*\d+[\s.\-\d()]*$").unwrap(),
-			extension_regex: Regex::new(r"^(.+?)(?:\s*(?:ext\.?|x|extension)\s*(\d+))?$").unwrap(),
+			message: None,
 		}
 	}
 
@@ -83,6 +78,22 @@ impl PhoneNumberValidator {
 		self
 	}
 
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{PhoneNumberValidator, Validator};
+	///
+	/// let validator = PhoneNumberValidator::new().with_message("Invalid phone number");
+	/// let result = validator.validate("not-a-phone");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
+	}
+
 	/// Validates a phone number string.
 	///
 	/// # Examples
@@ -100,13 +111,15 @@ impl PhoneNumberValidator {
 		let trimmed = value.trim();
 
 		if trimmed.is_empty() {
-			return Err(ValidationError::InvalidPhoneNumber(
-				"Phone number cannot be empty".to_string(),
-			));
+			return Err(
+				self.error_with_fallback(ValidationError::InvalidPhoneNumber(
+					"Phone number cannot be empty".to_string(),
+				)),
+			);
 		}
 
 		// Extract base number and extension (if any)
-		let (base_number, extension) = if let Some(caps) = self.extension_regex.captures(trimmed) {
+		let (base_number, extension) = if let Some(caps) = PHONE_EXTENSION_REGEX.captures(trimmed) {
 			let base = caps.get(1).map_or("", |m| m.as_str());
 			let ext = caps.get(2).map(|m| m.as_str());
 			(base, ext)
@@ -116,41 +129,60 @@ impl PhoneNumberValidator {
 
 		// If extension exists but not allowed, return error
 		if extension.is_some() && !self.allow_extensions {
-			return Err(ValidationError::InvalidPhoneNumber(
-				"Extensions are not allowed".to_string(),
-			));
+			return Err(
+				self.error_with_fallback(ValidationError::InvalidPhoneNumber(
+					"Extensions are not allowed".to_string(),
+				)),
+			);
 		}
 
 		// Validate base number format
-		if !self.regex.is_match(base_number) {
-			return Err(ValidationError::InvalidPhoneNumber(
-				"Phone number must be in E.164 format: +[country code][number]".to_string(),
-			));
+		if !PHONE_E164_REGEX.is_match(base_number) {
+			return Err(
+				self.error_with_fallback(ValidationError::InvalidPhoneNumber(
+					"Phone number must be in E.164 format: +[country code][number]".to_string(),
+				)),
+			);
 		}
 
 		// Extract country code
-		let country_code = self.extract_country_code(base_number)?;
+		let country_code = self
+			.extract_country_code(base_number)
+			.map_err(|e| self.error_with_fallback(e))?;
 
 		// Validate country code if whitelist exists
 		if let Some(ref allowed_codes) = self.country_codes
 			&& !allowed_codes.contains(&country_code)
 		{
-			return Err(ValidationError::CountryCodeNotAllowed {
-				country_code,
-				allowed_countries: allowed_codes.join(", "),
-			});
+			return Err(
+				self.error_with_fallback(ValidationError::CountryCodeNotAllowed {
+					country_code,
+					allowed_countries: allowed_codes.join(", "),
+				}),
+			);
 		}
 
 		// Validate total length (E.164 allows max 15 digits including country code)
 		let digit_count = base_number.chars().filter(|c| c.is_ascii_digit()).count();
 		if !(5..=15).contains(&digit_count) {
-			return Err(ValidationError::InvalidPhoneNumber(format!(
-				"Phone number must contain 5-15 digits, got {}",
-				digit_count
-			)));
+			return Err(
+				self.error_with_fallback(ValidationError::InvalidPhoneNumber(format!(
+					"Phone number must contain 5-15 digits, got {}",
+					digit_count
+				))),
+			);
 		}
 
 		Ok(())
+	}
+
+	/// Returns custom error message if set, otherwise returns the fallback error
+	fn error_with_fallback(&self, fallback: ValidationError) -> ValidationError {
+		if let Some(ref msg) = self.message {
+			ValidationError::Custom(msg.clone())
+		} else {
+			fallback
+		}
 	}
 
 	/// Extracts the country code from a phone number

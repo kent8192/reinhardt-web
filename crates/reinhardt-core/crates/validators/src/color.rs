@@ -1,7 +1,9 @@
 //! Color validator
 
+use crate::lazy_patterns::{
+	COLOR_HEX_REGEX, COLOR_HSL_REGEX, COLOR_HSLA_REGEX, COLOR_RGB_REGEX, COLOR_RGBA_REGEX,
+};
 use crate::{ValidationError, ValidationResult, Validator};
-use regex::Regex;
 
 /// Supported color formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,11 +50,6 @@ pub enum ColorFormat {
 pub struct ColorValidator {
 	allowed_formats: Vec<ColorFormat>,
 	message: Option<String>,
-	hex_regex: Regex,
-	rgb_regex: Regex,
-	rgba_regex: Regex,
-	hsl_regex: Regex,
-	hsla_regex: Regex,
 }
 
 impl ColorValidator {
@@ -70,26 +67,9 @@ impl ColorValidator {
 	/// ```
 	pub fn new() -> Self {
 		Self {
-            allowed_formats: vec![ColorFormat::Any],
-            message: None,
-            hex_regex: Regex::new(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$").unwrap(),
-            rgb_regex: Regex::new(
-                r"^rgb\(\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*\)$",
-            )
-            .unwrap(),
-            rgba_regex: Regex::new(
-                r"^rgba\(\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*(0|1|0?\.\d+)\s*\)$",
-            )
-            .unwrap(),
-            hsl_regex: Regex::new(
-                r"^hsl\(\s*([0-9]|[1-9][0-9]|[1-2][0-9]{2}|3[0-5][0-9]|360)\s*,\s*([0-9]|[1-9][0-9]|100)%\s*,\s*([0-9]|[1-9][0-9]|100)%\s*\)$",
-            )
-            .unwrap(),
-            hsla_regex: Regex::new(
-                r"^hsla\(\s*([0-9]|[1-9][0-9]|[1-2][0-9]{2}|3[0-5][0-9]|360)\s*,\s*([0-9]|[1-9][0-9]|100)%\s*,\s*([0-9]|[1-9][0-9]|100)%\s*,\s*(0|1|0?\.\d+)\s*\)$",
-            )
-            .unwrap(),
-        }
+			allowed_formats: vec![ColorFormat::Any],
+			message: None,
+		}
 	}
 
 	/// Creates a ColorValidator that only accepts hex colors
@@ -171,27 +151,27 @@ impl ColorValidator {
 		let trimmed = value.trim();
 
 		// Check hex format
-		if self.hex_regex.is_match(trimmed) && self.is_format_allowed(ColorFormat::Hex) {
+		if COLOR_HEX_REGEX.is_match(trimmed) && self.is_format_allowed(ColorFormat::Hex) {
 			return Ok(ColorFormat::Hex);
 		}
 
 		// Check RGBA format (before RGB to avoid partial match)
-		if self.rgba_regex.is_match(trimmed) && self.is_format_allowed(ColorFormat::RGBA) {
+		if COLOR_RGBA_REGEX.is_match(trimmed) && self.is_format_allowed(ColorFormat::RGBA) {
 			return Ok(ColorFormat::RGBA);
 		}
 
 		// Check RGB format
-		if self.rgb_regex.is_match(trimmed) && self.is_format_allowed(ColorFormat::RGB) {
+		if COLOR_RGB_REGEX.is_match(trimmed) && self.is_format_allowed(ColorFormat::RGB) {
 			return Ok(ColorFormat::RGB);
 		}
 
 		// Check HSLA format (before HSL to avoid partial match)
-		if self.hsla_regex.is_match(trimmed) && self.is_format_allowed(ColorFormat::HSLA) {
+		if COLOR_HSLA_REGEX.is_match(trimmed) && self.is_format_allowed(ColorFormat::HSLA) {
 			return Ok(ColorFormat::HSLA);
 		}
 
 		// Check HSL format
-		if self.hsl_regex.is_match(trimmed) && self.is_format_allowed(ColorFormat::HSL) {
+		if COLOR_HSL_REGEX.is_match(trimmed) && self.is_format_allowed(ColorFormat::HSL) {
 			return Ok(ColorFormat::HSL);
 		}
 

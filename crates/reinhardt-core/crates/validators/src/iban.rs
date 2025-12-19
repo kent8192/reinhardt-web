@@ -36,6 +36,7 @@ pub struct IBANValidator {
 	/// Optional list of allowed country codes (ISO 3166-1 alpha-2)
 	pub country_codes: Option<Vec<String>>,
 	country_lengths: HashMap<String, usize>,
+	message: Option<String>,
 }
 
 impl IBANValidator {
@@ -52,6 +53,7 @@ impl IBANValidator {
 		Self {
 			country_codes: None,
 			country_lengths: Self::init_country_lengths(),
+			message: None,
 		}
 	}
 
@@ -68,7 +70,24 @@ impl IBANValidator {
 		Self {
 			country_codes: Some(codes.iter().map(|c| c.to_uppercase()).collect()),
 			country_lengths: Self::init_country_lengths(),
+			message: None,
 		}
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{IBANValidator, Validator};
+	///
+	/// let validator = IBANValidator::new().with_message("Invalid IBAN");
+	/// let result = validator.validate("not-an-iban");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
 	}
 
 	/// Initializes the mapping of country codes to IBAN lengths
@@ -271,6 +290,15 @@ impl IBANValidator {
 
 		remainder == 1
 	}
+
+	/// Returns custom error message if set, otherwise returns the fallback error
+	fn error_with_fallback(&self, fallback: ValidationError) -> ValidationError {
+		if let Some(ref msg) = self.message {
+			ValidationError::Custom(msg.clone())
+		} else {
+			fallback
+		}
+	}
 }
 
 impl Default for IBANValidator {
@@ -282,13 +310,15 @@ impl Default for IBANValidator {
 impl Validator<String> for IBANValidator {
 	fn validate(&self, value: &String) -> ValidationResult<()> {
 		// Validate format and get normalized IBAN
-		let iban = self.validate_format(value)?;
+		let iban = self
+			.validate_format(value)
+			.map_err(|e| self.error_with_fallback(e))?;
 
 		// Perform MOD-97 check
 		if !Self::mod97_check(&iban) {
-			return Err(ValidationError::InvalidIBAN(
+			return Err(self.error_with_fallback(ValidationError::InvalidIBAN(
 				"Invalid IBAN checksum".to_string(),
-			));
+			)));
 		}
 
 		Ok(())
@@ -298,13 +328,15 @@ impl Validator<String> for IBANValidator {
 impl Validator<str> for IBANValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
 		// Validate format and get normalized IBAN
-		let iban = self.validate_format(value)?;
+		let iban = self
+			.validate_format(value)
+			.map_err(|e| self.error_with_fallback(e))?;
 
 		// Perform MOD-97 check
 		if !Self::mod97_check(&iban) {
-			return Err(ValidationError::InvalidIBAN(
+			return Err(self.error_with_fallback(ValidationError::InvalidIBAN(
 				"Invalid IBAN checksum".to_string(),
-			));
+			)));
 		}
 
 		Ok(())

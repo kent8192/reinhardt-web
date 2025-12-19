@@ -6,6 +6,7 @@ use std::fmt::Display;
 /// Minimum value validator
 pub struct MinValueValidator<T> {
 	min: T,
+	message: Option<String>,
 }
 
 impl<T> MinValueValidator<T> {
@@ -21,7 +22,23 @@ impl<T> MinValueValidator<T> {
 	/// assert!(validator.validate(&5).is_err());
 	/// ```
 	pub fn new(min: T) -> Self {
-		Self { min }
+		Self { min, message: None }
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{MinValueValidator, Validator};
+	///
+	/// let validator = MinValueValidator::new(10).with_message("Value must be at least 10");
+	/// let result = validator.validate(&5);
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
 	}
 }
 
@@ -29,6 +46,8 @@ impl<T: PartialOrd + Display + Clone> Validator<T> for MinValueValidator<T> {
 	fn validate(&self, value: &T) -> ValidationResult<()> {
 		if value >= &self.min {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::TooSmall {
 				value: value.to_string(),
@@ -41,6 +60,7 @@ impl<T: PartialOrd + Display + Clone> Validator<T> for MinValueValidator<T> {
 /// Maximum value validator
 pub struct MaxValueValidator<T> {
 	max: T,
+	message: Option<String>,
 }
 
 impl<T> MaxValueValidator<T> {
@@ -56,7 +76,23 @@ impl<T> MaxValueValidator<T> {
 	/// assert!(validator.validate(&25).is_err());
 	/// ```
 	pub fn new(max: T) -> Self {
-		Self { max }
+		Self { max, message: None }
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{MaxValueValidator, Validator};
+	///
+	/// let validator = MaxValueValidator::new(20).with_message("Value must be at most 20");
+	/// let result = validator.validate(&25);
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
 	}
 }
 
@@ -64,6 +100,8 @@ impl<T: PartialOrd + Display + Clone> Validator<T> for MaxValueValidator<T> {
 	fn validate(&self, value: &T) -> ValidationResult<()> {
 		if value <= &self.max {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::TooLarge {
 				value: value.to_string(),
@@ -77,6 +115,7 @@ impl<T: PartialOrd + Display + Clone> Validator<T> for MaxValueValidator<T> {
 pub struct RangeValidator<T> {
 	min: T,
 	max: T,
+	message: Option<String>,
 }
 
 impl<T> RangeValidator<T> {
@@ -93,22 +132,50 @@ impl<T> RangeValidator<T> {
 	/// assert!(validator.validate(&25).is_err());
 	/// ```
 	pub fn new(min: T, max: T) -> Self {
-		Self { min, max }
+		Self {
+			min,
+			max,
+			message: None,
+		}
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{RangeValidator, Validator};
+	///
+	/// let validator = RangeValidator::new(10, 20).with_message("Value must be between 10 and 20");
+	/// let result = validator.validate(&5);
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
 	}
 }
 
 impl<T: PartialOrd + Display + Clone> Validator<T> for RangeValidator<T> {
 	fn validate(&self, value: &T) -> ValidationResult<()> {
 		if value < &self.min {
-			Err(ValidationError::TooSmall {
-				value: value.to_string(),
-				min: self.min.to_string(),
-			})
+			if let Some(ref msg) = self.message {
+				Err(ValidationError::Custom(msg.clone()))
+			} else {
+				Err(ValidationError::TooSmall {
+					value: value.to_string(),
+					min: self.min.to_string(),
+				})
+			}
 		} else if value > &self.max {
-			Err(ValidationError::TooLarge {
-				value: value.to_string(),
-				max: self.max.to_string(),
-			})
+			if let Some(ref msg) = self.message {
+				Err(ValidationError::Custom(msg.clone()))
+			} else {
+				Err(ValidationError::TooLarge {
+					value: value.to_string(),
+					max: self.max.to_string(),
+				})
+			}
 		} else {
 			Ok(())
 		}

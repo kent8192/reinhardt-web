@@ -1,11 +1,11 @@
 //! Email validator
 
+use crate::lazy_patterns::EMAIL_REGEX;
 use crate::{ValidationError, ValidationResult, Validator};
-use regex::Regex;
 
 /// Email address validator
 pub struct EmailValidator {
-	regex: Regex,
+	message: Option<String>,
 }
 
 impl EmailValidator {
@@ -34,14 +34,23 @@ impl EmailValidator {
 	/// let validator = EmailValidator::new();
 	/// ```
 	pub fn new() -> Self {
-		// RFC 5322 compliant email regex
-		// This pattern ensures:
-		// 1. Local part doesn't start/end with dots and has no consecutive dots
-		// 2. Domain labels are valid (no leading/trailing hyphens)
-		// 3. TLD is at least 2 characters
-		let pattern = r"^(?i)[a-z0-9]([a-z0-9._%+-]*[a-z0-9])?@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$";
-		let regex = Regex::new(pattern).unwrap();
-		Self { regex }
+		Self { message: None }
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{EmailValidator, Validator};
+	///
+	/// let validator = EmailValidator::new().with_message("Invalid email address");
+	/// let result = validator.validate("not-an-email");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
 	}
 
 	/// Validates an email address with additional RFC 5322 length constraints
@@ -83,7 +92,7 @@ impl EmailValidator {
 		}
 
 		// Finally, check against the regex pattern
-		self.regex.is_match(email)
+		EMAIL_REGEX.is_match(email)
 	}
 }
 
@@ -97,6 +106,8 @@ impl Validator<String> for EmailValidator {
 	fn validate(&self, value: &String) -> ValidationResult<()> {
 		if self.validate_with_length_check(value) {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::InvalidEmail(value.clone()))
 		}
@@ -107,6 +118,8 @@ impl Validator<str> for EmailValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
 		if self.validate_with_length_check(value) {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::InvalidEmail(value.to_string()))
 		}

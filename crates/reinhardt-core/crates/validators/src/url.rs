@@ -1,11 +1,11 @@
 //! URL validator
 
+use crate::lazy_patterns::URL_REGEX;
 use crate::{ValidationError, ValidationResult, Validator};
-use regex::Regex;
 
 /// URL validator
 pub struct UrlValidator {
-	regex: Regex,
+	message: Option<String>,
 }
 
 impl UrlValidator {
@@ -28,16 +28,23 @@ impl UrlValidator {
 	/// assert!(validator.validate("not-a-url").is_err());
 	/// ```
 	pub fn new() -> Self {
-		// Enhanced regex pattern that supports:
-		// - Ports: :8080, :443, etc. (1-5 digits)
-		// - Query strings: ?key=value&key2=value2
-		// - Fragments: #section
-		// - Paths: /path/to/resource
-		// Domain labels cannot start or end with hyphens
-		let regex = Regex::new(
-            r"^https?://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?(/[^\s?#]*)?(\?[^\s#]*)?(#[^\s]*)?$"
-        ).unwrap();
-		Self { regex }
+		Self { message: None }
+	}
+
+	/// Sets a custom error message for validation failures.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_validators::{UrlValidator, Validator};
+	///
+	/// let validator = UrlValidator::new().with_message("Invalid URL");
+	/// let result = validator.validate("not-a-url");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn with_message(mut self, message: impl Into<String>) -> Self {
+		self.message = Some(message.into());
+		self
 	}
 }
 
@@ -49,8 +56,10 @@ impl Default for UrlValidator {
 
 impl Validator<String> for UrlValidator {
 	fn validate(&self, value: &String) -> ValidationResult<()> {
-		if self.regex.is_match(value) {
+		if URL_REGEX.is_match(value) {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::InvalidUrl(value.clone()))
 		}
@@ -59,8 +68,10 @@ impl Validator<String> for UrlValidator {
 
 impl Validator<str> for UrlValidator {
 	fn validate(&self, value: &str) -> ValidationResult<()> {
-		if self.regex.is_match(value) {
+		if URL_REGEX.is_match(value) {
 			Ok(())
+		} else if let Some(ref msg) = self.message {
+			Err(ValidationError::Custom(msg.clone()))
 		} else {
 			Err(ValidationError::InvalidUrl(value.to_string()))
 		}
