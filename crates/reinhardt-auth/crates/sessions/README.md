@@ -85,18 +85,53 @@ Session framework for maintaining state across HTTP requests. This crate provide
 - **Session expiration and cleanup** - Implemented via `cleanup_expired()` in DatabaseSessionBackend
 - **Session key rotation** - Implemented via `cycle_key()` and `flush()` in Session API
 - **Cross-site request forgery (CSRF) protection integration** - CSRF module available
-- **Session serialization formats** - JSON via serde_json (MessagePack and other formats: planned)
+- **Session serialization formats** - JSON via serde_json, MessagePack, CBOR, Bincode
 - **Session storage migration tools** - Migration module available
 
-### Planned Features
+#### Session Serialization Formats
 
-The following features are planned for future releases:
+- **JSON** (always available) - Human-readable, widely compatible via `serde_json`
+- **MessagePack** (feature: `messagepack`) - Compact binary format, cross-platform via `rmp-serde`
+- **CBOR** (feature: `cbor`) - RFC 7049 compliant binary format via `ciborium`
+- **Bincode** (feature: `bincode`) - Fastest for Rust-to-Rust communication
 
-- **Session replication** - High availability with multi-backend replication
-- **Session analytics** - Monitoring and usage statistics
-- **Custom session serializers** - Pluggable serialization formats (MessagePack, CBOR, etc.)
-- **Session compression** - Automatic compression for large session data
-- **Multi-tenant session isolation** - Tenant-specific session namespacing
+#### Session Compression
+
+- **CompressedSessionBackend** (feature: `compression`) - Automatic compression wrapper
+  - Threshold-based compression (default: 512 bytes, configurable)
+  - Only compresses data exceeding threshold to avoid overhead
+  - **Zstd compression** (feature: `compression-zstd`) - Best balance of speed and ratio
+  - **Gzip compression** (feature: `compression-gzip`) - Wide compatibility
+  - **Brotli compression** (feature: `compression-brotli`) - Best compression ratio
+
+#### Session Replication
+
+- **ReplicatedSessionBackend** (feature: `replication`) - High availability with multi-backend replication
+  - **AsyncReplication** - Eventual consistency, highest throughput
+  - **SyncReplication** - Strong consistency, both backends updated in parallel
+  - **AcknowledgedReplication** - Primary first, then secondary with acknowledgment
+  - Configurable retry attempts and delays for failure handling
+
+#### Session Analytics
+
+- **InstrumentedSessionBackend** - Automatic session event tracking wrapper
+- **LoggerAnalytics** - Tracing-based logging (always available)
+- **PrometheusAnalytics** (feature: `analytics-prometheus`) - Prometheus metrics export
+  - `session_created_total` - Total sessions created
+  - `session_accessed_total` - Total session accesses
+  - `session_access_latency_seconds` - Access latency histogram
+  - `session_size_bytes` - Session data size histogram
+  - `session_deleted_total` - Deletions by reason (explicit, expired, flushed)
+  - `session_expired_total` - Total expired sessions
+
+#### Multi-Tenant Session Isolation
+
+- **TenantSessionBackend** (feature: `tenant`) - Tenant-specific session namespacing
+  - Prefix-based keying: `tenant:{tenant_id}:session:{session_id}`
+  - Configurable key prefix pattern
+  - Maximum sessions per tenant limit
+  - Strict isolation mode for security
+  - **TenantSessionOperations** trait: `list_sessions()`, `count_sessions()`, `delete_all_sessions()`
 
 ## Installation
 
@@ -211,10 +246,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Feature Flags
 
+### Storage Backends
+
 - `database` - Enable database-backed sessions (requires `reinhardt-orm`)
 - `file` - Enable file-backed sessions (requires `tokio` with fs feature)
 - `cookie` - Enable cookie-backed sessions with encryption (requires `base64`, `aes-gcm`, `rand`)
+- `jwt` - Enable JWT-based stateless sessions (requires `jsonwebtoken`)
+
+### HTTP Integration
+
 - `middleware` - Enable HTTP middleware support (requires `reinhardt-http`, `reinhardt-types`, `reinhardt-exception`)
+
+### Serialization Formats
+
+- `messagepack` - Enable MessagePack serialization (requires `rmp-serde`)
+- `cbor` - Enable CBOR serialization (requires `ciborium`)
+- `bincode` - Enable Bincode serialization (requires `bincode`)
+
+### Compression
+
+- `compression-zstd` - Enable Zstd compression (requires `zstd`)
+- `compression-gzip` - Enable Gzip compression (requires `flate2`)
+- `compression-brotli` - Enable Brotli compression (requires `brotli`)
+- `compression` - Enable all compression algorithms
+
+### Monitoring
+
+- `analytics-prometheus` - Enable Prometheus metrics export (requires `prometheus`)
+- `analytics` - Enable all analytics features
+
+### High Availability
+
+- `replication` - Enable session replication across multiple backends
+
+### Multi-tenancy
+
+- `tenant` - Enable multi-tenant session isolation
+
+### All Features
+
+- `full` - Enable all features
 
 ## Architecture
 
@@ -260,20 +331,25 @@ All session backends use Rust's type system to ensure type-safe serialization an
 
 This crate is inspired by Django's session framework:
 
-| Feature                     | Django | Reinhardt Sessions                 |
-| --------------------------- | ------ | ---------------------------------- |
-| Session Backends            | ✓      | ✓                                  |
-| Session Object              | ✓      | ✓                                  |
-| In-Memory Backend           | ✓      | ✓                                  |
-| Database Backend            | ✓      | ✓ (SQLite, PostgreSQL, MySQL)      |
-| File Backend                | ✓      | ✓ (with file locking)              |
-| Cookie Backend              | ✓      | ✓ (AES-GCM encrypted)              |
-| Session Middleware          | ✓      | ✓                                  |
-| TTL/Expiration              | ✓      | ✓                                  |
-| Session Iteration           | ✓      | ✓ (keys, values, items)            |
-| Manual Modification Control | ✓      | ✓ (mark_modified, mark_unmodified) |
-| Type Safety                 | -      | ✓ (Rust types)                     |
-| Async Operations            | -      | ✓                                  |
+| Feature                     | Django | Reinhardt Sessions                           |
+| --------------------------- | ------ | -------------------------------------------- |
+| Session Backends            | ✓      | ✓                                            |
+| Session Object              | ✓      | ✓                                            |
+| In-Memory Backend           | ✓      | ✓                                            |
+| Database Backend            | ✓      | ✓ (SQLite, PostgreSQL, MySQL)                |
+| File Backend                | ✓      | ✓ (with file locking)                        |
+| Cookie Backend              | ✓      | ✓ (AES-GCM encrypted)                        |
+| Session Middleware          | ✓      | ✓                                            |
+| TTL/Expiration              | ✓      | ✓                                            |
+| Session Iteration           | ✓      | ✓ (keys, values, items)                      |
+| Manual Modification Control | ✓      | ✓ (mark_modified, mark_unmodified)           |
+| Multiple Serializers        | ✓      | ✓ (JSON, MessagePack, CBOR, Bincode)         |
+| Session Compression         | -      | ✓ (Zstd, Gzip, Brotli)                       |
+| Session Replication         | -      | ✓ (Async, Sync, Acknowledged)                |
+| Session Analytics           | -      | ✓ (Logger, Prometheus)                       |
+| Multi-Tenant Isolation      | -      | ✓ (Prefix-based namespacing)                 |
+| Type Safety                 | -      | ✓ (Rust types)                               |
+| Async Operations            | -      | ✓                                            |
 
 ## License
 

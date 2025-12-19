@@ -44,54 +44,59 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
+use reinhardt_db::DatabaseConnection;
+use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, Manager, Model};
+use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
-use sqlx::{AnyPool, Row};
 use std::sync::Arc;
 
 use crate::{CleanupableBackend, SessionMetadata};
 
 use super::cache::{SessionBackend, SessionError};
 
-#[cfg(feature = "database")]
-use sea_query::{
-	Alias, ColumnDef, Expr, ExprTrait, Index, OnConflict, PostgresQueryBuilder, Query,
-	SqliteQueryBuilder, Table,
-};
-
 /// Database session model
 ///
-/// Represents a session stored in the database with expiration information.
+/// Represents a session stored in the database.
+/// Uses Unix timestamps (milliseconds) for date fields for database compatibility.
 ///
 /// ## Example
 ///
 /// ```rust
-/// use reinhardt_sessions::backends::database::SessionModel;
+/// use reinhardt_sessions::backends::database::Session;
 /// use chrono::Utc;
 ///
-/// let session = SessionModel {
+/// let now_ms = Utc::now().timestamp_millis();
+/// let session = Session {
 ///     session_key: "abc123".to_string(),
-///     session_data: serde_json::json!({"user_id": 42}),
-///     expire_date: Utc::now() + chrono::Duration::hours(1),
+///     session_data: "{\"user_id\": 42}".to_string(),
+///     expire_date: now_ms + 3600000, // 1 hour
+///     created_at: now_ms,
+///     last_accessed: Some(now_ms),
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionModel {
+#[model(table_name = "sessions", primary_key = "session_key")]
+#[derive(Debug, Clone)]
+pub struct Session {
 	/// Unique session key (primary key)
 	pub session_key: String,
-	/// Session data stored as JSON
-	pub session_data: serde_json::Value,
-	/// Session expiration timestamp
-	pub expire_date: DateTime<Utc>,
+	/// Session data stored as JSON string
+	pub session_data: String,
+	/// Session expiration timestamp (Unix timestamp in milliseconds)
+	pub expire_date: i64,
+	/// Session creation timestamp (Unix timestamp in milliseconds)
+	pub created_at: i64,
+	/// Last accessed timestamp (Unix timestamp in milliseconds)
+	pub last_accessed: Option<i64>,
 }
 
 /// Database-backed session storage
 ///
 /// Stores sessions in a database table with automatic expiration handling.
-/// Supports PostgreSQL, MySQL, and SQLite through sqlx's `Any` driver.
+/// Supports PostgreSQL, MySQL, and SQLite.
 ///
 /// ## Database Schema
 ///
-/// The backend expects a table with the following structure:
+/// The backend expects a table with the following structure (created via migrations):
 ///
 /// ```sql
 /// CREATE TABLE sessions (
@@ -104,21 +109,21 @@ pub struct SessionModel {
 /// CREATE INDEX idx_sessions_expire_date ON sessions(expire_date);
 /// ```
 ///
-/// Note: Timestamps are stored as Unix timestamps (milliseconds since epoch) in BIGINT columns
-/// for compatibility with sqlx's `Any` driver across different database backends.
+/// Note: Timestamps are stored as Unix timestamps (milliseconds since epoch) in BIGINT columns.
 ///
 /// ## Example
 ///
 /// ```rust,no_run
 /// use reinhardt_sessions::backends::{DatabaseSessionBackend, SessionBackend};
 /// use serde_json::json;
+/// use reinhardt_db::DatabaseConnection;
 ///
 /// # async fn example() {
-/// // Initialize backend with database URL
-/// let backend = DatabaseSessionBackend::new("sqlite::memory:").await.unwrap();
+/// // Initialize backend with database connection
+/// let connection = DatabaseConnection::new("sqlite::memory:").await.unwrap();
+/// let backend = DatabaseSessionBackend::from_connection(connection);
 ///
-/// // Create the sessions table
-/// backend.create_table().await.unwrap();
+/// // Note: Table should be created via migrations
 ///
 /// // Store session with 1 hour TTL
 /// let data = json!({"cart_total": 99.99});
@@ -132,13 +137,13 @@ pub struct SessionModel {
 /// ```
 #[derive(Clone)]
 pub struct DatabaseSessionBackend {
-	pool: Arc<AnyPool>,
+	connection: Arc<DatabaseConnection>,
 }
 
 impl DatabaseSessionBackend {
 	/// Create a new database session backend
 	///
-	/// Initializes a connection pool to the specified database URL.
+	/// Initializes a connection to the specified database URL.
 	///
 	/// # Examples
 	///
@@ -158,112 +163,33 @@ impl DatabaseSessionBackend {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn new(database_url: &str) -> Result<Self, SessionError> {
-		// Install default drivers for AnyPool (required for sqlx v0.8)
-		sqlx::any::install_default_drivers();
-
-		let pool = AnyPool::connect(database_url)
+		let connection = DatabaseConnection::connect(database_url)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Database connection error: {}", e)))?;
 
 		Ok(Self {
-			pool: Arc::new(pool),
+			connection: Arc::new(connection),
 		})
 	}
 
-	/// Create a new backend from an existing pool
+	/// Create a new backend from an existing database connection
 	///
 	/// # Examples
 	///
 	/// ```rust,no_run
 	/// use reinhardt_sessions::backends::DatabaseSessionBackend;
-	/// use sqlx::AnyPool;
+	/// use reinhardt_db::DatabaseConnection;
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() {
-	/// let pool = AnyPool::connect("sqlite::memory:").await.unwrap();
-	/// let backend = DatabaseSessionBackend::from_pool(Arc::new(pool));
-	/// // Backend created from existing pool
+	/// let connection = DatabaseConnection::new("sqlite::memory:").await.unwrap();
+	/// let backend = DatabaseSessionBackend::from_connection(Arc::new(connection));
+	/// // Backend created from existing connection
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub fn from_pool(pool: Arc<AnyPool>) -> Self {
-		Self { pool }
-	}
-
-	/// Create the sessions table if it doesn't exist
-	///
-	/// Creates the required database table for session storage.
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_sessions::backends::DatabaseSessionBackend;
-	///
-	/// # async fn example() {
-	/// let backend = DatabaseSessionBackend::new("sqlite::memory:").await.unwrap();
-	/// backend.create_table().await.unwrap();
-	/// // Table created successfully
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn create_table(&self) -> Result<(), SessionError> {
-		// Use a transaction to ensure both CREATE TABLE and CREATE INDEX
-		// execute on the same connection (important for SQLite in-memory databases)
-		let mut tx =
-			self.pool.begin().await.map_err(|e| {
-				SessionError::CacheError(format!("Failed to begin transaction: {}", e))
-			})?;
-
-		// Use sea-query for CREATE TABLE
-		// Note: Using INTEGER for timestamps to store Unix timestamp (compatible with AnyPool)
-		let create_table_stmt = Table::create()
-			.table(Alias::new("sessions"))
-			.if_not_exists()
-			.col(
-				ColumnDef::new(Alias::new("session_key"))
-					.text()
-					.not_null()
-					.primary_key(),
-			)
-			.col(ColumnDef::new(Alias::new("session_data")).text().not_null())
-			.col(
-				ColumnDef::new(Alias::new("expire_date"))
-					.big_integer()
-					.not_null(),
-			)
-			.col(
-				ColumnDef::new(Alias::new("created_at"))
-					.big_integer()
-					.not_null(),
-			)
-			.col(ColumnDef::new(Alias::new("last_accessed")).big_integer())
-			.to_owned();
-		let create_table_sql = create_table_stmt.to_string(PostgresQueryBuilder);
-
-		sqlx::query(&create_table_sql)
-			.execute(&mut *tx)
-			.await
-			.map_err(|e| SessionError::CacheError(format!("Failed to create table: {}", e)))?;
-
-		// Create index on expire_date for efficient cleanup
-		let create_index_stmt = Index::create()
-			.if_not_exists()
-			.name("idx_sessions_expire_date")
-			.table(Alias::new("sessions"))
-			.col(Alias::new("expire_date"))
-			.to_owned();
-		let create_index_sql = create_index_stmt.to_string(PostgresQueryBuilder);
-
-		sqlx::query(&create_index_sql)
-			.execute(&mut *tx)
-			.await
-			.map_err(|e| SessionError::CacheError(format!("Failed to create index: {}", e)))?;
-
-		tx.commit().await.map_err(|e| {
-			SessionError::CacheError(format!("Failed to commit transaction: {}", e))
-		})?;
-
-		Ok(())
+	pub fn from_connection(connection: Arc<DatabaseConnection>) -> Self {
+		Self { connection }
 	}
 
 	/// Clean up expired sessions
@@ -278,7 +204,8 @@ impl DatabaseSessionBackend {
 	///
 	/// # async fn example() {
 	/// let backend = DatabaseSessionBackend::new("sqlite::memory:").await.unwrap();
-	/// backend.create_table().await.unwrap();
+	///
+	/// // Note: Table should be created via migrations
 	///
 	/// // Clean up expired sessions
 	/// let deleted_count = backend.cleanup_expired().await.unwrap();
@@ -287,22 +214,17 @@ impl DatabaseSessionBackend {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn cleanup_expired(&self) -> Result<u64, SessionError> {
-		// Use UNIX timestamp for INTEGER column compatibility
 		let now_timestamp = Utc::now().timestamp_millis();
 
-		// Use sea-query for DELETE
-		let stmt = Query::delete()
-			.from_table(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("expire_date")).lt(now_timestamp))
-			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
+		// Use ORM to delete expired sessions
+		let manager = Session::objects(&self.connection);
+		let filter = Filter::new("expire_date", now_timestamp).lt();
+		let result =
+			manager.filter(filter).delete().await.map_err(|e| {
+				SessionError::CacheError(format!("Failed to cleanup sessions: {}", e))
+			})?;
 
-		let result = sqlx::query(&sql)
-			.execute(&*self.pool)
-			.await
-			.map_err(|e| SessionError::CacheError(format!("Failed to cleanup sessions: {}", e)))?;
-
-		Ok(result.rows_affected())
+		Ok(result as u64)
 	}
 }
 
@@ -312,28 +234,19 @@ impl SessionBackend for DatabaseSessionBackend {
 	where
 		T: for<'de> Deserialize<'de> + Send,
 	{
-		// Use sea-query for SELECT
-		let stmt = Query::select()
-			.columns([Alias::new("session_data"), Alias::new("expire_date")])
-			.from(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
-
-		let row = sqlx::query(&sql)
-			.fetch_optional(&*self.pool)
+		// Use ORM to load session
+		let manager = Session::objects(&self.connection);
+		let session = manager
+			.filter(Filter::new("session_key", session_key))
+			.first()
 			.await
-			.map_err(|e| SessionError::CacheError(format!("Failed to load session: {}", e)))?;
+			.ok();
 
-		match row {
-			Some(row) => {
+		match session {
+			Some(session) => {
 				// Check if session has expired
-				let expire_timestamp: i64 = row
-					.try_get("expire_date")
-					.map_err(|e| SessionError::CacheError(format!("Invalid expire_date: {}", e)))?;
-
 				let expire_date =
-					DateTime::from_timestamp_millis(expire_timestamp).unwrap_or_else(Utc::now);
+					DateTime::from_timestamp_millis(session.expire_date).unwrap_or_else(Utc::now);
 
 				if expire_date < Utc::now() {
 					// Session expired, delete it
@@ -341,11 +254,7 @@ impl SessionBackend for DatabaseSessionBackend {
 					return Ok(None);
 				}
 
-				let session_data: String = row.try_get("session_data").map_err(|e| {
-					SessionError::CacheError(format!("Invalid session_data: {}", e))
-				})?;
-
-				let data: T = serde_json::from_str(&session_data).map_err(|e| {
+				let data: T = serde_json::from_str(&session.session_data).map_err(|e| {
 					SessionError::SerializationError(format!("Deserialization error: {}", e))
 				})?;
 
@@ -373,82 +282,55 @@ impl SessionBackend for DatabaseSessionBackend {
 			None => now + Duration::days(14), // Default 14 days
 		};
 
-		// Convert to UNIX timestamp for INTEGER column compatibility
 		let now_timestamp = now.timestamp_millis();
 		let expire_timestamp = expire_date.timestamp_millis();
 
-		// Use a transaction to ensure atomicity when handling created_at preservation
-		let mut tx =
-			self.pool.begin().await.map_err(|e| {
-				SessionError::CacheError(format!("Failed to begin transaction: {}", e))
-			})?;
+		// Use ORM to save session
+		let manager = Session::objects(&self.connection);
 
-		// Check if session exists to determine created_at value
-		let select_stmt = Query::select()
-			.column(Alias::new("created_at"))
-			.from(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-			.to_owned();
-		let select_sql = select_stmt.to_string(SqliteQueryBuilder);
-
-		let existing_created_at = sqlx::query(&select_sql)
-			.fetch_optional(&mut *tx)
+		// Try to get existing session to preserve created_at
+		let existing = manager
+			.filter(Filter::new("session_key", session_key))
+			.first()
 			.await
-			.map_err(|e| SessionError::CacheError(format!("Failed to check session: {}", e)))?
-			.and_then(|row| row.try_get::<i64, _>("created_at").ok());
+			.ok();
 
-		let created_at_timestamp = existing_created_at.unwrap_or(now_timestamp);
+		let created_at_timestamp = existing
+			.as_ref()
+			.map(|s| s.created_at)
+			.unwrap_or(now_timestamp);
 
-		// Use sea-query for INSERT with ON CONFLICT (upsert, SQLite compatible)
-		let stmt = Query::insert()
-			.into_table(Alias::new("sessions"))
-			.columns([
-				Alias::new("session_key"),
-				Alias::new("session_data"),
-				Alias::new("expire_date"),
-				Alias::new("created_at"),
-				Alias::new("last_accessed"),
-			])
-			.values_panic(vec![
-				session_key.into(),
-				session_data.into(),
-				expire_timestamp.into(),
-				created_at_timestamp.into(),
-				now_timestamp.into(),
-			])
-			.on_conflict(
-				OnConflict::column(Alias::new("session_key"))
-					.update_columns([
-						Alias::new("session_data"),
-						Alias::new("expire_date"),
-						Alias::new("last_accessed"),
-					])
-					.to_owned(),
-			)
-			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
+		let session = Session {
+			session_key: session_key.to_string(),
+			session_data,
+			expire_date: expire_timestamp,
+			created_at: created_at_timestamp,
+			last_accessed: Some(now_timestamp),
+		};
 
-		sqlx::query(&sql)
-			.execute(&mut *tx)
-			.await
-			.map_err(|e| SessionError::CacheError(format!("Failed to save session: {}", e)))?;
-
-		tx.commit().await.map_err(|e| {
-			SessionError::CacheError(format!("Failed to commit transaction: {}", e))
-		})?;
+		if existing.is_some() {
+			// Update existing session
+			manager
+				.update(session_key, &session)
+				.await
+				.map_err(|e| SessionError::CacheError(format!("Failed to save session: {}", e)))?;
+		} else {
+			// Create new session
+			manager
+				.create(&session)
+				.await
+				.map_err(|e| SessionError::CacheError(format!("Failed to save session: {}", e)))?;
+		}
 
 		Ok(())
 	}
 
 	async fn delete(&self, session_key: &str) -> Result<(), SessionError> {
-		let stmt = Query::delete()
-			.from_table(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
-
-		sqlx::query(&sql)
-			.execute(&*self.pool)
+		// Use ORM to delete session
+		let manager = Session::objects(&self.connection);
+		manager
+			.filter(Filter::new("session_key", session_key))
+			.delete()
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to delete session: {}", e)))?;
 
@@ -456,47 +338,32 @@ impl SessionBackend for DatabaseSessionBackend {
 	}
 
 	async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
-		// Use UNIX timestamp for INTEGER column compatibility
 		let now_timestamp = Utc::now().timestamp_millis();
 
-		// Use sea-query for SELECT
-		let stmt = Query::select()
-			.expr(Expr::value(1))
-			.from(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-			.and_where(Expr::col(Alias::new("expire_date")).gt(now_timestamp))
-			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
-
-		let row = sqlx::query(&sql)
-			.fetch_optional(&*self.pool)
+		// Use ORM to check if session exists and is not expired
+		let manager = Session::objects(&self.connection);
+		let session = manager
+			.filter(Filter::new("session_key", session_key))
+			.filter(Filter::new("expire_date", now_timestamp).gt())
+			.first()
 			.await
-			.map_err(|e| {
-				SessionError::CacheError(format!("Failed to check session existence: {}", e))
-			})?;
+			.ok();
 
-		Ok(row.is_some())
+		Ok(session.is_some())
 	}
 }
 
 #[async_trait]
 impl CleanupableBackend for DatabaseSessionBackend {
 	async fn get_all_keys(&self) -> Result<Vec<String>, SessionError> {
-		let stmt = Query::select()
-			.column(Alias::new("session_key"))
-			.from(Alias::new("sessions"))
-			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
-
-		let rows = sqlx::query(&sql)
-			.fetch_all(&*self.pool)
+		// Use ORM to get all session keys
+		let manager = Session::objects(&self.connection);
+		let sessions = manager
+			.all()
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to get all keys: {}", e)))?;
 
-		let keys: Vec<String> = rows
-			.into_iter()
-			.filter_map(|row| row.try_get::<String, _>("session_key").ok())
-			.collect();
+		let keys: Vec<String> = sessions.into_iter().map(|s| s.session_key).collect();
 
 		Ok(keys)
 	}
@@ -505,31 +372,22 @@ impl CleanupableBackend for DatabaseSessionBackend {
 		&self,
 		session_key: &str,
 	) -> Result<Option<SessionMetadata>, SessionError> {
-		let stmt = Query::select()
-			.columns([Alias::new("created_at"), Alias::new("last_accessed")])
-			.from(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
-			.to_owned();
-		let sql = stmt.to_string(SqliteQueryBuilder);
-
-		let row = sqlx::query(&sql)
-			.fetch_optional(&*self.pool)
+		// Use ORM to get session metadata
+		let manager = Session::objects(&self.connection);
+		let session = manager
+			.filter(Filter::new("session_key", session_key))
+			.first()
 			.await
-			.map_err(|e| SessionError::CacheError(format!("Failed to get metadata: {}", e)))?;
+			.ok();
 
-		match row {
-			Some(row) => {
-				let created_at_timestamp: i64 = row
-					.try_get("created_at")
-					.map_err(|e| SessionError::CacheError(format!("Invalid created_at: {}", e)))?;
-
-				let last_accessed_timestamp: Option<i64> = row.try_get("last_accessed").ok();
-
+		match session {
+			Some(session) => {
 				let created_at =
-					DateTime::from_timestamp_millis(created_at_timestamp).unwrap_or_else(Utc::now);
+					DateTime::from_timestamp_millis(session.created_at).unwrap_or_else(Utc::now);
 
-				let last_accessed =
-					last_accessed_timestamp.and_then(DateTime::from_timestamp_millis);
+				let last_accessed = session
+					.last_accessed
+					.and_then(DateTime::from_timestamp_millis);
 
 				Ok(Some(SessionMetadata {
 					created_at,
@@ -541,71 +399,47 @@ impl CleanupableBackend for DatabaseSessionBackend {
 	}
 
 	async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, SessionError> {
-		use sea_query::{Expr, Query, SqliteQueryBuilder};
-
+		// Use ORM to list session keys with prefix
+		let manager = Session::objects(&self.connection);
 		let pattern = format!("{}%", prefix);
-		let stmt = Query::select()
-			.column(Alias::new("session_key"))
-			.from(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("session_key")).like(&pattern))
-			.to_owned();
-
-		let sql = stmt.to_string(SqliteQueryBuilder);
-
-		let rows = sqlx::query(&sql)
-			.fetch_all(&*self.pool)
+		let sessions = manager
+			.filter(Filter::new("session_key", &pattern).like())
+			.all()
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to list session keys: {}", e)))?;
 
-		let keys: Vec<String> = rows
-			.into_iter()
-			.filter_map(|row| row.try_get::<String, _>("session_key").ok())
-			.collect();
+		let keys: Vec<String> = sessions.into_iter().map(|s| s.session_key).collect();
 
 		Ok(keys)
 	}
 
 	async fn count_keys_with_prefix(&self, prefix: &str) -> Result<usize, SessionError> {
-		use sea_query::{Expr, Func, Query, SqliteQueryBuilder};
-
+		// Use ORM to count session keys with prefix
+		let manager = Session::objects(&self.connection);
 		let pattern = format!("{}%", prefix);
-		let stmt = Query::select()
-			.expr(Func::count(Expr::col(Alias::new("session_key"))))
-			.from(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("session_key")).like(&pattern))
-			.to_owned();
-
-		let sql = stmt.to_string(SqliteQueryBuilder);
-
-		let row = sqlx::query(&sql)
-			.fetch_one(&*self.pool)
+		let count = manager
+			.filter(Filter::new("session_key", &pattern).like())
+			.count()
 			.await
 			.map_err(|e| {
 				SessionError::CacheError(format!("Failed to count session keys: {}", e))
 			})?;
 
-		let count: i64 = row
-			.try_get(0)
-			.map_err(|e| SessionError::CacheError(format!("Failed to extract count: {}", e)))?;
-
-		Ok(count as usize)
+		Ok(count)
 	}
 
 	async fn delete_keys_with_prefix(&self, prefix: &str) -> Result<usize, SessionError> {
-		use sea_query::{Expr, Query, SqliteQueryBuilder};
-
+		// Use ORM to delete session keys with prefix
+		let manager = Session::objects(&self.connection);
 		let pattern = format!("{}%", prefix);
-		let stmt = Query::delete()
-			.from_table(Alias::new("sessions"))
-			.and_where(Expr::col(Alias::new("session_key")).like(&pattern))
-			.to_owned();
+		let deleted = manager
+			.filter(Filter::new("session_key", &pattern).like())
+			.delete()
+			.await
+			.map_err(|e| {
+				SessionError::CacheError(format!("Failed to delete session keys: {}", e))
+			})?;
 
-		let sql = stmt.to_string(SqliteQueryBuilder);
-
-		let result = sqlx::query(&sql).execute(&*self.pool).await.map_err(|e| {
-			SessionError::CacheError(format!("Failed to delete session keys: {}", e))
-		})?;
-
-		Ok(result.rows_affected() as usize)
+		Ok(deleted as usize)
 	}
 }
