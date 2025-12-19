@@ -4,8 +4,5 @@
 #[path = "storage/static_processing_integration_tests.rs"]
 mod static_processing_integration_tests;
 
-#[path = "storage/static_template_integration_tests.rs"]
-mod static_template_integration_tests;
-
 #[path = "storage/storage_orm_integration.rs"]
 mod storage_orm_integration;

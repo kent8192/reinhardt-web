@@ -78,7 +78,7 @@ reinhardt-core = { workspace = true, features = [
   "messages",
 ] }
 reinhardt-utils = { workspace = true, features = ["cache", "static"] }
-reinhardt-template = { workspace = true, features = ["renderers"] }
+reinhardt-pages = { workspace = true }
 
 tempfile = "3.8"
 

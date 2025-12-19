@@ -26,7 +26,6 @@ reinhardt-http = { workspace = true }
 reinhardt-params = { workspace = true }
 reinhardt-di = { workspace = true, features = ["macros"] }
 reinhardt-middleware = { workspace = true }
-reinhardt-templates = { workspace = true }
 reinhardt-routers = { workspace = true }
 reinhardt-proxy = { workspace = true }
 reinhardt-viewsets = { workspace = true }
@@ -49,7 +48,6 @@ reinhardt-logging = { workspace = true }
 reinhardt-mail = { workspace = true }
 reinhardt-contenttypes = { workspace = true, features = ["database"] }
 reinhardt-macros = { workspace = true }
-reinhardt-static = { workspace = true, features = ["templates-integration"] }
 reinhardt-cache = { workspace = true, features = [
   "redis-backend",
   "redis-sentinel",
@@ -57,7 +55,6 @@ reinhardt-cache = { workspace = true, features = [
 ] }
 reinhardt-views = { workspace = true }
 reinhardt-negotiation = { workspace = true }
-reinhardt-renderers = { workspace = true }
 reinhardt-serializers = { workspace = true }
 reinhardt-settings = { workspace = true, features = [
   "async",
@@ -137,13 +134,10 @@ scopeguard = "1.2"
 linkme = "0.3"
 paste = "1.0"
 
-# Templates
-tera = "1.20"
-
 # Testing utilities
 tempfile = "3.14"
-testcontainers = "0.25.0"
-testcontainers-modules = { version = "0.13", features = ["redis", "postgres"] }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true, features = ["redis", "postgres"] }
 image = { version = "0.25.9", default-features = false, features = ["png"] }
 
 # Macro runtime requirements

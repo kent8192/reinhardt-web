@@ -58,7 +58,7 @@ reinhardt-urls = { workspace = true, features = ["proxy", "routers"] }
 reinhardt-server = { workspace = true }
 reinhardt-shortcuts = { workspace = true }
 reinhardt-tasks = { workspace = true }
-reinhardt-template = { workspace = true, features = ["renderers"] }
+reinhardt-pages = { workspace = true }
 reinhardt-test = { workspace = true }
 reinhardt-utils = { workspace = true, features = [
     "cache",
@@ -78,7 +78,6 @@ chrono = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
-tera = "1.20"
 async-graphql = "7.0"
 base64 = "0.22"
 percent-encoding = "2.3"
