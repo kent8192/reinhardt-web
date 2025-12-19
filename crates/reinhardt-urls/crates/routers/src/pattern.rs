@@ -3,16 +3,71 @@ use matchit::Router as MatchitRouter;
 use regex::Regex;
 use std::collections::HashMap;
 
+/// Convert a type specifier to its corresponding regex pattern
+///
+/// This function maps type specifiers from `{<type:name>}` syntax
+/// to appropriate regex patterns for URL matching.
+///
+/// # Supported Type Specifiers
+///
+/// | Type | Pattern | Description |
+/// |------|---------|-------------|
+/// | `int` | `[0-9]+` | Unsigned integer (legacy) |
+/// | `i8`, `i16`, `i32`, `i64` | `-?[0-9]+` | Signed integers |
+/// | `u8`, `u16`, `u32`, `u64` | `[0-9]+` | Unsigned integers |
+/// | `f32`, `f64` | `-?[0-9]+(?:\.[0-9]+)?` | Floating point |
+/// | `str` | `[^/]+` | Any non-slash characters (default) |
+/// | `uuid` | UUID regex | UUID format |
+/// | `slug` | `[a-z0-9]+(?:-[a-z0-9]+)*` | Lowercase slug |
+/// | `path` | `.+` | Any characters including slashes |
+/// | `bool` | `true\|false\|1\|0` | Boolean literals |
+/// | `email` | Email regex | Email format |
+/// | `date` | `[0-9]{4}-[0-9]{2}-[0-9]{2}` | ISO 8601 date |
+fn type_spec_to_regex(type_spec: &str) -> &'static str {
+	match type_spec {
+		// Basic types (legacy)
+		"int" => r"[0-9]+",
+		"str" => r"[^/]+",
+		"uuid" => r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+		"slug" => r"[a-z0-9]+(?:-[a-z0-9]+)*",
+		"path" => r".+",
+		// Signed integers
+		"i8" | "i16" | "i32" | "i64" => r"-?[0-9]+",
+		// Unsigned integers
+		"u8" | "u16" | "u32" | "u64" => r"[0-9]+",
+		// Floating point
+		"f32" | "f64" => r"-?[0-9]+(?:\.[0-9]+)?",
+		// Other types
+		"bool" => r"true|false|1|0",
+		"email" => r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
+		"date" => r"[0-9]{4}-[0-9]{2}-[0-9]{2}",
+		// Default: treat as string
+		_ => r"[^/]+",
+	}
+}
+
 /// Path pattern for URL matching
 /// Similar to Django's URL patterns but using composition
 #[derive(Clone)]
 pub struct PathPattern {
+	/// Original pattern string (may contain type specifiers)
 	pattern: String,
+	/// Pattern normalized to `{name}` format for URL reversal
+	normalized_pattern: String,
 	regex: Regex,
 	param_names: Vec<String>,
 	/// Pre-built Aho-Corasick automaton for efficient URL reversal
 	/// This is constructed once during pattern creation for O(n+m+z) reversal
 	aho_corasick: Option<AhoCorasick>,
+}
+
+/// Parse result containing regex, param names, and normalized pattern for URL reversal
+struct ParsePatternResult {
+	regex_str: String,
+	param_names: Vec<String>,
+	/// Pattern normalized to `{name}` format for URL reversal
+	/// e.g., "/users/{<int:id>}/" -> "/users/{id}/"
+	normalized_pattern: String,
 }
 
 impl PathPattern {
@@ -34,12 +89,13 @@ impl PathPattern {
 	/// ```
 	pub fn new(pattern: impl Into<String>) -> Result<Self, String> {
 		let pattern = pattern.into();
-		let (regex_str, param_names) = Self::parse_pattern(&pattern)?;
-		let regex = Regex::new(&regex_str).map_err(|e| e.to_string())?;
+		let parse_result = Self::parse_pattern(&pattern)?;
+		let regex = Regex::new(&parse_result.regex_str).map_err(|e| e.to_string())?;
 
 		// Build Aho-Corasick automaton for URL reversal if there are parameters
-		let aho_corasick = if !param_names.is_empty() {
-			let placeholders: Vec<String> = param_names
+		let aho_corasick = if !parse_result.param_names.is_empty() {
+			let placeholders: Vec<String> = parse_result
+				.param_names
 				.iter()
 				.map(|name| format!("{{{}}}", name))
 				.collect();
@@ -53,38 +109,66 @@ impl PathPattern {
 
 		Ok(Self {
 			pattern,
+			normalized_pattern: parse_result.normalized_pattern,
 			regex,
-			param_names,
+			param_names: parse_result.param_names,
 			aho_corasick,
 		})
 	}
 
-	fn parse_pattern(pattern: &str) -> Result<(String, Vec<String>), String> {
+	fn parse_pattern(pattern: &str) -> Result<ParsePatternResult, String> {
 		let mut regex_str = String::from("^");
 		let mut param_names = Vec::new();
+		let mut normalized_pattern = String::new();
 		let mut chars = pattern.chars().peekable();
 
 		while let Some(ch) = chars.next() {
 			match ch {
 				'{' => {
-					// Extract parameter name
-					let mut param_name = String::new();
+					// Extract parameter content (everything between { and })
+					let mut param_content = String::new();
 					while let Some(&next_ch) = chars.peek() {
 						if next_ch == '}' {
 							chars.next(); // consume '}'
 							break;
 						}
-						param_name.push(chars.next().unwrap());
+						param_content.push(chars.next().unwrap());
 					}
 
-					if param_name.is_empty() {
+					if param_content.is_empty() {
 						return Err("Empty parameter name".to_string());
 					}
 
+					// Check for typed parameter syntax: {<type:name>}
+					let (param_name, regex_pattern) =
+						if param_content.starts_with('<') && param_content.ends_with('>') {
+							// Parse {<type:name>}
+							let inner = &param_content[1..param_content.len() - 1]; // Remove < >
+							if let Some(colon_pos) = inner.find(':') {
+								let type_spec = &inner[..colon_pos];
+								let name = &inner[colon_pos + 1..];
+								if name.is_empty() {
+									return Err(format!(
+										"Empty parameter name in typed parameter: {{<{}:>}}",
+										type_spec
+									));
+								}
+								(name.to_string(), type_spec_to_regex(type_spec))
+							} else {
+								return Err(format!(
+									"Invalid typed parameter syntax: {{<{}>}}. Expected {{<type:name>}}",
+									inner
+								));
+							}
+						} else {
+							// Simple {name} parameter - use default [^/]+
+							(param_content, "[^/]+")
+						};
+
 					param_names.push(param_name.clone());
-					// Match any non-slash characters
-					regex_str.push_str(&format!("(?P<{}>", param_name));
-					regex_str.push_str("[^/]+)");
+					regex_str.push_str(&format!("(?P<{}>{})", param_name, regex_pattern));
+					// Write normalized placeholder for URL reversal
+					normalized_pattern.push_str(&format!("{{{}}}", param_name));
 				}
 				_ => {
 					// Escape special regex characters
@@ -92,12 +176,18 @@ impl PathPattern {
 						regex_str.push('\\');
 					}
 					regex_str.push(ch);
+					// Copy literal characters to normalized pattern
+					normalized_pattern.push(ch);
 				}
 			}
 		}
 
 		regex_str.push('$');
-		Ok((regex_str, param_names))
+		Ok(ParsePatternResult {
+			regex_str,
+			param_names,
+			normalized_pattern,
+		})
 	}
 	/// Get the original pattern string
 	///
@@ -204,17 +294,17 @@ impl PathPattern {
 			}
 		}
 
-		// If no parameters, return pattern as-is
+		// If no parameters, return normalized pattern as-is
 		if self.param_names.is_empty() {
-			return Ok(self.pattern.clone());
+			return Ok(self.normalized_pattern.clone());
 		}
 
 		// Use Aho-Corasick if available, otherwise fallback to single-pass
 		match &self.aho_corasick {
 			Some(ac) => {
-				// Find all matches using Aho-Corasick
+				// Find all matches using Aho-Corasick on normalized pattern
 				let mut replacements = Vec::new();
-				for mat in ac.find_iter(&self.pattern) {
+				for mat in ac.find_iter(&self.normalized_pattern) {
 					let param_name = &self.param_names[mat.pattern()];
 					// We already validated all params exist above
 					let value = params.get(param_name).unwrap();
@@ -222,7 +312,7 @@ impl PathPattern {
 				}
 
 				// Apply replacements from right to left to avoid position shifts
-				let mut result = self.pattern.clone();
+				let mut result = self.normalized_pattern.clone();
 				for (start, end, value) in replacements.into_iter().rev() {
 					result.replace_range(start..end, &value);
 				}
@@ -230,8 +320,8 @@ impl PathPattern {
 				Ok(result)
 			}
 			None => {
-				// Fallback: no parameters, just return pattern
-				Ok(self.pattern.clone())
+				// Fallback: no parameters, just return normalized pattern
+				Ok(self.normalized_pattern.clone())
 			}
 		}
 	}
