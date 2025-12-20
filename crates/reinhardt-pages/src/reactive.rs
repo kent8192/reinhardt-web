@@ -60,11 +60,15 @@
 // Public modules using Rust 2024 Edition module system (no mod.rs files)
 pub mod effect;
 pub mod memo;
+pub mod resource;
 pub mod runtime;
 pub mod signal;
 
 // Re-export commonly used types
 pub use effect::Effect;
 pub use memo::Memo;
+pub use resource::{Resource, ResourceState};
+#[cfg(target_arch = "wasm32")]
+pub use resource::{create_resource, create_resource_with_deps};
 pub use runtime::{NodeId, NodeType, with_runtime};
 pub use signal::Signal;

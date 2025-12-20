@@ -92,7 +92,9 @@ pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{Document, Element, EventHandle, EventType, document};
 pub use form::{FormBinding, FormComponent};
 pub use hydration::{HydrationContext, HydrationError, hydrate};
-pub use reactive::{Effect, Memo, Signal};
+pub use reactive::{Effect, Memo, Resource, ResourceState, Signal};
+#[cfg(target_arch = "wasm32")]
+pub use reactive::{create_resource, create_resource_with_deps};
 pub use router::{Link, PathPattern, Route, Router, RouterOutlet};
 pub use server_fn::{ServerFn, ServerFnError};
 pub use ssr::{SsrOptions, SsrRenderer, SsrState};
