@@ -11,7 +11,7 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use reinhardt_pages::component::{Component, ElementView, IntoView, View};
 use reinhardt_pages::reactive::{Effect, Memo, Signal};
-use reinhardt_pages::router::{Route, Router};
+use reinhardt_pages::router::Router;
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
 
 // ============================================================================
@@ -72,7 +72,7 @@ fn bench_reactive_graph_scale(c: &mut Criterion) {
 	for size in [10, 100, 1000] {
 		group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
 			b.iter(|| {
-				let signals: Vec<Signal<i32>> = (0..size).map(|i| Signal::new(i)).collect();
+				let signals: Vec<Signal<i32>> = (0..size).map(|i| Signal::new(i as i32)).collect();
 
 				// Create effects that depend on signals
 				let _effects: Vec<Effect> = signals
@@ -87,7 +87,7 @@ fn bench_reactive_graph_scale(c: &mut Criterion) {
 
 				// Update all signals
 				for (i, signal) in signals.iter().enumerate() {
-					signal.set(i + 1);
+					signal.set((i + 1) as i32);
 				}
 			})
 		});
@@ -108,7 +108,7 @@ impl Component for SimpleComponent {
 	fn render(&self) -> View {
 		ElementView::new("div")
 			.attr("class", "simple")
-			.child(self.message.as_str())
+			.child(self.message.clone())
 			.into_view()
 	}
 
@@ -154,7 +154,7 @@ impl Component for NestedComponent {
 	fn render(&self) -> View {
 		if self.depth == 0 {
 			ElementView::new("span")
-				.child(self.content.as_str())
+				.child(self.content.clone())
 				.into_view()
 		} else {
 			let nested = NestedComponent {
@@ -199,7 +199,7 @@ impl Component for ListComponent {
 	fn render(&self) -> View {
 		let mut ul = ElementView::new("ul");
 		for item in &self.items {
-			ul = ul.child(ElementView::new("li").child(item.as_str()).into_view());
+			ul = ul.child(ElementView::new("li").child(item.clone()).into_view());
 		}
 		ul.into_view()
 	}
@@ -299,7 +299,7 @@ fn bench_router_complex_path_matching(c: &mut Criterion) {
 	for i in 0..100 {
 		router = router.route(&format!("/api/v1/resource{}/{{id}}", i), move || {
 			ElementView::new("div")
-				.child(format!("Resource {}", i).as_str())
+				.child(format!("Resource {}", i))
 				.into_view()
 		});
 	}
