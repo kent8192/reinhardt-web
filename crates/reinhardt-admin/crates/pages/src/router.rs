@@ -8,11 +8,19 @@
 //! - `/admin/:model/:id/change/` - Edit form
 
 use crate::components::features::{
-	Column, DashboardModel, FormField, ListViewData, dashboard, detail_view, list_view, model_form,
+	Column, FormField, ListViewData, dashboard, detail_view, list_view, model_form,
 };
+#[cfg(target_arch = "wasm32")]
+use reinhardt_admin_server::{get_dashboard, get_model_detail, get_model_fields, list_models};
+use reinhardt_admin_types::ModelInfo;
+#[cfg(target_arch = "wasm32")]
+use reinhardt_admin_types::ListQueryParams;
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{Component, View};
 use reinhardt_pages::router::{Link, Router};
+#[cfg(target_arch = "wasm32")]
+use reinhardt_pages::{ResourceState, create_resource};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 /// Admin route enum
@@ -32,24 +40,89 @@ pub enum AdminRoute {
 	NotFound,
 }
 
-// Global route state signals
-// These are populated by the router when navigation occurs
+// Global Router instance
+// Initialized by init_global_router() and accessed via with_router()
 thread_local! {
-	static CURRENT_MODEL: Signal<Option<String>> = Signal::new(None);
-	static CURRENT_ID: Signal<Option<String>> = Signal::new(None);
+	static ROUTER: RefCell<Option<Router>> = const { RefCell::new(None) };
+}
+
+/// Initialize the global router instance
+///
+/// This must be called once at application startup before any routing operations.
+///
+/// # Example
+///
+/// ```ignore
+/// use reinhardt_admin_pages::router::init_global_router;
+///
+/// init_global_router();
+/// ```
+pub fn init_global_router() {
+	ROUTER.with(|r| {
+		*r.borrow_mut() = Some(init_router());
+	});
+}
+
+/// Provides access to the global router instance
+///
+/// # Panics
+///
+/// Panics if the router has not been initialized via `init_global_router()`.
+///
+/// # Example
+///
+/// ```ignore
+/// use reinhardt_admin_pages::router::with_router;
+///
+/// with_router(|router| {
+///     let params = router.current_params().get();
+///     // Use router...
+/// });
+/// ```
+pub fn with_router<F, R>(f: F) -> R
+where
+	F: FnOnce(&Router) -> R,
+{
+	ROUTER.with(|r| {
+		f(r.borrow()
+			.as_ref()
+			.expect("Router not initialized. Call init_global_router() first."))
+	})
 }
 
 /// Dashboard view component for router
+#[cfg(target_arch = "wasm32")]
 fn dashboard_view() -> View {
-	// TODO: Fetch actual models from AdminSite via Server Function
+	use reinhardt_pages::component::{ElementView, IntoView};
+
+	let dashboard_resource =
+		create_resource(|| async { get_dashboard().await.map_err(|e| e.to_string()) });
+
+	ElementView::new("div")
+		.attr("class", "dashboard-container")
+		.child({
+			let resource = dashboard_resource.clone();
+			move || match resource.get() {
+				ResourceState::Loading => loading_view(),
+				ResourceState::Success(data) => dashboard(&data.site_name, &data.models),
+				ResourceState::Error(err) => error_view(&err),
+			}
+		})
+		.into_view()
+}
+
+/// Dashboard view component for router (non-WASM fallback)
+#[cfg(not(target_arch = "wasm32"))]
+fn dashboard_view() -> View {
+	// Dummy data for non-WASM environments (tests, etc.)
 	let models = vec![
-		DashboardModel {
+		ModelInfo {
 			name: "Users".to_string(),
-			url: "/admin/users/".to_string(),
+			list_url: "/admin/users/".to_string(),
 		},
-		DashboardModel {
+		ModelInfo {
 			name: "Posts".to_string(),
-			url: "/admin/posts/".to_string(),
+			list_url: "/admin/posts/".to_string(),
 		},
 	];
 
@@ -57,10 +130,55 @@ fn dashboard_view() -> View {
 }
 
 /// List view component for router
-fn list_view_component() -> View {
-	let model_name = CURRENT_MODEL.with(|s| s.get().unwrap_or_else(|| "unknown".to_string()));
+#[cfg(target_arch = "wasm32")]
+fn list_view_component(model_name: String) -> View {
+	use reinhardt_pages::component::{ElementView, IntoView};
 
-	// TODO: Fetch actual data via Server Function
+	let list_resource = create_resource(move || {
+		let model_name = model_name.clone();
+		async move {
+			let params = ListQueryParams::default();
+			list_models(model_name, params)
+				.await
+				.map_err(|e| e.to_string())
+		}
+	});
+
+	ElementView::new("div")
+		.attr("class", "list-container")
+		.child({
+			let resource = list_resource.clone();
+			move || match resource.get() {
+				ResourceState::Loading => loading_view(),
+				ResourceState::Success(response) => {
+					// ListResponse → ListViewData変換
+					let data = ListViewData {
+						model_name: response.model_name.clone(),
+						columns: response.columns.unwrap_or_else(|| {
+							vec![Column {
+								field: "id".to_string(),
+								label: "ID".to_string(),
+								sortable: true,
+							}]
+						}),
+						records: response.results,
+						current_page: response.page,
+						total_pages: response.total_pages,
+						total_count: response.count,
+					};
+					let page_signal = Signal::new(response.page);
+					list_view(&data, page_signal)
+				}
+				ResourceState::Error(err) => error_view(&err),
+			}
+		})
+		.into_view()
+}
+
+/// List view component for router (non-WASM fallback)
+#[cfg(not(target_arch = "wasm32"))]
+fn list_view_component(model_name: String) -> View {
+	// Dummy data for non-WASM environments (tests, etc.)
 	let data = ListViewData {
 		model_name: model_name.clone(),
 		columns: vec![
@@ -86,23 +204,93 @@ fn list_view_component() -> View {
 }
 
 /// Detail view component for router
-fn detail_view_component() -> View {
-	let model_name = CURRENT_MODEL.with(|s| s.get().unwrap_or_else(|| "unknown".to_string()));
-	let record_id = CURRENT_ID.with(|s| s.get().unwrap_or_else(|| "0".to_string()));
+#[cfg(target_arch = "wasm32")]
+fn detail_view_component(model_name: String, record_id: String) -> View {
+	use reinhardt_pages::component::{ElementView, IntoView};
 
-	// TODO: Fetch actual record via Server Function
+	let detail_resource = create_resource(move || {
+		let model_name = model_name.clone();
+		let record_id = record_id.clone();
+		async move {
+			get_model_detail(model_name, record_id)
+				.await
+				.map_err(|e| e.to_string())
+		}
+	});
+
+	ElementView::new("div")
+		.attr("class", "detail-container")
+		.child({
+			let resource = detail_resource.clone();
+			let model_name = model_name.clone();
+			let record_id = record_id.clone();
+			move || match resource.get() {
+				ResourceState::Loading => loading_view(),
+				ResourceState::Success(response) => {
+					detail_view(&model_name, &record_id, &response.data)
+				}
+				ResourceState::Error(err) => error_view(&err),
+			}
+		})
+		.into_view()
+}
+
+/// Detail view component for router (non-WASM fallback)
+#[cfg(not(target_arch = "wasm32"))]
+fn detail_view_component(model_name: String, record_id: String) -> View {
+	// Dummy data for non-WASM environments (tests, etc.)
 	let mut record = HashMap::new();
-	record.insert("id".to_string(), record_id.clone());
-	record.insert("name".to_string(), "Sample Record".to_string());
+	record.insert("id".to_string(), serde_json::Value::String(record_id.clone()));
+	record.insert(
+		"name".to_string(),
+		serde_json::Value::String("Sample Record".to_string()),
+	);
 
 	detail_view(&model_name, &record_id, &record)
 }
 
 /// Create form view component for router
-fn create_view_component() -> View {
-	let model_name = CURRENT_MODEL.with(|s| s.get().unwrap_or_else(|| "unknown".to_string()));
+#[cfg(target_arch = "wasm32")]
+fn create_view_component(model_name: String) -> View {
+	use reinhardt_pages::component::{ElementView, IntoView};
 
-	// TODO: Fetch field definitions from ModelAdmin via Server Function
+	let fields_resource = create_resource(move || {
+		let model_name = model_name.clone();
+		async move { get_model_fields(model_name, None).await.map_err(|e| e.to_string()) }
+	});
+
+	ElementView::new("div")
+		.attr("class", "form-container")
+		.child({
+			let resource = fields_resource.clone();
+			let model_name = model_name.clone();
+			move || match resource.get() {
+				ResourceState::Loading => loading_view(),
+				ResourceState::Success(response) => {
+					// FieldInfo → FormField変換
+					let fields: Vec<FormField> = response
+						.fields
+						.into_iter()
+						.map(|field_info| FormField {
+							name: field_info.name,
+							label: field_info.label,
+							field_type: field_type_to_html_input_type(&field_info.field_type),
+							required: field_info.required,
+							value: String::new(),
+						})
+						.collect();
+					model_form(&model_name, &fields, None)
+				}
+				ResourceState::Error(err) => error_view(&err),
+			}
+		})
+		.into_view()
+}
+
+/// Create form view component for router (non-WASM fallback)
+#[cfg(not(target_arch = "wasm32"))]
+fn create_view_component(model_name: String) -> View {
+	// Dummy data for non-WASM environments (tests, etc.)
 	let fields = vec![
 		FormField {
 			name: "name".to_string(),
@@ -124,11 +312,66 @@ fn create_view_component() -> View {
 }
 
 /// Edit form view component for router
-fn edit_view_component() -> View {
-	let model_name = CURRENT_MODEL.with(|s| s.get().unwrap_or_else(|| "unknown".to_string()));
-	let record_id = CURRENT_ID.with(|s| s.get().unwrap_or_else(|| "0".to_string()));
+#[cfg(target_arch = "wasm32")]
+fn edit_view_component(model_name: String, record_id: String) -> View {
+	use reinhardt_pages::component::{ElementView, IntoView};
 
-	// TODO: Fetch field definitions and record data via Server Function
+	let fields_resource = create_resource(move || {
+		let model_name = model_name.clone();
+		let record_id = record_id.clone();
+		async move {
+			get_model_fields(model_name, Some(record_id))
+				.await
+				.map_err(|e| e.to_string())
+		}
+	});
+
+	ElementView::new("div")
+		.attr("class", "form-container")
+		.child({
+			let resource = fields_resource.clone();
+			let model_name = model_name.clone();
+			let record_id = record_id.clone();
+			move || match resource.get() {
+				ResourceState::Loading => loading_view(),
+				ResourceState::Success(response) => {
+					// FieldInfo + values → FormField変換
+					let fields: Vec<FormField> = response
+						.fields
+						.into_iter()
+						.map(|field_info| {
+							// 既存値を取得
+							let value = if let Some(ref values) = response.values {
+								values
+									.get(&field_info.name)
+									.and_then(|v| v.as_str())
+									.unwrap_or("")
+									.to_string()
+							} else {
+								String::new()
+							};
+
+							FormField {
+								name: field_info.name,
+								label: field_info.label,
+								field_type: field_type_to_html_input_type(&field_info.field_type),
+								required: field_info.required,
+								value,
+							}
+						})
+						.collect();
+					model_form(&model_name, &fields, Some(&record_id))
+				}
+				ResourceState::Error(err) => error_view(&err),
+			}
+		})
+		.into_view()
+}
+
+/// Edit form view component for router (non-WASM fallback)
+#[cfg(not(target_arch = "wasm32"))]
+fn edit_view_component(model_name: String, record_id: String) -> View {
+	// Dummy data for non-WASM environments (tests, etc.)
 	let fields = vec![
 		FormField {
 			name: "name".to_string(),
@@ -173,6 +416,74 @@ fn not_found_view() -> View {
 		.into_view()
 }
 
+/// Loading view component
+///
+/// Displays a loading indicator while data is being fetched.
+#[cfg(target_arch = "wasm32")]
+fn loading_view() -> View {
+	use reinhardt_pages::component::{ElementView, IntoView};
+
+	ElementView::new("div")
+		.attr("class", "loading-spinner text-center mt-5")
+		.child(
+			ElementView::new("div")
+				.attr("class", "spinner-border")
+				.attr("role", "status")
+				.child(
+					ElementView::new("span")
+						.attr("class", "visually-hidden")
+						.child("Loading..."),
+				),
+		)
+		.into_view()
+}
+
+/// Error view component
+///
+/// Displays an error message when data fetch fails.
+#[cfg(target_arch = "wasm32")]
+fn error_view(message: &str) -> View {
+	use reinhardt_pages::component::{ElementView, IntoView};
+
+	ElementView::new("div")
+		.attr("class", "error-message alert alert-danger mt-5")
+		.attr("role", "alert")
+		.child(
+			ElementView::new("h4")
+				.attr("class", "alert-heading")
+				.child("Error"),
+		)
+		.child(ElementView::new("p").child(message.to_string()))
+		.child(
+			ElementView::new("div")
+				.attr("class", "mt-3")
+				.child(Link::new("/admin/", "Go to Dashboard").render()),
+		)
+		.into_view()
+}
+
+/// Convert FieldType to HTML input type string
+///
+/// Maps reinhardt_admin_types::FieldType to HTML input type attributes.
+#[cfg(target_arch = "wasm32")]
+fn field_type_to_html_input_type(field_type: &reinhardt_admin_types::FieldType) -> String {
+	use reinhardt_admin_types::FieldType;
+
+	match field_type {
+		FieldType::Text => "text".to_string(),
+		FieldType::TextArea => "textarea".to_string(),
+		FieldType::Number => "number".to_string(),
+		FieldType::Boolean => "checkbox".to_string(),
+		FieldType::Email => "email".to_string(),
+		FieldType::Date => "date".to_string(),
+		FieldType::DateTime => "datetime-local".to_string(),
+		FieldType::Select { .. } => "select".to_string(),
+		FieldType::MultiSelect { .. } => "select-multiple".to_string(),
+		FieldType::File => "file".to_string(),
+		FieldType::Hidden => "hidden".to_string(),
+	}
+}
+
 /// Initialize the admin router
 ///
 /// # Example
@@ -185,35 +496,49 @@ fn not_found_view() -> View {
 pub fn init_router() -> Router {
 	Router::new()
 		.named_route("dashboard", "/admin/", dashboard_view)
-		.named_route("list", "/admin/{model}/", || {
-			// Extract model parameter from URL
-			// TODO: Get actual params from Router context
-			list_view_component()
-		})
-		.named_route("detail", "/admin/{model}/{id}/", || {
-			// Extract model and id parameters from URL
-			// TODO: Get actual params from Router context
-			detail_view_component()
-		})
 		.named_route("create", "/admin/{model}/add/", || {
-			// Extract model parameter from URL
-			// TODO: Get actual params from Router context
-			create_view_component()
+			with_router(|router| {
+				let params = router.current_params().get();
+				let model_name = params
+					.get("model")
+					.cloned()
+					.unwrap_or_else(|| "unknown".to_string());
+				create_view_component(model_name)
+			})
 		})
 		.named_route("edit", "/admin/{model}/{id}/change/", || {
-			// Extract model and id parameters from URL
-			// TODO: Get actual params from Router context
-			edit_view_component()
+			with_router(|router| {
+				let params = router.current_params().get();
+				let model_name = params
+					.get("model")
+					.cloned()
+					.unwrap_or_else(|| "unknown".to_string());
+				let record_id = params.get("id").cloned().unwrap_or_else(|| "0".to_string());
+				edit_view_component(model_name, record_id)
+			})
+		})
+		.named_route("detail", "/admin/{model}/{id}/", || {
+			with_router(|router| {
+				let params = router.current_params().get();
+				let model_name = params
+					.get("model")
+					.cloned()
+					.unwrap_or_else(|| "unknown".to_string());
+				let record_id = params.get("id").cloned().unwrap_or_else(|| "0".to_string());
+				detail_view_component(model_name, record_id)
+			})
+		})
+		.named_route("list", "/admin/{model}/", || {
+			with_router(|router| {
+				let params = router.current_params().get();
+				let model_name = params
+					.get("model")
+					.cloned()
+					.unwrap_or_else(|| "unknown".to_string());
+				list_view_component(model_name)
+			})
 		})
 		.not_found(not_found_view)
-}
-
-/// Updates route state signals when navigation occurs
-///
-/// This should be called by the router navigation handler
-pub fn update_route_state(model: Option<String>, id: Option<String>) {
-	CURRENT_MODEL.with(|s| s.set(model));
-	CURRENT_ID.with(|s| s.set(id));
 }
 
 #[cfg(test)]
@@ -322,24 +647,52 @@ mod tests {
 	}
 
 	#[test]
-	fn test_update_route_state() {
-		update_route_state(Some("users".to_string()), Some("42".to_string()));
+	fn test_init_global_router() {
+		init_global_router();
 
-		let model = CURRENT_MODEL.with(|s| s.get());
-		let id = CURRENT_ID.with(|s| s.get());
-
-		assert_eq!(model, Some("users".to_string()));
-		assert_eq!(id, Some("42".to_string()));
+		with_router(|router| {
+			assert_eq!(router.route_count(), 5);
+			assert!(router.has_route("dashboard"));
+			assert!(router.has_route("list"));
+			assert!(router.has_route("detail"));
+			assert!(router.has_route("create"));
+			assert!(router.has_route("edit"));
+		});
 	}
 
 	#[test]
-	fn test_update_route_state_none() {
-		update_route_state(None, None);
+	fn test_with_router_access() {
+		init_global_router();
 
-		let model = CURRENT_MODEL.with(|s| s.get());
-		let id = CURRENT_ID.with(|s| s.get());
+		let route_count = with_router(|router| router.route_count());
+		assert_eq!(route_count, 5);
 
-		assert_eq!(model, None);
-		assert_eq!(id, None);
+		let has_dashboard = with_router(|router| router.has_route("dashboard"));
+		assert!(has_dashboard);
+	}
+
+	#[test]
+	#[should_panic(expected = "Router not initialized")]
+	fn test_with_router_panics_when_not_initialized() {
+		// ROUTERをクリア（この動作は実際には危険だが、テスト目的）
+		ROUTER.with(|r| *r.borrow_mut() = None);
+
+		with_router(|_| {});
+	}
+
+	#[test]
+	fn test_list_view_with_model_name() {
+		let view = list_view_component("users".to_string());
+		// 基本的なレンダリングが成功することを確認
+		let html = view.render_to_string();
+		assert!(html.contains("users") || html.contains("List"));
+	}
+
+	#[test]
+	fn test_detail_view_with_params() {
+		let view = detail_view_component("users".to_string(), "42".to_string());
+		// 基本的なレンダリングが成功することを確認
+		let html = view.render_to_string();
+		assert!(!html.is_empty());
 	}
 }

@@ -23,9 +23,6 @@ console_error_panic_hook = ["dep:console_error_panic_hook"]
 # Shared type definitions
 reinhardt-admin-types = { workspace = true }
 
-# Server Functions
-reinhardt-admin-server = { path = "../server" }
-
 # Reinhardt dependencies
 reinhardt-pages = { workspace = true }
 
@@ -50,12 +47,22 @@ web-sys = { version = "0.3", features = [
 	"Storage",
 ] }
 js-sys = "0.3"
-wasm-bindgen-futures = "0.4"
 
 # Core dependencies
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde-wasm-bindgen = "0.6"
+
+# WASM-specific dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+gloo-net = "0.6"
+getrandom = { workspace = true }
+reinhardt-admin-server = { path = "../server" }
+
+# Server Functions (サーバーサイドのみ)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reinhardt-admin-server = { path = "../server" }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

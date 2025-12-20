@@ -107,3 +107,16 @@ pub struct ExportResponse {
 	/// Content type (e.g., "application/json", "text/csv")
 	pub content_type: String,
 }
+
+/// Response for fields endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldsResponse {
+	/// Model name
+	pub model_name: String,
+	/// Field definitions for dynamic form generation
+	pub fields: Vec<crate::models::FieldInfo>,
+	/// Existing field values (for edit forms)
+	/// None for create forms, Some(values) for edit forms
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub values: Option<HashMap<String, serde_json::Value>>,
+}
