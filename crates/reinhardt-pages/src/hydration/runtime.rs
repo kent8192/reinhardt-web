@@ -10,6 +10,9 @@ use std::collections::HashMap;
 #[cfg(target_arch = "wasm32")]
 use crate::dom::{Element, document};
 
+#[cfg(target_arch = "wasm32")]
+use crate::ssr::HYDRATION_ATTR_ID;
+
 /// Errors that can occur during hydration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HydrationError {
@@ -99,14 +102,12 @@ impl HydrationContext {
 	/// Restores state from the window's SSR state object.
 	#[cfg(target_arch = "wasm32")]
 	pub fn from_window() -> Result<Self, HydrationError> {
-		use wasm_bindgen::JsCast;
-
 		let window = web_sys::window()
 			.ok_or_else(|| HydrationError::StateParseError("Window not available".to_string()))?;
 
 		let global = window
 			.get("__REINHARDT_SSR_STATE__")
-			.map_err(|_| HydrationError::StateParseError("SSR state not found".to_string()))?;
+			.ok_or_else(|| HydrationError::StateParseError("SSR state not found".to_string()))?;
 
 		if global.is_undefined() || global.is_null() {
 			return Ok(Self::new());
@@ -165,7 +166,8 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	let view = component.render();
 
 	// 3. Reconcile DOM structure
-	reconcile(root, &view)?;
+	reconcile(root, &view)
+		.map_err(|e| HydrationError::StateParseError(format!("Reconciliation failed: {:?}", e)))?;
 
 	// 4. Attach event handlers
 	let mut registry = EventRegistry::new();
@@ -190,6 +192,7 @@ pub fn hydrate_root<C: Component + Default>() -> Result<(), HydrationError> {
 	let doc = document();
 	let root = doc
 		.query_selector("#app")
+		.map_err(|e| HydrationError::StateParseError(format!("Query selector failed: {}", e)))?
 		.ok_or_else(|| HydrationError::RootNotFound("#app".to_string()))?;
 
 	hydrate(&component, &root)

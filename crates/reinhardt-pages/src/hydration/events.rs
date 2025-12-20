@@ -158,7 +158,7 @@ pub fn attach_event(
 	handler: EventHandler,
 	registry: &mut EventRegistry,
 ) -> Result<(), EventAttachError> {
-	let handle = element.add_event_listener(event_type, move |event| {
+	let handle = element.add_event_listener_with_event(event_type.as_str(), move |event| {
 		handler(event);
 	});
 
@@ -204,21 +204,46 @@ pub fn attach_events(
 #[cfg(target_arch = "wasm32")]
 fn event_type_from_string(s: &str) -> EventType {
 	match s {
+		// Mouse events
 		"click" => EventType::Click,
 		"dblclick" => EventType::DblClick,
 		"mousedown" => EventType::MouseDown,
 		"mouseup" => EventType::MouseUp,
 		"mouseenter" => EventType::MouseEnter,
 		"mouseleave" => EventType::MouseLeave,
+		"mousemove" => EventType::MouseMove,
+		"mouseover" => EventType::MouseOver,
+		"mouseout" => EventType::MouseOut,
+		// Keyboard events
 		"keydown" => EventType::KeyDown,
 		"keyup" => EventType::KeyUp,
 		"keypress" => EventType::KeyPress,
-		"focus" => EventType::Focus,
-		"blur" => EventType::Blur,
+		// Form events
 		"input" => EventType::Input,
 		"change" => EventType::Change,
 		"submit" => EventType::Submit,
-		other => EventType::Custom(other.to_string()),
+		"focus" => EventType::Focus,
+		"blur" => EventType::Blur,
+		// Touch events
+		"touchstart" => EventType::TouchStart,
+		"touchend" => EventType::TouchEnd,
+		"touchmove" => EventType::TouchMove,
+		"touchcancel" => EventType::TouchCancel,
+		// Drag events
+		"dragstart" => EventType::DragStart,
+		"drag" => EventType::Drag,
+		"drop" => EventType::Drop,
+		"dragenter" => EventType::DragEnter,
+		"dragleave" => EventType::DragLeave,
+		"dragover" => EventType::DragOver,
+		"dragend" => EventType::DragEnd,
+		// Other events
+		"load" => EventType::Load,
+		"error" => EventType::Error,
+		"scroll" => EventType::Scroll,
+		"resize" => EventType::Resize,
+		// Unknown events default to Click (should not happen in practice)
+		_ => EventType::Click,
 	}
 }
 
