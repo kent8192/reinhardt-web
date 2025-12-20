@@ -338,8 +338,13 @@ where
 
 	/// Fetches the first matching result.
 	#[cfg(target_arch = "wasm32")]
-	pub async fn first(&self) -> Result<Option<T>, ServerFnError> {
-		let results = self.clone().limit(1).all().await?;
+	pub async fn first(&self) -> Result<Option<T>, ServerFnError>
+	where
+		T: Clone,
+	{
+		let mut queryset = self.clone();
+		queryset.limit = Some(1);
+		let results = queryset.all().await?;
 		Ok(results.into_iter().next())
 	}
 
@@ -358,13 +363,13 @@ where
 		use gloo_net::http::Request;
 
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
-		let mut request = Request::get(&url);
+		let mut builder = Request::get(&url);
 
 		if let Some((header_name, header_value)) = csrf_headers() {
-			request = request.header(header_name, &header_value);
+			builder = builder.header(header_name, &header_value);
 		}
 
-		let response = request
+		let response = builder
 			.send()
 			.await
 			.map_err(|e| ServerFnError::Network(e.to_string()))?;
@@ -398,13 +403,13 @@ where
 
 		// Many APIs support a count endpoint or header
 		let url = format!("{}?count=true", self.build_url());
-		let mut request = Request::get(&url);
+		let mut builder = Request::get(&url);
 
 		if let Some((header_name, header_value)) = csrf_headers() {
-			request = request.header(header_name, &header_value);
+			builder = builder.header(header_name, &header_value);
 		}
 
-		let response = request
+		let response = builder
 			.send()
 			.await
 			.map_err(|e| ServerFnError::Network(e.to_string()))?;
@@ -452,13 +457,15 @@ where
 		use crate::csrf::csrf_headers;
 		use gloo_net::http::Request;
 
-		let mut request = Request::post(&self.endpoint)
-			.json(data)
-			.map_err(|e| ServerFnError::Serialization(e.to_string()))?;
+		let mut builder = Request::post(&self.endpoint);
 
 		if let Some((header_name, header_value)) = csrf_headers() {
-			request = request.header(header_name, &header_value);
+			builder = builder.header(header_name, &header_value);
 		}
+
+		let request = builder
+			.json(data)
+			.map_err(|e| ServerFnError::Serialization(e.to_string()))?;
 
 		let response = request
 			.send()
@@ -493,13 +500,15 @@ where
 		use gloo_net::http::Request;
 
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
-		let mut request = Request::put(&url)
-			.json(data)
-			.map_err(|e| ServerFnError::Serialization(e.to_string()))?;
+		let mut builder = Request::put(&url);
 
 		if let Some((header_name, header_value)) = csrf_headers() {
-			request = request.header(header_name, &header_value);
+			builder = builder.header(header_name, &header_value);
 		}
+
+		let request = builder
+			.json(data)
+			.map_err(|e| ServerFnError::Serialization(e.to_string()))?;
 
 		let response = request
 			.send()
@@ -538,13 +547,15 @@ where
 		use gloo_net::http::Request;
 
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
-		let mut request = Request::patch(&url)
-			.json(data)
-			.map_err(|e| ServerFnError::Serialization(e.to_string()))?;
+		let mut builder = Request::patch(&url);
 
 		if let Some((header_name, header_value)) = csrf_headers() {
-			request = request.header(header_name, &header_value);
+			builder = builder.header(header_name, &header_value);
 		}
+
+		let request = builder
+			.json(data)
+			.map_err(|e| ServerFnError::Serialization(e.to_string()))?;
 
 		let response = request
 			.send()
@@ -583,13 +594,13 @@ where
 		use gloo_net::http::Request;
 
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
-		let mut request = Request::delete(&url);
+		let mut builder = Request::delete(&url);
 
 		if let Some((header_name, header_value)) = csrf_headers() {
-			request = request.header(header_name, &header_value);
+			builder = builder.header(header_name, &header_value);
 		}
 
-		let response = request
+		let response = builder
 			.send()
 			.await
 			.map_err(|e| ServerFnError::Network(e.to_string()))?;
