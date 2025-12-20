@@ -27,9 +27,7 @@ use std::sync::Arc;
 /// println!("Site: {}", dashboard.site_name);
 /// ```
 #[server_fn(use_inject = true)]
-pub async fn get_dashboard(
-	site: Arc<AdminSite>,
-) -> Result<DashboardResponse, ServerFnError> {
+pub async fn get_dashboard(site: Arc<AdminSite>) -> Result<DashboardResponse, ServerFnError> {
 	// Collect model information
 	let models: Vec<ModelInfo> = site
 		.registered_models()

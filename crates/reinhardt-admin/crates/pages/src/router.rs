@@ -12,9 +12,9 @@ use crate::components::features::{
 };
 #[cfg(target_arch = "wasm32")]
 use reinhardt_admin_server::{get_dashboard, get_model_detail, get_model_fields, list_models};
-use reinhardt_admin_types::ModelInfo;
 #[cfg(target_arch = "wasm32")]
 use reinhardt_admin_types::ListQueryParams;
+use reinhardt_admin_types::ModelInfo;
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{Component, View};
 use reinhardt_pages::router::{Link, Router};
@@ -240,7 +240,10 @@ fn detail_view_component(model_name: String, record_id: String) -> View {
 fn detail_view_component(model_name: String, record_id: String) -> View {
 	// Dummy data for non-WASM environments (tests, etc.)
 	let mut record = HashMap::new();
-	record.insert("id".to_string(), serde_json::Value::String(record_id.clone()));
+	record.insert(
+		"id".to_string(),
+		serde_json::Value::String(record_id.clone()),
+	);
 	record.insert(
 		"name".to_string(),
 		serde_json::Value::String("Sample Record".to_string()),
@@ -256,7 +259,11 @@ fn create_view_component(model_name: String) -> View {
 
 	let fields_resource = create_resource(move || {
 		let model_name = model_name.clone();
-		async move { get_model_fields(model_name, None).await.map_err(|e| e.to_string()) }
+		async move {
+			get_model_fields(model_name, None)
+				.await
+				.map_err(|e| e.to_string())
+		}
 	});
 
 	ElementView::new("div")

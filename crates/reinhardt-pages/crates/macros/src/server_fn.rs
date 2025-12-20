@@ -141,13 +141,11 @@ fn is_inject_attr(attr: &syn::Attribute) -> bool {
 	}
 
 	// Check for #[reinhardt::inject] (recommended tool attribute)
-	if let Some(seg0) = attr.path().segments.first() {
-		if seg0.ident == "reinhardt" {
-			if let Some(seg1) = attr.path().segments.iter().nth(1) {
+	if let Some(seg0) = attr.path().segments.first()
+		&& seg0.ident == "reinhardt"
+			&& let Some(seg1) = attr.path().segments.iter().nth(1) {
 				return seg1.ident == "inject";
 			}
-		}
-	}
 
 	false
 }
