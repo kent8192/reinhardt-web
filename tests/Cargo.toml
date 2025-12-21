@@ -6,6 +6,11 @@ license.workspace = true
 publish = false
 
 [dependencies]
+# Main reinhardt facade crate for proc macro path resolution.
+# Proc macros generate code with absolute paths like ::reinhardt::reinhardt_apps
+# This dependency makes those paths resolvable.
+reinhardt = { workspace = true, features = ["full"] }
+
 # Reinhardt crates
 reinhardt-backends = { workspace = true, features = ["postgres", "sqlite"] }
 reinhardt-commands = { workspace = true }
@@ -29,21 +34,18 @@ reinhardt-db = { workspace = true, features = [
     "migrations",
     "contenttypes",
 ] }
-reinhardt-migrations = { path = "../crates/reinhardt-db/crates/migrations" }
+reinhardt-migrations = { workspace = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }
-reinhardt-settings = { path = "../crates/reinhardt-conf/crates/settings", features = [
-	"async",
-	"dynamic-database",
-	"dynamic-redis",
-	"hot-reload",
-	"caching",
+reinhardt-settings = { workspace = true, features = [
+    "async",
+    "dynamic-database",
+    "dynamic-redis",
+    "hot-reload",
+    "caching",
 ] }
 reinhardt-forms = { workspace = true }
 reinhardt-middleware = { workspace = true }
-reinhardt-orm = { path = "../crates/reinhardt-db/crates/orm", features = [
-    "postgres",
-    "sqlite",
-] }
+reinhardt-orm = { workspace = true, features = ["postgres", "sqlite"] }
 reinhardt-rest = { workspace = true, features = [
     "browsable-api",
     "filters",

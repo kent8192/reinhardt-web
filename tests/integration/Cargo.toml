@@ -9,7 +9,7 @@ autotests = true
 # Main reinhardt facade crate for proc macro path resolution.
 # Proc macros generate code with absolute paths like ::reinhardt::db::orm::Model
 # This dependency makes those paths resolvable in test files.
-reinhardt = { path = "../..", package = "reinhardt-web", features = ["full"] }
+reinhardt = { workspace = true, features = ["full"] }
 
 # Reinhardt crates
 reinhardt-apps = { workspace = true }
@@ -20,7 +20,12 @@ reinhardt-core = { workspace = true, features = [
   "di",
   "validators",
 ] }
-reinhardt-auth = { workspace = true, features = ["argon2-hasher", "jwt", "sessions", "token"] }
+reinhardt-auth = { workspace = true, features = [
+  "argon2-hasher",
+  "jwt",
+  "sessions",
+  "token",
+] }
 reinhardt-security = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-params = { workspace = true }
@@ -70,21 +75,15 @@ reinhardt-tasks = { workspace = true, features = [
   "rabbitmq-backend",
 ] }
 reinhardt-rest = { workspace = true }
-reinhardt-shortcuts = { workspace = true, features = [
-  "database",
-] }
+reinhardt-shortcuts = { workspace = true, features = ["database"] }
 reinhardt-pagination = { workspace = true }
 reinhardt-filters = { workspace = true }
 reinhardt-forms = { workspace = true }
 reinhardt-throttling = { workspace = true }
-reinhardt-utils = { workspace = true, features = [
-  "cache",
-  "logging",
-] }
+reinhardt-utils = { workspace = true, features = ["cache", "logging"] }
+reinhardt-static = { workspace = true }
 reinhardt-storage = { workspace = true }
-reinhardt-test = { workspace = true, features = [
-  "testcontainers",
-] }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
 reinhardt-sessions = { workspace = true, features = ["database"] }
 
 # Web framework (using reinhardt-apps)
@@ -133,6 +132,7 @@ rstest = "0.26.1"
 scopeguard = "1.2"
 linkme = "0.3"
 paste = "1.0"
+tera = "1.19"
 
 # Testing utilities
 tempfile = "3.14"

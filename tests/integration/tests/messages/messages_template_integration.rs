@@ -11,13 +11,13 @@ use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tempfile::TempDir;
-use tera::{Context, Tera};
+use tera::Tera;
 use testcontainers::ContainerAsync;
 use testcontainers_modules::testcontainers::GenericImage;
 
 /// Helper function to render a template with messages
 fn render_template(template_str: &str, messages: Vec<Message>) -> String {
-	let mut context = Context::new();
+	let mut context = tera::Context::new();
 
 	// Convert messages to JSON format for template
 	let messages_json: Vec<_> = messages

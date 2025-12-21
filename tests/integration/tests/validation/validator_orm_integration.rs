@@ -13,7 +13,8 @@ use reinhardt_db::DatabaseConnection;
 use reinhardt_integration_tests::{
 	migrations::apply_basic_test_migrations, validator_test_common::*,
 };
-use reinhardt_test::fixtures::postgres::postgres_container;
+use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_test::fixtures::postgres_container;
 use reinhardt_test::fixtures::validator::{validator_db_guard, ValidatorDbGuard};
 use reinhardt_test::resource::TeardownGuard;
 use rstest::*;
@@ -30,11 +31,18 @@ async fn validator_orm_test_db(
 ) -> (ContainerAsync<GenericImage>, TestDatabase, u16, String) {
 	let (container, _pool, port, url) = postgres_container.await;
 
-	// Create DatabaseConnection from URL (not from pool)
+	// Create ORM DatabaseConnection from URL
 	let connection = DatabaseConnection::connect(&url).await.unwrap();
 
-	// Apply basic test migrations using MigrationExecutor
-	apply_basic_test_migrations(&connection).await.unwrap();
+	// Apply basic test migrations using inner BackendsConnection
+	apply_basic_test_migrations(connection.inner())
+		.await
+		.unwrap();
+
+	// Initialize global database connection for ORM Manager API
+	reinitialize_database(&url)
+		.await
+		.expect("Failed to reinitialize database");
 
 	// Create TestDatabase with the connection
 	let test_db = TestDatabase {
@@ -300,7 +308,7 @@ mod constraint_validation_tests {
 		assert!(user1_id > 0);
 
 		// Create a UniqueValidator for username field using pool from connection
-		let pool = test_db.connection.pool().clone();
+		let pool = test_db.connection.inner().into_postgres().unwrap().clone();
 		let pool_clone = pool.clone();
 		let username_validator = UniqueValidator::new(
 			"username",
@@ -415,7 +423,7 @@ mod relationship_validation_tests {
 			.unwrap();
 
 		// Get pool from DatabaseConnection for raw SQL queries
-		let pool = test_db.connection.pool().clone();
+		let pool = test_db.connection.inner().into_postgres().unwrap().clone();
 
 		// Create ExistsValidator for user_id
 		let user_pool = pool.clone();
@@ -535,7 +543,7 @@ mod relationship_validation_tests {
 		assert!(order_id > 0);
 
 		// Attempt to update order with non-existent user_id (should fail)
-		let pool = test_db.connection.pool().clone();
+		let pool = test_db.connection.inner().into_postgres().unwrap().clone();
 		let update_result: Result<sqlx::postgres::PgQueryResult, sqlx::Error> =
 			sqlx::query("UPDATE test_orders SET user_id = $1 WHERE id = $2")
 				.bind(99999)
@@ -578,7 +586,7 @@ mod relationship_validation_tests {
 
 		// Attempt to delete user (should fail because of FK constraint)
 		// Note: test_orders table does NOT have ON DELETE CASCADE
-		let pool = test_db.connection.pool().clone();
+		let pool = test_db.connection.inner().into_postgres().unwrap().clone();
 		let delete_result: Result<sqlx::postgres::PgQueryResult, sqlx::Error> =
 			sqlx::query("DELETE FROM test_users WHERE id = $1")
 				.bind(user_id)

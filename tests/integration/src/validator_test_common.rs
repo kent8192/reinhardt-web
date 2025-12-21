@@ -18,7 +18,9 @@ use testcontainers::{
 /// Test database setup and management with TestContainers
 pub struct TestDatabase {
 	pub connection: Arc<DatabaseConnection>,
-	_container: Option<testcontainers::ContainerAsync<GenericImage>>,
+	/// Container is managed by the TestDatabase and should not be directly accessed.
+	/// This field is public to allow fixture construction in integration tests.
+	pub _container: Option<testcontainers::ContainerAsync<GenericImage>>,
 }
 
 impl TestDatabase {
@@ -90,14 +92,10 @@ impl TestDatabase {
 		username: &str,
 		email: &str,
 	) -> Result<i32, Box<dyn std::error::Error>> {
-		let user = TestUser {
-			id: None,
-			username: username.to_string(),
-			email: email.to_string(),
-		};
+		let user = TestUser::new(username.to_string(), email.to_string());
 		let manager = TestUser::objects();
 		let created = manager.create(&user).await?;
-		Ok(created.id.unwrap())
+		Ok(created.id())
 	}
 
 	/// Check if username exists using ORM
@@ -139,16 +137,10 @@ impl TestDatabase {
 		price: f64,
 		stock: i32,
 	) -> Result<i32, Box<dyn std::error::Error>> {
-		let product = TestProduct {
-			id: None,
-			name: name.to_string(),
-			code: code.to_string(),
-			price,
-			stock,
-		};
+		let product = TestProduct::new(name.to_string(), code.to_string(), price, stock);
 		let manager = TestProduct::objects();
 		let created = manager.create(&product).await?;
-		Ok(created.id.unwrap())
+		Ok(created.id())
 	}
 
 	/// Check if user exists by ID using ORM
@@ -189,15 +181,10 @@ impl TestDatabase {
 		product_id: i32,
 		quantity: i32,
 	) -> Result<i32, Box<dyn std::error::Error>> {
-		let order = TestOrder {
-			id: None,
-			user_id,
-			product_id,
-			quantity,
-		};
+		let order = TestOrder::new(user_id, product_id, quantity);
 		let manager = TestOrder::objects();
 		let created = manager.create(&order).await?;
-		Ok(created.id.unwrap())
+		Ok(created.id())
 	}
 }
 
@@ -206,16 +193,16 @@ impl TestDatabase {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestUser {
 	#[field(primary_key = true)]
-	pub id: Option<i32>,
+	id: i32,
 	#[field(max_length = 100)]
-	pub username: String,
+	username: String,
 	#[field(max_length = 255)]
-	pub email: String,
+	email: String,
 }
 
 impl TestUser {
 	pub fn with_id(mut self, id: i32) -> Self {
-		self.id = Some(id);
+		self.id = id;
 		self
 	}
 }
@@ -225,13 +212,13 @@ impl TestUser {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestProduct {
 	#[field(primary_key = true)]
-	pub id: Option<i32>,
+	id: i32,
 	#[field(max_length = 200)]
-	pub name: String,
+	name: String,
 	#[field(max_length = 50)]
-	pub code: String,
-	pub price: f64,
-	pub stock: i32,
+	code: String,
+	price: f64,
+	stock: i32,
 }
 
 /// Test order model for validation tests
@@ -239,10 +226,10 @@ pub struct TestProduct {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestOrder {
 	#[field(primary_key = true)]
-	pub id: Option<i32>,
-	pub user_id: i32,
-	pub product_id: i32,
-	pub quantity: i32,
+	id: i32,
+	user_id: i32,
+	product_id: i32,
+	quantity: i32,
 }
 
 /// Helper function to validate and assert expected result

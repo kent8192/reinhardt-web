@@ -12,17 +12,20 @@
 
 use reinhardt_core::validators::{MinValueValidator, RangeValidator, Validator};
 use reinhardt_db::{
-	orm::{model, Filter, FilterOperator, FilterValue, Manager},
+	orm::{Filter, FilterOperator, FilterValue, Model},
 	DatabaseConnection,
 };
 use reinhardt_integration_tests::{
 	migrations::apply_constraint_test_migrations,
 	validator_test_common::{TestProduct, TestUser},
 };
-use reinhardt_test::fixtures::postgres::postgres_container;
+use reinhardt_macros::model;
+use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_test::fixtures::postgres_container;
 use reinhardt_test::fixtures::validator::{validator_db_guard, ValidatorDbGuard};
 use reinhardt_test::resource::TeardownGuard;
 use rstest::*;
+use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
@@ -31,23 +34,28 @@ use testcontainers::{ContainerAsync, GenericImage};
 // ============================================================================
 
 /// Test post model for constraint validation tests
-#[model(table_name = "test_posts", primary_key = "id")]
-#[derive(Debug, Clone)]
+#[model(table_name = "test_posts")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestPost {
-	pub id: Option<i32>,
-	pub user_id: i32,
-	pub title: String,
-	pub content: String,
+	#[field(primary_key = true)]
+	id: i32,
+	user_id: i32,
+	#[field(max_length = 255)]
+	title: String,
+	#[field(max_length = 65535)]
+	content: String,
 }
 
 /// Test comment model for constraint validation tests
-#[model(table_name = "test_comments", primary_key = "id")]
-#[derive(Debug, Clone)]
+#[model(table_name = "test_comments")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestComment {
-	pub id: Option<i32>,
-	pub post_id: i32,
-	pub user_id: i32,
-	pub content: String,
+	#[field(primary_key = true)]
+	id: i32,
+	post_id: i32,
+	user_id: i32,
+	#[field(max_length = 65535)]
+	content: String,
 }
 
 // ============================================================================
@@ -64,18 +72,26 @@ async fn validator_constraint_test_db(
 ) -> (
 	ContainerAsync<GenericImage>,
 	Arc<DatabaseConnection>,
+	Arc<PgPool>,
 	u16,
 	String,
 ) {
-	let (container, _pool, port, url) = postgres_container.await;
+	let (container, pool, port, url) = postgres_container.await;
 
-	// Create DatabaseConnection from URL (not from pool)
+	// Create ORM DatabaseConnection from URL
 	let connection = DatabaseConnection::connect(&url).await.unwrap();
 
-	// Apply constraint test migrations using MigrationExecutor
-	apply_constraint_test_migrations(&connection).await.unwrap();
+	// Apply constraint test migrations using inner BackendsConnection
+	apply_constraint_test_migrations(connection.inner())
+		.await
+		.unwrap();
 
-	(container, Arc::new(connection), port, url)
+	// Initialize global database connection for ORM Manager API
+	reinitialize_database(&url)
+		.await
+		.expect("Failed to reinitialize database");
+
+	(container, Arc::new(connection), pool, port, url)
 }
 
 // ============================================================================
@@ -94,30 +110,31 @@ async fn test_composite_unique_constraint_validation(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
 		Arc<DatabaseConnection>,
+		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, connection, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _connection, _pool, _port, _database_url) = validator_constraint_test_db.await;
 
 	// Insert test users using ORM
 	let user1_id = {
 		let user = TestUser::new("alice".to_string(), "alice@example.com".to_string());
-		let manager = TestUser::objects(&connection);
-		manager.create(&user).await.unwrap().id.unwrap()
+		let manager = TestUser::objects();
+		manager.create(&user).await.unwrap().id()
 	};
 	let user2_id = {
 		let user = TestUser::new("bob".to_string(), "bob@example.com".to_string());
-		let manager = TestUser::objects(&connection);
-		manager.create(&user).await.unwrap().id.unwrap()
+		let manager = TestUser::objects();
+		manager.create(&user).await.unwrap().id()
 	};
 
 	// Insert first post by alice using ORM
 	let post1_id = {
 		let post = TestPost::new(user1_id, "First Post".to_string(), "Content 1".to_string());
-		let manager = TestPost::objects(&connection);
-		manager.create(&post).await.unwrap().id.unwrap()
+		let manager = TestPost::objects();
+		manager.create(&post).await.unwrap().id()
 	};
 	assert!(post1_id > 0);
 
@@ -128,7 +145,7 @@ async fn test_composite_unique_constraint_validation(
 			"First Post".to_string(),
 			"Different content".to_string(),
 		);
-		let manager = TestPost::objects(&connection);
+		let manager = TestPost::objects();
 		manager.create(&post).await
 	};
 	assert!(duplicate_result.is_err());
@@ -147,24 +164,32 @@ async fn test_composite_unique_constraint_validation(
 			"First Post".to_string(),
 			"Bob's content".to_string(),
 		);
-		let manager = TestPost::objects(&connection);
-		manager.create(&post).await.unwrap().id.unwrap()
+		let manager = TestPost::objects();
+		manager.create(&post).await.unwrap().id()
 	};
 	assert!(post2_id > 0);
 
 	// Same user can use different title - should succeed
 	let post3_id = {
 		let post = TestPost::new(user1_id, "Second Post".to_string(), "Content 2".to_string());
-		let manager = TestPost::objects(&connection);
-		manager.create(&post).await.unwrap().id.unwrap()
+		let manager = TestPost::objects();
+		manager.create(&post).await.unwrap().id()
 	};
 	assert!(post3_id > 0);
 
 	// Verify composite uniqueness - count posts by user and title
-	let manager = TestPost::objects(&connection);
+	let manager = TestPost::objects();
 	let count = manager
-		.filter(Filter::new("user_id", user1_id))
-		.filter(Filter::new("title", "First Post"))
+		.filter_by(Filter::new(
+			"user_id".to_string(),
+			FilterOperator::Eq,
+			FilterValue::Integer(user1_id as i64),
+		))
+		.filter(Filter::new(
+			"title".to_string(),
+			FilterOperator::Eq,
+			FilterValue::String("First Post".to_string()),
+		))
 		.count()
 		.await
 		.unwrap();
@@ -192,12 +217,13 @@ async fn test_check_constraint_integration(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
 		Arc<DatabaseConnection>,
+		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, connection, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _connection, pool, _port, _database_url) = validator_constraint_test_db.await;
 
 	// Application-level validator
 	let price_validator = MinValueValidator::new(0.0);
@@ -217,8 +243,8 @@ async fn test_check_constraint_integration(
 			valid_price,
 			valid_stock,
 		);
-		let manager = TestProduct::objects(&connection);
-		manager.create(&product).await.unwrap().id.unwrap()
+		let manager = TestProduct::objects();
+		manager.create(&product).await.unwrap().id()
 	};
 	assert!(product_id > 0);
 
@@ -232,8 +258,15 @@ async fn test_check_constraint_integration(
 	);
 
 	// Database CHECK constraint also catches negative price
-	let db_result =
-		insert_product_result(pool.as_ref(), "Invalid Product", "PROD002", -10.0, 5).await;
+	let db_result: Result<(i32,), sqlx::Error> = sqlx::query_as(
+		"INSERT INTO test_products (name, code, price, stock) VALUES ($1, $2, $3, $4) RETURNING id",
+	)
+	.bind("Invalid Product")
+	.bind("PROD002")
+	.bind(-10.0f64)
+	.bind(5)
+	.fetch_one(pool.as_ref())
+	.await;
 	assert!(db_result.is_err());
 
 	let db_error = db_result.unwrap_err().to_string();
@@ -251,12 +284,24 @@ async fn test_check_constraint_integration(
 	assert!(stock_validation_result.is_err());
 
 	// Database CHECK constraint also catches negative stock
-	let db_stock_result =
-		insert_product_result(pool.as_ref(), "Invalid Stock", "PROD003", 50.0, -10).await;
+	let db_stock_result: Result<(i32,), sqlx::Error> = sqlx::query_as(
+		"INSERT INTO test_products (name, code, price, stock) VALUES ($1, $2, $3, $4) RETURNING id",
+	)
+	.bind("Invalid Stock")
+	.bind("PROD003")
+	.bind(50.0f64)
+	.bind(-10)
+	.fetch_one(pool.as_ref())
+	.await;
 	assert!(db_stock_result.is_err());
 
 	// Update with invalid price should also fail
-	let update_result = update_product_price(pool.as_ref(), product_id, -20.0).await;
+	let update_result: Result<sqlx::postgres::PgQueryResult, sqlx::Error> =
+		sqlx::query("UPDATE test_products SET price = $1 WHERE id = $2")
+			.bind(-20.0f64)
+			.bind(product_id)
+			.execute(pool.as_ref())
+			.await;
 	assert!(update_result.is_err());
 
 	// Cleanup handled automatically by TeardownGuard
@@ -278,38 +323,37 @@ async fn test_cascade_delete_validation(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
 		Arc<DatabaseConnection>,
+		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, connection, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _connection, _pool, _port, _database_url) = validator_constraint_test_db.await;
 
 	// Setup: Create user, post, and comments
 	let user_id = {
 		let user = TestUser::new("charlie".to_string(), "charlie@example.com".to_string());
-		let manager = TestUser::objects(&connection);
+		let manager = TestUser::objects();
 		manager
 			.create(&user)
 			.await
 			.expect("Failed to insert user")
-			.id
-			.unwrap()
+			.id()
 	};
 
 	let post_id = {
 		let post = TestPost::new(user_id, "Test Post".to_string(), "Content".to_string());
-		let manager = TestPost::objects(&connection);
+		let manager = TestPost::objects();
 		manager
 			.create(&post)
 			.await
 			.expect("Failed to insert post")
-			.id
-			.unwrap()
+			.id()
 	};
 
 	// Insert multiple comments on the post
-	let comment_manager = TestComment::objects(&connection);
+	let comment_manager = TestComment::objects();
 	let comment1 = TestComment::new(post_id, user_id, "Comment 1".to_string());
 	let comment2 = TestComment::new(post_id, user_id, "Comment 2".to_string());
 	let comment3 = TestComment::new(post_id, user_id, "Comment 3".to_string());
@@ -318,20 +362,17 @@ async fn test_cascade_delete_validation(
 		.create(&comment1)
 		.await
 		.expect("Failed to insert comment")
-		.id
-		.unwrap();
+		.id();
 	let comment2_id = comment_manager
 		.create(&comment2)
 		.await
 		.expect("Failed to insert comment")
-		.id
-		.unwrap();
+		.id();
 	let comment3_id = comment_manager
 		.create(&comment3)
 		.await
 		.expect("Failed to insert comment")
-		.id
-		.unwrap();
+		.id();
 
 	assert!(comment1_id > 0);
 	assert!(comment2_id > 0);
@@ -339,7 +380,7 @@ async fn test_cascade_delete_validation(
 
 	// Verify comments exist before deletion
 	let comment_count_before = comment_manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"post_id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(post_id as i64),
@@ -351,7 +392,7 @@ async fn test_cascade_delete_validation(
 
 	// Application-level validation: Check cascade impact before delete
 	let affected_comments = comment_manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"post_id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(post_id as i64),
@@ -365,20 +406,13 @@ async fn test_cascade_delete_validation(
 	);
 
 	// Delete post - should cascade delete all comments
-	let post_manager = TestPost::objects(&connection);
-	let delete_result = post_manager
-		.filter(Filter::new(
-			"id".to_string(),
-			FilterOperator::Eq,
-			FilterValue::Integer(post_id as i64),
-		))
-		.delete()
-		.await;
+	let post_manager = TestPost::objects();
+	let delete_result = post_manager.delete(post_id).await;
 	assert!(delete_result.is_ok());
 
 	// Verify post is deleted
 	let post_exists = post_manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(post_id as i64),
@@ -390,7 +424,7 @@ async fn test_cascade_delete_validation(
 
 	// Verify comments are cascade-deleted
 	let comment_count_after = comment_manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"post_id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(post_id as i64),
@@ -422,19 +456,17 @@ async fn test_validation_failure_transaction_rollback(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
 		Arc<DatabaseConnection>,
+		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, connection, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _connection, pool, _port, _database_url) = validator_constraint_test_db.await;
 
 	// Get initial product count using ORM
-	let manager = TestProduct::objects(&connection);
+	let manager = TestProduct::objects();
 	let initial_count = manager.count().await.expect("Failed to count products");
-
-	// Get raw pool for transaction handling
-	let pool = connection.pool();
 
 	// Begin transaction
 	let mut tx = pool.begin().await.expect("Failed to begin transaction");
@@ -471,7 +503,7 @@ async fn test_validation_failure_transaction_rollback(
 
 	// Verify the valid product was NOT committed
 	let product_exists = manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"code".to_string(),
 			FilterOperator::Eq,
 			FilterValue::String("PROD001".to_string()),
@@ -529,12 +561,13 @@ async fn test_partial_update_validation(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
 		Arc<DatabaseConnection>,
+		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, connection, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _connection, _pool, _port, _database_url) = validator_constraint_test_db.await;
 
 	// Insert initial product
 	let product_id = {
@@ -544,13 +577,12 @@ async fn test_partial_update_validation(
 			100.0,
 			50,
 		);
-		let manager = TestProduct::objects(&connection);
+		let manager = TestProduct::objects();
 		manager
 			.create(&product)
 			.await
 			.expect("Failed to insert product")
-			.id
-			.unwrap()
+			.id()
 	};
 	assert!(product_id > 0);
 
@@ -562,33 +594,35 @@ async fn test_partial_update_validation(
 	assert!(price_validator.validate(&new_price).is_ok());
 
 	// Apply partial update
-	let manager = TestProduct::objects(&connection);
+	let manager = TestProduct::objects();
 	let mut product = manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
 		))
 		.first()
 		.await
-		.expect("Failed to get product");
-	product.price = new_price;
-	let update_result = manager.update(&product_id.to_string(), &product).await;
+		.expect("Failed to get product")
+		.expect("Product not found");
+	product.set_price(new_price);
+	let update_result = manager.update(&product).await;
 	assert!(update_result.is_ok());
 
 	// Verify updated field
 	let updated_product = manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
 		))
 		.first()
 		.await
-		.expect("Failed to get updated product");
-	assert_eq!(updated_product.price, new_price);
-	assert_eq!(updated_product.name, "Original Product"); // Unchanged
-	assert_eq!(updated_product.stock, 50); // Unchanged
+		.expect("Failed to get updated product")
+		.expect("Updated product not found");
+	assert_eq!(updated_product.price(), new_price);
+	assert_eq!(updated_product.name(), "Original Product"); // Unchanged
+	assert_eq!(updated_product.stock(), 50); // Unchanged
 
 	// Partial update: Only update stock
 	let new_stock = 100;
@@ -597,31 +631,33 @@ async fn test_partial_update_validation(
 	assert!(stock_validator.validate(&new_stock).is_ok());
 
 	let mut product2 = manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
 		))
 		.first()
 		.await
-		.expect("Failed to get product");
-	product2.stock = new_stock;
-	let update_stock_result = manager.update(&product_id.to_string(), &product2).await;
+		.expect("Failed to get product")
+		.expect("Product not found for stock update");
+	product2.set_stock(new_stock);
+	let update_stock_result = manager.update(&product2).await;
 	assert!(update_stock_result.is_ok());
 
 	// Verify updated field
 	let updated_product2 = manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
 		))
 		.first()
 		.await
-		.expect("Failed to get updated product");
-	assert_eq!(updated_product2.stock, new_stock);
-	assert_eq!(updated_product2.price, new_price); // Previously updated value
-	assert_eq!(updated_product2.name, "Original Product"); // Still unchanged
+		.expect("Failed to get updated product")
+		.expect("Updated product2 not found");
+	assert_eq!(updated_product2.stock(), new_stock);
+	assert_eq!(updated_product2.price(), new_price); // Previously updated value
+	assert_eq!(updated_product2.name(), "Original Product"); // Still unchanged
 
 	// Invalid partial update: negative price
 	let invalid_price = -10.0;
@@ -631,32 +667,32 @@ async fn test_partial_update_validation(
 	// Do not apply invalid update
 	// Database constraint also prevents it
 	let mut invalid_product = manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
 		))
 		.first()
 		.await
-		.expect("Failed to get product");
-	invalid_product.price = invalid_price;
-	let invalid_update_result = manager
-		.update(&product_id.to_string(), &invalid_product)
-		.await;
+		.expect("Failed to get product")
+		.expect("Product not found for invalid update");
+	invalid_product.set_price(invalid_price);
+	let invalid_update_result = manager.update(&invalid_product).await;
 	assert!(invalid_update_result.is_err());
 
 	// Verify product state remains unchanged after failed update
 	let final_product = manager
-		.filter(Filter::new(
+		.filter_by(Filter::new(
 			"id".to_string(),
 			FilterOperator::Eq,
 			FilterValue::Integer(product_id as i64),
 		))
 		.first()
 		.await
-		.expect("Failed to get final product");
-	assert_eq!(final_product.price, new_price); // Still valid price
-	assert_eq!(final_product.stock, new_stock); // Still valid stock
+		.expect("Failed to get final product")
+		.expect("Final product not found");
+	assert_eq!(final_product.price(), new_price); // Still valid price
+	assert_eq!(final_product.stock(), new_stock); // Still valid stock
 
 	// Cleanup handled automatically by TeardownGuard
 }

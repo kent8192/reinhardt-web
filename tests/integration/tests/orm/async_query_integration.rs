@@ -12,13 +12,14 @@
 //! - postgres_container: PostgreSQL database container (reinhardt-test)
 //! - mysql_suite: MySQL database container (reinhardt-test, planned)
 
-use reinhardt_db::{
-	orm::{model, Filter, FilterOperator, FilterValue, Manager},
-	DatabaseConnection,
-};
+use reinhardt_db::{orm::Model, DatabaseConnection};
 use reinhardt_integration_tests::migrations::apply_async_query_test_migrations;
-use reinhardt_orm::{expressions::Q, query_execution::QueryCompiler, types::DatabaseDialect};
-use reinhardt_test::fixtures::postgres::postgres_container;
+use reinhardt_macros::model;
+use reinhardt_orm::{
+	expressions::Q, manager::reinitialize_database, query_execution::QueryCompiler,
+	types::DatabaseDialect,
+};
+use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -26,11 +27,13 @@ use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
 /// Test model for async query tests
-#[model(table_name = "test_models", primary_key = "id")]
+#[model(table_name = "test_models")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestModel {
-	pub id: Option<i64>,
-	pub name: String,
+	#[field(primary_key = true)]
+	id: i64,
+	#[field(max_length = 255)]
+	name: String,
 }
 
 // ========================================================================
@@ -56,7 +59,8 @@ async fn async_query_test_db(
 	let connection = DatabaseConnection::connect(&url).await.unwrap();
 
 	// Apply async query test migrations using MigrationExecutor
-	apply_async_query_test_migrations(&connection)
+	// Note: apply_async_query_test_migrations expects BackendsConnection, so we use inner()
+	apply_async_query_test_migrations(connection.inner())
 		.await
 		.unwrap();
 
@@ -119,7 +123,12 @@ mod postgres_tests {
 			String,
 		),
 	) {
-		let (_container, connection, _port, _url) = async_query_test_db.await;
+		let (_container, _connection, _port, url) = async_query_test_db.await;
+
+		// Initialize global database connection for ORM
+		reinitialize_database(&url)
+			.await
+			.expect("Failed to reinitialize database");
 
 		// No CREATE TABLE - migration handles it
 
@@ -127,7 +136,7 @@ mod postgres_tests {
 		let alice = TestModel::new("Alice".to_string());
 		let bob = TestModel::new("Bob".to_string());
 
-		let manager = TestModel::objects(&connection);
+		let manager = TestModel::objects();
 		manager
 			.create(&alice)
 			.await
@@ -157,14 +166,19 @@ mod postgres_tests {
 			String,
 		),
 	) {
-		let (_container, connection, _port, _url) = async_query_test_db.await;
+		let (_container, _connection, _port, url) = async_query_test_db.await;
+
+		// Initialize global database connection for ORM
+		reinitialize_database(&url)
+			.await
+			.expect("Failed to reinitialize database");
 
 		// No CREATE TABLE - migration handles it
 
 		// Insert data with ORM
 		let test_model = TestModel::new("Test".to_string());
 
-		let manager = TestModel::objects(&connection);
+		let manager = TestModel::objects();
 		manager.create(&test_model).await.expect("Insert failed");
 
 		// Check existence
