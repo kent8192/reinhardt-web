@@ -2,25 +2,26 @@
 name = "examples-twitter"
 version = "0.1.0"
 edition = "2024"
+default-run = "examples-twitter"
+
+[lib]
+crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 
 [[bin]]
-name = "manage"
+name = "examples-twitter"
 path = "src/bin/manage.rs"
 
 [dependencies]
-reinhardt = { path = "../../..", package = "reinhardt-web", features = [
+reinhardt = { workspace = true, features = [
 	"full",
-	"auth-jwt",
+	"auth-session",            # Cookie-based session authentication
+	"auth-jwt",                # JWT authentication (required by auth views)
 	"rest",                    # Required for reinhardt::rest module
 	"reinhardt-browsable-api", # Required for browsable API
+	"admin",                   # Admin panel functionality
+	"pages",                   # WASM-based reactive frontend with SSR (reinhardt::pages)
 ] }
 
-# Admin (新しい実装)
-reinhardt-admin-api = { path = "../../../crates/reinhardt-admin/crates/api" }
-reinhardt-admin-types = { path = "../../../crates/reinhardt-admin/crates/types" }
-
-clap = { version = "4", features = ["derive"] }
-console = "0.16.1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.11", features = ["v4", "serde"] }
 ctor = "0.6.3"
@@ -31,6 +32,41 @@ validator = { version = "0.20.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 inventory = "0.3"
+async-trait = "0.1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+	"Window",
+	"Document",
+	"Element",
+	"HtmlInputElement",
+	"HtmlFormElement",
+	"Event",
+	"EventTarget",
+	"Location",
+	"History",
+] }
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+wasm-bindgen-futures = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+clap = { version = "4", features = ["derive"] }
+console = "0.16.1"
+tokio = { version = "1", features = ["full"] }
+
+[features]
+default = []
+e2e-tests = ["rstest", "testcontainers"]
+
+[dependencies.rstest]
+version = "0.26.1"
+optional = true
+
+[dependencies.testcontainers]
+workspace = true
+optional = true
 
 [dev-dependencies]
 rstest = "0.26.1"
