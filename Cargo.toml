@@ -371,11 +371,15 @@ allow-dirty = false        # Require clean working directory
 no-individual-tags = false # Enable cargo-ws automatic tag generation
 
 [workspace.dependencies]
+# Main facade crate (for workspace members that need to reference the root crate)
+reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.1" }
+
 # Internal crates
 reinhardt-micro = { path = "crates/reinhardt-micro", version = "0.1.0-alpha.1" }
 reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.0-alpha.1" }
 reinhardt-conf = { path = "crates/reinhardt-conf", version = "0.1.0-alpha.1" }
 reinhardt-settings = { path = "crates/reinhardt-conf/crates/settings", version = "0.1.0-alpha.1" }
+reinhardt-settings-cli = { path = "crates/reinhardt-conf/crates/settings-cli", version = "0.1.0-alpha.1" }
 reinhardt-core = { path = "crates/reinhardt-core", version = "0.1.0-alpha.1" }
 reinhardt-di = { path = "crates/reinhardt-di", version = "0.1.0-alpha.1" }
 reinhardt-http = { path = "crates/reinhardt-http", version = "0.1.0-alpha.1" }
@@ -397,9 +401,10 @@ reinhardt-admin-types = { path = "crates/reinhardt-admin/crates/types", version 
 reinhardt-admin-core = { path = "crates/reinhardt-admin/crates/core", version = "0.1.0-alpha.1" }
 reinhardt-admin-server = { path = "crates/reinhardt-admin/crates/server", version = "0.1.0-alpha.1" }
 reinhardt-admin-pages = { path = "crates/reinhardt-admin/crates/pages", version = "0.1.0-alpha.1" }
-reinhardt-admin-api = { path = "crates/reinhardt-admin/crates/api", version = "0.1.0-alpha.1" }
+reinhardt-admin-adapters = { path = "crates/reinhardt-admin/crates/adapters", version = "0.1.0-alpha.1" }
 reinhardt-admin-cli = { path = "crates/reinhardt-admin-cli", version = "0.1.0-alpha.1" }
 reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.1.0-alpha.1" }
+reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/crates/macros", version = "0.1.0-alpha.1" }
 reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/crates/macros", version = "0.1.0-alpha.1" }
 reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.1" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.1" }
@@ -434,6 +439,7 @@ reinhardt-orm = { path = "crates/reinhardt-db/crates/orm", version = "0.1.0-alph
 reinhardt-pool = { path = "crates/reinhardt-db/crates/pool", version = "0.1.0-alpha.1" }
 
 # DI subcrates
+reinhardt-di-macros = { path = "crates/reinhardt-di/crates/macros", version = "0.1.0-alpha.1" }
 reinhardt-params = { path = "crates/reinhardt-di/crates/params", version = "0.1.0-alpha.1" }
 
 # Server subcrates
