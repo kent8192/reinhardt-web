@@ -34,5 +34,7 @@ pub type TestDatabase = (ContainerAsync<GenericImage>, Arc<DatabaseConnection>);
 /// ```
 #[fixture]
 pub async fn test_database() -> TestDatabase {
-	postgres_with_migrations_from::<TwitterMigrations>().await
+	postgres_with_migrations_from::<TwitterMigrations>()
+		.await
+		.expect("Failed to create test database with migrations")
 }

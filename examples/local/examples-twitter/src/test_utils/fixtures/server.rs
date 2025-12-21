@@ -3,7 +3,6 @@
 //! Provides TestServerGuard and APIClient fixtures for HTTP testing.
 
 use crate::apps::auth::models::User;
-use crate::config::urls::url_patterns;
 use crate::test_utils::fixtures::{
 	TestDatabase, TestUserParams, create_test_user, generate_test_token, test_database,
 };
@@ -54,8 +53,8 @@ pub struct TestContext {
 pub async fn test_context(#[future] test_database: TestDatabase) -> TestContext {
 	let (_container, db) = test_database.await;
 
-	// Build router with all app routes
-	let router = url_patterns();
+	// Build empty router (examples-twitter uses reinhardt-pages, not traditional routing)
+	let router = Arc::new(UnifiedRouter::new());
 
 	// Start test server with database connection
 	let guard = test_server_guard(Arc::clone(&router)).await;
