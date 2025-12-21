@@ -65,6 +65,7 @@ admin = [
 ]
 forms = ["reinhardt-forms"]
 graphql = ["reinhardt-graphql"]
+pages = ["reinhardt-pages"]
 templates = ["reinhardt-pages"]
 websockets = ["reinhardt-websockets"]
 cache = ["reinhardt-utils/cache"]
