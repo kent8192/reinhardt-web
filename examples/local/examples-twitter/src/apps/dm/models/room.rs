@@ -20,25 +20,25 @@ use crate::apps::auth::models::User;
 #[derive(Serialize, Deserialize)]
 pub struct DMRoom {
 	#[field(primary_key = true)]
-	pub id: Uuid,
+	id: Uuid,
 
 	/// Room name (optional, used for group chats)
 	#[field(max_length = 100)]
-	pub name: Option<String>,
+	name: Option<String>,
 
 	/// Is this a group chat (more than 2 members)
 	#[field(default = false)]
-	pub is_group: bool,
+	is_group: bool,
 
 	/// Room members via ManyToMany relationship
 	/// Intermediate table: dm_room_members
 	#[serde(skip, default)]
 	#[rel(many_to_many, related_name = "rooms")]
-	pub members: ManyToManyField<DMRoom, User>,
+	members: ManyToManyField<DMRoom, User>,
 
 	#[field(auto_now_add = true)]
-	pub created_at: DateTime<Utc>,
+	created_at: DateTime<Utc>,
 
 	#[field(auto_now = true)]
-	pub updated_at: DateTime<Utc>,
+	updated_at: DateTime<Utc>,
 }

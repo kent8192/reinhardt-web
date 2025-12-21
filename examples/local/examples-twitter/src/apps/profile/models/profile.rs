@@ -4,46 +4,38 @@
 //! Uses reinhardt ORM (Manager/QuerySet) for database operations.
 
 use chrono::{DateTime, Utc};
-use reinhardt::db::associations::OneToOneField;
 use reinhardt::model;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// Used by #[model] macro for type inference in OneToOneField<User> relationship field.
-// The macro requires this type to be in scope for generating the correct column type with UNIQUE constraint
-// and relationship metadata, even though it appears unused to the compiler.
-#[allow(unused_imports)]
-use crate::apps::auth::models::User;
-
 /// Profile model representing a user's profile information
 ///
-/// One-to-one relationship with User model.
-/// OneToOneField<T> automatically generates the `_id` column with UNIQUE constraint.
+/// One-to-one relationship with User model via user_id foreign key.
 #[model(app_label = "profile", table_name = "profile_profile")]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Profile {
 	#[field(primary_key = true)]
-	pub id: Uuid,
+	id: Uuid,
 
-	/// User this profile belongs to (generates user_id column with UNIQUE)
-	#[rel(one_to_one, related_name = "profile")]
-	pub user: OneToOneField<User>,
+	/// Foreign key to User (one-to-one relationship)
+	#[field(unique = true)]
+	user_id: Uuid,
 
 	#[field(max_length = 500)]
-	pub bio: String,
+	bio: String,
 
 	#[field(max_length = 255)]
-	pub avatar_url: Option<String>,
+	avatar_url: String,
 
-	#[field(max_length = 255)]
-	pub location: Option<String>,
+	#[field(max_length = 255, null = true)]
+	location: Option<String>,
 
-	#[field(max_length = 255)]
-	pub website: Option<String>,
+	#[field(max_length = 255, null = true)]
+	website: Option<String>,
 
 	#[field(auto_now_add = true)]
-	pub created_at: DateTime<Utc>,
+	created_at: DateTime<Utc>,
 
 	#[field(auto_now = true)]
-	pub updated_at: DateTime<Utc>,
+	updated_at: DateTime<Utc>,
 }

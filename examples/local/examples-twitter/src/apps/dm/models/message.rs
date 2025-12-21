@@ -22,25 +22,25 @@ use crate::apps::auth::models::User;
 #[derive(Serialize, Deserialize)]
 pub struct DMMessage {
 	#[field(primary_key = true)]
-	pub id: Uuid,
+	id: Uuid,
 
 	/// Room this message belongs to (generates room_id column)
 	#[rel(foreign_key, related_name = "messages")]
-	pub room: ForeignKeyField<DMRoom>,
+	room: ForeignKeyField<DMRoom>,
 
 	/// User who sent the message (generates sender_id column)
 	#[rel(foreign_key, related_name = "sent_messages")]
-	pub sender: ForeignKeyField<User>,
+	sender: ForeignKeyField<User>,
 
 	#[field(max_length = 1000)]
-	pub content: String,
+	content: String,
 
 	#[field(default = false, include_in_new = false)]
-	pub is_read: bool,
+	is_read: bool,
 
 	#[field(auto_now_add = true)]
-	pub created_at: DateTime<Utc>,
+	created_at: DateTime<Utc>,
 
 	#[field(auto_now = true)]
-	pub updated_at: DateTime<Utc>,
+	updated_at: DateTime<Utc>,
 }

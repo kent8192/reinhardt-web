@@ -14,27 +14,27 @@ use uuid::Uuid;
 #[derive(Serialize, Deserialize)]
 pub struct User {
 	#[field(primary_key = true)]
-	pub id: Uuid,
+	id: Uuid,
 
 	#[field(max_length = 150, unique = true)]
-	pub username: String,
+	username: String,
 
 	#[field(max_length = 255, unique = true)]
-	pub email: String,
+	email: String,
 
 	#[field(max_length = 255)]
-	pub password_hash: Option<String>,
+	password_hash: Option<String>,
 
 	#[field(default = true)]
-	pub is_active: bool,
+	is_active: bool,
 
-	pub last_login: Option<DateTime<Utc>>,
+	last_login: Option<DateTime<Utc>>,
 
 	#[field(auto_now_add = true)]
-	pub created_at: DateTime<Utc>,
+	created_at: DateTime<Utc>,
 
 	#[field(max_length = 500, null = true)]
-	pub bio: Option<String>,
+	bio: Option<String>,
 
 	// ManyToMany relationships for following/blocking functionality
 	// ManyToManyField<Source, Target> format - intermediate table auto-generated:
@@ -42,11 +42,11 @@ pub struct User {
 	// - auth_user_blocked_users (user_id -> user_id, blocked_user_id -> user_id)
 	#[serde(skip, default)]
 	#[rel(many_to_many, related_name = "followers")]
-	pub following: ManyToManyField<User, User>,
+	following: ManyToManyField<User, User>,
 
 	#[serde(skip, default)]
 	#[rel(many_to_many, related_name = "blocked_by")]
-	pub blocked_users: ManyToManyField<User, User>,
+	blocked_users: ManyToManyField<User, User>,
 }
 
 impl BaseUser for User {

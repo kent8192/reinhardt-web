@@ -1,7 +1,21 @@
-//! Admin module for profile app
-//!
-//! Re-exports all admin configurations from the admin/ directory
+//! Admin configuration for profile app
 
-mod config;
+use crate::apps::profile::models::Profile;
+use reinhardt::admin;
 
-pub use config::*;
+/// Admin configuration for Profile model
+///
+/// This configures the admin panel display for Profile items:
+/// - List view with id, user_id, bio, location, and created_at
+/// - Filtering by created_at
+/// - Search by bio and location
+/// - Sorted by creation date (newest first)
+#[admin(model,
+	for = Profile,
+	name = "Profile",
+	list_display = [id, user_id, bio, location, created_at],
+	list_filter = [created_at],
+	search_fields = [bio, location],
+	ordering = [(created_at, desc)]
+)]
+pub struct ProfileAdmin;

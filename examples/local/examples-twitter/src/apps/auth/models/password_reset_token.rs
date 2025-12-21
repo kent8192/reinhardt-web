@@ -23,24 +23,24 @@ use super::user::User;
 #[derive(Serialize, Deserialize)]
 pub struct PasswordResetToken {
 	#[field(primary_key = true)]
-	pub id: Uuid,
+	id: Uuid,
 
 	/// User who requested password reset (generates user_id column)
 	#[rel(foreign_key, related_name = "password_reset_tokens", on_delete = Cascade)]
-	pub user: ForeignKeyField<User>,
+	user: ForeignKeyField<User>,
 
 	/// Reset token value (UUID v4 string)
 	#[field(max_length = 255, unique = true)]
-	pub token: String,
+	token: String,
 
 	/// Token expiration timestamp
-	pub expires_at: DateTime<Utc>,
+	expires_at: DateTime<Utc>,
 
 	/// Token creation timestamp
 	#[field(auto_now_add = true)]
-	pub created_at: DateTime<Utc>,
+	created_at: DateTime<Utc>,
 
 	/// Whether this token has been used
 	#[field(default = false)]
-	pub is_used: bool,
+	is_used: bool,
 }
