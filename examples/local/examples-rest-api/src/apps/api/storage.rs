@@ -76,11 +76,11 @@ pub fn create_article(mut article: Article) -> Article {
 pub fn update_article(article: Article) -> Option<Article> {
 	ensure_initialized();
 	let mut storage = ARTICLES.write().unwrap();
-	if let Some(map) = storage.as_mut() {
-		if map.contains_key(&article.id) {
-			map.insert(article.id, article.clone());
-			return Some(article);
-		}
+	if let Some(map) = storage.as_mut()
+		&& let std::collections::hash_map::Entry::Occupied(mut e) = map.entry(article.id)
+	{
+		e.insert(article.clone());
+		return Some(article);
 	}
 	None
 }

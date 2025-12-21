@@ -72,7 +72,7 @@ pub async fn list_todos() -> ViewResult<Response> {
 #[post("/todos/", name = "todos_create")]
 pub async fn create_todo(Json(todo_req): Json<TodoRequest>) -> ViewResult<Response> {
 	// Validate required fields
-	if todo_req.title.len() < 1 || todo_req.title.len() > 255 {
+	if todo_req.title.is_empty() || todo_req.title.len() > 255 {
 		return Err("Title must be between 1 and 255 characters".into());
 	}
 
@@ -136,7 +136,7 @@ pub async fn update_todo(
 	Json(todo_req): Json<TodoRequest>,
 ) -> ViewResult<Response> {
 	// Validate required fields
-	if todo_req.title.len() < 1 || todo_req.title.len() > 255 {
+	if todo_req.title.is_empty() || todo_req.title.len() > 255 {
 		return Err("Title must be between 1 and 255 characters".into());
 	}
 

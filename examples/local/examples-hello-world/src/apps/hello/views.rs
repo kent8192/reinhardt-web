@@ -16,5 +16,5 @@ pub async fn health_check(_req: Request) -> ViewResult<Response> {
 		"status": "ok"
 	});
 
-	Response::ok().with_json(&body).map_err(Into::into)
+	Response::ok().with_json(&body)
 }

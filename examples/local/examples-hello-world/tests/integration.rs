@@ -5,38 +5,19 @@
 //! - build.rs: Sets 'with-reinhardt' feature when reinhardt is available
 //! - When feature is disabled, this entire test file is excluded from compilation
 
-use example_test_macros::example_test;
 use reinhardt::core::serde::json;
-use reinhardt::prelude::*;
 use reinhardt::test::client::APIClient;
 use reinhardt::test::fixtures::test_server_guard;
-use reinhardt::test::resource::TeardownGuard;
-use rstest::*;
-
-/// Test that reinhardt can be imported and basic functionality works
-fn test_reinhardt_available() {
-	// If this compiles and runs, reinhardt is available
-	println!("✅ reinhardt is available from crates.io");
-	assert!(true, "reinhardt should be available");
-}
-
-/// Test application initialization
-fn test_application_initialization() {
-	let result = Application::builder().build();
-	assert!(result.is_ok(), "Failed to initialize reinhardt application");
-	println!("✅ Application initialized successfully");
-}
 
 // ============================================================================
-// E2E Tests with Standard Fixtures
+// E2E Tests with Test Server
 // ============================================================================
 
 /// Test GET / endpoint returns "Hello, World!"
-#[rstest]
-async fn test_hello_world_endpoint(
-	#[future] test_server_guard: TeardownGuard<reinhardt::test::fixtures::TestServerGuard>,
-) {
-	let server = test_server_guard.await;
+#[tokio::test]
+async fn test_hello_world_endpoint() {
+	let router = examples_hello_world::config::urls::url_patterns();
+	let server = test_server_guard(router).await;
 
 	// Send GET request to root endpoint
 	let client = APIClient::with_base_url(&server.url);
@@ -44,18 +25,17 @@ async fn test_hello_world_endpoint(
 
 	// Verify response
 	assert_eq!(response.status_code(), 200);
-	let body = response.text().expect("Failed to read response body");
+	let body = response.text();
 	assert_eq!(body, "Hello, World!");
 
 	println!("✅ GET / returned 'Hello, World!'");
 }
 
 /// Test GET /health endpoint returns JSON health status
-#[rstest]
-async fn test_health_check_endpoint(
-	#[future] test_server_guard: TeardownGuard<reinhardt::test::fixtures::TestServerGuard>,
-) {
-	let server = test_server_guard.await;
+#[tokio::test]
+async fn test_health_check_endpoint() {
+	let router = examples_hello_world::config::urls::url_patterns();
+	let server = test_server_guard(router).await;
 
 	// Send GET request to health endpoint
 	let client = APIClient::with_base_url(&server.url);
@@ -85,11 +65,10 @@ async fn test_health_check_endpoint(
 // ============================================================================
 
 /// Test 404 Not Found for non-existent endpoint
-#[rstest]
-async fn test_404_not_found(
-	#[future] test_server_guard: TeardownGuard<reinhardt::test::fixtures::TestServerGuard>,
-) {
-	let server = test_server_guard.await;
+#[tokio::test]
+async fn test_404_not_found() {
+	let router = examples_hello_world::config::urls::url_patterns();
+	let server = test_server_guard(router).await;
 
 	// Send GET request to non-existent endpoint
 	let client = APIClient::with_base_url(&server.url);
@@ -105,11 +84,10 @@ async fn test_404_not_found(
 }
 
 /// Test 405 Method Not Allowed for unsupported HTTP method
-#[rstest]
-async fn test_405_method_not_allowed(
-	#[future] test_server_guard: TeardownGuard<reinhardt::test::fixtures::TestServerGuard>,
-) {
-	let server = test_server_guard.await;
+#[tokio::test]
+async fn test_405_method_not_allowed() {
+	let router = examples_hello_world::config::urls::url_patterns();
+	let server = test_server_guard(router).await;
 
 	// Send POST request to root endpoint (only GET is allowed)
 	let client = APIClient::with_base_url(&server.url);
