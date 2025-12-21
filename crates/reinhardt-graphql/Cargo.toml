@@ -52,7 +52,7 @@ chrono = { workspace = true, optional = true }
 reinhardt-di = { workspace = true, optional = true }
 
 # Re-export macros when features are enabled
-reinhardt-graphql-macros = { path = "crates/macros", version = "0.1.0-alpha.1", optional = true }
+reinhardt-graphql-macros = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"

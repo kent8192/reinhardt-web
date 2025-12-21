@@ -51,7 +51,6 @@ where
 	S: Serializer<Input = M, Output = String> + Send + Sync,
 {
 	queryset: Option<QuerySet<M>>,
-	#[allow(dead_code)] // TODO: Will be used when DB pool integration is complete
 	validation_config: Option<ValidatorConfig<M>>,
 	_serializer: PhantomData<S>,
 }
@@ -134,10 +133,22 @@ where
 			.json()
 			.map_err(|e| Error::Http(format!("Invalid request body: {}", e)))?;
 
-		// TODO: Apply validation if configured (requires DB pool)
-		// if let Some(ref validators) = self.validation_config {
-		//     validators.validate_async(&pool, &data).await?;
-		// }
+		// Apply validation if configured
+		if let Some(ref validators) = self.validation_config
+			&& let Some(di_ctx) =
+				request.get_di_context::<std::sync::Arc<reinhardt_di::InjectionContext>>()
+		{
+			use reinhardt_db::DatabaseConnection;
+			use reinhardt_di::Injected;
+
+			let conn = Injected::<DatabaseConnection>::resolve(&di_ctx)
+				.await
+				.map_err(|e| Error::Internal(format!("Failed to resolve DB: {:?}", e)))?;
+
+			validators
+				.validate_async(conn.into_inner().inner(), &data, None)
+				.await?;
+		}
 
 		// Create via QuerySet
 		let queryset = self.get_queryset();

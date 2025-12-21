@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 reinhardt-views = { workspace = true, features = ["viewsets"] }
 reinhardt-viewsets = { workspace = true }
-reinhardt-routers-macros = { path = "../routers-macros", version = "0.1.0-alpha.1" }
+reinhardt-routers-macros = { workspace = true }
 reinhardt-middleware = { workspace = true, optional = true }
 reinhardt-core = { workspace = true, features = ["exception", "types", "di"] }
 reinhardt-db = { workspace = true, optional = true }

@@ -9,7 +9,8 @@ authors.workspace = true
 
 [dependencies]
 reinhardt-core = { workspace = true, features = ["exception", "types", "serializers", "http"] }
-reinhardt-db = { workspace = true, features = ["orm"] }
+reinhardt-db = { workspace = true, features = ["orm", "di"] }
+reinhardt-di = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -23,7 +24,7 @@ syntect = { workspace = true }
 once_cell = { workspace = true }
 
 # ViewSets dependency (required for generic views)
-reinhardt-viewsets = { version = "0.1.0-alpha.1", path = "crates/viewsets" }
+reinhardt-viewsets = { workspace = true }
 reinhardt-serializers = { workspace = true }
 
 [features]

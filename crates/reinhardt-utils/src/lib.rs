@@ -38,7 +38,7 @@
 pub mod humanize;
 
 // Re-export utils-core modules
-pub use utils_core::{dateformat, encoding, html, text, timezone};
+pub use reinhardt_utils_core::{dateformat, encoding, html, text, timezone};
 
 // Re-export internal crates
 #[cfg(feature = "logging")]

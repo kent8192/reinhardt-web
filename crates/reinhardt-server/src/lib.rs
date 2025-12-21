@@ -7,4 +7,4 @@
 
 // Re-export server implementation
 #[cfg(feature = "server")]
-pub use server::*;
+pub use reinhardt_server_core::*;

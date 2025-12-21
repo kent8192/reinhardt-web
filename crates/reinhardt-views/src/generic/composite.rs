@@ -54,7 +54,6 @@ where
 	pagination_config: Option<PaginationConfig>,
 	filter_config: Option<FilterConfig>,
 	ordering: Option<Vec<String>>,
-	#[allow(dead_code)] // TODO: Will be used when DB pool integration is complete
 	validation_config: Option<ValidatorConfig<M>>,
 	_serializer: PhantomData<S>,
 }
@@ -263,6 +262,23 @@ where
 				let data: M = request
 					.json()
 					.map_err(|e| Error::Http(format!("Invalid request body: {}", e)))?;
+
+				// Apply validation if configured
+				if let Some(ref validators) = self.validation_config
+					&& let Some(di_ctx) =
+						request.get_di_context::<std::sync::Arc<reinhardt_di::InjectionContext>>()
+				{
+					use reinhardt_db::DatabaseConnection;
+					use reinhardt_di::Injected;
+
+					let conn = Injected::<DatabaseConnection>::resolve(&di_ctx)
+						.await
+						.map_err(|e| Error::Internal(format!("Failed to resolve DB: {:?}", e)))?;
+
+					validators
+						.validate_async(conn.into_inner().inner(), &data, None)
+						.await?;
+				}
 
 				let queryset = self.get_queryset();
 				let created = queryset

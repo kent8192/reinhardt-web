@@ -17,8 +17,8 @@ reinhardt-http = { workspace = true }
 reinhardt-exception = { workspace = true }
 
 # Internal crates
-reinhardt-params = { path = "crates/params", version = "0.1.0-alpha.1", optional = true }
-reinhardt-di-macros = { path = "crates/macros", version = "0.1.0", optional = true }
+reinhardt-params = { workspace = true, optional = true }
+reinhardt-di-macros = { workspace = true, optional = true }
 
 tokio = { workspace = true }
 async-trait = { workspace = true }
@@ -50,5 +50,5 @@ bytes.workspace = true
 hyper.workspace = true
 serial_test = { workspace = true }
 reinhardt-core = { workspace = true, features = ["types", "exception"] }
-reinhardt-params = { path = "crates/params", version = "0.1.0-alpha.1" }
+reinhardt-params = { workspace = true }
 serde = { workspace = true }

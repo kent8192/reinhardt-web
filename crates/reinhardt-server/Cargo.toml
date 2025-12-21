@@ -9,16 +9,16 @@ description = "HTTP server implementation for Reinhardt framework"
 
 [dependencies]
 # Internal crates (optional)
-server = { path = "crates/server", version = "0.1.0-alpha.1", package = "reinhardt-server-core", optional = true }
+reinhardt-server-core = { workspace = true, optional = true }
 
 [features]
 default = ["server"]
-server = ["dep:server"]
-graphql = ["server", "server/graphql"]
-websocket = ["server", "server/websocket"]
+server = ["dep:reinhardt-server-core"]
+graphql = ["server", "reinhardt-server-core/graphql"]
+websocket = ["server", "reinhardt-server-core/websocket"]
 server-full = [
   "server",
   "graphql",
   "websocket",
-  "server/full",
+  "reinhardt-server-core/full",
 ]
