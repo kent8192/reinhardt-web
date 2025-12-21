@@ -2,9 +2,10 @@
 //!
 //! Configures and builds the admin interface for examples-twitter.
 
-use reinhardt_admin_api::AdminSite;
-
-use crate::apps;
+use crate::apps::dm::admin::{DMMessageAdmin, DMRoomAdmin};
+use crate::apps::profile::admin::ProfileAdmin;
+use crate::apps::tweet::admin::TweetAdmin;
+use reinhardt::admin::AdminSite;
 
 /// Configure the admin site
 ///
@@ -22,13 +23,17 @@ use crate::apps;
 /// - `GET /admin/api/{model}/export/` - Export model data
 /// - `POST /admin/api/{model}/import/` - Import model data
 pub fn configure_admin() -> AdminSite {
-	let mut site = AdminSite::new("Twitter Admin");
+	let site = AdminSite::new("Twitter Admin");
 
 	// Register admin configurations from each app
-	apps::auth::admin::register_admins(&mut site);
-	apps::profile::admin::register_admins(&mut site);
-	apps::relationship::admin::register_admins(&mut site);
-	apps::dm::admin::register_admins(&mut site);
+	site.register("Tweet", TweetAdmin)
+		.expect("Failed to register TweetAdmin");
+	site.register("Profile", ProfileAdmin)
+		.expect("Failed to register ProfileAdmin");
+	site.register("DM Room", DMRoomAdmin)
+		.expect("Failed to register DMRoomAdmin");
+	site.register("DM Message", DMMessageAdmin)
+		.expect("Failed to register DMMessageAdmin");
 
 	site
 }

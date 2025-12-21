@@ -14,3 +14,6 @@ pub mod relationship;
 
 #[path = "apps/dm/lib.rs"]
 pub mod dm;
+
+#[path = "apps/tweet/lib.rs"]
+pub mod tweet;

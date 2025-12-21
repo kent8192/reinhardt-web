@@ -11,6 +11,7 @@ installed_apps! {
     contenttypes: "reinhardt.contrib.contenttypes",
     sessions: "reinhardt.contrib.sessions",
     drf: "reinhardt.drf",
+    tweet: "tweet",
 }
 
 /// Get the list of installed applications
