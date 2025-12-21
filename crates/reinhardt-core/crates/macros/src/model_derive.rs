@@ -32,7 +32,8 @@ use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Result, Typ
 use syn::{Ident, LitStr, bracketed, parenthesized};
 
 use crate::crate_paths::{
-	get_reinhardt_crate, get_reinhardt_migrations_crate, get_reinhardt_orm_crate,
+	get_reinhardt_core_crate, get_reinhardt_crate, get_reinhardt_migrations_crate,
+	get_reinhardt_orm_crate,
 };
 use crate::rel::RelAttribute;
 
@@ -398,7 +399,11 @@ struct FieldConfig {
 	identity_always: Option<bool>,
 	#[cfg(feature = "db-postgres")]
 	identity_by_default: Option<bool>,
-	#[cfg(feature = "db-mysql")]
+	/// Auto-increment for integer primary keys.
+	/// Available for all databases. When set to true on an integer primary key,
+	/// the field is excluded from new() and uses 0 as default value.
+	/// Integer primary keys are treated as auto_increment by default unless
+	/// explicitly set to false.
 	auto_increment: Option<bool>,
 	#[cfg(feature = "db-sqlite")]
 	autoincrement: Option<bool>,
@@ -616,16 +621,11 @@ impl FieldConfig {
 						))
 					}
 				} else if meta.path.is_ident("auto_increment") {
-					#[cfg(feature = "db-mysql")]
-					{
-						let value: syn::LitBool = meta.value()?.parse()?;
-						config.auto_increment = Some(value.value);
-						Ok(())
-					}
-					#[cfg(not(feature = "db-mysql"))]
-					{
-						Err(meta.error("auto_increment is only available with db-mysql feature"))
-					}
+					// auto_increment is available for all databases
+					// Integer primary keys are treated as auto_increment by default
+					let value: syn::LitBool = meta.value()?.parse()?;
+					config.auto_increment = Some(value.value);
+					Ok(())
 				} else if meta.path.is_ident("autoincrement") {
 					#[cfg(feature = "db-sqlite")]
 					{
@@ -890,6 +890,9 @@ struct FieldInfo {
 	/// - Relationship traversal API design
 	#[allow(dead_code)]
 	rel: Option<RelAttribute>,
+	/// Whether this is an auto-generated FK _id field (marked with #[fk_id_field])
+	/// These fields should have getters but not setters
+	is_fk_id_field: bool,
 }
 
 /// Foreign key / One-to-one field information for automatic ID field generation
@@ -1143,11 +1146,272 @@ fn generate_m2m_accessor_methods(
 	}
 }
 
+/// Generate accessor methods for ForeignKey and OneToOne relationships.
+///
+/// The generated accessor method loads the related instance from the database
+/// using the FK _id field value.
+///
+/// # Generated Code Characteristics
+///
+/// - **Method naming**: `{field_name}()`
+/// - **Visibility**: `pub` (same as model)
+/// - **Return type**: `Option<Target>`
+/// - **Documentation**: Auto-generated with field name
+fn generate_fk_accessor_methods(
+	struct_name: &syn::Ident,
+	field_infos: &[FieldInfo],
+) -> TokenStream {
+	let orm_crate = get_reinhardt_orm_crate();
+	let core_crate = get_reinhardt_core_crate();
+
+	let accessor_methods: Vec<_> = field_infos
+		.iter()
+		// Filter only ForeignKeyField and OneToOneField
+		.filter(|field| {
+			is_foreign_key_field_type(&field.ty) || is_one_to_one_field_type(&field.ty)
+		})
+		.map(|field| {
+			let field_name = &field.name;
+			let field_name_str = field_name.to_string();
+
+			// FK _id field name (e.g., user → user_id)
+			let fk_id_field_name = syn::Ident::new(
+				&format!("{}_id", field_name),
+				field_name.span()
+			);
+
+			// Method name: {field_name}
+			let method_name = field_name;
+
+			// Extract Target from ForeignKeyField<Target> or OneToOneField<Target>
+			let target_ty = extract_foreign_key_target_type(&field.ty);
+
+			let doc_comment = format!(
+				"Load the related '{}' instance from the database",
+				field_name_str
+			);
+
+			quote! {
+				#[doc = #doc_comment]
+				pub async fn #method_name(
+					&self,
+					db: &#orm_crate::connection::DatabaseConnection
+				) -> #core_crate::exception::Result<Option<#target_ty>> {
+					use #orm_crate::Model;
+					use #orm_crate::{FilterOperator, FilterValue};
+
+					// Get FK _id value (getter returns &PrimaryKey)
+					let fk_id = self.#fk_id_field_name();
+
+					// Query the target model using the FK _id
+					#target_ty::objects()
+						.filter(
+							#target_ty::field_id(),
+							FilterOperator::Eq,
+							FilterValue::String(fk_id.to_string())
+						)
+						.first_with_db(db)
+						.await
+				}
+			}
+		})
+		.collect();
+
+	if accessor_methods.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			impl #struct_name {
+				#(#accessor_methods)*
+			}
+		}
+	}
+}
+
+/// Generate static accessor methods for ForeignKey relationships.
+///
+/// The generated accessor method returns a `ForeignKeyAccessor` that can be used
+/// to access reverse relationships in a type-safe manner.
+///
+/// # Generated Code Characteristics
+///
+/// - **Method naming**: `{field_name}_accessor()`
+/// - **Visibility**: `pub` (same as model)
+/// - **Return type**: `ForeignKeyAccessor<Self, Target>`
+/// - **Static method**: No `&self` parameter required
+///
+/// # Generated Method
+///
+/// ```ignore
+/// impl Tweet {
+///     /// Get the ForeignKey accessor for the 'user' relationship
+///     pub fn user_accessor() -> ForeignKeyAccessor<Tweet, User> {
+///         ForeignKeyAccessor::new("user_id")
+///     }
+/// }
+/// ```
+///
+/// # Usage
+///
+/// ```ignore
+/// // Get reverse accessor for User → Tweets relationship
+/// let tweets_accessor = Tweet::user_accessor().reverse(&user, db);
+/// let tweets = tweets_accessor.all().await?;
+/// ```
+fn generate_fk_static_accessor_methods(
+	struct_name: &syn::Ident,
+	field_infos: &[FieldInfo],
+) -> TokenStream {
+	let orm_crate = get_reinhardt_orm_crate();
+
+	let accessor_methods: Vec<_> = field_infos
+		.iter()
+		// Filter only ForeignKeyField and OneToOneField
+		.filter(|field| {
+			is_foreign_key_field_type(&field.ty) || is_one_to_one_field_type(&field.ty)
+		})
+		.map(|field| {
+			let field_name = &field.name;
+			let field_name_str = field_name.to_string();
+
+			// FK _id field name (e.g., user → user_id)
+			let db_column = format!("{}_id", field_name_str);
+
+			// Method name: {field_name}_accessor
+			let method_name =
+				syn::Ident::new(&format!("{}_accessor", field_name), field_name.span());
+
+			// Extract Target from ForeignKeyField<Target> or OneToOneField<Target>
+			let target_ty = extract_foreign_key_target_type(&field.ty);
+
+			let doc_comment = format!(
+				"Get the ForeignKey accessor for the '{}' relationship",
+				field_name_str
+			);
+
+			quote! {
+				#[doc = #doc_comment]
+				pub fn #method_name() -> #orm_crate::ForeignKeyAccessor<#struct_name, #target_ty> {
+					#orm_crate::ForeignKeyAccessor::new(#db_column)
+				}
+			}
+		})
+		.collect();
+
+	if accessor_methods.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			impl #struct_name {
+				#(#accessor_methods)*
+			}
+		}
+	}
+}
+
+/// Make all fields module-local (non-pub) in the struct definition
+fn make_fields_private(input: &mut DeriveInput) {
+	if let Data::Struct(data) = &mut input.data
+		&& let Fields::Named(fields) = &mut data.fields
+	{
+		for field in fields.named.iter_mut() {
+			field.vis = syn::Visibility::Inherited;
+		}
+	}
+}
+
+/// Check if a type is Copy (returns value instead of reference)
+fn is_copy_type(ty: &Type) -> bool {
+	// プリミティブ型やCopy derivableな型を判定
+	matches!(
+		ty,
+		Type::Path(path) if matches!(
+			path.path.segments.last().map(|s| s.ident.to_string()).as_deref(),
+			Some("i8" | "i16" | "i32" | "i64" | "i128" |
+				 "u8" | "u16" | "u32" | "u64" | "u128" |
+				 "f32" | "f64" | "bool" | "char" | "Uuid")
+		)
+	) || matches!(
+		ty,
+		Type::Path(path) if path.path.segments.iter().any(|seg|
+			seg.ident == "DateTime"
+		)
+	)
+}
+
+/// Generate getter methods for all fields
+fn generate_getter_methods(struct_name: &syn::Ident, field_infos: &[FieldInfo]) -> TokenStream {
+	let getter_methods: Vec<_> = field_infos
+		.iter()
+		// Exclude ForeignKey and OneToOne fields (accessor methods are generated separately)
+		.filter(|field| {
+			!is_foreign_key_field_type(&field.ty) && !is_one_to_one_field_type(&field.ty)
+		})
+		.map(|field| {
+			let field_name = &field.name;
+			let field_type = &field.ty;
+			let method_name = field_name;
+
+			// Copy型は値を返す、それ以外は参照を返す
+			if is_copy_type(field_type) {
+				quote! {
+					#[doc = concat!("Get ", stringify!(#field_name))]
+					pub fn #method_name(&self) -> #field_type {
+						self.#field_name
+					}
+				}
+			} else {
+				quote! {
+					#[doc = concat!("Get reference to ", stringify!(#field_name))]
+					pub fn #method_name(&self) -> &#field_type {
+						&self.#field_name
+					}
+				}
+			}
+		})
+		.collect();
+
+	quote! {
+		impl #struct_name {
+			#(#getter_methods)*
+		}
+	}
+}
+
+/// Generate setter methods for user-defined fields (excluding auto-generated)
+fn generate_setter_methods(struct_name: &syn::Ident, field_infos: &[FieldInfo]) -> TokenStream {
+	let setter_methods: Vec<_> = field_infos
+		.iter()
+		.filter(|f| !is_auto_generated_field(f))
+		.map(|field| {
+			let field_name = &field.name;
+			let field_type = &field.ty;
+			let setter_name = syn::Ident::new(&format!("set_{}", field_name), field_name.span());
+
+			quote! {
+				#[doc = concat!("Set ", stringify!(#field_name))]
+				pub fn #setter_name(&mut self, value: #field_type) {
+					self.#field_name = value;
+				}
+			}
+		})
+		.collect();
+
+	quote! {
+		impl #struct_name {
+			#(#setter_methods)*
+		}
+	}
+}
+
 /// Implementation of the `Model` derive macro
-pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
+pub fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	// Get the dynamically resolved crate paths
 	let _reinhardt = get_reinhardt_crate();
 	let orm_crate = get_reinhardt_orm_crate();
+
+	// Make all fields module-local (non-pub)
+	make_fields_private(&mut input);
 
 	let struct_name = &input.ident;
 	let generics = &input.generics;
@@ -1184,18 +1448,30 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 	let mut fk_id_field_names: Vec<syn::Ident> = Vec::new();
 
 	for field in fields {
-		// Check if this is auto-generated FK _id field (marked with #[fk_id_field])
+		// Check if this is auto-generated FK _id field
 		// These are generated by #[model] attribute macro
-		let is_fk_id_field = field
-			.attrs
-			.iter()
-			.any(|attr| attr.path().is_ident("fk_id_field"));
+		// Identified by: field name ends with "_id" AND type matches <T as Model>::PrimaryKey pattern
+		let is_fk_id_field = if let Some(field_name) = &field.ident {
+			let name_str = field_name.to_string();
+			let field_ty = &field.ty;
+			let type_str = quote!(#field_ty).to_string();
+
+			// Check if field name ends with "_id" and type contains "Model :: PrimaryKey"
+			// This pattern identifies auto-generated FK _id fields created by #[model(...)] macro
+			name_str.ends_with("_id")
+				&& type_str.contains("Model")
+				&& type_str.contains("PrimaryKey")
+		} else {
+			false
+		};
+
 		if is_fk_id_field {
 			// Collect the field name for new() constructor generation
 			if let Some(field_name) = &field.ident {
 				fk_id_field_names.push(field_name.clone());
 			}
-			continue;
+			// FK _id fields need getters but not setters, so add them to field_infos
+			// with a flag to indicate they are auto-generated
 		}
 
 		let name = field
@@ -1224,6 +1500,7 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 			ty,
 			config,
 			rel,
+			is_fk_id_field,
 		});
 	}
 
@@ -1518,11 +1795,21 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 	// Generate ManyToMany accessor methods
 	let m2m_accessor_methods = generate_m2m_accessor_methods(struct_name, &field_infos);
 
+	// Generate ForeignKey and OneToOne accessor methods
+	let fk_accessor_methods = generate_fk_accessor_methods(struct_name, &field_infos);
+
 	// Generate relationship metadata
 	let relationship_metadata = generate_relationship_metadata(&rel_fields, app_label, struct_name);
 
 	// Generate new() constructor function
 	let new_fn_impl = generate_new_function(struct_name, &field_infos, &fk_id_field_names);
+
+	// Generate getter/setter methods
+	let getters = generate_getter_methods(struct_name, &field_infos);
+	let setters = generate_setter_methods(struct_name, &field_infos);
+
+	// Generate static FK accessor methods for type-safe reverse relationship access
+	let fk_static_accessor_methods = generate_fk_static_accessor_methods(struct_name, &field_infos);
 
 	// Generate the Model implementation
 	let expanded = quote! {
@@ -1532,11 +1819,23 @@ pub fn model_derive_impl(input: DeriveInput) -> Result<TokenStream> {
 		// Generate new() constructor function
 		#new_fn_impl
 
+		// Generate getter methods for all fields
+		#getters
+
+		// Generate setter methods for user-defined fields
+		#setters
+
 		// Generate field accessor methods for type-safe field references
 		#field_accessors
 
 		// Generate ManyToMany accessor methods
 		#m2m_accessor_methods
+
+		// Generate ForeignKey and OneToOne accessor methods
+		#fk_accessor_methods
+
+		// Generate static FK accessor methods for type-safe reverse relationship access
+		#fk_static_accessor_methods
 
 		impl #generics #orm_crate::Model for #struct_name #generics #where_clause {
 			type PrimaryKey = #pk_type;
@@ -1618,10 +1917,14 @@ fn generate_field_metadata(
 ) -> Result<Vec<TokenStream>> {
 	let mut items = Vec::new();
 
-	// Filter out ManyToMany, ForeignKeyField, and OneToOneField - they are virtual
+	// Filter out ManyToMany, ForeignKeyField, OneToOneField, and FK _id fields - they are virtual or auto-generated
 	let regular_fields: Vec<_> = field_infos
 		.iter()
 		.filter(|f| {
+			// Exclude FK _id fields (auto-generated by #[model] attribute macro)
+			if f.is_fk_id_field {
+				return false;
+			}
 			// Exclude ManyToMany
 			if f.rel
 				.as_ref()
@@ -1986,22 +2289,29 @@ fn generate_registration_code(
 		struct_name.span(),
 	);
 
-	// Separate ManyToMany fields from regular fields (also exclude ForeignKeyField/OneToOneField)
-	let (m2m_fields, regular_fields): (Vec<_>, Vec<_>) = field_infos.iter().partition(|f| {
-		// Exclude ManyToMany
-		if f.rel
-			.as_ref()
-			.map(|r| matches!(r.rel_type, crate::rel::RelationType::ManyToMany))
-			.unwrap_or(false)
-		{
-			return true;
-		}
-		// Exclude ForeignKeyField and OneToOneField (they are virtual, we generate _id fields instead)
-		if is_relationship_field_type(&f.ty) {
-			return true;
-		}
-		false
-	});
+	// Separate ManyToMany fields from regular fields (also exclude ForeignKeyField/OneToOneField and FK _id fields)
+	let (m2m_fields, regular_fields_with_fk_id): (Vec<_>, Vec<_>) =
+		field_infos.iter().partition(|f| {
+			// Exclude ManyToMany
+			if f.rel
+				.as_ref()
+				.map(|r| matches!(r.rel_type, crate::rel::RelationType::ManyToMany))
+				.unwrap_or(false)
+			{
+				return true;
+			}
+			// Exclude ForeignKeyField and OneToOneField (they are virtual, we generate _id fields instead)
+			if is_relationship_field_type(&f.ty) {
+				return true;
+			}
+			false
+		});
+
+	// Filter out FK _id fields from regular_fields
+	let regular_fields: Vec<_> = regular_fields_with_fk_id
+		.into_iter()
+		.filter(|f| !f.is_fk_id_field)
+		.collect();
 
 	// Generate field registration code for regular fields
 	let mut field_registrations = Vec::new();
@@ -2223,6 +2533,9 @@ fn generate_registration_code(
 /// (ForeignKeyField, OneToOneField, ManyToManyField) automatically, then generates
 /// linkme distributed_slice registration code for each relationship.
 ///
+/// For ForeignKey and OneToOne fields with `related_name`, this also generates
+/// reverse relationship registrations for building reverse accessors at runtime.
+///
 /// # Arguments
 ///
 /// * `struct_name` - The name of the model struct
@@ -2263,10 +2576,8 @@ fn generate_relationship_registrations(
 		};
 
 		// Get related_name from RelAttribute if present
-		let related_name = fk_info
-			.rel_attr
-			.related_name
-			.as_ref()
+		let related_name_opt = fk_info.rel_attr.related_name.as_ref();
+		let related_name = related_name_opt
 			.map(|r| quote! { Some(#r) })
 			.unwrap_or(quote! { None });
 
@@ -2288,7 +2599,7 @@ fn generate_relationship_registrations(
 			quote! { #reinhardt::apps::registry::RelationshipType::ForeignKey }
 		};
 
-		// Generate unique static variable name
+		// Generate unique static variable name for forward relationship
 		let static_var_name = syn::Ident::new(
 			&format!(
 				"__REL_{}_{}_TO_{}",
@@ -2299,7 +2610,7 @@ fn generate_relationship_registrations(
 			struct_name.span(),
 		);
 
-		// Generate registration code
+		// Generate registration code for forward relationship
 		registrations.push(quote! {
 			#[::linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
 			static #static_var_name: #reinhardt::apps::registry::RelationshipMetadata =
@@ -2313,6 +2624,43 @@ fn generate_relationship_registrations(
 					through_table: None,
 				};
 		});
+
+		// Generate reverse relationship registration if related_name is present
+		if let Some(related_name_str) = related_name_opt {
+			// Determine reverse relationship type
+			let reverse_relationship_type = if is_one_to_one {
+				quote! { #reinhardt::apps::registry::RelationshipType::OneToOne }
+			} else {
+				// ForeignKey reverse is also ForeignKey (direction determined by from_model/to_model)
+				quote! { #reinhardt::apps::registry::RelationshipType::ForeignKey }
+			};
+
+			// Generate unique static variable name for reverse relationship
+			let reverse_static_var_name = syn::Ident::new(
+				&format!(
+					"__REL_REVERSE_{}_{}_TO_{}",
+					target_model_name.to_uppercase(),
+					related_name_str.to_uppercase(),
+					model_name.to_uppercase()
+				),
+				struct_name.span(),
+			);
+
+			// Generate registration code for reverse relationship
+			registrations.push(quote! {
+				#[::linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
+				static #reverse_static_var_name: #reinhardt::apps::registry::RelationshipMetadata =
+					#reinhardt::apps::registry::RelationshipMetadata {
+						from_model: #target_model_name,
+						to_model: concat!(#app_label, ".", #model_name),
+						relationship_type: #reverse_relationship_type,
+						field_name: #related_name_str,
+						related_name: Some(#field_name_str),
+						db_column: None,
+						through_table: None,
+					};
+			});
+		}
 	}
 
 	// Process ManyToMany fields
@@ -2342,10 +2690,9 @@ fn generate_relationship_registrations(
 		};
 
 		// Get relationship attributes from RelAttribute if present
-		let (related_name, through_table) = if let Some(rel) = &field_info.rel {
-			let related_name = rel
-				.related_name
-				.as_ref()
+		let (related_name, through_table, related_name_opt) = if let Some(rel) = &field_info.rel {
+			let related_name_str = rel.related_name.as_ref();
+			let related_name = related_name_str
 				.map(|r| quote! { Some(#r) })
 				.unwrap_or(quote! { None });
 
@@ -2358,12 +2705,12 @@ fn generate_relationship_registrations(
 				})
 				.unwrap_or(quote! { None });
 
-			(related_name, through_table)
+			(related_name, through_table, related_name_str)
 		} else {
-			(quote! { None }, quote! { None })
+			(quote! { None }, quote! { None }, None)
 		};
 
-		// Generate unique static variable name
+		// Generate unique static variable name for forward M2M relationship
 		let static_var_name = syn::Ident::new(
 			&format!(
 				"__REL_M2M_{}_{}_TO_{}",
@@ -2374,7 +2721,7 @@ fn generate_relationship_registrations(
 			struct_name.span(),
 		);
 
-		// Generate registration code
+		// Generate registration code for forward M2M relationship
 		registrations.push(quote! {
 			#[::linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
 			static #static_var_name: #reinhardt::apps::registry::RelationshipMetadata =
@@ -2388,6 +2735,35 @@ fn generate_relationship_registrations(
 					through_table: #through_table,
 				};
 		});
+
+		// Generate reverse M2M relationship registration if related_name is present
+		if let Some(related_name_str) = related_name_opt {
+			// Generate unique static variable name for reverse M2M relationship
+			let reverse_static_var_name = syn::Ident::new(
+				&format!(
+					"__REL_M2M_REVERSE_{}_{}_TO_{}",
+					target_model_name.to_uppercase(),
+					related_name_str.to_uppercase(),
+					model_name.to_uppercase()
+				),
+				struct_name.span(),
+			);
+
+			// Generate registration code for reverse M2M relationship
+			registrations.push(quote! {
+				#[::linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
+				static #reverse_static_var_name: #reinhardt::apps::registry::RelationshipMetadata =
+					#reinhardt::apps::registry::RelationshipMetadata {
+						from_model: #target_model_name,
+						to_model: concat!(#app_label, ".", #model_name),
+						relationship_type: #reinhardt::apps::registry::RelationshipType::ManyToMany,
+						field_name: #related_name_str,
+						related_name: Some(#field_name_str),
+						db_column: None,
+						through_table: #through_table,
+					};
+			});
+		}
 	}
 
 	// Combine all registrations
@@ -2646,6 +3022,22 @@ fn is_uuid_type(ty: &Type) -> bool {
 	false
 }
 
+/// Check if a type is an integer type suitable for auto-increment primary key
+/// Supports i8, i16, i32, i64, isize, u8, u16, u32, u64, usize and their Option<> variants
+fn is_integer_primary_key_type(ty: &Type) -> bool {
+	let (_, inner_ty) = extract_option_type(ty);
+	if let Type::Path(type_path) = inner_ty
+		&& let Some(last_segment) = type_path.path.segments.last()
+	{
+		let ident_str = last_segment.ident.to_string();
+		return matches!(
+			ident_str.as_str(),
+			"i8" | "i16" | "i32" | "i64" | "isize" | "u8" | "u16" | "u32" | "u64" | "usize"
+		);
+	}
+	false
+}
+
 /// Check if a type is DateTime<Utc> or Option<DateTime<Utc>>
 fn is_datetime_utc_type(ty: &Type) -> bool {
 	let (_, inner_ty) = extract_option_type(ty);
@@ -2778,6 +3170,11 @@ fn is_option_type(ty: &syn::Type) -> bool {
 
 /// Determine if a field should be auto-generated (excluded from new() function arguments)
 fn is_auto_generated_field(field: &FieldInfo) -> bool {
+	// FK _id fields are auto-generated (excluded from new() and setters)
+	if field.is_fk_id_field {
+		return true;
+	}
+
 	let config = &field.config;
 
 	// If include_in_new is explicitly set to false, exclude from new()
@@ -2846,6 +3243,17 @@ fn is_auto_generated_field(field: &FieldInfo) -> bool {
 		return true;
 	}
 
+	// Integer primary key is auto-generated by default (auto_increment behavior)
+	// Unless explicitly disabled with auto_increment = false
+	if config.primary_key && is_integer_primary_key_type(&field.ty) {
+		// If auto_increment is explicitly set to false, include in new()
+		if config.auto_increment == Some(false) {
+			return false;
+		}
+		// Otherwise, treat as auto-generated (default auto_increment behavior)
+		return true;
+	}
+
 	false
 }
 
@@ -2886,6 +3294,19 @@ fn get_auto_field_default_value(field: &FieldInfo) -> TokenStream {
 			return quote! { Some(::uuid::Uuid::new_v4()) };
 		} else {
 			return quote! { ::uuid::Uuid::new_v4() };
+		}
+	}
+
+	// Integer primary key with auto-increment behavior - use 0 as placeholder
+	// The actual value will be set by the database on INSERT
+	if config.primary_key && is_integer_primary_key_type(&field.ty) {
+		let (is_option, inner_ty) = extract_option_type(&field.ty);
+		if is_option {
+			return quote! { ::std::option::Option::None };
+		} else {
+			// Use 0 as the default value for integer primary keys
+			// This will be replaced by the database-generated value on INSERT
+			return quote! { 0 as #inner_ty };
 		}
 	}
 
@@ -2990,29 +3411,78 @@ fn generate_new_function(
 	// FK _idフィールドの初期化（#[fk_id_field] マーカー付きフィールド）
 	// これらは属性マクロで追加されたフィールドで、field_infos には含まれていない
 	for fk_id_name in fk_id_field_names.iter() {
-		fk_id_assignments.push(quote! {
-			#fk_id_name: ::std::default::Default::default()
-		});
+		let fk_id_str = fk_id_name.to_string();
+		if let Some(fk_field_name) = fk_id_to_fk_field.get(&fk_id_str) {
+			// 対応するFKフィールドを見つける
+			let fk_field_info = field_infos.iter().find(|fi| fi.name == fk_field_name);
+
+			if let Some(fk_info) = fk_field_info {
+				// ForeignKeyField<T>からT を抽出
+				let related_model_type = extract_foreign_key_target_type(&fk_info.ty);
+
+				// ジェネリック型パラメータ
+				let generic_param =
+					syn::Ident::new(&format!("F{}", generic_counter), fk_id_name.span());
+				generic_counter += 1;
+
+				// パラメータ: user: GenericParam
+				let fk_field_ident = syn::Ident::new(fk_field_name, fk_id_name.span());
+				params.push(quote! { #fk_field_ident: #generic_param });
+
+				// Where句: GenericParam: IntoPrimaryKey<RelatedModel>
+				where_clauses.push(quote! {
+					#generic_param: #orm_crate::IntoPrimaryKey<#related_model_type>
+				});
+
+				// ジェネリックパラメータリスト
+				generic_params.push(quote! { #generic_param });
+
+				// フィールド割り当て: user_id: user.into_primary_key()
+				fk_id_assignments.push(quote! {
+					#fk_id_name: #fk_field_ident.into_primary_key()
+				});
+			} else {
+				// FKフィールド情報が見つからない場合は Default::default()
+				fk_id_assignments.push(quote! {
+					#fk_id_name: ::std::default::Default::default()
+				});
+			}
+		} else {
+			// マップにない場合は Default::default()
+			fk_id_assignments.push(quote! {
+				#fk_id_name: ::std::default::Default::default()
+			});
+		}
 	}
 
 	// FK フィールド名のセットを作成（修正：キーではなく値を使用）
 	let fk_field_names: std::collections::HashSet<String> =
 		fk_id_to_fk_field.values().cloned().collect();
 
+	// FK _idフィールド名のセットを作成（例: user_id, room_id など）
+	let fk_id_field_names_set: std::collections::HashSet<String> =
+		fk_id_to_fk_field.keys().cloned().collect();
+
 	// 通常のユーザーフィールドの割り当て（FK関連以外）
 	let user_field_assignments: Vec<_> = user_fields
 		.iter()
-		.filter(|f| !fk_field_names.contains(&f.name.to_string()))
+		.filter(|f| {
+			!fk_field_names.contains(&f.name.to_string())
+				&& !fk_id_field_names_set.contains(&f.name.to_string())
+		})
 		.map(|f| {
 			let name = &f.name;
 			quote! { #name }
 		})
 		.collect();
 
-	// Auto-generatedフィールドの割り当て（FK フィールドを除外）
+	// Auto-generatedフィールドの割り当て（FKフィールドとFK _idフィールドを除外）
 	let auto_field_assignments: Vec<_> = auto_fields
 		.iter()
-		.filter(|f| !fk_field_names.contains(&f.name.to_string()))
+		.filter(|f| {
+			!fk_field_names.contains(&f.name.to_string())
+				&& !fk_id_field_names_set.contains(&f.name.to_string())
+		})
 		.map(|f| {
 			let name = &f.name;
 			let default_value = get_auto_field_default_value(f);
@@ -3062,5 +3532,72 @@ fn generate_new_function(
 				}
 			}
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_fields_are_private() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true)]
+				pub id: i64,
+				pub name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		// フィールドがpubでないことを確認
+		assert!(!output_str.contains("pub id"));
+		assert!(!output_str.contains("pub name"));
+	}
+
+	#[test]
+	fn test_getter_methods_generated() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true)]
+				pub id: i64,
+				pub name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		// getterメソッドが生成されていることを確認
+		assert!(output_str.contains("pub fn id"));
+		assert!(output_str.contains("pub fn name"));
+	}
+
+	#[test]
+	fn test_setter_methods_exclude_auto_fields() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true)]
+				pub id: i64,
+				pub name: String,
+				#[field(auto_now_add = true)]
+				pub created_at: DateTime<Utc>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		// nameのsetterは生成される
+		assert!(output_str.contains("pub fn set_name"));
+
+		// id, created_atのsetterは生成されない
+		assert!(!output_str.contains("pub fn set_id"));
+		assert!(!output_str.contains("pub fn set_created_at"));
 	}
 }
