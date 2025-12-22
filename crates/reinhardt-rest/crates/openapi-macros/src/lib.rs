@@ -85,17 +85,23 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 		// Extract field attributes
 		let attrs = extract_field_attributes(&field.attrs);
 
+		// Use renamed property name if available (from #[serde(rename)] or #[schema(rename)])
+		let property_name = attrs
+			.rename
+			.clone()
+			.unwrap_or_else(|| field_name_str.clone());
+
 		// Check if field is Option<T> (makes it optional)
 		let is_option = is_option_type(field_type);
 		if !is_option {
-			required_fields.push(field_name_str.clone());
+			required_fields.push(property_name.clone());
 		}
 
 		// Build field schema with attributes
 		let schema_builder = build_field_schema(field_type, &attrs);
 
 		field_schemas.push(quote! {
-			builder = builder.property(#field_name_str, #schema_builder);
+			builder = builder.property(#property_name, #schema_builder);
 		});
 	}
 

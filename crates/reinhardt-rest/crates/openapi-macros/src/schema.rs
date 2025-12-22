@@ -17,6 +17,8 @@ pub struct FieldAttributes {
 	pub min_length: Option<usize>,
 	pub max_length: Option<usize>,
 	pub pattern: Option<String>,
+	/// Property name override from #[serde(rename = "...")] or #[schema(rename = "...")]
+	pub rename: Option<String>,
 }
 
 impl FieldAttributes {
@@ -33,6 +35,7 @@ impl FieldAttributes {
 			&& self.min_length.is_none()
 			&& self.max_length.is_none()
 			&& self.pattern.is_none()
+			&& self.rename.is_none()
 	}
 }
 
@@ -60,6 +63,32 @@ pub fn extract_field_attributes(attrs: &[Attribute]) -> FieldAttributes {
 					} else {
 						field_attrs.description = Some(doc);
 					}
+				}
+			}
+			continue;
+		}
+
+		// Check for #[serde(...)] attributes to extract rename
+		if attr.path().is_ident("serde") {
+			if let Ok(meta_list) = attr.meta.require_list() {
+				for nested_meta in meta_list
+					.parse_args_with(
+						syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
+					)
+					.unwrap_or_default()
+				{
+					if let Meta::NameValue(nv) = nested_meta
+						&& nv.path.is_ident("rename")
+							&& let syn::Expr::Lit(syn::ExprLit {
+								lit: Lit::Str(lit_str),
+								..
+							}) = nv.value
+							{
+								// Only set if not already set by #[schema(rename = "...")]
+								if field_attrs.rename.is_none() {
+									field_attrs.rename = Some(lit_str.value());
+								}
+							}
 				}
 			}
 			continue;
@@ -158,6 +187,16 @@ pub fn extract_field_attributes(attrs: &[Attribute]) -> FieldAttributes {
 								}) = nv.value
 								{
 									field_attrs.pattern = Some(lit_str.value());
+								}
+							}
+							"rename" => {
+								if let syn::Expr::Lit(syn::ExprLit {
+									lit: Lit::Str(lit_str),
+									..
+								}) = nv.value
+								{
+									// Override serde rename if explicit schema rename is provided
+									field_attrs.rename = Some(lit_str.value());
 								}
 							}
 							_ => {}
