@@ -1,4 +1,4 @@
-error: Invalid route path: Invalid type specifier 'invalid'. Valid types are: int, str, uuid, slug, path
+error: Invalid route path: Invalid type specifier 'invalid'. Valid types are: int, str, uuid, slug, path, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, email, date
  --> tests/ui/routes/fail/invalid_type_spec.rs:3:10
   |
 3 | #[delete("/posts/{<invalid:post_id>}")]

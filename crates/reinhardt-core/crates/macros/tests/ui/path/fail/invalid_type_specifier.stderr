@@ -1,4 +1,4 @@
-error: Invalid type specifier 'invalid'. Valid types are: int, str, uuid, slug, path
+error: Invalid type specifier 'invalid'. Valid types are: int, str, uuid, slug, path, i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, email, date
  --> tests/ui/path/fail/invalid_type_specifier.rs:6:22
   |
 6 |     let pattern = path!("polls/{<invalid:id>}/");

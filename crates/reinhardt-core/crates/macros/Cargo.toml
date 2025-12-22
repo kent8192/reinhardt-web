@@ -44,3 +44,4 @@ reinhardt = { workspace = true, features = ["database"] }
 reinhardt-associations = { workspace = true }
 chrono = { workspace = true }
 linkme = { workspace = true }
+reinhardt-admin-core = { workspace = true }

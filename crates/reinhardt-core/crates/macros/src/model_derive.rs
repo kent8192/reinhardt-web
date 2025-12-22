@@ -3022,6 +3022,17 @@ fn is_uuid_type(ty: &Type) -> bool {
 	false
 }
 
+/// Check if a type is String or Option<String>
+fn is_string_type(ty: &Type) -> bool {
+	let (_, inner_ty) = extract_option_type(ty);
+	if let Type::Path(type_path) = inner_ty
+		&& let Some(last_segment) = type_path.path.segments.last()
+	{
+		return last_segment.ident == "String";
+	}
+	false
+}
+
 /// Check if a type is an integer type suitable for auto-increment primary key
 /// Supports i8, i16, i32, i64, isize, u8, u16, u32, u64, usize and their Option<> variants
 fn is_integer_primary_key_type(ty: &Type) -> bool {
@@ -3357,6 +3368,10 @@ fn generate_new_function(
 	// ジェネリック型パラメータのカウンター（F0, F1, F2, ...）
 	let mut generic_counter = 0;
 
+	// String型フィールドを追跡（フィールド名 -> Option情報）
+	// Into<String>を使用するためにフィールド割り当て時に.into()を呼び出す必要がある
+	let mut string_fields: HashMap<String, bool> = HashMap::new(); // value: is_option
+
 	for f in user_fields.iter() {
 		let field_name = &f.name;
 		let field_name_str = field_name.to_string();
@@ -3396,7 +3411,24 @@ fn generate_new_function(
 		} else {
 			// 通常のユーザーフィールド
 			let ty = &f.ty;
-			params.push(quote! { #field_name: #ty });
+
+			// String型フィールドの場合はジェネリック型パラメータを使用
+			// ただし、Option<String>はNone渡しで型推論が失敗するためそのまま残す
+			let (is_option, _) = extract_option_type(ty);
+			if is_string_type(ty) && !is_option {
+				// String -> S where S: Into<String>
+				let generic_param =
+					syn::Ident::new(&format!("S{}", generic_counter), field_name.span());
+				generic_counter += 1;
+
+				params.push(quote! { #field_name: #generic_param });
+				where_clauses
+					.push(quote! { #generic_param: ::std::convert::Into<::std::string::String> });
+				generic_params.push(quote! { #generic_param });
+				string_fields.insert(field_name_str.clone(), false);
+			} else {
+				params.push(quote! { #field_name: #ty });
+			}
 		}
 	}
 
@@ -3472,7 +3504,15 @@ fn generate_new_function(
 		})
 		.map(|f| {
 			let name = &f.name;
-			quote! { #name }
+			let name_str = name.to_string();
+
+			// String型フィールドの場合は.into()を呼び出す
+			// (Option<String>はジェネリック化されないのでstring_fieldsに含まれない)
+			if string_fields.contains_key(&name_str) {
+				quote! { #name: #name.into() }
+			} else {
+				quote! { #name }
+			}
 		})
 		.collect();
 

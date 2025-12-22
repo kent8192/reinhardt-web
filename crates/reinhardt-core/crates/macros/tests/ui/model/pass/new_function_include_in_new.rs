@@ -23,9 +23,10 @@ pub struct Product {
 }
 
 fn main() {
-	// new() should require id, name, and category (due to include_in_new = true)
-	// but NOT description (due to include_in_new = false)
-	let product = Product::new(None, "Widget".to_string(), Some("Electronics".to_string()));
+	// new() should require name, and category (due to include_in_new = true)
+	// id is Option<i32> primary key (auto-excluded from new())
+	// description is NOT included (due to include_in_new = false)
+	let product = Product::new("Widget", Some("Electronics".to_string()));
 
 	assert_eq!(product.name, "Widget");
 	assert_eq!(product.category, Some("Electronics".to_string()));

@@ -22,8 +22,8 @@ pub struct TestUser {
 
 fn main() {
 	// new() should require username, email, is_active
-	// id is Option<i32> primary key (not auto-generated for integer types)
-	let user = TestUser::new(None, "alice".to_string(), "alice@example.com".to_string(), true);
+	// id is Option<i32> primary key (auto-excluded from new())
+	let user = TestUser::new("alice", "alice@example.com", true);
 
 	// Verify user fields are set correctly
 	assert_eq!(user.username, "alice");

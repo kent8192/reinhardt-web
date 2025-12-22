@@ -31,12 +31,14 @@ pub struct Post {
 }
 
 fn main() {
-	// new() should only require id and title
-	// categories (ManyToManyField) should be auto-generated (excluded from new())
-	let post = Post::new(1, "Test Post".to_string());
+	// new() should only require title
+	// id (i64 primary key) is auto-excluded from new()
+	// categories (ManyToManyField) is also auto-excluded from new()
+	let post = Post::new("Test Post");
 
 	// Verify post fields are set correctly
-	assert_eq!(post.id, 1);
 	assert_eq!(post.title, "Test Post");
+	// id should be default (0)
+	assert_eq!(post.id, 0);
 	// categories should be default (empty ManyToManyField)
 }

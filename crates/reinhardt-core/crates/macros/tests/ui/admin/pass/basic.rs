@@ -1,6 +1,6 @@
 //! Basic admin macro usage with required attributes
 
-use reinhardt_admin_api::ModelAdmin;
+use reinhardt_admin_core::ModelAdmin;
 use reinhardt_macros::{admin, model};
 use serde::{Deserialize, Serialize};
 
