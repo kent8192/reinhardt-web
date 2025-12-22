@@ -120,12 +120,8 @@ async fn test_create_user(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = User::objects();
 
-	let new_user = User {
-		id: None, // Auto-increment by database
-		name: "Alice".to_string(),
-		email: "alice@example.com".to_string(),
-		created_at: Utc::now(),
-	};
+	// Use new() function - id (primary key) and created_at (auto_now_add) are auto-excluded
+	let new_user = User::new("Alice".to_string(), "alice@example.com".to_string());
 
 	let created = manager.create(&new_user).await.unwrap();
 
@@ -147,19 +143,9 @@ async fn test_read_users(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = User::objects();
 
-	// Create test users
-	let user1 = User {
-		id: None,
-		name: "Alice".to_string(),
-		email: "alice@example.com".to_string(),
-		created_at: Utc::now(),
-	};
-	let user2 = User {
-		id: None,
-		name: "Bob".to_string(),
-		email: "bob@example.com".to_string(),
-		created_at: Utc::now(),
-	};
+	// Create test users using new() function
+	let user1 = User::new("Alice".to_string(), "alice@example.com".to_string());
+	let user2 = User::new("Bob".to_string(), "bob@example.com".to_string());
 
 	manager.create(&user1).await.unwrap();
 	manager.create(&user2).await.unwrap();
@@ -182,13 +168,8 @@ async fn test_update_user(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = User::objects();
 
-	// Create user
-	let new_user = User {
-		id: None,
-		name: "Alice".to_string(),
-		email: "alice@example.com".to_string(),
-		created_at: Utc::now(),
-	};
+	// Create user using new() function
+	let new_user = User::new("Alice".to_string(), "alice@example.com".to_string());
 	let created = manager.create(&new_user).await.unwrap();
 
 	// Update user
@@ -211,13 +192,8 @@ async fn test_delete_user(
 	let (_container, conn) = db_with_migrations.await;
 	let manager = User::objects();
 
-	// Create user
-	let new_user = User {
-		id: None,
-		name: "Alice".to_string(),
-		email: "alice@example.com".to_string(),
-		created_at: Utc::now(),
-	};
+	// Create user using new() function
+	let new_user = User::new("Alice".to_string(), "alice@example.com".to_string());
 	let created = manager.create_with_conn(&conn, &new_user).await.unwrap();
 
 	// Delete user - unwrap the Option<i64> to get the actual id
@@ -255,12 +231,7 @@ async fn test_transaction_commit(
 
 	// Insert user using ORM Manager with explicit connection (transaction-aware)
 	let manager = User::objects();
-	let user = User {
-		id: None, // Auto-increment by database
-		name: "Alice".to_string(),
-		email: "alice@example.com".to_string(),
-		created_at: Utc::now(),
-	};
+	let user = User::new("Alice".to_string(), "alice@example.com".to_string());
 	let created_user = manager
 		.create_with_conn(&conn, &user)
 		.await
@@ -355,14 +326,12 @@ async fn test_orm_create_todo(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
-	let new_todo = Todo {
-		id: None,
-		title: "Test Todo".to_string(),
-		description: Some("This is a test todo".to_string()),
-		completed: false,
-		created_at: Utc::now(),
-		updated_at: Utc::now(),
-	};
+	// Use new() function - id (primary key), created_at (auto_now_add), updated_at (auto_now) are auto-excluded
+	let new_todo = Todo::new(
+		"Test Todo".to_string(),
+		Some("This is a test todo".to_string()),
+		false,
+	);
 
 	let created = manager.create(&new_todo).await.unwrap();
 
@@ -382,23 +351,14 @@ async fn test_orm_list_todos(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
-	// Create test todos
-	let todo1 = Todo {
-		id: None,
-		title: "Todo 1".to_string(),
-		description: None,
-		completed: false,
-		created_at: Utc::now(),
-		updated_at: Utc::now(),
-	};
-	let todo2 = Todo {
-		id: None,
-		title: "Todo 2".to_string(),
-		description: Some("Description 2".to_string()),
-		completed: true,
-		created_at: Utc::now(),
-		updated_at: Utc::now(),
-	};
+	// Create test todos using new() function
+	let todo1 = Todo::new("Todo 1".to_string(), None, false);
+
+	let todo2 = Todo::new(
+		"Todo 2".to_string(),
+		Some("Description 2".to_string()),
+		true,
+	);
 
 	manager.create(&todo1).await.unwrap();
 	manager.create(&todo2).await.unwrap();
@@ -421,15 +381,12 @@ async fn test_orm_get_todo(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
-	// Create todo
-	let new_todo = Todo {
-		id: None,
-		title: "Test Todo".to_string(),
-		description: Some("Test description".to_string()),
-		completed: false,
-		created_at: Utc::now(),
-		updated_at: Utc::now(),
-	};
+	// Create todo using new() function
+	let new_todo = Todo::new(
+		"Test Todo".to_string(),
+		Some("Test description".to_string()),
+		false,
+	);
 	let created = manager.create(&new_todo).await.unwrap();
 
 	// Get todo by ID
@@ -452,15 +409,12 @@ async fn test_orm_update_todo(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
-	// Create todo
-	let new_todo = Todo {
-		id: None,
-		title: "Original Title".to_string(),
-		description: Some("Original description".to_string()),
-		completed: false,
-		created_at: Utc::now(),
-		updated_at: Utc::now(),
-	};
+	// Create todo using new() function
+	let new_todo = Todo::new(
+		"Original Title".to_string(),
+		Some("Original description".to_string()),
+		false,
+	);
 	let created = manager.create(&new_todo).await.unwrap();
 
 	// Update todo
@@ -486,15 +440,8 @@ async fn test_orm_delete_todo(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
-	// Create todo
-	let new_todo = Todo {
-		id: None,
-		title: "To be deleted".to_string(),
-		description: None,
-		completed: false,
-		created_at: Utc::now(),
-		updated_at: Utc::now(),
-	};
+	// Create todo using new() function
+	let new_todo = Todo::new("To be deleted".to_string(), None, false);
 	let created = manager.create(&new_todo).await.unwrap();
 
 	// Delete todo
@@ -519,14 +466,8 @@ async fn test_todo_default_values(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
-	let new_todo = Todo {
-		id: None,
-		title: "Test Todo".to_string(),
-		description: None,
-		completed: false, // Default
-		created_at: Utc::now(),
-		updated_at: Utc::now(),
-	};
+	// Use new() function - defaults are applied automatically
+	let new_todo = Todo::new("Test Todo".to_string(), None, false);
 
 	let created = manager.create(&new_todo).await.unwrap();
 
@@ -548,14 +489,8 @@ async fn test_todo_timestamp_behavior(
 	let (_container, _conn) = db_with_migrations.await;
 	let manager = Todo::objects();
 
-	let new_todo = Todo {
-		id: None,
-		title: "Test Todo".to_string(),
-		description: None,
-		completed: false,
-		created_at: Utc::now(),
-		updated_at: Utc::now(),
-	};
+	// Use new() function - timestamps are auto-generated
+	let new_todo = Todo::new("Test Todo".to_string(), None, false);
 
 	let created = manager.create(&new_todo).await.unwrap();
 
@@ -595,15 +530,12 @@ async fn test_complete_crud_cycle(
 		Box::pin(async move {
 			let manager = Todo::objects();
 
-			// Create
-			let new_todo = Todo {
-				id: None,
-				title: "CRUD Test".to_string(),
-				description: Some("Testing full cycle".to_string()),
-				completed: false,
-				created_at: Utc::now(),
-				updated_at: Utc::now(),
-			};
+			// Create using new() function
+			let new_todo = Todo::new(
+				"CRUD Test".to_string(),
+				Some("Testing full cycle".to_string()),
+				false,
+			);
 			let created = manager.create(&new_todo).await?;
 
 			// Read

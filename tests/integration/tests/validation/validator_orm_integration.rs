@@ -18,6 +18,7 @@ use reinhardt_test::fixtures::postgres_container;
 use reinhardt_test::fixtures::validator::{validator_db_guard, ValidatorDbGuard};
 use reinhardt_test::resource::TeardownGuard;
 use rstest::*;
+use serial_test::serial;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
@@ -60,6 +61,7 @@ mod scalar_validation_tests {
 	// Based on SQLAlchemy: ValidatorTest::test_scalar
 	#[rstest]
 	#[tokio::test]
+	#[serial(validator_orm_db)]
 	async fn test_scalar_field_validation(
 		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
@@ -292,6 +294,7 @@ mod constraint_validation_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(validator_orm_db)]
 	async fn test_unique_constraint_database_violation(
 		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
@@ -382,6 +385,7 @@ mod relationship_validation_tests {
 	// Based on SQLAlchemy: test_validator_backrefs
 	#[rstest]
 	#[tokio::test]
+	#[serial(validator_orm_db)]
 	async fn test_foreign_key_validation(
 		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
@@ -404,6 +408,7 @@ mod relationship_validation_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(validator_orm_db)]
 	async fn test_foreign_key_existence_validation(
 		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
@@ -525,6 +530,7 @@ mod relationship_validation_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(validator_orm_db)]
 	async fn test_foreign_key_update_violation(
 		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
@@ -564,6 +570,7 @@ mod relationship_validation_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(validator_orm_db)]
 	async fn test_foreign_key_cascade_delete(
 		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,

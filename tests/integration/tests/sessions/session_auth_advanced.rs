@@ -14,6 +14,7 @@
 //! - sqlx: Database operations
 //! - serial_test: Test serialization for shared state
 
+use reinhardt_orm::manager::{get_connection, reinitialize_database};
 use reinhardt_sessions::backends::cache::SessionBackend;
 use reinhardt_sessions::{backends::database::DatabaseSessionBackend, Session};
 use reinhardt_test::fixtures::postgres_container;
@@ -43,6 +44,17 @@ async fn test_remember_me_token_integration(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
+
+	// Initialize global ORM connection for Session::objects() calls
+	reinitialize_database(&database_url)
+		.await
+		.expect("Failed to initialize ORM database");
+
+	// Clear table before test to ensure isolation
+	let conn = get_connection()
+		.await
+		.expect("Failed to get ORM connection");
+	let _ = conn.execute("DROP TABLE IF EXISTS sessions", vec![]).await;
 
 	// Create database session backend
 	let backend = DatabaseSessionBackend::new(&database_url)
@@ -156,6 +168,17 @@ async fn test_session_after_mfa_verification(
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
+	// Initialize global ORM connection for Session::objects() calls
+	reinitialize_database(&database_url)
+		.await
+		.expect("Failed to initialize ORM database");
+
+	// Clear table before test to ensure isolation
+	let conn = get_connection()
+		.await
+		.expect("Failed to get ORM connection");
+	let _ = conn.execute("DROP TABLE IF EXISTS sessions", vec![]).await;
+
 	// Create database session backend
 	let backend = DatabaseSessionBackend::new(&database_url)
 		.await
@@ -259,6 +282,17 @@ async fn test_invalidate_all_sessions_on_password_change(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
+
+	// Initialize global ORM connection for Session::objects() calls
+	reinitialize_database(&database_url)
+		.await
+		.expect("Failed to initialize ORM database");
+
+	// Clear table before test to ensure isolation
+	let conn = get_connection()
+		.await
+		.expect("Failed to get ORM connection");
+	let _ = conn.execute("DROP TABLE IF EXISTS sessions", vec![]).await;
 
 	// Create database session backend
 	let backend = DatabaseSessionBackend::new(&database_url)
@@ -399,6 +433,17 @@ async fn test_logout_complete_data_removal(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
+
+	// Initialize global ORM connection for Session::objects() calls
+	reinitialize_database(&database_url)
+		.await
+		.expect("Failed to initialize ORM database");
+
+	// Clear table before test to ensure isolation
+	let conn = get_connection()
+		.await
+		.expect("Failed to get ORM connection");
+	let _ = conn.execute("DROP TABLE IF EXISTS sessions", vec![]).await;
 
 	// Create database session backend
 	let backend = DatabaseSessionBackend::new(&database_url)

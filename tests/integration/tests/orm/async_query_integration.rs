@@ -22,6 +22,7 @@ use reinhardt_orm::{
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
+use serial_test::serial;
 use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
@@ -115,6 +116,7 @@ mod postgres_tests {
 	/// **Not Intent**: Query optimization, complex queries
 	#[rstest]
 	#[tokio::test]
+	#[serial(async_query_db)]
 	async fn test_postgres_async_query_execution(
 		#[future] async_query_test_db: (
 			ContainerAsync<GenericImage>,
@@ -158,6 +160,7 @@ mod postgres_tests {
 	/// **Not Intent**: Session management, transaction handling
 	#[rstest]
 	#[tokio::test]
+	#[serial(async_query_db)]
 	async fn test_postgres_async_session(
 		#[future] async_query_test_db: (
 			ContainerAsync<GenericImage>,

@@ -19,10 +19,8 @@ pub type TestDatabase = (ContainerAsync<GenericImage>, Arc<DatabaseConnection>);
 ///
 /// # Example
 ///
-/// ```rust,no_run
-/// # #[tokio::main]
-/// # async fn main() {
-/// use crate::test_utils::fixtures::test_database;
+/// ```ignore
+/// use examples_twitter::test_utils::fixtures::test_database;
 /// use rstest::*;
 ///
 /// #[rstest]

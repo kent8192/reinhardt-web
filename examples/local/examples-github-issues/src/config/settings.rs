@@ -41,7 +41,7 @@ use std::env;
 /// # Examples
 ///
 /// ```no_run
-/// use examples-github-issues::config::settings::get_settings;
+/// use examples_github_issues::config::settings::get_settings;
 ///
 /// let settings = get_settings();
 /// println!("Debug mode: {}", settings.debug);

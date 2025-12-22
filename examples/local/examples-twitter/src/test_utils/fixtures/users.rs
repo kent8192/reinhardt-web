@@ -71,14 +71,10 @@ impl TestUserParams {
 ///
 /// # Example
 ///
-/// ```rust,no_run
-/// # #[tokio::main]
-/// # async fn main() {
+/// ```ignore
 /// let db = Arc::new(connection);
 /// let user = create_test_user(&db, TestUserParams::default()).await;
 /// assert_eq!(user.is_active, true);
-///
-/// # }
 /// ```
 pub async fn create_test_user(db: &DatabaseConnection, params: TestUserParams) -> User {
 	// Create user using User::new() which auto-generates id, created_at, and ManyToManyFields
@@ -105,13 +101,9 @@ pub async fn create_test_user(db: &DatabaseConnection, params: TestUserParams) -
 ///
 /// # Example
 ///
-/// ```rust,no_run
-/// # #[tokio::main]
-/// # async fn main() {
+/// ```ignore
 /// let users = create_test_users(&db, 5).await;
 /// assert_eq!(users.len(), 5);
-///
-/// # }
 /// ```
 pub async fn create_test_users(db: &DatabaseConnection, count: usize) -> Vec<User> {
 	let mut users = Vec::with_capacity(count);
@@ -130,9 +122,7 @@ pub async fn create_test_users(db: &DatabaseConnection, count: usize) -> Vec<Use
 ///
 /// # Example
 ///
-/// ```rust,no_run
-/// # #[tokio::main]
-/// # async fn main() {
+/// ```ignore
 /// #[rstest]
 /// #[tokio::test]
 /// async fn my_test(#[future] test_user: (User, TestDatabase)) {

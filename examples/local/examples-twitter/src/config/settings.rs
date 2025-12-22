@@ -32,7 +32,7 @@ use std::env;
 /// Defaults to "local" if not set.
 /// # Examples
 /// ```no_run
-/// use examples-twitter::config::settings::get_settings;
+/// use examples_twitter::config::settings::get_settings;
 /// let settings = get_settings();
 /// println!("Debug mode: {}", settings.debug);
 /// ```

@@ -2,6 +2,7 @@
 //!
 //! Tests for handling large session data and verifying database storage limits.
 
+use reinhardt_orm::manager::{get_connection, reinitialize_database};
 use reinhardt_sessions::backends::cache::SessionBackend;
 use reinhardt_sessions::backends::database::DatabaseSessionBackend;
 use rstest::*;
@@ -13,7 +14,21 @@ use serial_test::serial;
 async fn backend() -> DatabaseSessionBackend {
 	// Use shared cache mode for SQLite in-memory database
 	// This allows multiple connections to share the same in-memory database
-	let backend = DatabaseSessionBackend::new("sqlite:file::memory:?cache=shared")
+	let database_url = "sqlite:file::memory:?cache=shared";
+
+	// Initialize global ORM connection for Session::objects() calls
+	reinitialize_database(database_url)
+		.await
+		.expect("Failed to initialize ORM database");
+
+	// Clear table before each test to ensure isolation
+	// DROP TABLE ensures clean state even if previous test failed
+	let conn = get_connection()
+		.await
+		.expect("Failed to get ORM connection");
+	let _ = conn.execute("DROP TABLE IF EXISTS sessions", vec![]).await;
+
+	let backend = DatabaseSessionBackend::new(database_url)
 		.await
 		.expect("Failed to create test backend");
 	backend

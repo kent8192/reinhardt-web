@@ -15,6 +15,7 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container for session storage
 
+use reinhardt_orm::manager::{get_connection, reinitialize_database};
 use reinhardt_sessions::{
 	backends::{cache::SessionBackend, database::DatabaseSessionBackend},
 	Session,
@@ -26,6 +27,32 @@ use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 use uuid::Uuid;
+
+/// Common initialization for session tests
+async fn init_session_test(database_url: &str) -> DatabaseSessionBackend {
+	// Initialize global ORM connection for Session::objects() calls
+	reinitialize_database(database_url)
+		.await
+		.expect("Failed to initialize ORM database");
+
+	// Clear table before test to ensure isolation
+	let conn = get_connection()
+		.await
+		.expect("Failed to get ORM connection");
+	let _ = conn.execute("DROP TABLE IF EXISTS sessions", vec![]).await;
+
+	// Create database session backend
+	let backend = DatabaseSessionBackend::new(database_url)
+		.await
+		.expect("Failed to create session backend");
+
+	backend
+		.create_table()
+		.await
+		.expect("Failed to create sessions table");
+
+	backend
+}
 
 // ============================================================================
 // Session Creation on Login Tests
@@ -46,15 +73,8 @@ async fn test_session_creation_on_login(
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table via backend");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Simulate login - create session with user credentials
 	let user_id = Uuid::new_v4();
@@ -112,15 +132,8 @@ async fn test_session_creation_with_csrf_token(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with CSRF token
 	let user_id = Uuid::new_v4();
@@ -168,15 +181,8 @@ async fn test_session_creation_with_user_metadata(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with user metadata
 	let user_id = Uuid::new_v4();
@@ -233,15 +239,8 @@ async fn test_session_invalidation_on_logout(
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table via backend");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session
 	let user_id = Uuid::new_v4();
@@ -294,15 +293,8 @@ async fn test_session_invalidation_clears_all_data(
 ) {
 	let (_container, pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table via backend");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with comprehensive data
 	let mut session = Session::new(backend.clone());
@@ -361,15 +353,8 @@ async fn test_logout_immediate_invalidation(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session
 	let mut session = Session::new(backend.clone());
@@ -420,15 +405,8 @@ async fn test_session_persists_user_association(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with user
 	let user_id = Uuid::new_v4();
@@ -476,15 +454,8 @@ async fn test_session_updates_user_data(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with initial user data
 	let user_id = Uuid::new_v4();
@@ -534,15 +505,8 @@ async fn test_session_multiple_user_attributes(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with comprehensive user data
 	let user_id = Uuid::new_v4();
@@ -615,15 +579,8 @@ async fn test_session_csrf_token_validation(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with CSRF token
 	let csrf_token = Uuid::new_v4().to_string();
@@ -672,15 +629,8 @@ async fn test_session_secure_cookie_flags(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session
 	let mut session = Session::new(backend.clone());
@@ -731,15 +681,8 @@ async fn test_session_regeneration_on_privilege_escalation(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create initial session with regular user
 	let user_id = Uuid::new_v4();
@@ -817,15 +760,8 @@ async fn test_session_ip_binding(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with IP binding
 	let client_ip = "192.168.1.100";
@@ -870,15 +806,8 @@ async fn test_session_user_agent_binding(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with User-Agent binding
 	let user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
@@ -923,15 +852,8 @@ async fn test_session_timeout_and_idle_detection(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table via backend");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create session with activity timestamp
 	let user_id = Uuid::new_v4();
@@ -986,15 +908,8 @@ async fn test_concurrent_sessions_per_user(
 ) {
 	let (_container, _pool, _port, database_url) = postgres_container.await;
 
-	// Create database session backend
-	let backend = DatabaseSessionBackend::new(&database_url)
-		.await
-		.expect("Failed to create session backend");
-
-	backend
-		.create_table()
-		.await
-		.expect("Failed to create sessions table");
+	// Initialize ORM and create session backend
+	let backend = init_session_test(&database_url).await;
 
 	// Create first session (desktop)
 	let user_id = Uuid::new_v4();

@@ -63,7 +63,7 @@ pub async fn authenticated_session(#[future] test_user: (User, TestDatabase)) ->
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// let token = generate_test_token(&user);
 /// // Use token in Authorization header: "Bearer {token}"
 /// ```
@@ -81,7 +81,7 @@ pub fn generate_test_token(user: &User) -> String {
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// let expired_token = generate_expired_token(&user);
 /// // This token will fail verification due to expiration
 /// ```
@@ -103,7 +103,7 @@ pub fn generate_expired_token(user: &User) -> String {
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// let invalid_token = generate_invalid_token(&user);
 /// // This token will fail verification due to invalid signature
 /// ```

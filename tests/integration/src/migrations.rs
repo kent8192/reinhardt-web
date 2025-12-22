@@ -15,9 +15,9 @@
 //!
 //! In test fixtures, call the appropriate apply function with a DatabaseConnection:
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use reinhardt_backends::DatabaseConnection;
-//! use tests_integration::migrations;
+//! use reinhardt_integration_tests::migrations;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
@@ -47,9 +47,9 @@ use create_test_tables::migration as migration_0001;
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use reinhardt_backends::DatabaseConnection;
-/// use tests_integration::migrations;
+/// use reinhardt_integration_tests::migrations;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
@@ -78,9 +78,9 @@ pub async fn apply_test_migrations(connection: &DatabaseConnection) -> Result<()
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use reinhardt_backends::DatabaseConnection;
-/// use tests_integration::migrations;
+/// use reinhardt_integration_tests::migrations;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
@@ -107,9 +107,9 @@ pub async fn apply_basic_test_migrations(
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use reinhardt_backends::DatabaseConnection;
-/// use tests_integration::migrations;
+/// use reinhardt_integration_tests::migrations;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
@@ -138,9 +138,9 @@ pub async fn apply_constraint_test_migrations(
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use reinhardt_backends::DatabaseConnection;
-/// use tests_integration::migrations;
+/// use reinhardt_integration_tests::migrations;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;

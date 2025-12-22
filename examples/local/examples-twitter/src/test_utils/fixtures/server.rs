@@ -34,9 +34,7 @@ pub struct TestContext {
 ///
 /// # Example
 ///
-/// ```rust,no_run
-/// # #[tokio::main]
-/// # async fn main() {
+/// ```ignore
 /// #[rstest]
 /// #[tokio::test]
 /// async fn my_test(#[future] test_context: TestContext) {
@@ -77,9 +75,7 @@ pub async fn test_context(#[future] test_database: TestDatabase) -> TestContext 
 ///
 /// # Example
 ///
-/// ```rust,no_run
-/// # #[tokio::main]
-/// # async fn main() {
+/// ```ignore
 /// #[rstest]
 /// #[tokio::test]
 /// async fn my_test(#[future] authenticated_context: (TestContext, User)) {

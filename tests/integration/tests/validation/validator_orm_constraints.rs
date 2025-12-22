@@ -25,6 +25,7 @@ use reinhardt_test::fixtures::postgres_container;
 use reinhardt_test::fixtures::validator::{validator_db_guard, ValidatorDbGuard};
 use reinhardt_test::resource::TeardownGuard;
 use rstest::*;
+use serial_test::serial;
 use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
@@ -39,6 +40,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 pub struct TestPost {
 	#[field(primary_key = true)]
 	id: i32,
+	#[field]
 	user_id: i32,
 	#[field(max_length = 255)]
 	title: String,
@@ -52,7 +54,9 @@ pub struct TestPost {
 pub struct TestComment {
 	#[field(primary_key = true)]
 	id: i32,
+	#[field]
 	post_id: i32,
+	#[field]
 	user_id: i32,
 	#[field(max_length = 65535)]
 	content: String,
@@ -106,6 +110,7 @@ async fn validator_constraint_test_db(
 /// - Validator detects constraint violations before database execution
 #[rstest]
 #[tokio::test]
+#[serial(validator_orm_db)]
 async fn test_composite_unique_constraint_validation(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
@@ -213,6 +218,7 @@ async fn test_composite_unique_constraint_validation(
 /// - Both validations produce consistent error messages
 #[rstest]
 #[tokio::test]
+#[serial(validator_orm_db)]
 async fn test_check_constraint_integration(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
@@ -319,6 +325,7 @@ async fn test_check_constraint_integration(
 /// - Reference counts are correctly tracked
 #[rstest]
 #[tokio::test]
+#[serial(validator_orm_db)]
 async fn test_cascade_delete_validation(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
@@ -452,6 +459,7 @@ async fn test_cascade_delete_validation(
 /// - No partial writes occur on validation failure
 #[rstest]
 #[tokio::test]
+#[serial(validator_orm_db)]
 async fn test_validation_failure_transaction_rollback(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
@@ -557,6 +565,7 @@ async fn test_validation_failure_transaction_rollback(
 /// - Partial validation respects database constraints
 #[rstest]
 #[tokio::test]
+#[serial(validator_orm_db)]
 async fn test_partial_update_validation(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,

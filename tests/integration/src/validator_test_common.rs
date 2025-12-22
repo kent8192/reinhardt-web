@@ -217,7 +217,9 @@ pub struct TestProduct {
 	name: String,
 	#[field(max_length = 50)]
 	code: String,
+	#[field]
 	price: f64,
+	#[field]
 	stock: i32,
 }
 
@@ -227,8 +229,11 @@ pub struct TestProduct {
 pub struct TestOrder {
 	#[field(primary_key = true)]
 	id: i32,
+	#[field]
 	user_id: i32,
+	#[field]
 	product_id: i32,
+	#[field]
 	quantity: i32,
 }
 
