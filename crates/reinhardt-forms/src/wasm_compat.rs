@@ -28,7 +28,7 @@
 //!
 //! ```
 //! use reinhardt_forms::{Form, CharField, Field};
-//! use reinhardt_forms::wasm_compat::FormMetadata;
+//! use reinhardt_forms::wasm_compat::{FormMetadata, FormExt};
 //!
 //! // Server-side: Create form
 //! let mut form = Form::new();

@@ -66,7 +66,7 @@ impl ImportFormat {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin_api::{ImportConfig, ImportFormat};
+/// use reinhardt_admin_core::{ImportConfig, ImportFormat};
 ///
 /// let config = ImportConfig::new("User", ImportFormat::CSV)
 ///     .with_field_mapping("username", "login")
@@ -337,7 +337,7 @@ impl CsvImporter {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_api::CsvImporter;
+	/// use reinhardt_admin_core::CsvImporter;
 	///
 	/// let csv_data = b"id,name\n1,Alice\n2,Bob";
 	/// let result = CsvImporter::import(csv_data, true);
@@ -421,7 +421,7 @@ impl JsonImporter {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_api::JsonImporter;
+	/// use reinhardt_admin_core::JsonImporter;
 	///
 	/// let json_data = br#"[{"id":"1","name":"Alice"}]"#;
 	/// let result = JsonImporter::import(json_data);
@@ -550,7 +550,7 @@ impl TsvImporter {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin_api::{ImportBuilder, ImportFormat};
+/// use reinhardt_admin_core::{ImportBuilder, ImportFormat};
 ///
 /// let csv_data = b"id,name\n1,Alice\n2,Bob";
 ///

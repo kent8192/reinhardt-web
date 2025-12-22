@@ -17,7 +17,7 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_admin_api::{AdminSite, admin_routes};
+/// use reinhardt_admin_core::{AdminSite, admin_routes};
 ///
 /// let site = AdminSite::new("My Admin");
 /// // ... register models ...
@@ -61,7 +61,7 @@ impl AdminRouter {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_admin_api::{AdminSite, AdminRouter};
+	/// use reinhardt_admin_core::{AdminSite, AdminRouter};
 	/// use std::sync::Arc;
 	///
 	/// let site = Arc::new(AdminSite::new("Admin"));
@@ -85,7 +85,7 @@ impl AdminRouter {
 	///
 	/// ```rust,ignore
 	/// // Cannot run: favicon.ico file does not exist
-	/// use reinhardt_admin_api::{AdminSite, AdminRouter};
+	/// use reinhardt_admin_core::{AdminSite, AdminRouter};
 	/// use std::sync::Arc;
 	///
 	/// let favicon_bytes = include_bytes!("favicon.ico").to_vec();

@@ -103,7 +103,7 @@ pub trait ModelAdmin: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin_api::{ModelAdminConfig, ModelAdmin};
+/// use reinhardt_admin_core::{ModelAdminConfig, ModelAdmin};
 ///
 /// let admin = ModelAdminConfig::builder()
 ///     .model_name("User")
@@ -134,7 +134,7 @@ impl ModelAdminConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_api::{ModelAdminConfig, ModelAdmin};
+	/// use reinhardt_admin_core::{ModelAdminConfig, ModelAdmin};
 	///
 	/// let admin = ModelAdminConfig::new("User");
 	/// assert_eq!(admin.model_name(), "User");
@@ -159,7 +159,7 @@ impl ModelAdminConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_api::ModelAdminConfig;
+	/// use reinhardt_admin_core::ModelAdminConfig;
 	///
 	/// let admin = ModelAdminConfig::builder()
 	///     .model_name("User")

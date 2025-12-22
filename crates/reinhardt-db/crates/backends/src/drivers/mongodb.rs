@@ -8,7 +8,7 @@
 //! # Basic Connection Example
 //!
 //! ```rust,no_run
-//! use reinhardt_db::backends::mongodb::MongoDBBackend;
+//! use reinhardt_backends::drivers::mongodb::MongoDBBackend;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Connect to MongoDB
@@ -21,7 +21,7 @@
 //! # Query Builder Example
 //!
 //! ```rust
-//! use reinhardt_db::backends::mongodb::MongoDBQueryBuilder;
+//! use reinhardt_backends::drivers::mongodb::MongoDBQueryBuilder;
 //! use bson::doc;
 //!
 //! // Build a query
@@ -39,7 +39,7 @@
 //! # Schema Editor Example
 //!
 //! ```rust,no_run
-//! use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+//! use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 //! use bson::doc;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -65,7 +65,7 @@
 //! # Aggregation Pipeline Example
 //!
 //! ```rust
-//! use reinhardt_db::backends::mongodb::MongoDBQueryBuilder;
+//! use reinhardt_backends::drivers::mongodb::MongoDBQueryBuilder;
 //! use bson::doc;
 //!
 //! let query = MongoDBQueryBuilder::new("users")
@@ -82,7 +82,7 @@
 //! # Connection Pool Configuration
 //!
 //! ```rust,no_run
-//! use reinhardt_db::backends::mongodb::MongoDBBackendBuilder;
+//! use reinhardt_backends::drivers::mongodb::MongoDBBackendBuilder;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Configure connection pool
@@ -101,7 +101,7 @@
 //! # Replica Set Connection
 //!
 //! ```rust,no_run
-//! use reinhardt_db::backends::mongodb::MongoDBBackend;
+//! use reinhardt_backends::drivers::mongodb::MongoDBBackend;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Connect to replica set
@@ -117,7 +117,7 @@
 //! # Sharded Cluster Connection
 //!
 //! ```rust,no_run
-//! use reinhardt_db::backends::mongodb::MongoDBBackend;
+//! use reinhardt_backends::drivers::mongodb::MongoDBBackend;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Connect to sharded cluster via mongos

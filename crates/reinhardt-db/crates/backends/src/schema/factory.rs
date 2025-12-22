@@ -21,7 +21,7 @@
 /// # Example
 ///
 /// ```rust,no_run
-/// # use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+/// # use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 /// let factory = SchemaEditorFactory::new();
 /// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 /// // Use the editor for DDL operations via BaseDatabaseSchemaEditor trait methods
@@ -114,7 +114,7 @@ impl DatabaseType {
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 /// use sqlx::PgPool;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -163,7 +163,7 @@ impl SchemaEditorFactory {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::schema::factory::SchemaEditorFactory;
+	/// use reinhardt_backends::schema::factory::SchemaEditorFactory;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), sqlx::Error> {
@@ -212,7 +212,7 @@ impl SchemaEditorFactory {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), sqlx::Error> {
@@ -263,7 +263,7 @@ impl SchemaEditorFactory {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	/// use std::sync::Arc;
 	/// use sqlx::PgPool;
 	///

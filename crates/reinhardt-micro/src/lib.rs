@@ -17,7 +17,8 @@
 //!
 //! Reinhardt Micro provides builder-style middleware configuration:
 //!
-//! ```rust,no_run
+//! ```ignore
+//! // Note: CorsConfig and RateLimitConfig require the "cors" and "rate-limit" features
 //! use reinhardt_micro::{App, CorsConfig, RateLimitConfig, LoggingConfig, MetricsConfig};
 //! use std::time::Duration;
 //!

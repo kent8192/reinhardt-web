@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_contenttypes::shortcuts::{get_content_type_for_model, get_object_for_this_type};
+//! use reinhardt_contenttypes::shortcuts::{get_content_type_for_model, format_admin_url};
 //! use reinhardt_contenttypes::{ContentType, ContentTypeRegistry, GenericRelatable};
 //!
 //! // Get or create a content type for a model

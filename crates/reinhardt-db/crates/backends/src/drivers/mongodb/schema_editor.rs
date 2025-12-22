@@ -8,7 +8,7 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+//! use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 //! use bson::doc;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -46,7 +46,7 @@ use crate::schema::{BaseDatabaseSchemaEditor, SchemaEditorError, SchemaEditorRes
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+/// use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let editor = MongoDBSchemaEditor::new("mongodb://localhost:27017", "mydb").await?;
@@ -70,7 +70,7 @@ impl MongoDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+	/// use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let editor = MongoDBSchemaEditor::new("mongodb://localhost:27017", "mydb").await?;
@@ -100,7 +100,7 @@ impl MongoDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+	/// use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 	/// use bson::doc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -147,7 +147,7 @@ impl MongoDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+	/// use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let editor = MongoDBSchemaEditor::new("mongodb://localhost:27017", "mydb").await?;
@@ -179,7 +179,7 @@ impl MongoDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+	/// use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let editor = MongoDBSchemaEditor::new("mongodb://localhost:27017", "mydb").await?;
@@ -223,7 +223,7 @@ impl MongoDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+	/// use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let editor = MongoDBSchemaEditor::new("mongodb://localhost:27017", "mydb").await?;
@@ -253,7 +253,7 @@ impl MongoDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+	/// use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let editor = MongoDBSchemaEditor::new("mongodb://localhost:27017", "mydb").await?;
@@ -306,7 +306,7 @@ impl MongoDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_db::backends::mongodb::MongoDBSchemaEditor;
+	/// use reinhardt_backends::drivers::mongodb::MongoDBSchemaEditor;
 	/// use bson::doc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

@@ -9,8 +9,8 @@
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
-/// use reinhardt_db::backends::schema::BaseDatabaseSchemaEditor;
+/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+/// use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
 /// use sqlx::PgPool;
 ///
 /// # async fn example() -> Result<(), sqlx::Error> {
@@ -42,7 +42,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), sqlx::Error> {
@@ -62,7 +62,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_db::backends::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	/// use std::sync::Arc;
 	///

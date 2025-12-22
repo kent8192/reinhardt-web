@@ -54,8 +54,8 @@ impl ExportFormat {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin_api::ExportConfig;
-/// use reinhardt_admin_api::export::ExportFormat;
+/// use reinhardt_admin_core::ExportConfig;
+/// use reinhardt_admin_core::export::ExportFormat;
 ///
 /// let config = ExportConfig::new("User", ExportFormat::CSV)
 ///     .with_field("id")
@@ -237,7 +237,7 @@ impl CsvExporter {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_api::CsvExporter;
+	/// use reinhardt_admin_core::CsvExporter;
 	/// use std::collections::HashMap;
 	///
 	/// let fields = vec!["id".to_string(), "name".to_string()];
@@ -299,7 +299,7 @@ impl JsonExporter {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_api::JsonExporter;
+	/// use reinhardt_admin_core::JsonExporter;
 	/// use std::collections::HashMap;
 	///
 	/// let mut row1 = HashMap::new();
@@ -360,8 +360,8 @@ impl TsvExporter {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin_api::ExportBuilder;
-/// use reinhardt_admin_api::export::ExportFormat;
+/// use reinhardt_admin_core::ExportBuilder;
+/// use reinhardt_admin_core::export::ExportFormat;
 /// use std::collections::HashMap;
 ///
 /// let mut row = HashMap::new();
