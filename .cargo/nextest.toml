@@ -30,6 +30,12 @@ threads-required = 1
 filter = 'binary(examples-database-integration) & test(test_)'
 test-threads = 1
 
+# Session database integration tests require serial execution
+# They share an in-memory SQLite database that doesn't persist across processes
+[[profile.default.overrides]]
+filter = 'test(database_backend_integration)'
+test-threads = 1
+
 # Trybuild compile-fail tests need longer timeout
 # The compiler takes significant time to produce error messages
 [[profile.default.overrides]]
