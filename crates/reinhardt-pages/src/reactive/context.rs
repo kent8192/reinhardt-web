@@ -94,10 +94,7 @@ impl<T: 'static> Default for Context<T> {
 
 impl<T: 'static> Clone for Context<T> {
 	fn clone(&self) -> Self {
-		Self {
-			id: self.id,
-			_phantom: PhantomData,
-		}
+		*self
 	}
 }
 
