@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 fn test_auto_derive_all_traits() {
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test", table_name = "users")]
-	pub struct User {
+	pub(crate) struct User {
 		#[field(primary_key = true)]
 		pub id: i64,
 		#[field(max_length = 255)]
@@ -61,7 +61,7 @@ fn test_model_first_derive_second() {
 	// User adds Serialize, Deserialize manually
 	#[model(app_label = "test", table_name = "ordered_users")]
 	#[derive(Serialize, Deserialize)]
-	pub struct OrderedUser {
+	pub(crate) struct OrderedUser {
 		#[field(primary_key = true)]
 		pub id: i64,
 	}
@@ -90,7 +90,7 @@ fn test_model_with_hash_eq() {
 	// User can add Hash and Eq when needed
 	#[model(app_label = "test", table_name = "hashable_users")]
 	#[derive(Serialize, Deserialize, Eq, Hash)]
-	pub struct HashableUser {
+	pub(crate) struct HashableUser {
 		#[field(primary_key = true)]
 		pub id: i64,
 	}
@@ -114,7 +114,7 @@ fn test_manual_hash_trait() {
 	// implement these traits (e.g., f64, f32). Users can manually add them when needed.
 	#[derive(Serialize, Deserialize, Hash, Eq)]
 	#[model(app_label = "test", table_name = "products")]
-	pub struct Product {
+	pub(crate) struct Product {
 		#[field(primary_key = true)]
 		pub id: i64,
 		#[field(max_length = 255)]
@@ -149,7 +149,7 @@ fn test_manual_hash_trait() {
 fn test_partialeq() {
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test", table_name = "items")]
-	pub struct Item {
+	pub(crate) struct Item {
 		#[field(primary_key = true)]
 		pub id: i64,
 		#[field(max_length = 255)]
@@ -181,7 +181,7 @@ fn test_many_to_many_accessor_methods_generated() {
 	// Test basic ManyToMany field generates accessor method
 	#[model(app_label = "test", table_name = "users")]
 	#[derive(Serialize, Deserialize)]
-	pub struct User {
+	pub(crate) struct User {
 		#[field(primary_key = true)]
 		pub id: i64,
 		#[field(max_length = 255)]
@@ -211,7 +211,7 @@ fn test_self_referential_many_to_many() {
 	// Test self-referential ManyToMany (User -> User)
 	#[model(app_label = "test", table_name = "social_users")]
 	#[derive(Serialize, Deserialize)]
-	pub struct SocialUser {
+	pub(crate) struct SocialUser {
 		#[field(primary_key = true)]
 		pub id: i64,
 		#[rel(many_to_many, related_name = "followers")]
@@ -238,7 +238,7 @@ fn test_multiple_many_to_many_fields() {
 
 	#[model(app_label = "test", table_name = "groups")]
 	#[derive(Serialize, Deserialize)]
-	pub struct Group {
+	pub(crate) struct Group {
 		#[field(primary_key = true)]
 		pub id: i64,
 		#[field(max_length = 255)]
@@ -247,7 +247,7 @@ fn test_multiple_many_to_many_fields() {
 
 	#[model(app_label = "test", table_name = "multi_users")]
 	#[derive(Serialize, Deserialize)]
-	pub struct MultiUser {
+	pub(crate) struct MultiUser {
 		#[field(primary_key = true)]
 		pub id: i64,
 		#[rel(many_to_many, related_name = "users")]
@@ -273,7 +273,7 @@ fn test_no_many_to_many_fields() {
 	// Model without ManyToMany fields should not generate accessor methods
 	#[model(app_label = "test", table_name = "simple_users")]
 	#[derive(Serialize, Deserialize)]
-	pub struct SimpleUser {
+	pub(crate) struct SimpleUser {
 		#[field(primary_key = true)]
 		pub id: i64,
 		#[field(max_length = 255)]

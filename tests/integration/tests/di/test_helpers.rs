@@ -36,7 +36,7 @@ use std::sync::Arc;
 /// # Ok(())
 /// # }
 /// ```
-pub async fn resolve_injectable<T>(ctx: &InjectionContext) -> DiResult<Arc<T>>
+pub(crate) async fn resolve_injectable<T>(ctx: &InjectionContext) -> DiResult<Arc<T>>
 where
 	T: Injectable + Send + Sync + 'static,
 {

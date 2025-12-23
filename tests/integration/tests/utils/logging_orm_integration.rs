@@ -13,25 +13,25 @@ use reinhardt_utils::logging::{LogLevel, Logger};
 use std::sync::Arc;
 
 /// Transaction wrapper that logs all operations
-pub struct LoggingTransaction {
+pub(crate) struct LoggingTransaction {
 	inner: Transaction,
 	logger: Arc<Logger>,
 }
 
 impl LoggingTransaction {
-	pub fn new(logger: Arc<Logger>) -> Self {
+	pub(crate) fn new(logger: Arc<Logger>) -> Self {
 		Self {
 			inner: Transaction::new(),
 			logger,
 		}
 	}
 
-	pub fn with_isolation_level(mut self, level: IsolationLevel) -> Self {
+	pub(crate) fn with_isolation_level(mut self, level: IsolationLevel) -> Self {
 		self.inner = self.inner.with_isolation_level(level);
 		self
 	}
 
-	pub async fn begin(&mut self) -> Result<String, String> {
+	pub(crate) async fn begin(&mut self) -> Result<String, String> {
 		let result = self.inner.begin();
 
 		if let Ok(ref sql) = result {
@@ -43,7 +43,7 @@ impl LoggingTransaction {
 		result
 	}
 
-	pub async fn commit(&mut self) -> Result<String, String> {
+	pub(crate) async fn commit(&mut self) -> Result<String, String> {
 		let result = self.inner.commit();
 
 		if let Ok(ref sql) = result {
@@ -55,7 +55,7 @@ impl LoggingTransaction {
 		result
 	}
 
-	pub async fn rollback(&mut self) -> Result<String, String> {
+	pub(crate) async fn rollback(&mut self) -> Result<String, String> {
 		let result = self.inner.rollback();
 
 		if let Ok(ref sql) = result {

@@ -10,7 +10,7 @@ mod test_models {
 
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "post_tags")]
-	pub struct PostTag {
+	pub(crate) struct PostTag {
 		#[field(primary_key = true)]
 		pub post_id: i64,
 
@@ -23,7 +23,7 @@ mod test_models {
 
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "user_roles")]
-	pub struct UserRole {
+	pub(crate) struct UserRole {
 		#[field(primary_key = true)]
 		pub user_id: i64,
 
@@ -36,7 +36,7 @@ mod test_models {
 
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "users")]
-	pub struct User {
+	pub(crate) struct User {
 		#[field(primary_key = true)]
 		pub id: i64,
 
@@ -52,7 +52,7 @@ mod test_models {
 
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "simple_models")]
-	pub struct SimpleModel {
+	pub(crate) struct SimpleModel {
 		#[field(primary_key = true)]
 		pub id: i64,
 

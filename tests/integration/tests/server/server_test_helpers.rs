@@ -8,7 +8,7 @@ use tokio::task::JoinHandle;
 
 /// Spawn a test server on a random port and return the URL and server handle
 #[allow(dead_code)]
-pub async fn spawn_test_server(handler: Arc<dyn Handler>) -> (String, JoinHandle<()>) {
+pub(crate) async fn spawn_test_server(handler: Arc<dyn Handler>) -> (String, JoinHandle<()>) {
 	// Bind to port 0 to get a random available port
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let addr = listener.local_addr().unwrap();
@@ -49,7 +49,7 @@ pub async fn spawn_test_server(handler: Arc<dyn Handler>) -> (String, JoinHandle
 
 /// Shutdown a test server
 #[allow(dead_code)]
-pub async fn shutdown_test_server(handle: JoinHandle<()>) {
+pub(crate) async fn shutdown_test_server(handle: JoinHandle<()>) {
 	handle.abort();
 	// Give it a moment to clean up
 	tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -57,7 +57,7 @@ pub async fn shutdown_test_server(handle: JoinHandle<()>) {
 
 /// Simple test handler that echoes the request path
 #[allow(dead_code)]
-pub struct EchoPathHandler;
+pub(crate) struct EchoPathHandler;
 
 #[async_trait::async_trait]
 impl Handler for EchoPathHandler {
@@ -69,7 +69,7 @@ impl Handler for EchoPathHandler {
 
 /// Test handler that returns specific status codes based on path
 #[allow(dead_code)]
-pub struct StatusCodeHandler;
+pub(crate) struct StatusCodeHandler;
 
 #[async_trait::async_trait]
 impl Handler for StatusCodeHandler {
@@ -85,7 +85,7 @@ impl Handler for StatusCodeHandler {
 
 /// Test handler that echoes the request method
 #[allow(dead_code)]
-pub struct MethodEchoHandler;
+pub(crate) struct MethodEchoHandler;
 
 #[async_trait::async_trait]
 impl Handler for MethodEchoHandler {
@@ -97,7 +97,7 @@ impl Handler for MethodEchoHandler {
 
 /// Test handler with configurable delay
 #[allow(dead_code)]
-pub struct DelayedHandler {
+pub(crate) struct DelayedHandler {
 	pub delay_ms: u64,
 	pub response_body: String,
 }
@@ -112,7 +112,7 @@ impl Handler for DelayedHandler {
 
 /// Test handler that echoes the request body
 #[allow(dead_code)]
-pub struct BodyEchoHandler;
+pub(crate) struct BodyEchoHandler;
 
 #[async_trait::async_trait]
 impl Handler for BodyEchoHandler {
@@ -124,7 +124,7 @@ impl Handler for BodyEchoHandler {
 
 /// Test handler that returns a large response
 #[allow(dead_code)]
-pub struct LargeResponseHandler {
+pub(crate) struct LargeResponseHandler {
 	pub size_kb: usize,
 }
 

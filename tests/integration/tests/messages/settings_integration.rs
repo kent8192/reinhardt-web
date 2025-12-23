@@ -7,13 +7,13 @@ use std::collections::HashMap;
 
 // Mock message configuration for testing
 #[derive(Debug, Clone)]
-pub struct MessageConfig {
+pub(crate) struct MessageConfig {
 	pub message_tags: HashMap<i32, String>,
 	pub message_level: i32,
 }
 
 impl MessageConfig {
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		let mut message_tags = HashMap::new();
 		message_tags.insert(10, "debug".to_string());
 		message_tags.insert(20, "info".to_string());
@@ -26,7 +26,7 @@ impl MessageConfig {
 		}
 	}
 
-	pub fn with_custom_tags(mut self, tags: HashMap<i32, String>) -> Self {
+	pub(crate) fn with_custom_tags(mut self, tags: HashMap<i32, String>) -> Self {
 		// Merge custom tags with existing tags instead of replacing
 		for (level, tag) in tags {
 			self.message_tags.insert(level, tag);
@@ -34,16 +34,16 @@ impl MessageConfig {
 		self
 	}
 
-	pub fn with_level(mut self, level: i32) -> Self {
+	pub(crate) fn with_level(mut self, level: i32) -> Self {
 		self.message_level = level;
 		self
 	}
 
-	pub fn get_tag_for_level(&self, level: i32) -> Option<&String> {
+	pub(crate) fn get_tag_for_level(&self, level: i32) -> Option<&String> {
 		self.message_tags.get(&level)
 	}
 
-	pub fn should_store_message(&self, level: i32) -> bool {
+	pub(crate) fn should_store_message(&self, level: i32) -> bool {
 		level >= self.message_level
 	}
 }

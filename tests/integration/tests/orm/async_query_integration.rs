@@ -30,7 +30,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 /// Test model for async query tests
 #[model(table_name = "test_models")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TestModel {
+pub(crate) struct TestModel {
 	#[field(primary_key = true)]
 	id: i64,
 	#[field(max_length = 255)]
@@ -41,10 +41,10 @@ pub struct TestModel {
 // Fixtures
 // ========================================================================
 
-/// Async query integration tests用の専用フィクスチャ
+/// Dedicated fixture for Async query integration tests
 ///
-/// postgres_container を使用してコンテナを取得し、
-/// async query test migrations を適用する
+/// Uses postgres_container to obtain a container and
+/// applies async query test migrations
 #[fixture]
 async fn async_query_test_db(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),

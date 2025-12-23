@@ -37,7 +37,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 /// Test post model for constraint validation tests
 #[model(table_name = "test_posts")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TestPost {
+pub(crate) struct TestPost {
 	#[field(primary_key = true)]
 	id: i32,
 	#[field]
@@ -51,7 +51,7 @@ pub struct TestPost {
 /// Test comment model for constraint validation tests
 #[model(table_name = "test_comments")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TestComment {
+pub(crate) struct TestComment {
 	#[field(primary_key = true)]
 	id: i32,
 	#[field]
@@ -66,10 +66,10 @@ pub struct TestComment {
 // Custom Fixture
 // ============================================================================
 
-/// Validator ORM constraint tests用の専用フィクスチャ
+/// Dedicated fixture for Validator ORM constraint tests
 ///
-/// postgres_container を使用してコンテナを取得し、
-/// constraint test migrations を適用する
+/// Uses postgres_container to obtain a container and
+/// applies constraint test migrations
 #[fixture]
 async fn validator_constraint_test_db(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
