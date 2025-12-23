@@ -781,11 +781,11 @@ mod tests {
 
 	// Simulating what #[derive(Model)] macro would generate
 	impl TestUser {
-		pub const fn field_id() -> FieldRef<TestUser, i64> {
+		const fn field_id() -> FieldRef<TestUser, i64> {
 			FieldRef::new("id")
 		}
 
-		pub const fn field_name() -> FieldRef<TestUser, String> {
+		const fn field_name() -> FieldRef<TestUser, String> {
 			FieldRef::new("name")
 		}
 	}
