@@ -58,13 +58,18 @@
 //! Signals will keep those Signals alive - be mindful of circular dependencies.
 
 // Public modules using Rust 2024 Edition module system (no mod.rs files)
+pub mod context;
 pub mod effect;
+pub mod hooks;
 pub mod memo;
 pub mod resource;
 pub mod runtime;
 pub mod signal;
 
 // Re-export commonly used types
+pub use context::{
+	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
+};
 pub use effect::Effect;
 pub use memo::Memo;
 pub use resource::{Resource, ResourceState};
@@ -72,3 +77,12 @@ pub use resource::{Resource, ResourceState};
 pub use resource::{create_resource, create_resource_with_deps};
 pub use runtime::{NodeId, NodeType, with_runtime};
 pub use signal::Signal;
+
+// Re-export hooks
+pub use hooks::{
+	ActionState, Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal,
+	TransitionState, use_action_state, use_callback, use_context, use_debug_value,
+	use_deferred_value, use_effect, use_effect_event, use_id, use_layout_effect, use_memo,
+	use_optimistic, use_reducer, use_ref, use_shared_state, use_state, use_sync_external_store,
+	use_transition,
+};
