@@ -33,8 +33,8 @@
 //!     db: Injected<Database>,
 //!     optional_cache: OptionalInjected<Cache>,
 //! ) -> String {
-//!     // db は常に利用可能
-//!     // optional_cache は Option<Injected<Cache>> として扱える
+//!     // db is always available
+//!     // optional_cache can be treated as Option<Injected<Cache>>
 //!     "OK".to_string()
 //! }
 //! ```
@@ -396,8 +396,9 @@ pub type OptionalInjected<T> = Option<Injected<T>>;
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::SingletonScope;
 
-	#[derive(Clone, Default)]
+	#[derive(Clone, Default, Debug)]
 	struct TestConfig {
 		value: String,
 	}
@@ -449,7 +450,7 @@ mod tests {
 		};
 		let injected = Injected::from_value(config);
 
-		// Deref により直接アクセス可能
+		// Can be accessed directly via Deref
 		assert_eq!(injected.value, "test");
 	}
 
@@ -482,5 +483,196 @@ mod tests {
 	async fn test_optional_injected_none() {
 		let optional: OptionalInjected<TestConfig> = None;
 		assert!(optional.is_none());
+	}
+
+	// Additional tests for Phase 3
+
+	#[test]
+	fn test_dependency_scope_equality() {
+		assert_eq!(DependencyScope::Request, DependencyScope::Request);
+		assert_eq!(DependencyScope::Singleton, DependencyScope::Singleton);
+		assert_ne!(DependencyScope::Request, DependencyScope::Singleton);
+	}
+
+	#[test]
+	fn test_dependency_scope_debug() {
+		let request = DependencyScope::Request;
+		let singleton = DependencyScope::Singleton;
+
+		let request_debug = format!("{:?}", request);
+		let singleton_debug = format!("{:?}", singleton);
+
+		assert!(request_debug.contains("Request"));
+		assert!(singleton_debug.contains("Singleton"));
+	}
+
+	#[test]
+	fn test_dependency_scope_clone() {
+		let request = DependencyScope::Request;
+		let cloned = request;
+
+		assert_eq!(request, cloned);
+	}
+
+	#[test]
+	fn test_injection_metadata_debug() {
+		let metadata = InjectionMetadata {
+			scope: DependencyScope::Request,
+			cached: true,
+		};
+
+		let debug_str = format!("{:?}", metadata);
+
+		assert!(debug_str.contains("InjectionMetadata"));
+		assert!(debug_str.contains("Request"));
+		assert!(debug_str.contains("true"));
+	}
+
+	#[test]
+	fn test_injection_metadata_clone() {
+		let metadata = InjectionMetadata {
+			scope: DependencyScope::Singleton,
+			cached: false,
+		};
+
+		let cloned = metadata;
+
+		assert_eq!(cloned.scope, DependencyScope::Singleton);
+		assert!(!cloned.cached);
+	}
+
+	#[test]
+	fn test_injection_metadata_copy() {
+		let metadata = InjectionMetadata {
+			scope: DependencyScope::Request,
+			cached: true,
+		};
+
+		// InjectionMetadata derives Copy
+		fn takes_copy<T: Copy>(_: T) {}
+		takes_copy(metadata);
+
+		// Original is still valid after copy
+		assert_eq!(metadata.scope, DependencyScope::Request);
+		assert!(metadata.cached);
+	}
+
+	#[tokio::test]
+	async fn test_injected_as_arc() {
+		let config = TestConfig {
+			value: "arc_test".to_string(),
+		};
+		let injected = Injected::from_value(config);
+
+		let arc = injected.as_arc();
+
+		// Arc reference provides access to inner value
+		assert_eq!(arc.value, "arc_test");
+
+		// Arc strong count should be 1 (only one reference)
+		assert_eq!(Arc::strong_count(arc), 1);
+	}
+
+	#[tokio::test]
+	async fn test_injected_as_ref() {
+		let config = TestConfig {
+			value: "ref_test".to_string(),
+		};
+		let injected = Injected::from_value(config);
+
+		// AsRef trait implementation
+		let reference: &TestConfig = injected.as_ref();
+		assert_eq!(reference.value, "ref_test");
+	}
+
+	#[tokio::test]
+	async fn test_injected_debug() {
+		let config = TestConfig {
+			value: "debug_test".to_string(),
+		};
+		let injected = Injected::from_value(config);
+
+		let debug_str = format!("{:?}", injected);
+
+		assert!(debug_str.contains("Injected"));
+	}
+
+	#[tokio::test]
+	async fn test_injected_resolve_with_context() {
+		let singleton_scope = Arc::new(SingletonScope::new());
+		let ctx = InjectionContext::builder(singleton_scope).build();
+
+		let config = Injected::<TestConfig>::resolve(&ctx).await.unwrap();
+
+		assert_eq!(config.value, "test");
+		assert!(config.metadata().cached);
+		assert_eq!(config.metadata().scope, DependencyScope::Request);
+	}
+
+	#[tokio::test]
+	async fn test_injected_resolve_uncached_with_context() {
+		let singleton_scope = Arc::new(SingletonScope::new());
+		let ctx = InjectionContext::builder(singleton_scope).build();
+
+		let config = Injected::<TestConfig>::resolve_uncached(&ctx)
+			.await
+			.unwrap();
+
+		assert_eq!(config.value, "test");
+		assert!(!config.metadata().cached);
+	}
+
+	#[tokio::test]
+	async fn test_injected_clone_shares_arc() {
+		let config = TestConfig {
+			value: "shared".to_string(),
+		};
+		let injected1 = Injected::from_value(config);
+		let injected2 = injected1.clone();
+
+		// Both should share the same Arc
+		assert_eq!(Arc::strong_count(injected1.as_arc()), 2);
+		assert_eq!(Arc::strong_count(injected2.as_arc()), 2);
+
+		// Both point to the same data
+		assert!(Arc::ptr_eq(injected1.as_arc(), injected2.as_arc()));
+	}
+
+	#[tokio::test]
+	async fn test_injected_metadata_preserved_on_clone() {
+		let config = TestConfig {
+			value: "metadata".to_string(),
+		};
+		let injected1 = Injected::from_value(config);
+		let injected2 = injected1.clone();
+
+		// Metadata should be identical
+		assert_eq!(injected1.metadata().scope, injected2.metadata().scope);
+		assert_eq!(injected1.metadata().cached, injected2.metadata().cached);
+	}
+
+	#[tokio::test]
+	async fn test_injected_into_inner_with_single_reference() {
+		let config = TestConfig {
+			value: "single".to_string(),
+		};
+		let injected = Injected::from_value(config);
+
+		// With single reference, Arc::try_unwrap succeeds
+		let inner = injected.into_inner();
+		assert_eq!(inner.value, "single");
+	}
+
+	#[tokio::test]
+	async fn test_injected_into_inner_with_multiple_references() {
+		let config = TestConfig {
+			value: "multiple".to_string(),
+		};
+		let injected1 = Injected::from_value(config);
+		let _injected2 = injected1.clone(); // Create second reference
+
+		// With multiple references, Arc::try_unwrap fails, falls back to clone
+		let inner = injected1.into_inner();
+		assert_eq!(inner.value, "multiple");
 	}
 }

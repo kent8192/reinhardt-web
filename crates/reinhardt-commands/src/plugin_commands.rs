@@ -266,7 +266,7 @@ impl BaseCommand for PluginInfoCommand {
 
 /// Install a plugin.
 ///
-/// Installs a plugin from crates.io by adding it to Cargo.toml and dentdelion.toml.
+/// Installs a plugin from crates.io.
 pub struct PluginInstallCommand;
 
 #[async_trait]
@@ -432,7 +432,7 @@ impl BaseCommand for PluginRemoveCommand {
 				format!("This will remove {name} (configuration will be kept). Continue?")
 			};
 
-			let default_confirm = !purge; // purgeの場合はデフォルトfalse
+			let default_confirm = !purge; // Default to false when purging
 			let confirmed = ctx
 				.confirm(&prompt_message, default_confirm)
 				.map_err(|e| CommandError::ExecutionError(format!("Prompt failed: {e}")))?;

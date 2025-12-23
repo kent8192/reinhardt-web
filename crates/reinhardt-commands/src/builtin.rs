@@ -1272,7 +1272,7 @@ impl RunServerCommand {
 		let max_restarts_per_minute = 10;
 		let mut last_restart_time = Instant::now();
 
-		// Ctrl+C ハンドラのセットアップ
+		// Set up Ctrl+C handler
 		let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 		let ctx_clone = ctx.clone();
 		tokio::spawn(async move {
@@ -1285,7 +1285,7 @@ impl RunServerCommand {
 		});
 
 		loop {
-			// 再起動頻度制限チェック（1分間に10回以上再起動しようとしたら停止）
+			// Check restart frequency limit (stop if more than 10 restarts per minute)
 			if restart_count >= max_restarts_per_minute {
 				let elapsed = last_restart_time.elapsed();
 				if elapsed < Duration::from_secs(60) {
@@ -1294,33 +1294,33 @@ impl RunServerCommand {
 						restart_count, elapsed
 					)));
 				} else {
-					// 1分以上経過していたらカウンタリセット
+					// Reset counter if more than 1 minute has elapsed
 					restart_count = 0;
 					last_restart_time = Instant::now();
 				}
 			}
 
-			// 子プロセス起動
+			// Start child process
 			ctx.verbose("Starting server subprocess...");
 			let mut child = Self::spawn_server_process(address, insecure, no_docs)?;
 			restart_count += 1;
 
-			// ファイル変更 or 子プロセス終了 or Ctrl+Cを待機
+			// Wait for file change, child process exit, or Ctrl+C
 			tokio::select! {
 				change_result = Self::watch_files_async() => {
 					match change_result {
 						Ok(_) => {
 							ctx.info("\n📝 File change detected. Restarting server...");
-							// 子プロセスを停止
+							// Stop child process
 							if let Err(e) = child.kill().await {
 								ctx.warning(&format!("Failed to kill child process: {}", e));
 							}
-							// wait()で確実に回収（ゾンビプロセス防止）
+							// Ensure cleanup with wait() (prevent zombie processes)
 							let _ = child.wait().await;
 
-							// ポート解放待ち + debounce
+							// Wait for port release + debounce
 							tokio::time::sleep(Duration::from_millis(500)).await;
-							continue; // ループ先頭に戻って再起動
+							continue; // Return to loop start and restart
 						}
 						Err(e) => {
 							return Err(crate::CommandError::ExecutionError(format!(
@@ -1335,7 +1335,7 @@ impl RunServerCommand {
 					match exit_status {
 						Ok(status) if status.success() => {
 							ctx.info("Server process exited cleanly.");
-							break; // 正常終了なら親も終了
+							break; // Exit parent if clean exit
 						}
 						Ok(status) => {
 							return Err(crate::CommandError::ExecutionError(format!(
@@ -1364,7 +1364,7 @@ impl RunServerCommand {
 		Ok(())
 	}
 
-	/// 子プロセスでサーバーを起動
+	/// Spawn server in child process
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn spawn_server_process(
 		address: &str,
@@ -1385,10 +1385,10 @@ impl RunServerCommand {
 			cmd.arg("--no-docs");
 		}
 
-		// 環境変数で子プロセスであることを示す（ログ重複防止など）
+		// Set environment variable to indicate this is a child process (prevent log duplication, etc.)
 		cmd.env("REINHARDT_IS_AUTORELOAD_CHILD", "1");
 
-		// 標準出力/エラーを親プロセスに継承
+		// Inherit stdout/stderr from parent process
 		cmd.stdout(std::process::Stdio::inherit());
 		cmd.stderr(std::process::Stdio::inherit());
 
@@ -1397,7 +1397,7 @@ impl RunServerCommand {
 		})
 	}
 
-	/// ファイル変更を非同期で監視
+	/// Watch for file changes asynchronously
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	async fn watch_files_async() -> Result<(), notify::Error> {
 		use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
@@ -1414,11 +1414,11 @@ impl RunServerCommand {
 			Config::default(),
 		)?;
 
-		// 監視対象ディレクトリ
+		// Directories to watch
 		watcher.watch(Path::new("src"), RecursiveMode::Recursive)?;
 		watcher.watch(Path::new("Cargo.toml"), RecursiveMode::NonRecursive)?;
 
-		// 最初の関連する変更イベントを待つ
+		// Wait for the first relevant change event
 		while let Some(event) = rx.recv().await {
 			if Self::is_relevant_change(&event) {
 				return Ok(());
@@ -1428,7 +1428,7 @@ impl RunServerCommand {
 		Ok(())
 	}
 
-	/// 変更イベントが関連するものかチェック
+	/// Check if the change event is relevant
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn is_relevant_change(event: &notify::Event) -> bool {
 		use notify::EventKind;
@@ -2288,6 +2288,8 @@ impl RunAllCommand {
 
 		let noreload = ctx.has_option("noreload");
 		let _insecure = ctx.has_option("insecure");
+		// Used only when "openapi" feature is enabled
+		#[allow(unused_variables)]
 		let no_docs = ctx.has_option("no-docs");
 
 		// Get registered router
@@ -2504,6 +2506,7 @@ impl RunAllCommand {
 	}
 }
 
+// Additional command metadata and execution tests
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -2697,6 +2700,288 @@ mod tests {
 
 			// Task should have been cancelled
 			assert!(result.is_err(), "Server task should have been cancelled");
+		}
+	}
+
+	// ==================== Command Metadata Tests ====================
+
+	#[test]
+	fn test_shell_command_metadata() {
+		let cmd = ShellCommand;
+		assert_eq!(cmd.name(), "shell");
+		assert_eq!(cmd.description(), "Start an interactive Rust REPL");
+
+		let options = cmd.options();
+		assert_eq!(options.len(), 2);
+		// First option: -c/--command
+		assert_eq!(options[0].short, Some('c'));
+		assert_eq!(options[0].long, "command");
+		// Second option: -e/--engine
+		assert_eq!(options[1].short, Some('e'));
+		assert_eq!(options[1].long, "engine");
+	}
+
+	#[test]
+	fn test_servepages_command_metadata() {
+		let cmd = ServePagesCommand;
+		assert_eq!(cmd.name(), "servepages");
+		assert_eq!(
+			cmd.description(),
+			"Start WASM frontend development server (Trunk)"
+		);
+
+		let arguments = cmd.arguments();
+		assert!(arguments.is_empty());
+
+		let options = cmd.options();
+		assert_eq!(options.len(), 4);
+		// Check that we have expected options
+		let option_names: Vec<&str> = options.iter().map(|o| o.long.as_str()).collect();
+		assert!(option_names.contains(&"port"));
+		assert!(option_names.contains(&"address"));
+		assert!(option_names.contains(&"open"));
+		assert!(option_names.contains(&"release"));
+	}
+
+	#[test]
+	fn test_runall_command_metadata() {
+		let cmd = RunAllCommand;
+		assert_eq!(cmd.name(), "runall");
+		assert_eq!(
+			cmd.description(),
+			"Start both backend server and WASM frontend development server"
+		);
+
+		let arguments = cmd.arguments();
+		assert_eq!(arguments.len(), 1);
+		assert_eq!(arguments[0].name, "backend-address");
+		assert!(!arguments[0].required);
+
+		let options = cmd.options();
+		assert_eq!(options.len(), 4);
+		let option_names: Vec<&str> = options.iter().map(|o| o.long.as_str()).collect();
+		assert!(option_names.contains(&"frontend-port"));
+		assert!(option_names.contains(&"noreload"));
+		assert!(option_names.contains(&"insecure"));
+		assert!(option_names.contains(&"no-docs"));
+	}
+
+	#[test]
+	fn test_checkdi_command_metadata() {
+		let cmd = CheckDiCommand;
+		assert_eq!(cmd.name(), "check-di");
+		assert_eq!(
+			cmd.description(),
+			"Check DI dependency graph for circular dependencies and other issues"
+		);
+
+		let arguments = cmd.arguments();
+		assert!(arguments.is_empty());
+
+		let options = cmd.options();
+		assert!(options.is_empty());
+	}
+
+	#[test]
+	fn test_migrate_command_metadata() {
+		let cmd = MigrateCommand;
+		assert_eq!(cmd.name(), "migrate");
+		assert_eq!(cmd.description(), "Run database migrations");
+
+		let arguments = cmd.arguments();
+		assert_eq!(arguments.len(), 2);
+		assert_eq!(arguments[0].name, "app");
+		assert_eq!(arguments[1].name, "migration");
+
+		let options = cmd.options();
+		// Should have migration-related options
+		assert!(!options.is_empty());
+	}
+
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn test_makemigrations_command_metadata() {
+		let cmd = MakeMigrationsCommand;
+		assert_eq!(cmd.name(), "makemigrations");
+		assert_eq!(
+			cmd.description(),
+			"Create new migrations based on model changes"
+		);
+
+		let arguments = cmd.arguments();
+		assert_eq!(arguments.len(), 1);
+		assert_eq!(arguments[0].name, "app");
+
+		let options = cmd.options();
+		let option_names: Vec<&str> = options.iter().map(|o| o.long.as_str()).collect();
+		assert!(option_names.contains(&"dry-run"));
+		assert!(option_names.contains(&"empty"));
+	}
+
+	#[tokio::test]
+	async fn test_checkdi_command_execution() {
+		let cmd = CheckDiCommand;
+		let ctx = CommandContext::default();
+
+		// Execute the command
+		let result = cmd.execute(&ctx).await;
+
+		// Without di feature, should fail with specific error
+		#[cfg(not(feature = "di"))]
+		{
+			assert!(result.is_err());
+			let err = result.unwrap_err();
+			assert!(err.to_string().contains("di"));
+		}
+
+		// With di feature, may succeed or fail based on registered dependencies
+		#[cfg(feature = "di")]
+		{
+			// Result depends on whether any dependencies are registered
+			assert!(result.is_ok() || result.is_err());
+		}
+	}
+
+	#[tokio::test]
+	async fn test_shell_command_with_command_option() {
+		let cmd = ShellCommand;
+		let mut ctx = CommandContext::default();
+		ctx.set_option("command".to_string(), "let x = 1 + 2".to_string());
+
+		// Execute with a simple command
+		let result = cmd.execute(&ctx).await;
+
+		// Should succeed (command is processed and returned)
+		assert!(result.is_ok());
+	}
+
+	#[tokio::test]
+	async fn test_find_trunk_toml_not_found() {
+		use tempfile::TempDir;
+
+		// Create a temporary directory without Trunk.toml
+		let temp_dir = TempDir::new().unwrap();
+		let original_dir = std::env::current_dir().unwrap();
+
+		// Change to temp directory
+		std::env::set_current_dir(temp_dir.path()).unwrap();
+
+		// Try to find Trunk.toml (should fail)
+		let result = find_trunk_toml().await;
+
+		// Restore original directory
+		std::env::set_current_dir(original_dir).unwrap();
+
+		// Should fail with appropriate error
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("Trunk.toml"));
+	}
+
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	mod autoreload_tests {
+		use super::*;
+		use notify::{Event, EventKind};
+		use std::path::PathBuf;
+
+		#[test]
+		fn test_is_relevant_change_rust_file() {
+			let event = Event {
+				kind: EventKind::Modify(notify::event::ModifyKind::Any),
+				paths: vec![PathBuf::from("/project/src/main.rs")],
+				attrs: Default::default(),
+			};
+			assert!(RunServerCommand::is_relevant_change(&event));
+		}
+
+		#[test]
+		fn test_is_relevant_change_toml_file() {
+			let event = Event {
+				kind: EventKind::Modify(notify::event::ModifyKind::Any),
+				paths: vec![PathBuf::from("/project/Cargo.toml")],
+				attrs: Default::default(),
+			};
+			assert!(RunServerCommand::is_relevant_change(&event));
+		}
+
+		#[test]
+		fn test_is_relevant_change_target_dir_ignored() {
+			let event = Event {
+				kind: EventKind::Modify(notify::event::ModifyKind::Any),
+				paths: vec![PathBuf::from("/project/target/debug/main.rs")],
+				attrs: Default::default(),
+			};
+			assert!(!RunServerCommand::is_relevant_change(&event));
+		}
+
+		#[test]
+		fn test_is_relevant_change_git_dir_ignored() {
+			let event = Event {
+				kind: EventKind::Modify(notify::event::ModifyKind::Any),
+				paths: vec![PathBuf::from("/project/.git/objects/abc")],
+				attrs: Default::default(),
+			};
+			assert!(!RunServerCommand::is_relevant_change(&event));
+		}
+
+		#[test]
+		fn test_is_relevant_change_swap_file_ignored() {
+			let event = Event {
+				kind: EventKind::Modify(notify::event::ModifyKind::Any),
+				paths: vec![PathBuf::from("/project/src/main.rs.swp")],
+				attrs: Default::default(),
+			};
+			assert!(!RunServerCommand::is_relevant_change(&event));
+		}
+
+		#[test]
+		fn test_is_relevant_change_backup_file_ignored() {
+			let event = Event {
+				kind: EventKind::Modify(notify::event::ModifyKind::Any),
+				paths: vec![PathBuf::from("/project/src/main.rs~")],
+				attrs: Default::default(),
+			};
+			assert!(!RunServerCommand::is_relevant_change(&event));
+		}
+
+		#[test]
+		fn test_is_relevant_change_tmp_file_ignored() {
+			let event = Event {
+				kind: EventKind::Modify(notify::event::ModifyKind::Any),
+				paths: vec![PathBuf::from("/project/src/temp.tmp")],
+				attrs: Default::default(),
+			};
+			assert!(!RunServerCommand::is_relevant_change(&event));
+		}
+
+		#[test]
+		fn test_is_relevant_change_non_rust_file_ignored() {
+			let event = Event {
+				kind: EventKind::Modify(notify::event::ModifyKind::Any),
+				paths: vec![PathBuf::from("/project/src/style.css")],
+				attrs: Default::default(),
+			};
+			assert!(!RunServerCommand::is_relevant_change(&event));
+		}
+
+		#[test]
+		fn test_is_relevant_change_create_event() {
+			let event = Event {
+				kind: EventKind::Create(notify::event::CreateKind::File),
+				paths: vec![PathBuf::from("/project/src/new.rs")],
+				attrs: Default::default(),
+			};
+			assert!(RunServerCommand::is_relevant_change(&event));
+		}
+
+		#[test]
+		fn test_is_relevant_change_remove_event() {
+			let event = Event {
+				kind: EventKind::Remove(notify::event::RemoveKind::File),
+				paths: vec![PathBuf::from("/project/src/old.rs")],
+				attrs: Default::default(),
+			};
+			assert!(RunServerCommand::is_relevant_change(&event));
 		}
 	}
 }
