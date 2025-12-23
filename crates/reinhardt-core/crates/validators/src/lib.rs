@@ -2,6 +2,37 @@
 //!
 //! This crate provides Django-style validators for common validation needs,
 //! as well as compile-time validated database identifier types.
+//!
+//! ## Planned Features
+//!
+//! ### Medium Priority (Phase 3)
+//!
+//! 1. **Custom Error Messages (Extended)**: Extend `.with_message()` to all validators
+//!    - Consistent API across all validators
+//!    - Custom message templates
+//!    - Maintain default error messages as fallback
+//!
+//! ### Lower Priority (Phase 4)
+//!
+//! 1. **Internationalization (i18n)**: Multi-language error messages
+//!    - Fluent-based message system
+//!    - Language-specific error messages
+//!    - Locale fallback support
+//!
+//! 2. **Serialization Support**: Serialize/deserialize validators for storage
+//!    - Serde integration with optional feature flag
+//!    - Custom serializers for Regex patterns
+//!    - Validator configuration persistence
+//!
+//! 3. **Schema Validation**: JSON Schema and other schema format support
+//!    - JSON Schema validation
+//!    - Integration with `jsonschema` crate
+//!    - Custom schema formats
+//!
+//! 4. **Performance Optimizations**:
+//!    - Lazy Regex Compilation: Compile regex patterns only when needed
+//!    - Validator Caching: Cache compiled validators for reuse
+//!    - Parallel Validation: Run independent validators concurrently with rayon
 
 pub(crate) mod lazy_patterns;
 

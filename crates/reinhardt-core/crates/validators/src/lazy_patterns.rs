@@ -18,7 +18,7 @@ use std::sync::LazyLock;
 /// - Local part doesn't start/end with dots and has no consecutive dots
 /// - Domain labels are valid (no leading/trailing hyphens)
 /// - TLD is at least 2 characters
-pub static EMAIL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static EMAIL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(
 		r"^(?i)[a-z0-9]([a-z0-9._%+-]*[a-z0-9])?@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$",
 	)
@@ -37,7 +37,7 @@ pub static EMAIL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// - Fragments: #section
 /// - Paths: /path/to/resource
 /// - Domain labels cannot start or end with hyphens
-pub static URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(
 		r"^https?://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?(/[^\s?#]*)?(\?[^\s#]*)?(#[^\s]*)?$",
 	)
@@ -52,7 +52,7 @@ pub static URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 ///
 /// Format: + followed by country code (1-3 digits starting with non-zero) and number.
 /// Allows optional hyphens, spaces, dots, and parentheses for readability.
-pub static PHONE_E164_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static PHONE_E164_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(r"^\+([1-9]\d{0,2})[\s.\-()]*\d+[\s.\-\d()]*$")
 		.expect("PHONE_E164_REGEX: Invalid regex pattern")
 });
@@ -60,7 +60,7 @@ pub static PHONE_E164_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// Phone extension detection regex.
 ///
 /// Detects extension formats: "ext.", "ext", "x", "extension" followed by digits.
-pub static PHONE_EXTENSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static PHONE_EXTENSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(r"^(.+?)(?:\s*(?:ext\.?|x|extension)\s*(\d+))?$")
 		.expect("PHONE_EXTENSION_REGEX: Invalid regex pattern")
 });
@@ -72,14 +72,14 @@ pub static PHONE_EXTENSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// ASCII-only slug pattern.
 ///
 /// Matches slugs containing only ASCII letters, numbers, hyphens, and underscores.
-pub static SLUG_ASCII_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static SLUG_ASCII_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(r"^[-a-zA-Z0-9_]+$").expect("SLUG_ASCII_REGEX: Invalid regex pattern")
 });
 
 /// Unicode-enabled slug pattern.
 ///
 /// Matches slugs containing Unicode word characters, hyphens, and underscores.
-pub static SLUG_UNICODE_REGEX: LazyLock<Regex> =
+pub(crate) static SLUG_UNICODE_REGEX: LazyLock<Regex> =
 	LazyLock::new(|| Regex::new(r"^[-\w]+$").expect("SLUG_UNICODE_REGEX: Invalid regex pattern"));
 
 // =============================================================================
@@ -89,7 +89,7 @@ pub static SLUG_UNICODE_REGEX: LazyLock<Regex> =
 /// UUID format pattern (lowercase).
 ///
 /// Format: 8-4-4-4-12 hex digits (e.g., "550e8400-e29b-41d4-a716-446655440000").
-pub static UUID_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static UUID_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 		.expect("UUID_REGEX: Invalid regex pattern")
 });
@@ -101,7 +101,7 @@ pub static UUID_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// Hex color pattern.
 ///
 /// Matches: #RGB, #RRGGBB, or #RRGGBBAA formats.
-pub static COLOR_HEX_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static COLOR_HEX_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$")
 		.expect("COLOR_HEX_REGEX: Invalid regex pattern")
 });
@@ -109,7 +109,7 @@ pub static COLOR_HEX_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// RGB color pattern.
 ///
 /// Matches: rgb(0-255, 0-255, 0-255) format.
-pub static COLOR_RGB_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static COLOR_RGB_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(
 		r"^rgb\(\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*\)$",
 	)
@@ -119,7 +119,7 @@ pub static COLOR_RGB_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// RGBA color pattern.
 ///
 /// Matches: rgba(0-255, 0-255, 0-255, 0-1) format.
-pub static COLOR_RGBA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static COLOR_RGBA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(
 		r"^rgba\(\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\s*,\s*(0|1|0?\.\d+)\s*\)$",
 	)
@@ -129,7 +129,7 @@ pub static COLOR_RGBA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// HSL color pattern.
 ///
 /// Matches: hsl(0-360, 0-100%, 0-100%) format.
-pub static COLOR_HSL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static COLOR_HSL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(
 		r"^hsl\(\s*([0-9]|[1-9][0-9]|[1-2][0-9]{2}|3[0-5][0-9]|360)\s*,\s*([0-9]|[1-9][0-9]|100)%\s*,\s*([0-9]|[1-9][0-9]|100)%\s*\)$",
 	)
@@ -139,7 +139,7 @@ pub static COLOR_HSL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// HSLA color pattern.
 ///
 /// Matches: hsla(0-360, 0-100%, 0-100%, 0-1) format.
-pub static COLOR_HSLA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static COLOR_HSLA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(
 		r"^hsla\(\s*([0-9]|[1-9][0-9]|[1-2][0-9]{2}|3[0-5][0-9]|360)\s*,\s*([0-9]|[1-9][0-9]|100)%\s*,\s*([0-9]|[1-9][0-9]|100)%\s*,\s*(0|1|0?\.\d+)\s*\)$",
 	)

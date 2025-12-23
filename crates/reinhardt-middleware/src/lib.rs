@@ -1,3 +1,104 @@
+//! # Reinhardt Middleware
+//!
+//! Comprehensive HTTP middleware collection for the Reinhardt framework.
+//!
+//! ## Overview
+//!
+//! This crate provides a collection of middleware components for handling
+//! cross-cutting concerns in web applications, including authentication,
+//! security, caching, compression, and observability.
+//!
+//! ## Available Middleware
+//!
+//! ### Authentication & Authorization
+//!
+//! - **[`AuthenticationMiddleware`]**: Session-based user authentication
+//!   (requires `sessions` feature)
+//!
+//! ### Security
+//!
+//! - **[`CorsMiddleware`]**: Cross-Origin Resource Sharing (requires `cors` feature)
+//! - **[`CsrfMiddleware`]**: CSRF protection with token validation
+//! - **[`CspMiddleware`]**: Content Security Policy headers
+//! - **[`XFrameOptionsMiddleware`]**: Clickjacking protection via X-Frame-Options header
+//! - **[`HttpsRedirectMiddleware`]**: Force HTTPS connections
+//! - **[`SecurityMiddleware`]**: Combined security headers (requires `security` feature)
+//!
+//! ### Performance & Caching
+//!
+//! - **[`CacheMiddleware`]**: HTTP response caching with configurable strategies
+//! - **[`GZipMiddleware`]**: Gzip compression (requires `compression` feature)
+//! - **[`BrotliMiddleware`]**: Brotli compression (requires `compression` feature)
+//! - **[`ETagMiddleware`]**: ETag generation and validation for conditional requests
+//! - **[`ConditionalGetMiddleware`]**: Conditional GET support with Last-Modified headers
+//!
+//! ### Observability
+//!
+//! - **[`LoggingMiddleware`]**: Request/response logging with configurable formats
+//! - **[`TracingMiddleware`]**: Distributed tracing with trace/span ID propagation
+//! - **[`MetricsMiddleware`]**: Performance metrics collection
+//! - **[`RequestIdMiddleware`]**: Unique request ID generation
+//!
+//! ### Rate Limiting & Resilience
+//!
+//! - **[`RateLimitMiddleware`]**: API rate limiting with multiple strategies
+//!   (requires `rate-limit` feature)
+//! - **[`CircuitBreakerMiddleware`]**: Circuit breaker pattern for fault tolerance
+//! - **[`TimeoutMiddleware`]**: Request timeout handling
+//!
+//! ### Session & State
+//!
+//! - **[`SessionMiddleware`]**: Session management with pluggable storage backends
+//! - **[`SiteMiddleware`]**: Multi-site support with site identification
+//! - **[`LocaleMiddleware`]**: Internationalization and locale detection
+//!
+//! ### Utility
+//!
+//! - **[`CommonMiddleware`]**: Common HTTP functionality (trailing slashes, URL normalization)
+//! - **[`BrokenLinkEmailsMiddleware`]**: Broken link notification via email
+//! - **[`FlatpagesMiddleware`]**: Static page serving from database
+//! - **[`RedirectFallbackMiddleware`]**: Fallback redirect handling
+//!
+//! ## Quick Start
+//!
+//! ```rust,ignore
+//! use reinhardt_middleware::{LoggingMiddleware, CsrfMiddleware};
+//! use reinhardt_core::types::MiddlewareChain;
+//! use std::sync::Arc;
+//!
+//! // Create individual middleware instances
+//! let logging = Arc::new(LoggingMiddleware::new());
+//! let csrf = Arc::new(CsrfMiddleware::default());
+//!
+//! // Build middleware chain (wraps around your handler)
+//! let chain = MiddlewareChain::new(handler)
+//!     .with_middleware(logging)
+//!     .with_middleware(csrf);
+//! ```
+//!
+//! ## Feature Flags
+//!
+//! - **`cors`**: Enable CORS middleware
+//! - **`compression`**: Enable GZip and Brotli compression middleware
+//! - **`rate-limit`**: Enable rate limiting middleware
+//! - **`security`**: Enable combined security middleware
+//! - **`sessions`**: Enable session-based authentication middleware
+//!
+//! ## Middleware Ordering
+//!
+//! Middleware execution order matters. A typical recommended order:
+//!
+//! 1. `RequestIdMiddleware` - Generate request ID first
+//! 2. `LoggingMiddleware` - Log all requests
+//! 3. `TracingMiddleware` - Start tracing span
+//! 4. `SecurityMiddleware` - Apply security headers
+//! 5. `CorsMiddleware` - Handle CORS preflight
+//! 6. `SessionMiddleware` - Load session
+//! 7. `AuthenticationMiddleware` - Authenticate user
+//! 8. `CsrfMiddleware` - Validate CSRF token
+//! 9. `RateLimitMiddleware` - Apply rate limits
+//! 10. Application handlers
+
 pub mod auth;
 pub mod broken_link;
 #[cfg(feature = "compression")]
