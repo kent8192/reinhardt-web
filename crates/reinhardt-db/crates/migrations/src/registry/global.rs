@@ -140,7 +140,7 @@ mod tests {
 		let registry1 = GlobalRegistry::instance();
 		let registry2 = GlobalRegistry::instance();
 
-		// 同じインスタンスを指すことを確認
+		// Verify they point to the same instance
 		assert!(std::ptr::eq(registry1, registry2));
 	}
 

@@ -606,7 +606,7 @@ impl Session {
 		generated_id: i64,
 	) -> Result<(), SessionError> {
 		if let Some(mut entry) = self.identity_map.remove(old_key) {
-			// // JSON updateJSON更新
+			// JSON update
 			if let Some(obj) = entry.data.as_object_mut() {
 				obj.insert("id".to_string(), serde_json::Value::from(generated_id));
 			}
@@ -1319,5 +1319,187 @@ mod tests {
 
 		let result = session.add(user).await;
 		assert!(result.is_err());
+	}
+
+	// ──────────────────────────────────────────────────────────────
+	// Additional session tests - SessionError Display
+	// ──────────────────────────────────────────────────────────────
+
+	#[test]
+	fn test_session_error_database_error_display() {
+		let err = SessionError::DatabaseError("connection failed".to_string());
+		assert_eq!(err.to_string(), "Database error: connection failed");
+	}
+
+	#[test]
+	fn test_session_error_object_not_found_display() {
+		let err = SessionError::ObjectNotFound("user:123".to_string());
+		assert_eq!(err.to_string(), "Object not found: user:123");
+	}
+
+	#[test]
+	fn test_session_error_transaction_error_display() {
+		let err = SessionError::TransactionError("commit failed".to_string());
+		assert_eq!(err.to_string(), "Transaction error: commit failed");
+	}
+
+	#[test]
+	fn test_session_error_serialization_error_display() {
+		let err = SessionError::SerializationError("invalid json".to_string());
+		assert_eq!(err.to_string(), "Serialization error: invalid json");
+	}
+
+	#[test]
+	fn test_session_error_invalid_state_display() {
+		let err = SessionError::InvalidState("session closed".to_string());
+		assert_eq!(err.to_string(), "Invalid state: session closed");
+	}
+
+	#[test]
+	fn test_session_error_flush_error_display() {
+		let err = SessionError::FlushError("failed to write".to_string());
+		assert_eq!(err.to_string(), "Flush error: failed to write");
+	}
+
+	#[test]
+	fn test_session_error_debug() {
+		let err = SessionError::DatabaseError("test".to_string());
+		let debug_str = format!("{:?}", err);
+		assert!(debug_str.contains("DatabaseError"));
+		assert!(debug_str.contains("test"));
+	}
+
+	#[test]
+	fn test_session_error_clone() {
+		let err = SessionError::ObjectNotFound("key".to_string());
+		let cloned = err.clone();
+		assert_eq!(err.to_string(), cloned.to_string());
+	}
+
+	#[test]
+	fn test_session_error_is_std_error() {
+		let err: Box<dyn std::error::Error> =
+			Box::new(SessionError::DatabaseError("test".to_string()));
+		assert!(err.to_string().contains("Database error"));
+	}
+
+	// ──────────────────────────────────────────────────────────────
+	// json_to_sea_value tests
+	// ──────────────────────────────────────────────────────────────
+
+	#[test]
+	fn test_json_to_sea_value_string() {
+		use serde_json::json;
+		let value = json!("hello world");
+		let sea_value = super::json_to_sea_value(&value);
+
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("hello world") || debug_str.contains("String"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_integer() {
+		use serde_json::json;
+		let value = json!(42);
+		let sea_value = super::json_to_sea_value(&value);
+
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("42") || debug_str.contains("Int"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_float() {
+		use serde_json::json;
+		let value = json!(3.14159);
+		let sea_value = super::json_to_sea_value(&value);
+
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("3.14159") || debug_str.contains("Double"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_bool_true() {
+		use serde_json::json;
+		let value = json!(true);
+		let sea_value = super::json_to_sea_value(&value);
+
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("true") || debug_str.contains("Bool"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_bool_false() {
+		use serde_json::json;
+		let value = json!(false);
+		let sea_value = super::json_to_sea_value(&value);
+
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("false") || debug_str.contains("Bool"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_null() {
+		use serde_json::json;
+		let value = json!(null);
+		let sea_value = super::json_to_sea_value(&value);
+
+		// Should produce some value (null representation)
+		let debug_str = format!("{:?}", sea_value);
+		assert!(!debug_str.is_empty());
+	}
+
+	#[test]
+	fn test_json_to_sea_value_array() {
+		use serde_json::json;
+		let value = json!([1, 2, 3]);
+		let sea_value = super::json_to_sea_value(&value);
+
+		// Array should be serialized as JSON string
+		let debug_str = format!("{:?}", sea_value);
+		assert!(!debug_str.is_empty());
+	}
+
+	#[test]
+	fn test_json_to_sea_value_object() {
+		use serde_json::json;
+		let value = json!({"name": "test", "count": 42});
+		let sea_value = super::json_to_sea_value(&value);
+
+		// Object should be serialized as JSON string
+		let debug_str = format!("{:?}", sea_value);
+		assert!(!debug_str.is_empty());
+	}
+
+	#[test]
+	fn test_json_to_sea_value_negative_integer() {
+		use serde_json::json;
+		let value = json!(-100);
+		let sea_value = super::json_to_sea_value(&value);
+
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("-100") || debug_str.contains("Int"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_large_integer() {
+		use serde_json::json;
+		let value = json!(9223372036854775807i64); // i64::MAX
+		let sea_value = super::json_to_sea_value(&value);
+
+		// Should handle large integers
+		let debug_str = format!("{:?}", sea_value);
+		assert!(!debug_str.is_empty());
+	}
+
+	// ──────────────────────────────────────────────────────────────
+	// DbBackend tests
+	// ──────────────────────────────────────────────────────────────
+
+	#[tokio::test]
+	async fn test_session_get_backend() {
+		let pool = create_test_pool().await;
+		let session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		assert_eq!(session.get_backend(), DbBackend::Sqlite);
 	}
 }

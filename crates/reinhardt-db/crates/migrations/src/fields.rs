@@ -117,7 +117,7 @@ impl FieldType {
 		}
 	}
 
-	/// FieldTypeをSQL文字列に変換
+	/// Convert FieldType to SQL string
 	///
 	/// This method returns generic SQL types that may not be compatible with all databases.
 	/// For database-specific SQL generation, use `to_sql_for_dialect()` instead.

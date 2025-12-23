@@ -11,6 +11,30 @@
 //! - **ORM integration**: Seamless integration with reinhardt-orm
 //! - **Generic relations**: Type-safe polymorphic relationships
 //! - **Database persistence**: Store content types in database with caching
+//!
+//! ## Planned Features
+//!
+//! The following features are planned for future releases:
+//!
+//! ### Permission System Integration
+//!
+//! - Associate permissions with content types
+//! - Permission checking utilities
+//! - Content type-based authorization
+//!
+//! ### Advanced Features
+//!
+//! - Content type shortcuts (URL resolution for generic objects)
+//! - Content type view mixins
+//! - Admin interface integration for generic relations
+//! - Automatic content type cleanup on model deletion
+//! - Content type renaming and migration support
+//!
+//! ### Management Commands
+//!
+//! - `dumpdata`/`loaddata` support for content types
+//! - Content type synchronization commands
+//! - Content type inspection utilities
 
 pub mod cleanup;
 pub mod contenttypes;

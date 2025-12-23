@@ -1,7 +1,7 @@
 //! Migration recorder
 
 use chrono::{DateTime, Utc};
-use reinhardt_backends::{DatabaseConnection, QueryValue};
+use reinhardt_backends::DatabaseConnection;
 
 /// Migration record
 #[derive(Debug, Clone)]
@@ -259,15 +259,34 @@ impl DatabaseMigrationRecorder {
 				}
 			}
 			DatabaseType::Postgres | DatabaseType::Mysql | DatabaseType::Sqlite => {
-				let sql = "SELECT EXISTS(SELECT 1 FROM reinhardt_migrations WHERE app = $1 AND name = $2) as exists_flag";
-				let params = vec![
-					QueryValue::String(app.to_string()),
-					QueryValue::String(name.to_string()),
-				];
+				use sea_query::{
+					Alias, Expr, ExprTrait, MysqlQueryBuilder, PostgresQueryBuilder, Query,
+					SqliteQueryBuilder,
+				};
+
+				// Build SELECT EXISTS query using sea-query
+				let subquery = Query::select()
+					.expr(Expr::value(1))
+					.from(Alias::new("reinhardt_migrations"))
+					.and_where(Expr::col(Alias::new("app")).eq(app))
+					.and_where(Expr::col(Alias::new("name")).eq(name))
+					.to_owned();
+
+				let stmt = Query::select()
+					.expr_as(Expr::exists(subquery), Alias::new("exists_flag"))
+					.to_owned();
+
+				let sql = match self.connection.database_type() {
+					DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+					DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+					DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+					#[cfg(feature = "mongodb-backend")]
+					DatabaseType::MongoDB => unreachable!("MongoDB handled above"),
+				};
 
 				let rows = self
 					.connection
-					.fetch_all(sql, params)
+					.fetch_all(&sql, vec![])
 					.await
 					.map_err(crate::MigrationError::DatabaseError)?;
 
@@ -350,14 +369,27 @@ impl DatabaseMigrationRecorder {
 				}
 			}
 			DatabaseType::Postgres | DatabaseType::Mysql | DatabaseType::Sqlite => {
-				let sql = "INSERT INTO reinhardt_migrations (app, name, applied) VALUES ($1, $2, CURRENT_TIMESTAMP)";
-				let params = vec![
-					QueryValue::String(app.to_string()),
-					QueryValue::String(name.to_string()),
-				];
+				use sea_query::{
+					Alias, Expr, MysqlQueryBuilder, PostgresQueryBuilder, Query, SqliteQueryBuilder,
+				};
+
+				// Build INSERT query using sea-query
+				let stmt = Query::insert()
+					.into_table(Alias::new("reinhardt_migrations"))
+					.columns([Alias::new("app"), Alias::new("name"), Alias::new("applied")])
+					.values_panic([app.into(), name.into(), Expr::current_timestamp()])
+					.to_owned();
+
+				let sql = match self.connection.database_type() {
+					DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+					DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+					DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+					#[cfg(feature = "mongodb-backend")]
+					DatabaseType::MongoDB => unreachable!("MongoDB handled above"),
+				};
 
 				self.connection
-					.execute(sql, params)
+					.execute(&sql, vec![])
 					.await
 					.map_err(crate::MigrationError::DatabaseError)?;
 
@@ -472,12 +504,29 @@ impl DatabaseMigrationRecorder {
 			}
 			DatabaseType::Postgres | DatabaseType::Mysql | DatabaseType::Sqlite => {
 				use reinhardt_backends::types::DatabaseType;
+				use sea_query::{
+					Alias, MysqlQueryBuilder, Order, PostgresQueryBuilder, Query,
+					SqliteQueryBuilder,
+				};
 
-				let sql = "SELECT app, name, applied FROM reinhardt_migrations ORDER BY applied";
+				// Build SELECT query using sea-query
+				let stmt = Query::select()
+					.columns([Alias::new("app"), Alias::new("name"), Alias::new("applied")])
+					.from(Alias::new("reinhardt_migrations"))
+					.order_by(Alias::new("applied"), Order::Asc)
+					.to_owned();
+
+				let sql = match self.connection.database_type() {
+					DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+					DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+					DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+					#[cfg(feature = "mongodb-backend")]
+					DatabaseType::MongoDB => unreachable!("MongoDB handled above"),
+				};
 
 				let rows = self
 					.connection
-					.fetch_all(sql, vec![])
+					.fetch_all(&sql, vec![])
 					.await
 					.map_err(crate::MigrationError::DatabaseError)?;
 
@@ -565,14 +614,28 @@ impl DatabaseMigrationRecorder {
 				}
 			}
 			DatabaseType::Postgres | DatabaseType::Mysql | DatabaseType::Sqlite => {
-				let sql = "DELETE FROM reinhardt_migrations WHERE app = $1 AND name = $2";
-				let params = vec![
-					QueryValue::String(app.to_string()),
-					QueryValue::String(name.to_string()),
-				];
+				use sea_query::{
+					Alias, Expr, ExprTrait, MysqlQueryBuilder, PostgresQueryBuilder, Query,
+					SqliteQueryBuilder,
+				};
+
+				// Build DELETE query using sea-query
+				let stmt = Query::delete()
+					.from_table(Alias::new("reinhardt_migrations"))
+					.and_where(Expr::col(Alias::new("app")).eq(app))
+					.and_where(Expr::col(Alias::new("name")).eq(name))
+					.to_owned();
+
+				let sql = match self.connection.database_type() {
+					DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+					DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+					DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+					#[cfg(feature = "mongodb-backend")]
+					DatabaseType::MongoDB => unreachable!("MongoDB handled above"),
+				};
 
 				self.connection
-					.execute(sql, params)
+					.execute(&sql, vec![])
 					.await
 					.map_err(crate::MigrationError::DatabaseError)?;
 

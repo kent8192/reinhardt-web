@@ -328,11 +328,11 @@ mod rand {
 		);
 	}
 
-	pub fn random<T: RandomValue>() -> T {
+	pub(crate) fn random<T: RandomValue>() -> T {
 		T::random()
 	}
 
-	pub trait RandomValue {
+	pub(crate) trait RandomValue {
 		fn random() -> Self;
 	}
 

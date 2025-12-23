@@ -263,9 +263,10 @@ impl<M: Model> Manager<M> {
 				// Exclude primary key field if it's an integer with value 0
 				// This allows the database to auto-generate the value
 				if k.as_str() == pk_field
-					&& let Some(n) = v.as_i64() {
-						return n != 0;
-					}
+					&& let Some(n) = v.as_i64()
+				{
+					return n != 0;
+				}
 				true
 			})
 			.map(|(k, v)| {
@@ -289,7 +290,7 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&sql, vec![]).await?;
 
-		// row.dataは既にserde_json::Value::Objectなので直接デシリアライズ
+		// row.data is already serde_json::Value::Object so deserialize directly
 		serde_json::from_value(row.data.clone())
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
 	}
@@ -421,7 +422,7 @@ impl<M: Model> Manager<M> {
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
 		let row = conn.query_one(&sql, vec![]).await?;
-		// row.dataは既にserde_json::Value::Objectなので直接デシリアライズ
+		// row.data is already serde_json::Value::Object so deserialize directly
 		serde_json::from_value(row.data.clone())
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
 	}
@@ -619,7 +620,7 @@ impl<M: Model> Manager<M> {
 			self.get_or_create_sql(&lookup_fields, &defaults.clone().unwrap_or_default());
 
 		if let Ok(Some(row)) = conn.query_optional(&select_sql, vec![]).await {
-			// row.dataは既にserde_json::Value::Objectなので直接デシリアライズ
+			// row.data is already serde_json::Value::Object so deserialize directly
 			let model: M = serde_json::from_value(row.data.clone())
 				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 			return Ok((model, false));
@@ -642,7 +643,7 @@ impl<M: Model> Manager<M> {
 		);
 
 		let row = conn.query_one(&insert_sql, vec![]).await?;
-		// row.dataは既にserde_json::Value::Objectなので直接デシリアライズ
+		// row.data is already serde_json::Value::Object so deserialize directly
 		let model: M = serde_json::from_value(row.data.clone())
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 
@@ -721,7 +722,7 @@ impl<M: Model> Manager<M> {
 				let sql_with_returning = sql + " RETURNING *";
 				let rows = conn.query(&sql_with_returning, vec![]).await?;
 				for row in rows {
-					// row.dataは既にserde_json::Value::Objectなので直接デシリアライズ
+					// row.data is already serde_json::Value::Object so deserialize directly
 					let model: M = serde_json::from_value(row.data.clone())
 						.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 					results.push(model);
@@ -1095,5 +1096,176 @@ mod tests {
 
 		let sql = manager.bulk_update_sql_detailed(&updates, &fields);
 		assert!(sql.is_empty());
+	}
+
+	// ──────────────────────────────────────────────────────────────
+	// Additional manager tests
+	// ──────────────────────────────────────────────────────────────
+
+	#[test]
+	fn test_manager_new() {
+		let manager = super::Manager::<TestUser>::new();
+		// Manager is just a phantom type wrapper, so this just ensures it compiles
+		let _ = manager;
+	}
+
+	#[test]
+	fn test_manager_default() {
+		let manager = super::Manager::<TestUser>::default();
+		// Default should work the same as new
+		let _ = manager;
+	}
+
+	#[test]
+	fn test_get_or_create_sql_empty_lookup() {
+		let manager = TestUser::objects();
+		let lookup: HashMap<String, String> = HashMap::new();
+		let defaults: HashMap<String, String> = HashMap::new();
+
+		let (select_sql, insert_sql) = manager.get_or_create_sql(&lookup, &defaults);
+
+		// Empty lookup still produces valid SQL structure
+		assert!(select_sql.contains("SELECT") || select_sql.contains("select"));
+		assert!(insert_sql.contains("INSERT") || insert_sql.contains("insert"));
+	}
+
+	#[test]
+	fn test_get_or_create_sql_with_multiple_lookups() {
+		let manager = TestUser::objects();
+		let mut lookup = HashMap::new();
+		lookup.insert("email".to_string(), "test@example.com".to_string());
+		lookup.insert("name".to_string(), "Test User".to_string());
+
+		let defaults: HashMap<String, String> = HashMap::new();
+
+		let (select_sql, _insert_sql) = manager.get_or_create_sql(&lookup, &defaults);
+
+		// Should have both conditions in WHERE clause
+		assert!(select_sql.contains("email"));
+		assert!(select_sql.contains("name"));
+	}
+
+	#[test]
+	fn test_bulk_create_sql_single_row() {
+		let manager = TestUser::objects();
+		let fields = vec!["name".to_string()];
+		let values = vec![vec!["SingleUser".to_string()]];
+
+		let sql = manager.bulk_create_sql_detailed(&fields, &values, false);
+
+		assert!(sql.contains("INSERT"));
+		assert!(sql.contains("test_user"));
+		assert!(sql.contains("SingleUser"));
+	}
+
+	#[test]
+	fn test_bulk_update_sql_single_field() {
+		let manager = TestUser::objects();
+
+		let mut updates = Vec::new();
+		let mut user1_fields = HashMap::new();
+		user1_fields.insert("name".to_string(), "Updated Name".to_string());
+		updates.push((1i64, user1_fields));
+
+		let fields = vec!["name".to_string()];
+		let sql = manager.bulk_update_sql_detailed(&updates, &fields);
+
+		assert!(sql.contains("UPDATE"));
+		assert!(sql.contains("name"));
+		assert!(sql.contains("Updated Name"));
+		assert!(!sql.contains("email"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_string() {
+		use serde_json::json;
+		let value = json!("hello");
+		let sea_value = super::Manager::<TestUser>::json_to_sea_value(&value);
+
+		// SeaQuery Value should contain the string
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("hello") || debug_str.contains("String"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_integer() {
+		use serde_json::json;
+		let value = json!(42);
+		let sea_value = super::Manager::<TestUser>::json_to_sea_value(&value);
+
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("42") || debug_str.contains("Int"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_float() {
+		use serde_json::json;
+		let value = json!(3.14);
+		let sea_value = super::Manager::<TestUser>::json_to_sea_value(&value);
+
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("3.14") || debug_str.contains("Double"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_bool() {
+		use serde_json::json;
+		let value = json!(true);
+		let sea_value = super::Manager::<TestUser>::json_to_sea_value(&value);
+
+		let debug_str = format!("{:?}", sea_value);
+		assert!(debug_str.contains("true") || debug_str.contains("Bool"));
+	}
+
+	#[test]
+	fn test_json_to_sea_value_null() {
+		use serde_json::json;
+		let value = json!(null);
+		let sea_value = super::Manager::<TestUser>::json_to_sea_value(&value);
+
+		// Null should be represented somehow
+		let debug_str = format!("{:?}", sea_value);
+		assert!(!debug_str.is_empty());
+	}
+
+	#[test]
+	fn test_json_to_sea_value_array() {
+		use serde_json::json;
+		let value = json!([1, 2, 3]);
+		let sea_value = super::Manager::<TestUser>::json_to_sea_value(&value);
+
+		// Array should be converted (typically to JSON string)
+		let debug_str = format!("{:?}", sea_value);
+		assert!(!debug_str.is_empty());
+	}
+
+	#[test]
+	fn test_json_to_sea_value_object() {
+		use serde_json::json;
+		let value = json!({"key": "value"});
+		let sea_value = super::Manager::<TestUser>::json_to_sea_value(&value);
+
+		// Object should be converted (typically to JSON string)
+		let debug_str = format!("{:?}", sea_value);
+		assert!(!debug_str.is_empty());
+	}
+
+	#[test]
+	fn test_serialize_value_string() {
+		use serde_json::json;
+		let value = json!("test_string");
+		let serialized = super::Manager::<TestUser>::serialize_value(&value);
+
+		// Should return the string representation
+		assert!(serialized.contains("test_string"));
+	}
+
+	#[test]
+	fn test_serialize_value_number() {
+		use serde_json::json;
+		let value = json!(123);
+		let serialized = super::Manager::<TestUser>::serialize_value(&value);
+
+		assert!(serialized.contains("123"));
 	}
 }

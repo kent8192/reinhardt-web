@@ -204,7 +204,7 @@ impl MySqlTwoPhaseParticipant {
 	/// # }
 	/// ```
 	pub async fn begin(&self, xid: impl Into<String>) -> Result<XaSessionStarted> {
-		// XAトランザクション用の新しいコネクションを取得
+		// Acquire new connection for XA transaction
 		let mut connection = self.pool.acquire().await.map_err(DatabaseError::from)?;
 		let xid = xid.into();
 

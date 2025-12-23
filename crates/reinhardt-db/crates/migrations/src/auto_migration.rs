@@ -20,17 +20,52 @@ pub struct AutoMigrationGenerator {
 }
 
 /// Auto-migration result
+///
+/// This structure contains the result of auto-migration generation.
+/// Note that `migration_file` and `rollback_file` are placeholders and will be
+/// populated by the caller (typically `MakeMigrationsCommand`) based on the
+/// application's migration naming and numbering scheme.
+///
+/// # Design Rationale
+///
+/// The separation of concerns is intentional:
+/// - `AutoMigrationGenerator::generate()` is responsible for detecting schema changes
+///   and generating migration operations
+/// - The caller (e.g., `MakeMigrationsCommand` or `MigrationService`) is responsible
+///   for determining the actual file paths based on the application's naming conventions,
+///   existing migration numbers, and file system structure
 #[derive(Debug)]
 pub struct AutoMigrationResult {
-	/// Generated migration file path
+	/// Generated migration file path (placeholder)
+	///
+	/// This field is a placeholder and will be set by the caller.
+	/// The caller determines the actual path based on:
+	/// - Application name
+	/// - Migration number (sequential)
+	/// - Migration naming conventions
 	pub migration_file: PathBuf,
-	/// Rollback file path
+	/// Rollback file path (placeholder)
+	///
+	/// This field is a placeholder and will be set by the caller if rollback
+	/// file generation is enabled. The caller determines:
+	/// - Whether to generate a rollback file
+	/// - The rollback file path and naming convention
 	pub rollback_file: Option<PathBuf>,
 	/// Generated operations
+	///
+	/// List of migration operations detected from schema differences.
+	/// These operations represent the changes needed to transform the current
+	/// database schema to the target schema defined in models.
 	pub operations: Vec<Operation>,
 	/// Number of operations generated
+	///
+	/// Total count of migration operations. Used for reporting and validation.
 	pub operation_count: usize,
 	/// Has destructive changes
+	///
+	/// Indicates whether the migration contains potentially destructive operations
+	/// such as table drops, column drops, or type changes that may result in data loss.
+	/// The caller can use this flag to prompt for user confirmation before applying.
 	pub has_destructive_changes: bool,
 }
 
@@ -53,20 +88,64 @@ impl AutoMigrationGenerator {
 
 	/// Generate migration from current database state
 	///
+	/// This method is responsible for detecting schema differences between the current
+	/// database state and the target schema defined in models, and generating the
+	/// necessary migration operations to transform the schema.
+	///
+	/// # Design Responsibility
+	///
+	/// This method follows the single responsibility principle:
+	/// - **This method's responsibility**: Detect schema changes and generate migration operations
+	/// - **Caller's responsibility**: Determine file paths, migration numbering, and persist files
+	///
+	/// The returned `AutoMigrationResult` contains placeholder values for `migration_file` and
+	/// `rollback_file`. The caller (typically `MakeMigrationsCommand` or `MigrationService`) must:
+	/// 1. Determine the next migration number by examining existing migrations
+	/// 2. Construct the migration file path following the naming convention (e.g., `0001_initial.rs`)
+	/// 3. Decide whether to generate a rollback file based on configuration
+	/// 4. Write the actual migration files to disk
+	///
 	/// # Arguments
 	///
-	/// * `app_label` - The app label for the migration
-	/// * `current_schema` - Current database schema
+	/// * `app_label` - The app label for the migration (used for grouping and dependency resolution)
+	/// * `current_schema` - Current database schema (obtained from database introspection)
+	///
+	/// # Returns
+	///
+	/// Returns `AutoMigrationResult` containing:
+	/// - Generated migration operations
+	/// - Placeholder file paths (to be set by caller)
+	/// - Metadata (operation count, destructive changes flag)
 	///
 	/// # Errors
 	///
-	/// Returns `AutoMigrationError::NoChangesDetected` if no changes are detected.
-	/// Returns `AutoMigrationError::DuplicateMigration` if identical operations already exist.
+	/// Returns `AutoMigrationError::NoChangesDetected` if no schema changes are detected
+	/// between the current and target schemas.
 	///
-	/// # Note
+	/// Returns `AutoMigrationError::DuplicateMigration` if the generated operations are
+	/// semantically identical to the last migration in the repository. This prevents
+	/// accidental duplicate migration generation.
 	///
-	/// This method only detects and generates operations. It does NOT save the migration file.
-	/// The caller is responsible for saving the migration using the appropriate naming and numbering scheme.
+	/// Returns `AutoMigrationError::WriteError` if repository access fails.
+	///
+	/// # Example Workflow
+	///
+	/// ```ignore
+	/// // Caller (e.g., MakeMigrationsCommand)
+	/// let result = generator.generate(app_label, current_schema).await?;
+	///
+	/// // Caller determines file paths
+	/// let migration_number = determine_next_migration_number(app_label).await?;
+	/// let migration_file = format!("migrations/{:04}_auto.rs", migration_number);
+	/// let rollback_file = if config.enable_rollback {
+	///     Some(format!("migrations/{:04}_auto_rollback.rs", migration_number))
+	/// } else {
+	///     None
+	/// };
+	///
+	/// // Caller persists the migration
+	/// write_migration_file(&migration_file, &result.operations).await?;
+	/// ```
 	pub async fn generate(
 		&self,
 		app_label: &str,
@@ -99,8 +178,12 @@ impl AutoMigrationGenerator {
 		let has_destructive = diff.has_destructive_changes();
 
 		Ok(AutoMigrationResult {
-			migration_file: std::path::PathBuf::new(), // Placeholder - caller will determine actual path
-			rollback_file: None, // Placeholder - caller will determine if rollback is needed
+			// Placeholder - caller (e.g., MakeMigrationsCommand) determines actual path
+			// based on app_label, migration number, and naming conventions
+			migration_file: std::path::PathBuf::new(),
+			// Placeholder - caller determines if rollback file is needed based on
+			// configuration and decides the rollback file path
+			rollback_file: None,
 			operations: operations.clone(),
 			operation_count: operations.len(),
 			has_destructive_changes: has_destructive,
@@ -126,7 +209,7 @@ impl AutoMigrationGenerator {
 	}
 
 	/// Generate rollback operations
-	#[allow(dead_code)]
+	#[allow(dead_code)] // Planned for future rollback migration feature
 	fn generate_rollback(&self, operations: &[Operation]) -> Vec<Operation> {
 		operations
 			.iter()

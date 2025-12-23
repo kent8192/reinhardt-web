@@ -4,6 +4,7 @@
 
 use super::lookup::{Lookup, LookupType, LookupValue};
 use crate::Model;
+use sea_query::SimpleExpr;
 
 /// Compiles field lookups into SQL
 pub struct QueryFieldCompiler;
@@ -15,6 +16,15 @@ impl QueryFieldCompiler {
 	pub fn compile<M: Model>(lookup: &Lookup<M>) -> String {
 		Self::compile_for_sqlite(lookup)
 	}
+
+	/// Compile a lookup into a SeaQuery SimpleExpr
+	///
+	/// This wraps the compiled SQL in `Expr::cust()` for integration with SeaQuery conditions.
+	pub fn compile_to_expr<M: Model>(lookup: &Lookup<M>) -> SimpleExpr {
+		let sql = Self::compile(lookup);
+		sea_query::Expr::cust(sql)
+	}
+
 	/// Compile for SQLite (uses LIKE with LOWER() for case-insensitive)
 	///
 	pub fn compile_for_sqlite<M: Model>(lookup: &Lookup<M>) -> String {

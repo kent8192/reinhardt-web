@@ -280,3 +280,9 @@ pub use lambda_stmt::{
 	CACHE_STATS, CacheStatistics, LambdaRegistry, LambdaStmt, QUERY_CACHE, QueryCache,
 };
 pub use order_with_respect_to::{OrderError, OrderValue, OrderedModel};
+
+// SeaQuery re-exports for query building in client code
+pub use sea_query::{
+	Alias, Asterisk, Expr, ExprTrait, MysqlQueryBuilder, PostgresQueryBuilder, Query as SeaQuery,
+	SqliteQueryBuilder,
+};

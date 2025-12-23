@@ -1,7 +1,144 @@
-//! Database backend abstractions and schema editors
+//! # Reinhardt Database Backends
 //!
-//! This module provides low-level database operations, schema editing,
-//! and query building capabilities.
+//! Low-level database backend abstractions, schema editors, and query optimization
+//! for the Reinhardt framework.
+//!
+//! ## Overview
+//!
+//! This crate provides the foundational database layer for Reinhardt, including:
+//!
+//! - Database-agnostic backend trait abstractions
+//! - Connection pooling with optimization strategies
+//! - Schema editing and migration support
+//! - Query building and caching
+//! - Batch operations for high-performance writes
+//!
+//! ## Supported Databases
+//!
+//! | Database | Feature Flag | Backend Type |
+//! |----------|--------------|--------------|
+//! | PostgreSQL | `postgres` | [`PostgresBackend`] |
+//! | MySQL/MariaDB | `mysql` | [`MySqlBackend`] |
+//! | SQLite | `sqlite` | [`SqliteBackend`] |
+//! | MongoDB | `mongodb-backend` | [`MongoDBBackend`] |
+//! | CockroachDB | `cockroachdb-backend` | [`CockroachDBBackend`] |
+//!
+//! ## Core Traits
+//!
+//! - **[`DatabaseBackend`]**: Main trait for database operations (execute, fetch, etc.)
+//! - **[`DatabaseConnection`]**: Connection management and transaction handling
+//! - **[`BaseDatabaseSchemaEditor`]**: Schema modification operations (DDL)
+//!
+//! ## Optimization Features
+//!
+//! ### Query Cache
+//!
+//! Cache prepared statements and query results for improved performance:
+//!
+//! ```rust,ignore
+//! use reinhardt_backends::{QueryCache, QueryCacheConfig};
+//!
+//! let config = QueryCacheConfig {
+//!     max_entries: 1000,
+//!     ttl_seconds: 300,
+//!     enable_metrics: true,
+//! };
+//!
+//! let cache = QueryCache::new(config);
+//!
+//! // Cache a prepared query
+//! let cached = cache.get_or_insert("SELECT * FROM users WHERE id = $1", || {
+//!     // Prepare the query
+//! });
+//! ```
+//!
+//! ### Batch Operations
+//!
+//! Efficiently insert or update multiple records:
+//!
+//! ```rust,ignore
+//! use reinhardt_backends::{BatchOperations, BatchInsertBuilder};
+//!
+//! // Build a batch insert
+//! let batch = BatchInsertBuilder::new("users")
+//!     .columns(&["name", "email"])
+//!     .values(&["Alice", "alice@example.com"])
+//!     .values(&["Bob", "bob@example.com"])
+//!     .build();
+//!
+//! // Execute with automatic chunking for large datasets
+//! backend.batch_insert(batch).await?;
+//! ```
+//!
+//! ## Two-Phase Commit (Distributed Transactions)
+//!
+//! For distributed transaction support across multiple databases:
+//!
+//! - **PostgreSQL**: [`PostgresTwoPhaseParticipant`] with `PREPARE TRANSACTION`
+//! - **MySQL**: [`MySqlTwoPhaseParticipant`] with XA transactions
+//!
+//! ```rust,ignore
+//! use reinhardt_backends::PostgresTwoPhaseParticipant;
+//!
+//! // Prepare a distributed transaction
+//! let participant = PostgresTwoPhaseParticipant::new(&connection);
+//! participant.prepare("tx_001").await?;
+//!
+//! // ... coordinate with other participants ...
+//!
+//! participant.commit().await?; // or rollback()
+//! ```
+//!
+//! ## Connection Pooling
+//!
+//! Optimized connection pool configuration:
+//!
+//! ```rust,ignore
+//! use reinhardt_backends::{OptimizedPoolBuilder, PoolOptimizationConfig};
+//!
+//! let config = PoolOptimizationConfig {
+//!     min_connections: 5,
+//!     max_connections: 20,
+//!     acquire_timeout_secs: 30,
+//!     idle_timeout_secs: 600,
+//! };
+//!
+//! let pool = OptimizedPoolBuilder::new(database_url)
+//!     .with_config(config)
+//!     .build()
+//!     .await?;
+//! ```
+//!
+//! ## Query Builder
+//!
+//! Type-safe query construction:
+//!
+//! ```rust,ignore
+//! use reinhardt_backends::{SelectBuilder, InsertBuilder, UpdateBuilder};
+//!
+//! // SELECT query
+//! let query = SelectBuilder::new("users")
+//!     .columns(&["id", "name", "email"])
+//!     .where_clause("active = $1")
+//!     .order_by("created_at DESC")
+//!     .limit(10)
+//!     .build();
+//!
+//! // INSERT query
+//! let query = InsertBuilder::new("users")
+//!     .columns(&["name", "email"])
+//!     .values(&["Alice", "alice@example.com"])
+//!     .returning(&["id"])
+//!     .build();
+//! ```
+//!
+//! ## Feature Flags
+//!
+//! - **`postgres`**: PostgreSQL support with advanced features
+//! - **`mysql`**: MySQL/MariaDB support with XA transactions
+//! - **`sqlite`**: SQLite support for embedded databases
+//! - **`mongodb-backend`**: MongoDB document database support
+//! - **`cockroachdb-backend`**: CockroachDB distributed SQL support
 
 pub mod backend;
 pub mod connection;
