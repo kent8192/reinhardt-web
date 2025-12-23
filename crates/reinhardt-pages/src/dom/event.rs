@@ -183,6 +183,70 @@ impl AsRef<str> for EventType {
 	}
 }
 
+impl std::str::FromStr for EventType {
+	type Err = ();
+
+	/// Parse event type from string
+	///
+	/// Returns `Ok(EventType)` for known event names, `Err(())` for unknown.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// let click: EventType = "click".parse().unwrap();
+	/// assert_eq!(click, EventType::Click);
+	/// ```
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s {
+			// Mouse events
+			"click" => Ok(EventType::Click),
+			"dblclick" => Ok(EventType::DblClick),
+			"mousedown" => Ok(EventType::MouseDown),
+			"mouseup" => Ok(EventType::MouseUp),
+			"mouseenter" => Ok(EventType::MouseEnter),
+			"mouseleave" => Ok(EventType::MouseLeave),
+			"mousemove" => Ok(EventType::MouseMove),
+			"mouseover" => Ok(EventType::MouseOver),
+			"mouseout" => Ok(EventType::MouseOut),
+
+			// Keyboard events
+			"keydown" => Ok(EventType::KeyDown),
+			"keyup" => Ok(EventType::KeyUp),
+			"keypress" => Ok(EventType::KeyPress),
+
+			// Form events
+			"input" => Ok(EventType::Input),
+			"change" => Ok(EventType::Change),
+			"submit" => Ok(EventType::Submit),
+			"focus" => Ok(EventType::Focus),
+			"blur" => Ok(EventType::Blur),
+
+			// Touch events
+			"touchstart" => Ok(EventType::TouchStart),
+			"touchend" => Ok(EventType::TouchEnd),
+			"touchmove" => Ok(EventType::TouchMove),
+			"touchcancel" => Ok(EventType::TouchCancel),
+
+			// Drag events
+			"dragstart" => Ok(EventType::DragStart),
+			"drag" => Ok(EventType::Drag),
+			"drop" => Ok(EventType::Drop),
+			"dragenter" => Ok(EventType::DragEnter),
+			"dragleave" => Ok(EventType::DragLeave),
+			"dragover" => Ok(EventType::DragOver),
+			"dragend" => Ok(EventType::DragEnd),
+
+			// Other events
+			"load" => Ok(EventType::Load),
+			"error" => Ok(EventType::Error),
+			"scroll" => Ok(EventType::Scroll),
+			"resize" => Ok(EventType::Resize),
+
+			_ => Err(()),
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
