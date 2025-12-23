@@ -14,8 +14,14 @@
 //! ```bash
 //! reinhardt-admin startproject myproject
 //! reinhardt-admin startapp myapp
+//! reinhardt-admin fmt src/
 //! reinhardt-admin help
 //! ```
+
+mod ast_formatter;
+mod formatter;
+
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use reinhardt_commands::{
@@ -74,6 +80,17 @@ enum Commands {
 	Plugin {
 		#[command(subcommand)]
 		subcommand: PluginCommands,
+	},
+
+	/// Format page! macro DSL in Rust source files
+	Fmt {
+		/// Path to file or directory to format
+		#[arg(value_name = "PATH")]
+		path: PathBuf,
+
+		/// Check if files are formatted without modifying them
+		#[arg(long)]
+		check: bool,
 	},
 }
 
@@ -221,6 +238,7 @@ async fn main() {
 			template_type,
 		} => run_startapp(name, directory, template_type, cli.verbosity).await,
 		Commands::Plugin { subcommand } => run_plugin(subcommand, cli.verbosity).await,
+		Commands::Fmt { path, check } => run_fmt(path, check, cli.verbosity),
 	};
 
 	if let Err(e) = result {
@@ -393,4 +411,100 @@ async fn run_plugin(subcommand: PluginCommands, verbosity: u8) -> CommandResult<
 			PluginUpdateCommand.execute(&ctx).await
 		}
 	}
+}
+
+fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
+	use ast_formatter::AstPageFormatter;
+	use formatter::collect_rust_files;
+
+	let files = collect_rust_files(&path).map_err(|e| {
+		reinhardt_commands::CommandError::ExecutionError(format!("Failed to collect files: {}", e))
+	})?;
+
+	if files.is_empty() {
+		if verbosity > 0 {
+			println!("No Rust files found in {:?}", path);
+		}
+		return Ok(());
+	}
+
+	let formatter = AstPageFormatter::new();
+	let mut formatted_count = 0;
+	let mut unchanged_count = 0;
+	let mut error_count = 0;
+
+	for file_path in &files {
+		let content = std::fs::read_to_string(file_path).map_err(|e| {
+			reinhardt_commands::CommandError::ExecutionError(format!(
+				"Failed to read {}: {}",
+				file_path.display(),
+				e
+			))
+		})?;
+
+		match formatter.format(&content) {
+			Ok(formatted) => {
+				if formatted != content {
+					if check {
+						// Check mode: report unformatted files
+						println!("Would format: {}", file_path.display());
+						formatted_count += 1;
+					} else {
+						// Format mode: write changes
+						std::fs::write(file_path, &formatted).map_err(|e| {
+							reinhardt_commands::CommandError::ExecutionError(format!(
+								"Failed to write {}: {}",
+								file_path.display(),
+								e
+							))
+						})?;
+						if verbosity > 0 {
+							println!("Formatted: {}", file_path.display());
+						}
+						formatted_count += 1;
+					}
+				} else {
+					unchanged_count += 1;
+					if verbosity > 1 {
+						println!("Unchanged: {}", file_path.display());
+					}
+				}
+			}
+			Err(e) => {
+				eprintln!("Error formatting {}: {}", file_path.display(), e);
+				error_count += 1;
+			}
+		}
+	}
+
+	// Summary
+	if verbosity > 0 || check {
+		println!();
+		if check {
+			println!(
+				"Summary: {} would be formatted, {} unchanged, {} errors",
+				formatted_count, unchanged_count, error_count
+			);
+		} else {
+			println!(
+				"Summary: {} formatted, {} unchanged, {} errors",
+				formatted_count, unchanged_count, error_count
+			);
+		}
+	}
+
+	if check && formatted_count > 0 {
+		return Err(reinhardt_commands::CommandError::ExecutionError(
+			"Some files are not properly formatted".to_string(),
+		));
+	}
+
+	if error_count > 0 {
+		return Err(reinhardt_commands::CommandError::ExecutionError(format!(
+			"{} files had formatting errors",
+			error_count
+		)));
+	}
+
+	Ok(())
 }
