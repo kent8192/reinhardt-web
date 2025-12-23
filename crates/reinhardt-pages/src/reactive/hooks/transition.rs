@@ -7,6 +7,12 @@ use std::rc::Rc;
 
 use crate::reactive::Signal;
 
+/// Type alias for the start_transition function type.
+///
+/// This represents a function that takes a boxed closure and executes it
+/// within a transition context.
+type StartTransitionFn = Rc<RefCell<Box<dyn Fn(Box<dyn FnOnce()>)>>>;
+
 /// State returned by use_transition.
 ///
 /// Contains the pending state and a function to start transitions.
@@ -14,7 +20,7 @@ pub struct TransitionState {
 	/// Whether a transition is currently pending.
 	pub is_pending: Signal<bool>,
 	/// Function to start a transition.
-	start_transition: Rc<RefCell<Box<dyn Fn(Box<dyn FnOnce()>)>>>,
+	start_transition: StartTransitionFn,
 }
 
 impl TransitionState {
@@ -78,7 +84,7 @@ impl TransitionState {
 pub fn use_transition() -> TransitionState {
 	let is_pending = Signal::new(false);
 
-	let start_transition: Rc<RefCell<Box<dyn Fn(Box<dyn FnOnce()>)>>> = {
+	let start_transition: StartTransitionFn = {
 		let is_pending = is_pending.clone();
 		Rc::new(RefCell::new(Box::new(move |f: Box<dyn FnOnce()>| {
 			is_pending.set(true);
