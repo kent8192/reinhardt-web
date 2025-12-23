@@ -10,7 +10,7 @@ use syn::{Expr, Token, punctuated::Punctuated};
 
 /// Scope for dependency injection
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum InjectionScope {
+pub(crate) enum InjectionScope {
 	/// Request scope - dependencies are created per request (default)
 	#[default]
 	Request,
@@ -20,7 +20,7 @@ pub enum InjectionScope {
 
 /// Parsed options from #[inject(...)] attribute
 #[derive(Debug, Clone)]
-pub struct InjectOptions {
+pub(crate) struct InjectOptions {
 	/// Whether to use caching for dependency resolution
 	pub use_cache: bool,
 	/// The scope for dependency injection
@@ -38,7 +38,7 @@ impl Default for InjectOptions {
 
 /// Default value specification for #[no_inject] fields
 #[derive(Debug, Clone)]
-pub enum DefaultValue {
+pub(crate) enum DefaultValue {
 	/// Use Default::default()
 	DefaultTrait,
 	/// Use a specific expression
@@ -49,17 +49,17 @@ pub enum DefaultValue {
 
 /// Parsed options from #[no_inject(...)] attribute
 #[derive(Debug, Clone)]
-pub struct NoInjectOptions {
+pub(crate) struct NoInjectOptions {
 	pub default: DefaultValue,
 }
 
 /// Check if an attribute is #[inject]
-pub fn is_inject_attr(attr: &syn::Attribute) -> bool {
+pub(crate) fn is_inject_attr(attr: &syn::Attribute) -> bool {
 	attr.path().is_ident("inject")
 }
 
 /// Check if an attribute is #[no_inject]
-pub fn is_no_inject_attr(attr: &syn::Attribute) -> bool {
+pub(crate) fn is_no_inject_attr(attr: &syn::Attribute) -> bool {
 	attr.path().is_ident("no_inject")
 }
 
@@ -67,7 +67,7 @@ pub fn is_no_inject_attr(attr: &syn::Attribute) -> bool {
 ///
 /// Returns `InjectOptions` with parsed settings. If no #[inject] attribute is found,
 /// returns default options.
-pub fn parse_inject_options(attrs: &[syn::Attribute]) -> InjectOptions {
+pub(crate) fn parse_inject_options(attrs: &[syn::Attribute]) -> InjectOptions {
 	let mut options = InjectOptions::default();
 
 	for attr in attrs {
@@ -110,7 +110,7 @@ pub fn parse_inject_options(attrs: &[syn::Attribute]) -> InjectOptions {
 /// Parse #[no_inject] or #[no_inject(default = ...)] attributes
 ///
 /// Returns `Some(NoInjectOptions)` if `#[no_inject]` attribute is found, `None` otherwise.
-pub fn parse_no_inject_options(attrs: &[syn::Attribute]) -> Option<NoInjectOptions> {
+pub(crate) fn parse_no_inject_options(attrs: &[syn::Attribute]) -> Option<NoInjectOptions> {
 	for attr in attrs {
 		if !is_no_inject_attr(attr) {
 			continue;
@@ -169,7 +169,7 @@ use proc_macro2::TokenStream;
 /// This struct is part of the DI code generation infrastructure and will be used
 /// by macro extensions like #[action] and #[receiver] with use_inject support.
 #[derive(Clone)]
-pub struct InjectParamInfo {
+pub(crate) struct InjectParamInfo {
 	/// Parameter pattern (variable name)
 	pub pat: Box<syn::Pat>,
 	/// Parameter type
@@ -188,7 +188,7 @@ pub struct InjectParamInfo {
 /// - #[action] macro: Controller action methods with automatic DI
 /// - #[receiver] macro: Signal receiver functions with injected dependencies
 /// - use_inject flag: Enable DI for custom macros
-pub fn detect_inject_params(
+pub(crate) fn detect_inject_params(
 	inputs: &syn::punctuated::Punctuated<syn::FnArg, Token![,]>,
 ) -> Vec<InjectParamInfo> {
 	let mut inject_params = Vec::new();
@@ -215,7 +215,7 @@ pub fn detect_inject_params(
 ///
 /// This function is used by #[action] and #[receiver] macros to extract
 /// the DI context from request objects for dependency resolution.
-pub fn generate_di_context_extraction(request_ident: &syn::Ident) -> TokenStream {
+pub(crate) fn generate_di_context_extraction(request_ident: &syn::Ident) -> TokenStream {
 	let di_crate = get_reinhardt_di_crate();
 	let core_crate = get_reinhardt_core_crate();
 
@@ -232,7 +232,7 @@ pub fn generate_di_context_extraction(request_ident: &syn::Ident) -> TokenStream
 /// Used for Signal receivers where DI context is passed as an Option.
 /// This function enables #[receiver] macros to handle optional DI contexts
 /// in signal dispatch scenarios.
-pub fn generate_di_context_extraction_from_option(ctx_ident: &syn::Ident) -> TokenStream {
+pub(crate) fn generate_di_context_extraction_from_option(ctx_ident: &syn::Ident) -> TokenStream {
 	let signals_crate = get_reinhardt_signals_crate();
 
 	quote::quote! {
@@ -248,7 +248,7 @@ pub fn generate_di_context_extraction_from_option(ctx_ident: &syn::Ident) -> Tok
 ///
 /// This function is used by #[action] and #[receiver] macros to generate
 /// dependency injection code for parameters marked with #[inject].
-pub fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec<TokenStream> {
+pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec<TokenStream> {
 	let di_crate = get_reinhardt_di_crate();
 	let core_crate = get_reinhardt_core_crate();
 
@@ -287,7 +287,7 @@ pub fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec<TokenS
 /// Used for WebSocket handlers and Signal receivers that use different error types.
 /// This function enables #[action] and #[receiver] macros to generate error
 /// handling code compatible with their specific error types.
-pub fn generate_injection_calls_with_error<F>(
+pub(crate) fn generate_injection_calls_with_error<F>(
 	inject_params: &[InjectParamInfo],
 	error_mapper: F,
 ) -> Vec<TokenStream>
@@ -328,7 +328,7 @@ where
 /// Returns a new list of FnArg with #[inject] attributes stripped.
 /// This function is used by #[action] and #[receiver] macros to clean up
 /// function signatures after processing #[inject] attributes for code generation.
-pub fn strip_inject_attrs(
+pub(crate) fn strip_inject_attrs(
 	inputs: &syn::punctuated::Punctuated<syn::FnArg, Token![,]>,
 ) -> Vec<syn::FnArg> {
 	inputs

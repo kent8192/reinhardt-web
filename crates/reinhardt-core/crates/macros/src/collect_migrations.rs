@@ -65,7 +65,7 @@ impl Parse for CollectMigrationsInput {
 }
 
 /// Implementation of the `collect_migrations!` macro
-pub fn collect_migrations_impl(input: TokenStream) -> Result<TokenStream, syn::Error> {
+pub(crate) fn collect_migrations_impl(input: TokenStream) -> Result<TokenStream, syn::Error> {
 	let migrations_crate = get_reinhardt_migrations_crate();
 
 	let input: CollectMigrationsInput = syn::parse2(input)?;

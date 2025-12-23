@@ -28,13 +28,13 @@ use syn::{
 
 /// Abstract Syntax Tree for URL patterns
 #[derive(Debug, Clone, PartialEq)]
-pub struct UrlPatternAst {
+pub(crate) struct UrlPatternAst {
 	pub segments: Vec<Segment>,
 }
 
 /// A segment in a URL pattern (either literal text or a parameter)
 #[derive(Debug, Clone, PartialEq)]
-pub enum Segment {
+pub(crate) enum Segment {
 	/// Literal text in the URL (e.g., "polls/" or "/results")
 	Literal(String),
 	/// A parameter that captures part of the URL
@@ -43,7 +43,7 @@ pub enum Segment {
 
 /// A parameter in a URL pattern
 #[derive(Debug, Clone, PartialEq)]
-pub struct Parameter {
+pub(crate) struct Parameter {
 	/// The name of the parameter (e.g., "id" in {id})
 	pub name: String,
 	/// Optional type specifier (e.g., "int" in {<int:id>})
@@ -52,7 +52,7 @@ pub struct Parameter {
 
 /// Type specifier for parameters
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypeSpec {
+pub(crate) enum TypeSpec {
 	// === Basic types (legacy) ===
 	/// Integer type (unsigned, legacy compatibility)
 	Int,
@@ -115,7 +115,7 @@ impl TypeSpec {
 	/// - `bool`: Boolean type
 	/// - `email`: Email address format
 	/// - `date`: ISO 8601 date format
-	pub fn valid_types() -> &'static [&'static str] {
+	pub(crate) fn valid_types() -> &'static [&'static str] {
 		&[
 			"int", "str", "uuid", "slug", "path", "i8", "i16", "i32", "i64", "u8", "u16", "u32",
 			"u64", "f32", "f64", "bool", "email", "date",
@@ -267,7 +267,7 @@ fn url_pattern(input: &str) -> IResult<&str, UrlPatternAst> {
 /// - Django-style parameter placement
 ///
 /// Returns an AST representation of the pattern if valid, or a descriptive error message.
-pub fn parse_and_validate(pattern: &str) -> std::result::Result<UrlPatternAst, String> {
+pub(crate) fn parse_and_validate(pattern: &str) -> std::result::Result<UrlPatternAst, String> {
 	// Pre-validation: Check for common errors before parsing
 	if pattern.contains("{{") {
 		return Err("Nested braces are not allowed in URL patterns. Use single braces like {id}, not {{id}}".to_string());
@@ -407,7 +407,7 @@ impl Parse for UrlPattern {
 ///
 /// This function is used internally by the `path!` macro.
 /// Users should not call this function directly.
-pub fn path_impl(input: TokenStream) -> Result<TokenStream> {
+pub(crate) fn path_impl(input: TokenStream) -> Result<TokenStream> {
 	let pattern: UrlPattern = syn::parse2(input)?;
 	let pattern_str = pattern.pattern;
 

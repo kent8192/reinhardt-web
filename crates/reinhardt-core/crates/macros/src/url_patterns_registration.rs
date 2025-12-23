@@ -103,7 +103,7 @@ impl Parse for RegisterInput {
 /// # Returns
 ///
 /// Generated code as a `TokenStream`
-pub fn register_url_patterns_impl(input: TokenStream) -> TokenStream {
+pub(crate) fn register_url_patterns_impl(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as RegisterInput);
 	let reinhardt = get_reinhardt_crate();
 

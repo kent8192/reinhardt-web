@@ -29,7 +29,7 @@ fn validate_permission(permission: &str, span: Span) -> Result<()> {
 /// # Examples
 ///
 /// See the authentication documentation for usage examples.
-pub fn permission_required_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn permission_required_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let mut permissions = Vec::new();
 
 	// Handle the common case: #[permission_required("auth.view_user")]

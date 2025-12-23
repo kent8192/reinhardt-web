@@ -7,7 +7,7 @@ use syn::{Attribute, MetaNameValue, Result, Token, parse::Parse, punctuated::Pun
 
 /// Dependency scope
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Scope {
+pub(crate) enum Scope {
 	#[default]
 	Singleton,
 	Request,
@@ -16,7 +16,7 @@ pub enum Scope {
 
 impl Scope {
 	/// Convert to TokenStream for code generation
-	pub fn into_tokens(self) -> TokenStream {
+	pub(crate) fn into_tokens(self) -> TokenStream {
 		let di_crate = get_reinhardt_di_crate();
 		match self {
 			Scope::Singleton => quote! { #di_crate::DependencyScope::Singleton },
@@ -27,12 +27,12 @@ impl Scope {
 }
 
 /// Check if an attribute is #[inject]
-pub fn is_inject_attr(attr: &Attribute) -> bool {
+pub(crate) fn is_inject_attr(attr: &Attribute) -> bool {
 	attr.path().is_ident("inject")
 }
 
 /// Macro arguments structure
-pub struct MacroArgs {
+pub(crate) struct MacroArgs {
 	pub scope: Option<Scope>,
 }
 
@@ -76,7 +76,7 @@ impl Parse for MacroArgs {
 }
 
 /// Extract scope from macro arguments
-pub fn extract_scope_from_args(args: TokenStream) -> Result<Scope> {
+pub(crate) fn extract_scope_from_args(args: TokenStream) -> Result<Scope> {
 	if args.is_empty() {
 		return Ok(Scope::default());
 	}

@@ -24,7 +24,9 @@ enum FieldInfo {
 }
 
 /// Implementation of the OrmReflectable derive macro
-pub fn orm_reflectable_derive_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub(crate) fn orm_reflectable_derive_impl(
+	input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
 	let struct_name = &input.ident;
 

@@ -133,7 +133,7 @@ fn strip_inject_attrs(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<FnArg> {
 }
 
 /// Generate wrapper function with DI support
-pub fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 	let inject_params = detect_inject_params(&input.sig.inputs);
 
 	// If no #[inject] parameters, return the function as-is

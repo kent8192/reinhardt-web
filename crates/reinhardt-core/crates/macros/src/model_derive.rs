@@ -1405,7 +1405,7 @@ fn generate_setter_methods(struct_name: &syn::Ident, field_infos: &[FieldInfo]) 
 }
 
 /// Implementation of the `Model` derive macro
-pub fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
+pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	// Get the dynamically resolved crate paths
 	let _reinhardt = get_reinhardt_crate();
 	let orm_crate = get_reinhardt_orm_crate();
@@ -3139,20 +3139,24 @@ fn is_relationship_field_type(ty: &Type) -> bool {
 }
 
 /// Check if a field is a timestamp field that should be auto-set to Utc::now()
+///
+/// A field is considered a timestamp field only when explicitly annotated with:
+/// - `#[field(auto_now_add = true)]` - auto-set on record creation
+/// - `#[field(auto_now = true)]` - auto-set on every save
+/// - `#[field(on_update_current_timestamp = true)]` - auto-set on record update (MySQL only)
 fn is_timestamp_field(field: &FieldInfo) -> bool {
 	let config = &field.config;
 
-	// 1. Explicit attribute specification
-	if config.auto_now_add == Some(true) || config.auto_now == Some(true) {
-		return true;
-	}
+	// Check auto_now_add and auto_now (available on all DB backends)
+	let auto_timestamp = config.auto_now_add == Some(true) || config.auto_now == Some(true);
 
-	// 2. Auto-detection by field name
-	let field_name = field.name.to_string();
-	matches!(
-		field_name.as_str(),
-		"created_at" | "updated_at" | "date_joined" | "last_login" | "last_modified"
-	)
+	// Check on_update_current_timestamp (MySQL only)
+	#[cfg(feature = "db-mysql")]
+	let mysql_timestamp = config.on_update_current_timestamp == Some(true);
+	#[cfg(not(feature = "db-mysql"))]
+	let mysql_timestamp = false;
+
+	auto_timestamp || mysql_timestamp
 }
 
 /// Extract the target model type from ForeignKeyField<T> or OneToOneField<T>

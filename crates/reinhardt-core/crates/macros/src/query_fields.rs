@@ -11,7 +11,7 @@ use syn::{Data, DeriveInput, Fields, Type};
 ///
 /// This function is used internally by the `#[derive(QueryFields)]` macro.
 /// Users should not call this function directly.
-pub fn derive_query_fields_impl(input: DeriveInput) -> TokenStream {
+pub(crate) fn derive_query_fields_impl(input: DeriveInput) -> TokenStream {
 	let struct_name = &input.ident;
 	let orm_crate = get_reinhardt_orm_crate();
 

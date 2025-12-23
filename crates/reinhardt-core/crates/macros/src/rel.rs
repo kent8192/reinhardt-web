@@ -8,7 +8,7 @@ use syn::{Ident, Lit, Path, spanned::Spanned};
 
 /// Relationship types supported by the `#[rel]` attribute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RelationType {
+pub(crate) enum RelationType {
 	/// ForeignKey relationship (many-to-one)
 	ForeignKey,
 	/// OneToOne relationship
@@ -25,7 +25,7 @@ pub enum RelationType {
 
 impl RelationType {
 	/// Parse relationship type from identifier.
-	pub fn from_ident(ident: &Ident) -> Option<Self> {
+	pub(crate) fn from_ident(ident: &Ident) -> Option<Self> {
 		match ident.to_string().as_str() {
 			"foreign_key" => Some(Self::ForeignKey),
 			"one_to_one" => Some(Self::OneToOne),
@@ -38,7 +38,7 @@ impl RelationType {
 	}
 
 	/// Get the string representation of the relationship type.
-	pub fn as_str(&self) -> &'static str {
+	pub(crate) fn as_str(&self) -> &'static str {
 		match self {
 			Self::ForeignKey => "foreign_key",
 			Self::OneToOne => "one_to_one",
@@ -52,7 +52,7 @@ impl RelationType {
 
 /// Cascade action for foreign key relationships.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum CascadeAction {
+pub(crate) enum CascadeAction {
 	/// CASCADE - Delete/update related rows
 	Cascade,
 	/// SET NULL - Set foreign key to NULL
@@ -68,7 +68,7 @@ pub enum CascadeAction {
 
 impl CascadeAction {
 	/// Parse cascade action from identifier.
-	pub fn from_ident(ident: &Ident) -> Option<Self> {
+	pub(crate) fn from_ident(ident: &Ident) -> Option<Self> {
 		match ident.to_string().as_str() {
 			"Cascade" => Some(Self::Cascade),
 			"SetNull" => Some(Self::SetNull),
@@ -82,7 +82,7 @@ impl CascadeAction {
 
 /// Parsed `#[rel(...)]` attribute.
 #[derive(Debug, Clone)]
-pub struct RelAttribute {
+pub(crate) struct RelAttribute {
 	/// Relationship type (foreign_key, one_to_one, many_to_many, etc.)
 	pub rel_type: RelationType,
 	/// Target model type (e.g., `User`)
@@ -151,7 +151,7 @@ impl Default for RelAttribute {
 
 impl RelAttribute {
 	/// Parse `#[rel(...)]` attribute from a syn Attribute.
-	pub fn from_attribute(attr: &syn::Attribute) -> syn::Result<Self> {
+	pub(crate) fn from_attribute(attr: &syn::Attribute) -> syn::Result<Self> {
 		let span = attr.span();
 		let mut result = Self {
 			span,

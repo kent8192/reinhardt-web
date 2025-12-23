@@ -49,7 +49,7 @@ impl FieldConfig {
 	}
 }
 
-pub fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
+pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 	let name = &input.ident;
 
 	// Only structs are supported

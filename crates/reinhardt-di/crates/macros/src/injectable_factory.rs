@@ -13,7 +13,7 @@ use syn::{FnArg, ItemFn, Pat, PatType, Result};
 /// 2. Analyzes parameters marked with `#[inject]`
 /// 3. Generates a wrapper that resolves dependencies
 /// 4. Registers the factory with the global registry using inventory
-pub fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let fn_name = &input.sig.ident;
 	let fn_vis = &input.vis;
 	let fn_block = &input.block;

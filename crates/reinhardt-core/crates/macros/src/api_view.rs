@@ -7,7 +7,7 @@ use syn::{Expr, ExprLit, ItemFn, Lit, Meta, Result, Token, parse::Parser, punctu
 ///
 /// This function is used internally by the `#[api_view]` attribute macro.
 /// Users should not call this function directly.
-pub fn api_view_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn api_view_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let mut methods = Vec::new();
 	let mut methods_lit = None;
 

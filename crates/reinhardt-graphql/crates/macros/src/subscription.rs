@@ -77,7 +77,7 @@ impl GrpcSubscriptionAttr {
 	}
 }
 
-pub fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
+pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 	let name = &input.ident;
 
 	// Get service and method from attributes

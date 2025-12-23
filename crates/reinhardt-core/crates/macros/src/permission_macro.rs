@@ -24,7 +24,7 @@ use nom::{
 
 /// Abstract Syntax Tree for permission strings
 #[derive(Debug, Clone, PartialEq)]
-pub struct PermissionAst {
+pub(crate) struct PermissionAst {
 	/// Application label (e.g., "auth", "myapp")
 	pub app_label: String,
 	/// Permission codename (e.g., "view_user", "add_post")
@@ -76,7 +76,7 @@ fn permission_string(input: &str) -> IResult<&str, PermissionAst> {
 /// followed by letters, numbers, or underscores).
 ///
 /// Returns a `PermissionAst` if valid, or an error message describing the problem.
-pub fn parse_and_validate(permission: &str) -> std::result::Result<PermissionAst, String> {
+pub(crate) fn parse_and_validate(permission: &str) -> std::result::Result<PermissionAst, String> {
 	// Pre-validation: check for common errors
 	if permission.trim().is_empty() {
 		return Err("Permission string cannot be empty".to_string());

@@ -27,7 +27,7 @@ struct InjectParamInfo {
 /// # Async Support
 ///
 /// Both sync and async functions are supported.
-pub fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let fn_name = &input.sig.ident;
 	let is_async = input.sig.asyncness.is_some();
 

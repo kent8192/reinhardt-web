@@ -25,7 +25,7 @@ struct FieldInfo {
 /// Implementation of the `#[injectable]` attribute macro for structs
 ///
 /// Generates an `Injectable` trait implementation for structs with `#[inject]` fields.
-pub fn injectable_struct_impl(mut input: DeriveInput) -> Result<TokenStream> {
+pub(crate) fn injectable_struct_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	// Remove #[injectable] attribute from the struct definition
 	input
 		.attrs

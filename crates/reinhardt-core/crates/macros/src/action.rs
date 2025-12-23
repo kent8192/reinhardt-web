@@ -14,7 +14,7 @@ use syn::{
 ///
 /// This function is used internally by the `#[action]` attribute macro.
 /// Users should not call this function directly.
-pub fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let mut methods = Vec::new();
 	let mut detail = false;
 	let mut _url_path: Option<String> = None;
@@ -189,7 +189,7 @@ pub fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	// Detect #[inject] parameters
 	let inject_params = detect_inject_params(fn_inputs);
 
-	// Validate: use_inject = false なのに #[inject] がある場合はエラー
+	// Validate: error if #[inject] is used when use_inject = false
 	if !use_inject && !inject_params.is_empty() {
 		return Err(syn::Error::new_spanned(
 			&inject_params[0].pat,
@@ -197,22 +197,22 @@ pub fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 		));
 	}
 
-	// DI対応の場合、ラッパー関数を生成
+	// Generate wrapper function for DI support
 	if use_inject && !inject_params.is_empty() {
 		let original_fn_name = quote::format_ident!("{}_original", fn_name);
 
-		// 元の関数（#[inject]属性除去）
+		// Original function (with #[inject] attributes stripped)
 		let stripped_inputs = strip_inject_attrs(fn_inputs);
 		let stripped_inputs = Punctuated::<FnArg, Token![,]>::from_iter(stripped_inputs);
 
-		// DI context抽出コード
+		// DI context extraction code
 		let request_ident = syn::Ident::new("request", proc_macro2::Span::call_site());
 		let di_extraction = generate_di_context_extraction(&request_ident);
 
-		// Injection callsコード
+		// Injection calls code
 		let injection_calls = generate_injection_calls(&inject_params);
 
-		// 引数リスト
+		// Argument list
 		let inject_args: Vec<_> = inject_params.iter().map(|p| &p.pat).collect();
 		let regular_args: Vec<_> = stripped_inputs
 			.iter()
@@ -226,29 +226,29 @@ pub fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 			.collect();
 
 		Ok(quote! {
-			// 元の関数（リネーム、private）
+			// Original function (renamed, private)
 			#asyncness fn #original_fn_name #generics (#stripped_inputs) #fn_output #where_clause {
 				#fn_block
 			}
 
-			// ラッパー関数（DI対応）
+			// Wrapper function (with DI support)
 			#(#fn_attrs)*
 			#[doc = "Custom action with DI support"]
 			#[doc = concat!("Methods: ", #method_list)]
 			#[doc = concat!("Detail: ", stringify!(#detail_flag))]
 			#fn_vis #asyncness fn #fn_name(request: ::Request) #fn_output {
-				// DI context抽出
+				// DI context extraction
 				#di_extraction
 
-				// 依存性解決
+				// Dependency resolution
 				#(#injection_calls)*
 
-				// 元の関数呼び出し
+				// Call original function
 				#original_fn_name(#(#regular_args,)* #(#inject_args),*).await
 			}
 		})
 	} else {
-		// DI不使用の場合は従来通り
+		// Without DI, use conventional approach
 		Ok(quote! {
 			#(#fn_attrs)*
 			#[doc = "Custom action"]

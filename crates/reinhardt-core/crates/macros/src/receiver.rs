@@ -65,7 +65,7 @@ fn parse_receiver_args(args: TokenStream) -> Result<ReceiverArgs> {
 /// # Examples
 ///
 /// See the signals documentation for usage examples.
-pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let args = parse_receiver_args(args)?;
 	let signals_crate = get_reinhardt_signals_crate();
 
@@ -93,7 +93,7 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	// Detect #[inject] parameters
 	let inject_params = detect_inject_params(&fn_sig.inputs);
 
-	// Validate: use_inject = false なのに #[inject] がある場合はエラー
+	// Validate: error if #[inject] is used when use_inject = false
 	if !use_inject && !inject_params.is_empty() {
 		return Err(syn::Error::new_spanned(
 			&inject_params[0].pat,
@@ -123,19 +123,19 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 		quote! {}
 	};
 
-	// DI対応の場合、ラッパー関数を生成
+	// Generate wrapper function for DI support
 	if use_inject && !inject_params.is_empty() {
 		let original_fn_name = quote::format_ident!("{}_impl", fn_name);
 
-		// 元の関数（#[inject]属性除去）
+		// Original function (with #[inject] attributes stripped)
 		let stripped_inputs = strip_inject_attrs(&fn_sig.inputs);
 		let stripped_inputs = Punctuated::<FnArg, Token![,]>::from_iter(stripped_inputs);
 
-		// DI context抽出コード（ReceiverContextから）
+		// DI context extraction code (from ReceiverContext)
 		let ctx_ident = syn::Ident::new("__receiver_ctx", proc_macro2::Span::call_site());
 		let di_extraction = generate_di_context_extraction_from_option(&ctx_ident);
 
-		// Signal用のエラーマッパー
+		// Error mapper for signals
 		// Clone signals_crate for use in closure
 		let signals_crate_for_mapper = signals_crate.clone();
 		let error_mapper = move |_ty: &syn::Type| {
@@ -149,7 +149,7 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 
 		let injection_calls = generate_injection_calls_with_error(&inject_params, error_mapper);
 
-		// 引数リスト
+		// Argument list
 		let inject_args: Vec<_> = inject_params.iter().map(|p| &p.pat).collect();
 		let regular_args: Vec<_> = stripped_inputs
 			.iter()
@@ -180,25 +180,25 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 		};
 
 		let expanded = quote! {
-			// 元の関数（リネーム）
+			// Original function (renamed)
 			#(#fn_attrs)*
 			async fn #original_fn_name(#stripped_inputs) -> Result<(), #signals_crate::SignalError> {
 				#fn_block
 			}
 
-			// DI対応ラッパー（ReceiverContext付き）
+			// DI-enabled wrapper (with ReceiverContext)
 			#(#fn_attrs)*
 			#fn_vis async fn #fn_name(
 				instance: ::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,
 				__receiver_ctx: #signals_crate::ReceiverContext,
 			) -> Result<(), #signals_crate::SignalError> {
-				// DI context抽出
+				// DI context extraction
 				#di_extraction
 
-				// 依存性解決
+				// Dependency resolution
 				#(#injection_calls)*
 
-				// 元の関数呼び出し
+				// Call original function
 				#original_fn_name(instance, #(#regular_args,)* #(#inject_args),*).await
 			}
 
@@ -217,7 +217,7 @@ pub fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 
 		Ok(expanded)
 	} else {
-		// DI不使用の場合は従来通り
+		// Without DI, use conventional approach
 		let factory_fn = quote! {
 			|| -> ::std::sync::Arc<
 				dyn Fn(::std::sync::Arc<dyn ::std::any::Any + Send + Sync>)

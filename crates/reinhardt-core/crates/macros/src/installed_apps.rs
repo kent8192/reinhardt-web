@@ -45,7 +45,7 @@ impl Parse for InstalledApps {
 ///
 /// This function is used internally by the `installed_apps!` macro.
 /// Users should not call this function directly.
-pub fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
+pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 	let core_crate = get_reinhardt_core_crate();
 	let InstalledApps { apps } = syn::parse2(input)?;
 

@@ -20,7 +20,7 @@ mod kw {
 
 /// Order direction for sorting
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Order {
+pub(crate) enum Order {
 	Asc,
 	Desc,
 }
@@ -42,7 +42,7 @@ impl Parse for Order {
 
 /// Ordering specification: (field_name, order)
 #[derive(Debug, Clone)]
-pub struct OrderingSpec {
+pub(crate) struct OrderingSpec {
 	pub field: Ident,
 	pub order: Order,
 }
@@ -60,7 +60,7 @@ impl Parse for OrderingSpec {
 
 /// Parsed configuration from `#[admin(model, ...)]`
 #[derive(Debug)]
-pub struct AdminModelConfig {
+pub(crate) struct AdminModelConfig {
 	/// The model type (for = ModelType)
 	pub model_type: Type,
 	/// The model name (name = "ModelName")
@@ -226,7 +226,7 @@ fn parse_ordering_array(input: ParseStream) -> Result<Vec<OrderingSpec>> {
 }
 
 /// Generate the ModelAdmin trait implementation
-pub fn admin_impl(args: TokenStream, input: ItemStruct) -> Result<TokenStream> {
+pub(crate) fn admin_impl(args: TokenStream, input: ItemStruct) -> Result<TokenStream> {
 	let admin_api = crate::crate_paths::get_reinhardt_admin_adapters_crate();
 	let async_trait = crate::crate_paths::get_async_trait_crate();
 

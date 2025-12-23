@@ -96,7 +96,7 @@ impl ProcessedArg {
 /// The Request parameter is optional:
 /// - If present: DI context is extracted from that request
 /// - If not present: A Request parameter is automatically added to the wrapper
-pub fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	let di_crate = get_reinhardt_di_crate();
 	let core_crate = get_reinhardt_core_crate();
 

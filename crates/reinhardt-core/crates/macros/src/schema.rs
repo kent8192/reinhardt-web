@@ -8,7 +8,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Attribute, Data, DeriveInput, Fields, Lit, Meta, Type};
 
-pub fn derive_schema_impl(input: DeriveInput) -> syn::Result<TokenStream> {
+pub(crate) fn derive_schema_impl(input: DeriveInput) -> syn::Result<TokenStream> {
 	let openapi_crate = get_reinhardt_openapi_crate();
 	let name = &input.ident;
 	let generics = &input.generics;

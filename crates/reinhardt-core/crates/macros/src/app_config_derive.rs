@@ -65,7 +65,7 @@ impl AppConfigAttr {
 }
 
 /// Derive AppConfig implementation
-pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub(crate) fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
 
 	match derive_impl(input) {

@@ -94,7 +94,7 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 /// This macro:
 /// 1. Implements the `Injectable` trait for the struct (with field injection support)
 /// 2. Registers the type with the global dependency registry using inventory
-pub fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<TokenStream> {
+pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<TokenStream> {
 	let struct_name = &input.ident;
 	let generics = &input.generics;
 	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();

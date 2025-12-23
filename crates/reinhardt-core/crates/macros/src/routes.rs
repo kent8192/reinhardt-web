@@ -692,26 +692,26 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 }
 
 /// Implementation of GET route macro
-pub fn get_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn get_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	route_impl("GET", args, input)
 }
 
 /// Implementation of POST route macro
-pub fn post_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn post_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	route_impl("POST", args, input)
 }
 
 /// Implementation of PUT route macro
-pub fn put_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn put_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	route_impl("PUT", args, input)
 }
 
 /// Implementation of PATCH route macro
-pub fn patch_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn patch_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	route_impl("PATCH", args, input)
 }
 
 /// Implementation of DELETE route macro
-pub fn delete_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
+pub(crate) fn delete_impl(args: TokenStream, input: ItemFn) -> Result<TokenStream> {
 	route_impl("DELETE", args, input)
 }
