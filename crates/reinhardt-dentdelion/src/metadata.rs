@@ -309,14 +309,14 @@ mod version_serde {
 	use semver::Version;
 	use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-	pub fn serialize<S>(version: &Version, serializer: S) -> Result<S::Ok, S::Error>
+	pub(super) fn serialize<S>(version: &Version, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
 		version.to_string().serialize(serializer)
 	}
 
-	pub fn deserialize<'de, D>(deserializer: D) -> Result<Version, D::Error>
+	pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<Version, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
@@ -330,14 +330,14 @@ mod version_req_serde {
 	use semver::VersionReq;
 	use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-	pub fn serialize<S>(version_req: &VersionReq, serializer: S) -> Result<S::Ok, S::Error>
+	pub(super) fn serialize<S>(version_req: &VersionReq, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
 		version_req.to_string().serialize(serializer)
 	}
 
-	pub fn deserialize<'de, D>(deserializer: D) -> Result<VersionReq, D::Error>
+	pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<VersionReq, D::Error>
 	where
 		D: Deserializer<'de>,
 	{

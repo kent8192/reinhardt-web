@@ -8,8 +8,10 @@
 //!
 //! - **Static Plugins**: Rust crates compiled with your application
 //! - **WASM Plugins**: Dynamic plugins loaded at runtime (with `wasm` feature)
+//! - **TypeScript Plugins**: TypeScript/JavaScript plugins via deno_core (with `ts` feature)
 //! - **Capability System**: Fine-grained control over what plugins can do
 //! - **CLI Management**: Install and manage plugins via `reinhardt plugin` commands
+//! - **Multi-Runtime**: Unified interface for Static, WASM, and TypeScript runtimes
 //!
 //! # Naming Convention
 //!
@@ -94,8 +96,9 @@
 //!
 //! - `default` - Core plugin system only
 //! - `wasm` - WASM plugin support with Component Model (requires wasmtime 39.x)
+//! - `ts` - TypeScript plugin support via deno_core (V8 engine)
 //! - `cli` - CLI support for crates.io integration
-//! - `full` - All features enabled
+//! - `full` - All features enabled (wasm + ts + cli)
 //!
 //! # WASM Plugin Support
 //!
@@ -166,6 +169,7 @@ pub mod manifest;
 pub mod metadata;
 pub mod plugin;
 pub mod registry;
+pub mod runtime;
 
 #[cfg(feature = "cli")]
 pub mod crates_io;
@@ -175,7 +179,7 @@ pub mod wasm;
 
 /// Re-export commonly used types.
 pub mod prelude {
-	pub use crate::capability::{Capability, PluginCapability};
+	pub use crate::capability::{Capability, PluginCapability, PluginTier, TrustLevel};
 	pub use crate::context::{PluginContext, PluginContextBuilder};
 	pub use crate::error::{PluginError, PluginResult, PluginState};
 	pub use crate::installer::PluginInstaller;
@@ -189,9 +193,19 @@ pub mod prelude {
 	};
 	pub use crate::register_plugin;
 	pub use crate::registry::PluginRegistry;
+	pub use crate::runtime::{
+		ArcRuntime, BoxedRuntime, PluginRuntime, RuntimeError, RuntimeLimits, RuntimeLimitsBuilder,
+		RuntimeType,
+	};
 
 	#[cfg(feature = "cli")]
 	pub use crate::crates_io::CratesIoClient;
+
+	#[cfg(feature = "wasm")]
+	pub use crate::wasm::{
+		ColumnDef, ColumnType, Event, EventBus, IndexDef, ModelRegistry, ModelSchema,
+		SharedEventBus, SharedModelRegistry, SqlMigration,
+	};
 
 	pub use async_trait::async_trait;
 }

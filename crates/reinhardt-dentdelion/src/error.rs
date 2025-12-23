@@ -154,10 +154,18 @@ pub enum PluginError {
 	#[error("{0}")]
 	Custom(String),
 
+	/// Configuration error.
+	#[error("configuration error: {0}")]
+	ConfigError(String),
+
 	/// Network error (for crates.io API calls).
 	#[cfg(feature = "cli")]
 	#[error("network error: {0}")]
 	Network(String),
+
+	/// Runtime execution error.
+	#[error("runtime error: {0}")]
+	RuntimeError(String),
 }
 
 /// Plugin lifecycle state.
