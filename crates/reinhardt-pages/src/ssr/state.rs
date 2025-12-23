@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// The global JavaScript variable name for SSR state.
-pub const SSR_STATE_VAR: &str = "__REINHARDT_SSR_STATE__";
+pub(super) const SSR_STATE_VAR: &str = "__REINHARDT_SSR_STATE__";
 
 /// Represents the serialized SSR state.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

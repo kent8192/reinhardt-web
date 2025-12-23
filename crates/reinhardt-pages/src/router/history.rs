@@ -125,7 +125,7 @@ pub fn push_state(state: &HistoryState) -> Result<(), String> {
 
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn push_state(_state: &HistoryState) -> Result<(), String> {
+pub(super) fn push_state(_state: &HistoryState) -> Result<(), String> {
 	Ok(())
 }
 
@@ -147,7 +147,7 @@ pub fn replace_state(state: &HistoryState) -> Result<(), String> {
 
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn replace_state(_state: &HistoryState) -> Result<(), String> {
+pub(super) fn replace_state(_state: &HistoryState) -> Result<(), String> {
 	Ok(())
 }
 
@@ -164,7 +164,7 @@ pub fn go_back() -> Result<(), String> {
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub fn go_back() -> Result<(), String> {
+pub(super) fn go_back() -> Result<(), String> {
 	Ok(())
 }
 
@@ -183,7 +183,7 @@ pub fn go_forward() -> Result<(), String> {
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub fn go_forward() -> Result<(), String> {
+pub(super) fn go_forward() -> Result<(), String> {
 	Ok(())
 }
 
@@ -202,7 +202,7 @@ pub fn go(delta: i32) -> Result<(), String> {
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub fn go(_delta: i32) -> Result<(), String> {
+pub(super) fn go(_delta: i32) -> Result<(), String> {
 	Ok(())
 }
 
@@ -218,7 +218,7 @@ pub fn current_path() -> Result<String, String> {
 
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn current_path() -> Result<String, String> {
+pub(super) fn current_path() -> Result<String, String> {
 	Ok("/".to_string())
 }
 
@@ -236,7 +236,7 @@ pub fn current_search() -> Result<String, String> {
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub fn current_search() -> Result<String, String> {
+pub(super) fn current_search() -> Result<String, String> {
 	Ok(String::new())
 }
 
@@ -254,7 +254,7 @@ pub fn current_hash() -> Result<String, String> {
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub fn current_hash() -> Result<String, String> {
+pub(super) fn current_hash() -> Result<String, String> {
 	Ok(String::new())
 }
 

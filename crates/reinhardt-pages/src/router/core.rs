@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Type alias for route guard functions.
-pub type RouteGuard = Arc<dyn Fn(&RouteMatch) -> bool + Send + Sync>;
+pub(super) type RouteGuard = Arc<dyn Fn(&RouteMatch) -> bool + Send + Sync>;
 
 /// Error type for router operations.
 #[derive(Debug, Clone, PartialEq, Eq)]

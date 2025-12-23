@@ -319,14 +319,14 @@ fn minify_html(html: &str) -> String {
 
 /// Helper function for simple component rendering.
 #[allow(dead_code)]
-pub fn render<C: Component>(component: &C) -> String {
+pub(super) fn render<C: Component>(component: &C) -> String {
 	let mut renderer = SsrRenderer::new();
 	renderer.render(component)
 }
 
 /// Helper function for rendering to a full HTML page.
 #[allow(dead_code)]
-pub fn render_page<C: Component>(component: &C, options: SsrOptions) -> String {
+pub(super) fn render_page<C: Component>(component: &C, options: SsrOptions) -> String {
 	let mut renderer = SsrRenderer::with_options(options);
 	renderer.render_page(component)
 }

@@ -148,7 +148,7 @@ pub type EventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
 
 /// Type alias for event handler functions (non-WASM placeholder).
 #[cfg(not(target_arch = "wasm32"))]
-pub type EventHandler = Arc<dyn Fn() + Send + Sync + 'static>;
+pub(super) type EventHandler = Arc<dyn Fn() + Send + Sync + 'static>;
 
 /// Attaches an event handler to a DOM element.
 #[cfg(target_arch = "wasm32")]
@@ -250,7 +250,7 @@ fn event_type_from_string(s: &str) -> EventType {
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub fn attach_events(
+pub(super) fn attach_events(
 	_element: &str,
 	bindings: &[EventBinding],
 	_handlers: &HashMap<String, EventHandler>,
@@ -264,7 +264,7 @@ pub fn attach_events(
 
 /// Detaches all event handlers from the registry.
 #[allow(dead_code)]
-pub fn detach_all(registry: &mut EventRegistry) {
+pub(super) fn detach_all(registry: &mut EventRegistry) {
 	registry.clear();
 }
 

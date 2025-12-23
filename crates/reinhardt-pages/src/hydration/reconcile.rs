@@ -178,14 +178,14 @@ pub fn structure_matches(element: &Element, view: &View) -> bool {
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub fn structure_matches(_element: &str, _view: &View) -> bool {
+pub(super) fn structure_matches(_element: &str, _view: &View) -> bool {
 	true
 }
 
 /// Detailed comparison result.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct CompareResult {
+pub(super) struct CompareResult {
 	/// Whether the structures match.
 	pub matches: bool,
 	/// List of differences found.
@@ -195,7 +195,7 @@ pub struct CompareResult {
 #[allow(dead_code)]
 impl CompareResult {
 	/// Creates a successful match result.
-	pub fn success() -> Self {
+	pub(super) fn success() -> Self {
 		Self {
 			matches: true,
 			differences: Vec::new(),
@@ -203,7 +203,7 @@ impl CompareResult {
 	}
 
 	/// Creates a failed match result with differences.
-	pub fn failure(differences: Vec<String>) -> Self {
+	pub(super) fn failure(differences: Vec<String>) -> Self {
 		Self {
 			matches: false,
 			differences,
@@ -278,7 +278,7 @@ fn compare_recursive(element: &Element, view: &View, path: &str, differences: &m
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub fn compare_structure(_element: &str, _view: &View) -> CompareResult {
+pub(super) fn compare_structure(_element: &str, _view: &View) -> CompareResult {
 	CompareResult::success()
 }
 

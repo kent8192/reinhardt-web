@@ -271,7 +271,7 @@ fn find_markers_recursive(element: &Element, markers: &mut Vec<(String, Element)
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub fn find_hydration_markers(_root: &str) -> Vec<(String, String)> {
+pub(super) fn find_hydration_markers(_root: &str) -> Vec<(String, String)> {
 	Vec::new()
 }
 
