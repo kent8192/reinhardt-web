@@ -1,0 +1,19 @@
+[package]
+name = "reinhardt-pages-ast"
+version = "0.1.0"
+edition = "2024"
+authors = ["Reinhardt Contributors"]
+license = "MIT OR Apache-2.0"
+description = "AST definitions for the page! macro DSL"
+repository.workspace = true
+keywords = ["ast", "macro", "page", "dsl"]
+categories = ["development-tools::procedural-macro-helpers"]
+
+[dependencies]
+# AST construction and parsing
+syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[dev-dependencies]
+# For testing AST parsing
