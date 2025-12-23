@@ -9,54 +9,54 @@ fn main() {
 	// External closure reference
 	let handle_click = |_| {};
 	let _external_closure = page!(|| {
-	button {
-		@click: handle_click,
-		"Click me"
-	}
-});
+		button {
+			@click: handle_click,
+			"Click me"
+		}
+	});
 
 	// External Callback type
 	let handle_submit = Callback::new(|_| {});
 	let _external_callback = page!(|| {
-	form {
-		@submit: handle_submit,
-		button {
-			"Submit"
+		form {
+			@submit: handle_submit,
+			button {
+				"Submit"
+			}
 		}
-	}
-});
+	});
 
 	// Mixed: inline and external handlers
 	let external_handler = |_| {};
 	let _mixed = page!(|| {
-	div {
-		button {
-			@click: external_handler,
-			"External"
+		div {
+			button {
+				@click: external_handler,
+				"External"
+			}
+			button {
+				@click: | _ | { },
+				"Inline"
+			}
 		}
-		button {
-			@click: | _ | { },
-			"Inline"
-		}
-	}
-});
+	});
 
 	// Cloned Callback used in multiple elements
 	let shared_handler = Callback::new(|_| {});
 	let handler1 = shared_handler.clone();
 	let handler2 = shared_handler.clone();
 	let _shared = page!(|| {
-	div {
-		button {
-			@click: handler1,
-			"Button 1"
+		div {
+			button {
+				@click: handler1,
+				"Button 1"
+			}
+			button {
+				@click: handler2,
+				"Button 2"
+			}
 		}
-		button {
-			@click: handler2,
-			"Button 2"
-		}
-	}
-});
+	});
 
 	// Handler with thread-safe captured state
 	let (counter, set_counter) = use_shared_state(0);
@@ -68,9 +68,9 @@ fn main() {
 		}
 	};
 	let _with_state = page!(|| {
-	button {
-		@click: increment,
-		"Increment"
-	}
-});
+		button {
+			@click: increment,
+			"Increment"
+		}
+	});
 }
