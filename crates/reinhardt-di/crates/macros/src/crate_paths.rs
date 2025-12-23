@@ -6,7 +6,7 @@ use quote::quote;
 /// Resolves the path to the reinhardt_di crate dynamically.
 ///
 /// This supports different crate naming scenarios (reinhardt-di, renamed crates, etc.)
-pub fn get_reinhardt_di_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_di_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	match crate_name("reinhardt-di") {

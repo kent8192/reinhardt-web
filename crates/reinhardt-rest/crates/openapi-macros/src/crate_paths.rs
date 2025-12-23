@@ -6,7 +6,7 @@ use quote::quote;
 /// Resolves the path to the reinhardt_openapi crate dynamically.
 ///
 /// This supports different crate naming scenarios (reinhardt-openapi, renamed crates, etc.)
-pub fn get_reinhardt_openapi_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_openapi_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// First, try to find reinhardt-openapi directly

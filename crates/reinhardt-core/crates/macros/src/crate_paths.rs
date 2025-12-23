@@ -5,7 +5,7 @@ use quote::quote;
 
 /// Resolves the path to the Reinhardt crate dynamically.
 /// This supports different crate naming scenarios (reinhardt, reinhardt-web, reinhardt-core, etc.)
-pub fn get_reinhardt_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try reinhardt crate first (when used with `package = "reinhardt-web"`)
@@ -43,7 +43,7 @@ pub fn get_reinhardt_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_di crate dynamically.
-pub fn get_reinhardt_di_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_di_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -81,7 +81,7 @@ pub fn get_reinhardt_di_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_core crate dynamically.
-pub fn get_reinhardt_core_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_core_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -119,7 +119,7 @@ pub fn get_reinhardt_core_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_openapi crate dynamically.
-pub fn get_reinhardt_openapi_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_openapi_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -147,7 +147,7 @@ pub fn get_reinhardt_openapi_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_orm crate dynamically.
-pub fn get_reinhardt_orm_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_orm_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -185,7 +185,7 @@ pub fn get_reinhardt_orm_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_signals crate dynamically.
-pub fn get_reinhardt_signals_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_signals_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -213,7 +213,7 @@ pub fn get_reinhardt_signals_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_params crate dynamically.
-pub fn get_reinhardt_params_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_params_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -252,7 +252,7 @@ pub fn get_reinhardt_params_crate() -> TokenStream {
 
 /// Resolves the path to the reinhardt_exception crate dynamically.
 #[allow(dead_code)]
-pub fn get_reinhardt_exception_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_exception_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	match crate_name("reinhardt-exception") {
@@ -266,7 +266,7 @@ pub fn get_reinhardt_exception_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_apps crate dynamically.
-pub fn get_reinhardt_apps_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_apps_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -304,7 +304,7 @@ pub fn get_reinhardt_apps_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_migrations crate dynamically.
-pub fn get_reinhardt_migrations_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_migrations_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -342,7 +342,7 @@ pub fn get_reinhardt_migrations_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_proxy crate dynamically.
-pub fn get_reinhardt_proxy_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_proxy_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -370,7 +370,7 @@ pub fn get_reinhardt_proxy_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_http crate dynamically.
-pub fn get_reinhardt_http_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_http_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -408,7 +408,7 @@ pub fn get_reinhardt_http_crate() -> TokenStream {
 }
 
 /// Resolves the path to the async_trait crate dynamically.
-pub fn get_async_trait_crate() -> TokenStream {
+pub(crate) fn get_async_trait_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -446,7 +446,7 @@ pub fn get_async_trait_crate() -> TokenStream {
 }
 
 /// Resolves the path to the reinhardt_admin_adapters crate dynamically.
-pub fn get_reinhardt_admin_adapters_crate() -> TokenStream {
+pub(crate) fn get_reinhardt_admin_adapters_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
@@ -484,7 +484,7 @@ pub fn get_reinhardt_admin_adapters_crate() -> TokenStream {
 }
 
 /// Resolves the path to the inventory crate dynamically.
-pub fn get_inventory_crate() -> TokenStream {
+pub(crate) fn get_inventory_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};
 
 	// Try direct crate first
