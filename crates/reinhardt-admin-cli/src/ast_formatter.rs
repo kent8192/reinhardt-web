@@ -398,9 +398,10 @@ impl AstPageFormatter {
 	fn is_simple_body(body: &PageBody) -> bool {
 		// Simple if it has exactly one element with no attributes, events, or children
 		if body.nodes.len() == 1
-			&& let PageNode::Element(elem) = &body.nodes[0] {
-				return elem.attrs.is_empty() && elem.events.is_empty() && elem.children.is_empty();
-			}
+			&& let PageNode::Element(elem) = &body.nodes[0]
+		{
+			return elem.attrs.is_empty() && elem.events.is_empty() && elem.children.is_empty();
+		}
 		false
 	}
 
