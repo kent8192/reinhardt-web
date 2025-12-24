@@ -9,11 +9,7 @@ use rstest::*;
 #[cfg(feature = "testcontainers")]
 use std::sync::Arc;
 #[cfg(feature = "testcontainers")]
-use testcontainers::{
-	ContainerAsync, GenericImage, ImageExt,
-	core::{ContainerPort, WaitFor},
-	runners::AsyncRunner,
-};
+use testcontainers::{ContainerAsync, GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
 #[cfg(feature = "testcontainers")]
 use crate::resource::{TeardownGuard, TestResource};
@@ -62,7 +58,7 @@ pub async fn validator_test_db() -> (ContainerAsync<GenericImage>, Arc<sqlx::PgP
 		.expect("Failed to start PostgreSQL container for validator tests");
 
 	let port = postgres
-		.get_host_port_ipv4(ContainerPort::Tcp(5432))
+		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get PostgreSQL port");
 

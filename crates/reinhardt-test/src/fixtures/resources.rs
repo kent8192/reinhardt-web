@@ -13,7 +13,7 @@ use std::sync::{Mutex, OnceLock, Weak};
 use crate::resource::{SuiteGuard, SuiteResource, acquire_suite};
 
 #[cfg(feature = "testcontainers")]
-use testcontainers::core::{ContainerPort, WaitFor};
+use testcontainers::core::WaitFor;
 
 // ============================================================================
 // PostgreSQL Suite Resource
@@ -63,7 +63,6 @@ impl SuiteResource for PostgresSuiteResource {
 #[cfg(feature = "testcontainers")]
 impl PostgresSuiteResource {
 	async fn init_async() -> Self {
-		use testcontainers::core::ContainerPort;
 		use testcontainers::{GenericImage, ImageExt, runners::AsyncRunner};
 
 		let postgres = GenericImage::new("postgres", "17-alpine")
@@ -76,7 +75,7 @@ impl PostgresSuiteResource {
 			.expect("Failed to start PostgreSQL container");
 
 		let port = postgres
-			.get_host_port_ipv4(ContainerPort::Tcp(5432))
+			.get_host_port_ipv4(5432)
 			.await
 			.expect("Failed to get PostgreSQL port");
 
@@ -193,7 +192,7 @@ impl MySqlSuiteResource {
 			.expect("Failed to start MySQL container");
 
 		let port = mysql
-			.get_host_port_ipv4(ContainerPort::Tcp(3306))
+			.get_host_port_ipv4(3306)
 			.await
 			.expect("Failed to get MySQL port");
 
