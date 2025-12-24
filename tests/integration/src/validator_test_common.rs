@@ -9,11 +9,7 @@ use reinhardt_db::{
 	orm::{FilterOperator, FilterValue, Model},
 };
 use std::sync::Arc;
-use testcontainers::{
-	GenericImage, ImageExt,
-	core::{ContainerPort, WaitFor},
-	runners::AsyncRunner,
-};
+use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
 /// Test database setup and management with TestContainers
 pub struct TestDatabase {
@@ -46,9 +42,7 @@ impl TestDatabase {
 					.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
 
 				let container = postgres_image.start().await?;
-				let port = container
-					.get_host_port_ipv4(ContainerPort::Tcp(5432))
-					.await?;
+				let port = container.get_host_port_ipv4(5432).await?;
 				let url = format!("postgres://postgres@127.0.0.1:{}/postgres", port);
 				(url, Some(container))
 			};

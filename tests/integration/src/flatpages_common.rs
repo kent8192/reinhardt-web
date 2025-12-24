@@ -4,7 +4,7 @@ use reinhardt_contrib::flatpages::FlatPage;
 use sqlx::{Pool, Postgres, Row};
 use std::env;
 #[cfg(feature = "testcontainers")]
-use testcontainers::{GenericImage, core::ContainerPort, runners::AsyncRunner};
+use testcontainers::{GenericImage, runners::AsyncRunner};
 
 pub const TEST_SITE_ID: i64 = 1;
 
@@ -40,7 +40,7 @@ pub async fn setup_test_db() -> Pool<Postgres> {
 		.expect("Failed to start PostgreSQL container");
 
 	let port = container
-		.get_host_port_ipv4(ContainerPort::Tcp(5432))
+		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get container port");
 

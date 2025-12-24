@@ -45,7 +45,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, Row};
 use std::sync::Arc;
-use testcontainers::core::{ContainerPort, WaitFor};
+use testcontainers::core::WaitFor;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, GenericImage};
@@ -103,7 +103,7 @@ async fn test_multiple_database_connections(
 		.expect("Failed to start second PostgreSQL container");
 
 	let port2 = postgres2
-		.get_host_port_ipv4(ContainerPort::Tcp(5432))
+		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get port for second container");
 	let url2 = format!("postgres://postgres:test@localhost:{}/testdb2", port2);
@@ -197,7 +197,7 @@ async fn test_data_migration_between_databases(
 		.expect("Failed to start target PostgreSQL container");
 
 	let port_target = postgres_target
-		.get_host_port_ipv4(ContainerPort::Tcp(5432))
+		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get target port");
 	let url_target = format!(
@@ -330,7 +330,7 @@ async fn test_read_replica_pattern(
 		.expect("Failed to start replica PostgreSQL container");
 
 	let port_replica = postgres_replica
-		.get_host_port_ipv4(ContainerPort::Tcp(5432))
+		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get replica port");
 	let url_replica = format!(
@@ -441,7 +441,7 @@ async fn test_read_load_balancing_across_replicas(
 		tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
 		let port = postgres_replica
-			.get_host_port_ipv4(ContainerPort::Tcp(5432))
+			.get_host_port_ipv4(5432)
 			.await
 			.unwrap_or_else(|_| panic!("Failed to get replica {} port", i));
 		let url = format!("postgres://postgres:test@localhost:{}/replica_{}", port, i);
@@ -561,7 +561,7 @@ async fn test_primary_database_failover(
 		.expect("Failed to start replica container");
 
 	let port_replica = postgres_replica
-		.get_host_port_ipv4(ContainerPort::Tcp(5432))
+		.get_host_port_ipv4(5432)
 		.await
 		.expect("Failed to get replica port");
 	let url_replica = format!(
