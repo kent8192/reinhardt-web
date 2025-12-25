@@ -111,12 +111,41 @@ impl FilesystemRepository {
 		Ok(formatted)
 	}
 
+	/// Check if two migrations have identical operations
+	///
+	/// Returns true if the operations vectors are equal.
+	fn has_identical_operations(&self, m1: &Migration, m2: &Migration) -> bool {
+		m1.operations == m2.operations
+	}
 }
 
 #[async_trait]
 impl MigrationRepository for FilesystemRepository {
 	async fn save(&mut self, migration: &Migration) -> Result<()> {
 		let path = self.migration_path(migration.app_label, migration.name);
+
+		// Check if migration file already exists to prevent overwriting
+		if tokio::fs::try_exists(&path).await.unwrap_or(false) {
+			return Err(MigrationError::IoError(std::io::Error::other(format!(
+				"Migration file already exists: {}. \
+				If you want to replace it, please delete the existing file first.",
+				path.display()
+			))));
+		}
+
+		// Check for duplicate operations with existing migrations
+		let existing_migrations = self.list(migration.app_label).await?;
+		for existing in &existing_migrations {
+			if self.has_identical_operations(existing, migration) {
+				return Err(MigrationError::DuplicateOperations(format!(
+					"Migration '{}' has identical operations to existing migration '{}'. \
+					This usually indicates a problem with from_state construction. \
+					The existing migration was created at the same location and performs \
+					the same database changes.",
+					migration.name, existing.name
+				)));
+			}
+		}
 
 		// Create parent directories
 		if let Some(parent) = path.parent() {
@@ -375,5 +404,32 @@ mod tests {
 		let path = repo.migration_path("polls", "0002_add_field");
 		let content = tokio::fs::read_to_string(&path).await.unwrap();
 		assert!(content.contains("dependencies"));
+	}
+
+	#[tokio::test]
+	#[serial(filesystem_repository)]
+	async fn test_filesystem_repository_save_prevents_overwrite() {
+		let temp_dir = TempDir::new().unwrap();
+		let mut repo = FilesystemRepository::new(temp_dir.path());
+
+		// Save initial migration
+		let migration = create_test_migration("polls", "0001_initial");
+		repo.save(&migration).await.unwrap();
+
+		// Verify file exists
+		let path = repo.migration_path("polls", "0001_initial");
+		assert!(tokio::fs::try_exists(&path).await.unwrap());
+
+		// Attempt to save again with same name should fail
+		let duplicate_migration = create_test_migration("polls", "0001_initial");
+		let result = repo.save(&duplicate_migration).await;
+
+		// Should return error
+		assert!(result.is_err());
+
+		// Error message should indicate file exists
+		let err = result.unwrap_err();
+		assert!(matches!(err, MigrationError::IoError(_)));
+		assert!(err.to_string().contains("already exists"));
 	}
 }
