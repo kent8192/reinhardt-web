@@ -151,6 +151,8 @@ pub mod plugin_commands;
 pub mod registry;
 pub mod start_commands;
 pub mod template;
+#[cfg(feature = "server")]
+pub mod tui;
 
 use thiserror::Error;
 
@@ -203,6 +205,12 @@ pub enum CommandError {
 impl From<tera::Error> for CommandError {
 	fn from(err: tera::Error) -> Self {
 		CommandError::TemplateError(err.to_string())
+	}
+}
+
+impl From<String> for CommandError {
+	fn from(err: String) -> Self {
+		CommandError::ExecutionError(err)
 	}
 }
 
