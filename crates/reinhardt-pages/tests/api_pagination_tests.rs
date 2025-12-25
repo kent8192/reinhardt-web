@@ -16,7 +16,7 @@
 //! Total: 17 tests
 //!
 //! Note: Error handling tests (network errors, HTTP errors) require WASM
-//! environment with mock server and will be implemented in Phase 8.
+//! environment with mock server.
 
 use reinhardt_pages::api::ApiQuerySet;
 

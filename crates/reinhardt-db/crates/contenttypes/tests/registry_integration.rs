@@ -198,7 +198,7 @@ async fn test_registry_clear(
 // Registry + Database Persistence Integration Tests
 // ============================================================================
 // Note: These tests require ContentTypePersistence with Arc<PgPool> support
-// Currently deferred to Phase 2 as ContentTypePersistence expects Arc<AnyPool>
+// ContentTypePersistence currently expects Arc<AnyPool>
 
 #[cfg(feature = "database")]
 /// Test registry initialization from database
@@ -211,7 +211,7 @@ async fn test_registry_clear(
 /// **Not Intent**: Empty database initialization, registry-only operations
 #[rstest]
 #[tokio::test]
-#[ignore = "Requires ContentTypePersistence with PgPool support - deferred to Phase 2"]
+#[ignore = "Requires ContentTypePersistence with PgPool support"]
 async fn test_registry_init_from_database(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
@@ -271,7 +271,7 @@ async fn test_registry_init_from_database(
 /// **Not Intent**: Real-time updates, database triggers
 #[rstest]
 #[tokio::test]
-#[ignore = "Requires ContentTypePersistence with PgPool support - deferred to Phase 2"]
+#[ignore = "Requires ContentTypePersistence with PgPool support"]
 async fn test_registry_sync_with_database(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
@@ -328,7 +328,7 @@ async fn test_registry_sync_with_database(
 /// **Not Intent**: Auto-generated IDs, ID conflicts
 #[rstest]
 #[tokio::test]
-#[ignore = "Requires ContentTypePersistence with PgPool support - deferred to Phase 2"]
+#[ignore = "Requires ContentTypePersistence with PgPool support"]
 async fn test_registry_with_database_ids(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
@@ -376,7 +376,7 @@ async fn test_registry_with_database_ids(
 /// **Not Intent**: Single content type operations, incremental loading
 #[rstest]
 #[tokio::test]
-#[ignore = "Requires ContentTypePersistence with PgPool support - deferred to Phase 2"]
+#[ignore = "Requires ContentTypePersistence with PgPool support"]
 async fn test_registry_bulk_load_from_database(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {

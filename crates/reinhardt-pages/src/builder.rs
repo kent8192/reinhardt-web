@@ -7,7 +7,7 @@
 //! - **Fluent API**: Chain method calls for readable element construction
 //! - **Type-safe attributes**: Compile-time validation of attribute names
 //! - **Event shortcuts**: Convenient methods like `.on_click()` for common events
-//! - **Integration with Phase 1**: Works seamlessly with Signal/Effect system
+//! - **Reactive Integration**: Works seamlessly with Signal/Effect system
 //!
 //! ## Example
 //!

@@ -385,24 +385,24 @@ fn test_reactive_locale_change() {
 
 ## Implementation Priority
 
-### Phase 1: Foundation (Required)
+### Tier 1: Foundation (Must-Have)
 1. ✅ Basic `gettext` function
 2. ✅ Locale management (set, get)
 3. ✅ Translation data loading (JSON)
 4. ✅ String interpolation (named placeholders)
 
-### Phase 2: Advanced Translation (Important)
+### Tier 2: Advanced Translation (Should-Have)
 1. ⬜ Plural form support (`ngettext`)
 2. ⬜ Context-aware translation (`pgettext`)
 3. ⬜ Locale fallback
 4. ⬜ Signal-based reactive translation
 
-### Phase 3: Localization (Recommended)
+### Tier 3: Localization (Nice-to-Have)
 1. ⬜ Date/time formatting (CLDR compliant)
 2. ⬜ Number formatting
 3. ⬜ Currency formatting
 
-### Phase 4: Developer Experience (Optional)
+### Tier 4: Developer Experience (Optional)
 1. ⬜ Macro-based API (`t!("key")`)
 2. ⬜ Component-based API (`<Trans key="..." />`)
 3. ⬜ Build-time translation key validation

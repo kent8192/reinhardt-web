@@ -5,14 +5,14 @@
 //!
 //! ## Planned Features
 //!
-//! ### Medium Priority (Phase 3)
+//! ### Medium Priority
 //!
 //! 1. **Custom Error Messages (Extended)**: Extend `.with_message()` to all validators
 //!    - Consistent API across all validators
 //!    - Custom message templates
 //!    - Maintain default error messages as fallback
 //!
-//! ### Lower Priority (Phase 4)
+//! ### Lower Priority
 //!
 //! 1. **Internationalization (i18n)**: Multi-language error messages
 //!    - Fluent-based message system

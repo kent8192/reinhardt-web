@@ -2035,7 +2035,7 @@ mod tests {
 		assert_eq!(params, Vec::<String>::new());
 	}
 
-	// Query Optimization Tests (Phase 3)
+	// Query Optimization Tests
 
 	#[test]
 	fn test_select_related_query_generation() {

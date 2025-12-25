@@ -62,7 +62,7 @@ struct ModelAttributesParsed {
 
 /// Model configuration from #[model(...)] attribute
 #[derive(Debug, Clone)]
-// Phase 3.2: SQLite table-level attributes (strict, without_rowid) are parsed but intentionally
+// SQLite table-level attributes (strict, without_rowid) are parsed but intentionally
 // excluded from current implementation. These fields are reserved for future SQLite-specific
 // constraint generation support, which requires additional database schema generation logic.
 // Implementation of these features would involve:
@@ -75,8 +75,8 @@ struct ModelConfig {
 	table_name: String,
 	constraints: Vec<ConstraintSpec>,
 
-	// Phase 3.2: Table-level attributes (SQLite) - Intentionally excluded features
-	// These fields will remain unused until Phase 3.2 implementation:
+	// Table-level attributes (SQLite) - Intentionally excluded features
+	// These fields will remain unused until future implementation:
 	// - strict: Enable SQLite STRICT mode (requires schema generator changes)
 	// - without_rowid: Enable WITHOUT ROWID optimization (requires migration system changes)
 	#[cfg(feature = "db-sqlite")]
@@ -417,25 +417,25 @@ struct FieldConfig {
 	#[cfg(any(feature = "db-postgres", feature = "db-mysql"))]
 	comment: Option<String>,
 
-	// Phase 2.1: Storage Optimization (PostgreSQL)
+	// Storage Optimization (PostgreSQL)
 	#[cfg(feature = "db-postgres")]
 	storage: Option<StorageStrategy>,
 	#[cfg(feature = "db-postgres")]
 	compression: Option<CompressionMethod>,
 
-	// Phase 2.2: ON UPDATE Trigger (MySQL)
+	// ON UPDATE Trigger (MySQL)
 	#[cfg(feature = "db-mysql")]
 	on_update_current_timestamp: Option<bool>,
 
-	// Phase 2.2: Invisible Columns (MySQL)
+	// Invisible Columns (MySQL)
 	#[cfg(feature = "db-mysql")]
 	invisible: Option<bool>,
 
-	// Phase 2.3: Full-Text Index (PostgreSQL, MySQL)
+	// Full-Text Index (PostgreSQL, MySQL)
 	#[cfg(any(feature = "db-postgres", feature = "db-mysql"))]
 	fulltext: Option<bool>,
 
-	// Phase 3.1: Numeric Attributes (MySQL, deprecated)
+	// Numeric Attributes (MySQL, deprecated)
 	#[cfg(feature = "db-mysql")]
 	unsigned: Option<bool>,
 	#[cfg(feature = "db-mysql")]
@@ -670,7 +670,7 @@ impl FieldConfig {
 						))
 					}
 				}
-				// Phase 2.1: Storage Optimization
+				// Storage Optimization
 				else if meta.path.is_ident("storage") {
 					#[cfg(feature = "db-postgres")]
 					{
@@ -712,7 +712,7 @@ impl FieldConfig {
 						Err(meta.error("compression is only available with db-postgres feature"))
 					}
 				}
-				// Phase 2.2: ON UPDATE Trigger
+				// ON UPDATE Trigger
 				else if meta.path.is_ident("on_update_current_timestamp") {
 					#[cfg(feature = "db-mysql")]
 					{
@@ -727,7 +727,7 @@ impl FieldConfig {
 						))
 					}
 				}
-				// Phase 2.2: Invisible Columns
+				// Invisible Columns
 				else if meta.path.is_ident("invisible") {
 					#[cfg(feature = "db-mysql")]
 					{
@@ -740,7 +740,7 @@ impl FieldConfig {
 						Err(meta.error("invisible is only available with db-mysql feature"))
 					}
 				}
-				// Phase 2.3: Full-Text Index
+				// Full-Text Index
 				else if meta.path.is_ident("fulltext") {
 					#[cfg(any(feature = "db-postgres", feature = "db-mysql"))]
 					{
@@ -755,7 +755,7 @@ impl FieldConfig {
 						))
 					}
 				}
-				// Phase 3.1: Numeric Attributes (MySQL, deprecated)
+				// Numeric Attributes (MySQL, deprecated)
 				else if meta.path.is_ident("unsigned") {
 					#[cfg(feature = "db-mysql")]
 					{
@@ -2113,7 +2113,7 @@ fn generate_field_metadata(
 			});
 		}
 
-		// Phase 2.1: Storage Optimization (PostgreSQL)
+		// Storage Optimization (PostgreSQL)
 		#[cfg(feature = "db-postgres")]
 		if let Some(ref storage) = config.storage {
 			let storage_str = match storage {
@@ -2143,7 +2143,7 @@ fn generate_field_metadata(
 			});
 		}
 
-		// Phase 2.2: ON UPDATE Trigger (MySQL)
+		// ON UPDATE Trigger (MySQL)
 		#[cfg(feature = "db-mysql")]
 		if let Some(on_update_current_timestamp) = config.on_update_current_timestamp {
 			attrs.push(quote! {
@@ -2154,7 +2154,7 @@ fn generate_field_metadata(
 			});
 		}
 
-		// Phase 2.3: Invisible Columns (MySQL)
+		// Invisible Columns (MySQL)
 		#[cfg(feature = "db-mysql")]
 		if let Some(invisible) = config.invisible {
 			attrs.push(quote! {
@@ -2165,7 +2165,7 @@ fn generate_field_metadata(
 			});
 		}
 
-		// Phase 2.4: Full-Text Index (PostgreSQL, MySQL)
+		// Full-Text Index (PostgreSQL, MySQL)
 		#[cfg(any(feature = "db-postgres", feature = "db-mysql"))]
 		if let Some(fulltext) = config.fulltext {
 			attrs.push(quote! {
@@ -2176,7 +2176,7 @@ fn generate_field_metadata(
 			});
 		}
 
-		// Phase 3.1: Numeric Attributes (MySQL, deprecated)
+		// Numeric Attributes (MySQL, deprecated)
 		#[cfg(feature = "db-mysql")]
 		if let Some(unsigned) = config.unsigned {
 			attrs.push(quote! {

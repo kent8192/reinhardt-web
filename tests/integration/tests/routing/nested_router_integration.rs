@@ -1,4 +1,4 @@
-//! Test for Phase 2.3: Nested router implementation
+//! Nested router implementation tests
 
 use reinhardt_routers::UnifiedRouter;
 use reinhardt_viewsets::{nested_url, ModelViewSet, NestedResource, NestedViewSet};

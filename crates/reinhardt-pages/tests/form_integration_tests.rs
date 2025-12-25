@@ -18,8 +18,7 @@
 //!
 //! Total: 35 tests
 //!
-//! Note: DOM rendering tests require WASM environment and will be
-//! implemented in Phase 8 with WASM test infrastructure.
+//! Note: DOM rendering tests require WASM environment with WASM test infrastructure.
 
 use reinhardt_pages::{FieldMetadata, FormComponent, FormMetadata, Widget};
 use std::collections::HashMap;

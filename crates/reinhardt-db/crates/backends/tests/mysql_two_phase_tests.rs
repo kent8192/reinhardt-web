@@ -10,7 +10,7 @@ use rstest::*;
 use serial_test::serial;
 use sqlx::{MySqlPool, Row};
 use std::sync::Arc;
-use testcontainers::core::WaitFor;
+use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::{GenericImage, ImageExt, runners::AsyncRunner};
 
 type MysqlContainer = testcontainers::ContainerAsync<GenericImage>;
@@ -21,7 +21,11 @@ async fn mysql_pool() -> (MysqlContainer, Arc<MySqlPool>) {
 	// Note: testcontainers 0.25.x uses default timeout settings
 	// MySQL 8.0 requires extra time for initialization
 	let mysql = GenericImage::new("mysql", "8.0")
-		.with_wait_for(WaitFor::message_on_stderr("ready for connections"))
+		.with_exposed_port(3306.tcp())
+		.with_wait_for(WaitFor::message_on_stderr(
+			"port: 3306  MySQL Community Server",
+		))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
 		.with_env_var("MYSQL_ROOT_PASSWORD", "test")
 		.with_env_var("MYSQL_DATABASE", "mysql")
 		.start()

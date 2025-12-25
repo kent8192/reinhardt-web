@@ -20,7 +20,7 @@
 //!
 //! - **Automatic CSRF Protection**: CSRF token automatically injected as hidden input
 //! - **Client-Side Validation**: Validates required fields, displays errors
-//! - **Reactive State**: Field values managed with Signals from Phase 1
+//! - **Reactive State**: Field values managed with Signals
 //! - **AJAX Submission**: Form submission via fetch API with CSRF token
 //! - **Widget Rendering**: Renders appropriate input types based on Widget metadata
 //!

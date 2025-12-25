@@ -106,7 +106,9 @@ pub fn infer_admin_field_type(db_type: &DbFieldType) -> AdminFieldType {
 		DbFieldType::Year => AdminFieldType::Number,
 
 		// Relationship types → Hidden (handled separately)
-		DbFieldType::OneToOne { .. } | DbFieldType::ManyToMany { .. } => AdminFieldType::Hidden,
+		DbFieldType::OneToOne { .. }
+		| DbFieldType::ManyToMany { .. }
+		| DbFieldType::ForeignKey { .. } => AdminFieldType::Hidden,
 
 		// Custom types → Text input as fallback
 		DbFieldType::Custom(_) => AdminFieldType::Text,

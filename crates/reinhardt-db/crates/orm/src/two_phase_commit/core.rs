@@ -119,11 +119,11 @@ pub enum TransactionState {
 	NotStarted,
 	/// Transaction is in progress
 	Active,
-	/// Preparing participants (Phase 1 in progress)
+	/// Preparing participants (First Phase in progress)
 	Preparing,
 	/// All participants have been prepared
 	Prepared,
-	/// Committing transaction (Phase 2 in progress)
+	/// Committing transaction (Second Phase in progress)
 	Committing,
 	/// Transaction has been committed
 	Committed,
@@ -157,18 +157,18 @@ pub trait TwoPhaseParticipant: Send + Sync {
 	/// Begin a local transaction
 	async fn begin(&self) -> Result<(), TwoPhaseError>;
 
-	/// Prepare the transaction (Phase 1)
+	/// Prepare the transaction (First Phase)
 	///
 	/// This is the voting phase where the participant indicates whether it can commit.
 	/// Returns Ok(()) if ready to commit, or an error if unable to commit.
 	async fn prepare(&self, xid: String) -> Result<(), TwoPhaseError>;
 
-	/// Commit the prepared transaction (Phase 2)
+	/// Commit the prepared transaction (Second Phase)
 	///
 	/// This commits the transaction that was previously prepared.
 	async fn commit(&self, xid: String) -> Result<(), TwoPhaseError>;
 
-	/// Rollback the transaction (Phase 2)
+	/// Rollback the transaction (Second Phase)
 	///
 	/// This rolls back the transaction, either before or after prepare.
 	async fn rollback(&self, xid: String) -> Result<(), TwoPhaseError>;

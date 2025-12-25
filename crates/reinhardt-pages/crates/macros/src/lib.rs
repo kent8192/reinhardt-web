@@ -69,7 +69,7 @@ mod server_fn;
 ///
 /// ## Options
 ///
-/// - `use_inject = true` - Enable dependency injection (Phase 5.5, Week 4)
+/// - `use_inject = true` - Enable dependency injection
 /// - `endpoint = "/custom/path"` - Custom endpoint path
 /// - `codec = "json"` - Serialization codec (json, url, msgpack)
 ///

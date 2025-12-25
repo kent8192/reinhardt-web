@@ -1,4 +1,4 @@
-//! Test for Phase 2.2: Router include() API (Django-style alias for mount())
+//! Router include() API integration tests (Django-style alias for mount())
 
 use reinhardt_routers::UnifiedRouter;
 

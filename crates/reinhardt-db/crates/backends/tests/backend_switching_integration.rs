@@ -24,7 +24,11 @@ use rstest::*;
 use serial_test::serial;
 use sqlx::{MySqlPool, PgPool, SqlitePool};
 use std::sync::Arc;
-use testcontainers::{ContainerAsync, GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
+use testcontainers::{
+	ContainerAsync, GenericImage, ImageExt,
+	core::{IntoContainerPort, WaitFor},
+	runners::AsyncRunner,
+};
 use testcontainers_modules::postgres::Postgres;
 
 type PostgresContainer = ContainerAsync<Postgres>;
@@ -74,7 +78,11 @@ async fn postgres_container() -> (PostgresContainer, Arc<PgPool>, u16, String) {
 #[fixture]
 async fn mysql_container() -> (MySqlContainer, Arc<MySqlPool>, u16, String) {
 	let mysql = GenericImage::new("mysql", "8.0")
-		.with_wait_for(WaitFor::message_on_stderr("ready for connections"))
+		.with_exposed_port(3306.tcp())
+		.with_wait_for(WaitFor::message_on_stderr(
+			"port: 3306  MySQL Community Server",
+		))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
 		.with_env_var("MYSQL_ROOT_PASSWORD", "test")
 		.with_env_var("MYSQL_DATABASE", "mysql")
 		.start()

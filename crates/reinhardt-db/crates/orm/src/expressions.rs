@@ -944,7 +944,7 @@ mod tests {
 		);
 	}
 
-	// FieldRef-based F expression tests (Phase 3-4)
+	// FieldRef-based F expression tests
 
 	#[test]
 	fn test_field_ref_to_f_direct_conversion() {

@@ -217,6 +217,14 @@ pub enum MigrationError {
 
 	#[error("Unsupported database: {0}")]
 	UnsupportedDatabase(String),
+
+	/// Duplicate operations detected
+	///
+	/// This error occurs when a new migration has identical operations
+	/// to an existing migration, which usually indicates a problem with
+	/// from_state construction during makemigrations.
+	#[error("Duplicate operations: {0}")]
+	DuplicateOperations(String),
 }
 
 pub type Result<T> = std::result::Result<T, MigrationError>;

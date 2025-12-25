@@ -1,4 +1,4 @@
-//! Test for Phase 2.1: ViewSet as_view → register_to_router integration
+//! ViewSet as_view → register_to_router integration tests
 
 use hyper::Method;
 use reinhardt_routers::UnifiedRouter;

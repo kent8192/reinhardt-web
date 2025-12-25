@@ -485,7 +485,7 @@ mod tests {
 		assert!(optional.is_none());
 	}
 
-	// Additional tests for Phase 3
+	// Additional dependency scope tests
 
 	#[test]
 	fn test_dependency_scope_equality() {

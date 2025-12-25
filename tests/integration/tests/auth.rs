@@ -18,3 +18,9 @@ mod session_authentication_integration;
 
 #[path = "auth/multi_auth_backend_integration.rs"]
 mod multi_auth_backend_integration;
+
+#[path = "auth/current_user_di_integration.rs"]
+mod current_user_di_integration;
+
+#[path = "auth/csrf_protection_integration.rs"]
+mod csrf_protection_integration;

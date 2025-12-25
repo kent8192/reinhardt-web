@@ -279,7 +279,9 @@ name: String,
 
 ## Newly Implemented Attributes (22 items)
 
-### Phase 1: Standard and Cross-DBMS Common (10 attributes)
+### Core Features (10 attributes)
+
+**説明**: すべてのDBMSまたは複数のDBMSで共通に使用される基本機能
 
 #### `generated: &str`
 
@@ -438,7 +440,9 @@ email: String,
 
 ---
 
-### Phase 2: DBMS-Specific Important Features (5 attributes)
+### DBMS-Specific Features (5 attributes)
+
+**説明**: 特定のDBMSに特化した重要な機能（PostgreSQL、MySQL）
 
 #### `storage: &str`
 
@@ -530,7 +534,9 @@ index.
 
 ---
 
-### Phase 3: Compatibility and Special Purpose (4 attributes)
+### Legacy Compatibility (4 attributes)
+
+**説明**: 後方互換性のための機能（一部は非推奨）
 
 #### `unsigned: bool` ⚠️ Deprecated
 
