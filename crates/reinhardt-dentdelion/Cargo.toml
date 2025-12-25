@@ -27,7 +27,7 @@ cli = ["dep:crates_io_api", "dep:reqwest"]
 
 # JavaScript runtime SSR support (boa_engine based)
 # Enables JavaScript SSR for WASM plugins using pure Rust ECMAScript engine
-ts = ["wasm", "dep:boa_engine"]
+ts = ["wasm", "dep:boa_engine", "dep:scraper"]
 
 [dependencies]
 # Core dependencies
@@ -78,6 +78,9 @@ reinhardt-backends = { workspace = true, optional = true }
 # Provides pure Rust JavaScript execution for React/Preact SSR
 # Note: boa_engine is a pure Rust ECMAScript engine with no external dependencies
 boa_engine = { version = "0.21", optional = true }
+
+# HTML parsing (optional, for CSS/Meta extraction in SSR)
+scraper = { version = "0.22", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

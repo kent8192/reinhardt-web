@@ -116,6 +116,9 @@ pub struct SsrProxy {
 	/// TypeScript runtime (when `ts` feature is enabled)
 	#[cfg(feature = "ts")]
 	ts_runtime: Option<SharedTsRuntime>,
+
+	/// Base directory for plugin assets (component files)
+	plugin_base_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for SsrProxy {
@@ -132,6 +135,8 @@ impl std::fmt::Debug for SsrProxy {
 		#[cfg(feature = "ts")]
 		debug.field("ts_enabled", &self.ts_runtime.is_some());
 
+		debug.field("plugin_base_dir", &self.plugin_base_dir);
+
 		debug.finish()
 	}
 }
@@ -146,6 +151,7 @@ impl SsrProxy {
 			available: false,
 			#[cfg(feature = "ts")]
 			ts_runtime: None,
+			plugin_base_dir: None,
 		}
 	}
 
@@ -158,6 +164,7 @@ impl SsrProxy {
 			available,
 			#[cfg(feature = "ts")]
 			ts_runtime: None,
+			plugin_base_dir: None,
 		}
 	}
 
@@ -176,17 +183,98 @@ impl SsrProxy {
 	/// let proxy = SsrProxy::with_ts_runtime(ts_runtime);
 	/// assert!(proxy.is_available());
 	/// ```
-	#[cfg(feature = "ts")]
 	pub fn with_ts_runtime(runtime: SharedTsRuntime) -> Self {
 		Self {
 			available: true,
 			ts_runtime: Some(runtime),
+			plugin_base_dir: None,
 		}
 	}
 
 	/// Check if SSR is available on the host.
 	pub fn is_available(&self) -> bool {
 		self.available
+	}
+
+	/// Set the base directory for plugin assets.
+	///
+	/// This directory is used as the root for resolving component file paths
+	/// in [`render_react`](Self::render_react).
+	///
+	/// # Arguments
+	///
+	/// * `base_dir` - Base directory path for component files
+	///
+	/// # Security
+	///
+	/// Component paths are validated against this base directory to prevent
+	/// path traversal attacks.
+	pub fn with_plugin_base_dir(mut self, base_dir: std::path::PathBuf) -> Self {
+		self.plugin_base_dir = Some(base_dir);
+		self
+	}
+
+	/// Extract CSS and meta tags from rendered HTML.
+	///
+	/// # Arguments
+	///
+	/// * `html` - Rendered HTML string
+	/// * `options` - Rendering options
+	///
+	/// # Returns
+	///
+	/// Tuple of (css: Option<String>, meta: Option<Vec<(String, String)>>)
+	#[cfg(feature = "ts")]
+	fn extract_assets(
+		html: &str,
+		options: &RenderOptions,
+	) -> (Option<String>, Option<Vec<(String, String)>>) {
+		use scraper::{Html, Selector};
+
+		let document = Html::parse_document(html);
+
+		// Extract CSS if requested
+		let css = if options.extract_css {
+			let css_selector = Selector::parse("style").unwrap();
+			let css_texts: Vec<String> = document
+				.select(&css_selector)
+				.filter_map(|el| el.text().next().map(|t| t.to_string()))
+				.collect();
+
+			if css_texts.is_empty() {
+				None
+			} else {
+				Some(css_texts.join("\n"))
+			}
+		} else {
+			None
+		};
+
+		// Extract meta tags if requested
+		let meta = if options.extract_meta {
+			let meta_selector = Selector::parse("meta").unwrap();
+			let meta_tags: Vec<(String, String)> = document
+				.select(&meta_selector)
+				.filter_map(|el| {
+					let name = el
+						.value()
+						.attr("name")
+						.or_else(|| el.value().attr("property"))?;
+					let content = el.value().attr("content")?;
+					Some((name.to_string(), content.to_string()))
+				})
+				.collect();
+
+			if meta_tags.is_empty() {
+				None
+			} else {
+				Some(meta_tags)
+			}
+		} else {
+			None
+		};
+
+		(css, meta)
 	}
 
 	/// Render a component to HTML using inline component code.
@@ -242,10 +330,13 @@ impl SsrProxy {
 		if let Some(ref runtime) = self.ts_runtime {
 			let html = runtime.render_component(component_code, props_json)?;
 
+			// Extract CSS and Meta tags if requested
+			let (css, meta) = Self::extract_assets(&html, &options);
+
 			return Ok(RenderResult {
 				html,
-				css: None,  // CSS extraction not yet supported
-				meta: None, // Meta extraction not yet supported
+				css,
+				meta,
 				hydration_script: if options.include_hydration {
 					Some(self.generate_hydration_script(component_code, props_json))
 				} else {
@@ -275,55 +366,46 @@ impl SsrProxy {
 	/// For inline component code, use [`render_component`](Self::render_component).
 	pub async fn render_react(
 		&self,
-		_component_path: &str,
-		_props: &[u8],
-		_options: RenderOptions,
+		component_path: &str,
+		props: &[u8],
+		options: RenderOptions,
 	) -> Result<RenderResult, SsrError> {
 		if !self.available {
 			return Err(SsrError::NotAvailable);
 		}
 
-		// TODO: Implement file-based component loading
-		// 1. Load the component code from component_path
-		// 2. Deserialize props from MessagePack
-		// 3. Call render_component with the loaded code
+		// Check if plugin_base_dir is set
+		let base_dir = self.plugin_base_dir.as_ref().ok_or_else(|| {
+			SsrError::ComponentNotFound(
+				"Plugin base directory not set. Use with_plugin_base_dir()".to_string(),
+			)
+		})?;
 
-		Err(SsrError::ComponentNotFound(
-			"File-based component loading not yet implemented".to_string(),
-		))
-	}
+		// Validate component path (security check)
+		let validated_path = validate_component_path(base_dir, component_path)?;
 
-	/// Render a Vue component to HTML.
-	///
-	/// # Arguments
-	///
-	/// * `component_path` - Path to the component file (relative to plugin assets)
-	/// * `props` - MessagePack-serialized component props
-	/// * `options` - Rendering options
-	///
-	/// # Returns
-	///
-	/// Rendered HTML and optional extracted assets, or an error if rendering fails.
-	///
-	/// # Note
-	///
-	/// Vue SSR requires @vue/server-renderer which is not yet integrated.
-	pub async fn render_vue(
-		&self,
-		_component_path: &str,
-		_props: &[u8],
-		_options: RenderOptions,
-	) -> Result<RenderResult, SsrError> {
-		if !self.available {
-			return Err(SsrError::NotAvailable);
-		}
+		// Load component code from file
+		let component_code = tokio::fs::read_to_string(&validated_path)
+			.await
+			.map_err(|e| {
+				SsrError::ComponentNotFound(format!(
+					"Failed to read component file {}: {}",
+					component_path, e
+				))
+			})?;
 
-		// TODO: Implement Vue SSR
-		// Vue requires @vue/server-renderer integration
+		// Deserialize props from MessagePack
+		let props_value: serde_json::Value = rmp_serde::from_slice(props).map_err(|e| {
+			SsrError::PropsSerialization(format!("Failed to deserialize props: {}", e))
+		})?;
 
-		Err(SsrError::RenderFailed(
-			"Vue SSR not yet implemented".to_string(),
-		))
+		// Serialize to JSON for render_component
+		let props_json = serde_json::to_string(&props_value).map_err(|e| {
+			SsrError::PropsSerialization(format!("Failed to serialize props to JSON: {}", e))
+		})?;
+
+		// Call render_component with the loaded code
+		self.render_component(&component_code, &props_json, options)
 	}
 
 	/// Execute arbitrary JavaScript/TypeScript code and return the result.
@@ -361,15 +443,39 @@ impl SsrProxy {
 	/// # Returns
 	///
 	/// MessagePack-serialized result, or an error if execution fails.
-	pub async fn eval_js_bytes(&self, _code: &str) -> Result<Vec<u8>, SsrError> {
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// let result = proxy.eval_js_bytes("({foo: 'bar', num: 42})").await?;
+	/// // result contains MessagePack-encoded {foo: "bar", num: 42}
+	/// ```
+	pub async fn eval_js_bytes(&self, code: &str) -> Result<Vec<u8>, SsrError> {
 		if !self.available {
 			return Err(SsrError::NotAvailable);
 		}
 
-		// TODO: Implement MessagePack serialization of JS result
-		Err(SsrError::EvalFailed(
-			"MessagePack serialization not yet implemented".to_string(),
-		))
+		#[cfg(feature = "ts")]
+		if let Some(ref runtime) = self.ts_runtime {
+			// Wrap the code with JSON.stringify() to ensure JSON output
+			let json_code = format!("JSON.stringify({})", code);
+
+			// Evaluate JavaScript code and get JSON result
+			let json_result = runtime.eval(&json_code)?;
+
+			// Parse JSON string to serde_json::Value
+			let value: serde_json::Value = serde_json::from_str(&json_result)
+				.map_err(|e| SsrError::EvalFailed(format!("Failed to parse JSON result: {}", e)))?;
+
+			// Serialize to MessagePack bytes
+			let msgpack_bytes = rmp_serde::to_vec(&value).map_err(|e| {
+				SsrError::EvalFailed(format!("Failed to serialize to MessagePack: {}", e))
+			})?;
+
+			return Ok(msgpack_bytes);
+		}
+
+		Err(SsrError::NotAvailable)
 	}
 
 	/// Generate a hydration script for client-side takeover.
@@ -395,6 +501,64 @@ if (root) {{
 
 /// Shared SSR proxy instance type.
 pub type SharedSsrProxy = std::sync::Arc<SsrProxy>;
+
+/// Validate component file path for security.
+///
+/// This function prevents path traversal attacks and enforces extension whitelisting.
+///
+/// # Arguments
+///
+/// * `base_dir` - Base directory for plugin assets
+/// * `component_path` - Relative component file path
+///
+/// # Returns
+///
+/// Canonical absolute path to the component file, or an error if validation fails.
+///
+/// # Security
+///
+/// - Prevents path traversal attacks via canonicalization
+/// - Only allows `.js`, `.jsx`, `.ts`, `.tsx` extensions
+/// - Ensures resolved path is within base_dir
+fn validate_component_path(
+	base_dir: &std::path::Path,
+	component_path: &str,
+) -> Result<std::path::PathBuf, SsrError> {
+	// Check extension whitelist
+	let allowed_extensions = [".js", ".jsx", ".ts", ".tsx"];
+	let has_valid_extension = allowed_extensions
+		.iter()
+		.any(|ext| component_path.ends_with(ext));
+
+	if !has_valid_extension {
+		return Err(SsrError::ComponentNotFound(format!(
+			"Invalid file extension. Only .js, .jsx, .ts, .tsx are allowed: {}",
+			component_path
+		)));
+	}
+
+	// Construct full path
+	let full_path = base_dir.join(component_path);
+
+	// Canonicalize to resolve .. and symlinks (防止path traversal攻撃)
+	let canonical_path = full_path
+		.canonicalize()
+		.map_err(|e| SsrError::ComponentNotFound(format!("Component file not found: {}", e)))?;
+
+	// Ensure the canonical path is still within base_dir
+	let canonical_base = base_dir
+		.canonicalize()
+		.map_err(|e| SsrError::ComponentNotFound(format!("Base directory not found: {}", e)))?;
+
+	if !canonical_path.starts_with(&canonical_base) {
+		return Err(SsrError::ComponentNotFound(format!(
+			"Path traversal attack detected: {} is outside base directory",
+			component_path
+		)));
+	}
+
+	Ok(canonical_path)
+}
 
 #[cfg(test)]
 mod tests {
@@ -424,13 +588,41 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
 	}
 
-	#[tokio::test]
-	async fn test_render_vue_returns_not_available() {
-		let proxy = SsrProxy::new();
-		let result = proxy
-			.render_vue("test.vue", &[], RenderOptions::default())
-			.await;
-		assert!(matches!(result, Err(SsrError::NotAvailable)));
+	#[test]
+	fn test_validate_component_path_invalid_extension() {
+		use std::path::PathBuf;
+		let base_dir = PathBuf::from("/tmp");
+		let result = validate_component_path(&base_dir, "component.py");
+		assert!(matches!(result, Err(SsrError::ComponentNotFound(_))));
+	}
+
+	#[test]
+	fn test_validate_component_path_valid_extensions() {
+		use std::fs;
+		use tempfile::TempDir;
+
+		let temp_dir = TempDir::new().unwrap();
+		let base_path = temp_dir.path();
+
+		// Create test files with valid extensions
+		for ext in [".js", ".jsx", ".ts", ".tsx"] {
+			let filename = format!("component{}", ext);
+			let file_path = base_path.join(&filename);
+			fs::write(&file_path, "// test").unwrap();
+
+			let result = validate_component_path(base_path, &filename);
+			assert!(result.is_ok());
+		}
+	}
+
+	#[test]
+	fn test_validate_component_path_prevents_traversal() {
+		use std::path::PathBuf;
+		let base_dir = PathBuf::from("/tmp/plugin_assets");
+		// Path traversal attack should fail during canonicalization
+		// (file doesn't exist, so canonicalize will fail)
+		let result = validate_component_path(&base_dir, "../../../etc/passwd.js");
+		assert!(result.is_err());
 	}
 
 	#[test]
@@ -483,6 +675,13 @@ mod tests {
 			"{}",
 			RenderOptions::default(),
 		);
+		assert!(matches!(result, Err(SsrError::NotAvailable)));
+	}
+
+	#[tokio::test]
+	async fn test_eval_js_bytes_without_runtime() {
+		let proxy = SsrProxy::new();
+		let result = proxy.eval_js_bytes("({foo: 'bar'})").await;
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
 	}
 
@@ -550,6 +749,138 @@ mod tests {
 			let script = render_result.hydration_script.unwrap();
 			assert!(script.contains("preact"));
 			assert!(script.contains("Component"));
+		}
+
+		#[tokio::test]
+		async fn test_eval_js_bytes_simple_object() {
+			let runtime = Arc::new(TsRuntime::new().unwrap());
+			let proxy = SsrProxy::with_ts_runtime(runtime);
+
+			let result = proxy.eval_js_bytes("({foo: 'bar', num: 42})").await;
+			assert!(result.is_ok());
+
+			let bytes = result.unwrap();
+			// Deserialize MessagePack to verify correctness
+			let value: serde_json::Value = rmp_serde::from_slice(&bytes).unwrap();
+			assert_eq!(value["foo"], "bar");
+			assert_eq!(value["num"], 42);
+		}
+
+		#[tokio::test]
+		async fn test_eval_js_bytes_complex_object() {
+			let runtime = Arc::new(TsRuntime::new().unwrap());
+			let proxy = SsrProxy::with_ts_runtime(runtime);
+
+			let code = r#"
+                ({
+                    nested: {
+                        array: [1, 2, 3],
+                        bool: true
+                    },
+                    str: 'hello'
+                })
+            "#;
+			let result = proxy.eval_js_bytes(code).await;
+			assert!(result.is_ok());
+
+			let bytes = result.unwrap();
+			let value: serde_json::Value = rmp_serde::from_slice(&bytes).unwrap();
+			assert_eq!(value["nested"]["array"][0], 1);
+			assert_eq!(value["nested"]["array"][1], 2);
+			assert_eq!(value["nested"]["array"][2], 3);
+			assert_eq!(value["nested"]["bool"], true);
+			assert_eq!(value["str"], "hello");
+		}
+
+		#[tokio::test]
+		async fn test_eval_js_bytes_invalid_json() {
+			let runtime = Arc::new(TsRuntime::new().unwrap());
+			let proxy = SsrProxy::with_ts_runtime(runtime);
+
+			// undefined returns "undefined" string which is not valid JSON
+			let result = proxy.eval_js_bytes("undefined").await;
+			assert!(result.is_err());
+			assert!(matches!(result, Err(SsrError::EvalFailed(_))));
+		}
+
+		#[test]
+		fn test_css_extraction() {
+			let runtime = Arc::new(TsRuntime::new().unwrap());
+			let proxy = SsrProxy::with_ts_runtime(runtime);
+
+			let component = r#"
+                function Component() {
+                    return h('div', null,
+                        h('style', null, '.test { color: red; }'),
+                        h('p', null, 'Hello')
+                    );
+                }
+            "#;
+
+			let options = RenderOptions {
+				extract_css: true,
+				..Default::default()
+			};
+
+			let result = proxy.render_component(component, "{}", options);
+			assert!(result.is_ok());
+
+			let render_result = result.unwrap();
+			assert!(render_result.css.is_some());
+			let css = render_result.css.unwrap();
+			assert!(css.contains(".test { color: red; }"));
+		}
+
+		#[test]
+		fn test_meta_extraction() {
+			let runtime = Arc::new(TsRuntime::new().unwrap());
+			let proxy = SsrProxy::with_ts_runtime(runtime);
+
+			let component = r#"
+                function Component() {
+                    return h('div', null,
+                        h('meta', { name: 'description', content: 'Test description' }),
+                        h('p', null, 'Content')
+                    );
+                }
+            "#;
+
+			let options = RenderOptions {
+				extract_meta: true,
+				..Default::default()
+			};
+
+			let result = proxy.render_component(component, "{}", options);
+			assert!(result.is_ok());
+
+			let render_result = result.unwrap();
+			assert!(render_result.meta.is_some());
+			let meta = render_result.meta.unwrap();
+			assert!(meta.contains(&("description".to_string(), "Test description".to_string())));
+		}
+
+		#[test]
+		fn test_no_extraction_when_disabled() {
+			let runtime = Arc::new(TsRuntime::new().unwrap());
+			let proxy = SsrProxy::with_ts_runtime(runtime);
+
+			let component = r#"
+                function Component() {
+                    return h('div', null,
+                        h('style', null, '.test { color: red; }'),
+                        h('meta', { name: 'description', content: 'Test' }),
+                        h('p', null, 'Content')
+                    );
+                }
+            "#;
+
+			// Default options (no extraction)
+			let result = proxy.render_component(component, "{}", RenderOptions::default());
+			assert!(result.is_ok());
+
+			let render_result = result.unwrap();
+			assert!(render_result.css.is_none());
+			assert!(render_result.meta.is_none());
 		}
 	}
 }
