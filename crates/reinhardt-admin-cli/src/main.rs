@@ -24,6 +24,7 @@ mod formatter;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use colored::Colorize;
 use reinhardt_commands::{
 	BaseCommand, CommandContext, CommandResult, PluginDisableCommand, PluginEnableCommand,
 	PluginInfoCommand, PluginInstallCommand, PluginListCommand, PluginRemoveCommand,
@@ -433,7 +434,10 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 	let mut unchanged_count = 0;
 	let mut error_count = 0;
 
-	for file_path in &files {
+	let total_files = files.len();
+
+	for (index, file_path) in files.iter().enumerate() {
+		let progress = format!("[{}/{}]", index + 1, total_files);
 		let content = std::fs::read_to_string(file_path).map_err(|e| {
 			reinhardt_commands::CommandError::ExecutionError(format!(
 				"Failed to read {}: {}",
@@ -447,7 +451,7 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 				if formatted != content {
 					if check {
 						// Check mode: report unformatted files
-						println!("Would format: {}", file_path.display());
+						println!("{} Would format: {}", progress, file_path.display());
 						formatted_count += 1;
 					} else {
 						// Format mode: write changes
@@ -458,39 +462,71 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 								e
 							))
 						})?;
-						if verbosity > 0 {
-							println!("Formatted: {}", file_path.display());
-						}
+						// Color output: success in green
+						println!(
+							"{} {} {}",
+							progress.bright_blue(),
+							"Formatted:".green(),
+							file_path.display()
+						);
 						formatted_count += 1;
 					}
 				} else {
 					unchanged_count += 1;
-					if verbosity > 1 {
-						println!("Unchanged: {}", file_path.display());
+					if verbosity > 0 {
+						println!(
+							"{} {} {}",
+							progress.bright_blue(),
+							"Unchanged:".dimmed(),
+							file_path.display()
+						);
 					}
 				}
 			}
 			Err(e) => {
-				eprintln!("Error formatting {}: {}", file_path.display(), e);
+				// Color output: errors in red
+				eprintln!(
+					"{} {} {}: {}",
+					progress.bright_blue(),
+					"Error".red(),
+					file_path.display(),
+					e
+				);
 				error_count += 1;
 			}
 		}
 	}
 
-	// Summary
-	if verbosity > 0 || check {
-		println!();
-		if check {
-			println!(
-				"Summary: {} would be formatted, {} unchanged, {} errors",
-				formatted_count, unchanged_count, error_count
-			);
-		} else {
-			println!(
-				"Summary: {} formatted, {} unchanged, {} errors",
-				formatted_count, unchanged_count, error_count
-			);
-		}
+	// Always show summary (remove verbosity condition)
+	println!();
+	if check {
+		println!(
+			"{}: {} would be formatted, {} unchanged, {} errors",
+			"Summary".bright_cyan(),
+			formatted_count.to_string().yellow(),
+			unchanged_count,
+			if error_count > 0 {
+				error_count.to_string().red()
+			} else {
+				error_count.to_string().green()
+			}
+		);
+	} else {
+		println!(
+			"{}: {} formatted, {} unchanged, {} errors",
+			"Summary".bright_cyan(),
+			if formatted_count > 0 {
+				formatted_count.to_string().green()
+			} else {
+				formatted_count.to_string().dimmed()
+			},
+			unchanged_count,
+			if error_count > 0 {
+				error_count.to_string().red()
+			} else {
+				error_count.to_string().dimmed()
+			}
+		);
 	}
 
 	if check && formatted_count > 0 {
