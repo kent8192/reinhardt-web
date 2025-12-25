@@ -112,8 +112,6 @@ async fn test_manager_and_admin_receivers() {
 	assert!(result.is_ok());
 }
 
-// New tests for Phase 3: Extended functionality
-
 #[tokio::test]
 async fn test_custom_backend_console() {
 	let command = SendTestEmailCommand::new();
