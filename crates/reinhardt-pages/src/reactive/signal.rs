@@ -277,6 +277,7 @@ mod tests {
 			rt.push_observer(super::super::runtime::Observer {
 				id: observer_id,
 				node_type: NodeType::Effect,
+				timing: super::super::runtime::EffectTiming::default(),
 				cleanup: None,
 			});
 

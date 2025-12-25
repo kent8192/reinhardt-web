@@ -40,7 +40,7 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 
-use super::runtime::{NodeId, NodeType, Observer, try_with_runtime, with_runtime};
+use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 
 /// Computation function for a Memo
 type MemoFn<T> = Box<dyn FnMut() -> T + 'static>;
@@ -176,6 +176,7 @@ impl<T: Clone + 'static> Memo<T> {
 			rt.push_observer(Observer {
 				id: memo_id,
 				node_type: NodeType::Memo,
+				timing: EffectTiming::default(), // Memos use default (Passive) timing
 				cleanup: None,
 			});
 		});
@@ -434,6 +435,7 @@ mod tests {
 			rt.push_observer(Observer {
 				id: observer_id,
 				node_type: NodeType::Effect,
+				timing: EffectTiming::default(), // Test observer uses default timing
 				cleanup: None,
 			});
 
@@ -467,6 +469,7 @@ mod tests {
 			rt.push_observer(Observer {
 				id: observer_id,
 				node_type: NodeType::Effect,
+				timing: EffectTiming::default(), // Test observer uses default timing
 				cleanup: None,
 			});
 

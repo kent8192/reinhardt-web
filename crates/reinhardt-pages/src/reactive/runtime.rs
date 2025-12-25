@@ -66,12 +66,28 @@ pub enum NodeType {
 	Memo,
 }
 
+/// Effect execution timing.
+///
+/// Determines when an effect should be executed:
+/// - Layout effects run synchronously before paint (use_layout_effect)
+/// - Passive effects run asynchronously via microtask (use_effect)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EffectTiming {
+	/// Layout effect - runs synchronously before paint
+	Layout,
+	/// Passive effect - runs asynchronously via microtask
+	#[default]
+	Passive,
+}
+
 /// Observer represents a currently executing Effect or Memo
 pub struct Observer {
 	/// Unique identifier for this observer
 	pub id: NodeId,
 	/// Type of this observer
 	pub node_type: NodeType,
+	/// Effect execution timing (only used for Effect nodes)
+	pub timing: EffectTiming,
 	/// Cleanup function to run when dependencies change (not used yet)
 	pub cleanup: Option<()>,
 }
@@ -81,6 +97,7 @@ impl Clone for Observer {
 		Self {
 			id: self.id,
 			node_type: self.node_type,
+			timing: self.timing,
 			cleanup: None, // Cleanup functions are not cloneable
 		}
 	}
@@ -171,6 +188,7 @@ impl Runtime {
 	/// Notify that a Signal has changed
 	///
 	/// This schedules all subscribers (Effects/Memos that depend on this Signal) for re-execution.
+	/// Layout effects are executed synchronously, while passive effects are scheduled asynchronously.
 	///
 	/// # Arguments
 	///
@@ -178,8 +196,34 @@ impl Runtime {
 	pub fn notify_signal_change(&self, signal_id: NodeId) {
 		let graph = self.dependency_graph.borrow();
 		if let Some(node) = graph.get(&signal_id) {
+			// Collect layout effects and passive effects separately
+			let mut layout_effects = Vec::new();
+			let mut passive_effects = Vec::new();
+
 			for &subscriber_id in &node.subscribers {
-				self.schedule_update(subscriber_id);
+				// Check if this is an effect and get its timing
+				if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
+					match timing {
+						EffectTiming::Layout => layout_effects.push(subscriber_id),
+						EffectTiming::Passive => passive_effects.push(subscriber_id),
+					}
+				} else {
+					// Non-effect subscribers (like Memos) are treated as passive
+					passive_effects.push(subscriber_id);
+				}
+			}
+
+			// Drop the borrow before executing effects
+			drop(graph);
+
+			// Execute layout effects synchronously
+			for effect_id in layout_effects {
+				super::effect::Effect::execute_effect(effect_id);
+			}
+
+			// Schedule passive effects asynchronously
+			for effect_id in passive_effects {
+				self.schedule_update(effect_id);
 			}
 		}
 	}
@@ -359,6 +403,7 @@ mod tests {
 		let observer1 = Observer {
 			id: NodeId::new(),
 			node_type: NodeType::Effect,
+			timing: EffectTiming::default(),
 			cleanup: None,
 		};
 		let id1 = observer1.id;
@@ -369,6 +414,7 @@ mod tests {
 		let observer2 = Observer {
 			id: NodeId::new(),
 			node_type: NodeType::Effect,
+			timing: EffectTiming::default(),
 			cleanup: None,
 		};
 		let id2 = observer2.id;
@@ -395,6 +441,7 @@ mod tests {
 		runtime.push_observer(Observer {
 			id: effect_id,
 			node_type: NodeType::Effect,
+			timing: EffectTiming::default(),
 			cleanup: None,
 		});
 

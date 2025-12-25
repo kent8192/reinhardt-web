@@ -51,6 +51,41 @@
 //! uses **fine-grained reactivity** - only the specific DOM nodes that depend on
 //! changed Signals are updated. This provides excellent performance for complex UIs.
 //!
+//! ## Layout Effects
+//!
+//! For DOM measurements and synchronous updates before paint, use `use_layout_effect`:
+//!
+//! ```ignore
+//! use reinhardt_pages::reactive::{Signal, hooks::{use_layout_effect, use_ref}};
+//!
+//! let element_ref = use_ref(None::<Element>);
+//! let width = Signal::new(0);
+//!
+//! use_layout_effect({
+//!     let element_ref = element_ref.clone();
+//!     let width = width.clone();
+//!     move || {
+//!         if let Some(el) = element_ref.current().as_ref() {
+//!             // Runs synchronously before browser paint
+//!             width.set(el.offset_width());
+//!         }
+//!     }
+//! });
+//! ```
+//!
+//! **When to use `use_layout_effect`**:
+//!
+//! - Measuring DOM elements (e.g., offsetWidth, getBoundingClientRect)
+//! - Synchronously applying visual updates to prevent flicker
+//! - Reading layout information that must be accurate before next paint
+//!
+//! **When to use `use_effect`** (preferred):
+//!
+//! - Data fetching
+//! - Subscriptions
+//! - Logging and analytics
+//! - Any side effects that don't require synchronous execution
+//!
 //! ## Memory Management
 //!
 //! All reactive nodes (Signals, Effects, Memos) automatically clean up their dependencies

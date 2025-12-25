@@ -35,7 +35,7 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 
-use super::runtime::{NodeId, NodeType, Observer, try_with_runtime, with_runtime};
+use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 
 /// Type alias for effect functions
 type EffectFn = Box<dyn FnMut() + 'static>;
@@ -45,6 +45,20 @@ type EffectFn = Box<dyn FnMut() + 'static>;
 // This stores the closures for all Effects so they can be re-executed when dependencies change.
 thread_local! {
 	static EFFECT_FUNCTIONS: RefCell<BTreeMap<NodeId, EffectFn>> = RefCell::new(BTreeMap::new());
+}
+
+// Global storage for Effect timing information
+//
+// This stores the execution timing (Layout vs Passive) for each Effect.
+thread_local! {
+	static EFFECT_TIMING: RefCell<BTreeMap<NodeId, EffectTiming>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+/// Get the timing for an effect by its ID.
+///
+/// Returns `None` if the effect doesn't exist or is not an Effect node.
+pub(crate) fn get_effect_timing(effect_id: NodeId) -> Option<EffectTiming> {
+	EFFECT_TIMING.with(|storage| storage.borrow().get(&effect_id).copied())
 }
 
 /// A reactive effect that automatically re-runs when its dependencies change
@@ -119,6 +133,61 @@ impl Effect {
 			);
 		});
 
+		// Store the timing information (default: Passive)
+		EFFECT_TIMING.with(|storage| {
+			storage.borrow_mut().insert(id, EffectTiming::Passive);
+		});
+
+		// Run the effect for the first time
+		Self::execute_effect(id);
+
+		Self { id, disposed }
+	}
+
+	/// Create a new Effect with specified execution timing
+	///
+	/// This is the low-level constructor that allows specifying whether the effect
+	/// should run synchronously (Layout) or asynchronously (Passive).
+	///
+	/// # Arguments
+	///
+	/// * `f` - The effect function. Must be `FnMut() + 'static`.
+	/// * `timing` - The execution timing (Layout or Passive).
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// let count = Signal::new(0);
+	///
+	/// Effect::new_with_timing(move || {
+	///     println!("Count: {}", count.get());
+	/// }, EffectTiming::Layout);
+	/// ```
+	pub fn new_with_timing<F>(mut f: F, timing: EffectTiming) -> Self
+	where
+		F: FnMut() + 'static,
+	{
+		let id = NodeId::new();
+		let disposed = Rc::new(RefCell::new(false));
+
+		// Store the effect function
+		let disposed_clone = disposed.clone();
+		EFFECT_FUNCTIONS.with(|storage| {
+			storage.borrow_mut().insert(
+				id,
+				Box::new(move || {
+					if !*disposed_clone.borrow() {
+						f();
+					}
+				}),
+			);
+		});
+
+		// Store the timing information
+		EFFECT_TIMING.with(|storage| {
+			storage.borrow_mut().insert(id, timing);
+		});
+
 		// Run the effect for the first time
 		Self::execute_effect(id);
 
@@ -129,14 +198,24 @@ impl Effect {
 	///
 	/// This is called internally by the runtime when an effect needs to re-run.
 	pub(crate) fn execute_effect(effect_id: NodeId) {
+		// Get the timing for this effect (default to Passive if not found)
+		let timing = EFFECT_TIMING.with(|storage| {
+			storage
+				.borrow()
+				.get(&effect_id)
+				.copied()
+				.unwrap_or(EffectTiming::Passive)
+		});
+
 		with_runtime(|rt| {
 			// Clear old dependencies before re-running
 			rt.clear_dependencies(effect_id);
 
-			// Push observer onto stack
+			// Push observer onto stack with timing information
 			rt.push_observer(Observer {
 				id: effect_id,
 				node_type: NodeType::Effect,
+				timing,
 				cleanup: None,
 			});
 		});
