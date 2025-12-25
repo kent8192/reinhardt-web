@@ -70,6 +70,10 @@ impl CommandContext {
 		println!("[VERBOSE] {}", message);
 	}
 
+	pub fn error(&self, message: &str) {
+		eprintln!("[ERROR] {}", message);
+	}
+
 	pub fn set_option(&mut self, key: String, value: String) {
 		self.options.insert(key, vec![value]);
 	}
