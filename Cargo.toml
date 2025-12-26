@@ -333,6 +333,7 @@ members = [
   "crates/reinhardt-db/crates/contenttypes",
   "crates/reinhardt-db/crates/hybrid",
   "crates/reinhardt-db/crates/migrations",
+  "crates/reinhardt-db/crates/nosql",
   "crates/reinhardt-db/crates/orm",
   "crates/reinhardt-db/crates/pool",
   "crates/reinhardt-dispatch",
@@ -449,6 +450,7 @@ reinhardt-backends-pool = { path = "crates/reinhardt-db/crates/backends-pool", v
 reinhardt-contenttypes = { path = "crates/reinhardt-db/crates/contenttypes", version = "0.1.0-alpha.1" }
 reinhardt-hybrid = { path = "crates/reinhardt-db/crates/hybrid", version = "0.1.0-alpha.1" }
 reinhardt-migrations = { path = "crates/reinhardt-db/crates/migrations", version = "0.1.0-alpha.1" }
+reinhardt-nosql = { path = "crates/reinhardt-db/crates/nosql", version = "0.1.0-alpha.1" }
 reinhardt-orm = { path = "crates/reinhardt-db/crates/orm", version = "0.1.0-alpha.1" }
 reinhardt-pool = { path = "crates/reinhardt-db/crates/pool", version = "0.1.0-alpha.1" }
 
@@ -524,13 +526,17 @@ sqlx = { version = "0.8", features = [
 ] }
 
 # Authentication & Security
-argon2 = { version = "=0.6.0-rc.4", features = ["std"] }
-password-hash = "=0.6.0-rc.4"  # Pinned for argon2 0.6.0-rc.4 compatibility
-rand = "0.10.0-rc.0"
-rand_core = "0.9"
-getrandom = { version = "0.3", features = ["wasm_js"] }  # WASM support with wasm_js feature (v0.3+)
+argon2 = { version = "0.5", features = ["std"] }
+password-hash = "0.5"
+rand = "0.8"
+rand_core = "0.6"
+getrandom = { version = "0.2", features = ["js"] }  # WASM support with js feature
 jsonwebtoken = { version = "10.2.0", features = ["aws_lc_rs"] }
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
+
+# GraphQL
+async-graphql = "7.0"
+async-graphql-warp = "7.0"
 
 # Async traits
 async-trait = "0.1.89"
@@ -565,7 +571,7 @@ quote = "1.0"
 proc-macro2 = "1.0"
 
 # Cryptography & Security
-aes-gcm = "0.11.0-rc.1"
+aes-gcm = "0.10"
 sha2 = "0.10.9"
 hmac = "0.12"
 
@@ -620,23 +626,21 @@ testcontainers-modules = { version = "0.14.0", features = [
   "redis",
 ] }
 proptest = "1.8.0"
+arbitrary = { version = "1.4", features = ["derive"] }
 tokio-test = "0.4.4"
 serial_test = "3.2.0"
 rstest = "0.26.1"
 mockall = "0.14.0"
+assert-json-diff = "2.0.2"
+predicates = "3.1"
 scopeguard = "1.2.0"
 tempfile = "3.15.0"
 trybuild = "1.0.114"
 url = "2.5.4"
 
-# Note: num-bigint-dig v0.8.x has a future incompatibility warning
+# TODO: Monitor and upgrade when upstream fixes num-bigint-dig v0.8.x future incompatibility
+# Issue: https://github.com/rust-lang/rust/issues/120192
+# Current: v0.8.6 via sqlx -> sqlx-mysql -> rsa v0.9.x
+# Fixed in: num-bigint-dig v0.9.0+
+# Action: Upgrade when rsa or sqlx upgrades their dependencies
 # (private vec macro issue, see https://github.com/rust-lang/rust/issues/120192)
-# This is fixed in v0.9.0+, but we currently use v0.8.6 via the following dependency chain:
-# sqlx -> sqlx-mysql -> rsa v0.9.x -> num-bigint-dig v0.8.6
-#
-# The warning does not affect current builds and will be resolved when:
-# - rsa upgrades to num-bigint-dig v0.9.0+ (tracked in rsa repository)
-# - OR sqlx upgrades to a version of rsa that uses num-bigint-dig v0.9.0+
-#
-# This is a transitive dependency issue that will be resolved upstream.
-# No action needed on our side unless the warning becomes an error in future Rust versions.
