@@ -1,7 +1,7 @@
-//! 基本フィールドバリデーション統合テスト
+//! Basic Field Validation Integration Tests
 //!
-//! CharFieldIntegerField, EmailField, BooleanField, FloatFieldの包括的なテストを実装。
-//! テストカテゴリ: 正常系, 異常系, エッジケース, 同値分割, 境界値分析, Decision Table, Property-based, サニティ
+//! Comprehensive tests for CharField, IntegerField, EmailField, BooleanField, and FloatField.
+//! Test categories: Happy Path, Error Cases, Edge Cases, Equivalence Partitioning, Boundary Value Analysis, Decision Table, Property-based, Sanity
 
 use proptest::prelude::*;
 use reinhardt_forms::{BooleanField, CharField, EmailField, FloatField, FormField, IntegerField};
@@ -9,10 +9,10 @@ use rstest::rstest;
 use serde_json::json;
 
 // =============================================================================
-// CharField テスト
+// CharField Tests
 // =============================================================================
 
-// ---- 正常系（Happy Path） ----
+// ---- Happy Path ----
 
 #[test]
 fn test_char_field_valid_input() {
@@ -31,30 +31,30 @@ fn test_char_field_builder_pattern() {
 	assert_eq!(field.min_length, Some(3));
 }
 
-// ---- 異常系（Error Cases） ----
+// ---- Error Cases ----
 
 #[test]
 fn test_char_field_max_length_exceeded() {
 	let field = CharField::new("name".to_string()).with_max_length(10);
-	let result = field.clean(Some(&json!("12345678901"))); // 11文字
+	let result = field.clean(Some(&json!("12345678901"))); // 11 characters
 	assert!(result.is_err());
 }
 
 #[test]
 fn test_char_field_min_length_not_met() {
 	let field = CharField::new("name".to_string()).with_min_length(5);
-	let result = field.clean(Some(&json!("abc"))); // 3文字
+	let result = field.clean(Some(&json!("abc"))); // 3 characters
 	assert!(result.is_err());
 }
 
 #[test]
 fn test_char_field_required_missing() {
-	let field = CharField::new("name".to_string()); // デフォルトでrequired=true
+	let field = CharField::new("name".to_string()); // default: required=true
 	let result = field.clean(None);
 	assert!(result.is_err());
 }
 
-// ---- エッジケース（Edge Cases） ----
+// ---- Edge Cases ----
 
 #[test]
 fn test_char_field_empty_string() {
@@ -81,30 +81,30 @@ fn test_char_field_emoji() {
 
 #[test]
 fn test_char_field_strip_whitespace() {
-	let field = CharField::new("name".to_string()); // デフォルトでstrip=true
+	let field = CharField::new("name".to_string()); // default: strip=true
 	let result = field.clean(Some(&json!("  test  ")));
 	assert!(result.is_ok());
-	// 注: 実装がstripをサポートしていない場合、このテストは調整が必要
+	// Note: Adjust this test if implementation doesn't support strip
 }
 
-// ---- 同値分割（Equivalence Partitioning - rstest #[case]） ----
+// ---- Equivalence Partitioning (rstest #[case]) ----
 
 #[rstest]
-#[case("abc", true)] // 有効クラス
-#[case("", false)] // 空文字列クラス（required=trueの場合）
-#[case("あいう", true)] // マルチバイトクラス
-#[case("test123", true)] // 英数字クラス
+#[case("abc", true)] // Valid class
+#[case("", false)] // Empty string class (when required=true)
+#[case("あいう", true)] // Multi-byte class
+#[case("test123", true)] // Alphanumeric class
 fn test_char_field_equivalence(#[case] input: &str, #[case] valid: bool) {
 	let field = CharField::new("name".to_string());
 	let result = field.clean(Some(&json!(input)));
 	assert_eq!(result.is_ok(), valid);
 }
 
-// ---- 境界値分析（Boundary Value Analysis - rstest #[case]） ----
+// ---- Boundary Value Analysis (rstest #[case]) ----
 
 #[rstest]
 #[case(9, true)] // max_length - 1
-#[case(10, true)] // max_length（境界値）
+#[case(10, true)] // max_length (boundary value)
 #[case(11, false)] // max_length + 1
 fn test_char_field_boundary(#[case] len: usize, #[case] valid: bool) {
 	let field = CharField::new("name".to_string()).with_max_length(10);
@@ -112,7 +112,7 @@ fn test_char_field_boundary(#[case] len: usize, #[case] valid: bool) {
 	assert_eq!(field.clean(Some(&json!(input))).is_ok(), valid);
 }
 
-// ---- Decision Table Testing（rstest #[case]） ----
+// ---- Decision Table Testing (rstest #[case]) ----
 
 #[rstest]
 #[case(true, Some("value"), true)] // required=true, value=Some → OK
@@ -130,7 +130,7 @@ fn test_char_field_decision_table(
 	assert_eq!(field.clean(json_value.as_ref()).is_ok(), expected_ok);
 }
 
-// ---- Property-basedテスト（proptest） ----
+// ---- Property-based Tests (proptest) ----
 
 proptest! {
 	#[test]
@@ -153,20 +153,20 @@ proptest! {
 	}
 }
 
-// ---- サニティテスト（Sanity Test） ----
+// ---- Sanity Test ----
 
 #[test]
 fn test_char_field_sanity() {
 	let field = CharField::new("test".to_string());
 	assert_eq!(field.name, "test");
-	assert!(field.required); // デフォルトでtrue
+	assert!(field.required); // default: true
 }
 
 // =============================================================================
-// IntegerField テスト
+// IntegerField Tests
 // =============================================================================
 
-// ---- 正常系（Happy Path） ----
+// ---- Happy Path ----
 
 #[test]
 fn test_integer_field_valid_input() {
@@ -184,7 +184,7 @@ fn test_integer_field_string_parsing() {
 	assert_eq!(result.unwrap(), json!(42));
 }
 
-// ---- 異常系（Error Cases） ----
+// ---- Error Cases ----
 
 #[test]
 fn test_integer_field_invalid_string() {
@@ -209,7 +209,7 @@ fn test_integer_field_max_value_exceeded() {
 	assert!(result.is_err());
 }
 
-// ---- エッジケース（Edge Cases） ----
+// ---- Edge Cases ----
 
 #[test]
 fn test_integer_field_zero() {
@@ -240,7 +240,7 @@ fn test_integer_field_i64_min() {
 	assert!(result.is_ok());
 }
 
-// ---- 境界値分析（Boundary Value Analysis - rstest #[case]） ----
+// ---- Boundary Value Analysis (rstest #[case]) ----
 
 #[rstest]
 #[case(0, true)] // min_value
@@ -256,7 +256,7 @@ fn test_integer_field_boundary(#[case] value: i64, #[case] valid: bool) {
 	assert_eq!(field.clean(Some(&json!(value))).is_ok(), valid);
 }
 
-// ---- Decision Table Testing（rstest #[case]） ----
+// ---- Decision Table Testing (rstest #[case]) ----
 
 #[rstest]
 #[case(true, Some(5), true)] // required=true, value=5 → OK
@@ -273,7 +273,7 @@ fn test_integer_field_decision_table(
 	assert_eq!(field.clean(json_value.as_ref()).is_ok(), expected_ok);
 }
 
-// ---- Property-basedテスト（proptest） ----
+// ---- Property-based Tests (proptest) ----
 
 proptest! {
 	#[test]
@@ -298,7 +298,7 @@ proptest! {
 	}
 }
 
-// ---- サニティテスト（Sanity Test） ----
+// ---- Sanity Test ----
 
 #[test]
 fn test_integer_field_sanity() {
@@ -308,10 +308,10 @@ fn test_integer_field_sanity() {
 }
 
 // =============================================================================
-// EmailField テスト
+// EmailField Tests
 // =============================================================================
 
-// ---- 正常系（Happy Path） ----
+// ---- Happy Path ----
 
 #[test]
 fn test_email_field_valid_basic() {
@@ -334,7 +334,7 @@ fn test_email_field_valid_plus_address() {
 	assert!(result.is_ok());
 }
 
-// ---- 異常系（Error Cases） ----
+// ---- Error Cases ----
 
 #[test]
 fn test_email_field_invalid_no_at() {
@@ -357,12 +357,12 @@ fn test_email_field_invalid_no_localpart() {
 	assert!(result.is_err());
 }
 
-// ---- エッジケース（Edge Cases） ----
+// ---- Edge Cases ----
 
 #[test]
 fn test_email_field_max_length_default() {
 	let field = EmailField::new("email".to_string());
-	// EmailFieldのデフォルトmax_lengthは320
+	// EmailField default max_length is 320
 	let long_email = format!("{}@example.com", "a".repeat(300));
 	let result = field.clean(Some(&json!(long_email)));
 	assert!(result.is_ok());
@@ -371,27 +371,27 @@ fn test_email_field_max_length_default() {
 #[test]
 fn test_email_field_max_length_exceeded() {
 	let field = EmailField::new("email".to_string());
-	// 320文字を超える
+	// Exceeds 320 characters
 	let very_long_email = format!("{}@example.com", "a".repeat(320));
-	let result = field.clean(Some(&json!(very_long_email)));
-	// 実装によってはエラーになる可能性あり
+	let _ = field.clean(Some(&json!(very_long_email)));
+	// May error depending on implementation
 }
 
-// ---- 同値分割（Equivalence Partitioning - rstest #[case]） ----
+// ---- Equivalence Partitioning (rstest #[case]) ----
 
 #[rstest]
-#[case("test@example.com", true)] // 標準的なメール
-#[case("user.name@example.com", true)] // ドット含む
-#[case("user+tag@example.com", true)] // プラス含む
-#[case("invalid", false)] // @なし
-#[case("@example.com", false)] // ローカルパートなし
-#[case("user@", false)] // ドメインなし
+#[case("test@example.com", true)] // Standard email
+#[case("user.name@example.com", true)] // Contains dot
+#[case("user+tag@example.com", true)] // Contains plus
+#[case("invalid", false)] // No @ symbol
+#[case("@example.com", false)] // No local part
+#[case("user@", false)] // No domain
 fn test_email_field_equivalence(#[case] input: &str, #[case] valid: bool) {
 	let field = EmailField::new("email".to_string());
 	assert_eq!(field.clean(Some(&json!(input))).is_ok(), valid);
 }
 
-// ---- Property-basedテスト（proptest） ----
+// ---- Property-based Tests (proptest) ----
 
 proptest! {
 	#[test]
@@ -406,7 +406,7 @@ proptest! {
 	}
 }
 
-// ---- サニティテスト（Sanity Test） ----
+// ---- Sanity Test ----
 
 #[test]
 fn test_email_field_sanity() {
@@ -416,10 +416,10 @@ fn test_email_field_sanity() {
 }
 
 // =============================================================================
-// BooleanField テスト
+// BooleanField Tests
 // =============================================================================
 
-// ---- 正常系（Happy Path） ----
+// ---- Happy Path ----
 
 #[test]
 fn test_boolean_field_true_value() {
@@ -437,16 +437,16 @@ fn test_boolean_field_false_value() {
 	assert_eq!(result.unwrap(), json!(false));
 }
 
-// ---- 異常系（Error Cases） ----
+// ---- Error Cases ----
 
 #[test]
 fn test_boolean_field_invalid_type() {
 	let field = BooleanField::new("agree".to_string());
-	let result = field.clean(Some(&json!("not a boolean")));
-	// 実装によっては型強制でOKになる可能性あり
+	let _ = field.clean(Some(&json!("not a boolean")));
+	// May be OK with type coercion depending on implementation
 }
 
-// ---- エッジケース（Edge Cases） ----
+// ---- Edge Cases ----
 
 #[test]
 fn test_boolean_field_null_value_required() {
@@ -463,22 +463,22 @@ fn test_boolean_field_null_value_optional() {
 	assert!(result.is_ok());
 }
 
-// ---- 同値分割（Equivalence Partitioning - rstest #[case]） ----
+// ---- Equivalence Partitioning (rstest #[case]) ----
 
 #[rstest]
 #[case(json!(true), true)] // boolean true
 #[case(json!(false), true)] // boolean false
-#[case(json!(1), true)] // 数値1（型強制）
-#[case(json!(0), true)] // 数値0（型強制）
-#[case(json!("true"), true)] // 文字列"true"（型強制）
-#[case(json!("false"), true)] // 文字列"false"（型強制）
+#[case(json!(1), true)] // number 1 (type coercion)
+#[case(json!(0), true)] // number 0 (type coercion)
+#[case(json!("true"), true)] // string "true" (type coercion)
+#[case(json!("false"), true)] // string "false" (type coercion)
 fn test_boolean_field_equivalence(#[case] input: serde_json::Value, #[case] _valid: bool) {
 	let field = BooleanField::new("agree".to_string());
 	let _result = field.clean(Some(&input));
-	// 実装の型強制の振る舞いに依存
+	// Depends on implementation's type coercion behavior
 }
 
-// ---- Decision Table Testing（rstest #[case]） ----
+// ---- Decision Table Testing (rstest #[case]) ----
 
 #[rstest]
 #[case(true, Some(true), true)] // required=true, value=true → OK
@@ -496,7 +496,7 @@ fn test_boolean_field_decision_table(
 	assert_eq!(field.clean(json_value.as_ref()).is_ok(), expected_ok);
 }
 
-// ---- サニティテスト（Sanity Test） ----
+// ---- Sanity Test ----
 
 #[test]
 fn test_boolean_field_sanity() {
@@ -506,10 +506,10 @@ fn test_boolean_field_sanity() {
 }
 
 // =============================================================================
-// FloatField テスト
+// FloatField Tests
 // =============================================================================
 
-// ---- 正常系（Happy Path） ----
+// ---- Happy Path ----
 
 #[test]
 fn test_float_field_valid_input() {
@@ -526,7 +526,7 @@ fn test_float_field_string_parsing() {
 	assert!(result.is_ok());
 }
 
-// ---- 異常系（Error Cases） ----
+// ---- Error Cases ----
 
 #[test]
 fn test_float_field_invalid_string() {
@@ -551,7 +551,7 @@ fn test_float_field_max_value_exceeded() {
 	assert!(result.is_err());
 }
 
-// ---- エッジケース（Edge Cases） ----
+// ---- Edge Cases ----
 
 #[test]
 fn test_float_field_zero() {
@@ -570,25 +570,25 @@ fn test_float_field_negative() {
 #[test]
 fn test_float_field_scientific_notation() {
 	let field = FloatField::new("value".to_string());
-	let result = field.clean(Some(&json!("1.23e10")));
-	// 実装によってはサポートされている可能性あり
+	let _ = field.clean(Some(&json!("1.23e10")));
+	// May be supported depending on implementation
 }
 
 #[test]
 fn test_float_field_infinity_rejected() {
 	let field = FloatField::new("value".to_string());
-	let result = field.clean(Some(&json!(f64::INFINITY)));
-	// Infinityは拒否されるべき
+	let _ = field.clean(Some(&json!(f64::INFINITY)));
+	// Infinity should be rejected
 }
 
 #[test]
 fn test_float_field_nan_rejected() {
 	let field = FloatField::new("value".to_string());
-	let result = field.clean(Some(&json!(f64::NAN)));
-	// NaNは拒否されるべき
+	let _ = field.clean(Some(&json!(f64::NAN)));
+	// NaN should be rejected
 }
 
-// ---- 境界値分析（Boundary Value Analysis - rstest #[case]） ----
+// ---- Boundary Value Analysis (rstest #[case]) ----
 
 #[rstest]
 #[case(0.0, true)] // min_value
@@ -604,13 +604,13 @@ fn test_float_field_boundary(#[case] value: f64, #[case] valid: bool) {
 	assert_eq!(field.clean(Some(&json!(value))).is_ok(), valid);
 }
 
-// ---- Property-basedテスト（proptest） ----
+// ---- Property-based Tests (proptest) ----
 
 proptest! {
 	#[test]
 	fn test_float_field_range_invariant(f in -1000.0f64..1000.0) {
 		let field = FloatField::new("num".to_string());
-		// NaNとInfinityは除外される前提
+		// Assumes NaN and Infinity are excluded
 		if f.is_finite() {
 			let result = field.clean(Some(&json!(f)));
 			prop_assert!(result.is_ok());
@@ -618,7 +618,7 @@ proptest! {
 	}
 }
 
-// ---- サニティテスト（Sanity Test） ----
+// ---- Sanity Test ----
 
 #[test]
 fn test_float_field_sanity() {

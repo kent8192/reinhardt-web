@@ -1,6 +1,6 @@
-//! CSRF保護統合テスト
+//! CSRF Protection Integration Tests
 //!
-//! CSRFトークン生成/検証、セッション、reinhardt-formsの統合をテストします。
+//! Tests CSRF token generation/verification, session, and reinhardt-forms integration.
 
 use reinhardt_test::fixtures::{postgres_container, test_user, TestUser};
 use rstest::*;
@@ -9,75 +9,71 @@ use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use uuid::Uuid;
 
-// 注: 実際のCSRF実装はreinhardt-sessions/src/csrf.rsにあります
-// ここでは、CSRF保護の統合テストを実装します
+// Note: Actual CSRF implementation is in reinhardt-sessions/src/csrf.rs
+// Here we implement CSRF protection integration tests
 
 // ============================================================================
-// サニティテスト（2件）
+// Sanity Tests (2 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn sanity_csrf_token_generation() {
-	// CSRFトークン生成の基本動作
+	// Basic CSRF token generation operation
 	let csrf_token = generate_csrf_token();
 
 	assert!(!csrf_token.is_empty());
-	assert_eq!(csrf_token.len(), 64); // 32バイトのランダムデータをHex表現すると64文字
+	assert_eq!(csrf_token.len(), 64); // 32 bytes of random data in Hex representation is 64 characters
 }
 
 #[rstest]
 #[tokio::test]
 async fn sanity_csrf_token_verification() {
-	// CSRFトークン検証の基本動作
+	// Basic CSRF token verification operation
 	let csrf_token = generate_csrf_token();
 
-	// 同じトークンは検証成功
+	// Same token should pass verification
 	assert!(verify_csrf_token(&csrf_token, &csrf_token));
 
-	// 異なるトークンは検証失敗
+	// Different token should fail verification
 	let different_token = generate_csrf_token();
 	assert!(!verify_csrf_token(&csrf_token, &different_token));
 }
 
 // ============================================================================
-// 正常系（5件）
+// Normal Cases (5 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn normal_session_based_csrf_protection(
-	#[future] postgres_container: (
-		ContainerAsync<Postgres>,
-		Arc<sqlx::PgPool>,
-		u16,
-		String,
-	),
+	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
 ) {
-	// セッションベースCSRF保護（トークン生成/検証）
+	// Session-based CSRF protection (token generation/verification)
 	let (_container, pool, _port, _url) = postgres_container.await;
 
-	// セッションテーブル作成
+	// Create session table
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS sessions (
 			session_key VARCHAR(40) PRIMARY KEY,
 			session_data TEXT NOT NULL,
 			expire_date TIMESTAMP NOT NULL
-		)"
+		)",
 	)
 	.execute(pool.as_ref())
 	.await
 	.unwrap();
 
-	// セッション作成
+	// Create session
 	let session_key = "test_session_key";
 	let csrf_token = generate_csrf_token();
 
-	// セッションデータにCSRFトークンを保存
+	// Save CSRF token to session data
 	let session_data = serde_json::json!({
 		"csrf_token": csrf_token,
 		"user_id": "test_user_id"
-	}).to_string();
+	})
+	.to_string();
 
 	sqlx::query(
 		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, NOW() + INTERVAL '1 hour')"
@@ -88,7 +84,7 @@ async fn normal_session_based_csrf_protection(
 	.await
 	.unwrap();
 
-	// セッションからCSRFトークンを取得
+	// Retrieve CSRF token from session
 	let row = sqlx::query("SELECT session_data FROM sessions WHERE session_key = $1")
 		.bind(session_key)
 		.fetch_one(pool.as_ref())
@@ -105,17 +101,17 @@ async fn normal_session_based_csrf_protection(
 #[rstest]
 #[tokio::test]
 async fn normal_csrf_token_form_submission() {
-	// CSRFトークンとフォーム送信
+	// CSRF token and form submission
 	let csrf_token = generate_csrf_token();
 
-	// フォームデータにCSRFトークンを含める
+	// Include CSRF token in form data
 	let form_data = serde_json::json!({
 		"csrf_token": csrf_token,
 		"username": "testuser",
 		"email": "test@example.com"
 	});
 
-	// トークン検証
+	// Verify token
 	let submitted_token = form_data["csrf_token"].as_str().unwrap();
 	assert!(verify_csrf_token(&csrf_token, submitted_token));
 }
@@ -123,10 +119,10 @@ async fn normal_csrf_token_form_submission() {
 #[rstest]
 #[tokio::test]
 async fn normal_csrf_token_ajax_request() {
-	// CSRFトークンとAJAXリクエスト（ヘッダー）
+	// CSRF token and AJAX request (header)
 	let csrf_token = generate_csrf_token();
 
-	// HTTPヘッダーにCSRFトークンを含める（通常は X-CSRF-Token）
+	// Include CSRF token in HTTP header (typically X-CSRF-Token)
 	let header_token = csrf_token.clone();
 
 	assert!(verify_csrf_token(&csrf_token, &header_token));
@@ -135,14 +131,9 @@ async fn normal_csrf_token_ajax_request() {
 #[rstest]
 #[tokio::test]
 async fn normal_csrf_token_auto_regeneration(
-	#[future] postgres_container: (
-		ContainerAsync<Postgres>,
-		Arc<sqlx::PgPool>,
-		u16,
-		String,
-	),
+	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
 ) {
-	// CSRFトークンの自動再生成
+	// Automatic CSRF token regeneration
 	let (_container, pool, _port, _url) = postgres_container.await;
 
 	sqlx::query(
@@ -150,7 +141,7 @@ async fn normal_csrf_token_auto_regeneration(
 			session_key VARCHAR(40) PRIMARY KEY,
 			session_data TEXT NOT NULL,
 			expire_date TIMESTAMP NOT NULL
-		)"
+		)",
 	)
 	.execute(pool.as_ref())
 	.await
@@ -159,10 +150,11 @@ async fn normal_csrf_token_auto_regeneration(
 	let session_key = "test_session_key";
 	let old_csrf_token = generate_csrf_token();
 
-	// 古いトークンでセッション作成
+	// Create session with old token
 	let session_data = serde_json::json!({
 		"csrf_token": old_csrf_token
-	}).to_string();
+	})
+	.to_string();
 
 	sqlx::query(
 		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, NOW() + INTERVAL '1 hour')"
@@ -173,11 +165,12 @@ async fn normal_csrf_token_auto_regeneration(
 	.await
 	.unwrap();
 
-	// 新しいトークンを生成して更新
+	// Generate and update with new token
 	let new_csrf_token = generate_csrf_token();
 	let new_session_data = serde_json::json!({
 		"csrf_token": new_csrf_token
-	}).to_string();
+	})
+	.to_string();
 
 	sqlx::query("UPDATE sessions SET session_data = $1 WHERE session_key = $2")
 		.bind(&new_session_data)
@@ -186,7 +179,7 @@ async fn normal_csrf_token_auto_regeneration(
 		.await
 		.unwrap();
 
-	// 更新されたトークンを確認
+	// Verify updated token
 	let row = sqlx::query("SELECT session_data FROM sessions WHERE session_key = $1")
 		.bind(session_key)
 		.fetch_one(pool.as_ref())
@@ -204,14 +197,9 @@ async fn normal_csrf_token_auto_regeneration(
 #[rstest]
 #[tokio::test]
 async fn normal_csrf_token_shared_across_tabs(
-	#[future] postgres_container: (
-		ContainerAsync<Postgres>,
-		Arc<sqlx::PgPool>,
-		u16,
-		String,
-	),
+	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
 ) {
-	// 複数タブでのCSRFトークン共有（セッション経由）
+	// CSRF token sharing across multiple tabs (via session)
 	let (_container, pool, _port, _url) = postgres_container.await;
 
 	sqlx::query(
@@ -219,7 +207,7 @@ async fn normal_csrf_token_shared_across_tabs(
 			session_key VARCHAR(40) PRIMARY KEY,
 			session_data TEXT NOT NULL,
 			expire_date TIMESTAMP NOT NULL
-		)"
+		)",
 	)
 	.execute(pool.as_ref())
 	.await
@@ -230,7 +218,8 @@ async fn normal_csrf_token_shared_across_tabs(
 
 	let session_data = serde_json::json!({
 		"csrf_token": csrf_token
-	}).to_string();
+	})
+	.to_string();
 
 	sqlx::query(
 		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, NOW() + INTERVAL '1 hour')"
@@ -241,35 +230,37 @@ async fn normal_csrf_token_shared_across_tabs(
 	.await
 	.unwrap();
 
-	// タブ1からの取得
+	// Retrieve from tab 1
 	let row1 = sqlx::query("SELECT session_data FROM sessions WHERE session_key = $1")
 		.bind(session_key)
 		.fetch_one(pool.as_ref())
 		.await
 		.unwrap();
 
-	// タブ2からの取得（同じセッションキー）
+	// Retrieve from tab 2 (same session key)
 	let row2 = sqlx::query("SELECT session_data FROM sessions WHERE session_key = $1")
 		.bind(session_key)
 		.fetch_one(pool.as_ref())
 		.await
 		.unwrap();
 
-	let data1: serde_json::Value = serde_json::from_str(&row1.get::<String, _>("session_data")).unwrap();
-	let data2: serde_json::Value = serde_json::from_str(&row2.get::<String, _>("session_data")).unwrap();
+	let data1: serde_json::Value =
+		serde_json::from_str(&row1.get::<String, _>("session_data")).unwrap();
+	let data2: serde_json::Value =
+		serde_json::from_str(&row2.get::<String, _>("session_data")).unwrap();
 
-	// 両タブで同じCSRFトークンを共有
+	// Both tabs share the same CSRF token
 	assert_eq!(data1["csrf_token"], data2["csrf_token"]);
 }
 
 // ============================================================================
-// 異常系（4件）
+// Error Cases (4 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn abnormal_invalid_csrf_token_rejected() {
-	// 無効なCSRFトークンで拒否（403 Forbidden）
+	// Reject with invalid CSRF token (403 Forbidden)
 	let valid_csrf_token = generate_csrf_token();
 	let invalid_csrf_token = "invalid_token_12345";
 
@@ -279,7 +270,7 @@ async fn abnormal_invalid_csrf_token_rejected() {
 #[rstest]
 #[tokio::test]
 async fn abnormal_missing_csrf_token_rejected() {
-	// CSRFトークンなしで拒否（POSTリクエスト）
+	// Reject without CSRF token (POST request)
 	let valid_csrf_token = generate_csrf_token();
 	let empty_token = "";
 
@@ -289,11 +280,11 @@ async fn abnormal_missing_csrf_token_rejected() {
 #[rstest]
 #[tokio::test]
 async fn abnormal_expired_csrf_token() {
-	// 期限切れCSRFトークン
+	// Expired CSRF token
 	let csrf_token = generate_csrf_token();
 
-	// タイムスタンプベースのトークンの場合、期限切れをシミュレート
-	// ここでは、単純に異なるトークンとして扱う
+	// For timestamp-based tokens, simulate expiration
+	// Here, simply treat it as a different token
 	let expired_token = "expired_token_old";
 
 	assert!(!verify_csrf_token(&csrf_token, expired_token));
@@ -302,10 +293,10 @@ async fn abnormal_expired_csrf_token() {
 #[rstest]
 #[tokio::test]
 async fn abnormal_tampered_csrf_token() {
-	// トークン改ざん検出
+	// Token tampering detection
 	let csrf_token = generate_csrf_token();
 
-	// トークンを改ざん（1文字変更）
+	// Tamper with token (change 1 character)
 	let mut tampered_token = csrf_token.clone();
 	tampered_token.replace_range(0..1, "X");
 
@@ -313,36 +304,31 @@ async fn abnormal_tampered_csrf_token() {
 }
 
 // ============================================================================
-// 回帰系（2件）
+// Regression Tests (2 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn regression_csrf_token_format_backward_compatibility() {
-	// CSRFトークン形式の後方互換性
-	// 過去のバージョンと比較
+	// CSRF token format backward compatibility
+	// Compare with previous versions
 
-	// 古い形式のトークン（32バイトHex）
+	// Old format token (32 bytes Hex)
 	let old_format_token = "a".repeat(64);
 
-	// 新しい形式のトークン（同じく32バイトHex）
+	// New format token (also 32 bytes Hex)
 	let new_format_token = generate_csrf_token();
 
-	// 両方とも同じ長さであることを確認
+	// Verify both have the same length
 	assert_eq!(old_format_token.len(), new_format_token.len());
 }
 
 #[rstest]
 #[tokio::test]
 async fn regression_session_rotation_csrf_validity(
-	#[future] postgres_container: (
-		ContainerAsync<Postgres>,
-		Arc<sqlx::PgPool>,
-		u16,
-		String,
-	),
+	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
 ) {
-	// セッションローテーション後のCSRFトークン有効性
+	// CSRF token validity after session rotation
 	let (_container, pool, _port, _url) = postgres_container.await;
 
 	sqlx::query(
@@ -350,7 +336,7 @@ async fn regression_session_rotation_csrf_validity(
 			session_key VARCHAR(40) PRIMARY KEY,
 			session_data TEXT NOT NULL,
 			expire_date TIMESTAMP NOT NULL
-		)"
+		)",
 	)
 	.execute(pool.as_ref())
 	.await
@@ -360,10 +346,11 @@ async fn regression_session_rotation_csrf_validity(
 	let new_session_key = "new_session_key";
 	let csrf_token = generate_csrf_token();
 
-	// 古いセッションにCSRFトークンを保存
+	// Save CSRF token to old session
 	let session_data = serde_json::json!({
 		"csrf_token": csrf_token
-	}).to_string();
+	})
+	.to_string();
 
 	sqlx::query(
 		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, NOW() + INTERVAL '1 hour')"
@@ -374,7 +361,7 @@ async fn regression_session_rotation_csrf_validity(
 	.await
 	.unwrap();
 
-	// セッションローテーション（新しいキーで再作成）
+	// Session rotation (recreate with new key)
 	sqlx::query(
 		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, NOW() + INTERVAL '1 hour')"
 	)
@@ -384,14 +371,14 @@ async fn regression_session_rotation_csrf_validity(
 	.await
 	.unwrap();
 
-	// 古いセッション削除
+	// Delete old session
 	sqlx::query("DELETE FROM sessions WHERE session_key = $1")
 		.bind(old_session_key)
 		.execute(pool.as_ref())
 		.await
 		.unwrap();
 
-	// 新しいセッションでCSRFトークンが有効であることを確認
+	// Verify CSRF token is valid in new session
 	let row = sqlx::query("SELECT session_data FROM sessions WHERE session_key = $1")
 		.bind(new_session_key)
 		.fetch_one(pool.as_ref())
@@ -406,27 +393,27 @@ async fn regression_session_rotation_csrf_validity(
 }
 
 // ============================================================================
-// 状態遷移系（2件）
+// State Transitions (2 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn state_transition_session_creation_to_csrf_verification() {
-	// セッション作成→CSRFトークン生成→検証→成功
+	// Session creation → CSRF token generation → Verification → Success
 
-	// ステップ1: セッション作成
+	// Step 1: Create session
 	let session_id = Uuid::new_v4();
 
-	// ステップ2: CSRFトークン生成
+	// Step 2: Generate CSRF token
 	let csrf_token = generate_csrf_token();
 
-	// ステップ3: セッションにトークンを保存（仮想的）
+	// Step 3: Save token to session (virtual)
 	let session_data = serde_json::json!({
 		"session_id": session_id.to_string(),
 		"csrf_token": csrf_token
 	});
 
-	// ステップ4: トークン検証
+	// Step 4: Verify token
 	let submitted_token = session_data["csrf_token"].as_str().unwrap();
 	assert!(verify_csrf_token(&csrf_token, submitted_token));
 }
@@ -434,33 +421,33 @@ async fn state_transition_session_creation_to_csrf_verification() {
 #[rstest]
 #[tokio::test]
 async fn state_transition_session_destroy_csrf_invalidation() {
-	// セッション破棄→CSRFトークン無効化→検証失敗
+	// Session destruction → CSRF token invalidation → Verification failure
 
-	// ステップ1: セッション作成とCSRFトークン生成
+	// Step 1: Create session and generate CSRF token
 	let csrf_token = generate_csrf_token();
 
-	// ステップ2: セッション破棄（トークンも無効化）
+	// Step 2: Destroy session (invalidate token as well)
 	let destroyed_session = true;
 
-	// ステップ3: 破棄されたセッションのトークンは無効
+	// Step 3: Token from destroyed session is invalid
 	if destroyed_session {
-		// 新しいトークンが必要
+		// New token is required
 		let new_csrf_token = generate_csrf_token();
 		assert!(!verify_csrf_token(&new_csrf_token, &csrf_token));
 	}
 }
 
 // ============================================================================
-// エッジケース（2件）
+// Edge Cases (2 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn edge_get_request_csrf_skip() {
-	// GETリクエストはCSRF保護スキップ
+	// GET requests skip CSRF protection
 	let http_method = "GET";
 
-	// GETリクエストではCSRF検証をスキップ
+	// Skip CSRF verification for GET requests
 	let csrf_required = !matches!(http_method, "GET" | "HEAD" | "OPTIONS" | "TRACE");
 
 	assert!(!csrf_required);
@@ -469,50 +456,50 @@ async fn edge_get_request_csrf_skip() {
 #[rstest]
 #[tokio::test]
 async fn edge_safe_methods_csrf_handling() {
-	// セーフメソッド（HEAD、OPTIONS）のCSRF扱い
+	// CSRF handling for safe methods (HEAD, OPTIONS)
 	let safe_methods = vec!["GET", "HEAD", "OPTIONS", "TRACE"];
 
 	for method in safe_methods {
-		// セーフメソッドではCSRF検証不要
+		// CSRF verification not required for safe methods
 		let csrf_required = !matches!(method, "GET" | "HEAD" | "OPTIONS" | "TRACE");
 		assert!(!csrf_required, "Method {} should skip CSRF", method);
 	}
 }
 
 // ============================================================================
-// Fuzzテスト（1件）
+// Fuzz Tests (1 test)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn fuzz_random_csrf_token_validation() {
-	// ランダムなCSRFトークン入力（1000回）
+	// Random CSRF token input (1000 times)
 	use rand::{distributions::Alphanumeric, thread_rng, Rng};
 
 	let valid_csrf_token = generate_csrf_token();
 
 	for _ in 0..1000 {
-		// ランダムなトークン生成
+		// Generate random token
 		let random_token: String = thread_rng()
 			.sample_iter(&Alphanumeric)
 			.take(64)
 			.map(char::from)
 			.collect();
 
-		// ランダムトークンは通常検証失敗
-		// （ただし、非常に稀に一致する可能性もあるため、パニックしないことを確認）
+		// Random token typically fails verification
+		// (However, verify no panic as there's a very rare chance of match)
 		let result = verify_csrf_token(&valid_csrf_token, &random_token);
 
-		// パニックしないことを確認（結果は問わない）
+		// Verify no panic (result doesn't matter)
 		assert!(result == true || result == false);
 	}
 }
 
 // ============================================================================
-// ヘルパー関数
+// Helper Functions
 // ============================================================================
 
-/// CSRFトークンを生成（32バイトのランダムデータをHex表現）
+/// Generate CSRF token (32 bytes of random data in Hex representation)
 fn generate_csrf_token() -> String {
 	use rand::Rng;
 	let mut rng = rand::thread_rng();
@@ -520,9 +507,9 @@ fn generate_csrf_token() -> String {
 	hex::encode(bytes)
 }
 
-/// CSRFトークンを検証
+/// Verify CSRF token
 fn verify_csrf_token(expected: &str, provided: &str) -> bool {
-	// 定時間比較（タイミング攻撃対策）
+	// Constant-time comparison (timing attack protection)
 	use subtle::ConstantTimeEq;
 
 	if expected.len() != provided.len() {

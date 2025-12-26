@@ -1,16 +1,16 @@
 //! Integration tests for Core Reactive System
 //!
 //! These tests verify the reactive system functionality:
-//! 1. Signal変更時にEffectが自動実行
-//! 2. Memo値がキャッシュされ、依存Signal変更時のみ再計算
-//! 3. メモリリークなし
+//! 1. Effects are automatically executed when Signals change
+//! 2. Memo values are cached and recalculated only when dependent Signals change
+//! 3. No memory leaks
 
 use reinhardt_pages::reactive::{Effect, Memo, Signal, with_runtime};
 use serial_test::serial;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Success Criterion 1: Signal変更時にEffectが自動実行
+/// Success Criterion 1: Effects are automatically executed when Signals change
 #[test]
 #[serial]
 fn test_effect_auto_execution_on_signal_change() {
@@ -77,7 +77,7 @@ fn test_effect_with_multiple_signals() {
 	assert_eq!(*sum.borrow(), 300); // 100 + 200
 }
 
-/// Success Criterion 2: Memo値がキャッシュされ、依存Signal変更時のみ再計算
+/// Success Criterion 2: Memo values are cached and recalculated only when dependent Signals change
 #[test]
 #[serial]
 fn test_memo_caching() {
@@ -150,7 +150,7 @@ fn test_effect_with_memo_dependency() {
 	assert_eq!(*log.borrow(), vec![6, 10]);
 }
 
-/// Success Criterion 3: メモリリークなし - Signal drop
+/// Success Criterion 3: No memory leaks - Signal drop
 #[test]
 #[serial]
 fn test_signal_cleanup_on_drop() {
@@ -165,7 +165,7 @@ fn test_signal_cleanup_on_drop() {
 	});
 }
 
-/// Success Criterion 3: メモリリークなし - Effect drop
+/// Success Criterion 3: No memory leaks - Effect drop
 #[test]
 #[serial]
 fn test_effect_cleanup_on_drop() {
@@ -196,7 +196,7 @@ fn test_effect_cleanup_on_drop() {
 	});
 }
 
-/// Success Criterion 3: メモリリークなし - Memo drop
+/// Success Criterion 3: No memory leaks - Memo drop
 #[test]
 #[serial]
 fn test_memo_cleanup_on_drop() {

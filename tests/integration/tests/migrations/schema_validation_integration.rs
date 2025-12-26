@@ -26,12 +26,11 @@
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
-	executor::DatabaseMigrationExecutor, ColumnDefinition, Constraint, FieldType, ForeignKeyAction,
-	Migration, Operation,
+	executor::DatabaseMigrationExecutor, ColumnDefinition, FieldType, Migration, Operation,
 };
-use reinhardt_test::fixtures::{mysql_container, postgres_container};
+use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sqlx::{MySqlPool, PgPool};
+use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
@@ -134,8 +133,7 @@ async fn test_table_schema_consistency_postgres(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create migration
 	let migration = create_test_migration(
@@ -194,8 +192,7 @@ async fn test_table_existence_check(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let migration = create_test_migration(
@@ -253,8 +250,7 @@ async fn test_column_definition_validation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with various column types
 	let migration = create_test_migration(
@@ -344,8 +340,7 @@ async fn test_primary_key_validation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with primary key
 	let migration = create_test_migration(
@@ -410,8 +405,7 @@ async fn test_foreign_key_validation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create parent table
 	let parent_migration = create_test_migration(
@@ -440,9 +434,7 @@ async fn test_foreign_key_validation(
 					create_auto_pk_column("id", FieldType::Integer),
 					create_not_null_column("user_id", FieldType::Integer),
 				],
-				constraints: vec![],
-				composite_primary_key: None,
-			},
+				constraints: vec![],			},
 			Operation::AddConstraint {
 				table: leak_str("posts"),
 				constraint_sql: leak_str(
@@ -506,8 +498,7 @@ async fn test_unique_constraint_validation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let create_table = create_test_migration(
@@ -572,8 +563,7 @@ async fn test_index_validation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let create_table = create_test_migration(
@@ -601,9 +591,11 @@ async fn test_index_validation(
 		"0002_create_name_index",
 		vec![Operation::CreateIndex {
 			table: leak_str("products"),
-			name: leak_str("idx_products_name"),
 			columns: vec![leak_str("name")],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		}],
 	);
 
@@ -650,8 +642,7 @@ async fn test_check_constraint_validation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let create_table = create_test_migration(
@@ -714,7 +705,7 @@ async fn test_check_constraint_validation(
 async fn test_schema_drift_manual_table_creation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 
 	// Manually create a table (outside migrations)
 	sqlx::query("CREATE TABLE manual_table (id SERIAL PRIMARY KEY, data TEXT)")
@@ -751,8 +742,7 @@ async fn test_schema_drift_manual_column_addition(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table via migration
 	let migration = create_test_migration(
@@ -811,8 +801,7 @@ async fn test_schema_drift_manual_constraint_removal(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with UNIQUE constraint
 	let migration = create_test_migration(
@@ -826,7 +815,6 @@ async fn test_schema_drift_manual_constraint_removal(
 					create_basic_column("email", FieldType::VarChar(255)),
 				],
 				constraints: vec![],
-				composite_primary_key: None,
 			},
 			Operation::AddConstraint {
 				table: leak_str("users"),
@@ -897,8 +885,7 @@ async fn test_type_mismatch_detection(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with VARCHAR(100)
 	let migration = create_test_migration(
@@ -970,8 +957,7 @@ async fn test_nullability_mismatch_detection(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with NOT NULL column
 	let migration = create_test_migration(
@@ -1041,7 +1027,7 @@ async fn test_nullability_mismatch_detection(
 async fn test_case_sensitivity_normalization(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 
 	// Manually create table with mixed case (PostgreSQL will lowercase it)
 	sqlx::query("CREATE TABLE MixedCase (id SERIAL PRIMARY KEY, Name TEXT)")
@@ -1090,7 +1076,7 @@ async fn test_case_sensitivity_normalization(
 async fn test_type_alias_normalization(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
 
 	// Create table with INT (alias for INTEGER)
 	sqlx::query("CREATE TABLE test_types (id INT PRIMARY KEY)")

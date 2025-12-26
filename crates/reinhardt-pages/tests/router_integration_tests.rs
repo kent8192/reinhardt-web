@@ -216,7 +216,11 @@ fn test_link_external() {
 /// Success Criterion 4: RouterOutlet component
 #[test]
 fn test_router_outlet() {
-	let outlet = RouterOutlet::new().id("main-content").class("content-area");
+	use std::sync::Arc;
+	let router = Arc::new(Router::new());
+	let outlet = RouterOutlet::new(router)
+		.id("main-content")
+		.class("content-area");
 
 	let html = outlet.render().render_to_string();
 

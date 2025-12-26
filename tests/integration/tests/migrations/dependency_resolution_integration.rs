@@ -115,8 +115,7 @@ async fn test_linear_dependency_resolution(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Migration A: Create users table
 	let migration_a = create_migration_with_deps(
@@ -168,7 +167,6 @@ async fn test_linear_dependency_resolution(
 	let column_count: i64 = sqlx::query_scalar(
 		"SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users'",
 	)
-	.bind()
 	.fetch_one(pool.as_ref())
 	.await
 	.expect("Failed to count columns");
@@ -193,8 +191,7 @@ async fn test_multi_app_dependency_resolution(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// app1: Migration 0001 - Create users table
 	let app1_m1 = create_migration_with_deps(
@@ -265,8 +262,7 @@ async fn test_diamond_dependency_resolution(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Migration A: Create base table
 	let migration_a = create_migration_with_deps(
@@ -323,7 +319,6 @@ async fn test_diamond_dependency_resolution(
 	let column_count: i64 = sqlx::query_scalar(
 		"SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'base'",
 	)
-	.bind()
 	.fetch_one(pool.as_ref())
 	.await
 	.expect("Failed to count columns");
@@ -341,7 +336,7 @@ async fn test_diamond_dependency_resolution(
 #[ignore = "Swappable model support not yet implemented in reinhardt-db migrations"]
 #[tokio::test]
 async fn test_swappable_model_dependency(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[future] _postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	// TODO: Add swappable_dependency field to Migration
 	// Example:
@@ -376,7 +371,7 @@ async fn test_swappable_model_dependency(
 #[ignore = "Optional dependency support not yet implemented in reinhardt-db migrations"]
 #[tokio::test]
 async fn test_conditional_dependencies(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[future] _postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	// TODO: Add optional_dependencies field to Migration
 	// Example:
@@ -413,8 +408,7 @@ async fn test_circular_dependency_detection(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Migration A (depends on B - circular)
 	let migration_a = create_migration_with_deps(
@@ -463,8 +457,7 @@ async fn test_missing_dependency_detection(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Migration that depends on non-existent migration
 	let migration = create_migration_with_deps(
@@ -503,8 +496,7 @@ async fn test_conflicting_dependency_order(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Same as circular dependency test - conflicting order is a cycle
 	let migration_a = create_migration_with_deps(
@@ -549,14 +541,13 @@ async fn test_conflicting_dependency_order(
 async fn test_deep_dependency_chain(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, url) = postgres_container.await;
 
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	let mut migrations = Vec::new();
 
@@ -617,8 +608,7 @@ async fn test_independent_migrations(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Three independent migrations (no dependencies between them)
 	let migration_1 = create_migration_with_deps(

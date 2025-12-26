@@ -18,8 +18,10 @@ testcontainers = [
   "dep:fs2",
 ]
 static = ["reinhardt-utils/static"]
-websockets = ["dep:reinhardt-websockets"]
-full = ["testcontainers", "static", "websockets"]
+websockets = ["dep:reinhardt-websockets", "reinhardt-server/websocket"]
+graphql = ["reinhardt-server/graphql", "dep:async-graphql"]
+property-based = ["dep:proptest"]
+full = ["testcontainers", "static", "websockets", "graphql", "property-based"]
 
 [dependencies]
 reinhardt-db = { workspace = true, features = ["orm", "backends", "postgres", "mysql", "sqlite"] }
@@ -64,6 +66,12 @@ redis = { workspace = true, optional = true, features = [
   "cluster-async",
 ] }
 fs2 = { version = "0.4", optional = true }
+
+# Optional dependencies for property-based testing
+proptest = { workspace = true, optional = true }
+
+# Optional dependencies for graphql feature
+async-graphql = { workspace = true, optional = true }
 
 # Optional dependencies for static feature
 # Note: static feature is provided via reinhardt-utils

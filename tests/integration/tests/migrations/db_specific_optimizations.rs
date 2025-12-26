@@ -22,8 +22,7 @@
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
-	executor::DatabaseMigrationExecutor, ColumnDefinition, Constraint, FieldType, Migration,
-	Operation,
+	executor::DatabaseMigrationExecutor, ColumnDefinition, FieldType, Migration, Operation,
 };
 use reinhardt_test::fixtures::{mysql_container, postgres_container};
 use rstest::*;
@@ -69,19 +68,6 @@ fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinit
 	}
 }
 
-/// Create a NOT NULL column definition
-fn create_not_null_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition {
-		name,
-		type_definition: type_def,
-		not_null: true,
-		unique: false,
-		primary_key: false,
-		auto_increment: false,
-		default: None,
-	}
-}
-
 /// Create an auto-increment primary key column
 fn create_auto_pk_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
@@ -113,14 +99,13 @@ fn create_auto_pk_column(name: &'static str, type_def: FieldType) -> ColumnDefin
 async fn test_postgres_create_index_concurrently(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, url) = postgres_container.await;
 
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table first
 	let create_table = create_test_migration(
@@ -183,7 +168,7 @@ async fn test_postgres_create_index_concurrently(
 async fn test_postgres_deferrable_constraint(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, _url) = postgres_container.await;
 
 	// TODO: Add DEFERRABLE option to Constraint::ForeignKey
 	// This would allow:
@@ -217,7 +202,7 @@ async fn test_postgres_deferrable_constraint(
 async fn test_postgres_partial_index(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, _url) = postgres_container.await;
 
 	// TODO: Add where_clause parameter to CreateIndex operation
 	// Example:
@@ -246,7 +231,7 @@ async fn test_postgres_partial_index(
 async fn test_postgres_expression_index(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, _url) = postgres_container.await;
 
 	// TODO: Add expression parameter to CreateIndex operation
 	// Example:
@@ -274,7 +259,7 @@ async fn test_postgres_expression_index(
 async fn test_postgres_gist_index(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, _url) = postgres_container.await;
 
 	// TODO: Add index_type parameter to CreateIndex operation
 	// Example:
@@ -303,7 +288,7 @@ async fn test_postgres_gist_index(
 async fn test_postgres_gin_index(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, _url) = postgres_container.await;
 
 	// TODO: Add index_type parameter to CreateIndex operation
 	// Example:
@@ -332,7 +317,7 @@ async fn test_postgres_gin_index(
 async fn test_postgres_exclude_constraint(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, _url) = postgres_container.await;
 
 	// TODO: Add Constraint::Exclude variant
 	// Example:
@@ -363,7 +348,7 @@ async fn test_postgres_exclude_constraint(
 async fn test_postgres_trigram_index(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, _url) = postgres_container.await;
 
 	// TODO: Add RunSQL support for CREATE EXTENSION + GIN operator class support
 	// Example:
@@ -398,7 +383,7 @@ async fn test_postgres_trigram_index(
 async fn test_mysql_algorithm_instant(
 	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = mysql_container.await;
+	let (_container, _pool, _port, _url) = mysql_container.await;
 
 	// TODO: Add algorithm parameter to ALTER TABLE operations
 	// Example:
@@ -423,7 +408,7 @@ async fn test_mysql_algorithm_instant(
 async fn test_mysql_algorithm_inplace(
 	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = mysql_container.await;
+	let (_container, _pool, _port, _url) = mysql_container.await;
 
 	// TODO: Add algorithm parameter to ALTER TABLE operations
 	// Example:
@@ -450,7 +435,7 @@ async fn test_mysql_algorithm_inplace(
 async fn test_mysql_lock_none(
 	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = mysql_container.await;
+	let (_container, _pool, _port, _url) = mysql_container.await;
 
 	// TODO: Add lock_type parameter to ALTER TABLE operations
 	// Example:
@@ -474,7 +459,7 @@ async fn test_mysql_lock_none(
 async fn test_mysql_fulltext_index(
 	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = mysql_container.await;
+	let (_container, _pool, _port, _url) = mysql_container.await;
 
 	// TODO: Add index_type parameter to CreateIndex operation
 	// Example:
@@ -500,7 +485,7 @@ async fn test_mysql_fulltext_index(
 async fn test_mysql_spatial_index(
 	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = mysql_container.await;
+	let (_container, _pool, _port, _url) = mysql_container.await;
 
 	// TODO: Add index_type parameter to CreateIndex operation + GEOMETRY field type
 	// Example:
@@ -527,7 +512,7 @@ async fn test_mysql_spatial_index(
 async fn test_mysql_partition_by_range(
 	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = mysql_container.await;
+	let (_container, _pool, _port, _url) = mysql_container.await;
 
 	// TODO: Add partition parameter to CreateTable operation
 	// Example:
@@ -561,7 +546,7 @@ async fn test_mysql_partition_by_range(
 async fn test_mysql_partition_by_hash(
 	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = mysql_container.await;
+	let (_container, _pool, _port, _url) = mysql_container.await;
 
 	// TODO: Add partition parameter to CreateTable operation
 	// Example:
@@ -594,8 +579,7 @@ async fn test_mysql_auto_increment_initial_value(
 		.await
 		.expect("Failed to connect to MySQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Mysql);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Mysql);
 
 	// Create table with AUTO_INCREMENT
 	let migration = create_test_migration(

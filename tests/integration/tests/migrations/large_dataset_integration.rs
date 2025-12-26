@@ -109,8 +109,7 @@ async fn test_bulk_insert_one_million_rows(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let create_table = create_test_migration(
@@ -121,7 +120,7 @@ async fn test_bulk_insert_one_million_rows(
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_basic_column("event_type", FieldType::VarChar(50)),
-				create_basic_column("timestamp", FieldType::BigInt),
+				create_basic_column("timestamp", FieldType::BigInteger),
 			],
 			constraints: vec![],
 		}],
@@ -182,8 +181,7 @@ async fn test_index_after_data_insertion(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table WITHOUT index
 	let create_table = create_test_migration(
@@ -225,9 +223,11 @@ async fn test_index_after_data_insertion(
 		"0002_create_email_index",
 		vec![Operation::CreateIndex {
 			table: leak_str("users"),
-			name: leak_str("idx_users_email"),
 			columns: vec![leak_str("email")],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		}],
 	);
 
@@ -260,7 +260,7 @@ async fn test_index_after_data_insertion(
 #[ignore = "COPY FROM support requires file I/O or STDIN piping"]
 #[tokio::test]
 async fn test_postgres_copy_from(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[future] _postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	// TODO: Implement COPY FROM support in migrations
 	// Example:
@@ -286,7 +286,7 @@ async fn test_postgres_copy_from(
 #[ignore = "LOAD DATA support requires file I/O or LOCAL INFILE"]
 #[tokio::test]
 async fn test_mysql_load_data(
-	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
+	#[future] _mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
 ) {
 	// TODO: Implement LOAD DATA support in migrations
 	// Example:
@@ -318,8 +318,7 @@ async fn test_batch_size_optimization(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let create_table = create_test_migration(
@@ -399,8 +398,7 @@ async fn test_performance_create_1000_tables(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create 1000 tables
 	let mut operations = Vec::new();
@@ -455,8 +453,7 @@ async fn test_performance_add_column_to_wide_table(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with 100 columns
 	let mut columns = vec![create_auto_pk_column("id", FieldType::Integer)];
@@ -503,7 +500,6 @@ async fn test_performance_add_column_to_wide_table(
 	let column_count: i64 = sqlx::query_scalar(
 		"SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'wide_table'",
 	)
-	.bind()
 	.fetch_one(pool.as_ref())
 	.await
 	.expect("Failed to count columns");
@@ -533,8 +529,7 @@ async fn test_performance_index_on_large_table(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let create_table = create_test_migration(
@@ -579,9 +574,11 @@ async fn test_performance_index_on_large_table(
 		"0002_create_index",
 		vec![Operation::CreateIndex {
 			table: leak_str("large_table"),
-			name: leak_str("idx_large_table_email"),
 			columns: vec![leak_str("email")],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		}],
 	);
 

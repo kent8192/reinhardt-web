@@ -84,11 +84,11 @@ fn test_postgres_mysql_detection_consistency() {
 	add_field(&mut user_model, "created_at", FieldType::DateTime);
 	to_state.add_model(user_model);
 
-	// Autodetector実行（DB非依存の検出）
+	// Run autodetector (DB-independent detection)
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: フィールド追加が検出される（PostgreSQL/MySQL共通）
+	// Verify: Field addition is detected (common to PostgreSQL/MySQL)
 	assert_eq!(
 		detected.added_fields.len(),
 		1,
@@ -98,8 +98,8 @@ fn test_postgres_mysql_detection_consistency() {
 	assert_eq!(detected.added_fields[0].1, "User");
 	assert_eq!(detected.added_fields[0].2, "created_at");
 
-	// NOTE: このテストはDB非依存の検出ロジックを検証
-	// 実際のSQL生成における型マッピングの差異は、次のテストで検証
+	// NOTE: This test verifies DB-independent detection logic
+	// Type mapping differences in actual SQL generation are verified in the next test
 }
 
 // ============================================================================
@@ -130,11 +130,11 @@ fn test_type_mapping_differences() {
 	add_field(&mut product_model, "price", FieldType::Decimal(10, 2));
 	to_state.add_model(product_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: 型変更が検出される
+	// Verify: Type change is detected
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
@@ -144,7 +144,7 @@ fn test_type_mapping_differences() {
 	assert_eq!(detected.altered_fields[0].1, "Product");
 	assert_eq!(detected.altered_fields[0].2, "price");
 
-	// NOTE: 実際のSQL生成時にはDB固有の型にマッピングされる
+	// NOTE: Mapped to DB-specific types during actual SQL generation
 	// PostgreSQL: ALTER TABLE ... ALTER COLUMN price TYPE NUMERIC(10,2)
 	// MySQL: ALTER TABLE ... MODIFY COLUMN price DECIMAL(10,2)
 }
@@ -176,12 +176,12 @@ fn test_detect_add_composite_primary_key() {
 	let mut to_state = ProjectState::new();
 	let mut order_item_model = create_basic_model("testapp", "OrderItem", "testapp_orderitem");
 
-	// idフィールドを削除し、複合PKフィールドを追加
+	// Remove id field and add composite PK fields
 	order_item_model.fields.remove("id");
 	add_field(&mut order_item_model, "order_id", FieldType::Integer);
 	add_field(&mut order_item_model, "product_id", FieldType::Integer);
 
-	// 複合PK制約として追加
+	// Add as composite PK constraint
 	order_item_model.constraints.push(ConstraintDefinition {
 		name: "pk_orderitem".to_string(),
 		constraint_type: "PrimaryKey".to_string(),
@@ -192,11 +192,11 @@ fn test_detect_add_composite_primary_key() {
 
 	to_state.add_model(order_item_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: idフィールドの削除と新しいフィールドの追加、複合PK制約の追加が検出される
+	// Verify: id field deletion, new field addition, and composite PK constraint addition are detected
 	assert_eq!(detected.removed_fields.len(), 1, "Should detect id field removal");
 	assert_eq!(
 		detected.added_fields.len(),
@@ -261,11 +261,11 @@ fn test_detect_modify_composite_primary_key() {
 	});
 	to_state.add_model(order_item_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: 新しいフィールド追加、古いPK削除、新しいPK追加が検出される
+	// Verify: New field addition, old PK deletion, and new PK addition are detected
 	assert_eq!(
 		detected.added_fields.len(),
 		1,
@@ -282,7 +282,7 @@ fn test_detect_modify_composite_primary_key() {
 		"Should detect new PK constraint addition"
 	);
 
-	// 新しいPKは3つのフィールドを含む
+	// New PK contains 3 fields
 	assert_eq!(detected.added_constraints[0].2.fields.len(), 3);
 	assert!(detected.added_constraints[0].2.fields.contains(&"line_number".to_string()));
 }
@@ -312,7 +312,7 @@ fn test_cross_db_composite_pk_behavior() {
 	add_field(&mut user_role_model, "role_id", FieldType::Integer);
 	add_field(&mut user_role_model, "assigned_at", FieldType::DateTime);
 
-	// 複合PK制約
+	// Composite PK constraint
 	user_role_model.constraints.push(ConstraintDefinition {
 		name: "pk_userrole".to_string(),
 		constraint_type: "PrimaryKey".to_string(),
@@ -323,11 +323,11 @@ fn test_cross_db_composite_pk_behavior() {
 
 	to_state.add_model(user_role_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: モデル作成と複合PK制約が検出される
+	// Verify: Model creation and composite PK constraint are detected
 	assert_eq!(detected.created_models.len(), 1, "Should detect model creation");
 	assert_eq!(
 		detected.added_constraints.len(),
@@ -340,10 +340,10 @@ fn test_cross_db_composite_pk_behavior() {
 		vec!["user_id".to_string(), "role_id".to_string()]
 	);
 
-	// NOTE: 実際のSQL生成時の構文はDB依存:
+	// NOTE: Syntax during actual SQL generation is DB-dependent:
 	// PostgreSQL: CREATE TABLE ... (user_id INT, role_id INT, PRIMARY KEY (user_id, role_id))
 	// MySQL: CREATE TABLE ... (user_id INT, role_id INT, PRIMARY KEY (user_id, role_id))
-	// 構文はほぼ同じだが、型の違い（INT vs INTEGER）などがある可能性がある
+	// Syntax is almost the same, but there may be type differences (INT vs INTEGER) etc.
 }
 
 // ============================================================================
@@ -371,7 +371,7 @@ fn test_composite_pk_with_other_constraints() {
 	add_field(&mut order_item_model, "product_id", FieldType::Integer);
 	add_field(&mut order_item_model, "sku", FieldType::VarChar(100));
 
-	// 複合PK制約
+	// Composite PK constraint
 	order_item_model.constraints.push(ConstraintDefinition {
 		name: "pk_orderitem".to_string(),
 		constraint_type: "PrimaryKey".to_string(),
@@ -380,7 +380,7 @@ fn test_composite_pk_with_other_constraints() {
 		foreign_key_info: None,
 	});
 
-	// UNIQUE制約（SKU）
+	// UNIQUE constraint (SKU)
 	order_item_model.constraints.push(ConstraintDefinition {
 		name: "unique_sku".to_string(),
 		constraint_type: "Unique".to_string(),
@@ -389,7 +389,7 @@ fn test_composite_pk_with_other_constraints() {
 		foreign_key_info: None,
 	});
 
-	// FK制約（order_id → orders.id）
+	// FK constraint (order_id → orders.id)
 	order_item_model.constraints.push(ConstraintDefinition {
 		name: "fk_order".to_string(),
 		constraint_type: "ForeignKey".to_string(),
@@ -405,11 +405,11 @@ fn test_composite_pk_with_other_constraints() {
 
 	to_state.add_model(order_item_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: すべての制約が検出される
+	// Verify: All constraints are detected
 	assert_eq!(detected.created_models.len(), 1, "Should detect model creation");
 	assert_eq!(
 		detected.added_constraints.len(),
@@ -417,7 +417,7 @@ fn test_composite_pk_with_other_constraints() {
 		"Should detect all 3 constraints (PK + UNIQUE + FK)"
 	);
 
-	// 制約タイプの確認
+	// Verify constraint type
 	let constraint_types: Vec<&str> = detected
 		.added_constraints
 		.iter()

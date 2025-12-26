@@ -37,6 +37,8 @@ fn test_form_creation_minimal() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata.clone(), "/api/submit");
@@ -60,6 +62,8 @@ fn test_form_creation_single_field() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -102,6 +106,8 @@ fn test_form_creation_multiple_fields() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -118,6 +124,8 @@ fn test_form_creation_with_csrf_token() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -144,6 +152,8 @@ fn test_form_creation_with_prefix() {
 		prefix: "user_form".to_string(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -167,6 +177,8 @@ fn test_form_creation_with_help_text() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -186,6 +198,8 @@ fn test_form_creation_bound_state() {
 		prefix: String::new(),
 		is_bound: true,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -215,6 +229,8 @@ fn test_form_creation_with_errors() {
 		prefix: String::new(),
 		is_bound: true,
 		errors,
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -243,6 +259,8 @@ fn test_get_value_empty_default() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -266,6 +284,8 @@ fn test_set_and_get_value() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -291,6 +311,8 @@ fn test_update_value_multiple_times() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -315,6 +337,8 @@ fn test_get_value_nonexistent_field() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -331,6 +355,8 @@ fn test_set_value_nonexistent_field() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -369,6 +395,8 @@ fn test_initial_values_from_metadata() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -393,6 +421,8 @@ fn test_field_level_initial_value() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -434,6 +464,8 @@ fn test_multiple_field_values() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -468,6 +500,8 @@ fn test_validation_required_field_valid() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -494,6 +528,8 @@ fn test_validation_required_field_empty() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -522,6 +558,8 @@ fn test_validation_optional_field_empty() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -565,6 +603,8 @@ fn test_validation_multiple_required_fields() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -602,6 +642,8 @@ fn test_validation_error_message() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -628,6 +670,8 @@ fn test_validation_clears_previous_errors() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -659,6 +703,8 @@ fn test_validation_whitespace_only() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -685,6 +731,8 @@ fn test_validation_multiple_calls() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -724,6 +772,8 @@ fn test_validation_mixed_required_optional() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -747,6 +797,8 @@ fn test_validation_empty_form() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -770,6 +822,8 @@ fn test_validation_state_persistence() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");
@@ -844,6 +898,8 @@ fn test_multiple_widget_types() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let component = FormComponent::new(metadata, "/api/submit");

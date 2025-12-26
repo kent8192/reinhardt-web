@@ -21,14 +21,13 @@
 //! - **Non-squashable**: Operations that can't be optimized (e.g., RunSQL with data changes)
 //!
 //! **Django Equivalent**: `python manage.py squashmigrations app 0001 0010`
-//!
-//! **Note**: Most tests are marked as `#[ignore]` because squashing is not yet
-//! implemented in reinhardt-db. These serve as specifications for future implementation.
 
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
-	executor::DatabaseMigrationExecutor, ColumnDefinition, FieldType, Migration, Operation,
+	executor::DatabaseMigrationExecutor,
+	squash::{MigrationSquasher, SquashOptions},
+	ColumnDefinition, FieldType, Migration, Operation,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -100,76 +99,72 @@ fn create_auto_pk_column(name: &'static str, type_def: FieldType) -> ColumnDefin
 /// **Example**:
 /// - Before: 0001_create (CREATE TABLE), 0002_add_col1 (ADD COLUMN), 0003_add_col2 (ADD COLUMN)
 /// - After: 0001_squashed (CREATE TABLE with both columns)
-///
-/// **Note**: Currently marked as ignore - squashing not yet implemented
 #[rstest]
-#[ignore = "Migration squashing not yet implemented in reinhardt-db"]
 #[tokio::test]
 async fn test_squash_three_migrations(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	// TODO: Implement squashing functionality
-	//
-	// Original migrations:
-	// let migration_1 = Migration {
-	// 	app_label: "app",
-	// 	name: "0001_create_users",
-	// 	operations: vec![Operation::CreateTable {
-	// 		name: leak_str("users"),
-	// 		columns: vec![create_auto_pk_column("id", FieldType::Integer)],
-	// 		constraints: vec![],
-	// 	// 	}],
-	// 	...
-	// };
-	//
-	// let migration_2 = Migration {
-	// 	app_label: "app",
-	// 	name: "0002_add_name",
-	// 	operations: vec![Operation::AddColumn {
-	// 		table: leak_str("users"),
-	// 		column: create_basic_column("name", FieldType::VarChar(100)),
-	// 	}],
-	// 	dependencies: vec![("app", "0001_create_users")],
-	// 	...
-	// };
-	//
-	// let migration_3 = Migration {
-	// 	app_label: "app",
-	// 	name: "0003_add_email",
-	// 	operations: vec![Operation::AddColumn {
-	// 		table: leak_str("users"),
-	// 		column: create_basic_column("email", FieldType::VarChar(255)),
-	// 	}],
-	// 	dependencies: vec![("app", "0002_add_name")],
-	// 	...
-	// };
-	//
-	// Squashed migration:
-	// let squashed = Migration {
-	// 	app_label: "app",
-	// 	name: "0001_squashed_0003",
-	// 	operations: vec![Operation::CreateTable {
-	// 		name: leak_str("users"),
-	// 		columns: vec![
-	// 			create_auto_pk_column("id", FieldType::Integer),
-	// 			create_basic_column("name", FieldType::VarChar(100)),
-	// 			create_basic_column("email", FieldType::VarChar(255)),
-	// 		],
-	// 		constraints: vec![],
-	// 	// 	}],
-	// 	replaces: vec![
-	// 		("app", "0001_create_users"),
-	// 		("app", "0002_add_name"),
-	// 		("app", "0003_add_email"),
-	// 	],
-	// 	...
-	// };
-	//
-	// Both approaches should produce identical schema:
-	// 1. Apply migration_1, migration_2, migration_3 sequentially
-	// 2. Apply squashed migration
-	//
-	// The squashed version is faster and cleaner
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.expect("Failed to connect to PostgreSQL");
+
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+
+	// Create original migrations
+	let migration_1 =
+		Migration::new("0001_create_users", "app").add_operation(Operation::CreateTable {
+			name: leak_str("users"),
+			columns: vec![create_auto_pk_column("id", FieldType::Integer)],
+			constraints: vec![],
+		});
+
+	let migration_2 = Migration::new("0002_add_name", "app")
+		.add_dependency("app", "0001_create_users")
+		.add_operation(Operation::AddColumn {
+			table: leak_str("users"),
+			column: create_basic_column("name", FieldType::VarChar(100)),
+		});
+
+	let migration_3 = Migration::new("0003_add_email", "app")
+		.add_dependency("app", "0002_add_name")
+		.add_operation(Operation::AddColumn {
+			table: leak_str("users"),
+			column: create_basic_column("email", FieldType::VarChar(255)),
+		});
+
+	let migrations = vec![migration_1, migration_2, migration_3];
+
+	// Squash the migrations
+	let squasher = MigrationSquasher::new();
+	let squashed = squasher
+		.squash(&migrations, "0001_squashed_0003", SquashOptions::default())
+		.expect("Failed to squash migrations");
+
+	// Verify squashed migration properties
+	assert_eq!(squashed.name, "0001_squashed_0003");
+	assert_eq!(squashed.app_label, "app");
+	assert_eq!(squashed.replaces.len(), 3);
+
+	// Apply the squashed migration
+	executor
+		.apply_migrations(&[squashed])
+		.await
+		.expect("Failed to apply squashed migration");
+
+	// Verify the schema was created correctly
+	let column_count: i64 = sqlx::query_scalar(
+		"SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to count columns");
+
+	assert_eq!(
+		column_count, 3,
+		"users table should have 3 columns (id, name, email)"
+	);
 }
 
 /// Test dependency preservation after squashing
@@ -181,69 +176,96 @@ async fn test_squash_three_migrations(
 /// - migration_2 adds column
 /// - migration_3 adds another column
 /// - Squashed migration must still depend on ("other_app", "0001_initial")
-///
-/// **Note**: Currently marked as ignore - squashing not yet implemented
 #[rstest]
-#[ignore = "Migration squashing not yet implemented in reinhardt-db"]
 #[tokio::test]
 async fn test_squashing_preserves_external_dependencies(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	// TODO: When squashing migrations, ensure:
-	// 1. Internal dependencies (within squashed set) are removed
-	// 2. External dependencies (to other apps or prior migrations) are preserved
-	//
-	// Example:
-	// Original:
-	// - 0001: depends on ("other_app", "0001_initial")
-	// - 0002: depends on ("app", "0001") <- internal dependency
-	// - 0003: depends on ("app", "0002") <- internal dependency
-	//
-	// Squashed:
-	// - 0001_squashed_0003: depends on ("other_app", "0001_initial") <- preserved
-	//
-	// Internal dependencies are collapsed, external ones remain
+	let _ = postgres_container.await; // Consume the fixture
+
+	// Migration 1: depends on external app
+	let migration_1 = Migration::new("0001_initial", "app")
+		.add_dependency("other_app", "0001_initial")
+		.add_operation(Operation::CreateTable {
+			name: leak_str("posts"),
+			columns: vec![create_auto_pk_column("id", FieldType::Integer)],
+			constraints: vec![],
+		});
+
+	// Migration 2: depends on migration 1 (internal dependency)
+	let migration_2 = Migration::new("0002_add_title", "app")
+		.add_dependency("app", "0001_initial")
+		.add_operation(Operation::AddColumn {
+			table: leak_str("posts"),
+			column: create_basic_column("title", FieldType::VarChar(200)),
+		});
+
+	// Migration 3: depends on migration 2 (internal dependency)
+	let migration_3 = Migration::new("0003_add_content", "app")
+		.add_dependency("app", "0002_add_title")
+		.add_operation(Operation::AddColumn {
+			table: leak_str("posts"),
+			column: create_basic_column("content", FieldType::Text),
+		});
+
+	let migrations = vec![migration_1, migration_2, migration_3];
+
+	// Squash the migrations
+	let squasher = MigrationSquasher::new();
+	let squashed = squasher
+		.squash(&migrations, "0001_squashed_0003", SquashOptions::default())
+		.expect("Failed to squash migrations");
+
+	// Verify external dependency is preserved
+	assert_eq!(squashed.dependencies.len(), 1);
+	assert_eq!(squashed.dependencies[0].0, "other_app");
+	assert_eq!(squashed.dependencies[0].1, "0001_initial");
+
+	// Verify replaces list
+	assert_eq!(squashed.replaces.len(), 3);
 }
 
 /// Test replaces attribute verification
 ///
 /// **Test Intent**: Verify that squashed migration correctly lists replaced migrations
-///
-/// **Note**: Currently marked as ignore - squashing not yet implemented
 #[rstest]
-#[ignore = "Migration squashing not yet implemented in reinhardt-db"]
 #[tokio::test]
 async fn test_replaces_attribute_verification(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	// TODO: The `replaces` attribute is critical for squashing
-	//
-	// let squashed = Migration {
-	// 	app_label: "app",
-	// 	name: "0001_squashed_0005",
-	// 	operations: vec![...],
-	// 	dependencies: vec![...],
-	// 	replaces: vec![
-	// 		("app", "0001_create_users"),
-	// 		("app", "0002_add_name"),
-	// 		("app", "0003_add_email"),
-	// 		("app", "0004_add_phone"),
-	// 		("app", "0005_add_address"),
-	// 	],
-	// 	...
-	// };
-	//
-	// The migration executor uses `replaces` to:
-	// 1. Skip applying individual migrations if squashed version is applied
-	// 2. Track which migrations have been "virtually" applied
-	// 3. Maintain migration history consistency
-	//
-	// When a new database is created:
-	// - Apply squashed migration → marks all replaced migrations as applied
-	//
-	// When an existing database is migrated:
-	// - If old migrations already applied, skip squashed version
-	// - If squashed version applied, skip old migrations
+	let _ = postgres_container.await; // Consume the fixture
+
+	// Create 5 migrations to squash
+	let migrations: Vec<Migration> = (1..=5)
+		.map(|i| {
+			let name = leak_str(format!("{:04}_migration", i));
+			let mut migration = Migration::new(name, "app");
+			if i > 1 {
+				let prev_name = leak_str(format!("{:04}_migration", i - 1));
+				migration = migration.add_dependency("app", prev_name);
+			}
+			migration.add_operation(Operation::RunSQL {
+				sql: leak_str(format!("SELECT {}", i)),
+				reverse_sql: None,
+			})
+		})
+		.collect();
+
+	// Squash all 5 migrations
+	let squasher = MigrationSquasher::new();
+	let squashed = squasher
+		.squash(&migrations, "0001_squashed_0005", SquashOptions::default())
+		.expect("Failed to squash migrations");
+
+	// Verify replaces attribute contains all original migrations
+	assert_eq!(squashed.replaces.len(), 5);
+
+	// Verify replaces list is in correct order
+	for (i, (app, name)) in squashed.replaces.iter().enumerate() {
+		assert_eq!(*app, "app");
+		let expected_name = format!("{:04}_migration", i + 1);
+		assert_eq!(*name, expected_name);
+	}
 }
 
 // ============================================================================
@@ -278,8 +300,7 @@ async fn test_fake_initial_skip_existing_tables(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Migration that creates the same table
 	let migration = create_migration_with_deps(
@@ -316,58 +337,60 @@ async fn test_fake_initial_skip_existing_tables(
 
 /// Test detection of non-squashable operations
 ///
-/// **Test Intent**: Verify that migrations with RunSQL are marked as non-squashable
+/// **Test Intent**: Verify that migrations with RunSQL are preserved (not optimized away)
 ///
 /// **Rationale**: Some operations can't be safely squashed:
 /// - RunSQL with data modifications (can't optimize)
 /// - RunCode (Rust closures can't be merged)
 /// - Operations with state-dependent logic
 ///
-/// **Note**: Currently marked as ignore - squashing not yet implemented
+/// **Behavior**: MigrationSquasher preserves RunSQL operations in the squashed migration
 #[rstest]
-#[ignore = "Migration squashing not yet implemented in reinhardt-db"]
 #[tokio::test]
 async fn test_detect_non_squashable_operations(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	// TODO: Implement squashing with safety checks
-	//
-	// let migration_1 = Migration {
-	// 	app_label: "app",
-	// 	name: "0001_create_users",
-	// 	operations: vec![Operation::CreateTable { ... }],
-	// 	...
-	// };
-	//
-	// let migration_2 = Migration {
-	// 	app_label: "app",
-	// 	name: "0002_populate_data",
-	// 	operations: vec![Operation::RunSQL {
-	// 		sql: leak_str("INSERT INTO users (name) VALUES ('Admin')"),
-	// 		reverse_sql: None,
-	// 	}],
-	// 	...
-	// };
-	//
-	// let migration_3 = Migration {
-	// 	app_label: "app",
-	// 	name: "0003_add_email",
-	// 	operations: vec![Operation::AddColumn { ... }],
-	// 	...
-	// };
-	//
-	// When trying to squash these:
-	// - Squashing 0001 + 0002 + 0003 should:
-	//   1. Warn that 0002 contains RunSQL (non-optimizable)
-	//   2. Either:
-	//      a. Keep RunSQL as separate operation in squashed migration
-	//      b. Refuse to squash (safer option)
-	//
-	// Safe squashing:
-	// - CreateTable + AddColumn + AddColumn → CreateTable (with all columns)
-	// - AddConstraint + DropConstraint → (cancel out)
-	//
-	// Unsafe squashing:
-	// - RunSQL can't be optimized (data-dependent)
-	// - RunCode can't be merged (closure semantics)
+	let _ = postgres_container.await; // Consume the fixture
+
+	// Migration 1: CreateTable (optimizable)
+	let migration_1 =
+		Migration::new("0001_create_users", "app").add_operation(Operation::CreateTable {
+			name: leak_str("users"),
+			columns: vec![create_auto_pk_column("id", FieldType::Integer)],
+			constraints: vec![],
+		});
+
+	// Migration 2: RunSQL with data insertion (non-optimizable, should be preserved)
+	let migration_2 = Migration::new("0002_populate_data", "app")
+		.add_dependency("app", "0001_create_users")
+		.add_operation(Operation::RunSQL {
+			sql: leak_str("INSERT INTO users (id) VALUES (1)"),
+			reverse_sql: None,
+		});
+
+	// Migration 3: AddColumn (optimizable)
+	let migration_3 = Migration::new("0003_add_email", "app")
+		.add_dependency("app", "0002_populate_data")
+		.add_operation(Operation::AddColumn {
+			table: leak_str("users"),
+			column: create_basic_column("email", FieldType::VarChar(255)),
+		});
+
+	let migrations = vec![migration_1, migration_2, migration_3];
+
+	// Squash with optimization enabled
+	let squasher = MigrationSquasher::new();
+	let squashed = squasher
+		.squash(&migrations, "0001_squashed_0003", SquashOptions::default())
+		.expect("Failed to squash migrations");
+
+	// Verify RunSQL is preserved in the squashed migration
+	let has_run_sql = squashed
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::RunSQL { .. }));
+	assert!(has_run_sql, "RunSQL operation should be preserved");
+
+	// Verify all 3 operations are present (CreateTable, RunSQL, AddColumn)
+	assert_eq!(squashed.operations.len(), 3);
 }

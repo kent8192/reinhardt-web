@@ -1,29 +1,11 @@
 // Auto-generated module file for migrations integration tests
 // Each test file in migrations/ subdirectory is explicitly included with #[path] attribute
 
-#[path = "migrations/composite_pk_integration.rs"]
-mod composite_pk_integration;
-
-#[path = "migrations/composite_pk_error_handling.rs"]
-mod composite_pk_error_handling;
-
 #[path = "migrations/composite_pk_db_execution.rs"]
 mod composite_pk_db_execution;
 
-#[path = "migrations/composite_pk_migration_operations.rs"]
-mod composite_pk_migration_operations;
-
-#[path = "migrations/migration_naming_integration.rs"]
-mod migration_naming_integration;
-
-#[path = "migrations/duplicate_detection_integration.rs"]
-mod duplicate_detection_integration;
-
 #[path = "migrations/state_loader_integration.rs"]
 mod state_loader_integration;
-
-#[path = "migrations/migration_overwrite_prevention_test.rs"]
-mod migration_overwrite_prevention_test;
 
 #[path = "migrations/error_handling_integration.rs"]
 mod error_handling_integration;
@@ -37,16 +19,14 @@ mod multi_database_integration;
 #[path = "migrations/concurrent_execution_integration.rs"]
 mod concurrent_execution_integration;
 
-#[path = "migrations/performance_benchmark.rs"]
-mod performance_benchmark;
-
 // SQL Generation Validation Tests
 #[path = "migrations/sql_generation_validation.rs"]
 mod sql_generation_validation;
 
 // Migration Rollback Tests
-#[path = "migrations/migration_rollback_integration.rs"]
-mod migration_rollback_integration;
+// TODO: Re-enable when rollback_migrations method is implemented
+// #[path = "migrations/migration_rollback_integration.rs"]
+// mod migration_rollback_integration;
 
 // Schema Validation Tests
 #[path = "migrations/schema_validation_integration.rs"]

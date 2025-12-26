@@ -122,8 +122,8 @@ fn read_migration_file(path: &Path) -> Result<String, std::io::Error> {
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_01_new_model_creates_create_table_migration() {
-	// Test: 新規モデル作成からのCreateTable生成（E2E）
-	// ファイルシステムへの書き込みまで検証
+	// Test: CreateTable generation from new model creation (E2E)
+	// Verify up to file system writes
 
 	let temp_dir = TempDir::new().unwrap();
 	let migrations_dir = temp_dir.path().join("migrations");
@@ -200,133 +200,133 @@ async fn nc_01_new_model_creates_create_table_migration() {
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_02_field_addition_creates_add_column_migration() {
-	// Test: フィールド追加からのAddColumn生成（E2E）
+	// Test: AddColumn generation from field addition (E2E)
 	todo!("Implement E2E field addition test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_03_field_deletion_creates_drop_column_migration() {
-	// Test: フィールド削除からのDropColumn生成（E2E）
+	// Test: DropColumn generation from field deletion (E2E)
 	todo!("Implement E2E field deletion test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_04_field_type_change_creates_alter_column_migration() {
-	// Test: フィールド型変更からのAlterColumn生成（E2E）
+	// Test: AlterColumn generation from field type change (E2E)
 	todo!("Implement E2E field type change test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_05_field_rename_creates_rename_column_migration() {
-	// Test: フィールドリネームからのRenameColumn生成（E2E）
+	// Test: RenameColumn generation from field rename (E2E)
 	todo!("Implement E2E field rename test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_06_index_addition_creates_create_index_migration() {
-	// Test: インデックス追加からのCreateIndex生成（E2E）
+	// Test: CreateIndex generation from index addition (E2E)
 	todo!("Implement E2E index addition test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_07_foreign_key_addition_creates_add_column_and_constraint() {
-	// Test: ForeignKey追加からのAddColumn + AddConstraint生成（E2E）
+	// Test: AddColumn + AddConstraint generation from ForeignKey addition (E2E)
 	todo!("Implement E2E foreign key test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_08_many_to_many_creates_junction_table() {
-	// Test: ManyToMany追加からのCreateTable（junction table）生成（E2E）
+	// Test: CreateTable (junction table) generation from ManyToMany addition (E2E)
 	todo!("Implement E2E many-to-many test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_09_initial_migration_correctness() {
-	// Test: 初期マイグレーション（0001_initial）の正しい生成（E2E）
+	// Test: Correct generation of initial migration (0001_initial) (E2E)
 	todo!("Implement E2E initial migration test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_10_sequential_migrations_dependency_chain() {
-	// Test: 連続マイグレーション（0001 → 0002 → 0003）の正しい生成（E2E）
+	// Test: Correct generation of sequential migrations (0001 → 0002 → 0003) (E2E)
 	todo!("Implement E2E sequential migrations test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_11_generated_migration_executability() {
-	// Test: 生成されたマイグレーションの実行可能性検証（E2E）
+	// Test: Verify generated migrations are executable (E2E)
 	todo!("Implement E2E executability test with real database")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_12_one_to_one_creates_unique_foreign_key() {
-	// Test: OneToOne追加からの適切なマイグレーション生成（E2E）
+	// Test: Proper migration generation from OneToOne addition (E2E)
 	todo!("Implement E2E one-to-one test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_13_default_value_addition_creates_alter_column() {
-	// Test: デフォルト値追加からのAlterColumn生成（E2E）
+	// Test: AlterColumn generation from default value addition (E2E)
 	todo!("Implement E2E default value test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_14_null_constraint_change_creates_alter_column() {
-	// Test: NULL制約変更からのAlterColumn生成（E2E）
+	// Test: AlterColumn generation from NULL constraint change (E2E)
 	todo!("Implement E2E null constraint test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_15_unique_constraint_addition_creates_add_constraint() {
-	// Test: UNIQUE制約追加からのAddConstraint生成（E2E）
+	// Test: AddConstraint generation from UNIQUE constraint addition (E2E)
 	todo!("Implement E2E unique constraint test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_16_index_deletion_creates_drop_index() {
-	// Test: インデックス削除からのDropIndex生成（E2E）
+	// Test: DropIndex generation from index deletion (E2E)
 	todo!("Implement E2E index deletion test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_17_constraint_deletion_creates_drop_constraint() {
-	// Test: 制約削除からのDropConstraint生成（E2E）
+	// Test: DropConstraint generation from constraint removal (E2E)
 	todo!("Implement E2E constraint deletion test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_18_multiple_changes_in_single_migration() {
-	// Test: 複数の変更を含むマイグレーション生成（E2E）
+	// Test: Migration generation with multiple changes (E2E)
 	todo!("Implement E2E multiple changes test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_19_multi_app_migrations_generation() {
-	// Test: 複数アプリの同時マイグレーション生成（E2E）
+	// Test: Simultaneous migration generation for multiple apps (E2E)
 	todo!("Implement E2E multi-app test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_20_data_preservation_verification() {
-	// Test: データ保持検証（既存データが失われない）（E2E）
+	// Test: Data retention verification (existing data is not lost) (E2E)
 	todo!("Implement E2E data preservation test")
 }
 
@@ -337,35 +337,35 @@ async fn nc_20_data_preservation_verification() {
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_01_no_models_error() {
-	// Test: モデルが存在しない場合のエラー（E2E）
+	// Test: Error when model does not exist (E2E)
 	todo!("Implement E2E no models error test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_02_empty_flag_without_app_label_error() {
-	// Test: --empty指定時にapp_labelがない場合のエラー（E2E）
+	// Test: Error when app_label is missing with --empty (E2E)
 	todo!("Implement E2E empty flag error test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_03_from_state_construction_failure_error() {
-	// Test: from_state構築失敗時のエラー（E2E）
+	// Test: Error when from_state construction fails (E2E)
 	todo!("Implement E2E from_state failure test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_04_invalid_field_definition_error() {
-	// Test: 無効なフィールド定義のエラー（E2E）
+	// Test: Error for invalid field definition (E2E)
 	todo!("Implement E2E invalid field error test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_05_file_write_permission_error() {
-	// Test: ファイル書き込み権限エラー（E2E）
+	// Test: File write permission error (E2E)
 
 	let temp_dir = TempDir::new().unwrap();
 	let migrations_dir = temp_dir.path().join("migrations");
@@ -430,97 +430,97 @@ async fn ec_05_file_write_permission_error() {
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_01_empty_migration_generation() {
-	// Test: 空のマイグレーション（--empty）生成（E2E）
+	// Test: Empty migration (--empty) generation (E2E)
 	todo!("Implement E2E empty migration test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_02_no_changes_detected() {
-	// Test: 変更がない場合（No changes detected）（E2E）
+	// Test: When no changes detected (E2E)
 	todo!("Implement E2E no changes test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_03_dry_run_mode() {
-	// Test: --dry-run モード（E2E）
+	// Test: --dry-run mode (E2E)
 	todo!("Implement E2E dry-run test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_04_custom_name_specification() {
-	// Test: --name カスタム名指定（E2E）
+	// Test: --name custom name specification (E2E)
 	todo!("Implement E2E custom name test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_05_verbose_mode() {
-	// Test: --verbose モード（E2E）
+	// Test: --verbose mode (E2E)
 	todo!("Implement E2E verbose mode test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_06_custom_migrations_directory() {
-	// Test: --migrations-dir カスタムディレクトリ指定（E2E）
+	// Test: --migrations-dir custom directory specification (E2E)
 	todo!("Implement E2E custom directory test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_07_from_db_mode() {
-	// Test: --from-db モード（E2E）
+	// Test: --from-db mode (E2E)
 	todo!("Implement E2E from-db mode test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_08_long_model_field_names() {
-	// Test: 長いモデル名/フィールド名（255文字）（E2E）
+	// Test: Long model/field names (255 characters) (E2E)
 	todo!("Implement E2E long names test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_09_large_number_of_fields() {
-	// Test: 大量のフィールド（100+）（E2E）
+	// Test: Large number of fields (100+) (E2E)
 	todo!("Implement E2E many fields test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_10_deep_dependency_chain() {
-	// Test: 深い依存チェーン（10段階）（E2E）
+	// Test: Deep dependency chain (10 levels) (E2E)
 	todo!("Implement E2E deep dependency test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_11_unicode_in_names() {
-	// Test: 特殊文字を含む名前（Unicode）（E2E）
+	// Test: Names with special characters (Unicode) (E2E)
 	todo!("Implement E2E unicode test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_12_sql_reserved_words() {
-	// Test: SQL予約語を含むテーブル名/カラム名（E2E）
+	// Test: Table/column names containing SQL reserved words (E2E)
 	todo!("Implement E2E reserved words test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_13_same_name_different_apps() {
-	// Test: 同一名の異なるアプリのモデル（E2E）
+	// Test: Models with same name in different apps (E2E)
 	todo!("Implement E2E same name test")
 }
 
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_14_cross_app_dependencies() {
-	// Test: クロスアプリ依存関係（E2E）
+	// Test: Cross-app dependencies (E2E)
 	todo!("Implement E2E cross-app test")
 }

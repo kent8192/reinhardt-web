@@ -27,9 +27,9 @@ use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, operations::SqlDialect, ColumnDefinition, Constraint,
 	FieldType, ForeignKeyAction, Migration, Operation,
 };
-use reinhardt_test::fixtures::{mysql_container, postgres_container};
+use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sqlx::{MySqlPool, PgPool};
+use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
@@ -543,6 +543,9 @@ async fn test_create_index_syntax(#[case] dialect: SqlDialect) {
 		table: leak_str("users"),
 		columns: vec![leak_str("email")],
 		unique: false,
+		index_type: None,
+		where_clause: None,
+		concurrently: false,
 	};
 
 	let sql = operation.to_sql(&dialect);
@@ -565,6 +568,9 @@ async fn test_create_unique_index_syntax(#[case] dialect: SqlDialect) {
 		table: leak_str("users"),
 		columns: vec![leak_str("username")],
 		unique: true,
+		index_type: None,
+		where_clause: None,
+		concurrently: false,
 	};
 
 	let sql = operation.to_sql(&dialect);
@@ -589,7 +595,7 @@ async fn test_create_unique_index_syntax(#[case] dialect: SqlDialect) {
 async fn test_drop_index_syntax() {
 	let operation = Operation::DropIndex {
 		table: leak_str("users"),
-		name: leak_str("idx_users_email"),
+		columns: vec![leak_str("email")],
 	};
 
 	// PostgreSQL - no table name needed
@@ -623,6 +629,9 @@ async fn test_composite_index_syntax() {
 		table: leak_str("orders"),
 		columns: vec![leak_str("user_id"), leak_str("created_at")],
 		unique: false,
+		index_type: None,
+		where_clause: None,
+		concurrently: false,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -952,8 +961,7 @@ async fn test_composite_primary_key_postgres_integration(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with composite primary key
 	let migration = create_test_migration(
@@ -1088,8 +1096,7 @@ async fn test_composite_primary_key_three_columns(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with 3-column composite primary key
 	let migration = create_test_migration(

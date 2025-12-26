@@ -53,6 +53,8 @@ fn create_test_form() -> FormComponent {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	FormComponent::new(metadata, "/api/submit")
@@ -274,6 +276,8 @@ fn test_sync_preserves_unbound_fields() {
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
+		validation_rules: Vec::new(),
+		non_field_errors: Vec::new(),
 	};
 
 	let form = FormComponent::new(metadata, "/api/submit");

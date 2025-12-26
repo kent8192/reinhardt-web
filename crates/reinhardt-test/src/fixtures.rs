@@ -124,7 +124,17 @@ pub use loader::{
 pub use mock::{MockDatabaseBackend, mock_connection, mock_database};
 
 // From server module
-pub use server::{TestServerGuard, test_server_guard};
+pub use server::{
+	BasicHandler, TestServer, TestServerBuilder, TestServerGuard, http_client, http1_server,
+	http2_server, server_with_di, server_with_middleware_chain, server_with_rate_limit,
+	server_with_timeout, test_server_guard,
+};
+
+#[cfg(feature = "websockets")]
+pub use server::{websocket_client, websocket_server};
+
+#[cfg(feature = "graphql")]
+pub use server::graphql_server;
 
 // From testcontainers module (conditional on feature)
 #[cfg(feature = "testcontainers")]

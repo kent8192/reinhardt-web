@@ -84,11 +84,11 @@ fn test_detect_create_single_model() {
 	let user_model = create_basic_model("testapp", "User", "testapp_user");
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.created_models.len(),
 		1,
@@ -121,11 +121,11 @@ fn test_detect_create_multiple_models() {
 	to_state.add_model(create_basic_model("testapp", "Post", "testapp_post"));
 	to_state.add_model(create_basic_model("testapp", "Comment", "testapp_comment"));
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.created_models.len(),
 		3,
@@ -163,11 +163,11 @@ fn test_detect_delete_single_model() {
 	// to_state: empty
 	let to_state = ProjectState::new();
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.deleted_models.len(),
 		1,
@@ -200,11 +200,11 @@ fn test_detect_delete_multiple_models() {
 	// to_state: empty
 	let to_state = ProjectState::new();
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.deleted_models.len(),
 		3,
@@ -245,11 +245,11 @@ fn test_detect_add_field_to_model() {
 	add_field_to_model(&mut user_model, "email", FieldType::VarChar(255), false);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(detected.added_fields.len(), 1, "Should detect 1 added field");
 	assert_eq!(detected.added_fields[0].0, "testapp");
 	assert_eq!(detected.added_fields[0].1, "User");
@@ -280,11 +280,11 @@ fn test_detect_remove_field_from_model() {
 	let mut to_state = ProjectState::new();
 	to_state.add_model(create_basic_model("testapp", "User", "testapp_user"));
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.removed_fields.len(),
 		1,
@@ -321,11 +321,11 @@ fn test_detect_alter_field_type() {
 	add_field_to_model(&mut user_model, "email", FieldType::Text, false);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
@@ -362,11 +362,11 @@ fn test_detect_alter_field_nullable() {
 	add_field_to_model(&mut user_model, "email", FieldType::VarChar(255), true);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
@@ -403,11 +403,11 @@ fn test_detect_add_not_null_constraint() {
 	add_field_to_model(&mut user_model, "email", FieldType::VarChar(255), false);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
@@ -449,11 +449,11 @@ fn test_detect_add_unique_constraint() {
 	});
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.added_indexes.len(),
 		1,
@@ -501,11 +501,11 @@ fn test_detect_change_default_value() {
 	);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
@@ -538,12 +538,12 @@ fn test_detect_rename_table() {
 	let mut to_state = ProjectState::new();
 	to_state.add_model(create_basic_model("testapp", "User", "testapp_users"));
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: テーブル名が変わると、削除+作成として検出される可能性がある
-	// または、table_nameの変更として検出される
+	// Verify: When table name changes, it may be detected as deletion + creation
+	// Or, it may be detected as table_name change
 	let total_changes = detected.created_models.len()
 		+ detected.deleted_models.len()
 		+ detected.renamed_models.len();
@@ -590,16 +590,16 @@ fn test_detect_composite_primary_key() {
 		constraints: vec![],
 		many_to_many_fields: vec![],
 	};
-	// 複合主キーを構成するフィールド
+	// Fields that compose the composite primary key
 	add_field_to_model(&mut model, "user_id", FieldType::Integer, false);
 	add_field_to_model(&mut model, "role_id", FieldType::Integer, false);
 	to_state.add_model(model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: 新しいフィールドが追加されたことを確認
+	// Verify: Confirm new fields were added
 	assert!(
 		detected.added_fields.len() >= 2,
 		"Should detect at least 2 added fields for composite PK"
@@ -640,11 +640,11 @@ fn test_detect_add_field_with_default() {
 	);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.added_fields.len(),
 		1,
@@ -676,19 +676,19 @@ fn test_detect_multiple_changes_same_model() {
 	add_field_to_model(&mut user_model, "age", FieldType::Integer, true);
 	from_state.add_model(user_model);
 
-	// to_state: User with id, email (TEXT), username (新規)
-	// 変更: age削除、email型変更、username追加
+	// to_state: User with id, email (TEXT), username (new)
+	// Changes: age deletion, email type change, username addition
 	let mut to_state = ProjectState::new();
 	let mut user_model = create_basic_model("testapp", "User", "testapp_user");
-	add_field_to_model(&mut user_model, "email", FieldType::Text, false); // 型変更
-	add_field_to_model(&mut user_model, "username", FieldType::VarChar(100), false); // 新規
+	add_field_to_model(&mut user_model, "email", FieldType::Text, false); // Type change
+	add_field_to_model(&mut user_model, "username", FieldType::VarChar(100), false); // New
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証
+	// Verify
 	assert_eq!(
 		detected.added_fields.len(),
 		1,

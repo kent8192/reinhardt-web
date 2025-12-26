@@ -56,6 +56,10 @@ async fn test_composite_pk_create_table_execution_postgresql(
 		) -> Result<(), reinhardt_backends::schema::SchemaEditorError> {
 			Ok(())
 		}
+
+		fn database_type(&self) -> reinhardt_backends::DatabaseType {
+			reinhardt_backends::DatabaseType::Postgres
+		}
 	}
 
 	let schema_editor = MockEditor;

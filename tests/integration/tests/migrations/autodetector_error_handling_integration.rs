@@ -63,7 +63,7 @@ fn add_fk_field(
 
 	model.fields.insert(field_name.to_string(), field_state);
 
-	// 制約として追加
+	// Add as constraint
 	model.constraints.push(ConstraintDefinition {
 		name: format!("fk_{}_{}", model.name.to_lowercase(), field_name),
 		constraint_type: "ForeignKey".to_string(),
@@ -119,14 +119,14 @@ fn test_detect_circular_dependency_abc() {
 	to_state.add_model(model_b);
 	to_state.add_model(model_c);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 循環依存のチェック
+	// Check for circular dependency
 	let has_circular = detected.check_circular_dependencies();
 
-	// 検証: 循環依存が検出されるべき
+	// Verify: Circular dependency should be detected
 	assert!(
 		has_circular,
 		"Should detect circular dependency in A→B→C→A"
@@ -175,19 +175,19 @@ fn test_detect_not_null_without_default_error() {
 	);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: フィールド変更が検出される
+	// Verify: Field change is detected
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
 		"Should detect nullable→NOT NULL change"
 	);
 
-	// 実際のマイグレーション実行時にエラーが発生することを確認するには
-	// DB統合テストが必要（ここでは検出のみ確認）
+	// To verify that errors occur during actual migration execution
+	// DB integration test is required (here we only verify detection)
 }
 
 // ============================================================================
@@ -230,7 +230,7 @@ fn test_detect_unique_constraint_violation() {
 			BTreeMap::new(),
 		),
 	);
-	// UNIQUE制約として追加
+	// Add as UNIQUE constraint
 	user_model.constraints.push(ConstraintDefinition {
 		name: "unique_email".to_string(),
 		constraint_type: "Unique".to_string(),
@@ -240,11 +240,11 @@ fn test_detect_unique_constraint_violation() {
 	});
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: 制約追加が検出される
+	// Verify: Constraint addition is detected
 	assert_eq!(
 		detected.added_constraints.len(),
 		1,
@@ -252,7 +252,7 @@ fn test_detect_unique_constraint_violation() {
 	);
 	assert_eq!(detected.added_constraints[0].2.constraint_type, "Unique");
 
-	// 実際の制約違反はDB実行時に発生
+	// Actual constraint violation occurs during DB execution
 }
 
 // ============================================================================
@@ -284,19 +284,19 @@ fn test_detect_fk_integrity_violation() {
 	);
 	to_state.add_model(post_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: FK追加が検出される
-	// 参照先テーブルの存在チェックはマイグレーション実行時またはバリデーション時に行われる
+	// Verify: FK addition is detected
+	// Referenced table existence check is performed during migration execution or validation
 	assert!(
 		detected.added_fields.len() > 0 || detected.added_constraints.len() > 0,
 		"Should detect FK field/constraint addition"
 	);
 
-	// 依存関係マップに存在しないテーブルへの参照があることを確認
-	// （より詳細なバリデーションはexecutor側で行われる）
+	// Verify that there is a reference to a table that does not exist in dependency map
+	// (More detailed validation is performed on the executor side)
 }
 
 // ============================================================================
@@ -339,7 +339,7 @@ fn test_detect_check_constraint_violation() {
 			BTreeMap::new(),
 		),
 	);
-	// CHECK制約として追加
+	// Add as CHECK constraint
 	product_model.constraints.push(ConstraintDefinition {
 		name: "check_price_positive".to_string(),
 		constraint_type: "Check".to_string(),
@@ -349,11 +349,11 @@ fn test_detect_check_constraint_violation() {
 	});
 	to_state.add_model(product_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: CHECK制約追加が検出される
+	// Verify: CHECK constraint addition is detected
 	assert_eq!(
 		detected.added_constraints.len(),
 		1,
@@ -365,7 +365,7 @@ fn test_detect_check_constraint_violation() {
 		Some("price >= 0".to_string())
 	);
 
-	// 実際の制約違反（既存の負の値）はDB実行時に発生
+	// Actual constraint violation (existing negative values) occurs during DB execution
 }
 
 // ============================================================================
@@ -409,11 +409,11 @@ fn test_incompatible_type_conversion() {
 	);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: フィールド変更が検出される
+	// Verify: Field change is detected
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
@@ -423,8 +423,8 @@ fn test_incompatible_type_conversion() {
 	assert_eq!(detected.altered_fields[0].1, "User");
 	assert_eq!(detected.altered_fields[0].2, "bio");
 
-	// NOTE: 実際のマイグレーション実行時にはデータ損失の警告が出るべき
-	// Text → Integer の変換は通常失敗する
+	// NOTE: Data loss warning should be issued during actual migration execution
+	// Text → Integer conversion typically fails
 }
 
 // ============================================================================
@@ -469,11 +469,11 @@ fn test_varchar_length_decrease_warning() {
 	);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: フィールド変更が検出される
+	// Verify: Field change is detected
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
@@ -483,8 +483,8 @@ fn test_varchar_length_decrease_warning() {
 	assert_eq!(detected.altered_fields[0].1, "User");
 	assert_eq!(detected.altered_fields[0].2, "username");
 
-	// NOTE: 実際のマイグレーション実行時には、既存データが50文字を超える場合、
-	// データ切り詰めの警告が出るべき
+	// NOTE: During actual migration execution, if existing data exceeds 50 characters,
+	// Data truncation warning should be issued
 }
 
 // ============================================================================
@@ -529,11 +529,11 @@ fn test_numeric_precision_loss_warning() {
 	);
 	to_state.add_model(product_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: フィールド変更が検出される
+	// Verify: Field change is detected
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
@@ -543,8 +543,8 @@ fn test_numeric_precision_loss_warning() {
 	assert_eq!(detected.altered_fields[0].1, "Product");
 	assert_eq!(detected.altered_fields[0].2, "price");
 
-	// NOTE: Decimal(10,4) → Decimal(10,2) は小数点以下の精度が4桁→2桁に減少
-	// 既存データは丸められる可能性がある
+	// NOTE: Decimal(10,4) → Decimal(10,2) reduces decimal precision from 4 digits to 2 digits
+	// Existing data may be rounded
 }
 
 // ============================================================================
@@ -575,18 +575,18 @@ fn test_foreign_key_to_nonexistent_model() {
 	);
 	to_state.add_model(post_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: モデル作成とFK制約追加が検出される
+	// Verify: Model creation and FK constraint addition are detected
 	assert_eq!(detected.created_models.len(), 1, "Should detect Post model creation");
 	assert!(
 		detected.added_constraints.len() > 0,
 		"Should detect FK constraint addition"
 	);
 
-	// FK制約が存在しないテーブルを参照していることを確認
+	// Verify that FK constraint references a non-existent table
 	let has_fk_to_user = detected
 		.added_constraints
 		.iter()
@@ -601,8 +601,8 @@ fn test_foreign_key_to_nonexistent_model() {
 		"Should detect FK constraint to nonexistent testapp_user table"
 	);
 
-	// NOTE: 実際のマイグレーション実行時にエラーとなる
-	// または、依存関係検証フェーズで検出されるべき
+	// NOTE: Will error during actual migration execution
+	// Or should be detected in dependency validation phase
 }
 
 // ============================================================================
@@ -646,7 +646,7 @@ fn test_duplicate_index_name_error() {
 		),
 	);
 
-	// 同じ名前の制約を2つ追加（誤り）
+	// Add two constraints with the same name (error)
 	user_model.constraints.push(ConstraintDefinition {
 		name: "idx_duplicate".to_string(),
 		constraint_type: "Index".to_string(),
@@ -664,18 +664,18 @@ fn test_duplicate_index_name_error() {
 
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: 両方のインデックス追加が検出される
+	// Verify: Both index additions are detected
 	assert_eq!(
 		detected.added_constraints.len(),
 		2,
 		"Should detect both index additions"
 	);
 
-	// 同じ名前のインデックスが検出される
+	// Indexes with the same name are detected
 	let index_names: Vec<&str> = detected
 		.added_constraints
 		.iter()
@@ -686,8 +686,8 @@ fn test_duplicate_index_name_error() {
 		"Should detect duplicate index name"
 	);
 
-	// NOTE: 実際のマイグレーション実行時にエラーとなる
-	// バリデーションフェーズで検出されるべき
+	// NOTE: Will error during actual migration execution
+	// Should be detected in validation phase
 }
 
 // ============================================================================
@@ -723,11 +723,11 @@ fn test_invalid_field_type_error() {
 	);
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: フィールド追加が検出される
+	// Verify: Field addition is detected
 	assert_eq!(
 		detected.added_fields.len(),
 		1,
@@ -737,8 +737,8 @@ fn test_invalid_field_type_error() {
 	assert_eq!(detected.added_fields[0].1, "User");
 	assert_eq!(detected.added_fields[0].2, "code");
 
-	// NOTE: VarChar(0) は通常無効だが、autodetectorは検出する
-	// バリデーションフェーズまたはSQL生成フェーズでエラーとなるべき
+	// NOTE: VarChar(0) is typically invalid, but autodetector detects it
+	// Should error in validation phase or SQL generation phase
 }
 
 // ============================================================================
@@ -779,7 +779,7 @@ fn test_index_on_deleted_field_error() {
 	// to_state: User without email field (but index remains - inconsistent state)
 	let mut to_state = ProjectState::new();
 	let mut user_model = create_basic_model("testapp", "User", "testapp_user");
-	// email フィールドは削除されているが、インデックスは残っている（誤り）
+	// email field is deleted but index remains (error)
 	user_model.constraints.push(ConstraintDefinition {
 		name: "idx_email".to_string(),
 		constraint_type: "Index".to_string(),
@@ -789,11 +789,11 @@ fn test_index_on_deleted_field_error() {
 	});
 	to_state.add_model(user_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: フィールド削除が検出される
+	// Verify: Field deletion is detected
 	assert_eq!(
 		detected.removed_fields.len(),
 		1,
@@ -803,9 +803,9 @@ fn test_index_on_deleted_field_error() {
 	assert_eq!(detected.removed_fields[0].1, "User");
 	assert_eq!(detected.removed_fields[0].2, "email");
 
-	// インデックスは存在するが、フィールドが存在しない状態
-	// NOTE: 実際のマイグレーション実行時にエラーとなる
-	// バリデーションフェーズで「インデックスが参照するフィールドが存在しない」と検出されるべき
+	// Index exists but field does not exist
+	// NOTE: Will error during actual migration execution
+	// Should be detected in validation phase as "field referenced by index does not exist"
 }
 
 // ============================================================================
@@ -847,11 +847,11 @@ fn test_timezone_aware_datetime_warning() {
 	);
 	to_state.add_model(event_model);
 
-	// Autodetector実行
+	// Run autodetector
 	let autodetector = MigrationAutodetector::new(from_state, to_state);
 	let detected = autodetector.detect_changes();
 
-	// 検証: フィールドのオプション変更が検出される
+	// Verify: Field option change is detected
 	assert_eq!(
 		detected.altered_fields.len(),
 		1,
@@ -861,6 +861,6 @@ fn test_timezone_aware_datetime_warning() {
 	assert_eq!(detected.altered_fields[0].1, "Event");
 	assert_eq!(detected.altered_fields[0].2, "scheduled_at");
 
-	// NOTE: naive → aware の変換は既存データのタイムゾーン処理が必要
-	// データ移行の警告が出るべき
+	// NOTE: naive → aware conversion requires timezone handling for existing data
+	// Data migration warning should be issued
 }

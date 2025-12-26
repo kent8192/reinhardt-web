@@ -536,6 +536,10 @@ impl Default for MockSchemaEditor {
 
 #[async_trait]
 impl BaseDatabaseSchemaEditor for MockSchemaEditor {
+	fn database_type(&self) -> reinhardt_migrations::DatabaseType {
+		reinhardt_migrations::DatabaseType::Sqlite
+	}
+
 	async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
 		// Mock implementation - doesn't execute anything
 		Ok(())

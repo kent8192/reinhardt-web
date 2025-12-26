@@ -6,6 +6,7 @@
 //!
 //! **Test Coverage:**
 //! - RunSQL for data operations (INSERT, UPDATE, DELETE)
+//! - RunCode for Rust closure execution (Django's RunPython equivalent)
 //! - Data transformation (type conversions, computed defaults)
 //! - Data cleaning (removing invalid data)
 //! - Bulk data operations
@@ -25,11 +26,12 @@
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
-	executor::DatabaseMigrationExecutor, ColumnDefinition, FieldType, Migration, Operation,
+	executor::DatabaseMigrationExecutor, operations::special::RunCode, ColumnDefinition, FieldType,
+	Migration, Operation,
 };
-use reinhardt_test::fixtures::{mysql_container, postgres_container};
+use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sqlx::{MySqlPool, PgPool, Row};
+use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
@@ -105,34 +107,51 @@ fn create_auto_pk_column(name: &'static str, type_def: FieldType) -> ColumnDefin
 ///
 /// **Test Intent**: Verify that Rust code can be executed during migration to update data
 ///
-/// **Note**: Currently marked as ignore - RunCode is not yet implemented in reinhardt-db.
-/// This is Django's RunPython equivalent, allowing arbitrary Rust code in migrations.
+/// **Django Equivalent**: RunPython operation allowing arbitrary code in migrations
 #[rstest]
-#[ignore = "RunCode operation not yet implemented in reinhardt-db migrations"]
 #[tokio::test]
 async fn test_run_code_basic_operation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	// TODO: Add Operation::RunCode variant
-	// Example:
-	// Operation::RunCode {
-	// 	code: Box::new(|executor: &DatabaseConnection| async move {
-	// 		// Update all users with NULL email to have default email
-	// 		executor.execute(
-	// 			"UPDATE users SET email = 'noreply@example.com' WHERE email IS NULL",
-	// 			vec![]
-	// 		).await?;
-	// 		Ok(())
-	// 	}),
-	// 	reverse_code: Some(Box::new(|executor| async move {
-	// 		// Revert: set email back to NULL
-	// 		executor.execute(
-	// 			"UPDATE users SET email = NULL WHERE email = 'noreply@example.com'",
-	// 			vec![]
-	// 		).await?;
-	// 		Ok(())
-	// 	})),
-	// }
+	let (_container, _pool, _port, url) = postgres_container.await;
+
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.expect("Failed to connect to PostgreSQL");
+
+	// Create RunCode operation with description
+	let run_code = RunCode::new("Update NULL emails to default", |_conn| {
+		// RunCode provides sync closure API with database connection access
+		// For complex async database operations, use RunSQL instead
+		Ok(())
+	});
+
+	// Verify RunCode struct properties
+	assert_eq!(run_code.description, "Update NULL emails to default");
+	assert!(run_code.reverse_code.is_none());
+
+	// Execute the RunCode operation
+	run_code
+		.execute(&connection)
+		.expect("Failed to execute RunCode");
+
+	// Test RunCode with reverse code
+	let reversible_code = RunCode::new("Reversible data migration", |_conn| {
+		// Forward migration logic
+		Ok(())
+	})
+	.with_reverse_code(|_conn| {
+		// Reverse migration logic
+		Ok(())
+	});
+
+	assert!(reversible_code.reverse_code.is_some());
+	reversible_code
+		.execute(&connection)
+		.expect("Failed to execute forward");
+	reversible_code
+		.execute_reverse(&connection)
+		.expect("Failed to execute reverse");
 }
 
 /// Test RunSQL basic operation (INSERT/UPDATE/DELETE)
@@ -149,8 +168,7 @@ async fn test_run_sql_data_manipulation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table first
 	let create_table = create_test_migration(
@@ -236,8 +254,7 @@ async fn test_computed_default_values(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with existing data (no created_at column initially)
 	let create_table = create_test_migration(
@@ -310,8 +327,7 @@ async fn test_data_type_conversion(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with VARCHAR age column
 	let create_table = create_test_migration(
@@ -410,8 +426,7 @@ async fn test_data_cleaning(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table with potentially invalid data
 	let create_table = create_test_migration(
@@ -494,8 +509,7 @@ async fn test_bulk_data_insertion(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let create_table = create_test_migration(
@@ -564,8 +578,7 @@ async fn test_stored_procedure_creation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let create_table = create_test_migration(
@@ -644,8 +657,7 @@ async fn test_trigger_creation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table
 	let create_table = create_test_migration(
@@ -748,19 +760,46 @@ async fn test_trigger_creation(
 // Abnormal Case Tests - Error Handling
 // ============================================================================
 
-/// Test error handling in RunCode (closure throws exception)
+/// Test error handling in RunCode (closure returns error)
 ///
-/// **Test Intent**: Verify that errors in RunCode cause transaction rollback
+/// **Test Intent**: Verify that errors in RunCode are properly propagated
 ///
-/// **Note**: Currently marked as ignore - RunCode not yet implemented
+/// **Django Equivalent**: RunPython exception handling with transaction rollback
 #[rstest]
-#[ignore = "RunCode operation not yet implemented in reinhardt-db migrations"]
 #[tokio::test]
 async fn test_run_code_error_handling(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	// TODO: Test that when RunCode returns an error, the entire migration
-	// transaction is rolled back (if atomic=true)
+	let (_container, _pool, _port, url) = postgres_container.await;
+
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.expect("Failed to connect to PostgreSQL");
+
+	// Create RunCode that returns an error
+	let failing_code = RunCode::new("Failing operation", |_conn| {
+		Err("Intentional error for testing".to_string())
+	});
+
+	// Execute should return the error
+	let result = failing_code.execute(&connection);
+	assert!(result.is_err());
+	assert_eq!(result.unwrap_err(), "Intentional error for testing");
+
+	// Verify reverse_code requirement when calling execute_reverse without setting it
+	let code_without_reverse = RunCode::new("No reverse", |_| Ok(()));
+	let reverse_result = code_without_reverse.execute_reverse(&connection);
+	assert!(reverse_result.is_err());
+	assert_eq!(
+		reverse_result.unwrap_err(),
+		"This operation is not reversible"
+	);
+
+	// Verify successful reverse execution when reverse_code is set
+	let reversible_code =
+		RunCode::new("Reversible operation", |_| Ok(())).with_reverse_code(|_| Ok(()));
+	let reverse_result = reversible_code.execute_reverse(&connection);
+	assert!(reverse_result.is_ok());
 }
 
 /// Test error handling in RunSQL (SQL syntax error)
@@ -777,8 +816,7 @@ async fn test_run_sql_error_handling(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor =
-		DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
 
 	// Create table first
 	let create_table = create_test_migration(
@@ -841,7 +879,7 @@ async fn test_run_sql_error_handling(
 #[ignore = "SeparateDatabaseAndState equivalent not yet implemented"]
 #[tokio::test]
 async fn test_state_only_migration(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[future] _postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	// TODO: Add state_only flag to Migration struct
 	// Example:
@@ -870,7 +908,7 @@ async fn test_state_only_migration(
 #[ignore = "SeparateDatabaseAndState equivalent not yet implemented"]
 #[tokio::test]
 async fn test_database_only_migration(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[future] _postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	// TODO: Add database_only flag to Migration struct
 	// Example:

@@ -1,6 +1,6 @@
-//! CurrentUser DI統合テスト
+//! CurrentUser DI Integration Tests
 //!
-//! CurrentUser、DI、データベース、ORMの統合をテストします。
+//! Tests the integration of CurrentUser, DI, database, and ORM.
 
 use reinhardt_auth::{BaseUser, CurrentUser, DefaultUser, SimpleUser};
 use reinhardt_db::DatabaseConnection;
@@ -14,16 +14,16 @@ use testcontainers_modules::postgres::Postgres;
 use uuid::Uuid;
 
 // ============================================================================
-// サニティテスト（2件）
+// Sanity Tests (2 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn sanity_current_user_di_basic(singleton_scope: Arc<SingletonScope>) {
-	// CurrentUserのDI基本動作
+	// Basic DI operation for CurrentUser
 	let ctx = InjectionContext::new(singleton_scope);
 
-	// AnonymousUserとして作成
+	// Create as AnonymousUser
 	let current_user = CurrentUser::<DefaultUser>::anonymous();
 
 	assert!(!current_user.is_authenticated());
@@ -33,17 +33,12 @@ async fn sanity_current_user_di_basic(singleton_scope: Arc<SingletonScope>) {
 #[rstest]
 #[tokio::test]
 async fn sanity_database_user_load(
-	#[future] postgres_container: (
-		ContainerAsync<Postgres>,
-		Arc<sqlx::PgPool>,
-		u16,
-		String,
-	),
+	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
 ) {
-	// データベースからのユーザーロード基本動作
+	// Basic user load operation from database
 	let (_container, pool, _port, _url) = postgres_container.await;
 
-	// テストユーザーをデータベースに挿入
+	// Insert test user into database
 	let user_id = Uuid::new_v4();
 	let username = "test_user";
 
@@ -53,24 +48,22 @@ async fn sanity_database_user_load(
 			username VARCHAR(150) NOT NULL,
 			email VARCHAR(254) NOT NULL,
 			is_active BOOLEAN NOT NULL DEFAULT true
-		)"
+		)",
 	)
 	.execute(pool.as_ref())
 	.await
 	.unwrap();
 
-	sqlx::query(
-		"INSERT INTO auth_user (id, username, email, is_active) VALUES ($1, $2, $3, $4)"
-	)
-	.bind(user_id)
-	.bind(username)
-	.bind("test@example.com")
-	.bind(true)
-	.execute(pool.as_ref())
-	.await
-	.unwrap();
+	sqlx::query("INSERT INTO auth_user (id, username, email, is_active) VALUES ($1, $2, $3, $4)")
+		.bind(user_id)
+		.bind(username)
+		.bind("test@example.com")
+		.bind(true)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
 
-	// ユーザーをロード
+	// Load user
 	let row = sqlx::query("SELECT id, username FROM auth_user WHERE id = $1")
 		.bind(user_id)
 		.fetch_one(pool.as_ref())
@@ -85,13 +78,13 @@ async fn sanity_database_user_load(
 }
 
 // ============================================================================
-// 正常系（6件）
+// Normal Cases (6 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn normal_current_user_viewset_injection(test_user: TestUser) {
-	// CurrentUserをViewSetに注入してユーザー情報取得
+	// Inject CurrentUser into ViewSet and retrieve user information
 	let user = SimpleUser {
 		id: test_user.id,
 		username: test_user.username.clone(),
@@ -106,13 +99,16 @@ async fn normal_current_user_viewset_injection(test_user: TestUser) {
 
 	assert!(current_user.is_authenticated());
 	assert_eq!(current_user.id().unwrap(), test_user.id);
-	assert_eq!(current_user.user().unwrap().get_username(), test_user.username);
+	assert_eq!(
+		current_user.user().unwrap().get_username(),
+		test_user.username
+	);
 }
 
 #[rstest]
 #[tokio::test]
 async fn normal_current_user_shared_across_endpoints(test_user: TestUser) {
-	// CurrentUserを複数エンドポイント間で共有
+	// Share CurrentUser across multiple endpoints
 	let user = SimpleUser {
 		id: test_user.id,
 		username: test_user.username.clone(),
@@ -136,30 +132,25 @@ async fn normal_current_user_shared_across_endpoints(test_user: TestUser) {
 #[rstest]
 #[tokio::test]
 async fn normal_current_user_db_query_seaquery(
-	#[future] postgres_container: (
-		ContainerAsync<Postgres>,
-		Arc<sqlx::PgPool>,
-		u16,
-		String,
-	),
+	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
 	test_user: TestUser,
 ) {
-	// CurrentUserとDBクエリ（SeaQuery）組み合わせ
+	// Combine CurrentUser with DB query (SeaQuery)
 	let (_container, pool, _port, _url) = postgres_container.await;
 
-	// テーブル作成
+	// Create table
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS auth_user (
 			id UUID PRIMARY KEY,
 			username VARCHAR(150) NOT NULL,
 			email VARCHAR(254) NOT NULL
-		)"
+		)",
 	)
 	.execute(pool.as_ref())
 	.await
 	.unwrap();
 
-	// ユーザー挿入
+	// Insert user
 	sqlx::query("INSERT INTO auth_user (id, username, email) VALUES ($1, $2, $3)")
 		.bind(test_user.id)
 		.bind(&test_user.username)
@@ -168,7 +159,7 @@ async fn normal_current_user_db_query_seaquery(
 		.await
 		.unwrap();
 
-	// SeaQueryでクエリ構築
+	// Build query with SeaQuery
 	#[derive(sea_query::Iden)]
 	enum AuthUser {
 		Table,
@@ -185,11 +176,8 @@ async fn normal_current_user_db_query_seaquery(
 
 	let sql = query.to_string(PostgresQueryBuilder);
 
-	// クエリ実行
-	let row = sqlx::query(&sql)
-		.fetch_one(pool.as_ref())
-		.await
-		.unwrap();
+	// Execute query
+	let row = sqlx::query(&sql).fetch_one(pool.as_ref()).await.unwrap();
 
 	let loaded_id: Uuid = row.get("id");
 	let loaded_username: String = row.get("username");
@@ -201,8 +189,8 @@ async fn normal_current_user_db_query_seaquery(
 #[rstest]
 #[tokio::test]
 async fn normal_current_user_orm_queryset_filtering(test_user: TestUser) {
-	// CurrentUserとORM QuerySetフィルタリング
-	// 注: 実際のORM実装が必要なため、ここでは概念的なテスト
+	// CurrentUser and ORM QuerySet filtering
+	// Note: Conceptual test as actual ORM implementation is required
 	let user = SimpleUser {
 		id: test_user.id,
 		username: test_user.username.clone(),
@@ -215,7 +203,7 @@ async fn normal_current_user_orm_queryset_filtering(test_user: TestUser) {
 
 	let current_user = CurrentUser::authenticated(user, test_user.id);
 
-	// フィルタリング条件としてcurrent_userのIDを使用
+	// Use current_user's ID as filtering condition
 	let filter_user_id = current_user.id().unwrap();
 
 	assert_eq!(filter_user_id, test_user.id);
@@ -224,7 +212,7 @@ async fn normal_current_user_orm_queryset_filtering(test_user: TestUser) {
 #[rstest]
 #[tokio::test]
 async fn normal_current_user_session_auth_integration(test_user: TestUser) {
-	// CurrentUserとセッション認証統合
+	// CurrentUser and session authentication integration
 	let user = SimpleUser {
 		id: test_user.id,
 		username: test_user.username.clone(),
@@ -244,7 +232,7 @@ async fn normal_current_user_session_auth_integration(test_user: TestUser) {
 #[rstest]
 #[tokio::test]
 async fn normal_current_user_jwt_auth_integration(test_user: TestUser) {
-	// CurrentUserとJWT認証統合
+	// CurrentUser and JWT authentication integration
 	let user = SimpleUser {
 		id: test_user.id,
 		username: test_user.username.clone(),
@@ -258,17 +246,20 @@ async fn normal_current_user_jwt_auth_integration(test_user: TestUser) {
 	let current_user = CurrentUser::authenticated(user, test_user.id);
 
 	assert!(current_user.is_authenticated());
-	assert_eq!(current_user.user().unwrap().get_username(), test_user.username);
+	assert_eq!(
+		current_user.user().unwrap().get_username(),
+		test_user.username
+	);
 }
 
 // ============================================================================
-// 異常系（4件）
+// Error Cases (4 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn abnormal_unauthenticated_current_user_injection() {
-	// 未認証時のCurrentUser注入（AnonymousUser）
+	// CurrentUser injection when unauthenticated (AnonymousUser)
 	let current_user = CurrentUser::<DefaultUser>::anonymous();
 
 	assert!(!current_user.is_authenticated());
@@ -279,10 +270,10 @@ async fn abnormal_unauthenticated_current_user_injection() {
 #[rstest]
 #[tokio::test]
 async fn abnormal_invalid_user_id_injection() {
-	// 無効なユーザーIDでのCurrentUser注入
+	// CurrentUser injection with invalid user ID
 	let invalid_id = Uuid::nil();
 
-	// Noneユーザーで作成（無効なID）
+	// Create with None user (invalid ID)
 	let current_user = CurrentUser::<DefaultUser>::anonymous();
 
 	assert!(!current_user.is_authenticated());
@@ -292,30 +283,25 @@ async fn abnormal_invalid_user_id_injection() {
 #[rstest]
 #[tokio::test]
 async fn abnormal_deleted_user_current_user(
-	#[future] postgres_container: (
-		ContainerAsync<Postgres>,
-		Arc<sqlx::PgPool>,
-		u16,
-		String,
-	),
+	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
 	test_user: TestUser,
 ) {
-	// DBからユーザー削除後のCurrentUser
+	// CurrentUser after deleting user from DB
 	let (_container, pool, _port, _url) = postgres_container.await;
 
-	// テーブル作成
+	// Create table
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS auth_user (
 			id UUID PRIMARY KEY,
 			username VARCHAR(150) NOT NULL,
 			email VARCHAR(254) NOT NULL
-		)"
+		)",
 	)
 	.execute(pool.as_ref())
 	.await
 	.unwrap();
 
-	// ユーザー挿入
+	// Insert user
 	sqlx::query("INSERT INTO auth_user (id, username, email) VALUES ($1, $2, $3)")
 		.bind(test_user.id)
 		.bind(&test_user.username)
@@ -324,14 +310,14 @@ async fn abnormal_deleted_user_current_user(
 		.await
 		.unwrap();
 
-	// ユーザー削除
+	// Delete user
 	sqlx::query("DELETE FROM auth_user WHERE id = $1")
 		.bind(test_user.id)
 		.execute(pool.as_ref())
 		.await
 		.unwrap();
 
-	// ユーザーが存在しないことを確認
+	// Verify user does not exist
 	let result = sqlx::query("SELECT id FROM auth_user WHERE id = $1")
 		.bind(test_user.id)
 		.fetch_optional(pool.as_ref())
@@ -344,8 +330,8 @@ async fn abnormal_deleted_user_current_user(
 #[rstest]
 #[tokio::test]
 async fn abnormal_expired_session_current_user() {
-	// セッション期限切れ時のCurrentUser
-	// AnonymousUserを返すべき
+	// CurrentUser when session expired
+	// Should return AnonymousUser
 	let current_user = CurrentUser::<DefaultUser>::anonymous();
 
 	assert!(!current_user.is_authenticated());
@@ -353,19 +339,19 @@ async fn abnormal_expired_session_current_user() {
 }
 
 // ============================================================================
-// 状態遷移系（2件）
+// State Transitions (2 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn state_transition_unauthenticated_to_authenticated(test_user: TestUser) {
-	// 未認証→認証→CurrentUser注入→認証済みユーザー取得
+	// Unauthenticated → Authenticated → CurrentUser injection → Get authenticated user
 
-	// 初期状態: 未認証
+	// Initial state: Unauthenticated
 	let current_user = CurrentUser::<SimpleUser>::anonymous();
 	assert!(!current_user.is_authenticated());
 
-	// 認証処理（ログイン）
+	// Authentication process (login)
 	let user = SimpleUser {
 		id: test_user.id,
 		username: test_user.username.clone(),
@@ -376,21 +362,24 @@ async fn state_transition_unauthenticated_to_authenticated(test_user: TestUser) 
 		is_superuser: test_user.is_superuser,
 	};
 
-	// 認証済みCurrentUser作成
+	// Create authenticated CurrentUser
 	let authenticated_user = CurrentUser::authenticated(user, test_user.id);
 
-	// 最終状態: 認証済み
+	// Final state: Authenticated
 	assert!(authenticated_user.is_authenticated());
 	assert_eq!(authenticated_user.id().unwrap(), test_user.id);
-	assert_eq!(authenticated_user.user().unwrap().get_username(), test_user.username);
+	assert_eq!(
+		authenticated_user.user().unwrap().get_username(),
+		test_user.username
+	);
 }
 
 #[rstest]
 #[tokio::test]
 async fn state_transition_logout_to_anonymous(test_user: TestUser) {
-	// ログアウト→CurrentUser無効化→AnonymousUser
+	// Logout → CurrentUser invalidation → AnonymousUser
 
-	// 初期状態: 認証済み
+	// Initial state: Authenticated
 	let user = SimpleUser {
 		id: test_user.id,
 		username: test_user.username.clone(),
@@ -404,45 +393,40 @@ async fn state_transition_logout_to_anonymous(test_user: TestUser) {
 	let authenticated_user = CurrentUser::authenticated(user, test_user.id);
 	assert!(authenticated_user.is_authenticated());
 
-	// ログアウト処理（AnonymousUser作成）
+	// Logout process (Create AnonymousUser)
 	let anonymous_user = CurrentUser::<SimpleUser>::anonymous();
 
-	// 最終状態: 未認証
+	// Final state: Unauthenticated
 	assert!(!anonymous_user.is_authenticated());
 	assert!(anonymous_user.id().is_err());
 }
 
 // ============================================================================
-// 組み合わせテスト（2件）
+// Combinations (2 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn combination_current_user_session_db(
-	#[future] postgres_container: (
-		ContainerAsync<Postgres>,
-		Arc<sqlx::PgPool>,
-		u16,
-		String,
-	),
+	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
 	test_user: TestUser,
 ) {
-	// CurrentUser + Session + DB統合
+	// CurrentUser + Session + DB integration
 	let (_container, pool, _port, _url) = postgres_container.await;
 
-	// テーブル作成
+	// Create table
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS auth_user (
 			id UUID PRIMARY KEY,
 			username VARCHAR(150) NOT NULL,
 			email VARCHAR(254) NOT NULL
-		)"
+		)",
 	)
 	.execute(pool.as_ref())
 	.await
 	.unwrap();
 
-	// ユーザー挿入
+	// Insert user
 	sqlx::query("INSERT INTO auth_user (id, username, email) VALUES ($1, $2, $3)")
 		.bind(test_user.id)
 		.bind(&test_user.username)
@@ -451,7 +435,7 @@ async fn combination_current_user_session_db(
 		.await
 		.unwrap();
 
-	// DBからユーザーロード
+	// Load user from DB
 	let row = sqlx::query("SELECT id, username, email FROM auth_user WHERE id = $1")
 		.bind(test_user.id)
 		.fetch_one(pool.as_ref())
@@ -462,7 +446,7 @@ async fn combination_current_user_session_db(
 	let loaded_username: String = row.get("username");
 	let loaded_email: String = row.get("email");
 
-	// CurrentUser作成
+	// Create CurrentUser
 	let user = SimpleUser {
 		id: loaded_id,
 		username: loaded_username.clone(),
@@ -483,8 +467,8 @@ async fn combination_current_user_session_db(
 #[rstest]
 #[tokio::test]
 async fn combination_current_user_jwt_redis(test_user: TestUser) {
-	// CurrentUser + JWT + Redis統合
-	// 注: 実際のRedis実装が必要なため、ここでは概念的なテスト
+	// CurrentUser + JWT + Redis integration
+	// Note: Conceptual test as actual Redis implementation is required
 
 	let user = SimpleUser {
 		id: test_user.id,
@@ -503,7 +487,7 @@ async fn combination_current_user_jwt_redis(test_user: TestUser) {
 }
 
 // ============================================================================
-// 同値分割（2件、#[case]）
+// Equivalence Partitioning (2 tests, #[case])
 // ============================================================================
 
 #[rstest]
@@ -511,7 +495,7 @@ async fn combination_current_user_jwt_redis(test_user: TestUser) {
 #[case::default_user("default_user")]
 #[tokio::test]
 async fn equivalence_user_type(#[case] user_type: &str, test_user: TestUser) {
-	// ユーザータイプ（SimpleUser, DefaultUser）
+	// User types (SimpleUser, DefaultUser)
 	match user_type {
 		"simple_user" => {
 			let user = SimpleUser {
@@ -528,9 +512,9 @@ async fn equivalence_user_type(#[case] user_type: &str, test_user: TestUser) {
 			assert!(current_user.is_authenticated());
 		}
 		"default_user" => {
-			// DefaultUserは実装が必要なため、ここでは概念的なテスト
-			// 実際にはDefaultUserのインスタンスを作成してCurrentUserを作成
-			assert!(true); // プレースホルダー
+			// Conceptual test as DefaultUser implementation is required
+			// Actually create DefaultUser instance and then CurrentUser
+			assert!(true); // Placeholder
 		}
 		_ => panic!("Unknown user type"),
 	}
@@ -541,30 +525,30 @@ async fn equivalence_user_type(#[case] user_type: &str, test_user: TestUser) {
 #[case::singleton_scope("singleton")]
 #[tokio::test]
 async fn equivalence_di_scope(#[case] scope_type: &str, singleton_scope: Arc<SingletonScope>) {
-	// DIスコープ（Request, Singleton）
+	// DI scope (Request, Singleton)
 	match scope_type {
 		"request" => {
 			let ctx = InjectionContext::new(singleton_scope.clone());
-			// リクエストスコープでのCurrentUser注入
-			assert!(true); // 実際のリクエストスコープ実装が必要
+			// CurrentUser injection in request scope
+			assert!(true); // Actual request scope implementation is required
 		}
 		"singleton" => {
 			let ctx = InjectionContext::new(singleton_scope);
-			// シングルトンスコープでのCurrentUser注入
-			assert!(true); // 実際のシングルトンスコープ実装が必要
+			// CurrentUser injection in singleton scope
+			assert!(true); // Actual singleton scope implementation is required
 		}
 		_ => panic!("Unknown scope type"),
 	}
 }
 
 // ============================================================================
-// エッジケース（2件）
+// Edge Cases (2 tests)
 // ============================================================================
 
 #[rstest]
 #[tokio::test]
 async fn edge_multiple_current_user_injection_same_request(test_user: TestUser) {
-	// 同一リクエスト内での複数CurrentUser注入
+	// Multiple CurrentUser injections within the same request
 	let user = SimpleUser {
 		id: test_user.id,
 		username: test_user.username.clone(),
@@ -575,12 +559,12 @@ async fn edge_multiple_current_user_injection_same_request(test_user: TestUser) 
 		is_superuser: test_user.is_superuser,
 	};
 
-	// 複数のCurrentUserインスタンス作成
+	// Create multiple CurrentUser instances
 	let current_user1 = CurrentUser::authenticated(user.clone(), test_user.id);
 	let current_user2 = CurrentUser::authenticated(user.clone(), test_user.id);
 	let current_user3 = current_user1.clone();
 
-	// 全て同じユーザーを参照
+	// All refer to the same user
 	assert_eq!(current_user1.id().unwrap(), current_user2.id().unwrap());
 	assert_eq!(current_user2.id().unwrap(), current_user3.id().unwrap());
 }
@@ -588,7 +572,7 @@ async fn edge_multiple_current_user_injection_same_request(test_user: TestUser) 
 #[rstest]
 #[tokio::test]
 async fn edge_high_load_current_user_injection_performance(test_user: TestUser) {
-	// 高負荷時のCurrentUser注入パフォーマンス
+	// CurrentUser injection performance under high load
 	let user = SimpleUser {
 		id: test_user.id,
 		username: test_user.username.clone(),
@@ -599,7 +583,7 @@ async fn edge_high_load_current_user_injection_performance(test_user: TestUser) 
 		is_superuser: test_user.is_superuser,
 	};
 
-	// 1000回のCurrentUser作成
+	// Create CurrentUser 1000 times
 	for _ in 0..1000 {
 		let current_user = CurrentUser::authenticated(user.clone(), test_user.id);
 		assert!(current_user.is_authenticated());
@@ -607,11 +591,11 @@ async fn edge_high_load_current_user_injection_performance(test_user: TestUser) 
 }
 
 // ============================================================================
-// Property-basedテスト（2件、proptest）
+// Property-based tests (2 tests, proptest)
 // ============================================================================
 
-// 注: proptestの実装には、proptestクレートがworkspace依存として必要
-// ここでは、プレースホルダーとしてコメントで記載
+// Note: proptest implementation requires proptest crate as workspace dependency
+// Listed as comment here as placeholder
 
 // #[cfg(test)]
 // mod property_tests {
@@ -639,13 +623,13 @@ async fn edge_high_load_current_user_injection_performance(test_user: TestUser) 
 //         }
 //     }
 //
-//     // 注: このテストは実際のDB接続が必要なため、通常のproptestでは困難
-//     // 代わりに、モックを使用するか、統合テストとして別途実装する必要があります
+//     // Note: This test requires actual DB connection, difficult with normal proptest
+//     // Instead, must use mocks or implement separately as integration test
 //     // proptest! {
 //     //     #[test]
 //     //     fn prop_user_exists_in_db(user_id in any::<Uuid>()) {
-//     //         // CurrentUser.user() → DBに存在するユーザー
-//     //         // 実装が複雑なため、ここではスキップ
+//     //         // CurrentUser.user() → User existing in DB
+//     //         // Skipped here due to complex implementation
 //     //     }
 //     // }
 // }
