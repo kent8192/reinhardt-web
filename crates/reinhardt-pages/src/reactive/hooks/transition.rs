@@ -79,8 +79,7 @@ impl TransitionState {
 ///
 /// # Note
 ///
-/// In the current implementation, transitions run synchronously.
-/// True concurrent rendering will be implemented when the WASM runtime supports it.
+/// On WASM, transitions run asynchronously via spawn_local. On native, they run synchronously.
 pub fn use_transition() -> TransitionState {
 	let is_pending = Signal::new(false);
 
@@ -88,8 +87,22 @@ pub fn use_transition() -> TransitionState {
 		let is_pending = is_pending.clone();
 		Rc::new(RefCell::new(Box::new(move |f: Box<dyn FnOnce()>| {
 			is_pending.set(true);
-			f();
-			is_pending.set(false);
+
+			#[cfg(target_arch = "wasm32")]
+			{
+				use wasm_bindgen_futures::spawn_local;
+				let is_pending = is_pending.clone();
+				spawn_local(async move {
+					f();
+					is_pending.set(false);
+				});
+			}
+
+			#[cfg(not(target_arch = "wasm32"))]
+			{
+				f();
+				is_pending.set(false);
+			}
 		})))
 	};
 
@@ -140,20 +153,28 @@ pub fn use_transition() -> TransitionState {
 ///
 /// # Note
 ///
-/// In the current implementation, the deferred value updates synchronously.
-/// True deferral will be implemented when the scheduler supports priority levels.
+/// On WASM, the deferred value updates asynchronously via spawn_local. On native, it updates synchronously.
 pub fn use_deferred_value<T: Clone + 'static>(value: Signal<T>) -> Signal<T> {
-	// For now, just return a clone of the signal
-	// In a full implementation, this would schedule the update at a lower priority
 	let deferred = Signal::new(value.get());
 
-	// In a real implementation, we would set up an effect to update
-	// the deferred value at a lower priority
-	// For now, we just sync them
 	let deferred_clone = deferred.clone();
 	crate::reactive::Effect::new({
 		move || {
-			deferred_clone.set(value.get());
+			let new_value = value.get();
+
+			#[cfg(target_arch = "wasm32")]
+			{
+				use wasm_bindgen_futures::spawn_local;
+				let deferred_clone = deferred_clone.clone();
+				spawn_local(async move {
+					deferred_clone.set(new_value);
+				});
+			}
+
+			#[cfg(not(target_arch = "wasm32"))]
+			{
+				deferred_clone.set(new_value);
+			}
 		}
 	});
 
@@ -174,7 +195,8 @@ mod tests {
 
 		assert!(!transition.is_pending.get());
 
-		// Note: In current sync implementation, pending state changes instantly
+		// TODO: In current sync implementation, pending state changes instantly
+		// Consider async implementation for true transition states
 		let ran = Rc::new(RefCell::new(false));
 		transition.start_transition({
 			let ran = Rc::clone(&ran);

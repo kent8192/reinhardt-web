@@ -2,9 +2,111 @@
 //!
 //! This hook provides a way to subscribe to external data stores.
 
+use std::ops::Deref;
 use std::rc::Rc;
 
 use crate::reactive::Signal;
+
+/// A handle that manages the subscription lifecycle.
+///
+/// When dropped, the subscription is automatically cancelled,
+/// preventing memory leaks.
+pub struct SubscriptionHandle {
+	unsubscribe: Option<Box<dyn FnOnce()>>,
+}
+
+impl SubscriptionHandle {
+	fn new(unsubscribe: Box<dyn FnOnce()>) -> Self {
+		Self {
+			unsubscribe: Some(unsubscribe),
+		}
+	}
+}
+
+impl Drop for SubscriptionHandle {
+	fn drop(&mut self) {
+		if let Some(unsub) = self.unsubscribe.take() {
+			unsub();
+		}
+	}
+}
+
+/// A Signal paired with its subscription handle.
+///
+/// This type combines a reactive `Signal<T>` with its subscription cleanup logic.
+/// When dropped, it automatically unsubscribes from the external store.
+///
+/// # Cloning Behavior
+///
+/// When cloned, the `SignalWithSubscription` creates a new instance that shares
+/// the same underlying `Signal`, but does NOT share the subscription handle.
+/// Only the original instance will call `unsubscribe` when dropped.
+///
+/// This design ensures:
+/// - Multiple parts of the code can read from the same signal
+/// - The subscription cleanup happens exactly once
+/// - No double-free or use-after-free issues
+///
+/// # Example
+///
+/// ```ignore
+/// let signal_with_sub = use_sync_external_store(subscribe, get_snapshot);
+///
+/// // Use it like a normal Signal
+/// let value = signal_with_sub.get();
+///
+/// // Clone shares the signal but not the subscription
+/// let cloned = signal_with_sub.clone();
+/// assert_eq!(cloned.get(), signal_with_sub.get());
+///
+/// // When signal_with_sub is dropped, unsubscribe is called
+/// // When cloned is dropped, nothing happens
+/// ```
+pub struct SignalWithSubscription<T: 'static> {
+	signal: Signal<T>,
+	_handle: SubscriptionHandle,
+}
+
+impl<T: 'static> SignalWithSubscription<T> {
+	fn new(signal: Signal<T>, handle: SubscriptionHandle) -> Self {
+		Self {
+			signal,
+			_handle: handle,
+		}
+	}
+
+	/// Get a reference to the underlying signal.
+	pub fn signal(&self) -> &Signal<T> {
+		&self.signal
+	}
+}
+
+impl<T: Clone + 'static> SignalWithSubscription<T> {
+	/// Get the current value.
+	pub fn get(&self) -> T {
+		self.signal.get()
+	}
+}
+
+impl<T: 'static> Deref for SignalWithSubscription<T> {
+	type Target = Signal<T>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.signal
+	}
+}
+
+impl<T: Clone + 'static> Clone for SignalWithSubscription<T> {
+	fn clone(&self) -> Self {
+		// Note: Cloning does NOT clone the subscription handle.
+		// This is intentional - only the original instance manages the subscription.
+		// The cloned instance shares the same signal but won't unsubscribe on drop.
+		Self {
+			signal: self.signal.clone(),
+			_handle: SubscriptionHandle { unsubscribe: None },
+		}
+	}
+}
 
 /// Subscribes to an external store.
 ///
@@ -25,7 +127,8 @@ use crate::reactive::Signal;
 ///
 /// # Returns
 ///
-/// A `Signal<T>` that stays in sync with the external store
+/// A `SignalWithSubscription<T>` that stays in sync with the external store.
+/// When dropped, the subscription is automatically cancelled.
 ///
 /// # Example
 ///
@@ -54,6 +157,8 @@ use crate::reactive::Signal;
 /// } else {
 ///     // ... offline content
 /// }
+///
+/// // When is_online goes out of scope, unsubscribe is called automatically
 /// ```
 ///
 /// # When to Use
@@ -68,7 +173,7 @@ use crate::reactive::Signal;
 /// The `get_snapshot` function should return consistent results when called
 /// multiple times in a row. If the store's data changes, it should return
 /// a different reference (for objects) or value (for primitives).
-pub fn use_sync_external_store<T, S, G>(subscribe: S, get_snapshot: G) -> Signal<T>
+pub fn use_sync_external_store<T, S, G>(subscribe: S, get_snapshot: G) -> SignalWithSubscription<T>
 where
 	T: Clone + PartialEq + 'static,
 	S: FnOnce(Rc<dyn Fn()>) -> Box<dyn FnOnce()> + 'static,
@@ -92,12 +197,10 @@ where
 	});
 
 	// Subscribe and store the unsubscribe function
-	let _unsubscribe = subscribe(on_change);
+	let unsubscribe = subscribe(on_change);
+	let handle = SubscriptionHandle::new(unsubscribe);
 
-	// In a real implementation, we would call unsubscribe on cleanup
-	// For now, the subscription lives for the lifetime of the component
-
-	state
+	SignalWithSubscription::new(state, handle)
 }
 
 /// Subscribes to an external store with server snapshot support.
@@ -120,12 +223,13 @@ where
 ///
 /// # Returns
 ///
-/// A `Signal<T>` that stays in sync with the external store
+/// A `SignalWithSubscription<T>` that stays in sync with the external store.
+/// On server-side (non-WASM), the subscription is a no-op.
 pub fn use_sync_external_store_with_server<T, S, G, GS>(
 	subscribe: S,
 	get_snapshot: G,
 	get_server_snapshot: GS,
-) -> Signal<T>
+) -> SignalWithSubscription<T>
 where
 	T: Clone + PartialEq + 'static,
 	S: FnOnce(Rc<dyn Fn()>) -> Box<dyn FnOnce()> + 'static,
@@ -137,7 +241,10 @@ where
 	{
 		let _ = subscribe;
 		let _ = get_snapshot;
-		Signal::new(get_server_snapshot())
+		// For server-side, create a no-op subscription handle
+		let signal = Signal::new(get_server_snapshot());
+		let handle = SubscriptionHandle::new(Box::new(|| {}));
+		SignalWithSubscription::new(signal, handle)
 	}
 
 	// Use client snapshot in browser
@@ -157,7 +264,7 @@ mod tests {
 	fn test_use_sync_external_store_basic() {
 		let store_value = Rc::new(RefCell::new(42));
 
-		let signal = use_sync_external_store(
+		let signal_with_sub = use_sync_external_store(
 			|_on_change| {
 				// No-op subscribe for test
 				Box::new(|| {})
@@ -168,7 +275,7 @@ mod tests {
 			},
 		);
 
-		assert_eq!(signal.get(), 42);
+		assert_eq!(signal_with_sub.get(), 42);
 	}
 
 	#[test]
@@ -176,7 +283,7 @@ mod tests {
 		let store_value = Rc::new(RefCell::new(0));
 		let on_change_fn: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
 
-		let signal = use_sync_external_store(
+		let signal_with_sub = use_sync_external_store(
 			{
 				let on_change_fn = Rc::clone(&on_change_fn);
 				move |on_change| {
@@ -190,7 +297,7 @@ mod tests {
 			},
 		);
 
-		assert_eq!(signal.get(), 0);
+		assert_eq!(signal_with_sub.get(), 0);
 
 		// Simulate store update
 		*store_value.borrow_mut() = 100;
@@ -200,19 +307,47 @@ mod tests {
 			on_change();
 		}
 
-		assert_eq!(signal.get(), 100);
+		assert_eq!(signal_with_sub.get(), 100);
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
 	#[test]
 	fn test_use_sync_external_store_with_server() {
-		let signal = use_sync_external_store_with_server(
+		let signal_with_sub = use_sync_external_store_with_server(
 			|_| Box::new(|| {}),
 			|| 42, // Client snapshot
 			|| 0,  // Server snapshot
 		);
 
 		// Should use server snapshot in non-WASM environment
-		assert_eq!(signal.get(), 0);
+		assert_eq!(signal_with_sub.get(), 0);
+	}
+
+	#[test]
+	fn test_subscription_cleanup() {
+		let unsubscribed = Rc::new(RefCell::new(false));
+
+		{
+			let signal_with_sub = use_sync_external_store(
+				{
+					let unsubscribed = Rc::clone(&unsubscribed);
+					move |_on_change| {
+						Box::new(move || {
+							*unsubscribed.borrow_mut() = true;
+						})
+					}
+				},
+				|| 42,
+			);
+
+			assert_eq!(signal_with_sub.get(), 42);
+			assert!(
+				!*unsubscribed.borrow(),
+				"Should not unsubscribe while in scope"
+			);
+		}
+
+		// SignalWithSubscription dropped, unsubscribe should be called
+		assert!(*unsubscribed.borrow(), "Should unsubscribe when dropped");
 	}
 }

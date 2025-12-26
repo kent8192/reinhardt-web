@@ -107,5 +107,5 @@ pub use refs::{Ref, use_ref};
 pub use state::{
 	Dispatch, SetState, SharedSetState, SharedSignal, use_reducer, use_shared_state, use_state,
 };
-pub use sync::use_sync_external_store;
+pub use sync::{SignalWithSubscription, SubscriptionHandle, use_sync_external_store};
 pub use transition::{TransitionState, use_deferred_value, use_transition};
