@@ -197,6 +197,9 @@ fn test_index_optimization() {
 			table: "test_table",
 			columns: vec!["field"],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		},
 		Operation::DropIndex {
 			table: "test_table",

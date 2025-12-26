@@ -121,7 +121,7 @@ impl DatabaseMigrationRecorder {
 			let backend_any = backend.as_any();
 
 			if let Some(mongo_backend) =
-				backend_any.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>()
+				backend_any.downcast_ref::<reinhardt_nosql::backends::mongodb::MongoDBBackend>()
 			{
 				let db = mongo_backend.database();
 				let collection = db.collection::<bson::Document>("_reinhardt_migrations");
@@ -232,9 +232,9 @@ impl DatabaseMigrationRecorder {
 				let backend = self.connection.backend();
 				let backend_any = backend.as_any();
 
-				if let Some(mongo_backend) = backend_any
-					.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>(
-				) {
+				if let Some(mongo_backend) =
+					backend_any.downcast_ref::<reinhardt_nosql::backends::mongodb::MongoDBBackend>()
+				{
 					let db = mongo_backend.database();
 					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
 
@@ -341,9 +341,9 @@ impl DatabaseMigrationRecorder {
 				let backend = self.connection.backend();
 				let backend_any = backend.as_any();
 
-				if let Some(mongo_backend) = backend_any
-					.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>(
-				) {
+				if let Some(mongo_backend) =
+					backend_any.downcast_ref::<reinhardt_nosql::backends::mongodb::MongoDBBackend>()
+				{
 					let db = mongo_backend.database();
 					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
 
@@ -444,9 +444,9 @@ impl DatabaseMigrationRecorder {
 				let backend = self.connection.backend();
 				let backend_any = backend.as_any();
 
-				if let Some(mongo_backend) = backend_any
-					.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>(
-				) {
+				if let Some(mongo_backend) =
+					backend_any.downcast_ref::<reinhardt_nosql::backends::mongodb::MongoDBBackend>()
+				{
 					let db = mongo_backend.database();
 					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
 
@@ -602,9 +602,9 @@ impl DatabaseMigrationRecorder {
 				let backend = self.connection.backend();
 				let backend_any = backend.as_any();
 
-				if let Some(mongo_backend) = backend_any
-					.downcast_ref::<reinhardt_backends::drivers::mongodb::MongoDBBackend>(
-				) {
+				if let Some(mongo_backend) =
+					backend_any.downcast_ref::<reinhardt_nosql::backends::mongodb::MongoDBBackend>()
+				{
 					let db = mongo_backend.database();
 					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
 

@@ -277,12 +277,11 @@ impl MigrationExecutor {
 	/// Apply a single migration
 	/// Translated from Django's MigrationExecutor.apply_migration()
 	///
-	/// Note: This legacy SQLite-only executor does not support atomic transactions.
-	/// Use `DatabaseMigrationExecutor` for multi-database support with atomic
-	/// transaction capabilities via `SchemaEditor`.
+	/// TODO: Deprecate or remove MigrationExecutor in favor of DatabaseMigrationExecutor
+	/// Reason: Lacks atomic transaction support, SQLite-only limitation
+	/// Migration path: All callers should use DatabaseMigrationExecutor
 	async fn apply_migration(&self, migration: &Migration) -> Result<()> {
-		// Note: For atomic transaction support, use DatabaseMigrationExecutor
-		// which leverages SchemaEditor for proper transaction handling
+		// TODO: For atomic transaction support, use DatabaseMigrationExecutor
 		for operation in &migration.operations {
 			let sql = operation.to_sql(&SqlDialect::Sqlite);
 
@@ -475,38 +474,70 @@ impl DatabaseMigrationExecutor {
 	/// # }
 	/// ```
 	async fn table_exists(&self, table_name: &str) -> Result<bool> {
+		use sea_query::{
+			Alias, Asterisk, Cond, Expr, ExprTrait, MysqlQueryBuilder, PostgresQueryBuilder, Query,
+			SqliteQueryBuilder,
+		};
+
 		match self.db_type {
 			DatabaseType::Postgres => {
-				let query = format!(
-					"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '{}')",
-					table_name
+				// Build parameterized query using Sea-Query
+				let subquery = Query::select()
+					.column(Asterisk)
+					.from(Alias::new("information_schema.tables"))
+					.cond_where(
+						Cond::all()
+							.add(Expr::col(Alias::new("table_schema")).eq("public"))
+							.add(Expr::col(Alias::new("table_name")).eq(table_name)),
+					)
+					.to_owned();
+
+				let query_str = format!(
+					"SELECT EXISTS ({})",
+					subquery.to_string(PostgresQueryBuilder)
 				);
 
 				// For PostgreSQL, EXISTS returns a boolean value
-				let result = self.connection.fetch_one(&query, vec![]).await?;
+				let result = self.connection.fetch_one(&query_str, vec![]).await?;
 				match result.data.get("exists") {
 					Some(reinhardt_backends::types::QueryValue::Bool(b)) => Ok(*b),
 					_ => Ok(false),
 				}
 			}
 			DatabaseType::Sqlite => {
-				let query = format!(
-					"SELECT name FROM sqlite_master WHERE type='table' AND name = '{}'",
-					table_name
-				);
+				// Build parameterized query using Sea-Query
+				let query = Query::select()
+					.column(Alias::new("name"))
+					.from(Alias::new("sqlite_master"))
+					.cond_where(
+						Cond::all()
+							.add(Expr::col(Alias::new("type")).eq("table"))
+							.add(Expr::col(Alias::new("name")).eq(table_name)),
+					)
+					.to_owned();
+
+				let query_str = query.to_string(SqliteQueryBuilder);
 
 				// For SQLite, check if any row is returned
-				let result = self.connection.fetch_optional(&query, vec![]).await?;
+				let result = self.connection.fetch_optional(&query_str, vec![]).await?;
 				Ok(result.is_some())
 			}
 			DatabaseType::Mysql => {
-				let query = format!(
-					"SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '{}'",
-					table_name
-				);
+				// Build parameterized query using Sea-Query
+				let query = Query::select()
+					.column(Alias::new("TABLE_NAME"))
+					.from(Alias::new("information_schema.tables"))
+					.cond_where(
+						Cond::all()
+							.add(Expr::col(Alias::new("table_schema")).eq(Expr::cust("DATABASE()")))
+							.add(Expr::col(Alias::new("table_name")).eq(table_name)),
+					)
+					.to_owned();
+
+				let query_str = query.to_string(MysqlQueryBuilder);
 
 				// For MySQL, check if any row is returned
-				let result = self.connection.fetch_optional(&query, vec![]).await?;
+				let result = self.connection.fetch_optional(&query_str, vec![]).await?;
 				Ok(result.is_some())
 			}
 			#[cfg(feature = "mongodb-backend")]
@@ -1088,8 +1119,8 @@ impl OperationOptimizer {
 							constraint_name: _,
 						},
 					) if t1 == t2 => {
-						// NOTE: Perfect matching requires parsing constraint SQL to extract name
-						// This is approximate optimization - matches by table only
+						// TODO: Perfect matching requires parsing constraint SQL to extract name
+						// Currently using approximate optimization - matches by table only
 						true
 					}
 					_ => false,

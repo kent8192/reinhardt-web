@@ -28,6 +28,23 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 	}
 }
 
+/// ON CONFLICT action for INSERT statements
+#[derive(Debug, Clone)]
+pub enum OnConflictAction {
+	/// Do nothing on conflict (PostgreSQL: ON CONFLICT DO NOTHING, MySQL: INSERT IGNORE, SQLite: INSERT OR IGNORE)
+	DoNothing {
+		/// Conflict columns (PostgreSQL only)
+		conflict_columns: Option<Vec<String>>,
+	},
+	/// Update on conflict (PostgreSQL: ON CONFLICT DO UPDATE, MySQL: ON DUPLICATE KEY UPDATE)
+	DoUpdate {
+		/// Conflict columns (PostgreSQL only)
+		conflict_columns: Option<Vec<String>>,
+		/// Columns to update on conflict
+		update_columns: Vec<String>,
+	},
+}
+
 /// INSERT query builder
 pub struct InsertBuilder {
 	backend: Arc<dyn DatabaseBackend>,
@@ -35,6 +52,7 @@ pub struct InsertBuilder {
 	columns: Vec<String>,
 	values: Vec<QueryValue>,
 	returning: Option<Vec<String>>,
+	on_conflict: Option<OnConflictAction>,
 }
 
 impl InsertBuilder {
@@ -45,6 +63,7 @@ impl InsertBuilder {
 			columns: Vec::new(),
 			values: Vec::new(),
 			returning: None,
+			on_conflict: None,
 		}
 	}
 
@@ -58,6 +77,49 @@ impl InsertBuilder {
 		if self.backend.supports_returning() {
 			self.returning = Some(columns.iter().map(|s| (*s).to_owned()).collect());
 		}
+		self
+	}
+
+	/// Set ON CONFLICT DO NOTHING behavior
+	///
+	/// # Arguments
+	///
+	/// * `conflict_columns` - Columns to check for conflict (PostgreSQL only, None for all unique constraints)
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// builder.on_conflict_do_nothing(Some(vec!["email".to_string()]))
+	/// ```
+	pub fn on_conflict_do_nothing(mut self, conflict_columns: Option<Vec<String>>) -> Self {
+		self.on_conflict = Some(OnConflictAction::DoNothing { conflict_columns });
+		self
+	}
+
+	/// Set ON CONFLICT DO UPDATE behavior
+	///
+	/// # Arguments
+	///
+	/// * `conflict_columns` - Columns to check for conflict (PostgreSQL only)
+	/// * `update_columns` - Columns to update on conflict
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// builder.on_conflict_do_update(
+	///     Some(vec!["email".to_string()]),
+	///     vec!["name".to_string(), "updated_at".to_string()],
+	/// )
+	/// ```
+	pub fn on_conflict_do_update(
+		mut self,
+		conflict_columns: Option<Vec<String>>,
+		update_columns: Vec<String>,
+	) -> Self {
+		self.on_conflict = Some(OnConflictAction::DoUpdate {
+			conflict_columns,
+			update_columns,
+		});
 		self
 	}
 
@@ -91,7 +153,7 @@ impl InsertBuilder {
 		}
 
 		// Build SQL based on database type
-		let sql = match self.backend.database_type() {
+		let mut sql = match self.backend.database_type() {
 			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
 			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
@@ -99,7 +161,94 @@ impl InsertBuilder {
 			DatabaseType::MongoDB => return (String::new(), Vec::new()),
 		};
 
+		// Add ON CONFLICT clause if specified
+		if let Some(ref on_conflict) = self.on_conflict {
+			sql = self.apply_on_conflict_clause(sql, on_conflict);
+		}
+
 		(sql, self.values.clone())
+	}
+
+	/// Apply ON CONFLICT clause to SQL string based on database type
+	fn apply_on_conflict_clause(&self, mut sql: String, action: &OnConflictAction) -> String {
+		use crate::types::DatabaseType;
+
+		match self.backend.database_type() {
+			DatabaseType::Postgres => match action {
+				OnConflictAction::DoNothing { conflict_columns } => {
+					if let Some(cols) = conflict_columns {
+						let cols_str = cols.join(", ");
+						sql.push_str(&format!(" ON CONFLICT ({}) DO NOTHING", cols_str));
+					} else {
+						sql.push_str(" ON CONFLICT DO NOTHING");
+					}
+				}
+				OnConflictAction::DoUpdate {
+					conflict_columns,
+					update_columns,
+				} => {
+					let conflict_str = if let Some(cols) = conflict_columns {
+						format!("({})", cols.join(", "))
+					} else {
+						String::new()
+					};
+
+					let update_str = update_columns
+						.iter()
+						.map(|col| format!("{} = EXCLUDED.{}", col, col))
+						.collect::<Vec<_>>()
+						.join(", ");
+
+					sql.push_str(&format!(
+						" ON CONFLICT {} DO UPDATE SET {}",
+						conflict_str, update_str
+					));
+				}
+			},
+			DatabaseType::Mysql => {
+				match action {
+					OnConflictAction::DoNothing { .. } => {
+						// MySQL: INSERT IGNORE
+						sql = sql.replacen("INSERT", "INSERT IGNORE", 1);
+					}
+					OnConflictAction::DoUpdate {
+						conflict_columns: _,
+						update_columns,
+					} => {
+						// MySQL: ON DUPLICATE KEY UPDATE
+						let update_str = update_columns
+							.iter()
+							.map(|col| format!("{} = VALUES({})", col, col))
+							.collect::<Vec<_>>()
+							.join(", ");
+
+						sql.push_str(&format!(" ON DUPLICATE KEY UPDATE {}", update_str));
+					}
+				}
+			}
+			DatabaseType::Sqlite => {
+				match action {
+					OnConflictAction::DoNothing { .. } => {
+						// SQLite: INSERT OR IGNORE
+						sql = sql.replacen("INSERT", "INSERT OR IGNORE", 1);
+					}
+					OnConflictAction::DoUpdate { .. } => {
+						// SQLite: INSERT OR REPLACE (simplified, not exact equivalent)
+						// TODO: Implement proper SQLite UPSERT using ON CONFLICT DO UPDATE instead of INSERT OR REPLACE
+						// Current: INSERT OR REPLACE deletes and re-inserts (may lose unspecified columns)
+						// Target: INSERT ... ON CONFLICT(...) DO UPDATE SET ... (preserves unspecified columns)
+						// See: https://sqlite.org/lang_upsert.html
+						sql = sql.replacen("INSERT", "INSERT OR REPLACE", 1);
+					}
+				}
+			}
+			#[cfg(feature = "mongodb-backend")]
+			DatabaseType::MongoDB => {
+				// MongoDB doesn't use SQL, no-op
+			}
+		}
+
+		sql
 	}
 
 	pub async fn execute(&self) -> Result<QueryResult> {

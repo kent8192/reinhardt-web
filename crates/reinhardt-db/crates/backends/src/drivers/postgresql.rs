@@ -1,5 +1,6 @@
 //! PostgreSQL backend module
 
+pub mod extensions;
 pub mod schema;
 pub mod two_phase;
 

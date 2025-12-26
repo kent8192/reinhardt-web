@@ -271,7 +271,10 @@ impl AutoMigrationGenerator {
 				| Operation::AlterModelOptions { .. }
 				| Operation::CreateInheritedTable { .. }
 				| Operation::AddDiscriminatorColumn { .. }
-				| Operation::MoveModel { .. } => None,
+				| Operation::MoveModel { .. }
+				| Operation::CreateSchema { .. }
+				| Operation::DropSchema { .. }
+				| Operation::CreateExtension { .. } => None,
 			})
 			.collect()
 	}

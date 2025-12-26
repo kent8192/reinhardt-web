@@ -311,10 +311,16 @@ impl<M: Model> Manager<M> {
 			}
 			serde_json::Value::String(s) => sea_query::Value::String(Some(s.clone())),
 			serde_json::Value::Array(arr) => {
-				// Use sea-query's Array type for PostgreSQL arrays
-				let values: Vec<sea_query::Value> =
-					arr.iter().map(Self::json_to_sea_value).collect();
-				sea_query::Value::Array(sea_query::ArrayType::String, Some(Box::new(values)))
+				// Convert each JSON value to Option<String> for sea-query 1.0.0-rc.23+
+				let values: Vec<Option<String>> = arr
+					.iter()
+					.map(|v| match v {
+						serde_json::Value::Null => None,
+						serde_json::Value::String(s) => Some(s.clone()),
+						other => Some(other.to_string()),
+					})
+					.collect();
+				sea_query::Value::Array(sea_query::Array::String(values.into_boxed_slice()))
 			}
 			serde_json::Value::Object(_obj) => {
 				// Use sea-query's Json type for PostgreSQL JSONB/JSON columns

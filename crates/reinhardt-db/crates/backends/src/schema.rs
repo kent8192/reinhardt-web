@@ -54,6 +54,14 @@ pub enum DDLStatement {
 	},
 	/// DROP INDEX statement
 	DropIndex { name: String },
+	/// CREATE SCHEMA statement
+	CreateSchema { name: String, if_not_exists: bool },
+	/// DROP SCHEMA statement
+	DropSchema {
+		name: String,
+		cascade: bool,
+		if_exists: bool,
+	},
 	/// Raw SQL statement
 	RawSQL(String),
 }
@@ -78,6 +86,8 @@ impl DDLStatement {
 			DDLStatement::DropTable { table, .. } => table,
 			DDLStatement::CreateIndex { table, .. } => table,
 			DDLStatement::DropIndex { .. } => "",
+			DDLStatement::CreateSchema { .. } => "",
+			DDLStatement::DropSchema { .. } => "",
 			DDLStatement::RawSQL(_) => "",
 		}
 	}
@@ -138,6 +148,11 @@ pub enum AlterTableChange {
 /// ```
 #[async_trait::async_trait]
 pub trait BaseDatabaseSchemaEditor: Send + Sync {
+	/// Get the database type for this schema editor
+	///
+	/// Used to select the appropriate query builder when generating SQL
+	fn database_type(&self) -> crate::types::DatabaseType;
+
 	/// Execute a SQL statement
 	async fn execute(&mut self, sql: &str) -> SchemaEditorResult<()>;
 
@@ -303,6 +318,151 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
 
 		stmt.to_owned()
 	}
+
+	/// Generate CREATE SCHEMA statement
+	///
+	/// Note: SeaQuery doesn't support CREATE SCHEMA, so we use raw SQL
+	///
+	/// # Arguments
+	///
+	/// * `name` - Schema name
+	/// * `if_not_exists` - Whether to add IF NOT EXISTS clause
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// # use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
+	/// # use async_trait::async_trait;
+	/// # use reinhardt_backends::schema::SchemaEditorResult;
+	/// struct TestEditor;
+	///
+	/// #[async_trait]
+	/// impl BaseDatabaseSchemaEditor for TestEditor {
+	///     async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
+	///         Ok(())
+	///     }
+	/// }
+	///
+	/// let editor = TestEditor;
+	/// let sql = editor.create_schema_statement("my_schema", true);
+	/// assert_eq!(sql, "CREATE SCHEMA IF NOT EXISTS \"my_schema\"");
+	/// ```
+	fn create_schema_statement(&self, name: &str, if_not_exists: bool) -> String {
+		if if_not_exists {
+			format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", name)
+		} else {
+			format!("CREATE SCHEMA \"{}\"", name)
+		}
+	}
+
+	/// Generate DROP SCHEMA statement
+	///
+	/// Note: SeaQuery doesn't support DROP SCHEMA, so we use raw SQL
+	///
+	/// # Arguments
+	///
+	/// * `name` - Schema name
+	/// * `cascade` - Whether to add CASCADE clause
+	/// * `if_exists` - Whether to add IF EXISTS clause
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// # use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
+	/// # use async_trait::async_trait;
+	/// # use reinhardt_backends::schema::SchemaEditorResult;
+	/// struct TestEditor;
+	///
+	/// #[async_trait]
+	/// impl BaseDatabaseSchemaEditor for TestEditor {
+	///     async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
+	///         Ok(())
+	///     }
+	/// }
+	///
+	/// let editor = TestEditor;
+	/// let sql = editor.drop_schema_statement("my_schema", true, true);
+	/// assert_eq!(sql, "DROP SCHEMA IF EXISTS \"my_schema\" CASCADE");
+	/// ```
+	fn drop_schema_statement(&self, name: &str, cascade: bool, if_exists: bool) -> String {
+		let if_exists_clause = if if_exists { " IF EXISTS" } else { "" };
+		let cascade_clause = if cascade { " CASCADE" } else { "" };
+
+		format!(
+			"DROP SCHEMA{} \"{}\"{}",
+			if_exists_clause, name, cascade_clause
+		)
+	}
+
+	/// Build SQL string from TableCreateStatement using appropriate QueryBuilder
+	fn build_create_table_sql(&self, stmt: &TableCreateStatement) -> String {
+		use crate::types::DatabaseType;
+		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+
+		match self.database_type() {
+			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+			#[cfg(feature = "mongodb-backend")]
+			DatabaseType::MongoDB => String::new(),
+		}
+	}
+
+	/// Build SQL string from TableDropStatement using appropriate QueryBuilder
+	fn build_drop_table_sql(&self, stmt: &TableDropStatement) -> String {
+		use crate::types::DatabaseType;
+		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+
+		match self.database_type() {
+			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+			#[cfg(feature = "mongodb-backend")]
+			DatabaseType::MongoDB => String::new(),
+		}
+	}
+
+	/// Build SQL string from TableAlterStatement using appropriate QueryBuilder
+	fn build_alter_table_sql(&self, stmt: &TableAlterStatement) -> String {
+		use crate::types::DatabaseType;
+		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+
+		match self.database_type() {
+			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+			#[cfg(feature = "mongodb-backend")]
+			DatabaseType::MongoDB => String::new(),
+		}
+	}
+
+	/// Build SQL string from IndexCreateStatement using appropriate QueryBuilder
+	fn build_create_index_sql(&self, stmt: &IndexCreateStatement) -> String {
+		use crate::types::DatabaseType;
+		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+
+		match self.database_type() {
+			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+			#[cfg(feature = "mongodb-backend")]
+			DatabaseType::MongoDB => String::new(),
+		}
+	}
+
+	/// Build SQL string from IndexDropStatement using appropriate QueryBuilder
+	fn build_drop_index_sql(&self, stmt: &IndexDropStatement) -> String {
+		use crate::types::DatabaseType;
+		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+
+		match self.database_type() {
+			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+			#[cfg(feature = "mongodb-backend")]
+			DatabaseType::MongoDB => String::new(),
+		}
+	}
 }
 
 /// Result type for schema editor operations
@@ -343,6 +503,10 @@ mod tests {
 	impl BaseDatabaseSchemaEditor for TestSchemaEditor {
 		async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
 			Ok(())
+		}
+
+		fn database_type(&self) -> crate::types::DatabaseType {
+			crate::types::DatabaseType::Postgres
 		}
 	}
 

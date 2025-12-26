@@ -61,6 +61,86 @@ use sea_query::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Index type for database indexes
+///
+/// Specifies the type of index to create. Different index types have different
+/// performance characteristics and support different operators.
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_migrations::operations::IndexType;
+///
+/// // B-Tree is the default, best for equality and range queries
+/// let btree = IndexType::BTree;
+///
+/// // Hash is best for simple equality comparisons
+/// let hash = IndexType::Hash;
+///
+/// // GIN is best for containment operators (arrays, JSONB)
+/// let gin = IndexType::Gin;
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum IndexType {
+	/// B-tree index (default)
+	///
+	/// Best for: equality and range queries (=, <, >, <=, >=, BETWEEN)
+	/// Supported by: All databases
+	#[default]
+	BTree,
+
+	/// Hash index
+	///
+	/// Best for: simple equality comparisons (=)
+	/// Supported by: PostgreSQL, MySQL
+	Hash,
+
+	/// GIN (Generalized Inverted Index)
+	///
+	/// Best for: composite values (arrays, JSONB, full-text search)
+	/// Supported by: PostgreSQL
+	Gin,
+
+	/// GiST (Generalized Search Tree)
+	///
+	/// Best for: geometric data, full-text search, range types
+	/// Supported by: PostgreSQL
+	Gist,
+
+	/// BRIN (Block Range Index)
+	///
+	/// Best for: very large tables with naturally ordered data
+	/// Supported by: PostgreSQL
+	Brin,
+
+	/// Full-text index
+	///
+	/// Best for: full-text search on text columns
+	/// Supported by: MySQL
+	Fulltext,
+
+	/// Spatial index
+	///
+	/// Best for: geometric/geographic data
+	/// Supported by: MySQL
+	Spatial,
+}
+
+impl std::fmt::Display for IndexType {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			IndexType::BTree => write!(f, "btree"),
+			IndexType::Hash => write!(f, "hash"),
+			IndexType::Gin => write!(f, "gin"),
+			IndexType::Gist => write!(f, "gist"),
+			IndexType::Brin => write!(f, "brin"),
+			IndexType::Fulltext => write!(f, "fulltext"),
+			IndexType::Spatial => write!(f, "spatial"),
+		}
+	}
+}
+
 /// Constraint definition for tables
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "type")]
@@ -204,6 +284,23 @@ pub enum Operation {
 		table: &'static str,
 		columns: Vec<&'static str>,
 		unique: bool,
+		/// Index type (B-Tree, Hash, GIN, GiST, etc.)
+		///
+		/// If not specified, the database will use its default index type (typically B-Tree).
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		index_type: Option<IndexType>,
+		/// Partial index condition (WHERE clause)
+		///
+		/// Creates a partial index that only indexes rows matching this condition.
+		/// Example: "status = 'active'" creates an index only for active rows.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		where_clause: Option<&'static str>,
+		/// Create index concurrently (PostgreSQL-specific)
+		///
+		/// When true, creates the index without locking the table for writes.
+		/// This is slower but allows concurrent operations during index creation.
+		#[serde(default)]
+		concurrently: bool,
 	},
 	DropIndex {
 		table: &'static str,
@@ -262,6 +359,48 @@ pub enum Operation {
 		/// New table name (if rename_table is true)
 		new_table_name: Option<&'static str>,
 	},
+	/// Create a database schema (PostgreSQL, MySQL 5.0.2+)
+	///
+	/// Creates a new database schema namespace. In MySQL, this is equivalent to creating a database.
+	CreateSchema {
+		/// Name of the schema to create
+		name: &'static str,
+		/// Whether to add IF NOT EXISTS clause
+		#[serde(default)]
+		if_not_exists: bool,
+	},
+	/// Drop a database schema
+	///
+	/// Drops an existing database schema. Use with caution as this will drop all objects in the schema.
+	DropSchema {
+		/// Name of the schema to drop
+		name: &'static str,
+		/// Whether to add CASCADE clause (drops all contained objects)
+		#[serde(default)]
+		cascade: bool,
+		/// Whether to add IF EXISTS clause
+		#[serde(default = "default_true")]
+		if_exists: bool,
+	},
+	/// Create a PostgreSQL extension (PostgreSQL-specific)
+	///
+	/// Creates a PostgreSQL extension like PostGIS, uuid-ossp, etc.
+	/// This operation is only executed on PostgreSQL databases.
+	CreateExtension {
+		/// Name of the extension to create
+		name: &'static str,
+		/// Whether to add IF NOT EXISTS clause
+		#[serde(default = "default_true")]
+		if_not_exists: bool,
+		/// Optional schema to install the extension in
+		#[serde(default)]
+		schema: Option<&'static str>,
+	},
+}
+
+/// Default value provider for serde (returns true)
+const fn default_true() -> bool {
+	true
 }
 
 impl Operation {
@@ -405,6 +544,12 @@ impl Operation {
 
 					state.add_model(new_model);
 				}
+			}
+			// Schema operations don't affect ProjectState (models/fields only)
+			Operation::CreateSchema { .. }
+			| Operation::DropSchema { .. }
+			| Operation::CreateExtension { .. } => {
+				// No state changes for schema/extension operations
 			}
 		}
 	}
@@ -558,6 +703,7 @@ impl Operation {
 				table,
 				columns,
 				unique,
+				..
 			} => {
 				let unique_str = if *unique { "UNIQUE " } else { "" };
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
@@ -669,6 +815,42 @@ impl Operation {
 					// State-only operation, no SQL needed
 					"-- MoveModel: State-only operation (no table rename)".to_string()
 				}
+			}
+			Operation::CreateSchema {
+				name,
+				if_not_exists,
+			} => {
+				let if_not_exists_clause = if *if_not_exists { " IF NOT EXISTS" } else { "" };
+				format!("CREATE SCHEMA{} {};", if_not_exists_clause, name)
+			}
+			Operation::DropSchema {
+				name,
+				cascade,
+				if_exists,
+			} => {
+				let if_exists_clause = if *if_exists { " IF EXISTS" } else { "" };
+				let cascade_clause = if *cascade { " CASCADE" } else { "" };
+				format!(
+					"DROP SCHEMA{} {}{};",
+					if_exists_clause, name, cascade_clause
+				)
+			}
+			Operation::CreateExtension {
+				name,
+				if_not_exists,
+				schema,
+			} => {
+				// PostgreSQL-specific
+				let if_not_exists_clause = if *if_not_exists { " IF NOT EXISTS" } else { "" };
+				let schema_clause = if let Some(s) = schema {
+					format!(" SCHEMA {}", s)
+				} else {
+					String::new()
+				};
+				format!(
+					"CREATE EXTENSION{} {}{};",
+					if_not_exists_clause, name, schema_clause
+				)
 			}
 		}
 	}
@@ -845,14 +1027,80 @@ impl OperationStatement {
 	}
 
 	/// Convert to SQL string for logging/debugging
-	pub fn to_sql_string(&self) -> String {
+	///
+	/// # Arguments
+	///
+	/// * `db_type` - Database type to generate SQL for (PostgreSQL, MySQL, SQLite)
+	pub fn to_sql_string(&self, db_type: reinhardt_backends::types::DatabaseType) -> String {
+		use sea_query::{MysqlQueryBuilder, SqliteQueryBuilder};
+
 		match self {
-			OperationStatement::TableCreate(stmt) => stmt.to_string(PostgresQueryBuilder),
-			OperationStatement::TableDrop(stmt) => stmt.to_string(PostgresQueryBuilder),
-			OperationStatement::TableAlter(stmt) => stmt.to_string(PostgresQueryBuilder),
-			OperationStatement::TableRename(stmt) => stmt.to_string(PostgresQueryBuilder),
-			OperationStatement::IndexCreate(stmt) => stmt.to_string(PostgresQueryBuilder),
-			OperationStatement::IndexDrop(stmt) => stmt.to_string(PostgresQueryBuilder),
+			OperationStatement::TableCreate(stmt) => match db_type {
+				reinhardt_backends::types::DatabaseType::Postgres => {
+					stmt.to_string(PostgresQueryBuilder)
+				}
+				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_backends::types::DatabaseType::Sqlite => {
+					stmt.to_string(SqliteQueryBuilder)
+				}
+				#[cfg(feature = "mongodb-backend")]
+				reinhardt_backends::types::DatabaseType::MongoDB => String::new(),
+			},
+			OperationStatement::TableDrop(stmt) => match db_type {
+				reinhardt_backends::types::DatabaseType::Postgres => {
+					stmt.to_string(PostgresQueryBuilder)
+				}
+				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_backends::types::DatabaseType::Sqlite => {
+					stmt.to_string(SqliteQueryBuilder)
+				}
+				#[cfg(feature = "mongodb-backend")]
+				reinhardt_backends::types::DatabaseType::MongoDB => String::new(),
+			},
+			OperationStatement::TableAlter(stmt) => match db_type {
+				reinhardt_backends::types::DatabaseType::Postgres => {
+					stmt.to_string(PostgresQueryBuilder)
+				}
+				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_backends::types::DatabaseType::Sqlite => {
+					stmt.to_string(SqliteQueryBuilder)
+				}
+				#[cfg(feature = "mongodb-backend")]
+				reinhardt_backends::types::DatabaseType::MongoDB => String::new(),
+			},
+			OperationStatement::TableRename(stmt) => match db_type {
+				reinhardt_backends::types::DatabaseType::Postgres => {
+					stmt.to_string(PostgresQueryBuilder)
+				}
+				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_backends::types::DatabaseType::Sqlite => {
+					stmt.to_string(SqliteQueryBuilder)
+				}
+				#[cfg(feature = "mongodb-backend")]
+				reinhardt_backends::types::DatabaseType::MongoDB => String::new(),
+			},
+			OperationStatement::IndexCreate(stmt) => match db_type {
+				reinhardt_backends::types::DatabaseType::Postgres => {
+					stmt.to_string(PostgresQueryBuilder)
+				}
+				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_backends::types::DatabaseType::Sqlite => {
+					stmt.to_string(SqliteQueryBuilder)
+				}
+				#[cfg(feature = "mongodb-backend")]
+				reinhardt_backends::types::DatabaseType::MongoDB => String::new(),
+			},
+			OperationStatement::IndexDrop(stmt) => match db_type {
+				reinhardt_backends::types::DatabaseType::Postgres => {
+					stmt.to_string(PostgresQueryBuilder)
+				}
+				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_backends::types::DatabaseType::Sqlite => {
+					stmt.to_string(SqliteQueryBuilder)
+				}
+				#[cfg(feature = "mongodb-backend")]
+				reinhardt_backends::types::DatabaseType::MongoDB => String::new(),
+			},
 			OperationStatement::RawSql(sql) => sql.clone(),
 		}
 	}
@@ -924,6 +1172,7 @@ impl Operation {
 				table,
 				columns,
 				unique,
+				..
 			} => {
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
 				OperationStatement::IndexCreate(
@@ -1038,6 +1287,54 @@ impl Operation {
 					// State-only operation, no SQL
 					OperationStatement::RawSql("-- MoveModel: State-only operation".to_string())
 				}
+			}
+			Operation::CreateSchema {
+				name,
+				if_not_exists,
+			} => {
+				// Use schema.rs helper (Sea-Query doesn't support CREATE SCHEMA)
+				let sql = if *if_not_exists {
+					format!("CREATE SCHEMA IF NOT EXISTS {}", quote_identifier(name))
+				} else {
+					format!("CREATE SCHEMA {}", quote_identifier(name))
+				};
+				OperationStatement::RawSql(sql)
+			}
+			Operation::DropSchema {
+				name,
+				cascade,
+				if_exists,
+			} => {
+				// Use schema.rs helper (Sea-Query doesn't support DROP SCHEMA)
+				let if_exists_clause = if *if_exists { " IF EXISTS" } else { "" };
+				let cascade_clause = if *cascade { " CASCADE" } else { "" };
+				let sql = format!(
+					"DROP SCHEMA{} {}{}",
+					if_exists_clause,
+					quote_identifier(name),
+					cascade_clause
+				);
+				OperationStatement::RawSql(sql)
+			}
+			Operation::CreateExtension {
+				name,
+				if_not_exists,
+				schema,
+			} => {
+				// PostgreSQL-specific: Use extensions.rs helper
+				let if_not_exists_clause = if *if_not_exists { " IF NOT EXISTS" } else { "" };
+				let schema_clause = if let Some(s) = schema {
+					format!(" SCHEMA {}", quote_identifier(s))
+				} else {
+					String::new()
+				};
+				let sql = format!(
+					"CREATE EXTENSION{} {}{}",
+					if_not_exists_clause,
+					quote_identifier(name),
+					schema_clause
+				);
+				OperationStatement::RawSql(sql)
 			}
 		}
 	}
@@ -1454,6 +1751,15 @@ impl MigrationOperation for Operation {
 				to_app.to_lowercase(),
 				model_name.to_lowercase()
 			)),
+			Operation::CreateSchema { name, .. } => {
+				Some(format!("create_schema_{}", name.to_lowercase()))
+			}
+			Operation::DropSchema { name, .. } => {
+				Some(format!("drop_schema_{}", name.to_lowercase()))
+			}
+			Operation::CreateExtension { name, .. } => {
+				Some(format!("create_extension_{}", name.to_lowercase()))
+			}
 		}
 	}
 
@@ -1531,6 +1837,9 @@ impl MigrationOperation for Operation {
 				to_app,
 				..
 			} => format!("Move model {} from {} to {}", model_name, from_app, to_app),
+			Operation::CreateSchema { name, .. } => format!("Create schema {}", name),
+			Operation::DropSchema { name, .. } => format!("Drop schema {}", name),
+			Operation::CreateExtension { name, .. } => format!("Create extension {}", name),
 		}
 	}
 
@@ -1566,6 +1875,9 @@ impl MigrationOperation for Operation {
 				table,
 				columns,
 				unique,
+				index_type,
+				where_clause,
+				concurrently,
 			} => {
 				let mut sorted_columns = columns.clone();
 				sorted_columns.sort();
@@ -1574,6 +1886,9 @@ impl MigrationOperation for Operation {
 					table,
 					columns: sorted_columns,
 					unique: *unique,
+					index_type: *index_type,
+					where_clause: *where_clause,
+					concurrently: *concurrently,
 				}
 			}
 			// DropIndex: Sort columns
@@ -1652,7 +1967,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE TABLE"),
 			"SQL should contain CREATE TABLE keyword, got: {}",
@@ -1675,7 +1990,7 @@ mod tests {
 		let op = Operation::DropTable { name: "users" };
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("DROP TABLE"),
 			"SQL should contain DROP TABLE keyword, got: {}",
@@ -1709,7 +2024,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -1740,7 +2055,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -1780,7 +2095,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -1806,7 +2121,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("users"),
 			"SQL should reference old table name 'users', got: {}",
@@ -1828,7 +2143,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -1864,7 +2179,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -1895,7 +2210,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -1924,10 +2239,13 @@ mod tests {
 			table: "users",
 			columns: vec!["email"],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE INDEX"),
 			"SQL should contain CREATE INDEX keywords, got: {}",
@@ -1951,10 +2269,13 @@ mod tests {
 			table: "users",
 			columns: vec!["email"],
 			unique: true,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE UNIQUE INDEX"),
 			"SQL should contain CREATE UNIQUE INDEX keywords, got: {}",
@@ -1980,7 +2301,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("DROP INDEX"),
 			"SQL should contain DROP INDEX keywords, got: {}",
@@ -2001,7 +2322,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE EXTENSION"),
 			"SQL should contain CREATE EXTENSION keywords, got: {}",
@@ -2022,7 +2343,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("COMMENT ON TABLE"),
 			"SQL should contain COMMENT ON TABLE keywords, got: {}",
@@ -2048,7 +2369,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("COMMENT ON TABLE"),
 			"SQL should contain COMMENT ON TABLE keywords, got: {}",
@@ -2074,7 +2395,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -2110,7 +2431,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert_eq!(
 			sql, "",
 			"SQL should be empty for empty unique_together constraint"
@@ -2128,7 +2449,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert_eq!(sql, "", "SQL should be empty for model options operation");
 	}
 
@@ -2150,7 +2471,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE TABLE"),
 			"SQL should contain CREATE TABLE keywords, got: {}",
@@ -2177,7 +2498,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -2649,6 +2970,9 @@ mod tests {
 			table: "users",
 			columns: vec!["first_name", "last_name"],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 
 		let sql = op.to_sql(&SqlDialect::Postgres);
@@ -2677,7 +3001,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string();
+		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("COMMENT ON TABLE"),
 			"SQL should contain COMMENT ON TABLE keywords, got: {}",

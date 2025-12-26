@@ -33,7 +33,6 @@
 
 use crate::{FieldState, ProjectState};
 use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
-use sea_query::PostgresQueryBuilder;
 use serde::{Deserialize, Serialize};
 
 pub use super::models::FieldDefinition;
@@ -124,7 +123,7 @@ impl AddField {
 		let definition = self.field.to_sql_definition();
 		let stmt =
 			schema_editor.add_column_statement(&self.model_name, &self.field.name, &definition);
-		vec![stmt.to_string(PostgresQueryBuilder)]
+		vec![schema_editor.build_alter_table_sql(&stmt)]
 	}
 }
 
@@ -200,7 +199,7 @@ impl RemoveField {
 	/// ```
 	pub fn database_forwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
 		let stmt = schema_editor.drop_column_statement(&self.model_name, &self.field_name);
-		vec![stmt.to_string(PostgresQueryBuilder)]
+		vec![schema_editor.build_alter_table_sql(&stmt)]
 	}
 }
 

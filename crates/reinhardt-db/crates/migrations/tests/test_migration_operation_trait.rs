@@ -189,6 +189,9 @@ fn test_create_index_fragment() {
 		table: leak_str("Users"),
 		columns: vec!["email"],
 		unique: false,
+		index_type: None,
+		where_clause: None,
+		concurrently: false,
 	};
 
 	assert_eq!(
@@ -209,6 +212,9 @@ fn test_create_unique_index_fragment() {
 		table: leak_str("Users"),
 		columns: vec!["email"],
 		unique: true,
+		index_type: None,
+		where_clause: None,
+		concurrently: false,
 	};
 
 	assert_eq!(

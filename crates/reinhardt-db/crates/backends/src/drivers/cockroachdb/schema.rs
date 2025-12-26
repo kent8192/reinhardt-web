@@ -324,6 +324,11 @@ impl CockroachDBSchemaEditor {
 
 #[async_trait::async_trait]
 impl BaseDatabaseSchemaEditor for CockroachDBSchemaEditor {
+	fn database_type(&self) -> crate::types::DatabaseType {
+		// CockroachDB is PostgreSQL-compatible
+		crate::types::DatabaseType::Postgres
+	}
+
 	async fn execute(&mut self, sql: &str) -> SchemaEditorResult<()> {
 		self.pg_editor.execute(sql).await
 	}

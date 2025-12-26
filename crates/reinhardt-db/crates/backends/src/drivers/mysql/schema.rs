@@ -82,6 +82,10 @@ impl MySQLSchemaEditor {
 
 #[async_trait::async_trait]
 impl BaseDatabaseSchemaEditor for MySQLSchemaEditor {
+	fn database_type(&self) -> crate::types::DatabaseType {
+		crate::types::DatabaseType::Mysql
+	}
+
 	async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
 		Err(SchemaEditorError::ExecutionError(
 			"Execution not supported in schema editor".to_string(),

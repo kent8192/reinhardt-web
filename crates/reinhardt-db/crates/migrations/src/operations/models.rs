@@ -31,7 +31,6 @@
 
 use crate::{FieldState, ModelState, ProjectState};
 use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
-use sea_query::PostgresQueryBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -547,9 +546,9 @@ impl CreateModel {
 			.map(|(f, def)| (f.name.as_str(), def.as_str()))
 			.collect();
 
-		// Generate CREATE TABLE SQL
+		// Generate CREATE TABLE SQL using database-specific query builder
 		let stmt = schema_editor.create_table_statement(&self.name, &columns);
-		let mut create_sql = stmt.to_string(PostgresQueryBuilder);
+		let mut create_sql = schema_editor.build_create_table_sql(&stmt);
 
 		// Add composite primary key constraint if defined
 		if let Some(ref pk_fields) = self.composite_primary_key {
@@ -660,7 +659,7 @@ impl DeleteModel {
 	/// ```
 	pub fn database_forwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
 		let stmt = schema_editor.drop_table_statement(&self.name, false);
-		vec![stmt.to_string(PostgresQueryBuilder)]
+		vec![schema_editor.build_drop_table_sql(&stmt)]
 	}
 }
 

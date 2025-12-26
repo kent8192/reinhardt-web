@@ -274,6 +274,10 @@ impl PostgreSQLSchemaEditor {
 
 #[async_trait::async_trait]
 impl BaseDatabaseSchemaEditor for PostgreSQLSchemaEditor {
+	fn database_type(&self) -> crate::types::DatabaseType {
+		crate::types::DatabaseType::Postgres
+	}
+
 	async fn execute(&mut self, sql: &str) -> SchemaEditorResult<()> {
 		// Validate SQL input
 		if sql.is_empty() {

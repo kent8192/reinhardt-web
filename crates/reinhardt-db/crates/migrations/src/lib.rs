@@ -101,8 +101,8 @@ pub use model_registry::{
 };
 pub use operation_trait::MigrationOperation;
 pub use operations::{
-	AddColumn, AlterColumn, ColumnDefinition, Constraint, CreateTable, DropColumn, Operation,
-	SqlDialect,
+	AddColumn, AlterColumn, ColumnDefinition, Constraint, CreateTable, DropColumn, IndexType,
+	Operation, SqlDialect,
 };
 pub use plan::{MigrationPlan, TransactionMode};
 

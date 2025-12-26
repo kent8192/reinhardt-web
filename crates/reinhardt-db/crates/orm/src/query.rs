@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
 
-// Django QuerySet API types (stub implementations)
+// Django QuerySet API types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FilterOperator {
 	Eq,
@@ -833,7 +833,23 @@ where
 		let stmt = if self.select_related_fields.is_empty() {
 			// Simple SELECT without JOINs
 			let mut stmt = SeaQuery::select();
-			stmt.from(Alias::new(T::table_name())).column(Asterisk);
+			stmt.from(Alias::new(T::table_name()));
+
+			// Column selection considering selected_fields and deferred_fields
+			if let Some(ref fields) = self.selected_fields {
+				for field in fields {
+					stmt.column(Alias::new(field));
+				}
+			} else if !self.deferred_fields.is_empty() {
+				let all_fields = T::field_metadata();
+				for field in all_fields {
+					if !self.deferred_fields.contains(&field.name) {
+						stmt.column(Alias::new(&field.name));
+					}
+				}
+			} else {
+				stmt.column(Asterisk);
+			}
 
 			if let Some(cond) = self.build_where_condition() {
 				stmt.cond_where(cond);
@@ -961,7 +977,23 @@ where
 	{
 		let stmt = if self.select_related_fields.is_empty() {
 			let mut stmt = SeaQuery::select();
-			stmt.from(Alias::new(T::table_name())).column(Asterisk);
+			stmt.from(Alias::new(T::table_name()));
+
+			// Column selection considering selected_fields and deferred_fields
+			if let Some(ref fields) = self.selected_fields {
+				for field in fields {
+					stmt.column(Alias::new(field));
+				}
+			} else if !self.deferred_fields.is_empty() {
+				let all_fields = T::field_metadata();
+				for field in all_fields {
+					if !self.deferred_fields.contains(&field.name) {
+						stmt.column(Alias::new(&field.name));
+					}
+				}
+			} else {
+				stmt.column(Asterisk);
+			}
 
 			if let Some(cond) = self.build_where_condition() {
 				stmt.cond_where(cond);
@@ -1465,10 +1497,17 @@ where
 				stmt.distinct();
 			}
 
-			// Select columns
+			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
 					stmt.column(Alias::new(field));
+				}
+			} else if !self.deferred_fields.is_empty() {
+				let all_fields = T::field_metadata();
+				for field in all_fields {
+					if !self.deferred_fields.contains(&field.name) {
+						stmt.column(Alias::new(&field.name));
+					}
 				}
 			} else {
 				stmt.column(Asterisk);
@@ -1683,12 +1722,6 @@ where
 	/// Marks specific fields for deferred loading (lazy loading).
 	/// The specified fields will be excluded from the initial query.
 	///
-	/// # Note
-	///
-	/// In the current implementation, deferred fields are simply stored
-	/// but not yet used in query generation. Full deferred loading support
-	/// will be implemented in a future version.
-	///
 	/// # Examples
 	///
 	/// ```ignore
@@ -1697,7 +1730,7 @@ where
 	///     .defer(&["bio", "profile_picture"])
 	///     .all()
 	///     .await?;
-	/// // Future: SELECT id, username, email FROM users (excluding bio, profile_picture)
+	/// // Generates: SELECT id, username, email FROM users (excluding bio, profile_picture)
 	/// ```
 	pub fn defer(mut self, fields: &[&str]) -> Self {
 		self.deferred_fields = fields.iter().map(|s| s.to_string()).collect();

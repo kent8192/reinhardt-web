@@ -91,6 +91,10 @@ impl SQLiteSchemaEditor {
 
 #[async_trait::async_trait]
 impl BaseDatabaseSchemaEditor for SQLiteSchemaEditor {
+	fn database_type(&self) -> crate::types::DatabaseType {
+		crate::types::DatabaseType::Sqlite
+	}
+
 	async fn execute(&mut self, _sql: &str) -> SchemaEditorResult<()> {
 		Err(SchemaEditorError::ExecutionError(
 			"Execution not supported in schema editor".to_string(),

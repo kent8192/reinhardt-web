@@ -239,6 +239,9 @@ mod migrations_extended_tests {
 			table: "items",
 			columns: vec!["category_id", "_order"],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 
 		let model = state.get_model("testapp", "items").unwrap();
@@ -1377,6 +1380,9 @@ mod migrations_extended_tests {
 			table: "users",
 			columns: vec!["email"],
 			unique: true,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 		let sql = index_op.to_sql(&crate::operations::SqlDialect::Postgres);
 
@@ -1406,6 +1412,9 @@ mod migrations_extended_tests {
 			table: "products",
 			columns: vec!["sku"],
 			unique: true,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 		let sql = index_op.to_sql(&crate::operations::SqlDialect::Sqlite);
 
@@ -1423,6 +1432,9 @@ mod migrations_extended_tests {
 			table: "users",
 			columns: vec!["email"],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 
 		let sql = op.to_sql(&SqlDialect::Postgres);
@@ -1441,6 +1453,9 @@ mod migrations_extended_tests {
 			table: "products",
 			columns: vec!["sku"],
 			unique: true,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 
 		let sql = op.to_sql(&SqlDialect::Postgres);
@@ -1699,6 +1714,9 @@ mod migrations_extended_tests {
 			table: "items",
 			columns: vec!["parent_id", "_order"],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 
 		assert!(state.get_model("app", "items").is_some());
@@ -3310,6 +3328,9 @@ mod migrations_extended_tests {
 			table: "enrollments",
 			columns: vec!["student_id", "course_id"],
 			unique: true,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		};
 		add_index.state_forwards("school", &mut state);
 

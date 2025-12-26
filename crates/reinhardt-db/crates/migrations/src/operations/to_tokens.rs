@@ -1,4 +1,4 @@
-use crate::{ColumnDefinition, Constraint, ForeignKeyAction, Operation};
+use crate::{ColumnDefinition, Constraint, ForeignKeyAction, IndexType, Operation};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 
@@ -197,13 +197,38 @@ impl ToTokens for Operation {
 				table,
 				columns,
 				unique,
+				index_type,
+				where_clause,
+				concurrently,
 			} => {
 				let columns_iter = columns.iter();
+				let index_type_token = match index_type {
+					Some(it) => {
+						let variant = match it {
+							IndexType::BTree => quote! { IndexType::BTree },
+							IndexType::Hash => quote! { IndexType::Hash },
+							IndexType::Gin => quote! { IndexType::Gin },
+							IndexType::Gist => quote! { IndexType::Gist },
+							IndexType::Brin => quote! { IndexType::Brin },
+							IndexType::Fulltext => quote! { IndexType::Fulltext },
+							IndexType::Spatial => quote! { IndexType::Spatial },
+						};
+						quote! { Some(#variant) }
+					}
+					None => quote! { None },
+				};
+				let where_clause_token = match where_clause {
+					Some(s) => quote! { Some(#s) },
+					None => quote! { None },
+				};
 				tokens.extend(quote! {
 					Operation::CreateIndex {
 						table: #table,
 						columns: vec![#(#columns_iter),*],
 						unique: #unique,
+						index_type: #index_type_token,
+						where_clause: #where_clause_token,
+						concurrently: #concurrently,
 					}
 				});
 			}
@@ -334,6 +359,47 @@ impl ToTokens for Operation {
 						rename_table: #rename_table,
 						old_table_name: #old_table_token,
 						new_table_name: #new_table_token,
+					}
+				});
+			}
+			Operation::CreateSchema {
+				name,
+				if_not_exists,
+			} => {
+				tokens.extend(quote! {
+					Operation::CreateSchema {
+						name: #name,
+						if_not_exists: #if_not_exists,
+					}
+				});
+			}
+			Operation::DropSchema {
+				name,
+				cascade,
+				if_exists,
+			} => {
+				tokens.extend(quote! {
+					Operation::DropSchema {
+						name: #name,
+						cascade: #cascade,
+						if_exists: #if_exists,
+					}
+				});
+			}
+			Operation::CreateExtension {
+				name,
+				if_not_exists,
+				schema,
+			} => {
+				let schema_token = match schema {
+					Some(s) => quote! { Some(#s) },
+					None => quote! { None },
+				};
+				tokens.extend(quote! {
+					Operation::CreateExtension {
+						name: #name,
+						if_not_exists: #if_not_exists,
+						schema: #schema_token,
 					}
 				});
 			}

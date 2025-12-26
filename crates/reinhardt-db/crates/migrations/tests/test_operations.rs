@@ -291,6 +291,9 @@ fn test_create_index() {
 		table: leak_str("test_table"),
 		columns: vec!["status"],
 		unique: false,
+		index_type: None,
+		where_clause: None,
+		concurrently: false,
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);
@@ -529,6 +532,9 @@ fn test_migrations_operations_composite_index() {
 		table: leak_str("users"),
 		columns: vec!["name", "email"],
 		unique: false,
+		index_type: None,
+		where_clause: None,
+		concurrently: false,
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Sqlite);

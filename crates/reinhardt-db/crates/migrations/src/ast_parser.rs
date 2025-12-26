@@ -216,6 +216,7 @@ fn parse_single_operation(expr: &Expr) -> Option<crate::Operation> {
 				let table = extract_static_str_field(&expr_struct.fields, "table")?;
 				let columns = extract_string_vec_field(&expr_struct.fields, "columns");
 				let unique = extract_bool_field(&expr_struct.fields, "unique").unwrap_or(false);
+				// TODO: Parse index_type, where_clause, and concurrently when AST support is added
 				return Some(crate::Operation::CreateIndex {
 					table: Box::leak(table.into_boxed_str()),
 					columns: columns
@@ -223,6 +224,9 @@ fn parse_single_operation(expr: &Expr) -> Option<crate::Operation> {
 						.map(|s| Box::leak(s.into_boxed_str()) as &'static str)
 						.collect(),
 					unique,
+					index_type: None,
+					where_clause: None,
+					concurrently: false,
 				});
 			}
 			"DropIndex" => {

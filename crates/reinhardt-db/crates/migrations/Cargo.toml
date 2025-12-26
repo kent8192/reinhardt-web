@@ -10,7 +10,8 @@ repository.workspace = true
 [dependencies]
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
-reinhardt-backends = { workspace = true, features = ["sqlite", "postgres", "mysql"] }
+reinhardt-backends = { workspace = true }
+reinhardt-nosql = { workspace = true, optional = true }
 mongodb = { version = "3.0", optional = true }
 bson = { version = "3.0.0", optional = true }
 clap = { version = "4.5", features = ["derive"] }
@@ -70,11 +71,11 @@ serial_test = { workspace = true }
 
 [features]
 default = ["sqlite", "postgres", "mysql", "db-sqlite", "db-postgres", "db-mysql"]
-sqlite = []
-postgres = []
-mysql = []
+sqlite = ["reinhardt-backends/sqlite"]
+postgres = ["reinhardt-backends/postgres"]
+mysql = ["reinhardt-backends/mysql"]
 db-sqlite = []
 db-postgres = []
 db-mysql = []
-mongodb-backend = ["dep:mongodb", "dep:bson", "reinhardt-backends/mongodb-backend"]
+mongodb-backend = ["dep:mongodb", "dep:bson", "dep:reinhardt-nosql", "reinhardt-nosql/mongodb", "reinhardt-backends/mongodb-backend"]
 full = ["sqlite", "postgres", "mysql", "mongodb-backend", "db-sqlite", "db-postgres", "db-mysql"]
