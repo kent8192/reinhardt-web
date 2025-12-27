@@ -446,6 +446,16 @@ struct FieldConfig {
 	/// When true, field is included even if it would normally be auto-generated
 	/// When false, field is excluded and uses default value
 	include_in_new: Option<bool>,
+
+	// PostgreSQL-specific type attributes
+	/// Explicit field type specification (e.g., "jsonb", "hstore", "citext")
+	/// Takes priority over automatic type inference
+	#[cfg(feature = "db-postgres")]
+	field_type: Option<String>,
+	/// Base type for array elements (e.g., "VARCHAR(50)", "INTEGER")
+	/// Used when the Rust type is Vec<T> but the element type cannot be inferred
+	#[cfg(feature = "db-postgres")]
+	array_base_type: Option<String>,
 }
 
 impl FieldConfig {
@@ -784,6 +794,31 @@ impl FieldConfig {
 					let value: syn::LitBool = meta.value()?.parse()?;
 					config.include_in_new = Some(value.value);
 					Ok(())
+				}
+				// PostgreSQL-specific type attributes
+				else if meta.path.is_ident("field_type") {
+					#[cfg(feature = "db-postgres")]
+					{
+						let value: syn::LitStr = meta.value()?.parse()?;
+						config.field_type = Some(value.value());
+						Ok(())
+					}
+					#[cfg(not(feature = "db-postgres"))]
+					{
+						Err(meta.error("field_type is only available with db-postgres feature"))
+					}
+				} else if meta.path.is_ident("array_base_type") {
+					#[cfg(feature = "db-postgres")]
+					{
+						let value: syn::LitStr = meta.value()?.parse()?;
+						config.array_base_type = Some(value.value());
+						Ok(())
+					}
+					#[cfg(not(feature = "db-postgres"))]
+					{
+						Err(meta
+							.error("array_base_type is only available with db-postgres feature"))
+					}
 				} else {
 					Err(meta.error("unsupported field attribute"))
 				}
@@ -954,6 +989,12 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream> {
 	let migrations_crate = get_reinhardt_migrations_crate();
 
+	// PostgreSQL: Check for explicit field_type attribute first
+	#[cfg(feature = "db-postgres")]
+	if let Some(explicit_type) = &config.field_type {
+		return map_explicit_field_type(explicit_type, &migrations_crate);
+	}
+
 	// Extract the inner type if it's Option<T>
 	let (_is_option, inner_ty) = extract_option_type(ty);
 
@@ -999,6 +1040,22 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 				"Uuid" => {
 					quote! { #migrations_crate::FieldType::Uuid }
 				}
+				// PostgreSQL: Vec<T> -> Array type
+				#[cfg(feature = "db-postgres")]
+				"Vec" => {
+					return map_vec_to_array_type(ty, last_segment, config, &migrations_crate);
+				}
+				// PostgreSQL: serde_json::Value -> JSONB
+				#[cfg(feature = "db-postgres")]
+				"Value" => {
+					// Assume serde_json::Value for JSONB
+					quote! { #migrations_crate::FieldType::Jsonb }
+				}
+				// PostgreSQL: HashMap<String, String> -> HStore
+				#[cfg(feature = "db-postgres")]
+				"HashMap" => {
+					quote! { #migrations_crate::FieldType::HStore }
+				}
 				_ => {
 					return Err(syn::Error::new_spanned(
 						ty,
@@ -1009,6 +1066,159 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 		}
 		_ => {
 			return Err(syn::Error::new_spanned(ty, "Unsupported field type"));
+		}
+	};
+
+	Ok(field_type)
+}
+
+/// Map explicit PostgreSQL field type string to FieldType
+#[cfg(feature = "db-postgres")]
+fn map_explicit_field_type(
+	field_type_str: &str,
+	migrations_crate: &proc_macro2::TokenStream,
+) -> Result<TokenStream> {
+	let field_type = match field_type_str.to_lowercase().as_str() {
+		"jsonb" => quote! { #migrations_crate::FieldType::Jsonb },
+		"json" => quote! { #migrations_crate::FieldType::Json },
+		"hstore" => quote! { #migrations_crate::FieldType::HStore },
+		"citext" => quote! { #migrations_crate::FieldType::CIText },
+		"int4range" | "integer_range" => quote! { #migrations_crate::FieldType::Int4Range },
+		"int8range" | "bigint_range" => quote! { #migrations_crate::FieldType::Int8Range },
+		"numrange" | "decimal_range" => quote! { #migrations_crate::FieldType::NumRange },
+		"daterange" | "date_range" => quote! { #migrations_crate::FieldType::DateRange },
+		"tsrange" | "timestamp_range" => quote! { #migrations_crate::FieldType::TsRange },
+		"tstzrange" | "timestamptz_range" => quote! { #migrations_crate::FieldType::TsTzRange },
+		"tsvector" => quote! { #migrations_crate::FieldType::TsVector },
+		"tsquery" => quote! { #migrations_crate::FieldType::TsQuery },
+		"uuid" => quote! { #migrations_crate::FieldType::Uuid },
+		"text" => quote! { #migrations_crate::FieldType::Text },
+		other => {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				format!(
+					"Unknown PostgreSQL field type: '{}'. Supported types: jsonb, json, hstore, \
+					 citext, int4range, int8range, numrange, daterange, tsrange, tstzrange, \
+					 tsvector, tsquery, uuid, text",
+					other
+				),
+			));
+		}
+	};
+	Ok(field_type)
+}
+
+/// Map Vec<T> to PostgreSQL Array type
+#[cfg(feature = "db-postgres")]
+fn map_vec_to_array_type(
+	ty: &Type,
+	segment: &syn::PathSegment,
+	config: &FieldConfig,
+	migrations_crate: &proc_macro2::TokenStream,
+) -> Result<TokenStream> {
+	// First check if array_base_type is explicitly specified
+	if let Some(base_type) = &config.array_base_type {
+		// Parse the base type string to FieldType
+		let inner_field_type = parse_base_type_string(base_type, migrations_crate)?;
+		return Ok(quote! {
+			#migrations_crate::FieldType::Array(Box::new(#inner_field_type))
+		});
+	}
+
+	// Try to infer the element type from Vec<T>
+	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+		&& let Some(syn::GenericArgument::Type(Type::Path(inner_path))) = args.args.first()
+		&& let Some(inner_segment) = inner_path.path.segments.last()
+	{
+		let inner_type_name = inner_segment.ident.to_string();
+		let inner_field_type = match inner_type_name.as_str() {
+			"String" => {
+				// For String arrays, check if max_length is provided
+				if let Some(max_length) = config.max_length {
+					let ml = max_length as u32;
+					quote! { #migrations_crate::FieldType::VarChar(#ml) }
+				} else {
+					// Default to TEXT for string arrays without max_length
+					quote! { #migrations_crate::FieldType::Text }
+				}
+			}
+			"i32" => quote! { #migrations_crate::FieldType::Integer },
+			"i64" => quote! { #migrations_crate::FieldType::BigInteger },
+			"f32" => quote! { #migrations_crate::FieldType::Float },
+			"f64" => quote! { #migrations_crate::FieldType::Double },
+			"bool" => quote! { #migrations_crate::FieldType::Boolean },
+			"Uuid" => quote! { #migrations_crate::FieldType::Uuid },
+			_ => {
+				return Err(syn::Error::new_spanned(
+					ty,
+					format!(
+						"Cannot infer array element type for Vec<{}>. \
+						 Use #[field(array_base_type = \"...\")] to specify explicitly.",
+						inner_type_name
+					),
+				));
+			}
+		};
+
+		return Ok(quote! {
+			#migrations_crate::FieldType::Array(Box::new(#inner_field_type))
+		});
+	}
+
+	Err(syn::Error::new_spanned(
+		ty,
+		"Cannot infer Vec element type. Use #[field(array_base_type = \"...\")] to specify explicitly.",
+	))
+}
+
+/// Parse a base type string (e.g., "VARCHAR(50)", "INTEGER") to FieldType tokens
+#[cfg(feature = "db-postgres")]
+fn parse_base_type_string(
+	base_type: &str,
+	migrations_crate: &proc_macro2::TokenStream,
+) -> Result<TokenStream> {
+	let upper = base_type.to_uppercase();
+
+	// Check for VARCHAR(n) pattern
+	if upper.starts_with("VARCHAR(") && upper.ends_with(')') {
+		let len_str = &upper[8..upper.len() - 1];
+		if let Ok(length) = len_str.parse::<u32>() {
+			return Ok(quote! { #migrations_crate::FieldType::VarChar(#length) });
+		}
+	}
+
+	// Check for CHAR(n) pattern
+	if upper.starts_with("CHAR(") && upper.ends_with(')') {
+		let len_str = &upper[5..upper.len() - 1];
+		if let Ok(length) = len_str.parse::<u32>() {
+			return Ok(quote! { #migrations_crate::FieldType::Char(#length) });
+		}
+	}
+
+	// Simple type mapping
+	let field_type = match upper.as_str() {
+		"INTEGER" | "INT" | "INT4" => quote! { #migrations_crate::FieldType::Integer },
+		"BIGINT" | "INT8" => quote! { #migrations_crate::FieldType::BigInteger },
+		"SMALLINT" | "INT2" => quote! { #migrations_crate::FieldType::SmallInteger },
+		"TEXT" => quote! { #migrations_crate::FieldType::Text },
+		"BOOLEAN" | "BOOL" => quote! { #migrations_crate::FieldType::Boolean },
+		"REAL" | "FLOAT4" => quote! { #migrations_crate::FieldType::Float },
+		"DOUBLE PRECISION" | "FLOAT8" => quote! { #migrations_crate::FieldType::Double },
+		"UUID" => quote! { #migrations_crate::FieldType::Uuid },
+		"DATE" => quote! { #migrations_crate::FieldType::Date },
+		"TIME" => quote! { #migrations_crate::FieldType::Time },
+		"TIMESTAMP" => quote! { #migrations_crate::FieldType::DateTime },
+		"JSONB" => quote! { #migrations_crate::FieldType::Jsonb },
+		"JSON" => quote! { #migrations_crate::FieldType::Json },
+		_ => {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				format!(
+					"Unknown base type for array: '{}'. Use standard SQL types like \
+					 INTEGER, BIGINT, VARCHAR(n), TEXT, BOOLEAN, etc.",
+					base_type
+				),
+			));
 		}
 	};
 
@@ -2942,9 +3152,13 @@ fn generate_relationship_metadata(
 				RelationType::ManyToMany | RelationType::PolymorphicManyToMany => {
 					quote! { #orm_crate::relationship::RelationshipType::ManyToMany }
 				}
-				RelationType::Polymorphic => {
-					// Polymorphic is treated as ManyToOne for now
+				RelationType::Polymorphic | RelationType::GenericForeignKey => {
+					// Polymorphic and GenericForeignKey are treated as ManyToOne for now
 					quote! { #orm_crate::relationship::RelationshipType::ManyToOne }
+				}
+				RelationType::GenericRelation => {
+					// GenericRelation is a reverse lookup, similar to OneToMany
+					quote! { #orm_crate::relationship::RelationshipType::OneToMany }
 				}
 			};
 

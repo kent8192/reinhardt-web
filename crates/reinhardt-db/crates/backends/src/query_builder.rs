@@ -13,7 +13,9 @@ use crate::{
 /// Convert QueryValue to SeaQuery Value
 fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 	match qv {
-		QueryValue::Null => Value::Bool(None),
+		// BigInt(None) is used for generic NULL values across all dialects
+		// (consistent with PostgreSQL, MySQL, SQLite backend implementations)
+		QueryValue::Null => Value::BigInt(None),
 		QueryValue::Bool(b) => Value::Bool(Some(*b)),
 		QueryValue::Int(i) => Value::BigInt(Some(*i)),
 		QueryValue::Float(f) => Value::Double(Some(*f)),
@@ -158,7 +160,12 @@ impl InsertBuilder {
 			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
 			#[cfg(feature = "mongodb-backend")]
-			DatabaseType::MongoDB => return (String::new(), Vec::new()),
+			DatabaseType::MongoDB => {
+				// MongoDB is a NoSQL database and does not use SQL queries.
+				// This query builder is for SQL databases only.
+				// For MongoDB operations, use reinhardt-nosql crate instead.
+				return (String::new(), Vec::new());
+			}
 		};
 
 		// Add ON CONFLICT clause if specified
@@ -232,19 +239,45 @@ impl InsertBuilder {
 						// SQLite: INSERT OR IGNORE
 						sql = sql.replacen("INSERT", "INSERT OR IGNORE", 1);
 					}
-					OnConflictAction::DoUpdate { .. } => {
-						// SQLite: INSERT OR REPLACE (simplified, not exact equivalent)
-						// TODO: Implement proper SQLite UPSERT using ON CONFLICT DO UPDATE instead of INSERT OR REPLACE
-						// Current: INSERT OR REPLACE deletes and re-inserts (may lose unspecified columns)
-						// Target: INSERT ... ON CONFLICT(...) DO UPDATE SET ... (preserves unspecified columns)
-						// See: https://sqlite.org/lang_upsert.html
-						sql = sql.replacen("INSERT", "INSERT OR REPLACE", 1);
+					OnConflictAction::DoUpdate {
+						conflict_columns,
+						update_columns,
+					} => {
+						// SQLite: ON CONFLICT DO UPDATE (SQLite 3.24.0+)
+						let conflict_str = if let Some(cols) = conflict_columns {
+							if cols.is_empty() {
+								panic!(
+									"SQLite ON CONFLICT requires non-empty conflict_columns for DO UPDATE"
+								);
+							}
+							format!("({})", cols.join(", "))
+						} else {
+							// SQLite requires conflict target - skip ON CONFLICT clause
+							return sql;
+						};
+
+						if update_columns.is_empty() {
+							panic!("update_columns cannot be empty for OnConflictAction::DoUpdate");
+						}
+
+						let update_str = update_columns
+							.iter()
+							.map(|col| format!("{} = excluded.{}", col, col)) // 小文字 'excluded'
+							.collect::<Vec<_>>()
+							.join(", ");
+
+						sql.push_str(&format!(
+							" ON CONFLICT {} DO UPDATE SET {}",
+							conflict_str, update_str
+						));
 					}
 				}
 			}
 			#[cfg(feature = "mongodb-backend")]
 			DatabaseType::MongoDB => {
-				// MongoDB doesn't use SQL, no-op
+				// MongoDB is a NoSQL database and does not use SQL queries.
+				// This query builder is for SQL databases only.
+				// For MongoDB operations, use reinhardt-nosql crate instead.
 			}
 		}
 
@@ -326,7 +359,12 @@ impl UpdateBuilder {
 			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
 			#[cfg(feature = "mongodb-backend")]
-			DatabaseType::MongoDB => return (String::new(), Vec::new()),
+			DatabaseType::MongoDB => {
+				// MongoDB is a NoSQL database and does not use SQL queries.
+				// This query builder is for SQL databases only.
+				// For MongoDB operations, use reinhardt-nosql crate instead.
+				return (String::new(), Vec::new());
+			}
 		};
 
 		// Preserve parameter order: first SET values, then WHERE values
@@ -426,7 +464,9 @@ impl SelectBuilder {
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
 			#[cfg(feature = "mongodb-backend")]
 			DatabaseType::MongoDB => {
-				// MongoDB doesn't use SQL
+				// MongoDB is a NoSQL database and does not use SQL queries.
+				// This query builder is for SQL databases only.
+				// For MongoDB operations, use reinhardt-nosql crate instead.
 				String::new()
 			}
 		};
@@ -511,7 +551,9 @@ impl DeleteBuilder {
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
 			#[cfg(feature = "mongodb-backend")]
 			DatabaseType::MongoDB => {
-				// MongoDB doesn't use SQL
+				// MongoDB is a NoSQL database and does not use SQL queries.
+				// This query builder is for SQL databases only.
+				// For MongoDB operations, use reinhardt-nosql crate instead.
 				String::new()
 			}
 		};

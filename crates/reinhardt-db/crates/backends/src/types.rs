@@ -166,6 +166,36 @@ impl TryFrom<QueryValue> for i32 {
 	}
 }
 
+impl TryFrom<QueryValue> for u64 {
+	type Error = DatabaseError;
+
+	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
+		match value {
+			QueryValue::Int(i) => u64::try_from(i)
+				.map_err(|_| DatabaseError::TypeError(format!("Value {} out of range for u64", i))),
+			_ => Err(DatabaseError::TypeError(format!(
+				"Cannot convert {:?} to u64",
+				value
+			))),
+		}
+	}
+}
+
+impl TryFrom<QueryValue> for u32 {
+	type Error = DatabaseError;
+
+	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
+		match value {
+			QueryValue::Int(i) => u32::try_from(i)
+				.map_err(|_| DatabaseError::TypeError(format!("Value {} out of range for u32", i))),
+			_ => Err(DatabaseError::TypeError(format!(
+				"Cannot convert {:?} to u32",
+				value
+			))),
+		}
+	}
+}
+
 impl TryFrom<QueryValue> for String {
 	type Error = DatabaseError;
 

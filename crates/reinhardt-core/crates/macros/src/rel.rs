@@ -21,6 +21,12 @@ pub(crate) enum RelationType {
 	Polymorphic,
 	/// Polymorphic many-to-many relationship
 	PolymorphicManyToMany,
+	/// Django-style GenericForeignKey (content_type + object_id)
+	/// Allows a model to point to any other model via ContentType
+	GenericForeignKey,
+	/// Django-style GenericRelation (reverse relation for GenericForeignKey)
+	/// Provides reverse access from a model to all objects pointing to it
+	GenericRelation,
 }
 
 impl RelationType {
@@ -33,6 +39,8 @@ impl RelationType {
 			"many_to_many" => Some(Self::ManyToMany),
 			"polymorphic" => Some(Self::Polymorphic),
 			"polymorphic_many_to_many" => Some(Self::PolymorphicManyToMany),
+			"generic_foreign_key" => Some(Self::GenericForeignKey),
+			"generic_relation" => Some(Self::GenericRelation),
 			_ => None,
 		}
 	}
@@ -46,6 +54,8 @@ impl RelationType {
 			Self::ManyToMany => "many_to_many",
 			Self::Polymorphic => "polymorphic",
 			Self::PolymorphicManyToMany => "polymorphic_many_to_many",
+			Self::GenericForeignKey => "generic_foreign_key",
+			Self::GenericRelation => "generic_relation",
 		}
 	}
 }
@@ -120,6 +130,10 @@ pub(crate) struct RelAttribute {
 	pub source_field: Option<String>,
 	/// Target field name in through table (for many_to_many)
 	pub target_field: Option<String>,
+	/// Content type field name for GenericForeignKey (default: "content_type_id")
+	pub ct_field: Option<String>,
+	/// Object ID field name for GenericForeignKey (default: "object_id")
+	pub fk_field: Option<String>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -144,6 +158,8 @@ impl Default for RelAttribute {
 			through: None,
 			source_field: None,
 			target_field: None,
+			ct_field: None,
+			fk_field: None,
 			span: Span::call_site(),
 		}
 	}
@@ -223,6 +239,12 @@ impl RelAttribute {
 			} else if path.is_ident("target_field") {
 				let value = parse_string_value(&meta)?;
 				result.target_field = Some(value);
+			} else if path.is_ident("ct_field") {
+				let value = parse_string_value(&meta)?;
+				result.ct_field = Some(value);
+			} else if path.is_ident("fk_field") {
+				let value = parse_string_value(&meta)?;
+				result.fk_field = Some(value);
 			} else {
 				return Err(meta.error(format!("Unknown rel attribute: {:?}", path)));
 			}
@@ -285,6 +307,22 @@ impl RelAttribute {
 							"#[rel({}, ...)] requires 'name' parameter",
 							self.rel_type.as_str()
 						),
+					));
+				}
+			}
+			RelationType::GenericForeignKey => {
+				// GenericForeignKey uses GenericForeignKeyField type.
+				// ct_field and fk_field are optional (have defaults)
+				// No additional required fields - ct_field defaults to "content_type_id"
+				// and fk_field defaults to "object_id"
+			}
+			RelationType::GenericRelation => {
+				// GenericRelation requires 'to' to specify which model has the GenericForeignKey
+				if self.to.is_none() {
+					return Err(syn::Error::new(
+						self.span,
+						"#[rel(generic_relation, ...)] requires 'to' parameter \
+						 to specify the related model with GenericForeignKey",
 					));
 				}
 			}
