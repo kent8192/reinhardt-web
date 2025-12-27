@@ -21,6 +21,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -271,6 +273,8 @@ async fn test_executor_with_dependencies() {
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	let migration2 = Migration {
@@ -293,6 +297,8 @@ async fn test_executor_with_dependencies() {
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	// Apply in correct order

@@ -82,6 +82,8 @@ async fn test_duplicate_migration_detection() {
 		replaces: vec![],
 		atomic: true,
 		initial: Some(true),
+		state_only: false,
+		database_only: false,
 	};
 	{
 		let mut repo = repository.lock().await;

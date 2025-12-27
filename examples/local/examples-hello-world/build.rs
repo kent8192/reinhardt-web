@@ -6,6 +6,5 @@
 fn main() {
 	// Local development mode: always enable tests
 	println!("cargo:rustc-cfg=with_reinhardt");
-	println!("cargo:warning=Using local reinhardt workspace (examples/local)");
 	println!("cargo:rerun-if-changed=build.rs");
 }

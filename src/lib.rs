@@ -763,6 +763,7 @@ pub use reinhardt_db::contenttypes::{
 	GenericRelationQuery, ModelType,
 };
 #[cfg(feature = "database")]
+#[allow(deprecated)]
 pub use reinhardt_db::migrations::{
 	FieldState, Migration, MigrationAutodetector, MigrationError, MigrationExecutor, MigrationPlan,
 	MigrationRecorder, ModelState, ProjectState,

@@ -230,8 +230,11 @@ impl FormExt for Form {
 			errors: self.errors().clone(),
 			// Phase 2-A: Clone validation rules from Form
 			validation_rules: self.validation_rules().to_vec(),
-			// TODO: Extract non-field errors from errors HashMap (key = ALL_FIELDS_KEY or "_all")
-			non_field_errors: Vec::new(),
+			non_field_errors: self
+				.errors()
+				.get(crate::form::ALL_FIELDS_KEY)
+				.cloned()
+				.unwrap_or_default(),
 		}
 	}
 }

@@ -34,7 +34,6 @@ use reinhardt_db::migrations::MigrationProvider;
 /// PostgreSQL fixture with migrations applied via MigrationProvider
 #[fixture]
 async fn db_with_migrations() -> (ContainerAsync<GenericImage>, Arc<DatabaseConnection>) {
-	use reinhardt_backends::types::DatabaseType;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_test::fixtures::postgres_container;
 
@@ -49,8 +48,7 @@ async fn db_with_migrations() -> (ContainerAsync<GenericImage>, Arc<DatabaseConn
 	// Apply migrations manually using ExampleMigrations
 	let migrations = ExampleMigrations::migrations();
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(conn.inner().clone(), DatabaseType::Postgres);
+		let mut executor = DatabaseMigrationExecutor::new(conn.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await

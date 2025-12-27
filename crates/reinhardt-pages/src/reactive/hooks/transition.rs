@@ -195,8 +195,9 @@ mod tests {
 
 		assert!(!transition.is_pending.get());
 
-		// TODO: In current sync implementation, pending state changes instantly
-		// Consider async implementation for true transition states
+		// Note: On native (non-WASM), transitions execute synchronously,
+		// so pending state changes instantly. This is intentional behavior.
+		// On WASM, transitions use spawn_local for true async execution.
 		let ran = Rc::new(RefCell::new(false));
 		transition.start_transition({
 			let ran = Rc::clone(&ran);

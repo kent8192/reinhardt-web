@@ -161,15 +161,12 @@ impl BaseCommand for MigrateCommand {
 				))
 			})?;
 
-			// Get database type from connection (delegate to DatabaseConnection)
-			let db_type = connection.database_type();
-
 			// 5. Apply migrations (or fake them)
 			if is_fake {
 				ctx.info("Faking migrations (marking as applied without execution):");
 
 				// Create migration executor for fake migrations
-				let mut executor = DatabaseMigrationExecutor::new(connection, db_type);
+				let mut executor = DatabaseMigrationExecutor::new(connection);
 
 				// Record each migration as applied without executing
 				for migration in &migrations_to_apply {
@@ -191,7 +188,7 @@ impl BaseCommand for MigrateCommand {
 				ctx.info("Applying migrations:");
 
 				// Create migration executor
-				let mut executor = DatabaseMigrationExecutor::new(connection, db_type);
+				let mut executor = DatabaseMigrationExecutor::new(connection);
 
 				// Apply migrations
 				match executor.apply_migrations(&migrations_to_apply[..]).await {
@@ -293,7 +290,6 @@ async fn build_from_state_from_testcontainers(
 	migrations_dir: &std::path::Path,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	use reinhardt_db::backends::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_db::migrations::{
 		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
@@ -318,8 +314,7 @@ async fn build_from_state_from_testcontainers(
 
 	// 4. Apply all existing migrations
 	if !all_migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+		let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 		executor
 			.apply_migrations(&all_migrations)
 			.await
@@ -548,6 +543,8 @@ impl BaseCommand for MakeMigrationsCommand {
 					atomic: true,
 					replaces: Vec::new(),
 					initial: None,
+					state_only: false,
+					database_only: false,
 				};
 
 				if !is_dry_run {
@@ -802,6 +799,8 @@ impl BaseCommand for MakeMigrationsCommand {
 							} else {
 								None
 							},
+							state_only: false,
+							database_only: false,
 						};
 
 						results.push(MigrationResult {

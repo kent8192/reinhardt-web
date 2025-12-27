@@ -248,6 +248,8 @@ fn test_migration_with_no_operations() {
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	assert_eq!(migration.operations.len(), 0);

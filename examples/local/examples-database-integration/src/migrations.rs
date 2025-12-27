@@ -65,6 +65,8 @@ impl MigrationProvider for ExampleMigrations {
 				replaces: vec![],
 				atomic: true,
 				initial: Some(true),
+				state_only: false,
+				database_only: false,
 			},
 			Migration {
 				app_label: "todos",
@@ -133,6 +135,8 @@ impl MigrationProvider for ExampleMigrations {
 				replaces: vec![],
 				atomic: true,
 				initial: Some(true),
+				state_only: false,
+				database_only: false,
 			},
 		]
 	}
