@@ -15,7 +15,6 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, recorder::DatabaseMigrationRecorder, ColumnDefinition,
@@ -52,6 +51,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -120,7 +121,7 @@ async fn test_simultaneous_migrate(
 		let conn = DatabaseConnection::connect_postgres(&url1)
 			.await
 			.expect("Failed to connect");
-		let mut executor = DatabaseMigrationExecutor::new(conn, DatabaseType::Postgres);
+		let mut executor = DatabaseMigrationExecutor::new(conn);
 		executor.apply_migrations(&[migration1]).await
 	});
 
@@ -130,7 +131,7 @@ async fn test_simultaneous_migrate(
 		let conn = DatabaseConnection::connect_postgres(&url2)
 			.await
 			.expect("Failed to connect");
-		let mut executor = DatabaseMigrationExecutor::new(conn, DatabaseType::Postgres);
+		let mut executor = DatabaseMigrationExecutor::new(conn);
 		executor.apply_migrations(&[migration2]).await
 	});
 
@@ -403,7 +404,7 @@ async fn test_migration_timeout(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create a migration with a simulated long operation
 	// Using pg_sleep to simulate a long-running operation
@@ -479,7 +480,7 @@ async fn test_crash_recovery(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	let migration = create_test_migration(
 		"testapp",
@@ -567,7 +568,7 @@ async fn test_concurrent_add_column(
 			let conn = DatabaseConnection::connect_postgres(&url_clone)
 				.await
 				.expect("Failed to connect");
-			let mut executor = DatabaseMigrationExecutor::new(conn, DatabaseType::Postgres);
+			let mut executor = DatabaseMigrationExecutor::new(conn);
 
 			let migration = create_test_migration(
 				"testapp",
@@ -638,7 +639,7 @@ async fn test_sequential_migration_order(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create table that records execution order
 	sqlx::query(

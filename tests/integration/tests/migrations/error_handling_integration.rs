@@ -14,7 +14,6 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, ColumnDefinition, FieldType, Migration, Operation,
@@ -47,6 +46,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -66,6 +67,8 @@ fn create_non_atomic_migration(
 		replaces: vec![],
 		atomic: false,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -122,7 +125,7 @@ async fn test_unique_constraint_violation(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Try to add UNIQUE constraint - should fail
 	let migration = create_test_migration(
@@ -196,7 +199,7 @@ async fn test_not_null_constraint_violation(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Try to add NOT NULL constraint - should fail
 	let migration = create_test_migration(
@@ -282,7 +285,7 @@ async fn test_foreign_key_violation(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Try to add FK constraint - should fail
 	let migration = create_test_migration(
@@ -333,7 +336,7 @@ async fn test_transaction_atomicity(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create atomic migration with multiple operations where last one fails
 	let migration = create_test_migration(
@@ -418,7 +421,7 @@ async fn test_rollback_failure(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Try to drop a non-existent table
 	let migration = create_test_migration(
@@ -462,7 +465,7 @@ async fn test_corrupted_migration_file(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Migration with invalid SQL
 	let migration = create_test_migration(
@@ -513,7 +516,7 @@ async fn test_table_already_exists(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Try to create the same table
 	let migration = create_test_migration(
@@ -570,7 +573,7 @@ async fn test_column_already_exists(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Try to add the same column
 	let migration = create_test_migration(
@@ -629,7 +632,7 @@ async fn test_schema_drift_detection(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Try to alter the table assuming different structure
 	let migration = create_test_migration(
@@ -674,7 +677,7 @@ async fn test_migration_history_corruption(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// First, run a migration to create the history table
 	let migration1 = create_test_migration(
@@ -750,7 +753,7 @@ async fn test_empty_migration(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create migration with no operations
 	let migration = create_test_migration("testapp", "0001_empty", vec![]);

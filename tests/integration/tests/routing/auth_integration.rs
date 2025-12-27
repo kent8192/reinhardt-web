@@ -13,6 +13,7 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container for user storage
 
+use reinhardt_routers::Router;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::{PgPool, Row};

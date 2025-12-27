@@ -40,6 +40,7 @@
 //! ❌ Cross-backend migration scenarios
 //! ❌ Performance benchmarking
 
+use reinhardt_sessions;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};

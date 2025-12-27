@@ -137,11 +137,11 @@ These integration tests verify that multiple Reinhardt crates work correctly whe
   - Route parameter documentation
   - Response schema generation
   - Tag and description support
-- **Router Template**: Template-based routing
-  - Template view integration
-  - Context passing to templates
-  - Template selection logic
-  - Template error handling
+- **Router Pages**: Pages-based routing (reinhardt-pages)
+  - Component view integration
+  - Props passing to components
+  - Component selection logic
+  - Component error handling
 - **Router ViewSet**: ViewSet-based routing
   - Automatic CRUD route generation
   - Custom action registration
@@ -162,51 +162,51 @@ These integration tests verify that multiple Reinhardt crates work correctly whe
   - View decorators
   - Response rendering
 
-#### Templates & Rendering (90 tests in 12 files)
+#### Pages & Rendering (90 tests in 12 files)
 
-- **Template Rendering**: Core template functionality
-  - Template loading and compilation
-  - Context rendering
-  - Template inheritance
-  - Include statements
-  - Custom filters and tags
+- **Pages Rendering**: Core component rendering functionality (reinhardt-pages)
+  - Component loading and compilation
+  - Props rendering
+  - Component composition
+  - Nested components
+  - Custom hooks and utilities
 - **Advanced Rendering**: Complex rendering scenarios
   - Streaming responses
   - Chunked rendering
-  - Async template rendering
-  - Template caching
+  - Async component rendering
+  - Component caching
 - **Specialized Rendering**: Format-specific renderers
   - JSON renderer
   - XML renderer
   - CSV renderer
   - Custom content types
-- **Template-Renderer Integration**: Template system with renderer
+- **Pages-Renderer Integration**: Pages system with renderer (reinhardt-pages)
   - Content negotiation
   - Format selection
-  - Template selection by media type
-  - Error template rendering
+  - Component selection by media type
+  - Error component rendering
 - **HTTP Renderer Integration**: HTTP-specific rendering
   - Status code handling
   - Header management
   - Cookie handling
   - Redirect responses
-- **Template-i18n Integration**: Internationalization in templates
-  - Translation tags
+- **Pages-i18n Integration**: Internationalization in components (reinhardt-pages)
+  - Translation utilities
   - Locale-aware formatting
   - Plural form handling
   - Language switching
-- **Template-Pagination Integration**: Paginated template rendering
+- **Pages-Pagination Integration**: Paginated component rendering (reinhardt-pages)
   - Page number display
   - Navigation controls
   - Page size selection
   - Result count display
-- **Template-Static Integration**: Static file serving in templates
+- **Pages-Static Integration**: Static file serving in components (reinhardt-pages)
   - Static URL generation
   - Asset versioning
   - CDN integration
   - Static file compression
-- **Logging-Template Integration**: Template rendering logging
-  - Template access logging
+- **Logging-Pages Integration**: Component rendering logging (reinhardt-pages)
+  - Component access logging
   - Rendering performance tracking
   - Error logging
   - Debug information
@@ -303,17 +303,17 @@ These integration tests verify that multiple Reinhardt crates work correctly whe
   - Message levels (info, success, warning, error)
   - Middleware integration
   - View helpers
-  - Template integration
+  - Pages integration (reinhardt-pages)
 - **Mail**: Email sending functionality
   - SMTP backend
   - Email composition
   - Attachment handling
   - HTML and text emails
-  - Template-based emails
+  - Email template-based emails (using email templates, not reinhardt-pages)
 - **Logging**: Application logging
   - Database query logging
   - Email logging
-  - Template rendering logging
+  - Pages rendering logging (reinhardt-pages)
   - Custom log handlers
   - Log level configuration
 - **Storage**: File storage backends
@@ -336,7 +336,7 @@ These integration tests verify that multiple Reinhardt crates work correctly whe
 - **i18n (Internationalization)**: Multi-language support
   - Locale activation/deactivation
   - Message translation (gettext, ngettext, pgettext)
-  - Template integration
+  - Pages integration (reinhardt-pages)
   - Framework-level integration
 - **Sitemap**: XML sitemap generation
   - Basic sitemap generation
@@ -345,7 +345,7 @@ These integration tests verify that multiple Reinhardt crates work correctly whe
   - HTTP serving
   - i18n sitemap support
   - ORM integration
-  - Template rendering
+  - Pages rendering (reinhardt-pages)
 - **Syndication**: RSS/Atom feed generation
   - Feed creation
   - Item management
@@ -409,7 +409,7 @@ These integration tests verify that multiple Reinhardt crates work correctly whe
 | Database & ORM            | 40      | 14      |
 | Serializers               | 152     | 13      |
 | Routing & Views           | 66      | 8       |
-| Templates & Rendering     | 90      | 12      |
+| Pages & Rendering         | 90      | 12      |
 | API & REST                | 98      | 10      |
 | Server & HTTP             | 72      | 9       |
 | Framework Features        | 161     | 33      |

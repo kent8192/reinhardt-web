@@ -11,6 +11,8 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
+use reinhardt_http::{Request, Response};
+use reinhardt_middleware::Middleware;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::{PgPool, Row};

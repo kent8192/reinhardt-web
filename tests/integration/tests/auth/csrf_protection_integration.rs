@@ -2,6 +2,7 @@
 //!
 //! Tests CSRF token generation/verification, session, and reinhardt-forms integration.
 
+use reinhardt_auth::csrf::CsrfProtection;
 use reinhardt_test::fixtures::{postgres_container, test_user, TestUser};
 use rstest::*;
 use std::sync::Arc;

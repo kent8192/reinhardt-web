@@ -19,7 +19,6 @@
 //! implemented in reinhardt-db migrations. These serve as documentation for
 //! future implementation.
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, ColumnDefinition, FieldType, Migration, Operation,
@@ -52,6 +51,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -105,7 +106,7 @@ async fn test_postgres_create_index_concurrently(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table first
 	let create_table = create_test_migration(
@@ -579,7 +580,7 @@ async fn test_mysql_auto_increment_initial_value(
 		.await
 		.expect("Failed to connect to MySQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Mysql);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table with AUTO_INCREMENT
 	let migration = create_test_migration(

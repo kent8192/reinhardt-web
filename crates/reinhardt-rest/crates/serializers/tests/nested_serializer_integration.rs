@@ -40,6 +40,7 @@
 //! ❌ Validation of nested data (covered by validator tests)
 
 use ::testcontainers::{ContainerAsync, GenericImage};
+use reinhardt_serializers;
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use serde::{Deserialize, Serialize};

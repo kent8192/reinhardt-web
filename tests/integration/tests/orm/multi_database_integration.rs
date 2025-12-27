@@ -39,6 +39,7 @@
 //! ❌ Cross-vendor database integration (PostgreSQL + MySQL)
 //! ❌ Distributed transaction protocols (2PC, Saga patterns)
 
+use reinhardt_orm;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use rust_decimal::Decimal;

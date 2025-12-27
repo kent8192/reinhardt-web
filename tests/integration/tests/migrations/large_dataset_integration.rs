@@ -23,7 +23,6 @@
 //! **Note**: Some tests are marked as `#[ignore]` by default due to long execution time.
 //! Run with `cargo test -- --ignored` to execute performance benchmarks.
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, ColumnDefinition, FieldType, Migration, Operation,
@@ -57,6 +56,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -109,7 +110,7 @@ async fn test_bulk_insert_one_million_rows(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table
 	let create_table = create_test_migration(
@@ -181,7 +182,7 @@ async fn test_index_after_data_insertion(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table WITHOUT index
 	let create_table = create_test_migration(
@@ -318,7 +319,7 @@ async fn test_batch_size_optimization(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table
 	let create_table = create_test_migration(
@@ -398,7 +399,7 @@ async fn test_performance_create_1000_tables(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create 1000 tables
 	let mut operations = Vec::new();
@@ -453,7 +454,7 @@ async fn test_performance_add_column_to_wide_table(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table with 100 columns
 	let mut columns = vec![create_auto_pk_column("id", FieldType::Integer)];
@@ -529,7 +530,7 @@ async fn test_performance_index_on_large_table(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table
 	let create_table = create_test_migration(

@@ -39,6 +39,7 @@
 //! ❌ Performance benchmarking of validation logic
 //! ❌ Internationalized error messages
 
+use reinhardt_forms;
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use serde::{Deserialize, Serialize};

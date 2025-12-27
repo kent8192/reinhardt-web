@@ -1242,7 +1242,6 @@ pub async fn postgres_with_migrations_from<P: reinhardt_migrations::MigrationPro
 	Box<dyn std::error::Error>,
 > {
 	use reinhardt_db::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	use std::sync::Arc;
 
@@ -1258,8 +1257,7 @@ pub async fn postgres_with_migrations_from<P: reinhardt_migrations::MigrationPro
 	let migrations = P::migrations();
 
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1400,7 +1398,6 @@ pub async fn mysql_with_migrations_from<P: reinhardt_migrations::MigrationProvid
 	std::sync::Arc<reinhardt_db::DatabaseConnection>,
 ) {
 	use reinhardt_db::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	use std::sync::Arc;
 
@@ -1416,8 +1413,7 @@ pub async fn mysql_with_migrations_from<P: reinhardt_migrations::MigrationProvid
 	let migrations = P::migrations();
 
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Mysql);
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1466,7 +1462,6 @@ pub async fn mysql_with_migrations_from<P: reinhardt_migrations::MigrationProvid
 pub async fn sqlite_with_migrations_from<P: reinhardt_migrations::MigrationProvider>()
 -> std::sync::Arc<reinhardt_db::DatabaseConnection> {
 	use reinhardt_db::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	use std::sync::Arc;
 
@@ -1481,8 +1476,7 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_migrations::MigrationProvi
 	let migrations = P::migrations();
 
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Sqlite);
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1546,7 +1540,6 @@ pub async fn postgres_with_all_migrations() -> Result<
 	Box<dyn std::error::Error>,
 > {
 	use reinhardt_db::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_migrations::registry::{MigrationRegistry, global_registry};
 	use std::sync::Arc;
@@ -1563,8 +1556,7 @@ pub async fn postgres_with_all_migrations() -> Result<
 	let migrations = global_registry().all_migrations();
 
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1607,7 +1599,6 @@ pub async fn postgres_with_apps_migrations(
 	Box<dyn std::error::Error>,
 > {
 	use reinhardt_db::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_migrations::registry::{MigrationRegistry, global_registry};
 	use std::sync::Arc;
@@ -1628,8 +1619,7 @@ pub async fn postgres_with_apps_migrations(
 		.collect();
 
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Postgres);
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1668,7 +1658,6 @@ pub async fn mysql_with_all_migrations() -> (
 	std::sync::Arc<reinhardt_db::DatabaseConnection>,
 ) {
 	use reinhardt_db::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_migrations::registry::{MigrationRegistry, global_registry};
 	use std::sync::Arc;
@@ -1685,8 +1674,7 @@ pub async fn mysql_with_all_migrations() -> (
 	let migrations = global_registry().all_migrations();
 
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Mysql);
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1709,7 +1697,6 @@ pub async fn mysql_with_apps_migrations(
 	std::sync::Arc<reinhardt_db::DatabaseConnection>,
 ) {
 	use reinhardt_db::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_migrations::registry::{MigrationRegistry, global_registry};
 	use std::sync::Arc;
@@ -1730,8 +1717,7 @@ pub async fn mysql_with_apps_migrations(
 		.collect();
 
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Mysql);
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1766,7 +1752,6 @@ pub async fn mysql_with_apps_migrations(
 #[rstest::fixture]
 pub async fn sqlite_with_all_migrations() -> std::sync::Arc<reinhardt_db::DatabaseConnection> {
 	use reinhardt_db::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_migrations::registry::{MigrationRegistry, global_registry};
 	use std::sync::Arc;
@@ -1782,8 +1767,7 @@ pub async fn sqlite_with_all_migrations() -> std::sync::Arc<reinhardt_db::Databa
 	let migrations = global_registry().all_migrations();
 
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Sqlite);
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1803,7 +1787,6 @@ pub async fn sqlite_with_apps_migrations(
 	app_labels: &[&str],
 ) -> std::sync::Arc<reinhardt_db::DatabaseConnection> {
 	use reinhardt_db::DatabaseConnection;
-	use reinhardt_db::backends::types::DatabaseType;
 	use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_migrations::registry::{MigrationRegistry, global_registry};
 	use std::sync::Arc;
@@ -1823,8 +1806,7 @@ pub async fn sqlite_with_apps_migrations(
 		.collect();
 
 	if !migrations.is_empty() {
-		let mut executor =
-			DatabaseMigrationExecutor::new(connection.inner().clone(), DatabaseType::Sqlite);
+		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
 		executor
 			.apply_migrations(&migrations)
 			.await

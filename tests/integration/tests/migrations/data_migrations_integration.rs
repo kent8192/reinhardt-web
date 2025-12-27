@@ -23,7 +23,6 @@
 //! - **RunSQL**: Execute arbitrary SQL statements during migration
 //! - **RunCode**: Execute Rust code during migration (Django's RunPython equivalent)
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, operations::special::RunCode, ColumnDefinition, FieldType,
@@ -57,6 +56,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -168,7 +169,7 @@ async fn test_run_sql_data_manipulation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table first
 	let create_table = create_test_migration(
@@ -254,7 +255,7 @@ async fn test_computed_default_values(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table with existing data (no created_at column initially)
 	let create_table = create_test_migration(
@@ -327,7 +328,7 @@ async fn test_data_type_conversion(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table with VARCHAR age column
 	let create_table = create_test_migration(
@@ -426,7 +427,7 @@ async fn test_data_cleaning(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table with potentially invalid data
 	let create_table = create_test_migration(
@@ -509,7 +510,7 @@ async fn test_bulk_data_insertion(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table
 	let create_table = create_test_migration(
@@ -578,7 +579,7 @@ async fn test_stored_procedure_creation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table
 	let create_table = create_test_migration(
@@ -657,7 +658,7 @@ async fn test_trigger_creation(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table
 	let create_table = create_test_migration(
@@ -816,7 +817,7 @@ async fn test_run_sql_error_handling(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table first
 	let create_table = create_test_migration(

@@ -21,7 +21,6 @@
 //! 3. Apply rollback
 //! 4. Verify original state restored
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, operations::SqlDialect, ColumnDefinition, Constraint,
@@ -55,6 +54,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -143,7 +144,6 @@ async fn index_exists(pool: &PgPool, index_name: &str) -> bool {
 /// 3. Rollback: DROP TABLE users
 /// 4. Verify table does not exist
 #[rstest]
-#[ignore] // TODO: Implement rollback_migrations method
 #[tokio::test]
 async fn test_create_table_rollback(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
@@ -155,7 +155,7 @@ async fn test_create_table_rollback(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create migration
 	let migration = create_test_migration(
@@ -211,7 +211,7 @@ async fn test_add_column_rollback(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// First, create the table
 	let create_table_migration = create_test_migration(
@@ -282,7 +282,7 @@ async fn test_alter_column_type_rollback(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table with VARCHAR(50) column
 	let create_table_migration = create_test_migration(
@@ -386,7 +386,7 @@ async fn test_run_sql_with_reverse_rollback(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration with RunSQL
 	let migration = create_test_migration(
@@ -438,7 +438,7 @@ async fn test_atomic_multi_operation_rollback(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration with multiple operations
 	let migration = Migration {
@@ -449,25 +449,24 @@ async fn test_atomic_multi_operation_rollback(
 				name: leak_str("table1"),
 				columns: vec![create_auto_pk_column("id", FieldType::Integer)],
 				constraints: vec![],
-				composite_primary_key: None,
 			},
 			Operation::CreateTable {
 				name: leak_str("table2"),
 				columns: vec![create_auto_pk_column("id", FieldType::Integer)],
 				constraints: vec![],
-				composite_primary_key: None,
 			},
 			Operation::CreateTable {
 				name: leak_str("table3"),
 				columns: vec![create_auto_pk_column("id", FieldType::Integer)],
 				constraints: vec![],
-				composite_primary_key: None,
 			},
 		],
 		dependencies: vec![],
 		replaces: vec![],
 		atomic: true, // All operations should be in one transaction
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	// Apply migration
@@ -526,7 +525,7 @@ async fn test_rollback_with_data(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table
 	let migration = create_test_migration(
@@ -589,7 +588,7 @@ async fn test_index_rollback(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table first
 	let create_table = create_test_migration(
@@ -618,6 +617,9 @@ async fn test_index_rollback(
 			table: leak_str("users"),
 			columns: vec![leak_str("email")],
 			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
 		}],
 	);
 
@@ -664,7 +666,7 @@ async fn test_rollback_fail_without_reverse_sql(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration with RunSQL but no reverse_sql
 	let migration = create_test_migration(
@@ -706,7 +708,7 @@ async fn test_partial_rollback_non_atomic(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration with atomic=false
 	let migration = Migration {
@@ -721,6 +723,8 @@ async fn test_partial_rollback_non_atomic(
 		replaces: vec![],
 		atomic: false, // Non-atomic
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	executor
@@ -758,7 +762,7 @@ async fn test_rollback_fail_with_foreign_key_reference(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create parent table
 	let parent_migration = create_test_migration(
@@ -816,7 +820,7 @@ async fn test_rollback_empty_migration(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Empty migration
 	let migration = create_test_migration("testapp", "0001_empty", vec![]);
@@ -857,7 +861,7 @@ async fn test_rollback_with_dependencies(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration A: Create users table
 	let migration_a = Migration {
@@ -872,6 +876,8 @@ async fn test_rollback_with_dependencies(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	// Migration B: Create orders table with FK to users (depends on A)
@@ -898,6 +904,8 @@ async fn test_rollback_with_dependencies(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	// Apply migrations in order
@@ -967,7 +975,7 @@ async fn test_circular_dependency_rollback(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration A (depends on B - circular)
 	let migration_a = Migration {
@@ -982,6 +990,8 @@ async fn test_circular_dependency_rollback(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	// Migration B (depends on A - circular)
@@ -997,6 +1007,8 @@ async fn test_circular_dependency_rollback(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	// Note: In a real migration system, applying migrations with circular dependencies

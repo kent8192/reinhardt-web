@@ -21,7 +21,6 @@
 //! 4. Execute SQL and verify with information_schema
 
 use regex::Regex;
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, operations::SqlDialect, ColumnDefinition, Constraint,
@@ -55,6 +54,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -961,7 +962,7 @@ async fn test_composite_primary_key_postgres_integration(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table with composite primary key
 	let migration = create_test_migration(
@@ -1096,7 +1097,7 @@ async fn test_composite_primary_key_three_columns(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create table with 3-column composite primary key
 	let migration = create_test_migration(

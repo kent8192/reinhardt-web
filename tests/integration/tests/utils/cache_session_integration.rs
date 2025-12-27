@@ -40,6 +40,7 @@
 //! ❌ Cache stampede prevention (covered by cache-specific tests)
 //! ❌ Session serialization formats (covered by session tests)
 
+use reinhardt_utils;
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use serde::{Deserialize, Serialize};

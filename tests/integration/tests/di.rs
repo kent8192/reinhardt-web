@@ -29,3 +29,13 @@ mod circular_dependency_detection;
 
 #[path = "di/performance_benchmarks.rs"]
 mod performance_benchmarks;
+
+// Phase 3: Cross-crate integration tests
+#[path = "di/cross_crate_injection.rs"]
+mod cross_crate_injection;
+
+#[path = "di/database_integration.rs"]
+mod database_integration;
+
+#[path = "di/server_integration.rs"]
+mod server_integration;

@@ -23,7 +23,6 @@
 //! - **Circular Dependency**: Invalid state where A depends on B and B depends on A
 //! - **DAG (Directed Acyclic Graph)**: Valid dependency graph with no cycles
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, ColumnDefinition, FieldType, Migration, Operation,
@@ -57,6 +56,8 @@ fn create_migration_with_deps(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -115,7 +116,7 @@ async fn test_linear_dependency_resolution(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration A: Create users table
 	let migration_a = create_migration_with_deps(
@@ -191,7 +192,7 @@ async fn test_multi_app_dependency_resolution(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// app1: Migration 0001 - Create users table
 	let app1_m1 = create_migration_with_deps(
@@ -262,7 +263,7 @@ async fn test_diamond_dependency_resolution(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration A: Create base table
 	let migration_a = create_migration_with_deps(
@@ -408,7 +409,7 @@ async fn test_circular_dependency_detection(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration A (depends on B - circular)
 	let migration_a = create_migration_with_deps(
@@ -457,7 +458,7 @@ async fn test_missing_dependency_detection(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration that depends on non-existent migration
 	let migration = create_migration_with_deps(
@@ -496,7 +497,7 @@ async fn test_conflicting_dependency_order(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Same as circular dependency test - conflicting order is a cycle
 	let migration_a = create_migration_with_deps(
@@ -547,7 +548,7 @@ async fn test_deep_dependency_chain(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	let mut migrations = Vec::new();
 
@@ -608,7 +609,7 @@ async fn test_independent_migrations(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Three independent migrations (no dependencies between them)
 	let migration_1 = create_migration_with_deps(

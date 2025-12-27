@@ -22,7 +22,6 @@
 //!
 //! **Django Equivalent**: `python manage.py squashmigrations app 0001 0010`
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor,
@@ -59,6 +58,8 @@ fn create_migration_with_deps(
 		replaces,
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -110,7 +111,7 @@ async fn test_squash_three_migrations(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Create original migrations
 	let migration_1 =
@@ -300,7 +301,7 @@ async fn test_fake_initial_skip_existing_tables(
 		.await
 		.expect("Failed to connect to PostgreSQL");
 
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Migration that creates the same table
 	let migration = create_migration_with_deps(

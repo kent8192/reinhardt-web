@@ -48,7 +48,7 @@ reinhardt-exception = { workspace = true }
 reinhardt-types = { workspace = true }
 reinhardt-signals = { workspace = true }
 reinhardt-websockets = { workspace = true, features = ["redis-channel"] }
-reinhardt-server = { workspace = true }
+reinhardt-server = { workspace = true, features = ["websocket"] }
 reinhardt-logging = { workspace = true }
 reinhardt-mail = { workspace = true }
 reinhardt-contenttypes = { workspace = true, features = ["database"] }
@@ -85,6 +85,7 @@ reinhardt-static = { workspace = true }
 reinhardt-storage = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
 reinhardt-sessions = { workspace = true, features = ["database"] }
+reinhardt-pages = { workspace = true }
 
 # Web framework (using reinhardt-apps)
 tokio = { version = "1.0", features = ["full"] }
@@ -105,7 +106,7 @@ sqlx = { workspace = true, features = [
 sea-query = { workspace = true }
 
 # HTTP client for testing
-reqwest = { version = "0.12", features = ["cookies"] }
+reqwest = { version = "0.12", features = ["cookies", "http2", "multipart"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -157,6 +158,10 @@ caching = ["reinhardt-settings/caching"]
 hot-reload = ["reinhardt-settings/hot-reload"]
 redis-backend = ["reinhardt-tasks/redis-backend"]
 rabbitmq-backend = ["reinhardt-tasks/rabbitmq-backend"]
+websocket = ["reinhardt-server/websocket"]
+graphql = ["reinhardt-server/graphql"]
+msgpack = ["reinhardt-pages/msgpack"]
+proptest = []
 
 [dev-dependencies]
 # Test utilities

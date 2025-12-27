@@ -21,3 +21,34 @@ mod server_test_helpers;
 
 #[path = "server/server_tests.rs"]
 mod server_tests;
+
+#[path = "server/http_advanced_integration.rs"]
+mod http_advanced_integration;
+
+#[path = "server/rate_limit_strategies_integration.rs"]
+mod rate_limit_strategies_integration;
+
+#[path = "server/websocket_advanced_integration.rs"]
+mod websocket_advanced_integration;
+
+#[path = "server/http2_advanced_integration.rs"]
+mod http2_advanced_integration;
+
+#[path = "server/middleware_error_handling_integration.rs"]
+mod middleware_error_handling_integration;
+
+#[path = "server/server_error_scenarios_integration.rs"]
+mod server_error_scenarios_integration;
+
+#[path = "server/combined_features_integration.rs"]
+mod combined_features_integration;
+
+#[path = "server/edge_cases_integration.rs"]
+mod edge_cases_integration;
+
+#[path = "server/use_case_integration.rs"]
+mod use_case_integration;
+
+#[cfg(feature = "graphql")]
+#[path = "server/graphql_advanced_integration.rs"]
+mod graphql_advanced_integration;

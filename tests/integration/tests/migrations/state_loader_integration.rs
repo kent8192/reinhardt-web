@@ -95,6 +95,8 @@ async fn test_single_create_table_migration() {
 		replaces: vec![],
 		atomic: true,
 		initial: Some(true),
+		state_only: false,
+		database_only: false,
 	};
 
 	// Record the migration as applied
@@ -163,6 +165,8 @@ async fn test_multiple_migrations_in_order() {
 		replaces: vec![],
 		atomic: true,
 		initial: Some(true),
+		state_only: false,
+		database_only: false,
 	};
 
 	// Second migration: Add column
@@ -185,6 +189,8 @@ async fn test_multiple_migrations_in_order() {
 		replaces: vec![],
 		atomic: true,
 		initial: Some(false),
+		state_only: false,
+		database_only: false,
 	};
 
 	// Record both migrations as applied
@@ -256,6 +262,8 @@ async fn test_unapplied_migrations_not_included() {
 		replaces: vec![],
 		atomic: true,
 		initial: Some(true),
+		state_only: false,
+		database_only: false,
 	};
 
 	// Second migration: Add column (NOT applied)
@@ -278,6 +286,8 @@ async fn test_unapplied_migrations_not_included() {
 		replaces: vec![],
 		atomic: true,
 		initial: Some(false),
+		state_only: false,
+		database_only: false,
 	};
 
 	// Only record first migration as applied

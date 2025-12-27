@@ -30,6 +30,7 @@
 //! ✅ User-Agent changes invalidate sessions (detects device changes)
 //! ✅ Expired sessions are rejected (enforces TTL)
 
+use reinhardt_middleware::Middleware;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serial_test::serial;

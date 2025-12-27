@@ -26,7 +26,7 @@
 //! # }
 //! ```
 
-use reinhardt_backends::{DatabaseConnection, DatabaseType};
+use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::MigrationError;
 use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 
@@ -58,8 +58,7 @@ use create_test_tables::migration as migration_0001;
 /// # }
 /// ```
 pub async fn apply_test_migrations(connection: &DatabaseConnection) -> Result<(), MigrationError> {
-	let db_type = detect_database_type(connection);
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), db_type);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// Apply migrations in dependency order
 	let migrations = vec![migration_0001(), migration_0002(), migration_0003()];
@@ -91,8 +90,7 @@ pub async fn apply_test_migrations(connection: &DatabaseConnection) -> Result<()
 pub async fn apply_basic_test_migrations(
 	connection: &DatabaseConnection,
 ) -> Result<(), MigrationError> {
-	let db_type = detect_database_type(connection);
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), db_type);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	executor.apply_migrations(&[migration_0001()]).await?;
 
@@ -120,8 +118,7 @@ pub async fn apply_basic_test_migrations(
 pub async fn apply_constraint_test_migrations(
 	connection: &DatabaseConnection,
 ) -> Result<(), MigrationError> {
-	let db_type = detect_database_type(connection);
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), db_type);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	// 0002 depends on 0001, so apply both in order
 	executor
@@ -151,17 +148,9 @@ pub async fn apply_constraint_test_migrations(
 pub async fn apply_async_query_test_migrations(
 	connection: &DatabaseConnection,
 ) -> Result<(), MigrationError> {
-	let db_type = detect_database_type(connection);
-	let mut executor = DatabaseMigrationExecutor::new(connection.clone(), db_type);
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
 
 	executor.apply_migrations(&[migration_0003()]).await?;
 
 	Ok(())
-}
-
-/// Detect database type from connection
-///
-/// Uses the backend's database_type() method to determine the actual database type.
-fn detect_database_type(connection: &DatabaseConnection) -> DatabaseType {
-	connection.database_type()
 }

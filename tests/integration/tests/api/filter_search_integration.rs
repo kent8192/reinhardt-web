@@ -32,6 +32,7 @@
 //! - Elasticsearch/external search engines
 //! - Advanced full-text search features (stemming, relevance scoring)
 
+use reinhardt_rest;
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use serde::{Deserialize, Serialize};

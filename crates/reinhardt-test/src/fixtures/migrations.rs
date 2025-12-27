@@ -363,6 +363,8 @@ mod tests {
 				dependencies: vec![],
 				atomic: true,
 				replaces: vec![],
+				state_only: false,
+				database_only: false,
 			})
 			.unwrap();
 

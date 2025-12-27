@@ -16,7 +16,6 @@
 //! - postgres_container: PostgreSQL database container
 //! - mysql_container: MySQL database container (when available)
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, operations::SqlDialect, ColumnDefinition, Constraint,
@@ -50,6 +49,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -100,7 +101,7 @@ async fn test_auto_increment_serial(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	let migration = create_test_migration(
 		"testapp",
@@ -165,7 +166,7 @@ async fn test_json_jsonb_types(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	let migration = create_test_migration(
 		"testapp",
@@ -237,7 +238,7 @@ async fn test_postgres_array_type(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	let migration = create_test_migration(
 		"testapp",
@@ -305,7 +306,7 @@ async fn test_transaction_isolation_levels(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create a table for isolation testing
 	let migration = create_test_migration(
@@ -391,7 +392,7 @@ async fn test_cascade_delete(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create parent table
 	let migration1 = create_test_migration(
@@ -571,7 +572,7 @@ async fn test_lock_contention(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create a table
 	let migration = create_test_migration(
@@ -651,7 +652,7 @@ async fn test_common_type_compatibility(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create table with common SQL types that should work across DBs
 	let migration = create_test_migration(

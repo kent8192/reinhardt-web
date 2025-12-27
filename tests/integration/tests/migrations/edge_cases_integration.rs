@@ -15,7 +15,6 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_backends::types::DatabaseType;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
 	executor::DatabaseMigrationExecutor, ColumnDefinition, Constraint, FieldType, Migration,
@@ -49,6 +48,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -67,6 +68,8 @@ fn create_migration_with_deps(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -122,7 +125,7 @@ async fn test_self_referencing_fk(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create table with self-referencing FK
 	let migration = create_test_migration(
@@ -224,7 +227,7 @@ async fn test_deep_dependency_chain(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create 15-level deep dependency chain
 	let mut migrations = Vec::new();
@@ -260,6 +263,8 @@ async fn test_deep_dependency_chain(
 			replaces: vec![],
 			atomic: true,
 			initial: None,
+			state_only: false,
+			database_only: false,
 		};
 
 		migrations.push(migration);
@@ -311,7 +316,7 @@ async fn test_cross_app_circular_dependency(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// App1 migration - no dependencies
 	let migration1 = create_migration_with_deps(
@@ -414,7 +419,7 @@ async fn test_long_identifier_names(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// PostgreSQL has a 63-byte limit for identifiers
 	// Test with exactly 63 characters (valid)
@@ -478,7 +483,7 @@ async fn test_identifier_too_long(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// PostgreSQL truncates identifiers > 63 bytes, which may cause unexpected behavior
 	// Test with 100 characters
@@ -530,7 +535,7 @@ async fn test_special_characters_in_names(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Test with table name containing special characters that need quoting
 	// PostgreSQL allows special chars in quoted identifiers
@@ -590,7 +595,7 @@ async fn test_same_name_different_apps(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// In Django/Reinhardt, table names are typically prefixed with app name
 	// But if not, we need to handle potential conflicts
@@ -677,7 +682,7 @@ async fn test_extreme_varchar_length(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// PostgreSQL allows VARCHAR up to 10485760 (10MB)
 	// Test with a large but valid size
@@ -741,7 +746,7 @@ async fn test_zero_length_field(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// PostgreSQL requires VARCHAR length > 0
 	let migration = create_test_migration(
@@ -792,7 +797,7 @@ async fn test_empty_model_definition(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(connection, DatabaseType::Postgres);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create table with only primary key (minimal valid table)
 	let migration = create_test_migration(

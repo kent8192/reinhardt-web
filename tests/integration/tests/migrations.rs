@@ -24,9 +24,8 @@ mod concurrent_execution_integration;
 mod sql_generation_validation;
 
 // Migration Rollback Tests
-// TODO: Re-enable when rollback_migrations method is implemented
-// #[path = "migrations/migration_rollback_integration.rs"]
-// mod migration_rollback_integration;
+#[path = "migrations/migration_rollback_integration.rs"]
+mod migration_rollback_integration;
 
 // Schema Validation Tests
 #[path = "migrations/schema_validation_integration.rs"]
