@@ -856,23 +856,205 @@ impl Operation {
 	}
 
 	/// Generate reverse SQL (for rollback)
-	pub fn to_reverse_sql(&self, _dialect: &SqlDialect) -> Option<String> {
+	///
+	/// # Arguments
+	///
+	/// * `dialect` - SQL dialect for generating database-specific SQL
+	/// * `project_state` - Project state for accessing model definitions (needed for DropTable, etc.)
+	///
+	/// # Returns
+	///
+	/// * `Ok(Some(sql))` - Reverse SQL generated successfully
+	/// * `Ok(None)` - Operation is not reversible (e.g., DropTable without state)
+	/// * `Err(_)` - Error generating reverse SQL
+	pub fn to_reverse_sql(
+		&self,
+		dialect: &SqlDialect,
+		_project_state: &ProjectState,
+	) -> crate::Result<Option<String>> {
 		match self {
-			Operation::CreateTable { name, .. } => Some(format!("DROP TABLE {};", name)),
-			Operation::DropTable { .. } => None,
-			Operation::AddColumn { table, column } => Some(format!(
+			Operation::CreateTable { name, .. } => Ok(Some(format!("DROP TABLE {};", name))),
+			Operation::AddColumn { table, column } => Ok(Some(format!(
 				"ALTER TABLE {} DROP COLUMN {};",
 				table, column.name
-			)),
-			Operation::RunSQL { reverse_sql, .. } => reverse_sql.as_ref().map(|s| s.to_string()),
-			Operation::RunRust { reverse_code, .. } => reverse_code.as_ref().map(|code| {
+			))),
+			Operation::RunSQL { reverse_sql, .. } => {
+				Ok(reverse_sql.as_ref().map(|s| s.to_string()))
+			}
+			Operation::RunRust { reverse_code, .. } => Ok(reverse_code.as_ref().map(|code| {
 				format!(
 					"-- RunRust (reverse): {}",
 					code.lines().next().unwrap_or("")
 				)
-			}),
-			_ => None,
+			})),
+			// Phase 1: Simple reverse operations
+			Operation::RenameTable { old_name, new_name } => Ok(Some(format!(
+				"ALTER TABLE {} RENAME TO {};",
+				new_name, old_name
+			))),
+			Operation::RenameColumn {
+				table,
+				old_name,
+				new_name,
+			} => Ok(Some(format!(
+				"ALTER TABLE {} RENAME COLUMN {} TO {};",
+				table, new_name, old_name
+			))),
+			Operation::CreateIndex {
+				table,
+				columns,
+				unique,
+				..
+			} => {
+				// Generate index name following Django convention: {table}_{columns}_{idx/unique}
+				let columns_joined = columns.join("_");
+				let suffix = if *unique { "unique" } else { "idx" };
+				let index_name = format!("{}_{}_{}", table, columns_joined, suffix);
+				Ok(Some(format!("DROP INDEX {};", index_name)))
+			}
+			Operation::AddConstraint {
+				table,
+				constraint_sql,
+			} => {
+				// Extract constraint name from SQL
+				// Expects format: "CONSTRAINT <name> ..." or "ADD CONSTRAINT <name> ..."
+				let constraint_name =
+					Self::extract_constraint_name(constraint_sql).ok_or_else(|| {
+						crate::MigrationError::InvalidMigration(format!(
+							"Cannot extract constraint name from: {}",
+							constraint_sql
+						))
+					})?;
+				Ok(Some(format!(
+					"ALTER TABLE {} DROP CONSTRAINT {};",
+					table, constraint_name
+				)))
+			}
+			// Phase 2: Complex reverse operations
+			Operation::DropColumn { table, column } => {
+				// TODO: In full implementation, retrieve original column definition from ProjectState
+				// For now, return None as we cannot reconstruct the full column definition
+				// A complete implementation would need to look up the column in project_state
+				// and generate: ALTER TABLE {table} ADD COLUMN {column} {type} {constraints}
+				Ok(None)
+			}
+			Operation::AlterColumn {
+				table,
+				column,
+				new_definition,
+			} => {
+				// TODO: In full implementation, retrieve original column definition from ProjectState
+				// For now, return None as we cannot know the previous column state
+				// A complete implementation would need to compare with project_state
+				// and generate: ALTER TABLE {table} ALTER COLUMN {column} {old_definition}
+				Ok(None)
+			}
+			Operation::DropIndex { table, columns } => {
+				// Generate CREATE INDEX statement from dropped index information
+				// This is a simplified implementation - full implementation would need index type, where clause, etc.
+				let columns_joined = columns.join("_");
+				let index_name = format!("{}_{}_idx", table, columns_joined);
+				let columns_list = columns.join(", ");
+				Ok(Some(format!(
+					"CREATE INDEX {} ON {} ({});",
+					index_name, table, columns_list
+				)))
+			}
+			Operation::DropConstraint {
+				table,
+				constraint_name,
+			} => {
+				// TODO: In full implementation, retrieve constraint definition from ProjectState
+				// Cannot reconstruct constraint SQL without knowing its type (CHECK, FOREIGN KEY, etc.)
+				// A complete implementation would need to look up the constraint in project_state
+				// and generate: ALTER TABLE {table} ADD CONSTRAINT {name} {definition}
+				Ok(None)
+			}
+			Operation::DropTable { name } => {
+				// TODO: In full implementation, retrieve table definition from ProjectState
+				// Cannot reconstruct CREATE TABLE without knowing columns, constraints, etc.
+				// A complete implementation would need to look up the model in project_state
+				// and generate: CREATE TABLE {name} ({columns}) {constraints}
+				// Note: This is intentionally last to override the earlier DropTable => Ok(None)
+				Ok(None)
+			}
+			_ => Ok(None),
 		}
+	}
+
+	/// Apply operation to project state (backward/reverse)
+	///
+	/// This method updates the ProjectState to reflect the reverse of this operation.
+	/// Used during migration rollback to track state changes.
+	///
+	/// # Arguments
+	///
+	/// * `app_label` - Application label for the model being modified
+	/// * `state` - Mutable reference to the ProjectState to update
+	///
+	/// # Note
+	///
+	/// This is a basic implementation. Full implementation would require:
+	/// - Tracking column additions/removals in ModelState
+	/// - Managing constraints and indexes
+	/// - Handling complex operations like AlterColumn
+	pub fn state_backwards(&self, app_label: &str, state: &mut ProjectState) {
+		match self {
+			Operation::CreateTable { name, .. } => {
+				// Reverse: Remove the model from state
+				state
+					.models
+					.remove(&(app_label.to_string(), name.to_string()));
+			}
+			Operation::DropTable { name } => {
+				// TODO: Reverse: Add the model back to state
+				// Would need to reconstruct ModelState from somewhere
+				// For now, this is a no-op
+			}
+			Operation::RenameTable { old_name, new_name } => {
+				// Reverse: Rename back from new_name to old_name
+				if let Some(model) = state
+					.models
+					.remove(&(app_label.to_string(), new_name.to_string()))
+				{
+					state
+						.models
+						.insert((app_label.to_string(), old_name.to_string()), model);
+				}
+			}
+			Operation::AddColumn { .. }
+			| Operation::DropColumn { .. }
+			| Operation::AlterColumn { .. }
+			| Operation::RenameColumn { .. } => {
+				// TODO: Update field state in the model
+				// Would need to track individual field changes in ModelState
+				// For now, this is a no-op
+			}
+			_ => {
+				// Other operations don't affect ProjectState or are not yet implemented
+			}
+		}
+	}
+
+	/// Extract constraint name from constraint SQL
+	///
+	/// Supports patterns:
+	/// - "CONSTRAINT name CHECK ..."
+	/// - "ADD CONSTRAINT name ..."
+	fn extract_constraint_name(constraint_sql: &str) -> Option<String> {
+		let sql = constraint_sql.trim();
+
+		// Pattern 1: "CONSTRAINT name ..."
+		if sql.starts_with("CONSTRAINT ") || sql.contains(" CONSTRAINT ") {
+			let parts: Vec<&str> = sql.split_whitespace().collect();
+			if let Some(pos) = parts.iter().position(|&s| s == "CONSTRAINT")
+				&& pos + 1 < parts.len()
+			{
+				return Some(parts[pos + 1].to_string());
+			}
+		}
+
+		None
 	}
 }
 
@@ -1587,6 +1769,22 @@ impl Operation {
 				// No column is created in the model table (uses intermediate table)
 				col_def.big_integer()
 			}
+			// PostgreSQL-specific types
+			FieldType::Array(inner) => {
+				// PostgreSQL array type: use custom with array notation
+				let inner_sql = inner.to_sql_string();
+				col_def.custom(Alias::new(format!("{}[]", inner_sql)))
+			}
+			FieldType::HStore => col_def.custom(Alias::new("HSTORE")),
+			FieldType::CIText => col_def.custom(Alias::new("CITEXT")),
+			FieldType::Int4Range => col_def.custom(Alias::new("INT4RANGE")),
+			FieldType::Int8Range => col_def.custom(Alias::new("INT8RANGE")),
+			FieldType::NumRange => col_def.custom(Alias::new("NUMRANGE")),
+			FieldType::DateRange => col_def.custom(Alias::new("DATERANGE")),
+			FieldType::TsRange => col_def.custom(Alias::new("TSRANGE")),
+			FieldType::TsTzRange => col_def.custom(Alias::new("TSTZRANGE")),
+			FieldType::TsVector => col_def.custom(Alias::new("TSVECTOR")),
+			FieldType::TsQuery => col_def.custom(Alias::new("TSQUERY")),
 			FieldType::Custom(custom_type) => col_def.custom(Alias::new(custom_type)),
 		};
 	}
@@ -2726,12 +2924,13 @@ mod tests {
 			constraints: vec![],
 		};
 
-		let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
+		let state = ProjectState::default();
+		let reverse = op.to_reverse_sql(&SqlDialect::Postgres, &state);
 		assert!(
-			reverse.is_some(),
+			reverse.is_ok() && reverse.as_ref().ok().unwrap().is_some(),
 			"CreateTable should have reverse SQL operation"
 		);
-		let sql = reverse.unwrap();
+		let sql = reverse.unwrap().unwrap();
 		assert!(
 			sql.contains("DROP TABLE"),
 			"Reverse SQL should contain DROP TABLE, got: {}",
@@ -2748,9 +2947,10 @@ mod tests {
 	fn test_to_reverse_sql_drop_table() {
 		let op = Operation::DropTable { name: "users" };
 
-		let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
+		let state = ProjectState::default();
+		let reverse = op.to_reverse_sql(&SqlDialect::Postgres, &state);
 		assert!(
-			reverse.is_none(),
+			reverse.is_ok() && reverse.as_ref().ok().unwrap().is_none(),
 			"DropTable should not have reverse SQL (cannot recreate table structure)"
 		);
 	}
@@ -2770,12 +2970,13 @@ mod tests {
 			},
 		};
 
-		let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
+		let state = ProjectState::default();
+		let reverse = op.to_reverse_sql(&SqlDialect::Postgres, &state);
 		assert!(
-			reverse.is_some(),
+			reverse.is_ok() && reverse.as_ref().ok().unwrap().is_some(),
 			"AddColumn should have reverse SQL operation"
 		);
-		let sql = reverse.unwrap();
+		let sql = reverse.unwrap().unwrap();
 		assert!(
 			sql.contains("DROP COLUMN"),
 			"Reverse SQL should contain DROP COLUMN, got: {}",
@@ -2795,12 +2996,13 @@ mod tests {
 			reverse_sql: Some("DROP INDEX idx_name"),
 		};
 
-		let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
+		let state = ProjectState::default();
+		let reverse = op.to_reverse_sql(&SqlDialect::Postgres, &state);
 		assert!(
-			reverse.is_some(),
+			reverse.is_ok() && reverse.as_ref().ok().unwrap().is_some(),
 			"RunSQL with reverse_sql should have reverse SQL"
 		);
-		let sql = reverse.unwrap();
+		let sql = reverse.unwrap().unwrap();
 		assert!(
 			sql.contains("DROP INDEX"),
 			"Reverse SQL should contain provided reverse_sql, got: {}",
@@ -2815,9 +3017,10 @@ mod tests {
 			reverse_sql: None,
 		};
 
-		let reverse = op.to_reverse_sql(&SqlDialect::Postgres);
+		let state = ProjectState::default();
+		let reverse = op.to_reverse_sql(&SqlDialect::Postgres, &state);
 		assert!(
-			reverse.is_none(),
+			reverse.is_ok() && reverse.as_ref().ok().unwrap().is_none(),
 			"RunSQL without reverse_sql should not have reverse SQL"
 		);
 	}

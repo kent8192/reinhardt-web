@@ -37,6 +37,8 @@ pub fn extract_migration_metadata(ast: &File, app_label: &str, name: &str) -> Re
 			})
 			.collect(),
 		initial: None,
+		state_only: false,
+		database_only: false,
 	})
 }
 
@@ -216,7 +218,11 @@ fn parse_single_operation(expr: &Expr) -> Option<crate::Operation> {
 				let table = extract_static_str_field(&expr_struct.fields, "table")?;
 				let columns = extract_string_vec_field(&expr_struct.fields, "columns");
 				let unique = extract_bool_field(&expr_struct.fields, "unique").unwrap_or(false);
-				// TODO: Parse index_type, where_clause, and concurrently when AST support is added
+				let index_type = extract_index_type_field(&expr_struct.fields, "index_type");
+				let where_clause = extract_optional_str_field(&expr_struct.fields, "where_clause");
+				let concurrently =
+					extract_bool_field(&expr_struct.fields, "concurrently").unwrap_or(false);
+
 				return Some(crate::Operation::CreateIndex {
 					table: Box::leak(table.into_boxed_str()),
 					columns: columns
@@ -224,9 +230,10 @@ fn parse_single_operation(expr: &Expr) -> Option<crate::Operation> {
 						.map(|s| Box::leak(s.into_boxed_str()) as &'static str)
 						.collect(),
 					unique,
-					index_type: None,
-					where_clause: None,
-					concurrently: false,
+					index_type,
+					where_clause: where_clause
+						.map(|s| Box::leak(s.into_boxed_str()) as &'static str),
+					concurrently,
 				});
 			}
 			"DropIndex" => {
@@ -422,6 +429,49 @@ fn extract_foreign_key_action_field(
 				"SetDefault" => Some(ForeignKeyAction::SetDefault),
 				_ => None,
 			};
+		}
+	}
+	None
+}
+
+/// Extract IndexType enum from struct field (for CreateIndex operation)
+fn extract_index_type_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+	field_name: &str,
+) -> Option<crate::IndexType> {
+	use crate::IndexType;
+
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == field_name
+		{
+			// Check for None
+			if let Expr::Path(expr_path) = &field.expr
+				&& expr_path.path.is_ident("None")
+			{
+				return None;
+			}
+
+			// Check for Some(IndexType::Variant)
+			if let Expr::Call(expr_call) = &field.expr
+				&& let Expr::Path(func_path) = &*expr_call.func
+				&& func_path.path.is_ident("Some")
+				&& !expr_call.args.is_empty()
+				&& let Expr::Path(variant_path) = &expr_call.args[0]
+				&& let Some(last_segment) = variant_path.path.segments.last()
+			{
+				let variant = last_segment.ident.to_string();
+				return match variant.as_str() {
+					"BTree" => Some(IndexType::BTree),
+					"Hash" => Some(IndexType::Hash),
+					"Gin" => Some(IndexType::Gin),
+					"Gist" => Some(IndexType::Gist),
+					"Brin" => Some(IndexType::Brin),
+					"Fulltext" => Some(IndexType::Fulltext),
+					"Spatial" => Some(IndexType::Spatial),
+					_ => None,
+				};
+			}
 		}
 	}
 	None
@@ -677,7 +727,6 @@ fn parse_column_definition(expr: &Expr) -> Option<crate::ColumnDefinition> {
 		let auto_increment =
 			extract_bool_field(&expr_struct.fields, "auto_increment").unwrap_or(false);
 		let default = extract_optional_str_field(&expr_struct.fields, "default");
-		let _max_length = extract_u32_field(&expr_struct.fields, "max_length"); // Not used in current implementation
 
 		return Some(crate::ColumnDefinition {
 			name: Box::leak(name.into_boxed_str()),
@@ -694,6 +743,7 @@ fn parse_column_definition(expr: &Expr) -> Option<crate::ColumnDefinition> {
 }
 
 /// Extract an Option<u32> field
+#[allow(dead_code)]
 fn extract_u32_field(
 	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
 	field_name: &str,

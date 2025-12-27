@@ -3,8 +3,8 @@
 //! Translated from Django's db/migrations/executor.py
 
 use crate::{
-	DatabaseMigrationRecorder, Migration, MigrationPlan, MigrationRecorder, MigrationService,
-	Operation, Result, SchemaEditor, operations::SqlDialect,
+	DatabaseMigrationRecorder, Migration, MigrationError, MigrationPlan, MigrationRecorder,
+	MigrationService, Operation, Result, SchemaEditor, operations::SqlDialect,
 };
 use indexmap::IndexMap;
 use reinhardt_backends::{connection::DatabaseConnection, types::DatabaseType};
@@ -168,6 +168,13 @@ pub struct ExecutionResult {
 	pub failed: Option<String>,
 }
 
+#[deprecated(
+	since = "0.1.0",
+	note = "Use DatabaseMigrationExecutor instead. \
+	        MigrationExecutor lacks atomic transaction support and is SQLite-only. \
+	        DatabaseMigrationExecutor supports PostgreSQL, MySQL, and SQLite with \
+	        transactional DDL capabilities."
+)]
 pub struct MigrationExecutor {
 	pool: SqlitePool,
 	recorder: MigrationRecorder,
@@ -180,6 +187,7 @@ pub struct DatabaseMigrationExecutor {
 	db_type: DatabaseType,
 }
 
+#[allow(deprecated)]
 impl MigrationExecutor {
 	/// Create a new migration executor
 	///
@@ -272,6 +280,107 @@ impl MigrationExecutor {
 			applied,
 			failed: None,
 		})
+	}
+
+	/// Rollback (unapply) a list of migrations
+	///
+	/// Migrations are rolled back in reverse order (newest first).
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_migrations::{Migration, executor::MigrationExecutor};
+	/// use sqlx::SqlitePool;
+	///
+	/// # async fn example() {
+	/// let pool = SqlitePool::connect(":memory:").await.unwrap();
+	/// let mut executor = MigrationExecutor::new(pool);
+	///
+	/// let migrations = vec![Migration::new("0001_initial", "myapp")];
+	/// let result = executor.rollback_migrations(&migrations).await.unwrap();
+	/// // Migrations rolled back successfully
+	/// # }
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+	/// ```
+	pub async fn rollback_migrations(
+		&mut self,
+		migrations: &[Migration],
+	) -> Result<ExecutionResult> {
+		let mut rolledback = Vec::new();
+
+		// Ensure the migration recorder table exists
+		self.recorder.ensure_schema_table_async(&self.pool).await?;
+
+		// Get all applied migrations for each app
+		// Process migrations in reverse order (newest first)
+		for migration in migrations.iter().rev() {
+			// Check if migration is actually applied
+			let is_applied = self
+				.recorder
+				.is_applied_async(&self.pool, migration.app_label, migration.name)
+				.await?;
+
+			if !is_applied {
+				continue;
+			}
+
+			// Rollback migration operations
+			self.rollback_migration(migration).await?;
+
+			// Remove migration record
+			self.recorder
+				.unapply_async(&self.pool, migration.app_label, migration.name)
+				.await?;
+
+			rolledback.push(migration.id());
+		}
+
+		Ok(ExecutionResult {
+			applied: rolledback,
+			failed: None,
+		})
+	}
+
+	/// Rollback a single migration
+	async fn rollback_migration(&self, migration: &Migration) -> Result<()> {
+		// Skip database operations if state_only flag is set
+		if migration.state_only {
+			tracing::debug!(
+				"Skipping database operations for migration '{}' (state_only=true)",
+				migration.id()
+			);
+			return Ok(());
+		}
+
+		// Process operations in reverse order
+		for operation in migration.operations.iter().rev() {
+			// Get reverse SQL
+			let project_state = crate::ProjectState::default();
+			let reverse_sql = operation.to_reverse_sql(&SqlDialect::Sqlite, &project_state)?;
+
+			if let Some(sql) = reverse_sql {
+				tracing::debug!("=== Reverse SQL ===");
+				tracing::debug!("{}", sql);
+
+				// Split SQL into individual statements
+				let statements = split_sql_statements(&sql);
+
+				for (i, statement) in statements.iter().enumerate() {
+					if !statement.trim().is_empty() {
+						tracing::debug!("--- Reverse Statement {} ---", i + 1);
+						tracing::debug!("{}", statement);
+
+						sqlx::query(statement).execute(&self.pool).await?;
+
+						tracing::debug!("✅ Reverse statement {} executed successfully", i + 1);
+					}
+				}
+			} else {
+				tracing::warn!("No reverse SQL available for operation: {:?}", operation);
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Apply a single migration
@@ -428,19 +537,23 @@ impl MigrationExecutor {
 impl DatabaseMigrationExecutor {
 	/// Create a new migration executor with DatabaseConnection
 	///
+	/// The database type is automatically detected from the connection.
+	///
 	/// # Examples
 	///
 	/// ```
 	/// use reinhardt_migrations::executor::DatabaseMigrationExecutor;
-	/// use reinhardt_backends::{DatabaseConnection, DatabaseType};
+	/// use reinhardt_backends::DatabaseConnection;
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-	/// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
+	/// // For doctest purposes, using SQLite in-memory
 	/// let db = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
-	/// let executor = DatabaseMigrationExecutor::new(db.clone(), DatabaseType::Sqlite);
+	/// let executor = DatabaseMigrationExecutor::new(db.clone());
+	/// // Database type is automatically detected as Sqlite
 	/// # });
 	/// ```
-	pub fn new(connection: DatabaseConnection, db_type: DatabaseType) -> Self {
+	pub fn new(connection: DatabaseConnection) -> Self {
+		let db_type = connection.database_type();
 		let recorder = DatabaseMigrationRecorder::new(connection.clone());
 		Self {
 			connection,
@@ -465,11 +578,11 @@ impl DatabaseMigrationExecutor {
 	///
 	/// ```ignore
 	/// use reinhardt_migrations::executor::DatabaseMigrationExecutor;
-	/// use reinhardt_backends::{DatabaseConnection, DatabaseType};
+	/// use reinhardt_backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// let db = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
-	/// let executor = DatabaseMigrationExecutor::new(db, DatabaseType::Sqlite);
+	/// let executor = DatabaseMigrationExecutor::new(db);
 	/// let exists = executor.table_exists("users").await.unwrap();
 	/// # }
 	/// ```
@@ -484,7 +597,7 @@ impl DatabaseMigrationExecutor {
 				// Build parameterized query using Sea-Query
 				let subquery = Query::select()
 					.column(Asterisk)
-					.from(Alias::new("information_schema.tables"))
+					.from((Alias::new("information_schema"), Alias::new("tables")))
 					.cond_where(
 						Cond::all()
 							.add(Expr::col(Alias::new("table_schema")).eq("public"))
@@ -526,7 +639,7 @@ impl DatabaseMigrationExecutor {
 				// Build parameterized query using Sea-Query
 				let query = Query::select()
 					.column(Alias::new("TABLE_NAME"))
-					.from(Alias::new("information_schema.tables"))
+					.from((Alias::new("information_schema"), Alias::new("tables")))
 					.cond_where(
 						Cond::all()
 							.add(Expr::col(Alias::new("table_schema")).eq(Expr::cust("DATABASE()")))
@@ -548,29 +661,42 @@ impl DatabaseMigrationExecutor {
 		}
 	}
 
-	/// Apply a list of migrations
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_migrations::{Migration, executor::DatabaseMigrationExecutor};
-	/// use reinhardt_backends::{DatabaseConnection, DatabaseType};
-	///
-	/// # async fn example() {
-	/// let db = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
-	/// let mut executor = DatabaseMigrationExecutor::new(db, DatabaseType::Sqlite);
-	///
-	/// let migrations = vec![Migration::new("0001_initial", "myapp")];
-	/// let result = executor.apply_migrations(&migrations).await.unwrap();
-	/// # }
-	/// ```
 	pub async fn apply_migrations(&mut self, migrations: &[Migration]) -> Result<ExecutionResult> {
 		let mut applied = Vec::new();
 
 		// Ensure the migration recorder table exists
 		self.recorder.ensure_schema_table().await?;
 
+		// Build MigrationGraph for dependency resolution
+		let mut graph = crate::graph::MigrationGraph::new();
+
 		for migration in migrations {
+			let key = crate::graph::MigrationKey::new(migration.app_label, migration.name);
+			let deps: Vec<crate::graph::MigrationKey> = migration
+				.dependencies
+				.iter()
+				.map(|(app, name)| crate::graph::MigrationKey::new(*app, *name))
+				.collect();
+
+			graph.add_migration(key, deps);
+		}
+
+		// Perform topological sort (automatically detects circular dependencies)
+		let sorted_keys = graph.topological_sort()?;
+
+		// Apply migrations in dependency-resolved order
+		for key in sorted_keys {
+			// Find the migration corresponding to this key
+			let migration = migrations
+				.iter()
+				.find(|m| m.app_label == key.app_label && m.name == key.name)
+				.ok_or_else(|| {
+					crate::MigrationError::DependencyError(format!(
+						"Migration not found: {}",
+						key.id()
+					))
+				})?;
+
 			// Check if already applied
 			if self
 				.recorder
@@ -597,6 +723,138 @@ impl DatabaseMigrationExecutor {
 		})
 	}
 
+	/// Rollback (unapply) a list of migrations
+	///
+	/// Migrations are rolled back in reverse order (newest first).
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_migrations::{Migration, executor::DatabaseMigrationExecutor};
+	/// use reinhardt_backends::DatabaseConnection;
+	///
+	/// # async fn example() {
+	/// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
+	/// let mut executor = DatabaseMigrationExecutor::new(connection);
+	///
+	/// let migrations = vec![Migration::new("0001_initial", "myapp")];
+	/// let result = executor.rollback_migrations(&migrations).await.unwrap();
+	/// # }
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+	/// ```
+	pub async fn rollback_migrations(
+		&mut self,
+		migrations: &[Migration],
+	) -> Result<ExecutionResult> {
+		let mut rolledback = Vec::new();
+
+		// Ensure the migration recorder table exists
+		self.recorder.ensure_schema_table().await?;
+
+		// Process migrations in reverse order (newest first)
+		for migration in migrations.iter().rev() {
+			// Check if migration is actually applied
+			let is_applied = self
+				.recorder
+				.is_applied(migration.app_label, migration.name)
+				.await?;
+
+			if !is_applied {
+				continue;
+			}
+
+			// Rollback the migration
+			self.rollback_migration(migration).await?;
+
+			// Remove from recorder
+			self.recorder
+				.unapply(migration.app_label, migration.name)
+				.await?;
+
+			rolledback.push(migration.id());
+		}
+
+		Ok(ExecutionResult {
+			applied: rolledback,
+			failed: None,
+		})
+	}
+
+	/// Rollback a single migration
+	async fn rollback_migration(&mut self, migration: &Migration) -> Result<()> {
+		// Skip database operations if state_only flag is set
+		if migration.state_only {
+			tracing::debug!(
+				"Skipping database operations for migration '{}' (state_only=true)",
+				migration.id()
+			);
+			return Ok(());
+		}
+
+		// Check if MongoDB backend (no SchemaEditor support)
+		#[cfg(feature = "mongodb-backend")]
+		{
+			use reinhardt_backends::types::DatabaseType;
+			if self.connection.database_type() == DatabaseType::MongoDB {
+				tracing::warn!(
+					"MongoDB backend does not support schema operations for migration '{}'",
+					migration.id()
+				);
+				return Ok(());
+			}
+		}
+
+		// Determine SQL dialect
+		let dialect = match self.connection.database_type() {
+			reinhardt_backends::types::DatabaseType::Postgres => SqlDialect::Postgres,
+			reinhardt_backends::types::DatabaseType::Mysql => SqlDialect::Mysql,
+			reinhardt_backends::types::DatabaseType::Sqlite => SqlDialect::Sqlite,
+			#[cfg(feature = "mongodb-backend")]
+			reinhardt_backends::types::DatabaseType::MongoDB => {
+				return Err(MigrationError::UnsupportedDatabase(
+					"MongoDB does not support schema migrations".to_string(),
+				));
+			}
+		};
+
+		// Create SchemaEditor for atomic operations
+		let mut editor = SchemaEditor::new(
+			self.connection.clone(),
+			migration.atomic,
+			self.connection.database_type(),
+		)
+		.await?;
+
+		// Process operations in reverse order
+		let project_state = crate::ProjectState::default();
+
+		for operation in migration.operations.iter().rev() {
+			// Get reverse SQL
+			let reverse_sql = operation.to_reverse_sql(&dialect, &project_state)?;
+
+			if let Some(sql) = reverse_sql {
+				tracing::debug!("=== Reverse SQL for {:?} ===", operation);
+				tracing::debug!("{}", sql);
+
+				// Execute reverse SQL using SchemaEditor
+				editor.execute(&sql).await?;
+
+				tracing::debug!("✅ Reverse operation executed successfully");
+			} else {
+				tracing::warn!(
+					"No reverse SQL available for operation in migration '{}': {:?}",
+					migration.id(),
+					operation
+				);
+			}
+		}
+
+		// Commit SchemaEditor changes
+		editor.finish().await?;
+
+		Ok(())
+	}
+
 	/// Apply a single migration with atomic transaction support
 	///
 	/// If the migration's `atomic` flag is true and the database supports
@@ -615,6 +873,16 @@ impl DatabaseMigrationExecutor {
 			return Ok(());
 		}
 
+		// Skip database operations if state_only flag is set
+		// (Django's SeparateDatabaseAndState equivalent with state_operations only)
+		if migration.state_only {
+			tracing::debug!(
+				"Skipping database operations for migration '{}' (state_only=true)",
+				migration.id()
+			);
+			return Ok(());
+		}
+
 		let dialect = match self.db_type {
 			DatabaseType::Postgres => SqlDialect::Postgres,
 			DatabaseType::Sqlite => SqlDialect::Sqlite,
@@ -626,6 +894,15 @@ impl DatabaseMigrationExecutor {
 		// Create schema editor with atomic support based on migration's atomic flag
 		let mut editor =
 			SchemaEditor::new(self.connection.clone(), migration.atomic, self.db_type).await?;
+
+		// Log if database_only flag is set (ProjectState updates will be skipped in the future)
+		// Note: ProjectState management is not yet implemented, so this is a placeholder for future use
+		if migration.database_only {
+			tracing::debug!(
+				"Skipping ProjectState updates for migration '{}' (database_only=true)",
+				migration.id()
+			);
+		}
 
 		tracing::debug!(
 			"Applying migration '{}' (atomic={}, effective_atomic={})",
@@ -699,12 +976,12 @@ impl DatabaseMigrationExecutor {
 	///
 	/// ```
 	/// use reinhardt_migrations::{MigrationPlan, executor::DatabaseMigrationExecutor};
-	/// use reinhardt_backends::{DatabaseConnection, DatabaseType};
+	/// use reinhardt_backends::DatabaseConnection;
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 	/// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
 	/// let db = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
-	/// let mut executor = DatabaseMigrationExecutor::new(db, DatabaseType::Sqlite);
+	/// let mut executor = DatabaseMigrationExecutor::new(db);
 	///
 	/// let plan = MigrationPlan::new();
 	/// let result = executor.apply(&plan).await.unwrap();
@@ -1019,6 +1296,27 @@ impl OperationOptimizer {
 		}
 	}
 
+	/// Extract constraint name from SQL definition
+	fn extract_constraint_name(&self, constraint_sql: &str) -> Option<String> {
+		let trimmed = constraint_sql.trim();
+
+		// Check if starts with "CONSTRAINT"
+		if !trimmed.starts_with("CONSTRAINT") {
+			return None;
+		}
+
+		// Skip "CONSTRAINT" and whitespace
+		let after_keyword = trimmed["CONSTRAINT".len()..].trim_start();
+
+		// Extract identifier (alphanumeric + underscore)
+		let name: String = after_keyword
+			.chars()
+			.take_while(|c| c.is_alphanumeric() || *c == '_')
+			.collect();
+
+		if name.is_empty() { None } else { Some(name) }
+	}
+
 	/// Group similar operations together
 	fn group_similar_operations(&self, operations: Vec<Operation>) -> Vec<Operation> {
 		let mut by_table: IndexMap<String, Vec<Operation>> = IndexMap::new();
@@ -1108,20 +1406,25 @@ impl OperationOptimizer {
 							columns: c2,
 						},
 					) if t1 == t2 && c1 == c2 => true,
-					// AddConstraint + DropConstraint (approximate match by table)
+					// AddConstraint + DropConstraint
 					(
 						Operation::AddConstraint {
 							table: t1,
-							constraint_sql: _,
+							constraint_sql,
 						},
 						Operation::DropConstraint {
 							table: t2,
-							constraint_name: _,
+							constraint_name,
 						},
 					) if t1 == t2 => {
-						// TODO: Perfect matching requires parsing constraint SQL to extract name
-						// Currently using approximate optimization - matches by table only
-						true
+						// Try to extract constraint name from SQL for exact matching
+						if let Some(extracted_name) = self.extract_constraint_name(constraint_sql) {
+							// Perfect match: compare extracted name with drop target
+							extracted_name == *constraint_name
+						} else {
+							// Fallback: approximate match by table only
+							true
+						}
 					}
 					_ => false,
 				};

@@ -29,6 +29,16 @@ pub struct Migration {
 	/// - `Some(false)`: Explicitly marked as non-initial
 	/// - `None`: Auto-infer from `dependencies.is_empty()`
 	pub initial: Option<bool>,
+
+	/// Whether to update only ProjectState without executing database operations
+	/// (Django's SeparateDatabaseAndState equivalent with state_operations only)
+	#[serde(default)]
+	pub state_only: bool,
+
+	/// Whether to execute only database operations without updating ProjectState
+	/// (Django's SeparateDatabaseAndState equivalent with database_operations only)
+	#[serde(default)]
+	pub database_only: bool,
 }
 
 impl Migration {
@@ -53,6 +63,8 @@ impl Migration {
 			replaces: Vec::new(),
 			atomic: true,
 			initial: None,
+			state_only: false,
+			database_only: false,
 		}
 	}
 	/// Add an operation to this migration
@@ -140,6 +152,42 @@ impl Migration {
 	/// ```
 	pub fn initial(mut self, initial: bool) -> Self {
 		self.initial = Some(initial);
+		self
+	}
+
+	/// Set whether to update only ProjectState without database operations
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_migrations::Migration;
+	///
+	/// let migration = Migration::new("0001_state_sync", "myapp")
+	///     .state_only(true);
+	///
+	/// assert!(migration.state_only);
+	/// assert!(!migration.database_only);
+	/// ```
+	pub fn state_only(mut self, value: bool) -> Self {
+		self.state_only = value;
+		self
+	}
+
+	/// Set whether to execute only database operations without ProjectState updates
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_migrations::Migration;
+	///
+	/// let migration = Migration::new("0001_db_only", "myapp")
+	///     .database_only(true);
+	///
+	/// assert!(migration.database_only);
+	/// assert!(!migration.state_only);
+	/// ```
+	pub fn database_only(mut self, value: bool) -> Self {
+		self.database_only = value;
 		self
 	}
 

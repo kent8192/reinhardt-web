@@ -87,6 +87,7 @@ pub use autodetector::{
 	to_snake_case,
 };
 pub use di_support::{MigrationConfig, MigrationService as DIMigrationService};
+#[allow(deprecated)]
 pub use executor::{
 	DatabaseMigrationExecutor, ExecutionResult, MigrationExecutor, OperationOptimizer,
 };

@@ -71,6 +71,40 @@ impl MigrationRecorder {
 		self.record_applied(app, name);
 		Ok(())
 	}
+
+	/// Remove a migration record (for rollback)
+	pub fn unapply(&mut self, app: &str, name: &str) {
+		self.records.retain(|r| !(r.app == app && r.name == name));
+	}
+
+	/// Get all applied migrations for a specific app
+	pub fn get_applied_for_app(&self, app: &str) -> Vec<MigrationRecord> {
+		self.records
+			.iter()
+			.filter(|r| r.app == app)
+			.cloned()
+			.collect()
+	}
+
+	/// Async version of unapply
+	pub async fn unapply_async<T>(
+		&mut self,
+		_pool: &T,
+		app: &str,
+		name: &str,
+	) -> crate::Result<()> {
+		self.unapply(app, name);
+		Ok(())
+	}
+
+	/// Async version of get_applied_for_app
+	pub async fn get_applied_for_app_async<T>(
+		&self,
+		_pool: &T,
+		app: &str,
+	) -> crate::Result<Vec<MigrationRecord>> {
+		Ok(self.get_applied_for_app(app))
+	}
 }
 
 impl Default for MigrationRecorder {
@@ -101,15 +135,151 @@ impl DatabaseMigrationRecorder {
 		Self { connection }
 	}
 
-	/// Ensure the migration schema table exists
-	///
-	/// Creates the `reinhardt_migrations` table if it doesn't exist.
-	/// This follows Django's migration table schema.
 	pub async fn ensure_schema_table(&self) -> crate::Result<()> {
+		// Acquire advisory lock to prevent concurrent schema modifications
+		self.acquire_schema_lock().await?;
+
+		// Execute schema operations
+		let result = self.ensure_schema_table_internal().await;
+
+		// Always release lock, even if operations failed
+		let _ = self.release_schema_lock().await;
+
+		result
+	}
+
+	/// Check if an index exists in MySQL
+	///
+	/// This is a MySQL-specific helper to check if an index already exists.
+	/// PostgreSQL and SQLite handle `IF NOT EXISTS` correctly, but MySQL
+	/// returns an error even with `IF NOT EXISTS` if the index already exists.
+	async fn check_index_exists(&self, table: &str, index: &str) -> crate::Result<bool> {
+		// Use EXISTS pattern similar to is_applied() method for reliable type handling
+		let query = "SELECT EXISTS(
+		                 SELECT 1 FROM information_schema.statistics
+		                 WHERE table_schema = DATABASE()
+		                 AND table_name = ?
+		                 AND index_name = ?
+		             ) as exists_flag";
+
+		let result = self
+			.connection
+			.fetch_one(query, vec![table.into(), index.into()])
+			.await
+			.map_err(crate::MigrationError::DatabaseError)?;
+
+		// Try to get as bool first, then as i64 for databases that return int
+		// This pattern matches the is_applied() implementation
+		if let Ok(exists) = result.get::<bool>("exists_flag") {
+			Ok(exists)
+		} else if let Ok(exists_int) = result.get::<i64>("exists_flag") {
+			Ok(exists_int > 0)
+		} else {
+			Ok(false)
+		}
+	}
+
+	/// Acquire a database-level advisory lock for schema operations
+	///
+	/// This prevents concurrent schema modifications that could cause conflicts.
+	/// Different databases use different locking mechanisms:
+	/// - PostgreSQL: pg_advisory_lock() with hash of string
+	/// - MySQL: GET_LOCK() with timeout
+	/// - SQLite: No additional lock needed (handled by transaction isolation)
+	async fn acquire_schema_lock(&self) -> crate::Result<()> {
+		use reinhardt_backends::types::DatabaseType;
+
+		match self.connection.database_type() {
+			DatabaseType::Postgres => {
+				// PostgreSQL advisory lock using string hash
+				self.connection
+					.execute(
+						"SELECT pg_advisory_lock(hashtext('reinhardt_migrations'))",
+						vec![],
+					)
+					.await
+					.map_err(crate::MigrationError::DatabaseError)?;
+			}
+			DatabaseType::Mysql => {
+				// MySQL GET_LOCK with 10 second timeout
+				let result = self
+					.connection
+					.fetch_one(
+						"SELECT GET_LOCK('reinhardt_migrations', 10) as locked",
+						vec![],
+					)
+					.await
+					.map_err(crate::MigrationError::DatabaseError)?;
+
+				// Try to get the lock status as i64 or bool
+				let locked = if let Ok(val) = result.get::<i64>("locked") {
+					val == 1
+				} else {
+					result.get::<bool>("locked").unwrap_or_default()
+				};
+
+				if !locked {
+					return Err(crate::MigrationError::DatabaseError(
+						reinhardt_backends::DatabaseError::QueryError(
+							"Failed to acquire migration lock (timeout)".to_string(),
+						),
+					));
+				}
+			}
+			DatabaseType::Sqlite => {
+				// SQLite uses transaction isolation, no additional lock needed
+			}
+			#[cfg(feature = "mongodb-backend")]
+			DatabaseType::MongoDB => {
+				// MongoDB has its own document-level locking
+			}
+		}
+
+		Ok(())
+	}
+
+	/// Release the database-level advisory lock
+	///
+	/// Should be called after schema operations complete, even if they fail.
+	async fn release_schema_lock(&self) -> crate::Result<()> {
+		use reinhardt_backends::types::DatabaseType;
+
+		match self.connection.database_type() {
+			DatabaseType::Postgres => {
+				self.connection
+					.execute(
+						"SELECT pg_advisory_unlock(hashtext('reinhardt_migrations'))",
+						vec![],
+					)
+					.await
+					.map_err(crate::MigrationError::DatabaseError)?;
+			}
+			DatabaseType::Mysql => {
+				self.connection
+					.execute("SELECT RELEASE_LOCK('reinhardt_migrations')", vec![])
+					.await
+					.map_err(crate::MigrationError::DatabaseError)?;
+			}
+			DatabaseType::Sqlite => {
+				// SQLite uses transaction isolation, no explicit unlock needed
+			}
+			#[cfg(feature = "mongodb-backend")]
+			DatabaseType::MongoDB => {
+				// MongoDB has its own document-level locking
+			}
+		}
+
+		Ok(())
+	}
+
+	/// Internal implementation of ensure_schema_table without locking
+	///
+	/// This is called by ensure_schema_table() after acquiring the lock.
+	async fn ensure_schema_table_internal(&self) -> crate::Result<()> {
 		use reinhardt_backends::types::DatabaseType;
 		use sea_query::{
-			Alias, ColumnDef, Expr, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
-			Table,
+			Alias, ColumnDef, Expr, Index, MysqlQueryBuilder, PostgresQueryBuilder,
+			SqliteQueryBuilder, Table,
 		};
 
 		// Handle MongoDB separately (early return)
@@ -160,8 +330,8 @@ impl DatabaseMigrationRecorder {
 
 		// Build SQL using appropriate query builder based on database type
 		// Scope stmt to ensure it's dropped before await
-		let sql = {
-			let stmt = Table::create()
+		let (create_table_sql, create_index_sql) = {
+			let create_table_stmt = Table::create()
 				.table(Alias::new("reinhardt_migrations"))
 				.if_not_exists()
 				.col(
@@ -185,19 +355,62 @@ impl DatabaseMigrationRecorder {
 				)
 				.to_owned();
 
+			let create_index_stmt = Index::create()
+				.if_not_exists()
+				.name("reinhardt_migrations_app_name_unique")
+				.table(Alias::new("reinhardt_migrations"))
+				.col(Alias::new("app"))
+				.col(Alias::new("name"))
+				.unique()
+				.to_owned();
+
 			match self.connection.database_type() {
-				DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
-				DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-				DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+				DatabaseType::Postgres => (
+					create_table_stmt.to_string(PostgresQueryBuilder),
+					create_index_stmt.to_string(PostgresQueryBuilder),
+				),
+				DatabaseType::Mysql => (
+					create_table_stmt.to_string(MysqlQueryBuilder),
+					create_index_stmt.to_string(MysqlQueryBuilder),
+				),
+				DatabaseType::Sqlite => (
+					create_table_stmt.to_string(SqliteQueryBuilder),
+					create_index_stmt.to_string(SqliteQueryBuilder),
+				),
 				#[cfg(feature = "mongodb-backend")]
 				DatabaseType::MongoDB => unreachable!("MongoDB handled above"),
 			}
-		}; // stmt is dropped here, before await
+		}; // stmts are dropped here, before await
 
+		// Create table
 		self.connection
-			.execute(&sql, vec![])
+			.execute(&create_table_sql, vec![])
 			.await
 			.map_err(crate::MigrationError::DatabaseError)?;
+
+		// Create unique index on (app, name)
+		// MySQL requires explicit check because IF NOT EXISTS doesn't work for indexes
+		if self.connection.database_type() == DatabaseType::Mysql {
+			let index_exists = self
+				.check_index_exists(
+					"reinhardt_migrations",
+					"reinhardt_migrations_app_name_unique",
+				)
+				.await?;
+
+			if !index_exists {
+				self.connection
+					.execute(&create_index_sql, vec![])
+					.await
+					.map_err(crate::MigrationError::DatabaseError)?;
+			}
+		} else {
+			// PostgreSQL, SQLite handle IF NOT EXISTS correctly
+			self.connection
+				.execute(&create_index_sql, vec![])
+				.await
+				.map_err(crate::MigrationError::DatabaseError)?;
+		}
 
 		Ok(())
 	}
@@ -655,6 +868,187 @@ impl DatabaseMigrationRecorder {
 					.map_err(crate::MigrationError::DatabaseError)?;
 
 				Ok(())
+			}
+		}
+	}
+
+	/// Get all applied migrations for a specific app
+	///
+	/// Returns migrations sorted by applied timestamp in ascending order.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
+	/// use reinhardt_backends::DatabaseConnection;
+	///
+	/// # async fn example() {
+	/// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
+	/// let recorder = DatabaseMigrationRecorder::new(connection);
+	/// recorder.ensure_schema_table().await.unwrap();
+	///
+	/// let migrations = recorder.get_applied_for_app("myapp").await.unwrap();
+	/// assert!(migrations.is_empty()); // Initially no migrations applied
+	/// # }
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+	/// ```
+	pub async fn get_applied_for_app(&self, app: &str) -> crate::Result<Vec<MigrationRecord>> {
+		use reinhardt_backends::types::DatabaseType;
+
+		match self.connection.database_type() {
+			#[cfg(feature = "mongodb-backend")]
+			DatabaseType::MongoDB => {
+				use bson::doc;
+				use futures::stream::TryStreamExt;
+
+				let backend = self.connection.backend();
+				let backend_any = backend.as_any();
+
+				if let Some(mongo_backend) =
+					backend_any.downcast_ref::<reinhardt_nosql::backends::mongodb::MongoDBBackend>()
+				{
+					let db = mongo_backend.database();
+					let collection = db.collection::<bson::Document>("_reinhardt_migrations");
+
+					let find_options = mongodb::options::FindOptions::builder()
+						.sort(doc! { "applied": 1 })
+						.build();
+
+					let mut cursor = collection
+						.find(doc! { "app": app })
+						.with_options(find_options)
+						.await
+						.map_err(|e| {
+							crate::MigrationError::DatabaseError(
+								reinhardt_backends::DatabaseError::QueryError(e.to_string()),
+							)
+						})?;
+
+					let mut records = Vec::new();
+					while let Some(doc) = cursor.try_next().await.map_err(|e| {
+						crate::MigrationError::DatabaseError(
+							reinhardt_backends::DatabaseError::QueryError(e.to_string()),
+						)
+					})? {
+						let app_val = doc
+							.get_str("app")
+							.map_err(|e| {
+								crate::MigrationError::DatabaseError(
+									reinhardt_backends::DatabaseError::QueryError(e.to_string()),
+								)
+							})?
+							.to_string();
+
+						let name = doc
+							.get_str("name")
+							.map_err(|e| {
+								crate::MigrationError::DatabaseError(
+									reinhardt_backends::DatabaseError::QueryError(e.to_string()),
+								)
+							})?
+							.to_string();
+
+						let applied_bson = doc.get_datetime("applied").map_err(|e| {
+							crate::MigrationError::DatabaseError(
+								reinhardt_backends::DatabaseError::QueryError(e.to_string()),
+							)
+						})?;
+
+						let applied = chrono::DateTime::from_timestamp_millis(
+							applied_bson.timestamp_millis(),
+						)
+						.ok_or_else(|| {
+							crate::MigrationError::DatabaseError(
+								reinhardt_backends::DatabaseError::QueryError(
+									"Invalid timestamp".to_string(),
+								),
+							)
+						})?;
+
+						records.push(MigrationRecord {
+							app: app_val,
+							name,
+							applied,
+						});
+					}
+
+					Ok(records)
+				} else {
+					Err(crate::MigrationError::DatabaseError(
+						reinhardt_backends::DatabaseError::ConnectionError(
+							"Failed to downcast to MongoDBBackend".to_string(),
+						),
+					))
+				}
+			}
+			DatabaseType::Postgres | DatabaseType::Mysql | DatabaseType::Sqlite => {
+				use sea_query::{
+					Alias, Expr, ExprTrait, MysqlQueryBuilder, Order, PostgresQueryBuilder, Query,
+					SqliteQueryBuilder,
+				};
+
+				// Build SELECT query using sea-query with app filter
+				let stmt = Query::select()
+					.columns([Alias::new("app"), Alias::new("name"), Alias::new("applied")])
+					.from(Alias::new("reinhardt_migrations"))
+					.and_where(Expr::col(Alias::new("app")).eq(app))
+					.order_by(Alias::new("applied"), Order::Asc)
+					.to_owned();
+
+				let sql = match self.connection.database_type() {
+					DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+					DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+					DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+					#[cfg(feature = "mongodb-backend")]
+					DatabaseType::MongoDB => unreachable!("MongoDB handled above"),
+				};
+
+				let rows = self
+					.connection
+					.fetch_all(&sql, vec![])
+					.await
+					.map_err(crate::MigrationError::DatabaseError)?;
+
+				let db_type = self.connection.database_type();
+				let mut records = Vec::new();
+				for row in rows {
+					let app_val: String = row
+						.get("app")
+						.map_err(crate::MigrationError::DatabaseError)?;
+					let name: String = row
+						.get("name")
+						.map_err(crate::MigrationError::DatabaseError)?;
+
+					// Parse timestamp from database
+					let applied: DateTime<Utc> = match db_type {
+						DatabaseType::Sqlite => {
+							let applied_str: String = row
+								.get("applied")
+								.map_err(crate::MigrationError::DatabaseError)?;
+							chrono::NaiveDateTime::parse_from_str(&applied_str, "%Y-%m-%d %H:%M:%S")
+								.map(|naive| naive.and_utc())
+								.map_err(|e| {
+									crate::MigrationError::DatabaseError(
+										reinhardt_backends::DatabaseError::TypeError(format!(
+											"Failed to parse SQLite timestamp '{}': {}",
+											applied_str, e
+										)),
+									)
+								})?
+						}
+						_ => row
+							.get("applied")
+							.map_err(crate::MigrationError::DatabaseError)?,
+					};
+
+					records.push(MigrationRecord {
+						app: app_val,
+						name,
+						applied,
+					});
+				}
+
+				Ok(records)
 			}
 		}
 	}

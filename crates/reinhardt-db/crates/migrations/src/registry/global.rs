@@ -160,6 +160,8 @@ mod tests {
 			replaces: vec![],
 			atomic: true,
 			initial: None,
+			state_only: false,
+			database_only: false,
 		};
 
 		// Register migration
@@ -194,6 +196,8 @@ mod tests {
 			replaces: vec![],
 			atomic: true,
 			initial: None,
+			state_only: false,
+			database_only: false,
 		};
 
 		registry.register(migration).unwrap();
@@ -227,6 +231,8 @@ mod tests {
 				replaces: vec![],
 				atomic: true,
 				initial: None,
+				state_only: false,
+				database_only: false,
 			})
 			.unwrap();
 
@@ -239,6 +245,8 @@ mod tests {
 				replaces: vec![],
 				atomic: true,
 				initial: None,
+				state_only: false,
+				database_only: false,
 			})
 			.unwrap();
 
@@ -251,6 +259,8 @@ mod tests {
 				replaces: vec![],
 				atomic: true,
 				initial: None,
+				state_only: false,
+				database_only: false,
 			})
 			.unwrap();
 
@@ -285,6 +295,8 @@ mod tests {
 				replaces: vec![],
 				atomic: true,
 				initial: None,
+				state_only: false,
+				database_only: false,
 			})
 			.unwrap();
 
@@ -315,6 +327,8 @@ mod tests {
 				replaces: vec![],
 				atomic: true,
 				initial: None,
+				state_only: false,
+				database_only: false,
 			})
 			.unwrap();
 
@@ -327,6 +341,8 @@ mod tests {
 				replaces: vec![],
 				atomic: true,
 				initial: None,
+				state_only: false,
+				database_only: false,
 			})
 			.unwrap();
 
@@ -339,6 +355,8 @@ mod tests {
 				replaces: vec![],
 				atomic: true,
 				initial: None,
+				state_only: false,
+				database_only: false,
 			})
 			.unwrap();
 

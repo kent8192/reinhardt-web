@@ -309,6 +309,8 @@ mod tests {
 			atomic: true,
 			initial: None,
 			replaces: vec![],
+			state_only: false,
+			database_only: false,
 		}
 	}
 
@@ -375,6 +377,8 @@ mod tests {
 					atomic: true,
 					initial: None,
 					replaces: vec![],
+					state_only: false,
+					database_only: false,
 				},
 			],
 		});

@@ -47,6 +47,8 @@ fn create_test_migration(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	}
 }
 
@@ -85,10 +87,7 @@ async fn test_executor_basic_run(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(
-		connection,
-		reinhardt_backends::types::DatabaseType::Postgres,
-	);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create test migrations
 	let migration1 = create_test_migration(
@@ -164,10 +163,7 @@ async fn test_executor_rollback(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(
-		connection,
-		reinhardt_backends::types::DatabaseType::Postgres,
-	);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create and apply migrations
 	let migration1 = create_test_migration(
@@ -237,10 +233,7 @@ async fn test_executor_already_applied(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(
-		connection,
-		reinhardt_backends::types::DatabaseType::Postgres,
-	);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	let migration = create_test_migration(
 		"testapp",
@@ -308,10 +301,7 @@ async fn test_executor_with_dependencies(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(
-		connection,
-		reinhardt_backends::types::DatabaseType::Postgres,
-	);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	let migration1 = Migration {
 		app_label: "app1",
@@ -328,6 +318,8 @@ async fn test_executor_with_dependencies(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	let migration2 = Migration {
@@ -345,6 +337,8 @@ async fn test_executor_with_dependencies(
 		replaces: vec![],
 		atomic: true,
 		initial: None,
+		state_only: false,
+		database_only: false,
 	};
 
 	// Apply in correct order
@@ -457,10 +451,7 @@ async fn test_executor_add_column_migration(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(
-		connection,
-		reinhardt_backends::types::DatabaseType::Postgres,
-	);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// First create a table
 	let migration1 = create_test_migration(
@@ -543,10 +534,7 @@ async fn test_executor_complex_migration(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("Failed to connect to database");
-	let mut executor = DatabaseMigrationExecutor::new(
-		connection,
-		reinhardt_backends::types::DatabaseType::Postgres,
-	);
+	let mut executor = DatabaseMigrationExecutor::new(connection);
 
 	// Create complex migration with multiple operations
 	let migration = create_test_migration(

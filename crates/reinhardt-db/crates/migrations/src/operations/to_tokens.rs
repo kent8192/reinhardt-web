@@ -1,6 +1,128 @@
-use crate::{ColumnDefinition, Constraint, ForeignKeyAction, IndexType, Operation};
+use crate::{ColumnDefinition, Constraint, FieldType, ForeignKeyAction, IndexType, Operation};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
+
+/// Helper function to convert FieldType to TokenStream (for recursive Array handling)
+fn field_type_to_tokens(field_type: &FieldType) -> TokenStream {
+	match field_type {
+		// Integer types
+		FieldType::BigInteger => quote! { FieldType::BigInteger },
+		FieldType::Integer => quote! { FieldType::Integer },
+		FieldType::SmallInteger => quote! { FieldType::SmallInteger },
+		FieldType::TinyInt => quote! { FieldType::TinyInt },
+		FieldType::MediumInt => quote! { FieldType::MediumInt },
+
+		// String types
+		FieldType::Char(len) => quote! { FieldType::Char(#len) },
+		FieldType::VarChar(len) => quote! { FieldType::VarChar(#len) },
+		FieldType::Text => quote! { FieldType::Text },
+		FieldType::TinyText => quote! { FieldType::TinyText },
+		FieldType::MediumText => quote! { FieldType::MediumText },
+		FieldType::LongText => quote! { FieldType::LongText },
+
+		// Date/Time types
+		FieldType::Date => quote! { FieldType::Date },
+		FieldType::Time => quote! { FieldType::Time },
+		FieldType::DateTime => quote! { FieldType::DateTime },
+		FieldType::TimestampTz => quote! { FieldType::TimestampTz },
+
+		// Numeric types
+		FieldType::Decimal { precision, scale } => {
+			quote! { FieldType::Decimal { precision: #precision, scale: #scale } }
+		}
+		FieldType::Float => quote! { FieldType::Float },
+		FieldType::Double => quote! { FieldType::Double },
+		FieldType::Real => quote! { FieldType::Real },
+
+		// Boolean
+		FieldType::Boolean => quote! { FieldType::Boolean },
+
+		// Binary types
+		FieldType::Binary => quote! { FieldType::Binary },
+		FieldType::Blob => quote! { FieldType::Blob },
+		FieldType::TinyBlob => quote! { FieldType::TinyBlob },
+		FieldType::MediumBlob => quote! { FieldType::MediumBlob },
+		FieldType::LongBlob => quote! { FieldType::LongBlob },
+		FieldType::Bytea => quote! { FieldType::Bytea },
+
+		// JSON types
+		FieldType::Json => quote! { FieldType::Json },
+		FieldType::JsonBinary => quote! { FieldType::JsonBinary },
+
+		// PostgreSQL-specific types
+		FieldType::Array(inner) => {
+			let inner_token = field_type_to_tokens(inner);
+			quote! { FieldType::Array(Box::new(#inner_token)) }
+		}
+		FieldType::HStore => quote! { FieldType::HStore },
+		FieldType::CIText => quote! { FieldType::CIText },
+		FieldType::Int4Range => quote! { FieldType::Int4Range },
+		FieldType::Int8Range => quote! { FieldType::Int8Range },
+		FieldType::NumRange => quote! { FieldType::NumRange },
+		FieldType::DateRange => quote! { FieldType::DateRange },
+		FieldType::TsRange => quote! { FieldType::TsRange },
+		FieldType::TsTzRange => quote! { FieldType::TsTzRange },
+		FieldType::TsVector => quote! { FieldType::TsVector },
+		FieldType::TsQuery => quote! { FieldType::TsQuery },
+
+		// UUID and Year
+		FieldType::Uuid => quote! { FieldType::Uuid },
+		FieldType::Year => quote! { FieldType::Year },
+
+		// Collection types
+		FieldType::Enum { values } => {
+			quote! { FieldType::Enum { values: vec![#(#values.to_string()),*] } }
+		}
+		FieldType::Set { values } => {
+			quote! { FieldType::Set { values: vec![#(#values.to_string()),*] } }
+		}
+
+		// Relationship types
+		FieldType::OneToOne {
+			to,
+			on_delete,
+			on_update,
+		} => {
+			quote! {
+				FieldType::OneToOne {
+					to: #to.to_string(),
+					on_delete: #on_delete,
+					on_update: #on_update,
+				}
+			}
+		}
+		FieldType::ManyToMany { to, through } => {
+			let through_token = match through {
+				Some(t) => quote! { Some(#t.to_string()) },
+				None => quote! { None },
+			};
+			quote! {
+				FieldType::ManyToMany {
+					to: #to.to_string(),
+					through: #through_token,
+				}
+			}
+		}
+
+		// Custom types
+		FieldType::Custom(s) => quote! { FieldType::Custom(#s.to_string()) },
+
+		// Foreign key
+		FieldType::ForeignKey {
+			to_table,
+			to_field,
+			on_delete,
+		} => {
+			quote! {
+				FieldType::ForeignKey {
+					to_table: #to_table.to_string(),
+					to_field: #to_field.to_string(),
+					on_delete: #on_delete,
+				}
+			}
+		}
+	}
+}
 
 impl ToTokens for ForeignKeyAction {
 	fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -465,6 +587,23 @@ impl ToTokens for ColumnDefinition {
 			// JSON types
 			crate::FieldType::Json => quote! { FieldType::Json },
 			crate::FieldType::JsonBinary => quote! { FieldType::JsonBinary },
+
+			// PostgreSQL-specific types
+			crate::FieldType::Array(inner) => {
+				// Generate the inner field type token recursively
+				let inner_token = field_type_to_tokens(inner);
+				quote! { FieldType::Array(Box::new(#inner_token)) }
+			}
+			crate::FieldType::HStore => quote! { FieldType::HStore },
+			crate::FieldType::CIText => quote! { FieldType::CIText },
+			crate::FieldType::Int4Range => quote! { FieldType::Int4Range },
+			crate::FieldType::Int8Range => quote! { FieldType::Int8Range },
+			crate::FieldType::NumRange => quote! { FieldType::NumRange },
+			crate::FieldType::DateRange => quote! { FieldType::DateRange },
+			crate::FieldType::TsRange => quote! { FieldType::TsRange },
+			crate::FieldType::TsTzRange => quote! { FieldType::TsTzRange },
+			crate::FieldType::TsVector => quote! { FieldType::TsVector },
+			crate::FieldType::TsQuery => quote! { FieldType::TsQuery },
 
 			// UUID and Year
 			crate::FieldType::Uuid => quote! { FieldType::Uuid },

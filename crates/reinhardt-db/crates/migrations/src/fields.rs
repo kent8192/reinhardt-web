@@ -50,6 +50,30 @@ pub enum FieldType {
 	Json,
 	JsonBinary, // PostgreSQL JSONB
 
+	// PostgreSQL-specific types
+	/// PostgreSQL Array type with inner element type
+	Array(Box<FieldType>),
+	/// PostgreSQL HStore key-value store
+	HStore,
+	/// PostgreSQL case-insensitive text
+	CIText,
+	/// PostgreSQL int4range (integer range)
+	Int4Range,
+	/// PostgreSQL int8range (bigint range)
+	Int8Range,
+	/// PostgreSQL numrange (numeric range)
+	NumRange,
+	/// PostgreSQL daterange
+	DateRange,
+	/// PostgreSQL tsrange (timestamp range without timezone)
+	TsRange,
+	/// PostgreSQL tstzrange (timestamp range with timezone)
+	TsTzRange,
+	/// PostgreSQL tsvector for full-text search
+	TsVector,
+	/// PostgreSQL tsquery for full-text search queries
+	TsQuery,
+
 	// Other types
 	Uuid,
 	Year, // MySQL-specific
@@ -119,6 +143,58 @@ impl FieldType {
 				SqlDialect::Postgres | SqlDialect::Cockroachdb => "JSONB".to_string(),
 				SqlDialect::Mysql | SqlDialect::Sqlite => "JSON".to_string(), // Fallback to JSON
 			},
+			// PostgreSQL-specific types with dialect handling
+			FieldType::Array(inner) => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => {
+					format!("{}[]", inner.to_sql_for_dialect(dialect))
+				}
+				// MySQL and SQLite don't support native arrays, fallback to JSON
+				SqlDialect::Mysql | SqlDialect::Sqlite => "JSON".to_string(),
+			},
+			FieldType::HStore => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "HSTORE".to_string(),
+				// Fallback to JSON for other databases
+				SqlDialect::Mysql | SqlDialect::Sqlite => "JSON".to_string(),
+			},
+			FieldType::CIText => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "CITEXT".to_string(),
+				// Fallback to TEXT for other databases
+				SqlDialect::Mysql | SqlDialect::Sqlite => "TEXT".to_string(),
+			},
+			FieldType::Int4Range => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "INT4RANGE".to_string(),
+				// No native range support in other databases
+				SqlDialect::Mysql | SqlDialect::Sqlite => "VARCHAR(50)".to_string(),
+			},
+			FieldType::Int8Range => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "INT8RANGE".to_string(),
+				SqlDialect::Mysql | SqlDialect::Sqlite => "VARCHAR(50)".to_string(),
+			},
+			FieldType::NumRange => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "NUMRANGE".to_string(),
+				SqlDialect::Mysql | SqlDialect::Sqlite => "VARCHAR(100)".to_string(),
+			},
+			FieldType::DateRange => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "DATERANGE".to_string(),
+				SqlDialect::Mysql | SqlDialect::Sqlite => "VARCHAR(50)".to_string(),
+			},
+			FieldType::TsRange => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "TSRANGE".to_string(),
+				SqlDialect::Mysql | SqlDialect::Sqlite => "VARCHAR(100)".to_string(),
+			},
+			FieldType::TsTzRange => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "TSTZRANGE".to_string(),
+				SqlDialect::Mysql | SqlDialect::Sqlite => "VARCHAR(100)".to_string(),
+			},
+			FieldType::TsVector => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "TSVECTOR".to_string(),
+				// No native full-text search vector in other databases
+				SqlDialect::Mysql | SqlDialect::Sqlite => "TEXT".to_string(),
+			},
+			FieldType::TsQuery => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "TSQUERY".to_string(),
+				SqlDialect::Mysql | SqlDialect::Sqlite => "TEXT".to_string(),
+			},
 			// For all other types, use the generic SQL type
 			_ => self.to_sql_string(),
 		}
@@ -158,6 +234,18 @@ impl FieldType {
 			FieldType::Bytea => "BYTEA".to_string(),
 			FieldType::Json => "JSON".to_string(),
 			FieldType::JsonBinary => "JSONB".to_string(),
+			// PostgreSQL-specific types
+			FieldType::Array(inner) => format!("{}[]", inner.to_sql_string()),
+			FieldType::HStore => "HSTORE".to_string(),
+			FieldType::CIText => "CITEXT".to_string(),
+			FieldType::Int4Range => "INT4RANGE".to_string(),
+			FieldType::Int8Range => "INT8RANGE".to_string(),
+			FieldType::NumRange => "NUMRANGE".to_string(),
+			FieldType::DateRange => "DATERANGE".to_string(),
+			FieldType::TsRange => "TSRANGE".to_string(),
+			FieldType::TsTzRange => "TSTZRANGE".to_string(),
+			FieldType::TsVector => "TSVECTOR".to_string(),
+			FieldType::TsQuery => "TSQUERY".to_string(),
 			FieldType::Uuid => "UUID".to_string(),
 			FieldType::Year => "YEAR".to_string(),
 			FieldType::Enum { values } => {
@@ -270,11 +358,91 @@ impl FieldTypeName for UUIDField {
 	const NAME: &'static str = "UUIDField";
 }
 
+// PostgreSQL-specific field type markers
+pub struct ArrayField;
+impl FieldTypeName for ArrayField {
+	const NAME: &'static str = "ArrayField";
+}
+
+pub struct HStoreField;
+impl FieldTypeName for HStoreField {
+	const NAME: &'static str = "HStoreField";
+}
+
+pub struct CITextField;
+impl FieldTypeName for CITextField {
+	const NAME: &'static str = "CITextField";
+}
+
+pub struct Int4RangeField;
+impl FieldTypeName for Int4RangeField {
+	const NAME: &'static str = "Int4RangeField";
+}
+
+pub struct Int8RangeField;
+impl FieldTypeName for Int8RangeField {
+	const NAME: &'static str = "Int8RangeField";
+}
+
+pub struct NumRangeField;
+impl FieldTypeName for NumRangeField {
+	const NAME: &'static str = "NumRangeField";
+}
+
+pub struct DateRangeField;
+impl FieldTypeName for DateRangeField {
+	const NAME: &'static str = "DateRangeField";
+}
+
+pub struct TsRangeField;
+impl FieldTypeName for TsRangeField {
+	const NAME: &'static str = "TsRangeField";
+}
+
+pub struct TsTzRangeField;
+impl FieldTypeName for TsTzRangeField {
+	const NAME: &'static str = "TsTzRangeField";
+}
+
+pub struct TsVectorField;
+impl FieldTypeName for TsVectorField {
+	const NAME: &'static str = "TsVectorField";
+}
+
+pub struct TsQueryField;
+impl FieldTypeName for TsQueryField {
+	const NAME: &'static str = "TsQueryField";
+}
+
 pub mod prelude {
 	pub use super::{
-		BigIntegerField, BinaryField, BooleanField, CharField, DateField, DateTimeField,
-		DecimalField, FieldTypeName, IntegerField, JSONField, SmallIntegerField, TextField,
-		TimeField, UUIDField,
+		// PostgreSQL-specific field types
+		ArrayField,
+		// Standard field types
+		BigIntegerField,
+		BinaryField,
+		BooleanField,
+		CITextField,
+		CharField,
+		DateField,
+		DateRangeField,
+		DateTimeField,
+		DecimalField,
+		FieldTypeName,
+		HStoreField,
+		Int4RangeField,
+		Int8RangeField,
+		IntegerField,
+		JSONField,
+		NumRangeField,
+		SmallIntegerField,
+		TextField,
+		TimeField,
+		TsQueryField,
+		TsRangeField,
+		TsTzRangeField,
+		TsVectorField,
+		UUIDField,
 	};
 }
 
@@ -334,13 +502,14 @@ impl From<&sea_schema::postgres::def::Type> for FieldType {
 			Type::PgLsn => FieldType::Custom("PG_LSN".to_string()),
 			Type::Money => FieldType::Custom("MONEY".to_string()),
 
-			// Array types (store as Custom with array notation)
+			// Array types - use native Array variant
 			Type::Array(inner_array) => {
 				if let Some(ref inner_type) = inner_array.col_type {
 					let inner_field_type: FieldType = inner_type.as_ref().into();
-					FieldType::Custom(format!("{}[]", inner_field_type.to_sql_string()))
+					FieldType::Array(Box::new(inner_field_type))
 				} else {
-					FieldType::Custom("ARRAY[]".to_string())
+					// Default to Text array if inner type is unknown
+					FieldType::Array(Box::new(FieldType::Text))
 				}
 			}
 
@@ -369,20 +538,20 @@ impl From<&sea_schema::postgres::def::Type> for FieldType {
 			Type::Bit(_) => FieldType::Custom("BIT".to_string()),
 			Type::VarBit(_) => FieldType::Custom("VARBIT".to_string()),
 
-			// Text search types
-			Type::TsVector => FieldType::Custom("TSVECTOR".to_string()),
-			Type::TsQuery => FieldType::Custom("TSQUERY".to_string()),
+			// Text search types - use native variants
+			Type::TsVector => FieldType::TsVector,
+			Type::TsQuery => FieldType::TsQuery,
 
 			// XML type
 			Type::Xml => FieldType::Custom("XML".to_string()),
 
-			// Range types
-			Type::Int4Range => FieldType::Custom("INT4RANGE".to_string()),
-			Type::Int8Range => FieldType::Custom("INT8RANGE".to_string()),
-			Type::NumRange => FieldType::Custom("NUMRANGE".to_string()),
-			Type::TsRange => FieldType::Custom("TSRANGE".to_string()),
-			Type::TsTzRange => FieldType::Custom("TSTZRANGE".to_string()),
-			Type::DateRange => FieldType::Custom("DATERANGE".to_string()),
+			// Range types - use native variants
+			Type::Int4Range => FieldType::Int4Range,
+			Type::Int8Range => FieldType::Int8Range,
+			Type::NumRange => FieldType::NumRange,
+			Type::TsRange => FieldType::TsRange,
+			Type::TsTzRange => FieldType::TsTzRange,
+			Type::DateRange => FieldType::DateRange,
 
 			// Enum types
 			Type::Enum(enum_def) => FieldType::Enum {
