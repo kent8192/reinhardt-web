@@ -112,6 +112,35 @@ pub fn infer_admin_field_type(db_type: &DbFieldType) -> AdminFieldType {
 
 		// Custom types → Text input as fallback
 		DbFieldType::Custom(_) => AdminFieldType::Text,
+
+		// PostgreSQL-specific types
+		// Array types → MultiSelect for simple arrays, TextArea for complex
+		DbFieldType::Array(inner) => match inner.as_ref() {
+			DbFieldType::VarChar(_) | DbFieldType::Text | DbFieldType::CIText => {
+				// String arrays can use MultiSelect
+				AdminFieldType::MultiSelect {
+					choices: Vec::new(), // Choices would be populated dynamically
+				}
+			}
+			_ => AdminFieldType::TextArea, // Complex arrays use TextArea (JSON-like editing)
+		},
+
+		// HStore (key-value store) → TextArea for JSON-like editing
+		DbFieldType::HStore => AdminFieldType::TextArea,
+
+		// CIText (case-insensitive text) → Text input
+		DbFieldType::CIText => AdminFieldType::Text,
+
+		// Range types → TextArea for range editing (e.g., "[1,10)" format)
+		DbFieldType::Int4Range
+		| DbFieldType::Int8Range
+		| DbFieldType::NumRange
+		| DbFieldType::DateRange
+		| DbFieldType::TsRange
+		| DbFieldType::TsTzRange => AdminFieldType::TextArea,
+
+		// Full-text search types → TextArea
+		DbFieldType::TsVector | DbFieldType::TsQuery => AdminFieldType::TextArea,
 	}
 }
 
@@ -760,5 +789,81 @@ mod tests {
 			.with_param("null", "true")
 			.with_param("blank", "true");
 		assert!(!infer_required(&meta));
+	}
+
+	// ──────────────────────────────────────────────────────────────
+	// PostgreSQL-specific field type tests
+	// ──────────────────────────────────────────────────────────────
+
+	#[test]
+	fn test_infer_admin_field_type_postgres_array_string() {
+		// String array → MultiSelect
+		let db_type = DbFieldType::Array(Box::new(DbFieldType::VarChar(255)));
+		let admin_type = infer_admin_field_type(&db_type);
+		assert!(matches!(admin_type, AdminFieldType::MultiSelect { .. }));
+	}
+
+	#[test]
+	fn test_infer_admin_field_type_postgres_array_integer() {
+		// Integer array → TextArea (complex array)
+		let db_type = DbFieldType::Array(Box::new(DbFieldType::Integer));
+		let admin_type = infer_admin_field_type(&db_type);
+		assert_eq!(admin_type, AdminFieldType::TextArea);
+	}
+
+	#[test]
+	fn test_infer_admin_field_type_postgres_hstore() {
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::HStore),
+			AdminFieldType::TextArea
+		);
+	}
+
+	#[test]
+	fn test_infer_admin_field_type_postgres_citext() {
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::CIText),
+			AdminFieldType::Text
+		);
+	}
+
+	#[test]
+	fn test_infer_admin_field_type_postgres_ranges() {
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::Int4Range),
+			AdminFieldType::TextArea
+		);
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::Int8Range),
+			AdminFieldType::TextArea
+		);
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::NumRange),
+			AdminFieldType::TextArea
+		);
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::DateRange),
+			AdminFieldType::TextArea
+		);
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::TsRange),
+			AdminFieldType::TextArea
+		);
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::TsTzRange),
+			AdminFieldType::TextArea
+		);
+	}
+
+	#[test]
+	fn test_infer_admin_field_type_postgres_fulltext() {
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::TsVector),
+			AdminFieldType::TextArea
+		);
+		assert_eq!(
+			infer_admin_field_type(&DbFieldType::TsQuery),
+			AdminFieldType::TextArea
+		);
 	}
 }

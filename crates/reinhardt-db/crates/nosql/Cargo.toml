@@ -21,7 +21,7 @@ mongodb = { version = "3.0", optional = true, features = ["bson-3"] }
 bson = { version = "3.0.0", optional = true }
 
 # Redis dependencies (optional, Phase 2)
-redis = { version = "0.25", optional = true, features = ["tokio-comp", "cluster-async"] }
+redis = { workspace = true, optional = true, features = ["tokio-comp", "cluster-async"] }
 
 # Cassandra dependencies (optional, Phase 3)
 cassandra-cpp = { version = "3.0", optional = true }
@@ -43,8 +43,6 @@ reinhardt-test = { workspace = true, features = ["testcontainers"] }
 uuid = { workspace = true }
 
 [features]
-default = []
-
 # Individual backend features
 mongodb = ["dep:mongodb", "dep:bson"]
 redis = ["dep:redis"]

@@ -39,6 +39,17 @@ pub enum NoSQLBackendType {
 	/// Neo4j
 	#[cfg(feature = "neo4j")]
 	Neo4j,
+	/// Placeholder variant to prevent empty enum when no backend features are enabled.
+	/// This variant is never constructed and exists only for compilation purposes.
+	#[doc(hidden)]
+	#[cfg(not(any(
+		feature = "mongodb",
+		feature = "redis",
+		feature = "cassandra",
+		feature = "dynamodb",
+		feature = "neo4j"
+	)))]
+	__UnusedPlaceholder,
 }
 
 impl NoSQLBackendType {
@@ -55,6 +66,16 @@ impl NoSQLBackendType {
 			NoSQLBackendType::DynamoDB => NoSQLType::KeyValue,
 			#[cfg(feature = "neo4j")]
 			NoSQLBackendType::Neo4j => NoSQLType::Graph,
+			#[cfg(not(any(
+				feature = "mongodb",
+				feature = "redis",
+				feature = "cassandra",
+				feature = "dynamodb",
+				feature = "neo4j"
+			)))]
+			NoSQLBackendType::__UnusedPlaceholder => {
+				unreachable!("__UnusedPlaceholder should never be constructed")
+			}
 		}
 	}
 }

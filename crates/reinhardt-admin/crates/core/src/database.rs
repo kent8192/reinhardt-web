@@ -51,6 +51,12 @@ fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
 		FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
 		FilterValue::Null => sea_query::Value::Int(None),
 		FilterValue::Array(_) => sea_query::Value::String(None),
+		FilterValue::FieldRef(_) => {
+			todo!("FieldRef to sea_query::Value conversion not implemented")
+		}
+		FilterValue::Expression(_) => {
+			todo!("Expression to sea_query::Value conversion not implemented")
+		}
 	}
 }
 

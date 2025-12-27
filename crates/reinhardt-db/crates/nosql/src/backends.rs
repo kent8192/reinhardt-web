@@ -2,16 +2,20 @@
 //!
 //! This module contains concrete implementations of NoSQL backends
 //! for various databases:
-//! - MongoDB (document-oriented)
-//! - Redis (key-value) - TODO
-//! - Cassandra (column-family) - TODO
-//! - DynamoDB (key-value) - TODO
-//! - Neo4j (graph) - TODO
+//! - MongoDB (document-oriented) - Phase 1 (Implemented)
+//! - Redis (key-value) - Phase 2 (Planned)
+//! - Cassandra (column-family) - Phase 3 (Planned)
+//! - DynamoDB (key-value) - Phase 4 (Planned)
+//! - Neo4j (graph) - Phase 4 (Planned)
 
 #[cfg(feature = "mongodb")]
 pub mod mongodb;
 
-// TODO: Implement in future phases
+// Future implementation roadmap (Phase 2-4):
+// - Phase 2: Redis integration
+// - Phase 3: Cassandra integration
+// - Phase 4: DynamoDB & Neo4j integration
+// Uncommenting these modules requires implementing the corresponding backend traits.
 // #[cfg(feature = "redis")]
 // pub mod redis;
 // #[cfg(feature = "cassandra")]

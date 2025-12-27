@@ -55,3 +55,20 @@ reinhardt-params = { workspace = true }
 serde = { workspace = true }
 proptest = { workspace = true }
 rstest = { workspace = true }
+reinhardt-test = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+sea-query = { workspace = true }
+criterion = { workspace = true, features = ["async_tokio"] }
+
+[[bench]]
+name = "cache_performance"
+harness = false
+
+[[bench]]
+name = "depth_sampling"
+harness = false
+
+[[bench]]
+name = "concurrency"
+harness = false
