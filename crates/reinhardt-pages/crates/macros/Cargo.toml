@@ -12,6 +12,9 @@ categories = ["wasm", "web-programming"]
 [lib]
 proc-macro = true
 
+[features]
+default = []
+
 [dependencies]
 # AST definitions shared with formatter
 reinhardt-pages-ast = { path = "../ast" }

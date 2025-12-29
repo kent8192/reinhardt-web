@@ -1,6 +1,6 @@
 //! Code generation for the page! macro.
 //!
-//! This module converts AST nodes into Rust code that uses the ElementView API.
+//! This module converts typed AST nodes into Rust code that uses the ElementView API.
 //!
 //! ## Generated Code Structure
 //!
@@ -31,15 +31,20 @@ use syn::LitStr;
 // Import AST types from reinhardt-pages-ast (re-exported via super)
 use crate::crate_paths::get_reinhardt_pages_crate_info;
 use reinhardt_pages_ast::{
-	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
-	PageIf, PageMacro, PageNode, PageParam, PageText,
+	PageEvent, PageExpression, PageParam, PageText, TypedPageAttr, TypedPageBody,
+	TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
+	TypedPageNode,
 };
 
 /// Generates code for the entire page! macro.
 ///
 /// This function generates conditional code when both `reinhardt` and `reinhardt-pages`
 /// are dependencies, allowing the macro to work correctly for both WASM and server builds.
-pub(super) fn generate(macro_ast: &PageMacro) -> TokenStream {
+///
+/// # Arguments
+///
+/// * `macro_ast` - The validated and typed AST from the validator
+pub(super) fn generate(macro_ast: &TypedPageMacro) -> TokenStream {
 	let crate_info = get_reinhardt_pages_crate_info();
 	let use_statement = &crate_info.use_statement;
 	let pages_crate = &crate_info.ident;
@@ -80,7 +85,7 @@ fn generate_params(params: &[PageParam]) -> TokenStream {
 }
 
 /// Generates code for the page body.
-fn generate_body(body: &PageBody, pages_crate: &TokenStream) -> TokenStream {
+fn generate_body(body: &TypedPageBody, pages_crate: &TokenStream) -> TokenStream {
 	let nodes = generate_nodes(&body.nodes, pages_crate);
 
 	// If there's exactly one node, return it directly
@@ -95,7 +100,7 @@ fn generate_body(body: &PageBody, pages_crate: &TokenStream) -> TokenStream {
 }
 
 /// Generates code for multiple nodes.
-fn generate_nodes(nodes: &[PageNode], pages_crate: &TokenStream) -> TokenStream {
+fn generate_nodes(nodes: &[TypedPageNode], pages_crate: &TokenStream) -> TokenStream {
 	let node_tokens: Vec<TokenStream> = nodes
 		.iter()
 		.map(|n| generate_node(n, pages_crate))
@@ -109,30 +114,30 @@ fn generate_nodes(nodes: &[PageNode], pages_crate: &TokenStream) -> TokenStream 
 }
 
 /// Generates code for a single node.
-fn generate_node(node: &PageNode, pages_crate: &TokenStream) -> TokenStream {
+fn generate_node(node: &TypedPageNode, pages_crate: &TokenStream) -> TokenStream {
 	match node {
-		PageNode::Element(elem) => generate_element(elem, pages_crate),
-		PageNode::Text(text) => generate_text(text, pages_crate),
-		PageNode::Expression(expr) => generate_expression(expr, pages_crate),
-		PageNode::If(if_node) => generate_if(if_node, pages_crate),
-		PageNode::For(for_node) => generate_for(for_node, pages_crate),
-		PageNode::Component(comp) => generate_component(comp, pages_crate),
+		TypedPageNode::Element(elem) => generate_element(elem, pages_crate),
+		TypedPageNode::Text(text) => generate_text(text, pages_crate),
+		TypedPageNode::Expression(expr) => generate_expression(expr, pages_crate),
+		TypedPageNode::If(if_node) => generate_if(if_node, pages_crate),
+		TypedPageNode::For(for_node) => generate_for(for_node, pages_crate),
+		TypedPageNode::Component(comp) => generate_component(comp, pages_crate),
 	}
 }
 
 /// Generates code for an element node.
-fn generate_element(elem: &PageElement, pages_crate: &TokenStream) -> TokenStream {
+///
+/// When the element has event handlers, this function generates conditional compilation
+/// code that:
+/// - On WASM targets: Binds event handlers to DOM events
+/// - On native targets: Suppresses unused variable warnings for captured variables
+///
+/// This allows users to write event handlers once without manual `#[cfg]` annotations.
+fn generate_element(elem: &TypedPageElement, pages_crate: &TokenStream) -> TokenStream {
 	let tag = elem.tag.to_string();
 
 	// Generate attributes
 	let attrs: Vec<TokenStream> = elem.attrs.iter().map(generate_attr).collect();
-
-	// Generate event handlers
-	let events: Vec<TokenStream> = elem
-		.events
-		.iter()
-		.map(|event| generate_event(event, pages_crate))
-		.collect();
 
 	// Generate children
 	let children: Vec<TokenStream> = elem
@@ -141,45 +146,71 @@ fn generate_element(elem: &PageElement, pages_crate: &TokenStream) -> TokenStrea
 		.map(|child| generate_child(child, pages_crate))
 		.collect();
 
-	// Build the element
-	let mut builder = quote! {
+	// Build the base element (attributes and children, without events)
+	let mut base_builder = quote! {
 		#pages_crate::component::ElementView::new(#tag)
 	};
 
 	// Add attributes
-	for attr in attrs {
-		builder = quote! {
-			#builder
+	for attr in &attrs {
+		base_builder = quote! {
+			#base_builder
 			#attr
 		};
 	}
 
-	// Add event handlers
-	for event in events {
-		builder = quote! {
-			#builder
-			#event
-		};
-	}
-
 	// Add children
-	for child in children {
-		builder = quote! {
-			#builder
+	for child in &children {
+		base_builder = quote! {
+			#base_builder
 			.child(#child)
 		};
 	}
 
-	// Convert to View using fully qualified path to avoid needing IntoView in scope
+	// Fast path: no events - simple generation (preserves current behavior)
+	if elem.events.is_empty() {
+		return quote! {
+			#pages_crate::component::IntoView::into_view(#base_builder)
+		};
+	}
+
+	// Has events - generate conditional compilation code
+	// This eliminates the need for users to write #[cfg(target_arch = "wasm32")] blocks
+
+	// Generate event bindings for WASM target
+	let event_bindings: Vec<TokenStream> = elem
+		.events
+		.iter()
+		.map(|event| generate_event(event, pages_crate))
+		.collect();
+
+	// Extract handler expressions for suppressing unused variable warnings on native
+	let handler_exprs: Vec<&syn::Expr> = elem.events.iter().map(|event| &event.handler).collect();
+
 	quote! {
-		#pages_crate::component::IntoView::into_view(#builder)
+		{
+			let __elem_base = #base_builder;
+
+			#[cfg(target_arch = "wasm32")]
+			let __elem_with_events = __elem_base #(#event_bindings)*;
+
+			#[cfg(not(target_arch = "wasm32"))]
+			let __elem_with_events = {
+				// Reference handler closures to suppress unused variable warnings
+				// for captured variables. Using & to reference without executing.
+				#(let _ = &(#handler_exprs);)*
+				__elem_base
+			};
+
+			#pages_crate::component::IntoView::into_view(__elem_with_events)
+		}
 	}
 }
 
 /// Generates code for an attribute.
-fn generate_attr(attr: &PageAttr) -> TokenStream {
+fn generate_attr(attr: &TypedPageAttr) -> TokenStream {
 	let name = attr.html_name();
-	let value = &attr.value;
+	let value = attr.value.to_expr(); // Convert typed value back to Expr
 
 	quote! {
 		.attr(#name, #value)
@@ -250,14 +281,14 @@ fn generate_event(event: &PageEvent, pages_crate: &TokenStream) -> TokenStream {
 }
 
 /// Generates code for a child node (used in .child() calls).
-fn generate_child(node: &PageNode, pages_crate: &TokenStream) -> TokenStream {
+fn generate_child(node: &TypedPageNode, pages_crate: &TokenStream) -> TokenStream {
 	match node {
-		PageNode::Text(text) => {
+		TypedPageNode::Text(text) => {
 			// Create a proper string literal token
 			let lit = LitStr::new(&text.content, Span::call_site());
 			quote!(#lit)
 		}
-		PageNode::Expression(expr) => {
+		TypedPageNode::Expression(expr) => {
 			let e = &expr.expr;
 			quote!(#e)
 		}
@@ -283,16 +314,16 @@ fn generate_expression(expr: &PageExpression, pages_crate: &TokenStream) -> Toke
 }
 
 /// Generates code for an if node.
-fn generate_if(if_node: &PageIf, pages_crate: &TokenStream) -> TokenStream {
+fn generate_if(if_node: &TypedPageIf, pages_crate: &TokenStream) -> TokenStream {
 	let condition = &if_node.condition;
 	let then_branch = generate_if_branch(&if_node.then_branch, pages_crate);
 
 	let else_branch = match &if_node.else_branch {
-		Some(PageElse::Block(nodes)) => {
+		Some(TypedPageElse::Block(nodes)) => {
 			let else_body = generate_if_branch(nodes, pages_crate);
 			quote! { else { #else_body } }
 		}
-		Some(PageElse::If(nested_if)) => {
+		Some(TypedPageElse::If(nested_if)) => {
 			let nested = generate_if(nested_if, pages_crate);
 			quote! { else #nested }
 		}
@@ -309,7 +340,7 @@ fn generate_if(if_node: &PageIf, pages_crate: &TokenStream) -> TokenStream {
 }
 
 /// Generates code for an if branch (then or else block).
-fn generate_if_branch(nodes: &[PageNode], pages_crate: &TokenStream) -> TokenStream {
+fn generate_if_branch(nodes: &[TypedPageNode], pages_crate: &TokenStream) -> TokenStream {
 	if nodes.is_empty() {
 		quote! { #pages_crate::component::View::Empty }
 	} else if nodes.len() == 1 {
@@ -326,7 +357,7 @@ fn generate_if_branch(nodes: &[PageNode], pages_crate: &TokenStream) -> TokenStr
 }
 
 /// Generates code for a for node.
-fn generate_for(for_node: &PageFor, pages_crate: &TokenStream) -> TokenStream {
+fn generate_for(for_node: &TypedPageFor, pages_crate: &TokenStream) -> TokenStream {
 	let pat = &for_node.pat;
 	let iter = &for_node.iter;
 	let body = generate_if_branch(&for_node.body, pages_crate);
@@ -351,7 +382,7 @@ fn generate_for(for_node: &PageFor, pages_crate: &TokenStream) -> TokenStream {
 /// // Generated code
 /// MyButton("Click", false)
 /// ```
-fn generate_component(comp: &PageComponent, pages_crate: &TokenStream) -> TokenStream {
+fn generate_component(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
 	let name = &comp.name;
 
 	// Generate argument values (names are discarded in generated code)
@@ -389,8 +420,12 @@ mod tests {
 	use super::*;
 
 	fn parse_and_generate(input: TokenStream) -> TokenStream {
-		let macro_ast: PageMacro = syn::parse2(input).unwrap();
-		generate(&macro_ast)
+		use reinhardt_pages_ast::PageMacro;
+
+		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
+		// Transform to typed AST
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		generate(&typed_ast)
 	}
 
 	#[test]

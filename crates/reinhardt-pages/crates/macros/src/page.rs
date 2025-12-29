@@ -26,6 +26,8 @@
 //! ```
 
 mod codegen;
+mod html_spec;
+mod validator;
 
 use proc_macro::TokenStream;
 
@@ -34,19 +36,27 @@ pub(crate) use reinhardt_pages_ast::PageMacro;
 
 /// Implementation of the page! macro.
 ///
-/// This function parses the input TokenStream into a PageMacro AST,
-/// then generates the corresponding Rust code.
+/// This function processes input through a three-stage pipeline:
+/// 1. Parse: TokenStream → Untyped AST
+/// 2. Validate + Transform: Untyped AST → Typed AST
+/// 3. Codegen: Typed AST → Rust code
 pub(crate) fn page_impl(input: TokenStream) -> TokenStream {
 	let input2 = proc_macro2::TokenStream::from(input);
 
-	// Parse the input into AST
-	let macro_ast: PageMacro = match syn::parse2(input2) {
+	// 1. Parse: TokenStream → Untyped AST
+	let untyped_ast: PageMacro = match syn::parse2(input2) {
 		Ok(ast) => ast,
 		Err(err) => return err.to_compile_error().into(),
 	};
 
-	// Generate the output code
-	let output = codegen::generate(&macro_ast);
+	// 2. Validate + Transform: Untyped AST → Typed AST
+	let typed_ast = match validator::validate(&untyped_ast) {
+		Ok(ast) => ast,
+		Err(err) => return err.to_compile_error().into(),
+	};
+
+	// 3. Codegen: Typed AST → Rust code
+	let output = codegen::generate(&typed_ast);
 
 	output.into()
 }
@@ -59,8 +69,9 @@ mod tests {
 	#[test]
 	fn test_page_macro_basic() {
 		let input = quote!(|| { div { "hello" } });
-		let ast: PageMacro = syn::parse2(input).unwrap();
-		let output = codegen::generate(&ast);
+		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = validator::validate(&untyped_ast).unwrap();
+		let output = codegen::generate(&typed_ast);
 
 		// Verify it generates valid tokens
 		assert!(!output.is_empty());
@@ -75,8 +86,9 @@ mod tests {
 				span { count.to_string() }
 			}
 		});
-		let ast: PageMacro = syn::parse2(input).unwrap();
-		let output = codegen::generate(&ast);
+		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = validator::validate(&untyped_ast).unwrap();
+		let output = codegen::generate(&typed_ast);
 
 		let output_str = output.to_string();
 		assert!(output_str.contains("name : String"));
@@ -92,8 +104,9 @@ mod tests {
 				"Click me"
 			}
 		});
-		let ast: PageMacro = syn::parse2(input).unwrap();
-		let output = codegen::generate(&ast);
+		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = validator::validate(&untyped_ast).unwrap();
+		let output = codegen::generate(&typed_ast);
 
 		let output_str = output.to_string();
 		assert!(output_str.contains("EventType"));
@@ -116,8 +129,9 @@ mod tests {
 				}
 			}
 		});
-		let ast: PageMacro = syn::parse2(input).unwrap();
-		let output = codegen::generate(&ast);
+		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = validator::validate(&untyped_ast).unwrap();
+		let output = codegen::generate(&typed_ast);
 
 		let output_str = output.to_string();
 		assert!(output_str.contains("\"div\""));
