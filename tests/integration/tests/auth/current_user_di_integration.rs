@@ -4,13 +4,12 @@
 
 use reinhardt_auth::{BaseUser, CurrentUser, DefaultUser, SimpleUser};
 use reinhardt_db::DatabaseConnection;
-use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
-use reinhardt_test::fixtures::{postgres_container, singleton_scope, test_user, TestUser};
+use reinhardt_di::{Injectable, SingletonScope};
+use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
+use reinhardt_test::fixtures::singleton_scope;
 use rstest::*;
-use sea_query::{Expr, PostgresQueryBuilder, Query};
+use sea_query::{Expr, ExprTrait, PostgresQueryBuilder, Query};
 use std::sync::Arc;
-use testcontainers::ContainerAsync;
-use testcontainers_modules::postgres::Postgres;
 use uuid::Uuid;
 
 // ============================================================================
@@ -33,7 +32,7 @@ async fn sanity_current_user_di_basic(singleton_scope: Arc<SingletonScope>) {
 #[rstest]
 #[tokio::test]
 async fn sanity_database_user_load(
-	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Basic user load operation from database
 	let (_container, pool, _port, _url) = postgres_container.await;
@@ -132,7 +131,7 @@ async fn normal_current_user_shared_across_endpoints(test_user: TestUser) {
 #[rstest]
 #[tokio::test]
 async fn normal_current_user_db_query_seaquery(
-	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 	test_user: TestUser,
 ) {
 	// Combine CurrentUser with DB query (SeaQuery)
@@ -283,7 +282,7 @@ async fn abnormal_invalid_user_id_injection() {
 #[rstest]
 #[tokio::test]
 async fn abnormal_deleted_user_current_user(
-	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 	test_user: TestUser,
 ) {
 	// CurrentUser after deleting user from DB
@@ -408,7 +407,7 @@ async fn state_transition_logout_to_anonymous(test_user: TestUser) {
 #[rstest]
 #[tokio::test]
 async fn combination_current_user_session_db(
-	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 	test_user: TestUser,
 ) {
 	// CurrentUser + Session + DB integration

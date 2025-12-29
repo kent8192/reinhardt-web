@@ -2,12 +2,9 @@
 //!
 //! Tests CSRF token generation/verification, session, and reinhardt-forms integration.
 
-use reinhardt_auth::csrf::CsrfProtection;
-use reinhardt_test::fixtures::{postgres_container, test_user, TestUser};
+use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
 use std::sync::Arc;
-use testcontainers::ContainerAsync;
-use testcontainers_modules::postgres::Postgres;
 use uuid::Uuid;
 
 // Note: Actual CSRF implementation is in reinhardt-sessions/src/csrf.rs
@@ -48,7 +45,7 @@ async fn sanity_csrf_token_verification() {
 #[rstest]
 #[tokio::test]
 async fn normal_session_based_csrf_protection(
-	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Session-based CSRF protection (token generation/verification)
 	let (_container, pool, _port, _url) = postgres_container.await;
@@ -132,7 +129,7 @@ async fn normal_csrf_token_ajax_request() {
 #[rstest]
 #[tokio::test]
 async fn normal_csrf_token_auto_regeneration(
-	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Automatic CSRF token regeneration
 	let (_container, pool, _port, _url) = postgres_container.await;
@@ -198,7 +195,7 @@ async fn normal_csrf_token_auto_regeneration(
 #[rstest]
 #[tokio::test]
 async fn normal_csrf_token_shared_across_tabs(
-	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// CSRF token sharing across multiple tabs (via session)
 	let (_container, pool, _port, _url) = postgres_container.await;
@@ -327,7 +324,7 @@ async fn regression_csrf_token_format_backward_compatibility() {
 #[rstest]
 #[tokio::test]
 async fn regression_session_rotation_csrf_validity(
-	#[future] postgres_container: (ContainerAsync<Postgres>, Arc<sqlx::PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// CSRF token validity after session rotation
 	let (_container, pool, _port, _url) = postgres_container.await;
