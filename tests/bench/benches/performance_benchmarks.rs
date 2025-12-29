@@ -33,37 +33,8 @@ struct BenchmarkPost {
 	tags: Vec<String>,
 }
 
-impl reinhardt_orm::Model for BenchmarkUser {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"benchmark_users"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
-
-impl reinhardt_orm::Model for BenchmarkPost {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"benchmark_posts"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(BenchmarkUser, i64, "benchmark_users");
+reinhardt_test::impl_test_model!(BenchmarkPost, i64, "benchmark_posts");
 
 /// Benchmark API client operations
 fn benchmark_api_client_operations(c: &mut Criterion) {

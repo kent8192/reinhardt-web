@@ -376,7 +376,11 @@ version = "0.1.0-alpha.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kent8192/reinhardt-rs"
+homepage = "https://github.com/kent8192/reinhardt-rs"
 authors = ["kent8192 <51869472+kent8192@users.noreply.github.com>"]
+
+[workspace.lints]
+# Workspace-level lints (can be overridden by individual crates)
 
 [workspace.metadata.workspaces]
 # cargo-workspaces configuration

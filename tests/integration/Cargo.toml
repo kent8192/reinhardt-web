@@ -25,6 +25,9 @@ reinhardt-auth = { workspace = true, features = [
   "jwt",
   "sessions",
   "token",
+  "oauth",
+  "database",
+  "redis-sessions",
 ] }
 reinhardt-security = { workspace = true }
 reinhardt-http = { workspace = true }
@@ -139,6 +142,15 @@ linkme = "0.3"
 paste = "1.0"
 tera = "1.19"
 regex = "1.11"
+
+# TOTP/MFA testing
+data-encoding = "2.6"
+totp-lite = "2.0"
+
+# Cryptographic utilities
+rand = "0.8"
+subtle = "2.5"
+hex = "0.4"
 
 # Testing utilities
 tempfile = "3.14"
