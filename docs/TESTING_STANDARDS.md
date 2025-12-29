@@ -1078,12 +1078,12 @@ fn test_modifies_state() {
 
 ❌ **BAD - Global Registry in Tests:**
 ```rust
-use reinhardt_migrations::registry::all_migrations;
+use reinhardt_migrations::registry::{global_registry, MigrationRegistry};
 
 #[test]
 fn test_migration_registration() {
     // ❌ Uses global registry - will conflict with other tests
-    let migrations = all_migrations();
+    let migrations = global_registry().all_migrations();
     assert!(!migrations.is_empty());
 }
 ```

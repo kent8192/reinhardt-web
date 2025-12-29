@@ -236,15 +236,17 @@ Edit `src/config/urls.rs`:
 
 ```rust
 use reinhardt::prelude::*;
-use std::sync::Arc;
+use reinhardt::routes;
 
-pub fn url_patterns() -> Arc<UnifiedRouter> {
-    let router = UnifiedRouter::new()
-        .mount("/api/", users::urls::url_patterns());
-
-    Arc::new(router)
+#[routes]
+pub fn routes() -> UnifiedRouter {
+    UnifiedRouter::new()
+        .mount("/api/", users::urls::url_patterns())
 }
 ```
+
+The `#[routes]` attribute macro automatically registers this function with the
+framework for discovery via the `inventory` crate.
 
 Edit `src/config/apps.rs`:
 

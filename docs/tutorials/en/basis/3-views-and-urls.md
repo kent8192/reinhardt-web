@@ -45,24 +45,6 @@ tokio = { version = "1", features = ["full"] }
 
 ### 2. Create Build Configuration
 
-Create `Trunk.toml`:
-
-```toml
-[build]
-target = "index.html"
-public-url = "/"
-dist = "dist"
-filehash = false
-
-[watch]
-watch = ["src/", "index.html"]
-
-[serve]
-addresses = ["127.0.0.1"]
-port = 8080
-open = false
-```
-
 Create `index.html`:
 
 ```html
@@ -82,6 +64,11 @@ Create `index.html`:
 			</div>
 		</div>
 	</div>
+	<script type="module">
+		// wasm-bindgen generated module
+		import init from './polls_app.js';
+		init();
+	</script>
 </body>
 </html>
 ```
@@ -947,32 +934,45 @@ pub fn main() -> Result<(), JsValue> {
 
 ## Running the Application
 
-### Install Trunk (WASM Build Tool)
+### Install WASM Build Tools (First Time Only)
 
 ```bash
-cargo install trunk
+cargo make install-wasm-tools
 ```
+
+This installs:
+- `wasm32-unknown-unknown` target for Rust
+- `wasm-bindgen-cli` for JavaScript bindings generation
+- `wasm-opt` for optimization (via binaryen)
 
 ### Development Server
 
 ```bash
-trunk serve
+cargo make dev
 ```
 
-Visit `http://127.0.0.1:8080/` in your browser.
+Visit `http://127.0.0.1:8000/` in your browser.
 
 **Features:**
-- Hot reload on code changes
-- Automatic WASM compilation
-- Development server with file watching
+- WASM automatically built before server starts
+- Static files served from same server as API
+- SPA mode with index.html fallback for client-side routing
+
+### Watch Mode (Auto-Rebuild)
+
+```bash
+cargo make dev-watch
+```
+
+This watches for file changes and automatically rebuilds WASM.
 
 ### Production Build
 
 ```bash
-trunk build --release
+cargo make wasm-build-release
 ```
 
-Output files in `dist/` directory.
+Output files in `dist/` directory with optimized WASM.
 
 ## Advanced Routing Patterns
 
@@ -1033,7 +1033,7 @@ In this tutorial, you learned:
 - How to build reactive UI components with `page!` macro and `ElementView`
 - How to use `use_state()` hooks for reactive state management
 - How to set up client-side routing with dynamic parameters
-- How to run development server with Trunk and hot reload
+- How to run development server with `cargo make dev`
 
 ## What's Next?
 

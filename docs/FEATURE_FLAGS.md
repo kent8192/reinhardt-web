@@ -393,10 +393,11 @@ reinhardt-admin startapp myfeature --with-pages
 **Key Features:**
 - Reactive UI components
 - Conditional compilation (`cfg(target_arch = "wasm32")`)
-- Trunk integration for development and build
+- Single-server architecture (API + static files from same server)
 - Bootstrap UI integration
 - History API routing
 - Global state management
+- SPA mode with index.html fallback
 
 **Configuration Example:**
 
@@ -418,14 +419,30 @@ tokio = { version = "1", features = ["full"] }
 **Development Workflow:**
 
 ```bash
-# Install Trunk (WASM build tool)
-cargo install trunk
+# Install WASM build tools (first time only)
+cargo make install-wasm-tools
 
-# Build WASM client
-trunk build
+# Build WASM and start development server
+cargo make dev
 
-# Run development server with hot reload
-trunk serve
+# Or watch mode with auto-rebuild
+cargo make dev-watch
+
+# Production build
+cargo make dev-release
+```
+
+**RunServer Options for WASM Projects:**
+
+```bash
+# Start server with WASM frontend
+cargo run --bin manage runserver --with-pages
+
+# Custom static directory
+cargo run --bin manage runserver --with-pages --static-dir build
+
+# Disable SPA mode (no index.html fallback)
+cargo run --bin manage runserver --with-pages --no-spa
 ```
 
 See [examples/local/examples-twitter](../examples/local/examples-twitter) for a complete implementation.

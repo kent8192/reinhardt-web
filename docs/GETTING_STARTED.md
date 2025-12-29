@@ -64,14 +64,11 @@ For a modern WASM-based frontend with SSR:
 reinhardt-admin startproject my-app --with-pages
 cd my-app
 
-# Install Trunk (if not already installed)
-cargo install trunk
+# Install WASM build tools (first time only)
+cargo make install-wasm-tools
 
-# Build WASM client
-trunk build
-
-# Run development server with hot reload
-trunk serve
+# Build WASM and start development server
+cargo make dev
 ```
 
 This generates a project with 3-layer architecture:
@@ -79,7 +76,7 @@ This generates a project with 3-layer architecture:
 ```
 my-app/
 ├── Cargo.toml
-├── Trunk.toml
+├── Makefile.toml
 ├── index.html
 ├── src/
 │   ├── client/       # WASM UI (runs in browser)
@@ -88,7 +85,14 @@ my-app/
 │   └── ...
 ```
 
-Visit `http://127.0.0.1:8080/` in your browser.
+Visit `http://127.0.0.1:8000/` in your browser.
+
+**Available commands:**
+- `cargo make dev` - Build WASM and start development server
+- `cargo make dev-watch` - Watch mode with auto-rebuild
+- `cargo make dev-release` - Production build with optimized WASM
+- `cargo make wasm-build-dev` - Build WASM only (debug)
+- `cargo make wasm-build-release` - Build WASM only (release, with wasm-opt)
 
 See [examples/local/examples-twitter](../examples/local/examples-twitter) for a complete implementation.
 

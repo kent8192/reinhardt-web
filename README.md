@@ -194,12 +194,12 @@ For a modern WASM-based frontend with SSR:
 reinhardt-admin startproject my-app --with-pages
 cd my-app
 
-# Install Trunk (if not already installed)
-cargo install trunk
+# Install WASM build tools (first time only)
+cargo make install-wasm-tools
 
-# Build and run
-trunk serve
-# Visit http://127.0.0.1:8080/
+# Build WASM and start development server
+cargo make dev
+# Visit http://127.0.0.1:8000/
 ```
 
 ### 3. Run the Development Server
@@ -284,17 +284,21 @@ Include in `src/config/urls.rs`:
 ```rust
 // src/config/urls.rs
 use reinhardt::prelude::*;
-use std::sync::Arc;
+use reinhardt::routes;
 
-pub fn url_patterns() -> Arc<UnifiedRouter> {
+#[routes]
+pub fn routes() -> UnifiedRouter {
 	let router = UnifiedRouter::new();
 
 	// Include app routers
 	// router.include("/api/", users::urls::url_patterns())
 
-	Arc::new(router)
+	router
 }
 ```
+
+The `#[routes]` attribute macro automatically registers this function with the
+framework for discovery via the `inventory` crate.
 
 **Note:** The `reinhardt::prelude` includes commonly used types. Key exports include:
 

@@ -41,6 +41,7 @@ See docs/MODULE_SYSTEM.md for comprehensive module system standards including:
 ### Code Style
 
 **Key Requirements:**
+- **ALL code comments MUST be written in English** (no exceptions)
 - MINIMIZE `.to_string()` calls - prefer borrowing
 - DELETE obsolete code immediately
 - NO deletion record comments in code
@@ -313,6 +314,7 @@ Before submitting code:
 ## Quick Reference
 
 ### ✅ MUST DO
+- Write ALL code comments in English (no exceptions)
 - Use `module.rs` + `module/` directory (NO `mod.rs`)
 - Update docs with code changes (same workflow)
 - Clean up ALL test artifacts
