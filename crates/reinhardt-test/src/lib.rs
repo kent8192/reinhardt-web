@@ -157,6 +157,16 @@ pub use testcontainers_modules;
 #[cfg(feature = "static")]
 pub mod static_files;
 
+// Re-exports for impl_test_model! macro
+#[doc(hidden)]
+pub use paste;
+#[doc(hidden)]
+pub use reinhardt_db::orm::inspection;
+#[doc(hidden)]
+pub use reinhardt_db::orm::relationship;
+#[doc(hidden)]
+pub use reinhardt_db::orm::{FieldSelector, Model};
+
 pub use assertions::*;
 pub use client::{APIClient, ClientError};
 pub use debug::{DebugEntry, DebugPanel, DebugToolbar, SqlQuery, TimingInfo};
@@ -310,4 +320,366 @@ where
 		tokio::time::sleep(interval).await;
 	}
 	Err(format!("Timeout after {:?} waiting for condition", timeout))
+}
+
+/// Helper macro for implementing Model trait with empty Fields for test models
+///
+/// This macro generates the boilerplate code needed for test models that don't use
+/// the full `#[model(...)]` macro. It creates an empty field selector struct and
+/// implements the required Model trait methods.
+///
+/// # Usage
+///
+/// ```ignore
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// struct TestUser {
+///     id: Option<i64>,
+///     name: String,
+/// }
+///
+/// impl_test_model!(TestUser, i64, "test_users");
+/// ```
+///
+/// This expands to:
+/// - A `TestUserFields` struct that implements `FieldSelector`
+/// - A complete `Model` trait implementation for `TestUser`
+///
+/// # Parameters
+///
+/// - `$model`: The model struct name
+/// - `$pk`: The primary key type
+/// - `$table`: The table name as a string literal
+/// - `$app`: The application label as a string literal (optional, defaults to "default")
+/// - `relationships`: Optional relationship definitions (see examples below)
+///
+/// # Constraints
+/// - Model must have an `id: Option<PrimaryKey>` field
+/// - Primary key field name is fixed to `"id"`
+///
+/// # Examples
+///
+/// ## Basic usage
+/// ```ignore
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// struct User {
+///     id: Option<i64>,
+///     name: String,
+/// }
+///
+/// // With app_label
+/// reinhardt_test::impl_test_model!(User, i64, "users", "auth");
+///
+/// // Without app_label (defaults to "default")
+/// reinhardt_test::impl_test_model!(Product, i32, "products");
+/// ```
+///
+/// ## With relationships
+/// ```ignore
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// struct Author {
+///     id: Option<i32>,
+///     name: String,
+/// }
+///
+/// // OneToMany relationship
+/// reinhardt_test::impl_test_model!(
+///     Author, i32, "authors", "test",
+///     relationships: [
+///         (OneToMany, "books", "Book", "author_id", "author")
+///     ]
+/// );
+///
+/// // Multiple relationships
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// struct Book {
+///     id: Option<i32>,
+///     title: String,
+///     author_id: i32,
+///     publisher_id: i32,
+/// }
+///
+/// reinhardt_test::impl_test_model!(
+///     Book, i32, "books", "test",
+///     relationships: [
+///         (ManyToOne, "author", "Author", "author_id", "books"),
+///         (ManyToOne, "publisher", "Publisher", "publisher_id", "books"),
+///         (OneToMany, "reviews", "Review", "book_id", "book")
+///     ]
+/// );
+/// ```
+#[macro_export]
+macro_rules! impl_test_model {
+	// Composite version (OneToMany/ManyToOne + ManyToMany) - HIGHEST PRIORITY MATCHING
+	(
+		$model:ident,
+		$pk:ty,
+		$table:expr,
+		$app:expr,
+		relationships: [
+			$(($rel_type:ident, $rel_name:expr, $related:expr, $fk:expr, $back_pop:expr)),* $(,)?
+		],
+		many_to_many: [
+			$(($m2m_name:expr, $m2m_related:expr, $m2m_through:expr, $m2m_source:expr, $m2m_target:expr)),* $(,)?
+		]
+	) => {
+		$crate::paste::paste! {
+			#[derive(Debug, Clone)]
+			pub struct [<$model Fields>];
+
+			impl $crate::FieldSelector for [<$model Fields>] {
+				fn with_alias(self, _alias: &str) -> Self {
+					self
+				}
+			}
+
+			impl $crate::Model for $model {
+				type PrimaryKey = $pk;
+				type Fields = [<$model Fields>];
+
+				fn table_name() -> &'static str {
+					$table
+				}
+
+				fn app_label() -> &'static str {
+					$app
+				}
+
+				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+					self.id.as_ref()
+				}
+
+				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+					self.id = Some(value);
+				}
+
+				fn primary_key_field() -> &'static str {
+					"id"
+				}
+
+				fn new_fields() -> Self::Fields {
+					[<$model Fields>]
+				}
+
+				fn relationship_metadata() -> Vec<$crate::inspection::RelationInfo> {
+					// OneToMany/ManyToOne/OneToOne relationships
+					let mut relations = vec![
+						$(
+							$crate::inspection::RelationInfo {
+								name: $rel_name.to_string(),
+								relationship_type: $crate::relationship::RelationshipType::$rel_type,
+								related_model: $related.to_string(),
+								foreign_key: Some($fk.to_string()),
+								back_populates: Some($back_pop.to_string()),
+								through_table: None,
+								source_field: None,
+								target_field: None,
+							}
+						),*
+					];
+
+					// ManyToMany relationships
+					relations.extend(vec![
+						$(
+							$crate::inspection::RelationInfo {
+								name: $m2m_name.to_string(),
+								relationship_type: $crate::relationship::RelationshipType::ManyToMany,
+								related_model: $m2m_related.to_string(),
+								foreign_key: None,
+								back_populates: None,
+								through_table: Some($m2m_through.to_string()),
+								source_field: Some($m2m_source.to_string()),
+								target_field: Some($m2m_target.to_string()),
+							}
+						),*
+					]);
+
+					relations
+				}
+			}
+		}
+	};
+
+	// Version with relationships (OneToMany/ManyToOne/OneToOne)
+	(
+		$model:ident,
+		$pk:ty,
+		$table:expr,
+		$app:expr,
+		relationships: [
+			$(($rel_type:ident, $rel_name:expr, $related:expr, $fk:expr, $back_pop:expr)),* $(,)?
+		]
+	) => {
+		$crate::paste::paste! {
+			#[derive(Debug, Clone)]
+			pub struct [<$model Fields>];
+
+			impl $crate::FieldSelector for [<$model Fields>] {
+				fn with_alias(self, _alias: &str) -> Self {
+					self
+				}
+			}
+
+			impl $crate::Model for $model {
+				type PrimaryKey = $pk;
+				type Fields = [<$model Fields>];
+
+				fn table_name() -> &'static str {
+					$table
+				}
+
+				fn app_label() -> &'static str {
+					$app
+				}
+
+				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+					self.id.as_ref()
+				}
+
+				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+					self.id = Some(value);
+				}
+
+				fn primary_key_field() -> &'static str {
+					"id"
+				}
+
+				fn new_fields() -> Self::Fields {
+					[<$model Fields>]
+				}
+
+				fn relationship_metadata() -> Vec<$crate::inspection::RelationInfo> {
+					vec![
+						$(
+							$crate::inspection::RelationInfo {
+								name: $rel_name.to_string(),
+								relationship_type: $crate::relationship::RelationshipType::$rel_type,
+								related_model: $related.to_string(),
+								foreign_key: Some($fk.to_string()),
+								back_populates: Some($back_pop.to_string()),
+								through_table: None,
+								source_field: None,
+								target_field: None,
+							}
+						),*
+					]
+				}
+			}
+		}
+	};
+
+	// ManyToMany only version
+	(
+		$model:ident,
+		$pk:ty,
+		$table:expr,
+		$app:expr,
+		many_to_many: [
+			$(($rel_name:expr, $related:expr, $through:expr, $source:expr, $target:expr)),* $(,)?
+		]
+	) => {
+		$crate::paste::paste! {
+			#[derive(Debug, Clone)]
+			pub struct [<$model Fields>];
+
+			impl $crate::FieldSelector for [<$model Fields>] {
+				fn with_alias(self, _alias: &str) -> Self {
+					self
+				}
+			}
+
+			impl $crate::Model for $model {
+				type PrimaryKey = $pk;
+				type Fields = [<$model Fields>];
+
+				fn table_name() -> &'static str {
+					$table
+				}
+
+				fn app_label() -> &'static str {
+					$app
+				}
+
+				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+					self.id.as_ref()
+				}
+
+				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+					self.id = Some(value);
+				}
+
+				fn primary_key_field() -> &'static str {
+					"id"
+				}
+
+				fn new_fields() -> Self::Fields {
+					[<$model Fields>]
+				}
+
+				fn relationship_metadata() -> Vec<$crate::inspection::RelationInfo> {
+					vec![
+						$(
+							$crate::inspection::RelationInfo {
+								name: $rel_name.to_string(),
+								relationship_type: $crate::relationship::RelationshipType::ManyToMany,
+								related_model: $related.to_string(),
+								foreign_key: None,
+								back_populates: None,
+								through_table: Some($through.to_string()),
+								source_field: Some($source.to_string()),
+								target_field: Some($target.to_string()),
+							}
+						),*
+					]
+				}
+			}
+		}
+	};
+
+	// Version with app_label (no relationships)
+	($model:ident, $pk:ty, $table:expr, $app:expr) => {
+		$crate::paste::paste! {
+			#[derive(Debug, Clone)]
+			pub struct [<$model Fields>];
+
+			impl $crate::FieldSelector for [<$model Fields>] {
+				fn with_alias(self, _alias: &str) -> Self {
+					self
+				}
+			}
+
+			impl $crate::Model for $model {
+				type PrimaryKey = $pk;
+				type Fields = [<$model Fields>];
+
+				fn table_name() -> &'static str {
+					$table
+				}
+
+				fn app_label() -> &'static str {
+					$app
+				}
+
+				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+					self.id.as_ref()
+				}
+
+				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+					self.id = Some(value);
+				}
+
+				fn primary_key_field() -> &'static str {
+					"id"
+				}
+
+				fn new_fields() -> Self::Fields {
+					[<$model Fields>]
+				}
+			}
+		}
+	};
+
+	// Backward compatibility: default app_label
+	($model:ident, $pk:ty, $table:expr) => {
+		$crate::impl_test_model!($model, $pk, $table, "default");
+	};
 }

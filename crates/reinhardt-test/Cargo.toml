@@ -28,7 +28,7 @@ reinhardt-db = { workspace = true, features = ["orm", "backends", "postgres", "m
 reinhardt-di = { workspace = true }
 reinhardt-migrations = { workspace = true }
 reinhardt-views = { workspace = true, features = ["viewsets"] }
-reinhardt-auth = { workspace = true }
+reinhardt-auth = { workspace = true, features = ["jwt", "argon2-hasher", "sessions", "oauth", "token"] }
 reinhardt-server = { workspace = true }
 reinhardt-routers = { workspace = true }
 reinhardt-websockets = { workspace = true, optional = true }
@@ -88,6 +88,9 @@ reinhardt-core = { workspace = true, features = [
 ] }
 reinhardt-utils = { workspace = true, features = ["cache", "static"] }
 reinhardt-pages = { workspace = true }
+
+# Token pasting for macros
+paste = "1.0"
 
 tempfile = "3.8"
 

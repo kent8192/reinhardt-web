@@ -345,6 +345,106 @@ where
 	InjectionContext::builder(singleton_scope).build()
 }
 
+// ============================================================================
+// Server Function Testing with Database Connection
+// ============================================================================
+
+/// Fixture providing an injection context with a SQLite database connection.
+///
+/// This fixture is designed for testing server functions that use `#[inject]`
+/// to receive a `DatabaseConnection`. It creates a temporary SQLite database
+/// and registers the connection in the singleton scope.
+///
+/// # Returns
+///
+/// A tuple containing:
+/// - `tempfile::NamedTempFile`: The temporary database file (must be kept alive)
+/// - `InjectionContext`: The DI context with `DatabaseConnection` registered
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_test::fixtures::injection_context_with_sqlite;
+/// use rstest::*;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_server_function(
+///     #[future] injection_context_with_sqlite: (tempfile::NamedTempFile, reinhardt_di::InjectionContext),
+/// ) {
+///     let (_temp_file, ctx) = injection_context_with_sqlite.await;
+///
+///     // Server functions can now resolve DatabaseConnection from the context
+///     // let result = my_server_function().await;
+/// }
+/// ```
+///
+/// # Note
+///
+/// The `NamedTempFile` must be kept alive for the duration of the test.
+/// When it goes out of scope, the temporary database file will be deleted.
+#[fixture]
+pub async fn injection_context_with_sqlite() -> (tempfile::NamedTempFile, InjectionContext) {
+	use reinhardt_db::orm::connection::DatabaseConnection;
+
+	// Create temp file for SQLite database
+	let temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
+	let db_path = temp_file.path().to_str().unwrap().to_string();
+	let database_url = format!("sqlite://{}?mode=rwc", db_path);
+
+	// Create DatabaseConnection using ORM layer API
+	let db_conn = DatabaseConnection::connect_sqlite(&database_url)
+		.await
+		.expect("Failed to create DatabaseConnection");
+
+	// Build DI context with DatabaseConnection registered in singleton scope
+	let singleton_scope = Arc::new(SingletonScope::new());
+	singleton_scope.set(db_conn);
+
+	let ctx = InjectionContext::builder(singleton_scope).build();
+
+	(temp_file, ctx)
+}
+
+/// Helper function to create an injection context with a custom database URL.
+///
+/// This is useful when you need to connect to a specific database
+/// (e.g., PostgreSQL, MySQL) for testing.
+///
+/// # Arguments
+///
+/// * `database_url` - The database connection URL
+///
+/// # Returns
+///
+/// `InjectionContext` - A configured injection context with `DatabaseConnection` registered
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_test::fixtures::injection_context_with_database;
+///
+/// #[tokio::test]
+/// async fn test_with_postgres() {
+///     let ctx = injection_context_with_database("postgres://localhost/test").await;
+///     // Use ctx for testing
+/// }
+/// ```
+pub async fn injection_context_with_database(database_url: &str) -> InjectionContext {
+	use reinhardt_db::orm::connection::DatabaseConnection;
+
+	// Create DatabaseConnection
+	let db_conn = DatabaseConnection::connect(database_url)
+		.await
+		.expect("Failed to create DatabaseConnection");
+
+	// Build DI context with DatabaseConnection registered
+	let singleton_scope = Arc::new(SingletonScope::new());
+	singleton_scope.set(db_conn);
+
+	InjectionContext::builder(singleton_scope).build()
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

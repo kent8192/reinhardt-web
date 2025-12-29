@@ -166,4 +166,7 @@ pub use migrations::{
 };
 
 // From di module
-pub use di::{injection_context, injection_context_with_overrides, singleton_scope};
+pub use di::{
+	injection_context, injection_context_with_database, injection_context_with_overrides,
+	injection_context_with_sqlite, singleton_scope,
+};

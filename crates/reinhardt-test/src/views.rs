@@ -13,6 +13,16 @@ use std::collections::HashMap;
 // Test Models
 // ============================================================================
 
+/// Dummy field selector for test models
+#[derive(Debug, Clone)]
+pub struct DummyFields;
+
+impl reinhardt_db::orm::FieldSelector for DummyFields {
+	fn with_alias(self, _alias: &str) -> Self {
+		self
+	}
+}
+
 /// Test model for view tests
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TestModel {
@@ -24,6 +34,7 @@ pub struct TestModel {
 
 impl Model for TestModel {
 	type PrimaryKey = i64;
+	type Fields = DummyFields;
 
 	fn table_name() -> &'static str {
 		"test_models"
@@ -35,6 +46,10 @@ impl Model for TestModel {
 
 	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 		self.id = Some(value);
+	}
+
+	fn new_fields() -> Self::Fields {
+		DummyFields
 	}
 }
 
@@ -48,6 +63,7 @@ pub struct ApiTestModel {
 
 impl Model for ApiTestModel {
 	type PrimaryKey = i64;
+	type Fields = DummyFields;
 
 	fn table_name() -> &'static str {
 		"api_test_models"
@@ -59,6 +75,10 @@ impl Model for ApiTestModel {
 
 	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 		self.id = Some(value);
+	}
+
+	fn new_fields() -> Self::Fields {
+		DummyFields
 	}
 }
 
