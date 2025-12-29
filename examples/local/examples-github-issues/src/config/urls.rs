@@ -6,10 +6,8 @@ use async_graphql::{
 	MergedObject, MergedSubscription, Schema,
 	http::{GraphQLPlaygroundConfig, playground_source},
 };
-use reinhardt::db::DatabaseConnection;
-use reinhardt::register_url_patterns;
+use reinhardt::routes;
 use reinhardt::{JwtAuth, Request, Response, StatusCode, UnifiedRouter, ViewResult};
-use std::sync::Arc;
 
 use crate::apps::auth::views::{AuthMutation, AuthQuery, UserStorage};
 use crate::apps::issues::views::{
@@ -113,34 +111,11 @@ pub async fn graphql_playground(_req: Request) -> ViewResult<Response> {
 		.with_body(html))
 }
 
-/// Build URL patterns without admin panel
-///
-/// Use this when database connection is not available
-/// or when you don't need the admin panel.
-pub fn url_patterns() -> Arc<UnifiedRouter> {
-	let router = UnifiedRouter::new()
+/// Build URL patterns for the application
+#[routes]
+pub fn routes() -> UnifiedRouter {
+	UnifiedRouter::new()
 		.endpoint(views::health_check)
 		.function("/graphql", reinhardt::Method::POST, graphql_handler)
-		.function("/graphql", reinhardt::Method::GET, graphql_playground);
-
-	Arc::new(router)
+		.function("/graphql", reinhardt::Method::GET, graphql_playground)
 }
-
-/// Build URL patterns with admin panel
-///
-/// Includes the admin panel under `/admin` prefix.
-///
-/// # Arguments
-///
-/// * `_db` - Database connection for admin CRUD operations
-pub fn url_patterns_with_admin(_db: DatabaseConnection) -> Arc<UnifiedRouter> {
-	let router = UnifiedRouter::new()
-		.endpoint(views::health_check)
-		.function("/graphql", reinhardt::Method::POST, graphql_handler)
-		.function("/graphql", reinhardt::Method::GET, graphql_playground);
-
-	Arc::new(router)
-}
-
-// Register URL patterns with admin panel for automatic discovery by the framework
-register_url_patterns!(admin);

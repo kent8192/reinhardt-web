@@ -1,15 +1,14 @@
-use reinhardt::prelude::*;
-use reinhardt::register_url_patterns;
-use std::sync::Arc;
+//! URL configuration for examples-tutorial-rest project
+//!
+//! The `routes` function defines all URL patterns for this project.
 
-pub fn url_patterns() -> Arc<UnifiedRouter> {
-	let router = UnifiedRouter::new().mount(
+use reinhardt::prelude::*;
+use reinhardt::routes;
+
+#[routes]
+pub fn routes() -> UnifiedRouter {
+	UnifiedRouter::new().mount(
 		"/api/snippets/",
 		crate::apps::snippets::urls::url_patterns(),
-	);
-
-	Arc::new(router)
+	)
 }
-
-// Register URL patterns for automatic discovery by the framework
-register_url_patterns!();

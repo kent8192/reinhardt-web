@@ -16,7 +16,7 @@ use reinhardt::test::fixtures::test_server_guard;
 /// Test GET / endpoint returns "Hello, World!"
 #[tokio::test]
 async fn test_hello_world_endpoint() {
-	let router = examples_hello_world::config::urls::url_patterns();
+	let router = examples_hello_world::config::urls::routes();
 	let server = test_server_guard(router).await;
 
 	// Send GET request to root endpoint
@@ -34,7 +34,7 @@ async fn test_hello_world_endpoint() {
 /// Test GET /health endpoint returns JSON health status
 #[tokio::test]
 async fn test_health_check_endpoint() {
-	let router = examples_hello_world::config::urls::url_patterns();
+	let router = examples_hello_world::config::urls::routes();
 	let server = test_server_guard(router).await;
 
 	// Send GET request to health endpoint
@@ -67,7 +67,7 @@ async fn test_health_check_endpoint() {
 /// Test 404 Not Found for non-existent endpoint
 #[tokio::test]
 async fn test_404_not_found() {
-	let router = examples_hello_world::config::urls::url_patterns();
+	let router = examples_hello_world::config::urls::routes();
 	let server = test_server_guard(router).await;
 
 	// Send GET request to non-existent endpoint
@@ -86,7 +86,7 @@ async fn test_404_not_found() {
 /// Test 405 Method Not Allowed for unsupported HTTP method
 #[tokio::test]
 async fn test_405_method_not_allowed() {
-	let router = examples_hello_world::config::urls::url_patterns();
+	let router = examples_hello_world::config::urls::routes();
 	let server = test_server_guard(router).await;
 
 	// Send POST request to root endpoint (only GET is allowed)

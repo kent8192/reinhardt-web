@@ -16,9 +16,9 @@ use reinhardt::test::fixtures::test_server_guard;
 use rstest::*;
 use serial_test::serial;
 
-// Import the application's url_patterns function and storage
+// Import the application's routes function and storage
 use examples_rest_api::apps::api::storage;
-use examples_rest_api::config::urls::url_patterns;
+use examples_rest_api::config::urls::routes;
 
 // ============================================================================
 // Fixtures
@@ -27,8 +27,8 @@ use examples_rest_api::config::urls::url_patterns;
 #[fixture]
 async fn server() -> reinhardt::test::fixtures::TestServerGuard {
 	// Use the actual application router instead of an empty one
-	let router = url_patterns();
-	test_server_guard(router).await
+	let router = routes();
+	test_server_guard(router.into()).await
 }
 
 // ============================================================================

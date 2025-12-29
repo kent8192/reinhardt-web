@@ -15,7 +15,7 @@ skip_core_tasks = true
 [tasks.runserver]
 description = "Start the development server"
 command = "cargo"
-args = ["run", "--bin", "manage", "runserver"]
+args = ["run", "runserver"]
 
 [tasks.runserver-watch]
 description = "Start the development server with auto-reload (requires bacon)"
@@ -187,11 +187,11 @@ dependencies = ["install-nextest", "install-bacon"]
 
 [tasks.dev]
 description = "Start development environment (checks, builds, runs server)"
-dependencies = ["quality", "build", "runserver"]
+dependencies = ["build", "runserver"]
 
 [tasks.dev-watch]
 description = "Start development with auto-reload"
-dependencies = ["quality", "build", "runserver-watch"]
+dependencies = ["build", "runserver-watch"]
 
 # ============================================================================
 # CI/CD Workflow

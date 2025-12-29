@@ -17,7 +17,7 @@ async fn main() {
 		);
 	}
 
-	// Router registration is now automatic via register_url_patterns! macro
+	// Router registration is now automatic via #[routes] attribute macro
 	// in src/config/urls.rs
 
 	// Execute command from command line
