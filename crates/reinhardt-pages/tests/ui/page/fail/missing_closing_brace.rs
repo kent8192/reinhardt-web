@@ -1,5 +1,7 @@
 //! page! macro with unclosed brace
 
+// reinhardt-fmt: ignore-all
+
 use reinhardt_pages::page;
 
 fn main() {

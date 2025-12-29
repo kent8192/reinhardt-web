@@ -1,0 +1,17 @@
+error: Interactive element <button> cannot be nested inside another interactive element <a>
+  --> tests/ui/page/fail/nested_interactive_elements.rs:15:4
+   |
+15 |             button {
+   |             ^^^^^^
+
+error: Interactive element <button> cannot be nested inside another interactive element <button>
+  --> tests/ui/page/fail/nested_interactive_elements.rs:26:4
+   |
+26 |             button {
+   |             ^^^^^^
+
+error: Interactive element <label> cannot be nested inside another interactive element <select>
+  --> tests/ui/page/fail/nested_interactive_elements.rs:36:4
+   |
+36 |             label {
+   |             ^^^^^

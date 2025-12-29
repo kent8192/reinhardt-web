@@ -1,0 +1,5 @@
+error: Element <img> 'src' attribute must be a string literal
+  --> tests/ui/page/fail/macro_unknown.rs:11:4
+   |
+11 |             src: unknown_macro!("test.png"),
+   |             ^^^

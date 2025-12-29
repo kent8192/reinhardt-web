@@ -26,6 +26,7 @@ fn main() {
 	// Image element (void)
 	let _img = page!(|| {
 		img {
+			src: "/logo.png",
 			class: "logo-image",
 			alt: "Logo",
 		}

@@ -1,5 +1,5 @@
 error: expected an expression
- --> tests/ui/page/fail/invalid_event_syntax.rs:9:11
-  |
-9 |         @click: ,
-  |                 ^
+  --> tests/ui/page/fail/invalid_event_syntax.rs:11:11
+   |
+11 |         @click: ,
+   |                 ^

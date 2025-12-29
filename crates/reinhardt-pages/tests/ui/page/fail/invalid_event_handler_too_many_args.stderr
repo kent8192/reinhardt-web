@@ -1,0 +1,5 @@
+error: Event handler closure must have 0 or 1 arguments, but this closure has 3 arguments
+  --> tests/ui/page/fail/invalid_event_handler_too_many_args.rs:14:12
+   |
+14 |             @click: | a, b, c | { println!("Too many args: {}, {}, {}", a, b, c); },
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

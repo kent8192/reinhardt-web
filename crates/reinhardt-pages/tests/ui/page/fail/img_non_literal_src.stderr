@@ -1,0 +1,11 @@
+error: Element <img> 'src' attribute must be a string literal
+  --> tests/ui/page/fail/img_non_literal_src.rs:15:4
+   |
+15 |             src: image_url.clone(),
+   |             ^^^
+
+error: Element <img> 'src' attribute must be a string literal
+  --> tests/ui/page/fail/img_non_literal_src.rs:23:4
+   |
+23 |             src: get_image_url(),
+   |             ^^^

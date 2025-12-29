@@ -1,0 +1,11 @@
+error: Element <img> 'src' attribute must not be empty
+  --> tests/ui/page/fail/img_empty_src.rs:13:4
+   |
+13 |             src: "",
+   |             ^^^
+
+error: Element <img> 'src' attribute must not be empty
+  --> tests/ui/page/fail/img_empty_src.rs:21:4
+   |
+21 |             src: "   ",
+   |             ^^^

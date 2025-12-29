@@ -1,0 +1,11 @@
+error: Void element <input> cannot have children
+  --> tests/ui/page/fail/void_element_with_children.rs:13:3
+   |
+13 |         input {
+   |         ^^^^^
+
+error: Void element <br> cannot have children
+  --> tests/ui/page/fail/void_element_with_children.rs:20:3
+   |
+20 |         br {
+   |         ^^

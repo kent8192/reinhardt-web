@@ -1,0 +1,17 @@
+error: Invalid data attribute name 'data-'. Must match pattern: data-[a-z][a-z0-9-]*
+  --> tests/ui/page/fail/invalid_data_attribute.rs:14:4
+   |
+14 |             data_: "empty suffix",
+   |             ^^^^^
+
+error: Invalid data attribute name 'data-123'. Must start with a lowercase letter after 'data-'
+  --> tests/ui/page/fail/invalid_data_attribute.rs:22:4
+   |
+22 |             data_123: "starts with number",
+   |             ^^^^^^^^
+
+error: Invalid data attribute name 'data-TestId'. Must match pattern: data-[a-z][a-z0-9-]*
+  --> tests/ui/page/fail/invalid_data_attribute.rs:30:4
+   |
+30 |             data_TestId: "has uppercase",
+   |             ^^^^^^^^^^^

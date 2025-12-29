@@ -1,5 +1,7 @@
 //! page! macro with invalid for loop pattern
 
+// reinhardt-fmt: ignore-all
+
 use reinhardt_pages::page;
 
 fn main() {
@@ -9,9 +11,7 @@ fn main() {
 		for item
 		items {
 			li {
- {
-					item
-				}
+				item
 			}
 		}
 	}

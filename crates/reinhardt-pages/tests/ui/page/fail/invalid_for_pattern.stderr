@@ -1,5 +1,5 @@
 error: expected `in`
-  --> tests/ui/page/fail/invalid_for_pattern.rs:10:3
+  --> tests/ui/page/fail/invalid_for_pattern.rs:12:3
    |
-10 |         items {
+12 |         items {
    |         ^^^^^

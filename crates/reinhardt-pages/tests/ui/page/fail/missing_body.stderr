@@ -1,7 +1,7 @@
 error: unexpected end of input, expected curly braces
- --> tests/ui/page/fail/missing_body.rs:7:17
+ --> tests/ui/page/fail/missing_body.rs:9:17
   |
-7 |     let _invalid = page!(||);
+9 |     let _invalid = page!(||);
   |                    ^^^^^^^^^
   |
   = note: this error originates in the macro `page` (in Nightly builds, run with -Z macro-backtrace for more info)

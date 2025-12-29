@@ -1,5 +1,7 @@
 //! page! macro with unclosed if block
 
+// reinhardt-fmt: ignore-all
+
 use reinhardt_pages::page;
 
 fn main() {

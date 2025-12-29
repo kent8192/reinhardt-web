@@ -35,7 +35,7 @@ fn main() {
 				"External"
 			}
 			button {
-				@click: | _ | { },
+				@click: |_| { },
 				"Inline"
 			}
 		}

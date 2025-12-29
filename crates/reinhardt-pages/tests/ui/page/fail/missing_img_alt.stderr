@@ -1,0 +1,11 @@
+error: Element <img> requires 'alt' attribute for accessibility
+  --> tests/ui/page/fail/missing_img_alt.rs:13:3
+   |
+13 |         img {
+   |         ^^^
+
+error: Element <img> requires 'alt' attribute for accessibility
+  --> tests/ui/page/fail/missing_img_alt.rs:21:4
+   |
+21 |             img {
+   |             ^^^

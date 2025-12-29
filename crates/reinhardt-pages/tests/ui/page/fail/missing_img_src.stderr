@@ -1,0 +1,11 @@
+error: Element <img> requires 'src' attribute
+  --> tests/ui/page/fail/missing_img_src.rs:12:3
+   |
+12 |         img {
+   |         ^^^
+
+error: Element <img> requires 'src' attribute
+  --> tests/ui/page/fail/missing_img_src.rs:20:4
+   |
+20 |             img {
+   |             ^^^

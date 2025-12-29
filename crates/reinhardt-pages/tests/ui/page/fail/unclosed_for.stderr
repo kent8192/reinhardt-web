@@ -1,8 +1,8 @@
 error: mismatched closing delimiter: `)`
-  --> tests/ui/page/fail/unclosed_for.rs:7:44
+  --> tests/ui/page/fail/unclosed_for.rs:9:44
    |
- 7 |     let _invalid = page!(|items: Vec<String>| {
+ 9 |     let _invalid = page!(|items: Vec<String>| {
    |                                               ^ unclosed delimiter
 ...
-13 | });
+15 | });
    |  ^ mismatched closing delimiter
