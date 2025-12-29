@@ -278,11 +278,52 @@ impl SessionModel {
 }
 
 #[cfg(feature = "database")]
+#[derive(Debug, Clone)]
+pub struct SessionModelFields {
+	pub session_key: reinhardt_db::orm::query_fields::Field<SessionModel, String>,
+	pub session_data: reinhardt_db::orm::query_fields::Field<SessionModel, serde_json::Value>,
+	pub expire_date: reinhardt_db::orm::query_fields::Field<SessionModel, DateTime<Utc>>,
+}
+
+#[cfg(feature = "database")]
+impl Default for SessionModelFields {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+#[cfg(feature = "database")]
+impl SessionModelFields {
+	pub fn new() -> Self {
+		Self {
+			session_key: reinhardt_db::orm::query_fields::Field::new(vec!["session_key"]),
+			session_data: reinhardt_db::orm::query_fields::Field::new(vec!["session_data"]),
+			expire_date: reinhardt_db::orm::query_fields::Field::new(vec!["expire_date"]),
+		}
+	}
+}
+
+#[cfg(feature = "database")]
+impl reinhardt_orm::FieldSelector for SessionModelFields {
+	fn with_alias(mut self, alias: &str) -> Self {
+		self.session_key = self.session_key.with_alias(alias);
+		self.session_data = self.session_data.with_alias(alias);
+		self.expire_date = self.expire_date.with_alias(alias);
+		self
+	}
+}
+
+#[cfg(feature = "database")]
 impl Model for SessionModel {
 	type PrimaryKey = String;
+	type Fields = SessionModelFields;
 
 	fn table_name() -> &'static str {
 		"sessions"
+	}
+
+	fn new_fields() -> Self::Fields {
+		SessionModelFields::new()
 	}
 
 	fn primary_key_field() -> &'static str {
