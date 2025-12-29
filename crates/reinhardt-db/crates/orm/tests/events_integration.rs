@@ -47,29 +47,7 @@ impl Article {
 	}
 }
 
-impl Model for Article {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"articles"
-	}
-
-	fn app_label() -> &'static str {
-		"events_test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-
-	fn primary_key_field() -> &'static str {
-		"id"
-	}
-}
+reinhardt_test::impl_test_model!(Article, i32, "articles", "events_test");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct User {
@@ -90,29 +68,7 @@ impl User {
 	}
 }
 
-impl Model for User {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"users"
-	}
-
-	fn app_label() -> &'static str {
-		"events_test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-
-	fn primary_key_field() -> &'static str {
-		"id"
-	}
-}
+reinhardt_test::impl_test_model!(User, i32, "users", "events_test");
 
 // ============================================================================
 // Test Event Listener Implementation

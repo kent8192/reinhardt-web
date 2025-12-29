@@ -47,25 +47,7 @@ impl Article {
 	}
 }
 
-impl Model for Article {
-	type PrimaryKey = i32;
-
-	fn app_label() -> &'static str {
-		"articles"
-	}
-
-	fn table_name() -> &'static str {
-		"articles"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Article, i32, "articles", "articles");
 
 impl SoftDeletable for Article {
 	fn deleted_at(&self) -> Option<DateTime<Utc>> {

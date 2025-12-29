@@ -25,32 +25,10 @@
 use reinhardt_orm::set_operations::CombinedQuery;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sea_query::{Alias, Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};
+use sea_query::Iden;
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
-
-// ============================================================================
-// Table Identifiers
-// ============================================================================
-
-#[derive(Iden)]
-enum Employees {
-	Table,
-	Id,
-	Name,
-	Department,
-	Salary,
-}
-
-#[derive(Iden)]
-enum Contractors {
-	Table,
-	Id,
-	Name,
-	Department,
-	Salary,
-}
 
 // ============================================================================
 // Helper Functions

@@ -53,29 +53,7 @@ impl BulkUser {
 	}
 }
 
-impl Model for BulkUser {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"bulk_users"
-	}
-
-	fn app_label() -> &'static str {
-		"orm_test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-
-	fn primary_key_field() -> &'static str {
-		"id"
-	}
-}
+reinhardt_test::impl_test_model!(BulkUser, i32, "bulk_users", "orm_test");
 
 /// BulkProduct model for testing bulk operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,29 +77,7 @@ impl BulkProduct {
 	}
 }
 
-impl Model for BulkProduct {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"bulk_products"
-	}
-
-	fn app_label() -> &'static str {
-		"orm_test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-
-	fn primary_key_field() -> &'static str {
-		"id"
-	}
-}
+reinhardt_test::impl_test_model!(BulkProduct, i32, "bulk_products", "orm_test");
 
 // ============================================================================
 // Test Table Definitions

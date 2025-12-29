@@ -42,21 +42,7 @@ pub struct Product {
 	pub created_at: DateTime<Utc>,
 }
 
-impl Model for Product {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"products"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Product, i32, "products");
 
 /// Users model for testing NULL lookups
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,21 +53,7 @@ pub struct User {
 	pub age: Option<i32>,
 }
 
-impl Model for User {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"users"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(User, i32, "users");
 
 // ============================================================================
 // Test Helper Functions

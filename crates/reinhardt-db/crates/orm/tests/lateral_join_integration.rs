@@ -39,29 +39,7 @@ struct Author {
 	name: String,
 }
 
-impl Model for Author {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"authors"
-	}
-
-	fn app_label() -> &'static str {
-		"test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-
-	fn primary_key_field() -> &'static str {
-		"id"
-	}
-}
+reinhardt_test::impl_test_model!(Author, i32, "authors", "test");
 
 // ============================================================================
 // Fixtures

@@ -14,11 +14,11 @@
 //! - users(id SERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, active BOOLEAN NOT NULL)
 //! - products(id SERIAL PRIMARY KEY, name TEXT NOT NULL, price BIGINT NOT NULL)
 
-use reinhardt_orm::lambda_stmt::{CACHE_STATS, LambdaStmt, QUERY_CACHE, QueryCache};
+use reinhardt_orm::lambda_stmt::{CACHE_STATS, LambdaStmt, QUERY_CACHE};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
@@ -31,16 +31,7 @@ enum Users {
 	Table,
 	Id,
 	Name,
-	Email,
 	Active,
-}
-
-#[derive(Iden)]
-enum Products {
-	Table,
-	Id,
-	Name,
-	Price,
 }
 
 // ============================================================================

@@ -51,25 +51,7 @@ impl User {
 	}
 }
 
-impl Model for User {
-	type PrimaryKey = i32;
-
-	fn app_label() -> &'static str {
-		"users"
-	}
-
-	fn table_name() -> &'static str {
-		"users"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(User, i32, "users", "users");
 
 impl SoftDeletable for User {
 	fn deleted_at(&self) -> Option<DateTime<Utc>> {
@@ -127,25 +109,7 @@ impl Post {
 	}
 }
 
-impl Model for Post {
-	type PrimaryKey = i32;
-
-	fn app_label() -> &'static str {
-		"posts"
-	}
-
-	fn table_name() -> &'static str {
-		"posts"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Post, i32, "posts", "posts");
 
 impl SoftDeletable for Post {
 	fn deleted_at(&self) -> Option<DateTime<Utc>> {
@@ -203,25 +167,7 @@ impl Comment {
 	}
 }
 
-impl Model for Comment {
-	type PrimaryKey = i32;
-
-	fn app_label() -> &'static str {
-		"comments"
-	}
-
-	fn table_name() -> &'static str {
-		"comments"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Comment, i32, "comments", "comments");
 
 impl Timestamped for Comment {
 	fn created_at(&self) -> DateTime<Utc> {
@@ -260,25 +206,7 @@ impl Product {
 	}
 }
 
-impl Model for Product {
-	type PrimaryKey = i32;
-
-	fn app_label() -> &'static str {
-		"products"
-	}
-
-	fn table_name() -> &'static str {
-		"products"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Product, i32, "products", "products");
 
 impl Timestamped for Product {
 	fn created_at(&self) -> DateTime<Utc> {

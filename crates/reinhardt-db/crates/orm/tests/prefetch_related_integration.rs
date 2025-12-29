@@ -13,10 +13,8 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_orm::inspection::RelationInfo;
 use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_orm::query::FilterOperator;
-use reinhardt_orm::relationship::RelationshipType;
 use reinhardt_orm::{Model, QuerySet};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -46,38 +44,13 @@ impl Author {
 	}
 }
 
-impl Model for Author {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"authors"
-	}
-
-	fn app_label() -> &'static str {
-		"test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-
-	fn relationship_metadata() -> Vec<RelationInfo> {
-		vec![RelationInfo {
-			name: "book".to_string(),
-			relationship_type: RelationshipType::OneToMany,
-			related_model: "Book".to_string(),
-			foreign_key: Some("author_id".to_string()),
-			back_populates: Some("author".to_string()),
-			through_table: None,
-			source_field: None,
-			target_field: None,
-		}]
-	}
-}
+reinhardt_test::impl_test_model!(
+	Author,
+	i32,
+	"authors",
+	"test",
+	relationships: [(OneToMany, "book", "Book", "author_id", "author")]
+);
 
 /// Book model for testing foreign key relationships
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -99,50 +72,14 @@ impl Book {
 	}
 }
 
-impl Model for Book {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"books"
-	}
-
-	fn app_label() -> &'static str {
-		"test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-
-	fn relationship_metadata() -> Vec<RelationInfo> {
-		vec![
-			RelationInfo {
-				name: "review".to_string(),
-				relationship_type: RelationshipType::OneToMany,
-				related_model: "Review".to_string(),
-				foreign_key: Some("book_id".to_string()),
-				back_populates: Some("book".to_string()),
-				through_table: None,
-				source_field: None,
-				target_field: None,
-			},
-			RelationInfo {
-				name: "tag".to_string(),
-				relationship_type: RelationshipType::ManyToMany,
-				related_model: "Tag".to_string(),
-				foreign_key: None,
-				back_populates: Some("books".to_string()),
-				through_table: Some("books_tag".to_string()),
-				source_field: Some("book_id".to_string()),
-				target_field: Some("tag_id".to_string()),
-			},
-		]
-	}
-}
+reinhardt_test::impl_test_model!(
+	Book,
+	i32,
+	"books",
+	"test",
+	relationships: [(OneToMany, "review", "Review", "book_id", "book")],
+	many_to_many: [("tag", "Tag", "books_tag", "book_id", "tag_id")]
+);
 
 /// Publisher model for testing multiple foreign keys
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -157,25 +94,7 @@ impl Publisher {
 	}
 }
 
-impl Model for Publisher {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"publishers"
-	}
-
-	fn app_label() -> &'static str {
-		"test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Publisher, i32, "publishers", "test");
 
 /// Review model for testing nested relationships
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -197,25 +116,7 @@ impl Review {
 	}
 }
 
-impl Model for Review {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"reviews"
-	}
-
-	fn app_label() -> &'static str {
-		"test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Review, i32, "reviews", "test");
 
 /// Tag model for testing many-to-many relationships
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -230,25 +131,7 @@ impl Tag {
 	}
 }
 
-impl Model for Tag {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"tags"
-	}
-
-	fn app_label() -> &'static str {
-		"test"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Tag, i32, "tags", "test");
 
 // ============================================================================
 // Fixtures
