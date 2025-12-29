@@ -432,6 +432,7 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 	let formatter = AstPageFormatter::new();
 	let mut formatted_count = 0;
 	let mut unchanged_count = 0;
+	let mut ignored_count = 0;
 	let mut error_count = 0;
 
 	let total_files = files.len();
@@ -447,15 +448,38 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 		})?;
 
 		match formatter.format(&content) {
-			Ok(formatted) => {
-				if formatted != content {
+			Ok(result) => {
+				// Check if formatting was skipped
+				if let Some(reason) = &result.skipped {
+					use crate::ast_formatter::SkipReason;
+					match reason {
+						SkipReason::NoPageMacro => {
+							// Skip files without page! macros (no logging, no counting)
+							continue;
+						}
+						SkipReason::FileWideMarker | SkipReason::AllMacrosIgnored => {
+							// Log ignored files with reason
+							ignored_count += 1;
+							println!(
+								"{} {} {} ({})",
+								progress.bright_blue(),
+								"Ignored:".yellow(),
+								file_path.display(),
+								reason
+							);
+							continue;
+						}
+					}
+				}
+
+				if result.content != content {
 					if check {
 						// Check mode: report unformatted files
 						println!("{} Would format: {}", progress, file_path.display());
 						formatted_count += 1;
 					} else {
 						// Format mode: write changes
-						std::fs::write(file_path, &formatted).map_err(|e| {
+						std::fs::write(file_path, &result.content).map_err(|e| {
 							reinhardt_commands::CommandError::ExecutionError(format!(
 								"Failed to write {}: {}",
 								file_path.display(),
@@ -473,14 +497,13 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 					}
 				} else {
 					unchanged_count += 1;
-					if verbosity > 0 {
-						println!(
-							"{} {} {}",
-							progress.bright_blue(),
-							"Unchanged:".dimmed(),
-							file_path.display()
-						);
-					}
+					// Always show unchanged files (verbosity condition removed)
+					println!(
+						"{} {} {}",
+						progress.bright_blue(),
+						"Unchanged:".dimmed(),
+						file_path.display()
+					);
 				}
 			}
 			Err(e) => {
@@ -501,10 +524,11 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 	println!();
 	if check {
 		println!(
-			"{}: {} would be formatted, {} unchanged, {} errors",
+			"{}: {} would be formatted, {} unchanged, {} ignored, {} errors",
 			"Summary".bright_cyan(),
 			formatted_count.to_string().yellow(),
 			unchanged_count,
+			ignored_count,
 			if error_count > 0 {
 				error_count.to_string().red()
 			} else {
@@ -513,7 +537,7 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 		);
 	} else {
 		println!(
-			"{}: {} formatted, {} unchanged, {} errors",
+			"{}: {} formatted, {} unchanged, {} ignored, {} errors",
 			"Summary".bright_cyan(),
 			if formatted_count > 0 {
 				formatted_count.to_string().green()
@@ -521,6 +545,7 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 				formatted_count.to_string().dimmed()
 			},
 			unchanged_count,
+			ignored_count,
 			if error_count > 0 {
 				error_count.to_string().red()
 			} else {

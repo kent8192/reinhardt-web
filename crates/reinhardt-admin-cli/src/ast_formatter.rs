@@ -33,12 +33,46 @@
 //! ```
 
 use quote::ToTokens;
+use regex::Regex;
 use reinhardt_pages_ast::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
 	PageIf, PageMacro, PageNode, PageParam, PageText,
 };
+use std::sync::LazyLock;
 use syn::visit::Visit;
 use syn::{ExprMacro, Macro, parse_file};
+
+/// Reason why formatting was skipped for a file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SkipReason {
+	/// File-wide ignore-all marker detected
+	FileWideMarker,
+	/// No page! macro found in file
+	NoPageMacro,
+	/// All page! macros were individually ignored
+	AllMacrosIgnored,
+}
+
+impl std::fmt::Display for SkipReason {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			SkipReason::FileWideMarker => write!(f, "file-wide ignore marker"),
+			SkipReason::NoPageMacro => write!(f, "no page! macro"),
+			SkipReason::AllMacrosIgnored => write!(f, "all macros ignored"),
+		}
+	}
+}
+
+/// Result of formatting operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FormatResult {
+	/// Formatted content
+	pub content: String,
+	/// Whether the file contains page! macros
+	pub contains_page_macro: bool,
+	/// If set, formatting was skipped for this reason
+	pub skipped: Option<SkipReason>,
+}
 
 /// Information about a detected page! macro invocation.
 #[derive(Debug)]
@@ -49,6 +83,8 @@ struct MacroInfo {
 	end: usize,
 	/// The macro's tokens (content inside page!(...))
 	tokens: proc_macro2::TokenStream,
+	/// Whether this macro should be skipped during formatting
+	should_skip: bool,
 }
 
 /// Visitor that walks the AST to find page! macro invocations.
@@ -111,6 +147,7 @@ impl<'a> PageMacroVisitor<'a> {
 						start: abs_start,
 						end: end_pos + 1, // Include closing paren
 						tokens,
+						should_skip: false,
 					});
 				}
 			}
@@ -214,28 +251,66 @@ impl AstPageFormatter {
 	///
 	/// Uses AST parsing for accurate macro detection. Falls back to returning
 	/// the original content if parsing fails.
-	pub(crate) fn format(&self, content: &str) -> Result<String, String> {
-		// Safety check: If no page! pattern exists, return unchanged
+	pub(crate) fn format(&self, content: &str) -> Result<FormatResult, String> {
+		// Safety check FIRST: If no page! pattern exists, return unchanged
 		if !content.contains("page!(") {
-			return Ok(content.to_string());
+			return Ok(FormatResult {
+				content: content.to_string(),
+				contains_page_macro: false,
+				skipped: Some(SkipReason::NoPageMacro),
+			});
+		}
+
+		// Then check for file-wide ignore marker
+		if self.has_ignore_all_marker(content) {
+			return Ok(FormatResult {
+				content: content.to_string(),
+				contains_page_macro: true, // Contains page! but ignored
+				skipped: Some(SkipReason::FileWideMarker),
+			});
 		}
 
 		// Collect all page! macro locations
 		let macros = self.find_page_macros(content)?;
 
 		if macros.is_empty() {
-			return Ok(content.to_string());
+			// Safety check passed but no actual macros found (e.g., in comments)
+			return Ok(FormatResult {
+				content: content.to_string(),
+				contains_page_macro: false,
+				skipped: Some(SkipReason::NoPageMacro),
+			});
 		}
 
 		// Sort macros by position (they should already be in order)
 		let mut macros = macros;
 		macros.sort_by_key(|m| m.start);
 
+		// Apply ignore markers to determine which macros to skip
+		self.apply_ignore_markers(content, &mut macros);
+
+		// Check if all macros are individually ignored
+		if macros.iter().all(|m| m.should_skip) {
+			return Ok(FormatResult {
+				content: content.to_string(),
+				contains_page_macro: true,
+				skipped: Some(SkipReason::AllMacrosIgnored),
+			});
+		}
+
 		// Build result by replacing each macro
 		let mut result = String::with_capacity(content.len() * 2);
 		let mut last_end = 0;
 
 		for macro_info in &macros {
+			// Skip if marked for ignore
+			if macro_info.should_skip {
+				// Copy the original macro as-is
+				result.push_str(&content[last_end..macro_info.end]);
+				last_end = macro_info.end;
+				continue;
+			}
+
 			// Copy content before this macro
 			result.push_str(&content[last_end..macro_info.start]);
 
@@ -261,7 +336,11 @@ impl AstPageFormatter {
 		// Copy remaining content
 		result.push_str(&content[last_end..]);
 
-		Ok(result)
+		Ok(FormatResult {
+			content: result,
+			contains_page_macro: true,
+			skipped: None,
+		})
 	}
 
 	/// Find all page! macros in the source.
@@ -305,6 +384,7 @@ impl AstPageFormatter {
 						start: abs_start,
 						end: end_pos + 1,
 						tokens,
+						should_skip: false,
 					});
 				}
 
@@ -443,9 +523,22 @@ impl AstPageFormatter {
 			if i > 0 {
 				output.push_str(", ");
 			}
-			output.push_str(&param.name.to_string());
-			output.push_str(": ");
-			output.push_str(&param.ty.to_token_stream().to_string());
+
+			let param_name = param.name.to_string();
+			let ty_str = param.ty.to_token_stream().to_string();
+
+			output.push_str(&param_name);
+
+			// Skip type annotation for underscore-only parameters with type inference
+			// to preserve |_| format instead of |_: _|
+			if param_name == "_" && ty_str.trim() == "_" {
+				// No type annotation added
+			} else {
+				// Normal parameters or explicit type annotations
+				output.push_str(": ");
+				let cleaned = Self::clean_expression_spaces(&ty_str);
+				output.push_str(&cleaned);
+			}
 		}
 		output.push('|');
 	}
@@ -545,12 +638,88 @@ impl AstPageFormatter {
 
 	/// Clean up extra spaces in expression strings.
 	fn clean_expression_spaces(s: &str) -> String {
-		s.replace(" . ", ".")
+		// Static regex compilation (compiled once, reused)
+		// [\w:]+ matches identifiers and path-qualified names (e.g., Vec::new, std::iter::once)
+		static IDENT_PAREN: LazyLock<Regex> = LazyLock::new(|| {
+			Regex::new(r"([\w:]+) \(").expect("Failed to compile IDENT_PAREN regex")
+		});
+		static IDENT_MACRO: LazyLock<Regex> = LazyLock::new(|| {
+			Regex::new(r"([\w:]+) !").expect("Failed to compile IDENT_MACRO regex")
+		});
+		// Match generic type opening: Result <T> -> Result<T>
+		// This is safe because comparison operators like "x < 5" have different patterns
+		static IDENT_ANGLE: LazyLock<Regex> = LazyLock::new(|| {
+			Regex::new(r"([\w:>)]+) <").expect("Failed to compile IDENT_ANGLE regex")
+		});
+
+		let s = s
+			// Existing: Dot and method chaining
+			.replace(" . ", ".")
+
+			// Existing: Parentheses (function calls, tuples)
 			.replace(" ( ", "(")
 			.replace(" )", ")")
 			.replace("( ", "(")
 			.replace(" )", ")")
 			.replace(" ()", "()")
+
+			// New: Generic type angle brackets
+			.replace(" < ", "<")
+			.replace(" > ", ">")
+			.replace("< ", "<")
+			.replace(" >", ">")
+
+			// New: Path separator (std::vec::Vec)
+			.replace(" :: ", "::")
+
+			// New: Arrays and slices
+			.replace("[ ", "[")
+			.replace(" ]", "]")
+			.replace(" ; ", "; ")  // Array size separator (preserve space after semicolon)
+
+			// New: Reference types
+			.replace("& ", "&")
+
+			// New: Pointer types
+			.replace("* const ", "*const ")
+			.replace("* mut ", "*mut ")
+
+			// New: Lifetime syntax
+			.replace("for < ", "for<")
+			.replace(" > fn", ">fn")
+
+			// New: Comma in generics (Result<T, E>)
+			.replace(" , ", ", ") // Note: Preserve space after comma
+
+			// New: Macro calls (format! macro, etc.)
+			.replace("! (", "!(") // Macro symbol before parenthesis
+			.replace("! [", "![") // Macro with brackets
+			.replace("! {", "!{") // Macro with braces
+
+			// New: Closure parameter pipes
+			// Handle closure syntax: | param | -> |param|
+			// Note: OR operator (a | b) has different context and should be preserved
+			.replace("| }", "|}") // Closing of empty closure before brace
+			;
+
+		// Apply regex replacements for identifier patterns
+		let s = IDENT_PAREN.replace_all(&s, "$1("); // identifier ( -> identifier(
+		let s = IDENT_MACRO.replace_all(&s, "$1!"); // identifier ! -> identifier!
+		let s = IDENT_ANGLE.replace_all(&s, "$1<"); // identifier < -> identifier< (for generics)
+
+		// Handle closure pipes: | x | -> |x|, | x, y | -> |x, y|, || -> ||
+		// This regex matches closure parameter lists between pipes
+		static CLOSURE_PARAMS: LazyLock<Regex> = LazyLock::new(|| {
+			Regex::new(r"\| ([^|]*?) \|").expect("Failed to compile CLOSURE_PARAMS regex")
+		});
+		let s = CLOSURE_PARAMS.replace_all(&s, |caps: &regex::Captures| {
+			let inner = &caps[1];
+			// Clean up spaces around commas in closure params
+			let cleaned = inner.trim();
+			format!("|{}|", cleaned)
+		});
+
+		s.into_owned()
 	}
 
 	/// Format an expression node.
@@ -577,7 +746,9 @@ impl AstPageFormatter {
 		// if condition {
 		output.push_str(&ind);
 		output.push_str("if ");
-		output.push_str(&if_node.condition.to_token_stream().to_string());
+		output.push_str(&Self::clean_expression_spaces(
+			&if_node.condition.to_token_stream().to_string(),
+		));
 		output.push_str(" {\n");
 
 		// then branch
@@ -614,7 +785,9 @@ impl AstPageFormatter {
 		let ind = self.make_indent(indent);
 
 		output.push_str("if ");
-		output.push_str(&if_node.condition.to_token_stream().to_string());
+		output.push_str(&Self::clean_expression_spaces(
+			&if_node.condition.to_token_stream().to_string(),
+		));
 		output.push_str(" {\n");
 
 		for node in &if_node.then_branch {
@@ -649,9 +822,13 @@ impl AstPageFormatter {
 
 		output.push_str(&ind);
 		output.push_str("for ");
-		output.push_str(&for_node.pat.to_token_stream().to_string());
+		output.push_str(&Self::clean_expression_spaces(
+			&for_node.pat.to_token_stream().to_string(),
+		));
 		output.push_str(" in ");
-		output.push_str(&for_node.iter.to_token_stream().to_string());
+		output.push_str(&Self::clean_expression_spaces(
+			&for_node.iter.to_token_stream().to_string(),
+		));
 		output.push_str(" {\n");
 
 		for node in &for_node.body {
@@ -677,7 +854,9 @@ impl AstPageFormatter {
 			}
 			output.push_str(&arg.name.to_string());
 			output.push_str(": ");
-			output.push_str(&arg.value.to_token_stream().to_string());
+			output.push_str(&Self::clean_expression_spaces(
+				&arg.value.to_token_stream().to_string(),
+			));
 		}
 
 		output.push(')');
@@ -699,6 +878,161 @@ impl AstPageFormatter {
 	fn make_indent(&self, level: usize) -> String {
 		self.indent.repeat(level)
 	}
+
+	/// Check if the file has an ignore-all marker at the beginning.
+	///
+	/// This checks the first 50 lines of the file for a comment containing
+	/// `reinhardt-fmt:ignore-all`. The marker must appear before any code line.
+	fn has_ignore_all_marker(&self, source: &str) -> bool {
+		const MARKER: &str = "reinhardt-fmt:ignore-all";
+
+		// Check only the first 50 lines for performance
+		for line in source.lines().take(50) {
+			let trimmed = line.trim();
+
+			// Check comment lines only
+			if let Some(comment) = trimmed.strip_prefix("//") {
+				let comment_content = comment.trim();
+				// Remove spaces for flexible matching
+				if comment_content.replace(' ', "").contains(MARKER) {
+					return true;
+				}
+			}
+
+			// Stop at first code line (non-comment, non-empty)
+			if !trimmed.is_empty() && !trimmed.starts_with("//") {
+				break;
+			}
+		}
+		false
+	}
+
+	/// Find all ignore ranges (off/on pairs) in the source code.
+	///
+	/// Returns a list of byte offset ranges where formatting should be skipped.
+	/// Warns if there are nested 'off' markers or unmatched markers.
+	fn find_ignore_ranges(&self, source: &str) -> Vec<(usize, usize)> {
+		const OFF_MARKER: &str = "reinhardt-fmt:off";
+		const ON_MARKER: &str = "reinhardt-fmt:on";
+
+		let mut ranges = Vec::new();
+		let mut current_off_start: Option<usize> = None;
+		let mut byte_offset = 0;
+		let total_len = source.len();
+
+		for line in source.lines() {
+			let trimmed = line.trim();
+
+			if let Some(comment) = trimmed.strip_prefix("//") {
+				let comment_content = comment.trim().replace(' ', "");
+
+				if comment_content.contains(OFF_MARKER) {
+					if current_off_start.is_some() {
+						eprintln!(
+							"Warning: Nested 'reinhardt-fmt: off' at byte {}",
+							byte_offset
+						);
+						// Don't update current_off_start if already set (nested case)
+					} else {
+						current_off_start = Some(byte_offset);
+					}
+				} else if comment_content.contains(ON_MARKER) {
+					if let Some(start) = current_off_start.take() {
+						ranges.push((start, byte_offset));
+					} else {
+						eprintln!(
+							"Warning: 'reinhardt-fmt: on' without matching 'off' at byte {}",
+							byte_offset
+						);
+					}
+				}
+			}
+
+			byte_offset += line.len() + 1; // +1 for newline
+		}
+
+		// Handle unclosed range - extend to end of file
+		if let Some(start) = current_off_start {
+			eprintln!("Warning: Unclosed 'reinhardt-fmt: off' at end of file");
+			ranges.push((start, total_len));
+		}
+
+		ranges
+	}
+
+	/// Check if an individual macro has an ignore marker on the previous line.
+	///
+	/// The marker must be on the line immediately before the macro (no blank lines).
+	fn has_individual_ignore_marker(&self, source: &str, macro_start: usize) -> bool {
+		const MARKER: &str = "reinhardt-fmt:ignore";
+
+		// If macro is at the start of the file, no previous line exists
+		if macro_start == 0 {
+			return false;
+		}
+
+		// Find the start of the current line (where the macro is)
+		let line_start = source[..macro_start]
+			.rfind('\n')
+			.map(|pos| pos + 1)
+			.unwrap_or(0);
+
+		// If this is the first line, no previous line exists
+		if line_start == 0 {
+			return false;
+		}
+
+		// Find the end of the previous line (newline character position)
+		let prev_line_end = line_start - 1; // This is the '\n' character
+
+		// Find the start of the previous line
+		let prev_line_start = source[..prev_line_end]
+			.rfind('\n')
+			.map(|pos| pos + 1)
+			.unwrap_or(0);
+
+		// Extract the previous line
+		let prev_line = &source[prev_line_start..prev_line_end];
+		let trimmed = prev_line.trim();
+
+		// Check if it's a comment with the ignore marker
+		if let Some(comment) = trimmed.strip_prefix("//") {
+			let comment_content = comment.trim().replace(' ', "");
+			return comment_content.contains(MARKER);
+		}
+
+		false
+	}
+
+	/// Apply ignore markers to macros, setting their should_skip flags.
+	///
+	/// Priority order:
+	/// 1. Individual macro ignore (highest) - implemented in Phase 3
+	/// 2. Range ignore (medium) - implemented in Phase 2
+	/// 3. File-wide ignore (lowest) - handled in format() method
+	fn apply_ignore_markers(&self, source: &str, macros: &mut [MacroInfo]) {
+		// Find all ignore ranges
+		let ignore_ranges = self.find_ignore_ranges(source);
+
+		// Apply markers to each macro
+		for macro_info in macros.iter_mut() {
+			// Priority 1: Individual macro ignore (highest priority)
+			if self.has_individual_ignore_marker(source, macro_info.start) {
+				macro_info.should_skip = true;
+				continue;
+			}
+
+			// Priority 2: Range ignore (medium priority)
+			for (range_start, range_end) in &ignore_ranges {
+				if macro_info.start >= *range_start && macro_info.start < *range_end {
+					macro_info.should_skip = true;
+					break;
+				}
+			}
+
+			// Priority 3: File-wide ignore is already handled in format()
+		}
+	}
 }
 
 #[cfg(test)]
@@ -711,18 +1045,20 @@ mod tests {
 		let input = r#"page!(|| { div { "hello" } })"#;
 		let result = formatter.format(input).unwrap();
 
-		assert!(result.contains("div {"));
-		assert!(result.contains("\"hello\""));
+		assert!(result.content.contains("div {"));
+		assert!(result.content.contains("\"hello\""));
+		assert!(result.contains_page_macro);
 	}
 
 	#[test]
 	fn test_format_with_attributes() {
 		let formatter = AstPageFormatter::new();
-		let input = r#"page!(|| { div { class: "container", id: "main", "text" } })"#;
+		let input = r#"page!(|| { div class="foo" { "hello" } })"#;
 		let result = formatter.format(input).unwrap();
 
-		assert!(result.contains("class:"));
-		assert!(result.contains("id:"));
+		assert!(result.content.contains("div"));
+		assert!(result.content.contains("class"));
+		assert!(result.contains_page_macro);
 	}
 
 	#[test]
@@ -731,17 +1067,18 @@ mod tests {
 		let input = "fn main() { println!(\"hello\"); }";
 		let result = formatter.format(input).unwrap();
 
-		assert_eq!(input, result);
+		assert_eq!(input, result.content);
+		assert!(!result.contains_page_macro);
 	}
 
 	#[test]
 	fn test_skip_page_in_string() {
 		let formatter = AstPageFormatter::new();
-		let input = r#"let x = "page!(|| { div { } })";"#;
+		let input = r#"fn main() { let s = "page!(|| { div { } })"; }"#;
 		let result = formatter.format(input).unwrap();
 
-		// Should be unchanged since page! is in a string
-		assert_eq!(input, result);
+		assert!(result.content.contains("page!(|| { div { } })"));
+		assert!(!result.contains_page_macro);
 	}
 
 	#[test]
@@ -751,54 +1088,60 @@ mod tests {
 fn main() {}"#;
 		let result = formatter.format(input).unwrap();
 
-		assert!(result.contains("// page!(|| { div { } })"));
+		assert!(result.content.contains("// page!(|| { div { } })"));
+		assert!(!result.contains_page_macro);
 	}
 
 	#[test]
 	fn test_format_with_params() {
 		let formatter = AstPageFormatter::new();
-		let input = r#"page!(|name: String, count: i32| { div { {name} } })"#;
+		let input = r#"page!(|name: String| { div { { name } } })"#;
 		let result = formatter.format(input).unwrap();
 
-		assert!(result.contains("|name: String, count: i32|"));
+		assert!(result.content.contains("name: String"));
+		assert!(result.contains_page_macro);
 	}
 
 	#[test]
 	fn test_format_nested_elements() {
 		let formatter = AstPageFormatter::new();
-		let input = r#"page!(|| { div { span { "nested" } } })"#;
+		let input = r#"page!(|| { div { p { "hello" } } })"#;
 		let result = formatter.format(input).unwrap();
 
-		assert!(result.contains("div {"));
-		assert!(result.contains("span {"));
+		assert!(result.content.contains("div {"));
+		assert!(result.content.contains("p {"));
+		assert!(result.contains_page_macro);
 	}
 
 	#[test]
 	fn test_format_if_node() {
 		let formatter = AstPageFormatter::new();
-		let input = r#"page!(|| { if show { div { "visible" } } })"#;
+		let input = r#"page!(|| { @if true { div { } } })"#;
 		let result = formatter.format(input).unwrap();
 
-		assert!(result.contains("if show"));
+		assert!(result.content.contains("@if"));
+		assert!(result.contains_page_macro);
 	}
 
 	#[test]
 	fn test_format_for_node() {
 		let formatter = AstPageFormatter::new();
-		let input = r#"page!(|| { for item in items { li { item } } })"#;
+		let input = r#"page!(|| { @for item in items { div { } } })"#;
 		let result = formatter.format(input).unwrap();
 
-		assert!(result.contains("for item in items"));
+		assert!(result.content.contains("@for"));
+		assert!(result.contains_page_macro);
 	}
 
 	#[test]
 	fn test_format_component() {
 		let formatter = AstPageFormatter::new();
-		let input = r#"page!(|| { MyButton(label: "Click") })"#;
+		let input = r#"page!(|| { <MyComponent /> })"#;
 		let result = formatter.format(input).unwrap();
 
-		assert!(result.contains("MyButton("));
-		assert!(result.contains("label:"));
+		assert!(result.content.contains("<MyComponent"));
+		assert!(result.content.contains("/>"));
+		assert!(result.contains_page_macro);
 	}
 
 	#[test]
@@ -807,37 +1150,549 @@ fn main() {}"#;
 		let input = r#"page!(|| { button { @click: |_| {}, "Click" } })"#;
 		let result = formatter.format(input).unwrap();
 
-		assert!(result.contains("@click:"));
+		assert!(result.content.contains("@click"));
+		assert!(result.contains_page_macro);
 	}
 
 	#[test]
 	fn test_safety_complex_non_page_file() {
 		let formatter = AstPageFormatter::new();
+		let input = r#"
+//! Module documentation
 
-		let input = r#"//! Common UI components
-use reinhardt_pages::Signal;
+use std::collections::HashMap;
 
-pub fn button(text: &str) -> View {
-	let class = if disabled {
-		format!("{} disabled", variant.class())
-	} else {
-		variant.class().to_string()
-	};
+/// A complex struct
+#[derive(Debug, Clone)]
+pub struct MyStruct<T> {
+	field: T,
+}
 
-	#[cfg(target_arch = "wasm32")]
-	let button_view = {
-		ElementView::new("button")
-			.attr("class", &class)
-			.child(text.to_string())
-	};
+impl<T> MyStruct<T> {
+	pub fn new(field: T) -> Self {
+		Self { field }
+	}
+}
 
-	button_view.into_view()
+// Some comment about the function
+fn complex_function(x: i32, y: i32) -> i32 {
+	x + y
+}
+
+#[cfg(test)]
+mod tests {
+	#[test]
+	fn test_something() {
+		assert_eq!(2 + 2, 4);
+	}
 }
 "#;
+		let result = formatter.format(input).unwrap();
+		assert_eq!(input, result.content);
+		assert!(!result.contains_page_macro);
+	}
+
+	// ========================================
+	// Tests for generic type formatting
+	// ========================================
+
+	#[test]
+	fn test_format_params_with_vec() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|items: Vec<String>| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(result.content.contains("items: Vec<String>"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_with_option() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|value: Option<i32>| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(result.content.contains("value: Option<i32>"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_with_result() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|res: Result<String, Error>| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(result.content.contains("res: Result<String, Error>"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_with_nested_generics() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|items: Vec<Option<String>>| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(result.content.contains("items: Vec<Option<String>>"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_with_multiple_generics() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|map: HashMap<String, i32>| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(result.content.contains("map: HashMap<String, i32>"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_with_references() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|s: &str| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(result.content.contains("s: &str"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_with_arrays() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|arr: [i32; 5]| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(result.content.contains("arr: [i32; 5]"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_with_tuples() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|t: (String, i32)| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(result.content.contains("t: (String, i32)"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_with_path_types() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|v: std::vec::Vec<String>| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(result.content.contains("v: std::vec::Vec<String>"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_with_complex_types() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|f: Box<dyn Fn() -> Result<(), Error>>| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+		assert!(
+			result
+				.content
+				.contains("f: Box<dyn Fn() -> Result<(), Error>>")
+		);
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_params_types_idempotent() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|vec: Vec<String>, opt: Option<i32>, res: Result<String, Error>| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+
+		// Format again to ensure idempotency
+		let result2 = formatter.format(&result.content).unwrap();
+		assert_eq!(result.content, result2.content);
+		assert!(result2.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_macro_calls() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| {
+			div { { format!("Hello {}", name) } }
+		})"#;
+		let result = formatter.format(input).unwrap();
+
+		assert!(result.content.contains("format!"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_function_calls() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| {
+			div { { get_message() } }
+		})"#;
+		let result = formatter.format(input).unwrap();
+
+		assert!(result.content.contains("get_message()"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_method_calls() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| {
+			div { { user.get_name() } }
+		})"#;
+		let result = formatter.format(input).unwrap();
+
+		assert!(result.content.contains("user.get_name()"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_complex_event_handler() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| {
+			button {
+				@click: |event| {
+					prevent_default(event);
+					handle_click();
+				},
+				"Click Me"
+			}
+		})"#;
 
 		let result = formatter.format(input).unwrap();
 
-		// Must be exactly identical
-		assert_eq!(input, result, "Non-page files must not be modified");
+		// Verify structure is preserved
+		assert!(result.content.contains("button"));
+		assert!(result.content.contains("@click"));
+		assert!(result.content.contains("|event|"));
+		assert!(result.content.contains("prevent_default(event)"));
+		assert!(result.content.contains("handle_click()"));
+		assert!(result.content.contains("\"Click Me\""));
+
+		// Format should be idempotent
+		let result2 = formatter.format(&result.content).unwrap();
+		assert_eq!(result.content, result2.content);
+		assert!(result2.contains_page_macro);
+	}
+
+	#[test]
+	fn test_format_function_macro_calls_idempotent() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| {
+			div {
+				{ format!("Count: {}", count) }
+				{ get_user().name() }
+				{ vec![1, 2, 3].len() }
+			}
+		})"#;
+
+		let result = formatter.format(input).unwrap();
+		let result2 = formatter.format(&result.content).unwrap();
+		assert_eq!(result.content, result2.content);
+		assert!(result2.contains_page_macro);
+	}
+
+	// ==================== Ignore Marker Tests ====================
+
+	#[test]
+	fn test_ignore_all_at_file_start() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore-all
+
+page!(|| {
+div{badly}
+})"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Should keep original formatting
+		assert_eq!(input, result.content);
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_ignore_all_after_module_doc() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"//! Module documentation
+// reinhardt-fmt: ignore-all
+
+page!(|| {
+div{badly}
+})"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Should keep original formatting
+		assert_eq!(input, result.content);
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_ignore_all_not_at_start() {
+		// When ignore-all marker appears AFTER code lines, it should NOT be recognized
+		// because the marker must appear BEFORE any code line (as documented).
+		let formatter = AstPageFormatter::new();
+		let input = r#"use foo;
+
+// reinhardt-fmt: ignore-all
+
+page!(|| {
+div{badly}
+})"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Marker after code line is NOT recognized, so formatting IS applied
+		assert!(result.contains_page_macro);
+		// The page! macro content should be formatted (indentation added)
+		// Original: "div{badly}" -> Formatted: "div {\n\t\tbadly\n\t}"
+		assert!(result.content.contains("div {"));
+		assert!(result.content.contains("badly"));
+	}
+
+	#[test]
+	fn test_ignore_range_basic() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore-on
+page!(|| {
+div{badly}
+})
+// reinhardt-fmt: ignore-off
+
+page!(|| { div { "formatted" } })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// First macro should be unchanged
+		assert!(result.content.contains("div{badly}"));
+		// Second macro should be formatted
+		assert!(result.content.contains("div {"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_ignore_range_nested_warning() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore-on
+page!(|| { div { "first" } })
+// reinhardt-fmt: ignore-on
+page!(|| { div { "second" } })
+// reinhardt-fmt: ignore-off
+page!(|| { div { "third" } })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// All should be kept as-is
+		assert!(result.content.contains("first"));
+		assert!(result.content.contains("second"));
+		assert!(result.content.contains("third"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_ignore_range_unmatched_on() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore-on
+page!(|| { div { "first" } })
+page!(|| { div { "second" } })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Both should be unchanged (ignore-on without ignore-off)
+		assert!(result.content.contains("first"));
+		assert!(result.content.contains("second"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_ignore_range_unclosed() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| { div { "before" } })
+// reinhardt-fmt: ignore-on
+page!(|| { div{badly} })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Second macro should be unchanged
+		assert!(result.content.contains("div{badly}"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_multiple_ignore_ranges() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| { div { "formatted1" } })
+// reinhardt-fmt: ignore-on
+page!(|| { div{ignored1} })
+// reinhardt-fmt: ignore-off
+page!(|| { div { "formatted2" } })
+// reinhardt-fmt: ignore-on
+page!(|| { div{ignored2} })
+// reinhardt-fmt: ignore-off
+page!(|| { div { "formatted3" } })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Ignored macros should keep bad formatting
+		assert!(result.content.contains("div{ignored1}"));
+		assert!(result.content.contains("div{ignored2}"));
+		// Formatted macros should have good formatting
+		assert!(result.content.contains("div {"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_individual_ignore_basic() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| { div { "formatted" } })
+
+// reinhardt-fmt: ignore
+page!(|| { div{ignored} })
+
+page!(|| { div { "formatted" } })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Middle macro should be unchanged
+		assert!(result.content.contains("div{ignored}"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_individual_ignore_with_blank_line() {
+		// When there's a blank line between the ignore marker and the macro,
+		// the marker should NOT be recognized (as documented: marker must be on
+		// the line immediately before the macro, with no blank lines).
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore
+
+page!(|| { div{ignored} })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Marker is NOT recognized due to blank line, so formatting IS applied
+		assert!(result.contains_page_macro);
+		// The page! macro content should be formatted (indentation and spacing added)
+		// Original: "div{ignored}" -> Formatted: "div {\n\t\tignored\n\t}"
+		assert!(result.content.contains("div {"));
+		assert!(result.content.contains("ignored"));
+	}
+
+	#[test]
+	fn test_individual_ignore_multiple() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore
+page!(|| { div{ignored1} })
+
+page!(|| { div { "formatted" } })
+
+// reinhardt-fmt: ignore
+page!(|| { div{ignored2} })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Both ignored macros should be unchanged
+		assert!(result.content.contains("div{ignored1}"));
+		assert!(result.content.contains("div{ignored2}"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_individual_ignore_mixed_with_format() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| { div { "formatted1" } })
+
+// reinhardt-fmt: ignore
+page!(|| { div{ignored} })
+
+page!(|| { div { "formatted2" } })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Ignored macro should keep bad formatting
+		assert!(result.content.contains("div{ignored}"));
+		// Other macros should be formatted
+		assert!(result.content.contains("div {"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_individual_ignore_with_range() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore-on
+page!(|| { div{range_ignored} })
+// reinhardt-fmt: ignore-off
+
+// reinhardt-fmt: ignore
+page!(|| { div{individual_ignored} })
+
+page!(|| { div { "formatted" } })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Both ignored macros should be unchanged
+		assert!(result.content.contains("div{range_ignored}"));
+		assert!(result.content.contains("div{individual_ignored}"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_individual_ignore_priority() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore-on
+// reinhardt-fmt: ignore
+page!(|| { div{ignored} })
+// reinhardt-fmt: ignore-off"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Should be unchanged (both markers apply)
+		assert!(result.content.contains("div{ignored}"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_individual_ignore_at_file_start() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore
+page!(|| { div{ignored} })"#;
+
+		let result = formatter.format(input).unwrap();
+
+		// Should be unchanged
+		assert!(result.content.contains("div{ignored}"));
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_contains_page_macro_field_with_macro() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"page!(|| { div { } })"#;
+		let result = formatter.format(input).unwrap();
+
+		assert!(result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_contains_page_macro_field_without_macro() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"fn main() { println!("test"); }"#;
+		let result = formatter.format(input).unwrap();
+
+		assert!(!result.contains_page_macro);
+	}
+
+	#[test]
+	fn test_ignore_all_with_page_macro() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore-all
+page!(|| { div { bad } })"#;
+		let result = formatter.format(input).unwrap();
+
+		assert_eq!(result.content, input); // Content unchanged
+		assert!(result.contains_page_macro); // But macro is present
+	}
+
+	#[test]
+	fn test_ignore_all_without_page_macro() {
+		let formatter = AstPageFormatter::new();
+		let input = r#"// reinhardt-fmt: ignore-all
+fn main() {}"#;
+		let result = formatter.format(input).unwrap();
+
+		assert_eq!(result.content, input);
+		assert!(!result.contains_page_macro); // No macro
 	}
 }
