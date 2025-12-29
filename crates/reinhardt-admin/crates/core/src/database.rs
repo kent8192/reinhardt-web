@@ -26,11 +26,42 @@ pub struct AdminRecord {
 	pub id: Option<i64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct AdminRecordFields {
+	pub id: reinhardt_db::orm::query_fields::Field<AdminRecord, Option<i64>>,
+}
+
+impl Default for AdminRecordFields {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl AdminRecordFields {
+	pub fn new() -> Self {
+		Self {
+			id: reinhardt_db::orm::query_fields::Field::new(vec!["id".to_string()]),
+		}
+	}
+}
+
+impl reinhardt_db::orm::FieldSelector for AdminRecordFields {
+	fn with_alias(mut self, alias: &str) -> Self {
+		self.id = self.id.with_alias(alias);
+		self
+	}
+}
+
 impl Model for AdminRecord {
 	type PrimaryKey = i64;
+	type Fields = AdminRecordFields;
 
 	fn table_name() -> &'static str {
 		"admin_records"
+	}
+
+	fn new_fields() -> Self::Fields {
+		AdminRecordFields::new()
 	}
 
 	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
@@ -907,11 +938,39 @@ mod tests {
 		name: String,
 	}
 
+	#[derive(Debug, Clone)]
+	struct UserFields {
+		pub id: reinhardt_db::orm::query_fields::Field<User, i64>,
+		pub name: reinhardt_db::orm::query_fields::Field<User, String>,
+	}
+
+	impl UserFields {
+		pub fn new() -> Self {
+			Self {
+				id: reinhardt_db::orm::query_fields::Field::new(vec!["id".to_string()]),
+				name: reinhardt_db::orm::query_fields::Field::new(vec!["name".to_string()]),
+			}
+		}
+	}
+
+	impl reinhardt_db::orm::FieldSelector for UserFields {
+		fn with_alias(mut self, alias: &str) -> Self {
+			self.id = self.id.with_alias(alias);
+			self.name = self.name.with_alias(alias);
+			self
+		}
+	}
+
 	impl Model for User {
 		type PrimaryKey = i64;
+		type Fields = UserFields;
 
 		fn table_name() -> &'static str {
 			"users"
+		}
+
+		fn new_fields() -> Self::Fields {
+			UserFields::new()
 		}
 
 		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
