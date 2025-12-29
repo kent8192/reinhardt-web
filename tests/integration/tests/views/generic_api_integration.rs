@@ -6,7 +6,6 @@
 
 use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_core::http::Request;
-use reinhardt_db::orm::Model;
 use reinhardt_serializers::JsonSerializer;
 use reinhardt_views::generic::{
 	CreateAPIView, DestroyAPIView, ListAPIView, ListCreateAPIView, RetrieveDestroyAPIView,
@@ -23,18 +22,7 @@ struct TestArticle {
 	content: String,
 }
 
-impl Model for TestArticle {
-	type PrimaryKey = i64;
-	fn table_name() -> &'static str {
-		"articles"
-	}
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(TestArticle, i64, "articles");
 
 // Helper function to create a test request
 fn create_test_request(method: Method, path: &str) -> Request {
