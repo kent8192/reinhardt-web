@@ -246,7 +246,7 @@ fn test_ngettext_lazy_zero() {
 	activate("fr-FR").unwrap();
 	let msg = lazy_msg.to_string();
 	let result = msg.replace("%(count)d", "0");
-	// French: 0 is singular
+	// In French: 0 uses singular form
 	assert_eq!(result, "0 élément");
 
 	deactivate();

@@ -13,13 +13,13 @@ use std::fmt;
 ///
 /// let lazy = gettext_lazy("Welcome");
 ///
-// Set up translation after creating the lazy string
+/// // Set up translation after creating the lazy string
 /// let mut catalog = MessageCatalog::new("fr");
 /// catalog.add_translation("Welcome", "Bienvenue");
 /// load_catalog("fr", catalog).unwrap();
 /// activate("fr").unwrap();
 ///
-// Translation happens when we use it
+/// // Translation happens when we use it
 /// assert_eq!(lazy.to_string(), "Bienvenue");
 /// ```
 #[derive(Debug, Clone)]
