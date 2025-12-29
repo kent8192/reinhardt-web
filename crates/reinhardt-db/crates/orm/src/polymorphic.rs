@@ -502,8 +502,18 @@ mod tests {
 
 	const COMMENT_TABLE: TableName = TableName::new_const("comments");
 
+	#[derive(Debug, Clone)]
+	struct CommentFields;
+
+	impl crate::FieldSelector for CommentFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	impl Model for Comment {
 		type PrimaryKey = i64;
+		type Fields = CommentFields;
 
 		fn table_name() -> &'static str {
 			COMMENT_TABLE.as_str()
@@ -515,6 +525,14 @@ mod tests {
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			CommentFields
 		}
 	}
 
@@ -528,8 +546,18 @@ mod tests {
 	#[allow(dead_code)]
 	const POST_TABLE: TableName = TableName::new_const("posts");
 
+	#[derive(Debug, Clone)]
+	struct PostFields;
+
+	impl crate::FieldSelector for PostFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	impl Model for Post {
 		type PrimaryKey = i64;
+		type Fields = PostFields;
 
 		fn table_name() -> &'static str {
 			POST_TABLE.as_str()
@@ -541,6 +569,14 @@ mod tests {
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			PostFields
 		}
 	}
 

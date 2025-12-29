@@ -69,6 +69,9 @@ regex = "1.10"
 # Small Vector for stack allocation
 smallvec = "1.13"
 
+# Token pasting for macros
+paste = "1.0"
+
 [dev-dependencies]
 reinhardt-migrations = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }

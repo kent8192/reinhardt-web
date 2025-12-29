@@ -194,6 +194,9 @@ impl DatabaseConnection {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
+	// Allow unused_variables because pool_size is only used with Postgres backend.
+	// MySQL and SQLite backends don't support pool size configuration yet.
+	#[allow(unused_variables)]
 	pub async fn connect_with_pool_size(
 		url: &str,
 		pool_size: Option<u32>,

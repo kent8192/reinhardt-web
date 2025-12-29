@@ -1016,8 +1016,18 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone)]
+	struct TestUserFields;
+
+	impl crate::FieldSelector for TestUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	impl Model for TestUser {
 		type PrimaryKey = i64;
+		type Fields = TestUserFields;
 
 		fn table_name() -> &'static str {
 			"test_user"
@@ -1029,6 +1039,14 @@ mod tests {
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
 		}
 	}
 

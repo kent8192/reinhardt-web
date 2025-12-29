@@ -168,6 +168,10 @@ pub mod query;
 
 pub use manager::{get_connection, init_database, reinitialize_database};
 
+// Re-export paste for macro usage
+#[doc(hidden)]
+pub use paste;
+
 // Core exports - always available
 pub use aggregation::{Aggregate, AggregateFunc, AggregateResult, AggregateValue};
 pub use annotation::{Annotation, AnnotationValue, Expression, Value, When};
@@ -186,9 +190,9 @@ pub use functions::{
 };
 pub use indexes::{BTreeIndex, GinIndex, GistIndex, HashIndex, Index};
 pub use into_primary_key::IntoPrimaryKey;
-pub use model::{Model, SoftDeletable, SoftDelete, Timestamped, Timestamps};
+pub use model::{FieldSelector, Model, SoftDeletable, SoftDelete, Timestamped, Timestamps};
 pub use query_fields::{
-	Comparable, DateTimeType, Field, Lookup, LookupType, LookupValue, NumericType,
+	Comparable, DateTimeType, Field, GroupByFields, Lookup, LookupType, LookupValue, NumericType,
 	QueryFieldCompiler, StringType,
 };
 pub use set_operations::{CombinedQuery, SetOperation, SetOperationBuilder};
