@@ -26,23 +26,72 @@ Core type definitions and abstractions for the Reinhardt framework
 - **Async trait support** - Full async/await support via `async_trait`
 - **Zero-cost abstractions** - All traits compile to efficient code with no runtime overhead
 
+## API Reference
+
+### Core Traits
+
+#### Handler Trait
+- `async fn handle(&self, request: Request) -> Result<Response>`
+  - Process incoming request and return response
+  - Thread-safe (`Send + Sync`)
+- **Blanket implementation** for `Arc<T: Handler>` enables `Arc<dyn Handler>`
+
+#### Middleware Trait
+- `async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response>`
+  - Process request and delegate to next handler in chain
+  - Intercept and modify both request and response
+- `fn should_continue(&self, request: &Request) -> bool`
+  - Determine if this middleware should execute (default: `true`)
+  - Enables O(k) complexity optimization
+
+### Core Types
+
+#### MiddlewareChain
+- `fn new(handler: Arc<dyn Handler>) -> Self`
+  - Create new middleware chain with base handler
+- `fn with_middleware(self, middleware: Arc<dyn Middleware>) -> Self`
+  - Add middleware using builder pattern
+  - Middleware execute in order added
+- `fn add_middleware(&mut self, middleware: Arc<dyn Middleware>)`
+  - Add middleware using mutable reference
+  - Alternative to builder pattern
+
+### Re-exported Types (from reinhardt-http)
+
+#### Request
+- `fn builder() -> RequestBuilder`
+  - Create request builder for fluent construction
+
+#### Response
+- `fn ok() -> Self` - HTTP 200 OK
+- `fn unauthorized() -> Self` - HTTP 401 Unauthorized
+- `fn new(status: StatusCode) -> Self` - Custom status code
+- `fn with_body(self, body: impl Into<Bytes>) -> Self` - Set response body
+- `fn with_stop_chain(self, stop: bool) -> Self` - Control middleware chain execution
+- `fn should_stop_chain(&self) -> bool` - Check if chain should stop
+
 ## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-reinhardt-types = { version = "0.1.0-alpha.1", features = ["http"] }
+reinhardt = { version = "0.1.0-alpha.1", features = ["core"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
 ```
 
-**Note:** The `http` feature is required to use the `Handler` and `Middleware` traits.
+**Note:** The `core` feature (included in `standard` and `full`) is required to use the types from this crate.
 
 ## Usage Examples
 
 ### Basic Handler
 
 ```rust
-use reinhardt_types::{Handler, Request, Response};
+use reinhardt::{Handler, Request, Response, Result};
 use async_trait::async_trait;
-use reinhardt_exception::Result;
 
 struct HelloHandler;
 
@@ -54,17 +103,24 @@ impl Handler for HelloHandler {
 }
 
 // Use the handler
-let handler = HelloHandler;
-let request = Request::get("/");
-let response = handler.handle(request).await?;
+#[tokio::main]
+async fn main() -> Result<()> {
+    let handler = HelloHandler;
+    let request = Request::builder()
+        .method(hyper::Method::GET)
+        .uri("/")
+        .build()
+        .unwrap();
+    let response = handler.handle(request).await?;
+    Ok(())
+}
 ```
 
 ### Middleware
 
 ```rust
-use reinhardt_types::{Middleware, Handler, Request, Response};
+use reinhardt::{Middleware, Handler, Request, Response, Result};
 use async_trait::async_trait;
-use reinhardt_exception::Result;
 use std::sync::Arc;
 
 struct LoggingMiddleware;
@@ -85,9 +141,8 @@ impl Middleware for LoggingMiddleware {
 Optimize performance by skipping middleware when not needed:
 
 ```rust
-use reinhardt_types::{Middleware, Handler, Request, Response};
+use reinhardt::{Middleware, Handler, Request, Response, Result};
 use async_trait::async_trait;
-use reinhardt_exception::Result;
 use std::sync::Arc;
 
 struct AuthMiddleware;
@@ -125,7 +180,7 @@ impl Middleware for AuthMiddleware {
 Compose multiple middleware with automatic chaining:
 
 ```rust
-use reinhardt_types::{MiddlewareChain, Handler, Middleware, Request, Response};
+use reinhardt::{MiddlewareChain, Handler, Middleware, Request, Response};
 use std::sync::Arc;
 
 // Create handler
@@ -154,9 +209,8 @@ Middleware are applied in the order they were added:
 Stop processing early with `Response::with_stop_chain(true)`:
 
 ```rust
-use reinhardt_types::{Middleware, Handler, Request, Response};
+use reinhardt::{Middleware, Handler, Request, Response, Result};
 use async_trait::async_trait;
-use reinhardt_exception::Result;
 use std::sync::Arc;
 
 struct RateLimitMiddleware {
@@ -168,7 +222,8 @@ impl Middleware for RateLimitMiddleware {
     async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
         if self.is_rate_limited(&request) {
             // Stop the chain immediately without calling next handlers
-            return Ok(Response::new(429, "Too Many Requests")
+            return Ok(Response::new(hyper::StatusCode::TOO_MANY_REQUESTS)
+                .with_body("Too Many Requests")
                 .with_stop_chain(true));
         }
         next.handle(request).await
@@ -187,7 +242,7 @@ impl Middleware for RateLimitMiddleware {
 Alternative API for imperative style:
 
 ```rust
-use reinhardt_types::{MiddlewareChain, Handler};
+use reinhardt::{MiddlewareChain, Handler};
 use std::sync::Arc;
 
 let handler = Arc::new(MyHandler);

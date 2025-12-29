@@ -6,6 +6,30 @@ Django-style data validation utilities for Rust.
 
 A comprehensive collection of reusable validators following Django's validator patterns. Provides type-safe validation for common use cases including email addresses, URLs, numeric ranges, string lengths, and custom regex patterns.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["core"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import validators:
+
+```rust
+use reinhardt::validators::{EmailValidator, Validator};
+
+// Or use the prelude for common validators
+use reinhardt::validators::prelude::*;
+```
+
+**Note:** The `core` feature (included in `standard` and `full`) is required to use the validators from this crate.
+
 ## Features
 
 ### Implemented ✓
@@ -391,28 +415,31 @@ assert!(detector.validate("k1a 0b1").is_ok()); // Canada lowercase
 
 **Example**:
 ```rust
-use reinhardt_validators::ImageDimensionValidator;
+use reinhardt::validators::ImageDimensionValidator;
 
 // Basic dimension constraints
 let validator = ImageDimensionValidator::new()
-    .min_width(100)
-    .max_width(1920)
-    .min_height(100)
-    .max_height(1080);
+	.with_min_width(100)
+	.with_max_width(1920)
+	.with_min_height(100)
+	.with_max_height(1080);
 
 // With aspect ratio validation (16:9 with 1% tolerance)
 let hd_validator = ImageDimensionValidator::new()
-    .min_width(1280)
-    .min_height(720)
-    .aspect_ratio(16, 9)
-    .aspect_ratio_tolerance(0.01);
+	.with_min_width(1280)
+	.with_min_height(720)
+	.with_aspect_ratio(16, 9)
+	.with_aspect_ratio_tolerance(0.01);
 
 // Validate from file path
 let result = validator.validate_file("image.jpg");
 
-// Validate from bytes
+// Validate from bytes (in a function context)
+# fn example() -> Result<(), Box<dyn std::error::Error>> {
 let image_bytes: Vec<u8> = std::fs::read("image.png")?;
 let result = validator.validate_bytes(&image_bytes);
+# Ok(())
+# }
 ```
 
 #### Conditional Validation (Implemented ✓)
@@ -425,18 +452,26 @@ let result = validator.validate_bytes(&image_bytes);
 
 **Example**:
 ```rust
-use reinhardt_validators::{ConditionalValidator, MinLengthValidator, Validator};
+use reinhardt::validators::{ConditionalValidator, MinLengthValidator, Validator};
 
 // Apply validation only when condition is true
+// Condition receives &T parameter, validator is boxed
 let validator = ConditionalValidator::when(
-    MinLengthValidator::new(10),
-    || some_condition(), // Closure returns bool
+	|value: &str| value.starts_with("admin_"), // Fn(&T) -> bool
+	Box::new(MinLengthValidator::new(10)),      // Box<dyn Validator<T>>
 );
+
+// Validate admin username (must be at least 10 chars)
+assert!(validator.validate("admin_john").is_ok());
+assert!(validator.validate("admin_j").is_err()); // Too short
+
+// Regular username (no validation applied)
+assert!(validator.validate("john").is_ok());
 
 // Apply validation unless condition is true
 let validator = ConditionalValidator::unless(
-    MinLengthValidator::new(5),
-    || skip_condition(),
+	|value: &str| value.is_empty(),
+	Box::new(MinLengthValidator::new(5)),
 );
 ```
 

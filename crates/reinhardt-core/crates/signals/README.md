@@ -6,15 +6,45 @@ Event-driven hooks for model lifecycle events - Enhanced implementation compatib
 
 Type-safe signal system for decoupled communication between components. Provides lifecycle signals for models, migrations, requests, and custom events. Supports both asynchronous and synchronous signal dispatch patterns with advanced features like middleware, signal composition, and performance monitoring.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["signals"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import signal features:
+
+```rust
+use reinhardt::core::signals::{Signal, post_save, pre_save, post_delete, pre_delete};
+use reinhardt::core::signals::{SignalError, SignalDispatcher, AsyncSignalDispatcher};
+use reinhardt::core::signals::{SignalContext, SignalMetrics};
+```
+
+**Note:** Signal features are included in the `standard` and `full` feature presets.
+
 ## Implemented Features ✓
 
 ### Core Signal System
 
 - **Signal**: Generic event dispatcher with type-safe receivers
+- **SignalName**: Type-safe signal name wrapper with built-in constants
+  - Built-in names: `PRE_SAVE`, `POST_SAVE`, `PRE_DELETE`, `POST_DELETE`, etc.
+  - Custom names: `SignalName::custom("my_signal")`
+  - Validated custom names: `SignalName::custom_validated("my_signal")` (enforces snake_case, prevents reserved names)
 - **SignalDispatcher**: Common trait for all signal dispatchers (async and sync)
 - **AsyncSignalDispatcher**: Trait extending SignalDispatcher with async-specific methods
 - **SignalError**: Error type for signal operations
 - **SignalRegistry**: Global registry for signal management
+  - `get_signal()`: Get or create a signal by `SignalName`
+  - `get_signal_with_string()`: Get or create a signal by string name
+  - Ensures singleton behavior - same signal name returns same instance
 
 ### Signal Connection & Dispatch
 
@@ -142,6 +172,10 @@ Module: `dispatch`
 ### Developer Convenience
 
 - **connect_receiver! Macro**: Simplified receiver connection syntax supporting all connection options
+- **Receiver Registry**: Automatic signal connection via declarative registration
+  - `ReceiverRegistryEntry`: Registry entry for automatic connection
+  - `auto_connect_receivers()`: Connect all registered receivers at once
+  - Used by `#[receiver]` macro for auto-discovery
 
 ## Rust-Specific Enhancements ✓
 
@@ -152,6 +186,166 @@ Module: `dispatch`
 - **Ergonomic Macros**: `connect_receiver!` macro for cleaner syntax
 - **Thread Safety**: RwLock for concurrent receiver access
 - **Performance Monitoring**: Built-in metrics with atomic operations
+
+## Advanced Features ✓
+
+### Signal Batching
+
+Aggregate multiple signal emissions into single dispatches for improved performance.
+
+- **SignalBatcher**: Batches signals based on size and time thresholds
+- **BatchConfig**: Configuration for batch behavior (max size, flush interval)
+- Automatic and manual flush support
+
+### Signal Debugging
+
+Visual debugging tools for signal flow analysis.
+
+- **SignalDebugger**: Middleware for tracking signal execution
+- **DebugEvent**: Records signal events with timestamps
+- **SignalStats**: Statistics about signal performance
+- Generate detailed debug reports
+
+### Dead Letter Queue
+
+Handles failed signals with retry logic and backoff strategies.
+
+- **DeadLetterQueue**: Queue for failed signals
+- **RetryStrategy**: Configurable retry strategies (Immediate, FixedDelay, ExponentialBackoff, LinearBackoff)
+- **DlqConfig**: Configure max retries and queue limits
+
+### Signal History
+
+Track signal emission patterns over time.
+
+- **SignalHistory**: Records signal emissions with timestamps
+- **HistoryEntry**: Single history entry with payload and metadata
+- **HistoryConfig**: Configure history size and filtering
+- Query and analyze past emissions
+
+### Signal Persistence
+
+Store and replay signals from durable storage.
+
+- **PersistentSignal**: Automatically persists signals to storage
+- **SignalStore**: Abstract trait for storage backends
+- **MemoryStore**: In-memory storage implementation
+- **StoredSignal**: Stored signal with metadata
+- Event sourcing support
+
+### Performance Profiling
+
+Detailed performance analysis of signal systems.
+
+- **SignalProfiler**: Middleware for performance tracking
+- **ReceiverProfile**: Per-receiver performance statistics
+- Track execution times (min/max/avg)
+- Identify bottlenecks and slow receivers
+
+### Signal Replay
+
+Replay previously stored signals for debugging and testing.
+
+- **SignalReplayer**: Replay stored signals
+- **ReplayConfig**: Configure replay behavior
+- **ReplaySpeed**: Control replay speed (Instant, Realtime, Fast, Custom)
+- Useful for debugging and event sourcing
+
+### Signal Throttling
+
+Rate-limit signal emissions to protect downstream systems.
+
+- **SignalThrottle**: Throttle signal emissions
+- **ThrottleStrategy**: Various strategies (FixedWindow, SlidingWindow, TokenBucket, LeakyBucket)
+- **ThrottleConfig**: Configure rate limits and window sizes
+
+### Signal Visualization
+
+Generate visual representations of signal connections.
+
+- **SignalGraph**: Graph representation of signal flow
+- **SignalNode**: Nodes in the signal graph (signals, receivers, middleware)
+- **SignalEdge**: Connections between nodes
+- Export to DOT (Graphviz), Mermaid, and ASCII formats
+
+### Documentation Generation
+
+Auto-generate documentation from signal metadata.
+
+- **SignalDocGenerator**: Generate documentation for signals
+- **SignalDocumentation**: Documentation for a single signal
+- **ReceiverDocumentation**: Documentation for receivers
+- Generate markdown documentation
+
+## Integration Features ✓
+
+### ORM Integration
+
+Automatic signal dispatch from ORM operations.
+
+- **OrmSignalAdapter**: Bridges ORM events to signals
+- **OrmEventListener**: Trait for receiving ORM events
+- Automatically dispatches pre_save, post_save, pre_delete, post_delete signals
+
+### Transaction Support
+
+Signals tied to database transaction lifecycle.
+
+- **TransactionContext**: Context for transaction signals
+- **TransactionSignals**: Manual transaction signal control
+- **on_commit()**: Signal for transaction commit
+- **on_rollback()**: Signal for transaction rollback
+- **on_begin()**: Signal for transaction begin
+
+### Distributed Signals
+
+Cross-service signal dispatch via message brokers.
+
+- **DistributedSignal**: Signal that works across services
+- **MessageBroker**: Abstract trait for message brokers
+- **InMemoryBroker**: In-memory broker for testing
+- **DistributedEvent**: Event wrapper with source service info
+- Support for Redis Pub/Sub, RabbitMQ, Kafka (via broker implementations)
+
+### WebSocket Integration
+
+Real-time signal propagation to connected WebSocket clients.
+
+- **WebSocketSignalBridge**: Bridge signals to WebSocket connections
+- **WebSocketMessage**: Message format for WebSocket events
+- Broadcast signals to all connected clients
+- Subscribe/unsubscribe support
+
+### GraphQL Subscriptions
+
+Signal-based GraphQL subscription support.
+
+- **GraphQLSubscriptionBridge**: Bridge signals to GraphQL subscriptions
+- **SubscriptionEvent**: GraphQL subscription event format
+- Connect signals to GraphQL subscription resolvers
+- Stream-based subscription updates
+
+## Dependency Injection Integration ✓
+
+Signals can be integrated with Reinhardt's dependency injection system.
+
+- **InjectableSignal**: Trait for DI-aware signals
+- **ReceiverContext**: Context passed to receivers with DI support
+- Requires `di` feature flag
+- Allows receivers to resolve dependencies from DI container
+
+Example usage:
+
+```rust
+#[cfg(feature = "di")]
+use reinhardt::core::signals::{Signal, InjectableSignal, ReceiverContext};
+
+#[cfg(feature = "di")]
+signal.connect_with_context(|instance, ctx: ReceiverContext| async move {
+    // Resolve dependencies from ctx
+    Ok(())
+});
+```
 
 ## Usage Examples
 

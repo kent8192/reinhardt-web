@@ -63,6 +63,9 @@ Provides compile-time code generation for common patterns.
   - Scope control: `#[inject(scope = Singleton)]` or `#[inject(scope = Request)]`
   - Example:
     ```rust
+    use reinhardt::di::injectable;
+    use std::sync::Arc;
+
     #[injectable]
     fn create_user_service(
         #[inject] db: Arc<Database>,
@@ -84,6 +87,8 @@ Provides compile-time code generation for common patterns.
   - Struct must implement `Clone` (required by `Injectable` trait)
   - Example:
     ```rust
+    use reinhardt::di::injectable;
+
     #[injectable]
     #[derive(Clone)]
     struct UserViewSet {
@@ -108,6 +113,12 @@ Provides compile-time code generation for common patterns.
   - `use_inject = true` is **required** when using `#[inject]` parameters
   - Example:
     ```rust
+    use reinhardt::views::{get, post};
+    use reinhardt::http::{Response, ViewResult};
+    use reinhardt::extractors::{Path, Json};
+    use std::sync::Arc;
+    use uuid::Uuid;
+
     #[get("/users/{<uuid:id>}", use_inject = true)]
     async fn get_user(
         Path(id): Path<Uuid>,
@@ -168,3 +179,100 @@ Provides compile-time code generation for common patterns.
   - DateTime fields: `year()`, `month()`, `day()`, `hour()`
   - All fields: `eq()`, `ne()`, `gt()`, `gte()`, `lt()`, `lte()`
   - Example: `QuerySet::<User>::new().filter(User::email().lower().contains("example.com"))`
+
+#### Model Definition
+
+- **`#[model(...)]`** - Attribute macro for Django-style model definition
+  - Automatically adds `#[derive(Model)]`
+  - Cleaner syntax without explicit `#[derive(Model)]`
+  - Same attributes as `#[derive(Model)]`
+  - Example: `#[model(table_name = "users", app_label = "auth")]`
+
+- **`#[derive(Model)]`** - Derive macro for automatic Model implementation
+  - Implements `Model` trait
+  - Registers model with global ModelRegistry for migrations
+  - Model attributes: `app_label`, `table_name`, `constraints`
+  - Field attributes: `primary_key`, `max_length`, `null`, `blank`, `unique`, `default`, `db_column`, `editable`
+  - Supported types: `i32`, `i64`, `String`, `bool`, `DateTime<Utc>`, `Date`, `Time`, `f32`, `f64`, `Option<T>`
+  - Requires: Named fields, `Serialize`/`Deserialize`, exactly one `primary_key`, `max_length` for String fields
+
+#### ORM Reflection
+
+- **`#[derive(OrmReflectable)]`** - Automatic OrmReflectable implementation
+  - Enables reflection-based field and relationship access
+  - Automatic type inference: `Vec<T>` → collection, `Option<T>` → scalar, primitives → fields
+  - Field attributes: `#[orm_field(type = "Integer")]`, `#[orm_relationship(type = "collection")]`, `#[orm_ignore]`
+  - Supported types: Integer, Float, Boolean, String
+
+#### OpenAPI Schema Generation
+
+- **`#[derive(Schema)]`** - Automatic OpenAPI 3.0 schema generation
+  - Implements `ToSchema` trait
+  - Supports primitives, `Option<T>`, `Vec<T>`, custom types
+  - Documentation comments become field descriptions
+  - Automatic required/optional field detection
+
+#### Application Configuration
+
+- **`#[derive(AppConfig)]`** - AppConfig factory method generation
+  - Generates `config()` method returning `AppConfig`
+  - Attributes: `name` (required), `label` (required), `verbose_name` (optional)
+  - Example: `#[derive(AppConfig)] #[app_config(name = "auth", label = "auth")]`
+
+#### Admin Panel Configuration
+
+- **`#[admin(...)]`** - ModelAdmin configuration with compile-time validation
+  - Implements `ModelAdmin` trait
+  - Required: `for = ModelType`, `name = "ModelName"`
+  - Optional: `list_display`, `list_filter`, `search_fields`, `fields`, `readonly_fields`, `ordering`, `list_per_page`
+  - Compile-time field validation against model
+  - Example: `#[admin(for = User, name = "User", list_display = [id, email, username])]`
+
+#### URL Pattern Registration
+
+- **`#[routes]`** - Attribute macro for automatic URL pattern registration
+  - Registers URL pattern function for framework discovery (via `inventory` crate)
+  - Apply to project-level `routes()` function in `src/config/urls.rs`
+  - Return type must be `UnifiedRouter` (framework handles Arc wrapping internally)
+  - Example:
+    ```rust
+    use reinhardt::prelude::*;
+    use reinhardt::routes;
+
+    #[routes]
+    pub fn routes() -> UnifiedRouter {
+        UnifiedRouter::new()
+            .mount("/api/", api_router())
+    }
+    ```
+
+#### Migration Collection
+
+- **`collect_migrations!`** - Migration registration with global registry
+  - Generates `MigrationProvider` implementation
+  - Registers with global migration registry via `linkme::distributed_slice`
+  - Requires migration modules to export `migration()` function
+
+#### Generic Dependency Injection
+
+- **`#[use_inject]`** - Standalone dependency injection for any function
+  - Transforms functions with `#[inject]` parameters
+  - Removes `#[inject]` parameters from signature
+  - Adds `InjectionContext` parameter
+  - Injects dependencies at function start
+  - Can be used independently of HTTP method macros
+
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["core"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+**Note:** The `core` feature (included in `standard` and `full`) is required to use the macros from this crate.

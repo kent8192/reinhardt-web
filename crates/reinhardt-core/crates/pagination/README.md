@@ -6,6 +6,31 @@ Pagination strategies for Reinhardt framework, inspired by Django REST Framework
 
 Multiple pagination strategies for large datasets. Provides three main pagination styles: PageNumberPagination for traditional page-based pagination, LimitOffsetPagination for SQL-style limit/offset, and CursorPagination for efficient pagination of large datasets without offset performance issues.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["pagination"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import pagination features:
+
+```rust
+use reinhardt::core::pagination::{PageNumberPagination, LimitOffsetPagination, CursorPagination};
+use reinhardt::core::pagination::{Paginator, AsyncPaginator, PaginatedResponse};
+
+// For database cursor pagination
+use reinhardt::core::pagination::{CursorPaginator, HasTimestamp, DatabaseCursor};
+```
+
+**Note:** Pagination features are included in the `standard` and `full` feature presets.
+
 ## Implemented ✓
 
 ### Core Features
@@ -18,6 +43,38 @@ Multiple pagination strategies for large datasets. Provides three main paginatio
   - Elided ranges: `get_elided_page_range()` for long page lists with ellipsis
   - Indexing: `start_index()`, `end_index()`, `len()`, `is_empty()`
   - Direct access: `get()`, `get_slice()`, Index trait support, IntoIterator support
+
+#### Utilities
+
+- **PaginatorImpl** - Enum wrapper for Paginator implementations
+  - Enables `dyn Paginator` compatibility by wrapping concrete pagination types
+  - Variants: `PageNumber`, `LimitOffset`, `Cursor`
+  - Implements both `Paginator` and `AsyncPaginator` traits
+
+#### Relay Pagination Types
+
+GraphQL Relay Cursor Connections Specification-compliant type definitions:
+
+- **Edge<T>** - Relay connection edge (item + cursor)
+  - `node` - The actual data item
+  - `cursor` - Opaque cursor string for this edge
+- **PageInfo** - Pagination metadata for Relay connections
+  - `has_next_page` - Whether more items exist after this page
+  - `has_previous_page` - Whether more items exist before this page
+  - `start_cursor` - Cursor of the first edge
+  - `end_cursor` - Cursor of the last edge
+- **Connection<T>** - Relay connection wrapper
+  - `edges` - List of edges with their cursors
+  - `page_info` - Pagination information
+  - `total_count` - Optional total count of items
+- **RelayPagination** - Relay-style paginator with `first`/`after` and `last`/`before` parameters
+
+#### Configuration
+
+- **ErrorMessages** - Customizable error messages for PageNumberPagination
+  - `invalid_page` - Error message for invalid page parameter
+  - `min_page` - Error message for page numbers less than 1
+  - `no_results` - Error message for pages with no results
 
 ### Pagination Strategies
 
@@ -63,7 +120,18 @@ Cursor-based pagination for consistent results in large, changing datasets.
 
 The `cursor` module provides efficient cursor-based pagination that integrates directly with database queries, achieving **O(k) performance** instead of the O(n) cost of OFFSET/LIMIT pagination.
 
-**Note**: The database cursor types are re-exported at the crate root for convenience.
+**Types:**
+- `Direction` - Pagination direction (`Forward` or `Backward`)
+- `DatabaseCursor` - Database cursor structure (id + timestamp)
+- `CursorPaginator` - O(k) performance paginator
+- `DatabaseCursorPaginatedResponse<T>` - Response type with next/previous cursors
+- `HasTimestamp` trait - Required for models (provides `id()` and `timestamp()` methods)
+- `DatabasePaginationError` - Database cursor pagination errors
+
+**Note**: The database cursor types are re-exported at the crate root with `Database` prefix to avoid naming conflicts:
+- `cursor::Cursor` → `DatabaseCursor`
+- `cursor::CursorPaginatedResponse` → `DatabaseCursorPaginatedResponse`
+- `cursor::PaginationError` → `DatabasePaginationError`
 
 **Performance Characteristics:**
 
@@ -92,7 +160,7 @@ The `cursor` module provides efficient cursor-based pagination that integrates d
 **Usage Example:**
 
 ```rust
-use reinhardt_pagination::{CursorPaginator, HasTimestamp};
+use reinhardt::core::pagination::{CursorPaginator, HasTimestamp};
 
 #[derive(Clone)]
 struct User {
@@ -123,12 +191,23 @@ let page2 = paginator.paginate(&users, page1.next_cursor).unwrap();
 - **Paginator** - Synchronous pagination trait for custom implementations
 - **AsyncPaginator** - Asynchronous pagination trait with `apaginate()` method
 - **SchemaParameter** - OpenAPI/documentation schema generation support
+- **CursorEncoder** - Custom cursor encoding strategy trait
+  - `encode()` - Encode position to opaque cursor string
+  - `decode()` - Decode cursor string to position
+  - Default implementation: `Base64CursorEncoder`
+- **HasTimestamp** - Trait for models with id and timestamp fields (required for database cursor pagination)
+  - `id()` - Get model's unique identifier
+  - `timestamp()` - Get model's timestamp for ordering
+- **OrderingStrategy** - Custom ordering strategy for cursor pagination
+  - Implementations: `CreatedAtOrdering`, `IdOrdering`
 
 ### Builder Pattern
 
 All pagination strategies support fluent builder pattern:
 
 ```rust
+use reinhardt::core::pagination::{PageNumberPagination, LimitOffsetPagination, CursorPagination};
+
 // PageNumberPagination
 let paginator = PageNumberPagination::new()
     .page_size(20)

@@ -6,6 +6,30 @@ Django REST Framework-style content negotiation system
 
 A content negotiation system that determines the optimal response format based on client priorities. Handles Accept header parsing, media type matching, and renderer selection.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["rest"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import negotiation features:
+
+```rust
+use reinhardt::core::negotiation::{ContentNegotiator, MediaType};
+use reinhardt::core::negotiation::detector::ContentTypeDetector;
+use reinhardt::core::negotiation::language::{LanguageNegotiator, Language};
+use reinhardt::core::negotiation::encoding::{EncodingNegotiator, Encoding};
+```
+
+**Note:** Content negotiation features are included in the `rest`, `standard`, and `full` feature presets.
+
 ## Implemented ✓
 
 ### Core Components
@@ -42,6 +66,9 @@ A content negotiation system that determines the optimal response format based o
 - **BaseContentNegotiation trait**: Abstract interface equivalent to DRF's `BaseContentNegotiation`
 - **select_renderer method**: Renderer selection logic
 - **select_parser method**: Parser selection logic (basic implementation)
+- **RendererInfo**: Renderer information structure with media type and format
+  - `media_type`: Selected media type for the renderer
+  - `format`: Format name (e.g., "json", "xml")
 - **NegotiationError**: Error type for negotiation failures
 
 ### Advanced Features
@@ -85,7 +112,7 @@ A content negotiation system that determines the optimal response format based o
 ### Basic Content Negotiation
 
 ```rust
-use reinhardt_negotiation::{ContentNegotiator, MediaType};
+use reinhardt::core::negotiation::{ContentNegotiator, MediaType};
 
 let negotiator = ContentNegotiator::new();
 let available = vec![
@@ -101,7 +128,7 @@ assert_eq!(result.subtype, "html"); // First matching html is selected
 ### Format Parameter Selection
 
 ```rust
-use reinhardt_negotiation::{ContentNegotiator, MediaType};
+use reinhardt::core::negotiation::{ContentNegotiator, MediaType};
 
 let negotiator = ContentNegotiator::new();
 let available = vec![
@@ -117,7 +144,7 @@ assert_eq!(result.unwrap().subtype, "json");
 ### Renderer Selection
 
 ```rust
-use reinhardt_negotiation::{ContentNegotiator, MediaType};
+use reinhardt::core::negotiation::{ContentNegotiator, MediaType};
 
 let negotiator = ContentNegotiator::new();
 let renderers = vec![
@@ -137,7 +164,7 @@ assert_eq!(media_type.subtype, "json");
 ### Content-Type Detection
 
 ```rust
-use reinhardt_negotiation::detector::ContentTypeDetector;
+use reinhardt::core::negotiation::detector::ContentTypeDetector;
 
 let detector = ContentTypeDetector::new();
 
@@ -157,10 +184,37 @@ let media_type = detector.detect(yaml_body.as_bytes());
 assert_eq!(media_type.subtype, "yaml");
 ```
 
+### Accept Header Parsing
+
+```rust
+use reinhardt::core::negotiation::accept::AcceptHeader;
+use reinhardt::core::negotiation::MediaType;
+
+// Parse Accept header
+let accept = AcceptHeader::parse("application/json, text/html;q=0.9, */*;q=0.1");
+assert_eq!(accept.media_types.len(), 3);
+
+// Media types are automatically sorted by quality
+assert_eq!(accept.media_types[0].subtype, "json"); // q=1.0 (default)
+assert_eq!(accept.media_types[1].subtype, "html");  // q=0.9
+
+// Find best match from available types
+let available = vec![
+    MediaType::new("text", "html"),
+    MediaType::new("application", "xml"),
+];
+let best = accept.find_best_match(&available);
+assert_eq!(best.unwrap().subtype, "html");
+
+// Empty Accept header
+let empty = AcceptHeader::empty();
+assert_eq!(empty.media_types.len(), 0);
+```
+
 ### Language Negotiation
 
 ```rust
-use reinhardt_negotiation::language::{LanguageNegotiator, Language};
+use reinhardt::core::negotiation::language::{LanguageNegotiator, Language};
 
 let negotiator = LanguageNegotiator::new();
 let available = vec![
@@ -181,7 +235,7 @@ assert_eq!(result.code, "en");
 ### Encoding Negotiation
 
 ```rust
-use reinhardt_negotiation::encoding::{EncodingNegotiator, Encoding};
+use reinhardt::core::negotiation::encoding::{EncodingNegotiator, Encoding};
 
 let negotiator = EncodingNegotiator::new();
 let available = vec![Encoding::Gzip, Encoding::Brotli, Encoding::Identity];
@@ -198,8 +252,8 @@ assert_eq!(result, Encoding::Identity);
 ### Caching Negotiation Results
 
 ```rust
-use reinhardt_negotiation::cache::{NegotiationCache, CacheKey};
-use reinhardt_negotiation::{ContentNegotiator, MediaType};
+use reinhardt::core::negotiation::cache::{NegotiationCache, CacheKey};
+use reinhardt::core::negotiation::{ContentNegotiator, MediaType};
 
 let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 let negotiator = ContentNegotiator::new();
@@ -224,7 +278,8 @@ assert!(cached.is_some());
 ### Complete Request Processing
 
 ```rust
-use reinhardt_negotiation::prelude::*;
+// Use the prelude for convenience
+use reinhardt::core::negotiation::prelude::*;
 
 // Setup all negotiators
 let content_negotiator = ContentNegotiator::new();

@@ -53,6 +53,12 @@ This parent crate re-exports functionality from the following sub-crates:
   - Range validators
   - Custom validator support
 
+- **Serializers** (`reinhardt-serializers`): Serialization and deserialization
+  - Django REST Framework-inspired field types
+  - Validation system with field and object validators
+  - Recursive serialization with circular reference detection
+  - Arena allocation for high-performance serialization
+
 - **Messages** (`reinhardt-messages`): Flash messages and user notifications
   - Message levels (Debug, Info, Success, Warning, Error)
   - Storage backends (Memory, Session, Cookie, Fallback)
@@ -106,8 +112,6 @@ Available features:
 - `security` (default): Security primitives
 - `validators` (default): Data validation
 - `serializers` (default): Serialization utilities
-- `auth`: Authentication support
-- `argon2-hasher`: Argon2 password hasher (requires `auth`)
 - `http`: HTTP types and traits (requires `types`)
 - `messages`: Flash messaging system
 - `di`: Dependency injection with parameter extraction
@@ -120,7 +124,11 @@ Available features:
 ### Handler and Middleware
 
 ```rust
-use reinhardt_core::{Handler, Middleware, Request, Response, Result};
+// Import from sub-crates
+use reinhardt::core::types::{Handler, Middleware};
+use reinhardt::http::{Request, Response};
+use reinhardt::core::exception::Result;
+use async_trait::async_trait;
 
 // Define a handler
 async fn my_handler(req: Request) -> Result<Response> {
@@ -142,9 +150,9 @@ impl Middleware for LoggingMiddleware {
 ### Error Handling
 
 ```rust
-use reinhardt_core::{Error, Result};
+use reinhardt::core::exception::{Error, Result};
 
-fn validate_user() -> Result<()> {
+fn validate_user(authenticated: bool, authorized: bool) -> Result<()> {
     if !authenticated {
         return Err(Error::Authentication("Invalid credentials".into()));
     }
@@ -158,18 +166,27 @@ fn validate_user() -> Result<()> {
 ### Signals
 
 ```rust
-use reinhardt_core::{Signal, SignalDispatcher};
+use reinhardt::core::signals::{Signal, SignalDispatcher};
+use std::sync::Arc;
 
-// Define a signal
-static USER_CREATED: Signal<User> = Signal::new();
+#[derive(Debug, Clone)]
+struct User {
+    name: String,
+}
 
-// Connect a receiver
-USER_CREATED.connect(|user| {
-    println!("User created: {}", user.name);
-});
+// Connect a receiver to the signal
+async fn setup_signal() {
+    let signal = Signal::<User>::new();
 
-// Send signal
-USER_CREATED.send(user)?;
+    signal.connect(|user: Arc<User>| async move {
+        println!("User created: {}", user.name);
+        Ok(())
+    });
+
+    // Send signal
+    let user = User { name: "Alice".to_string() };
+    signal.send(user).await.unwrap();
+}
 ```
 
 ## Sub-crates
@@ -189,12 +206,13 @@ reinhardt-core/
     ├── security/       # Security primitives
     ├── validators/     # Data validation
     ├── serializers/    # Serialization utilities
-    ├── auth/           # Authentication support
     ├── messages/       # Flash messaging
     ├── pagination/     # Pagination strategies
     ├── parsers/        # Request body parsers
     └── negotiation/    # Content negotiation
 ```
+
+**Note**: `reinhardt-di` and `reinhardt-http` are workspace-level crates located at `crates/reinhardt-di` and `crates/reinhardt-http`, not sub-crates of `reinhardt-core`. They are re-exported by `reinhardt-core` for convenience.
 
 ## License
 

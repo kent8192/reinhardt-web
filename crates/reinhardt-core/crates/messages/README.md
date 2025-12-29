@@ -6,6 +6,31 @@ Flash messages and user notifications for Reinhardt framework
 
 Django-inspired messaging framework for displaying one-time notification messages to users. Provides a complete message system with multiple storage backends and flexible configuration options.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["messages"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import messaging features:
+
+```rust
+use reinhardt::core::messages::{Message, Level, MessageStorage};
+use reinhardt::core::messages::storage::{MemoryStorage, SessionStorage, CookieStorage};
+
+// Or use the prelude for common types
+use reinhardt::core::messages::prelude::*;
+```
+
+**Note:** Messaging features are included in the `standard` and `full` feature presets.
+
 ## Features
 
 ### Implemented ✓
@@ -54,40 +79,36 @@ Django-inspired messaging framework for displaying one-time notification message
 
 #### Middleware Integration
 
-- Request/response middleware for automatic message handling
-- Automatic message retrieval and storage during request lifecycle
-- Context processor for pages/SSR integration
+- **MessagesMiddleware**: Request/response middleware for automatic message handling
+  - Automatic message retrieval and storage during request lifecycle
+  - Thread-safe message container with Arc-based sharing
+- **MessagesContainer**: Container for messages during request processing
+  - `add()`: Add messages during request
+  - `get_messages()`: Retrieve all messages
+  - `add_from_storage()`: Load messages from storage backend
 
-#### Advanced Features
+#### Context Processor
 
-- Message filtering by level
-- Message persistence control (sticky messages)
-- Message expiry and TTL support
-- Async storage backend support
-- Custom serialization formats (MessagePack, CBOR)
-- Message encryption for sensitive data
-- Rate limiting for message creation
+- **MessagesContext**: Context for template rendering integration
+  - `get_messages()`: Retrieve messages for rendering
+  - `add_message()`: Add messages to context
+- **get_messages_context()**: Helper function to create messages context
+- **add_message()**: Convenience function to add messages to context
 
-#### Pages Integration
+#### Message Filtering
 
-- Component helpers for message rendering in reinhardt-pages
-- Default message styling with Bootstrap/Tailwind CSS
-- JavaScript integration for client-side message display
-- Toast notification support
-- Message dismissal tracking
-
-#### Testing Utilities
-
-- Mock storage backends for testing
-- Message assertion helpers
-- Test fixtures for common scenarios
+- **filter_by_level()**: Filter messages by exact level match
+- **filter_by_min_level()**: Filter messages above or equal to minimum level
+- **filter_by_max_level()**: Filter messages below or equal to maximum level
+- **filter_by_level_range()**: Filter messages within a level range (inclusive)
+- **filter_by_tag()**: Filter messages by tag match
 
 ## Usage
 
 ### Basic Message Creation
 
 ```rust
-use reinhardt_messages::{Message, Level};
+use reinhardt::core::messages::{Message, Level};
 
 // Using level constructor
 let msg = Message::new(Level::Info, "Operation completed");
@@ -107,9 +128,9 @@ let tagged_msg = Message::info("Important notification")
 ### Storage Backends
 
 ```rust
-use reinhardt_messages::storage::{
-    MessageStorage, MemoryStorage, SessionStorage,
-    CookieStorage, FallbackStorage
+use reinhardt::core::messages::{Message, MessageStorage};
+use reinhardt::core::messages::storage::{
+    MemoryStorage, SessionStorage, CookieStorage, FallbackStorage
 };
 
 // Memory storage (for testing)
@@ -138,7 +159,7 @@ fallback.store().unwrap(); // Triggers fallback if needed
 ### Custom Message Levels
 
 ```rust
-use reinhardt_messages::{Level, MessageConfig};
+use reinhardt::core::messages::{Message, Level, MessageConfig};
 
 // Create custom level
 let custom_level = Level::Custom(35);
@@ -153,7 +174,7 @@ assert_eq!(config.get_tag(Level::Custom(35)), Some("urgent"));
 ### SafeData for HTML Content
 
 ```rust
-use reinhardt_messages::SafeData;
+use reinhardt::core::messages::SafeData;
 
 // Mark HTML content as safe
 let safe_html = SafeData::new("<b>Bold text</b>");
