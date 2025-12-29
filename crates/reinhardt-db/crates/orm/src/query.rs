@@ -3,9 +3,14 @@
 //! This module provides a unified entry point for querying functionality.
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
+use crate::FieldSelector;
+use crate::query_fields::GroupByFields;
+use crate::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
+use crate::query_fields::comparison::FieldComparison;
+use crate::query_fields::compiler::QueryFieldCompiler;
 use sea_query::{
-	Alias, Asterisk, Condition, Expr, ExprTrait, Order, PostgresQueryBuilder, Query as SeaQuery,
-	SelectStatement,
+	Alias, Asterisk, Condition, Expr, ExprTrait, JoinType as SeaJoinType, Order,
+	PostgresQueryBuilder, Query as SeaQuery, SelectStatement,
 };
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -306,6 +311,77 @@ impl Default for Query {
 	}
 }
 
+/// JOIN clause specification for QuerySet
+#[derive(Clone, Debug)]
+struct JoinClause {
+	/// The type of JOIN (INNER, LEFT, RIGHT, CROSS)
+	join_type: crate::sqlalchemy_query::JoinType,
+	/// The name of the table to join
+	target_table: String,
+	/// Optional alias for the target table (for self-joins)
+	target_alias: Option<String>,
+	/// The ON condition as a SQL expression string
+	/// Format: "left_table.left_field = right_table.right_field"
+	/// Can include table aliases for self-joins (e.g., "u1.id < u2.id")
+	on_condition: String,
+}
+
+/// Aggregate function types for HAVING clauses
+#[derive(Clone, Debug)]
+enum AggregateFunc {
+	Avg,
+	Count,
+	Sum,
+	Min,
+	Max,
+}
+
+/// Comparison operators for HAVING clauses
+#[derive(Clone, Debug)]
+pub enum ComparisonOp {
+	Eq,
+	Ne,
+	Gt,
+	Gte,
+	Lt,
+	Lte,
+}
+
+/// Value types for aggregate comparisons in HAVING clauses
+#[derive(Clone, Debug)]
+enum AggregateValue {
+	Int(i64),
+	Float(f64),
+}
+
+/// HAVING clause condition specification
+#[derive(Clone, Debug)]
+enum HavingCondition {
+	/// Compare an aggregate function result with a value
+	/// Example: HAVING AVG(price) > 1500.0
+	AggregateCompare {
+		func: AggregateFunc,
+		field: String,
+		operator: ComparisonOp,
+		value: AggregateValue,
+	},
+}
+
+/// Subquery condition specification for WHERE clause
+#[derive(Clone, Debug)]
+enum SubqueryCondition {
+	/// WHERE field IN (subquery)
+	/// Example: WHERE author_id IN (SELECT id FROM authors WHERE name = 'John')
+	In { field: String, subquery: String },
+	/// WHERE field NOT IN (subquery)
+	NotIn { field: String, subquery: String },
+	/// WHERE EXISTS (subquery)
+	/// Example: WHERE EXISTS (SELECT 1 FROM books WHERE author_id = authors.id)
+	Exists { subquery: String },
+	/// WHERE NOT EXISTS (subquery)
+	NotExists { subquery: String },
+}
+
 #[derive(Clone)]
 pub struct QuerySet<T>
 where
@@ -325,6 +401,11 @@ where
 	offset: Option<usize>,
 	ctes: crate::cte::CTECollection,
 	lateral_joins: crate::lateral_join::LateralJoins,
+	joins: Vec<JoinClause>,
+	group_by_fields: Vec<String>,
+	having_conditions: Vec<HavingCondition>,
+	subquery_conditions: Vec<SubqueryCondition>,
+	from_alias: Option<String>,
 }
 
 impl<T> QuerySet<T>
@@ -347,6 +428,11 @@ where
 			offset: None,
 			ctes: crate::cte::CTECollection::new(),
 			lateral_joins: crate::lateral_join::LateralJoins::new(),
+			joins: Vec::new(),
+			group_by_fields: Vec::new(),
+			having_conditions: Vec::new(),
+			subquery_conditions: Vec::new(),
+			from_alias: None,
 		}
 	}
 
@@ -366,11 +452,954 @@ where
 			offset: None,
 			ctes: crate::cte::CTECollection::new(),
 			lateral_joins: crate::lateral_join::LateralJoins::new(),
+			joins: Vec::new(),
+			group_by_fields: Vec::new(),
+			having_conditions: Vec::new(),
+			subquery_conditions: Vec::new(),
+			from_alias: None,
 		}
 	}
 
 	pub fn filter(mut self, filter: Filter) -> Self {
 		self.filters.push(filter);
+		self
+	}
+
+	/// Add an INNER JOIN to the query
+	///
+	/// Performs an INNER JOIN between the current model (T) and another model (R).
+	/// Only rows with matching values in both tables are included in the result.
+	///
+	/// # Type Parameters
+	///
+	/// * `R` - The model type to join with (must implement `Model` trait)
+	///
+	/// # Parameters
+	///
+	/// * `left_field` - The field name from the left table (current model T)
+	/// * `right_field` - The field name from the right table (model R)
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Join User and Post on user.id = post.user_id
+	/// let results = User::objects()
+	///     .inner_join::<Post>("id", "user_id")
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	pub fn inner_join<R: crate::Model>(mut self, left_field: &str, right_field: &str) -> Self {
+		let condition = format!(
+			"{}.{} = {}.{}",
+			T::table_name(),
+			left_field,
+			R::table_name(),
+			right_field
+		);
+
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Inner,
+			target_table: R::table_name().to_string(),
+			target_alias: None,
+			on_condition: condition,
+		});
+
+		self
+	}
+
+	/// Add a LEFT OUTER JOIN to the query
+	///
+	/// Performs a LEFT OUTER JOIN between the current model (T) and another model (R).
+	/// All rows from the left table are included, with matching rows from the right table
+	/// or NULL values if no match is found.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Left join User and Post
+	/// let results = User::objects()
+	///     .left_join::<Post>("id", "user_id")
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	pub fn left_join<R: crate::Model>(mut self, left_field: &str, right_field: &str) -> Self {
+		let condition = format!(
+			"{}.{} = {}.{}",
+			T::table_name(),
+			left_field,
+			R::table_name(),
+			right_field
+		);
+
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Left,
+			target_table: R::table_name().to_string(),
+			target_alias: None,
+			on_condition: condition,
+		});
+
+		self
+	}
+
+	/// Add a RIGHT OUTER JOIN to the query
+	///
+	/// Performs a RIGHT OUTER JOIN between the current model (T) and another model (R).
+	/// All rows from the right table are included, with matching rows from the left table
+	/// or NULL values if no match is found.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Right join User and Post
+	/// let results = User::objects()
+	///     .right_join::<Post>("id", "user_id")
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	pub fn right_join<R: crate::Model>(mut self, left_field: &str, right_field: &str) -> Self {
+		let condition = format!(
+			"{}.{} = {}.{}",
+			T::table_name(),
+			left_field,
+			R::table_name(),
+			right_field
+		);
+
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Right,
+			target_table: R::table_name().to_string(),
+			target_alias: None,
+			on_condition: condition,
+		});
+
+		self
+	}
+
+	/// Add a CROSS JOIN to the query
+	///
+	/// Performs a CROSS JOIN between the current model (T) and another model (R).
+	/// Produces the Cartesian product of both tables (all possible combinations).
+	/// No ON condition is needed for CROSS JOIN.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Cross join User and Category
+	/// let results = User::objects()
+	///     .cross_join::<Category>()
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	pub fn cross_join<R: crate::Model>(mut self) -> Self {
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Inner, // CROSS JOIN uses Inner with empty condition
+			target_table: R::table_name().to_string(),
+			target_alias: None,
+			on_condition: String::new(), // Empty condition for CROSS JOIN
+		});
+
+		self
+	}
+
+	/// Set an alias for the base table (FROM clause)
+	///
+	/// This is useful for self-joins where you need to reference the same table multiple times.
+	///
+	/// # Parameters
+	///
+	/// * `alias` - The alias name for the base table
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Self-join: find user pairs
+	/// let results = User::objects()
+	///     .from_as("u1")
+	///     .inner_join_as::<User>("u2", "u1.id < u2.id")
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	pub fn from_as(mut self, alias: &str) -> Self {
+		self.from_alias = Some(alias.to_string());
+		self
+	}
+
+	/// Add an INNER JOIN with custom condition
+	///
+	/// Performs an INNER JOIN with a custom ON condition expression.
+	/// Use this when you need complex join conditions beyond simple equality.
+	///
+	/// # Type Parameters
+	///
+	/// * `R` - The model type to join with (must implement `Model` trait)
+	///
+	/// # Parameters
+	///
+	/// * `condition` - Custom SQL condition for the JOIN (e.g., "users.id = posts.user_id AND posts.status = 'published'")
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Join with complex condition
+	/// let results = User::objects()
+	///     .inner_join_on::<Post>("users.id = posts.user_id AND posts.title LIKE 'First%'")
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	pub fn inner_join_on<R: crate::Model>(mut self, condition: &str) -> Self {
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Inner,
+			target_table: R::table_name().to_string(),
+			target_alias: None,
+			on_condition: condition.to_string(),
+		});
+
+		self
+	}
+
+	/// Add a LEFT OUTER JOIN with custom condition
+	///
+	/// Similar to `inner_join_on()` but performs a LEFT OUTER JOIN.
+	///
+	/// # Type Parameters
+	///
+	/// * `R` - The model type to join with (must implement `Model` trait)
+	///
+	/// # Parameters
+	///
+	/// * `condition` - Custom SQL condition for the JOIN
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let results = User::objects()
+	///     .left_join_on::<Post>("users.id = posts.user_id AND posts.published = true")
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	pub fn left_join_on<R: crate::Model>(mut self, condition: &str) -> Self {
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Left,
+			target_table: R::table_name().to_string(),
+			target_alias: None,
+			on_condition: condition.to_string(),
+		});
+
+		self
+	}
+
+	/// Add a RIGHT OUTER JOIN with custom condition
+	///
+	/// Similar to `inner_join_on()` but performs a RIGHT OUTER JOIN.
+	///
+	/// # Type Parameters
+	///
+	/// * `R` - The model type to join with (must implement `Model` trait)
+	///
+	/// # Parameters
+	///
+	/// * `condition` - Custom SQL condition for the JOIN
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let results = User::objects()
+	///     .right_join_on::<Post>("users.id = posts.user_id AND users.active = true")
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	pub fn right_join_on<R: crate::Model>(mut self, condition: &str) -> Self {
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Right,
+			target_table: R::table_name().to_string(),
+			target_alias: None,
+			on_condition: condition.to_string(),
+		});
+
+		self
+	}
+
+	/// Add an INNER JOIN with table alias
+	///
+	/// Performs an INNER JOIN with an alias for the target table.
+	/// Useful for self-joins or when you need to reference the same table multiple times.
+	///
+	/// # Type Parameters
+	///
+	/// * `R` - The model type to join with (must implement `Model` trait)
+	/// * `F` - Closure that builds the JOIN ON condition
+	///
+	/// # Parameters
+	///
+	/// * `alias` - Alias name for the target table
+	/// * `condition_fn` - Closure that receives a `JoinOnBuilder` and returns it with the condition set
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Self-join: find user pairs where user1.id < user2.id
+	/// let results = User::objects()
+	///     .from_as("u1")
+	///     .inner_join_as::<User, _>("u2", |on| on.condition("u1.id < u2.id"))
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	/// # Breaking Change
+	///
+	/// The signature of this method has been changed from string-based JOIN conditions
+	/// to type-safe field comparisons.
+	pub fn inner_join_as<R: crate::Model, F>(
+		mut self,
+		left_alias: &str,
+		right_alias: &str,
+		condition_fn: F,
+	) -> Self
+	where
+		F: FnOnce(T::Fields, R::Fields) -> FieldComparison,
+	{
+		// Set base table alias
+		if self.from_alias.is_none() {
+			self.from_alias = Some(left_alias.to_string());
+		}
+
+		// Create field selectors and set aliases
+		let left_fields = T::new_fields().with_alias(left_alias);
+		let right_fields = R::new_fields().with_alias(right_alias);
+
+		// Get comparison expression from closure
+		let comparison = condition_fn(left_fields, right_fields);
+
+		// Convert to SQL
+		let condition = QueryFieldCompiler::compile_field_comparison(&comparison);
+
+		// Add to JoinClause
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Inner,
+			target_table: R::table_name().to_string(),
+			target_alias: Some(right_alias.to_string()),
+			on_condition: condition,
+		});
+
+		self
+	}
+
+	/// Add a LEFT OUTER JOIN with table alias
+	///
+	/// Similar to `inner_join_as()` but performs a LEFT OUTER JOIN.
+	///
+	/// # Type Parameters
+	///
+	/// * `R` - The model type to join with (must implement `Model` trait)
+	/// * `F` - Closure that builds the JOIN ON condition
+	///
+	/// # Parameters
+	///
+	/// * `alias` - Alias name for the target table
+	/// * `condition_fn` - Closure that receives a `JoinOnBuilder` and returns it with the condition set
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let results = User::objects()
+	///     .from_as("u1")
+	///     .left_join_as::<User, _>("u2", |on| on.condition("u1.id = u2.manager_id"))
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	/// # Breaking Change
+	///
+	/// This method signature has been changed from string-based JOIN conditions
+	/// to type-safe field comparisons.
+	pub fn left_join_as<R: crate::Model, F>(
+		mut self,
+		left_alias: &str,
+		right_alias: &str,
+		condition_fn: F,
+	) -> Self
+	where
+		F: FnOnce(T::Fields, R::Fields) -> FieldComparison,
+	{
+		// Set base table alias
+		if self.from_alias.is_none() {
+			self.from_alias = Some(left_alias.to_string());
+		}
+
+		// Create field selectors with aliases
+		let left_fields = T::new_fields().with_alias(left_alias);
+		let right_fields = R::new_fields().with_alias(right_alias);
+
+		// Get comparison from closure
+		let comparison = condition_fn(left_fields, right_fields);
+
+		// Convert to SQL
+		let condition = QueryFieldCompiler::compile_field_comparison(&comparison);
+
+		// Add to JoinClause
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Left,
+			target_table: R::table_name().to_string(),
+			target_alias: Some(right_alias.to_string()),
+			on_condition: condition,
+		});
+
+		self
+	}
+
+	/// Add a RIGHT OUTER JOIN with table alias
+	///
+	/// Similar to `inner_join_as()` but performs a RIGHT OUTER JOIN.
+	///
+	/// # Type Parameters
+	///
+	/// * `R` - The model type to join with (must implement `Model` trait)
+	/// * `F` - Closure that builds the JOIN ON condition
+	///
+	/// # Parameters
+	///
+	/// * `alias` - Alias name for the target table
+	/// * `condition_fn` - Closure that receives a `JoinOnBuilder` and returns it with the condition set
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let results = User::objects()
+	///     .from_as("u1")
+	///     .right_join_as::<User, _>("u2", |on| on.condition("u1.department_id = u2.id"))
+	///     .all_raw()
+	///     .await?;
+	/// ```
+	/// # Breaking Change
+	///
+	/// This method signature has been changed from string-based JOIN conditions
+	/// to type-safe field comparisons.
+	pub fn right_join_as<R: crate::Model, F>(
+		mut self,
+		left_alias: &str,
+		right_alias: &str,
+		condition_fn: F,
+	) -> Self
+	where
+		F: FnOnce(T::Fields, R::Fields) -> FieldComparison,
+	{
+		// Set base table alias
+		if self.from_alias.is_none() {
+			self.from_alias = Some(left_alias.to_string());
+		}
+
+		// Create field selectors with aliases
+		let left_fields = T::new_fields().with_alias(left_alias);
+		let right_fields = R::new_fields().with_alias(right_alias);
+
+		// Get comparison from closure
+		let comparison = condition_fn(left_fields, right_fields);
+
+		// Convert to SQL
+		let condition = QueryFieldCompiler::compile_field_comparison(&comparison);
+
+		// Add to JoinClause
+		self.joins.push(JoinClause {
+			join_type: crate::sqlalchemy_query::JoinType::Right,
+			target_table: R::table_name().to_string(),
+			target_alias: Some(right_alias.to_string()),
+			on_condition: condition,
+		});
+
+		self
+	}
+
+	/// Add GROUP BY clause to the query
+	///
+	/// Groups rows that have the same values in specified columns into summary rows.
+	/// Typically used with aggregate functions (COUNT, MAX, MIN, SUM, AVG).
+	///
+	/// # Type Parameters
+	///
+	/// * `F` - Closure that builds the GROUP BY field list
+	///
+	/// # Parameters
+	///
+	/// * `builder_fn` - Closure that receives a `GroupByBuilder` and returns it with fields set
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Group by single field
+	/// Book::objects()
+	///     .group_by(|g| g.add("author_id"))
+	///     .all()
+	///     .await?;
+	///
+	/// // Group by multiple fields
+	/// Sale::objects()
+	///     .group_by(|g| g.fields(&["region", "product_category"]))
+	///     .all()
+	///     .await?;
+	///
+	/// // Chain multiple fields
+	/// Sale::objects()
+	///     .group_by(|g| g.add("region").add("product_category"))
+	///     .all()
+	///     .await?;
+	/// ```
+	/// # Breaking Change
+	///
+	/// This method signature has been changed from string-based field selection
+	/// to type-safe field selectors.
+	pub fn group_by<F>(mut self, selector_fn: F) -> Self
+	where
+		F: FnOnce(T::Fields) -> GroupByFields,
+	{
+		let fields = T::new_fields();
+		let group_by_fields = selector_fn(fields);
+		self.group_by_fields = group_by_fields.build();
+		self
+	}
+
+	/// Add HAVING clause for AVG aggregate
+	///
+	/// Filters grouped rows based on the average value of a field.
+	///
+	/// # Type Parameters
+	///
+	/// * `F` - Closure that selects the field
+	///
+	/// # Parameters
+	///
+	/// * `field_fn` - Closure that receives a `HavingFieldSelector` and returns it with the field set
+	/// * `operator` - Comparison operator (Eq, Ne, Gt, Gte, Lt, Lte)
+	/// * `value` - Value to compare against
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Find authors with average book price > 1500
+	/// Author::objects()
+	///     .group_by(|g| g.add("author_id"))
+	///     .having_avg(|f| f.field("price"), ComparisonOp::Gt, 1500.0)
+	///     .all()
+	///     .await?;
+	/// ```
+	/// # Breaking Change
+	///
+	/// This method signature has been changed to use type-safe field selectors
+	/// and aggregate expressions.
+	pub fn having_avg<FS, FE, NT>(mut self, field_selector: FS, expr_fn: FE) -> Self
+	where
+		FS: FnOnce(&T::Fields) -> &crate::query_fields::Field<T, NT>,
+		NT: crate::query_fields::NumericType,
+		FE: FnOnce(AggregateExpr) -> ComparisonExpr,
+	{
+		let fields = T::new_fields();
+		let field = field_selector(&fields);
+		let field_path = field.path().join(".");
+
+		let avg_expr = AggregateExpr::avg(&field_path);
+		let comparison = expr_fn(avg_expr);
+
+		// Extract components for HavingCondition
+		let operator = match comparison.op {
+			crate::query_fields::comparison::ComparisonOperator::Eq => ComparisonOp::Eq,
+			crate::query_fields::comparison::ComparisonOperator::Ne => ComparisonOp::Ne,
+			crate::query_fields::comparison::ComparisonOperator::Gt => ComparisonOp::Gt,
+			crate::query_fields::comparison::ComparisonOperator::Gte => ComparisonOp::Gte,
+			crate::query_fields::comparison::ComparisonOperator::Lt => ComparisonOp::Lt,
+			crate::query_fields::comparison::ComparisonOperator::Lte => ComparisonOp::Lte,
+		};
+
+		let value = match comparison.value {
+			crate::query_fields::aggregate::ComparisonValue::Int(i) => {
+				AggregateValue::Float(i as f64)
+			}
+			crate::query_fields::aggregate::ComparisonValue::Float(f) => AggregateValue::Float(f),
+		};
+
+		self.having_conditions
+			.push(HavingCondition::AggregateCompare {
+				func: AggregateFunc::Avg,
+				field: comparison.aggregate.field().to_string(),
+				operator,
+				value,
+			});
+		self
+	}
+
+	/// Add HAVING clause for COUNT aggregate
+	///
+	/// Filters grouped rows based on the count of rows in each group.
+	///
+	/// # Type Parameters
+	///
+	/// * `F` - Closure that selects the field
+	///
+	/// # Parameters
+	///
+	/// * `field_fn` - Closure that receives a `HavingFieldSelector` and returns it with the field set
+	/// * `operator` - Comparison operator (Eq, Ne, Gt, Gte, Lt, Lte)
+	/// * `value` - Value to compare against
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Find authors with more than 5 books
+	/// Author::objects()
+	///     .group_by(|g| g.add("author_id"))
+	///     .having_count(|f| f.field("*"), ComparisonOp::Gt, 5)
+	///     .all()
+	///     .await?;
+	/// ```
+	/// # Breaking Change
+	///
+	/// This method signature has been changed to use type-safe aggregate expressions.
+	pub fn having_count<F>(mut self, expr_fn: F) -> Self
+	where
+		F: FnOnce(AggregateExpr) -> ComparisonExpr,
+	{
+		let count_expr = AggregateExpr::count("*");
+		let comparison = expr_fn(count_expr);
+
+		// Extract components for HavingCondition
+		let operator = match comparison.op {
+			crate::query_fields::comparison::ComparisonOperator::Eq => ComparisonOp::Eq,
+			crate::query_fields::comparison::ComparisonOperator::Ne => ComparisonOp::Ne,
+			crate::query_fields::comparison::ComparisonOperator::Gt => ComparisonOp::Gt,
+			crate::query_fields::comparison::ComparisonOperator::Gte => ComparisonOp::Gte,
+			crate::query_fields::comparison::ComparisonOperator::Lt => ComparisonOp::Lt,
+			crate::query_fields::comparison::ComparisonOperator::Lte => ComparisonOp::Lte,
+		};
+
+		let value = match comparison.value {
+			crate::query_fields::aggregate::ComparisonValue::Int(i) => AggregateValue::Int(i),
+			crate::query_fields::aggregate::ComparisonValue::Float(f) => AggregateValue::Float(f),
+		};
+
+		self.having_conditions
+			.push(HavingCondition::AggregateCompare {
+				func: AggregateFunc::Count,
+				field: comparison.aggregate.field().to_string(),
+				operator,
+				value,
+			});
+		self
+	}
+
+	/// Add HAVING clause for SUM aggregate
+	///
+	/// Filters grouped rows based on the sum of values in a field.
+	///
+	/// # Type Parameters
+	///
+	/// * `F` - Closure that selects the field
+	///
+	/// # Parameters
+	///
+	/// * `field_fn` - Closure that receives a `HavingFieldSelector` and returns it with the field set
+	/// * `operator` - Comparison operator (Eq, Ne, Gt, Gte, Lt, Lte)
+	/// * `value` - Value to compare against
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Find categories with total sales > 10000
+	/// Product::objects()
+	///     .group_by(|g| g.add("category"))
+	///     .having_sum(|f| f.field("sales_amount"), ComparisonOp::Gt, 10000)
+	///     .all()
+	///     .await?;
+	/// ```
+	/// # Breaking Change
+	///
+	/// This method signature has been changed to use type-safe field selectors.
+	pub fn having_sum<FS, FE, NT>(mut self, field_selector: FS, expr_fn: FE) -> Self
+	where
+		FS: FnOnce(&T::Fields) -> &crate::query_fields::Field<T, NT>,
+		NT: crate::query_fields::NumericType,
+		FE: FnOnce(AggregateExpr) -> ComparisonExpr,
+	{
+		let fields = T::new_fields();
+		let field = field_selector(&fields);
+		let field_path = field.path().join(".");
+
+		let sum_expr = AggregateExpr::sum(&field_path);
+		let comparison = expr_fn(sum_expr);
+
+		let operator = match comparison.op {
+			crate::query_fields::comparison::ComparisonOperator::Eq => ComparisonOp::Eq,
+			crate::query_fields::comparison::ComparisonOperator::Ne => ComparisonOp::Ne,
+			crate::query_fields::comparison::ComparisonOperator::Gt => ComparisonOp::Gt,
+			crate::query_fields::comparison::ComparisonOperator::Gte => ComparisonOp::Gte,
+			crate::query_fields::comparison::ComparisonOperator::Lt => ComparisonOp::Lt,
+			crate::query_fields::comparison::ComparisonOperator::Lte => ComparisonOp::Lte,
+		};
+
+		let value = match comparison.value {
+			crate::query_fields::aggregate::ComparisonValue::Int(i) => AggregateValue::Int(i),
+			crate::query_fields::aggregate::ComparisonValue::Float(f) => AggregateValue::Float(f),
+		};
+
+		self.having_conditions
+			.push(HavingCondition::AggregateCompare {
+				func: AggregateFunc::Sum,
+				field: comparison.aggregate.field().to_string(),
+				operator,
+				value,
+			});
+		self
+	}
+
+	/// Add HAVING clause for MIN aggregate
+	///
+	/// Filters grouped rows based on the minimum value in a field.
+	///
+	/// # Breaking Change
+	///
+	/// This method signature has been changed to use type-safe field selectors.
+	///
+	/// # Type Parameters
+	///
+	/// * `FS` - Field selector closure that returns a reference to a numeric field
+	/// * `FE` - Expression closure that builds the comparison expression
+	///
+	/// # Parameters
+	///
+	/// * `field_selector` - Closure that selects the field from the model
+	/// * `expr_fn` - Closure that builds the comparison expression using method chaining
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Find authors where minimum book price > 1000
+	/// QuerySet::<Author>::new()
+	///     .group_by(|f| GroupByFields::new().add(&f.author_id))
+	///     .having_min(|f| &f.price, |min| min.gt(1000))
+	///     .all()
+	///     .await?;
+	/// ```
+	pub fn having_min<FS, FE, NT>(mut self, field_selector: FS, expr_fn: FE) -> Self
+	where
+		FS: FnOnce(&T::Fields) -> &crate::query_fields::Field<T, NT>,
+		NT: crate::query_fields::NumericType,
+		FE: FnOnce(AggregateExpr) -> ComparisonExpr,
+	{
+		let fields = T::new_fields();
+		let field = field_selector(&fields);
+		let field_path = field.path().join(".");
+
+		let min_expr = AggregateExpr::min(&field_path);
+		let comparison = expr_fn(min_expr);
+
+		let operator = match comparison.op {
+			crate::query_fields::comparison::ComparisonOperator::Eq => ComparisonOp::Eq,
+			crate::query_fields::comparison::ComparisonOperator::Ne => ComparisonOp::Ne,
+			crate::query_fields::comparison::ComparisonOperator::Gt => ComparisonOp::Gt,
+			crate::query_fields::comparison::ComparisonOperator::Gte => ComparisonOp::Gte,
+			crate::query_fields::comparison::ComparisonOperator::Lt => ComparisonOp::Lt,
+			crate::query_fields::comparison::ComparisonOperator::Lte => ComparisonOp::Lte,
+		};
+
+		let value = match comparison.value {
+			crate::query_fields::aggregate::ComparisonValue::Int(i) => AggregateValue::Int(i),
+			crate::query_fields::aggregate::ComparisonValue::Float(f) => AggregateValue::Float(f),
+		};
+
+		self.having_conditions
+			.push(HavingCondition::AggregateCompare {
+				func: AggregateFunc::Min,
+				field: comparison.aggregate.field().to_string(),
+				operator,
+				value,
+			});
+		self
+	}
+
+	/// Add HAVING clause for MAX aggregate
+	///
+	/// Filters grouped rows based on the maximum value in a field.
+	///
+	/// # Breaking Change
+	///
+	/// This method signature has been changed to use type-safe field selectors.
+	///
+	/// # Type Parameters
+	///
+	/// * `FS` - Field selector closure that returns a reference to a numeric field
+	/// * `FE` - Expression closure that builds the comparison expression
+	///
+	/// # Parameters
+	///
+	/// * `field_selector` - Closure that selects the field from the model
+	/// * `expr_fn` - Closure that builds the comparison expression using method chaining
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Find authors where maximum book price < 5000
+	/// QuerySet::<Author>::new()
+	///     .group_by(|f| GroupByFields::new().add(&f.author_id))
+	///     .having_max(|f| &f.price, |max| max.lt(5000))
+	///     .all()
+	///     .await?;
+	/// ```
+	pub fn having_max<FS, FE, NT>(mut self, field_selector: FS, expr_fn: FE) -> Self
+	where
+		FS: FnOnce(&T::Fields) -> &crate::query_fields::Field<T, NT>,
+		NT: crate::query_fields::NumericType,
+		FE: FnOnce(AggregateExpr) -> ComparisonExpr,
+	{
+		let fields = T::new_fields();
+		let field = field_selector(&fields);
+		let field_path = field.path().join(".");
+
+		let max_expr = AggregateExpr::max(&field_path);
+		let comparison = expr_fn(max_expr);
+
+		let operator = match comparison.op {
+			crate::query_fields::comparison::ComparisonOperator::Eq => ComparisonOp::Eq,
+			crate::query_fields::comparison::ComparisonOperator::Ne => ComparisonOp::Ne,
+			crate::query_fields::comparison::ComparisonOperator::Gt => ComparisonOp::Gt,
+			crate::query_fields::comparison::ComparisonOperator::Gte => ComparisonOp::Gte,
+			crate::query_fields::comparison::ComparisonOperator::Lt => ComparisonOp::Lt,
+			crate::query_fields::comparison::ComparisonOperator::Lte => ComparisonOp::Lte,
+		};
+
+		let value = match comparison.value {
+			crate::query_fields::aggregate::ComparisonValue::Int(i) => AggregateValue::Int(i),
+			crate::query_fields::aggregate::ComparisonValue::Float(f) => AggregateValue::Float(f),
+		};
+
+		self.having_conditions
+			.push(HavingCondition::AggregateCompare {
+				func: AggregateFunc::Max,
+				field: comparison.aggregate.field().to_string(),
+				operator,
+				value,
+			});
+		self
+	}
+
+	/// Add WHERE IN (subquery) condition
+	///
+	/// Filters rows where the specified field's value is in the result set of a subquery.
+	///
+	/// # Type Parameters
+	///
+	/// * `R` - The model type used in the subquery (must implement `Model` trait)
+	/// * `F` - Function that builds the subquery QuerySet
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Find authors who have books priced over 1500
+	/// let authors = Author::objects()
+	///     .filter_in_subquery("id", |subq: QuerySet<Book>| {
+	///         subq.filter(Filter::new("price", FilterOperator::Gt, FilterValue::Int(1500)))
+	///             .values(&["author_id"])
+	///     })
+	///     .all()
+	///     .await?;
+	/// ```
+	pub fn filter_in_subquery<R: crate::Model, F>(mut self, field: &str, subquery_fn: F) -> Self
+	where
+		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
+	{
+		let subquery_qs = subquery_fn(QuerySet::<R>::new());
+		let subquery_sql = subquery_qs.as_subquery();
+
+		self.subquery_conditions.push(SubqueryCondition::In {
+			field: field.to_string(),
+			subquery: subquery_sql,
+		});
+
+		self
+	}
+
+	/// Add WHERE NOT IN (subquery) condition
+	///
+	/// Filters rows where the specified field's value is NOT in the result set of a subquery.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Find authors who have NO books priced over 1500
+	/// let authors = Author::objects()
+	///     .filter_not_in_subquery("id", |subq: QuerySet<Book>| {
+	///         subq.filter(Filter::new("price", FilterOperator::Gt, FilterValue::Int(1500)))
+	///             .values(&["author_id"])
+	///     })
+	///     .all()
+	///     .await?;
+	/// ```
+	pub fn filter_not_in_subquery<R: crate::Model, F>(mut self, field: &str, subquery_fn: F) -> Self
+	where
+		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
+	{
+		let subquery_qs = subquery_fn(QuerySet::<R>::new());
+		let subquery_sql = subquery_qs.as_subquery();
+
+		self.subquery_conditions.push(SubqueryCondition::NotIn {
+			field: field.to_string(),
+			subquery: subquery_sql,
+		});
+
+		self
+	}
+
+	/// Add WHERE EXISTS (subquery) condition
+	///
+	/// Filters rows where the subquery returns at least one row.
+	/// Typically used with correlated subqueries.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Find authors who have at least one book
+	/// let authors = Author::objects()
+	///     .filter_exists(|subq: QuerySet<Book>| {
+	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef("authors.id")))
+	///     })
+	///     .all()
+	///     .await?;
+	/// ```
+	pub fn filter_exists<R: crate::Model, F>(mut self, subquery_fn: F) -> Self
+	where
+		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
+	{
+		let subquery_qs = subquery_fn(QuerySet::<R>::new());
+		let subquery_sql = subquery_qs.as_subquery();
+
+		self.subquery_conditions.push(SubqueryCondition::Exists {
+			subquery: subquery_sql,
+		});
+
+		self
+	}
+
+	/// Add WHERE NOT EXISTS (subquery) condition
+	///
+	/// Filters rows where the subquery returns no rows.
+	/// Typically used with correlated subqueries.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Find authors who have NO books
+	/// let authors = Author::objects()
+	///     .filter_not_exists(|subq: QuerySet<Book>| {
+	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef("authors.id")))
+	///     })
+	///     .all()
+	///     .await?;
+	/// ```
+	pub fn filter_not_exists<R: crate::Model, F>(mut self, subquery_fn: F) -> Self
+	where
+		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
+	{
+		let subquery_qs = subquery_fn(QuerySet::<R>::new());
+		let subquery_sql = subquery_qs.as_subquery();
+
+		self.subquery_conditions.push(SubqueryCondition::NotExists {
+			subquery: subquery_sql,
+		});
+
 		self
 	}
 
@@ -682,6 +1711,30 @@ where
 				_ => {
 					// Default to equality for unhandled cases
 					col.eq(Self::filter_value_to_sea_value(&filter.value))
+				}
+			};
+
+			cond = cond.add(expr);
+		}
+
+		// Add subquery conditions
+		for subq_cond in &self.subquery_conditions {
+			let expr = match subq_cond {
+				SubqueryCondition::In { field, subquery } => {
+					// field IN (subquery)
+					Expr::cust(format!("{} IN {}", field, subquery))
+				}
+				SubqueryCondition::NotIn { field, subquery } => {
+					// field NOT IN (subquery)
+					Expr::cust(format!("{} NOT IN {}", field, subquery))
+				}
+				SubqueryCondition::Exists { subquery } => {
+					// EXISTS (subquery)
+					Expr::cust(format!("EXISTS {}", subquery))
+				}
+				SubqueryCondition::NotExists { subquery } => {
+					// NOT EXISTS (subquery)
+					Expr::cust(format!("NOT EXISTS {}", subquery))
 				}
 			};
 
@@ -1013,7 +2066,13 @@ where
 	pub fn select_related_query(&self) -> SelectStatement {
 		let table_name = T::table_name();
 		let mut stmt = SeaQuery::select();
-		stmt.from(Alias::new(table_name));
+
+		// Apply FROM clause with optional alias
+		if let Some(ref alias) = self.from_alias {
+			stmt.from_as(Alias::new(table_name), Alias::new(alias));
+		} else {
+			stmt.from(Alias::new(table_name));
+		}
 
 		// Apply DISTINCT if enabled
 		if self.distinct_enabled {
@@ -1042,9 +2101,106 @@ where
 			stmt.column((related_alias, Asterisk));
 		}
 
+		// Apply manual JOINs
+		for join in &self.joins {
+			if join.on_condition.is_empty() {
+				// CROSS JOIN (no ON condition)
+				if let Some(ref alias) = join.target_alias {
+					stmt.cross_join((Alias::new(&join.target_table), Alias::new(alias)));
+				} else {
+					stmt.cross_join(Alias::new(&join.target_table));
+				}
+			} else {
+				// Convert reinhardt JoinType to SeaQuery JoinType
+				let sea_join_type = match join.join_type {
+					crate::sqlalchemy_query::JoinType::Inner => SeaJoinType::InnerJoin,
+					crate::sqlalchemy_query::JoinType::Left => SeaJoinType::LeftJoin,
+					crate::sqlalchemy_query::JoinType::Right => SeaJoinType::RightJoin,
+					crate::sqlalchemy_query::JoinType::Full => SeaJoinType::FullOuterJoin,
+				};
+
+				// Build the join with optional alias
+				if let Some(ref alias) = join.target_alias {
+					stmt.join(
+						sea_join_type,
+						(Alias::new(&join.target_table), Alias::new(alias)),
+						Expr::cust(join.on_condition.clone()),
+					);
+				} else {
+					stmt.join(
+						sea_join_type,
+						Alias::new(&join.target_table),
+						Expr::cust(join.on_condition.clone()),
+					);
+				}
+			}
+		}
+
 		// Apply WHERE conditions
 		if let Some(cond) = self.build_where_condition() {
 			stmt.cond_where(cond);
+		}
+
+		// Apply GROUP BY
+		for group_field in &self.group_by_fields {
+			stmt.group_by_col(Alias::new(group_field));
+		}
+
+		// Apply HAVING
+		for having_cond in &self.having_conditions {
+			match having_cond {
+				HavingCondition::AggregateCompare {
+					func,
+					field,
+					operator,
+					value,
+				} => {
+					// Build aggregate function expression
+					let agg_expr = match func {
+						AggregateFunc::Avg => Expr::col(Alias::new(field)).avg(),
+						AggregateFunc::Count => {
+							if field == "*" {
+								Expr::col(Asterisk).count()
+							} else {
+								Expr::col(Alias::new(field)).count()
+							}
+						}
+						AggregateFunc::Sum => Expr::col(Alias::new(field)).sum(),
+						AggregateFunc::Min => Expr::col(Alias::new(field)).min(),
+						AggregateFunc::Max => Expr::col(Alias::new(field)).max(),
+					};
+
+					// Build comparison expression
+					let having_expr = match operator {
+						ComparisonOp::Eq => match value {
+							AggregateValue::Int(v) => agg_expr.eq(*v),
+							AggregateValue::Float(v) => agg_expr.eq(*v),
+						},
+						ComparisonOp::Ne => match value {
+							AggregateValue::Int(v) => agg_expr.ne(*v),
+							AggregateValue::Float(v) => agg_expr.ne(*v),
+						},
+						ComparisonOp::Gt => match value {
+							AggregateValue::Int(v) => agg_expr.gt(*v),
+							AggregateValue::Float(v) => agg_expr.gt(*v),
+						},
+						ComparisonOp::Gte => match value {
+							AggregateValue::Int(v) => agg_expr.gte(*v),
+							AggregateValue::Float(v) => agg_expr.gte(*v),
+						},
+						ComparisonOp::Lt => match value {
+							AggregateValue::Int(v) => agg_expr.lt(*v),
+							AggregateValue::Float(v) => agg_expr.lt(*v),
+						},
+						ComparisonOp::Lte => match value {
+							AggregateValue::Int(v) => agg_expr.lte(*v),
+							AggregateValue::Float(v) => agg_expr.lte(*v),
+						},
+					};
+
+					stmt.cond_having(having_expr);
+				}
+			}
 		}
 
 		// Apply ORDER BY
@@ -1934,7 +3090,13 @@ where
 		let mut stmt = if self.select_related_fields.is_empty() {
 			// Simple SELECT without JOINs
 			let mut stmt = SeaQuery::select();
-			stmt.from(Alias::new(T::table_name()));
+
+			// Apply FROM clause with optional alias
+			if let Some(ref alias) = self.from_alias {
+				stmt.from_as(Alias::new(T::table_name()), Alias::new(alias));
+			} else {
+				stmt.from(Alias::new(T::table_name()));
+			}
 
 			// Apply DISTINCT if enabled
 			if self.distinct_enabled {
@@ -1957,9 +3119,110 @@ where
 				stmt.column(Asterisk);
 			}
 
+			// Apply JOINs
+			for join in &self.joins {
+				if join.on_condition.is_empty() {
+					// CROSS JOIN (no ON condition)
+					if let Some(ref alias) = join.target_alias {
+						// CROSS JOIN with alias - SeaQuery doesn't support this directly
+						// Use regular join syntax instead
+						stmt.cross_join((Alias::new(&join.target_table), Alias::new(alias)));
+					} else {
+						stmt.cross_join(Alias::new(&join.target_table));
+					}
+				} else {
+					// Convert reinhardt JoinType to SeaQuery JoinType
+					let sea_join_type = match join.join_type {
+						crate::sqlalchemy_query::JoinType::Inner => SeaJoinType::InnerJoin,
+						crate::sqlalchemy_query::JoinType::Left => SeaJoinType::LeftJoin,
+						crate::sqlalchemy_query::JoinType::Right => SeaJoinType::RightJoin,
+						crate::sqlalchemy_query::JoinType::Full => SeaJoinType::FullOuterJoin,
+					};
+
+					// Build the join with optional alias
+					if let Some(ref alias) = join.target_alias {
+						// JOIN with alias: (table, alias)
+						stmt.join(
+							sea_join_type,
+							(Alias::new(&join.target_table), Alias::new(alias)),
+							Expr::cust(join.on_condition.clone()),
+						);
+					} else {
+						// JOIN without alias
+						stmt.join(
+							sea_join_type,
+							Alias::new(&join.target_table),
+							Expr::cust(join.on_condition.clone()),
+						);
+					}
+				}
+			}
+
 			// Apply WHERE conditions
 			if let Some(cond) = self.build_where_condition() {
 				stmt.cond_where(cond);
+			}
+
+			// Apply GROUP BY
+			for group_field in &self.group_by_fields {
+				stmt.group_by_col(Alias::new(group_field));
+			}
+
+			// Apply HAVING
+			for having_cond in &self.having_conditions {
+				match having_cond {
+					HavingCondition::AggregateCompare {
+						func,
+						field,
+						operator,
+						value,
+					} => {
+						// Build aggregate function expression
+						let agg_expr = match func {
+							AggregateFunc::Avg => Expr::col(Alias::new(field)).avg(),
+							AggregateFunc::Count => {
+								if field == "*" {
+									Expr::col(Asterisk).count()
+								} else {
+									Expr::col(Alias::new(field)).count()
+								}
+							}
+							AggregateFunc::Sum => Expr::col(Alias::new(field)).sum(),
+							AggregateFunc::Min => Expr::col(Alias::new(field)).min(),
+							AggregateFunc::Max => Expr::col(Alias::new(field)).max(),
+						};
+
+						// Build comparison expression
+						let having_expr = match operator {
+							ComparisonOp::Eq => match value {
+								AggregateValue::Int(v) => agg_expr.eq(*v),
+								AggregateValue::Float(v) => agg_expr.eq(*v),
+							},
+							ComparisonOp::Ne => match value {
+								AggregateValue::Int(v) => agg_expr.ne(*v),
+								AggregateValue::Float(v) => agg_expr.ne(*v),
+							},
+							ComparisonOp::Gt => match value {
+								AggregateValue::Int(v) => agg_expr.gt(*v),
+								AggregateValue::Float(v) => agg_expr.gt(*v),
+							},
+							ComparisonOp::Gte => match value {
+								AggregateValue::Int(v) => agg_expr.gte(*v),
+								AggregateValue::Float(v) => agg_expr.gte(*v),
+							},
+							ComparisonOp::Lt => match value {
+								AggregateValue::Int(v) => agg_expr.lt(*v),
+								AggregateValue::Float(v) => agg_expr.lt(*v),
+							},
+							ComparisonOp::Lte => match value {
+								AggregateValue::Int(v) => agg_expr.lte(*v),
+								AggregateValue::Float(v) => agg_expr.lte(*v),
+							},
+						};
+
+						stmt.cond_having(having_expr);
+					}
+				}
 			}
 
 			// Apply ORDER BY
@@ -2436,8 +3699,18 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone)]
+	struct TestUserFields;
+
+	impl crate::FieldSelector for TestUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	impl Model for TestUser {
 		type PrimaryKey = i64;
+		type Fields = TestUserFields;
 
 		fn table_name() -> &'static str {
 			"test_users"
@@ -2449,6 +3722,14 @@ mod tests {
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
 		}
 	}
 

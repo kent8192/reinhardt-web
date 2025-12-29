@@ -52,10 +52,15 @@ use std::marker::PhantomData;
 /// // This fails: i64 vs String type mismatch
 /// // TypedJoin::on(User::id(), Post::title());
 /// ```
+///
+/// # Breaking Change
+///
+/// The types of `left_field_path` and `right_field_path` have been changed from `Vec<&'static str>` to `Vec<String>`.
+/// This allows support for dynamic field paths.
 pub struct TypedJoin<L: Model, R: Model> {
 	right_table: &'static str,
-	left_field_path: Vec<&'static str>,
-	right_field_path: Vec<&'static str>,
+	left_field_path: Vec<String>,
+	right_field_path: Vec<String>,
 	join_type: JoinType,
 	_phantom: PhantomData<(L, R)>,
 }

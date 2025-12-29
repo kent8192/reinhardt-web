@@ -344,8 +344,18 @@ mod tests {
 
 	const TEST_MODEL_TABLE: TableName = TableName::new_const("test_model");
 
+	#[derive(Debug, Clone)]
+	struct TestModelFields;
+
+	impl crate::FieldSelector for TestModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	impl Model for TestModel {
 		type PrimaryKey = i64;
+		type Fields = TestModelFields;
 
 		fn table_name() -> &'static str {
 			TEST_MODEL_TABLE.as_str()
@@ -357,6 +367,14 @@ mod tests {
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestModelFields
 		}
 	}
 
