@@ -1,5 +1,6 @@
 //! Type-safe field representation with transformation support
 
+use super::comparison::{ComparisonOperator, FieldComparison, FieldRef};
 use super::lookup::{Lookup, LookupType};
 use super::traits::{Comparable, Date, DateTime, NumericType};
 use crate::Model;
@@ -9,8 +10,15 @@ use std::marker::PhantomData;
 ///
 /// The type parameter `M` is the model type, and `T` is the field's type.
 /// This allows us to enforce type safety at compile time.
+///
+/// # Breaking Change
+///
+/// The type of `path` has been changed from `Vec<&'static str>` to `Vec<String>`.
+/// Table alias support has been added.
+#[derive(Debug, Clone)]
 pub struct Field<M, T> {
-	pub(crate) path: Vec<&'static str>,
+	pub(crate) path: Vec<String>,
+	pub(crate) table_alias: Option<String>,
 	pub(crate) _phantom: PhantomData<(M, T)>,
 }
 
@@ -44,18 +52,107 @@ impl<M: Model, T> Field<M, T> {
 	/// }
 	///
 	/// let field: Field<User, String> = Field::new(vec!["name"]);
-	/// assert_eq!(field.path(), &["name"]);
+	/// assert_eq!(field.path(), &["name".to_string()]);
 	/// ```
-	pub fn new(path: Vec<&'static str>) -> Self {
+	pub fn new<S: Into<String>>(path: Vec<S>) -> Self {
 		Self {
-			path,
+			path: path.into_iter().map(|s| s.into()).collect(),
+			table_alias: None,
 			_phantom: PhantomData,
 		}
 	}
+
 	/// Get the field path
-	///
-	pub fn path(&self) -> &[&'static str] {
+	pub fn path(&self) -> &[String] {
 		&self.path
+	}
+
+	/// Set table alias
+	///
+	/// Used when referencing the same table multiple times (e.g., self-JOINs).
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let u1_id = Field::<User, i32>::new(vec!["id".to_string()]).with_alias("u1");
+	/// let u2_id = Field::<User, i32>::new(vec!["id".to_string()]).with_alias("u2");
+	/// ```
+	pub fn with_alias(mut self, alias: &str) -> Self {
+		self.table_alias = Some(alias.to_string());
+		self
+	}
+
+	/// Convert Field to FieldRef for comparison operations
+	pub(crate) fn to_field_ref(&self) -> FieldRef {
+		FieldRef::Field {
+			table_alias: self.table_alias.clone(),
+			field_path: self.path.clone(),
+		}
+	}
+
+	// =============================================================================
+	// Inter-field comparison methods (for JOIN conditions)
+	// =============================================================================
+
+	/// Inter-field comparison: <
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // u1.id < u2.id
+	/// let comparison = u1_id.field_lt(u2_id);
+	/// ```
+	pub fn field_lt<M2: Model>(self, other: Field<M2, T>) -> FieldComparison {
+		FieldComparison::new(
+			self.to_field_ref(),
+			other.to_field_ref(),
+			ComparisonOperator::Lt,
+		)
+	}
+
+	/// Inter-field comparison: >
+	pub fn field_gt<M2: Model>(self, other: Field<M2, T>) -> FieldComparison {
+		FieldComparison::new(
+			self.to_field_ref(),
+			other.to_field_ref(),
+			ComparisonOperator::Gt,
+		)
+	}
+
+	/// Inter-field comparison: <=
+	pub fn field_lte<M2: Model>(self, other: Field<M2, T>) -> FieldComparison {
+		FieldComparison::new(
+			self.to_field_ref(),
+			other.to_field_ref(),
+			ComparisonOperator::Lte,
+		)
+	}
+
+	/// Inter-field comparison: >=
+	pub fn field_gte<M2: Model>(self, other: Field<M2, T>) -> FieldComparison {
+		FieldComparison::new(
+			self.to_field_ref(),
+			other.to_field_ref(),
+			ComparisonOperator::Gte,
+		)
+	}
+
+	/// Inter-field comparison: ==
+	pub fn field_eq<M2: Model>(self, other: Field<M2, T>) -> FieldComparison {
+		FieldComparison::new(
+			self.to_field_ref(),
+			other.to_field_ref(),
+			ComparisonOperator::Eq,
+		)
+	}
+
+	/// Inter-field comparison: !=
+	pub fn field_ne<M2: Model>(self, other: Field<M2, T>) -> FieldComparison {
+		FieldComparison::new(
+			self.to_field_ref(),
+			other.to_field_ref(),
+			ComparisonOperator::Ne,
+		)
 	}
 }
 
@@ -93,7 +190,7 @@ impl<M: Model> Field<M, String> {
 	/// assert_eq!(email_field.path(), &["email", "lower"]);
 	/// ```
 	pub fn lower(mut self) -> Self {
-		self.path.push("lower");
+		self.path.push("lower".to_string());
 		self
 	}
 	/// Convert field to uppercase: UPPER(field)
@@ -125,7 +222,7 @@ impl<M: Model> Field<M, String> {
 	/// assert_eq!(code_field.path(), &["code", "upper"]);
 	/// ```
 	pub fn upper(mut self) -> Self {
-		self.path.push("upper");
+		self.path.push("upper".to_string());
 		self
 	}
 	/// Trim whitespace: TRIM(field)
@@ -157,7 +254,7 @@ impl<M: Model> Field<M, String> {
 	/// assert_eq!(text_field.path(), &["text", "trim"]);
 	/// ```
 	pub fn trim(mut self) -> Self {
-		self.path.push("trim");
+		self.path.push("trim".to_string());
 		self
 	}
 	/// Get string length: LENGTH(field)
@@ -190,9 +287,10 @@ impl<M: Model> Field<M, String> {
 	/// assert_eq!(title_length.path(), &["title", "length"]);
 	/// ```
 	pub fn length(mut self) -> Field<M, usize> {
-		self.path.push("length");
+		self.path.push("length".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
@@ -248,90 +346,100 @@ impl<M: Model> Field<M, DateTime> {
 	/// Extract year: EXTRACT(YEAR FROM field)
 	///
 	pub fn year(mut self) -> Field<M, i32> {
-		self.path.push("year");
+		self.path.push("year".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
 	/// Extract month: EXTRACT(MONTH FROM field)
 	///
 	pub fn month(mut self) -> Field<M, i32> {
-		self.path.push("month");
+		self.path.push("month".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
 	/// Extract day: EXTRACT(DAY FROM field)
 	///
 	pub fn day(mut self) -> Field<M, i32> {
-		self.path.push("day");
+		self.path.push("day".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
 	/// Extract week: EXTRACT(WEEK FROM field)
 	///
 	pub fn week(mut self) -> Field<M, i32> {
-		self.path.push("week");
+		self.path.push("week".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
 	/// Extract day of week: EXTRACT(DOW FROM field)
 	///
 	pub fn weekday(mut self) -> Field<M, i32> {
-		self.path.push("weekday");
+		self.path.push("weekday".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
 	/// Extract quarter: EXTRACT(QUARTER FROM field)
 	///
 	pub fn quarter(mut self) -> Field<M, i32> {
-		self.path.push("quarter");
+		self.path.push("quarter".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
 	/// Extract hour: EXTRACT(HOUR FROM field)
 	///
 	pub fn hour(mut self) -> Field<M, i32> {
-		self.path.push("hour");
+		self.path.push("hour".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
 	/// Extract minute: EXTRACT(MINUTE FROM field)
 	///
 	pub fn minute(mut self) -> Field<M, i32> {
-		self.path.push("minute");
+		self.path.push("minute".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
 	/// Extract second: EXTRACT(SECOND FROM field)
 	///
 	pub fn second(mut self) -> Field<M, i32> {
-		self.path.push("second");
+		self.path.push("second".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
 	/// Convert to date: DATE(field)
 	///
 	pub fn date(mut self) -> Field<M, Date> {
-		self.path.push("date");
+		self.path.push("date".to_string());
 		Field {
 			path: self.path,
+			table_alias: self.table_alias,
 			_phantom: PhantomData,
 		}
 	}
@@ -345,25 +453,25 @@ impl<M: Model, T: NumericType> Field<M, T> {
 	/// Absolute value: ABS(field)
 	///
 	pub fn abs(mut self) -> Self {
-		self.path.push("abs");
+		self.path.push("abs".to_string());
 		self
 	}
 	/// Ceiling: CEIL(field)
 	///
 	pub fn ceil(mut self) -> Self {
-		self.path.push("ceil");
+		self.path.push("ceil".to_string());
 		self
 	}
 	/// Floor: FLOOR(field)
 	///
 	pub fn floor(mut self) -> Self {
-		self.path.push("floor");
+		self.path.push("floor".to_string());
 		self
 	}
 	/// Round: ROUND(field)
 	///
 	pub fn round(mut self) -> Self {
-		self.path.push("round");
+		self.path.push("round".to_string());
 		self
 	}
 }
@@ -448,8 +556,18 @@ mod tests {
 
 	const TEST_USER_TABLE: TableName = TableName::new_const("test_user");
 
+	#[derive(Debug, Clone)]
+	struct TestUserFields;
+
+	impl crate::FieldSelector for TestUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	impl Model for TestUser {
 		type PrimaryKey = i64;
+		type Fields = TestUserFields;
 
 		fn table_name() -> &'static str {
 			TEST_USER_TABLE.as_str()
@@ -461,6 +579,14 @@ mod tests {
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = value;
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
 		}
 	}
 

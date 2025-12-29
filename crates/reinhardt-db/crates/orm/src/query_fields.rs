@@ -28,7 +28,9 @@
 //! // User::email().year();       // ERROR: year() only available for DateTime
 //! ```
 
-mod compiler;
+pub mod aggregate;
+pub mod comparison;
+pub mod compiler;
 mod field;
 mod lookup;
 mod traits;
@@ -37,3 +39,52 @@ pub use compiler::QueryFieldCompiler;
 pub use field::Field;
 pub use lookup::{Lookup, LookupType, LookupValue};
 pub use traits::{Comparable, Date, DateTime, DateTimeType, NumericType, StringType};
+
+/// Helper type for building GROUP BY clauses with type-safe field selection
+///
+/// This type collects field paths from type-safe field selectors and converts
+/// them to SQL GROUP BY clause.
+///
+/// # Examples
+///
+/// ```ignore
+/// QuerySet::<User>::new()
+///     .group_by(|f| {
+///         GroupByFields::new()
+///             .add(&f.user_id)
+///             .add(&f.category)
+///     })
+/// ```
+#[derive(Debug, Clone)]
+pub struct GroupByFields {
+	paths: Vec<String>,
+}
+
+impl GroupByFields {
+	/// Create a new empty GROUP BY fields collection
+	pub fn new() -> Self {
+		Self { paths: Vec::new() }
+	}
+
+	/// Add a field to the GROUP BY clause
+	///
+	/// This method accepts any `Field<M, T>` and extracts its path.
+	///
+	/// Builder pattern method - returns Self for chaining, not implementing std::ops::Add
+	#[allow(clippy::should_implement_trait)]
+	pub fn add<M: crate::Model, T>(mut self, field: &Field<M, T>) -> Self {
+		self.paths.push(field.path().join("."));
+		self
+	}
+
+	/// Build the final list of field paths for SQL generation
+	pub(crate) fn build(self) -> Vec<String> {
+		self.paths
+	}
+}
+
+impl Default for GroupByFields {
+	fn default() -> Self {
+		Self::new()
+	}
+}

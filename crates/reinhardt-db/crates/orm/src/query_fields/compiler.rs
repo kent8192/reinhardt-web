@@ -1,7 +1,10 @@
 //! SQL compiler for field lookups
 //!
 //! Converts Field and Lookup types into SQL WHERE clauses
+//! Also compiles field comparisons for JOIN conditions and aggregate expressions for HAVING clauses
 
+use super::aggregate::{AggregateFunction, ComparisonExpr, ComparisonValue};
+use super::comparison::{ComparisonOperator, FieldComparison, FieldRef};
 use super::lookup::{Lookup, LookupType, LookupValue};
 use crate::Model;
 use sea_query::SimpleExpr;
@@ -82,10 +85,10 @@ impl QueryFieldCompiler {
 	}
 
 	/// Compile field path without transforms (raw)
-	fn compile_field_path_raw(path: &[&str]) -> String {
+	fn compile_field_path_raw(path: &[String]) -> String {
 		path.iter()
-			.filter(|&&segment| !Self::is_transform(segment))
-			.copied()
+			.filter(|segment| !Self::is_transform(segment))
+			.map(|s| s.as_str())
 			.collect::<Vec<_>>()
 			.join(".")
 	}
@@ -108,12 +111,12 @@ impl QueryFieldCompiler {
 	}
 
 	/// Compile field path into SQL
-	fn compile_field_path(path: &[&str]) -> String {
+	fn compile_field_path(path: &[String]) -> String {
 		let mut transforms = Vec::new();
 		let mut field_name = String::new();
 
-		for &segment in path {
-			match segment {
+		for segment in path {
+			match segment.as_str() {
 				// String transforms
 				"lower" => transforms.push("LOWER"),
 				"upper" => transforms.push("UPPER"),
@@ -344,6 +347,115 @@ impl QueryFieldCompiler {
 	fn escape_sql_string(s: &str) -> String {
 		s.replace('\'', "''")
 	}
+
+	// ========================================
+	// Compile JOIN conditions and HAVING clauses
+	// ========================================
+
+	/// Convert field comparison expression to SQL
+	///
+	/// Converts field-to-field comparison expressions used in JOIN conditions (ON clause) to SQL.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_orm::query_fields::comparison::*;
+	///
+	/// // u1.id < u2.id
+	/// let comparison = FieldComparison::new(
+	///     FieldRef::field_with_alias("u1".to_string(), vec!["id".to_string()]),
+	///     FieldRef::field_with_alias("u2".to_string(), vec!["id".to_string()]),
+	///     ComparisonOperator::Lt,
+	/// );
+	///
+	/// let sql = QueryFieldCompiler::compile_field_comparison(&comparison);
+	/// assert_eq!(sql, "u1.id < u2.id");
+	/// ```
+	pub fn compile_field_comparison(comparison: &FieldComparison) -> String {
+		let left = Self::compile_field_ref(&comparison.left);
+		let right = Self::compile_field_ref(&comparison.right);
+		let op = Self::comparison_operator_to_sql(comparison.op);
+
+		format!("{} {} {}", left, op, right)
+	}
+
+	/// Convert field reference to SQL
+	fn compile_field_ref(field_ref: &FieldRef) -> String {
+		match field_ref {
+			FieldRef::Field {
+				table_alias,
+				field_path,
+			} => {
+				let path = field_path.join(".");
+				if let Some(alias) = table_alias {
+					format!("{}.{}", alias, path)
+				} else {
+					path
+				}
+			}
+			FieldRef::Value(v) => v.clone(),
+		}
+	}
+
+	/// Convert comparison operator to SQL
+	fn comparison_operator_to_sql(op: ComparisonOperator) -> &'static str {
+		match op {
+			ComparisonOperator::Eq => "=",
+			ComparisonOperator::Ne => "!=",
+			ComparisonOperator::Gt => ">",
+			ComparisonOperator::Gte => ">=",
+			ComparisonOperator::Lt => "<",
+			ComparisonOperator::Lte => "<=",
+		}
+	}
+
+	/// Convert aggregate comparison expression to SQL
+	///
+	/// Converts aggregate function comparison expressions used in HAVING clauses to SQL.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// use reinhardt_orm::query_fields::aggregate::*;
+	///
+	/// // COUNT(*) > 5
+	/// let expr = AggregateExpr::count("*").gt(5);
+	/// let sql = QueryFieldCompiler::compile_aggregate_comparison(&expr);
+	/// assert_eq!(sql, "COUNT(*) > 5");
+	///
+	/// // AVG(price) <= 100.5
+	/// let expr = AggregateExpr::avg("price").lte(100.5);
+	/// let sql = QueryFieldCompiler::compile_aggregate_comparison(&expr);
+	/// assert_eq!(sql, "AVG(price) <= 100.5");
+	/// ```
+	pub fn compile_aggregate_comparison(expr: &ComparisonExpr) -> String {
+		let agg_sql = Self::compile_aggregate_function(&expr.aggregate);
+		let op = Self::comparison_operator_to_sql(expr.op);
+		let value_sql = Self::compile_comparison_value(&expr.value);
+
+		format!("{} {} {}", agg_sql, op, value_sql)
+	}
+
+	/// Convert aggregate function to SQL
+	fn compile_aggregate_function(expr: &super::aggregate::AggregateExpr) -> String {
+		let function_name = match expr.function() {
+			AggregateFunction::Count => "COUNT",
+			AggregateFunction::Sum => "SUM",
+			AggregateFunction::Avg => "AVG",
+			AggregateFunction::Min => "MIN",
+			AggregateFunction::Max => "MAX",
+		};
+
+		format!("{}({})", function_name, expr.field())
+	}
+
+	/// Convert comparison value to SQL
+	fn compile_comparison_value(value: &ComparisonValue) -> String {
+		match value {
+			ComparisonValue::Int(i) => i.to_string(),
+			ComparisonValue::Float(f) => f.to_string(),
+		}
+	}
 }
 
 #[cfg(test)]
@@ -362,8 +474,18 @@ mod tests {
 
 	const TEST_USER_TABLE: TableName = TableName::new_const("test_user");
 
+	#[derive(Debug, Clone)]
+	struct TestUserFields;
+
+	impl crate::FieldSelector for TestUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	impl Model for TestUser {
 		type PrimaryKey = i64;
+		type Fields = TestUserFields;
 		fn table_name() -> &'static str {
 			TEST_USER_TABLE.as_str()
 		}
@@ -372,6 +494,12 @@ mod tests {
 		}
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = value;
+		}
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+		fn new_fields() -> Self::Fields {
+			TestUserFields
 		}
 	}
 

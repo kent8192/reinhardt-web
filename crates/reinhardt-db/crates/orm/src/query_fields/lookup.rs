@@ -119,9 +119,14 @@ impl<T: Into<LookupValue>> From<(T, T)> for LookupValue {
 }
 
 /// A complete lookup specification ready to be compiled to SQL
+///
+/// # Breaking Change
+///
+/// The type of `field_path` has been changed from `Vec<&'static str>` to `Vec<String>`.
+/// This allows support for dynamic table aliases.
 #[derive(Debug, Clone)]
 pub struct Lookup<M: Model> {
-	pub(crate) field_path: Vec<&'static str>,
+	pub(crate) field_path: Vec<String>,
 	pub(crate) lookup_type: LookupType,
 	pub(crate) value: LookupValue,
 	pub(crate) _phantom: std::marker::PhantomData<M>,
@@ -156,7 +161,7 @@ impl<M: Model> Lookup<M> {
 	/// assert_eq!(lookup.field_path(), &["name"]);
 	/// assert_eq!(*lookup.lookup_type(), LookupType::Exact);
 	/// ```
-	pub fn new(field_path: Vec<&'static str>, lookup_type: LookupType, value: LookupValue) -> Self {
+	pub fn new(field_path: Vec<String>, lookup_type: LookupType, value: LookupValue) -> Self {
 		Self {
 			field_path,
 			lookup_type,
@@ -166,7 +171,7 @@ impl<M: Model> Lookup<M> {
 	}
 	/// Get the field path
 	///
-	pub fn field_path(&self) -> &[&'static str] {
+	pub fn field_path(&self) -> &[String] {
 		&self.field_path
 	}
 	/// Get the lookup type
