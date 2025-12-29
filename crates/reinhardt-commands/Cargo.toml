@@ -46,11 +46,6 @@ rustyline = { version = "17.0.2", optional = true }
 rhai = { version = "1.20", optional = true }
 pyo3 = { version = "0.27", optional = true, features = ["auto-initialize"] }
 
-# TUI dependencies
-ratatui = "0.29"
-crossterm = "0.28"
-sysinfo = "0.32"
-
 # AST dependencies for robust code generation
 syn = { version = "2.0", features = ["full", "parsing"] }
 quote = "1.0"

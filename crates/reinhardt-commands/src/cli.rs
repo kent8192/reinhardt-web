@@ -7,10 +7,7 @@
 use crate::MakeMigrationsCommand;
 use crate::base::BaseCommand;
 use crate::collectstatic::{CollectStaticCommand, CollectStaticOptions};
-use crate::{
-	CheckCommand, CommandContext, MigrateCommand, RunAllCommand, RunServerCommand,
-	ServePagesCommand, ShellCommand,
-};
+use crate::{CheckCommand, CommandContext, MigrateCommand, RunServerCommand, ShellCommand};
 use clap::{Parser, Subcommand};
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
@@ -181,48 +178,6 @@ pub enum Commands {
 		#[arg(long)]
 		postman: bool,
 	},
-
-	/// Start WASM frontend development server (Trunk)
-	Servepages {
-		/// Frontend server port
-		#[arg(long, default_value = "8080")]
-		port: String,
-
-		/// Server address
-		#[arg(long, default_value = "127.0.0.1")]
-		address: String,
-
-		/// Open browser automatically
-		#[arg(long)]
-		open: bool,
-
-		/// Build in release mode
-		#[arg(long)]
-		release: bool,
-	},
-
-	/// Start both backend server and WASM frontend development server
-	Runall {
-		/// Backend server address
-		#[arg(value_name = "BACKEND_ADDRESS", default_value = "127.0.0.1:8000")]
-		backend_address: String,
-
-		/// Frontend server port
-		#[arg(long, default_value = "8080")]
-		frontend_port: String,
-
-		/// Disable backend auto-reload
-		#[arg(long)]
-		noreload: bool,
-
-		/// Serve static files in development mode
-		#[arg(long)]
-		insecure: bool,
-
-		/// Disable automatic OpenAPI documentation endpoints
-		#[arg(long)]
-		no_docs: bool,
-	},
 }
 
 /// Execute commands from command-line arguments
@@ -334,29 +289,6 @@ pub async fn run_command(
 			output,
 			postman,
 		} => execute_generateopenapi(format, output, postman, verbosity).await,
-		Commands::Servepages {
-			port,
-			address,
-			open,
-			release,
-		} => execute_servepages(port, address, open, release, verbosity).await,
-		Commands::Runall {
-			backend_address,
-			frontend_port,
-			noreload,
-			insecure,
-			no_docs,
-		} => {
-			execute_runall(
-				backend_address,
-				frontend_port,
-				noreload,
-				insecure,
-				no_docs,
-				verbosity,
-			)
-			.await
-		}
 	}
 }
 
@@ -736,14 +668,11 @@ async fn execute_generateopenapi(
 /// Automatically discover and register URL pattern functions
 ///
 /// This function uses the `inventory` crate to discover URL pattern functions
-/// that were registered at compile time using the `register_url_patterns!()`
-/// macro.
+/// that were registered at compile time using the `#[routes]` attribute macro.
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` on success, or an error if:
-/// - No URL patterns were registered
-/// - Database connection failed (for admin routers)
+/// Returns `Ok(())` on success, or an error if no URL patterns were registered.
 #[cfg(feature = "routers")]
 async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 	use reinhardt_urls::routers::{UrlPatternsRegistration, register_router_arc};
@@ -753,103 +682,19 @@ async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 		.next()
 		.ok_or_else(|| {
 			"No URL patterns registered.\n\
-				 Add 'register_url_patterns!();' or 'register_url_patterns!(admin);' \n\
-				 to your src/config/urls.rs file."
-				.to_string()
+			 Add the #[routes] attribute to your routes function in src/config/urls.rs:\n\n\
+			 #[routes]\n\
+			 pub fn routes() -> UnifiedRouter {\n\
+			     UnifiedRouter::new()\n\
+			 }"
+			.to_string()
 		})?;
 
-	// If admin router is available, use it with database connection
-	if let Some(_get_admin_router) = registration.get_admin_router {
-		#[cfg(feature = "reinhardt-db")]
-		{
-			let db = get_database_connection().await?;
-			let router = _get_admin_router(db);
-			register_router_arc(router);
-		}
-		#[cfg(not(feature = "reinhardt-db"))]
-		{
-			return Err("Admin router requires 'reinhardt-db' feature. \
-			            Enable the feature or remove admin router registration."
-				.into());
-		}
-	} else {
-		// Use standard router
-		let router = (registration.get_router)();
-		register_router_arc(router);
-	}
+	// Get and register the router
+	let router = (registration.get_router)();
+	register_router_arc(router);
 
 	Ok(())
-}
-
-/// Get database connection from DI container or environment variable
-///
-/// This function attempts to get a database connection in the following order:
-/// 1. From the DI container (if initialized)
-/// 2. From the DATABASE_URL environment variable
-/// 3. Default to "sqlite:db.sqlite3"
-#[cfg(all(feature = "routers", feature = "reinhardt-db"))]
-async fn get_database_connection()
--> Result<reinhardt_db::DatabaseConnection, Box<dyn std::error::Error>> {
-	// 1. Try to get from DI container
-	if let Some(db) = try_get_from_di().await {
-		return Ok(db);
-	}
-
-	// 2. Create from DATABASE_URL environment variable
-	#[cfg(feature = "reinhardt-db")]
-	{
-		let database_url =
-			env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:db.sqlite3".to_string());
-
-		use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
-		use reinhardt_db::orm::DatabaseConnection as OrmConnection;
-
-		// Determine database backend type
-		let (backend_type, backends_conn) = if database_url.starts_with("postgres://")
-			|| database_url.starts_with("postgresql://")
-		{
-			let conn = BackendsConnection::connect_postgres_or_create(&database_url)
-				.await
-				.map_err(|e| format!("Failed to connect to PostgreSQL: {}", e))?;
-			(reinhardt_db::orm::DatabaseBackend::Postgres, conn)
-		} else if database_url.starts_with("mysql://") {
-			let conn = BackendsConnection::connect_mysql(&database_url)
-				.await
-				.map_err(|e| format!("Failed to connect to MySQL: {}", e))?;
-			(reinhardt_db::orm::DatabaseBackend::MySql, conn)
-		} else if database_url.starts_with("sqlite://") || database_url.starts_with("sqlite:") {
-			let conn = BackendsConnection::connect_sqlite(&database_url)
-				.await
-				.map_err(|e| format!("Failed to connect to SQLite: {}", e))?;
-			(reinhardt_db::orm::DatabaseBackend::Sqlite, conn)
-		} else {
-			return Err(format!("Unsupported database URL: {}", database_url).into());
-		};
-
-		// Wrap backends connection with ORM connection
-		Ok(OrmConnection::new(backend_type, backends_conn))
-	}
-
-	#[cfg(not(feature = "reinhardt-db"))]
-	{
-		Err("Database connection requires 'reinhardt-db' feature".into())
-	}
-}
-
-/// Try to get database connection from DI container
-///
-/// This function attempts to retrieve a database connection from the DI
-/// container if it has been initialized. Returns `None` if the DI container
-/// is not available or the database connection is not registered.
-#[cfg(all(feature = "routers", feature = "reinhardt-db"))]
-async fn try_get_from_di() -> Option<reinhardt_db::DatabaseConnection> {
-	// CLI commands do not use DI container, as they run in a separate process
-	// from the web application. Database connections are established via
-	// environment variables (DATABASE_URL) or configuration files.
-	//
-	// This design decision aligns with Django's approach where manage.py commands
-	// access database settings directly rather than through dependency injection.
-	None
 }
 
 /// No-op implementation when routers feature is disabled
@@ -857,56 +702,4 @@ async fn try_get_from_di() -> Option<reinhardt_db::DatabaseConnection> {
 async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 	// No router registration needed when routers feature is disabled
 	Ok(())
-}
-
-/// Execute the servepages command
-async fn execute_servepages(
-	port: String,
-	address: String,
-	open: bool,
-	release: bool,
-	verbosity: u8,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let mut ctx = CommandContext::default();
-	ctx.set_verbosity(verbosity);
-
-	ctx.set_option("port".to_string(), port);
-	ctx.set_option("address".to_string(), address);
-	if open {
-		ctx.set_option("open".to_string(), "true".to_string());
-	}
-	if release {
-		ctx.set_option("release".to_string(), "true".to_string());
-	}
-
-	let cmd = ServePagesCommand;
-	cmd.execute(&ctx).await.map_err(|e| e.into())
-}
-
-/// Execute the runall command
-async fn execute_runall(
-	backend_address: String,
-	frontend_port: String,
-	noreload: bool,
-	insecure: bool,
-	no_docs: bool,
-	verbosity: u8,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let mut ctx = CommandContext::default();
-	ctx.set_verbosity(verbosity);
-	ctx.add_arg(backend_address);
-
-	ctx.set_option("frontend-port".to_string(), frontend_port);
-	if noreload {
-		ctx.set_option("noreload".to_string(), "true".to_string());
-	}
-	if insecure {
-		ctx.set_option("insecure".to_string(), "true".to_string());
-	}
-	if no_docs {
-		ctx.set_option("no_docs".to_string(), "true".to_string());
-	}
-
-	let cmd = RunAllCommand;
-	cmd.execute(&ctx).await.map_err(|e| e.into())
 }
