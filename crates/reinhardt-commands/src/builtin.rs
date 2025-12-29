@@ -2,14 +2,8 @@
 //!
 //! Standard management commands included with Reinhardt.
 
-use crate::{
-	BaseCommand, CommandArgument, CommandContext, CommandError, CommandOption, CommandResult,
-};
+use crate::{BaseCommand, CommandArgument, CommandContext, CommandOption, CommandResult};
 use async_trait::async_trait;
-
-// Import TUI module for runall command
-#[cfg(feature = "server")]
-use crate::tui;
 
 #[cfg(feature = "migrations")]
 use reinhardt_db::migrations::DatabaseMigrationExecutor;
@@ -1105,6 +1099,18 @@ impl BaseCommand for RunServerCommand {
 			.with_default("500"),
 			CommandOption::flag(None, "nothreading", "Disable threading"),
 			CommandOption::flag(None, "insecure", "Serve static files in production mode"),
+			CommandOption::flag(
+				None,
+				"with-pages",
+				"Enable WASM frontend serving (serves static files from dist/)",
+			),
+			CommandOption::option(
+				None,
+				"static-dir",
+				"Static files directory for WASM frontend",
+			)
+			.with_default("dist"),
+			CommandOption::flag(None, "no-spa", "Disable SPA mode (no index.html fallback)"),
 		]
 	}
 
@@ -1113,11 +1119,27 @@ impl BaseCommand for RunServerCommand {
 		let noreload = ctx.has_option("noreload");
 		let insecure = ctx.has_option("insecure");
 		let no_docs = ctx.has_option("no_docs");
+		let with_pages = ctx.has_option("with-pages");
+		let static_dir = ctx
+			.option("static-dir")
+			.map(|s| s.to_string())
+			.unwrap_or_else(|| "dist".to_string());
+		let no_spa = ctx.has_option("no-spa");
 
 		ctx.info(&format!(
 			"Starting development server at http://{}",
 			address
 		));
+
+		if with_pages {
+			ctx.info(&format!(
+				"📦 WASM frontend enabled (static dir: {})",
+				static_dir
+			));
+			if !no_spa {
+				ctx.info("   SPA mode: enabled (index.html fallback for 404s)");
+			}
+		}
 
 		if !noreload {
 			#[cfg(all(feature = "server", feature = "autoreload"))]
@@ -1143,7 +1165,17 @@ impl BaseCommand for RunServerCommand {
 		// Server implementation with conditional features
 		#[cfg(feature = "server")]
 		{
-			Self::run_server(ctx, address, noreload, insecure, no_docs).await
+			Self::run_server(
+				ctx,
+				address,
+				noreload,
+				insecure,
+				no_docs,
+				with_pages,
+				&static_dir,
+				no_spa,
+			)
+			.await
 		}
 
 		#[cfg(not(feature = "server"))]
@@ -1172,12 +1204,16 @@ impl BaseCommand for RunServerCommand {
 impl RunServerCommand {
 	/// Run the development server
 	#[cfg(feature = "server")]
+	#[allow(clippy::too_many_arguments)]
 	async fn run_server(
 		#[allow(unused_variables)] ctx: &CommandContext,
 		address: &str,
 		noreload: bool,
 		_insecure: bool,
 		no_docs: bool,
+		with_pages: bool,
+		static_dir: &str,
+		no_spa: bool,
 	) -> CommandResult<()> {
 		use reinhardt_server::{HttpServer, ShutdownCoordinator};
 
@@ -1283,9 +1319,25 @@ impl RunServerCommand {
 			std::sync::Arc::new(reinhardt_di::InjectionContext::builder(singleton_scope).build());
 
 		// Create HTTP server with DI context and logging middleware
-		let server = HttpServer::new(router)
+		let mut server = HttpServer::new(router)
 			.with_di_context(di_context)
 			.with_middleware(reinhardt_middleware::LoggingMiddleware::new());
+
+		// Add static files middleware for WASM frontend if enabled
+		if with_pages {
+			use reinhardt_static::middleware::{StaticFilesConfig, StaticFilesMiddleware};
+			use std::path::PathBuf;
+
+			let static_config = StaticFilesConfig::new(PathBuf::from(static_dir))
+				.url_prefix("/")
+				.spa_mode(!no_spa);
+
+			server = server.with_middleware(StaticFilesMiddleware::new(static_config));
+			ctx.verbose(&format!(
+				"Static files middleware enabled for: {}",
+				static_dir
+			));
+		}
 
 		// Run with or without auto-reload
 		if !noreload {
@@ -2019,1148 +2071,6 @@ impl BaseCommand for CheckDiCommand {
 		}
 	}
 }
-
-// ============================================================================
-// WASM Frontend Server Commands
-// ============================================================================
-
-/// Find the path to the cargo-installed trunk binary (WASM build tool)
-async fn find_cargo_trunk_path() -> CommandResult<std::path::PathBuf> {
-	use std::path::PathBuf;
-
-	// Try CARGO_HOME/bin/trunk first
-	if let Ok(cargo_home) = std::env::var("CARGO_HOME") {
-		let trunk_path = PathBuf::from(cargo_home).join("bin").join("trunk");
-		if trunk_path.exists() {
-			// Verify this is the WASM trunk by checking version output
-			if is_wasm_trunk(&trunk_path).await {
-				return Ok(trunk_path);
-			}
-		}
-	}
-
-	// Try $HOME/.cargo/bin/trunk
-	if let Ok(home) = std::env::var("HOME") {
-		let trunk_path = PathBuf::from(home).join(".cargo").join("bin").join("trunk");
-		if trunk_path.exists() {
-			// Verify this is the WASM trunk
-			if is_wasm_trunk(&trunk_path).await {
-				return Ok(trunk_path);
-			}
-		}
-	}
-
-	// Fallback to "trunk" in PATH and hope it's the right one
-	Ok(PathBuf::from("trunk"))
-}
-
-/// Check if the given trunk binary is the WASM build tool (not trunk.io)
-async fn is_wasm_trunk(trunk_path: &std::path::Path) -> bool {
-	let output = tokio::process::Command::new(trunk_path)
-		.arg("--version")
-		.output()
-		.await;
-
-	match output {
-		Ok(output) if output.status.success() => {
-			let version_str = String::from_utf8_lossy(&output.stdout);
-			// WASM trunk outputs "trunk X.Y.Z"
-			// trunk.io outputs just the version number
-			version_str.starts_with("trunk ")
-		}
-		_ => false,
-	}
-}
-
-/// Helper function to check if Trunk is installed
-async fn ensure_trunk_available() -> CommandResult<()> {
-	let trunk_path = find_cargo_trunk_path().await?;
-	let output = tokio::process::Command::new(&trunk_path)
-		.arg("--version")
-		.output()
-		.await;
-
-	match output {
-		Ok(output) if output.status.success() => Ok(()),
-		_ => Err(CommandError::ExecutionError(
-			"Trunk is not installed.\n\
-			 \n\
-			 Install with: cargo install trunk\n\
-			 \n\
-			 For WASM target support:\n\
-			   rustup target add wasm32-unknown-unknown\n\
-			   cargo install wasm-bindgen-cli\n\
-			 \n\
-			 Documentation: https://trunkrs.dev/"
-				.to_string(),
-		)),
-	}
-}
-
-/// Helper function to find Trunk.toml in current directory or parent directories
-async fn find_trunk_toml() -> CommandResult<std::path::PathBuf> {
-	let current_dir = std::env::current_dir().map_err(|e| {
-		CommandError::ExecutionError(format!("Failed to get current directory: {}", e))
-	})?;
-
-	let mut dir = current_dir.as_path();
-
-	loop {
-		let trunk_toml = dir.join("Trunk.toml");
-		if trunk_toml.exists() {
-			return Ok(dir.to_path_buf());
-		}
-
-		match dir.parent() {
-			Some(parent) => dir = parent,
-			None => break,
-		}
-	}
-
-	Err(CommandError::ExecutionError(
-		"Trunk.toml not found in current directory or parent directories.\n\
-		 \n\
-		 Create one with:\n\
-		   trunk init\n\
-		 \n\
-		 Or navigate to a directory with Trunk.toml\n\
-		 Example: cd examples/local/examples-twitter"
-			.to_string(),
-	))
-}
-
-/// ServePagesCommand - Start WASM frontend development server (Trunk)
-pub struct ServePagesCommand;
-
-#[async_trait]
-impl BaseCommand for ServePagesCommand {
-	fn name(&self) -> &str {
-		"servepages"
-	}
-
-	fn description(&self) -> &str {
-		"Start WASM frontend development server (Trunk)"
-	}
-
-	fn arguments(&self) -> Vec<CommandArgument> {
-		vec![]
-	}
-
-	fn options(&self) -> Vec<CommandOption> {
-		vec![
-			CommandOption::option(None, "port", "Frontend server port (default: 8080)")
-				.with_default("8080"),
-			CommandOption::option(None, "address", "Server address (default: 127.0.0.1)")
-				.with_default("127.0.0.1"),
-			CommandOption::flag(None, "open", "Open browser automatically"),
-			CommandOption::flag(None, "release", "Build in release mode"),
-		]
-	}
-
-	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		// Check if Trunk is installed
-		ensure_trunk_available().await?;
-
-		// Find Trunk.toml
-		let project_dir = find_trunk_toml().await?;
-
-		let _port = ctx.option("port").map(|s| s.as_str()).unwrap_or("8080");
-		let _address = ctx
-			.option("address")
-			.map(|s| s.as_str())
-			.unwrap_or("127.0.0.1");
-		let open = ctx.has_option("open");
-		let release = ctx.has_option("release");
-
-		ctx.info("Starting WASM frontend development server (configured in Trunk.toml)");
-		ctx.verbose(&format!(
-			"Trunk project directory: {}",
-			project_dir.display()
-		));
-		ctx.info("");
-		ctx.info("To customize server settings, edit Trunk.toml in your project directory");
-		ctx.info("Quit the server with CTRL-C");
-		ctx.info("");
-
-		// Build trunk command
-		// Note: port and address are configured in Trunk.toml instead of command-line arguments
-		let mut cmd = tokio::process::Command::new("trunk");
-		cmd.arg("serve")
-			.current_dir(&project_dir)
-			.stdout(std::process::Stdio::inherit())
-			.stderr(std::process::Stdio::inherit());
-
-		if open {
-			cmd.arg("--open");
-		}
-
-		if release {
-			cmd.arg("--release");
-		}
-
-		// Spawn trunk process
-		let mut child = cmd
-			.spawn()
-			.map_err(|e| CommandError::ExecutionError(format!("Failed to start trunk: {}", e)))?;
-
-		// Wait for either process completion or CTRL-C
-		tokio::select! {
-			status = child.wait() => {
-				match status {
-					Ok(exit_status) if exit_status.success() => Ok(()),
-					Ok(exit_status) => Err(CommandError::ExecutionError(
-						format!("Trunk exited with error: {}", exit_status)
-					)),
-					Err(e) => Err(CommandError::ExecutionError(
-						format!("Failed to wait for trunk: {}", e)
-					)),
-				}
-			}
-			_ = tokio::signal::ctrl_c() => {
-				ctx.info("\nReceived CTRL-C, shutting down...");
-
-				// Send SIGTERM to trunk process
-				#[cfg(unix)]
-				if let Some(pid) = child.id() {
-					use nix::sys::signal::{kill, Signal};
-					use nix::unistd::Pid;
-					let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
-				}
-
-				#[cfg(windows)]
-				{
-					let _ = child.kill().await;
-				}
-
-				// Wait for process to exit
-				let _ = child.wait().await;
-				Ok(())
-			}
-		}
-	}
-}
-
-/// RunAllCommand - Start both backend server and WASM frontend development server
-pub struct RunAllCommand;
-
-#[async_trait]
-impl BaseCommand for RunAllCommand {
-	fn name(&self) -> &str {
-		"runall"
-	}
-
-	fn description(&self) -> &str {
-		"Start both backend server and WASM frontend development server"
-	}
-
-	fn arguments(&self) -> Vec<CommandArgument> {
-		vec![
-			CommandArgument::optional(
-				"backend-address",
-				"Backend server address (default: 127.0.0.1:8000)",
-			)
-			.with_default("127.0.0.1:8000"),
-		]
-	}
-
-	fn options(&self) -> Vec<CommandOption> {
-		vec![
-			CommandOption::option(
-				None,
-				"frontend-port",
-				"Frontend server port (default: 8080)",
-			)
-			.with_default("8080"),
-			CommandOption::flag(None, "noreload", "Disable backend auto-reload"),
-			CommandOption::flag(None, "insecure", "Serve static files"),
-			CommandOption::flag(None, "no-docs", "Disable OpenAPI docs"),
-		]
-	}
-
-	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		// Try to initialize TUI mode
-		#[cfg(feature = "server")]
-		match tui::TuiApp::try_init() {
-			Ok(_) => {
-				// TUI mode available, use it
-				return self.execute_tui_mode(ctx).await;
-			}
-			Err(e) => {
-				// TUI mode unavailable, fall back to simple mode
-				ctx.warning(&format!(
-					"TUI mode unavailable ({}), falling back to simple mode",
-					e
-				));
-				return self.execute_simple_mode(ctx).await;
-			}
-		}
-
-		#[cfg(not(feature = "server"))]
-		self.execute_simple_mode(ctx).await
-	}
-}
-
-impl RunAllCommand {
-	/// Execute in simple mode (original implementation without TUI)
-	async fn execute_simple_mode(&self, ctx: &CommandContext) -> CommandResult<()> {
-		use std::sync::Arc;
-
-		let backend_addr = ctx.arg(0).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000");
-		let frontend_port = ctx
-			.option("frontend-port")
-			.map(|s| s.as_str())
-			.unwrap_or("8080");
-
-		// Check if Trunk is installed
-		ensure_trunk_available().await?;
-
-		// Find Trunk.toml
-		let project_dir = find_trunk_toml().await?;
-
-		ctx.info("Starting both backend and frontend servers...");
-		ctx.info(&format!("Backend:  http://{}", backend_addr));
-		ctx.info(&format!("Frontend: http://127.0.0.1:{}", frontend_port));
-		ctx.verbose(&format!(
-			"Trunk project directory: {}",
-			project_dir.display()
-		));
-		ctx.info("");
-		ctx.info("Quit the servers with CTRL-C");
-		ctx.info("");
-
-		// Create ShutdownCoordinator for backend
-		#[cfg(feature = "server")]
-		let backend_coordinator = Arc::new(reinhardt_server::ShutdownCoordinator::new(
-			std::time::Duration::from_secs(30),
-		));
-
-		// Spawn CTRL-C signal handler
-		#[cfg(feature = "server")]
-		{
-			let shutdown_tx = backend_coordinator.clone();
-			tokio::spawn(async move {
-				if let Err(e) = tokio::signal::ctrl_c().await {
-					eprintln!("Failed to listen for CTRL-C: {}", e);
-					return;
-				}
-				println!("\nReceived CTRL-C, shutting down gracefully...");
-				shutdown_tx.shutdown();
-			});
-		}
-
-		// Start backend server
-		#[cfg(feature = "server")]
-		let backend_handle = {
-			let ctx = ctx.clone();
-			let coordinator = backend_coordinator.clone();
-			let addr = backend_addr.to_string();
-			tokio::spawn(async move {
-				// Create dummy channels for simple mode (logs and PID will be dropped)
-				let (log_tx_tui, _log_rx_tui) = tokio::sync::mpsc::unbounded_channel();
-				let (log_tx_file, _log_rx_file) = tokio::sync::mpsc::unbounded_channel();
-				let (pid_tx, _pid_rx) = tokio::sync::mpsc::unbounded_channel();
-				Self::start_backend_server(
-					&ctx,
-					&addr,
-					coordinator,
-					log_tx_tui,
-					log_tx_file,
-					pid_tx,
-				)
-				.await
-			})
-		};
-
-		// Start frontend server (Trunk)
-		let frontend_handle = {
-			let port = frontend_port.to_string();
-			#[cfg(feature = "server")]
-			let coordinator = backend_coordinator.clone();
-			tokio::spawn(async move {
-				#[cfg(feature = "server")]
-				{
-					// Create dummy log channels for simple mode (logs go to stdout/stderr)
-					let (log_tx_tui, _log_rx_tui) = tokio::sync::mpsc::unbounded_channel();
-					let (log_tx_file, _log_rx_file) = tokio::sync::mpsc::unbounded_channel();
-					let (_pid_tx, _pid_rx) = tokio::sync::mpsc::unbounded_channel();
-					Self::start_frontend_server(
-						&project_dir,
-						&port,
-						coordinator,
-						log_tx_tui,
-						log_tx_file,
-						_pid_tx,
-					)
-					.await
-				}
-				#[cfg(not(feature = "server"))]
-				{
-					Self::start_frontend_server_standalone(&project_dir, &port).await
-				}
-			})
-		};
-
-		// Wait for both servers to complete
-		#[cfg(feature = "server")]
-		let (backend_result, frontend_result) = tokio::join!(backend_handle, frontend_handle);
-
-		#[cfg(not(feature = "server"))]
-		let frontend_result = frontend_handle.await;
-
-		// Handle errors
-		#[cfg(feature = "server")]
-		if let Err(e) = backend_result {
-			ctx.warning(&format!("Backend task error: {:?}", e));
-		}
-
-		if let Err(e) = frontend_result {
-			ctx.warning(&format!("Frontend task error: {:?}", e));
-		}
-
-		Ok(())
-	}
-
-	/// Execute in TUI mode (new implementation with split-pane UI)
-	#[cfg(feature = "server")]
-	async fn execute_tui_mode(&self, ctx: &CommandContext) -> CommandResult<()> {
-		use crossterm::{
-			execute,
-			terminal::{
-				EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-			},
-		};
-		use ratatui::{Terminal, backend::CrosstermBackend};
-		use std::io;
-		use std::sync::Arc;
-		use tokio::sync::mpsc;
-
-		let backend_addr = ctx.arg(0).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000");
-		let frontend_port = ctx
-			.option("frontend-port")
-			.map(|s| s.as_str())
-			.unwrap_or("8080");
-
-		// Check if Trunk is installed
-		ensure_trunk_available().await?;
-
-		// Find Trunk.toml
-		let project_dir = find_trunk_toml().await?;
-
-		// Create log channels (separate for TUI and file writer)
-		let (log_tx_tui, log_rx_tui) = mpsc::unbounded_channel();
-		let (log_tx_file, log_rx_file) = mpsc::unbounded_channel();
-
-		// Spawn log file writer task
-		let _log_writer_handle = tui::spawn_log_writer_task(log_rx_file);
-
-		// Create PID update channel
-		let (pid_tx, pid_rx) = mpsc::unbounded_channel();
-
-		// Create ShutdownCoordinator for backend
-		let backend_coordinator = Arc::new(reinhardt_server::ShutdownCoordinator::new(
-			std::time::Duration::from_secs(30),
-		));
-
-		// Send initial logs
-		let entry = tui::LogEntry::new(
-			tui::LogSource::Backend,
-			format!("Backend server starting on {}", backend_addr),
-		);
-		let _ = log_tx_tui.send(entry.clone());
-		let _ = log_tx_file.send(entry);
-
-		let entry = tui::LogEntry::new(
-			tui::LogSource::Frontend,
-			format!("Frontend server starting on port {}", frontend_port),
-		);
-		let _ = log_tx_tui.send(entry.clone());
-		let _ = log_tx_file.send(entry);
-
-		// Create restart signal channel for backend auto-reload
-		#[cfg(feature = "autoreload")]
-		let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
-
-		// Start backend server
-		let backend_handle: tokio::task::JoinHandle<Result<(), crate::CommandError>> = {
-			let ctx = ctx.clone();
-			let coordinator = backend_coordinator.clone();
-			let addr = backend_addr.to_string();
-			let log_tx_tui_clone = log_tx_tui.clone();
-			let log_tx_file_clone = log_tx_file.clone();
-			let pid_tx_clone = pid_tx.clone();
-
-			#[cfg(feature = "autoreload")]
-			{
-				tokio::spawn(async move {
-					loop {
-						let entry = tui::LogEntry::new(
-							tui::LogSource::Backend,
-							"Backend server task started".to_string(),
-						);
-						let _ = log_tx_tui_clone.send(entry.clone());
-						let _ = log_tx_file_clone.send(entry);
-
-						// Set backend status to Running
-						let _ = pid_tx_clone
-							.send(tui::PidUpdate::BackendStatus(tui::ProcessStatus::Running));
-
-						let result = Self::start_backend_server(
-							&ctx,
-							&addr,
-							coordinator.clone(),
-							log_tx_tui_clone.clone(),
-							log_tx_file_clone.clone(),
-							pid_tx_clone.clone(),
-						)
-						.await;
-
-						if let Err(ref e) = result {
-							let entry = tui::LogEntry::new(
-								tui::LogSource::Backend,
-								format!("Backend server error: {}", e),
-							);
-							let _ = log_tx_tui_clone.send(entry.clone());
-							let _ = log_tx_file_clone.send(entry);
-
-							// Set backend status to Crashed
-							let _ = pid_tx_clone
-								.send(tui::PidUpdate::BackendStatus(tui::ProcessStatus::Crashed));
-						}
-
-						// Wait for restart signal or break on shutdown
-						if restart_rx.recv().await.is_none() {
-							// Channel closed, exit loop
-							break;
-						}
-
-						let entry = tui::LogEntry::new(
-							tui::LogSource::Backend,
-							"Restarting backend server...".to_string(),
-						);
-						let _ = log_tx_tui_clone.send(entry.clone());
-						let _ = log_tx_file_clone.send(entry);
-					}
-					Ok(())
-				})
-			}
-
-			#[cfg(not(feature = "autoreload"))]
-			{
-				tokio::spawn(async move {
-					let entry = tui::LogEntry::new(
-						tui::LogSource::Backend,
-						"Backend server task started".to_string(),
-					);
-					let _ = log_tx_tui_clone.send(entry.clone());
-					let _ = log_tx_file_clone.send(entry);
-
-					// Set backend status to Running
-					let _ = pid_tx_clone
-						.send(tui::PidUpdate::BackendStatus(tui::ProcessStatus::Running));
-
-					let result = Self::start_backend_server(
-						&ctx,
-						&addr,
-						coordinator,
-						log_tx_tui_clone.clone(),
-						log_tx_file_clone.clone(),
-						pid_tx_clone.clone(),
-					)
-					.await;
-					if let Err(ref e) = result {
-						let entry = tui::LogEntry::new(
-							tui::LogSource::Backend,
-							format!("Backend server error: {}", e),
-						);
-						let _ = log_tx_tui_clone.send(entry.clone());
-						let _ = log_tx_file_clone.send(entry);
-
-						// Set backend status to Crashed
-						let _ = pid_tx_clone
-							.send(tui::PidUpdate::BackendStatus(tui::ProcessStatus::Crashed));
-					}
-					Ok(())
-				})
-			}
-		};
-
-		// Start frontend server (Trunk)
-		let frontend_handle = {
-			let port = frontend_port.to_string();
-			let coordinator = backend_coordinator.clone();
-			let log_tx_tui_clone = log_tx_tui.clone();
-			let log_tx_file_clone = log_tx_file.clone();
-			let pid_tx_clone = pid_tx.clone();
-			tokio::spawn(async move {
-				let entry = tui::LogEntry::new(
-					tui::LogSource::Frontend,
-					"Frontend server task started".to_string(),
-				);
-				let _ = log_tx_tui_clone.send(entry.clone());
-				let _ = log_tx_file_clone.send(entry);
-
-				let result = Self::start_frontend_server(
-					&project_dir,
-					&port,
-					coordinator,
-					log_tx_tui_clone.clone(),
-					log_tx_file_clone.clone(),
-					pid_tx_clone,
-				)
-				.await;
-				if let Err(ref e) = result {
-					let entry = tui::LogEntry::new(
-						tui::LogSource::Frontend,
-						format!("Frontend server error: {}", e),
-					);
-					let _ = log_tx_tui_clone.send(entry.clone());
-					let _ = log_tx_file_clone.send(entry);
-				}
-				result
-			})
-		};
-
-		// Create metrics channel
-		let (metrics_tx, metrics_rx) = mpsc::unbounded_channel();
-
-		// Create metrics collector and spawn update task
-		let metrics_collector = tui::MetricsCollector::new();
-		let _metrics_handle =
-			tui::spawn_metrics_collector_task(metrics_collector, metrics_tx, pid_rx);
-
-		// Start file watching for auto-reload (if enabled)
-		let noreload = ctx.has_option("noreload");
-		if !noreload {
-			#[cfg(feature = "autoreload")]
-			{
-				let log_tx_tui_clone = log_tx_tui.clone();
-				let log_tx_file_clone = log_tx_file.clone();
-				let (change_tx, mut change_rx) = mpsc::unbounded_channel();
-
-				// Spawn file watcher task
-				tokio::spawn(async move {
-					let entry = tui::LogEntry::new(
-						tui::LogSource::Backend,
-						"Auto-reload enabled: Watching for file changes...".to_string(),
-					);
-					let _ = log_tx_tui_clone.send(entry.clone());
-					let _ = log_tx_file_clone.send(entry);
-
-					if let Err(e) = Self::watch_files_for_runall(change_tx).await {
-						let entry = tui::LogEntry::new(
-							tui::LogSource::Backend,
-							format!("File watcher error: {}", e),
-						);
-						let _ = log_tx_tui_clone.send(entry.clone());
-						let _ = log_tx_file_clone.send(entry);
-					}
-				});
-
-				// Handle file changes and restart backend server
-				let log_tx_tui_change = log_tx_tui.clone();
-				let log_tx_file_change = log_tx_file.clone();
-				tokio::spawn(async move {
-					use std::collections::VecDeque;
-					use std::time::{Duration, Instant};
-
-					// Track restart times for frequency limiting (max 10 restarts in 60 seconds)
-					let mut restart_times: VecDeque<Instant> = VecDeque::new();
-					const MAX_RESTARTS: usize = 10;
-					const TIME_WINDOW: Duration = Duration::from_secs(60);
-
-					while change_rx.recv().await.is_some() {
-						let now = Instant::now();
-
-						// Remove restart times outside the time window
-						while let Some(&oldest) = restart_times.front() {
-							if now.duration_since(oldest) > TIME_WINDOW {
-								restart_times.pop_front();
-							} else {
-								break;
-							}
-						}
-
-						// Check if we've exceeded the restart limit
-						if restart_times.len() >= MAX_RESTARTS {
-							let entry = tui::LogEntry::new(
-								tui::LogSource::Backend,
-								format!(
-									"⚠️ Backend restart rate limit exceeded ({} restarts in {} seconds). Ignoring file change.",
-									MAX_RESTARTS,
-									TIME_WINDOW.as_secs()
-								),
-							);
-							let _ = log_tx_tui_change.send(entry.clone());
-							let _ = log_tx_file_change.send(entry);
-							continue;
-						}
-
-						let entry = tui::LogEntry::new(
-							tui::LogSource::Backend,
-							"File change detected! Restarting backend server...".to_string(),
-						);
-						let _ = log_tx_tui_change.send(entry.clone());
-						let _ = log_tx_file_change.send(entry);
-
-						// Send restart signal
-						if restart_tx.send(()).is_err() {
-							let entry = tui::LogEntry::new(
-								tui::LogSource::Backend,
-								"Failed to send restart signal (backend task may have exited)"
-									.to_string(),
-							);
-							let _ = log_tx_tui_change.send(entry.clone());
-							let _ = log_tx_file_change.send(entry);
-							break;
-						}
-
-						// Record this restart time
-						restart_times.push_back(now);
-					}
-				});
-			}
-			#[cfg(not(feature = "autoreload"))]
-			{
-				let entry = tui::LogEntry::new(
-					tui::LogSource::Backend,
-					"Auto-reload requested but 'autoreload' feature is not enabled".to_string(),
-				);
-				let _ = log_tx_tui.send(entry.clone());
-				let _ = log_tx_file.send(entry);
-			}
-		}
-
-		// Initialize terminal
-		enable_raw_mode()?;
-		let mut stdout = io::stdout();
-		execute!(stdout, EnterAlternateScreen)?;
-		let backend = CrosstermBackend::new(stdout);
-		let mut terminal = Terminal::new(backend)?;
-
-		// Create TUI app
-		let mut app = tui::TuiApp::new(log_rx_tui, metrics_rx);
-
-		// Create event handler
-		let event_handler = tui::EventHandler::new();
-
-		// Main TUI loop
-		loop {
-			// Process incoming logs and metrics
-			app.process_logs();
-			app.process_metrics();
-
-			// Draw UI
-			terminal.draw(|f| tui::ui::draw(f, app.state()))?;
-
-			// Handle events
-			if let Some(key) = event_handler.next_key()? {
-				app.state_mut().handle_key(key);
-			}
-
-			// Check if should quit
-			if app.state().should_quit {
-				break;
-			}
-		}
-
-		// Cleanup terminal
-		disable_raw_mode()?;
-		execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-
-		// Shutdown servers gracefully
-		backend_coordinator.shutdown();
-
-		// Wait for servers to complete with timeout
-		let shutdown_timeout = tokio::time::Duration::from_secs(5);
-		let _ = tokio::time::timeout(shutdown_timeout, async {
-			let (backend_result, frontend_result) = tokio::join!(backend_handle, frontend_handle);
-			if let Err(e) = backend_result {
-				eprintln!("Backend task error: {:?}", e);
-			}
-			if let Err(e) = frontend_result {
-				eprintln!("Frontend task error: {:?}", e);
-			}
-		})
-		.await;
-
-		Ok(())
-	}
-
-	/// Start backend server as a separate process (for PID tracking and metrics)
-	#[cfg(feature = "server")]
-	async fn start_backend_server(
-		ctx: &CommandContext,
-		address: &str,
-		coordinator: std::sync::Arc<reinhardt_server::ShutdownCoordinator>,
-		log_tx_tui: tokio::sync::mpsc::UnboundedSender<tui::LogEntry>,
-		log_tx_file: tokio::sync::mpsc::UnboundedSender<tui::LogEntry>,
-		pid_tx: tokio::sync::mpsc::UnboundedSender<tui::PidUpdate>,
-	) -> CommandResult<()> {
-		let insecure = ctx.has_option("insecure");
-		let no_docs = ctx.has_option("no-docs");
-
-		// Spawn backend server as a separate process
-		let mut child = Self::spawn_backend_process(address, insecure, no_docs)?;
-
-		// Get PID and send to metrics collector
-		if let Some(pid) = child.id() {
-			let entry = tui::LogEntry::new(
-				tui::LogSource::Backend,
-				format!("Backend server process started (PID: {})", pid),
-			);
-			let _ = log_tx_tui.send(entry.clone());
-			let _ = log_tx_file.send(entry);
-
-			// Send PID to metrics collector
-			let _ = pid_tx.send(tui::PidUpdate::BackendPid(pid));
-		}
-
-		let entry = tui::LogEntry::new(
-			tui::LogSource::Backend,
-			format!("Server listening on http://{}", address),
-		);
-		let _ = log_tx_tui.send(entry.clone());
-		let _ = log_tx_file.send(entry);
-
-		// Spawn task to forward stdout/stderr to log channels
-		let stdout = child.stdout.take();
-		let stderr = child.stderr.take();
-
-		if let Some(stdout) = stdout {
-			let log_tx_tui = log_tx_tui.clone();
-			let log_tx_file = log_tx_file.clone();
-			tokio::spawn(async move {
-				use tokio::io::{AsyncBufReadExt, BufReader};
-				let mut lines = BufReader::new(stdout).lines();
-				while let Ok(Some(line)) = lines.next_line().await {
-					let entry = tui::LogEntry::new(tui::LogSource::Backend, line);
-					let _ = log_tx_tui.send(entry.clone());
-					let _ = log_tx_file.send(entry);
-				}
-			});
-		}
-
-		if let Some(stderr) = stderr {
-			let log_tx_tui = log_tx_tui.clone();
-			let log_tx_file = log_tx_file.clone();
-			tokio::spawn(async move {
-				use tokio::io::{AsyncBufReadExt, BufReader};
-				let mut lines = BufReader::new(stderr).lines();
-				while let Ok(Some(line)) = lines.next_line().await {
-					let entry = tui::LogEntry::new(tui::LogSource::Backend, line);
-					let _ = log_tx_tui.send(entry.clone());
-					let _ = log_tx_file.send(entry);
-				}
-			});
-		}
-
-		// Wait for child process to exit or shutdown signal
-		tokio::select! {
-			status = child.wait() => {
-				match status {
-					Ok(exit_status) => {
-						let msg = if exit_status.success() {
-							"Backend server exited successfully".to_string()
-						} else {
-							format!("Backend server exited with status: {}", exit_status)
-						};
-						let entry = tui::LogEntry::new(tui::LogSource::Backend, msg);
-						let _ = log_tx_tui.send(entry.clone());
-						let _ = log_tx_file.send(entry);
-					}
-					Err(e) => {
-						let entry = tui::LogEntry::new(
-							tui::LogSource::Backend,
-							format!("Error waiting for backend process: {}", e),
-						);
-						let _ = log_tx_tui.send(entry.clone());
-						let _ = log_tx_file.send(entry);
-					}
-				}
-			}
-			_ = coordinator.wait_for_shutdown() => {
-				let entry = tui::LogEntry::new(
-					tui::LogSource::Backend,
-					"Shutdown signal received, terminating backend...".to_string(),
-				);
-				let _ = log_tx_tui.send(entry.clone());
-				let _ = log_tx_file.send(entry);
-
-				// Kill child process
-				let _ = child.kill().await;
-			}
-		}
-
-		Ok(())
-	}
-
-	/// Spawn backend server as a separate process.
-	///
-	/// This allows PID tracking for metrics collection.
-	#[cfg(feature = "server")]
-	fn spawn_backend_process(
-		address: &str,
-		insecure: bool,
-		no_docs: bool,
-	) -> CommandResult<tokio::process::Child> {
-		let current_exe = std::env::current_exe().map_err(|e| {
-			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
-		})?;
-
-		let mut cmd = tokio::process::Command::new(current_exe);
-		cmd.arg("runserver").arg(address).arg("--noreload");
-
-		if insecure {
-			cmd.arg("--insecure");
-		}
-		if no_docs {
-			cmd.arg("--no-docs");
-		}
-
-		// Set environment variable to indicate this is a backend child process
-		cmd.env("REINHARDT_IS_RUNALL_BACKEND", "1");
-
-		// Pipe stdout/stderr for log capturing
-		cmd.stdout(std::process::Stdio::piped());
-		cmd.stderr(std::process::Stdio::piped());
-
-		cmd.spawn().map_err(|e| {
-			crate::CommandError::ExecutionError(format!("Failed to spawn backend process: {}", e))
-		})
-	}
-
-	/// Start frontend server with ShutdownCoordinator integration
-	#[cfg(feature = "server")]
-	async fn start_frontend_server(
-		project_dir: &std::path::Path,
-		_port: &str,
-		coordinator: std::sync::Arc<reinhardt_server::ShutdownCoordinator>,
-		log_tx_tui: tokio::sync::mpsc::UnboundedSender<tui::LogEntry>,
-		log_tx_file: tokio::sync::mpsc::UnboundedSender<tui::LogEntry>,
-		pid_tx: tokio::sync::mpsc::UnboundedSender<tui::PidUpdate>,
-	) -> CommandResult<()> {
-		use tokio::io::{AsyncBufReadExt, BufReader};
-
-		// Find the correct trunk binary (cargo-installed WASM tool)
-		let trunk_path = find_cargo_trunk_path().await?;
-
-		// Spawn trunk process with piped stdout/stderr
-		// Note: port and address are configured in Trunk.toml instead of command-line arguments
-		let mut child = tokio::process::Command::new(&trunk_path)
-			.arg("serve")
-			.current_dir(project_dir)
-			.stdout(std::process::Stdio::piped())
-			.stderr(std::process::Stdio::piped())
-			.spawn()
-			.map_err(|e| CommandError::ExecutionError(format!("Failed to start trunk: {}", e)))?;
-
-		let pid = child.id();
-
-		// Send PID to metrics collector if available
-		if let Some(pid_value) = pid {
-			let _ = pid_tx.send(tui::PidUpdate::FrontendPid(pid_value));
-		}
-
-		// Capture stdout
-		if let Some(stdout) = child.stdout.take() {
-			let log_tx_tui = log_tx_tui.clone();
-			let log_tx_file = log_tx_file.clone();
-			tokio::spawn(async move {
-				let reader = BufReader::new(stdout);
-				let mut lines = reader.lines();
-				while let Ok(Some(line)) = lines.next_line().await {
-					let entry = tui::LogEntry::new(tui::LogSource::Frontend, line);
-					let _ = log_tx_tui.send(entry.clone());
-					let _ = log_tx_file.send(entry);
-				}
-			});
-		}
-
-		// Capture stderr
-		if let Some(stderr) = child.stderr.take() {
-			let log_tx_tui = log_tx_tui.clone();
-			let log_tx_file = log_tx_file.clone();
-			tokio::spawn(async move {
-				let reader = BufReader::new(stderr);
-				let mut lines = reader.lines();
-				while let Ok(Some(line)) = lines.next_line().await {
-					let entry = tui::LogEntry::new(tui::LogSource::Frontend, line);
-					let _ = log_tx_tui.send(entry.clone());
-					let _ = log_tx_file.send(entry);
-				}
-			});
-		}
-
-		let mut shutdown_rx = coordinator.subscribe();
-
-		// Wait for either process completion or shutdown signal
-		tokio::select! {
-			status = child.wait() => {
-				match status {
-					Ok(exit_status) if exit_status.success() => {
-						let entry = tui::LogEntry::new(
-							tui::LogSource::Frontend,
-							"Trunk process exited normally".to_string(),
-						);
-						let _ = log_tx_tui.send(entry.clone());
-						let _ = log_tx_file.send(entry);
-						Ok(())
-					}
-					Ok(exit_status) => {
-						let msg = format!("Trunk exited with error: {}", exit_status);
-						let entry = tui::LogEntry::new(tui::LogSource::Frontend, msg.clone());
-						let _ = log_tx_tui.send(entry.clone());
-						let _ = log_tx_file.send(entry);
-						Err(CommandError::ExecutionError(msg))
-					}
-					Err(e) => {
-						let msg = format!("Failed to wait for trunk: {}", e);
-						let entry = tui::LogEntry::new(tui::LogSource::Frontend, msg.clone());
-						let _ = log_tx_tui.send(entry.clone());
-						let _ = log_tx_file.send(entry);
-						Err(CommandError::ExecutionError(msg))
-					}
-				}
-			}
-			_ = shutdown_rx.recv() => {
-				let entry = tui::LogEntry::new(
-					tui::LogSource::Frontend,
-					"Shutting down Trunk process...".to_string(),
-				);
-				let _ = log_tx_tui.send(entry.clone());
-				let _ = log_tx_file.send(entry);
-
-				// Send SIGTERM to trunk process
-				#[cfg(unix)]
-				if let Some(pid) = pid {
-					use nix::sys::signal::{kill, Signal};
-					use nix::unistd::Pid;
-					let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
-				}
-
-				#[cfg(windows)]
-				{
-					let _ = child.kill().await;
-				}
-
-				// Wait for process to exit with timeout
-				match tokio::time::timeout(
-					std::time::Duration::from_secs(5),
-					child.wait()
-				).await {
-					Ok(_) => {
-						let entry = tui::LogEntry::new(
-							tui::LogSource::Frontend,
-							"Trunk process stopped".to_string(),
-						);
-						let _ = log_tx_tui.send(entry.clone());
-						let _ = log_tx_file.send(entry);
-						Ok(())
-					}
-					Err(_) => {
-						let entry = tui::LogEntry::new(
-							tui::LogSource::Frontend,
-							"Trunk process did not stop within timeout, force killing".to_string(),
-						);
-						let _ = log_tx_tui.send(entry.clone());
-						let _ = log_tx_file.send(entry);
-						let _ = child.kill().await;
-						let _ = child.wait().await;
-						Ok(())
-					}
-				}
-			}
-		}
-	}
-
-	/// Watch for file changes continuously for runall command
-	#[cfg(all(feature = "server", feature = "autoreload"))]
-	async fn watch_files_for_runall(
-		change_tx: tokio::sync::mpsc::UnboundedSender<()>,
-	) -> Result<(), notify::Error> {
-		use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
-		use std::path::Path;
-
-		let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-
-		let mut watcher = RecommendedWatcher::new(
-			move |res: Result<Event, notify::Error>| {
-				if let Ok(event) = res {
-					let _ = tx.blocking_send(event);
-				}
-			},
-			Config::default(),
-		)?;
-
-		// Directories to watch
-		watcher.watch(Path::new("src"), RecursiveMode::Recursive)?;
-		watcher.watch(Path::new("Cargo.toml"), RecursiveMode::NonRecursive)?;
-
-		// Continuously watch for changes
-		while let Some(event) = rx.recv().await {
-			if RunServerCommand::is_relevant_change(&event) {
-				// Notify about the change
-				let _ = change_tx.send(());
-			}
-		}
-
-		Ok(())
-	}
-
-	/// Start frontend server without ShutdownCoordinator (when server feature is disabled)
-	#[cfg(not(feature = "server"))]
-	async fn start_frontend_server_standalone(
-		project_dir: &std::path::Path,
-		_port: &str,
-	) -> CommandResult<()> {
-		// Find the correct trunk binary (cargo-installed WASM tool)
-		let trunk_path = find_cargo_trunk_path().await?;
-
-		// Spawn trunk process
-		// Note: port and address are configured in Trunk.toml instead of command-line arguments
-		let mut child = tokio::process::Command::new(&trunk_path)
-			.arg("serve")
-			.current_dir(project_dir)
-			.stdout(std::process::Stdio::inherit())
-			.stderr(std::process::Stdio::inherit())
-			.spawn()
-			.map_err(|e| CommandError::ExecutionError(format!("Failed to start trunk: {}", e)))?;
-
-		// Wait for either process completion or CTRL-C
-		tokio::select! {
-			status = child.wait() => {
-				match status {
-					Ok(exit_status) if exit_status.success() => Ok(()),
-					Ok(exit_status) => Err(CommandError::ExecutionError(
-						format!("Trunk exited with error: {}", exit_status)
-					)),
-					Err(e) => Err(CommandError::ExecutionError(
-						format!("Failed to wait for trunk: {}", e)
-					)),
-				}
-			}
-			_ = tokio::signal::ctrl_c() => {
-				println!("\nReceived CTRL-C, shutting down...");
-
-				#[cfg(unix)]
-				if let Some(pid) = child.id() {
-					use nix::sys::signal::{kill, Signal};
-					use nix::unistd::Pid;
-					let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
-				}
-
-				#[cfg(windows)]
-				{
-					let _ = child.kill().await;
-				}
-
-				let _ = child.wait().await;
-				Ok(())
-			}
-		}
-	}
-}
-
 // Additional command metadata and execution tests
 #[cfg(test)]
 mod tests {
@@ -3377,51 +2287,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_servepages_command_metadata() {
-		let cmd = ServePagesCommand;
-		assert_eq!(cmd.name(), "servepages");
-		assert_eq!(
-			cmd.description(),
-			"Start WASM frontend development server (Trunk)"
-		);
-
-		let arguments = cmd.arguments();
-		assert!(arguments.is_empty());
-
-		let options = cmd.options();
-		assert_eq!(options.len(), 4);
-		// Check that we have expected options
-		let option_names: Vec<&str> = options.iter().map(|o| o.long.as_str()).collect();
-		assert!(option_names.contains(&"port"));
-		assert!(option_names.contains(&"address"));
-		assert!(option_names.contains(&"open"));
-		assert!(option_names.contains(&"release"));
-	}
-
-	#[test]
-	fn test_runall_command_metadata() {
-		let cmd = RunAllCommand;
-		assert_eq!(cmd.name(), "runall");
-		assert_eq!(
-			cmd.description(),
-			"Start both backend server and WASM frontend development server"
-		);
-
-		let arguments = cmd.arguments();
-		assert_eq!(arguments.len(), 1);
-		assert_eq!(arguments[0].name, "backend-address");
-		assert!(!arguments[0].required);
-
-		let options = cmd.options();
-		assert_eq!(options.len(), 4);
-		let option_names: Vec<&str> = options.iter().map(|o| o.long.as_str()).collect();
-		assert!(option_names.contains(&"frontend-port"));
-		assert!(option_names.contains(&"noreload"));
-		assert!(option_names.contains(&"insecure"));
-		assert!(option_names.contains(&"no-docs"));
-	}
-
-	#[test]
 	fn test_checkdi_command_metadata() {
 		let cmd = CheckDiCommand;
 		assert_eq!(cmd.name(), "check-di");
@@ -3508,29 +2373,6 @@ mod tests {
 
 		// Should succeed (command is processed and returned)
 		assert!(result.is_ok());
-	}
-
-	#[tokio::test]
-	async fn test_find_trunk_toml_not_found() {
-		use tempfile::TempDir;
-
-		// Create a temporary directory without Trunk.toml
-		let temp_dir = TempDir::new().unwrap();
-		let original_dir = std::env::current_dir().unwrap();
-
-		// Change to temp directory
-		std::env::set_current_dir(temp_dir.path()).unwrap();
-
-		// Try to find Trunk.toml (should fail)
-		let result = find_trunk_toml().await;
-
-		// Restore original directory
-		std::env::set_current_dir(original_dir).unwrap();
-
-		// Should fail with appropriate error
-		assert!(result.is_err());
-		let err = result.unwrap_err();
-		assert!(err.to_string().contains("Trunk.toml"));
 	}
 
 	#[cfg(all(feature = "server", feature = "autoreload"))]

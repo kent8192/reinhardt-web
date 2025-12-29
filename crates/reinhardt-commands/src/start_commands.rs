@@ -125,12 +125,10 @@ impl BaseCommand for StartProjectCommand {
 
 		// Display appropriate next steps based on project type
 		if with_pages {
-			ctx.info("  # Install Trunk (if not already installed)");
-			ctx.info("  cargo install trunk");
-			ctx.info("  # Build WASM client");
-			ctx.info("  trunk build");
-			ctx.info("  # Run development server");
-			ctx.info("  trunk serve");
+			ctx.info("  # Install development tools");
+			ctx.info("  cargo make install-tools");
+			ctx.info("  # Build WASM and start development server");
+			ctx.info("  cargo make dev");
 		} else {
 			ctx.info("  cargo run");
 		}
