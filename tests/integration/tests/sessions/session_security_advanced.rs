@@ -1,46 +1,43 @@
 //! Advanced Session Security Integration Tests
 //!
-//! Tests advanced security features for session management:
+//! Tests advanced security features for session management using reinhardt_sessions APIs:
 //! - CSRF token rotation on authentication events
 //! - Session ID entropy validation (predictability resistance)
-//! - Client IP change detection
-//! - User-Agent change detection
-//! - Expired session access control
+//! - Session expiration enforcement
+//! - Session model validation
 //!
 //! ## Test Coverage
 //!
 //! This test file covers:
-//! - **CSRF Token Rotation**: CSRF tokens are regenerated on login
-//! - **Entropy Validation**: Session IDs have sufficient randomness
-//! - **IP Change Detection**: Sessions detect when client IP changes
-//! - **User-Agent Detection**: Sessions detect User-Agent changes
-//! - **Expiration Enforcement**: Expired sessions are rejected
+//! - **CSRF Token Rotation**: CSRF tokens are regenerated on login using CsrfSessionManager
+//! - **Entropy Validation**: Session IDs have sufficient randomness using Session::generate_key
+//! - **Expiration Enforcement**: Expired sessions are rejected using SessionModel::is_expired
+//! - **Session Validation**: Session validity using SessionModel::is_valid
 //!
-//! ## Fixtures Used
+//! ## Reinhardt Components Used
 //!
-//! - `postgres_container`: PostgreSQL for session storage
-//! - `test_server_guard`: Server lifecycle management
-//! - `redis_container`: Redis for cache-based tests
+//! - `reinhardt_sessions::Session` - High-level session API
+//! - `reinhardt_sessions::SessionModel` - Session data model with expiration
+//! - `reinhardt_sessions::CsrfSessionManager` - CSRF token management
+//! - `reinhardt_sessions::backends::InMemorySessionBackend` - In-memory session storage
 //!
 //! ## Security Standards Verified
 //!
-//! ✅ CSRF tokens rotate on authentication events (prevents CSRF after login)
-//! ✅ Session IDs have high entropy (Shannon entropy > 4.0 bits/char)
-//! ✅ IP address changes invalidate sessions (detects session hijacking)
-//! ✅ User-Agent changes invalidate sessions (detects device changes)
-//! ✅ Expired sessions are rejected (enforces TTL)
+//! - CSRF tokens rotate on authentication events (prevents CSRF after login)
+//! - Session IDs have high entropy (Shannon entropy > 4.0 bits/char)
+//! - Expired sessions are rejected (enforces TTL)
+//! - Session validation correctly identifies valid/invalid sessions
 
-use reinhardt_middleware::Middleware;
-use reinhardt_test::fixtures::postgres_container;
+use reinhardt_sessions::backends::InMemorySessionBackend;
+use reinhardt_sessions::csrf::CsrfSessionManager;
+use reinhardt_sessions::models::SessionModel;
+use reinhardt_sessions::Session;
 use rstest::*;
+use serde_json::json;
 use serial_test::serial;
-use sqlx::{PgPool, Row};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::time::Duration;
-use testcontainers::{ContainerAsync, GenericImage};
 use tokio::time::sleep;
-use uuid::Uuid;
 
 // ============ Helper Functions ============
 
@@ -77,47 +74,13 @@ fn calculate_shannon_entropy(s: &str) -> f64 {
 	entropy
 }
 
-/// Simulate user login event (returns new CSRF token)
-///
-/// In a real application, this would:
-/// 1. Validate credentials
-/// 2. Create new session
-/// 3. Generate new CSRF token
-/// 4. Store user ID in session
-async fn simulate_login(
-	pool: &PgPool,
-	session_key: &str,
-	user_id: i32,
-) -> Result<String, Box<dyn std::error::Error>> {
-	// Create new CSRF token
-	let csrf_token = Uuid::new_v4().to_string();
-
-	// Store in session data
-	let mut session_data = HashMap::new();
-	session_data.insert("user_id".to_string(), serde_json::json!(user_id));
-	session_data.insert("csrf_token".to_string(), serde_json::json!(csrf_token));
-
-	let serialized = serde_json::to_string(&session_data)?;
-	let expire_date = chrono::Utc::now() + chrono::Duration::hours(1);
-
-	// Update session in database
-	sqlx::query("UPDATE sessions SET session_data = $1, expire_date = $2 WHERE session_key = $3")
-		.bind(&serialized)
-		.bind(expire_date)
-		.bind(session_key)
-		.execute(pool)
-		.await?;
-
-	Ok(csrf_token)
-}
-
 // ============ CSRF Token Rotation Tests ============
 
-/// Test CSRF token rotation on login
+/// Test CSRF token rotation using CsrfSessionManager
 ///
 /// Verifies:
-/// - CSRF token is generated before login
-/// - CSRF token is regenerated after login
+/// - CSRF token is generated before login using generate_token()
+/// - CSRF token is regenerated after login using rotate_token()
 /// - Old CSRF token becomes invalid
 /// - New CSRF token is valid for subsequent requests
 ///
@@ -127,102 +90,97 @@ async fn simulate_login(
 #[rstest]
 #[serial(sessions)]
 #[tokio::test]
-async fn test_csrf_token_rotation_on_login(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+async fn test_csrf_token_rotation_on_login() {
+	// Create session with in-memory backend
+	let backend = InMemorySessionBackend::new();
+	let mut session = Session::new(backend);
 
-	// Create sessions table
-	sqlx::query(
-		r#"
-		CREATE TABLE IF NOT EXISTS sessions (
-			session_key VARCHAR(255) PRIMARY KEY,
-			session_data TEXT NOT NULL,
-			expire_date TIMESTAMP NOT NULL
-		)
-		"#,
-	)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to create sessions table");
+	// Create CSRF manager
+	let csrf_manager = CsrfSessionManager::new();
 
-	// Simulate pre-login session with CSRF token
-	let session_key = Uuid::new_v4().to_string();
-	let pre_login_csrf = Uuid::new_v4().to_string();
+	// Generate pre-login CSRF token
+	let pre_login_csrf = csrf_manager
+		.generate_token(&mut session)
+		.expect("Failed to generate CSRF token");
 
-	let mut pre_login_data = HashMap::new();
-	pre_login_data.insert("csrf_token".to_string(), serde_json::json!(pre_login_csrf));
-
-	let serialized_pre = serde_json::to_string(&pre_login_data).expect("Failed to serialize");
-	let expire_date = chrono::Utc::now() + chrono::Duration::hours(1);
-
-	sqlx::query(
-		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)",
-	)
-	.bind(&session_key)
-	.bind(&serialized_pre)
-	.bind(expire_date)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to insert pre-login session");
-
-	// Verify pre-login CSRF token
-	let result = sqlx::query("SELECT session_data FROM sessions WHERE session_key = $1")
-		.bind(&session_key)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to retrieve session");
-
-	let data_str: String = result.get("session_data");
-	let data: HashMap<String, serde_json::Value> =
-		serde_json::from_str(&data_str).expect("Failed to deserialize");
-
-	assert_eq!(
-		data.get("csrf_token").and_then(|v| v.as_str()),
-		Some(pre_login_csrf.as_str()),
-		"Pre-login CSRF token should match"
+	// Verify pre-login token is valid
+	assert!(
+		csrf_manager
+			.validate_token(&mut session, &pre_login_csrf)
+			.expect("Failed to validate token"),
+		"Pre-login CSRF token should be valid"
 	);
 
-	// Simulate login (CSRF token should be rotated)
-	let post_login_csrf = simulate_login(pool.as_ref(), &session_key, 123)
-		.await
-		.expect("Failed to simulate login");
+	// Simulate login by rotating the CSRF token
+	let post_login_csrf = csrf_manager
+		.rotate_token(&mut session)
+		.expect("Failed to rotate CSRF token");
 
-	// Verify CSRF token was rotated
+	// Verify token was rotated
 	assert_ne!(
 		pre_login_csrf, post_login_csrf,
-		"CSRF token should change after login"
+		"CSRF token should change after rotation (login)"
 	);
 
-	// Retrieve updated session
-	let result = sqlx::query("SELECT session_data FROM sessions WHERE session_key = $1")
-		.bind(&session_key)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to retrieve session after login");
-
-	let data_str: String = result.get("session_data");
-	let data: HashMap<String, serde_json::Value> =
-		serde_json::from_str(&data_str).expect("Failed to deserialize");
-
-	// Verify new CSRF token is stored
-	assert_eq!(
-		data.get("csrf_token").and_then(|v| v.as_str()),
-		Some(post_login_csrf.as_str()),
-		"Post-login CSRF token should be stored"
+	// Verify old token is now invalid
+	assert!(
+		!csrf_manager
+			.validate_token(&mut session, &pre_login_csrf)
+			.expect("Failed to validate token"),
+		"Pre-login CSRF token should be invalid after rotation"
 	);
 
-	// Verify user_id is stored
+	// Verify new token is valid
+	assert!(
+		csrf_manager
+			.validate_token(&mut session, &post_login_csrf)
+			.expect("Failed to validate token"),
+		"Post-login CSRF token should be valid"
+	);
+}
+
+/// Test CSRF token generation and validation
+///
+/// Verifies:
+/// - get_or_create_token() creates token if missing
+/// - Multiple calls return the same token
+/// - Token validation works correctly
+#[rstest]
+#[serial(sessions)]
+#[tokio::test]
+async fn test_csrf_token_get_or_create() {
+	let backend = InMemorySessionBackend::new();
+	let mut session = Session::new(backend);
+
+	let csrf_manager = CsrfSessionManager::new();
+
+	// First call should create token
+	let token1 = csrf_manager
+		.get_or_create_token(&mut session)
+		.expect("Failed to get or create token");
+
+	// Second call should return same token
+	let token2 = csrf_manager
+		.get_or_create_token(&mut session)
+		.expect("Failed to get or create token");
+
 	assert_eq!(
-		data.get("user_id").and_then(|v| v.as_i64()),
-		Some(123),
-		"User ID should be stored after login"
+		token1, token2,
+		"get_or_create_token should return same token"
+	);
+
+	// Token should be valid
+	assert!(
+		csrf_manager
+			.validate_token(&mut session, &token1)
+			.expect("Failed to validate token"),
+		"Created token should be valid"
 	);
 }
 
 // ============ Session ID Entropy Tests ============
 
-/// Test session ID entropy validation
+/// Test session ID entropy validation using Session::generate_key
 ///
 /// Verifies:
 /// - Session IDs have sufficient randomness (Shannon entropy)
@@ -236,18 +194,14 @@ async fn test_csrf_token_rotation_on_login(
 #[rstest]
 #[serial(sessions)]
 #[tokio::test]
-async fn test_session_id_entropy(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, _pool, _port, _url) = postgres_container.await;
-
-	// Generate multiple session IDs using UUID (same as SessionData::new internally)
+async fn test_session_id_entropy() {
+	// Generate multiple session IDs using Session::generate_key
 	let sample_size = 100;
 	let mut session_ids = Vec::new();
 	let mut entropies = Vec::new();
 
 	for _ in 0..sample_size {
-		let session_id = Uuid::new_v4().to_string();
+		let session_id = Session::<InMemorySessionBackend>::generate_key();
 
 		// Calculate entropy
 		let entropy = calculate_shannon_entropy(&session_id);
@@ -286,212 +240,33 @@ async fn test_session_id_entropy(
 	}
 }
 
-// ============ IP Change Detection Tests ============
-
-/// Test session IP change detection
-///
-/// Verifies:
-/// - Session stores client IP address
-/// - IP address change is detected on subsequent requests
-/// - IP mismatch invalidates session or triggers re-authentication
-///
-/// **Security Rationale:**
-/// IP address changes can indicate session hijacking attacks.
-/// While not foolproof (due to NAT, mobile networks), it provides
-/// an additional layer of security for sensitive applications.
+/// Test session key generation produces valid format
 #[rstest]
 #[serial(sessions)]
 #[tokio::test]
-async fn test_session_ip_change_detection(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+async fn test_session_key_format() {
+	let key = Session::<InMemorySessionBackend>::generate_key();
 
-	// Create sessions table with IP tracking
-	sqlx::query(
-		r#"
-		CREATE TABLE IF NOT EXISTS sessions (
-			session_key VARCHAR(255) PRIMARY KEY,
-			session_data TEXT NOT NULL,
-			expire_date TIMESTAMP NOT NULL,
-			client_ip VARCHAR(45)
-		)
-		"#,
-	)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to create sessions table");
-
-	// Create session with original IP
-	let session_key = Uuid::new_v4().to_string();
-	let original_ip = "192.168.1.100";
-
-	let mut session_data = HashMap::new();
-	session_data.insert("user_id".to_string(), serde_json::json!(42));
-
-	let serialized = serde_json::to_string(&session_data).expect("Failed to serialize");
-	let expire_date = chrono::Utc::now() + chrono::Duration::hours(1);
-
-	sqlx::query(
-		"INSERT INTO sessions (session_key, session_data, expire_date, client_ip) VALUES ($1, $2, $3, $4)",
-	)
-	.bind(&session_key)
-	.bind(&serialized)
-	.bind(expire_date)
-	.bind(original_ip)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to insert session");
-
-	// Verify original IP is stored
-	let result = sqlx::query("SELECT client_ip FROM sessions WHERE session_key = $1")
-		.bind(&session_key)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to retrieve session");
-
-	let stored_ip: String = result.get("client_ip");
-	assert_eq!(stored_ip, original_ip, "Original IP should be stored");
-
-	// Simulate request from different IP
-	let new_ip = "203.0.113.50";
-
-	// Check if IP has changed (in real middleware, this would invalidate session)
-	let ip_changed = new_ip != original_ip;
-	assert!(
-		ip_changed,
-		"IP address change should be detected ({} -> {})",
-		original_ip, new_ip
-	);
-
-	// In production code, session would be invalidated here
-	// For this test, we verify the detection logic works
-	let result = sqlx::query("SELECT client_ip FROM sessions WHERE session_key = $1")
-		.bind(&session_key)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to retrieve session");
-
-	let current_stored_ip: String = result.get("client_ip");
-
-	// IP change detected - session should be marked as suspicious
-	assert_ne!(
-		new_ip, current_stored_ip,
-		"New IP ({}) should differ from stored IP ({}), indicating potential hijacking",
-		new_ip, current_stored_ip
-	);
-}
-
-// ============ User-Agent Change Detection Tests ============
-
-/// Test User-Agent change detection with middleware integration
-///
-/// Verifies:
-/// - Session stores User-Agent header
-/// - User-Agent changes are detected
-/// - Middleware integration detects device changes
-///
-/// **Security Rationale:**
-/// User-Agent changes can indicate session theft or device compromise.
-/// While User-Agent can be spoofed, changes are suspicious and warrant
-/// additional verification (e.g., re-authentication, email notification).
-#[rstest]
-#[serial(sessions)]
-#[tokio::test]
-async fn test_user_agent_change_detection_with_middleware(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, _url) = postgres_container.await;
-
-	// Create sessions table with User-Agent tracking
-	sqlx::query(
-		r#"
-		CREATE TABLE IF NOT EXISTS sessions (
-			session_key VARCHAR(255) PRIMARY KEY,
-			session_data TEXT NOT NULL,
-			expire_date TIMESTAMP NOT NULL,
-			user_agent TEXT
-		)
-		"#,
-	)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to create sessions table");
-
-	// Create session with original User-Agent
-	let session_key = Uuid::new_v4().to_string();
-	let original_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36";
-
-	let mut session_data = HashMap::new();
-	session_data.insert("user_id".to_string(), serde_json::json!(99));
-
-	let serialized = serde_json::to_string(&session_data).expect("Failed to serialize");
-	let expire_date = chrono::Utc::now() + chrono::Duration::hours(1);
-
-	sqlx::query(
-		"INSERT INTO sessions (session_key, session_data, expire_date, user_agent) VALUES ($1, $2, $3, $4)",
-	)
-	.bind(&session_key)
-	.bind(&serialized)
-	.bind(expire_date)
-	.bind(original_ua)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to insert session");
-
-	// Verify original User-Agent is stored
-	let result = sqlx::query("SELECT user_agent FROM sessions WHERE session_key = $1")
-		.bind(&session_key)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to retrieve session");
-
-	let stored_ua: String = result.get("user_agent");
+	// Key should be a valid UUID format (36 characters with hyphens)
 	assert_eq!(
-		stored_ua, original_ua,
-		"Original User-Agent should be stored"
+		key.len(),
+		36,
+		"Session key should be 36 characters (UUID format)"
 	);
-
-	// Simulate request with different User-Agent (mobile device)
-	let new_ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari/604.1";
-
-	// Detect User-Agent change
-	let ua_changed = new_ua != original_ua;
 	assert!(
-		ua_changed,
-		"User-Agent change should be detected (desktop -> mobile)"
-	);
-
-	// In production, middleware would:
-	// 1. Detect User-Agent change
-	// 2. Mark session as suspicious
-	// 3. Require re-authentication or send notification
-	// 4. Update User-Agent if re-auth succeeds
-
-	// Verify detection logic works
-	let result = sqlx::query("SELECT user_agent FROM sessions WHERE session_key = $1")
-		.bind(&session_key)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to retrieve session");
-
-	let current_stored_ua: String = result.get("user_agent");
-
-	assert_ne!(
-		new_ua, current_stored_ua,
-		"New User-Agent ({}) should differ from stored User-Agent ({})",
-		new_ua, current_stored_ua
+		key.chars().all(|c| c.is_ascii_hexdigit() || c == '-'),
+		"Session key should only contain hex digits and hyphens"
 	);
 }
 
-// ============ Expired Session Tests ============
+// ============ Session Model Expiration Tests ============
 
-/// Test expired session access denied
+/// Test SessionModel expiration detection
 ///
 /// Verifies:
-/// - Sessions with expired TTL are rejected
-/// - Expired sessions cannot be used for requests
-/// - Middleware correctly enforces expiration
+/// - SessionModel::is_expired() correctly identifies expired sessions
+/// - SessionModel::is_valid() correctly identifies valid sessions
+/// - Expiration is based on TTL
 ///
 /// **Security Rationale:**
 /// Enforcing session expiration limits the window of opportunity for
@@ -500,120 +275,257 @@ async fn test_user_agent_change_detection_with_middleware(
 #[rstest]
 #[serial(sessions)]
 #[tokio::test]
-async fn test_expired_session_access_denied(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+async fn test_session_model_expiration() {
+	// Create session with short TTL (1 second)
+	let session = SessionModel::new("test_session_key".to_string(), json!({"user_id": 42}), 1);
 
-	// Create sessions table with TIMESTAMPTZ for proper timezone handling
-	sqlx::query(
-		r#"
-		CREATE TABLE IF NOT EXISTS sessions (
-			session_key VARCHAR(255) PRIMARY KEY,
-			session_data TEXT NOT NULL,
-			expire_date TIMESTAMPTZ NOT NULL
-		)
-		"#,
-	)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to create sessions table");
+	// Session should be valid initially
+	assert!(session.is_valid(), "Session should be valid initially");
+	assert!(
+		!session.is_expired(),
+		"Session should not be expired initially"
+	);
 
-	// Create session with short TTL (1 second for reliable expiration testing)
-	// Note: Using 1 second instead of 100ms for more reliable cross-environment testing
-	let session_key = Uuid::new_v4().to_string();
-	let mut session_data = HashMap::new();
-	session_data.insert("user_id".to_string(), serde_json::json!(777));
-
-	let serialized = serde_json::to_string(&session_data).expect("Failed to serialize");
-	let expire_date = chrono::Utc::now() + chrono::Duration::seconds(1);
-
-	sqlx::query(
-		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)",
-	)
-	.bind(&session_key)
-	.bind(&serialized)
-	.bind(expire_date)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to insert session");
-
-	// Verify session is valid before expiration
-	let result = sqlx::query(
-		"SELECT COUNT(*) as count FROM sessions WHERE session_key = $1 AND expire_date > CURRENT_TIMESTAMP",
-	)
-	.bind(&session_key)
-	.fetch_one(pool.as_ref())
-	.await
-	.expect("Failed to count valid sessions");
-
-	let valid_count: i64 = result.get("count");
-	assert_eq!(valid_count, 1, "Session should be valid before expiration");
-
-	// Wait for session to expire (wait longer than TTL to ensure expiration)
+	// Wait for session to expire
 	sleep(Duration::from_secs(2)).await;
 
-	// Verify session is expired
-	let result = sqlx::query(
-		"SELECT COUNT(*) as count FROM sessions WHERE session_key = $1 AND expire_date > CURRENT_TIMESTAMP",
-	)
-	.bind(&session_key)
-	.fetch_one(pool.as_ref())
-	.await
-	.expect("Failed to count valid sessions");
+	// Session should now be expired
+	assert!(session.is_expired(), "Session should be expired after TTL");
+	assert!(
+		!session.is_valid(),
+		"Session should not be valid after expiration"
+	);
+}
 
-	let valid_count_after: i64 = result.get("count");
+/// Test SessionModel with custom expiration date
+#[rstest]
+#[serial(sessions)]
+#[tokio::test]
+async fn test_session_model_with_custom_expiration() {
+	use chrono::{Duration as ChronoDuration, Utc};
+
+	// Create session with expiration in the past
+	let past_expire = Utc::now() - ChronoDuration::hours(1);
+	let expired_session = SessionModel::with_expire_date(
+		"expired_key".to_string(),
+		json!({"data": "test"}),
+		past_expire,
+	);
+
+	assert!(
+		expired_session.is_expired(),
+		"Session with past expiration should be expired"
+	);
+	assert!(
+		!expired_session.is_valid(),
+		"Session with past expiration should not be valid"
+	);
+
+	// Create session with expiration in the future
+	let future_expire = Utc::now() + ChronoDuration::hours(1);
+	let valid_session = SessionModel::with_expire_date(
+		"valid_key".to_string(),
+		json!({"data": "test"}),
+		future_expire,
+	);
+
+	assert!(
+		!valid_session.is_expired(),
+		"Session with future expiration should not be expired"
+	);
+	assert!(
+		valid_session.is_valid(),
+		"Session with future expiration should be valid"
+	);
+}
+
+/// Test SessionModel extend functionality
+#[rstest]
+#[serial(sessions)]
+#[tokio::test]
+async fn test_session_model_extend() {
+	// Create session with short TTL
+	let mut session = SessionModel::new("extend_test".to_string(), json!({"user_id": 1}), 1);
+
+	let original_expire = session.expire_date().clone();
+
+	// Extend session by 1 hour
+	session.extend(3600);
+
+	let new_expire = session.expire_date().clone();
+
+	assert!(
+		new_expire > original_expire,
+		"Extended session should have later expiration"
+	);
+	assert!(session.is_valid(), "Extended session should be valid");
+}
+
+// ============ Session Data Management Tests ============
+
+/// Test Session set/get operations
+#[rstest]
+#[serial(sessions)]
+#[tokio::test]
+async fn test_session_set_get_operations() {
+	let backend = InMemorySessionBackend::new();
+	let mut session = Session::new(backend);
+
+	// Set session data
+	session
+		.set("user_id", &42i32)
+		.expect("Failed to set user_id");
+	session
+		.set("username", &"alice")
+		.expect("Failed to set username");
+	session
+		.set("roles", &vec!["admin", "user"])
+		.expect("Failed to set roles");
+
+	// Get session data
+	let user_id: Option<i32> = session.get("user_id").expect("Failed to get user_id");
+	let username: Option<String> = session.get("username").expect("Failed to get username");
+	let roles: Option<Vec<String>> = session.get("roles").expect("Failed to get roles");
+
+	assert_eq!(user_id, Some(42), "user_id should match");
+	assert_eq!(username, Some("alice".to_string()), "username should match");
 	assert_eq!(
-		valid_count_after, 0,
-		"Session should be expired and invalid"
+		roles,
+		Some(vec!["admin".to_string(), "user".to_string()]),
+		"roles should match"
+	);
+}
+
+/// Test Session flush operation
+#[rstest]
+#[serial(sessions)]
+#[tokio::test]
+async fn test_session_flush() {
+	let backend = InMemorySessionBackend::new();
+	let mut session = Session::new(backend);
+
+	// Set some data
+	session.set("key1", &"value1").expect("Failed to set key1");
+	session.set("key2", &"value2").expect("Failed to set key2");
+
+	// Verify data exists
+	assert!(
+		session.contains_key("key1"),
+		"key1 should exist before flush"
+	);
+	assert!(
+		session.contains_key("key2"),
+		"key2 should exist before flush"
 	);
 
-	// Attempt to use expired session (should fail)
-	let result = sqlx::query("SELECT session_data FROM sessions WHERE session_key = $1 AND expire_date > CURRENT_TIMESTAMP")
-		.bind(&session_key)
-		.fetch_optional(pool.as_ref())
-		.await
-		.expect("Failed to query session");
+	// Flush session
+	session.flush().await.expect("Failed to flush session");
 
+	// Verify data is cleared
 	assert!(
-		result.is_none(),
-		"Expired session should not be retrievable"
+		!session.contains_key("key1"),
+		"key1 should not exist after flush"
+	);
+	assert!(
+		!session.contains_key("key2"),
+		"key2 should not exist after flush"
+	);
+}
+
+/// Test Session cycle_key operation
+///
+/// This is important for security as it generates a new session ID
+/// while preserving session data (useful after login to prevent fixation)
+#[rstest]
+#[serial(sessions)]
+#[tokio::test]
+async fn test_session_cycle_key() {
+	let backend = InMemorySessionBackend::new();
+	let mut session = Session::new(backend);
+
+	// Set initial data
+	session
+		.set("user_id", &123i32)
+		.expect("Failed to set user_id");
+
+	// Get original session key
+	let original_key = session.session_key().map(|s| s.to_string());
+
+	// Cycle the session key (simulates post-login security measure)
+	let new_key = session.cycle_key().await.expect("Failed to cycle key");
+
+	// Verify key changed
+	assert_ne!(
+		original_key.as_deref(),
+		Some(new_key.as_ref()),
+		"Session key should change after cycle"
 	);
 
-	// Note: We verify middleware cleanup behavior via database queries
-	// The middleware's SessionStore would also cleanup expired sessions via cleanup() method
+	// Verify data is preserved
+	let user_id: Option<i32> = session.get("user_id").expect("Failed to get user_id");
+	assert_eq!(
+		user_id,
+		Some(123),
+		"Data should be preserved after key cycle"
+	);
+}
 
-	// Create a session by inserting data directly into the store
-	// (We can't use SessionData::new() directly as it's private)
-	let expired_session_key = Uuid::new_v4().to_string();
-	let mut expired_session_data = HashMap::new();
-	expired_session_data.insert("user_id".to_string(), serde_json::json!(999));
-	let serialized_expired =
-		serde_json::to_string(&expired_session_data).expect("Failed to serialize");
+// ============ Session Timeout Tests ============
 
-	// Insert into database with past expiration
-	let past_expire = chrono::Utc::now() - chrono::Duration::milliseconds(100);
-	sqlx::query(
-		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)",
-	)
-	.bind(&expired_session_key)
-	.bind(&serialized_expired)
-	.bind(past_expire)
-	.execute(pool.as_ref())
-	.await
-	.expect("Failed to insert expired session");
+/// Test session timeout functionality
+#[rstest]
+#[serial(sessions)]
+#[tokio::test]
+async fn test_session_timeout() {
+	let backend = InMemorySessionBackend::new();
+	let mut session = Session::new(backend);
 
-	// Verify expired session is not retrievable via query
-	let expired_result = sqlx::query(
-		"SELECT session_data FROM sessions WHERE session_key = $1 AND expire_date > CURRENT_TIMESTAMP"
-	)
-	.bind(&expired_session_key)
-	.fetch_optional(pool.as_ref())
-	.await
-	.expect("Failed to query expired session");
+	// Set a short timeout (1 second)
+	session.set_timeout(1);
 
+	// Update activity
+	session.update_activity();
+
+	// Session should not be timed out immediately
 	assert!(
-		expired_result.is_none(),
-		"Expired session should not be retrievable via time-based query"
+		!session.is_timed_out(),
+		"Session should not be timed out immediately"
+	);
+
+	// Wait for timeout
+	sleep(Duration::from_secs(2)).await;
+
+	// Session should now be timed out
+	assert!(
+		session.is_timed_out(),
+		"Session should be timed out after timeout period"
+	);
+}
+
+/// Test session timeout validation
+#[rstest]
+#[serial(sessions)]
+#[tokio::test]
+async fn test_session_timeout_validation() {
+	let backend = InMemorySessionBackend::new();
+	let mut session = Session::new(backend);
+
+	// Set a short timeout
+	session.set_timeout(1);
+	session.update_activity();
+
+	// Validate timeout should pass initially
+	assert!(
+		session.validate_timeout().is_ok(),
+		"Timeout validation should pass initially"
+	);
+
+	// Wait for timeout
+	sleep(Duration::from_secs(2)).await;
+
+	// Validate timeout should fail after timeout
+	assert!(
+		session.validate_timeout().is_err(),
+		"Timeout validation should fail after timeout"
 	);
 }

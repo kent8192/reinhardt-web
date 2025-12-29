@@ -11,7 +11,6 @@
 //! The QuerySet already supports limit(), offset(), and paginate() methods that translate
 //! to SQL LIMIT/OFFSET clauses, enabling efficient database-level pagination.
 
-use reinhardt_orm::Model;
 use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -30,21 +29,7 @@ struct Product {
 	in_stock: bool,
 }
 
-impl Model for Product {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"products"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Product, i32, "products");
 
 // ============================================================================
 // Custom Fixtures

@@ -9,7 +9,6 @@
 //! - postgres_container: PostgreSQL database container (reinhardt-test)
 //! - paginate_test_db: Custom fixture providing database connection with test schema
 
-use reinhardt_orm::Model;
 use reinhardt_pagination::PageNumberPagination;
 use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
@@ -29,21 +28,7 @@ struct Article {
 	published: bool,
 }
 
-impl Model for Article {
-	type PrimaryKey = i32;
-
-	fn table_name() -> &'static str {
-		"articles"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Article, i32, "articles");
 
 // ============================================================================
 // Custom Fixtures

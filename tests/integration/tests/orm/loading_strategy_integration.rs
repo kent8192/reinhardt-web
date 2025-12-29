@@ -6,10 +6,9 @@
 //! Run with: cargo test --test loading_strategy_integration_tests --features integration-tests
 
 mod integration_tests {
-	use reinhardt_core::validators::TableName;
 	use reinhardt_orm::{
 		joinedload, lazyload, selectinload, subqueryload, LoadContext, LoadOptionBuilder,
-		LoadingStrategy, Model,
+		LoadingStrategy,
 	};
 	use rstest::{fixture, rstest};
 	use serde::{Deserialize, Serialize};
@@ -24,20 +23,7 @@ mod integration_tests {
 		name: String,
 	}
 
-	const AUTHOR_TABLE: TableName = TableName::new_const("author");
-
-	impl Model for Author {
-		type PrimaryKey = i64;
-		fn table_name() -> &'static str {
-			AUTHOR_TABLE.as_str()
-		}
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
-		}
-		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-			self.id = Some(value);
-		}
-	}
+	reinhardt_test::impl_test_model!(Author, i64, "author");
 
 	// Query counter wrapper
 	#[derive(Clone)]

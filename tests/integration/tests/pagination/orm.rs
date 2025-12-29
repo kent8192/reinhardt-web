@@ -3,7 +3,6 @@
 //! These tests work with reinhardt-orm and database backends.
 //! They test pagination with database querysets.
 
-use reinhardt_orm::Model;
 use reinhardt_pagination::PageNumberPagination;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -23,21 +22,7 @@ struct TestArticle {
 	created_at: String,
 }
 
-impl Model for TestArticle {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"test_articles"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(TestArticle, i64, "test_articles");
 
 // ============================================================================
 // rstest Fixtures

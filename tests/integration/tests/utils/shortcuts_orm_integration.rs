@@ -3,7 +3,7 @@
 //! These tests verify that get_object_or_404 and get_list_or_404 work correctly
 //! with real PostgreSQL database.
 
-use reinhardt_db::prelude::{Model, QuerySet};
+use reinhardt_db::prelude::QuerySet;
 use reinhardt_shortcuts::{get_list_or_404, get_object_or_404};
 use reinhardt_test::resource::{AsyncTeardownGuard, AsyncTestResource};
 use rstest::*;
@@ -20,25 +20,7 @@ struct TestUser {
 	email: String,
 }
 
-impl Model for TestUser {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"test_users"
-	}
-
-	fn primary_key_field() -> &'static str {
-		"id"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(TestUser, i64, "test_users");
 
 /// Suite-wide PostgreSQL database resource
 struct PostgresSuite {

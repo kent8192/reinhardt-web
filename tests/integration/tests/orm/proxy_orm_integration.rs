@@ -5,8 +5,7 @@
 
 use reinhardt_orm::types::DatabaseDialect;
 use reinhardt_orm::{
-	Constraint, ForeignKeyConstraint, LoadingStrategy, Model, OnDelete, Relationship,
-	RelationshipType,
+	Constraint, ForeignKeyConstraint, LoadingStrategy, OnDelete, Relationship, RelationshipType,
 };
 use reinhardt_proxy::CollectionProxy;
 use serde::{Deserialize, Serialize};
@@ -35,54 +34,10 @@ struct Role {
 	name: String,
 }
 
-// Implement Model trait for test models
-impl Model for User {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"users"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
-
-impl Model for Post {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"posts"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
-
-impl Model for Role {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"roles"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+// Implement Model trait for test models using macro
+reinhardt_test::impl_test_model!(User, i64, "users");
+reinhardt_test::impl_test_model!(Post, i64, "posts");
+reinhardt_test::impl_test_model!(Role, i64, "roles");
 
 /// Test creating CollectionProxy with basic configuration
 #[rstest]

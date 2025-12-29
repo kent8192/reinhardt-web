@@ -20,7 +20,7 @@
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::validators::TableName;
-use reinhardt_db::orm::Model;
+use reinhardt_db::orm::{FieldSelector, Model};
 use reinhardt_http::{Request, Response};
 use reinhardt_test::fixtures::postgres_container;
 use reinhardt_viewsets::{ModelViewSet, ReadOnlyModelViewSet};
@@ -44,11 +44,25 @@ struct Article {
 
 const ARTICLE_TABLE: TableName = TableName::new_const("articles");
 
+#[derive(Debug, Clone)]
+struct ArticleFields;
+
+impl FieldSelector for ArticleFields {
+	fn with_alias(self, _alias: &str) -> Self {
+		self
+	}
+}
+
 impl Model for Article {
 	type PrimaryKey = i64;
+	type Fields = ArticleFields;
 
 	fn table_name() -> &'static str {
 		ARTICLE_TABLE.as_str()
+	}
+
+	fn new_fields() -> Self::Fields {
+		ArticleFields
 	}
 
 	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
