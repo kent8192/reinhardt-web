@@ -151,8 +151,7 @@ pub mod plugin_commands;
 pub mod registry;
 pub mod start_commands;
 pub mod template;
-#[cfg(feature = "server")]
-pub mod tui;
+pub mod wasm_builder;
 
 use thiserror::Error;
 
@@ -161,10 +160,7 @@ pub use base::{BaseCommand, CommandArgument, CommandOption};
 pub use builtin::MakeMigrationsCommand;
 #[cfg(feature = "routers")]
 pub use builtin::ShowUrlsCommand;
-pub use builtin::{
-	CheckCommand, CheckDiCommand, MigrateCommand, RunAllCommand, RunServerCommand,
-	ServePagesCommand, ShellCommand,
-};
+pub use builtin::{CheckCommand, CheckDiCommand, MigrateCommand, RunServerCommand, ShellCommand};
 pub use cli::{Commands, execute_from_command_line, run_command};
 pub use collectstatic::{CollectStaticCommand, CollectStaticOptions, CollectStaticStats};
 pub use context::CommandContext;
@@ -174,6 +170,9 @@ pub use output::OutputWrapper;
 pub use registry::CommandRegistry;
 pub use start_commands::{StartAppCommand, StartProjectCommand};
 pub use template::{TemplateCommand, TemplateContext, generate_secret_key, to_camel_case};
+pub use wasm_builder::{
+	WasmBuildConfig, WasmBuildError, WasmBuildOutput, WasmBuilder, check_wasm_tools_installed,
+};
 
 #[cfg(feature = "plugins")]
 pub use plugin_commands::{

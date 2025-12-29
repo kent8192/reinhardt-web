@@ -672,25 +672,56 @@ async fn execute_generateopenapi(
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` on success, or an error if no URL patterns were registered.
+/// Returns `Ok(())` on success, or an error if:
+/// - No URL patterns were registered
+/// - Multiple `#[routes]` functions were detected (should normally be caught at link time)
 #[cfg(feature = "routers")]
 async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 	use reinhardt_urls::routers::{UrlPatternsRegistration, register_router_arc};
 
-	// Discover registrations from inventory
-	let registration = inventory::iter::<UrlPatternsRegistration>()
-		.next()
-		.ok_or_else(|| {
-			"No URL patterns registered.\n\
-			 Add the #[routes] attribute to your routes function in src/config/urls.rs:\n\n\
-			 #[routes]\n\
-			 pub fn routes() -> UnifiedRouter {\n\
-			     UnifiedRouter::new()\n\
-			 }"
+	// Collect all registrations for validation
+	let registrations: Vec<_> = inventory::iter::<UrlPatternsRegistration>().collect();
+
+	// Validate single registration
+	match registrations.len() {
+		0 => {
+			return Err("No URL patterns registered.\n\
+				 Add the #[routes] attribute to your routes function in src/config/urls.rs:\n\n\
+				 #[routes]\n\
+				 pub fn routes() -> UnifiedRouter {\n\
+				     UnifiedRouter::new()\n\
+				 }"
 			.to_string()
-		})?;
+			.into());
+		}
+		1 => {
+			// Expected case: exactly one registration
+		}
+		n => {
+			// Multiple registrations detected.
+			// This should normally be caught at link time by the linker marker,
+			// but we provide a clear error message as a fallback.
+			return Err(format!(
+				"Multiple #[routes] functions detected ({n} found).\n\
+				 Only one function in the entire project should be annotated with #[routes].\n\n\
+				 Please ensure that:\n\
+				 1. Only one #[routes] attribute exists in your codebase\n\
+				 2. Check src/config/urls.rs and any other files that might have #[routes]\n\
+				 3. If you have multiple router configurations, combine them into a single function\n\n\
+				 Example:\n\
+				 #[routes]\n\
+				 pub fn routes() -> UnifiedRouter {{\n\
+				     UnifiedRouter::new()\n\
+				         .mount(\"/api/\", api::routes())  // NOT annotated with #[routes]\n\
+				         .mount(\"/admin/\", admin::routes())\n\
+				 }}"
+			)
+			.into());
+		}
+	}
 
 	// Get and register the router
+	let registration = &registrations[0];
 	let router = (registration.get_router)();
 	register_router_arc(router);
 
