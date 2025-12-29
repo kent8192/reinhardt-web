@@ -160,6 +160,31 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// provider for the framework. The function will be discovered and used when
 /// running management commands like `runserver`.
 ///
+/// # Important: Single Usage Only
+///
+/// **Only one function per project can be annotated with `#[routes]`.**
+/// If multiple `#[routes]` attributes are used, the linker will fail with a
+/// "duplicate symbol" error for `__reinhardt_routes_registration_marker`.
+///
+/// To organize routes across multiple files, use the `.mount()` method:
+///
+/// ```rust,ignore
+/// // In src/config/urls.rs - Only ONE #[routes] in the entire project
+/// #[routes]
+/// pub fn routes() -> UnifiedRouter {
+///     UnifiedRouter::new()
+///         .mount("/api/", api::routes())   // api::routes() returns UnifiedRouter
+///         .mount("/admin/", admin::routes())  // WITHOUT #[routes] attribute
+/// }
+///
+/// // In src/apps/api/urls.rs - NO #[routes] attribute
+/// pub fn routes() -> UnifiedRouter {
+///     UnifiedRouter::new()
+///         .endpoint(views::list)
+///         .endpoint(views::create)
+/// }
+/// ```
+///
 /// # Usage
 ///
 /// In your `src/config/urls.rs`:
@@ -181,7 +206,6 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// - The function can have any name (e.g., `routes`, `app_routes`, `url_patterns`)
 /// - The return type must be `UnifiedRouter` (not `Arc<UnifiedRouter>`)
 /// - The framework automatically wraps the router in `Arc`
-/// - Only one function per project should be annotated with `#[routes]`
 #[proc_macro_attribute]
 pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);

@@ -4,6 +4,24 @@
 //! functions to be registered as URL pattern providers for automatic
 //! discovery by the framework.
 //!
+//! # Important: Single Usage Only
+//!
+//! **Only one function per project can be annotated with `#[routes]`.**
+//! If multiple `#[routes]` attributes are used, the linker will fail with a
+//! "duplicate symbol" error for `__reinhardt_routes_registration_marker`.
+//!
+//! To organize routes across multiple files, use the `.mount()` method:
+//!
+//! ```rust,ignore
+//! // Only ONE function in the project should have #[routes]
+//! #[routes]
+//! pub fn routes() -> UnifiedRouter {
+//!     UnifiedRouter::new()
+//!         .mount("/api/", api::routes())   // api::routes() is NOT annotated with #[routes]
+//!         .mount("/admin/", admin::routes())
+//! }
+//! ```
+//!
 //! # Macro Syntax
 //!
 //! ```rust,ignore
@@ -79,16 +97,36 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 		));
 	}
 
-	// Generate the original function and the inventory registration
+	// Generate the original function, the inventory registration, and the linker marker
+	// Note: Rust 2024 edition requires unsafe for #[no_mangle] and #[link_section] attributes.
+	// The inventory::submit! macro uses #[link_section] internally.
 	let expanded = quote! {
 		#(#fn_attrs)*
 		#fn_vis #fn_sig #fn_block
 
-		#reinhardt::inventory::submit! {
-			#reinhardt::UrlPatternsRegistration {
-				get_router: || ::std::sync::Arc::new(#fn_name()),
+		// Allow unsafe attributes used by inventory::submit! (#[link_section])
+		// Required for Rust 2024 edition compatibility
+		#[allow(unsafe_attr_outside_unsafe)]
+		const _: () = {
+			#reinhardt::inventory::submit! {
+				#reinhardt::UrlPatternsRegistration {
+					get_router: || ::std::sync::Arc::new(#fn_name()),
+				}
 			}
-		}
+		};
+
+		// Linker marker to enforce single #[routes] usage.
+		// If multiple #[routes] macros exist, the linker will fail with a
+		// "duplicate symbol" error for `__reinhardt_routes_registration_marker`.
+		//
+		// This provides compile-time (link-time) enforcement that only one
+		// #[routes] function can exist in the entire project.
+		#[doc(hidden)]
+		#[unsafe(no_mangle)]
+		#[allow(non_upper_case_globals, dead_code)]
+		// non_upper_case_globals: Intentionally lowercase for linker symbol
+		// dead_code: Symbol is never directly used, only exists for linker validation
+		static __reinhardt_routes_registration_marker: () = ();
 	};
 
 	Ok(expanded)

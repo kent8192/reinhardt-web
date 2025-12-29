@@ -2021,6 +2021,11 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	// Generate static FK accessor methods for type-safe reverse relationship access
 	let fk_static_accessor_methods = generate_fk_static_accessor_methods(struct_name, &field_infos);
 
+	// Generate field selector struct for type-safe JOIN/GROUP BY/HAVING operations
+	let field_selector_name =
+		syn::Ident::new(&format!("{}Fields", struct_name), struct_name.span());
+	let field_selector_struct = generate_field_selector_struct(struct_name, &field_infos);
+
 	// Generate the Model implementation
 	let expanded = quote! {
 		// Generate composite PK type definition if needed
@@ -2049,9 +2054,14 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 		impl #generics #orm_crate::Model for #struct_name #generics #where_clause {
 			type PrimaryKey = #pk_type;
+			type Fields = #field_selector_name;
 
 			fn table_name() -> &'static str {
 				#table_name
+			}
+
+			fn new_fields() -> Self::Fields {
+				#field_selector_name::new()
 			}
 
 			fn app_label() -> &'static str {
@@ -2115,6 +2125,9 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 		// Register relationships in RELATIONSHIPS distributed slice
 		#relationship_registrations
+
+		// Generate field selector struct for type-safe JOIN/GROUP BY/HAVING operations
+		#field_selector_struct
 	};
 
 	Ok(expanded)
@@ -3788,6 +3801,113 @@ fn generate_new_function(
 					#(#fk_field_assignments,)*
 					#(#auto_field_assignments,)*
 				}
+			}
+		}
+	}
+}
+
+/// Generate field selector struct
+///
+/// For type-safe JOIN/GROUP BY/HAVING operations, generates a field selector
+/// struct (e.g., `UserFields`) corresponding to each model.
+///
+/// # Example
+///
+/// Generate `UserFields` struct for `User` model, enabling usage like:
+///
+/// ```ignore
+/// QuerySet::<User>::new()
+///     .inner_join_as::<User, _>("u1", "u2", |u1, u2| u1.id.lt(u2.id))
+///     .group_by(|f| vec![f.user_id, f.category])
+/// ```
+fn generate_field_selector_struct(
+	struct_name: &syn::Ident,
+	field_infos: &[FieldInfo],
+) -> TokenStream {
+	let orm_crate = get_reinhardt_orm_crate();
+
+	// Exclude FK/M2M/O2O fields (only normal DB columns)
+	let regular_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|f| {
+			// FK _id fields are included (they are actual DB columns)
+			// But exclude ForeignKeyField, OneToOneField, ManyToManyField (virtual fields)
+			!is_foreign_key_field_type(&f.ty)
+				&& !is_one_to_one_field_type(&f.ty)
+				&& !is_many_to_many_field_type(&f.ty)
+		})
+		.collect();
+
+	let field_selector_name =
+		syn::Ident::new(&format!("{}Fields", struct_name), struct_name.span());
+
+	// Generate field declarations
+	let field_declarations: Vec<_> = regular_fields
+		.iter()
+		.map(|field| {
+			let field_name = &field.name;
+			let field_type = &field.ty;
+			quote! {
+				pub #field_name: #orm_crate::query_fields::Field<#struct_name, #field_type>
+			}
+		})
+		.collect();
+
+	// Generate field initialization
+	let field_initializers: Vec<_> = regular_fields
+		.iter()
+		.map(|field| {
+			let field_name = &field.name;
+			let field_name_str = field_name.to_string();
+			quote! {
+				#field_name: #orm_crate::query_fields::Field::new(vec![#field_name_str])
+			}
+		})
+		.collect();
+
+	// List of field names (used in with_alias method)
+	let regular_field_names: Vec<_> = regular_fields.iter().map(|field| &field.name).collect();
+
+	quote! {
+		/// Type-safe field selector for #struct_name
+		///
+		/// Provides type-safe field references in JOIN, GROUP BY, and HAVING clauses.
+		#[derive(Debug, Clone)]
+		pub struct #field_selector_name {
+			#(#field_declarations),*
+		}
+
+		impl #field_selector_name {
+			/// Create a new field selector instance
+			pub fn new() -> Self {
+				Self {
+					#(#field_initializers),*
+				}
+			}
+		}
+
+		impl #orm_crate::FieldSelector for #field_selector_name {
+			/// Set table alias for all fields
+			///
+			/// Used for self-joins where the same table appears multiple times
+			/// with different aliases.
+			///
+			/// # Examples
+			///
+			/// ```ignore
+			/// let u1 = UserFields::new().with_alias("u1");
+			/// let u2 = UserFields::new().with_alias("u2");
+			/// ```
+			fn with_alias(mut self, alias: &str) -> Self {
+				// Set alias for all fields
+				#(self.#regular_field_names = self.#regular_field_names.with_alias(alias);)*
+				self
+			}
+		}
+
+		impl ::std::default::Default for #field_selector_name {
+			fn default() -> Self {
+				Self::new()
 			}
 		}
 	}
