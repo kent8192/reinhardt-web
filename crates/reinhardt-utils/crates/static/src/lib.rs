@@ -27,7 +27,7 @@ pub use health::{
 };
 pub use media::{HasMedia, Media};
 pub use metrics::{Metric, MetricsCollector, RequestMetrics, RequestTimer};
-pub use middleware::StaticFilesMiddleware;
+pub use middleware::{StaticFilesConfig as StaticMiddlewareConfig, StaticFilesMiddleware};
 pub use storage::{
 	FileSystemStorage, HashedFileStorage, Manifest, ManifestStaticFilesStorage, ManifestVersion,
 	MemoryStorage, StaticFilesConfig, StaticFilesFinder, Storage, StorageRegistry,
