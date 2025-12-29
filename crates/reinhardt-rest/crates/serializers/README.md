@@ -6,6 +6,29 @@ Type-safe data serialization and validation for Rust, inspired by Django REST Fr
 
 Provides serializers for converting between Rust types and various formats (JSON, XML, etc.), with built-in validation support. Includes automatic model serialization, validators for database constraints, and seamless integration with the ORM for type-safe data transformation.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["rest-serializers"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import serializer features:
+
+```rust
+use reinhardt::rest::serializers::{Serializer, JsonSerializer, ModelSerializer};
+use reinhardt::rest::serializers::{UniqueValidator, UniqueTogetherValidator};
+use reinhardt::rest::serializers::{NestedSerializer, HyperlinkedModelSerializer};
+```
+
+**Note:** Serializer features are included in the `standard` and `full` feature presets.
+
 ## Features
 
 ### Implemented ✓
@@ -247,7 +270,7 @@ Provides serializers for converting between Rust types and various formats (JSON
 - **Custom URL Fields**: Configurable URL field names
 
 ```rust
-use reinhardt_serializers::HyperlinkedModelSerializer;
+use reinhardt::rest::serializers::HyperlinkedModelSerializer;
 
 let serializer = HyperlinkedModelSerializer::<User>::new("user-detail", None);
 // Generates URLs like: {"url": "/api/users/123/", "username": "alice"}
@@ -265,7 +288,7 @@ let serializer = HyperlinkedModelSerializer::<User>::new("user-detail", None);
 - **Bidirectional Relations**: Support for parent-child relationships
 
 ```rust
-use reinhardt_serializers::NestedSerializer;
+use reinhardt::rest::serializers::NestedSerializer;
 
 let serializer = NestedSerializer::<Post, User>::new("author", 2);
 // Serializes: {"title": "Post", "author": {"id": 1, "username": "alice"}}
@@ -279,7 +302,7 @@ let serializer = NestedSerializer::<Post, User>::new("author", 2);
 - **Flexible Representation**: Choose the best representation for your API
 
 ```rust
-use reinhardt_serializers::{PrimaryKeyRelatedField, SlugRelatedField};
+use reinhardt::rest::serializers::{PrimaryKeyRelatedField, SlugRelatedField};
 
 // Primary key relation: {"author": 123}
 let pk_field = PrimaryKeyRelatedField::<User>::new();
@@ -297,8 +320,8 @@ let slug_field = SlugRelatedField::<User>::new("slug");
 - **Manager Integration**: Automatic ORM create/update operations
 
 ```rust
-use reinhardt_serializers::{SerializerSaveMixin, SaveContext};
-use reinhardt_orm::{Model, Manager};
+use reinhardt::rest::serializers::{SerializerSaveMixin, SaveContext};
+use reinhardt::db::orm::{Model, Manager};
 
 // Create new instance
 let context = SaveContext::new();
@@ -316,7 +339,7 @@ let updated_user = serializer.update(validated_data, existing_user).await?;
 - **Savepoint Support**: Nested transaction handling
 
 ```rust
-use reinhardt_serializers::TransactionHelper;
+use reinhardt::rest::serializers::TransactionHelper;
 
 // Wrap operations in transaction
 TransactionHelper::with_transaction(|| async {
@@ -340,7 +363,7 @@ TransactionHelper::savepoint(depth, || async {
 - **Hierarchical Operations**: Support for deeply nested serializers
 
 ```rust
-use reinhardt_serializers::NestedSaveContext;
+use reinhardt::rest::serializers::NestedSaveContext;
 
 let context = NestedSaveContext::new(depth);
 
@@ -358,7 +381,7 @@ context.with_scope(|| async {
 - **Set Operations**: Replace all relationships atomically
 
 ```rust
-use reinhardt_serializers::ManyToManyManager;
+use reinhardt::rest::serializers::ManyToManyManager;
 
 let m2m_manager = ManyToManyManager::<User, Tag>::new(
     "user_tags",      // Junction table
@@ -387,8 +410,8 @@ m2m_manager.clear(&user_id).await?;
 - **Custom QuerySet Filters**: Additional filtering constraints
 
 ```rust
-use reinhardt_serializers::{PrimaryKeyRelatedFieldORM, SlugRelatedFieldORM};
-use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+use reinhardt::rest::serializers::{PrimaryKeyRelatedFieldORM, SlugRelatedFieldORM};
+use reinhardt::db::orm::{Filter, FilterOperator, FilterValue};
 
 // Primary key relation with database validation
 let pk_field = PrimaryKeyRelatedFieldORM::<User>::new();
@@ -428,7 +451,7 @@ let users = slug_field.get_instances(vec!["alice", "bob", "charlie"]).await?;
 - **`PerformanceMetrics`**: Track serialization and validation performance
 
 ```rust
-use reinhardt_serializers::{IntrospectionCache, QueryCache, BatchValidator, PerformanceMetrics};
+use reinhardt::rest::serializers::{IntrospectionCache, QueryCache, BatchValidator, PerformanceMetrics};
 use std::time::Duration;
 
 // Cache field introspection results
@@ -486,7 +509,7 @@ println!("Average: {}ms", stats.avg_serialization_ms);
 ### Basic JSON Serialization
 
 ```rust
-use reinhardt_serializers::{JsonSerializer, Serializer};
+use reinhardt::rest::serializers::{JsonSerializer, Serializer};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
@@ -510,8 +533,8 @@ assert_eq!(parsed.name, "Alice");
 ### ModelSerializer with Validation
 
 ```rust
-use reinhardt_serializers::{ModelSerializer, Serializer};
-use reinhardt_orm::Model;
+use reinhardt::rest::serializers::{ModelSerializer, Serializer};
+use reinhardt::db::orm::Model;
 
 // Assuming you have a User model that implements Model
 let serializer = ModelSerializer::<User>::new();
@@ -532,7 +555,7 @@ let json = serializer.serialize(&user).unwrap();
 ### Unique Field Validation
 
 ```rust
-use reinhardt_serializers::UniqueValidator;
+use reinhardt::rest::serializers::UniqueValidator;
 use sqlx::PgPool;
 
 let pool: PgPool = /* your database connection */;
@@ -548,7 +571,7 @@ validator.validate(&pool, "alice@example.com", Some(&user_id)).await?;
 ### Unique Together Validation
 
 ```rust
-use reinhardt_serializers::UniqueTogetherValidator;
+use reinhardt::rest::serializers::UniqueTogetherValidator;
 use std::collections::HashMap;
 
 let validator = UniqueTogetherValidator::<User>::new(vec!["first_name", "last_name"]);
@@ -563,7 +586,7 @@ validator.validate(&pool, &values, None).await?;
 ### SerializerMethodField for Computed Fields
 
 ```rust
-use reinhardt_serializers::{SerializerMethodField, MethodFieldProvider, MethodFieldRegistry};
+use reinhardt::rest::serializers::{SerializerMethodField, MethodFieldProvider, MethodFieldRegistry};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -616,7 +639,7 @@ assert_eq!(context.get("full_name").unwrap(), &json!("Alice Johnson"));
 ### Field-Level Validation
 
 ```rust
-use reinhardt_serializers::{FieldValidator, ValidationResult, ValidationError, validate_fields};
+use reinhardt::rest::serializers::{FieldValidator, ValidationResult, ValidationError, validate_fields};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -651,7 +674,7 @@ assert!(result.is_ok());
 ### Object-Level Validation
 
 ```rust
-use reinhardt_serializers::{ObjectValidator, ValidationResult, ValidationError};
+use reinhardt::rest::serializers::{ObjectValidator, ValidationResult, ValidationError};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -682,7 +705,7 @@ assert!(validator.validate(&data).is_ok());
 ### Content Negotiation
 
 ```rust
-use reinhardt_serializers::{ContentNegotiator, JSONRenderer, XMLRenderer};
+use reinhardt::rest::serializers::{ContentNegotiator, JSONRenderer, XMLRenderer};
 
 let negotiator = ContentNegotiator::new();
 negotiator.register(Box::new(JSONRenderer::new()));

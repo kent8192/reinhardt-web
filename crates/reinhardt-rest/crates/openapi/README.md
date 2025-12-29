@@ -6,6 +6,29 @@ OpenAPI schema generation and Swagger UI integration
 
 Automatic OpenAPI 3.0 schema generation from API endpoints, serializers, and viewsets. Generates complete API documentation including request/response schemas, authentication requirements, and parameter descriptions. Includes built-in Swagger UI integration using `utoipa-swagger-ui`.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["rest-openapi"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import OpenAPI features:
+
+```rust
+use reinhardt::rest::openapi::{SchemaGenerator, OpenApiSchema};
+use reinhardt::rest::openapi::{SwaggerUI, RedocUI, ToSchema};
+use reinhardt::core::macros::Schema;
+```
+
+**Note:** OpenAPI features are included in the `standard` and `full` feature presets.
+
 ## Features
 
 ### Implemented ✓
@@ -97,8 +120,8 @@ Automatic OpenAPI 3.0 schema generation from API endpoints, serializers, and vie
 ### Schema Derive Macro
 
 ```rust
-use reinhardt_macros::Schema;
-use reinhardt_openapi::ToSchema;
+use reinhardt::core::macros::Schema;
+use reinhardt::rest::openapi::ToSchema;
 
 #[derive(Schema)]
 struct User {
@@ -139,7 +162,7 @@ fn main() {
 ### Basic Schema Generation
 
 ```rust
-use reinhardt_openapi::{SchemaGenerator, OpenApiSchema};
+use reinhardt::rest::openapi::{SchemaGenerator, OpenApiSchema};
 
 // Generate schema from ViewSets
 let generator = SchemaGenerator::new("My API", "1.0.0")
@@ -151,8 +174,8 @@ let json = schema.to_json()?;
 
 ## Swagger UI Integration
 
-```rustuse reinhardt_openapi::{SchemaGenerator, SwaggerUI};
-use reinhardt_apps::{Request, Response};
+```rustuse reinhardt::rest::openapi::{SchemaGenerator, SwaggerUI};
+use reinhardt::apps::{Request, Response};
 
 // Create schemalet schema = SchemaGenerator::new("My API", "1.0.0")
     .description("API documentation")
@@ -167,7 +190,7 @@ use reinhardt_apps::{Request, Response};
 
 ## Redoc UI Integration
 
-```rustuse reinhardt_openapi::{SchemaGenerator, RedocUI};
+```rustuse reinhardt::rest::openapi::{SchemaGenerator, RedocUI};
 
 // Create schemalet schema = SchemaGenerator::new("My API", "1.0.0")
     .description("API documentation")

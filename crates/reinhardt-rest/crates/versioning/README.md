@@ -6,6 +6,28 @@ API versioning strategies for Reinhardt framework, inspired by Django REST Frame
 
 ✅ **Complete Implementation** - All features implemented and tested
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["rest-versioning"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import versioning features:
+
+```rust
+use reinhardt::rest::versioning::{URLPathVersioning, AcceptHeaderVersioning};
+use reinhardt::rest::versioning::{QueryParameterVersioning, HostNameVersioning, NamespaceVersioning};
+```
+
+**Note:** Versioning features are included in the `standard` and `full` feature presets.
+
 ## Features
 
 ### ✅ Implemented
@@ -244,7 +266,7 @@ API versioning strategies for Reinhardt framework, inspired by Django REST Frame
 
 ## Basic Usage
 
-```rustuse reinhardt_versioning::{URLPathVersioning, VersioningMiddleware, RequestVersionExt};
+```rustuse reinhardt::rest::versioning::{URLPathVersioning, VersioningMiddleware, RequestVersionExt};
 
 // Create versioning strategylet versioning = URLPathVersioning::new()
     .with_default_version("1.0")
@@ -260,7 +282,7 @@ API versioning strategies for Reinhardt framework, inspired by Django REST Frame
 
 ## Global Configuration
 
-```rustuse reinhardt_versioning::{VersioningConfig, VersioningManager, VersioningStrategy};
+```rustuse reinhardt::rest::versioning::{VersioningConfig, VersioningManager, VersioningStrategy};
 
 // Configure versioning globallylet config = VersioningConfig {
     default_version: "1.0".to_string(),
@@ -277,7 +299,7 @@ let manager = VersioningManager::new(config);
 
 ## Handler Integration
 
-```rustuse reinhardt_versioning::{VersionedHandlerBuilder, SimpleVersionedHandler};
+```rustuse reinhardt::rest::versioning::{VersionedHandlerBuilder, SimpleVersionedHandler};
 
 // Create versioned handlerslet v1_handler = Arc::new(
     SimpleVersionedHandler::new()
@@ -297,7 +319,7 @@ let v2_handler = Arc::new(
 
 ## URL Reverse Support
 
-```rustuse reinhardt_versioning::{VersionedUrlBuilder, VersioningStrategy};
+```rustuse reinhardt::rest::versioning::{VersionedUrlBuilder, VersioningStrategy};
 
 // Create URL builderlet url_builder = VersionedUrlBuilder::with_strategy(
     versioning,

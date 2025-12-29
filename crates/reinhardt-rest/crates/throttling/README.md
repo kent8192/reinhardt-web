@@ -6,6 +6,28 @@ Rate limiting and throttling for Reinhardt framework
 
 Comprehensive rate limiting system to prevent API abuse and ensure fair resource allocation. Provides multiple throttling strategies with flexible backend storage options.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["rest-throttling"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import throttling features:
+
+```rust
+use reinhardt::rest::throttling::{Throttle, AnonRateThrottle, UserRateThrottle};
+use reinhardt::rest::throttling::{ScopedRateThrottle, BurstRateThrottle, TieredRateThrottle};
+```
+
+**Note:** Throttling features are included in the `standard` and `full` feature presets.
+
 ## Implemented ✓
 
 ### Core Throttle System

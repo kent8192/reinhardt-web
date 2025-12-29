@@ -6,6 +6,28 @@ Type-safe filtering and ordering capabilities for Reinhardt framework
 
 Powerful filtering and ordering system that provides compile-time type-safe filtering using reinhardt-orm's Field system. Build complex queries with field lookups, multi-term search, and ordering with full type safety and zero runtime overhead.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["rest-filters"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import filter features:
+
+```rust
+use reinhardt::rest::filters::{FilterBackend, QueryFilter, OrderingField};
+use reinhardt::rest::filters::{MultiTermSearch, SearchableModel};
+```
+
+**Note:** Filter features are included in the `standard` and `full` feature presets.
+
 ## Implemented ✓
 
 ### Core Filter System
@@ -54,8 +76,8 @@ Powerful filtering and ordering system that provides compile-time type-safe filt
 ### Basic Query Filtering
 
 ```rust
-use reinhardt_filters::QueryFilter;
-use reinhardt_orm::Field;
+use reinhardt::rest::filters::QueryFilter;
+use reinhardt::db::orm::Field;
 
 // Create a filter with lookups and ordering
 let filter = QueryFilter::<Post>::new()
@@ -67,7 +89,7 @@ let filter = QueryFilter::<Post>::new()
 ### Multi-term Search
 
 ```rust
-use reinhardt_filters::MultiTermSearch;
+use reinhardt::rest::filters::MultiTermSearch;
 
 // Search for posts containing "rust" AND "programming"
 let terms = vec!["rust", "programming"];
@@ -80,8 +102,8 @@ let lookups = MultiTermSearch::search_terms::<Post>(terms);
 ### Searchable Model
 
 ```rust
-use reinhardt_filters::{SearchableModel, FieldOrderingExt};
-use reinhardt_orm::{Model, Field};
+use reinhardt::rest::filters::{SearchableModel, FieldOrderingExt};
+use reinhardt::db::orm::{Model, Field};
 
 impl SearchableModel for Post {
     fn searchable_fields() -> Vec<Field<Self, String>> {

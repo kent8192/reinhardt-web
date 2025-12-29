@@ -6,6 +6,28 @@ API metadata and schema generation for OPTIONS requests in Reinhardt framework.
 
 Generates comprehensive metadata about API endpoints including available actions, field information, and validation rules. This metadata is used by browsable APIs and automatic documentation generation. Inspired by Django REST Framework's metadata classes.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["rest-metadata"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import metadata features:
+
+```rust
+use reinhardt::rest::metadata::{BaseMetadata, SimpleMetadata, MetadataOptions};
+use reinhardt::rest::metadata::{FieldInfoBuilder, FieldType, ChoiceInfo};
+```
+
+**Note:** Metadata features are included in the `standard` and `full` feature presets.
+
 ## Implemented ✓
 
 ### Core Metadata System
@@ -71,7 +93,7 @@ Comprehensive field types supporting various data types:
 ## Usage Example
 
 ```rust
-use reinhardt_metadata::{
+use reinhardt::rest::metadata::{
     BaseMetadata, SimpleMetadata, MetadataOptions,
     FieldInfoBuilder, FieldType, ChoiceInfo
 };

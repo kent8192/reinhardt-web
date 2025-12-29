@@ -6,6 +6,30 @@
 
 This crate serves as a **convenience layer** that combines multiple Reinhardt crates into a single import. It does not contain its own implementation or tests - all functionality is provided by the underlying specialized crates.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["rest"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import REST features:
+
+```rust
+use reinhardt::rest::{ApiResponse, ResponseBuilder, IntoApiResponse};
+use reinhardt::rest::{JwtAuth, IsAuthenticated, AllowAny, User, SimpleUser};
+use reinhardt::rest::{DefaultRouter, Router, Route};
+use reinhardt::rest::{PaginatedResponse};
+```
+
+**Note:** REST features are included in the `standard` and `full` feature presets.
+
 ## Purpose
 
 - **Unified Interface**: Single import point for REST API functionality
@@ -114,7 +138,7 @@ This crate does not contain tests. All functionality is tested in the underlying
 ## Usage
 
 ```rust
-use reinhardt_rest::{
+use reinhardt::rest::{
     // Authentication
     JwtAuth, IsAuthenticated, AllowAny, User, SimpleUser,
 

@@ -6,6 +6,28 @@ HTML browsable API interface
 
 Web-based interface for exploring and testing API endpoints. Provides human-friendly HTML rendering of API responses, interactive forms for testing endpoints, and authentication handling.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["rest-browsable-api"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import browsable API features:
+
+```rust
+use reinhardt::rest::browsable_api::{BrowsableApiRenderer, ApiContext};
+use reinhardt::rest::browsable_api::{BrowsableResponse, FormContext, FormField};
+```
+
+**Note:** Browsable API features are included in the `standard` and `full` feature presets.
+
 ## Features
 
 ### Implemented ✓

@@ -8,6 +8,29 @@ ViewSets combine the logic for multiple related views into a single class. Provi
 
 Automatically handles common patterns like list, retrieve, create, update, and delete operations.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["views-viewsets"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import viewset features:
+
+```rust
+use reinhardt::views::viewsets::{ViewSet, ModelViewSet, ReadOnlyModelViewSet};
+use reinhardt::views::viewsets::{Action, ActionType, ViewSetHandler};
+use reinhardt::views::viewsets::{ListMixin, RetrieveMixin, CreateMixin};
+```
+
+**Note:** ViewSet features are included in the `standard` and `full` feature presets.
+
 ## Features
 
 ### Implemented ✓
@@ -113,8 +136,8 @@ Automatically handles common patterns like list, retrieve, create, update, and d
 Inject dependencies when the ViewSet is instantiated:
 
 ```rust
-use reinhardt_macros::Injectable;
-use reinhardt_di::{Injectable, InjectionContext};
+use reinhardt::core::macros::Injectable;
+use reinhardt::di::{Injectable, InjectionContext};
 
 #[derive(Clone, Injectable)]
 struct UserViewSet {
@@ -147,7 +170,7 @@ let viewset = UserViewSet::inject(&ctx).await?;
 Inject dependencies into individual action methods:
 
 ```rust
-use reinhardt_macros::endpoint;
+use reinhardt::core::macros::endpoint;
 
 impl ProductViewSet {
     #[endpoint]
@@ -186,7 +209,7 @@ impl ProductViewSet {
 Inject dependencies at the dispatch level for centralized control:
 
 ```rust
-use reinhardt_macros::endpoint;
+use reinhardt::core::macros::endpoint;
 
 impl ViewSet for OrderViewSet {
     fn supports_di(&self) -> bool {
@@ -240,7 +263,7 @@ async fn handler(
 ### Configuring ViewSetHandler with DI
 
 ```rust
-use reinhardt_di::{InjectionContext, SingletonScope};
+use reinhardt::di::{InjectionContext, SingletonScope};
 use std::sync::Arc;
 
 // Create DI context

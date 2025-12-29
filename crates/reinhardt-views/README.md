@@ -10,6 +10,29 @@ includes base view traits, concrete view implementations for common CRUD
 operations, and utilities for OpenAPI schema generation and browsable API
 rendering.
 
+## Installation
+
+Add `reinhardt` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", features = ["views"] }
+
+# Or use a preset:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+```
+
+Then import view features:
+
+```rust
+use reinhardt::views::{View, ListView, DetailView};
+use reinhardt::views::{ListAPIView, CreateAPIView, UpdateAPIView};
+use reinhardt::views::viewsets::{ViewSet, ModelViewSet};
+```
+
+**Note:** View features are included in the `standard` and `full` feature presets.
+
 ## Features
 
 ### Implemented ✓
@@ -149,9 +172,9 @@ rendering.
 ### ListView Example
 
 ```rust
-use reinhardt_views::{ListView, View};
-use reinhardt_serializers::JsonSerializer;
-use reinhardt_orm::Model;
+use reinhardt::views::{ListView, View};
+use reinhardt::core::serializers::JsonSerializer;
+use reinhardt::db::orm::Model;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,8 +207,8 @@ let view = ListView::<Article, JsonSerializer<Article>>::new()
 ### DetailView Example
 
 ```rust
-use reinhardt_views::{DetailView, View};
-use reinhardt_serializers::JsonSerializer;
+use reinhardt::views::{DetailView, View};
+use reinhardt::core::serializers::JsonSerializer;
 
 let article = Article {
     id: Some(1),
@@ -202,11 +225,11 @@ let view = DetailView::<Article, JsonSerializer<Article>>::new()
 ### Generic API Views Examples
 
 ```rust
-use reinhardt_views::{
+use reinhardt::views::{
     ListAPIView, CreateAPIView, UpdateAPIView, DestroyAPIView,
     ListCreateAPIView, View
 };
-use reinhardt_serializers::JsonSerializer;
+use reinhardt::core::serializers::JsonSerializer;
 
 // List endpoint
 let list_view = ListAPIView::<Article, JsonSerializer<Article>>::new()
@@ -234,7 +257,7 @@ let list_create_view = ListCreateAPIView::<Article, JsonSerializer<Article>>::ne
 ### OpenAPI Schema Generation
 
 ```rust
-use reinhardt_views::{OpenAPISpec, Info, PathItem, Operation};
+use reinhardt::views::{OpenAPISpec, Info, PathItem, Operation};
 
 let spec = OpenAPISpec::new(Info::new(
     "My API".into(),
