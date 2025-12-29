@@ -17,7 +17,7 @@ pub struct VoteRequest {
 }
 
 /// Index view - List all polls
-#[get("/polls/", name = "polls_index")]
+#[get("/", name = "polls_index")]
 pub async fn index() -> ViewResult<Response> {
 	let manager = Question::objects();
 	let questions = manager.all().all().await?;
@@ -37,7 +37,7 @@ pub async fn index() -> ViewResult<Response> {
 /// Detail view - Show a specific poll
 ///
 /// GET /polls/{question_id}/
-#[get("/polls/{question_id}/", name = "polls_detail")]
+#[get("/{question_id}/", name = "polls_detail")]
 pub async fn detail(Path(question_id): Path<i64>) -> ViewResult<Response> {
 	let question_manager = Question::objects();
 	let question = question_manager
@@ -70,7 +70,7 @@ pub async fn detail(Path(question_id): Path<i64>) -> ViewResult<Response> {
 /// Results view - Show poll results
 ///
 /// GET /polls/{question_id}/results/
-#[get("/polls/{question_id}/results/", name = "polls_results")]
+#[get("/{question_id}/results/", name = "polls_results")]
 pub async fn results(Path(question_id): Path<i64>) -> ViewResult<Response> {
 	let question_manager = Question::objects();
 	let question = question_manager
@@ -106,7 +106,7 @@ pub async fn results(Path(question_id): Path<i64>) -> ViewResult<Response> {
 /// Vote view - Handle voting
 ///
 /// POST /polls/{question_id}/vote/
-#[post("/polls/{question_id}/vote/", name = "polls_vote")]
+#[post("/{question_id}/vote/", name = "polls_vote")]
 pub async fn vote(
 	Path(question_id): Path<i64>,
 	Json(vote_req): Json<VoteRequest>,

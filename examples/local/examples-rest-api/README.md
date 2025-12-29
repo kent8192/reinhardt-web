@@ -280,19 +280,18 @@ guidelines.
 
 ### Adding New Endpoints
 
-1. Define handler function in `src/config/urls.rs`
-2. Register in router via `url_patterns()`
+1. Define handler function in your app's `views.rs`
+2. Register in project router via `routes()`
 
 ```rust
 // src/config/urls.rs
-async fn new_endpoint() -> Json<MyData> {
-	Json(MyData { /* ... */ })
-}
+use reinhardt::UnifiedRouter;
+use reinhardt::routes;
 
-pub fn url_patterns() -> Arc<UnifiedRouter> {
-	let router = UnifiedRouter::new();
-	router.function("/api/new", Method::GET, new_endpoint);
-	Arc::new(router)
+#[routes]
+pub fn routes() -> UnifiedRouter {
+	UnifiedRouter::new()
+		.function("/api/new", Method::GET, new_endpoint)
 }
 ```
 

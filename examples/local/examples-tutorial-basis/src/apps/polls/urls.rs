@@ -2,7 +2,10 @@ use reinhardt::UnifiedRouter;
 
 use super::views;
 
-pub fn url_patterns() -> UnifiedRouter {
+// Note: This function is called by config/urls.rs via .mount("/polls/", ...).
+// Do NOT add #[routes] here - that would create a duplicate registration
+// without the mount prefix.
+pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new()
 		.endpoint(views::index)
 		.endpoint(views::detail)
