@@ -20,7 +20,6 @@
 //! | PostgreSQL | `postgres` | [`PostgresBackend`] |
 //! | MySQL/MariaDB | `mysql` | [`MySqlBackend`] |
 //! | SQLite | `sqlite` | [`SqliteBackend`] |
-//! | MongoDB | `mongodb-backend` | [`MongoDBBackend`] |
 //! | CockroachDB | `cockroachdb-backend` | [`CockroachDBBackend`] |
 //!
 //! ## Core Traits
@@ -178,13 +177,6 @@ pub use drivers::mysql::schema::MySQLSchemaEditor;
 
 #[cfg(feature = "sqlite")]
 pub use drivers::sqlite::schema::SQLiteSchemaEditor;
-
-#[cfg(feature = "mongodb-backend")]
-#[deprecated(
-	since = "0.1.0",
-	note = "MongoDB has been moved to reinhardt-nosql. Use reinhardt_nosql::backends::mongodb instead."
-)]
-pub use drivers::mongodb::{MongoDBBackend, MongoDBBackendBuilder, MongoDBTransactionExecutor};
 
 // Re-export two-phase commit implementations
 #[cfg(feature = "postgres")]

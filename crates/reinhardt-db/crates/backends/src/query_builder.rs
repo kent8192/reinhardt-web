@@ -262,7 +262,7 @@ impl InsertBuilder {
 
 						let update_str = update_columns
 							.iter()
-							.map(|col| format!("{} = excluded.{}", col, col)) // 小文字 'excluded'
+							.map(|col| format!("{} = excluded.{}", col, col)) // lowercase 'excluded'
 							.collect::<Vec<_>>()
 							.join(", ");
 
