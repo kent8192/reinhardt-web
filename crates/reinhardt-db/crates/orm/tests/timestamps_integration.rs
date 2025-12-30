@@ -10,10 +10,13 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_orm;
+use chrono::{DateTime, Utc};
+use reinhardt_core::macros::model;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
 use sea_query::{ColumnDef, Expr, ExprTrait, Iden, Order, PostgresQueryBuilder, Query, Table};
+use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
@@ -40,6 +43,44 @@ enum Users {
 	Email,
 	CreatedAt,
 	UpdatedAt,
+}
+
+// ============================================================================
+// ORM Model Definitions
+// ============================================================================
+
+/// Article model with automatic timestamp management
+#[allow(dead_code)]
+#[model(app_label = "timestamps_test", table_name = "articles")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct Article {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 255)]
+	title: String,
+	#[field(max_length = 10000)]
+	content: String,
+	#[field(auto_now_add = true)]
+	created_at: DateTime<Utc>,
+	#[field(auto_now = true)]
+	updated_at: DateTime<Utc>,
+}
+
+/// User model with automatic timestamp management
+#[allow(dead_code)]
+#[model(app_label = "timestamps_test", table_name = "users")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct TimestampUser {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 100)]
+	username: String,
+	#[field(max_length = 255)]
+	email: String,
+	#[field(auto_now_add = true)]
+	created_at: DateTime<Utc>,
+	#[field(auto_now = true)]
+	updated_at: DateTime<Utc>,
 }
 
 // ============================================================================
@@ -136,7 +177,10 @@ async fn create_users_table(pool: &PgPool) {
 async fn test_automatic_timestamps_on_insert(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	create_articles_table(pool.as_ref()).await;
 
@@ -187,7 +231,10 @@ async fn test_automatic_timestamps_on_insert(
 async fn test_different_timestamps_for_different_inserts(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	create_users_table(pool.as_ref()).await;
 
@@ -248,7 +295,10 @@ async fn test_different_timestamps_for_different_inserts(
 async fn test_updated_at_changes_on_update(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	create_articles_table(pool.as_ref()).await;
 
@@ -346,7 +396,10 @@ async fn test_updated_at_changes_on_update(
 async fn test_updated_at_always_gte_created_at_after_updates(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	create_users_table(pool.as_ref()).await;
 
@@ -532,7 +585,10 @@ proptest! {
 async fn test_updated_at_changes_on_same_value_update(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	create_articles_table(pool.as_ref()).await;
 
@@ -621,7 +677,10 @@ async fn test_updated_at_changes_on_same_value_update(
 async fn test_timestamp_ordering_with_rapid_updates(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	create_users_table(pool.as_ref()).await;
 
@@ -700,7 +759,10 @@ async fn test_timestamp_ordering_with_rapid_updates(
 async fn test_timestamp_microsecond_precision(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	create_articles_table(pool.as_ref()).await;
 

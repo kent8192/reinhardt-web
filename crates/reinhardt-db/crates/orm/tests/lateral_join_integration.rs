@@ -14,7 +14,6 @@
 //! - authors(id SERIAL PRIMARY KEY, name TEXT NOT NULL)
 //! - books(id SERIAL PRIMARY KEY, author_id INT, title TEXT, price INT, publication_year INT)
 
-use reinhardt_orm::Model;
 use reinhardt_orm::lateral_join::{
 	LateralJoin, LateralJoinPatterns, LateralJoinType, LateralJoins,
 };

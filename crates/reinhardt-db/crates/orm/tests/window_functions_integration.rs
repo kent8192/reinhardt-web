@@ -16,10 +16,10 @@
 //! - sales_log(id SERIAL PRIMARY KEY, timestamp TIMESTAMP NOT NULL, region TEXT NOT NULL, amount BIGINT NOT NULL)
 //! - employee_scores(id SERIAL PRIMARY KEY, employee_id INT NOT NULL, score INT NOT NULL, department TEXT NOT NULL)
 
-use reinhardt_orm;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sea_query::{Alias, Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};
+use sea_query::Iden;
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
@@ -28,6 +28,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 // Table Identifiers
 // ============================================================================
 
+#[allow(dead_code)] // Test schema definition for window function tests
 #[derive(Iden)]
 enum SalesLog {
 	Table,
@@ -37,6 +38,7 @@ enum SalesLog {
 	Amount,
 }
 
+#[allow(dead_code)] // Test schema definition for window function tests
 #[derive(Iden)]
 enum EmployeeScores {
 	Table,
@@ -160,7 +162,8 @@ async fn setup_test_data(pool: &PgPool) {
 async fn test_row_number_pagination(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// Window function query: ROW_NUMBER partitioned by region, ordered by timestamp
@@ -227,7 +230,8 @@ async fn test_row_number_pagination(
 async fn test_rank_dense_rank_comparison(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// Query employees with RANK and DENSE_RANK within department
@@ -304,7 +308,8 @@ async fn test_rank_dense_rank_comparison(
 async fn test_lag_previous_value(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// Query sales with previous amount using LAG
@@ -325,11 +330,12 @@ async fn test_lag_previous_value(
 
 	// Verify LAG behavior: first row of each partition has NULL, others have previous amount
 	let mut current_region = String::new();
+	#[allow(unused_assignments)]
 	let mut is_first_in_partition = true;
 
 	for row in rows {
 		let region: String = row.get("region");
-		let amount: i64 = row.get("amount");
+		let _amount: i64 = row.get("amount");
 		let prev_amount: Option<i64> = row.get("prev_amount");
 
 		if region != current_region {
@@ -353,8 +359,6 @@ async fn test_lag_previous_value(
 				"Non-first row should have prev_amount from LAG"
 			);
 		}
-
-		is_first_in_partition = false;
 	}
 }
 
@@ -370,7 +374,8 @@ async fn test_lag_previous_value(
 async fn test_lead_next_value(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// Query sales with next amount using LEAD
@@ -391,18 +396,16 @@ async fn test_lead_next_value(
 
 	// Verify LEAD behavior: last row of each partition has NULL, others have next amount
 	let mut current_region = String::new();
-	let mut partition_start_idx = 0usize;
 
 	for (idx, row) in rows.iter().enumerate() {
 		let region: String = row.get("region");
-		let amount: i64 = row.get("amount");
+		let _amount: i64 = row.get("amount");
 		let next_amount: Option<i64> = row.get("next_amount");
 
 		// Check if we've moved to a new partition
 		if idx == 0 || region != current_region {
 			// Find end of this partition
 			current_region = region.clone();
-			partition_start_idx = idx;
 		}
 
 		// Check if this is the last row of the partition
@@ -441,7 +444,8 @@ async fn test_lead_next_value(
 async fn test_window_empty_dataset(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// Query with WHERE condition that returns no rows
@@ -472,7 +476,8 @@ async fn test_window_empty_dataset(
 async fn test_window_null_handling(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// Create table with nullable amount
@@ -519,7 +524,7 @@ async fn test_window_null_handling(
 	for row in rows {
 		let _region: String = row.get("region");
 		let amount: Option<i64> = row.get("amount");
-		let prev_amount: Option<i64> = row.get("prev_amount");
+		let _prev_amount: Option<i64> = row.get("prev_amount");
 
 		if amount.is_none() {
 			null_count += 1;
@@ -544,7 +549,8 @@ async fn test_window_null_handling(
 async fn test_window_single_row(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// Query with LIMIT 1 to get single row
@@ -589,7 +595,8 @@ async fn test_window_single_row(
 async fn test_window_with_partition_by(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// ROW_NUMBER partitioned by region
@@ -653,7 +660,8 @@ async fn test_window_with_partition_by(
 async fn test_window_with_order_by(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// LAG ordered by timestamp (chronological order)
@@ -712,7 +720,8 @@ async fn test_window_with_order_by(
 async fn test_time_series_lag_lead_analysis(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 	setup_test_data(pool.as_ref()).await;
 
 	// Create a result table with LAG and LEAD to track price changes

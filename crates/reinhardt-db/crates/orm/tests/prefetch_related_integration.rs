@@ -13,6 +13,10 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
+// Allow dead code in test file: test models and their new() functions may not all be used
+// in current tests but are provided for comprehensive test scenarios.
+#![allow(dead_code)]
+
 use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_orm::query::FilterOperator;
 use reinhardt_orm::{Model, QuerySet};

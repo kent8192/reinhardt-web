@@ -11,7 +11,7 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_orm;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -29,12 +29,17 @@ use testcontainers::{ContainerAsync, GenericImage};
 /// **Integration Point**: QueryCompiler → SQL string generation
 ///
 /// **Not Intent**: Complex queries, joins
+///
+/// Uses reinhardt_orm for database connection management.
 #[rstest]
 #[tokio::test]
 async fn test_basic_select_compilation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query(
@@ -78,7 +83,10 @@ async fn test_basic_select_compilation(
 async fn test_select_with_multiple_conditions(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query("CREATE TABLE IF NOT EXISTS products (id SERIAL PRIMARY KEY, name TEXT NOT NULL, price BIGINT NOT NULL, in_stock BOOLEAN NOT NULL)")
@@ -137,7 +145,10 @@ async fn test_select_with_multiple_conditions(
 async fn test_order_by_compilation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query("CREATE TABLE IF NOT EXISTS employees (id SERIAL PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL, salary BIGINT NOT NULL)")
@@ -196,7 +207,10 @@ async fn test_order_by_compilation(
 async fn test_parameter_binding_various_types(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query(
@@ -259,7 +273,10 @@ async fn test_parameter_binding_various_types(
 async fn test_null_parameter_binding(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table with nullable columns
 	sqlx::query(
@@ -302,7 +319,10 @@ async fn test_null_parameter_binding(
 async fn test_array_parameter_binding(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query(
@@ -347,7 +367,10 @@ async fn test_array_parameter_binding(
 async fn test_single_row_result_mapping(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query("CREATE TABLE IF NOT EXISTS customers (id SERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL)")
@@ -390,7 +413,10 @@ async fn test_single_row_result_mapping(
 async fn test_multiple_rows_result_mapping(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query("CREATE TABLE IF NOT EXISTS items (id SERIAL PRIMARY KEY, name TEXT NOT NULL, price BIGINT NOT NULL)")
@@ -447,7 +473,10 @@ async fn test_multiple_rows_result_mapping(
 async fn test_scalar_result_extraction(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query("CREATE TABLE IF NOT EXISTS orders (id SERIAL PRIMARY KEY, total BIGINT NOT NULL)")
@@ -515,7 +544,10 @@ async fn test_scalar_result_extraction(
 async fn test_syntax_error_handling(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Execute query with syntax error
 	let result = sqlx::query("SELECT * FRM users") // "FRM" instead of "FROM"
@@ -544,7 +576,10 @@ async fn test_syntax_error_handling(
 async fn test_constraint_violation_error(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table with UNIQUE constraint
 	sqlx::query(
@@ -589,7 +624,10 @@ async fn test_constraint_violation_error(
 async fn test_missing_table_error(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Query non-existent table
 	let result = sqlx::query("SELECT * FROM non_existent_table")
@@ -622,7 +660,10 @@ async fn test_missing_table_error(
 async fn test_limit_clause_performance(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query("CREATE TABLE IF NOT EXISTS large_table (id SERIAL PRIMARY KEY, value INT)")
@@ -663,7 +704,10 @@ async fn test_limit_clause_performance(
 async fn test_offset_clause_performance(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query("CREATE TABLE IF NOT EXISTS paginated_table (id SERIAL PRIMARY KEY, value INT)")
@@ -704,7 +748,10 @@ async fn test_offset_clause_performance(
 async fn test_batch_insert_execution(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Create test table
 	sqlx::query(

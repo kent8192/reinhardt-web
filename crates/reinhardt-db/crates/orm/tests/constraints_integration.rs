@@ -29,14 +29,16 @@
 //! | PRIMARY KEY    | Duplicate PK insert          | Error                   |
 //! | Multiple       | Violate multiple constraints | Error (first violation) |
 
-use reinhardt_orm;
+use reinhardt_core::macros::model;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::{
 	ColumnDef, Expr, ExprTrait, ForeignKey, ForeignKeyAction, Iden, PostgresQueryBuilder, Query,
 	Table,
 };
-use sqlx::{PgPool, Row};
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
@@ -75,6 +77,60 @@ enum Profiles {
 	Id,
 	UserId,
 	Bio,
+}
+
+// ============================================================================
+// ORM Model Definitions
+// ============================================================================
+
+/// User model for constraint testing with ORM
+#[allow(dead_code)]
+#[model(app_label = "constraints_test", table_name = "users")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct User {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 255, unique = true)]
+	email: String,
+	#[field(check = "age >= 0")]
+	age: i32,
+	#[field(max_length = 50)]
+	status: String,
+}
+
+/// Product model for FK constraint testing
+#[allow(dead_code)]
+#[model(app_label = "constraints_test", table_name = "products")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct Product {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 255)]
+	name: String,
+	price: i32,
+}
+
+/// Order model for FK constraint testing (references Product)
+#[allow(dead_code)]
+#[model(app_label = "constraints_test", table_name = "orders")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct Order {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	product_id: i32,
+	quantity: i32,
+}
+
+/// Profile model for FK constraint testing (references User)
+#[allow(dead_code)]
+#[model(app_label = "constraints_test", table_name = "profiles")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct Profile {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	user_id: i32,
+	#[field(null = true, max_length = 1000)]
+	bio: Option<String>,
 }
 
 /// Helper function to setup users table with various constraints
@@ -186,12 +242,17 @@ async fn setup_profiles_table(pool: &PgPool) -> Result<(), sqlx::Error> {
 /// 1. Insert user with email "test@example.com"
 /// 2. Attempt to insert another user with same email
 /// 3. Verify that second insert fails with UNIQUE constraint error
+///
+/// Uses reinhardt_orm for database connection management.
 #[rstest]
 #[tokio::test]
 async fn test_unique_constraint_violation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Setup
 	setup_users_table(pool.as_ref()).await.unwrap();
@@ -233,12 +294,17 @@ async fn test_unique_constraint_violation(
 /// # Test Scenario
 /// 1. Attempt to insert user with negative age (violates CHECK age >= 0)
 /// 2. Verify that insert fails with CHECK constraint error
+///
+/// Uses reinhardt_orm for database connection management.
 #[rstest]
 #[tokio::test]
 async fn test_check_constraint_violation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Setup
 	setup_users_table(pool.as_ref()).await.unwrap();
@@ -269,12 +335,17 @@ async fn test_check_constraint_violation(
 /// 1. Create products and orders tables
 /// 2. Attempt to insert order with non-existent product_id
 /// 3. Verify that insert fails with FK constraint error
+///
+/// Uses reinhardt_orm for database connection management.
 #[rstest]
 #[tokio::test]
 async fn test_foreign_key_constraint_insert_violation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Setup
 	setup_products_orders_tables(pool.as_ref()).await.unwrap();
@@ -306,12 +377,17 @@ async fn test_foreign_key_constraint_insert_violation(
 /// 2. Insert order referencing product_id=1
 /// 3. Delete product with id=1
 /// 4. Verify that order is automatically deleted (CASCADE)
+///
+/// Uses reinhardt_orm for database connection management.
 #[rstest]
 #[tokio::test]
 async fn test_foreign_key_constraint_delete_cascade(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Setup
 	setup_products_orders_tables(pool.as_ref()).await.unwrap();
@@ -383,12 +459,17 @@ async fn test_foreign_key_constraint_delete_cascade(
 /// # Test Scenario
 /// 1. Attempt to insert user with NULL email (violates NOT NULL)
 /// 2. Verify that insert fails with NOT NULL constraint error
+///
+/// Uses reinhardt_orm for database connection management.
 #[rstest]
 #[tokio::test]
 async fn test_not_null_constraint_violation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Setup
 	setup_users_table(pool.as_ref()).await.unwrap();
@@ -422,12 +503,17 @@ async fn test_not_null_constraint_violation(
 /// 1. Insert user with explicit id=1
 /// 2. Attempt to insert another user with same id=1
 /// 3. Verify that second insert fails with PRIMARY KEY constraint error
+///
+/// Uses reinhardt_orm for database connection management.
 #[rstest]
 #[tokio::test]
 async fn test_primary_key_constraint_violation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Setup
 	setup_users_table(pool.as_ref()).await.unwrap();
@@ -485,12 +571,17 @@ async fn test_primary_key_constraint_violation(
 /// 2. Insert user and profile
 /// 3. Attempt to delete user (should fail due to FK RESTRICT)
 /// 4. Verify proper constraint error handling
+///
+/// Uses reinhardt_orm for database connection management.
 #[rstest]
 #[tokio::test]
 async fn test_multiple_constraints_combination(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 
 	// Setup
 	setup_users_table(pool.as_ref()).await.unwrap();

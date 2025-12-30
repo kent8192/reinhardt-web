@@ -14,7 +14,6 @@
 //! **Test Data Schema:**
 //! - employees(id SERIAL PRIMARY KEY, name TEXT NOT NULL, manager_id INT, salary BIGINT)
 
-use reinhardt_orm::Model;
 use reinhardt_orm::cte::{CTE, CTECollection};
 use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_orm::query::{Filter, FilterOperator, FilterValue, QuerySet};

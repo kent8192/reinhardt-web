@@ -18,13 +18,11 @@
 //! - PostgreSQL Exclusive: Features only available in PostgreSQL
 //! - Tests: 7-9 comprehensive test cases
 
-use reinhardt_orm;
 use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};
 use serial_test::serial;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 

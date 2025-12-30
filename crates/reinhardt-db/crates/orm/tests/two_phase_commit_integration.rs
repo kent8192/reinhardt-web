@@ -11,11 +11,13 @@
 //! **Fixtures Used**:
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_orm;
+use reinhardt_core::macros::model;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};
-use sqlx::{PgPool, Row};
+use sea_query::Iden;
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
@@ -23,6 +25,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 // Table Definition (Iden implementation for type-safe SQL)
 // ============================================================================
 
+#[allow(dead_code)] // Test schema definition for 2PC tests
 #[derive(Iden)]
 enum Accounts {
 	Table,
@@ -32,6 +35,7 @@ enum Accounts {
 	Version,
 }
 
+#[allow(dead_code)] // Test schema definition for 2PC tests
 #[derive(Iden)]
 enum TransactionLog {
 	Table,
@@ -39,6 +43,23 @@ enum TransactionLog {
 	TransactionId,
 	Status,
 	Timestamp,
+}
+
+// ============================================================================
+// ORM Model Definitions
+// ============================================================================
+
+/// Account model for 2PC transaction testing
+#[allow(dead_code)]
+#[model(app_label = "two_phase_test", table_name = "accounts")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct Account {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 100)]
+	name: String,
+	balance: i64,
+	version: i32,
 }
 
 // ============================================================================
@@ -127,7 +148,10 @@ async fn log_transaction_status(pool: &PgPool, txn_id: &str, status: &str) {
 async fn test_prepare_commit_flow(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 	setup_accounts_table(pool.as_ref()).await;
 	setup_transaction_log_table(pool.as_ref()).await;
 
@@ -205,7 +229,10 @@ async fn test_prepare_commit_flow(
 async fn test_prepare_rollback_flow(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 	setup_accounts_table(pool.as_ref()).await;
 	setup_transaction_log_table(pool.as_ref()).await;
 
@@ -293,7 +320,10 @@ async fn test_prepare_rollback_flow(
 async fn test_prepare_phase_participant_failure(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 	setup_accounts_table(pool.as_ref()).await;
 	setup_transaction_log_table(pool.as_ref()).await;
 
@@ -355,7 +385,10 @@ async fn test_prepare_phase_participant_failure(
 async fn test_post_prepare_participant_failure(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 	setup_accounts_table(pool.as_ref()).await;
 	setup_transaction_log_table(pool.as_ref()).await;
 
@@ -420,7 +453,10 @@ async fn test_post_prepare_participant_failure(
 async fn test_2pc_state_machine_transitions(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 	setup_transaction_log_table(pool.as_ref()).await;
 
 	let txn_id = "txn_state_machine_001";
@@ -462,7 +498,10 @@ async fn test_2pc_state_machine_transitions(
 async fn test_concurrent_2pc_transactions(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 	setup_accounts_table(pool.as_ref()).await;
 
 	// Create two accounts for concurrent transactions
@@ -547,7 +586,10 @@ async fn test_concurrent_2pc_transactions(
 async fn test_2pc_partial_rollback_recovery(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	// Initialize ORM database connection
+	reinitialize_database(&url).await.unwrap();
 	setup_accounts_table(pool.as_ref()).await;
 	setup_transaction_log_table(pool.as_ref()).await;
 

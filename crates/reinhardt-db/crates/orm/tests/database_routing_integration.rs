@@ -24,6 +24,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 // User Model Schema for Testing
 // ============================================================================
 
+#[allow(dead_code)] // Test schema definition for routing tests
 #[derive(Debug, Clone, Copy, Iden)]
 enum Users {
 	Table,
@@ -37,6 +38,7 @@ enum Users {
 	CreatedAt,
 }
 
+#[allow(dead_code)] // Test schema definition for routing tests
 #[derive(Debug, Clone, Copy, Iden)]
 enum Analytics {
 	Table,
@@ -50,6 +52,7 @@ enum Analytics {
 	EventType,
 }
 
+#[allow(dead_code)] // Test schema definition for routing tests
 #[derive(Debug, Clone, Copy, Iden)]
 enum AuditLogs {
 	Table,
