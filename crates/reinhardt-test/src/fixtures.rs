@@ -109,6 +109,10 @@ pub mod validator;
 // Migration registry test fixtures
 pub mod migrations;
 
+// Schema creation fixtures for model-based table creation
+#[cfg(feature = "testcontainers")]
+pub mod schema;
+
 // Dependency Injection test fixtures
 pub mod di;
 
@@ -169,4 +173,13 @@ pub use migrations::{
 pub use di::{
 	injection_context, injection_context_with_database, injection_context_with_overrides,
 	injection_context_with_sqlite, singleton_scope,
+};
+
+// From schema module (conditional on feature)
+#[cfg(feature = "testcontainers")]
+pub use schema::{
+	ModelSchemaInfo, SchemaError, create_migration_from_model, create_table_for_model,
+	create_table_operation_from_model, create_table_operations_from_models,
+	create_tables_for_models, extract_model_dependencies, field_info_to_column_definition,
+	resolve_model_order,
 };

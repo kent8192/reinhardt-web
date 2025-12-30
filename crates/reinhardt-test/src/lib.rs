@@ -682,4 +682,54 @@ macro_rules! impl_test_model {
 	($model:ident, $pk:ty, $table:expr) => {
 		$crate::impl_test_model!($model, $pk, $table, "default");
 	};
+
+	// Non-option primary key version with app_label
+	// Use this when the primary key field is NOT wrapped in Option<T>
+	// Example: id: Uuid instead of id: Option<Uuid>
+	($model:ident, $pk:ty, $table:expr, $app:expr, non_option_pk) => {
+		$crate::paste::paste! {
+			#[derive(Debug, Clone)]
+			pub struct [<$model Fields>];
+
+			impl $crate::FieldSelector for [<$model Fields>] {
+				fn with_alias(self, _alias: &str) -> Self {
+					self
+				}
+			}
+
+			impl $crate::Model for $model {
+				type PrimaryKey = $pk;
+				type Fields = [<$model Fields>];
+
+				fn table_name() -> &'static str {
+					$table
+				}
+
+				fn app_label() -> &'static str {
+					$app
+				}
+
+				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+					Some(&self.id)
+				}
+
+				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+					self.id = value;
+				}
+
+				fn primary_key_field() -> &'static str {
+					"id"
+				}
+
+				fn new_fields() -> Self::Fields {
+					[<$model Fields>]
+				}
+			}
+		}
+	};
+
+	// Non-option primary key version with default app_label
+	($model:ident, $pk:ty, $table:expr, non_option_pk) => {
+		$crate::impl_test_model!($model, $pk, $table, "default", non_option_pk);
+	};
 }
