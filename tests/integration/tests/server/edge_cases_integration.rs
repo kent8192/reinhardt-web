@@ -15,7 +15,6 @@ use reinhardt_routers::UnifiedRouter as Router;
 use reinhardt_server::ShutdownCoordinator;
 use reinhardt_test::fixtures::*;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 
@@ -84,7 +83,7 @@ async fn slow_handler(_req: Request) -> ViewResult<Response> {
 #[tokio::test]
 async fn test_empty_post_body() {
 	// Test server handling of POST request with Content-Length: 0
-	let router = Arc::new(Router::new().endpoint(empty_body_handler));
+	let router = Router::new().endpoint(empty_body_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -105,7 +104,7 @@ async fn test_empty_post_body() {
 #[tokio::test]
 async fn test_empty_post_body_no_content_length() {
 	// Test server handling of POST without explicit Content-Length
-	let router = Arc::new(Router::new().endpoint(empty_body_handler));
+	let router = Router::new().endpoint(empty_body_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -129,7 +128,7 @@ async fn test_duplicate_headers() {
 	// Note: Most HTTP clients (including reqwest) don't expose duplicate header support in their public API,
 	// as HTTP/2 and modern HTTP/1.1 implementations typically merge duplicate headers.
 	// This test verifies the server can handle the case if such headers arrive.
-	let router = Arc::new(Router::new().endpoint(duplicate_headers_handler));
+	let router = Router::new().endpoint(duplicate_headers_handler);
 	let server = test_server_guard(router).await;
 
 	// Extract host and port from server URL
@@ -170,7 +169,7 @@ async fn test_duplicate_headers() {
 #[tokio::test]
 async fn test_http_1_0_compatibility() {
 	// Test server compatibility with HTTP/1.0 requests
-	let router = Arc::new(Router::new().endpoint(version_handler));
+	let router = Router::new().endpoint(version_handler);
 	let server = test_server_guard(router).await;
 
 	// Extract host and port from server URL
@@ -210,7 +209,7 @@ async fn test_http_1_0_compatibility() {
 #[tokio::test]
 async fn test_minimum_request_size() {
 	// Test server handling of minimal 1-byte request body
-	let router = Arc::new(Router::new().endpoint(size_handler));
+	let router = Router::new().endpoint(size_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -231,7 +230,7 @@ async fn test_minimum_request_size() {
 #[tokio::test]
 async fn test_small_request_sizes() {
 	// Test various small request sizes (0, 1, 10, 100 bytes)
-	let router = Arc::new(Router::new().endpoint(size_handler));
+	let router = Router::new().endpoint(size_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -281,7 +280,7 @@ async fn test_small_request_sizes() {
 #[tokio::test]
 async fn test_large_request_size() {
 	// Test server handling of large (but acceptable) request body
-	let router = Arc::new(Router::new().endpoint(size_handler));
+	let router = Router::new().endpoint(size_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -303,7 +302,7 @@ async fn test_large_request_size() {
 #[tokio::test]
 async fn test_request_during_shutdown() {
 	// Test server behavior when receiving requests during graceful shutdown
-	let router = Arc::new(Router::new().endpoint(slow_handler));
+	let router = Router::new().endpoint(slow_handler);
 
 	// Manual setup to control shutdown timing
 	let shutdown_timeout = Duration::from_secs(5);
@@ -375,7 +374,7 @@ async fn test_request_during_shutdown() {
 #[tokio::test]
 async fn test_new_request_after_shutdown_signal() {
 	// Test that new requests after shutdown signal are rejected
-	let router = Arc::new(Router::new().endpoint(slow_handler));
+	let router = Router::new().endpoint(slow_handler);
 
 	let shutdown_timeout = Duration::from_secs(2);
 	let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
@@ -426,7 +425,7 @@ async fn test_new_request_after_shutdown_signal() {
 #[tokio::test]
 async fn test_malformed_uri_special_characters() {
 	// Test server handling of URIs with special characters
-	let router = Arc::new(Router::new().endpoint(uri_handler));
+	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -460,7 +459,7 @@ async fn test_malformed_uri_special_characters() {
 #[tokio::test]
 async fn test_uri_without_query_string() {
 	// Test server handling of URI without query string
-	let router = Arc::new(Router::new().endpoint(uri_handler));
+	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -479,7 +478,7 @@ async fn test_uri_without_query_string() {
 #[tokio::test]
 async fn test_uri_with_fragment() {
 	// Test server handling of URI with fragment (fragments should not be sent to server)
-	let router = Arc::new(Router::new().endpoint(uri_handler));
+	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -500,7 +499,7 @@ async fn test_uri_with_fragment() {
 #[tokio::test]
 async fn test_very_long_uri() {
 	// Test server handling of very long URI
-	let router = Arc::new(Router::new().endpoint(uri_handler));
+	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -523,7 +522,7 @@ async fn test_very_long_uri() {
 #[tokio::test]
 async fn test_extremely_long_uri() {
 	// Test server handling of extremely long URI (may exceed limits)
-	let router = Arc::new(Router::new().endpoint(uri_handler));
+	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
 	let client = reqwest::Client::new();
@@ -558,7 +557,7 @@ async fn test_extremely_long_uri() {
 #[tokio::test]
 async fn test_concurrent_requests_during_shutdown() {
 	// Test multiple concurrent requests when shutdown is triggered
-	let router = Arc::new(Router::new().endpoint(slow_handler));
+	let router = Router::new().endpoint(slow_handler);
 
 	let shutdown_timeout = Duration::from_secs(5);
 	let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();

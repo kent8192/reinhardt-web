@@ -11,12 +11,46 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_orm;
+use reinhardt_core::macros::model;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
+use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
+
+// ============================================================================
+// ORM Model Definitions
+// ============================================================================
+
+/// ORM model for article - demonstrates reinhardt_orm integration
+#[model(app_label = "crud_test", table_name = "articles")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[allow(dead_code)] // ORM model for CRUD lifecycle tests
+struct ArticleModel {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 255)]
+	title: String,
+	#[field(max_length = 10000)]
+	body: String,
+}
+
+/// ORM model for post with timestamps
+#[model(app_label = "crud_test", table_name = "posts")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[allow(dead_code)] // ORM model for CRUD lifecycle tests
+struct PostModel {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 255)]
+	title: String,
+	#[field(auto_now_add = true, max_length = 50)]
+	created_at: Option<String>,
+	#[field(auto_now = true, max_length = 50)]
+	updated_at: Option<String>,
+}
 
 // ============================================================================
 // Basic CRUD Lifecycle Tests
@@ -35,7 +69,8 @@ use testcontainers::{ContainerAsync, GenericImage};
 async fn test_basic_crud_lifecycle(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table
 	sqlx::query("CREATE TABLE IF NOT EXISTS articles (id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL)")
@@ -122,7 +157,8 @@ async fn test_basic_crud_lifecycle(
 async fn test_crud_lifecycle_with_timestamps(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table with timestamp columns
 	sqlx::query(
@@ -204,7 +240,8 @@ async fn test_crud_lifecycle_with_timestamps(
 async fn test_crud_lifecycle_not_null_validation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table with NOT NULL constraint
 	sqlx::query("CREATE TABLE IF NOT EXISTS profiles (id SERIAL PRIMARY KEY, username TEXT NOT NULL, email TEXT NOT NULL)")
@@ -259,7 +296,8 @@ async fn test_crud_lifecycle_not_null_validation(
 async fn test_crud_lifecycle_unique_validation(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table with UNIQUE constraint
 	sqlx::query(
@@ -328,7 +366,8 @@ async fn test_crud_lifecycle_unique_validation(
 async fn test_crud_lifecycle_check_constraint(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table with CHECK constraint (price must be positive)
 	sqlx::query(
@@ -397,7 +436,8 @@ async fn test_crud_lifecycle_check_constraint(
 async fn test_crud_lifecycle_cascade_delete(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create parent table
 	sqlx::query("CREATE TABLE IF NOT EXISTS authors (id SERIAL PRIMARY KEY, name TEXT NOT NULL)")
@@ -481,7 +521,8 @@ async fn test_crud_lifecycle_cascade_delete(
 async fn test_crud_lifecycle_set_null_on_delete(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create parent table
 	sqlx::query(
@@ -563,7 +604,8 @@ async fn test_crud_lifecycle_set_null_on_delete(
 async fn test_crud_lifecycle_soft_delete(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table with soft delete column
 	sqlx::query(
@@ -666,7 +708,8 @@ async fn test_crud_lifecycle_soft_delete(
 async fn test_crud_lifecycle_bulk_insert(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table
 	sqlx::query(
@@ -710,7 +753,8 @@ async fn test_crud_lifecycle_bulk_insert(
 async fn test_crud_lifecycle_bulk_update(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table
 	sqlx::query(
@@ -759,7 +803,8 @@ async fn test_crud_lifecycle_bulk_update(
 async fn test_crud_lifecycle_bulk_delete(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create table
 	sqlx::query(

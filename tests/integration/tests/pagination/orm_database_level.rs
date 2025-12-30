@@ -11,10 +11,33 @@
 //! The QuerySet already supports limit(), offset(), and paginate() methods that translate
 //! to SQL LIMIT/OFFSET clauses, enabling efficient database-level pagination.
 
+use reinhardt_core::macros::model;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+// ============================================================================
+// ORM Model Definition
+// ============================================================================
+
+/// ORM model for product - demonstrates reinhardt_orm integration with pagination
+#[model(app_label = "pagination_test", table_name = "products")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[allow(dead_code)] // ORM model for pagination integration tests
+struct ProductModel {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 255)]
+	name: String,
+	#[field]
+	price: i32,
+	#[field(max_length = 100)]
+	category: String,
+	#[field]
+	in_stock: bool,
+}
 
 // ============================================================================
 // Test Model
@@ -40,7 +63,8 @@ reinhardt_test::impl_test_model!(Product, i32, "products");
 async fn products_db(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) -> (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>) {
-	let (container, pool, _port, _url) = postgres_container.await;
+	let (container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create products table
 	sqlx::query(

@@ -640,6 +640,7 @@ async fn test_port_conflict_error(#[future] http1_server: TestServer) {
 		server
 			.listen_with_shutdown(used_addr, (*coordinator_clone).clone())
 			.await
+			.map_err(|e| e.to_string())
 	});
 
 	// Give some time for the bind attempt

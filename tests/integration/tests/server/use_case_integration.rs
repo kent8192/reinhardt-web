@@ -13,6 +13,7 @@
 //! 5. **Session Management** - Cookie-based sessions with authentication
 
 use bytes::Bytes;
+use http::Method;
 use reinhardt_http::{Request, Response};
 use reinhardt_routers::UnifiedRouter as Router;
 use reinhardt_test::fixtures::*;
@@ -226,16 +227,30 @@ impl Handler for DeleteArticleHandler {
 /// 5. Delete the article (DELETE)
 /// 6. Verify deletion (GET returns 404)
 #[tokio::test]
-#[ignore = "Needs API update - with_extension method removed"]
 async fn test_restful_api_full_workflow() {
 	// Initialize store
 	let store = ArticleStore::new();
 	let _ = ARTICLE_STORE.set(store);
 
-	// TODO: Update to use current router API
-	let router = Router::new();
+	// Register routes with current router API
+	let router = Router::new()
+		.function("/articles", Method::POST, |req| async move {
+			CreateArticleHandler.handle(req).await
+		})
+		.function("/articles", Method::GET, |req| async move {
+			ListArticlesHandler.handle(req).await
+		})
+		.function("/articles/{id}", Method::GET, |req| async move {
+			GetArticleHandler.handle(req).await
+		})
+		.function("/articles/{id}", Method::PUT, |req| async move {
+			UpdateArticleHandler.handle(req).await
+		})
+		.function("/articles/{id}", Method::DELETE, |req| async move {
+			DeleteArticleHandler.handle(req).await
+		});
 
-	let server = test_server_guard(Arc::new(router)).await;
+	let server = test_server_guard(router).await;
 	let client = reqwest::Client::new();
 
 	// Step 1: Create a new article
@@ -427,16 +442,21 @@ impl Handler for DownloadFileHandler {
 /// 3. Upload another file
 /// 4. Download and verify the second file
 #[tokio::test]
-#[ignore = "Needs API update - with_extension method removed"]
 async fn test_file_upload_download() {
 	// Initialize store
 	let store = FileStore::new();
 	let _ = FILE_STORE.set(store);
 
-	// TODO: Update to use current router API
-	let router = Router::new();
+	// Register routes with current router API
+	let router = Router::new()
+		.function("/upload", Method::POST, |req| async move {
+			UploadFileHandler.handle(req).await
+		})
+		.function("/download/{filename}", Method::GET, |req| async move {
+			DownloadFileHandler.handle(req).await
+		});
 
-	let server = test_server_guard(Arc::new(router)).await;
+	let server = test_server_guard(router).await;
 	let client = reqwest::Client::new();
 
 	// Step 1: Upload a large file (1MB of data)
@@ -1073,16 +1093,24 @@ impl Handler for LogoutHandler {
 /// 4. Logout and clear session
 /// 5. Verify protected resource is inaccessible after logout
 #[tokio::test]
-#[ignore = "Needs API update - with_extension method removed"]
 async fn test_session_management() {
 	// Initialize store
 	let store = SessionStore::new();
 	let _ = SESSION_STORE.set(store);
 
-	// TODO: Update to use current router API
-	let router = Router::new();
+	// Register routes with current router API
+	let router = Router::new()
+		.function("/login", Method::POST, |req| async move {
+			LoginHandler.handle(req).await
+		})
+		.function("/protected", Method::GET, |req| async move {
+			ProtectedHandler.handle(req).await
+		})
+		.function("/logout", Method::POST, |req| async move {
+			LogoutHandler.handle(req).await
+		});
 
-	let server = test_server_guard(Arc::new(router)).await;
+	let server = test_server_guard(router).await;
 
 	// Create client with cookie jar
 	let client = reqwest::Client::builder()

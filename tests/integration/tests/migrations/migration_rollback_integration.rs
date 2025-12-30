@@ -23,8 +23,7 @@
 
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
-	executor::DatabaseMigrationExecutor, operations::SqlDialect, ColumnDefinition, Constraint,
-	FieldType, ForeignKeyAction, Migration, Operation,
+	executor::DatabaseMigrationExecutor, ColumnDefinition, FieldType, Migration, Operation,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -660,7 +659,7 @@ async fn test_index_rollback(
 async fn test_rollback_fail_without_reverse_sql(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, url) = postgres_container.await;
 
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
@@ -814,7 +813,7 @@ async fn test_rollback_fail_with_foreign_key_reference(
 async fn test_rollback_empty_migration(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, url) = postgres_container.await;
 
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
@@ -969,7 +968,7 @@ async fn test_rollback_with_dependencies(
 async fn test_circular_dependency_rollback(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, url) = postgres_container.await;
 
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
@@ -995,7 +994,7 @@ async fn test_circular_dependency_rollback(
 	};
 
 	// Migration B (depends on A - circular)
-	let migration_b = Migration {
+	let _migration_b = Migration {
 		app_label: "testapp",
 		name: "0002_migration_b",
 		operations: vec![Operation::CreateTable {

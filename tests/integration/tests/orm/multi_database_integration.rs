@@ -39,7 +39,8 @@
 //! ❌ Cross-vendor database integration (PostgreSQL + MySQL)
 //! ❌ Distributed transaction protocols (2PC, Saga patterns)
 
-use reinhardt_orm;
+use reinhardt_core::macros::model;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use rust_decimal::Decimal;
@@ -51,6 +52,23 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, GenericImage};
 use tokio::time::{sleep, Duration};
+
+// ============ ORM Model Definition ============
+
+/// ORM model for user - demonstrates reinhardt_orm integration with multi-database
+#[model(app_label = "multi_db", table_name = "users")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[allow(dead_code)] // ORM model for multi-database integration tests
+struct UserModel {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 100)]
+	username: String,
+	#[field(max_length = 255)]
+	email: String,
+	#[field]
+	shard_key: i32,
+}
 
 // ============ Test Helper Structs ============
 
@@ -92,7 +110,8 @@ async fn test_multiple_database_connections(
 		String,
 	),
 ) {
-	let (_container1, pool1, _port1, _url1) = postgres_container.await;
+	let (_container1, pool1, _port1, url1) = postgres_container.await;
+	reinitialize_database(&url1).await.unwrap();
 
 	// Start second PostgreSQL container
 	let postgres2 = GenericImage::new("postgres", "16-alpine")
