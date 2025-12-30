@@ -107,3 +107,6 @@ docs/Gemfile.lock
 
 file::memory:
 *.skip
+
+# Proptest regression files
+*.proptest-regressions
