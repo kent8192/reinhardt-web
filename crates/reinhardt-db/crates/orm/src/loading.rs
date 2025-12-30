@@ -337,16 +337,32 @@ mod tests {
 		id: Option<i64>,
 	}
 
+	#[derive(Clone)]
+	struct UserFields;
+	impl crate::model::FieldSelector for UserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	const USER_TABLE: TableName = TableName::new_const("users");
 
 	impl Model for User {
 		type PrimaryKey = i64;
+		type Fields = UserFields;
+
 		fn table_name() -> &'static str {
 			USER_TABLE.as_str()
 		}
+
+		fn new_fields() -> Self::Fields {
+			UserFields
+		}
+
 		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
 			self.id.as_ref()
 		}
+
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
 		}

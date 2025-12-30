@@ -720,8 +720,17 @@ mod tests {
 		name: String,
 	}
 
+	#[derive(Clone)]
+	struct TestGroupFields;
+	impl crate::model::FieldSelector for TestGroupFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	impl Model for TestGroup {
 		type PrimaryKey = i64;
+		type Fields = TestGroupFields;
 
 		fn table_name() -> &'static str {
 			"groups"
@@ -729,6 +738,10 @@ mod tests {
 
 		fn app_label() -> &'static str {
 			"auth"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestGroupFields
 		}
 
 		fn primary_key(&self) -> Option<&Self::PrimaryKey> {

@@ -447,13 +447,26 @@ mod tests {
 		name: String,
 	}
 
+	#[derive(Clone)]
+	struct StudentFields;
+	impl crate::model::FieldSelector for StudentFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	const STUDENT_TABLE: TableName = TableName::new_const("students");
 
 	impl Model for Student {
 		type PrimaryKey = i64;
+		type Fields = StudentFields;
 
 		fn table_name() -> &'static str {
 			STUDENT_TABLE.as_str()
+		}
+
+		fn new_fields() -> Self::Fields {
+			StudentFields
 		}
 
 		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
@@ -471,13 +484,26 @@ mod tests {
 		title: String,
 	}
 
+	#[derive(Clone)]
+	struct CourseFields;
+	impl crate::model::FieldSelector for CourseFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	const COURSE_TABLE: TableName = TableName::new_const("courses");
 
 	impl Model for Course {
 		type PrimaryKey = i64;
+		type Fields = CourseFields;
 
 		fn table_name() -> &'static str {
 			COURSE_TABLE.as_str()
+		}
+
+		fn new_fields() -> Self::Fields {
+			CourseFields
 		}
 
 		fn primary_key(&self) -> Option<&Self::PrimaryKey> {

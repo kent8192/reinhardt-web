@@ -1576,17 +1576,33 @@ mod tests {
 		value: i32,
 	}
 
+	#[derive(Clone)]
+	struct TestItemFields;
+	impl crate::model::FieldSelector for TestItemFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	#[allow(dead_code)]
 	const TEST_ITEM_TABLE: TableName = TableName::new_const("test_items");
 
 	impl crate::Model for TestItem {
 		type PrimaryKey = i64;
+		type Fields = TestItemFields;
+
 		fn table_name() -> &'static str {
 			TEST_ITEM_TABLE.as_str()
 		}
+
+		fn new_fields() -> Self::Fields {
+			TestItemFields
+		}
+
 		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
 			self.id.as_ref()
 		}
+
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
 		}

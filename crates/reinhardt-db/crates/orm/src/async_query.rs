@@ -263,14 +263,27 @@ mod tests {
 		name: String,
 	}
 
+	#[derive(Clone)]
+	struct TestModelFields;
+	impl crate::model::FieldSelector for TestModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	#[allow(dead_code)]
 	const TEST_MODEL_TABLE: TableName = TableName::new_const("test_model");
 
 	impl Model for TestModel {
 		type PrimaryKey = i64;
+		type Fields = TestModelFields;
 
 		fn table_name() -> &'static str {
 			TEST_MODEL_TABLE.as_str()
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestModelFields
 		}
 
 		fn primary_key(&self) -> Option<&Self::PrimaryKey> {

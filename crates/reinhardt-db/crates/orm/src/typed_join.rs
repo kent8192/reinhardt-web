@@ -290,16 +290,32 @@ mod tests {
 		email: String,
 	}
 
+	#[derive(Clone)]
+	struct UserFields;
+	impl crate::model::FieldSelector for UserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	const USER_TABLE: TableName = TableName::new_const("users");
 
 	impl Model for User {
 		type PrimaryKey = i64;
+		type Fields = UserFields;
+
 		fn table_name() -> &'static str {
 			USER_TABLE.as_str()
 		}
+
+		fn new_fields() -> Self::Fields {
+			UserFields
+		}
+
 		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
 			Some(&self.id)
 		}
+
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = value;
 		}
@@ -312,16 +328,32 @@ mod tests {
 		title: String,
 	}
 
+	#[derive(Clone)]
+	struct PostFields;
+	impl crate::model::FieldSelector for PostFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
 	const POST_TABLE: TableName = TableName::new_const("posts");
 
 	impl Model for Post {
 		type PrimaryKey = i64;
+		type Fields = PostFields;
+
 		fn table_name() -> &'static str {
 			POST_TABLE.as_str()
 		}
+
+		fn new_fields() -> Self::Fields {
+			PostFields
+		}
+
 		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
 			Some(&self.id)
 		}
+
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = value;
 		}
