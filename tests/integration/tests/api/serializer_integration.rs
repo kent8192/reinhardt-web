@@ -21,8 +21,6 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container from reinhardt-test
 
-use reinhardt_core::validators::TableName;
-use reinhardt_db::orm::Model;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -44,23 +42,7 @@ struct Author {
 	bio: Option<String>,
 }
 
-const AUTHOR_TABLE: TableName = TableName::new_const("authors");
-
-impl Model for Author {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		AUTHOR_TABLE.as_str()
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Author, i64, "authors");
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 struct Book {
@@ -74,23 +56,7 @@ struct Book {
 	password: Option<String>, // Write-only field example
 }
 
-const BOOK_TABLE: TableName = TableName::new_const("books");
-
-impl Model for Book {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		BOOK_TABLE.as_str()
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Book, i64, "books");
 
 // Nested serializer representation
 #[derive(Debug, Clone, Serialize, Deserialize)]

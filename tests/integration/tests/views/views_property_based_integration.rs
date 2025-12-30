@@ -115,7 +115,7 @@ async fn setup_property() -> PgPool {
 // ============================================================================
 
 /// Helper: Create HTTP GET request
-fn create_get_request(uri: &str) -> Request {
+fn _create_get_request(uri: &str) -> Request {
 	Request::builder()
 		.method(Method::GET)
 		.uri(uri)

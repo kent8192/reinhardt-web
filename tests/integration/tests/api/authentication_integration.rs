@@ -26,8 +26,6 @@ use reinhardt_auth::{
 	token_storage::{InMemoryTokenStorage, TokenStorage},
 	AuthenticationBackend, AuthenticationError, DefaultUser,
 };
-use reinhardt_core::validators::TableName;
-use reinhardt_db::orm::Model;
 use reinhardt_test::fixtures::{auth::*, postgres_container};
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -51,23 +49,7 @@ struct AuthUser {
 	is_superuser: bool,
 }
 
-const AUTH_USER_TABLE: TableName = TableName::new_const("auth_users");
-
-impl Model for AuthUser {
-	type PrimaryKey = Uuid;
-
-	fn table_name() -> &'static str {
-		AUTH_USER_TABLE.as_str()
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		Some(&self.id)
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = value;
-	}
-}
+reinhardt_test::impl_test_model!(AuthUser, Uuid, "auth_users", "auth", non_option_pk);
 
 // ========================================================================
 // Mock Authentication Backend

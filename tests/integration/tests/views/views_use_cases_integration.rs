@@ -280,7 +280,7 @@ async fn setup_tasks() -> PgPool {
 // ============================================================================
 
 /// Helper: Create HTTP POST request with JSON body
-fn create_post_request(uri: &str, body: &str) -> Request {
+fn _create_post_request(uri: &str, body: &str) -> Request {
 	let mut headers = HeaderMap::new();
 	headers.insert(
 		hyper::header::CONTENT_TYPE,
@@ -298,7 +298,7 @@ fn create_post_request(uri: &str, body: &str) -> Request {
 }
 
 /// Helper: Create HTTP PUT request with JSON body
-fn create_put_request(uri: &str, body: &str) -> Request {
+fn _create_put_request(uri: &str, body: &str) -> Request {
 	let mut headers = HeaderMap::new();
 	headers.insert(
 		hyper::header::CONTENT_TYPE,
@@ -316,7 +316,7 @@ fn create_put_request(uri: &str, body: &str) -> Request {
 }
 
 /// Helper: Create HTTP GET request
-fn create_get_request(uri: &str) -> Request {
+fn _create_get_request(uri: &str) -> Request {
 	Request::builder()
 		.method(Method::GET)
 		.uri(uri)

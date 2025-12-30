@@ -20,14 +20,10 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container from reinhardt-test
 
-use reinhardt_core::{
-	pagination::{
-		cursor::{CursorPaginator, DatabaseCursor, Direction, HasTimestamp},
-		LimitOffsetPagination, PageNumberPagination, Paginator,
-	},
-	validators::TableName,
+use reinhardt_core::pagination::{
+	cursor::{CursorPaginator, DatabaseCursor, Direction, HasTimestamp},
+	LimitOffsetPagination, PageNumberPagination, Paginator,
 };
-use reinhardt_db::orm::Model;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -49,23 +45,7 @@ struct Article {
 	created_at: i64, // Unix timestamp
 }
 
-const ARTICLE_TABLE: TableName = TableName::new_const("articles");
-
-impl Model for Article {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		ARTICLE_TABLE.as_str()
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(Article, i64, "articles");
 
 impl HasTimestamp for Article {
 	fn id(&self) -> i64 {

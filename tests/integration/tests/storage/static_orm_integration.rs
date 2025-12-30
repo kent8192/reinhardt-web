@@ -37,7 +37,7 @@
 //! ❌ Static file serving (covered by HTTP server tests)
 //! ❌ Multi-CDN failover (requires external CDN infrastructure)
 
-use reinhardt_orm::{DatabaseConnection, Model};
+use reinhardt_orm::DatabaseConnection;
 use reinhardt_storage::{LocalStorage, Storage};
 use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
@@ -65,21 +65,7 @@ struct StaticFileMetadata {
 	updated_at: i64,
 }
 
-impl Model for StaticFileMetadata {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"static_file_metadata"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(StaticFileMetadata, i64, "static_file_metadata");
 
 impl StaticFileMetadata {
 	fn new(path: &str, content: &[u8]) -> Self {

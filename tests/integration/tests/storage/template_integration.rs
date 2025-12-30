@@ -37,7 +37,7 @@
 //! ❌ Template tag parsing (covered by template engine tests)
 //! ❌ Distributed template storage (requires multi-node setup)
 
-use reinhardt_orm::{DatabaseConnection, Model};
+use reinhardt_orm::DatabaseConnection;
 use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -62,21 +62,7 @@ struct TemplateMetadata {
 	last_modified: i64,
 }
 
-impl Model for TemplateMetadata {
-	type PrimaryKey = i64;
-
-	fn table_name() -> &'static str {
-		"template_metadata"
-	}
-
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
-	}
-
-	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-		self.id = Some(value);
-	}
-}
+reinhardt_test::impl_test_model!(TemplateMetadata, i64, "template_metadata");
 
 impl TemplateMetadata {
 	fn new(name: &str, content: &str) -> Self {

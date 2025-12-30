@@ -15,7 +15,6 @@
 
 use rstest::*;
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use bytes::Bytes;
 use hyper::StatusCode;
@@ -119,11 +118,9 @@ async fn docs_v2_handler() -> ViewResult<Response> {
 #[tokio::test]
 async fn test_versioned_router_registration() {
 	// Create router with version-prefixed routes using endpoint()
-	let router = Arc::new(
-		UnifiedRouter::new()
-			.endpoint(users_v1_handler)
-			.endpoint(users_v2_handler),
-	);
+	let router = UnifiedRouter::new()
+		.endpoint(users_v1_handler)
+		.endpoint(users_v2_handler);
 
 	let server = test_server_guard(router).await;
 
@@ -175,11 +172,9 @@ async fn test_versioned_router_registration() {
 #[tokio::test]
 async fn test_url_path_versioning_with_nested_routes() {
 	// Create router with nested versioned routes using endpoint()
-	let router = Arc::new(
-		UnifiedRouter::new()
-			.endpoint(user_posts_v1_handler)
-			.endpoint(user_posts_v2_handler),
-	);
+	let router = UnifiedRouter::new()
+		.endpoint(user_posts_v1_handler)
+		.endpoint(user_posts_v2_handler);
 
 	let server = test_server_guard(router).await;
 
@@ -249,12 +244,10 @@ async fn test_accept_header_versioning_with_routers() {
 	// Create router with version-prefixed routes using endpoint()
 	// Note: Real Accept-header versioning would use middleware to extract version
 	// and route dynamically. This test validates the routing layer separately.
-	let router = Arc::new(
-		UnifiedRouter::new()
-			.endpoint(api_users_v1_handler)
-			.endpoint(api_users_v2_handler)
-			.endpoint(api_users_default_handler),
-	);
+	let router = UnifiedRouter::new()
+		.endpoint(api_users_v1_handler)
+		.endpoint(api_users_v2_handler)
+		.endpoint(api_users_default_handler);
 
 	let server = test_server_guard(router).await;
 
@@ -369,13 +362,11 @@ async fn test_middleware_versioning_with_route_groups() {
 
 	// Create router with route groups for each version using endpoint()
 	// In production, route groups would have versioning middleware attached
-	let router = Arc::new(
-		UnifiedRouter::new()
-			.endpoint(users_v1_handler)
-			.endpoint(user_posts_v1_handler)
-			.endpoint(users_v2_handler)
-			.endpoint(user_posts_v2_handler),
-	);
+	let router = UnifiedRouter::new()
+		.endpoint(users_v1_handler)
+		.endpoint(user_posts_v1_handler)
+		.endpoint(users_v2_handler)
+		.endpoint(user_posts_v2_handler);
 
 	let server = test_server_guard(router).await;
 
@@ -493,12 +484,10 @@ async fn test_middleware_versioning_with_route_groups() {
 #[tokio::test]
 async fn test_versioned_fallback_routing() {
 	// Create router with version routes and a default fallback using endpoint()
-	let router = Arc::new(
-		UnifiedRouter::new()
-			.endpoint(users_v1_handler)
-			.endpoint(users_v2_handler)
-			.endpoint(users_default_handler),
-	);
+	let router = UnifiedRouter::new()
+		.endpoint(users_v1_handler)
+		.endpoint(users_v2_handler)
+		.endpoint(users_default_handler);
 
 	let server = test_server_guard(router).await;
 
@@ -636,12 +625,10 @@ async fn test_version_negotiation_with_multiple_strategies() {
 	);
 
 	// Create router that demonstrates priority behavior via explicit routing using endpoint()
-	let router = Arc::new(
-		UnifiedRouter::new()
-			.endpoint(api_users_v1_handler)
-			.endpoint(api_users_v2_handler)
-			.endpoint(api_users_default_handler),
-	);
+	let router = UnifiedRouter::new()
+		.endpoint(api_users_v1_handler)
+		.endpoint(api_users_v2_handler)
+		.endpoint(api_users_default_handler);
 
 	let server = test_server_guard(router).await;
 
@@ -687,11 +674,9 @@ async fn test_version_negotiation_with_multiple_strategies() {
 #[tokio::test]
 async fn test_versioned_api_documentation_routes() {
 	// Create router with versioned documentation routes using endpoint()
-	let router = Arc::new(
-		UnifiedRouter::new()
-			.endpoint(docs_v1_handler)
-			.endpoint(docs_v2_handler),
-	);
+	let router = UnifiedRouter::new()
+		.endpoint(docs_v1_handler)
+		.endpoint(docs_v2_handler);
 
 	let server = test_server_guard(router).await;
 
