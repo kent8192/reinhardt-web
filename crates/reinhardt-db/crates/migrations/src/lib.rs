@@ -100,7 +100,7 @@ pub use model_registry::{
 pub use operation_trait::MigrationOperation;
 pub use operations::{
 	AddColumn, AlterColumn, ColumnDefinition, Constraint, CreateTable, DropColumn, IndexType,
-	Operation, SqlDialect,
+	Operation, SqlDialect, field_type_string_to_field_type,
 };
 pub use plan::{MigrationPlan, TransactionMode};
 
