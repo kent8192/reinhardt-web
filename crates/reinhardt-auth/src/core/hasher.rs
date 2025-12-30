@@ -76,6 +76,7 @@ pub trait PasswordHasher: Send + Sync {
 /// # }
 /// ```
 #[cfg(feature = "argon2-hasher")]
+#[derive(Clone)]
 pub struct Argon2Hasher;
 
 #[cfg(feature = "argon2-hasher")]

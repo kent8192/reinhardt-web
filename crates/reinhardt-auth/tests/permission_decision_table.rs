@@ -255,11 +255,13 @@ async fn test_and_permission_truth_table(
 	// = is_authenticated AND is_active (since second requires first)
 	let calculated_expected = is_authenticated && is_active;
 
+	// Verify test case data is consistent
 	assert_eq!(
-		result, calculated_expected,
-		"AND truth table failed for: {}",
+		expected, calculated_expected,
+		"Test case expected value mismatch for: {}",
 		desc
 	);
+	assert_eq!(result, expected, "AND truth table failed for: {}", desc);
 }
 
 // =============================================================================
@@ -300,11 +302,13 @@ async fn test_or_permission_truth_table(
 	let active_check = is_authenticated && is_active;
 	let calculated_expected = admin_check || active_check;
 
+	// Verify test case data is consistent
 	assert_eq!(
-		result, calculated_expected,
-		"OR truth table failed for: {}",
+		expected, calculated_expected,
+		"Test case expected value mismatch for: {}",
 		desc
 	);
+	assert_eq!(result, expected, "OR truth table failed for: {}", desc);
 }
 
 // =============================================================================
@@ -385,11 +389,13 @@ async fn test_complex_and_or_decision_table(
 	let second_branch = is_authenticated && is_admin;
 	let calculated_expected = first_branch || second_branch;
 
+	// Verify test case data is consistent
 	assert_eq!(
-		result, calculated_expected,
-		"Complex AND/OR failed for: {}",
+		expected, calculated_expected,
+		"Test case expected value mismatch for: {}",
 		desc
 	);
+	assert_eq!(result, expected, "Complex AND/OR failed for: {}", desc);
 }
 
 // =============================================================================
@@ -434,8 +440,14 @@ async fn test_triple_and_decision_table(
 	// So the result is: is_authenticated AND is_active AND is_admin
 	let calculated_expected = is_authenticated && is_active && is_admin;
 
+	// Verify test case data is consistent
 	assert_eq!(
-		result, calculated_expected,
+		expected, calculated_expected,
+		"Test case expected value mismatch for auth={}, active={}, admin={}",
+		is_authenticated, is_active, is_admin
+	);
+	assert_eq!(
+		result, expected,
 		"Triple AND failed for auth={}, active={}, admin={}",
 		is_authenticated, is_active, is_admin
 	);
@@ -475,7 +487,13 @@ async fn test_not_and_decision_table(
 	// NOT (is_authenticated AND is_active)
 	let calculated_expected = !(is_authenticated && is_active);
 
-	assert_eq!(result, calculated_expected, "NOT AND failed for: {}", desc);
+	// Verify test case data is consistent
+	assert_eq!(
+		expected, calculated_expected,
+		"Test case expected value mismatch for: {}",
+		desc
+	);
+	assert_eq!(result, expected, "NOT AND failed for: {}", desc);
 }
 
 #[rstest]
@@ -513,7 +531,13 @@ async fn test_not_or_decision_table(
 	// = NOT is_authenticated (since OR with subset is just the superset)
 	let calculated_expected = !is_authenticated;
 
-	assert_eq!(result, calculated_expected, "NOT OR failed for: {}", desc);
+	// Verify test case data is consistent
+	assert_eq!(
+		expected, calculated_expected,
+		"Test case expected value mismatch for: {}",
+		desc
+	);
+	assert_eq!(result, expected, "NOT OR failed for: {}", desc);
 }
 
 // =============================================================================

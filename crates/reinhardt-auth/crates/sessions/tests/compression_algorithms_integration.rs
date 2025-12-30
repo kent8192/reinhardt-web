@@ -117,7 +117,7 @@ mod zstd_tests {
 	}
 
 	#[rstest]
-	fn test_zstd_higher_level_better_compression(zstd_compressor: ZstdCompressor) {
+	fn test_zstd_higher_level_better_compression(_zstd_compressor: ZstdCompressor) {
 		let data = b"Repetitive test data. ".repeat(1000);
 
 		let low = ZstdCompressor::with_level(1);
@@ -458,15 +458,22 @@ mod comparison_tests {
 mod trait_object_tests {
 	use super::*;
 
-	#[rstest]
-	fn test_compressor_as_trait_object() {
-		let compressor: Box<dyn Compressor> = Box::new(ZstdCompressor::new());
-		let data = b"Test data for trait object";
+	/// Test compressor using generic function instead of trait object.
+	/// Note: Compressor trait requires Clone which makes it not dyn-compatible,
+	/// so we use generics to test polymorphic behavior.
+	fn test_compressor_generic<C: Compressor>(compressor: C) {
+		let data = b"Test data for generic function";
 
 		let compressed = compressor.compress(data).unwrap();
 		let decompressed = compressor.decompress(&compressed).unwrap();
 
 		assert_eq!(decompressed.as_slice(), data);
+	}
+
+	#[rstest]
+	fn test_compressor_polymorphism() {
+		// Test ZstdCompressor through generic function
+		test_compressor_generic(ZstdCompressor::new());
 	}
 
 	#[rstest]

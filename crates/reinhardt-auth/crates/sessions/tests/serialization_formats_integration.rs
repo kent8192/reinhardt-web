@@ -634,14 +634,20 @@ fn test_json_vec_of_objects(json_serializer: JsonSerializer) {
 // Serializer Trait Tests
 // =============================================================================
 
-#[rstest]
-fn test_serializer_trait_object(simple_data: SimpleData) {
-	let serializer: &dyn Serializer = &JsonSerializer;
-
-	let bytes = serializer.serialize(&simple_data).unwrap();
+/// Test serializer through generic function instead of trait object.
+/// Note: Serializer trait has generic methods (serialize<T>, deserialize<T>) which makes
+/// it not dyn-compatible, so we use generics to test polymorphic behavior.
+fn test_serializer_generic<S: Serializer>(serializer: &S, data: &SimpleData) {
+	let bytes = serializer.serialize(data).unwrap();
 	let restored: SimpleData = serializer.deserialize(&bytes).unwrap();
 
-	assert_eq!(restored, simple_data);
+	assert_eq!(&restored, data);
+}
+
+#[rstest]
+fn test_serializer_polymorphism(simple_data: SimpleData) {
+	// Test JsonSerializer through generic function
+	test_serializer_generic(&JsonSerializer, &simple_data);
 }
 
 #[rstest]

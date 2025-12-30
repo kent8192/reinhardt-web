@@ -40,7 +40,7 @@
 //! ❌ Cross-backend migration scenarios
 //! ❌ Performance benchmarking
 
-use reinhardt_sessions;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -106,7 +106,8 @@ fn temp_dir() -> tempfile::TempDir {
 async fn test_database_backend_create_and_retrieve(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create sessions table
 	sqlx::query(
@@ -166,7 +167,8 @@ async fn test_database_backend_create_and_retrieve(
 async fn test_database_backend_update_session(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create sessions table
 	sqlx::query(
@@ -243,7 +245,8 @@ async fn test_database_backend_update_session(
 async fn test_database_backend_delete_session(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create sessions table
 	sqlx::query(
@@ -314,7 +317,8 @@ async fn test_database_backend_delete_session(
 async fn test_database_backend_expiration_cleanup(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create sessions table
 	sqlx::query(
@@ -406,7 +410,8 @@ async fn test_database_backend_expiration_cleanup(
 async fn test_database_backend_concurrent_access(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create sessions table
 	sqlx::query(
@@ -714,7 +719,8 @@ async fn test_file_backend_expiration_cleanup(temp_dir: tempfile::TempDir) {
 async fn test_complex_data_serialization(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create sessions table
 	sqlx::query(
@@ -868,7 +874,8 @@ async fn test_json_value_serialization(temp_dir: tempfile::TempDir) {
 async fn test_database_backend_with_indexes(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create sessions table with indexes
 	sqlx::query(
