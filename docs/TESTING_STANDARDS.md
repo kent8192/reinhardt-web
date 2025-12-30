@@ -793,6 +793,51 @@ let pool = loop {
 
 ## rstest Best Practices
 
+### TF-0 (MUST): rstest for All Test Cases
+
+**ALL** test cases in this project MUST use **rstest** as the test framework.
+
+**Why?**
+- Consistent fixture pattern across all tests
+- Easy dependency injection for test setup
+- Parameterized testing support
+- Better integration with `reinhardt-test` fixtures
+
+**Requirements:**
+- Import `rstest::*` in all test modules
+- Use `#[rstest]` attribute instead of `#[test]`
+- Use `#[rstest]` with `#[tokio::test]` for async tests
+- Leverage fixtures for setup/teardown
+
+**Examples:**
+
+❌ **BAD - Using standard #[test]:**
+```rust
+#[test]
+fn test_basic_operation() {
+    // Setup code duplicated in every test
+    let db = setup_database();
+    assert!(db.is_connected());
+}
+```
+
+✅ **GOOD - Using rstest:**
+```rust
+use rstest::*;
+
+#[rstest]
+fn test_basic_operation(db_fixture: Database) {
+    assert!(db_fixture.is_connected());
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_async_operation(#[future] postgres_container: PostgresFixture) {
+    let (container, pool) = postgres_container.await;
+    assert!(pool.is_connected());
+}
+```
+
 ### TF-1 (SHOULD): rstest Fixture Pattern
 
 Use **rstest** fixtures for reusable test setup and dependency injection.
@@ -1064,6 +1109,305 @@ fn test_modifies_state() {
     assert_eq!(get_global_state(), 42);
     clear_global_state();  // ✅ Cleanup
 }
+```
+
+---
+
+## reinhardt-test Fixture Standards
+
+### RF-1 (MUST): Use reinhardt-test Fixtures for Setup/Teardown
+
+**ALL** test setup and teardown MUST use fixtures from `reinhardt-test` crate.
+
+**Available Generic Fixtures:**
+- `postgres_container` - PostgreSQL database container
+- `mysql_container` - MySQL database container
+- `redis_container` - Redis cache container
+- `mongodb_container` - MongoDB container
+- `cockroachdb_container` - CockroachDB container
+- `rabbitmq_container` - RabbitMQ message queue container
+- `localstack_fixture` - AWS LocalStack for S3, DynamoDB, etc.
+- `postgres_with_migrations_from` - PostgreSQL with migrations applied
+- `mysql_with_migrations_from` - MySQL with migrations applied
+- `sqlite_with_migrations_from` - SQLite with migrations applied
+
+**Why?**
+- Consistent infrastructure setup across all tests
+- Proper resource cleanup via RAII pattern
+- Optimized container configuration with retry logic
+- Prevents flaky tests from resource exhaustion
+
+**Example:**
+```rust
+use reinhardt_test::fixtures::*;
+use rstest::*;
+
+#[rstest]
+#[tokio::test]
+async fn test_database_operation(
+    #[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String)
+) {
+    let (_container, pool, _port, _url) = postgres_container.await;
+
+    // Test code using the database pool
+    let result = sqlx::query("SELECT 1").fetch_one(pool.as_ref()).await;
+    assert!(result.is_ok());
+}
+```
+
+### RF-2 (MUST): Specialized Fixture Pattern
+
+Create **test-specific specialized fixtures** that wrap generic `reinhardt-test` fixtures to inject test data.
+
+**Pattern:**
+1. Create a specialized fixture for each test case or test group
+2. Call generic `reinhardt-test` fixtures from the specialized fixture
+3. Inject test-specific data using the prepared infrastructure
+4. Return both infrastructure and test data to the test case
+
+**Why?**
+- Maintains abstraction between infrastructure and test data
+- Reusable test data setup
+- Clear separation of concerns
+- Easy to modify test data without touching infrastructure setup
+
+**Example - Specialized Fixture Pattern:**
+```rust
+use reinhardt_test::fixtures::postgres_container;
+use rstest::*;
+use sea_query::{Iden, PostgresQueryBuilder, Query};
+use sqlx::Row;
+
+/// Test-specific user data structure
+struct TestUserData {
+    pool: Arc<sqlx::PgPool>,
+    admin_user_id: i64,
+    regular_user_id: i64,
+}
+
+/// Specialized fixture for user authentication tests
+#[fixture]
+async fn user_auth_fixture(
+    #[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String)
+) -> (ContainerAsync<GenericImage>, TestUserData) {
+    let (container, pool, _port, _url) = postgres_container.await;
+
+    // Create test schema using sea-query
+    #[derive(Iden)]
+    enum Users {
+        Table,
+        Id,
+        Username,
+        Email,
+        IsAdmin,
+    }
+
+    let create_table = sea_query::Table::create()
+        .table(Users::Table)
+        .if_not_exists()
+        .col(sea_query::ColumnDef::new(Users::Id).big_integer().not_null().auto_increment().primary_key())
+        .col(sea_query::ColumnDef::new(Users::Username).string().not_null())
+        .col(sea_query::ColumnDef::new(Users::Email).string().not_null())
+        .col(sea_query::ColumnDef::new(Users::IsAdmin).boolean().not_null().default(false))
+        .build(PostgresQueryBuilder);
+
+    sqlx::query(&create_table).execute(pool.as_ref()).await.unwrap();
+
+    // Insert test data using sea-query
+    let insert_admin = Query::insert()
+        .into_table(Users::Table)
+        .columns([Users::Username, Users::Email, Users::IsAdmin])
+        .values_panic(["admin".into(), "admin@example.com".into(), true.into()])
+        .returning_col(Users::Id)
+        .build(PostgresQueryBuilder);
+
+    let admin_row = sqlx::query(&insert_admin.0)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+    let admin_user_id: i64 = admin_row.get(0);
+
+    let insert_user = Query::insert()
+        .into_table(Users::Table)
+        .columns([Users::Username, Users::Email, Users::IsAdmin])
+        .values_panic(["user".into(), "user@example.com".into(), false.into()])
+        .returning_col(Users::Id)
+        .build(PostgresQueryBuilder);
+
+    let user_row = sqlx::query(&insert_user.0)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+    let regular_user_id: i64 = user_row.get(0);
+
+    let test_data = TestUserData {
+        pool,
+        admin_user_id,
+        regular_user_id,
+    };
+
+    (container, test_data)
+}
+
+/// Test case using the specialized fixture
+#[rstest]
+#[tokio::test]
+async fn test_admin_permissions(
+    #[future] user_auth_fixture: (ContainerAsync<GenericImage>, TestUserData)
+) {
+    let (_container, test_data) = user_auth_fixture.await;
+
+    // Test admin user permissions
+    #[derive(Iden)]
+    enum Users {
+        Table,
+        Id,
+        IsAdmin,
+    }
+
+    let query = Query::select()
+        .column(Users::IsAdmin)
+        .from(Users::Table)
+        .and_where(sea_query::Expr::col(Users::Id).eq(test_data.admin_user_id))
+        .build(PostgresQueryBuilder);
+
+    let row = sqlx::query(&query.0)
+        .fetch_one(test_data.pool.as_ref())
+        .await
+        .unwrap();
+
+    let is_admin: bool = row.get(0);
+    assert!(is_admin);
+}
+```
+
+### RF-3 (MUST): Use SeaQuery for SQL Construction
+
+**NEVER** use raw SQL strings in tests. **ALWAYS** use SeaQuery (v1.0.0-rc) for building SQL queries.
+
+**Why?**
+- Type-safe SQL construction
+- Prevents SQL injection vulnerabilities
+- Database-agnostic query building
+- Compile-time validation of table/column names
+- Consistent with production code patterns
+
+**Requirements:**
+- Use `#[derive(Iden)]` for table and column definitions
+- Use appropriate query builder for target database:
+  - `PostgresQueryBuilder` for PostgreSQL
+  - `MysqlQueryBuilder` for MySQL
+  - `SqliteQueryBuilder` for SQLite
+- Build queries using `Query::select()`, `Query::insert()`, `Query::update()`, `Query::delete()`
+
+**Examples:**
+
+❌ **BAD - Raw SQL strings:**
+```rust
+#[rstest]
+#[tokio::test]
+async fn test_user_query(#[future] postgres_fixture: DbFixture) {
+    let (_container, pool) = postgres_fixture.await;
+
+    // ❌ Raw SQL string - avoid this
+    sqlx::query("SELECT * FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+
+    // ❌ Raw SQL for insert
+    sqlx::query("INSERT INTO users (name, email) VALUES ($1, $2)")
+        .bind("Alice")
+        .bind("alice@example.com")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+}
+```
+
+✅ **GOOD - Using SeaQuery:**
+```rust
+use sea_query::{Iden, PostgresQueryBuilder, Query, Expr};
+
+#[derive(Iden)]
+enum Users {
+    Table,
+    Id,
+    Name,
+    Email,
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_user_query(#[future] postgres_fixture: DbFixture) {
+    let (_container, pool) = postgres_fixture.await;
+
+    // ✅ Type-safe query with SeaQuery
+    let (sql, values) = Query::select()
+        .columns([Users::Id, Users::Name, Users::Email])
+        .from(Users::Table)
+        .and_where(Expr::col(Users::Id).eq(user_id))
+        .build_sqlx(PostgresQueryBuilder);
+
+    sqlx::query_with(&sql, values)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+
+    // ✅ Type-safe insert with SeaQuery
+    let (sql, values) = Query::insert()
+        .into_table(Users::Table)
+        .columns([Users::Name, Users::Email])
+        .values_panic(["Alice".into(), "alice@example.com".into()])
+        .build_sqlx(PostgresQueryBuilder);
+
+    sqlx::query_with(&sql, values)
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+}
+```
+
+**SeaQuery Common Patterns:**
+
+```rust
+use sea_query::{Iden, PostgresQueryBuilder, Query, Expr, Order};
+
+#[derive(Iden)]
+enum Posts {
+    Table,
+    Id,
+    Title,
+    AuthorId,
+    CreatedAt,
+}
+
+// SELECT with JOIN and ORDER
+let query = Query::select()
+    .columns([Posts::Id, Posts::Title])
+    .from(Posts::Table)
+    .inner_join(
+        Users::Table,
+        Expr::col((Posts::Table, Posts::AuthorId))
+            .equals((Users::Table, Users::Id))
+    )
+    .order_by(Posts::CreatedAt, Order::Desc)
+    .limit(10)
+    .build(PostgresQueryBuilder);
+
+// UPDATE with conditions
+let query = Query::update()
+    .table(Posts::Table)
+    .value(Posts::Title, "Updated Title")
+    .and_where(Expr::col(Posts::Id).eq(post_id))
+    .build(PostgresQueryBuilder);
+
+// DELETE with conditions
+let query = Query::delete()
+    .from_table(Posts::Table)
+    .and_where(Expr::col(Posts::AuthorId).eq(author_id))
+    .build(PostgresQueryBuilder);
 ```
 
 ---
