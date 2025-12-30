@@ -34,3 +34,4 @@ testcontainers-modules = { workspace = true }
 sqlx = { workspace = true, features = ["postgres"] }
 sea-query = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
+reinhardt-orm = { workspace = true }

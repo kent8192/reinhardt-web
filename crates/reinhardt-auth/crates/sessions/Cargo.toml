@@ -92,5 +92,6 @@ serial_test = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
+reinhardt-orm = { workspace = true }
 tempfile = { workspace = true }
 filetime = "0.2"
