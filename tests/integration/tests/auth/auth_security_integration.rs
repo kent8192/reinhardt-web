@@ -3,7 +3,6 @@
 //! Tests HTTP authentication mechanisms
 //! Based on FastAPI's test_security_*.py tests
 
-use reinhardt_auth::Authentication;
 use reinhardt_test::http::*;
 
 use base64::{engine::general_purpose, Engine as _};

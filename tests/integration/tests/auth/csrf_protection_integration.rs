@@ -2,10 +2,31 @@
 //!
 //! Tests CSRF token generation/verification, session, and reinhardt-forms integration.
 
+use reinhardt_core::macros::model;
+use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
+use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
+
+// ============================================================================
+// ORM Model Definition
+// ============================================================================
+
+/// ORM model for session table - demonstrates reinhardt_orm integration with CSRF tests
+#[model(app_label = "csrf_test", table_name = "sessions")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[allow(dead_code)] // ORM model for CSRF integration tests
+struct SessionModel {
+	#[field(primary_key = true, max_length = 40)]
+	session_key: String,
+	#[field(max_length = 10000)]
+	session_data: String,
+	#[field(max_length = 50)]
+	expire_date: String,
+}
 
 // Note: Actual CSRF implementation is in reinhardt-sessions/src/csrf.rs
 // Here we implement CSRF protection integration tests
@@ -48,7 +69,8 @@ async fn normal_session_based_csrf_protection(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Session-based CSRF protection (token generation/verification)
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	// Create session table
 	sqlx::query(
@@ -132,7 +154,8 @@ async fn normal_csrf_token_auto_regeneration(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Automatic CSRF token regeneration
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS sessions (
@@ -198,7 +221,8 @@ async fn normal_csrf_token_shared_across_tabs(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// CSRF token sharing across multiple tabs (via session)
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS sessions (
@@ -327,7 +351,8 @@ async fn regression_session_rotation_csrf_validity(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// CSRF token validity after session rotation
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, url) = postgres_container.await;
+	reinitialize_database(&url).await.unwrap();
 
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS sessions (

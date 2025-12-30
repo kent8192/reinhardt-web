@@ -18,7 +18,6 @@
 //! - `database_integration_tests`: Database integration tests with TestContainers
 
 use bytes::Bytes;
-use chrono::Utc;
 use hyper::Method;
 use reinhardt_auth::{
 	AllowAny, AnonymousUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
@@ -26,7 +25,6 @@ use reinhardt_auth::{
 };
 use reinhardt_types::Request;
 use rstest::*;
-use serial_test::serial;
 use uuid::Uuid;
 
 // ========================================================================
@@ -420,9 +418,11 @@ mod user_model_tests {
 #[cfg(feature = "argon2-hasher")]
 mod database_integration_tests {
 	use super::*;
-	use reinhardt_auth::{BaseUser, DefaultUser, PermissionsMixin};
+	use chrono::Utc;
+	use reinhardt_auth::{BaseUser, DefaultUser, PermissionsMixin, User};
 	use reinhardt_db::DatabaseConnection;
 	use reinhardt_test::fixtures::postgres_container;
+	use serial_test::serial;
 	use sqlx::PgPool;
 	use std::sync::Arc;
 	use testcontainers::{ContainerAsync, GenericImage};
@@ -439,7 +439,7 @@ mod database_integration_tests {
 		u16,
 		String,
 	) {
-		let (container, _pool, port, url) = postgres_container.await;
+		let (container, pool, port, url) = postgres_container.await;
 		let connection = DatabaseConnection::connect(&url).await.unwrap();
 
 		// Create simple auth_user table for testing
@@ -462,7 +462,7 @@ mod database_integration_tests {
 			)
 			"#,
 		)
-		.execute(connection.inner())
+		.execute(pool.as_ref())
 		.await
 		.unwrap();
 

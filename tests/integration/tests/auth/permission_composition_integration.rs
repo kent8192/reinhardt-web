@@ -740,7 +740,7 @@ async fn test_and_or_decision_table(
 	#[case] is_admin: bool,
 	#[case] is_active: bool,
 	#[case] is_authenticated: bool,
-	#[case] expected: bool,
+	#[case] _expected: bool,
 	#[case] desc: &str,
 ) {
 	// (IsAdminUser OR IsActiveUser) AND IsAuthenticated

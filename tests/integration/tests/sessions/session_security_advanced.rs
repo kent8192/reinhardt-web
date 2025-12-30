@@ -452,12 +452,15 @@ async fn test_session_cycle_key() {
 	let original_key = session.session_key().map(|s| s.to_string());
 
 	// Cycle the session key (simulates post-login security measure)
-	let new_key = session.cycle_key().await.expect("Failed to cycle key");
+	session.cycle_key().await.expect("Failed to cycle key");
+
+	// Get new session key after cycling
+	let new_key = session.session_key().map(|s| s.to_string());
 
 	// Verify key changed
 	assert_ne!(
 		original_key.as_deref(),
-		Some(new_key.as_ref()),
+		new_key.as_deref(),
 		"Session key should change after cycle"
 	);
 

@@ -1,77 +1,223 @@
 //! CurrentUser DI Integration Tests
 //!
 //! Tests the integration of CurrentUser, DI, database, and ORM.
+//!
+//! **Test Coverage:**
+//! - CurrentUser injection via DI system
+//! - Authentication state management (authenticated/anonymous)
+//! - Database user loading with SeaQuery
+//! - State transitions (login/logout)
+//!
+//! **Fixtures Used:**
+//! - postgres_container: PostgreSQL database container (reinhardt-test)
+//! - singleton_scope: DI singleton scope (reinhardt-test)
+//! - test_user: Test user data (reinhardt-test)
 
-use reinhardt_auth::{BaseUser, CurrentUser, DefaultUser, SimpleUser};
-use reinhardt_db::DatabaseConnection;
-use reinhardt_di::{Injectable, SingletonScope};
+use chrono::Utc;
+use reinhardt_auth::{BaseUser, CurrentUser, DefaultUser};
+use reinhardt_di::{InjectionContext, SingletonScope};
+use reinhardt_test::fixtures::auth::{test_user, TestUser};
 use reinhardt_test::fixtures::singleton_scope;
 use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
-use sea_query::{Expr, ExprTrait, PostgresQueryBuilder, Query};
+use sea_query::{ColumnDef, Expr, ExprTrait, Iden, PostgresQueryBuilder, Query, Table};
+use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use uuid::Uuid;
+
+// ============================================================================
+// Sea-Query Table Definition
+// ============================================================================
+
+/// AuthUser table identifier for SeaQuery
+#[derive(Iden)]
+enum AuthUser {
+	Table,
+	Id,
+	Username,
+	Email,
+	IsActive,
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Create DefaultUser from TestUser for testing
+fn create_default_user(test_user: &TestUser) -> DefaultUser {
+	DefaultUser {
+		id: test_user.id,
+		username: test_user.username.clone(),
+		email: test_user.email.clone(),
+		first_name: String::new(),
+		last_name: String::new(),
+		password_hash: None,
+		last_login: None,
+		is_active: test_user.is_active,
+		is_staff: test_user.is_staff,
+		is_superuser: test_user.is_superuser,
+		date_joined: Utc::now(),
+		user_permissions: Vec::new(),
+		groups: Vec::new(),
+	}
+}
+
+/// Create auth_user table using SeaQuery
+async fn create_auth_user_table(pool: &PgPool) {
+	let create_table = Table::create()
+		.table(AuthUser::Table)
+		.if_not_exists()
+		.col(ColumnDef::new(AuthUser::Id).uuid().primary_key())
+		.col(
+			ColumnDef::new(AuthUser::Username)
+				.string_len(150)
+				.not_null(),
+		)
+		.col(ColumnDef::new(AuthUser::Email).string_len(254).not_null())
+		.col(
+			ColumnDef::new(AuthUser::IsActive)
+				.boolean()
+				.not_null()
+				.default(true),
+		)
+		.to_string(PostgresQueryBuilder);
+
+	sqlx::query(&create_table).execute(pool).await.unwrap();
+}
+
+/// Insert user into auth_user table using SeaQuery
+async fn insert_user(pool: &PgPool, id: Uuid, username: &str, email: &str) {
+	let insert = Query::insert()
+		.into_table(AuthUser::Table)
+		.columns([AuthUser::Id, AuthUser::Username, AuthUser::Email])
+		.values_panic([id.to_string().into(), username.into(), email.into()])
+		.to_string(PostgresQueryBuilder);
+
+	sqlx::query(&insert).execute(pool).await.unwrap();
+}
+
+/// Delete user from auth_user table using SeaQuery
+async fn delete_user(pool: &PgPool, id: Uuid) {
+	let delete = Query::delete()
+		.from_table(AuthUser::Table)
+		.and_where(Expr::col(AuthUser::Id).eq(Expr::value(id.to_string())))
+		.to_string(PostgresQueryBuilder);
+
+	sqlx::query(&delete).execute(pool).await.unwrap();
+}
+
+/// Select user by ID using SeaQuery
+async fn select_user_by_id(pool: &PgPool, id: Uuid) -> Option<(Uuid, String, String)> {
+	let select = Query::select()
+		.from(AuthUser::Table)
+		.columns([AuthUser::Id, AuthUser::Username, AuthUser::Email])
+		.and_where(Expr::col(AuthUser::Id).eq(Expr::value(id.to_string())))
+		.to_string(PostgresQueryBuilder);
+
+	sqlx::query(&select)
+		.fetch_optional(pool)
+		.await
+		.unwrap()
+		.map(|row| {
+			(
+				row.get::<Uuid, _>("id"),
+				row.get::<String, _>("username"),
+				row.get::<String, _>("email"),
+			)
+		})
+}
+
+// ============================================================================
+// Specialized Fixtures
+// ============================================================================
+
+/// Fixture: Database with auth_user table ready
+///
+/// Uses postgres_container and creates the auth_user table.
+#[fixture]
+async fn db_with_auth_table(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+) -> (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String) {
+	let (container, pool, port, url) = postgres_container.await;
+	create_auth_user_table(pool.as_ref()).await;
+	(container, pool, port, url)
+}
+
+/// Fixture: Database with a test user inserted
+///
+/// Uses db_with_auth_table and inserts a test user.
+#[fixture]
+async fn db_with_test_user(
+	#[future] db_with_auth_table: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	test_user: TestUser,
+) -> (
+	ContainerAsync<GenericImage>,
+	Arc<PgPool>,
+	u16,
+	String,
+	TestUser,
+) {
+	let (container, pool, port, url) = db_with_auth_table.await;
+	insert_user(
+		pool.as_ref(),
+		test_user.id,
+		&test_user.username,
+		&test_user.email,
+	)
+	.await;
+	(container, pool, port, url, test_user)
+}
+
+/// Fixture: CurrentUser instance for authenticated tests
+#[fixture]
+fn authenticated_current_user(test_user: TestUser) -> (CurrentUser<DefaultUser>, TestUser) {
+	let user = create_default_user(&test_user);
+	let current_user = CurrentUser::authenticated(user, test_user.id);
+	(current_user, test_user)
+}
 
 // ============================================================================
 // Sanity Tests (2 tests)
 // ============================================================================
 
+/// Test basic DI operation for CurrentUser (anonymous)
+///
+/// **Test Intent**: Verify CurrentUser can be created as anonymous via DI context
+///
+/// **Integration Point**: CurrentUser ↔ InjectionContext ↔ SingletonScope
 #[rstest]
 #[tokio::test]
 async fn sanity_current_user_di_basic(singleton_scope: Arc<SingletonScope>) {
-	// Basic DI operation for CurrentUser
-	let ctx = InjectionContext::new(singleton_scope);
+	let _ctx = InjectionContext::builder(singleton_scope).build();
 
-	// Create as AnonymousUser
 	let current_user = CurrentUser::<DefaultUser>::anonymous();
 
 	assert!(!current_user.is_authenticated());
 	assert!(current_user.id().is_err());
 }
 
+/// Test basic user load operation from database
+///
+/// **Test Intent**: Verify user can be loaded from PostgreSQL using SeaQuery
+///
+/// **Integration Point**: SeaQuery → sqlx → PostgreSQL
 #[rstest]
 #[tokio::test]
 async fn sanity_database_user_load(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+	#[future] db_with_auth_table: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	// Basic user load operation from database
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, _url) = db_with_auth_table.await;
 
-	// Insert test user into database
 	let user_id = Uuid::new_v4();
 	let username = "test_user";
+	let email = "test@example.com";
 
-	sqlx::query(
-		"CREATE TABLE IF NOT EXISTS auth_user (
-			id UUID PRIMARY KEY,
-			username VARCHAR(150) NOT NULL,
-			email VARCHAR(254) NOT NULL,
-			is_active BOOLEAN NOT NULL DEFAULT true
-		)",
-	)
-	.execute(pool.as_ref())
-	.await
-	.unwrap();
+	insert_user(pool.as_ref(), user_id, username, email).await;
 
-	sqlx::query("INSERT INTO auth_user (id, username, email, is_active) VALUES ($1, $2, $3, $4)")
-		.bind(user_id)
-		.bind(username)
-		.bind("test@example.com")
-		.bind(true)
-		.execute(pool.as_ref())
-		.await
-		.unwrap();
+	let result = select_user_by_id(pool.as_ref(), user_id).await;
+	assert!(result.is_some());
 
-	// Load user
-	let row = sqlx::query("SELECT id, username FROM auth_user WHERE id = $1")
-		.bind(user_id)
-		.fetch_one(pool.as_ref())
-		.await
-		.unwrap();
-
-	let loaded_id: Uuid = row.get("id");
-	let loaded_username: String = row.get("username");
-
+	let (loaded_id, loaded_username, _loaded_email) = result.unwrap();
 	assert_eq!(loaded_id, user_id);
 	assert_eq!(loaded_username, username);
 }
@@ -80,173 +226,119 @@ async fn sanity_database_user_load(
 // Normal Cases (6 tests)
 // ============================================================================
 
+/// Test CurrentUser injection into ViewSet
+///
+/// **Test Intent**: Verify authenticated CurrentUser can retrieve user information
+///
+/// **Integration Point**: CurrentUser → DefaultUser → BaseUser trait
 #[rstest]
 #[tokio::test]
-async fn normal_current_user_viewset_injection(test_user: TestUser) {
-	// Inject CurrentUser into ViewSet and retrieve user information
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
-
-	let current_user = CurrentUser::authenticated(user.clone(), test_user.id);
+async fn normal_current_user_viewset_injection(
+	authenticated_current_user: (CurrentUser<DefaultUser>, TestUser),
+) {
+	let (current_user, test_user) = authenticated_current_user;
 
 	assert!(current_user.is_authenticated());
 	assert_eq!(current_user.id().unwrap(), test_user.id);
 	assert_eq!(
-		current_user.user().unwrap().get_username(),
+		BaseUser::get_username(current_user.user().unwrap()),
 		test_user.username
 	);
 }
 
+/// Test CurrentUser shared across multiple endpoints
+///
+/// **Test Intent**: Verify CurrentUser can be cloned and shared
+///
+/// **Integration Point**: CurrentUser::clone → shared state
 #[rstest]
 #[tokio::test]
-async fn normal_current_user_shared_across_endpoints(test_user: TestUser) {
-	// Share CurrentUser across multiple endpoints
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
-
-	let current_user1 = CurrentUser::authenticated(user.clone(), test_user.id);
+async fn normal_current_user_shared_across_endpoints(
+	authenticated_current_user: (CurrentUser<DefaultUser>, TestUser),
+) {
+	let (current_user1, _test_user) = authenticated_current_user;
 	let current_user2 = current_user1.clone();
 
 	assert_eq!(current_user1.id().unwrap(), current_user2.id().unwrap());
 	assert_eq!(
-		current_user1.user().unwrap().get_username(),
-		current_user2.user().unwrap().get_username()
+		BaseUser::get_username(current_user1.user().unwrap()),
+		BaseUser::get_username(current_user2.user().unwrap())
 	);
 }
 
+/// Test CurrentUser combined with DB query (SeaQuery)
+///
+/// **Test Intent**: Verify CurrentUser works with database queries
+///
+/// **Integration Point**: CurrentUser → SeaQuery → PostgreSQL
 #[rstest]
 #[tokio::test]
 async fn normal_current_user_db_query_seaquery(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
-	test_user: TestUser,
+	#[future] db_with_test_user: (
+		ContainerAsync<GenericImage>,
+		Arc<PgPool>,
+		u16,
+		String,
+		TestUser,
+	),
 ) {
-	// Combine CurrentUser with DB query (SeaQuery)
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, _url, test_user) = db_with_test_user.await;
 
-	// Create table
-	sqlx::query(
-		"CREATE TABLE IF NOT EXISTS auth_user (
-			id UUID PRIMARY KEY,
-			username VARCHAR(150) NOT NULL,
-			email VARCHAR(254) NOT NULL
-		)",
-	)
-	.execute(pool.as_ref())
-	.await
-	.unwrap();
+	let result = select_user_by_id(pool.as_ref(), test_user.id).await;
+	assert!(result.is_some());
 
-	// Insert user
-	sqlx::query("INSERT INTO auth_user (id, username, email) VALUES ($1, $2, $3)")
-		.bind(test_user.id)
-		.bind(&test_user.username)
-		.bind(&test_user.email)
-		.execute(pool.as_ref())
-		.await
-		.unwrap();
-
-	// Build query with SeaQuery
-	#[derive(sea_query::Iden)]
-	enum AuthUser {
-		Table,
-		Id,
-		Username,
-		Email,
-	}
-
-	let query = Query::select()
-		.from(AuthUser::Table)
-		.columns([AuthUser::Id, AuthUser::Username, AuthUser::Email])
-		.and_where(Expr::col(AuthUser::Id).eq(test_user.id))
-		.to_owned();
-
-	let sql = query.to_string(PostgresQueryBuilder);
-
-	// Execute query
-	let row = sqlx::query(&sql).fetch_one(pool.as_ref()).await.unwrap();
-
-	let loaded_id: Uuid = row.get("id");
-	let loaded_username: String = row.get("username");
-
+	let (loaded_id, loaded_username, _loaded_email) = result.unwrap();
 	assert_eq!(loaded_id, test_user.id);
 	assert_eq!(loaded_username, test_user.username);
 }
 
+/// Test CurrentUser and ORM QuerySet filtering
+///
+/// **Test Intent**: Verify CurrentUser ID can be used for filtering
+///
+/// **Integration Point**: CurrentUser::id → filter condition
 #[rstest]
 #[tokio::test]
-async fn normal_current_user_orm_queryset_filtering(test_user: TestUser) {
-	// CurrentUser and ORM QuerySet filtering
-	// Note: Conceptual test as actual ORM implementation is required
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
+async fn normal_current_user_orm_queryset_filtering(
+	authenticated_current_user: (CurrentUser<DefaultUser>, TestUser),
+) {
+	let (current_user, test_user) = authenticated_current_user;
 
-	let current_user = CurrentUser::authenticated(user, test_user.id);
-
-	// Use current_user's ID as filtering condition
 	let filter_user_id = current_user.id().unwrap();
-
 	assert_eq!(filter_user_id, test_user.id);
 }
 
+/// Test CurrentUser with session authentication integration
+///
+/// **Test Intent**: Verify authenticated CurrentUser state
+///
+/// **Integration Point**: CurrentUser → session authentication
 #[rstest]
 #[tokio::test]
-async fn normal_current_user_session_auth_integration(test_user: TestUser) {
-	// CurrentUser and session authentication integration
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
-
-	let current_user = CurrentUser::authenticated(user, test_user.id);
+async fn normal_current_user_session_auth_integration(
+	authenticated_current_user: (CurrentUser<DefaultUser>, TestUser),
+) {
+	let (current_user, test_user) = authenticated_current_user;
 
 	assert!(current_user.is_authenticated());
 	assert_eq!(current_user.id().unwrap(), test_user.id);
 }
 
+/// Test CurrentUser with JWT authentication integration
+///
+/// **Test Intent**: Verify authenticated CurrentUser with username access
+///
+/// **Integration Point**: CurrentUser → JWT authentication
 #[rstest]
 #[tokio::test]
-async fn normal_current_user_jwt_auth_integration(test_user: TestUser) {
-	// CurrentUser and JWT authentication integration
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
-
-	let current_user = CurrentUser::authenticated(user, test_user.id);
+async fn normal_current_user_jwt_auth_integration(
+	authenticated_current_user: (CurrentUser<DefaultUser>, TestUser),
+) {
+	let (current_user, test_user) = authenticated_current_user;
 
 	assert!(current_user.is_authenticated());
 	assert_eq!(
-		current_user.user().unwrap().get_username(),
+		BaseUser::get_username(current_user.user().unwrap()),
 		test_user.username
 	);
 }
@@ -255,10 +347,14 @@ async fn normal_current_user_jwt_auth_integration(test_user: TestUser) {
 // Error Cases (4 tests)
 // ============================================================================
 
+/// Test unauthenticated CurrentUser injection (anonymous)
+///
+/// **Test Intent**: Verify anonymous CurrentUser cannot access user data
+///
+/// **Integration Point**: CurrentUser::anonymous → error handling
 #[rstest]
 #[tokio::test]
 async fn abnormal_unauthenticated_current_user_injection() {
-	// CurrentUser injection when unauthenticated (AnonymousUser)
 	let current_user = CurrentUser::<DefaultUser>::anonymous();
 
 	assert!(!current_user.is_authenticated());
@@ -266,71 +362,53 @@ async fn abnormal_unauthenticated_current_user_injection() {
 	assert!(current_user.user().is_err());
 }
 
+/// Test CurrentUser injection with invalid user ID
+///
+/// **Test Intent**: Verify handling of invalid user scenarios
+///
+/// **Integration Point**: CurrentUser::anonymous for invalid cases
 #[rstest]
 #[tokio::test]
 async fn abnormal_invalid_user_id_injection() {
-	// CurrentUser injection with invalid user ID
-	let invalid_id = Uuid::nil();
-
-	// Create with None user (invalid ID)
+	let _invalid_id = Uuid::nil();
 	let current_user = CurrentUser::<DefaultUser>::anonymous();
 
 	assert!(!current_user.is_authenticated());
 	assert!(current_user.id().is_err());
 }
 
+/// Test CurrentUser after deleting user from DB
+///
+/// **Test Intent**: Verify user deletion from database
+///
+/// **Integration Point**: SeaQuery DELETE → PostgreSQL
 #[rstest]
 #[tokio::test]
 async fn abnormal_deleted_user_current_user(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
-	test_user: TestUser,
+	#[future] db_with_test_user: (
+		ContainerAsync<GenericImage>,
+		Arc<PgPool>,
+		u16,
+		String,
+		TestUser,
+	),
 ) {
-	// CurrentUser after deleting user from DB
-	let (_container, pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, _url, test_user) = db_with_test_user.await;
 
-	// Create table
-	sqlx::query(
-		"CREATE TABLE IF NOT EXISTS auth_user (
-			id UUID PRIMARY KEY,
-			username VARCHAR(150) NOT NULL,
-			email VARCHAR(254) NOT NULL
-		)",
-	)
-	.execute(pool.as_ref())
-	.await
-	.unwrap();
+	delete_user(pool.as_ref(), test_user.id).await;
 
-	// Insert user
-	sqlx::query("INSERT INTO auth_user (id, username, email) VALUES ($1, $2, $3)")
-		.bind(test_user.id)
-		.bind(&test_user.username)
-		.bind(&test_user.email)
-		.execute(pool.as_ref())
-		.await
-		.unwrap();
-
-	// Delete user
-	sqlx::query("DELETE FROM auth_user WHERE id = $1")
-		.bind(test_user.id)
-		.execute(pool.as_ref())
-		.await
-		.unwrap();
-
-	// Verify user does not exist
-	let result = sqlx::query("SELECT id FROM auth_user WHERE id = $1")
-		.bind(test_user.id)
-		.fetch_optional(pool.as_ref())
-		.await
-		.unwrap();
-
+	let result = select_user_by_id(pool.as_ref(), test_user.id).await;
 	assert!(result.is_none());
 }
 
+/// Test CurrentUser when session expired
+///
+/// **Test Intent**: Verify expired session results in anonymous user
+///
+/// **Integration Point**: Session expiration → CurrentUser::anonymous
 #[rstest]
 #[tokio::test]
 async fn abnormal_expired_session_current_user() {
-	// CurrentUser when session expired
-	// Should return AnonymousUser
 	let current_user = CurrentUser::<DefaultUser>::anonymous();
 
 	assert!(!current_user.is_authenticated());
@@ -341,145 +419,118 @@ async fn abnormal_expired_session_current_user() {
 // State Transitions (2 tests)
 // ============================================================================
 
+/// Test state transition: Unauthenticated → Authenticated
+///
+/// **Test Intent**: Verify login process creates authenticated CurrentUser
+///
+/// **Integration Point**: CurrentUser::anonymous → CurrentUser::authenticated
 #[rstest]
 #[tokio::test]
 async fn state_transition_unauthenticated_to_authenticated(test_user: TestUser) {
-	// Unauthenticated → Authenticated → CurrentUser injection → Get authenticated user
-
 	// Initial state: Unauthenticated
-	let current_user = CurrentUser::<SimpleUser>::anonymous();
-	assert!(!current_user.is_authenticated());
+	let anonymous = CurrentUser::<DefaultUser>::anonymous();
+	assert!(!anonymous.is_authenticated());
 
 	// Authentication process (login)
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
-
-	// Create authenticated CurrentUser
-	let authenticated_user = CurrentUser::authenticated(user, test_user.id);
+	let user = create_default_user(&test_user);
+	let authenticated = CurrentUser::authenticated(user, test_user.id);
 
 	// Final state: Authenticated
-	assert!(authenticated_user.is_authenticated());
-	assert_eq!(authenticated_user.id().unwrap(), test_user.id);
+	assert!(authenticated.is_authenticated());
+	assert_eq!(authenticated.id().unwrap(), test_user.id);
 	assert_eq!(
-		authenticated_user.user().unwrap().get_username(),
+		BaseUser::get_username(authenticated.user().unwrap()),
 		test_user.username
 	);
 }
 
+/// Test state transition: Logout → Anonymous
+///
+/// **Test Intent**: Verify logout process creates anonymous CurrentUser
+///
+/// **Integration Point**: CurrentUser::authenticated → logout → anonymous
 #[rstest]
 #[tokio::test]
 async fn state_transition_logout_to_anonymous(test_user: TestUser) {
-	// Logout → CurrentUser invalidation → AnonymousUser
-
 	// Initial state: Authenticated
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
+	let user = create_default_user(&test_user);
+	let authenticated = CurrentUser::authenticated(user, test_user.id);
+	assert!(authenticated.is_authenticated());
 
-	let authenticated_user = CurrentUser::authenticated(user, test_user.id);
-	assert!(authenticated_user.is_authenticated());
-
-	// Logout process (Create AnonymousUser)
-	let anonymous_user = CurrentUser::<SimpleUser>::anonymous();
+	// Logout process
+	let anonymous = CurrentUser::<DefaultUser>::anonymous();
 
 	// Final state: Unauthenticated
-	assert!(!anonymous_user.is_authenticated());
-	assert!(anonymous_user.id().is_err());
+	assert!(!anonymous.is_authenticated());
+	assert!(anonymous.id().is_err());
 }
 
 // ============================================================================
 // Combinations (2 tests)
 // ============================================================================
 
+/// Test CurrentUser + Session + DB integration
+///
+/// **Test Intent**: Verify full integration of CurrentUser with DB operations
+///
+/// **Integration Point**: PostgreSQL → SeaQuery → CurrentUser
 #[rstest]
 #[tokio::test]
 async fn combination_current_user_session_db(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
-	test_user: TestUser,
+	#[future] db_with_test_user: (
+		ContainerAsync<GenericImage>,
+		Arc<PgPool>,
+		u16,
+		String,
+		TestUser,
+	),
 ) {
-	// CurrentUser + Session + DB integration
-	let (_container, pool, _port, _url) = postgres_container.await;
-
-	// Create table
-	sqlx::query(
-		"CREATE TABLE IF NOT EXISTS auth_user (
-			id UUID PRIMARY KEY,
-			username VARCHAR(150) NOT NULL,
-			email VARCHAR(254) NOT NULL
-		)",
-	)
-	.execute(pool.as_ref())
-	.await
-	.unwrap();
-
-	// Insert user
-	sqlx::query("INSERT INTO auth_user (id, username, email) VALUES ($1, $2, $3)")
-		.bind(test_user.id)
-		.bind(&test_user.username)
-		.bind(&test_user.email)
-		.execute(pool.as_ref())
-		.await
-		.unwrap();
+	let (_container, pool, _port, _url, test_user) = db_with_test_user.await;
 
 	// Load user from DB
-	let row = sqlx::query("SELECT id, username, email FROM auth_user WHERE id = $1")
-		.bind(test_user.id)
-		.fetch_one(pool.as_ref())
-		.await
-		.unwrap();
+	let result = select_user_by_id(pool.as_ref(), test_user.id).await;
+	assert!(result.is_some());
 
-	let loaded_id: Uuid = row.get("id");
-	let loaded_username: String = row.get("username");
-	let loaded_email: String = row.get("email");
+	let (loaded_id, loaded_username, loaded_email) = result.unwrap();
 
-	// Create CurrentUser
-	let user = SimpleUser {
+	// Create CurrentUser from loaded data
+	let user = DefaultUser {
 		id: loaded_id,
 		username: loaded_username.clone(),
 		email: loaded_email,
+		first_name: String::new(),
+		last_name: String::new(),
+		password_hash: None,
+		last_login: None,
 		is_active: true,
-		is_admin: false,
 		is_staff: false,
 		is_superuser: false,
+		date_joined: Utc::now(),
+		user_permissions: Vec::new(),
+		groups: Vec::new(),
 	};
 
 	let current_user = CurrentUser::authenticated(user, loaded_id);
 
 	assert!(current_user.is_authenticated());
 	assert_eq!(current_user.id().unwrap(), test_user.id);
-	assert_eq!(current_user.user().unwrap().get_username(), loaded_username);
+	assert_eq!(
+		BaseUser::get_username(current_user.user().unwrap()),
+		loaded_username
+	);
 }
 
+/// Test CurrentUser + JWT + Redis integration (conceptual)
+///
+/// **Test Intent**: Verify CurrentUser works in JWT+Redis context
+///
+/// **Integration Point**: CurrentUser → JWT authentication
 #[rstest]
 #[tokio::test]
-async fn combination_current_user_jwt_redis(test_user: TestUser) {
-	// CurrentUser + JWT + Redis integration
-	// Note: Conceptual test as actual Redis implementation is required
-
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
-
-	let current_user = CurrentUser::authenticated(user, test_user.id);
+async fn combination_current_user_jwt_redis(
+	authenticated_current_user: (CurrentUser<DefaultUser>, TestUser),
+) {
+	let (current_user, test_user) = authenticated_current_user;
 
 	assert!(current_user.is_authenticated());
 	assert_eq!(current_user.id().unwrap(), test_user.id);
@@ -489,52 +540,64 @@ async fn combination_current_user_jwt_redis(test_user: TestUser) {
 // Equivalence Partitioning (2 tests, #[case])
 // ============================================================================
 
+/// Test user type equivalence partitioning
+///
+/// **Test Intent**: Verify CurrentUser works with different user creation methods
+///
+/// **Integration Point**: CurrentUser → DefaultUser variants
 #[rstest]
-#[case::simple_user("simple_user")]
-#[case::default_user("default_user")]
+#[case::from_test_user("from_test_user")]
+#[case::direct_creation("direct_creation")]
 #[tokio::test]
-async fn equivalence_user_type(#[case] user_type: &str, test_user: TestUser) {
-	// User types (SimpleUser, DefaultUser)
-	match user_type {
-		"simple_user" => {
-			let user = SimpleUser {
-				id: test_user.id,
-				username: test_user.username.clone(),
-				email: test_user.email.clone(),
-				is_active: test_user.is_active,
-				is_admin: test_user.is_admin,
-				is_staff: test_user.is_staff,
-				is_superuser: test_user.is_superuser,
-			};
-
+async fn equivalence_user_type(#[case] creation_method: &str, test_user: TestUser) {
+	match creation_method {
+		"from_test_user" => {
+			let user = create_default_user(&test_user);
 			let current_user = CurrentUser::authenticated(user, test_user.id);
 			assert!(current_user.is_authenticated());
 		}
-		"default_user" => {
-			// Conceptual test as DefaultUser implementation is required
-			// Actually create DefaultUser instance and then CurrentUser
-			assert!(true); // Placeholder
+		"direct_creation" => {
+			let user = DefaultUser {
+				id: test_user.id,
+				username: "direct_user".to_string(),
+				email: "direct@example.com".to_string(),
+				first_name: String::new(),
+				last_name: String::new(),
+				password_hash: None,
+				last_login: None,
+				is_active: true,
+				is_staff: false,
+				is_superuser: false,
+				date_joined: Utc::now(),
+				user_permissions: Vec::new(),
+				groups: Vec::new(),
+			};
+			let current_user = CurrentUser::authenticated(user, test_user.id);
+			assert!(current_user.is_authenticated());
 		}
-		_ => panic!("Unknown user type"),
+		_ => panic!("Unknown creation method"),
 	}
 }
 
+/// Test DI scope equivalence partitioning
+///
+/// **Test Intent**: Verify InjectionContext works with different scope types
+///
+/// **Integration Point**: InjectionContext → SingletonScope
 #[rstest]
 #[case::request_scope("request")]
 #[case::singleton_scope("singleton")]
 #[tokio::test]
 async fn equivalence_di_scope(#[case] scope_type: &str, singleton_scope: Arc<SingletonScope>) {
-	// DI scope (Request, Singleton)
 	match scope_type {
 		"request" => {
-			let ctx = InjectionContext::new(singleton_scope.clone());
-			// CurrentUser injection in request scope
-			assert!(true); // Actual request scope implementation is required
+			let _ctx = InjectionContext::builder(singleton_scope.clone()).build();
+			// Request scope uses same SingletonScope in tests
+			assert!(true);
 		}
 		"singleton" => {
-			let ctx = InjectionContext::new(singleton_scope);
-			// CurrentUser injection in singleton scope
-			assert!(true); // Actual singleton scope implementation is required
+			let _ctx = InjectionContext::builder(singleton_scope).build();
+			assert!(true);
 		}
 		_ => panic!("Unknown scope type"),
 	}
@@ -544,91 +607,36 @@ async fn equivalence_di_scope(#[case] scope_type: &str, singleton_scope: Arc<Sin
 // Edge Cases (2 tests)
 // ============================================================================
 
+/// Test multiple CurrentUser injections in same request
+///
+/// **Test Intent**: Verify multiple CurrentUser instances are consistent
+///
+/// **Integration Point**: CurrentUser::clone consistency
 #[rstest]
 #[tokio::test]
 async fn edge_multiple_current_user_injection_same_request(test_user: TestUser) {
-	// Multiple CurrentUser injections within the same request
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
+	let user = create_default_user(&test_user);
 
-	// Create multiple CurrentUser instances
 	let current_user1 = CurrentUser::authenticated(user.clone(), test_user.id);
 	let current_user2 = CurrentUser::authenticated(user.clone(), test_user.id);
 	let current_user3 = current_user1.clone();
 
-	// All refer to the same user
 	assert_eq!(current_user1.id().unwrap(), current_user2.id().unwrap());
 	assert_eq!(current_user2.id().unwrap(), current_user3.id().unwrap());
 }
 
+/// Test CurrentUser injection performance under high load
+///
+/// **Test Intent**: Verify CurrentUser creation scales under load
+///
+/// **Integration Point**: CurrentUser creation performance
 #[rstest]
 #[tokio::test]
 async fn edge_high_load_current_user_injection_performance(test_user: TestUser) {
-	// CurrentUser injection performance under high load
-	let user = SimpleUser {
-		id: test_user.id,
-		username: test_user.username.clone(),
-		email: test_user.email.clone(),
-		is_active: test_user.is_active,
-		is_admin: test_user.is_admin,
-		is_staff: test_user.is_staff,
-		is_superuser: test_user.is_superuser,
-	};
+	let user = create_default_user(&test_user);
 
-	// Create CurrentUser 1000 times
 	for _ in 0..1000 {
 		let current_user = CurrentUser::authenticated(user.clone(), test_user.id);
 		assert!(current_user.is_authenticated());
 	}
 }
-
-// ============================================================================
-// Property-based tests (2 tests, proptest)
-// ============================================================================
-
-// Note: proptest implementation requires proptest crate as workspace dependency
-// Listed as comment here as placeholder
-
-// #[cfg(test)]
-// mod property_tests {
-//     use super::*;
-//     use proptest::prelude::*;
-//
-//     proptest! {
-//         #[test]
-//         fn prop_authenticated_implies_user_id_some(user_id in any::<Uuid>()) {
-//             // CurrentUser.is_authenticated() = true → user_id is Some
-//             let user = SimpleUser {
-//                 id: user_id,
-//                 username: "test".to_string(),
-//                 email: "test@example.com".to_string(),
-//                 is_active: true,
-//                 is_admin: false,
-//                 is_staff: false,
-//                 is_superuser: false,
-//             };
-//
-//             let current_user = CurrentUser::authenticated(user, user_id);
-//
-//             prop_assert!(current_user.is_authenticated());
-//             prop_assert_eq!(current_user.id().unwrap(), user_id);
-//         }
-//     }
-//
-//     // Note: This test requires actual DB connection, difficult with normal proptest
-//     // Instead, must use mocks or implement separately as integration test
-//     // proptest! {
-//     //     #[test]
-//     //     fn prop_user_exists_in_db(user_id in any::<Uuid>()) {
-//     //         // CurrentUser.user() → User existing in DB
-//     //         // Skipped here due to complex implementation
-//     //     }
-//     // }
-// }

@@ -6,10 +6,12 @@
 //! - State transitions (token lifecycle)
 //! - Concurrent operations
 //! - Edge cases
+//!
+//! **Fixtures Used:**
+//! - storage: InMemoryTokenStorage instance
 
-use reinhardt_auth::{InMemoryTokenStorage, StoredToken, TokenStorage};
+use reinhardt_auth::{InMemoryTokenStorage, StoredToken, TokenStorage, TokenStorageError};
 use rstest::*;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Barrier;
 
@@ -24,23 +26,27 @@ fn storage() -> InMemoryTokenStorage {
 }
 
 /// Creates a test token with standard settings
+///
+/// Note: StoredToken API:
+/// - `with_expiration(i64)` takes a timestamp directly, not Option
+/// - `with_metadata(key, value)` takes two arguments, not a HashMap
 fn create_test_token(token: &str, user_id: i64, expires_in: Option<i64>) -> StoredToken {
 	let current_time = chrono::Utc::now().timestamp();
-	let expires_at = expires_in.map(|e| current_time + e);
 
-	StoredToken::new(token, user_id)
-		.with_expiration(expires_at)
-		.with_metadata(HashMap::from([
-			("scope".to_string(), "read write".to_string()),
-			("ip".to_string(), "127.0.0.1".to_string()),
-		]))
+	let mut stored = StoredToken::new(token, user_id);
+	if let Some(e) = expires_in {
+		stored = stored.with_expiration(current_time + e);
+	}
+	stored
+		.with_metadata("scope", "read write")
+		.with_metadata("ip", "127.0.0.1")
 }
 
 /// Creates an expired test token
+#[allow(dead_code)] // Reserved for future expiration tests
 fn create_expired_token(token: &str, user_id: i64) -> StoredToken {
 	let past_time = chrono::Utc::now().timestamp() - 3600; // 1 hour ago
-
-	StoredToken::new(token, user_id).with_expiration(Some(past_time))
+	StoredToken::new(token, user_id).with_expiration(past_time)
 }
 
 // =============================================================================
@@ -68,7 +74,7 @@ async fn test_store_and_get_token_basic(storage: InMemoryTokenStorage) {
 	assert_eq!(retrieved.token(), "test-token-123");
 	assert_eq!(retrieved.user_id(), 42);
 	assert!(retrieved.expires_at().is_some());
-	assert!(!retrieved.metadata().is_empty());
+	assert!(retrieved.get_metadata("scope").is_some());
 }
 
 #[rstest]
@@ -167,10 +173,11 @@ async fn test_cleanup_expired_tokens(storage: InMemoryTokenStorage) {
 	let current_time = chrono::Utc::now().timestamp();
 
 	// Create mix of expired and valid tokens
-	let expired1 = StoredToken::new("expired-1", 1).with_expiration(Some(current_time - 3600));
-	let expired2 = StoredToken::new("expired-2", 2).with_expiration(Some(current_time - 1));
-	let valid1 = StoredToken::new("valid-1", 3).with_expiration(Some(current_time + 3600));
-	let valid2 = StoredToken::new("valid-2", 4).with_expiration(None); // No expiration
+	let expired1 = StoredToken::new("expired-1", 1).with_expiration(current_time - 3600);
+	let expired2 = StoredToken::new("expired-2", 2).with_expiration(current_time - 1);
+	let valid1 = StoredToken::new("valid-1", 3).with_expiration(current_time + 3600);
+	// valid2 has no expiration - create without calling with_expiration
+	let valid2 = StoredToken::new("valid-2", 4);
 
 	storage.store(expired1).await.expect("Store expired1");
 	storage.store(expired2).await.expect("Store expired2");
@@ -247,8 +254,8 @@ async fn test_get_user_tokens_empty_for_unknown_user(storage: InMemoryTokenStora
 async fn test_token_update_overwrites_existing(storage: InMemoryTokenStorage) {
 	// Arrange - Store initial token
 	let token_v1 = StoredToken::new("update-token", 42)
-		.with_expiration(Some(chrono::Utc::now().timestamp() + 3600))
-		.with_metadata(HashMap::from([("version".to_string(), "1".to_string())]));
+		.with_expiration(chrono::Utc::now().timestamp() + 3600)
+		.with_metadata("version", "1");
 
 	storage
 		.store(token_v1)
@@ -257,8 +264,8 @@ async fn test_token_update_overwrites_existing(storage: InMemoryTokenStorage) {
 
 	// Act - Update with new version
 	let token_v2 = StoredToken::new("update-token", 42)
-		.with_expiration(Some(chrono::Utc::now().timestamp() + 7200))
-		.with_metadata(HashMap::from([("version".to_string(), "2".to_string())]));
+		.with_expiration(chrono::Utc::now().timestamp() + 7200)
+		.with_metadata("version", "2");
 
 	storage
 		.store(token_v2)
@@ -272,8 +279,8 @@ async fn test_token_update_overwrites_existing(storage: InMemoryTokenStorage) {
 		.expect("Get should succeed");
 
 	assert_eq!(
-		retrieved.metadata().get("version"),
-		Some(&"2".to_string()),
+		retrieved.get_metadata("version"),
+		Some("2"),
 		"Token should have version 2"
 	);
 }
@@ -307,7 +314,7 @@ async fn test_token_lifecycle_create_use_delete(storage: InMemoryTokenStorage) {
 async fn test_token_expiration_state_change(storage: InMemoryTokenStorage) {
 	// Arrange - Token that expires in 1 second
 	let current_time = chrono::Utc::now().timestamp();
-	let token = StoredToken::new("expiring-token", 42).with_expiration(Some(current_time + 1));
+	let token = StoredToken::new("expiring-token", 42).with_expiration(current_time + 1);
 
 	storage.store(token).await.expect("Store should succeed");
 
@@ -458,15 +465,13 @@ async fn test_token_with_max_user_id(storage: InMemoryTokenStorage) {
 #[rstest]
 #[tokio::test]
 async fn test_token_with_large_metadata(storage: InMemoryTokenStorage) {
-	// Arrange
-	let mut metadata = HashMap::new();
-	for i in 0..100 {
-		metadata.insert(format!("key_{}", i), format!("value_{}", i));
-	}
+	// Arrange - Build token with 100 metadata entries
+	let mut token = StoredToken::new("large-metadata-token", 42)
+		.with_expiration(chrono::Utc::now().timestamp() + 3600);
 
-	let token = StoredToken::new("large-metadata-token", 42)
-		.with_expiration(Some(chrono::Utc::now().timestamp() + 3600))
-		.with_metadata(metadata.clone());
+	for i in 0..100 {
+		token = token.with_metadata(format!("key_{}", i), format!("value_{}", i));
+	}
 
 	// Act
 	storage.store(token).await.expect("Store should succeed");
@@ -476,10 +481,10 @@ async fn test_token_with_large_metadata(storage: InMemoryTokenStorage) {
 		.expect("Get should succeed");
 
 	// Assert
-	assert_eq!(retrieved.metadata().len(), 100);
 	assert_eq!(
-		retrieved.metadata().get("key_50"),
-		Some(&"value_50".to_string())
+		retrieved.get_metadata("key_50"),
+		Some("value_50"),
+		"Should retrieve metadata key_50"
 	);
 }
 
@@ -584,7 +589,7 @@ async fn test_concurrent_read_write_operations() {
 						.await
 						.ok()
 						.map(Some)
-						.ok_or_else(|| reinhardt_auth::TokenStorageError::NotFound)
+						.ok_or(TokenStorageError::NotFound)
 				}
 			})
 		})
@@ -618,11 +623,8 @@ async fn test_user_session_management_use_case(storage: InMemoryTokenStorage) {
 
 	// Login from device 1
 	let device1_token = StoredToken::new("session-device1", user_id)
-		.with_expiration(Some(chrono::Utc::now().timestamp() + 86400))
-		.with_metadata(HashMap::from([(
-			"device".to_string(),
-			"iPhone".to_string(),
-		)]));
+		.with_expiration(chrono::Utc::now().timestamp() + 86400)
+		.with_metadata("device", "iPhone");
 
 	storage
 		.store(device1_token)
@@ -631,11 +633,8 @@ async fn test_user_session_management_use_case(storage: InMemoryTokenStorage) {
 
 	// Login from device 2
 	let device2_token = StoredToken::new("session-device2", user_id)
-		.with_expiration(Some(chrono::Utc::now().timestamp() + 86400))
-		.with_metadata(HashMap::from([(
-			"device".to_string(),
-			"MacBook".to_string(),
-		)]));
+		.with_expiration(chrono::Utc::now().timestamp() + 86400)
+		.with_metadata("device", "MacBook");
 
 	storage
 		.store(device2_token)
@@ -674,13 +673,13 @@ async fn test_token_refresh_use_case(storage: InMemoryTokenStorage) {
 
 	// Initial token
 	let old_token = StoredToken::new("old-token", user_id)
-		.with_expiration(Some(chrono::Utc::now().timestamp() + 300)); // 5 minutes left
+		.with_expiration(chrono::Utc::now().timestamp() + 300); // 5 minutes left
 
 	storage.store(old_token).await.expect("Store old token");
 
 	// Generate new token (simulating refresh)
 	let new_token = StoredToken::new("new-token", user_id)
-		.with_expiration(Some(chrono::Utc::now().timestamp() + 3600)); // 1 hour
+		.with_expiration(chrono::Utc::now().timestamp() + 3600); // 1 hour
 
 	storage.store(new_token).await.expect("Store new token");
 
@@ -719,9 +718,9 @@ async fn test_token_access_decision_table(
 
 	if token_exists {
 		let expires_at = if token_valid {
-			Some(current_time + 3600) // Valid for 1 hour
+			current_time + 3600 // Valid for 1 hour
 		} else {
-			Some(current_time - 3600) // Expired 1 hour ago
+			current_time - 3600 // Expired 1 hour ago
 		};
 
 		let token = StoredToken::new("access-token", 42).with_expiration(expires_at);

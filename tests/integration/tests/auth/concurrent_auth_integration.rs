@@ -11,7 +11,9 @@
 //! - Thread Safety: Verifying Send + Sync implementations
 
 use reinhardt_auth::token_storage::InMemoryTokenStorage;
-use reinhardt_auth::{Argon2Hasher, BaseUser, DefaultUser, PasswordHasher};
+use reinhardt_auth::{
+	Argon2Hasher, BaseUser, DefaultUser, PasswordHasher, StoredToken, TokenStorage,
+};
 use rstest::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -134,11 +136,17 @@ async fn test_concurrent_token_creation(token_storage: Arc<InMemoryTokenStorage>
 		let storage = token_storage.clone();
 		let b = barrier.clone();
 		let token = format!("token_{}", i);
-		let user_id = format!("user_{}", i);
 
 		let handle = tokio::spawn(async move {
 			b.wait().await;
-			storage.store(&token, &user_id, None)
+			storage
+				.store(StoredToken {
+					token,
+					user_id: i,
+					expires_at: None,
+					metadata: Default::default(),
+				})
+				.await
 		});
 
 		handles.push(handle);
@@ -161,8 +169,15 @@ async fn test_concurrent_token_lookup(token_storage: Arc<InMemoryTokenStorage>) 
 	// Pre-populate storage
 	for i in 0..50 {
 		let token = format!("token_{}", i);
-		let user_id = format!("user_{}", i);
-		token_storage.store(&token, &user_id, None);
+		token_storage
+			.store(StoredToken {
+				token,
+				user_id: i,
+				expires_at: None,
+				metadata: Default::default(),
+			})
+			.await
+			.unwrap();
 	}
 
 	let barrier = Arc::new(Barrier::new(100));
@@ -179,7 +194,7 @@ async fn test_concurrent_token_lookup(token_storage: Arc<InMemoryTokenStorage>) 
 
 		let handle = tokio::spawn(async move {
 			b.wait().await;
-			if let Some(_user_id) = storage.get(&token) {
+			if storage.get(&token).await.is_ok() {
 				count.fetch_add(1, Ordering::SeqCst);
 			}
 		});
@@ -202,8 +217,15 @@ async fn test_concurrent_token_revocation(token_storage: Arc<InMemoryTokenStorag
 	// Pre-populate storage
 	for i in 0..100 {
 		let token = format!("token_{}", i);
-		let user_id = format!("user_{}", i);
-		token_storage.store(&token, &user_id, None);
+		token_storage
+			.store(StoredToken {
+				token,
+				user_id: i,
+				expires_at: None,
+				metadata: Default::default(),
+			})
+			.await
+			.unwrap();
 	}
 
 	let barrier = Arc::new(Barrier::new(100));
@@ -218,7 +240,7 @@ async fn test_concurrent_token_revocation(token_storage: Arc<InMemoryTokenStorag
 
 		let handle = tokio::spawn(async move {
 			b.wait().await;
-			storage.revoke(&token)
+			let _ = storage.delete(&token).await;
 		});
 
 		handles.push(handle);
@@ -233,7 +255,7 @@ async fn test_concurrent_token_revocation(token_storage: Arc<InMemoryTokenStorag
 	for i in 0..100 {
 		let token = format!("token_{}", i);
 		assert!(
-			token_storage.get(&token).is_none(),
+			token_storage.get(&token).await.is_err(),
 			"Token {} should not exist after revocation",
 			i
 		);
@@ -309,10 +331,18 @@ async fn test_concurrent_user_password_updates() {
 #[tokio::test]
 async fn test_concurrent_read_write_token(token_storage: Arc<InMemoryTokenStorage>) {
 	let token = "race_test_token";
-	let user_id = "race_test_user";
+	let user_id: i64 = 1;
 
 	// Initial store
-	token_storage.store(token, user_id, None);
+	token_storage
+		.store(StoredToken {
+			token: token.to_string(),
+			user_id,
+			expires_at: None,
+			metadata: Default::default(),
+		})
+		.await
+		.unwrap();
 
 	let barrier = Arc::new(Barrier::new(20));
 	let read_success = Arc::new(AtomicUsize::new(0));
@@ -329,7 +359,7 @@ async fn test_concurrent_read_write_token(token_storage: Arc<InMemoryTokenStorag
 		let handle = tokio::spawn(async move {
 			b.wait().await;
 			for _ in 0..100 {
-				if storage.get(token).is_some() {
+				if storage.get(token).await.is_ok() {
 					count.fetch_add(1, Ordering::SeqCst);
 				}
 			}
@@ -338,7 +368,7 @@ async fn test_concurrent_read_write_token(token_storage: Arc<InMemoryTokenStorag
 		handles.push(handle);
 	}
 
-	// 10 writers (alternating store/revoke)
+	// 10 writers (alternating store/delete)
 	for i in 0..10 {
 		let storage = token_storage.clone();
 		let b = barrier.clone();
@@ -348,9 +378,16 @@ async fn test_concurrent_read_write_token(token_storage: Arc<InMemoryTokenStorag
 			b.wait().await;
 			for j in 0..100 {
 				if (i + j) % 2 == 0 {
-					storage.store(token, user_id, None);
+					let _ = storage
+						.store(StoredToken {
+							token: token.to_string(),
+							user_id,
+							expires_at: None,
+							metadata: Default::default(),
+						})
+						.await;
 				} else {
-					storage.revoke(token);
+					let _ = storage.delete(token).await;
 				}
 				count.fetch_add(1, Ordering::SeqCst);
 			}
@@ -399,7 +436,7 @@ fn test_token_storage_is_send_sync() {
 #[tokio::test]
 async fn test_high_contention_same_token(token_storage: Arc<InMemoryTokenStorage>) {
 	let token = "high_contention_token";
-	let user_id = "high_contention_user";
+	let user_id: i64 = 1;
 
 	let barrier = Arc::new(Barrier::new(100));
 	let operations = Arc::new(AtomicUsize::new(0));
@@ -407,7 +444,7 @@ async fn test_high_contention_same_token(token_storage: Arc<InMemoryTokenStorage
 	let mut handles = Vec::new();
 
 	// 100 tasks all operating on the same token
-	for i in 0..100 {
+	for _i in 0..100 {
 		let storage = token_storage.clone();
 		let b = barrier.clone();
 		let ops = operations.clone();
@@ -415,10 +452,17 @@ async fn test_high_contention_same_token(token_storage: Arc<InMemoryTokenStorage
 		let handle = tokio::spawn(async move {
 			b.wait().await;
 
-			// Each task does store, get, revoke
-			storage.store(token, user_id, None);
-			let _ = storage.get(token);
-			storage.revoke(token);
+			// Each task does store, get, delete
+			let _ = storage
+				.store(StoredToken {
+					token: token.to_string(),
+					user_id,
+					expires_at: None,
+					metadata: Default::default(),
+				})
+				.await;
+			let _ = storage.get(token).await;
+			let _ = storage.delete(token).await;
 
 			ops.fetch_add(3, Ordering::SeqCst);
 		});
@@ -515,22 +559,29 @@ async fn test_session_token_management_flow(token_storage: Arc<InMemoryTokenStor
 
 			for op in 0..operations_per_user {
 				let token = format!("session_{}_{}", user_id, op);
-				let user = format!("user_{}", user_id);
 
 				// Store new session
-				storage.store(&token, &user, None);
+				storage
+					.store(StoredToken {
+						token: token.clone(),
+						user_id: user_id as i64,
+						expires_at: None,
+						metadata: Default::default(),
+					})
+					.await
+					.unwrap();
 
 				// Verify session
-				let retrieved = storage.get(&token);
-				assert!(retrieved.is_some(), "Session should exist after store");
+				let retrieved = storage.get(&token).await;
+				assert!(retrieved.is_ok(), "Session should exist after store");
 
 				// Simulate session usage delay
 				tokio::time::sleep(tokio::time::Duration::from_micros(100)).await;
 
-				// Revoke old session
+				// Delete old session
 				if op > 0 {
 					let old_token = format!("session_{}_{}", user_id, op - 1);
-					storage.revoke(&old_token);
+					let _ = storage.delete(&old_token).await;
 				}
 
 				ops.fetch_add(1, Ordering::SeqCst);

@@ -211,7 +211,7 @@ fn test_base_user_trait(mut basic_user: DefaultUser) {
 	);
 
 	// get_username
-	assert_eq!(basic_user.get_username(), "testuser");
+	assert_eq!(BaseUser::get_username(&basic_user), "testuser");
 
 	// password_hash (initially None)
 	assert!(basic_user.password_hash().is_none());
@@ -229,17 +229,17 @@ fn test_base_user_trait(mut basic_user: DefaultUser) {
 	assert_eq!(basic_user.last_login(), Some(login_time));
 
 	// is_active
-	assert!(basic_user.is_active());
+	assert!(BaseUser::is_active(&basic_user));
 }
 
 #[rstest]
 fn test_full_user_trait(staff_user: DefaultUser) {
-	assert_eq!(staff_user.username(), "staffuser");
-	assert_eq!(staff_user.email(), "staff@example.com");
-	assert_eq!(staff_user.first_name(), "Staff");
-	assert_eq!(staff_user.last_name(), "Member");
-	assert!(staff_user.is_staff());
-	assert!(!staff_user.is_superuser());
+	assert_eq!(FullUser::username(&staff_user), "staffuser");
+	assert_eq!(FullUser::email(&staff_user), "staff@example.com");
+	assert_eq!(FullUser::first_name(&staff_user), "Staff");
+	assert_eq!(FullUser::last_name(&staff_user), "Member");
+	assert!(FullUser::is_staff(&staff_user));
+	assert!(!FullUser::is_superuser(&staff_user));
 	// date_joined should be recent
 	let now = Utc::now();
 	let time_diff = now.signed_duration_since(staff_user.date_joined());
@@ -251,34 +251,32 @@ fn test_full_user_trait(staff_user: DefaultUser) {
 
 #[rstest]
 fn test_permissions_mixin_trait(staff_user: DefaultUser) {
-	assert!(!staff_user.is_superuser());
-	assert_eq!(staff_user.user_permissions().len(), 2);
-	assert!(staff_user
-		.user_permissions()
-		.contains(&"blog.add_post".to_string()));
-	assert!(staff_user
-		.user_permissions()
-		.contains(&"blog.change_post".to_string()));
-	assert_eq!(staff_user.groups().len(), 1);
-	assert!(staff_user.groups().contains(&"editors".to_string()));
+	assert!(!PermissionsMixin::is_superuser(&staff_user));
+	assert_eq!(PermissionsMixin::user_permissions(&staff_user).len(), 2);
+	assert!(PermissionsMixin::user_permissions(&staff_user).contains(&"blog.add_post".to_string()));
+	assert!(
+		PermissionsMixin::user_permissions(&staff_user).contains(&"blog.change_post".to_string())
+	);
+	assert_eq!(PermissionsMixin::groups(&staff_user).len(), 1);
+	assert!(PermissionsMixin::groups(&staff_user).contains(&"editors".to_string()));
 }
 
 #[rstest]
 fn test_user_trait(superuser: DefaultUser) {
 	assert!(
-		!superuser.id().is_empty(),
+		!User::id(&superuser).is_empty(),
 		"id() should return non-empty string"
 	);
-	assert_eq!(superuser.username(), "admin");
-	assert_eq!(superuser.get_username(), "admin");
+	assert_eq!(User::username(&superuser), "admin");
+	assert_eq!(User::get_username(&superuser), "admin");
 	assert!(
-		superuser.is_authenticated(),
+		User::is_authenticated(&superuser),
 		"DefaultUser should always return true for is_authenticated"
 	);
-	assert!(superuser.is_active());
-	assert!(superuser.is_admin(), "superuser should be admin");
-	assert!(superuser.is_staff());
-	assert!(superuser.is_superuser());
+	assert!(User::is_active(&superuser));
+	assert!(User::is_admin(&superuser), "superuser should be admin");
+	assert!(User::is_staff(&superuser));
+	assert!(User::is_superuser(&superuser));
 }
 
 #[rstest]
@@ -444,30 +442,36 @@ fn test_last_login_update(mut basic_user: DefaultUser) {
 
 #[rstest]
 fn test_user_activation_deactivation(mut inactive_user: DefaultUser) {
-	assert!(!inactive_user.is_active(), "User should start as inactive");
+	assert!(
+		!BaseUser::is_active(&inactive_user),
+		"User should start as inactive"
+	);
 
 	// Activate user
 	inactive_user.is_active = true;
 	assert!(
-		inactive_user.is_active(),
+		BaseUser::is_active(&inactive_user),
 		"User should be active after activation"
 	);
 
 	// Deactivate user
 	inactive_user.is_active = false;
 	assert!(
-		!inactive_user.is_active(),
+		!BaseUser::is_active(&inactive_user),
 		"User should be inactive after deactivation"
 	);
 }
 
 #[rstest]
 fn test_staff_promotion(mut basic_user: DefaultUser) {
-	assert!(!basic_user.is_staff(), "User should start as non-staff");
+	assert!(
+		!FullUser::is_staff(&basic_user),
+		"User should start as non-staff"
+	);
 
 	basic_user.is_staff = true;
 	assert!(
-		basic_user.is_staff(),
+		FullUser::is_staff(&basic_user),
 		"User should be staff after promotion"
 	);
 }
@@ -475,7 +479,7 @@ fn test_staff_promotion(mut basic_user: DefaultUser) {
 #[rstest]
 fn test_superuser_promotion(mut basic_user: DefaultUser) {
 	assert!(
-		!basic_user.is_superuser(),
+		!FullUser::is_superuser(&basic_user),
 		"User should start as non-superuser"
 	);
 	assert!(
@@ -485,7 +489,7 @@ fn test_superuser_promotion(mut basic_user: DefaultUser) {
 
 	basic_user.is_superuser = true;
 	assert!(
-		basic_user.is_superuser(),
+		FullUser::is_superuser(&basic_user),
 		"User should be superuser after promotion"
 	);
 	assert!(
@@ -680,13 +684,13 @@ fn test_username_variants(#[case] username: &str, #[case] desc: &str) {
 	};
 
 	assert_eq!(
-		user.username(),
+		FullUser::username(&user),
 		username,
 		"Username should match for {}",
 		desc
 	);
 	assert_eq!(
-		user.get_username(),
+		BaseUser::get_username(&user),
 		username,
 		"get_username should match for {}",
 		desc
@@ -726,25 +730,25 @@ fn test_user_role_combinations(
 	};
 
 	assert_eq!(
-		user.is_active(),
+		User::is_active(&user),
 		is_active,
 		"is_active should match for {}",
 		desc
 	);
 	assert_eq!(
-		user.is_staff(),
+		User::is_staff(&user),
 		is_staff,
 		"is_staff should match for {}",
 		desc
 	);
 	assert_eq!(
-		user.is_superuser(),
+		User::is_superuser(&user),
 		is_superuser,
 		"is_superuser should match for {}",
 		desc
 	);
 	assert_eq!(
-		user.is_admin(),
+		User::is_admin(&user),
 		is_superuser,
 		"is_admin should equal is_superuser for {}",
 		desc
@@ -765,7 +769,7 @@ fn test_permission_decision_table(
 	#[case] is_superuser: bool,
 	#[case] is_active: bool,
 	#[case] permissions: Vec<&str>,
-	#[case] expected_has_perm: bool,
+	#[case] _expected_has_perm: bool,
 	#[case] desc: &str,
 ) {
 	let user = DefaultUser {

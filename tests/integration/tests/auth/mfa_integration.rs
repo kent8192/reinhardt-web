@@ -416,7 +416,7 @@ fn test_mfa_registration_with_special_usernames(mfa_manager: MfaManager, #[case]
 }
 
 #[rstest]
-fn test_mfa_totp_codes_are_unique_for_different_secrets(mfa_manager: MfaManager) {
+fn test_mfa_totp_codes_are_unique_for_different_secrets(_mfa_manager: MfaManager) {
 	// Arrange - Different secrets
 	let secrets = vec![VALID_SECRET, VALID_SECRET_2, "MFRGGZDFMY"];
 
