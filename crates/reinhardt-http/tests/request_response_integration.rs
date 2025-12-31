@@ -10,7 +10,7 @@ use bytes::Bytes;
 use hyper::{Method, StatusCode};
 use reinhardt_http::{Error, Request, Response};
 use reinhardt_routers::UnifiedRouter as Router;
-use reinhardt_test::fixtures::test_server_guard;
+use reinhardt_test::fixtures::{api_client_from_url, test_server_guard};
 
 /// Test content negotiation: Accept header processing
 #[tokio::test]
@@ -39,38 +39,31 @@ async fn test_content_negotiation_json() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
 	// Test JSON content negotiation
 	let json_response = client
-		.get(format!("{}/api/data", server.url))
-		.header("Accept", "application/json")
-		.send()
+		.get_with_headers("/api/data", &[("Accept", "application/json")])
 		.await
 		.unwrap();
 
 	assert_eq!(json_response.status(), StatusCode::OK);
 	assert_eq!(
-		json_response.headers().get("content-type").unwrap(),
+		json_response.header("content-type").unwrap(),
 		"application/json"
 	);
-	let json_body = json_response.text().await.unwrap();
+	let json_body = json_response.text();
 	assert_eq!(json_body, r#"{"message":"JSON response"}"#);
 
 	// Test plain text content negotiation
 	let text_response = client
-		.get(format!("{}/api/data", server.url))
-		.header("Accept", "text/plain")
-		.send()
+		.get_with_headers("/api/data", &[("Accept", "text/plain")])
 		.await
 		.unwrap();
 
 	assert_eq!(text_response.status(), StatusCode::OK);
-	assert_eq!(
-		text_response.headers().get("content-type").unwrap(),
-		"text/plain"
-	);
-	let text_body = text_response.text().await.unwrap();
+	assert_eq!(text_response.header("content-type").unwrap(), "text/plain");
+	let text_body = text_response.text();
 	assert_eq!(text_body, "Plain text response");
 }
 
@@ -100,21 +93,16 @@ async fn test_content_negotiation_wildcard() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
 	// Test wildcard accept
 	let response = client
-		.get(format!("{}/api/resource", server.url))
-		.header("Accept", "*/*")
-		.send()
+		.get_with_headers("/api/resource", &[("Accept", "*/*")])
 		.await
 		.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	assert_eq!(
-		response.headers().get("content-type").unwrap(),
-		"application/json"
-	);
+	assert_eq!(response.header("content-type").unwrap(), "application/json");
 }
 
 /// Test streaming response with StreamBody
@@ -144,23 +132,19 @@ async fn test_streaming_response() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
-	let response = client
-		.get(format!("{}/stream", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/stream").await.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
 	assert_eq!(
-		response.headers().get("content-type").unwrap(),
+		response.header("content-type").unwrap(),
 		"application/octet-stream"
 	);
 
 	// Collect streamed chunks
-	let body = response.bytes().await.unwrap();
-	assert_eq!(body, "chunk1chunk2chunk3");
+	let body = response.body();
+	assert_eq!(body.as_ref(), b"chunk1chunk2chunk3");
 }
 
 /// Test large streaming response
@@ -182,18 +166,14 @@ async fn test_large_streaming_response() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
-	let response = client
-		.get(format!("{}/large-stream", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/large-stream").await.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
 
 	// Verify chunk count
-	let body = response.text().await.unwrap();
+	let body = response.text();
 	assert!(body.contains("chunk0000"));
 	assert!(body.contains("chunk0999"));
 }
@@ -228,19 +208,16 @@ async fn test_request_response_post_roundtrip() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
 	// Send POST request with JSON body
 	let response = client
-		.post(format!("{}/echo", server.url))
-		.header("Content-Type", "application/json")
-		.body(r#"{"test":"data"}"#)
-		.send()
+		.post_raw("/echo", br#"{"test":"data"}"#, "application/json")
 		.await
 		.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 
 	// Parse as JSON and verify structure
 	let json: serde_json::Value =
@@ -273,16 +250,12 @@ async fn test_request_response_error_handling() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
-	let response = client
-		.get(format!("{}/error", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/error").await.unwrap();
 
 	assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 	assert_eq!(body, r#"{"error":"Something went wrong"}"#);
 }
 
@@ -318,35 +291,29 @@ async fn test_multiple_accept_headers() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
 	// Test each format
 	let json_response = client
-		.get(format!("{}/formats", server.url))
-		.header("Accept", "application/json")
-		.send()
+		.get_with_headers("/formats", &[("Accept", "application/json")])
 		.await
 		.unwrap();
 	assert_eq!(json_response.status(), StatusCode::OK);
-	assert!(json_response.text().await.unwrap().contains("json"));
+	assert!(json_response.text().contains("json"));
 
 	let html_response = client
-		.get(format!("{}/formats", server.url))
-		.header("Accept", "text/html")
-		.send()
+		.get_with_headers("/formats", &[("Accept", "text/html")])
 		.await
 		.unwrap();
 	assert_eq!(html_response.status(), StatusCode::OK);
-	assert!(html_response.text().await.unwrap().contains("<html>"));
+	assert!(html_response.text().contains("<html>"));
 
 	let text_response = client
-		.get(format!("{}/formats", server.url))
-		.header("Accept", "text/plain")
-		.send()
+		.get_with_headers("/formats", &[("Accept", "text/plain")])
 		.await
 		.unwrap();
 	assert_eq!(text_response.status(), StatusCode::OK);
-	assert_eq!(text_response.text().await.unwrap(), "Plain text");
+	assert_eq!(text_response.text(), "Plain text");
 }
 
 /// Test request/response round-trip with query parameters
@@ -372,16 +339,12 @@ async fn test_request_response_query_params() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
-	let response = client
-		.get(format!("{}/search?q=test&limit=20", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/search?q=test&limit=20").await.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 	assert!(body.contains(r#""query":"test""#));
 	assert!(body.contains(r#""limit":"20""#));
 }

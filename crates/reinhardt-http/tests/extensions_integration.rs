@@ -10,7 +10,7 @@ use bytes::Bytes;
 use hyper::{Method, StatusCode};
 use reinhardt_http::{Error, Extensions, Request, Response};
 use reinhardt_routers::UnifiedRouter as Router;
-use reinhardt_test::fixtures::test_server_guard;
+use reinhardt_test::fixtures::{api_client_from_url, test_server_guard};
 
 #[derive(Debug, Clone, PartialEq)]
 struct UserId(u64);
@@ -51,16 +51,12 @@ async fn test_extensions_request_response_sharing() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
-	let response = client
-		.get(format!("{}/user-info", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/user-info").await.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 	assert!(body.contains(r#""user_id":12345"#));
 	assert!(body.contains(r#""session":"abc123""#));
 }
@@ -103,16 +99,15 @@ async fn test_extensions_type_safety() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
 	let response = client
-		.post(format!("{}/type-check", server.url))
-		.send()
+		.post_raw("/type-check", b"", "application/octet-stream")
 		.await
 		.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 	assert!(body.contains(r#""u32":42"#));
 	assert!(body.contains(r#""string":"test string""#));
 	assert!(body.contains(r#""vec_len":3"#));
@@ -173,16 +168,12 @@ async fn test_extensions_lifecycle() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
-	let response = client
-		.get(format!("{}/lifecycle", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/lifecycle").await.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 
 	// Verify lifecycle behavior
 	assert!(body.contains(r#""phase1_has_user":true"#));
@@ -228,16 +219,15 @@ async fn test_extensions_complex_types() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
 	let response = client
-		.post(format!("{}/complex", server.url))
-		.send()
+		.post_raw("/complex", b"", "application/octet-stream")
 		.await
 		.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 	assert!(body.contains(r#""client_ip":"192.168.1.1""#));
 	assert!(body.contains(r#""user_agent":"TestClient/1.0""#));
 }
@@ -283,16 +273,12 @@ async fn test_extensions_cloning() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
-	let response = client
-		.get(format!("{}/clone", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/clone").await.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 
 	// Both clones should see the same user ID
 	assert!(body.contains(r#""ext1_user":999"#));
@@ -354,16 +340,12 @@ async fn test_extensions_middleware_chain() {
 	);
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
-	let response = client
-		.get(format!("{}/middleware-chain", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/middleware-chain").await.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 
 	// Verify all middleware layers contributed data
 	assert!(body.contains(r#""user_id":555"#));
@@ -398,22 +380,20 @@ async fn test_extensions_request_isolation() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
 
 	// Send multiple concurrent requests
 	let handles: Vec<_> = (1..=5)
 		.map(|i| {
 			let server_url = server.url.clone();
-			let client = client.clone();
 			tokio::spawn(async move {
+				// Create a new APIClient for each spawned task
+				let client = api_client_from_url(&server_url);
 				let response = client
-					.post(format!("{}/isolated", server_url))
-					.body(i.to_string())
-					.send()
+					.post_raw("/isolated", i.to_string().as_bytes(), "text/plain")
 					.await
 					.unwrap();
 
-				let body = response.text().await.unwrap();
+				let body = response.text();
 				assert!(body.contains(&format!(r#""request_id":{}"#, i)));
 			})
 		})
@@ -449,16 +429,12 @@ async fn test_extensions_missing_type_handling() {
 	});
 
 	let server = test_server_guard(router).await;
-	let client = reqwest::Client::new();
+	let client = api_client_from_url(&server.url);
 
-	let response = client
-		.get(format!("{}/missing-type", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/missing-type").await.unwrap();
 
 	assert_eq!(response.status(), StatusCode::OK);
-	let body = response.text().await.unwrap();
+	let body = response.text();
 	assert!(body.contains(r#""missing_user_is_none":true"#));
 	assert!(body.contains(r#""has_user":false"#));
 }
