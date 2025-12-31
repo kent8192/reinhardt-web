@@ -54,35 +54,14 @@ struct ModelAttributesParsed {
 	table_name: Option<String>,
 	constraints: Option<Vec<ConstraintSpec>>,
 	unique_together: Vec<Vec<String>>, // Multiple Django-style unique_together constraints
-	#[cfg(feature = "db-sqlite")]
-	strict: Option<bool>,
-	#[cfg(feature = "db-sqlite")]
-	without_rowid: Option<bool>,
 }
 
 /// Model configuration from #[model(...)] attribute
 #[derive(Debug, Clone)]
-// SQLite table-level attributes (strict, without_rowid) are parsed but intentionally
-// excluded from current implementation. These fields are reserved for future SQLite-specific
-// constraint generation support, which requires additional database schema generation logic.
-// Implementation of these features would involve:
-// - SQLite STRICT mode enforcement at table creation
-// - WITHOUT ROWID optimization for specific table types
-// - Additional validation and constraint generation in migration system
-#[allow(dead_code)]
 struct ModelConfig {
 	app_label: String,
 	table_name: String,
 	constraints: Vec<ConstraintSpec>,
-
-	// Table-level attributes (SQLite) - Intentionally excluded features
-	// These fields will remain unused until future implementation:
-	// - strict: Enable SQLite STRICT mode (requires schema generator changes)
-	// - without_rowid: Enable WITHOUT ROWID optimization (requires migration system changes)
-	#[cfg(feature = "db-sqlite")]
-	strict: Option<bool>,
-	#[cfg(feature = "db-sqlite")]
-	without_rowid: Option<bool>,
 }
 
 impl ModelConfig {
@@ -91,11 +70,6 @@ impl ModelConfig {
 		let mut app_label = None;
 		let mut table_name = None;
 		let mut constraints = Vec::new();
-
-		#[cfg(feature = "db-sqlite")]
-		let mut strict = None;
-		#[cfg(feature = "db-sqlite")]
-		let mut without_rowid = None;
 
 		for attr in attrs {
 			// Accept both #[model(...)] and #[model_config(...)] helper attributes
@@ -129,15 +103,6 @@ impl ModelConfig {
 			if let Some(tn) = model_attr.table_name {
 				table_name = Some(tn);
 			}
-			#[cfg(feature = "db-sqlite")]
-			{
-				if let Some(s) = model_attr.strict {
-					strict = Some(s);
-				}
-				if let Some(wr) = model_attr.without_rowid {
-					without_rowid = Some(wr);
-				}
-			}
 		}
 
 		let table_name = table_name.ok_or_else(|| {
@@ -151,10 +116,6 @@ impl ModelConfig {
 			app_label: app_label.unwrap_or_else(|| "default".to_string()),
 			table_name,
 			constraints,
-			#[cfg(feature = "db-sqlite")]
-			strict,
-			#[cfg(feature = "db-sqlite")]
-			without_rowid,
 		})
 	}
 
@@ -166,10 +127,6 @@ impl ModelConfig {
 		let mut table_name = None;
 		let mut constraints = None;
 		let mut unique_together = Vec::new();
-		#[cfg(feature = "db-sqlite")]
-		let mut strict = None;
-		#[cfg(feature = "db-sqlite")]
-		let mut without_rowid = None;
 
 		while !input.is_empty() {
 			let ident: Ident = input.parse()?;
@@ -205,28 +162,6 @@ impl ModelConfig {
 					}
 				}
 				constraints = Some(specs);
-			} else if ident == "strict" {
-				#[cfg(feature = "db-sqlite")]
-				{
-					let value: syn::LitBool = input.parse()?;
-					strict = Some(value.value);
-				}
-				#[cfg(not(feature = "db-sqlite"))]
-				{
-					// Just skip the value
-					let _value: syn::LitBool = input.parse()?;
-				}
-			} else if ident == "without_rowid" {
-				#[cfg(feature = "db-sqlite")]
-				{
-					let value: syn::LitBool = input.parse()?;
-					without_rowid = Some(value.value);
-				}
-				#[cfg(not(feature = "db-sqlite"))]
-				{
-					// Just skip the value
-					let _value: syn::LitBool = input.parse()?;
-				}
 			} else {
 				return Err(syn::Error::new_spanned(
 					&ident,
@@ -247,10 +182,6 @@ impl ModelConfig {
 			table_name,
 			constraints,
 			unique_together,
-			#[cfg(feature = "db-sqlite")]
-			strict,
-			#[cfg(feature = "db-sqlite")]
-			without_rowid,
 		})
 	}
 
@@ -1909,19 +1840,12 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		let pk_getter = if has_option_fields {
 			// If any field is Option, check all fields have values
 			quote! {
-				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+				fn primary_key(&self) -> Option<Self::PrimaryKey> {
 					// Check if all fields have values
 					if #(self.#pk_field_names.is_some())&&* {
-						// For composite PK, we need to construct a new value each time
-						// and store it somewhere with a stable address.
-						// We use Box::leak to create a 'static reference.
-						// Note: This intentionally leaks memory. For production use,
-						// consider using an internal cache or modifying the Model trait
-						// to return an owned value instead of a reference.
-						let pk = Box::new(Self::PrimaryKey::new(
+						Some(Self::PrimaryKey::new(
 							#(self.#pk_field_names.clone().unwrap()),*
-						));
-						Some(Box::leak(pk))
+						))
 					} else {
 						None
 					}
@@ -1930,17 +1854,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		} else {
 			// All fields are non-Option, construct composite PK directly
 			quote! {
-				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-					// For composite PK, we need to construct a new value each time
-					// and store it somewhere with a stable address.
-					// We use Box::leak to create a 'static reference.
-					// Note: This intentionally leaks memory. For production use,
-					// consider using an internal cache or modifying the Model trait
-					// to return an owned value instead of a reference.
-					let pk = Box::new(Self::PrimaryKey::new(
+				fn primary_key(&self) -> Option<Self::PrimaryKey> {
+					Some(Self::PrimaryKey::new(
 						#(self.#pk_field_names.clone()),*
-					));
-					Some(Box::leak(pk))
+					))
 				}
 			}
 		};
@@ -1970,8 +1887,8 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			// If primary key is Option<T>, extract the inner value
 			(
 				quote! {
-					fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-						self.#pk_name.as_ref()
+					fn primary_key(&self) -> Option<Self::PrimaryKey> {
+						self.#pk_name.clone()
 					}
 				},
 				quote! {
@@ -1984,8 +1901,8 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			// If primary key is not Option, wrap in Some
 			(
 				quote! {
-					fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-						Some(&self.#pk_name)
+					fn primary_key(&self) -> Option<Self::PrimaryKey> {
+						Some(self.#pk_name.clone())
 					}
 				},
 				quote! {
@@ -3166,7 +3083,7 @@ fn generate_relationship_metadata(
 					quote! { #orm_crate::relationship::RelationshipType::ManyToMany }
 				}
 				RelationType::Polymorphic | RelationType::GenericForeignKey => {
-					// Polymorphic and GenericForeignKey are treated as ManyToOne for now
+					// Current design: Polymorphic and GenericForeignKey are treated as ManyToOne
 					quote! { #orm_crate::relationship::RelationshipType::ManyToOne }
 				}
 				RelationType::GenericRelation => {
