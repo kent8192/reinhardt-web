@@ -64,8 +64,8 @@ impl Model for AdminRecord {
 		AdminRecordFields::new()
 	}
 
-	fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-		self.id.as_ref()
+	fn primary_key(&self) -> Option<Self::PrimaryKey> {
+		self.id
 	}
 
 	fn set_primary_key(&mut self, pk: Self::PrimaryKey) {
@@ -82,11 +82,23 @@ fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
 		FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
 		FilterValue::Null => sea_query::Value::Int(None),
 		FilterValue::Array(_) => sea_query::Value::String(None),
-		FilterValue::FieldRef(_) => {
-			todo!("FieldRef to sea_query::Value conversion not implemented")
+		FilterValue::FieldRef(f) => {
+			// FieldRef generates column reference, not scalar value.
+			// For sea_query::Value context, return field name as string.
+			// Proper handling is in build_single_filter_expr().
+			sea_query::Value::String(Some(f.field.clone()))
 		}
-		FilterValue::Expression(_) => {
-			todo!("Expression to sea_query::Value conversion not implemented")
+		FilterValue::Expression(expr) => {
+			// Expression generates SQL expression, not scalar value.
+			// For sea_query::Value context, return SQL string representation.
+			// Proper handling is in build_single_filter_expr().
+			sea_query::Value::String(Some(expr.to_sql()))
+		}
+		FilterValue::OuterRef(outer) => {
+			// OuterRef generates outer query reference, not scalar value.
+			// For sea_query::Value context, return field name as string.
+			// Proper handling is in build_single_filter_expr().
+			sea_query::Value::String(Some(outer.field.clone()))
 		}
 	}
 }
@@ -96,14 +108,55 @@ fn build_single_filter_expr(filter: &Filter) -> Option<sea_query::SimpleExpr> {
 	let col = Expr::col(Alias::new(&filter.field));
 
 	let expr = match (&filter.operator, &filter.value) {
+		// Null handling (must come before generic patterns)
 		(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
 		(FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
+
+		// FieldRef: Column-to-column comparisons
+		(FilterOperator::Eq, FilterValue::FieldRef(f)) => col.eq(Expr::col(Alias::new(&f.field))),
+		(FilterOperator::Ne, FilterValue::FieldRef(f)) => col.ne(Expr::col(Alias::new(&f.field))),
+		(FilterOperator::Gt, FilterValue::FieldRef(f)) => col.gt(Expr::col(Alias::new(&f.field))),
+		(FilterOperator::Gte, FilterValue::FieldRef(f)) => col.gte(Expr::col(Alias::new(&f.field))),
+		(FilterOperator::Lt, FilterValue::FieldRef(f)) => col.lt(Expr::col(Alias::new(&f.field))),
+		(FilterOperator::Lte, FilterValue::FieldRef(f)) => col.lte(Expr::col(Alias::new(&f.field))),
+
+		// OuterRef: Correlated subquery references (use custom SQL)
+		(FilterOperator::Eq, FilterValue::OuterRef(outer)) => {
+			Expr::cust(format!("\"{}\" = {}", filter.field, outer.to_sql()))
+		}
+		(FilterOperator::Ne, FilterValue::OuterRef(outer)) => {
+			Expr::cust(format!("\"{}\" <> {}", filter.field, outer.to_sql()))
+		}
+		(FilterOperator::Gt, FilterValue::OuterRef(outer)) => {
+			Expr::cust(format!("\"{}\" > {}", filter.field, outer.to_sql()))
+		}
+		(FilterOperator::Gte, FilterValue::OuterRef(outer)) => {
+			Expr::cust(format!("\"{}\" >= {}", filter.field, outer.to_sql()))
+		}
+		(FilterOperator::Lt, FilterValue::OuterRef(outer)) => {
+			Expr::cust(format!("\"{}\" < {}", filter.field, outer.to_sql()))
+		}
+		(FilterOperator::Lte, FilterValue::OuterRef(outer)) => {
+			Expr::cust(format!("\"{}\" <= {}", filter.field, outer.to_sql()))
+		}
+
+		// Expression: Arithmetic expressions (use custom SQL for simplicity)
+		(FilterOperator::Eq, FilterValue::Expression(expr)) => col.eq(Expr::cust(expr.to_sql())),
+		(FilterOperator::Ne, FilterValue::Expression(expr)) => col.ne(Expr::cust(expr.to_sql())),
+		(FilterOperator::Gt, FilterValue::Expression(expr)) => col.gt(Expr::cust(expr.to_sql())),
+		(FilterOperator::Gte, FilterValue::Expression(expr)) => col.gte(Expr::cust(expr.to_sql())),
+		(FilterOperator::Lt, FilterValue::Expression(expr)) => col.lt(Expr::cust(expr.to_sql())),
+		(FilterOperator::Lte, FilterValue::Expression(expr)) => col.lte(Expr::cust(expr.to_sql())),
+
+		// Generic scalar value patterns
 		(FilterOperator::Eq, v) => col.eq(filter_value_to_sea_value(v)),
 		(FilterOperator::Ne, v) => col.ne(filter_value_to_sea_value(v)),
 		(FilterOperator::Gt, v) => col.gt(filter_value_to_sea_value(v)),
 		(FilterOperator::Gte, v) => col.gte(filter_value_to_sea_value(v)),
 		(FilterOperator::Lt, v) => col.lt(filter_value_to_sea_value(v)),
 		(FilterOperator::Lte, v) => col.lte(filter_value_to_sea_value(v)),
+
+		// String-specific operators
 		(FilterOperator::Contains, FilterValue::String(s)) => col.like(format!("%{}%", s)),
 		(FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
 		(FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
@@ -117,7 +170,9 @@ fn build_single_filter_expr(filter: &Filter) -> Option<sea_query::SimpleExpr> {
 				s.split(',').map(|v| v.trim().to_string().into()).collect();
 			col.is_not_in(values)
 		}
-		_ => return None, // Skip unsupported combinations
+
+		// Skip unsupported combinations
+		_ => return None,
 	};
 
 	Some(expr)
@@ -888,6 +943,8 @@ impl Injectable for AdminDatabase {
 mod tests {
 	use super::*;
 	use reinhardt_db::orm::DatabaseBackend;
+	use reinhardt_db::orm::annotation::Expression;
+	use reinhardt_db::orm::expressions::{F, OuterRef};
 	use reinhardt_test::fixtures::mock_connection;
 	use rstest::*;
 
@@ -933,8 +990,8 @@ mod tests {
 			UserFields::new()
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			Some(&self.id)
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -1354,5 +1411,203 @@ mod tests {
 			.await;
 
 		assert!(result.is_ok());
+	}
+
+	// ==================== FieldRef/OuterRef/Expression filter tests ====================
+
+	#[test]
+	fn test_build_single_filter_expr_field_ref_eq() {
+		let filter = Filter::new(
+			"price".to_string(),
+			FilterOperator::Eq,
+			FilterValue::FieldRef(F::new("discount_price")),
+		);
+		let result = build_single_filter_expr(&filter);
+		assert!(result.is_some());
+
+		let query = SeaQuery::select()
+			.from(Alias::new("products"))
+			.column(Asterisk)
+			.cond_where(Condition::all().add(result.unwrap()))
+			.to_string(PostgresQueryBuilder);
+		assert!(query.contains("\"price\""));
+		assert!(query.contains("\"discount_price\""));
+	}
+
+	#[test]
+	fn test_build_single_filter_expr_field_ref_gt() {
+		let filter = Filter::new(
+			"price".to_string(),
+			FilterOperator::Gt,
+			FilterValue::FieldRef(F::new("cost")),
+		);
+		let result = build_single_filter_expr(&filter);
+		assert!(result.is_some());
+	}
+
+	#[test]
+	fn test_build_single_filter_expr_field_ref_all_operators() {
+		let operators = [
+			FilterOperator::Eq,
+			FilterOperator::Ne,
+			FilterOperator::Gt,
+			FilterOperator::Gte,
+			FilterOperator::Lt,
+			FilterOperator::Lte,
+		];
+
+		for op in operators {
+			let filter = Filter::new(
+				"field_a".to_string(),
+				op.clone(),
+				FilterValue::FieldRef(F::new("field_b")),
+			);
+			let result = build_single_filter_expr(&filter);
+			assert!(
+				result.is_some(),
+				"FieldRef with {:?} should produce Some",
+				op
+			);
+		}
+	}
+
+	#[test]
+	fn test_build_single_filter_expr_outer_ref() {
+		let filter = Filter::new(
+			"author_id".to_string(),
+			FilterOperator::Eq,
+			FilterValue::OuterRef(OuterRef::new("authors.id")),
+		);
+		let result = build_single_filter_expr(&filter);
+		assert!(result.is_some());
+
+		let query = SeaQuery::select()
+			.from(Alias::new("books"))
+			.column(Asterisk)
+			.cond_where(Condition::all().add(result.unwrap()))
+			.to_string(PostgresQueryBuilder);
+		assert!(query.contains("author_id"));
+		assert!(query.contains("authors.id"));
+	}
+
+	#[test]
+	fn test_build_single_filter_expr_outer_ref_all_operators() {
+		let operators = [
+			FilterOperator::Eq,
+			FilterOperator::Ne,
+			FilterOperator::Gt,
+			FilterOperator::Gte,
+			FilterOperator::Lt,
+			FilterOperator::Lte,
+		];
+
+		for op in operators {
+			let filter = Filter::new(
+				"child_id".to_string(),
+				op.clone(),
+				FilterValue::OuterRef(OuterRef::new("parent.id")),
+			);
+			let result = build_single_filter_expr(&filter);
+			assert!(
+				result.is_some(),
+				"OuterRef with {:?} should produce Some",
+				op
+			);
+		}
+	}
+
+	#[test]
+	fn test_build_single_filter_expr_expression() {
+		use reinhardt_db::orm::annotation::{AnnotationValue, Value};
+
+		// Test: price > (cost * 2)
+		let expr = Expression::Multiply(
+			Box::new(AnnotationValue::Field(F::new("cost"))),
+			Box::new(AnnotationValue::Value(Value::Int(2))),
+		);
+		let filter = Filter::new(
+			"price".to_string(),
+			FilterOperator::Gt,
+			FilterValue::Expression(expr),
+		);
+		let result = build_single_filter_expr(&filter);
+		assert!(result.is_some());
+	}
+
+	#[test]
+	fn test_build_single_filter_expr_expression_all_operators() {
+		use reinhardt_db::orm::annotation::{AnnotationValue, Value};
+
+		let operators = [
+			FilterOperator::Eq,
+			FilterOperator::Ne,
+			FilterOperator::Gt,
+			FilterOperator::Gte,
+			FilterOperator::Lt,
+			FilterOperator::Lte,
+		];
+
+		for op in operators {
+			let expr = Expression::Add(
+				Box::new(AnnotationValue::Field(F::new("base"))),
+				Box::new(AnnotationValue::Value(Value::Int(10))),
+			);
+			let filter = Filter::new(
+				"total".to_string(),
+				op.clone(),
+				FilterValue::Expression(expr),
+			);
+			let result = build_single_filter_expr(&filter);
+			assert!(
+				result.is_some(),
+				"Expression with {:?} should produce Some",
+				op
+			);
+		}
+	}
+
+	#[test]
+	fn test_filter_value_to_sea_value_field_ref_fallback() {
+		let value = FilterValue::FieldRef(F::new("test_field"));
+		let sea_value = filter_value_to_sea_value(&value);
+
+		// Should return string representation, not panic
+		match sea_value {
+			sea_query::Value::String(Some(s)) => assert_eq!(s.as_str(), "test_field"),
+			_ => panic!("Expected String value"),
+		}
+	}
+
+	#[test]
+	fn test_filter_value_to_sea_value_outer_ref_fallback() {
+		let value = FilterValue::OuterRef(OuterRef::new("outer.field"));
+		let sea_value = filter_value_to_sea_value(&value);
+
+		// Should return string representation, not panic
+		match sea_value {
+			sea_query::Value::String(Some(s)) => assert_eq!(s.as_str(), "outer.field"),
+			_ => panic!("Expected String value"),
+		}
+	}
+
+	#[test]
+	fn test_filter_value_to_sea_value_expression_fallback() {
+		use reinhardt_db::orm::annotation::{AnnotationValue, Value};
+
+		let expr = Expression::Add(
+			Box::new(AnnotationValue::Field(F::new("a"))),
+			Box::new(AnnotationValue::Value(Value::Int(1))),
+		);
+		let value = FilterValue::Expression(expr);
+		let sea_value = filter_value_to_sea_value(&value);
+
+		// Should return SQL string representation, not panic
+		match sea_value {
+			sea_query::Value::String(Some(s)) => {
+				assert!(s.contains("a"), "SQL should contain field name 'a'");
+				assert!(s.contains("1"), "SQL should contain value '1'");
+			}
+			_ => panic!("Expected String value"),
+		}
 	}
 }
