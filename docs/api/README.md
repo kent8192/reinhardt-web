@@ -195,9 +195,9 @@ async fn handler(db: Depends<Database>) -> Result<Response> {
 
 ### reinhardt-db::orm
 
-ORM layer for database abstraction with SeaQuery v1.0.0-rc1 integration.
+ORM layer for database abstraction with SeaQuery v1.0.0-rc integration.
 
-> **Note**: `orm` is a sub-module of the `reinhardt-db` crate. Currently provides low-level API based on SeaQuery v1.0.0-rc1.
+> **Note**: `orm` is a sub-module of the `reinhardt-db` crate. Currently provides low-level API based on SeaQuery v1.0.0-rc.
 
 **Key Components:**
 
@@ -212,7 +212,7 @@ ORM layer for database abstraction with SeaQuery v1.0.0-rc1 integration.
 - ✅ SeaQuery-based query builder (implemented)
 - ✅ Basic CRUD operations (implemented)
 - ✅ Relationship definitions (implemented)
-- 🚧 `#[derive(Model)]` macro (planned)
+- ✅ `#[model(...)]` attribute macro (implemented - automatically applies Model trait)
 - 🚧 Django-style `filter(age__gte=18)` syntax (planned)
 
 **Example (Current API):**

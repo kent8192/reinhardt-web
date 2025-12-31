@@ -7,8 +7,10 @@ Create a simple API for administrators to view and edit users and groups in the 
 First, install the global tool:
 
 ```bash
-cargo install reinhardt-admin
+cargo install reinhardt-admin-cli
 ```
+
+**Note:** After installation, the command is `reinhardt-admin`, not `reinhardt-admin-cli`.
 
 Create a new Reinhardt project called tutorial:
 

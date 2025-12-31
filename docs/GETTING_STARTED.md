@@ -9,7 +9,7 @@ Before you begin, make sure you have:
 
 - **Rust** 1.91.1 or later (2024 Edition required)
   ([Install Rust](https://www.rust-lang.org/tools/install))
-- **PostgreSQL** (optional, for database features)
+- **PostgreSQL** (included in `standard` and `full` bundles; optional for custom setups)
 - Basic familiarity with Rust and async programming
 
 ## Installation
@@ -330,7 +330,7 @@ To use a database instead of in-memory storage:
 ```toml
 [dependencies]
 reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "database"] }
-sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-native-tls"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
 ```
 
 Check out the [ORM documentation](api/README.md) for more details.

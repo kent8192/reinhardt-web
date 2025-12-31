@@ -240,6 +240,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Database Introspection
+
+The `introspect` module allows you to generate Reinhardt model code from existing database schemas.
+
+### Supported Databases
+
+- PostgreSQL
+- MySQL
+- SQLite
+
+### Basic Usage
+
+```rust
+use reinhardt_migrations::introspect::*;
+
+// Generate models from database
+let config = IntrospectConfig::builder()
+    .database_url("postgres://localhost/mydb")
+    .table_filter(TableFilterConfig::include_all())
+    .naming_convention(NamingConvention::SnakeCase)
+    .build()?;
+
+let output = generate_models(config)?;
+write_output(&output, "src/models/")?;
+```
+
+### Configuration Options
+
+- `NamingConvention`: Control field naming (SnakeCase, CamelCase, PascalCase)
+- `TypeMapper`: Customize SQL type to Rust type mappings
+- `TableFilterConfig`: Filter which tables to include/exclude
+
+### Preview Mode
+
+Preview generated code without writing to disk:
+
+```rust
+let preview = preview_output(&config)?;
+for file in preview.files {
+    println!("Would create: {}", file.path);
+    println!("{}", file.content);
+}
+```
+
 ## Integration with Reinhardt Framework
 
 This crate is part of the Reinhardt framework and integrates with:

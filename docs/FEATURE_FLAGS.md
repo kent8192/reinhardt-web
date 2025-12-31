@@ -110,7 +110,7 @@ reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["
 
 **Binary**: ~20-30 MB | **Compile**: Medium
 
-**Note**: `db-postgres` is now explicitly included. For other databases, use `db-mysql`, `db-sqlite`, or `db-mongodb`.
+**Note**: `db-postgres` is now explicitly included. For other databases, use `db-mysql` or `db-sqlite`.
 
 ---
 
@@ -242,7 +242,6 @@ features = ["database"]  # Includes: ORM, migrations, contenttypes
 | `db-postgres` | PostgreSQL | Default |
 | `db-mysql` | MySQL | - |
 | `db-sqlite` | SQLite | Lightweight |
-| `db-mongodb` | MongoDB | Empty (planned) |
 | `db-cockroachdb` | CockroachDB | Uses Postgres protocol |
 
 ---
@@ -608,9 +607,6 @@ reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["
 
 # SQLite
 reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard", "db-sqlite"] }
-
-# MongoDB
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard", "db-mongodb"] }
 ```
 
 #### 4. Removed Features

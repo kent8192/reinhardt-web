@@ -32,8 +32,9 @@ Create `polls/tests.rs`:
 ```rust
 use super::models::Question;
 use chrono::{Duration, Utc};
+use rstest::*;
 
-#[test]
+#[rstest]
 fn test_was_published_recently_with_future_question() {
     // Create a question 30 days in the future
     let future_date = Utc::now() + Duration::days(30);
@@ -47,7 +48,7 @@ fn test_was_published_recently_with_future_question() {
     assert_eq!(question.was_published_recently(), false);
 }
 
-#[test]
+#[rstest]
 fn test_was_published_recently_with_old_question() {
     // Create a question 2 days ago
     let old_date = Utc::now() - Duration::days(2);
@@ -61,7 +62,7 @@ fn test_was_published_recently_with_old_question() {
     assert_eq!(question.was_published_recently(), false);
 }
 
-#[test]
+#[rstest]
 fn test_was_published_recently_with_recent_question() {
     // Create a question from 23 hours ago
     let recent_date = Utc::now() - Duration::hours(23);

@@ -206,21 +206,17 @@ Now let's run the development server using the `runserver` command:
 cargo run --bin runserver
 ```
 
-**With auto-reload** (if you have `cargo-watch` installed):
+**With auto-reload** (if you have `bacon` installed):
 
 ```bash
-# Install cargo-watch first (one-time setup)
-cargo install cargo-watch
+# Install bacon first (one-time setup)
+cargo install --locked bacon
 
-# Enable cargo-watch-reload feature in Cargo.toml
-# [dependencies]
-# reinhardt-commands = { version = "0.1.0-alpha.1", features = ["cargo-watch-reload"] }
+# Run with auto-reload using cargo-make
+cargo make watch
 
-# Run with auto-reload (detects changes and automatically rebuilds)
-cargo run --bin runserver
-
-# Optional: Clear screen before each rebuild
-cargo run --bin runserver -- --clear
+# Or run bacon directly for the runserver job
+bacon runserver
 ```
 
 You should see output similar to:

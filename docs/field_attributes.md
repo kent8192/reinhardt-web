@@ -584,7 +584,6 @@ Creates a SQLite STRICT table.
 
 ```rust
 #[cfg(feature = "db-sqlite")]
-#[derive(Model)]
 #[model(table_name = "users", strict = true)]
 struct User {
 	// ...
@@ -603,7 +602,6 @@ Creates a SQLite WITHOUT ROWID table.
 
 ```rust
 #[cfg(feature = "db-sqlite")]
-#[derive(Model)]
 #[model(table_name = "cache", without_rowid = true)]
 struct CacheEntry {
 	#[field(primary_key = true)]
@@ -644,7 +642,6 @@ Available feature flags:
 use reinhardt::db::orm::prelude::*;
 use chrono::NaiveDateTime;
 
-#[derive(Model)]
 #[model(table_name = "articles")]
 #[cfg_attr(feature = "db-sqlite", model(strict = true))]
 struct Article {
