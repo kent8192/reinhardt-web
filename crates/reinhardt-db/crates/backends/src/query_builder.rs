@@ -21,8 +21,7 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 		QueryValue::Float(f) => Value::Double(Some(*f)),
 		QueryValue::String(s) => Value::String(Some(s.clone())),
 		QueryValue::Bytes(b) => Value::Bytes(Some(b.clone())),
-		// Convert timestamp to string representation for now
-		QueryValue::Timestamp(dt) => Value::String(Some(dt.to_rfc3339())),
+		QueryValue::Timestamp(dt) => Value::ChronoDateTimeUtc(Some(*dt)),
 		// NOW() is handled specially in build() methods, should not reach here
 		QueryValue::Now => {
 			panic!("QueryValue::Now should be handled in build() method, not converted to Value")
@@ -159,13 +158,6 @@ impl InsertBuilder {
 			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
 			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
-			#[cfg(feature = "mongodb-backend")]
-			DatabaseType::MongoDB => {
-				// MongoDB is a NoSQL database and does not use SQL queries.
-				// This query builder is for SQL databases only.
-				// For MongoDB operations, use reinhardt-nosql crate instead.
-				return (String::new(), Vec::new());
-			}
 		};
 
 		// Add ON CONFLICT clause if specified
@@ -273,12 +265,6 @@ impl InsertBuilder {
 					}
 				}
 			}
-			#[cfg(feature = "mongodb-backend")]
-			DatabaseType::MongoDB => {
-				// MongoDB is a NoSQL database and does not use SQL queries.
-				// This query builder is for SQL databases only.
-				// For MongoDB operations, use reinhardt-nosql crate instead.
-			}
 		}
 
 		sql
@@ -358,13 +344,6 @@ impl UpdateBuilder {
 			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
 			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
-			#[cfg(feature = "mongodb-backend")]
-			DatabaseType::MongoDB => {
-				// MongoDB is a NoSQL database and does not use SQL queries.
-				// This query builder is for SQL databases only.
-				// For MongoDB operations, use reinhardt-nosql crate instead.
-				return (String::new(), Vec::new());
-			}
 		};
 
 		// Preserve parameter order: first SET values, then WHERE values
@@ -462,13 +441,6 @@ impl SelectBuilder {
 			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
 			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
-			#[cfg(feature = "mongodb-backend")]
-			DatabaseType::MongoDB => {
-				// MongoDB is a NoSQL database and does not use SQL queries.
-				// This query builder is for SQL databases only.
-				// For MongoDB operations, use reinhardt-nosql crate instead.
-				String::new()
-			}
 		};
 
 		// Collect parameters
@@ -549,13 +521,6 @@ impl DeleteBuilder {
 			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
 			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
-			#[cfg(feature = "mongodb-backend")]
-			DatabaseType::MongoDB => {
-				// MongoDB is a NoSQL database and does not use SQL queries.
-				// This query builder is for SQL databases only.
-				// For MongoDB operations, use reinhardt-nosql crate instead.
-				String::new()
-			}
 		};
 
 		// Collect parameters
