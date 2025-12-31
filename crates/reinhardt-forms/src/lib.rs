@@ -5,19 +5,19 @@
 //! ## Overview
 //!
 //! This crate provides comprehensive form processing capabilities inspired by Django's
-//! form system, including data validation, CSRF protection, file uploads, and multi-step
-//! form wizards.
+//! form system, focusing on data validation and multi-step form wizards.
+//!
+//! This crate is designed to be WASM-compatible, providing a pure form processing layer
+//! without HTML generation or platform-specific features.
 //!
 //! ## Features
 //!
-//! - **[`Form`]**: Base form class with validation and rendering
+//! - **[`Form`]**: Base form class with validation
 //! - **[`ModelForm`]**: Auto-generated forms from model definitions
 //! - **[`FormSet`]**: Handle multiple forms of the same type
 //! - **[`FormWizard`]**: Multi-step form workflows
 //! - **Field Types**: 20+ field types (CharField, IntegerField, EmailField, etc.)
-//! - **CSRF Protection**: Cryptographic token generation with SameSite cookie support
-//! - **File Handling**: Upload with MIME detection, chunked uploads, and progress tracking
-//! - **Security**: XSS protection, honeypot fields, and rate limiting
+//! - **WASM Support**: Compatible with WebAssembly targets via `wasm_compat` module
 //!
 //! ## Quick Start
 //!
@@ -81,46 +81,6 @@
 //! | [`SlugField`] | URL-safe slug input |
 //! | [`RegexField`] | Custom regex validation |
 //!
-//! ## CSRF Protection
-//!
-//! ```rust,ignore
-//! use reinhardt_forms::{CsrfToken, CsrfValidator, SameSite};
-//!
-//! // Generate a CSRF token
-//! let token = CsrfToken::generate();
-//!
-//! // Validate token from request
-//! let validator = CsrfValidator::new()
-//!     .same_site(SameSite::Strict)
-//!     .check_origin(true);
-//!
-//! if validator.validate(&request, &token).is_ok() {
-//!     // Token is valid
-//! }
-//! ```
-//!
-//! ## File Uploads
-//!
-//! ```rust,ignore
-//! use reinhardt_forms::{FileUploadHandler, ChunkedUploadManager};
-//!
-//! // Handle file upload
-//! let handler = FileUploadHandler::new()
-//!     .max_size(10 * 1024 * 1024)  // 10MB
-//!     .allowed_types(&["image/jpeg", "image/png"]);
-//!
-//! let file = handler.process(&request).await?;
-//!
-//! // Chunked upload with progress
-//! let manager = ChunkedUploadManager::new();
-//! let session = manager.start_upload("large_file.zip", total_size).await?;
-//!
-//! for chunk in chunks {
-//!     let progress = session.upload_chunk(chunk).await?;
-//!     println!("Progress: {}%", progress.percentage);
-//! }
-//! ```
-//!
 //! ## FormSets
 //!
 //! Handle multiple forms of the same type:
@@ -157,51 +117,19 @@
 //! // Process wizard step
 //! let result = wizard.process_step(&request).await?;
 //! ```
-//!
-//! ## Security Features
-//!
-//! ```rust,ignore
-//! use reinhardt_forms::{XssProtector, HoneypotField, RateLimiter};
-//!
-//! // XSS protection
-//! let protector = XssProtector::new();
-//! let safe_html = protector.sanitize(user_input);
-//!
-//! // Honeypot field (spam protection)
-//! let honeypot = HoneypotField::new("website");  // Hidden field
-//! if !honeypot.is_empty(&form_data) {
-//!     // Likely a bot submission
-//! }
-//!
-//! // Rate limiting
-//! let limiter = RateLimiter::new(10, Duration::from_secs(60));  // 10 per minute
-//! if limiter.check(&client_ip).is_err() {
-//!     // Rate limit exceeded
-//! }
-//! ```
 
 pub mod bound_field;
-pub mod chunked_upload;
-pub mod csrf;
 pub mod field;
 pub mod fields;
-pub mod file_handling;
 pub mod form;
 pub mod formset;
 pub mod formsets;
-pub mod media;
 pub mod model_form;
 pub mod model_formset;
-pub mod security;
-pub mod wasm_compat; // Week 5 Day 1: WASM compatibility layer
+pub mod wasm_compat;
 pub mod wizard;
-pub mod xss_protection;
 
 pub use bound_field::BoundField;
-pub use chunked_upload::{
-	ChunkedUploadError, ChunkedUploadManager, ChunkedUploadSession, UploadProgress,
-};
-pub use csrf::{CsrfError, CsrfToken, CsrfValidator, SameSite};
 pub use field::{
 	ErrorType,
 	FieldError,
@@ -217,9 +145,6 @@ pub use fields::{
 	MultiValueField, MultipleChoiceField, PasswordField, RegexField, SlugField, SplitDateTimeField,
 	TimeField, URLField, UUIDField,
 };
-pub use file_handling::{
-	FileUploadError, FileUploadHandler, MemoryFileUpload, TemporaryFileUpload,
-};
 pub use form::{Form, FormError, FormResult};
 pub use formset::FormSet;
 pub use formsets::{
@@ -227,12 +152,9 @@ pub use formsets::{
 	InlineFormSet,
 	ModelFormSet as AdvancedModelFormSet, // Renamed to avoid conflict
 };
-pub use media::{Media, MediaDefiningWidget};
 pub use model_form::{FieldType, FormModel, ModelForm, ModelFormBuilder, ModelFormConfig};
 pub use model_formset::{ModelFormSet, ModelFormSetBuilder, ModelFormSetConfig};
-pub use security::{FormSecurityMiddleware, HoneypotField, RateLimiter, SecurityError};
 pub use wizard::{FormWizard, WizardStep};
-pub use xss_protection::{XssConfig, XssError, XssProtector};
 
 // Re-export form! macro when macros feature is enabled
 #[cfg(feature = "macros")]
