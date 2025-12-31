@@ -11,7 +11,7 @@
 
 use async_trait::async_trait;
 use reinhardt_orm::Model;
-use reinhardt_orm::events::{EventResult, MapperEvents, event_registry};
+use reinhardt_orm::events::{EventRegistry, EventResult, MapperEvents, set_active_registry};
 use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
@@ -284,11 +284,6 @@ async fn create_users_table(pool: &PgPool) {
 		.expect("Failed to create users table");
 }
 
-/// Clear event registry between tests
-fn clear_event_registry() {
-	event_registry().clear();
-}
-
 // ============================================================================
 // State Transitions: before_insert/after_insert
 // ============================================================================
@@ -307,13 +302,14 @@ async fn test_before_insert_fires_on_save(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article
 	let mut article = Article::new("Test Article", "Test Content");
@@ -342,13 +338,14 @@ async fn test_after_insert_fires_on_save(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article
 	let mut article = Article::new("After Insert Test", "Content");
@@ -376,13 +373,14 @@ async fn test_insert_lifecycle_events(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article
 	let mut article = Article::new("Lifecycle Test", "Content");
@@ -412,13 +410,14 @@ async fn test_before_update_fires_on_save(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article (INSERT)
 	let mut article = Article::new("Original Title", "Original Content");
@@ -447,13 +446,14 @@ async fn test_after_update_fires_on_save(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article (INSERT)
 	let mut article = Article::new("Original Title", "Original Content");
@@ -486,13 +486,14 @@ async fn test_before_delete_fires_on_delete(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article
 	let mut article = Article::new("Article to Delete", "Content");
@@ -523,13 +524,14 @@ async fn test_after_delete_fires_on_delete(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article
 	let mut article = Article::new("Article to Delete", "Content");
@@ -560,13 +562,14 @@ async fn test_delete_lifecycle_events(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article
 	let mut article = Article::new("Lifecycle Test", "Content");
@@ -598,14 +601,15 @@ async fn test_before_insert_veto_prevents_insert(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener with veto enabled
+	// Create fresh registry and register event listener with veto enabled
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
 	listener.set_veto_insert(true);
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Attempt to save new article - should be vetoed
 	let mut article = Article::new("Vetoed Article", "Content");
@@ -644,13 +648,14 @@ async fn test_before_update_veto_prevents_update(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article (INSERT succeeds)
 	let mut article = Article::new("Original Title", "Original Content");
@@ -693,14 +698,15 @@ async fn test_before_delete_veto_prevents_delete(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener with delete veto enabled
+	// Create fresh registry and register event listener with delete veto enabled
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
 	listener.set_veto_delete(true);
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article
 	let mut article = Article::new("Protected Article", "Content");
@@ -750,15 +756,16 @@ async fn test_multiple_listeners_receive_events(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register multiple event listeners
+	// Create fresh registry and register multiple event listeners
+	let registry = Arc::new(EventRegistry::new());
 	let listener1 = Arc::new(TestMapperListener::new());
 	let listener2 = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener1.clone());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener2.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener1.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener2.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create and save new article
 	let mut article = Article::new("Multi-listener Test", "Content");
@@ -801,16 +808,17 @@ async fn test_first_listener_veto_stops_processing(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register multiple listeners - first one vetoes
+	// Create fresh registry and register multiple listeners - first one vetoes
+	let registry = Arc::new(EventRegistry::new());
 	let listener1 = Arc::new(TestMapperListener::new());
 	listener1.set_veto_insert(true);
 	let listener2 = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener1.clone());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener2.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener1.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener2.clone());
+	let _guard = set_active_registry(registry);
 
 	// Attempt to save - should be vetoed by first listener
 	let mut article = Article::new("Vetoed by First", "Content");
@@ -843,13 +851,14 @@ async fn test_event_order_insert_update_delete(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_users_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(User::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(User::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Operation 1: INSERT
 	let mut user = User::new("testuser", "test@example.com");
@@ -909,13 +918,14 @@ async fn test_multiple_saves_insert_then_update(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 
-	// Register event listener
+	// Create fresh registry and register event listener
+	let registry = Arc::new(EventRegistry::new());
 	let listener = Arc::new(TestMapperListener::new());
-	event_registry().register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Create new article
 	let mut article = Article::new("First Title", "Content");
@@ -968,7 +978,6 @@ async fn test_delete_without_pk_fails(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, _pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	// Create article without saving (no primary key)
 	let article = Article::new("Unsaved Article", "Content");
@@ -997,15 +1006,15 @@ async fn test_events_are_model_specific(
 	#[future] events_test_db: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, _url) = events_test_db.await;
-	clear_event_registry();
 
 	create_articles_table(pool.as_ref()).await;
 	create_users_table(pool.as_ref()).await;
 
-	// Register listener only for Articles
+	// Create fresh registry and register listener only for Articles
+	let registry = Arc::new(EventRegistry::new());
 	let article_listener = Arc::new(TestMapperListener::new());
-	event_registry()
-		.register_mapper_listener(Article::table_name().to_string(), article_listener.clone());
+	registry.register_mapper_listener(Article::table_name().to_string(), article_listener.clone());
+	let _guard = set_active_registry(registry);
 
 	// Save an article - listener should be called
 	let mut article = Article::new("Test Article", "Content");

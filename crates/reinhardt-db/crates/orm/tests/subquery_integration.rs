@@ -9,26 +9,23 @@
 //! All tests use QuerySet subquery methods:
 //! - `filter_in_subquery()` - WHERE IN clause with subquery
 //! - `filter_not_in_subquery()` - WHERE NOT IN clause with subquery
-//! - `filter_exists()` - WHERE EXISTS predicate
-//! - `filter_not_exists()` - WHERE NOT EXISTS predicate
+//! - `annotate_subquery()` - Scalar subquery in SELECT clause
+//! - `from_subquery()` - Derived table in FROM clause
+//!
+//! For correlated subqueries, use `FilterValue::OuterRef` to reference
+//! outer query columns from within a subquery.
 //!
 //! Results are returned using `all()` or `all_raw()` methods.
 //!
 //! # Table Structure
 //! - Authors(id, name)
 //! - Books(id, author_id, title, price)
-//!
-//! # Unsupported Features (Future Implementation)
-//!
-//! The following subquery features are not yet supported in the ORM API:
-//! - Subqueries in SELECT clause
-//! - Subqueries in FROM clause (derived tables)
-//! - Correlated subqueries
-//!
-//! These features are marked with `todo!()` for future implementation.
 
 use reinhardt_core::macros::model;
-use reinhardt_orm::{Filter, FilterOperator, FilterValue, QuerySet};
+use reinhardt_orm::{
+	Aggregate, Annotation, AnnotationValue, Filter, FilterOperator, FilterValue, GroupByFields,
+	OuterRef, QuerySet,
+};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -142,25 +139,42 @@ async fn test_subquery_in_where_clause(
 
 /// Test subquery in SELECT clause
 ///
-/// NOTE: This feature is not yet supported in the ORM API.
-/// Subqueries in SELECT clause will be implemented in a future version.
+/// Find all authors and annotate each with their book count using a scalar subquery.
+/// Uses `annotate_subquery()` to add a correlated subquery to the SELECT clause.
 #[rstest]
 #[tokio::test]
-#[should_panic(expected = "not implemented")]
 async fn test_subquery_in_select_clause(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, _pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
+	setup_test_data(pool.as_ref()).await;
 
-	// TODO: Implement SELECT clause subquery support in QuerySet
-	// Proposed API:
-	//   QuerySet::<Author>::new()
-	//     .annotate_subquery("book_count", |subq: QuerySet<Book>| {
-	//       subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::Column("authors.id")))
-	//         .count()
-	//     })
-	//     .all().await
-	todo!("SELECT clause subqueries not yet implemented in ORM API");
+	// Find all authors with their book count
+	// SQL: SELECT *, (SELECT COUNT(*) FROM books WHERE author_id = authors.id) AS book_count FROM authors
+	let sql = QuerySet::<Author>::new()
+		.annotate_subquery::<Book, _>("book_count", |subq| {
+			subq.filter(Filter::new(
+				"author_id",
+				FilterOperator::Eq,
+				FilterValue::OuterRef(OuterRef::new("authors.id")),
+			))
+			.values(&["COUNT(*)"])
+		})
+		.order_by(&["id"])
+		.to_sql();
+
+	let rows = sqlx::query(&sql).fetch_all(pool.as_ref()).await.unwrap();
+
+	// Verify we got all 3 authors
+	assert_eq!(rows.len(), 3, "Expected 3 authors");
+
+	// Verify the book counts: Author A=2, Author B=1, Author C=0
+	let book_count_0: i64 = rows[0].get("book_count");
+	let book_count_1: i64 = rows[1].get("book_count");
+	let book_count_2: i64 = rows[2].get("book_count");
+	assert_eq!(book_count_0, 2, "Author A should have 2 books");
+	assert_eq!(book_count_1, 1, "Author B should have 1 book");
+	assert_eq!(book_count_2, 0, "Author C should have 0 books");
 }
 
 /// Test EXISTS predicate
@@ -261,32 +275,56 @@ async fn test_in_subquery(
 
 /// Test correlated subquery
 ///
-/// NOTE: This feature is not yet supported in the ORM API.
-/// Correlated subqueries will be implemented in a future version.
+/// Uses `FilterValue::OuterRef` to create a correlated subquery.
+/// Each book is annotated with the average price of all books by the same author.
 #[rstest]
 #[tokio::test]
-#[should_panic(expected = "not implemented")]
 async fn test_correlated_subquery(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, _pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
+	setup_test_data(pool.as_ref()).await;
 
-	// TODO: Implement correlated subquery support in QuerySet
-	// Example: Find books with price above their author's average
-	// SQL: SELECT * FROM books b1 WHERE price > (
-	//   SELECT AVG(price) FROM books b2 WHERE b2.author_id = b1.author_id
-	// )
-	//
-	// Proposed API:
-	//   QuerySet::<Book>::new()
-	//     .from_as("b1")
-	//     .filter_gt_subquery("b1.price", |subq: QuerySet<Book>| {
-	//       subq.from_as("b2")
-	//         .filter(Filter::new("b2.author_id", FilterOperator::Eq, FilterValue::Column("b1.author_id")))
-	//         .aggregate_avg("price")
-	//     })
-	//     .all().await
-	todo!("Correlated subqueries not yet implemented in ORM API");
+	// For each book, calculate the average price of all books by the same author
+	// SQL: SELECT *, (SELECT AVG(price) FROM books b2 WHERE b2.author_id = books.author_id) AS author_avg_price FROM books
+	let sql = QuerySet::<Book>::new()
+		.annotate_subquery::<Book, _>("author_avg_price", |subq| {
+			subq.filter(Filter::new(
+				"author_id",
+				FilterOperator::Eq,
+				FilterValue::OuterRef(OuterRef::new("books.author_id")),
+			))
+			.values(&["AVG(price)"])
+		})
+		.order_by(&["id"])
+		.to_sql();
+
+	let rows = sqlx::query(&sql).fetch_all(pool.as_ref()).await.unwrap();
+
+	// Verify we got all 3 books
+	assert_eq!(rows.len(), 3, "Expected 3 books");
+
+	// Verify the author average prices:
+	// Author A's books (Book A1, Book A2): avg = (1000 + 2000) / 2 = 1500
+	// Author B's book (Book B1): avg = 1500
+	let author_avg_0: f64 = rows[0].get("author_avg_price");
+	let author_avg_1: f64 = rows[1].get("author_avg_price");
+	let author_avg_2: f64 = rows[2].get("author_avg_price");
+
+	// Author A's books should have avg 1500
+	assert!(
+		(author_avg_0 - 1500.0).abs() < 0.01,
+		"Book A1's author avg should be 1500"
+	);
+	assert!(
+		(author_avg_1 - 1500.0).abs() < 0.01,
+		"Book A2's author avg should be 1500"
+	);
+	// Author B's book should have avg 1500
+	assert!(
+		(author_avg_2 - 1500.0).abs() < 0.01,
+		"Book B1's author avg should be 1500"
+	);
 }
 
 /// Test nested subqueries
@@ -339,35 +377,48 @@ async fn test_nested_subqueries(
 
 /// Test subquery in FROM clause (derived table)
 ///
-/// NOTE: This feature is not yet supported in the ORM API.
-/// FROM clause subqueries will be implemented in a future version.
+/// Uses `from_subquery()` to create a derived table from a subquery.
+/// Selects from a subquery that aggregates book counts per author.
 #[rstest]
 #[tokio::test]
-#[should_panic(expected = "not implemented")]
 async fn test_subquery_in_from_clause(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, _pool, _port, _url) = postgres_container.await;
+	let (_container, pool, _port, _url) = postgres_container.await;
+	setup_test_data(pool.as_ref()).await;
 
-	// TODO: Implement FROM clause subquery support in QuerySet
-	// Example: Select from derived table showing author book counts
+	// Select from derived table showing author book counts
 	// SQL: SELECT * FROM (
 	//   SELECT author_id, COUNT(*) as book_count
 	//   FROM books
 	//   GROUP BY author_id
 	// ) AS book_stats
 	// WHERE book_count > 1
-	//
-	// Proposed API:
-	//   QuerySet::from_subquery(
-	//     |subq: QuerySet<Book>| {
-	//       subq.group_by(&["author_id"])
-	//         .annotate_count("book_count", "id")
-	//         .values(&["author_id", "book_count"])
-	//     },
-	//     "book_stats"
-	//   )
-	//   .filter(Filter::new("book_count", FilterOperator::Gt, FilterValue::Int(1)))
-	//   .all().await
-	todo!("FROM clause subqueries not yet implemented in ORM API");
+	let sql = QuerySet::<Book>::from_subquery(
+		|subq: QuerySet<Book>| {
+			subq.group_by(|f: BookFields| GroupByFields::new().add(&f.author_id))
+				.annotate(Annotation::new(
+					"book_count",
+					AnnotationValue::Aggregate(Aggregate::count_all()),
+				))
+				.values(&["author_id", "book_count"])
+		},
+		"book_stats",
+	)
+	.filter(Filter::new(
+		"book_count",
+		FilterOperator::Gt,
+		FilterValue::Int(1),
+	))
+	.to_sql();
+
+	let rows = sqlx::query(&sql).fetch_all(pool.as_ref()).await.unwrap();
+
+	// Only Author A (id=1) has more than 1 book (2 books)
+	assert_eq!(rows.len(), 1, "Expected 1 author with more than 1 book");
+
+	let author_id: i32 = rows[0].get("author_id");
+	let book_count: i64 = rows[0].get("book_count");
+	assert_eq!(author_id, 1, "Expected author_id 1 (Author A)");
+	assert_eq!(book_count, 2, "Expected book_count 2");
 }
