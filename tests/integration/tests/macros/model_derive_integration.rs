@@ -142,7 +142,7 @@ fn test_primary_key_access() {
 	user.set_primary_key(42);
 	assert_eq!(
 		user.primary_key(),
-		Some(&42),
+		Some(42),
 		"Primary key should be set to 42"
 	);
 
@@ -157,7 +157,7 @@ fn test_primary_key_access() {
 
 	assert_eq!(
 		user_with_id.primary_key(),
-		Some(&100),
+		Some(100),
 		"User should have primary key 100"
 	);
 }
