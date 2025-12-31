@@ -361,8 +361,9 @@ impl ContentTypeSerializer {
 			match existing {
 				Some(_) => {
 					if options.update_existing {
-						// For now, content types don't have fields to update
-						// This is a placeholder for future extensibility
+						// ContentType has only app_label and model fields, which form the natural key.
+						// Since there are no additional mutable fields to update, existing records
+						// are treated as already up-to-date and counted as updated.
 						result.updated += 1;
 					} else if options.skip_existing {
 						result.skipped += 1;
