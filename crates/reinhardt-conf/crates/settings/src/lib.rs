@@ -23,7 +23,7 @@ pub mod backends;
 #[cfg(feature = "async")]
 pub mod secrets;
 
-// Encryption module is always available, but uses stub implementations without the feature
+#[cfg(feature = "encryption")]
 pub mod encryption;
 
 #[cfg(feature = "async")]

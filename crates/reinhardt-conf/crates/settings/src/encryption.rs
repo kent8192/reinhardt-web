@@ -1,12 +1,10 @@
 //! Configuration encryption/decryption
 
-use serde::{Deserialize, Serialize};
-
-#[cfg(feature = "encryption")]
 use aes_gcm::{
 	Aes256Gcm, Nonce,
 	aead::{Aead, KeyInit, OsRng, rand_core::RngCore},
 };
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptedConfig {
@@ -21,7 +19,6 @@ impl EncryptedConfig {
 }
 
 pub struct ConfigEncryptor {
-	#[cfg(feature = "encryption")]
 	cipher: Aes256Gcm,
 }
 
@@ -44,26 +41,15 @@ impl ConfigEncryptor {
 	///
 	/// Returns an error if the key length is not exactly 32 bytes
 	pub fn new(key: Vec<u8>) -> Result<Self, String> {
-		#[cfg(feature = "encryption")]
-		{
-			if key.len() != 32 {
-				return Err(format!(
-					"Encryption key must be exactly 32 bytes (256 bits), got {} bytes",
-					key.len()
-				));
-			}
-			let cipher = Aes256Gcm::new_from_slice(&key)
-				.map_err(|e| format!("Failed to initialize cipher: {}", e))?;
-			Ok(Self { cipher })
+		if key.len() != 32 {
+			return Err(format!(
+				"Encryption key must be exactly 32 bytes (256 bits), got {} bytes",
+				key.len()
+			));
 		}
-		#[cfg(not(feature = "encryption"))]
-		{
-			// Only perform validation, key is not saved
-			if key.is_empty() {
-				return Err("Encryption key cannot be empty".to_string());
-			}
-			Ok(Self {})
-		}
+		let cipher = Aes256Gcm::new_from_slice(&key)
+			.map_err(|e| format!("Failed to initialize cipher: {}", e))?;
+		Ok(Self { cipher })
 	}
 
 	/// Encrypt data using AES-256-GCM
@@ -90,31 +76,21 @@ impl ConfigEncryptor {
 	/// let encrypted = encryptor.encrypt(b"secret data")?;
 	/// ```
 	pub fn encrypt(&self, data: &[u8]) -> Result<EncryptedConfig, String> {
-		#[cfg(feature = "encryption")]
-		{
-			// Generate a random 12-byte nonce
-			let mut nonce_bytes = [0u8; 12];
-			OsRng.fill_bytes(&mut nonce_bytes);
-			let nonce = Nonce::from(nonce_bytes);
+		// Generate a random 12-byte nonce
+		let mut nonce_bytes = [0u8; 12];
+		OsRng.fill_bytes(&mut nonce_bytes);
+		let nonce = Nonce::from(nonce_bytes);
 
-			// Encrypt the data
-			let ciphertext = self
-				.cipher
-				.encrypt(&nonce, data)
-				.map_err(|e| format!("Encryption failed: {}", e))?;
+		// Encrypt the data
+		let ciphertext = self
+			.cipher
+			.encrypt(&nonce, data)
+			.map_err(|e| format!("Encryption failed: {}", e))?;
 
-			Ok(EncryptedConfig {
-				data: ciphertext,
-				nonce: nonce_bytes.to_vec(),
-			})
-		}
-		#[cfg(not(feature = "encryption"))]
-		{
-			Ok(EncryptedConfig {
-				data: data.to_vec(),
-				nonce: vec![0; 12],
-			})
-		}
+		Ok(EncryptedConfig {
+			data: ciphertext,
+			nonce: nonce_bytes.to_vec(),
+		})
 	}
 
 	/// Decrypt data using AES-256-GCM
@@ -146,32 +122,25 @@ impl ConfigEncryptor {
 	/// assert_eq!(decrypted, b"secret data");
 	/// ```
 	pub fn decrypt(&self, encrypted: &EncryptedConfig) -> Result<Vec<u8>, String> {
-		#[cfg(feature = "encryption")]
-		{
-			// Validate nonce length
-			if encrypted.nonce.len() != 12 {
-				return Err(format!(
-					"Invalid nonce length: expected 12 bytes, got {}",
-					encrypted.nonce.len()
-				));
-			}
-
-			let nonce_array: [u8; 12] = encrypted.nonce[..12]
-				.try_into()
-				.map_err(|_| "Failed to convert nonce to array".to_string())?;
-			let nonce = Nonce::from(nonce_array);
-
-			// Decrypt and verify authentication tag
-			let plaintext = self
-				.cipher
-				.decrypt(&nonce, encrypted.data.as_ref())
-				.map_err(|e| format!("Decryption failed: {}", e))?;
-
-			Ok(plaintext)
+		// Validate nonce length
+		if encrypted.nonce.len() != 12 {
+			return Err(format!(
+				"Invalid nonce length: expected 12 bytes, got {}",
+				encrypted.nonce.len()
+			));
 		}
-		#[cfg(not(feature = "encryption"))]
-		{
-			Ok(encrypted.data.clone())
-		}
+
+		let nonce_array: [u8; 12] = encrypted.nonce[..12]
+			.try_into()
+			.map_err(|_| "Failed to convert nonce to array".to_string())?;
+		let nonce = Nonce::from(nonce_array);
+
+		// Decrypt and verify authentication tag
+		let plaintext = self
+			.cipher
+			.decrypt(&nonce, encrypted.data.as_ref())
+			.map_err(|e| format!("Decryption failed: {}", e))?;
+
+		Ok(plaintext)
 	}
 }

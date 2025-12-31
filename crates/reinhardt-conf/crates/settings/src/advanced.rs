@@ -330,6 +330,11 @@ pub struct EmailSettings {
 
 	/// Path to SSL key file
 	pub ssl_keyfile: Option<PathBuf>,
+
+	/// Directory path for file-based email backend.
+	/// Required when backend is "file".
+	#[serde(default)]
+	pub file_path: Option<PathBuf>,
 }
 
 fn default_server_email() -> String {
@@ -354,6 +359,7 @@ impl Default for EmailSettings {
 			timeout: None,
 			ssl_certfile: None,
 			ssl_keyfile: None,
+			file_path: None,
 		}
 	}
 }
