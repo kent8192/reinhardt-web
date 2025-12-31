@@ -63,16 +63,18 @@ rcgen = "0.14.5"
 nix = { version = "0.29", features = ["signal"] }
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
 tempfile = "3.13"
 regex = { workspace = true }
 reinhardt-i18n = { workspace = true }
 serial_test = { workspace = true }
 rstest = { workspace = true }
+proptest = { workspace = true }
+trybuild = { workspace = true }
 
 [features]
 default = ["server", "autoreload"]
-migrations = ["dep:reinhardt-db"]
+migrations = ["reinhardt-db"]
 routers = ["dep:reinhardt-urls"]
 di = ["dep:reinhardt-di"]
 openapi = ["dep:reinhardt-openapi", "dep:reinhardt-types"]
@@ -82,10 +84,9 @@ shell = ["dep:rustyline"]
 shell-rhai = ["shell", "dep:rhai"]
 shell-pyo3 = ["shell", "dep:pyo3"]
 reinhardt-db = ["dep:reinhardt-db"]
-mongodb-backend = ["reinhardt-db?/mongodb-backend"]
-postgres = ["reinhardt-db?/postgres"]
+postgres = ["reinhardt-db?/postgres", "dep:sqlx", "sqlx/postgres"]
 sqlite = ["reinhardt-db?/sqlite", "dep:sqlx", "sqlx/sqlite"]
-mysql = ["reinhardt-db?/mysql"]
+mysql = ["reinhardt-db?/mysql", "dep:sqlx", "sqlx/mysql"]
 testcontainers = ["dep:reinhardt-test", "reinhardt-test?/testcontainers"]
 plugins = ["dep:reinhardt-dentdelion"]
 full = [
@@ -99,7 +100,6 @@ full = [
   "reinhardt-db",
   "di",
   "openapi",
-  "mongodb-backend",
   "postgres",
   "sqlite",
   "mysql",

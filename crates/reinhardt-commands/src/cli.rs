@@ -22,18 +22,20 @@ use crate::builtin::ShowUrlsCommand;
 
 /// Reinhardt Project Management CLI
 ///
-/// This is the internal CLI parser used by `execute_from_command_line()`.
-#[derive(Parser)]
+/// This is the CLI parser used by `execute_from_command_line()`.
+/// Can also be used directly for testing CLI parsing behavior.
+#[derive(Debug, Parser)]
 #[command(name = "manage")]
 #[command(about = "Reinhardt management interface", long_about = None)]
 #[command(version)]
-struct Cli {
+pub struct Cli {
+	/// Subcommand to execute
 	#[command(subcommand)]
-	command: Commands,
+	pub command: Commands,
 
 	/// Verbosity level (can be repeated for more output)
 	#[arg(short, long, action = clap::ArgAction::Count)]
-	verbosity: u8,
+	pub verbosity: u8,
 }
 
 /// Command-line interface commands

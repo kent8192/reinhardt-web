@@ -108,7 +108,7 @@ impl BaseCommand for MigrateCommand {
 			let migrations_to_apply: Vec<_> = if let Some(ref app) = app_label {
 				all_migrations
 					.into_iter()
-					.filter(|m| m.app_label == app)
+					.filter(|m| m.app_label == *app)
 					.collect()
 			} else {
 				all_migrations.into_iter().collect()
@@ -135,13 +135,6 @@ impl BaseCommand for MigrateCommand {
 			} else if _database_url.starts_with("sqlite://") || _database_url.starts_with("sqlite:")
 			{
 				DatabaseConnection::connect_sqlite(&_database_url).await
-			} else if _database_url.starts_with("mongodb://") {
-				// MongoDB has been moved to reinhardt-nosql crate.
-				// Use reinhardt_nosql::backends::mongodb::MongoDBBackend directly.
-				return Err(crate::CommandError::ExecutionError(
-					"MongoDB is not supported in management commands. Use reinhardt-nosql crate directly."
-						.to_string(),
-				));
 			} else {
 				return Err(crate::CommandError::ExecutionError(format!(
 					"Unsupported database URL scheme: {}",
@@ -165,7 +158,7 @@ impl BaseCommand for MigrateCommand {
 				// Record each migration as applied without executing
 				for migration in &migrations_to_apply {
 					executor
-						.record_migration(migration.app_label, migration.name)
+						.record_migration(&migration.app_label, &migration.name)
 						.await
 						.map_err(|e| {
 							crate::CommandError::ExecutionError(format!(
@@ -394,7 +387,7 @@ impl BaseCommand for MakeMigrationsCommand {
 				}
 
 				// Column operations (corresponds to Field operations in Django)
-				Operation::AddColumn { table, column } => {
+				Operation::AddColumn { table, column, .. } => {
 					format!("Add field {} to {}", column.name, table)
 				}
 				Operation::DropColumn { table, column } => {
@@ -497,11 +490,11 @@ impl BaseCommand for MakeMigrationsCommand {
 					let all_migrations = service.load_all().await.ok()?;
 					let mut app_migrations: Vec<_> = all_migrations
 						.into_iter()
-						.filter(|m| m.app_label == app)
+						.filter(|m| m.app_label == *app)
 						.collect();
 
 					// Simple sort by name (assumes timestamp prefix)
-					app_migrations.sort_by(|a, b| a.name.cmp(b.name));
+					app_migrations.sort_by(|a, b| a.name.cmp(&b.name));
 
 					app_migrations.last().cloned()
 				}
@@ -516,8 +509,8 @@ impl BaseCommand for MakeMigrationsCommand {
 				})?;
 
 				let last_migration = get_last_migration(app_name.clone()).await;
-				let dependencies = if let Some(ref last) = last_migration {
-					vec![(app_name.clone(), last.name)]
+				let dependencies: Vec<(String, String)> = if let Some(ref last) = last_migration {
+					vec![(app_name.clone(), last.name.clone())]
 				} else {
 					Vec::new()
 				};
@@ -527,18 +520,17 @@ impl BaseCommand for MakeMigrationsCommand {
 				let base_name = migration_name_opt.unwrap_or_else(|| "custom".to_string());
 				let name = format!("{}_{}", migration_number, base_name);
 				let new_migration = reinhardt_db::migrations::Migration {
-					app_label: Box::leak(app_name.clone().into_boxed_str()),
-					name: Box::leak(name.clone().into_boxed_str()),
+					app_label: app_name.clone(),
+					name: name.clone(),
 					operations: Vec::new(),
-					dependencies: dependencies
-						.into_iter()
-						.map(|(a, n)| (Box::leak(a.into_boxed_str()) as &'static str, n))
-						.collect(),
+					dependencies,
 					atomic: true,
 					replaces: Vec::new(),
 					initial: None,
 					state_only: false,
 					database_only: false,
+					optional_dependencies: Vec::new(),
+					swappable_dependencies: Vec::new(),
 				};
 
 				if !is_dry_run {
@@ -772,18 +764,15 @@ impl BaseCommand for MakeMigrationsCommand {
 							};
 
 							if let Some(prev_name) = prev_migration_name {
-								vec![(
-									Box::leak(app_name.clone().into_boxed_str()) as &'static str,
-									Box::leak(prev_name.into_boxed_str()) as &'static str,
-								)]
+								vec![(app_name.clone(), prev_name)]
 							} else {
 								Vec::new()
 							}
 						};
 
 						let new_migration = reinhardt_db::migrations::Migration {
-							app_label: Box::leak(app_name.clone().into_boxed_str()),
-							name: Box::leak(final_name.into_boxed_str()),
+							app_label: app_name.clone(),
+							name: final_name,
 							operations: migration.operations,
 							dependencies,
 							atomic: true,
@@ -795,6 +784,8 @@ impl BaseCommand for MakeMigrationsCommand {
 							},
 							state_only: false,
 							database_only: false,
+							optional_dependencies: Vec::new(),
+							swappable_dependencies: Vec::new(),
 						};
 
 						results.push(MigrationResult {
@@ -1805,10 +1796,6 @@ impl CheckCommand {
 								.await
 								.map_err(|e| format!("Query failed: {}", e))?;
 						}
-						#[cfg(feature = "mongodb-backend")]
-						DatabaseType::MongoDB => {
-							// MongoDB connection is verified at connection time
-						}
 						_ => {
 							// MySQL or other database types that don't have SQL execution support yet
 						}
@@ -1898,7 +1885,7 @@ impl CheckCommand {
 			let mut unapplied_count = 0;
 			for migration in &all_migrations {
 				let is_applied = recorder
-					.is_applied(migration.app_label, migration.name)
+					.is_applied(&migration.app_label, &migration.name)
 					.await
 					.map_err(|e| format!("Failed to check migration: {}", e))?;
 
@@ -1962,17 +1949,6 @@ async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseCon
 		|| url.starts_with(":memory:")
 	{
 		DatabaseType::Sqlite
-	} else if url.starts_with("mongodb://") {
-		#[cfg(feature = "mongodb-backend")]
-		{
-			DatabaseType::MongoDB
-		}
-		#[cfg(not(feature = "mongodb-backend"))]
-		{
-			return Err(crate::CommandError::ExecutionError(
-				"MongoDB backend not enabled. Enable 'mongodb-backend' feature.".to_string(),
-			));
-		}
 	} else {
 		return Err(crate::CommandError::ExecutionError(format!(
 			"Unsupported database URL: {}",
@@ -1997,15 +1973,6 @@ async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseCon
 				crate::CommandError::ExecutionError(format!("Database connection failed: {}", e))
 			})?;
 			Ok((db_type, conn))
-		}
-		#[cfg(feature = "mongodb-backend")]
-		DatabaseType::MongoDB => {
-			// MongoDB has been moved to reinhardt-nosql crate.
-			// Use reinhardt_nosql::backends::mongodb::MongoDBBackend directly.
-			Err(crate::CommandError::ExecutionError(
-				"MongoDB is not supported in management commands. Use reinhardt-nosql crate directly."
-					.to_string(),
-			))
 		}
 		_ => {
 			// MySQL or other database types
@@ -2082,6 +2049,305 @@ impl BaseCommand for CheckDiCommand {
 		}
 	}
 }
+
+/// Database schema introspection command
+///
+/// Generates Reinhardt ORM models from existing database schema.
+pub struct IntrospectCommand;
+
+#[cfg(feature = "migrations")]
+#[async_trait]
+impl BaseCommand for IntrospectCommand {
+	fn name(&self) -> &str {
+		"introspect"
+	}
+
+	fn description(&self) -> &str {
+		"Generate Reinhardt ORM models from existing database schema"
+	}
+
+	fn arguments(&self) -> Vec<CommandArgument> {
+		vec![]
+	}
+
+	fn options(&self) -> Vec<CommandOption> {
+		vec![
+			CommandOption::option(Some('d'), "database", "Database URL to introspect"),
+			CommandOption::option(Some('o'), "output", "Output directory for generated files")
+				.with_default("src/models/generated"),
+			CommandOption::option(Some('a'), "app-label", "App label for generated models")
+				.with_default("app"),
+			CommandOption::option(Some('c'), "config", "Path to configuration TOML file"),
+			CommandOption::option(None, "include", "Regex pattern for tables to include"),
+			CommandOption::option(None, "exclude", "Regex pattern for tables to exclude"),
+			CommandOption::flag(
+				None,
+				"dry-run",
+				"Show what would be generated without writing",
+			),
+			CommandOption::flag(None, "force", "Overwrite existing files"),
+			CommandOption::flag(Some('v'), "verbose", "Show detailed output"),
+			CommandOption::flag(None, "single-file", "Generate all models in a single file"),
+		]
+	}
+
+	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		use crate::CommandError;
+		use reinhardt_db::migrations::{
+			DatabaseIntrospector, IntrospectConfig, generate_models, preview_output, write_output,
+		};
+		use std::path::PathBuf;
+
+		ctx.info("🔍 Introspecting database schema...");
+
+		let is_dry_run = ctx.has_option("dry-run");
+		let is_force = ctx.has_option("force");
+		let is_verbose = ctx.has_option("verbose");
+
+		// Build configuration
+		let mut config = if let Some(config_path) = ctx.option("config") {
+			ctx.verbose(&format!("Loading config from: {}", config_path));
+			IntrospectConfig::from_file(config_path)
+				.map_err(|e| CommandError::ExecutionError(format!("Config error: {}", e)))?
+		} else {
+			IntrospectConfig::default()
+		};
+
+		// Override with CLI options
+		if let Some(db_url) = ctx.option("database") {
+			config = config.with_database_url(db_url);
+		} else if config.database.url.is_empty() {
+			// Try environment variable
+			if let Ok(url) = std::env::var("DATABASE_URL") {
+				config = config.with_database_url(&url);
+			} else {
+				return Err(CommandError::ExecutionError(
+					"Database URL required. Use --database or set DATABASE_URL environment variable."
+						.to_string(),
+				));
+			}
+		}
+
+		if let Some(output_dir) = ctx.option("output") {
+			config = config.with_output_dir(PathBuf::from(output_dir));
+		}
+
+		if let Some(app_label) = ctx.option("app-label") {
+			config = config.with_app_label(app_label);
+		}
+
+		if ctx.has_option("single-file") {
+			config.output.single_file = true;
+		}
+
+		// Handle include/exclude patterns
+		if let Some(include) = ctx.option("include") {
+			config.tables.include = vec![include.to_string()];
+		}
+
+		if let Some(exclude) = ctx.option("exclude") {
+			config.tables.exclude.push(exclude.to_string());
+		}
+
+		if is_verbose {
+			ctx.info(&format!(
+				"  Database: {}",
+				mask_db_password(&config.database.url)
+			));
+			ctx.info(&format!("  Output: {:?}", config.output.directory));
+			ctx.info(&format!("  App Label: {}", config.generation.app_label));
+		}
+
+		// Resolve database URL
+		let db_url = config
+			.database
+			.resolve_url()
+			.map_err(|e| CommandError::ExecutionError(format!("URL resolution error: {}", e)))?;
+
+		// Determine database type and create introspector
+		let db_type = detect_database_type(&db_url)?;
+		ctx.verbose(&format!("Detected database type: {:?}", db_type));
+
+		// Connect and introspect
+		ctx.info("Connecting to database...");
+
+		let schema = match db_type {
+			DatabaseType::Postgres => {
+				#[cfg(feature = "postgres")]
+				{
+					use sqlx::postgres::PgPoolOptions;
+					let pool = PgPoolOptions::new()
+						.max_connections(1)
+						.connect(&db_url)
+						.await
+						.map_err(|e| {
+							CommandError::ExecutionError(format!("Connection error: {}", e))
+						})?;
+
+					let introspector =
+						reinhardt_db::migrations::introspection::PostgresIntrospector::new(pool);
+					introspector.read_schema().await.map_err(|e| {
+						CommandError::ExecutionError(format!("Introspection error: {}", e))
+					})?
+				}
+				#[cfg(not(feature = "postgres"))]
+				{
+					return Err(CommandError::ExecutionError(
+						"PostgreSQL support not enabled. Enable 'postgres' feature.".to_string(),
+					));
+				}
+			}
+			DatabaseType::Mysql => {
+				#[cfg(feature = "mysql")]
+				{
+					use sqlx::mysql::MySqlPoolOptions;
+					let pool = MySqlPoolOptions::new()
+						.max_connections(1)
+						.connect(&db_url)
+						.await
+						.map_err(|e| {
+							CommandError::ExecutionError(format!("Connection error: {}", e))
+						})?;
+
+					let introspector =
+						reinhardt_db::migrations::introspection::MySQLIntrospector::new(pool);
+					introspector.read_schema().await.map_err(|e| {
+						CommandError::ExecutionError(format!("Introspection error: {}", e))
+					})?
+				}
+				#[cfg(not(feature = "mysql"))]
+				{
+					return Err(CommandError::ExecutionError(
+						"MySQL support not enabled. Enable 'mysql' feature.".to_string(),
+					));
+				}
+			}
+			DatabaseType::Sqlite => {
+				#[cfg(feature = "sqlite")]
+				{
+					use sqlx::sqlite::SqlitePoolOptions;
+					let pool = SqlitePoolOptions::new()
+						.max_connections(1)
+						.connect(&db_url)
+						.await
+						.map_err(|e| {
+							CommandError::ExecutionError(format!("Connection error: {}", e))
+						})?;
+
+					let introspector =
+						reinhardt_db::migrations::introspection::SQLiteIntrospector::new(pool);
+					introspector.read_schema().await.map_err(|e| {
+						CommandError::ExecutionError(format!("Introspection error: {}", e))
+					})?
+				}
+				#[cfg(not(feature = "sqlite"))]
+				{
+					return Err(CommandError::ExecutionError(
+						"SQLite support not enabled. Enable 'sqlite' feature.".to_string(),
+					));
+				}
+			}
+		};
+
+		ctx.info(&format!("Found {} tables", schema.tables.len()));
+
+		if schema.tables.is_empty() {
+			ctx.warning("No tables found in database");
+			return Ok(());
+		}
+
+		// Generate code
+		ctx.info("Generating models...");
+		let output = generate_models(&config, &schema)
+			.map_err(|e| CommandError::ExecutionError(format!("Generation error: {}", e)))?;
+
+		if output.files.is_empty() {
+			ctx.warning("No models generated (tables may be filtered out)");
+			return Ok(());
+		}
+
+		ctx.info(&format!("Generated {} files", output.files.len()));
+
+		// Show or write output
+		if is_dry_run {
+			ctx.warning("Dry run mode: showing generated code");
+			let preview = preview_output(&output);
+			println!("{}", preview);
+		} else {
+			write_output(&output, is_force)
+				.map_err(|e| CommandError::ExecutionError(format!("Write error: {}", e)))?;
+
+			for file in &output.files {
+				ctx.success(&format!("  Created: {:?}", file.path));
+			}
+		}
+
+		ctx.success("✓ Introspection complete");
+		Ok(())
+	}
+}
+
+#[cfg(not(feature = "migrations"))]
+#[async_trait]
+impl BaseCommand for IntrospectCommand {
+	fn name(&self) -> &str {
+		"introspect"
+	}
+
+	fn description(&self) -> &str {
+		"Generate Reinhardt ORM models from existing database schema"
+	}
+
+	fn arguments(&self) -> Vec<CommandArgument> {
+		vec![]
+	}
+
+	fn options(&self) -> Vec<CommandOption> {
+		vec![]
+	}
+
+	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		ctx.warning("Migrations feature is not enabled");
+		ctx.info("To use introspect, enable the 'migrations' feature");
+		Err(crate::CommandError::ExecutionError(
+			"introspect command requires 'migrations' feature to be enabled".to_string(),
+		))
+	}
+}
+
+/// Mask password in database URL for display
+#[cfg(feature = "migrations")]
+fn mask_db_password(url: &str) -> String {
+	if let Some(at_pos) = url.find('@')
+		&& let Some(colon_pos) = url[..at_pos].rfind(':')
+		&& let Some(slash_pos) = url[..colon_pos].rfind('/')
+		&& let Some(user_end) = url[slash_pos + 1..].find(':').map(|p| slash_pos + 1 + p)
+	{
+		let prefix = &url[..slash_pos + 1];
+		let user = &url[slash_pos + 1..user_end];
+		let suffix = &url[at_pos..];
+		return format!("{}{}:****{}", prefix, user, suffix);
+	}
+	url.to_string()
+}
+
+/// Detect database type from URL
+#[cfg(feature = "migrations")]
+fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> {
+	if url.starts_with("postgres://") || url.starts_with("postgresql://") {
+		Ok(DatabaseType::Postgres)
+	} else if url.starts_with("mysql://") || url.starts_with("mariadb://") {
+		Ok(DatabaseType::Mysql)
+	} else if url.starts_with("sqlite://") || url.starts_with("sqlite:") {
+		Ok(DatabaseType::Sqlite)
+	} else {
+		Err(crate::CommandError::ExecutionError(format!(
+			"Unknown database type in URL: {}",
+			url
+		)))
+	}
+}
+
 // Additional command metadata and execution tests
 #[cfg(test)]
 mod tests {

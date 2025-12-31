@@ -201,8 +201,9 @@ impl Default for CommandContext {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_command_context_new() {
 		let ctx = CommandContext::new(vec!["arg1".to_string(), "arg2".to_string()]);
 
@@ -214,7 +215,7 @@ mod tests {
 		assert!(ctx.settings.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_default() {
 		let ctx = CommandContext::default();
 
@@ -224,7 +225,7 @@ mod tests {
 		assert!(ctx.settings.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_with_args() {
 		let ctx = CommandContext::new(vec![]).with_args(vec!["new_arg".to_string()]);
 
@@ -232,7 +233,7 @@ mod tests {
 		assert_eq!(ctx.args[0], "new_arg");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_with_options() {
 		let mut options = HashMap::new();
 		options.insert("key".to_string(), vec!["value".to_string()]);
@@ -243,30 +244,32 @@ mod tests {
 		assert_eq!(ctx.option("key"), Some(&"value".to_string()));
 	}
 
-	#[test]
-	fn test_command_context_arg_access() {
+	#[rstest]
+	#[case(0, Some("first"))]
+	#[case(1, Some("second"))]
+	#[case(2, Some("third"))]
+	#[case(3, None)]
+	fn test_command_context_arg_access(#[case] index: usize, #[case] expected: Option<&str>) {
 		let ctx = CommandContext::new(vec![
 			"first".to_string(),
 			"second".to_string(),
 			"third".to_string(),
 		]);
 
-		assert_eq!(ctx.arg(0), Some(&"first".to_string()));
-		assert_eq!(ctx.arg(1), Some(&"second".to_string()));
-		assert_eq!(ctx.arg(2), Some(&"third".to_string()));
-		assert_eq!(ctx.arg(3), None);
+		assert_eq!(ctx.arg(index).map(|s| s.as_str()), expected);
 	}
 
-	#[test]
-	fn test_command_context_option_access() {
+	#[rstest]
+	#[case("single", Some("value"))]
+	#[case("nonexistent", None)]
+	fn test_command_context_option_access(#[case] key: &str, #[case] expected: Option<&str>) {
 		let mut ctx = CommandContext::new(vec![]);
 		ctx.set_option("single".to_string(), "value".to_string());
 
-		assert_eq!(ctx.option("single"), Some(&"value".to_string()));
-		assert_eq!(ctx.option("nonexistent"), None);
+		assert_eq!(ctx.option(key).map(|s| s.as_str()), expected);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_option_values() {
 		let mut ctx = CommandContext::new(vec![]);
 		ctx.set_option_multi(
@@ -289,16 +292,17 @@ mod tests {
 		assert_eq!(ctx.option_values("nonexistent"), None);
 	}
 
-	#[test]
-	fn test_command_context_has_option() {
+	#[rstest]
+	#[case("exists", true)]
+	#[case("does_not_exist", false)]
+	fn test_command_context_has_option(#[case] key: &str, #[case] expected: bool) {
 		let mut ctx = CommandContext::new(vec![]);
 		ctx.set_option("exists".to_string(), "value".to_string());
 
-		assert!(ctx.has_option("exists"));
-		assert!(!ctx.has_option("does_not_exist"));
+		assert_eq!(ctx.has_option(key), expected);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_set_option() {
 		let mut ctx = CommandContext::new(vec![]);
 
@@ -310,7 +314,7 @@ mod tests {
 		assert_eq!(ctx.option("key1"), Some(&"value2".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_set_option_multi() {
 		let mut ctx = CommandContext::new(vec![]);
 
@@ -325,30 +329,27 @@ mod tests {
 		assert_eq!(files[1], "file2.txt");
 	}
 
-	#[test]
-	fn test_command_context_should_skip_checks_with_underscore() {
+	#[rstest]
+	#[case("skip_checks", true)]
+	#[case("skip-checks", true)]
+	fn test_command_context_should_skip_checks_variants(
+		#[case] option_key: &str,
+		#[case] expected: bool,
+	) {
 		let mut ctx = CommandContext::new(vec![]);
-		ctx.set_option("skip_checks".to_string(), "true".to_string());
+		ctx.set_option(option_key.to_string(), "true".to_string());
 
-		assert!(ctx.should_skip_checks());
+		assert_eq!(ctx.should_skip_checks(), expected);
 	}
 
-	#[test]
-	fn test_command_context_should_skip_checks_with_hyphen() {
-		let mut ctx = CommandContext::new(vec![]);
-		ctx.set_option("skip-checks".to_string(), "true".to_string());
-
-		assert!(ctx.should_skip_checks());
-	}
-
-	#[test]
+	#[rstest]
 	fn test_command_context_should_skip_checks_false() {
 		let ctx = CommandContext::new(vec![]);
 
 		assert!(!ctx.should_skip_checks());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_add_arg() {
 		let mut ctx = CommandContext::new(vec!["initial".to_string()]);
 
@@ -359,32 +360,35 @@ mod tests {
 		assert_eq!(ctx.arg(1), Some(&"added".to_string()));
 	}
 
-	#[test]
-	fn test_command_context_verbosity() {
+	#[rstest]
+	#[case(0)]
+	#[case(1)]
+	#[case(3)]
+	#[case(255)]
+	fn test_command_context_verbosity(#[case] level: u8) {
 		let mut ctx = CommandContext::new(vec![]);
 
 		assert_eq!(ctx.verbosity(), 0);
 
-		ctx.set_verbosity(1);
-		assert_eq!(ctx.verbosity(), 1);
-
-		ctx.set_verbosity(3);
-		assert_eq!(ctx.verbosity(), 3);
+		ctx.set_verbosity(level);
+		assert_eq!(ctx.verbosity(), level);
 	}
 
-	#[test]
-	fn test_command_context_confirm_in_test_mode() {
+	#[rstest]
+	#[case(true, true)]
+	#[case(false, false)]
+	fn test_command_context_confirm_in_test_mode(
+		#[case] default_value: bool,
+		#[case] expected: bool,
+	) {
 		let ctx = CommandContext::new(vec![]);
 
 		// In test mode, returns default_value
-		let result = ctx.confirm("Continue?", true).unwrap();
-		assert!(result);
-
-		let result = ctx.confirm("Continue?", false).unwrap();
-		assert!(!result);
+		let result = ctx.confirm("Continue?", default_value).unwrap();
+		assert_eq!(result, expected);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_confirm_with_yes_flag() {
 		let mut ctx = CommandContext::new(vec![]);
 		ctx.set_option("yes".to_string(), "true".to_string());
@@ -396,20 +400,21 @@ mod tests {
 		assert!(!result);
 	}
 
-	#[test]
-	fn test_command_context_input_in_test_mode() {
+	#[rstest]
+	#[case(Some("default_name"), "default_name")]
+	#[case(None, "")]
+	fn test_command_context_input_in_test_mode(
+		#[case] default_value: Option<&str>,
+		#[case] expected: &str,
+	) {
 		let ctx = CommandContext::new(vec![]);
 
 		// In test mode, returns default_value
-		let result = ctx.input("Enter name:", Some("default_name")).unwrap();
-		assert_eq!(result, "default_name");
-
-		// With None default, returns empty string
-		let result = ctx.input("Enter name:", None).unwrap();
-		assert_eq!(result, "");
+		let result = ctx.input("Enter name:", default_value).unwrap();
+		assert_eq!(result, expected);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_input_with_yes_flag() {
 		let mut ctx = CommandContext::new(vec![]);
 		ctx.set_option("yes".to_string(), "true".to_string());
@@ -419,7 +424,7 @@ mod tests {
 		assert_eq!(result, "auto");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_clone() {
 		let mut ctx = CommandContext::new(vec!["arg".to_string()]);
 		ctx.set_option("key".to_string(), "value".to_string());
@@ -432,7 +437,7 @@ mod tests {
 		assert_eq!(cloned.verbosity, ctx.verbosity);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_debug() {
 		let ctx = CommandContext::new(vec!["test".to_string()]);
 
@@ -442,7 +447,7 @@ mod tests {
 		assert!(debug_str.contains("test"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_command_context_builder_chain() {
 		let mut options = HashMap::new();
 		options.insert("format".to_string(), vec!["json".to_string()]);

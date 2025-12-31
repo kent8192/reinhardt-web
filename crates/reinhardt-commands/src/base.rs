@@ -264,6 +264,7 @@ impl CommandOption {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestCommand;
 
@@ -282,6 +283,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_command_basic() {
 		let cmd = TestCommand;
