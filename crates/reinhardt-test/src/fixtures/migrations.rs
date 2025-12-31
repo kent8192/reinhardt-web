@@ -357,14 +357,16 @@ mod tests {
 		migration_registry
 			.register(Migration {
 				initial: None,
-				app_label: "test_app",
-				name: "0001_initial",
+				app_label: "test_app".to_string(),
+				name: "0001_initial".to_string(),
 				operations: vec![],
 				dependencies: vec![],
 				atomic: true,
 				replaces: vec![],
 				state_only: false,
 				database_only: false,
+				swappable_dependencies: vec![],
+				optional_dependencies: vec![],
 			})
 			.unwrap();
 

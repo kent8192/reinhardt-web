@@ -47,8 +47,8 @@ use reinhardt_db::orm::fields::FieldKwarg;
 use reinhardt_db::orm::inspection::{FieldInfo, RelationInfo};
 use reinhardt_db::orm::relationship::RelationshipType;
 use reinhardt_migrations::{
-	ColumnDefinition, Constraint, Migration, Operation, executor::DatabaseMigrationExecutor,
-	field_type_string_to_field_type,
+	ColumnDefinition, Constraint, ForeignKeyAction, Migration, Operation,
+	executor::DatabaseMigrationExecutor, field_type_string_to_field_type, to_snake_case,
 };
 
 /// Error type for schema operations
@@ -106,21 +106,17 @@ pub fn field_info_to_column_definition(
 	let field_type = field_type_string_to_field_type(&field_info.field_type, &attributes)
 		.map_err(SchemaError::FieldConversion)?;
 
-	// Leak the name string to get 'static lifetime (acceptable for test fixtures)
-	let name: &'static str = Box::leak(field_info.name.clone().into_boxed_str());
+	let name = field_info.name.clone();
 
 	// Handle default value
-	let default: Option<&'static str> = field_info.default.as_ref().map(|d| {
-		let default_str = match d {
-			FieldKwarg::String(s) => format!("'{}'", s),
-			FieldKwarg::Int(n) => n.to_string(),
-			FieldKwarg::Uint(n) => n.to_string(),
-			FieldKwarg::Bool(b) => b.to_string(),
-			FieldKwarg::Float(f) => f.to_string(),
-			FieldKwarg::Choices(_) => "NULL".to_string(),
-			FieldKwarg::Callable(s) => s.clone(),
-		};
-		Box::leak(default_str.into_boxed_str()) as &'static str
+	let default: Option<String> = field_info.default.as_ref().map(|d| match d {
+		FieldKwarg::String(s) => format!("'{}'", s),
+		FieldKwarg::Int(n) => n.to_string(),
+		FieldKwarg::Uint(n) => n.to_string(),
+		FieldKwarg::Bool(b) => b.to_string(),
+		FieldKwarg::Float(f) => f.to_string(),
+		FieldKwarg::Choices(_) => "NULL".to_string(),
+		FieldKwarg::Callable(s) => s.clone(),
 	});
 
 	// Determine auto_increment from attributes
@@ -169,6 +165,216 @@ pub fn extract_model_dependencies(relationship_metadata: &[RelationInfo]) -> Vec
 			_ => None,
 		})
 		.collect()
+}
+
+/// Resolve table name for a model name
+///
+/// This function resolves a model name to its corresponding table name by:
+/// 1. First looking up in the provided model_infos (if available)
+/// 2. Falling back to snake_case conversion if not found
+///
+/// # Arguments
+///
+/// * `model_name` - The model name to resolve (e.g., "User", "BlogPost")
+/// * `model_infos` - Optional slice of ModelSchemaInfo for lookup
+///
+/// # Returns
+///
+/// The resolved table name
+pub fn resolve_table_name_for_model(
+	model_name: &str,
+	model_infos: Option<&[ModelSchemaInfo]>,
+) -> String {
+	if let Some(infos) = model_infos {
+		for info in infos {
+			if info.name == model_name {
+				return info.table_name.to_string();
+			}
+		}
+	}
+	// Fall back to snake_case conversion
+	to_snake_case(model_name)
+}
+
+/// Parse a string to ForeignKeyAction
+///
+/// Converts common FK action strings (case-insensitive) to the corresponding
+/// ForeignKeyAction enum variant.
+///
+/// # Arguments
+///
+/// * `s` - The string to parse (e.g., "CASCADE", "SET NULL", "RESTRICT")
+///
+/// # Returns
+///
+/// * `ForeignKeyAction` - The parsed action, defaults to `Cascade` if unrecognized
+pub fn parse_fk_action(s: &str) -> ForeignKeyAction {
+	match s.to_uppercase().as_str() {
+		"CASCADE" => ForeignKeyAction::Cascade,
+		"SET NULL" | "SETNULL" | "SET_NULL" => ForeignKeyAction::SetNull,
+		"SET DEFAULT" | "SETDEFAULT" | "SET_DEFAULT" => ForeignKeyAction::SetDefault,
+		"RESTRICT" => ForeignKeyAction::Restrict,
+		"NO ACTION" | "NOACTION" | "NO_ACTION" => ForeignKeyAction::NoAction,
+		_ => ForeignKeyAction::Cascade,
+	}
+}
+
+/// Extract FK actions (on_delete, on_update) from field attributes
+///
+/// Looks for "on_delete" and "on_update" keys in the field attributes HashMap
+/// and converts them to ForeignKeyAction values.
+///
+/// # Arguments
+///
+/// * `field_attrs` - The field attributes containing potential FK action values
+///
+/// # Returns
+///
+/// * `(ForeignKeyAction, ForeignKeyAction)` - Tuple of (on_delete, on_update) actions.
+///   Defaults to (Cascade, Cascade) if not specified.
+pub fn extract_fk_actions(
+	field_attrs: &HashMap<String, FieldKwarg>,
+) -> (ForeignKeyAction, ForeignKeyAction) {
+	let on_delete = field_attrs
+		.get("on_delete")
+		.and_then(|v| match v {
+			FieldKwarg::String(s) => Some(parse_fk_action(s)),
+			_ => None,
+		})
+		.unwrap_or(ForeignKeyAction::Cascade);
+
+	let on_update = field_attrs
+		.get("on_update")
+		.and_then(|v| match v {
+			FieldKwarg::String(s) => Some(parse_fk_action(s)),
+			_ => None,
+		})
+		.unwrap_or(ForeignKeyAction::Cascade);
+
+	(on_delete, on_update)
+}
+
+/// Infer table name from model name using snake_case conversion
+///
+/// This function converts a PascalCase model name to a snake_case table name.
+/// For example: "BlogPost" -> "blog_post", "UserProfile" -> "user_profile"
+///
+/// # Arguments
+///
+/// * `model_name` - The model name to convert
+///
+/// # Returns
+///
+/// * `String` - The inferred table name in snake_case
+pub fn infer_table_name(model_name: &str) -> String {
+	to_snake_case(model_name)
+}
+
+/// Find field info for a relationship by matching FK column name
+///
+/// This helper finds the FieldInfo that corresponds to a relationship's
+/// foreign key column, allowing us to extract FK actions from field attributes.
+fn find_field_info_for_relation<'a>(
+	relation_info: &RelationInfo,
+	fields: &'a [FieldInfo],
+) -> Option<&'a FieldInfo> {
+	let fk_column = relation_info.foreign_key.as_deref().unwrap_or("");
+
+	// Try to find by explicit foreign_key name
+	if !fk_column.is_empty()
+		&& let Some(field) = fields.iter().find(|f| f.name == fk_column)
+	{
+		return Some(field);
+	}
+
+	// Try to find by derived name (relation_name + "_id")
+	let derived_fk = format!("{}_id", relation_info.name);
+	fields.iter().find(|f| f.name == derived_fk)
+}
+
+/// Convert RelationInfo to Constraint with FK action extraction from field attributes
+///
+/// This function converts relationship metadata to a constraint definition.
+/// Only ManyToOne and OneToOne relationships generate constraints on the source table.
+/// FK actions (on_delete, on_update) are extracted from the corresponding field's attributes.
+///
+/// # Arguments
+///
+/// * `relation_info` - The relationship information to convert
+/// * `source_table_name` - The name of the source table
+/// * `model_infos` - Optional slice of ModelSchemaInfo for resolving related table names
+/// * `fields` - Optional slice of FieldInfo for extracting FK actions from field attributes
+///
+/// # Returns
+///
+/// * `Some(Constraint)` - For ManyToOne and OneToOne relationships
+/// * `None` - For OneToMany and ManyToMany relationships (FK is on the related table)
+pub fn relation_info_to_constraint(
+	relation_info: &RelationInfo,
+	source_table_name: &str,
+	model_infos: Option<&[ModelSchemaInfo]>,
+	fields: Option<&[FieldInfo]>,
+) -> Option<Constraint> {
+	// Extract FK actions from field attributes if available
+	let (on_delete, on_update) = fields
+		.and_then(|f| find_field_info_for_relation(relation_info, f))
+		.map(|field_info| extract_fk_actions(&field_info.attributes))
+		.unwrap_or((ForeignKeyAction::Cascade, ForeignKeyAction::Cascade));
+
+	match relation_info.relationship_type {
+		RelationshipType::ManyToOne => {
+			let referenced_table =
+				resolve_table_name_for_model(&relation_info.related_model, model_infos);
+
+			// Use the explicit foreign_key if provided, otherwise derive from relationship name
+			let fk_column = relation_info
+				.foreign_key
+				.clone()
+				.unwrap_or_else(|| format!("{}_id", relation_info.name));
+
+			let constraint_name = format!(
+				"fk_{}_{}_{}_id",
+				source_table_name, fk_column, referenced_table
+			);
+
+			Some(Constraint::ForeignKey {
+				name: constraint_name,
+				columns: vec![fk_column],
+				referenced_table,
+				referenced_columns: vec!["id".to_string()],
+				on_delete,
+				on_update,
+				deferrable: None,
+			})
+		}
+		RelationshipType::OneToOne => {
+			let referenced_table =
+				resolve_table_name_for_model(&relation_info.related_model, model_infos);
+
+			// Use the explicit foreign_key if provided, otherwise derive from relationship name
+			let fk_column = relation_info
+				.foreign_key
+				.clone()
+				.unwrap_or_else(|| format!("{}_id", relation_info.name));
+
+			let constraint_name = format!(
+				"oo_{}_{}_{}_id",
+				source_table_name, fk_column, referenced_table
+			);
+
+			Some(Constraint::OneToOne {
+				name: constraint_name,
+				column: fk_column,
+				referenced_table,
+				referenced_column: "id".to_string(),
+				on_delete,
+				on_update,
+				deferrable: None,
+			})
+		}
+		// OneToMany and ManyToMany don't create FK constraints on the source table
+		RelationshipType::OneToMany | RelationshipType::ManyToMany => None,
+	}
 }
 
 /// Resolve model creation order using topological sort
@@ -285,6 +491,7 @@ impl ModelSchemaInfo {
 ///
 /// This function extracts metadata from the Model trait implementation
 /// and generates a CreateTable operation that can be executed by MigrationExecutor.
+/// FK constraints are automatically generated from relationship metadata.
 ///
 /// # Type Parameters
 ///
@@ -292,25 +499,59 @@ impl ModelSchemaInfo {
 ///
 /// # Returns
 ///
-/// * `Ok(Operation)` - The CreateTable operation
+/// * `Ok(Operation)` - The CreateTable operation with auto-generated FK constraints
 /// * `Err(SchemaError)` - Error if field conversion fails
 pub fn create_table_operation_from_model<M: Model>() -> Result<Operation, SchemaError> {
+	create_table_operation_from_model_with_context::<M>(None)
+}
+
+/// Create a CreateTable Operation from a Model type with model context
+///
+/// This variant accepts optional model_infos for accurate FK constraint generation
+/// when creating multiple related tables. FK actions (on_delete, on_update) are
+/// automatically extracted from field attributes.
+///
+/// # Type Parameters
+///
+/// * `M` - A type implementing the Model trait
+///
+/// # Arguments
+///
+/// * `model_infos` - Optional slice of ModelSchemaInfo for resolving related table names
+///
+/// # Returns
+///
+/// * `Ok(Operation)` - The CreateTable operation with auto-generated FK constraints
+/// * `Err(SchemaError)` - Error if field conversion fails
+pub fn create_table_operation_from_model_with_context<M: Model>(
+	model_infos: Option<&[ModelSchemaInfo]>,
+) -> Result<Operation, SchemaError> {
 	let table_name: &'static str = Box::leak(M::table_name().to_string().into_boxed_str());
 
+	// Get field metadata for FK action extraction
+	let field_metadata = M::field_metadata();
+
 	// Convert field metadata to column definitions
-	let columns: Vec<ColumnDefinition> = M::field_metadata()
+	let columns: Vec<ColumnDefinition> = field_metadata
 		.iter()
 		.map(field_info_to_column_definition)
 		.collect::<Result<Vec<_>, _>>()?;
 
-	// For now, we don't automatically convert constraints
-	// FK constraints can be added separately after all tables are created
-	let constraints: Vec<Constraint> = Vec::new();
+	// Generate FK constraints from relationship metadata with FK actions from field attributes
+	let constraints: Vec<Constraint> = M::relationship_metadata()
+		.iter()
+		.filter_map(|rel| {
+			relation_info_to_constraint(rel, table_name, model_infos, Some(&field_metadata))
+		})
+		.collect();
 
 	Ok(Operation::CreateTable {
-		name: table_name,
+		name: table_name.to_string(),
 		columns,
 		constraints,
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	})
 }
 
@@ -334,8 +575,8 @@ pub fn create_migration_from_model<M: Model>(
 	let operation = create_table_operation_from_model::<M>()?;
 
 	Ok(Migration {
-		name: Box::leak(migration_name.to_string().into_boxed_str()),
-		app_label: Box::leak(M::app_label().to_string().into_boxed_str()),
+		name: migration_name.to_string(),
+		app_label: M::app_label().to_string(),
 		operations: vec![operation],
 		dependencies: vec![],
 		replaces: vec![],
@@ -343,13 +584,16 @@ pub fn create_migration_from_model<M: Model>(
 		initial: Some(true),
 		state_only: false,
 		database_only: false,
+		optional_dependencies: vec![],
+		swappable_dependencies: vec![],
 	})
 }
 
 /// Create table operations from multiple models with dependency resolution
 ///
 /// This function creates CreateTable operations for multiple models,
-/// ordering them based on foreign key dependencies.
+/// ordering them based on foreign key dependencies. FK constraints are
+/// automatically generated from relationship metadata.
 ///
 /// # Arguments
 ///
@@ -357,7 +601,7 @@ pub fn create_migration_from_model<M: Model>(
 ///
 /// # Returns
 ///
-/// * `Ok(Vec<Operation>)` - Operations in dependency-resolved order
+/// * `Ok(Vec<Operation>)` - Operations in dependency-resolved order with FK constraints
 /// * `Err(SchemaError)` - Error if resolution or conversion fails
 pub fn create_table_operations_from_models(
 	model_infos: Vec<ModelSchemaInfo>,
@@ -386,10 +630,27 @@ pub fn create_table_operations_from_models(
 				.map(field_info_to_column_definition)
 				.collect::<Result<Vec<_>, _>>()?;
 
+			// Generate FK constraints from relationship metadata with FK actions from field attributes
+			let constraints: Vec<Constraint> = info
+				.relationships
+				.iter()
+				.filter_map(|rel| {
+					relation_info_to_constraint(
+						rel,
+						info.table_name,
+						Some(&model_infos),
+						Some(&info.fields),
+					)
+				})
+				.collect();
+
 			operations.push(Operation::CreateTable {
-				name: info.table_name,
+				name: info.table_name.to_string(),
 				columns,
-				constraints: Vec::new(),
+				constraints,
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
 			});
 		}
 	}
@@ -453,8 +714,8 @@ pub async fn create_tables_for_models(
 	}
 
 	let migration = Migration {
-		name: "0001_auto_batch_create",
-		app_label: "test",
+		name: "0001_auto_batch_create".to_string(),
+		app_label: "test".to_string(),
 		operations,
 		dependencies: vec![],
 		replaces: vec![],
@@ -462,6 +723,8 @@ pub async fn create_tables_for_models(
 		initial: Some(true),
 		state_only: false,
 		database_only: false,
+		optional_dependencies: vec![],
+		swappable_dependencies: vec![],
 	};
 
 	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
@@ -476,8 +739,9 @@ pub async fn create_tables_for_models(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_resolve_model_order_simple() {
 		let models = vec![
 			("User".to_string(), vec![]),
@@ -500,7 +764,7 @@ mod tests {
 		assert!(post_idx < comment_idx);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_model_order_circular() {
 		let models = vec![
 			("A".to_string(), vec!["B".to_string()]),
@@ -511,7 +775,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_model_order_external_deps() {
 		// Dependencies on models not in the set should be ignored
 		let models = vec![
@@ -523,7 +787,7 @@ mod tests {
 		assert_eq!(order.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_model_dependencies() {
 		use reinhardt_db::orm::inspection::RelationInfo;
 
@@ -545,5 +809,336 @@ mod tests {
 		// Only ManyToOne creates a dependency
 		assert_eq!(deps.len(), 1);
 		assert!(deps.contains(&"User".to_string()));
+	}
+
+	#[rstest]
+	fn test_resolve_table_name_for_model_with_model_infos() {
+		let model_infos = vec![ModelSchemaInfo {
+			name: "User".to_string(),
+			table_name: "custom_users",
+			app_label: "test",
+			fields: vec![],
+			relationships: vec![],
+		}];
+
+		let table_name = resolve_table_name_for_model("User", Some(&model_infos));
+		assert_eq!(table_name, "custom_users");
+	}
+
+	#[rstest]
+	fn test_resolve_table_name_for_model_fallback_to_snake_case() {
+		let table_name = resolve_table_name_for_model("BlogPost", None);
+		assert_eq!(table_name, "blog_post");
+	}
+
+	#[rstest]
+	fn test_resolve_table_name_for_model_not_found_in_infos() {
+		let model_infos = vec![ModelSchemaInfo {
+			name: "User".to_string(),
+			table_name: "users",
+			app_label: "test",
+			fields: vec![],
+			relationships: vec![],
+		}];
+
+		// Model not in infos falls back to snake_case
+		let table_name = resolve_table_name_for_model("BlogPost", Some(&model_infos));
+		assert_eq!(table_name, "blog_post");
+	}
+
+	#[rstest]
+	fn test_relation_info_to_constraint_many_to_one() {
+		let relation = RelationInfo::new("author", RelationshipType::ManyToOne, "User")
+			.with_foreign_key("author_id");
+
+		let constraint = relation_info_to_constraint(&relation, "posts", None, None);
+
+		assert!(constraint.is_some());
+		match constraint.unwrap() {
+			Constraint::ForeignKey {
+				name,
+				columns,
+				referenced_table,
+				referenced_columns,
+				on_delete,
+				on_update,
+				..
+			} => {
+				assert_eq!(name, "fk_posts_author_id_user_id");
+				assert_eq!(columns, vec!["author_id".to_string()]);
+				assert_eq!(referenced_table, "user");
+				assert_eq!(referenced_columns, vec!["id".to_string()]);
+				assert!(matches!(on_delete, ForeignKeyAction::Cascade));
+				assert!(matches!(on_update, ForeignKeyAction::Cascade));
+			}
+			_ => panic!("Expected ForeignKey constraint"),
+		}
+	}
+
+	#[rstest]
+	fn test_relation_info_to_constraint_many_to_one_without_explicit_fk() {
+		let relation = RelationInfo::new("author", RelationshipType::ManyToOne, "User");
+
+		let constraint = relation_info_to_constraint(&relation, "posts", None, None);
+
+		assert!(constraint.is_some());
+		match constraint.unwrap() {
+			Constraint::ForeignKey { columns, .. } => {
+				// Should derive FK column from relationship name
+				assert_eq!(columns, vec!["author_id".to_string()]);
+			}
+			_ => panic!("Expected ForeignKey constraint"),
+		}
+	}
+
+	#[rstest]
+	fn test_relation_info_to_constraint_one_to_one() {
+		let relation = RelationInfo::new("profile", RelationshipType::OneToOne, "UserProfile")
+			.with_foreign_key("profile_id");
+
+		let constraint = relation_info_to_constraint(&relation, "users", None, None);
+
+		assert!(constraint.is_some());
+		match constraint.unwrap() {
+			Constraint::OneToOne {
+				name,
+				column,
+				referenced_table,
+				referenced_column,
+				on_delete,
+				on_update,
+				..
+			} => {
+				assert_eq!(name, "oo_users_profile_id_user_profile_id");
+				assert_eq!(column, "profile_id");
+				assert_eq!(referenced_table, "user_profile");
+				assert_eq!(referenced_column, "id");
+				assert!(matches!(on_delete, ForeignKeyAction::Cascade));
+				assert!(matches!(on_update, ForeignKeyAction::Cascade));
+			}
+			_ => panic!("Expected OneToOne constraint"),
+		}
+	}
+
+	#[rstest]
+	fn test_relation_info_to_constraint_one_to_many_returns_none() {
+		let relation = RelationInfo::new("posts", RelationshipType::OneToMany, "Post");
+
+		let constraint = relation_info_to_constraint(&relation, "users", None, None);
+
+		// OneToMany should not create a constraint on the source table
+		assert!(constraint.is_none());
+	}
+
+	#[rstest]
+	fn test_relation_info_to_constraint_many_to_many_returns_none() {
+		let relation = RelationInfo::new("tags", RelationshipType::ManyToMany, "Tag");
+
+		let constraint = relation_info_to_constraint(&relation, "posts", None, None);
+
+		// ManyToMany should not create a constraint on the source table
+		assert!(constraint.is_none());
+	}
+
+	#[rstest]
+	fn test_relation_info_to_constraint_with_model_infos() {
+		let model_infos = vec![ModelSchemaInfo {
+			name: "User".to_string(),
+			table_name: "app_users",
+			app_label: "test",
+			fields: vec![],
+			relationships: vec![],
+		}];
+
+		let relation = RelationInfo::new("author", RelationshipType::ManyToOne, "User")
+			.with_foreign_key("author_id");
+
+		let constraint = relation_info_to_constraint(&relation, "posts", Some(&model_infos), None);
+
+		assert!(constraint.is_some());
+		match constraint.unwrap() {
+			Constraint::ForeignKey {
+				referenced_table, ..
+			} => {
+				// Should use table name from model_infos
+				assert_eq!(referenced_table, "app_users");
+			}
+			_ => panic!("Expected ForeignKey constraint"),
+		}
+	}
+
+	#[rstest]
+	fn test_parse_fk_action_cascade() {
+		assert!(matches!(
+			parse_fk_action("CASCADE"),
+			ForeignKeyAction::Cascade
+		));
+		assert!(matches!(
+			parse_fk_action("cascade"),
+			ForeignKeyAction::Cascade
+		));
+		assert!(matches!(
+			parse_fk_action("Cascade"),
+			ForeignKeyAction::Cascade
+		));
+	}
+
+	#[rstest]
+	fn test_parse_fk_action_set_null() {
+		assert!(matches!(
+			parse_fk_action("SET NULL"),
+			ForeignKeyAction::SetNull
+		));
+		assert!(matches!(
+			parse_fk_action("SETNULL"),
+			ForeignKeyAction::SetNull
+		));
+		assert!(matches!(
+			parse_fk_action("SET_NULL"),
+			ForeignKeyAction::SetNull
+		));
+	}
+
+	#[rstest]
+	fn test_parse_fk_action_restrict() {
+		assert!(matches!(
+			parse_fk_action("RESTRICT"),
+			ForeignKeyAction::Restrict
+		));
+	}
+
+	#[rstest]
+	fn test_parse_fk_action_no_action() {
+		assert!(matches!(
+			parse_fk_action("NO ACTION"),
+			ForeignKeyAction::NoAction
+		));
+		assert!(matches!(
+			parse_fk_action("NOACTION"),
+			ForeignKeyAction::NoAction
+		));
+		assert!(matches!(
+			parse_fk_action("NO_ACTION"),
+			ForeignKeyAction::NoAction
+		));
+	}
+
+	#[rstest]
+	fn test_parse_fk_action_set_default() {
+		assert!(matches!(
+			parse_fk_action("SET DEFAULT"),
+			ForeignKeyAction::SetDefault
+		));
+		assert!(matches!(
+			parse_fk_action("SETDEFAULT"),
+			ForeignKeyAction::SetDefault
+		));
+		assert!(matches!(
+			parse_fk_action("SET_DEFAULT"),
+			ForeignKeyAction::SetDefault
+		));
+	}
+
+	#[rstest]
+	fn test_parse_fk_action_unknown_defaults_to_cascade() {
+		assert!(matches!(
+			parse_fk_action("UNKNOWN"),
+			ForeignKeyAction::Cascade
+		));
+		assert!(matches!(parse_fk_action(""), ForeignKeyAction::Cascade));
+	}
+
+	#[rstest]
+	fn test_extract_fk_actions_with_both_actions() {
+		let mut attrs = HashMap::new();
+		attrs.insert(
+			"on_delete".to_string(),
+			FieldKwarg::String("SET NULL".to_string()),
+		);
+		attrs.insert(
+			"on_update".to_string(),
+			FieldKwarg::String("RESTRICT".to_string()),
+		);
+
+		let (on_delete, on_update) = extract_fk_actions(&attrs);
+		assert!(matches!(on_delete, ForeignKeyAction::SetNull));
+		assert!(matches!(on_update, ForeignKeyAction::Restrict));
+	}
+
+	#[rstest]
+	fn test_extract_fk_actions_with_only_on_delete() {
+		let mut attrs = HashMap::new();
+		attrs.insert(
+			"on_delete".to_string(),
+			FieldKwarg::String("RESTRICT".to_string()),
+		);
+
+		let (on_delete, on_update) = extract_fk_actions(&attrs);
+		assert!(matches!(on_delete, ForeignKeyAction::Restrict));
+		// on_update should default to Cascade
+		assert!(matches!(on_update, ForeignKeyAction::Cascade));
+	}
+
+	#[rstest]
+	fn test_extract_fk_actions_empty_attrs_defaults_to_cascade() {
+		let attrs = HashMap::new();
+
+		let (on_delete, on_update) = extract_fk_actions(&attrs);
+		assert!(matches!(on_delete, ForeignKeyAction::Cascade));
+		assert!(matches!(on_update, ForeignKeyAction::Cascade));
+	}
+
+	#[rstest]
+	fn test_infer_table_name() {
+		assert_eq!(infer_table_name("BlogPost"), "blog_post");
+		assert_eq!(infer_table_name("UserProfile"), "user_profile");
+		assert_eq!(infer_table_name("User"), "user");
+	}
+
+	#[rstest]
+	fn test_relation_info_to_constraint_with_field_attrs() {
+		// Create field info with on_delete attribute
+		let mut attrs = HashMap::new();
+		attrs.insert(
+			"on_delete".to_string(),
+			FieldKwarg::String("SET NULL".to_string()),
+		);
+		attrs.insert(
+			"on_update".to_string(),
+			FieldKwarg::String("NO ACTION".to_string()),
+		);
+
+		let field_info = FieldInfo {
+			name: "author_id".to_string(),
+			field_type: "BigInteger".to_string(),
+			nullable: true,
+			primary_key: false,
+			unique: false,
+			blank: false,
+			editable: true,
+			default: None,
+			db_default: None,
+			db_column: None,
+			choices: None,
+			attributes: attrs,
+		};
+
+		let relation = RelationInfo::new("author", RelationshipType::ManyToOne, "User")
+			.with_foreign_key("author_id");
+
+		let constraint = relation_info_to_constraint(&relation, "posts", None, Some(&[field_info]));
+
+		assert!(constraint.is_some());
+		match constraint.unwrap() {
+			Constraint::ForeignKey {
+				on_delete,
+				on_update,
+				..
+			} => {
+				assert!(matches!(on_delete, ForeignKeyAction::SetNull));
+				assert!(matches!(on_update, ForeignKeyAction::NoAction));
+			}
+			_ => panic!("Expected ForeignKey constraint"),
+		}
 	}
 }

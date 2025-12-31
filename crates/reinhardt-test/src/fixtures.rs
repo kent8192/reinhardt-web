@@ -90,6 +90,7 @@
 //! ```
 
 // Module declarations
+pub mod client;
 pub mod loader;
 pub mod mock;
 pub mod server;
@@ -117,6 +118,9 @@ pub mod schema;
 pub mod di;
 
 // Re-export commonly used items from submodules
+
+// From client module
+pub use client::api_client_from_url;
 
 // From loader module
 pub use loader::{

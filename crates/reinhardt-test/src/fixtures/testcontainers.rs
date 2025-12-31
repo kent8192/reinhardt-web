@@ -1615,7 +1615,7 @@ pub async fn postgres_with_apps_migrations(
 	let migrations: Vec<_> = global_registry()
 		.all_migrations()
 		.into_iter()
-		.filter(|m| app_labels.contains(&m.app_label))
+		.filter(|m| app_labels.contains(&m.app_label.as_str()))
 		.collect();
 
 	if !migrations.is_empty() {
@@ -1713,7 +1713,7 @@ pub async fn mysql_with_apps_migrations(
 	let migrations: Vec<_> = global_registry()
 		.all_migrations()
 		.into_iter()
-		.filter(|m| app_labels.contains(&m.app_label))
+		.filter(|m| app_labels.contains(&m.app_label.as_str()))
 		.collect();
 
 	if !migrations.is_empty() {
@@ -1802,7 +1802,7 @@ pub async fn sqlite_with_apps_migrations(
 	let migrations: Vec<_> = global_registry()
 		.all_migrations()
 		.into_iter()
-		.filter(|m| app_labels.contains(&m.app_label))
+		.filter(|m| app_labels.contains(&m.app_label.as_str()))
 		.collect();
 
 	if !migrations.is_empty() {

@@ -1,7 +1,7 @@
 //! Test response wrapper with assertion helpers
 
 use bytes::Bytes;
-use http::{HeaderMap, Response, StatusCode};
+use http::{HeaderMap, Response, StatusCode, Version};
 use http_body_util::{BodyExt, Full};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -11,6 +11,7 @@ pub struct TestResponse {
 	status: StatusCode,
 	headers: HeaderMap,
 	body: Bytes,
+	version: Version,
 }
 
 impl TestResponse {
@@ -47,22 +48,63 @@ impl TestResponse {
 			status: parts.status,
 			headers: parts.headers,
 			body: body_bytes,
+			version: parts.version,
 		}
 	}
+
+	/// Create a test response with status, headers, and body (defaults to HTTP/1.1)
 	pub fn with_body(status: StatusCode, headers: HeaderMap, body: Bytes) -> Self {
 		Self {
 			status,
 			headers,
 			body,
+			version: Version::HTTP_11,
+		}
+	}
+
+	/// Create a test response with status, headers, body, and HTTP version
+	pub fn with_body_and_version(
+		status: StatusCode,
+		headers: HeaderMap,
+		body: Bytes,
+		version: Version,
+	) -> Self {
+		Self {
+			status,
+			headers,
+			body,
+			version,
 		}
 	}
 	/// Get response status
 	pub fn status(&self) -> StatusCode {
 		self.status
 	}
+
 	/// Get response status code as u16
 	pub fn status_code(&self) -> u16 {
 		self.status.as_u16()
+	}
+
+	/// Get HTTP version of the response
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_test::response::TestResponse;
+	/// use http::{StatusCode, HeaderMap, Version};
+	/// use bytes::Bytes;
+	///
+	/// let response = TestResponse::with_body_and_version(
+	///     StatusCode::OK,
+	///     HeaderMap::new(),
+	///     Bytes::new(),
+	///     Version::HTTP_2,
+	/// );
+	/// assert_eq!(response.version(), Version::HTTP_2);
+	/// ```
+	pub fn version(&self) -> Version {
+		self.version
 	}
 	/// Get response headers
 	pub fn headers(&self) -> &HeaderMap {

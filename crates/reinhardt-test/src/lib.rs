@@ -168,12 +168,12 @@ pub use reinhardt_db::orm::relationship;
 pub use reinhardt_db::orm::{FieldSelector, Model};
 
 pub use assertions::*;
-pub use client::{APIClient, ClientError};
+pub use client::{APIClient, APIClientBuilder, ClientError, HttpVersion};
 pub use debug::{DebugEntry, DebugPanel, DebugToolbar, SqlQuery, TimingInfo};
 pub use factory::{APIRequestFactory, RequestBuilder};
 pub use fixtures::{
-	Factory, FactoryBuilder, FixtureError, FixtureLoader, FixtureResult, random_test_key,
-	test_config_value,
+	Factory, FactoryBuilder, FixtureError, FixtureLoader, FixtureResult, api_client_from_url,
+	random_test_key, test_config_value,
 };
 
 #[cfg(feature = "testcontainers")]
@@ -225,7 +225,8 @@ pub mod prelude {
 	pub use super::debug::DebugToolbar;
 	pub use super::factory::APIRequestFactory;
 	pub use super::fixtures::{
-		Factory, FactoryBuilder, FixtureLoader, random_test_key, test_config_value,
+		Factory, FactoryBuilder, FixtureLoader, api_client_from_url, random_test_key,
+		test_config_value,
 	};
 
 	#[cfg(feature = "testcontainers")]
@@ -251,7 +252,9 @@ pub mod prelude {
 		BodyEchoHandler, DelayedHandler, EchoPathHandler, LargeResponseHandler, MethodEchoHandler,
 		RouterHandler, StatusCodeHandler, shutdown_test_server, spawn_test_server,
 	};
-	pub use super::testcase::APITestCase;
+	#[cfg(feature = "testcontainers")]
+	pub use super::testcase::TransactionHandle;
+	pub use super::testcase::{APITestCase, TeardownError};
 	pub use super::views::{
 		ApiTestModel, ErrorTestView, SimpleTestView, TestModel, create_api_test_objects,
 		create_test_objects,
@@ -444,8 +447,8 @@ macro_rules! impl_test_model {
 					$app
 				}
 
-				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-					self.id.as_ref()
+				fn primary_key(&self) -> Option<Self::PrimaryKey> {
+					self.id
 				}
 
 				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -531,8 +534,8 @@ macro_rules! impl_test_model {
 					$app
 				}
 
-				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-					self.id.as_ref()
+				fn primary_key(&self) -> Option<Self::PrimaryKey> {
+					self.id
 				}
 
 				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -599,8 +602,8 @@ macro_rules! impl_test_model {
 					$app
 				}
 
-				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-					self.id.as_ref()
+				fn primary_key(&self) -> Option<Self::PrimaryKey> {
+					self.id
 				}
 
 				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -659,8 +662,8 @@ macro_rules! impl_test_model {
 					$app
 				}
 
-				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-					self.id.as_ref()
+				fn primary_key(&self) -> Option<Self::PrimaryKey> {
+					self.id
 				}
 
 				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -709,8 +712,8 @@ macro_rules! impl_test_model {
 					$app
 				}
 
-				fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-					Some(&self.id)
+				fn primary_key(&self) -> Option<Self::PrimaryKey> {
+					Some(self.id)
 				}
 
 				fn set_primary_key(&mut self, value: Self::PrimaryKey) {

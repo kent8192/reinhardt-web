@@ -10,10 +10,23 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
 use crate::response::TestResponse;
+
+/// HTTP version configuration for APIClient
+#[derive(Debug, Clone, Copy, Default)]
+pub enum HttpVersion {
+	/// Use HTTP/1.1 only
+	Http1Only,
+	/// Use HTTP/2 with prior knowledge (no upgrade negotiation)
+	Http2PriorKnowledge,
+	/// Auto-negotiate (default)
+	#[default]
+	Auto,
+}
 
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -36,10 +49,157 @@ pub enum ClientError {
 	RequestFailed(String),
 }
 
+impl ClientError {
+	/// Returns true if the error is a timeout error
+	pub fn is_timeout(&self) -> bool {
+		match self {
+			ClientError::Reqwest(e) => e.is_timeout(),
+			_ => false,
+		}
+	}
+
+	/// Returns true if the error is a connection error
+	pub fn is_connect(&self) -> bool {
+		match self {
+			ClientError::Reqwest(e) => e.is_connect(),
+			_ => false,
+		}
+	}
+
+	/// Returns true if the error occurred during request building
+	pub fn is_request(&self) -> bool {
+		match self {
+			ClientError::Reqwest(e) => e.is_request(),
+			ClientError::Http(_) => true,
+			ClientError::InvalidHeaderValue(_) => true,
+			ClientError::Serialization(_) => true,
+			ClientError::RequestFailed(_) => true,
+			_ => false,
+		}
+	}
+}
+
 pub type ClientResult<T> = Result<T, ClientError>;
 
 /// Type alias for request handler function
 pub type RequestHandler = Arc<dyn Fn(Request<Full<Bytes>>) -> Response<Full<Bytes>> + Send + Sync>;
+
+/// Builder for creating APIClient with custom configuration
+///
+/// # Example
+/// ```rust,no_run
+/// use reinhardt_test::client::{APIClientBuilder, HttpVersion};
+/// use std::time::Duration;
+///
+/// let client = APIClientBuilder::new()
+///     .base_url("http://localhost:8080")
+///     .timeout(Duration::from_secs(30))
+///     .http_version(HttpVersion::Http2PriorKnowledge)
+///     .cookie_store(true)
+///     .build();
+/// ```
+pub struct APIClientBuilder {
+	base_url: String,
+	timeout: Option<Duration>,
+	http_version: HttpVersion,
+	cookie_store: bool,
+}
+
+impl APIClientBuilder {
+	/// Create a new builder with default configuration
+	pub fn new() -> Self {
+		Self {
+			base_url: "http://testserver".to_string(),
+			timeout: None,
+			http_version: HttpVersion::Auto,
+			cookie_store: false,
+		}
+	}
+
+	/// Set the base URL for requests
+	pub fn base_url(mut self, url: impl Into<String>) -> Self {
+		self.base_url = url.into();
+		self
+	}
+
+	/// Set the request timeout
+	pub fn timeout(mut self, duration: Duration) -> Self {
+		self.timeout = Some(duration);
+		self
+	}
+
+	/// Set the HTTP version
+	pub fn http_version(mut self, version: HttpVersion) -> Self {
+		self.http_version = version;
+		self
+	}
+
+	/// Use HTTP/1.1 only (convenience method)
+	pub fn http1_only(mut self) -> Self {
+		self.http_version = HttpVersion::Http1Only;
+		self
+	}
+
+	/// Use HTTP/2 with prior knowledge (convenience method)
+	pub fn http2_prior_knowledge(mut self) -> Self {
+		self.http_version = HttpVersion::Http2PriorKnowledge;
+		self
+	}
+
+	/// Enable or disable automatic cookie storage
+	pub fn cookie_store(mut self, enabled: bool) -> Self {
+		self.cookie_store = enabled;
+		self
+	}
+
+	/// Build the APIClient
+	pub fn build(self) -> APIClient {
+		let mut client_builder = reqwest::Client::builder();
+
+		// Configure timeout
+		if let Some(timeout) = self.timeout {
+			client_builder = client_builder.timeout(timeout);
+		}
+
+		// Configure HTTP version
+		match self.http_version {
+			HttpVersion::Http1Only => {
+				client_builder = client_builder.http1_only();
+			}
+			HttpVersion::Http2PriorKnowledge => {
+				client_builder = client_builder.http2_prior_knowledge();
+			}
+			HttpVersion::Auto => {
+				// Default behavior, no special configuration needed
+			}
+		}
+
+		// Configure cookie store
+		if self.cookie_store {
+			client_builder = client_builder.cookie_store(true);
+		}
+
+		let http_client = client_builder
+			.build()
+			.expect("Failed to build reqwest client");
+
+		APIClient {
+			base_url: self.base_url,
+			default_headers: Arc::new(RwLock::new(HeaderMap::new())),
+			cookies: Arc::new(RwLock::new(HashMap::new())),
+			user: Arc::new(RwLock::new(None)),
+			handler: None,
+			http_client,
+			use_cookie_store: self.cookie_store,
+		}
+	}
+}
+
+impl Default for APIClientBuilder {
+	fn default() -> Self {
+		Self::new()
+	}
+}
 
 /// Test client for making API requests
 ///
@@ -47,11 +207,13 @@ pub type RequestHandler = Arc<dyn Fn(Request<Full<Bytes>>) -> Response<Full<Byte
 /// ```rust,no_run
 /// use reinhardt_test::APIClient;
 /// use http::StatusCode;
+/// use serde_json::json;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = APIClient::new();
-/// client.login("username", "password").await?;
+/// let client = APIClient::with_base_url("http://localhost:8080");
+/// let credentials = json!({"username": "user", "password": "pass"});
+/// client.post("/auth/login", &credentials, "json").await?;
 /// let response = client.get("/api/users/").await?;
 /// assert_eq!(response.status(), StatusCode::OK);
 /// # Ok(())
@@ -64,7 +226,7 @@ pub struct APIClient {
 	/// Default headers to include in all requests
 	default_headers: Arc<RwLock<HeaderMap>>,
 
-	/// Cookies to include in requests
+	/// Cookies to include in requests (manual management)
 	cookies: Arc<RwLock<HashMap<String, String>>>,
 
 	/// Current authenticated user (if any)
@@ -72,6 +234,12 @@ pub struct APIClient {
 
 	/// Handler function for processing requests
 	handler: Option<RequestHandler>,
+
+	/// Reusable HTTP client with connection pooling
+	http_client: reqwest::Client,
+
+	/// Whether automatic cookie storage is enabled
+	use_cookie_store: bool,
 }
 
 impl APIClient {
@@ -86,14 +254,9 @@ impl APIClient {
 	/// assert_eq!(client.base_url(), "http://testserver");
 	/// ```
 	pub fn new() -> Self {
-		Self {
-			base_url: "http://testserver".to_string(),
-			default_headers: Arc::new(RwLock::new(HeaderMap::new())),
-			cookies: Arc::new(RwLock::new(HashMap::new())),
-			user: Arc::new(RwLock::new(None)),
-			handler: None,
-		}
+		APIClientBuilder::new().build()
 	}
+
 	/// Create a client with a custom base URL
 	///
 	/// # Examples
@@ -105,13 +268,24 @@ impl APIClient {
 	/// assert_eq!(client.base_url(), "https://api.example.com");
 	/// ```
 	pub fn with_base_url(base_url: impl Into<String>) -> Self {
-		Self {
-			base_url: base_url.into(),
-			default_headers: Arc::new(RwLock::new(HeaderMap::new())),
-			cookies: Arc::new(RwLock::new(HashMap::new())),
-			user: Arc::new(RwLock::new(None)),
-			handler: None,
-		}
+		APIClientBuilder::new().base_url(base_url).build()
+	}
+
+	/// Create a builder for customizing the client configuration
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_test::client::APIClient;
+	/// use std::time::Duration;
+	///
+	/// let client = APIClient::builder()
+	///     .base_url("http://localhost:8080")
+	///     .timeout(Duration::from_secs(30))
+	///     .build();
+	/// ```
+	pub fn builder() -> APIClientBuilder {
+		APIClientBuilder::new()
 	}
 	pub fn base_url(&self) -> &str {
 		&self.base_url
@@ -199,26 +373,7 @@ impl APIClient {
 		self.set_header("Authorization", format!("Basic {}", encoded))
 			.await
 	}
-	/// Login with username and password
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_test::client::APIClient;
-	///
-	/// # tokio_test::block_on(async {
-	/// let client = APIClient::new();
-	/// let response = client.login("username", "password").await;
-	/// # });
-	/// ```
-	pub async fn login(&self, username: &str, password: &str) -> ClientResult<TestResponse> {
-		let body = serde_json::json!({
-			"username": username,
-			"password": password,
-		});
-		self.post("/api/login/", &body, "json").await
-	}
-	/// Logout and clear authentication
+	/// Clear authentication and cookies
 	///
 	/// # Examples
 	///
@@ -227,14 +382,53 @@ impl APIClient {
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::new();
-	/// client.logout().await.unwrap();
+	/// client.clear_auth().await.unwrap();
 	/// # });
 	/// ```
-	pub async fn logout(&self) -> ClientResult<()> {
+	pub async fn clear_auth(&self) -> ClientResult<()> {
 		self.force_authenticate(None).await;
 		let mut cookies = self.cookies.write().await;
 		cookies.clear();
 		Ok(())
+	}
+
+	/// Clean up all client state for teardown
+	///
+	/// This method performs a complete cleanup of the client state including:
+	/// - Clearing authentication
+	/// - Clearing cookies
+	/// - Clearing default headers
+	///
+	/// This is typically called during test teardown to ensure clean state
+	/// between tests.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_test::client::APIClient;
+	///
+	/// # tokio_test::block_on(async {
+	/// let client = APIClient::new();
+	/// client.set_header("X-Custom", "value").await.unwrap();
+	/// client.cleanup().await;
+	/// // All state is now cleared
+	/// # });
+	/// ```
+	pub async fn cleanup(&self) {
+		// Clear authentication
+		self.force_authenticate(None).await;
+
+		// Clear cookies
+		{
+			let mut cookies = self.cookies.write().await;
+			cookies.clear();
+		}
+
+		// Clear default headers
+		{
+			let mut headers = self.default_headers.write().await;
+			headers.clear();
+		}
 	}
 	/// Make a GET request
 	///
@@ -379,6 +573,92 @@ impl APIClient {
 		self.request(Method::OPTIONS, path, None, None).await
 	}
 
+	/// Make a GET request with additional per-request headers
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_test::client::APIClient;
+	///
+	/// # tokio_test::block_on(async {
+	/// let client = APIClient::with_base_url("http://localhost:8080");
+	/// // let response = client.get_with_headers("/api/data", &[("Accept", "application/json")]).await;
+	/// # });
+	/// ```
+	pub async fn get_with_headers(
+		&self,
+		path: &str,
+		headers: &[(&str, &str)],
+	) -> ClientResult<TestResponse> {
+		self.request_with_extra_headers(Method::GET, path, None, None, headers)
+			.await
+	}
+
+	/// Make a POST request with raw body and additional per-request headers
+	///
+	/// Unlike `post()`, this method allows setting a raw body without automatic serialization.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_test::client::APIClient;
+	///
+	/// # tokio_test::block_on(async {
+	/// let client = APIClient::with_base_url("http://localhost:8080");
+	/// // let response = client.post_raw_with_headers(
+	/// //     "/api/echo",
+	/// //     b"{\"test\":\"data\"}",
+	/// //     "application/json",
+	/// //     &[("X-Custom-Header", "value")]
+	/// // ).await;
+	/// # });
+	/// ```
+	pub async fn post_raw_with_headers(
+		&self,
+		path: &str,
+		body: &[u8],
+		content_type: &str,
+		headers: &[(&str, &str)],
+	) -> ClientResult<TestResponse> {
+		self.request_with_extra_headers(
+			Method::POST,
+			path,
+			Some(Bytes::copy_from_slice(body)),
+			Some(content_type),
+			headers,
+		)
+		.await
+	}
+
+	/// Make a POST request with raw body
+	///
+	/// Unlike `post()`, this method allows setting a raw body without automatic serialization.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_test::client::APIClient;
+	///
+	/// # tokio_test::block_on(async {
+	/// let client = APIClient::with_base_url("http://localhost:8080");
+	/// // let response = client.post_raw("/api/echo", b"{\"test\":\"data\"}", "application/json").await;
+	/// # });
+	/// ```
+	pub async fn post_raw(
+		&self,
+		path: &str,
+		body: &[u8],
+		content_type: &str,
+	) -> ClientResult<TestResponse> {
+		self.request(
+			Method::POST,
+			path,
+			Some(Bytes::copy_from_slice(body)),
+			Some(content_type),
+		)
+		.await
+	}
+
 	/// Generic request method
 	async fn request(
 		&self,
@@ -452,14 +732,17 @@ impl APIClient {
 				)
 			};
 
-			let client = reqwest::Client::new();
-			let mut reqwest_request = client.request(
+			// Use the stored http_client (connection pooling enabled)
+			let mut reqwest_request = self.http_client.request(
 				reqwest::Method::from_bytes(parts.method.as_str().as_bytes()).unwrap(),
 				&url,
 			);
 
-			// Copy headers
+			// Copy headers (skip Cookie if using cookie_store, as reqwest manages it automatically)
 			for (name, value) in parts.headers.iter() {
+				if self.use_cookie_store && name.as_str().eq_ignore_ascii_case("cookie") {
+					continue;
+				}
 				reqwest_request = reqwest_request.header(name.as_str(), value.as_bytes());
 			}
 
@@ -478,10 +761,11 @@ impl APIClient {
 
 			// Convert reqwest response to http::Response
 			let status = reqwest_response.status();
+			let version = reqwest_response.version();
 			let headers = reqwest_response.headers().clone();
 			let body_bytes = reqwest_response.bytes().await?;
 
-			let mut response_builder = Response::builder().status(status);
+			let mut response_builder = Response::builder().status(status).version(version);
 			for (name, value) in headers.iter() {
 				response_builder = response_builder.header(name, value);
 			}
@@ -497,10 +781,150 @@ impl APIClient {
 			.map(|collected| collected.to_bytes())
 			.unwrap_or_else(|_| Bytes::new());
 
-		Ok(TestResponse::with_body(
+		Ok(TestResponse::with_body_and_version(
 			parts.status,
 			parts.headers,
 			body_data,
+			parts.version,
+		))
+	}
+
+	/// Generic request method with additional per-request headers
+	///
+	/// This method is similar to `request()` but allows adding extra headers
+	/// that are specific to this request only, without modifying the default headers.
+	async fn request_with_extra_headers(
+		&self,
+		method: Method,
+		path: &str,
+		body: Option<Bytes>,
+		content_type: Option<&str>,
+		extra_headers: &[(&str, &str)],
+	) -> ClientResult<TestResponse> {
+		let url = if path.starts_with("http://") || path.starts_with("https://") {
+			path.to_string()
+		} else {
+			format!("{}{}", self.base_url, path)
+		};
+
+		let mut req_builder = Request::builder().method(method).uri(url);
+
+		// Add default headers
+		let default_headers = self.default_headers.read().await;
+		for (name, value) in default_headers.iter() {
+			req_builder = req_builder.header(name, value);
+		}
+
+		// Add extra per-request headers (these override default headers if same name)
+		for (name, value) in extra_headers {
+			req_builder = req_builder.header(*name, *value);
+		}
+
+		// Add content type if provided
+		if let Some(ct) = content_type {
+			req_builder = req_builder.header("Content-Type", ct);
+		}
+
+		// Add cookies
+		let cookies = self.cookies.read().await;
+		if !cookies.is_empty() {
+			let cookie_header = cookies
+				.iter()
+				.map(|(k, v)| format!("{}={}", k, v))
+				.collect::<Vec<_>>()
+				.join("; ");
+			req_builder = req_builder.header("Cookie", cookie_header);
+		}
+
+		// Add authentication if user is set
+		let user = self.user.read().await;
+		if user.is_some() {
+			// Add custom header to indicate forced authentication
+			req_builder = req_builder.header("X-Test-User", "authenticated");
+		}
+
+		// Build request with body
+		let request = if let Some(body_bytes) = body {
+			req_builder.body(Full::new(body_bytes))?
+		} else {
+			req_builder.body(Full::new(Bytes::new()))?
+		};
+
+		// Execute request
+		let response = if let Some(handler) = &self.handler {
+			// Use custom handler if set
+			handler(request)
+		} else {
+			// Use reqwest for real HTTP requests when no handler is set
+			let (parts, body) = request.into_parts();
+
+			// Build reqwest request
+			let url = if parts.uri.scheme_str().is_some() {
+				// Absolute URL
+				parts.uri.to_string()
+			} else {
+				// Relative path - use base_url
+				format!(
+					"{}{}",
+					self.base_url.trim_end_matches('/'),
+					parts.uri.path()
+				)
+			};
+
+			// Use the stored http_client (connection pooling enabled)
+			let mut reqwest_request = self.http_client.request(
+				reqwest::Method::from_bytes(parts.method.as_str().as_bytes()).unwrap(),
+				&url,
+			);
+
+			// Copy headers (skip Cookie if using cookie_store, as reqwest manages it automatically)
+			for (name, value) in parts.headers.iter() {
+				if self.use_cookie_store && name.as_str().eq_ignore_ascii_case("cookie") {
+					continue;
+				}
+				reqwest_request = reqwest_request.header(name.as_str(), value.as_bytes());
+			}
+
+			// Copy body
+			let body_bytes = body
+				.collect()
+				.await
+				.map(|c| c.to_bytes())
+				.unwrap_or_else(|_| Bytes::new());
+			if !body_bytes.is_empty() {
+				reqwest_request = reqwest_request.body(body_bytes.to_vec());
+			}
+
+			// Execute reqwest request
+			let reqwest_response = reqwest_request.send().await?;
+
+			// Convert reqwest response to http::Response
+			let status = reqwest_response.status();
+			let version = reqwest_response.version();
+			let headers = reqwest_response.headers().clone();
+			let body_bytes = reqwest_response.bytes().await?;
+
+			let mut response_builder = Response::builder().status(status).version(version);
+			for (name, value) in headers.iter() {
+				response_builder = response_builder.header(name, value);
+			}
+
+			response_builder.body(Full::new(body_bytes))?
+		};
+
+		// Extract body from response using async collection
+		let (parts, response_body) = response.into_parts();
+		let body_data = response_body
+			.collect()
+			.await
+			.map(|collected| collected.to_bytes())
+			.unwrap_or_else(|_| Bytes::new());
+
+		Ok(TestResponse::with_body_and_version(
+			parts.status,
+			parts.headers,
+			body_data,
+			parts.version,
 		))
 	}
 

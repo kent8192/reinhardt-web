@@ -769,20 +769,50 @@ pub mod tasks {
 	/// Assert that a task completes successfully within the given timeout
 	///
 	/// # Example
+	///
 	/// ```rust,no_run
 	/// use reinhardt_test::assertions::tasks::{assert_task_completed, TaskStatus};
-	/// use tokio::time::Duration;
+	/// use std::time::Duration;
+	/// use std::sync::Arc;
 	///
 	/// #[tokio::test]
 	/// async fn test_task_execution() {
-	///     let task_id = "task-123";
-	///     // Simulate task status check
-	///     let check_status = async {
-	///         // In real implementation, this would query task backend
-	///         TaskStatus::Completed
-	///     };
+	///     // When using reinhardt-tasks, you would typically:
+	///     // 1. Get a ResultBackend instance from your test fixtures
+	///     // 2. Create a closure that queries the backend for task status
+	///     //
+	///     // Example with reinhardt-tasks (requires "tasks" feature):
+	///     // ```
+	///     // use reinhardt_tasks::{ResultBackend, TaskId, TaskStatus as TasksStatus};
+	///     //
+	///     // let backend: Arc<dyn ResultBackend> = // ... from test setup
+	///     // let task_id = TaskId::new();
+	///     //
+	///     // let check_status = || {
+	///     //     let backend = backend.clone();
+	///     //     let task_id = task_id;
+	///     //     async move {
+	///     //         match backend.get_result(task_id).await {
+	///     //             Ok(Some(metadata)) => match metadata.status() {
+	///     //                 TasksStatus::Success => TaskStatus::Completed,
+	///     //                 TasksStatus::Failure => TaskStatus::Failed,
+	///     //                 TasksStatus::Pending => TaskStatus::Pending,
+	///     //                 TasksStatus::Running => TaskStatus::Running,
+	///     //                 TasksStatus::Retry => TaskStatus::Running,
+	///     //             },
+	///     //             Ok(None) => TaskStatus::Pending,
+	///     //             Err(_) => TaskStatus::Failed,
+	///     //         }
+	///     //     }
+	///     // };
+	///     // ```
 	///
-	///     assert_task_completed(task_id, check_status, Duration::from_secs(5)).await.unwrap();
+	///     // Simple example with mock status check:
+	///     let check_status = || async { TaskStatus::Completed };
+	///
+	///     assert_task_completed("task-123", check_status, Duration::from_secs(5))
+	///         .await
+	///         .unwrap();
 	/// }
 	/// ```
 	pub async fn assert_task_completed<F, Fut>(
