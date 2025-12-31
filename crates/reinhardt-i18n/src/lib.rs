@@ -8,25 +8,43 @@
 //! - Message catalog management
 //!
 //! # Example
-//! ```
-//! use reinhardt_i18n::{activate, load_catalog, gettext, MessageCatalog};
 //!
-//! // Set up a catalog with translations
+//! ```
+//! use reinhardt_i18n::{TranslationContext, set_active_translation, gettext, MessageCatalog};
+//! use std::sync::Arc;
+//!
+//! // Create a translation context with Japanese catalog
+//! let mut ctx = TranslationContext::new("ja", "en-US");
 //! let mut catalog = MessageCatalog::new("ja");
 //! catalog.add_translation("Hello", "こんにちは");
+//! ctx.add_catalog("ja", catalog);
 //!
-//! // Load and activate the Japanese locale
-//! load_catalog("ja", catalog).unwrap();
-//! activate("ja").unwrap();
+//! // Set as active translation context (scoped)
+//! let _guard = set_active_translation(Arc::new(ctx));
 //!
 //! // Translate messages
 //! let greeting = gettext("Hello");
 //! assert_eq!(greeting, "こんにちは");
+//! // Guard is dropped here, restoring previous context
+//! ```
+//!
+//! # DI Integration
+//!
+//! When the `di` feature is enabled, `TranslationContext` implements `Injectable`:
+//!
+//! ```ignore
+//! use reinhardt_di::{InjectionContext, SingletonScope, Injectable};
+//! use reinhardt_i18n::TranslationContext;
+//!
+//! async fn handler(ctx: &InjectionContext) {
+//!     let translation = TranslationContext::inject(ctx).await.unwrap();
+//!     // Use translation...
+//! }
 //! ```
 
-use once_cell::sync::Lazy;
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::Arc;
 
 /// Error types for i18n operations
 #[derive(Debug, thiserror::Error)]
@@ -53,6 +71,10 @@ pub use translation::{gettext, gettext_lazy, ngettext, ngettext_lazy, npgettext,
 
 // Re-export get_locale as get_language for compatibility
 pub use locale::get_locale as get_language;
+
+// New scoped translation API
+// TranslationContext, TranslationGuard, set_active_translation, get_active_translation
+// are defined below and exported at module level
 
 /// Catalog loader for loading message catalogs from files or other sources
 pub struct CatalogLoader {
@@ -161,42 +183,61 @@ impl CatalogLoader {
 	}
 }
 
-/// Load a message catalog for the given locale
-///
-/// This function registers a message catalog with the translation system.
-///
-/// # Example
-/// ```
-/// use reinhardt_i18n::{load_catalog, MessageCatalog};
-///
-/// let mut catalog = MessageCatalog::new("fr");
-/// catalog.add_translation("Hello", "Bonjour");
-/// load_catalog("fr", catalog).unwrap();
-/// ```
-pub fn load_catalog(locale: &str, catalog: MessageCatalog) -> Result<(), String> {
-	let mut state = TRANSLATION_STATE.write().unwrap();
-	state.add_catalog(locale.to_string(), catalog);
-	Ok(())
+// Thread-local storage for the active translation context
+thread_local! {
+	static ACTIVE_TRANSLATION: RefCell<Option<Arc<TranslationContext>>> = const { RefCell::new(None) };
 }
 
-/// Global translation state
-static TRANSLATION_STATE: Lazy<RwLock<TranslationState>> = Lazy::new(|| {
-	RwLock::new(TranslationState {
-		current_locale: String::new(),
-		fallback_locale: String::new(),
-		catalogs: HashMap::new(),
-	})
-});
-
-/// Internal translation state
-struct TranslationState {
+/// Translation context containing catalogs and locale settings.
+///
+/// This struct holds all the translation state including:
+/// - Message catalogs indexed by locale
+/// - Current active locale
+/// - Fallback locale for missing translations
+///
+/// # Usage
+///
+/// ```
+/// use reinhardt_i18n::{TranslationContext, set_active_translation, gettext, MessageCatalog};
+/// use std::sync::Arc;
+///
+/// let mut ctx = TranslationContext::new("ja", "en-US");
+/// let mut catalog = MessageCatalog::new("ja");
+/// catalog.add_translation("Hello", "こんにちは");
+/// ctx.add_catalog("ja", catalog);
+///
+/// let _guard = set_active_translation(Arc::new(ctx));
+/// assert_eq!(gettext("Hello"), "こんにちは");
+/// ```
+#[derive(Clone, Default)]
+pub struct TranslationContext {
 	current_locale: String,
 	fallback_locale: String,
 	catalogs: HashMap<String, MessageCatalog>,
 }
 
-impl TranslationState {
-	fn get_locale(&self) -> &str {
+impl TranslationContext {
+	/// Creates a new translation context with the specified locales.
+	///
+	/// # Arguments
+	///
+	/// * `current_locale` - The current locale to use for translations
+	/// * `fallback_locale` - The fallback locale when translation is not found
+	pub fn new(current_locale: impl Into<String>, fallback_locale: impl Into<String>) -> Self {
+		Self {
+			current_locale: current_locale.into(),
+			fallback_locale: fallback_locale.into(),
+			catalogs: HashMap::new(),
+		}
+	}
+
+	/// Creates a new translation context with English (en-US) as default.
+	pub fn english() -> Self {
+		Self::new("en-US", "en-US")
+	}
+
+	/// Returns the current locale.
+	pub fn get_locale(&self) -> &str {
 		if self.current_locale.is_empty() {
 			"en-US"
 		} else {
@@ -204,7 +245,8 @@ impl TranslationState {
 		}
 	}
 
-	fn get_fallback_locale(&self) -> &str {
+	/// Returns the fallback locale.
+	pub fn get_fallback_locale(&self) -> &str {
 		if self.fallback_locale.is_empty() {
 			"en-US"
 		} else {
@@ -212,15 +254,198 @@ impl TranslationState {
 		}
 	}
 
-	fn get_catalog(&self, locale: &str) -> Option<&MessageCatalog> {
+	/// Returns the catalog for the given locale.
+	pub fn get_catalog(&self, locale: &str) -> Option<&MessageCatalog> {
 		self.catalogs.get(locale)
 	}
 
-	fn set_locale(&mut self, locale: String) {
-		self.current_locale = locale;
+	/// Sets the current locale.
+	pub fn set_locale(&mut self, locale: impl Into<String>) {
+		self.current_locale = locale.into();
 	}
 
-	fn add_catalog(&mut self, locale: String, catalog: MessageCatalog) {
-		self.catalogs.insert(locale, catalog);
+	/// Sets the fallback locale.
+	pub fn set_fallback_locale(&mut self, locale: impl Into<String>) {
+		self.fallback_locale = locale.into();
+	}
+
+	/// Adds a message catalog for the given locale.
+	pub fn add_catalog(&mut self, locale: impl Into<String>, catalog: MessageCatalog) {
+		self.catalogs.insert(locale.into(), catalog);
+	}
+
+	/// Translates a message using the current locale.
+	///
+	/// Falls back to the fallback locale if translation is not found.
+	pub fn translate(&self, message: &str) -> String {
+		let locale = self.get_locale();
+
+		if let Some(translation) = self.get_catalog(locale).and_then(|c| c.get(message)) {
+			return translation.clone();
+		}
+
+		// Try fallback locale
+		let fallback = self.get_fallback_locale();
+		if locale != fallback
+			&& let Some(translation) = self.get_catalog(fallback).and_then(|c| c.get(message))
+		{
+			return translation.clone();
+		}
+
+		// Return original message if no translation found
+		message.to_string()
+	}
+
+	/// Translates a message with plural support.
+	pub fn translate_plural(&self, singular: &str, plural: &str, count: usize) -> String {
+		let locale = self.get_locale();
+
+		if let Some(translation) = self
+			.get_catalog(locale)
+			.and_then(|c| c.get_plural(singular, count))
+		{
+			return translation.clone();
+		}
+
+		// Try fallback locale
+		let fallback = self.get_fallback_locale();
+		if locale != fallback
+			&& let Some(translation) = self
+				.get_catalog(fallback)
+				.and_then(|c| c.get_plural(singular, count))
+		{
+			return translation.clone();
+		}
+
+		// Use default English plural rules
+		if count == 1 { singular } else { plural }.to_string()
+	}
+
+	/// Translates a message with context.
+	pub fn translate_context(&self, context: &str, message: &str) -> String {
+		let locale = self.get_locale();
+
+		if let Some(translation) = self
+			.get_catalog(locale)
+			.and_then(|c| c.get_context(context, message))
+		{
+			return translation.clone();
+		}
+
+		// Try fallback locale
+		let fallback = self.get_fallback_locale();
+		if locale != fallback
+			&& let Some(translation) = self
+				.get_catalog(fallback)
+				.and_then(|c| c.get_context(context, message))
+		{
+			return translation.clone();
+		}
+
+		// Return original message if no translation found
+		message.to_string()
+	}
+
+	/// Translates a message with context and plural support.
+	pub fn translate_context_plural(
+		&self,
+		context: &str,
+		singular: &str,
+		plural: &str,
+		count: usize,
+	) -> String {
+		let locale = self.get_locale();
+
+		if let Some(translation) = self
+			.get_catalog(locale)
+			.and_then(|c| c.get_context_plural(context, singular, count))
+		{
+			return translation.clone();
+		}
+
+		// Try fallback locale
+		let fallback = self.get_fallback_locale();
+		if locale != fallback
+			&& let Some(translation) = self
+				.get_catalog(fallback)
+				.and_then(|c| c.get_context_plural(context, singular, count))
+		{
+			return translation.clone();
+		}
+
+		// Use default English plural rules
+		if count == 1 { singular } else { plural }.to_string()
+	}
+}
+
+/// RAII guard for active TranslationContext scope.
+///
+/// When dropped, restores the previous translation context.
+pub struct TranslationGuard {
+	prev: Option<Arc<TranslationContext>>,
+}
+
+impl Drop for TranslationGuard {
+	fn drop(&mut self) {
+		ACTIVE_TRANSLATION.with(|t| {
+			*t.borrow_mut() = self.prev.take();
+		});
+	}
+}
+
+/// Sets the active translation context and returns a guard.
+///
+/// The guard restores the previous context when dropped.
+///
+/// # Example
+///
+/// ```
+/// use reinhardt_i18n::{TranslationContext, set_active_translation, gettext, MessageCatalog};
+/// use std::sync::Arc;
+///
+/// let mut ctx = TranslationContext::new("de", "en-US");
+/// let mut catalog = MessageCatalog::new("de");
+/// catalog.add_translation("Hello", "Hallo");
+/// ctx.add_catalog("de", catalog);
+///
+/// {
+///     let _guard = set_active_translation(Arc::new(ctx));
+///     assert_eq!(gettext("Hello"), "Hallo");
+/// }
+/// // Context restored to previous (or None)
+/// assert_eq!(gettext("Hello"), "Hello");
+/// ```
+pub fn set_active_translation(ctx: Arc<TranslationContext>) -> TranslationGuard {
+	let prev = ACTIVE_TRANSLATION.with(|t| t.borrow_mut().replace(ctx));
+	TranslationGuard { prev }
+}
+
+/// Returns the currently active translation context, if any.
+pub fn get_active_translation() -> Option<Arc<TranslationContext>> {
+	ACTIVE_TRANSLATION.with(|t| t.borrow().clone())
+}
+
+// DI integration (feature-gated)
+#[cfg(feature = "di")]
+mod di_integration {
+	use super::*;
+	use reinhardt_di::{DiResult, Injectable, InjectionContext};
+
+	#[async_trait::async_trait]
+	impl Injectable for TranslationContext {
+		async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+			// First check thread-local storage
+			if let Some(active) = get_active_translation() {
+				return Ok((*active).clone());
+			}
+
+			// Fall back to singleton scope
+			if let Some(singleton) = ctx.get_singleton::<TranslationContext>() {
+				return Ok((*singleton).clone());
+			}
+
+			// Default to empty English context
+			Ok(TranslationContext::english())
+		}
 	}
 }

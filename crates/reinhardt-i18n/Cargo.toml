@@ -20,8 +20,13 @@ unic-langid = "0.9"
 http = "1.0"
 chrono = { workspace = true }
 
+# DI integration (optional)
+reinhardt-di = { workspace = true, optional = true }
+
 [features]
-full = []
+default = []
+full = ["di"]
+di = ["dep:reinhardt-di"]
 
 [dev-dependencies]
 tokio = { workspace = true }
@@ -30,3 +35,4 @@ serial_test = { workspace = true }
 rstest = { workspace = true }
 scopeguard = { workspace = true }
 reinhardt-test = { workspace = true }
+reinhardt-di = { workspace = true }

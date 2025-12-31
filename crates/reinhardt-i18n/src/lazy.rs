@@ -8,16 +8,20 @@ use std::fmt;
 /// This is useful for translations that need to be defined at compile time but evaluated at runtime.
 ///
 /// # Example
+///
 /// ```
-/// use reinhardt_i18n::{activate, load_catalog, gettext_lazy, MessageCatalog};
+/// use reinhardt_i18n::{TranslationContext, set_active_translation, gettext_lazy, MessageCatalog};
+/// use std::sync::Arc;
 ///
 /// let lazy = gettext_lazy("Welcome");
 ///
 /// // Set up translation after creating the lazy string
+/// let mut ctx = TranslationContext::new("fr", "en-US");
 /// let mut catalog = MessageCatalog::new("fr");
 /// catalog.add_translation("Welcome", "Bienvenue");
-/// load_catalog("fr", catalog).unwrap();
-/// activate("fr").unwrap();
+/// ctx.add_catalog("fr", catalog);
+///
+/// let _guard = set_active_translation(Arc::new(ctx));
 ///
 /// // Translation happens when we use it
 /// assert_eq!(lazy.to_string(), "Bienvenue");
@@ -84,21 +88,23 @@ impl From<LazyString> for String {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{MessageCatalog, activate_with_catalog, deactivate};
+	use crate::{MessageCatalog, TranslationContext, set_active_translation};
 	use serial_test::serial;
+	use std::sync::Arc;
 
 	#[test]
 	#[serial(i18n)]
 	fn test_lazy_string_basic() {
 		let lazy = LazyString::new("Hello".to_string(), None, false);
 
+		let mut ctx = TranslationContext::new("zh", "en-US");
 		let mut catalog = MessageCatalog::new("zh");
 		catalog.add_translation("Hello", "你好");
-		activate_with_catalog("zh", catalog);
+		ctx.add_catalog("zh", catalog);
+
+		let _guard = set_active_translation(Arc::new(ctx));
 
 		assert_eq!(lazy.to_string(), "你好");
-
-		deactivate();
 	}
 
 	#[test]
@@ -106,12 +112,13 @@ mod tests {
 	fn test_lazy_string_plural() {
 		let lazy = LazyString::new_plural("cat".to_string(), "cats".to_string(), 3, None);
 
+		let mut ctx = TranslationContext::new("ru", "en-US");
 		let mut catalog = MessageCatalog::new("ru");
 		catalog.add_plural_str("cat", "cats", vec!["кошка", "кошки"]);
-		activate_with_catalog("ru", catalog);
+		ctx.add_catalog("ru", catalog);
+
+		let _guard = set_active_translation(Arc::new(ctx));
 
 		assert_eq!(lazy.to_string(), "кошки");
-
-		deactivate();
 	}
 }

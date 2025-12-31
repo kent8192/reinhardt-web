@@ -1,6 +1,12 @@
 //! Locale management functions
+//!
+//! These functions provide backward-compatible locale management.
+//! For new code, prefer using `TranslationContext` with `set_active_translation()`.
 
-use crate::{I18nError, MessageCatalog, TRANSLATION_STATE};
+use crate::{
+	I18nError, MessageCatalog, TranslationContext, get_active_translation, set_active_translation,
+};
+use std::sync::Arc;
 
 /// Validate locale string format
 fn validate_locale(locale: &str) -> Result<(), I18nError> {
@@ -21,87 +27,137 @@ fn validate_locale(locale: &str) -> Result<(), I18nError> {
 	Ok(())
 }
 
-/// Activate a locale (loads catalog if already registered via load_catalog)
+/// Activate a locale by creating a new translation context.
+///
+/// **Note**: This function creates a new context with only the specified locale.
+/// For full control, use `TranslationContext` with `set_active_translation()`.
+///
+/// **Warning**: The returned guard must be kept in scope for translations to work.
+/// This is a change from the previous global state behavior.
 ///
 /// # Example
-/// ```
-/// use reinhardt_i18n::{activate, load_catalog, gettext, MessageCatalog};
 ///
+/// ```
+/// use reinhardt_i18n::{TranslationContext, set_active_translation, gettext, MessageCatalog};
+/// use std::sync::Arc;
+///
+/// // Preferred approach: use TranslationContext directly
+/// let mut ctx = TranslationContext::new("es", "en-US");
 /// let mut catalog = MessageCatalog::new("es");
 /// catalog.add_translation("Welcome", "Bienvenido");
-/// load_catalog("es", catalog).unwrap();
+/// ctx.add_catalog("es", catalog);
 ///
-/// activate("es").unwrap();
-///
+/// let _guard = set_active_translation(Arc::new(ctx));
 /// assert_eq!(gettext("Welcome"), "Bienvenido");
 /// ```
 pub fn activate(locale: &str) -> Result<(), I18nError> {
 	validate_locale(locale)?;
 
-	// Always allow activation - catalogs can be loaded separately via load_catalog
-	// This matches Django's behavior where activate() can be called before loading catalogs
-	let mut state = TRANSLATION_STATE.write().unwrap();
-	state.set_locale(locale.to_string());
+	// Get current context or create new one
+	let mut ctx = get_active_translation()
+		.map(|arc| (*arc).clone())
+		.unwrap_or_else(|| TranslationContext::new("en-US", "en-US"));
+
+	ctx.set_locale(locale);
+
+	// Set the new context (this leaks the guard, but maintains backward compatibility)
+	// In new code, users should use set_active_translation() directly
+	let guard = set_active_translation(Arc::new(ctx));
+	std::mem::forget(guard);
+
 	Ok(())
 }
 
 /// Activate a locale with its message catalog directly
 ///
-/// This is the low-level API that combines catalog loading and activation.
+/// This creates a new translation context with the given locale and catalog.
+///
+/// **Warning**: The returned guard must be kept in scope for translations to work.
+/// This is a change from the previous global state behavior.
 ///
 /// # Example
-/// ```
-/// use reinhardt_i18n::{activate_with_catalog, gettext, MessageCatalog};
 ///
+/// ```
+/// use reinhardt_i18n::{TranslationContext, set_active_translation, gettext, MessageCatalog};
+/// use std::sync::Arc;
+///
+/// // Preferred approach: use TranslationContext directly
+/// let mut ctx = TranslationContext::new("es", "en-US");
 /// let mut catalog = MessageCatalog::new("es");
 /// catalog.add_translation("Welcome", "Bienvenido");
+/// ctx.add_catalog("es", catalog);
 ///
-/// activate_with_catalog("es", catalog);
-///
+/// let _guard = set_active_translation(Arc::new(ctx));
 /// assert_eq!(gettext("Welcome"), "Bienvenido");
 /// ```
 pub fn activate_with_catalog(locale: &str, catalog: MessageCatalog) {
-	let mut state = TRANSLATION_STATE.write().unwrap();
-	state.set_locale(locale.to_string());
-	state.add_catalog(locale.to_string(), catalog);
+	// Get current context or create new one
+	let mut ctx = get_active_translation()
+		.map(|arc| (*arc).clone())
+		.unwrap_or_else(|| TranslationContext::new("en-US", "en-US"));
+
+	ctx.set_locale(locale);
+	ctx.add_catalog(locale, catalog);
+
+	// Set the new context (this leaks the guard, but maintains backward compatibility)
+	let guard = set_active_translation(Arc::new(ctx));
+	std::mem::forget(guard);
 }
 
 /// Deactivate the current locale and revert to English
 ///
-/// # Example
-/// ```
-/// use reinhardt_i18n::{activate_with_catalog, deactivate, gettext, MessageCatalog};
+/// This sets the current locale to English (en-US).
 ///
+/// # Example
+///
+/// ```
+/// use reinhardt_i18n::{TranslationContext, set_active_translation, deactivate, gettext, MessageCatalog};
+/// use std::sync::Arc;
+///
+/// let mut ctx = TranslationContext::new("de", "en-US");
 /// let mut catalog = MessageCatalog::new("de");
 /// catalog.add_translation("Hello", "Hallo");
+/// ctx.add_catalog("de", catalog);
 ///
-/// activate_with_catalog("de", catalog);
+/// let _guard = set_active_translation(Arc::new(ctx));
 /// assert_eq!(gettext("Hello"), "Hallo");
 ///
 /// deactivate();
 /// assert_eq!(gettext("Hello"), "Hello");
 /// ```
 pub fn deactivate() {
-	let mut state = TRANSLATION_STATE.write().unwrap();
-	state.set_locale(String::new()); // Empty string will return "en-US" via get_locale()
+	// Get current context and reset locale to empty
+	if let Some(arc) = get_active_translation() {
+		let mut ctx = (*arc).clone();
+		ctx.set_locale("");
+
+		// Set the new context (this leaks the guard)
+		let guard = set_active_translation(Arc::new(ctx));
+		std::mem::forget(guard);
+	}
 }
 
 /// Get the currently active locale
 ///
-/// # Example
-/// ```
-/// use reinhardt_i18n::{activate_with_catalog, get_locale, MessageCatalog};
+/// Returns "en-US" if no translation context is active.
 ///
+/// # Example
+///
+/// ```
+/// use reinhardt_i18n::{TranslationContext, set_active_translation, get_locale, MessageCatalog};
+/// use std::sync::Arc;
+///
+/// // No active context
 /// assert_eq!(get_locale(), "en-US");
 ///
-/// let catalog = MessageCatalog::new("it");
-/// activate_with_catalog("it", catalog);
-///
+/// let ctx = TranslationContext::new("it", "en-US");
+/// let _guard = set_active_translation(Arc::new(ctx));
 /// assert_eq!(get_locale(), "it");
 /// ```
 pub fn get_locale() -> String {
-	let state = TRANSLATION_STATE.read().unwrap();
-	state.get_locale().to_string()
+	get_active_translation()
+		.map(|ctx| ctx.get_locale().to_string())
+		.unwrap_or_else(|| "en-US".to_string())
 }
 
 #[cfg(test)]
@@ -112,9 +168,23 @@ mod tests {
 	#[test]
 	#[serial(i18n)]
 	fn test_locale_activation() {
+		let mut ctx = TranslationContext::new("pt", "en-US");
 		let catalog = MessageCatalog::new("pt");
-		activate_with_catalog("pt", catalog);
+		ctx.add_catalog("pt", catalog);
+
+		let _guard = set_active_translation(Arc::new(ctx));
 		assert_eq!(get_locale(), "pt");
+	}
+
+	#[test]
+	#[serial(i18n)]
+	fn test_deactivate() {
+		let mut ctx = TranslationContext::new("fr", "en-US");
+		let catalog = MessageCatalog::new("fr");
+		ctx.add_catalog("fr", catalog);
+
+		let _guard = set_active_translation(Arc::new(ctx));
+		assert_eq!(get_locale(), "fr");
 
 		deactivate();
 		assert_eq!(get_locale(), "en-US");
