@@ -289,13 +289,26 @@ impl BrokenLinkEmailsMiddleware {
 				let body_clone = body.clone();
 
 				// Schedule email sending in a separate task to avoid blocking
+				// Note: Uses default SMTP config (localhost:25). Configure via SmtpConfig for production.
 				tokio::spawn(async move {
-					match reinhardt_mail::send_mail(
+					let config = reinhardt_mail::SmtpConfig::default();
+					let backend = match reinhardt_mail::SmtpBackend::new(config) {
+						Ok(backend) => backend,
+						Err(e) => {
+							log::error!(
+								"Failed to create SMTP backend for broken link email: {}",
+								e
+							);
+							return;
+						}
+					};
+					match reinhardt_mail::send_mail_with_backend(
 						subject_clone,
 						body_clone,
 						"noreply@example.com", // Default sender
 						vec![email.clone()],
 						None,
+						&backend,
 					)
 					.await
 					{
