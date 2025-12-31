@@ -1,43 +1,18 @@
-//! Integration tests for reinhardt-apps registry performance and cleanup
+//! Integration tests for reinhardt-apps registry performance
 //!
-//! These tests verify performance characteristics and data cleanup behavior
-//! of the registry system.
+//! These tests verify performance characteristics of the registry system.
+//!
+//! Note: With OnceLock-based caching, caches are initialized once and cannot be cleared.
+//! Tests verify read operations and performance characteristics.
 
 use linkme::distributed_slice;
 use reinhardt_apps::registry::{
-	clear_model_cache, clear_relationship_cache, get_models_for_app, get_registered_models,
-	get_registered_relationships, ModelMetadata, RelationshipMetadata, RelationshipType, MODELS,
-	RELATIONSHIPS,
+	get_models_for_app, get_registered_models, get_registered_relationships, ModelMetadata,
+	RelationshipMetadata, RelationshipType, MODELS, RELATIONSHIPS,
 };
-use reinhardt_test::resource::{TeardownGuard, TestResource};
-use rstest::{fixture, rstest};
+use rstest::rstest;
 use serial_test::serial;
 use std::time::{Duration, Instant};
-
-// ============================================================================
-// Test Fixtures
-// ============================================================================
-
-/// TeardownGuard for registry cleanup
-struct RegistryGuard;
-
-impl TestResource for RegistryGuard {
-	fn setup() -> Self {
-		clear_model_cache();
-		clear_relationship_cache();
-		Self
-	}
-
-	fn teardown(&mut self) {
-		clear_model_cache();
-		clear_relationship_cache();
-	}
-}
-
-#[fixture]
-fn registry_guard() -> TeardownGuard<RegistryGuard> {
-	TeardownGuard::new()
-}
 
 // ============================================================================
 // Test Model Registrations for Performance Tests
@@ -68,7 +43,7 @@ register_perf_models!(
 	98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109
 );
 
-// Test models for app unregister test
+// Test models for registry verification
 #[distributed_slice(MODELS)]
 static TEST_CLEANUP_APP1_MODEL1: ModelMetadata = ModelMetadata {
 	app_label: "test_cleanup_app1",
@@ -112,7 +87,7 @@ static TEST_METADATA_MODEL: ModelMetadata = ModelMetadata {
 /// within reasonable time constraints.
 #[rstest]
 #[serial(app_registry)]
-fn test_large_scale_model_registration_performance(_registry_guard: TeardownGuard<RegistryGuard>) {
+fn test_large_scale_model_registration_performance() {
 	// Measure time to retrieve all registered models
 	let start = Instant::now();
 	let all_models = get_registered_models();
@@ -138,7 +113,7 @@ fn test_large_scale_model_registration_performance(_registry_guard: TeardownGuar
 		duration
 	);
 
-	// Verify efficient subsequent access (cached)
+	// Verify efficient subsequent access (OnceLock cached)
 	let start_cached = Instant::now();
 	let models_cached = get_registered_models();
 	let duration_cached = start_cached.elapsed();
@@ -146,10 +121,10 @@ fn test_large_scale_model_registration_performance(_registry_guard: TeardownGuar
 	assert_eq!(
 		models_cached.len(),
 		all_models.len(),
-		"Cached retrieval should return same number of models"
+		"Subsequent retrieval should return same number of models"
 	);
 
-	// Cached access should be significantly faster
+	// Cached access should be significantly faster (lock-free with OnceLock)
 	assert!(
 		duration_cached < Duration::from_millis(10),
 		"Cached retrieval took {:?}, expected < 10ms",
@@ -167,22 +142,22 @@ fn test_large_scale_model_registration_performance(_registry_guard: TeardownGuar
 	);
 }
 
-/// Test 2: App unregister clears related data
+/// Test 2: Verify registry data integrity
 ///
-/// Verifies that when cache is cleared (simulating app unregister),
-/// both models and relationships are properly cleaned up.
+/// Verifies that registered models and relationships are present
+/// and correctly indexed.
 #[rstest]
 #[serial(app_registry)]
-fn test_app_unregister_clears_related_data(_registry_guard: TeardownGuard<RegistryGuard>) {
+fn test_registry_data_integrity() {
 	// Step 1: Verify models are registered
-	let models_before = get_models_for_app("test_cleanup_app1");
+	let models = get_models_for_app("test_cleanup_app1");
 	assert_eq!(
-		models_before.len(),
+		models.len(),
 		2,
 		"Expected exactly 2 models for test_cleanup_app1"
 	);
 
-	let model_names: Vec<&str> = models_before.iter().map(|m| m.model_name).collect();
+	let model_names: Vec<&str> = models.iter().map(|m| m.model_name).collect();
 	assert!(
 		model_names.contains(&"CleanupModel1"),
 		"Expected CleanupModel1 in registered models"
@@ -193,8 +168,8 @@ fn test_app_unregister_clears_related_data(_registry_guard: TeardownGuard<Regist
 	);
 
 	// Step 2: Verify relationships exist
-	let relationships_before = get_registered_relationships();
-	let test_app1_rels: Vec<_> = relationships_before
+	let relationships = get_registered_relationships();
+	let test_app1_rels: Vec<_> = relationships
 		.iter()
 		.filter(|r| {
 			r.from_model.starts_with("test_cleanup_app1.")
@@ -222,39 +197,10 @@ fn test_app_unregister_clears_related_data(_registry_guard: TeardownGuard<Regist
 		"Relationship field_name mismatch"
 	);
 
-	// Step 3: Clear caches (simulates app unregister)
-	clear_model_cache();
-	clear_relationship_cache();
-
-	// Step 4: Verify data is rebuilt from distributed slices
-	let models_after = get_models_for_app("test_cleanup_app1");
-	let relationships_after = get_registered_relationships();
-
-	// Models should be rebuilt from distributed slices
-	assert_eq!(
-		models_after.len(),
-		models_before.len(),
-		"Models should be rebuilt after cache clear"
-	);
-
-	let test_app1_rels_after: Vec<_> = relationships_after
-		.iter()
-		.filter(|r| {
-			r.from_model.starts_with("test_cleanup_app1.")
-				|| r.to_model.starts_with("test_cleanup_app1.")
-		})
-		.collect();
-
-	assert_eq!(
-		test_app1_rels_after.len(),
-		test_app1_rels.len(),
-		"Relationships should be rebuilt after cache clear"
-	);
-
 	println!(
-		"Cache clear verified: {} models, {} relationships",
-		models_after.len(),
-		test_app1_rels_after.len()
+		"Registry data integrity verified: {} models, {} relationships",
+		models.len(),
+		test_app1_rels.len()
 	);
 }
 
@@ -264,7 +210,7 @@ fn test_app_unregister_clears_related_data(_registry_guard: TeardownGuard<Regist
 /// are present and non-empty in ModelMetadata.
 #[rstest]
 #[serial(app_registry)]
-fn test_model_metadata_completeness(_registry_guard: TeardownGuard<RegistryGuard>) {
+fn test_model_metadata_completeness() {
 	let models = get_registered_models();
 
 	// Find our test model

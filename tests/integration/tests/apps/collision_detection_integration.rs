@@ -5,44 +5,20 @@
 //! - Duplicate model names within the same app
 //! - Duplicate table names across different apps
 //! - Circular foreign key relationships
+//!
+//! Note: With OnceLock-based caching, caches are initialized once and cannot be cleared.
+//! Validation functions operate on the distributed slices directly.
 
 use linkme::distributed_slice;
 use reinhardt_apps::registry::{
-	clear_model_cache, clear_relationship_cache, ModelMetadata, RelationshipMetadata,
-	RelationshipType, MODELS, RELATIONSHIPS,
+	ModelMetadata, RelationshipMetadata, RelationshipType, MODELS, RELATIONSHIPS,
 };
 use reinhardt_apps::validation::{
 	check_circular_relationships, check_duplicate_model_names, check_duplicate_table_names,
 	validate_registry, ValidationError,
 };
-use reinhardt_test::resource::{TeardownGuard, TestResource};
-use rstest::{fixture, rstest};
+use rstest::rstest;
 use serial_test::serial;
-
-// ============================================================================
-// Test Fixtures
-// ============================================================================
-
-/// TeardownGuard for registry cleanup
-struct RegistryGuard;
-
-impl TestResource for RegistryGuard {
-	fn setup() -> Self {
-		clear_model_cache();
-		clear_relationship_cache();
-		Self
-	}
-
-	fn teardown(&mut self) {
-		clear_model_cache();
-		clear_relationship_cache();
-	}
-}
-
-#[fixture]
-fn registry_guard() -> TeardownGuard<RegistryGuard> {
-	TeardownGuard::new()
-}
 
 // ============================================================================
 // Test Model Registrations for Collision Tests
@@ -144,7 +120,7 @@ static COLLISION_CIRCULAR_B_TO_A: RelationshipMetadata = RelationshipMetadata {
 /// does NOT trigger a duplicate model name error.
 #[rstest]
 #[serial(app_registry)]
-fn test_duplicate_app_label_detection(_registry_guard: TeardownGuard<RegistryGuard>) {
+fn test_duplicate_app_label_detection() {
 	// Multiple models in "testapp" should NOT cause duplicate model name errors
 	let errors = check_duplicate_model_names();
 
@@ -174,7 +150,7 @@ fn test_duplicate_app_label_detection(_registry_guard: TeardownGuard<RegistryGua
 /// as an error.
 #[rstest]
 #[serial(app_registry)]
-fn test_duplicate_model_name_within_app(_registry_guard: TeardownGuard<RegistryGuard>) {
+fn test_duplicate_model_name_within_app() {
 	let errors = check_duplicate_model_names();
 
 	// Should detect duplicate "User" in "duplicates" app
@@ -207,7 +183,7 @@ fn test_duplicate_model_name_within_app(_registry_guard: TeardownGuard<RegistryG
 /// Different apps using the same table name should be detected as an error.
 #[rstest]
 #[serial(app_registry)]
-fn test_duplicate_table_name_across_apps(_registry_guard: TeardownGuard<RegistryGuard>) {
+fn test_duplicate_table_name_across_apps() {
 	let errors = check_duplicate_table_names();
 
 	// Should detect duplicate table name "shared_users"
@@ -243,7 +219,7 @@ fn test_duplicate_table_name_across_apps(_registry_guard: TeardownGuard<Registry
 /// Circular foreign key relationships should be detected as an error.
 #[rstest]
 #[serial(app_registry)]
-fn test_circular_relationship_detection(_registry_guard: TeardownGuard<RegistryGuard>) {
+fn test_circular_relationship_detection() {
 	let errors = check_circular_relationships();
 
 	// Should detect circular relationship between ModelA and ModelB
@@ -279,7 +255,7 @@ fn test_circular_relationship_detection(_registry_guard: TeardownGuard<RegistryG
 /// Test that validate_registry() detects all types of errors.
 #[rstest]
 #[serial(app_registry)]
-fn test_comprehensive_validation(_registry_guard: TeardownGuard<RegistryGuard>) {
+fn test_comprehensive_validation() {
 	let all_errors = validate_registry();
 
 	// Should detect at least 3 types of errors:
@@ -331,7 +307,7 @@ fn test_comprehensive_validation(_registry_guard: TeardownGuard<RegistryGuard>) 
 /// Verify that normal, valid model registrations do not trigger errors.
 #[rstest]
 #[serial(app_registry)]
-fn test_no_false_positives_for_valid_models(_registry_guard: TeardownGuard<RegistryGuard>) {
+fn test_no_false_positives_for_valid_models() {
 	// "testapp" has User and Post - both valid (different names)
 	let errors = check_duplicate_model_names();
 

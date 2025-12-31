@@ -1,14 +1,16 @@
 //! Advanced integration tests for relationship registration
 //!
 //! Tests OneToOne relationships, related_name reverse lookups, and ManyToMany through table validation.
+//!
+//! Note: With OnceLock-based caching, caches are initialized once and cannot be cleared.
+//! Tests verify read operations which remain valid.
 
 use linkme::distributed_slice;
 use reinhardt_apps::registry::{
-	clear_relationship_cache, get_registered_relationships, get_relationships_to_model,
-	RelationshipMetadata, RelationshipType, RELATIONSHIPS,
+	get_registered_relationships, get_relationships_to_model, RelationshipMetadata,
+	RelationshipType, RELATIONSHIPS,
 };
-use reinhardt_test::resource::{TeardownGuard, TestResource};
-use rstest::{fixture, rstest};
+use rstest::rstest;
 use serial_test::serial;
 
 // Test relationship registrations for advanced scenarios
@@ -49,30 +51,10 @@ static TEST_ARTICLE_CATEGORIES: RelationshipMetadata = RelationshipMetadata {
 	through_table: Some("blog_article_categories"),
 };
 
-/// TeardownGuard for relationship cache cleanup
-struct RelationshipCacheGuard;
-
-impl TestResource for RelationshipCacheGuard {
-	fn setup() -> Self {
-		Self
-	}
-
-	fn teardown(&mut self) {
-		clear_relationship_cache();
-	}
-}
-
-#[fixture]
-fn relationship_cache() -> TeardownGuard<RelationshipCacheGuard> {
-	TeardownGuard::new()
-}
-
 /// Test OneToOne relationship registration, retrieval, and validation
 #[rstest]
 #[serial(app_registry)]
-fn test_one_to_one_relationship_registration(
-	_relationship_cache: TeardownGuard<RelationshipCacheGuard>,
-) {
+fn test_one_to_one_relationship_registration() {
 	let all_relationships = get_registered_relationships();
 
 	// Find the OneToOne relationship
@@ -121,7 +103,7 @@ fn test_one_to_one_relationship_registration(
 /// Test related_name reverse lookup functionality
 #[rstest]
 #[serial(app_registry)]
-fn test_related_name_reverse_lookup(_relationship_cache: TeardownGuard<RelationshipCacheGuard>) {
+fn test_related_name_reverse_lookup() {
 	// Get all relationships pointing to auth.User
 	let user_relationships = get_relationships_to_model("auth.User");
 
@@ -163,9 +145,7 @@ fn test_related_name_reverse_lookup(_relationship_cache: TeardownGuard<Relations
 /// Test ManyToMany relationship with through table validation
 #[rstest]
 #[serial(app_registry)]
-fn test_many_to_many_through_table_validation(
-	_relationship_cache: TeardownGuard<RelationshipCacheGuard>,
-) {
+fn test_many_to_many_through_table_validation() {
 	let all_relationships = get_registered_relationships();
 
 	// Find the ManyToMany relationship

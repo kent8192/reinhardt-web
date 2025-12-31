@@ -2,16 +2,17 @@
 //!
 //! These tests use distributed_slice for model registration and must be run as integration tests
 //! (separate binaries) to avoid linkme conflicts.
+//!
+//! Note: With OnceLock-based caching, caches are initialized once and cannot be cleared.
+//! Tests verify read operations which remain valid.
 
 use linkme::distributed_slice;
 use reinhardt_apps::registry::{
-	clear_model_cache, clear_relationship_cache, find_model, get_models_for_app,
-	get_registered_models, get_registered_relationships, get_relationships_for_model,
-	get_relationships_to_model, ModelMetadata, RelationshipMetadata, RelationshipType, MODELS,
-	RELATIONSHIPS,
+	find_model, get_models_for_app, get_registered_models, get_registered_relationships,
+	get_relationships_for_model, get_relationships_to_model, ModelMetadata, RelationshipMetadata,
+	RelationshipType, MODELS, RELATIONSHIPS,
 };
-use reinhardt_test::resource::{TeardownGuard, TestResource};
-use rstest::{fixture, rstest};
+use rstest::rstest;
 use serial_test::serial;
 use std::collections::HashSet;
 
@@ -37,26 +38,7 @@ static TEST_COMMENT_MODEL: ModelMetadata = ModelMetadata {
 	table_name: "blog_comments",
 };
 
-// TeardownGuard for model cache cleanup
-struct ModelCacheGuard;
-
-impl TestResource for ModelCacheGuard {
-	fn setup() -> Self {
-		Self
-	}
-
-	fn teardown(&mut self) {
-		clear_model_cache();
-	}
-}
-
-#[fixture]
-fn model_cache() -> TeardownGuard<ModelCacheGuard> {
-	clear_model_cache();
-	TeardownGuard::new()
-}
-
-#[test]
+#[rstest]
 #[serial(app_registry)]
 fn test_get_registered_models() {
 	let models = get_registered_models();
@@ -71,7 +53,7 @@ fn test_get_registered_models() {
 
 #[rstest]
 #[serial(app_registry)]
-fn test_get_models_for_app(_model_cache: TeardownGuard<ModelCacheGuard>) {
+fn test_get_models_for_app() {
 	let blog_models = get_models_for_app("blog");
 	assert_eq!(blog_models.len(), 2);
 
@@ -85,12 +67,12 @@ fn test_get_models_for_app(_model_cache: TeardownGuard<ModelCacheGuard>) {
 
 #[rstest]
 #[serial(app_registry)]
-fn test_get_models_for_app_cached(_model_cache: TeardownGuard<ModelCacheGuard>) {
-	// First call - populates cache
+fn test_get_models_for_app_cached() {
+	// First call - initializes cache (with OnceLock, this is lazy and permanent)
 	let models1 = get_models_for_app("blog");
 	assert_eq!(models1.len(), 2);
 
-	// Second call - should use cache
+	// Second call - should use same cached data
 	let models2 = get_models_for_app("blog");
 	assert_eq!(models2.len(), 2);
 
@@ -98,14 +80,14 @@ fn test_get_models_for_app_cached(_model_cache: TeardownGuard<ModelCacheGuard>) 
 	assert_eq!(models1.len(), models2.len());
 }
 
-#[test]
+#[rstest]
 #[serial(app_registry)]
 fn test_get_models_for_nonexistent_app() {
 	let models = get_models_for_app("nonexistent");
 	assert_eq!(models.len(), 0);
 }
 
-#[test]
+#[rstest]
 #[serial(app_registry)]
 fn test_find_model() {
 	let model = find_model("auth.User");
@@ -118,25 +100,11 @@ fn test_find_model() {
 	assert_eq!(model.unwrap().model_name, "Post");
 }
 
-#[test]
+#[rstest]
 #[serial(app_registry)]
 fn test_find_nonexistent_model() {
 	let model = find_model("nonexistent.Model");
 	assert!(model.is_none());
-}
-
-#[test]
-#[serial(app_registry)]
-fn test_clear_model_cache() {
-	// Populate cache
-	let _ = get_models_for_app("blog");
-
-	// Clear cache
-	clear_model_cache();
-
-	// Should still work (rebuilds cache)
-	let models = get_models_for_app("blog");
-	assert_eq!(models.len(), 2);
 }
 
 // Test relationship registrations
@@ -162,26 +130,7 @@ static TEST_POST_TAGS: RelationshipMetadata = RelationshipMetadata {
 	through_table: Some("blog_post_tags"),
 };
 
-// TeardownGuard for relationship cache cleanup
-struct RelationshipCacheGuard;
-
-impl TestResource for RelationshipCacheGuard {
-	fn setup() -> Self {
-		Self
-	}
-
-	fn teardown(&mut self) {
-		clear_relationship_cache();
-	}
-}
-
-#[fixture]
-fn relationship_cache() -> TeardownGuard<RelationshipCacheGuard> {
-	clear_relationship_cache();
-	TeardownGuard::new()
-}
-
-#[test]
+#[rstest]
 #[serial(app_registry)]
 fn test_get_registered_relationships() {
 	let relationships = get_registered_relationships();
@@ -199,7 +148,7 @@ fn test_get_registered_relationships() {
 
 #[rstest]
 #[serial(app_registry)]
-fn test_get_relationships_for_model(_relationship_cache: TeardownGuard<RelationshipCacheGuard>) {
+fn test_get_relationships_for_model() {
 	let post_rels = get_relationships_for_model("blog.Post");
 	assert_eq!(post_rels.len(), 2);
 
@@ -209,34 +158,18 @@ fn test_get_relationships_for_model(_relationship_cache: TeardownGuard<Relations
 
 #[rstest]
 #[serial(app_registry)]
-fn test_get_relationships_for_nonexistent_model(
-	_relationship_cache: TeardownGuard<RelationshipCacheGuard>,
-) {
+fn test_get_relationships_for_nonexistent_model() {
 	let rels = get_relationships_for_model("nonexistent.Model");
 	assert_eq!(rels.len(), 0);
 }
 
 #[rstest]
 #[serial(app_registry)]
-fn test_get_relationships_to_model(_relationship_cache: TeardownGuard<RelationshipCacheGuard>) {
+fn test_get_relationships_to_model() {
 	let user_rels = get_relationships_to_model("auth.User");
 	assert!(!user_rels.is_empty());
 
 	assert!(user_rels
 		.iter()
 		.any(|r| r.field_name == "author" && r.from_model == "blog.Post"));
-}
-
-#[rstest]
-#[serial(app_registry)]
-fn test_clear_relationship_cache() {
-	// Populate cache
-	let _ = get_relationships_for_model("blog.Post");
-
-	// Clear cache
-	clear_relationship_cache();
-
-	// Should still work (rebuilds cache)
-	let rels = get_relationships_for_model("blog.Post");
-	assert_eq!(rels.len(), 2);
 }
