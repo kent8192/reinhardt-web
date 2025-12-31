@@ -44,8 +44,8 @@ fn create_test_migration(
 	operations: Vec<Operation>,
 ) -> Migration {
 	Migration {
-		app_label: app,
-		name,
+		app_label: app.to_string(),
+		name: name.to_string(),
 		operations,
 		dependencies: vec![],
 		replaces: vec![],
@@ -53,13 +53,15 @@ fn create_test_migration(
 		initial: None,
 		state_only: false,
 		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	}
 }
 
 /// Create a basic column definition
-fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
@@ -94,9 +96,9 @@ async fn test_simultaneous_migrate(
 		"testapp",
 		"0001_concurrent",
 		vec![Operation::CreateTable {
-			name: table_name,
+			name: table_name.to_string(),
 			columns: vec![ColumnDefinition {
-				name: "id",
+				name: "id".to_string(),
 				type_definition: FieldType::Custom("SERIAL".to_string()),
 				not_null: true,
 				unique: false,
@@ -105,6 +107,9 @@ async fn test_simultaneous_migrate(
 				default: None,
 			}],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -413,13 +418,13 @@ async fn test_migration_timeout(
 		"0001_slow_migration",
 		vec![
 			Operation::RunSQL {
-				sql: leak_str("SELECT pg_sleep(0.5)"), // 500ms sleep
+				sql: leak_str("SELECT pg_sleep(0.5)").to_string(), // 500ms sleep
 				reverse_sql: None,
 			},
 			Operation::CreateTable {
-				name: leak_str("timeout_table"),
+				name: leak_str("timeout_table").to_string(),
 				columns: vec![ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL".to_string()),
 					not_null: true,
 					unique: false,
@@ -428,6 +433,9 @@ async fn test_migration_timeout(
 					default: None,
 				}],
 				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
 			},
 		],
 	);
@@ -486,10 +494,10 @@ async fn test_crash_recovery(
 		"testapp",
 		"0001_crash_recovery",
 		vec![Operation::CreateTable {
-			name: leak_str("crash_test_table"),
+			name: leak_str("crash_test_table").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL".to_string()),
 					not_null: true,
 					unique: false,
@@ -500,6 +508,9 @@ async fn test_crash_recovery(
 				create_basic_column("data", FieldType::Text),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -574,8 +585,9 @@ async fn test_concurrent_add_column(
 				"testapp",
 				leak_str(format!("000{}_add_col", i + 1)),
 				vec![Operation::AddColumn {
-					table: "concurrent_alter_table",
+					table: "concurrent_alter_table".to_string(),
 					column: create_basic_column(col_name, FieldType::Text),
+					mysql_options: None,
 				}],
 			);
 
@@ -659,7 +671,7 @@ async fn test_sequential_migration_order(
 			"testapp",
 			"0001_first",
 			vec![Operation::RunSQL {
-				sql: leak_str("INSERT INTO execution_order (step) VALUES ('step1')"),
+				sql: leak_str("INSERT INTO execution_order (step) VALUES ('step1')").to_string(),
 				reverse_sql: None,
 			}],
 		),
@@ -667,7 +679,7 @@ async fn test_sequential_migration_order(
 			"testapp",
 			"0002_second",
 			vec![Operation::RunSQL {
-				sql: leak_str("INSERT INTO execution_order (step) VALUES ('step2')"),
+				sql: leak_str("INSERT INTO execution_order (step) VALUES ('step2')").to_string(),
 				reverse_sql: None,
 			}],
 		),
@@ -675,7 +687,7 @@ async fn test_sequential_migration_order(
 			"testapp",
 			"0003_third",
 			vec![Operation::RunSQL {
-				sql: leak_str("INSERT INTO execution_order (step) VALUES ('step3')"),
+				sql: leak_str("INSERT INTO execution_order (step) VALUES ('step3')").to_string(),
 				reverse_sql: None,
 			}],
 		),

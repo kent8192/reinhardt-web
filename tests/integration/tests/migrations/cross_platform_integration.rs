@@ -54,9 +54,8 @@ fn create_test_migration(
 	}
 }
 
-fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition {
-		name,
+fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
+	ColumnDefinition { name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
@@ -386,7 +385,7 @@ async fn test_platform_specific_line_ending(
 		"testapp",
 		"0001_unix_lf",
 		vec![Operation::RunSQL {
-			sql: leak_str(sql_unix),
+			sql: leak_str(sql_unix).to_string(),
 			reverse_sql: Some("DROP TABLE test_unix"),
 		}],
 	);
@@ -395,7 +394,7 @@ async fn test_platform_specific_line_ending(
 		"testapp",
 		"0002_windows_crlf",
 		vec![Operation::RunSQL {
-			sql: leak_str(sql_windows),
+			sql: leak_str(sql_windows).to_string(),
 			reverse_sql: Some("DROP TABLE test_windows"),
 		}],
 	);
@@ -404,7 +403,7 @@ async fn test_platform_specific_line_ending(
 		"testapp",
 		"0003_mac_cr",
 		vec![Operation::RunSQL {
-			sql: leak_str(sql_mac),
+			sql: leak_str(sql_mac).to_string(),
 			reverse_sql: Some("DROP TABLE test_mac"),
 		}],
 	);

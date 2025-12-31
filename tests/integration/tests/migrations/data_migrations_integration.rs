@@ -49,8 +49,8 @@ fn create_test_migration(
 	operations: Vec<Operation>,
 ) -> Migration {
 	Migration {
-		app_label: app,
-		name,
+		app_label: app.to_string(),
+		name: name.to_string(),
 		operations,
 		dependencies: vec![],
 		replaces: vec![],
@@ -58,13 +58,15 @@ fn create_test_migration(
 		initial: None,
 		state_only: false,
 		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	}
 }
 
 /// Create a basic column definition
-fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
@@ -75,9 +77,9 @@ fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinit
 }
 
 /// Create a NOT NULL column definition
-fn create_not_null_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: true,
 		unique: false,
@@ -88,9 +90,9 @@ fn create_not_null_column(name: &'static str, type_def: FieldType) -> ColumnDefi
 }
 
 /// Create an auto-increment primary key column
-fn create_auto_pk_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_auto_pk_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: true,
 		unique: false,
@@ -176,13 +178,16 @@ async fn test_run_sql_data_manipulation(
 		"testapp",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_basic_column("name", FieldType::VarChar(100)),
 				create_basic_column("status", FieldType::VarChar(20)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -203,17 +208,19 @@ async fn test_run_sql_data_manipulation(
 					 ('Alice', 'active'),
 					 ('Bob', 'pending'),
 					 ('Charlie', 'active')",
+				)
+				.to_string(),
+				reverse_sql: Some(
+					leak_str("DELETE FROM users WHERE name IN ('Alice', 'Bob', 'Charlie')")
+						.to_string(),
 				),
-				reverse_sql: Some(leak_str(
-					"DELETE FROM users WHERE name IN ('Alice', 'Bob', 'Charlie')",
-				)),
 			},
 			// UPDATE Bob's status
 			Operation::RunSQL {
-				sql: leak_str("UPDATE users SET status = 'active' WHERE name = 'Bob'"),
-				reverse_sql: Some(leak_str(
-					"UPDATE users SET status = 'pending' WHERE name = 'Bob'",
-				)),
+				sql: leak_str("UPDATE users SET status = 'active' WHERE name = 'Bob'").to_string(),
+				reverse_sql: Some(
+					leak_str("UPDATE users SET status = 'pending' WHERE name = 'Bob'").to_string(),
+				),
 			},
 		],
 	);
@@ -263,16 +270,20 @@ async fn test_computed_default_values(
 		"0001_create_posts",
 		vec![
 			Operation::CreateTable {
-				name: leak_str("posts"),
+				name: leak_str("posts").to_string(),
 				columns: vec![
 					create_auto_pk_column("id", FieldType::Integer),
 					create_not_null_column("title", FieldType::VarChar(200)),
 				],
 				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
 			},
 			// Insert some initial data
 			Operation::RunSQL {
-				sql: leak_str("INSERT INTO posts (title) VALUES ('First Post'), ('Second Post')"),
+				sql: leak_str("INSERT INTO posts (title) VALUES ('First Post'), ('Second Post')")
+					.to_string(),
 				reverse_sql: None,
 			},
 		],
@@ -289,12 +300,14 @@ async fn test_computed_default_values(
 		"0002_add_created_at",
 		vec![
 			Operation::AddColumn {
-				table: leak_str("posts"),
+				table: leak_str("posts").to_string(),
 				column: create_basic_column("created_at", FieldType::DateTime),
+				mysql_options: None,
 			},
 			// Backfill existing rows with current timestamp
 			Operation::RunSQL {
-				sql: leak_str("UPDATE posts SET created_at = NOW() WHERE created_at IS NULL"),
+				sql: leak_str("UPDATE posts SET created_at = NOW() WHERE created_at IS NULL")
+					.to_string(),
 				reverse_sql: None,
 			},
 		],
@@ -336,15 +349,18 @@ async fn test_data_type_conversion(
 		"0001_create_users",
 		vec![
 			Operation::CreateTable {
-				name: leak_str("users"),
+				name: leak_str("users").to_string(),
 				columns: vec![
 					create_auto_pk_column("id", FieldType::Integer),
 					create_basic_column("age", FieldType::VarChar(10)), // Initially VARCHAR
 				],
 				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
 			},
 			Operation::RunSQL {
-				sql: leak_str("INSERT INTO users (age) VALUES ('25'), ('30'), ('35')"),
+				sql: leak_str("INSERT INTO users (age) VALUES ('25'), ('30'), ('35')").to_string(),
 				reverse_sql: None,
 			},
 		],
@@ -362,24 +378,25 @@ async fn test_data_type_conversion(
 		vec![
 			// Add new INTEGER column
 			Operation::AddColumn {
-				table: leak_str("users"),
+				table: leak_str("users").to_string(),
 				column: create_basic_column("age_int", FieldType::Integer),
+				mysql_options: None,
 			},
 			// Copy data with type conversion
 			Operation::RunSQL {
-				sql: leak_str("UPDATE users SET age_int = CAST(age AS INTEGER)"),
+				sql: leak_str("UPDATE users SET age_int = CAST(age AS INTEGER)").to_string(),
 				reverse_sql: None,
 			},
 			// Drop old VARCHAR column
 			Operation::DropColumn {
-				table: leak_str("users"),
-				column: leak_str("age"),
+				table: leak_str("users").to_string(),
+				column: leak_str("age").to_string(),
 			},
 			// Rename age_int to age
 			Operation::RenameColumn {
-				table: leak_str("users"),
-				old_name: leak_str("age_int"),
-				new_name: leak_str("age"),
+				table: leak_str("users").to_string(),
+				old_name: leak_str("age_int").to_string(),
+				new_name: leak_str("age").to_string(),
 			},
 		],
 	);
@@ -435,13 +452,16 @@ async fn test_data_cleaning(
 		"0001_create_products",
 		vec![
 			Operation::CreateTable {
-				name: leak_str("products"),
+				name: leak_str("products").to_string(),
 				columns: vec![
 					create_auto_pk_column("id", FieldType::Integer),
 					create_basic_column("name", FieldType::VarChar(200)),
 					create_basic_column("price", FieldType::Integer),
 				],
 				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
 			},
 			Operation::RunSQL {
 				sql: leak_str(
@@ -450,7 +470,8 @@ async fn test_data_cleaning(
 					 ('Invalid - Negative Price', -50),
 					 ('Invalid - Zero Price', 0),
 					 ('Valid Product 2', 200)",
-				),
+				)
+				.to_string(),
 				reverse_sql: None,
 			},
 		],
@@ -466,7 +487,7 @@ async fn test_data_cleaning(
 		"testapp",
 		"0002_clean_invalid_products",
 		vec![Operation::RunSQL {
-			sql: leak_str("DELETE FROM products WHERE price <= 0"),
+			sql: leak_str("DELETE FROM products WHERE price <= 0").to_string(),
 			reverse_sql: None, // Cleaning is typically irreversible
 		}],
 	);
@@ -517,12 +538,15 @@ async fn test_bulk_data_insertion(
 		"testapp",
 		"0001_create_events",
 		vec![Operation::CreateTable {
-			name: leak_str("events"),
+			name: leak_str("events").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_not_null_column("event_type", FieldType::VarChar(50)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -546,8 +570,8 @@ async fn test_bulk_data_insertion(
 		"testapp",
 		"0002_bulk_insert_events",
 		vec![Operation::RunSQL {
-			sql: leak_str(insert_sql),
-			reverse_sql: Some(leak_str("DELETE FROM events")),
+			sql: leak_str(insert_sql).to_string(),
+			reverse_sql: Some(leak_str("DELETE FROM events").to_string()),
 		}],
 	);
 
@@ -586,13 +610,16 @@ async fn test_stored_procedure_creation(
 		"testapp",
 		"0001_create_counters",
 		vec![Operation::CreateTable {
-			name: leak_str("counters"),
+			name: leak_str("counters").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_not_null_column("name", FieldType::VarChar(50)),
 				create_basic_column("value", FieldType::Integer),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -618,10 +645,11 @@ async fn test_stored_procedure_creation(
 					 RETURN new_value;
 				 END;
 				 $$ LANGUAGE plpgsql",
+			)
+			.to_string(),
+			reverse_sql: Some(
+				leak_str("DROP FUNCTION IF EXISTS increment_counter(VARCHAR)").to_string(),
 			),
-			reverse_sql: Some(leak_str(
-				"DROP FUNCTION IF EXISTS increment_counter(VARCHAR)",
-			)),
 		}],
 	);
 
@@ -666,21 +694,27 @@ async fn test_trigger_creation(
 		"0001_create_audit_log",
 		vec![
 			Operation::CreateTable {
-				name: leak_str("users"),
+				name: leak_str("users").to_string(),
 				columns: vec![
 					create_auto_pk_column("id", FieldType::Integer),
 					create_not_null_column("name", FieldType::VarChar(100)),
 				],
 				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
 			},
 			Operation::CreateTable {
-				name: leak_str("audit_log"),
+				name: leak_str("audit_log").to_string(),
 				columns: vec![
 					create_auto_pk_column("id", FieldType::Integer),
 					create_basic_column("action", FieldType::VarChar(50)),
 					create_basic_column("user_id", FieldType::Integer),
 				],
 				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
 			},
 		],
 	);
@@ -706,8 +740,11 @@ async fn test_trigger_creation(
 						 RETURN NEW;
 					 END;
 					 $$ LANGUAGE plpgsql",
+				)
+				.to_string(),
+				reverse_sql: Some(
+					leak_str("DROP FUNCTION IF EXISTS audit_user_changes()").to_string(),
 				),
-				reverse_sql: Some(leak_str("DROP FUNCTION IF EXISTS audit_user_changes()")),
 			},
 			// Create trigger
 			Operation::RunSQL {
@@ -716,10 +753,11 @@ async fn test_trigger_creation(
 					 AFTER INSERT ON users
 					 FOR EACH ROW
 					 EXECUTE FUNCTION audit_user_changes()",
+				)
+				.to_string(),
+				reverse_sql: Some(
+					leak_str("DROP TRIGGER IF EXISTS user_audit_trigger ON users").to_string(),
 				),
-				reverse_sql: Some(leak_str(
-					"DROP TRIGGER IF EXISTS user_audit_trigger ON users",
-				)),
 			},
 		],
 	);
@@ -824,9 +862,12 @@ async fn test_run_sql_error_handling(
 		"testapp",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![create_auto_pk_column("id", FieldType::Integer)],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -840,7 +881,7 @@ async fn test_run_sql_error_handling(
 		"testapp",
 		"0002_bad_sql",
 		vec![Operation::RunSQL {
-			sql: leak_str("INSERT INTO nonexistent_table (col) VALUES (1)"), // Table doesn't exist
+			sql: leak_str("INSERT INTO nonexistent_table (col) VALUES (1)").to_string(), // Table doesn't exist
 			reverse_sql: None,
 		}],
 	);
@@ -871,58 +912,145 @@ async fn test_run_sql_error_handling(
 
 /// Test SeparateDatabaseAndState equivalent (state_only: update ProjectState only)
 ///
-/// **Test Intent**: Verify that migrations can update ProjectState without modifying DB
+/// **Test Intent**: Verify that migrations with state_only=true skip database operations
 ///
 /// **Django Equivalent**: SeparateDatabaseAndState(state_operations=[...], database_operations=[])
 ///
 /// **Use Case**: When database was manually modified but migrations need to catch up
 #[rstest]
-#[ignore = "SeparateDatabaseAndState equivalent not yet implemented"]
 #[tokio::test]
 async fn test_state_only_migration(
-	#[future] _postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	// TODO: Add state_only flag to Migration struct
-	// Example:
-	// Migration {
-	// 	app_label: "testapp",
-	// 	name: "0001_state_only",
-	// 	operations: vec![Operation::CreateTable { ... }],
-	// 	state_only: true, // Don't execute SQL, just update ProjectState
-	// 	...
-	// }
-	//
-	// This is useful when:
-	// - Database was manually modified (table already exists)
-	// - Migrations need to reflect that state
-	// - You want to avoid "relation already exists" errors
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.expect("Failed to connect to PostgreSQL");
+
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
+
+	// Create a migration with state_only=true
+	// This migration should NOT execute database operations
+	let state_only_migration = Migration {
+		app_label: "testapp".to_string(),
+		name: "0001_state_only".to_string(),
+		operations: vec![Operation::CreateTable {
+			name: leak_str("state_only_table").to_string(),
+			columns: vec![create_auto_pk_column("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		}],
+		dependencies: vec![],
+		replaces: vec![],
+		atomic: true,
+		initial: None,
+		state_only: true, // Skip database operations
+		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
+	};
+
+	// Apply migration with state_only=true
+	executor
+		.apply_migrations(&[state_only_migration])
+		.await
+		.expect("Failed to apply state_only migration");
+
+	// Verify that the table was NOT created in the database
+	// (state_only skips database operations)
+	let table_exists: bool = sqlx::query_scalar(
+		"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = $1)",
+	)
+	.bind("state_only_table")
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to check table");
+
+	assert!(
+		!table_exists,
+		"Table should NOT be created when state_only=true"
+	);
 }
 
 /// Test SeparateDatabaseAndState equivalent (database_only: update DB only)
 ///
-/// **Test Intent**: Verify that migrations can modify DB without updating ProjectState
+/// **Test Intent**: Verify that migrations with database_only=true execute database
+/// operations but skip ProjectState updates
 ///
 /// **Django Equivalent**: SeparateDatabaseAndState(state_operations=[], database_operations=[...])
 ///
 /// **Use Case**: Temporary database changes that shouldn't be reflected in models
 #[rstest]
-#[ignore = "SeparateDatabaseAndState equivalent not yet implemented"]
 #[tokio::test]
 async fn test_database_only_migration(
-	#[future] _postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	// TODO: Add database_only flag to Migration struct
-	// Example:
-	// Migration {
-	// 	app_label: "testapp",
-	// 	name: "0001_db_only",
-	// 	operations: vec![Operation::RunSQL { ... }],
-	// 	database_only: true, // Execute SQL but don't update ProjectState
-	// 	...
-	// }
-	//
-	// This is useful for:
-	// - Creating temporary tables
-	// - Performance tuning (indexes not reflected in models)
-	// - Database-specific optimizations
+	let (_container, pool, _port, url) = postgres_container.await;
+
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.expect("Failed to connect to PostgreSQL");
+
+	let mut executor = DatabaseMigrationExecutor::new(connection.clone());
+
+	// Create a migration with database_only=true
+	// This migration executes database operations but doesn't update ProjectState
+	let database_only_migration = Migration {
+		app_label: "testapp".to_string(),
+		name: "0001_db_only".to_string(),
+		operations: vec![Operation::CreateTable {
+			name: leak_str("database_only_table").to_string(),
+			columns: vec![
+				create_auto_pk_column("id", FieldType::Integer),
+				create_basic_column("data", FieldType::Text),
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		}],
+		dependencies: vec![],
+		replaces: vec![],
+		atomic: true,
+		initial: None,
+		state_only: false,
+		database_only: true, // Execute SQL but skip ProjectState updates
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
+	};
+
+	// Apply migration with database_only=true
+	executor
+		.apply_migrations(&[database_only_migration])
+		.await
+		.expect("Failed to apply database_only migration");
+
+	// Verify that the table WAS created in the database
+	// (database_only still executes SQL operations)
+	let table_exists: bool = sqlx::query_scalar(
+		"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = $1)",
+	)
+	.bind("database_only_table")
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to check table");
+
+	assert!(
+		table_exists,
+		"Table should be created when database_only=true (SQL is executed)"
+	);
+
+	// Verify we can insert data into the table
+	sqlx::query("INSERT INTO database_only_table (data) VALUES ('test data')")
+		.execute(pool.as_ref())
+		.await
+		.expect("Failed to insert data");
+
+	// Note: ProjectState updates are currently not implemented in the executor,
+	// so we cannot verify that ProjectState was not updated.
+	// When ProjectState management is implemented, this test should be extended
+	// to verify that the model is not reflected in ProjectState.
 }

@@ -45,8 +45,8 @@ fn create_test_migration(
 	operations: Vec<Operation>,
 ) -> Migration {
 	Migration {
-		app_label: app,
-		name,
+		app_label: app.to_string(),
+		name: name.to_string(),
 		operations,
 		dependencies: vec![],
 		replaces: vec![],
@@ -56,9 +56,9 @@ fn create_test_migration(
 }
 
 /// Create a basic column definition
-fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
@@ -105,10 +105,10 @@ async fn test_rename_detection_with_type_changes(
 		"testapp",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
@@ -227,7 +227,7 @@ async fn test_rename_detection_with_type_changes(
 
 	// Expected Autodetector output (if similarity threshold is met):
 	// - Operation::RenameField { model: "users", old_name: "age", new_name: "user_age" }
-	// - Operation::AlterField { model: "users", name: "user_age", new_type: FieldType::Integer }
+	// - Operation::AlterField { model: "users", name: "user_age".to_string(), new_type: FieldType::Integer }
 
 	// Expected warning message:
 	// "WARNING: Detected field rename ('age' → 'user_age') with type change (VARCHAR → INTEGER).
@@ -281,10 +281,10 @@ async fn test_complex_constraint_detection(
 		"products",
 		"0001_initial",
 		vec![Operation::CreateTable {
-			name: leak_str("products"),
+			name: leak_str("products").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
@@ -485,21 +485,21 @@ async fn test_complex_constraint_detection(
 	//
 	// Migration operations:
 	// 1. Operation::AddColumn {
-	//      table: "products",
-	//      column: ColumnDefinition { name: "deleted_at", type_definition: FieldType::Timestamp, ... }
+	//      table: "products".to_string(),
+	//      column: ColumnDefinition { name: "deleted_at".to_string(), type_definition: FieldType::Timestamp, ... }
 	//    }
 	//
 	// 2. Operation::AddConstraint {
-	//      table: "products",
+	//      table: "products".to_string(),
 	//      constraint: CheckConstraint {
-	//        name: "check_price_positive",
+	//        name: "check_price_positive".to_string(),
 	//        check: "price > 0"
 	//      }
 	//    }
 	//
 	// 3. Operation::CreateIndex {
-	//      table: "products",
-	//      name: "idx_products_sku_active",
+	//      table: "products".to_string(),
+	//      name: "idx_products_sku_active".to_string(),
 	//      columns: vec!["sku"],
 	//      unique: true,
 	//      condition: Some("deleted_at IS NULL")  // Partial index
@@ -557,10 +557,10 @@ async fn test_custom_type_handling(
 		"auth",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
@@ -751,10 +751,10 @@ async fn test_implicit_dependency_detection(
 		"auth",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
@@ -1024,10 +1024,10 @@ async fn test_schema_snapshot_isolation(
 		"auth",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
@@ -1071,8 +1071,9 @@ async fn test_schema_snapshot_isolation(
 		"auth",
 		"0002_add_email",
 		vec![Operation::AddColumn {
-			table: leak_str("users"),
+			table: leak_str("users").to_string(),
 			column: create_basic_column("email", FieldType::VarChar(Some(255))),
+			mysql_options: None,
 		}],
 	);
 
@@ -1097,8 +1098,9 @@ async fn test_schema_snapshot_isolation(
 		"auth",
 		"0003_add_phone",
 		vec![Operation::AddColumn {
-			table: leak_str("users"),
+			table: leak_str("users").to_string(),
 			column: create_basic_column("phone", FieldType::VarChar(Some(20))),
+			mysql_options: None,
 		}],
 	);
 
