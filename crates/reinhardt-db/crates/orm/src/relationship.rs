@@ -194,14 +194,14 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { "users" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
 	/// impl Model for Post {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { "posts" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
@@ -483,8 +483,8 @@ impl<P: Model, C: Model> Relationship<P, C> {
 				crate::types::DatabaseDialect::PostgreSQL => stmt.to_string(PostgresQueryBuilder),
 				crate::types::DatabaseDialect::MySQL => stmt.to_string(MysqlQueryBuilder),
 				crate::types::DatabaseDialect::SQLite => stmt.to_string(SqliteQueryBuilder),
-				// MSSQL: sea-query 1.0.0-rc does not have MssqlQueryBuilder yet
-				// Use PostgresQueryBuilder as fallback (both use ANSI SQL standard)
+				// MSSQL: PostgreSQL builder used as fallback since sea-query lacks MssqlQueryBuilder.
+				// Some PostgreSQL-specific syntax may not be compatible with MSSQL.
 				crate::types::DatabaseDialect::MSSQL => stmt.to_string(PostgresQueryBuilder),
 			}
 		} else {
@@ -548,8 +548,8 @@ mod tests {
 			USER_TABLE.as_str()
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -591,8 +591,8 @@ mod tests {
 			POST_TABLE.as_str()
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -633,8 +633,8 @@ mod tests {
 			ROLE_TABLE.as_str()
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

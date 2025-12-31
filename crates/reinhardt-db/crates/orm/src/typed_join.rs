@@ -27,7 +27,7 @@ use std::marker::PhantomData;
 /// #     type PrimaryKey = i64;
 /// #     fn app_label() -> &'static str { "app" }
 /// #     fn table_name() -> &'static str { "users" }
-/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 /// #     fn primary_key_field() -> &'static str { "id" }
 /// # }
@@ -35,7 +35,7 @@ use std::marker::PhantomData;
 /// #     type PrimaryKey = i64;
 /// #     fn app_label() -> &'static str { "app" }
 /// #     fn table_name() -> &'static str { "posts" }
-/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 /// #     fn primary_key_field() -> &'static str { "id" }
 /// # }
@@ -87,7 +87,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -95,7 +95,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "posts" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -133,7 +133,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -141,7 +141,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "posts" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -179,7 +179,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -187,7 +187,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "posts" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -225,7 +225,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -233,7 +233,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "posts" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -312,8 +312,8 @@ mod tests {
 			UserFields
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			Some(&self.id)
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -350,8 +350,8 @@ mod tests {
 			PostFields
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			Some(&self.id)
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

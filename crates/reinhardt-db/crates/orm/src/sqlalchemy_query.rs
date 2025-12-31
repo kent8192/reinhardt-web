@@ -85,7 +85,7 @@ impl<T: Model> SelectQuery<T> {
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { "users" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
@@ -162,7 +162,7 @@ impl<T: Model> SelectQuery<T> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -170,7 +170,7 @@ impl<T: Model> SelectQuery<T> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "posts" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -178,7 +178,7 @@ impl<T: Model> SelectQuery<T> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "comments" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -229,7 +229,7 @@ impl<T: Model> SelectQuery<T> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -355,7 +355,7 @@ impl<T: Model> SelectQuery<T> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -579,8 +579,8 @@ mod tests {
 			USER_TABLE.as_str()
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -623,8 +623,8 @@ mod tests {
 			POST_TABLE.as_str()
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

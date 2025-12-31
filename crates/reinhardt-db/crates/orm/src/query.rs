@@ -82,6 +82,8 @@ pub enum FilterValue {
 	FieldRef(crate::expressions::F),
 	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity)
 	Expression(crate::annotation::Expression),
+	/// Outer query reference for correlated subqueries (e.g., WHERE books.author_id = OuterRef("authors.id"))
+	OuterRef(crate::expressions::OuterRef),
 }
 
 #[derive(Debug, Clone)]
@@ -406,6 +408,9 @@ where
 	having_conditions: Vec<HavingCondition>,
 	subquery_conditions: Vec<SubqueryCondition>,
 	from_alias: Option<String>,
+	/// Subquery SQL for FROM clause (derived table)
+	/// When set, the FROM clause will use this subquery instead of the model's table
+	from_subquery_sql: Option<String>,
 }
 
 impl<T> QuerySet<T>
@@ -433,6 +438,7 @@ where
 			having_conditions: Vec::new(),
 			subquery_conditions: Vec::new(),
 			from_alias: None,
+			from_subquery_sql: None,
 		}
 	}
 
@@ -457,12 +463,81 @@ where
 			having_conditions: Vec::new(),
 			subquery_conditions: Vec::new(),
 			from_alias: None,
+			from_subquery_sql: None,
 		}
 	}
 
 	pub fn filter(mut self, filter: Filter) -> Self {
 		self.filters.push(filter);
 		self
+	}
+
+	/// Create a QuerySet from a subquery (FROM clause subquery / derived table)
+	///
+	/// This method creates a new QuerySet that uses a subquery as its data source
+	/// instead of a regular table. The subquery becomes a derived table in the FROM clause.
+	///
+	/// # Type Parameters
+	///
+	/// * `M` - The model type for the subquery
+	/// * `F` - A closure that builds the subquery
+	///
+	/// # Parameters
+	///
+	/// * `builder` - A closure that receives a fresh QuerySet<M> and returns a configured QuerySet
+	/// * `alias` - The alias for the derived table (required for FROM subqueries)
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Query from a derived table showing author book counts
+	/// let results = QuerySet::<Book>::from_subquery(
+	///     |subq| {
+	///         subq.values(&["author_id"])
+	///             .group_by(|f| GroupByFields::new().add(&f.author_id))
+	///             .annotate(Annotation::new("book_count", AnnotationValue::Aggregate(Aggregate::count_all())))
+	///     },
+	///     "book_stats"
+	/// )
+	/// .filter(Filter::new("book_count", FilterOperator::Gt, FilterValue::Int(1)))
+	/// .to_sql();
+	/// // Generates: SELECT * FROM (SELECT author_id, COUNT(*) AS book_count FROM books GROUP BY author_id) AS book_stats WHERE book_count > 1
+	/// ```
+	pub fn from_subquery<M, F>(builder: F, alias: &str) -> Self
+	where
+		M: crate::Model + 'static,
+		F: FnOnce(QuerySet<M>) -> QuerySet<M>,
+	{
+		// Create a fresh QuerySet for the subquery model
+		let subquery_qs = QuerySet::<M>::new();
+		// Apply the builder to configure the subquery
+		let configured_subquery = builder(subquery_qs);
+		// Generate SQL for the subquery (wrapped in parentheses)
+		let subquery_sql = configured_subquery.as_subquery();
+
+		// Create a new QuerySet with the subquery as FROM source
+		Self {
+			_phantom: std::marker::PhantomData,
+			filters: SmallVec::new(),
+			select_related_fields: Vec::new(),
+			prefetch_related_fields: Vec::new(),
+			order_by_fields: Vec::new(),
+			distinct_enabled: false,
+			selected_fields: None,
+			deferred_fields: Vec::new(),
+			annotations: Vec::new(),
+			manager: None,
+			limit: None,
+			offset: None,
+			ctes: crate::cte::CTECollection::new(),
+			lateral_joins: crate::lateral_join::LateralJoins::new(),
+			joins: Vec::new(),
+			group_by_fields: Vec::new(),
+			having_conditions: Vec::new(),
+			subquery_conditions: Vec::new(),
+			from_alias: Some(alias.to_string()),
+			from_subquery_sql: Some(subquery_sql),
+		}
 	}
 
 	/// Add an INNER JOIN to the query
@@ -1519,6 +1594,27 @@ where
 				(FilterOperator::Lte, FilterValue::FieldRef(f)) => {
 					col.lte(Expr::col(Alias::new(&f.field)))
 				}
+				// OuterRef comparisons for correlated subqueries
+				(FilterOperator::Eq, FilterValue::OuterRef(outer)) => {
+					// For correlated subqueries, reference outer query field
+					// e.g., WHERE books.author_id = authors.id (where authors is from outer query)
+					Expr::cust(format!("{} = {}", filter.field, outer.to_sql()))
+				}
+				(FilterOperator::Ne, FilterValue::OuterRef(outer)) => {
+					Expr::cust(format!("{} != {}", filter.field, outer.to_sql()))
+				}
+				(FilterOperator::Gt, FilterValue::OuterRef(outer)) => {
+					Expr::cust(format!("{} > {}", filter.field, outer.to_sql()))
+				}
+				(FilterOperator::Gte, FilterValue::OuterRef(outer)) => {
+					Expr::cust(format!("{} >= {}", filter.field, outer.to_sql()))
+				}
+				(FilterOperator::Lt, FilterValue::OuterRef(outer)) => {
+					Expr::cust(format!("{} < {}", filter.field, outer.to_sql()))
+				}
+				(FilterOperator::Lte, FilterValue::OuterRef(outer)) => {
+					Expr::cust(format!("{} <= {}", filter.field, outer.to_sql()))
+				}
 				// Expression comparisons (F("a") * F("b") etc.)
 				(FilterOperator::Eq, FilterValue::Expression(expr)) => {
 					col.eq(Self::expression_to_seaquery(expr))
@@ -1775,16 +1871,10 @@ where
 				Expr::cust(format!("({} / {})", left_sql, right_sql))
 			}
 			Expression::Case { whens, default } => {
-				// Note: Full CASE expression support requires Q to SQL conversion for WHEN conditions
-				// For now, we generate a simplified placeholder. This will be enhanced when
-				// Q expression SQL generation is implemented.
 				let mut case_sql = "CASE".to_string();
-				for (idx, when) in whens.iter().enumerate() {
-					case_sql.push_str(&format!(
-						" WHEN condition_{} THEN {}",
-						idx,
-						Self::annotation_value_to_sql(&when.then)
-					));
+				for when in whens.iter() {
+					// Use When::to_sql() which generates "WHEN condition THEN value"
+					case_sql.push_str(&format!(" {}", when.to_sql()));
 				}
 				if let Some(default_val) = default {
 					case_sql.push_str(&format!(
@@ -1807,63 +1897,11 @@ where
 	}
 
 	/// Convert AnnotationValue to SQL string for custom expressions
+	///
+	/// Delegates to the `AnnotationValue::to_sql()` method which provides
+	/// complete SQL generation for all annotation value types.
 	fn annotation_value_to_sql(value: &crate::annotation::AnnotationValue) -> String {
-		use crate::annotation::{AnnotationValue, Value};
-
-		match value {
-			AnnotationValue::Value(v) => match v {
-				Value::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
-				Value::Int(i) => i.to_string(),
-				Value::Float(f) => f.to_string(),
-				Value::String(s) => format!("'{}'", s.replace('\'', "''")),
-				Value::Null => "NULL".to_string(),
-			},
-			AnnotationValue::Field(f) => f.field.clone(),
-			AnnotationValue::Aggregate(_) => {
-				// Aggregates in WHERE clause are not common, but we'll support basic conversion
-				"(aggregate)".to_string() // Simplified
-			}
-			AnnotationValue::Expression(expr) => {
-				// Recursive call for nested expressions
-				match expr {
-					crate::annotation::Expression::Add(l, r) => {
-						format!(
-							"({} + {})",
-							Self::annotation_value_to_sql(l),
-							Self::annotation_value_to_sql(r)
-						)
-					}
-					crate::annotation::Expression::Subtract(l, r) => {
-						format!(
-							"({} - {})",
-							Self::annotation_value_to_sql(l),
-							Self::annotation_value_to_sql(r)
-						)
-					}
-					crate::annotation::Expression::Multiply(l, r) => {
-						format!(
-							"({} * {})",
-							Self::annotation_value_to_sql(l),
-							Self::annotation_value_to_sql(r)
-						)
-					}
-					crate::annotation::Expression::Divide(l, r) => {
-						format!(
-							"({} / {})",
-							Self::annotation_value_to_sql(l),
-							Self::annotation_value_to_sql(r)
-						)
-					}
-					_ => "(expression)".to_string(), // Simplified for Case/Coalesce
-				}
-			}
-			AnnotationValue::Subquery(sql) => format!("({})", sql),
-			AnnotationValue::ArrayAgg(_) => "(array_agg)".to_string(),
-			AnnotationValue::StringAgg(_) => "(string_agg)".to_string(),
-			AnnotationValue::JsonbAgg(_) => "(jsonb_agg)".to_string(),
-			AnnotationValue::JsonbBuildObject(_) => "(jsonb_build_object)".to_string(),
-			AnnotationValue::TsRank(_) => "(ts_rank)".to_string(),
-		}
+		value.to_sql()
 	}
 
 	fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
@@ -1874,10 +1912,11 @@ where
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
 			FilterValue::Null => sea_query::Value::Int(None),
 			FilterValue::Array(arr) => arr.join(",").into(),
-			// FieldRef and Expression should not reach here as they're handled separately
-			// in build_where_condition(), but provide fallback
+			// FieldRef, Expression, and OuterRef are typically handled separately
+			// in build_where_condition(), but provide proper conversion as fallback
 			FilterValue::FieldRef(f) => f.field.clone().into(),
-			FilterValue::Expression(_) => "(expression)".into(),
+			FilterValue::Expression(expr) => expr.to_sql().into(),
+			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone().into(),
 		}
 	}
 
@@ -1901,7 +1940,8 @@ where
 				format!("ARRAY[{}]", elements.join(", "))
 			}
 			FilterValue::FieldRef(f) => f.field.clone(),
-			FilterValue::Expression(_) => "(expression)".to_string(),
+			FilterValue::Expression(expr) => expr.to_sql(),
+			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone(),
 		}
 	}
 
@@ -1915,8 +1955,9 @@ where
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => b.to_string(),
 			FilterValue::Null => String::new(),
 			FilterValue::Array(arr) => arr.join(","),
-			FilterValue::FieldRef(_) => todo!("FieldRef to string conversion not implemented"),
-			FilterValue::Expression(_) => todo!("Expression to string conversion not implemented"),
+			FilterValue::FieldRef(f) => f.field.clone(),
+			FilterValue::Expression(expr) => expr.to_sql(),
+			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone(),
 		}
 	}
 
@@ -1968,8 +2009,9 @@ where
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => vec![(*b).into()],
 			FilterValue::Null => vec![sea_query::Value::Int(None)],
 			FilterValue::Array(arr) => arr.iter().map(|s| s.clone().into()).collect(),
-			FilterValue::FieldRef(_) => todo!("FieldRef to array conversion not implemented"),
-			FilterValue::Expression(_) => todo!("Expression to array conversion not implemented"),
+			FilterValue::FieldRef(f) => vec![f.field.clone().into()],
+			FilterValue::Expression(expr) => vec![expr.to_sql().into()],
+			FilterValue::OuterRef(outer) => vec![outer.field.clone().into()],
 		}
 	}
 
@@ -3050,6 +3092,59 @@ where
 		self
 	}
 
+	/// Add a subquery annotation to the QuerySet (SELECT clause subquery)
+	///
+	/// This method adds a scalar subquery to the SELECT clause, allowing you to
+	/// include computed values from related tables without explicit JOINs.
+	///
+	/// # Type Parameters
+	///
+	/// * `M` - The model type for the subquery
+	/// * `F` - A closure that builds the subquery
+	///
+	/// # Parameters
+	///
+	/// * `name` - The alias for the subquery result column
+	/// * `builder` - A closure that receives a fresh QuerySet<M> and returns a configured QuerySet
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Add book count for each author
+	/// let authors = Author::objects()
+	///     .annotate_subquery::<Book, _>("book_count", |subq| {
+	///         subq.filter(Filter::new(
+	///             "author_id",
+	///             FilterOperator::Eq,
+	///             FilterValue::OuterRef(OuterRef::new("authors.id"))
+	///         ))
+	///         .values(&["COUNT(*)"])
+	///     })
+	///     .all()
+	///     .await?;
+	/// // Generates: SELECT *, (SELECT COUNT(*) FROM books WHERE author_id = authors.id) AS book_count FROM authors
+	/// ```
+	pub fn annotate_subquery<M, F>(mut self, name: &str, builder: F) -> Self
+	where
+		M: crate::Model + 'static,
+		F: FnOnce(QuerySet<M>) -> QuerySet<M>,
+	{
+		// Create a fresh QuerySet for the subquery model
+		let subquery_qs = QuerySet::<M>::new();
+		// Apply the builder to configure the subquery
+		let configured_subquery = builder(subquery_qs);
+		// Generate SQL for the subquery (wrapped in parentheses)
+		let subquery_sql = configured_subquery.as_subquery();
+
+		// Add as annotation using AnnotationValue::Subquery
+		let annotation = crate::annotation::Annotation {
+			alias: name.to_string(),
+			value: crate::annotation::AnnotationValue::Subquery(subquery_sql),
+		};
+		self.annotations.push(annotation);
+		self
+	}
+
 	/// Perform an aggregation on the QuerySet
 	///
 	/// Aggregations allow you to calculate summary statistics (COUNT, SUM, AVG, MAX, MIN)
@@ -3284,6 +3379,24 @@ where
 				.unwrap_or(select_sql.len());
 
 			select_sql.insert_str(insert_pos, &format!(" {}", lateral_sql));
+		}
+
+		// Replace FROM table with FROM subquery if from_subquery_sql is set
+		if let Some(ref subquery_sql) = self.from_subquery_sql
+			&& let Some(ref alias) = self.from_alias
+		{
+			// Pattern: FROM "table_name" AS "alias" or FROM "table_name"
+			let from_pattern_with_alias = format!("FROM \"{}\" AS \"{}\"", T::table_name(), alias);
+			let from_pattern_simple = format!("FROM \"{}\"", T::table_name());
+
+			let from_replacement = format!("FROM {} AS \"{}\"", subquery_sql, alias);
+
+			// Try to replace with alias pattern first, then simple pattern
+			if select_sql.contains(&from_pattern_with_alias) {
+				select_sql = select_sql.replace(&from_pattern_with_alias, &from_replacement);
+			} else if select_sql.contains(&from_pattern_simple) {
+				select_sql = select_sql.replace(&from_pattern_simple, &from_replacement);
+			}
 		}
 
 		// Prepend CTE clause if any CTEs are defined
@@ -3716,8 +3829,8 @@ mod tests {
 			"test_users"
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

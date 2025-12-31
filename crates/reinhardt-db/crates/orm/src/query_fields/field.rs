@@ -43,8 +43,8 @@ impl<M: Model, T> Field<M, T> {
 	///     fn table_name() -> &'static str {
 	///         "users"
 	///     }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         self.id.as_ref()
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         self.id
 	///     }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 	///         self.id = Some(value);
@@ -181,7 +181,7 @@ impl<M: Model> Field<M, String> {
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { USER_TABLE.as_str() }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 	/// }
 	///
@@ -213,7 +213,7 @@ impl<M: Model> Field<M, String> {
 	/// impl Model for Product {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { PRODUCT_TABLE.as_str() }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 	/// }
 	///
@@ -245,7 +245,7 @@ impl<M: Model> Field<M, String> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { COMMENT_TABLE.as_str() }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 	/// }
 	///
@@ -278,7 +278,7 @@ impl<M: Model> Field<M, String> {
 	/// impl Model for Post {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { POST_TABLE.as_str() }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 	/// }
 	///
@@ -573,8 +573,8 @@ mod tests {
 			TEST_USER_TABLE.as_str()
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			Some(&self.id)
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

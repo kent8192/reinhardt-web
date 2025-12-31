@@ -21,7 +21,7 @@ use crate::model::Model;
 /// #     type PrimaryKey = i64;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key_field() -> &'static str { "id" }
-/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 /// # }
 /// # fn build_count_query<M: Model>() -> SelectStatement {
@@ -54,7 +54,7 @@ pub fn build_count_query<M: Model>() -> SelectStatement {
 /// #     type PrimaryKey = i64;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key_field() -> &'static str { "id" }
-/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 /// # }
 /// # fn build_get_query<M: Model, V>(pk: V) -> SelectStatement
@@ -98,7 +98,7 @@ where
 /// #     type PrimaryKey = i64;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key_field() -> &'static str { "id" }
-/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 /// # }
 /// # fn build_delete_query<M: Model, V>(pk: V) -> DeleteStatement
@@ -138,7 +138,7 @@ where
 /// #     type PrimaryKey = i64;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key_field() -> &'static str { "id" }
-/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 /// # }
 /// # fn build_insert_query<M: Model>(
@@ -199,7 +199,7 @@ pub fn build_insert_query<M: Model>(
 /// #     type PrimaryKey = i64;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key_field() -> &'static str { "id" }
-/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 /// # }
 /// # fn build_update_query<M: Model, V>(
@@ -279,7 +279,7 @@ pub fn build_exists_query(inner: SelectStatement) -> SelectStatement {
 /// #     type PrimaryKey = i64;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key_field() -> &'static str { "id" }
-/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(&self.id) }
+/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { Some(self.id) }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
 /// # }
 /// # fn build_in_query<M: Model>(column: &str, values: Vec<sea_query::Value>) -> SelectStatement {
@@ -340,8 +340,8 @@ mod tests {
 			TestModelFields
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			Some(&self.id)
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

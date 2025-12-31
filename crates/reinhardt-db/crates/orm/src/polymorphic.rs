@@ -192,7 +192,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { "comments" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
@@ -225,7 +225,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { "comments" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
@@ -281,7 +281,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { "comments" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
@@ -431,7 +431,7 @@ impl<P: Model> PolymorphicQuery<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	///     fn table_name() -> &'static str { "comments" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
@@ -519,8 +519,8 @@ mod tests {
 			COMMENT_TABLE.as_str()
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -563,8 +563,8 @@ mod tests {
 			POST_TABLE.as_str()
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

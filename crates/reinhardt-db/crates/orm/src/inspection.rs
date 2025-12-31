@@ -421,8 +421,8 @@ impl<M: Model> ModelInspector<M> {
 	///         "users"
 	///     }
 	///
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         Some(&self.id)
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         Some(self.id)
 	///     }
 	///
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -460,8 +460,8 @@ impl<M: Model> ModelInspector<M> {
 	///         "blog_posts"
 	///     }
 	///
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         Some(&self.id)
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         Some(self.id)
 	///     }
 	///
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -501,7 +501,7 @@ impl<M: Model> ModelInspector<M> {
 	///         "article_id"
 	///     }
 	///
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
 	///         Some(&self.article_id)
 	///     }
 	///
@@ -543,8 +543,8 @@ impl<M: Model> ModelInspector<M> {
 	///         "users"
 	///     }
 	///
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         Some(&self.id)
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         Some(self.id)
 	///     }
 	///
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -584,8 +584,8 @@ impl<M: Model> ModelInspector<M> {
 	///         "users"
 	///     }
 	///
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         Some(&self.id)
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         Some(self.id)
 	///     }
 	///
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -626,8 +626,8 @@ impl<M: Model> ModelInspector<M> {
 	///         "users"
 	///     }
 	///
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         Some(&self.id)
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         Some(self.id)
 	///     }
 	///
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -669,8 +669,8 @@ impl<M: Model> ModelInspector<M> {
 	///         "users"
 	///     }
 	///
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         Some(&self.id)
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         Some(self.id)
 	///     }
 	///
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -712,8 +712,8 @@ impl<M: Model> ModelInspector<M> {
 	///         "users"
 	///     }
 	///
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         Some(&self.id)
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         Some(self.id)
 	///     }
 	///
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -1318,8 +1318,8 @@ mod tests {
 				TestModelFields
 			}
 
-			fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-				Some(&self.id)
+			fn primary_key(&self) -> Option<Self::PrimaryKey> {
+				Some(self.id)
 			}
 
 			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -1364,8 +1364,8 @@ mod tests {
 				ArticleFields
 			}
 
-			fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-				Some(&self.article_id)
+			fn primary_key(&self) -> Option<Self::PrimaryKey> {
+				Some(self.article_id)
 			}
 
 			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -1406,8 +1406,8 @@ mod tests {
 				UserFields
 			}
 
-			fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-				Some(&self.id)
+			fn primary_key(&self) -> Option<Self::PrimaryKey> {
+				Some(self.id)
 			}
 
 			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -1448,8 +1448,8 @@ mod tests {
 				EmptyFields
 			}
 
-			fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-				Some(&self.id)
+			fn primary_key(&self) -> Option<Self::PrimaryKey> {
+				Some(self.id)
 			}
 
 			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -1490,8 +1490,8 @@ mod tests {
 				SimpleFields
 			}
 
-			fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-				Some(&self.id)
+			fn primary_key(&self) -> Option<Self::PrimaryKey> {
+				Some(self.id)
 			}
 
 			fn set_primary_key(&mut self, value: Self::PrimaryKey) {

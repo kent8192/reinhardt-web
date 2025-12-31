@@ -164,8 +164,8 @@ impl<T: Model> LoadOptionBuilder<T> {
 	///     fn table_name() -> &'static str {
 	///         "users"
 	///     }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         self.id.as_ref()
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         self.id
 	///     }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 	///         self.id = Some(value);
@@ -359,8 +359,8 @@ mod tests {
 			UserFields
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

@@ -38,7 +38,7 @@ impl NumericType for i64 {}
 impl NumericType for f32 {}
 impl NumericType for f64 {}
 
-// DateTime type (simplified for now)
+// DateTime type (legacy - prefer chrono types)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DateTime {
 	pub timestamp: i64,
@@ -47,7 +47,7 @@ pub struct DateTime {
 impl Comparable for DateTime {}
 impl DateTimeType for DateTime {}
 
-// Date type (simplified for now)
+// Date type (legacy - prefer chrono types)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Date {
 	pub year: i32,
@@ -56,3 +56,26 @@ pub struct Date {
 }
 
 impl Comparable for Date {}
+
+// chrono integration
+//
+// These implementations allow chrono types to be used directly in QuerySet
+// filters and lookups. All chrono datetime types are converted to Unix
+// timestamps for comparison operations.
+
+impl Comparable for chrono::NaiveDateTime {}
+impl DateTimeType for chrono::NaiveDateTime {}
+
+impl Comparable for chrono::NaiveDate {}
+impl DateTimeType for chrono::NaiveDate {}
+
+impl Comparable for chrono::NaiveTime {}
+
+impl Comparable for chrono::DateTime<chrono::Utc> {}
+impl DateTimeType for chrono::DateTime<chrono::Utc> {}
+
+impl Comparable for chrono::DateTime<chrono::FixedOffset> {}
+impl DateTimeType for chrono::DateTime<chrono::FixedOffset> {}
+
+impl Comparable for chrono::DateTime<chrono::Local> {}
+impl DateTimeType for chrono::DateTime<chrono::Local> {}

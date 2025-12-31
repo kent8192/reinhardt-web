@@ -51,8 +51,8 @@ impl<T: Model> AsyncQuery<T> {
 	///     fn table_name() -> &'static str {
 	///         "users"
 	///     }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         self.id.as_ref()
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         self.id
 	///     }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 	///         self.id = Some(value);
@@ -141,8 +141,8 @@ impl<T: Model> AsyncQuery<T> {
 			DatabaseDialect::PostgreSQL => stmt.to_string(PostgresQueryBuilder),
 			DatabaseDialect::MySQL => stmt.to_string(MysqlQueryBuilder),
 			DatabaseDialect::SQLite => stmt.to_string(SqliteQueryBuilder),
-			// MSSQL support: use PostgreSQL builder as fallback for now
-			// sea-query v1.0.0-rc.15 doesn't have MssqlQueryBuilder yet
+			// MSSQL: PostgreSQL builder used as fallback since sea-query lacks MssqlQueryBuilder.
+			// Some PostgreSQL-specific syntax may not be compatible with MSSQL.
 			DatabaseDialect::MSSQL => stmt.to_string(PostgresQueryBuilder),
 		}
 	}
@@ -286,8 +286,8 @@ mod tests {
 			TestModelFields
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

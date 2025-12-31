@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
 use serde_json::Value as JsonValue;
+use std::cell::RefCell;
 use std::sync::Arc;
 
 /// Event hook result - continue or stop propagation
@@ -756,21 +757,152 @@ impl Default for EventRegistry {
 	}
 }
 
-/// Global event registry singleton
-static EVENT_REGISTRY: once_cell::sync::Lazy<EventRegistry> =
-	once_cell::sync::Lazy::new(EventRegistry::new);
-/// Get the global event registry singleton
+impl Clone for EventRegistry {
+	fn clone(&self) -> Self {
+		Self {
+			mapper_listeners: self.mapper_listeners.clone(),
+			session_listeners: self.session_listeners.clone(),
+			attribute_listeners: self.attribute_listeners.clone(),
+			instance_listeners: self.instance_listeners.clone(),
+		}
+	}
+}
+
+// Thread-local storage for the active EventRegistry within a scope.
+thread_local! {
+	static ACTIVE_REGISTRY: RefCell<Option<Arc<EventRegistry>>> = const { RefCell::new(None) };
+}
+
+/// Sets the active EventRegistry for the duration of the given closure.
+///
+/// This allows model operations to access the EventRegistry without requiring
+/// explicit parameter passing.
 ///
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::events::event_registry;
+/// use reinhardt_orm::events::{EventRegistry, with_event_registry};
+/// use std::sync::Arc;
 ///
-/// let registry = event_registry();
-/// assert_eq!(registry.mapper_listener_count(), 0);
+/// let registry = Arc::new(EventRegistry::new());
+/// with_event_registry(registry.clone(), || {
+///     // Model operations within this block will use this registry
+/// });
 /// ```
-pub fn event_registry() -> &'static EventRegistry {
-	&EVENT_REGISTRY
+pub fn with_event_registry<F, R>(registry: Arc<EventRegistry>, f: F) -> R
+where
+	F: FnOnce() -> R,
+{
+	ACTIVE_REGISTRY.with(|r| {
+		let prev = r.borrow_mut().replace(registry);
+		let result = f();
+		*r.borrow_mut() = prev;
+		result
+	})
+}
+
+/// Gets the currently active EventRegistry, if one has been set.
+///
+/// Returns `None` if no registry has been set via `with_event_registry`.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_orm::events::{EventRegistry, get_active_registry, with_event_registry};
+/// use std::sync::Arc;
+///
+/// // Outside any scope, returns None
+/// assert!(get_active_registry().is_none());
+///
+/// let registry = Arc::new(EventRegistry::new());
+/// with_event_registry(registry.clone(), || {
+///     // Inside the scope, returns the active registry
+///     assert!(get_active_registry().is_some());
+/// });
+/// ```
+pub fn get_active_registry() -> Option<Arc<EventRegistry>> {
+	ACTIVE_REGISTRY.with(|r| r.borrow().clone())
+}
+
+/// RAII guard for active EventRegistry scope.
+///
+/// When the guard is dropped, the previous registry (if any) is restored.
+/// This is useful for async code where the closure-based approach doesn't work.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_orm::events::{EventRegistry, set_active_registry, get_active_registry};
+/// use std::sync::Arc;
+///
+/// async fn example() {
+///     let registry = Arc::new(EventRegistry::new());
+///     let _guard = set_active_registry(registry.clone());
+///
+///     // Registry is active for the lifetime of the guard
+///     assert!(get_active_registry().is_some());
+///
+///     // Async code works correctly
+///     tokio::task::yield_now().await;
+///     assert!(get_active_registry().is_some());
+/// } // Guard dropped here, registry cleared
+/// ```
+pub struct ActiveRegistryGuard {
+	prev: Option<Arc<EventRegistry>>,
+}
+
+impl Drop for ActiveRegistryGuard {
+	fn drop(&mut self) {
+		ACTIVE_REGISTRY.with(|r| {
+			*r.borrow_mut() = self.prev.take();
+		});
+	}
+}
+
+/// Sets the active EventRegistry and returns a guard.
+///
+/// The guard restores the previous registry (if any) when dropped.
+/// This is the preferred method for async code.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_orm::events::{EventRegistry, set_active_registry, get_active_registry};
+/// use std::sync::Arc;
+///
+/// let registry = Arc::new(EventRegistry::new());
+/// {
+///     let _guard = set_active_registry(registry.clone());
+///     assert!(get_active_registry().is_some());
+/// } // Guard dropped, registry cleared
+/// assert!(get_active_registry().is_none());
+/// ```
+pub fn set_active_registry(registry: Arc<EventRegistry>) -> ActiveRegistryGuard {
+	let prev = ACTIVE_REGISTRY.with(|r| r.borrow_mut().replace(registry));
+	ActiveRegistryGuard { prev }
+}
+
+/// Dependency Injection support for EventRegistry.
+///
+/// When the `di` feature is enabled, EventRegistry can be injected
+/// from an InjectionContext.
+#[cfg(feature = "di")]
+mod di_support {
+	use super::EventRegistry;
+	use async_trait::async_trait;
+	use reinhardt_di::{DiResult, Injectable, InjectionContext};
+
+	#[async_trait]
+	impl Injectable for EventRegistry {
+		async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+			// Check if EventRegistry is available in singleton scope
+			if let Some(registry) = ctx.get_singleton::<EventRegistry>() {
+				return Ok((*registry).clone());
+			}
+			// Create a new default instance
+			Ok(EventRegistry::new())
+		}
+	}
 }
 
 #[cfg(test)]
@@ -962,8 +1094,11 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_orm_events_global_registry() {
-		let registry = event_registry();
+	async fn test_active_registry_scoping() {
+		// Outside any scope, get_active_registry returns None
+		assert!(get_active_registry().is_none());
+
+		let registry = Arc::new(EventRegistry::new());
 
 		let count = Arc::new(AtomicUsize::new(0));
 
@@ -974,14 +1109,55 @@ mod tests {
 			should_veto: false,
 		});
 
-		registry.register_mapper_listener("GlobalTest".to_string(), listener);
+		registry.register_mapper_listener("ScopedTest".to_string(), listener);
 
-		let values = serde_json::json!({"name": "Test"});
+		// Use with_event_registry to set the active registry
+		with_event_registry(registry.clone(), || {
+			// Inside the scope, get_active_registry returns the registry
+			let active = get_active_registry();
+			assert!(active.is_some());
 
-		registry
-			.dispatch_before_insert("GlobalTest", "test-1", &values)
-			.await;
+			// The active registry is the same one we set
+			assert_eq!(active.unwrap().mapper_listener_count(), 1);
+		});
 
-		assert_eq!(count.load(Ordering::SeqCst), 1);
+		// After the scope, get_active_registry returns None again
+		assert!(get_active_registry().is_none());
+	}
+
+	#[tokio::test]
+	async fn test_nested_registry_scoping() {
+		let outer_registry = Arc::new(EventRegistry::new());
+		let inner_registry = Arc::new(EventRegistry::new());
+
+		// Register listeners in outer registry
+		let outer_listener = Arc::new(TestMapperListener {
+			before_insert_count: Arc::new(AtomicUsize::new(0)),
+			after_insert_count: Arc::new(AtomicUsize::new(0)),
+			before_update_count: Arc::new(AtomicUsize::new(0)),
+			should_veto: false,
+		});
+		outer_registry.register_mapper_listener("OuterModel".to_string(), outer_listener);
+
+		// Register different listeners in inner registry
+		let inner_listener = Arc::new(TestMapperListener {
+			before_insert_count: Arc::new(AtomicUsize::new(0)),
+			after_insert_count: Arc::new(AtomicUsize::new(0)),
+			before_update_count: Arc::new(AtomicUsize::new(0)),
+			should_veto: false,
+		});
+		inner_registry.register_mapper_listener("InnerModel".to_string(), inner_listener);
+
+		with_event_registry(outer_registry.clone(), || {
+			assert_eq!(get_active_registry().unwrap().mapper_listener_count(), 1);
+
+			// Nested scope replaces the active registry
+			with_event_registry(inner_registry.clone(), || {
+				assert_eq!(get_active_registry().unwrap().mapper_listener_count(), 1);
+			});
+
+			// After inner scope, outer registry is restored
+			assert_eq!(get_active_registry().unwrap().mapper_listener_count(), 1);
+		});
 	}
 }

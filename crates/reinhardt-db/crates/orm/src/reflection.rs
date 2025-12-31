@@ -24,8 +24,8 @@
 //!         "users"
 //!     }
 //!
-//!     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-//!         self.id.as_ref()
+//!     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+//!         self.id
 //!     }
 //!
 //!     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -264,8 +264,8 @@ impl FieldInfo {
 ///         "articles"
 ///     }
 ///
-///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-///         self.id.as_ref()
+///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+///         self.id
 ///     }
 ///
 ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -311,8 +311,8 @@ impl ModelReflector {
 	///         "products"
 	///     }
 	///
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-	///         self.id.as_ref()
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
+	///         self.id
 	///     }
 	///
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -546,8 +546,8 @@ mod tests {
 			"test_users"
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			self.id.as_ref()
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

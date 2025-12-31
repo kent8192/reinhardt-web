@@ -53,7 +53,10 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	}
 
 	/// Get the primary key value
-	fn primary_key(&self) -> Option<&Self::PrimaryKey>;
+	///
+	/// Returns an owned copy of the primary key. For composite primary keys,
+	/// this constructs a new PK value from the component fields.
+	fn primary_key(&self) -> Option<Self::PrimaryKey>;
 
 	/// Set the primary key value
 	fn set_primary_key(&mut self, value: Self::PrimaryKey);
@@ -145,7 +148,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "table" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id.clone() }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -182,7 +185,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id.clone() }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -207,10 +210,10 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		Self: Sized,
 	{
 		async move {
-			use crate::events::{EventResult, event_registry};
+			use crate::events::{EventResult, get_active_registry};
 			use crate::manager::get_connection;
 
-			let registry = event_registry();
+			let registry = get_active_registry();
 			let conn = get_connection().await?;
 			let manager = crate::Manager::<Self>::new();
 
@@ -221,31 +224,34 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				// INSERT: new record
 				let instance_id = format!("{}-new-{}", Self::table_name(), uuid::Uuid::new_v4());
 
-				// Dispatch before_insert event
-				let result = registry
-					.dispatch_before_insert(Self::table_name(), &instance_id, &json)
-					.await;
-				if result == EventResult::Veto {
-					return Err(reinhardt_core::exception::Error::Database(
-						"Insert operation vetoed by event listener".to_string(),
-					));
+				// Dispatch before_insert event if registry is active
+				if let Some(ref reg) = registry {
+					let result = reg
+						.dispatch_before_insert(Self::table_name(), &instance_id, &json)
+						.await;
+					if result == EventResult::Veto {
+						return Err(reinhardt_core::exception::Error::Database(
+							"Insert operation vetoed by event listener".to_string(),
+						));
+					}
 				}
 
 				// Perform the INSERT
 				let created = manager.create_with_conn(&conn, self).await?;
 				*self = created;
 
-				// Dispatch after_insert event
-				let final_id = format!(
-					"{}-{}",
-					Self::table_name(),
-					self.primary_key()
-						.map(|pk| pk.to_string())
-						.unwrap_or_default()
-				);
-				registry
-					.dispatch_after_insert(Self::table_name(), &final_id)
-					.await;
+				// Dispatch after_insert event if registry is active
+				if let Some(ref reg) = registry {
+					let final_id = format!(
+						"{}-{}",
+						Self::table_name(),
+						self.primary_key()
+							.map(|pk| pk.to_string())
+							.unwrap_or_default()
+					);
+					reg.dispatch_after_insert(Self::table_name(), &final_id)
+						.await;
+				}
 			} else {
 				// UPDATE: existing record
 				let instance_id = format!(
@@ -256,24 +262,27 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 						.unwrap_or_default()
 				);
 
-				// Dispatch before_update event
-				let result = registry
-					.dispatch_before_update(Self::table_name(), &instance_id, &json)
-					.await;
-				if result == EventResult::Veto {
-					return Err(reinhardt_core::exception::Error::Database(
-						"Update operation vetoed by event listener".to_string(),
-					));
+				// Dispatch before_update event if registry is active
+				if let Some(ref reg) = registry {
+					let result = reg
+						.dispatch_before_update(Self::table_name(), &instance_id, &json)
+						.await;
+					if result == EventResult::Veto {
+						return Err(reinhardt_core::exception::Error::Database(
+							"Update operation vetoed by event listener".to_string(),
+						));
+					}
 				}
 
 				// Perform the UPDATE
 				let updated = manager.update_with_conn(&conn, self).await?;
 				*self = updated;
 
-				// Dispatch after_update event
-				registry
-					.dispatch_after_update(Self::table_name(), &instance_id)
-					.await;
+				// Dispatch after_update event if registry is active
+				if let Some(ref reg) = registry {
+					reg.dispatch_after_update(Self::table_name(), &instance_id)
+						.await;
+				}
 			}
 
 			Ok(())
@@ -296,7 +305,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id.clone() }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }
@@ -317,7 +326,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		Self: Sized,
 	{
 		async move {
-			use crate::events::{EventResult, event_registry};
+			use crate::events::{EventResult, get_active_registry};
 			use crate::manager::get_connection;
 
 			let pk = self.primary_key().ok_or_else(|| {
@@ -326,29 +335,32 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				)
 			})?;
 
-			let registry = event_registry();
 			let conn = get_connection().await?;
 			let manager = crate::Manager::<Self>::new();
 
 			let instance_id = format!("{}-{}", Self::table_name(), pk);
 
-			// Dispatch before_delete event
-			let result = registry
-				.dispatch_before_delete(Self::table_name(), &instance_id)
-				.await;
-			if result == EventResult::Veto {
-				return Err(reinhardt_core::exception::Error::Database(
-					"Delete operation vetoed by event listener".to_string(),
-				));
+			// Dispatch before_delete event if registry is available
+			if let Some(registry) = get_active_registry() {
+				let result = registry
+					.dispatch_before_delete(Self::table_name(), &instance_id)
+					.await;
+				if result == EventResult::Veto {
+					return Err(reinhardt_core::exception::Error::Database(
+						"Delete operation vetoed by event listener".to_string(),
+					));
+				}
 			}
 
 			// Perform the DELETE
 			manager.delete_with_conn(&conn, pk.clone()).await?;
 
-			// Dispatch after_delete event
-			registry
-				.dispatch_after_delete(Self::table_name(), &instance_id)
-				.await;
+			// Dispatch after_delete event if registry is available
+			if let Some(registry) = get_active_registry() {
+				registry
+					.dispatch_after_delete(Self::table_name(), &instance_id)
+					.await;
+			}
 
 			Ok(())
 		}

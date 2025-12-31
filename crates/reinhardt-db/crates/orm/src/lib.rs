@@ -236,8 +236,9 @@ pub use file_fields::{FileField, FileFieldError, ImageField};
 
 pub use database_routing::DatabaseRouter;
 pub use events::{
-	AttributeEvents, EventListener, EventRegistry, EventResult, InstanceEvents, MapperEvents,
-	SessionEvents, event_registry,
+	ActiveRegistryGuard, AttributeEvents, EventListener, EventRegistry, EventResult,
+	InstanceEvents, MapperEvents, SessionEvents, get_active_registry, set_active_registry,
+	with_event_registry,
 };
 pub use execution::{ExecutionResult, QueryExecution, SelectExecution};
 // Re-export from reinhardt-hybrid

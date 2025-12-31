@@ -1,6 +1,7 @@
 //! Lookup type and value definitions
 
 use crate::Model;
+use chrono::Timelike;
 use serde::{Deserialize, Serialize};
 
 /// Lookup type - defines how to compare the field value
@@ -112,6 +113,37 @@ impl From<crate::query_fields::traits::Date> for LookupValue {
 	}
 }
 
+// chrono integration
+impl From<chrono::NaiveDateTime> for LookupValue {
+	fn from(dt: chrono::NaiveDateTime) -> Self {
+		LookupValue::Int(dt.and_utc().timestamp())
+	}
+}
+
+impl From<chrono::NaiveDate> for LookupValue {
+	fn from(date: chrono::NaiveDate) -> Self {
+		// Convert to timestamp at midnight UTC
+		LookupValue::Int(
+			date.and_hms_opt(0, 0, 0)
+				.map(|dt| dt.and_utc().timestamp())
+				.unwrap_or(0),
+		)
+	}
+}
+
+impl From<chrono::NaiveTime> for LookupValue {
+	fn from(time: chrono::NaiveTime) -> Self {
+		// Store as seconds since midnight
+		LookupValue::Int(time.num_seconds_from_midnight() as i64)
+	}
+}
+
+impl<Tz: chrono::TimeZone> From<chrono::DateTime<Tz>> for LookupValue {
+	fn from(dt: chrono::DateTime<Tz>) -> Self {
+		LookupValue::Int(dt.timestamp())
+	}
+}
+
 impl<T: Into<LookupValue>> From<(T, T)> for LookupValue {
 	fn from((start, end): (T, T)) -> Self {
 		LookupValue::Range(Box::new(start.into()), Box::new(end.into()))
@@ -147,7 +179,7 @@ impl<M: Model> Lookup<M> {
 	/// #     type PrimaryKey = i64;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// #     fn primary_key_field() -> &'static str { "id" }
 	/// # }

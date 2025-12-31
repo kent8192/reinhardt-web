@@ -697,8 +697,8 @@ mod tests {
 			"auth"
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			Some(&self.id)
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -744,8 +744,8 @@ mod tests {
 			TestGroupFields
 		}
 
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			Some(&self.id)
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {

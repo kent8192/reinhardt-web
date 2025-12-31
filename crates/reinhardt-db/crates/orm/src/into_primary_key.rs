@@ -25,7 +25,7 @@ pub trait IntoPrimaryKey<T: crate::Model> {
 // Implementation for model references (borrows the model)
 impl<T: crate::Model> IntoPrimaryKey<T> for &T {
 	fn into_primary_key(self) -> T::PrimaryKey {
-		self.primary_key().cloned().expect(
+		self.primary_key().expect(
 			"Model instance passed to new() must have a primary key set. \
 			         Ensure the model was created with new() or loaded from database.",
 		)

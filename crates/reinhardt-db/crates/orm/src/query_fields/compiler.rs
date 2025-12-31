@@ -489,8 +489,8 @@ mod tests {
 		fn table_name() -> &'static str {
 			TEST_USER_TABLE.as_str()
 		}
-		fn primary_key(&self) -> Option<&Self::PrimaryKey> {
-			Some(&self.id)
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
 		}
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = value;

@@ -37,7 +37,7 @@ Then import ORM features:
 use reinhardt::db::orm::{Model, QuerySet, DatabaseConnection};
 use reinhardt::db::orm::fields::{AutoField, CharField, IntegerField, DateTimeField};
 use reinhardt::db::orm::transaction::transaction;
-use reinhardt::core::macros::Model;  // For #[derive(Model)]
+use reinhardt::core::macros::model;  // For #[model(...)] attribute macro
 ```
 
 **Note:** ORM features are included in the `standard` and `full` feature presets.
