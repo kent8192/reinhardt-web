@@ -42,14 +42,10 @@ fn leak_str(s: impl Into<String>) -> &'static str {
 }
 
 /// Create a simple migration for testing
-fn create_test_migration(
-	app: &'static str,
-	name: &'static str,
-	operations: Vec<Operation>,
-) -> Migration {
+fn create_test_migration(app: &str, name: &str, operations: Vec<Operation>) -> Migration {
 	Migration {
-		app_label: app,
-		name,
+		app_label: app.to_string(),
+		name: name.to_string(),
 		operations,
 		dependencies: vec![],
 		replaces: vec![],
@@ -57,13 +53,15 @@ fn create_test_migration(
 		initial: None,
 		state_only: false,
 		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	}
 }
 
 /// Create a basic column definition
-fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
@@ -74,9 +72,9 @@ fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinit
 }
 
 /// Create a NOT NULL column definition
-fn create_not_null_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: true,
 		unique: false,
@@ -87,9 +85,9 @@ fn create_not_null_column(name: &'static str, type_def: FieldType) -> ColumnDefi
 }
 
 /// Create an auto-increment primary key column
-fn create_auto_pk_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_auto_pk_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: true,
 		unique: false,
@@ -100,19 +98,15 @@ fn create_auto_pk_column(name: &'static str, type_def: FieldType) -> ColumnDefin
 }
 
 /// Create a column with default value
-fn create_column_with_default(
-	name: &'static str,
-	type_def: FieldType,
-	default: &'static str,
-) -> ColumnDefinition {
+fn create_column_with_default(name: &str, type_def: FieldType, default: &str) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
 		primary_key: false,
 		auto_increment: false,
-		default: Some(default),
+		default: Some(default.to_string()),
 	}
 }
 
@@ -141,13 +135,16 @@ async fn test_table_schema_consistency_postgres(
 		"testapp",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_not_null_column("name", FieldType::VarChar(100)),
 				create_basic_column("email", FieldType::VarChar(255)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -200,12 +197,15 @@ async fn test_table_existence_check(
 		"testapp",
 		"0001_create_products",
 		vec![Operation::CreateTable {
-			name: leak_str("products"),
+			name: leak_str("products").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_not_null_column("name", FieldType::VarChar(200)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -258,7 +258,7 @@ async fn test_column_definition_validation(
 		"testapp",
 		"0001_create_orders",
 		vec![Operation::CreateTable {
-			name: leak_str("orders"),
+			name: leak_str("orders").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_not_null_column("order_number", FieldType::VarChar(50)),
@@ -266,6 +266,9 @@ async fn test_column_definition_validation(
 				create_column_with_default("status", FieldType::VarChar(20), "'pending'"),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -348,12 +351,15 @@ async fn test_primary_key_validation(
 		"testapp",
 		"0001_create_customers",
 		vec![Operation::CreateTable {
-			name: leak_str("customers"),
+			name: leak_str("customers").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_not_null_column("name", FieldType::VarChar(100)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -413,9 +419,12 @@ async fn test_foreign_key_validation(
 		"testapp",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![create_auto_pk_column("id", FieldType::Integer)],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -430,17 +439,21 @@ async fn test_foreign_key_validation(
 		"0002_create_posts",
 		vec![
 			Operation::CreateTable {
-				name: leak_str("posts"),
+				name: leak_str("posts").to_string(),
 				columns: vec![
 					create_auto_pk_column("id", FieldType::Integer),
 					create_not_null_column("user_id", FieldType::Integer),
 				],
-				constraints: vec![],			},
+				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
 			Operation::AddConstraint {
-				table: leak_str("posts"),
+				table: leak_str("posts").to_string(),
 				constraint_sql: leak_str(
 					"CONSTRAINT fk_posts_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE NO ACTION"
-				),
+				).to_string(),
 			},
 		],
 	);
@@ -506,12 +519,15 @@ async fn test_unique_constraint_validation(
 		"testapp",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_basic_column("email", FieldType::VarChar(255)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -525,8 +541,8 @@ async fn test_unique_constraint_validation(
 		"testapp",
 		"0002_add_unique_email",
 		vec![Operation::AddConstraint {
-			table: leak_str("users"),
-			constraint_sql: leak_str("CONSTRAINT unique_users_email UNIQUE (email)"),
+			table: leak_str("users").to_string(),
+			constraint_sql: leak_str("CONSTRAINT unique_users_email UNIQUE (email)").to_string(),
 		}],
 	);
 
@@ -571,13 +587,16 @@ async fn test_index_validation(
 		"testapp",
 		"0001_create_products",
 		vec![Operation::CreateTable {
-			name: leak_str("products"),
+			name: leak_str("products").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_basic_column("name", FieldType::VarChar(200)),
 				create_basic_column("category", FieldType::VarChar(50)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -591,12 +610,15 @@ async fn test_index_validation(
 		"testapp",
 		"0002_create_name_index",
 		vec![Operation::CreateIndex {
-			table: leak_str("products"),
-			columns: vec![leak_str("name")],
+			table: leak_str("products").to_string(),
+			columns: vec![leak_str("name").to_string()],
 			unique: false,
 			index_type: None,
 			where_clause: None,
 			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
 		}],
 	);
 
@@ -650,12 +672,15 @@ async fn test_check_constraint_validation(
 		"testapp",
 		"0001_create_products",
 		vec![Operation::CreateTable {
-			name: leak_str("products"),
+			name: leak_str("products").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_basic_column("price", FieldType::Integer),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -669,8 +694,9 @@ async fn test_check_constraint_validation(
 		"testapp",
 		"0002_add_price_check",
 		vec![Operation::AddConstraint {
-			table: leak_str("products"),
-			constraint_sql: leak_str("CONSTRAINT check_price_positive CHECK (price > 0)"),
+			table: leak_str("products").to_string(),
+			constraint_sql: leak_str("CONSTRAINT check_price_positive CHECK (price > 0)")
+				.to_string(),
 		}],
 	);
 
@@ -750,12 +776,15 @@ async fn test_schema_drift_manual_column_addition(
 		"testapp",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_basic_column("name", FieldType::VarChar(100)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -810,16 +839,20 @@ async fn test_schema_drift_manual_constraint_removal(
 		"0001_create_users",
 		vec![
 			Operation::CreateTable {
-				name: leak_str("users"),
+				name: leak_str("users").to_string(),
 				columns: vec![
 					create_auto_pk_column("id", FieldType::Integer),
 					create_basic_column("email", FieldType::VarChar(255)),
 				],
 				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
 			},
 			Operation::AddConstraint {
-				table: leak_str("users"),
-				constraint_sql: leak_str("CONSTRAINT unique_users_email UNIQUE (email)"),
+				table: leak_str("users").to_string(),
+				constraint_sql: leak_str("CONSTRAINT unique_users_email UNIQUE (email)")
+					.to_string(),
 			},
 		],
 	);
@@ -893,12 +926,15 @@ async fn test_type_mismatch_detection(
 		"testapp",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_basic_column("name", FieldType::VarChar(100)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -965,12 +1001,15 @@ async fn test_nullability_mismatch_detection(
 		"testapp",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				create_auto_pk_column("id", FieldType::Integer),
 				create_not_null_column("email", FieldType::VarChar(255)),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 

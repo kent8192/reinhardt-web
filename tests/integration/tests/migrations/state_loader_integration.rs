@@ -76,12 +76,12 @@ async fn test_single_create_table_migration() {
 
 	// Create and record a migration
 	let migration = Migration {
-		app_label: "testapp",
-		name: "0001_initial",
+		app_label: "testapp".to_string(),
+		name: "0001_initial".to_string(),
 		operations: vec![Operation::CreateTable {
-			name: "test_model",
+			name: "test_model".to_string(),
 			columns: vec![ColumnDefinition {
-				name: "id",
+				name: "id".to_string(),
 				type_definition: FieldType::BigInteger,
 				not_null: true,
 				primary_key: true,
@@ -90,6 +90,9 @@ async fn test_single_create_table_migration() {
 				default: None,
 			}],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 		dependencies: vec![],
 		replaces: vec![],
@@ -97,6 +100,8 @@ async fn test_single_create_table_migration() {
 		initial: Some(true),
 		state_only: false,
 		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	};
 
 	// Record the migration as applied
@@ -146,12 +151,12 @@ async fn test_multiple_migrations_in_order() {
 
 	// First migration: Create table
 	let migration1 = Migration {
-		app_label: "testapp",
-		name: "0001_initial",
+		app_label: "testapp".to_string(),
+		name: "0001_initial".to_string(),
 		operations: vec![Operation::CreateTable {
-			name: "users",
+			name: "users".to_string(),
 			columns: vec![ColumnDefinition {
-				name: "id",
+				name: "id".to_string(),
 				type_definition: FieldType::BigInteger,
 				not_null: true,
 				primary_key: true,
@@ -160,6 +165,9 @@ async fn test_multiple_migrations_in_order() {
 				default: None,
 			}],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 		dependencies: vec![],
 		replaces: vec![],
@@ -167,16 +175,18 @@ async fn test_multiple_migrations_in_order() {
 		initial: Some(true),
 		state_only: false,
 		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	};
 
 	// Second migration: Add column
 	let migration2 = Migration {
-		app_label: "testapp",
-		name: "0002_add_email",
+		app_label: "testapp".to_string(),
+		name: "0002_add_email".to_string(),
 		operations: vec![Operation::AddColumn {
-			table: "users",
+			table: "users".to_string(),
 			column: ColumnDefinition {
-				name: "email",
+				name: "email".to_string(),
 				type_definition: FieldType::VarChar(255),
 				not_null: false,
 				primary_key: false,
@@ -184,13 +194,16 @@ async fn test_multiple_migrations_in_order() {
 				auto_increment: false,
 				default: None,
 			},
+			mysql_options: None,
 		}],
-		dependencies: vec![("testapp", "0001_initial")],
+		dependencies: vec![("testapp".to_string(), "0001_initial".to_string())],
 		replaces: vec![],
 		atomic: true,
 		initial: Some(false),
 		state_only: false,
 		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	};
 
 	// Record both migrations as applied
@@ -243,12 +256,12 @@ async fn test_unapplied_migrations_not_included() {
 
 	// First migration: Create table (applied)
 	let migration1 = Migration {
-		app_label: "testapp",
-		name: "0001_initial",
+		app_label: "testapp".to_string(),
+		name: "0001_initial".to_string(),
 		operations: vec![Operation::CreateTable {
-			name: "users",
+			name: "users".to_string(),
 			columns: vec![ColumnDefinition {
-				name: "id",
+				name: "id".to_string(),
 				type_definition: FieldType::BigInteger,
 				not_null: true,
 				primary_key: true,
@@ -257,6 +270,9 @@ async fn test_unapplied_migrations_not_included() {
 				default: None,
 			}],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 		dependencies: vec![],
 		replaces: vec![],
@@ -264,16 +280,18 @@ async fn test_unapplied_migrations_not_included() {
 		initial: Some(true),
 		state_only: false,
 		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	};
 
 	// Second migration: Add column (NOT applied)
 	let migration2 = Migration {
-		app_label: "testapp",
-		name: "0002_add_email",
+		app_label: "testapp".to_string(),
+		name: "0002_add_email".to_string(),
 		operations: vec![Operation::AddColumn {
-			table: "users",
+			table: "users".to_string(),
 			column: ColumnDefinition {
-				name: "email",
+				name: "email".to_string(),
 				type_definition: FieldType::VarChar(255),
 				not_null: false,
 				primary_key: false,
@@ -281,13 +299,16 @@ async fn test_unapplied_migrations_not_included() {
 				auto_increment: false,
 				default: None,
 			},
+			mysql_options: None,
 		}],
-		dependencies: vec![("testapp", "0001_initial")],
+		dependencies: vec![("testapp".to_string(), "0001_initial".to_string())],
 		replaces: vec![],
 		atomic: true,
 		initial: Some(false),
 		state_only: false,
 		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	};
 
 	// Only record first migration as applied

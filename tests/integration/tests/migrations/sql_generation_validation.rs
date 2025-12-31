@@ -47,8 +47,8 @@ fn create_test_migration(
 	operations: Vec<Operation>,
 ) -> Migration {
 	Migration {
-		app_label: app,
-		name,
+		app_label: app.to_string(),
+		name: name.to_string(),
 		operations,
 		dependencies: vec![],
 		replaces: vec![],
@@ -56,13 +56,15 @@ fn create_test_migration(
 		initial: None,
 		state_only: false,
 		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	}
 }
 
 /// Create a basic column definition
-fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
@@ -73,9 +75,9 @@ fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinit
 }
 
 /// Create a NOT NULL column definition
-fn create_not_null_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: true,
 		unique: false,
@@ -86,26 +88,22 @@ fn create_not_null_column(name: &'static str, type_def: FieldType) -> ColumnDefi
 }
 
 /// Create a column with DEFAULT value
-fn create_column_with_default(
-	name: &'static str,
-	type_def: FieldType,
-	default: &'static str,
-) -> ColumnDefinition {
+fn create_column_with_default(name: &str, type_def: FieldType, default: &str) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
 		primary_key: false,
 		auto_increment: false,
-		default: Some(default),
+		default: Some(default.to_string()),
 	}
 }
 
 /// Create an auto-increment primary key column
-fn create_auto_pk_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_auto_pk_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: true,
 		unique: false,
@@ -132,13 +130,16 @@ fn create_auto_pk_column(name: &'static str, type_def: FieldType) -> ColumnDefin
 #[tokio::test]
 async fn test_create_table_basic_syntax() {
 	let operation = Operation::CreateTable {
-		name: leak_str("users"),
+		name: leak_str("users").to_string(),
 		columns: vec![
 			create_auto_pk_column("id", FieldType::Integer),
 			create_not_null_column("name", FieldType::VarChar(100)),
 			create_basic_column("email", FieldType::VarChar(255)),
 		],
 		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	// PostgreSQL
@@ -171,7 +172,7 @@ async fn test_create_table_basic_syntax() {
 #[tokio::test]
 async fn test_create_table_with_default_values() {
 	let operation = Operation::CreateTable {
-		name: leak_str("products"),
+		name: leak_str("products").to_string(),
 		columns: vec![
 			create_auto_pk_column("id", FieldType::Integer),
 			create_column_with_default("name", FieldType::VarChar(100), "'Unnamed'"),
@@ -187,6 +188,9 @@ async fn test_create_table_with_default_values() {
 			create_column_with_default("created_at", FieldType::DateTime, "CURRENT_TIMESTAMP"),
 		],
 		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -222,10 +226,10 @@ async fn test_create_table_with_default_values() {
 #[tokio::test]
 async fn test_create_table_with_composite_primary_key() {
 	let operation = Operation::CreateTable {
-		name: leak_str("order_items"),
+		name: leak_str("order_items").to_string(),
 		columns: vec![
 			ColumnDefinition {
-				name: "order_id",
+				name: "order_id".to_string(),
 				type_definition: FieldType::BigInteger,
 				not_null: true,
 				unique: false,
@@ -234,7 +238,7 @@ async fn test_create_table_with_composite_primary_key() {
 				default: None,
 			},
 			ColumnDefinition {
-				name: "item_id",
+				name: "item_id".to_string(),
 				type_definition: FieldType::BigInteger,
 				not_null: true,
 				unique: false,
@@ -245,6 +249,9 @@ async fn test_create_table_with_composite_primary_key() {
 			create_basic_column("quantity", FieldType::Integer),
 		],
 		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -288,8 +295,9 @@ async fn test_create_table_with_composite_primary_key() {
 #[tokio::test]
 async fn test_alter_table_add_column_syntax(#[case] dialect: SqlDialect) {
 	let operation = Operation::AddColumn {
-		table: leak_str("users"),
+		table: leak_str("users").to_string(),
 		column: create_not_null_column("age", FieldType::Integer),
+		mysql_options: None,
 	};
 
 	let sql = operation.to_sql(&dialect);
@@ -319,10 +327,10 @@ async fn test_alter_table_add_column_syntax(#[case] dialect: SqlDialect) {
 #[tokio::test]
 async fn test_alter_table_alter_column_type_syntax() {
 	let operation = Operation::AlterColumn {
-		table: leak_str("products"),
-		column: leak_str("price"),
+		table: leak_str("products").to_string(),
+		column: leak_str("price").to_string(),
 		new_definition: ColumnDefinition {
-			name: "price",
+			name: "price".to_string(),
 			type_definition: FieldType::Decimal {
 				precision: 12,
 				scale: 2,
@@ -333,6 +341,7 @@ async fn test_alter_table_alter_column_type_syntax() {
 			auto_increment: false,
 			default: None,
 		},
+		mysql_options: None,
 	};
 
 	// PostgreSQL
@@ -367,8 +376,8 @@ async fn test_alter_table_alter_column_type_syntax() {
 #[tokio::test]
 async fn test_alter_table_drop_column_syntax(#[case] dialect: SqlDialect) {
 	let operation = Operation::DropColumn {
-		table: leak_str("users"),
-		column: leak_str("middle_name"),
+		table: leak_str("users").to_string(),
+		column: leak_str("middle_name").to_string(),
 	};
 
 	let sql = operation.to_sql(&dialect);
@@ -391,9 +400,9 @@ async fn test_alter_table_drop_column_syntax(#[case] dialect: SqlDialect) {
 #[tokio::test]
 async fn test_alter_table_rename_column_syntax(#[case] dialect: SqlDialect) {
 	let operation = Operation::RenameColumn {
-		table: leak_str("users"),
-		old_name: leak_str("username"),
-		new_name: leak_str("login_name"),
+		table: leak_str("users").to_string(),
+		old_name: leak_str("username").to_string(),
+		new_name: leak_str("login_name").to_string(),
 	};
 
 	let sql = operation.to_sql(&dialect);
@@ -425,7 +434,7 @@ async fn test_alter_table_rename_column_syntax(#[case] dialect: SqlDialect) {
 #[tokio::test]
 async fn test_foreign_key_constraint_syntax() {
 	let operation = Operation::CreateTable {
-		name: leak_str("orders"),
+		name: leak_str("orders").to_string(),
 		columns: vec![
 			create_auto_pk_column("id", FieldType::Integer),
 			create_not_null_column("user_id", FieldType::Integer),
@@ -437,7 +446,11 @@ async fn test_foreign_key_constraint_syntax() {
 			referenced_columns: vec!["id".to_string()],
 			on_delete: ForeignKeyAction::Cascade,
 			on_update: ForeignKeyAction::Restrict,
+			deferrable: None,
 		}],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -464,7 +477,7 @@ async fn test_foreign_key_constraint_syntax() {
 #[tokio::test]
 async fn test_unique_constraint_syntax() {
 	let operation = Operation::CreateTable {
-		name: leak_str("users"),
+		name: leak_str("users").to_string(),
 		columns: vec![
 			create_auto_pk_column("id", FieldType::Integer),
 			create_not_null_column("email", FieldType::VarChar(255)),
@@ -473,6 +486,9 @@ async fn test_unique_constraint_syntax() {
 			name: "uq_users_email".to_string(),
 			columns: vec!["email".to_string()],
 		}],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -491,7 +507,7 @@ async fn test_unique_constraint_syntax() {
 #[tokio::test]
 async fn test_check_constraint_syntax() {
 	let operation = Operation::CreateTable {
-		name: leak_str("products"),
+		name: leak_str("products").to_string(),
 		columns: vec![
 			create_auto_pk_column("id", FieldType::Integer),
 			create_not_null_column(
@@ -519,6 +535,9 @@ async fn test_check_constraint_syntax() {
 				expression: "discount >= 0 AND discount <= 100".to_string(),
 			},
 		],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -541,12 +560,15 @@ async fn test_check_constraint_syntax() {
 #[tokio::test]
 async fn test_create_index_syntax(#[case] dialect: SqlDialect) {
 	let operation = Operation::CreateIndex {
-		table: leak_str("users"),
-		columns: vec![leak_str("email")],
+		table: leak_str("users").to_string(),
+		columns: vec![leak_str("email").to_string()],
 		unique: false,
 		index_type: None,
 		where_clause: None,
 		concurrently: false,
+		expressions: None,
+		mysql_options: None,
+		operator_class: None,
 	};
 
 	let sql = operation.to_sql(&dialect);
@@ -566,12 +588,15 @@ async fn test_create_index_syntax(#[case] dialect: SqlDialect) {
 #[tokio::test]
 async fn test_create_unique_index_syntax(#[case] dialect: SqlDialect) {
 	let operation = Operation::CreateIndex {
-		table: leak_str("users"),
-		columns: vec![leak_str("username")],
+		table: leak_str("users").to_string(),
+		columns: vec![leak_str("username").to_string()],
 		unique: true,
 		index_type: None,
 		where_clause: None,
 		concurrently: false,
+		expressions: None,
+		mysql_options: None,
+		operator_class: None,
 	};
 
 	let sql = operation.to_sql(&dialect);
@@ -595,8 +620,8 @@ async fn test_create_unique_index_syntax(#[case] dialect: SqlDialect) {
 #[tokio::test]
 async fn test_drop_index_syntax() {
 	let operation = Operation::DropIndex {
-		table: leak_str("users"),
-		columns: vec![leak_str("email")],
+		table: leak_str("users").to_string(),
+		columns: vec![leak_str("email").to_string()],
 	};
 
 	// PostgreSQL - no table name needed
@@ -627,12 +652,18 @@ async fn test_drop_index_syntax() {
 #[tokio::test]
 async fn test_composite_index_syntax() {
 	let operation = Operation::CreateIndex {
-		table: leak_str("orders"),
-		columns: vec![leak_str("user_id"), leak_str("created_at")],
+		table: leak_str("orders").to_string(),
+		columns: vec![
+			leak_str("user_id").to_string(),
+			leak_str("created_at").to_string(),
+		],
 		unique: false,
 		index_type: None,
 		where_clause: None,
 		concurrently: false,
+		expressions: None,
+		mysql_options: None,
+		operator_class: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -665,13 +696,16 @@ async fn test_composite_index_syntax() {
 #[tokio::test]
 async fn test_sql_reserved_words_escaping() {
 	let operation = Operation::CreateTable {
-		name: leak_str("user"), // Reserved word in SQL
+		name: leak_str("user").to_string(), // Reserved word in SQL
 		columns: vec![
 			create_auto_pk_column("id", FieldType::Integer),
 			create_basic_column("order", FieldType::Integer), // Reserved word
 			create_basic_column("group", FieldType::VarChar(50)), // Reserved word
 		],
 		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -698,12 +732,15 @@ async fn test_sql_reserved_words_escaping() {
 #[tokio::test]
 async fn test_special_characters_escaping() {
 	let operation = Operation::CreateTable {
-		name: leak_str("user-profile"), // Hyphen
+		name: leak_str("user-profile").to_string(), // Hyphen
 		columns: vec![
 			create_auto_pk_column("id", FieldType::Integer),
 			create_basic_column("first-name", FieldType::VarChar(50)), // Hyphen
 		],
 		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -728,9 +765,12 @@ async fn test_long_identifier_names() {
 	// PostgreSQL has 63-character limit for identifiers
 	let long_name = "a".repeat(65); // Exceeds limit
 	let operation = Operation::CreateTable {
-		name: leak_str(long_name.clone()),
+		name: leak_str(long_name.clone()).to_string(),
 		columns: vec![create_auto_pk_column("id", FieldType::Integer)],
 		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -750,7 +790,7 @@ async fn test_long_identifier_names() {
 #[tokio::test]
 async fn test_complex_default_expressions() {
 	let operation = Operation::CreateTable {
-		name: leak_str("events"),
+		name: leak_str("events").to_string(),
 		columns: vec![
 			create_auto_pk_column("id", FieldType::Integer),
 			create_column_with_default("created_at", FieldType::TimestampTz, "NOW()"),
@@ -758,6 +798,9 @@ async fn test_complex_default_expressions() {
 			create_column_with_default("counter", FieldType::Integer, "0"),
 		],
 		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let pg_sql = operation.to_sql(&SqlDialect::Postgres);
@@ -787,8 +830,8 @@ async fn test_complex_default_expressions() {
 #[tokio::test]
 async fn test_rename_table_syntax(#[case] dialect: SqlDialect) {
 	let operation = Operation::RenameTable {
-		old_name: leak_str("users_old"),
-		new_name: leak_str("users"),
+		old_name: leak_str("users_old").to_string(),
+		new_name: leak_str("users").to_string(),
 	};
 
 	let sql = operation.to_sql(&dialect);
@@ -812,7 +855,7 @@ async fn test_rename_table_syntax(#[case] dialect: SqlDialect) {
 #[tokio::test]
 async fn test_drop_table_syntax(#[case] dialect: SqlDialect) {
 	let operation = Operation::DropTable {
-		name: leak_str("old_table"),
+		name: leak_str("old_table").to_string(),
 	};
 
 	let sql = operation.to_sql(&dialect);
@@ -838,10 +881,10 @@ async fn test_drop_table_syntax(#[case] dialect: SqlDialect) {
 #[tokio::test]
 async fn test_composite_primary_key_syntax_postgres() {
 	let operation = Operation::CreateTable {
-		name: leak_str("order_items"),
+		name: leak_str("order_items").to_string(),
 		columns: vec![
 			ColumnDefinition {
-				name: "order_id",
+				name: "order_id".to_string(),
 				type_definition: FieldType::BigInteger,
 				not_null: true,
 				unique: false,
@@ -850,7 +893,7 @@ async fn test_composite_primary_key_syntax_postgres() {
 				default: None,
 			},
 			ColumnDefinition {
-				name: "item_id",
+				name: "item_id".to_string(),
 				type_definition: FieldType::BigInteger,
 				not_null: true,
 				unique: false,
@@ -859,16 +902,19 @@ async fn test_composite_primary_key_syntax_postgres() {
 				default: None,
 			},
 			ColumnDefinition {
-				name: "quantity",
+				name: "quantity".to_string(),
 				type_definition: FieldType::Integer,
 				not_null: true,
 				unique: false,
 				primary_key: false,
 				auto_increment: false,
-				default: Some("1"),
+				default: Some("1".to_string()),
 			},
 		],
 		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Postgres);
@@ -901,10 +947,10 @@ async fn test_composite_primary_key_syntax_postgres() {
 #[tokio::test]
 async fn test_composite_primary_key_syntax_mysql() {
 	let operation = Operation::CreateTable {
-		name: leak_str("user_roles"),
+		name: leak_str("user_roles").to_string(),
 		columns: vec![
 			ColumnDefinition {
-				name: "user_id",
+				name: "user_id".to_string(),
 				type_definition: FieldType::Integer,
 				not_null: true,
 				unique: false,
@@ -913,7 +959,7 @@ async fn test_composite_primary_key_syntax_mysql() {
 				default: None,
 			},
 			ColumnDefinition {
-				name: "role_id",
+				name: "role_id".to_string(),
 				type_definition: FieldType::Integer,
 				not_null: true,
 				unique: false,
@@ -923,6 +969,9 @@ async fn test_composite_primary_key_syntax_mysql() {
 			},
 		],
 		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
 	};
 
 	let sql = operation.to_sql(&SqlDialect::Mysql);
@@ -969,10 +1018,10 @@ async fn test_composite_primary_key_postgres_integration(
 		"testapp",
 		"0001_create_composite_pk",
 		vec![Operation::CreateTable {
-			name: leak_str("enrollment"),
+			name: leak_str("enrollment").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "student_id",
+					name: "student_id".to_string(),
 					type_definition: FieldType::Integer,
 					not_null: true,
 					unique: false,
@@ -981,7 +1030,7 @@ async fn test_composite_primary_key_postgres_integration(
 					default: None,
 				},
 				ColumnDefinition {
-					name: "course_id",
+					name: "course_id".to_string(),
 					type_definition: FieldType::Integer,
 					not_null: true,
 					unique: false,
@@ -990,16 +1039,19 @@ async fn test_composite_primary_key_postgres_integration(
 					default: None,
 				},
 				ColumnDefinition {
-					name: "enrolled_at",
+					name: "enrolled_at".to_string(),
 					type_definition: FieldType::DateTime,
 					not_null: false,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
-					default: Some("CURRENT_TIMESTAMP"),
+					default: Some("CURRENT_TIMESTAMP".to_string()),
 				},
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
@@ -1104,10 +1156,10 @@ async fn test_composite_primary_key_three_columns(
 		"testapp",
 		"0001_create_three_col_pk",
 		vec![Operation::CreateTable {
-			name: leak_str("booking"),
+			name: leak_str("booking").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "hotel_id",
+					name: "hotel_id".to_string(),
 					type_definition: FieldType::Integer,
 					not_null: true,
 					unique: false,
@@ -1116,7 +1168,7 @@ async fn test_composite_primary_key_three_columns(
 					default: None,
 				},
 				ColumnDefinition {
-					name: "room_number",
+					name: "room_number".to_string(),
 					type_definition: FieldType::Integer,
 					not_null: true,
 					unique: false,
@@ -1125,7 +1177,7 @@ async fn test_composite_primary_key_three_columns(
 					default: None,
 				},
 				ColumnDefinition {
-					name: "booking_date",
+					name: "booking_date".to_string(),
 					type_definition: FieldType::Date,
 					not_null: true,
 					unique: false,
@@ -1134,7 +1186,7 @@ async fn test_composite_primary_key_three_columns(
 					default: None,
 				},
 				ColumnDefinition {
-					name: "guest_name",
+					name: "guest_name".to_string(),
 					type_definition: FieldType::VarChar(200),
 					not_null: true,
 					unique: false,
@@ -1144,6 +1196,9 @@ async fn test_composite_primary_key_three_columns(
 				},
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 

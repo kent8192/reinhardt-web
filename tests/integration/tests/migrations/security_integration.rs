@@ -45,8 +45,8 @@ fn create_test_migration(
 	operations: Vec<Operation>,
 ) -> Migration {
 	Migration {
-		app_label: app,
-		name,
+		app_label: app.to_string(),
+		name: name.to_string(),
 		operations,
 		dependencies: vec![],
 		replaces: vec![],
@@ -58,9 +58,9 @@ fn create_test_migration(
 }
 
 /// Create a basic column definition
-fn create_basic_column(name: &'static str, type_def: FieldType) -> ColumnDefinition {
+fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
-		name,
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
@@ -136,10 +136,10 @@ async fn test_least_privilege_principle_adherence(
 		"auth",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
@@ -186,8 +186,9 @@ async fn test_least_privilege_principle_adherence(
 		"auth",
 		"0002_add_status",
 		vec![Operation::AddColumn {
-			table: leak_str("users"),
+			table: leak_str("users").to_string(),
 			column: create_basic_column("status", FieldType::VarChar(Some(20))),
+			mysql_options: None,
 		}],
 	);
 
@@ -302,10 +303,10 @@ async fn test_sensitive_data_handling(
 		"auth",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
@@ -361,8 +362,9 @@ async fn test_sensitive_data_handling(
 		"auth",
 		"0002_add_bcrypt",
 		vec![Operation::AddColumn {
-			table: leak_str("users"),
+			table: leak_str("users").to_string(),
 			column: create_basic_column("bcrypt_hash", FieldType::VarChar(Some(60))),
+			mysql_options: None,
 		}],
 	);
 
@@ -391,8 +393,9 @@ async fn test_sensitive_data_handling(
 		"auth",
 		"0003_add_token_v2",
 		vec![Operation::AddColumn {
-			table: leak_str("users"),
+			table: leak_str("users").to_string(),
 			column: create_basic_column("api_token_v2", FieldType::VarChar(Some(255))),
+			mysql_options: None,
 		}],
 	);
 
@@ -524,10 +527,10 @@ async fn test_audit_logging_completeness(
 		"system",
 		"0001_create_audit_log",
 		vec![Operation::CreateTable {
-			name: leak_str("migration_audit_log"),
+			name: leak_str("migration_audit_log").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
@@ -542,7 +545,7 @@ async fn test_audit_logging_completeness(
 				create_basic_column("success", FieldType::Boolean),
 				create_basic_column("error_message", FieldType::Text),
 				ColumnDefinition {
-					name: "executed_at",
+					name: "executed_at".to_string(),
 					type_definition: FieldType::Timestamp,
 					not_null: true,
 					unique: false,
@@ -569,10 +572,10 @@ async fn test_audit_logging_completeness(
 		"shop",
 		"0001_create_products",
 		vec![Operation::CreateTable {
-			name: leak_str("products"),
+			name: leak_str("products").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
@@ -611,8 +614,9 @@ async fn test_audit_logging_completeness(
 		"shop",
 		"0002_add_category",
 		vec![Operation::AddColumn {
-			table: leak_str("products"),
+			table: leak_str("products").to_string(),
 			column: create_basic_column("category", FieldType::VarChar(Some(50))),
+			mysql_options: None,
 		}],
 	);
 
@@ -992,10 +996,10 @@ async fn test_sql_injection_prevention(
 		"auth",
 		"0001_create_users",
 		vec![Operation::CreateTable {
-			name: leak_str("users"),
+			name: leak_str("users").to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
 					not_null: true,
 					unique: false,
