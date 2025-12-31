@@ -2,12 +2,12 @@
 
 use async_graphql::*;
 use reinhardt_server::graphql_handler;
+use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
+use reinhardt_test::APIClient;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-
-use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
 
 // GraphQL Schema for a simple book library
 
@@ -156,19 +156,16 @@ async fn test_e2e_graphql_query_all_books() {
 	let handler = graphql_handler(query, mutation);
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
-	let query = r#"{"query": "{ books { id title author year } }"}"#;
+	let client = APIClient::with_base_url(&url);
+	let graphql_query = r#"{"query": "{ books { id title author year } }"}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(query)
-		.send()
+		.post_raw("/", graphql_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 	let books = json["data"]["books"].as_array().unwrap();
 
@@ -194,19 +191,16 @@ async fn test_e2e_graphql_query_single_book() {
 	let handler = graphql_handler(query, mutation);
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
-	let query = r#"{"query": "{ book(id: \"1\") { id title author year } }"}"#;
+	let client = APIClient::with_base_url(&url);
+	let graphql_query = r#"{"query": "{ book(id: \"1\") { id title author year } }"}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(query)
-		.send()
+		.post_raw("/", graphql_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 	let book = &json["data"]["book"];
 
@@ -229,19 +223,17 @@ async fn test_e2e_graphql_search_books() {
 	let handler = graphql_handler(query, mutation);
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
-	let query = r#"{"query": "{ searchBooks(title: \"mockingbird\") { id title author } }"}"#;
+	let client = APIClient::with_base_url(&url);
+	let graphql_query =
+		r#"{"query": "{ searchBooks(title: \"mockingbird\") { id title author } }"}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(query)
-		.send()
+		.post_raw("/", graphql_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 	let books = json["data"]["searchBooks"].as_array().unwrap();
 
@@ -262,19 +254,16 @@ async fn test_e2e_graphql_add_book_mutation() {
 	let handler = graphql_handler(query, mutation);
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 	let mutation_query = r#"{"query": "mutation { addBook(title: \"The Great Gatsby\", author: \"F. Scott Fitzgerald\", year: 1925) { id title author year } }"}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(mutation_query)
-		.send()
+		.post_raw("/", mutation_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 	let book = &json["data"]["addBook"];
 
@@ -296,19 +285,16 @@ async fn test_e2e_graphql_update_book_mutation() {
 	let handler = graphql_handler(query, mutation);
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 	let mutation_query = r#"{"query": "mutation { updateBook(id: \"1\", title: \"Nineteen Eighty-Four\", author: \"George Orwell\", year: 1949) { id title } }"}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(mutation_query)
-		.send()
+		.post_raw("/", mutation_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 	let book = &json["data"]["updateBook"];
 
@@ -329,30 +315,24 @@ async fn test_e2e_graphql_delete_book_mutation() {
 	let handler = graphql_handler(query, mutation);
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// Delete a book
 	let mutation_query = r#"{"query": "mutation { deleteBook(id: \"1\") }"}"#;
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(mutation_query)
-		.send()
+		.post_raw("/", mutation_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
-	assert_eq!(response.status(), 200);
+	assert_eq!(response.status_code(), 200);
 
 	// Try to fetch the deleted book
-	let query = r#"{"query": "{ book(id: \"1\") { id title } }"}"#;
+	let graphql_query = r#"{"query": "{ book(id: \"1\") { id title } }"}"#;
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(query)
-		.send()
+		.post_raw("/", graphql_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	let body = response.text().await.unwrap();
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// Deleted book should return null
@@ -372,30 +352,24 @@ async fn test_e2e_graphql_full_workflow() {
 	let handler = graphql_handler(query, mutation);
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// 1. Query all books
-	let query = r#"{"query": "{ books { id title } }"}"#;
+	let graphql_query = r#"{"query": "{ books { id title } }"}"#;
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(query)
-		.send()
+		.post_raw("/", graphql_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
-	assert_eq!(response.status(), 200);
+	assert_eq!(response.status_code(), 200);
 
 	// 2. Add a new book
 	let add_query = r#"{"query": "mutation { addBook(title: \"The Catcher in the Rye\", author: \"J.D. Salinger\", year: 1951) { id title } }"}"#;
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(add_query)
-		.send()
+		.post_raw("/", add_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 	let book = &json["data"]["addBook"];
 
@@ -404,14 +378,11 @@ async fn test_e2e_graphql_full_workflow() {
 	// 3. Search for the new book
 	let search_query = r#"{"query": "{ searchBooks(title: \"Catcher\") { id title } }"}"#;
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(search_query)
-		.send()
+		.post_raw("/", search_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 	let books = json["data"]["searchBooks"].as_array().unwrap();
 
@@ -435,19 +406,16 @@ async fn test_e2e_graphql_invalid_query() {
 	let handler = graphql_handler(query, mutation);
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 	let invalid_query = r#"{"query": "{ invalidField { id } }"}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(invalid_query)
-		.send()
+		.post_raw("/", invalid_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200); // GraphQL returns 200 even for query errors
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200); // GraphQL returns 200 even for query errors
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// GraphQL errors should be in the "errors" field

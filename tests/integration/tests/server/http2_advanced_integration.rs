@@ -7,9 +7,11 @@
 //! - HTTP/1.1 and HTTP/2 mixed mode
 //! - Flow control
 
+use http::Version;
 use reinhardt_http::{Request, Response};
 use reinhardt_server::{Http2Server, ShutdownCoordinator};
 use reinhardt_test::fixtures::*;
+use reinhardt_test::APIClient;
 use reinhardt_types::Handler;
 use rstest::*;
 use std::net::SocketAddr;
@@ -139,7 +141,7 @@ impl Handler for FlowControlHandler {
 /// streams efficiently by sending 100 concurrent requests.
 #[rstest]
 #[tokio::test]
-async fn test_concurrent_streams(_http_client: reqwest::Client) {
+async fn test_concurrent_streams() {
 	// Setup server
 	let handler = Arc::new(ConcurrentStreamHandler::new());
 	let handler_clone = handler.clone();
@@ -164,18 +166,19 @@ async fn test_concurrent_streams(_http_client: reqwest::Client) {
 	sleep(Duration::from_millis(100)).await;
 
 	// Create HTTP/2 client with proper configuration
-	let client = reqwest::Client::builder()
-		.http2_prior_knowledge()
-		.timeout(Duration::from_secs(30))
-		.build()
-		.unwrap();
+	let client = Arc::new(
+		APIClient::builder()
+			.base_url(&url)
+			.http2_prior_knowledge()
+			.timeout(Duration::from_secs(30))
+			.build(),
+	);
 
 	// Send 100 concurrent requests
 	let mut tasks = Vec::new();
 	for _ in 0..100 {
-		let client = client.clone();
-		let url = url.clone();
-		let task = tokio::spawn(async move { client.get(&url).send().await });
+		let client = Arc::clone(&client);
+		let task = tokio::spawn(async move { client.get("/").await });
 		tasks.push(task);
 	}
 
@@ -183,7 +186,7 @@ async fn test_concurrent_streams(_http_client: reqwest::Client) {
 	let mut success_count = 0;
 	for task in tasks {
 		if let Ok(Ok(response)) = task.await {
-			if response.status().is_success() {
+			if response.status_code() == 200 {
 				success_count += 1;
 			}
 		}
@@ -211,7 +214,7 @@ async fn test_concurrent_streams(_http_client: reqwest::Client) {
 /// by sending multiple requests with repeated headers.
 #[rstest]
 #[tokio::test]
-async fn test_header_compression(_http_client: reqwest::Client) {
+async fn test_header_compression() {
 	// Setup server
 	let handler = Arc::new(HeaderCompressionHandler);
 	let coordinator = ShutdownCoordinator::new(Duration::from_secs(10));
@@ -235,25 +238,29 @@ async fn test_header_compression(_http_client: reqwest::Client) {
 	sleep(Duration::from_millis(100)).await;
 
 	// Create HTTP/2 client
-	let client = reqwest::Client::builder()
+	let client = APIClient::builder()
+		.base_url(&url)
 		.http2_prior_knowledge()
 		.timeout(Duration::from_secs(10))
-		.build()
-		.unwrap();
+		.build();
 
 	// Send multiple requests with custom headers
 	for i in 0..10 {
+		let header_value = format!("value-{}", i);
 		let response = client
-			.get(&url)
-			.header("x-custom-header", format!("value-{}", i))
-			.header("x-another-header", "repeated-value")
-			.send()
+			.get_with_headers(
+				"/",
+				&[
+					("x-custom-header", header_value.as_str()),
+					("x-another-header", "repeated-value"),
+				],
+			)
 			.await
 			.expect("Request should succeed");
 
-		assert!(response.status().is_success());
+		assert_eq!(response.status_code(), 200);
 
-		let body = response.text().await.unwrap();
+		let body = response.text();
 		assert!(body.contains(&format!("value-{}", i)));
 	}
 
@@ -268,7 +275,7 @@ async fn test_header_compression(_http_client: reqwest::Client) {
 /// by sending requests with different priority levels.
 #[rstest]
 #[tokio::test]
-async fn test_stream_priority(_http_client: reqwest::Client) {
+async fn test_stream_priority() {
 	// Setup server
 	let handler = Arc::new(StreamPriorityHandler);
 	let coordinator = ShutdownCoordinator::new(Duration::from_secs(10));
@@ -292,25 +299,23 @@ async fn test_stream_priority(_http_client: reqwest::Client) {
 	sleep(Duration::from_millis(100)).await;
 
 	// Create HTTP/2 client
-	let client = reqwest::Client::builder()
+	let client = APIClient::builder()
+		.base_url(&url)
 		.http2_prior_knowledge()
 		.timeout(Duration::from_secs(10))
-		.build()
-		.unwrap();
+		.build();
 
 	// Send requests with different priority levels
 	let priorities = vec!["high", "normal", "low"];
 	for priority in priorities {
 		let response = client
-			.get(&url)
-			.header("x-priority", priority)
-			.send()
+			.get_with_headers("/", &[("x-priority", priority)])
 			.await
 			.expect("Request should succeed");
 
-		assert!(response.status().is_success());
+		assert_eq!(response.status_code(), 200);
 
-		let body = response.text().await.unwrap();
+		let body = response.text();
 		assert_eq!(body, format!("Priority: {}", priority));
 	}
 
@@ -349,20 +354,19 @@ async fn test_http1_http2_mixed() {
 	sleep(Duration::from_millis(100)).await;
 
 	// Test with HTTP/2 client
-	let http2_client = reqwest::Client::builder()
+	let http2_client = APIClient::builder()
+		.base_url(&url)
 		.http2_prior_knowledge()
 		.timeout(Duration::from_secs(10))
-		.build()
-		.unwrap();
+		.build();
 
 	let response = http2_client
-		.get(&url)
-		.send()
+		.get("/")
 		.await
 		.expect("HTTP/2 request should succeed");
 
-	assert!(response.status().is_success());
-	assert_eq!(response.version(), reqwest::Version::HTTP_2);
+	assert_eq!(response.status_code(), 200);
+	assert_eq!(response.version(), Version::HTTP_2);
 
 	// Note: HTTP/1.1 requests to HTTP/2-only server will fail
 	// This is expected behavior for the current implementation
@@ -378,7 +382,7 @@ async fn test_http1_http2_mixed() {
 /// by sending requests for large responses.
 #[rstest]
 #[tokio::test]
-async fn test_flow_control(_http_client: reqwest::Client) {
+async fn test_flow_control() {
 	// Setup server
 	let handler = Arc::new(FlowControlHandler);
 	let coordinator = ShutdownCoordinator::new(Duration::from_secs(10));
@@ -402,26 +406,25 @@ async fn test_flow_control(_http_client: reqwest::Client) {
 	sleep(Duration::from_millis(100)).await;
 
 	// Create HTTP/2 client
-	let client = reqwest::Client::builder()
+	let client = APIClient::builder()
+		.base_url(&url)
 		.http2_prior_knowledge()
 		.timeout(Duration::from_secs(10))
-		.build()
-		.unwrap();
+		.build();
 
 	// Test different response sizes to trigger flow control
 	let sizes = vec![1024, 16384, 65536, 262144]; // 1KB, 16KB, 64KB, 256KB
 
 	for size in sizes {
+		let size_str = size.to_string();
 		let response = client
-			.get(&url)
-			.header("x-response-size", size.to_string())
-			.send()
+			.get_with_headers("/", &[("x-response-size", size_str.as_str())])
 			.await
 			.expect("Request should succeed");
 
-		assert!(response.status().is_success());
+		assert_eq!(response.status_code(), 200);
 
-		let body = response.text().await.unwrap();
+		let body = response.text();
 		assert_eq!(
 			body.len(),
 			size,

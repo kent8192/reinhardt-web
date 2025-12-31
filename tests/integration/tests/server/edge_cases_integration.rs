@@ -9,12 +9,16 @@
 //! - Malformed URIs
 
 use bytes::Bytes;
+use http::StatusCode;
 use reinhardt_http::{Request, Response, ViewResult};
 use reinhardt_macros::{get, post};
 use reinhardt_routers::UnifiedRouter as Router;
 use reinhardt_server::ShutdownCoordinator;
 use reinhardt_test::fixtures::*;
+use reinhardt_test::APIClient;
+use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 
@@ -86,18 +90,21 @@ async fn test_empty_post_body() {
 	let router = Router::new().endpoint(empty_body_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
 	// Send POST with empty body
 	let response = client
-		.post(format!("{}/empty", server.url))
-		.header("Content-Length", "0")
-		.send()
+		.post_raw_with_headers(
+			"/empty",
+			b"",
+			"application/octet-stream",
+			&[("Content-Length", "0")],
+		)
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	let text = response.text().await.unwrap();
+	assert_eq!(response.status(), StatusCode::OK);
+	let text = response.text();
 	assert_eq!(text, "empty:true,length:0");
 }
 
@@ -107,18 +114,16 @@ async fn test_empty_post_body_no_content_length() {
 	let router = Router::new().endpoint(empty_body_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
-	// Send POST with empty body (reqwest will set Content-Length: 0)
+	// Send POST with empty body
 	let response = client
-		.post(format!("{}/empty", server.url))
-		.body("")
-		.send()
+		.post_raw("/empty", b"", "application/octet-stream")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	let text = response.text().await.unwrap();
+	assert_eq!(response.status(), StatusCode::OK);
+	let text = response.text();
 	assert_eq!(text, "empty:true,length:0");
 }
 
@@ -212,18 +217,16 @@ async fn test_minimum_request_size() {
 	let router = Router::new().endpoint(size_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
 	// Send 1-byte body
 	let response = client
-		.post(format!("{}/size", server.url))
-		.body(Bytes::from("a"))
-		.send()
+		.post_raw("/size", b"a", "application/octet-stream")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	let text = response.text().await.unwrap();
+	assert_eq!(response.status(), StatusCode::OK);
+	let text = response.text();
 	assert_eq!(text, "size:1");
 }
 
@@ -233,48 +236,40 @@ async fn test_small_request_sizes() {
 	let router = Router::new().endpoint(size_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
 	// Test 0 bytes
 	let response = client
-		.post(format!("{}/size", server.url))
-		.body("")
-		.send()
+		.post_raw("/size", b"", "application/octet-stream")
 		.await
 		.unwrap();
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	assert_eq!(response.text().await.unwrap(), "size:0");
+	assert_eq!(response.status(), StatusCode::OK);
+	assert_eq!(response.text(), "size:0");
 
 	// Test 1 byte
 	let response = client
-		.post(format!("{}/size", server.url))
-		.body("a")
-		.send()
+		.post_raw("/size", b"a", "application/octet-stream")
 		.await
 		.unwrap();
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	assert_eq!(response.text().await.unwrap(), "size:1");
+	assert_eq!(response.status(), StatusCode::OK);
+	assert_eq!(response.text(), "size:1");
 
 	// Test 10 bytes
 	let response = client
-		.post(format!("{}/size", server.url))
-		.body("0123456789")
-		.send()
+		.post_raw("/size", b"0123456789", "application/octet-stream")
 		.await
 		.unwrap();
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	assert_eq!(response.text().await.unwrap(), "size:10");
+	assert_eq!(response.status(), StatusCode::OK);
+	assert_eq!(response.text(), "size:10");
 
 	// Test 100 bytes
 	let payload_100 = "x".repeat(100);
 	let response = client
-		.post(format!("{}/size", server.url))
-		.body(payload_100)
-		.send()
+		.post_raw("/size", payload_100.as_bytes(), "application/octet-stream")
 		.await
 		.unwrap();
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	assert_eq!(response.text().await.unwrap(), "size:100");
+	assert_eq!(response.status(), StatusCode::OK);
+	assert_eq!(response.text(), "size:100");
 }
 
 #[tokio::test]
@@ -283,19 +278,17 @@ async fn test_large_request_size() {
 	let router = Router::new().endpoint(size_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
 	// Send 1MB body (should be accepted)
 	let large_payload = vec![b'x'; 1024 * 1024];
 	let response = client
-		.post(format!("{}/size", server.url))
-		.body(large_payload)
-		.send()
+		.post_raw("/size", &large_payload, "application/octet-stream")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	let text = response.text().await.unwrap();
+	assert_eq!(response.status(), StatusCode::OK);
+	let text = response.text();
 	assert_eq!(text, format!("size:{}", 1024 * 1024));
 }
 
@@ -326,17 +319,16 @@ async fn test_request_during_shutdown() {
 	// Wait for server to start
 	tokio::time::sleep(Duration::from_millis(100)).await;
 
-	let client = reqwest::Client::new();
+	let client = Arc::new(
+		APIClient::builder()
+			.base_url(&url)
+			.timeout(Duration::from_secs(10))
+			.build(),
+	);
 
 	// Start a slow request
-	let url_clone = url.clone();
-	let request_task = tokio::spawn(async move {
-		client
-			.get(format!("{}/slow", url_clone))
-			.timeout(Duration::from_secs(10))
-			.send()
-			.await
-	});
+	let client_clone = client.clone();
+	let request_task = tokio::spawn(async move { client_clone.get("/slow").await });
 
 	// Wait for request to start processing
 	tokio::time::sleep(Duration::from_millis(50)).await;
@@ -352,7 +344,7 @@ async fn test_request_during_shutdown() {
 	// Request may complete successfully or fail due to shutdown
 	// Both are acceptable behaviors for graceful shutdown
 	let is_completed = match result {
-		Ok(Ok(response)) => response.status() == reqwest::StatusCode::OK,
+		Ok(Ok(response)) => response.status() == StatusCode::OK,
 		_ => false,
 	};
 
@@ -404,12 +396,11 @@ async fn test_new_request_after_shutdown_signal() {
 	tokio::time::sleep(Duration::from_millis(50)).await;
 
 	// Try to make new request after shutdown signal
-	let client = reqwest::Client::new();
-	let result = client
-		.get(format!("{}/slow", url))
+	let client = APIClient::builder()
+		.base_url(&url)
 		.timeout(Duration::from_secs(1))
-		.send()
-		.await;
+		.build();
+	let result = client.get("/slow").await;
 
 	// Request should fail (connection refused or timeout)
 	assert!(result.is_err(), "New requests after shutdown should fail");
@@ -428,7 +419,7 @@ async fn test_malformed_uri_special_characters() {
 	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
 	// Test various special characters in URI
 	let test_cases = vec![
@@ -444,14 +435,10 @@ async fn test_malformed_uri_special_characters() {
 	];
 
 	for (uri_path, expected) in test_cases {
-		let response = client
-			.get(format!("{}{}", server.url, uri_path))
-			.send()
-			.await
-			.unwrap();
+		let response = client.get(uri_path).await.unwrap();
 
-		assert_eq!(response.status(), reqwest::StatusCode::OK);
-		let text = response.text().await.unwrap();
+		assert_eq!(response.status(), StatusCode::OK);
+		let text = response.text();
 		assert_eq!(text, expected, "Failed for URI: {}", uri_path);
 	}
 }
@@ -462,16 +449,12 @@ async fn test_uri_without_query_string() {
 	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
-	let response = client
-		.get(format!("{}/uri", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/uri").await.unwrap();
 
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	let text = response.text().await.unwrap();
+	assert_eq!(response.status(), StatusCode::OK);
+	let text = response.text();
 	assert_eq!(text, "path:/uri,query:");
 }
 
@@ -481,17 +464,13 @@ async fn test_uri_with_fragment() {
 	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
 	// Fragment (#section) should not be sent to server by client
-	let response = client
-		.get(format!("{}/uri?key=value#fragment", server.url))
-		.send()
-		.await
-		.unwrap();
+	let response = client.get("/uri?key=value#fragment").await.unwrap();
 
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	let text = response.text().await.unwrap();
+	assert_eq!(response.status(), StatusCode::OK);
+	let text = response.text();
 	// Server should not see the fragment
 	assert_eq!(text, "path:/uri,query:key=value");
 }
@@ -502,19 +481,16 @@ async fn test_very_long_uri() {
 	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
 	// Create a long query string (but still reasonable)
 	let long_value = "x".repeat(1000);
-	let response = client
-		.get(format!("{}/uri?data={}", server.url, long_value))
-		.send()
-		.await
-		.unwrap();
+	let path = format!("/uri?data={}", long_value);
+	let response = client.get(&path).await.unwrap();
 
 	// Should handle long URI successfully
-	assert_eq!(response.status(), reqwest::StatusCode::OK);
-	let text = response.text().await.unwrap();
+	assert_eq!(response.status(), StatusCode::OK);
+	let text = response.text();
 	assert!(text.starts_with("path:/uri,query:data="));
 	assert!(text.contains(&long_value));
 }
@@ -525,14 +501,12 @@ async fn test_extremely_long_uri() {
 	let router = Router::new().endpoint(uri_handler);
 	let server = test_server_guard(router).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&server.url);
 
 	// Create an extremely long query string (10KB)
 	let very_long_value = "x".repeat(10_000);
-	let result = client
-		.get(format!("{}/uri?data={}", server.url, very_long_value))
-		.send()
-		.await;
+	let path = format!("/uri?data={}", very_long_value);
+	let result = client.get(&path).await;
 
 	// Server may accept it (200) or reject it (414 URI Too Long, 400 Bad Request, or connection error)
 	// All are acceptable behaviors - we just verify server doesn't panic
@@ -540,9 +514,9 @@ async fn test_extremely_long_uri() {
 		Ok(response) => {
 			let status = response.status();
 			assert!(
-				status == reqwest::StatusCode::OK
-					|| status == reqwest::StatusCode::URI_TOO_LONG
-					|| status == reqwest::StatusCode::BAD_REQUEST,
+				status == StatusCode::OK
+					|| status == StatusCode::URI_TOO_LONG
+					|| status == StatusCode::BAD_REQUEST,
 				"Server should respond with 200, 414, or 400 for very long URI, got: {}",
 				status
 			);
@@ -580,20 +554,19 @@ async fn test_concurrent_requests_during_shutdown() {
 	// Wait for server to start
 	tokio::time::sleep(Duration::from_millis(100)).await;
 
-	let client = reqwest::Client::new();
+	// APIClient with connection pooling and timeout
+	let client = Arc::new(
+		APIClient::builder()
+			.base_url(&url)
+			.timeout(Duration::from_secs(10))
+			.build(),
+	);
 
 	// Start multiple concurrent slow requests
 	let mut request_tasks = vec![];
 	for _ in 0..5 {
-		let url_clone = url.clone();
 		let client_clone = client.clone();
-		let task = tokio::spawn(async move {
-			client_clone
-				.get(format!("{}/slow", url_clone))
-				.timeout(Duration::from_secs(10))
-				.send()
-				.await
-		});
+		let task = tokio::spawn(async move { client_clone.get("/slow").await });
 		request_tasks.push(task);
 	}
 
@@ -607,7 +580,7 @@ async fn test_concurrent_requests_during_shutdown() {
 	let mut completed_count = 0;
 	for task in request_tasks {
 		if let Ok(Ok(Ok(response))) = tokio::time::timeout(Duration::from_secs(3), task).await {
-			if response.status() == reqwest::StatusCode::OK {
+			if response.status() == StatusCode::OK {
 				completed_count += 1;
 			}
 		}

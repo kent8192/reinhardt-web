@@ -3,6 +3,7 @@
 use async_graphql::{self, EmptySubscription, Object, Schema, ID};
 use reinhardt_server::GraphQLHandler;
 use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
+use reinhardt_test::APIClient;
 use rstest::{fixture, rstest};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -283,7 +284,7 @@ async fn test_graphql_batch_queries(data_store: DataStore) {
 	let handler = Arc::new(GraphQLHandler::new(schema));
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// Batch query requesting multiple fields at once
 	let batch_query = r#"{
@@ -291,15 +292,12 @@ async fn test_graphql_batch_queries(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(batch_query)
-		.send()
+		.post_raw("/", batch_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// Verify users data
@@ -334,7 +332,7 @@ async fn test_graphql_schema_introspection(data_store: DataStore) {
 	let handler = Arc::new(GraphQLHandler::new(schema));
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// Introspection query to get schema types
 	let introspection_query = r#"{
@@ -342,15 +340,12 @@ async fn test_graphql_schema_introspection(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(introspection_query)
-		.send()
+		.post_raw("/", introspection_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// Verify schema introspection returns types
@@ -369,15 +364,12 @@ async fn test_graphql_schema_introspection(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(type_query)
-		.send()
+		.post_raw("/", type_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// Verify User type has expected fields
@@ -412,7 +404,7 @@ async fn test_graphql_field_level_errors(data_store: DataStore) {
 	let handler = Arc::new(GraphQLHandler::new(schema));
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// Query with both error and success fields
 	let mixed_query = r#"{
@@ -420,15 +412,12 @@ async fn test_graphql_field_level_errors(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(mixed_query)
-		.send()
+		.post_raw("/", mixed_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// Verify partial data is returned
@@ -453,15 +442,12 @@ async fn test_graphql_field_level_errors(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(conditional_query)
-		.send()
+		.post_raw("/", conditional_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// Verify both fields return appropriate values
@@ -495,7 +481,7 @@ async fn test_graphql_nesting_limits(data_store: DataStore) {
 	let handler = Arc::new(GraphQLHandler::new(schema));
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// Query within depth limit (depth = 4)
 	let shallow_query = r#"{
@@ -503,15 +489,12 @@ async fn test_graphql_nesting_limits(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(shallow_query)
-		.send()
+		.post_raw("/", shallow_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// Should succeed within limit
@@ -524,26 +507,25 @@ async fn test_graphql_nesting_limits(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(deep_query)
-		.send()
+		.post_raw("/", deep_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// Should return error for exceeding depth limit
 	let errors = json["errors"].as_array().unwrap();
 	assert!(!errors.is_empty());
 
-	// Error message should mention depth or query complexity
+	// Error message should mention depth, complexity, or nesting
 	let error_msg = errors[0]["message"].as_str().unwrap().to_lowercase();
 	assert!(
-		error_msg.contains("depth") || error_msg.contains("complex"),
-		"Expected depth/complexity error, got: {}",
+		error_msg.contains("depth")
+			|| error_msg.contains("complex")
+			|| error_msg.contains("nested"),
+		"Expected depth/complexity/nesting error, got: {}",
 		error_msg
 	);
 
@@ -568,7 +550,7 @@ async fn test_graphql_complex_query_patterns(data_store: DataStore) {
 	let handler = Arc::new(GraphQLHandler::new(schema));
 	let (url, handle) = spawn_test_server(handler).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// Test 1: Fragments
 	let fragment_query = r#"{
@@ -576,15 +558,12 @@ async fn test_graphql_complex_query_patterns(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(fragment_query)
-		.send()
+		.post_raw("/", fragment_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	let users = json["data"]["users"].as_array().unwrap();
@@ -600,15 +579,12 @@ async fn test_graphql_complex_query_patterns(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(variable_query)
-		.send()
+		.post_raw("/", variable_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	assert_eq!(json["data"]["user"]["id"].as_str().unwrap(), "1");
@@ -620,15 +596,12 @@ async fn test_graphql_complex_query_patterns(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(alias_query)
-		.send()
+		.post_raw("/", alias_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	assert_eq!(json["data"]["alice"]["name"].as_str().unwrap(), "Alice");
@@ -641,15 +614,12 @@ async fn test_graphql_complex_query_patterns(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(directive_query)
-		.send()
+		.post_raw("/", directive_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	let users = json["data"]["users"].as_array().unwrap();
@@ -664,15 +634,12 @@ async fn test_graphql_complex_query_patterns(data_store: DataStore) {
 	}"#;
 
 	let response = client
-		.post(&url)
-		.header("content-type", "application/json")
-		.body(complex_query)
-		.send()
+		.post_raw("/", complex_query.as_bytes(), "application/json")
 		.await
 		.unwrap();
 
-	assert_eq!(response.status(), 200);
-	let body = response.text().await.unwrap();
+	assert_eq!(response.status_code(), 200);
+	let body = response.text();
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	assert_eq!(

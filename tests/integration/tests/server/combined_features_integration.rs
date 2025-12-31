@@ -8,12 +8,14 @@
 //! - Graceful shutdown + WebSocket (feature-gated: `#[cfg(feature = "websocket")]`)
 //! - Multiple middleware + DI (if DI integration exists)
 
+use http::Version;
 use reinhardt_http::{Request, Response};
 use reinhardt_server::{
 	Http2Server, HttpServer, RateLimitConfig, RateLimitHandler, RateLimitStrategy,
 	ShutdownCoordinator, TimeoutHandler,
 };
 use reinhardt_test::fixtures::*;
+use reinhardt_test::APIClient;
 use reinhardt_types::{Handler, Middleware};
 use rstest::*;
 use std::net::SocketAddr;
@@ -208,7 +210,7 @@ impl Handler for MiddlewareHandler {
 /// middleware (logging + header injection).
 #[rstest]
 #[tokio::test]
-async fn test_http2_with_middleware_chain(_http_client: reqwest::Client) {
+async fn test_http2_with_middleware_chain() {
 	// Setup handler and middleware
 	let handler = Arc::new(BasicTestHandler);
 	let logging_middleware = Arc::new(LoggingMiddleware::new());
@@ -241,25 +243,21 @@ async fn test_http2_with_middleware_chain(_http_client: reqwest::Client) {
 	sleep(Duration::from_millis(100)).await;
 
 	// Create HTTP/2 client
-	let client = reqwest::Client::builder()
+	let client = APIClient::builder()
+		.base_url(&url)
 		.http2_prior_knowledge()
 		.timeout(Duration::from_secs(10))
-		.build()
-		.unwrap();
+		.build();
 
 	// Send request
-	let response = client
-		.get(&url)
-		.send()
-		.await
-		.expect("Request should succeed");
+	let response = client.get("/").await.expect("Request should succeed");
 
 	// Verify response
-	assert!(response.status().is_success());
-	assert_eq!(response.version(), reqwest::Version::HTTP_2);
+	assert_eq!(response.status_code(), 200);
+	assert_eq!(response.version(), Version::HTTP_2);
 
 	// Verify custom header is present
-	let custom_header = response.headers().get("X-Custom-Header");
+	let custom_header = response.header("X-Custom-Header");
 	assert!(custom_header.is_some(), "Custom header should be present");
 	assert_eq!(custom_header.unwrap(), "test-value");
 
@@ -282,7 +280,7 @@ async fn test_http2_with_middleware_chain(_http_client: reqwest::Client) {
 /// This test verifies that WebSocket connections respect rate limits.
 #[rstest]
 #[tokio::test]
-async fn test_websocket_with_rate_limit(_http_client: reqwest::Client) {
+async fn test_websocket_with_rate_limit() {
 	// Note: This is a placeholder test demonstrating the pattern
 	// Full WebSocket implementation requires additional setup
 
@@ -307,31 +305,19 @@ async fn test_websocket_with_rate_limit(_http_client: reqwest::Client) {
 
 	sleep(Duration::from_millis(100)).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// First 2 requests should succeed
 	for i in 1..=2 {
-		let response = client
-			.get(&url)
-			.send()
-			.await
-			.expect("Request should succeed");
-		assert!(
-			response.status().is_success(),
-			"Request {} should succeed",
-			i
-		);
+		let response = client.get("/").await.expect("Request should succeed");
+		assert_eq!(response.status_code(), 200, "Request {} should succeed", i);
 	}
 
 	// 3rd request should be rate limited
-	let response = client
-		.get(&url)
-		.send()
-		.await
-		.expect("Request should succeed");
+	let response = client.get("/").await.expect("Request should succeed");
 	assert_eq!(
-		response.status(),
-		reqwest::StatusCode::TOO_MANY_REQUESTS,
+		response.status_code(),
+		429,
 		"3rd request should be rate limited"
 	);
 
@@ -350,7 +336,7 @@ async fn test_websocket_with_rate_limit(_http_client: reqwest::Client) {
 /// This test verifies that GraphQL requests respect timeout configuration.
 #[rstest]
 #[tokio::test]
-async fn test_graphql_with_timeout(_http_client: reqwest::Client) {
+async fn test_graphql_with_timeout() {
 	// Note: This is a placeholder test demonstrating the pattern
 	// Full GraphQL implementation requires additional setup
 
@@ -382,19 +368,11 @@ async fn test_graphql_with_timeout(_http_client: reqwest::Client) {
 
 	sleep(Duration::from_millis(100)).await;
 
-	let client = reqwest::Client::new();
-	let response = client
-		.get(&url)
-		.send()
-		.await
-		.expect("Request should complete");
+	let client = APIClient::with_base_url(&url);
+	let response = client.get("/").await.expect("Request should complete");
 
 	// Should get timeout response
-	assert_eq!(
-		response.status(),
-		reqwest::StatusCode::REQUEST_TIMEOUT,
-		"Should timeout"
-	);
+	assert_eq!(response.status_code(), 408, "Should timeout");
 
 	// Cleanup
 	coordinator.shutdown();
@@ -411,7 +389,7 @@ async fn test_graphql_with_timeout(_http_client: reqwest::Client) {
 /// simultaneously and handle requests correctly.
 #[rstest]
 #[tokio::test]
-async fn test_http1_http2_mixed_environment(_http_client: reqwest::Client) {
+async fn test_http1_http2_mixed_environment() {
 	let handler1 = Arc::new(BasicTestHandler);
 	let handler2 = Arc::new(BasicTestHandler);
 
@@ -452,36 +430,34 @@ async fn test_http1_http2_mixed_environment(_http_client: reqwest::Client) {
 	sleep(Duration::from_millis(100)).await;
 
 	// Test HTTP/1.1 server
-	let http1_client = reqwest::Client::builder()
+	let http1_client = APIClient::builder()
+		.base_url(&url1)
 		.http1_only()
 		.timeout(Duration::from_secs(10))
-		.build()
-		.unwrap();
+		.build();
 
 	let response1 = http1_client
-		.get(&url1)
-		.send()
+		.get("/")
 		.await
 		.expect("HTTP/1.1 request should succeed");
 
-	assert!(response1.status().is_success());
-	assert_eq!(response1.version(), reqwest::Version::HTTP_11);
+	assert_eq!(response1.status_code(), 200);
+	assert_eq!(response1.version(), Version::HTTP_11);
 
 	// Test HTTP/2 server
-	let http2_client = reqwest::Client::builder()
+	let http2_client = APIClient::builder()
+		.base_url(&url2)
 		.http2_prior_knowledge()
 		.timeout(Duration::from_secs(10))
-		.build()
-		.unwrap();
+		.build();
 
 	let response2 = http2_client
-		.get(&url2)
-		.send()
+		.get("/")
 		.await
 		.expect("HTTP/2 request should succeed");
 
-	assert!(response2.status().is_success());
-	assert_eq!(response2.version(), reqwest::Version::HTTP_2);
+	assert_eq!(response2.status_code(), 200);
+	assert_eq!(response2.version(), Version::HTTP_2);
 
 	// Cleanup
 	coordinator1.shutdown();
@@ -501,7 +477,7 @@ async fn test_http1_http2_mixed_environment(_http_client: reqwest::Client) {
 /// WebSocket connections are active.
 #[rstest]
 #[tokio::test]
-async fn test_graceful_shutdown_with_websocket(_http_client: reqwest::Client) {
+async fn test_graceful_shutdown_with_websocket() {
 	// Note: This is a placeholder test demonstrating the pattern
 	// Full WebSocket implementation requires additional setup
 
@@ -525,15 +501,11 @@ async fn test_graceful_shutdown_with_websocket(_http_client: reqwest::Client) {
 
 	sleep(Duration::from_millis(100)).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// Make a request to verify server is running
-	let response = client
-		.get(&url)
-		.send()
-		.await
-		.expect("Request should succeed");
-	assert!(response.status().is_success());
+	let response = client.get("/").await.expect("Request should succeed");
+	assert_eq!(response.status_code(), 200);
 	assert_eq!(handler.get_count(), 1);
 
 	// Trigger graceful shutdown
@@ -557,7 +529,7 @@ async fn test_graceful_shutdown_with_websocket(_http_client: reqwest::Client) {
 /// DI (if available) integrates correctly with the middleware chain.
 #[rstest]
 #[tokio::test]
-async fn test_multiple_middleware_with_di(_http_client: reqwest::Client) {
+async fn test_multiple_middleware_with_di() {
 	// Setup middleware chain
 	let logging_middleware = Arc::new(LoggingMiddleware::new());
 	let header_middleware = Arc::new(HeaderMiddleware::new("X-Framework", "Reinhardt"));
@@ -590,24 +562,16 @@ async fn test_multiple_middleware_with_di(_http_client: reqwest::Client) {
 
 	sleep(Duration::from_millis(100)).await;
 
-	let client = reqwest::Client::new();
+	let client = APIClient::with_base_url(&url);
 
 	// Send multiple requests
 	for i in 1..=3 {
-		let response = client
-			.get(&url)
-			.send()
-			.await
-			.expect("Request should succeed");
+		let response = client.get("/").await.expect("Request should succeed");
 
-		assert!(
-			response.status().is_success(),
-			"Request {} should succeed",
-			i
-		);
+		assert_eq!(response.status_code(), 200, "Request {} should succeed", i);
 
 		// Verify framework header is present
-		let framework_header = response.headers().get("X-Framework");
+		let framework_header = response.header("X-Framework");
 		assert!(
 			framework_header.is_some(),
 			"Framework header should be present"
