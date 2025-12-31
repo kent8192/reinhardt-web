@@ -15,7 +15,60 @@ pub trait EmailBackend: Send + Sync {
 	async fn send_messages(&self, messages: &[EmailMessage]) -> EmailResult<usize>;
 }
 
-pub fn backend_from_settings() {}
+/// Creates an email backend from settings configuration.
+///
+/// # Arguments
+/// * `settings` - Email configuration settings
+///
+/// # Returns
+/// A boxed EmailBackend trait object based on settings.backend field
+///
+/// # Errors
+/// Returns EmailError if:
+/// - Unknown backend type
+/// - Missing required fields (e.g., file_path for FileBackend)
+pub fn backend_from_settings(
+	settings: &reinhardt_conf::settings::EmailSettings,
+) -> crate::EmailResult<Box<dyn EmailBackend>> {
+	match settings.backend.to_lowercase().as_str() {
+		"smtp" => {
+			let security = match (settings.use_tls, settings.use_ssl) {
+				(true, _) => SmtpSecurity::StartTls,
+				(_, true) => SmtpSecurity::Tls,
+				_ => SmtpSecurity::None,
+			};
+
+			let timeout = settings
+				.timeout
+				.map(std::time::Duration::from_secs)
+				.unwrap_or(std::time::Duration::from_secs(60));
+
+			let mut config = SmtpConfig::new(&settings.host, settings.port)
+				.with_security(security)
+				.with_timeout(timeout);
+
+			if let (Some(username), Some(password)) = (&settings.username, &settings.password) {
+				config = config.with_credentials(username.clone(), password.clone());
+			}
+
+			let backend = SmtpBackend::new(config)?;
+			Ok(Box::new(backend))
+		}
+		"console" => Ok(Box::new(ConsoleBackend)),
+		"file" => {
+			let directory = settings
+				.file_path
+				.clone()
+				.ok_or_else(|| crate::EmailError::MissingField("file_path".to_string()))?;
+			Ok(Box::new(FileBackend::new(directory)))
+		}
+		"memory" => Ok(Box::new(MemoryBackend::new())),
+		unknown => Err(crate::EmailError::BackendError(format!(
+			"Unknown email backend type: '{}'. Valid options: smtp, console, file, memory",
+			unknown
+		))),
+	}
+}
 
 /// Console backend for development
 ///

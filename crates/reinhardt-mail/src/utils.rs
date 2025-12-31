@@ -5,10 +5,17 @@
 use crate::{EmailMessage, EmailResult, backends::EmailBackend};
 use reinhardt_conf::settings::EmailSettings;
 
-/// Send a simple email
+/// Send a simple email using the configured backend from settings.
 ///
 /// This is a convenience function for sending simple emails without
 /// constructing an EmailMessage manually.
+///
+/// # Arguments
+/// * `settings` - Email configuration settings (determines backend, from_email, etc.)
+/// * `subject` - Email subject line
+/// * `message` - Plain text email body
+/// * `recipient_list` - List of recipient email addresses
+/// * `html_message` - Optional HTML body for multipart emails
 ///
 /// # Example
 ///
@@ -16,11 +23,17 @@ use reinhardt_conf::settings::EmailSettings;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use reinhardt_mail::send_mail;
+/// use reinhardt_conf::settings::EmailSettings;
+///
+/// let mut settings = EmailSettings::default();
+/// settings.backend = "smtp".to_string();
+/// settings.host = "smtp.example.com".to_string();
+/// settings.from_email = "noreply@example.com".to_string();
 ///
 /// send_mail(
+///     &settings,
 ///     "Welcome!",
 ///     "Welcome to our service",
-///     "noreply@example.com",
 ///     vec!["user@example.com"],
 ///     None,
 /// ).await?;
@@ -28,18 +41,20 @@ use reinhardt_conf::settings::EmailSettings;
 /// # }
 /// ```
 pub async fn send_mail(
+	settings: &reinhardt_conf::settings::EmailSettings,
 	subject: impl Into<String>,
 	message: impl Into<String>,
-	from_email: impl Into<String>,
 	recipient_list: Vec<impl Into<String>>,
 	html_message: Option<String>,
 ) -> EmailResult<()> {
+	let backend = crate::backends::backend_from_settings(settings)?;
+
 	let recipients: Vec<String> = recipient_list.into_iter().map(|r| r.into()).collect();
 
 	let mut email_builder = EmailMessage::builder()
 		.subject(subject)
 		.body(message)
-		.from(from_email)
+		.from(&settings.from_email)
 		.to(recipients);
 
 	if let Some(html) = html_message {
@@ -47,10 +62,6 @@ pub async fn send_mail(
 	}
 
 	let email = email_builder.build();
-
-	// Use console backend as the default for now
-	// In production, this should use backend_from_settings()
-	let backend = crate::backends::ConsoleBackend;
 	backend.send_messages(&[email]).await?;
 	Ok(())
 }
