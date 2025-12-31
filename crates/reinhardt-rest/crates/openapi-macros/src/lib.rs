@@ -10,24 +10,26 @@ use syn::{Data, DeriveInput, Fields, parse_macro_input};
 
 mod crate_paths;
 mod schema;
+mod serde_attrs;
 
 use crate::crate_paths::get_reinhardt_openapi_crate;
 use schema::{FieldAttributes, extract_field_attributes};
+use serde_attrs::{TaggingStrategy, extract_serde_enum_attrs, extract_serde_variant_attrs};
 
 /// Derive macro for automatic OpenAPI schema generation.
 ///
-/// This macro implements the `ToSchema` trait for your struct,
-/// generating an OpenAPI schema based on the struct's fields and attributes.
+/// This macro implements the `ToSchema` trait for your struct or enum,
+/// generating an OpenAPI schema based on the type's fields/variants and attributes.
 ///
 /// # Attributes
 ///
 /// ## Container Attributes
 ///
-/// - `#[schema(title = "...")]` - Override the schema title (default: struct name)
+/// - `#[schema(title = "...")]` - Override the schema title (default: type name)
 /// - `#[schema(description = "...")]` - Schema description
-/// - `#[schema(example = "...")]` - Example value for the entire struct
+/// - `#[schema(example = "...")]` - Example value for the entire type
 ///
-/// ## Field Attributes
+/// ## Field Attributes (for structs)
 ///
 /// - `#[schema(description = "...")]` - Field description (also reads doc comments)
 /// - `#[schema(example = "...")]` - Example value for this field
@@ -42,31 +44,50 @@ use schema::{FieldAttributes, extract_field_attributes};
 /// - `#[schema(max_length = N)]` - Maximum length for strings/arrays
 /// - `#[schema(pattern = "...")]` - Regex pattern for string validation
 ///
+/// # Enum Support
+///
+/// The macro supports serde's enum tagging strategies:
+///
+/// - **External** (default): `{"VariantName": {...}}`
+/// - **Internal**: `#[serde(tag = "type")]` -> `{"type": "VariantName", ...}`
+/// - **Adjacent**: `#[serde(tag = "t", content = "c")]` -> `{"t": "VariantName", "c": {...}}`
+/// - **Untagged**: `#[serde(untagged)]` -> `{...}` (no discriminator)
+///
+/// ## Variant Types
+///
+/// - **Unit variants**: Become string enum values
+/// - **Newtype variants**: Use the inner type's schema
+/// - **Tuple variants**: Generate array schema
+/// - **Struct variants**: Generate object schema with properties
+///
 #[proc_macro_derive(Schema, attributes(schema))]
 pub fn derive_schema(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
 
+	match &input.data {
+		Data::Struct(data) => derive_struct_schema(&input, data),
+		Data::Enum(data) => derive_enum_schema(&input, data),
+		Data::Union(_) => syn::Error::new_spanned(&input, "Schema cannot be derived for unions")
+			.to_compile_error()
+			.into(),
+	}
+}
+
+/// Generate schema for struct types
+fn derive_struct_schema(input: &DeriveInput, data: &syn::DataStruct) -> TokenStream {
 	let name = &input.ident;
 	let generics = &input.generics;
 	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-	// Only support structs for now
-	let fields = match &input.data {
-		Data::Struct(data) => match &data.fields {
-			Fields::Named(fields) => &fields.named,
-			_ => {
-				return syn::Error::new_spanned(
-					&input,
-					"Schema can only be derived for structs with named fields",
-				)
-				.to_compile_error()
-				.into();
-			}
-		},
+	let fields = match &data.fields {
+		Fields::Named(fields) => &fields.named,
 		_ => {
-			return syn::Error::new_spanned(&input, "Schema can only be derived for structs")
-				.to_compile_error()
-				.into();
+			return syn::Error::new_spanned(
+				input,
+				"Schema can only be derived for structs with named fields",
+			)
+			.to_compile_error()
+			.into();
 		}
 	};
 
@@ -158,6 +179,293 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 	};
 
 	TokenStream::from(expanded)
+}
+
+/// Generate schema for enum types
+fn derive_enum_schema(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
+	let name = &input.ident;
+	let generics = &input.generics;
+	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+	let enum_name = name.to_string();
+
+	// Extract serde enum attributes for tagging strategy
+	let serde_attrs = extract_serde_enum_attrs(&input.attrs);
+	let tagging = serde_attrs.tagging_strategy();
+
+	// Get dynamic crate path
+	let openapi_crate = get_reinhardt_openapi_crate();
+
+	// Check if all variants are unit variants (simple string enum)
+	let all_unit_variants = data
+		.variants
+		.iter()
+		.all(|v| matches!(v.fields, Fields::Unit));
+
+	let schema_body = if all_unit_variants && matches!(tagging, TaggingStrategy::External) {
+		// Simple string enum: generate string schema with enum values
+		generate_simple_enum_schema(data, &openapi_crate, &serde_attrs)
+	} else {
+		// Complex enum: use EnumSchemaBuilder
+		generate_complex_enum_schema(data, &openapi_crate, &enum_name, &tagging)
+	};
+
+	// Generate inventory registration only for non-generic types
+	let inventory_registration = if generics.params.is_empty() {
+		quote! {
+			::inventory::submit! {
+				#openapi_crate::SchemaRegistration::new(
+					#enum_name,
+					#name::schema
+				)
+			}
+		}
+	} else {
+		quote! {}
+	};
+
+	let expanded = quote! {
+		impl #impl_generics #openapi_crate::ToSchema for #name #ty_generics #where_clause {
+			fn schema() -> #openapi_crate::Schema {
+				#schema_body
+			}
+
+			fn schema_name() -> Option<String> {
+				Some(#enum_name.to_string())
+			}
+		}
+
+		#inventory_registration
+	};
+
+	TokenStream::from(expanded)
+}
+
+/// Generate schema for simple unit-variant enums (string enum)
+fn generate_simple_enum_schema(
+	data: &syn::DataEnum,
+	openapi_crate: &proc_macro2::TokenStream,
+	serde_attrs: &serde_attrs::SerdeEnumAttrs,
+) -> proc_macro2::TokenStream {
+	let variant_names: Vec<String> = data
+		.variants
+		.iter()
+		.filter_map(|v| {
+			let variant_attrs = extract_serde_variant_attrs(&v.attrs);
+			if variant_attrs.skip {
+				return None;
+			}
+			// Apply rename if present, considering rename_all strategy
+			let name = variant_attrs.rename.unwrap_or_else(|| {
+				apply_rename_all(&v.ident.to_string(), serde_attrs.rename_all.as_deref())
+			});
+			Some(name)
+		})
+		.collect();
+
+	quote! {
+		use #openapi_crate::Schema;
+		use #openapi_crate::utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
+
+		Schema::Object(
+			ObjectBuilder::new()
+				.schema_type(SchemaType::Type(Type::String))
+				.enum_values(Some(vec![#(serde_json::Value::String(#variant_names.to_string())),*]))
+				.build()
+		)
+	}
+}
+
+/// Generate schema for complex enums using EnumSchemaBuilder
+fn generate_complex_enum_schema(
+	data: &syn::DataEnum,
+	openapi_crate: &proc_macro2::TokenStream,
+	enum_name: &str,
+	tagging: &TaggingStrategy,
+) -> proc_macro2::TokenStream {
+	// Generate tagging strategy expression
+	let tagging_expr = match tagging {
+		TaggingStrategy::External => quote! {
+			#openapi_crate::EnumTagging::External
+		},
+		TaggingStrategy::Internal { tag } => quote! {
+			#openapi_crate::EnumTagging::Internal { tag: #tag.to_string() }
+		},
+		TaggingStrategy::Adjacent { tag, content } => quote! {
+			#openapi_crate::EnumTagging::Adjacent {
+				tag: #tag.to_string(),
+				content: #content.to_string(),
+			}
+		},
+		TaggingStrategy::Untagged => quote! {
+			#openapi_crate::EnumTagging::Untagged
+		},
+	};
+
+	// Generate variant schemas
+	let variant_additions: Vec<proc_macro2::TokenStream> = data
+		.variants
+		.iter()
+		.filter_map(|variant| {
+			let variant_attrs = extract_serde_variant_attrs(&variant.attrs);
+			if variant_attrs.skip {
+				return None;
+			}
+
+			let variant_name = variant_attrs
+				.rename
+				.clone()
+				.unwrap_or_else(|| variant.ident.to_string());
+
+			let variant_schema = generate_variant_schema(&variant.fields, openapi_crate);
+
+			Some(quote! {
+				builder = builder.variant(#variant_name, #variant_schema);
+			})
+		})
+		.collect();
+
+	quote! {
+		use #openapi_crate::{EnumSchemaBuilder, Schema, SchemaExt};
+
+		let mut builder = EnumSchemaBuilder::new(#enum_name)
+			.tagging(#tagging_expr);
+
+		#(#variant_additions)*
+
+		builder.build()
+	}
+}
+
+/// Generate schema for a single variant's fields
+fn generate_variant_schema(
+	fields: &Fields,
+	openapi_crate: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+	match fields {
+		Fields::Unit => {
+			// Unit variant: empty object or null
+			quote! {
+				#openapi_crate::Schema::object()
+			}
+		}
+		Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+			// Newtype variant: use inner type's schema
+			let inner_type = &fields.unnamed.first().unwrap().ty;
+			quote! {
+				<#inner_type as #openapi_crate::ToSchema>::schema()
+			}
+		}
+		Fields::Unnamed(fields) => {
+			// Tuple variant: array of inner types
+			let type_schemas: Vec<proc_macro2::TokenStream> = fields
+				.unnamed
+				.iter()
+				.map(|f| {
+					let ty = &f.ty;
+					quote! {
+						#openapi_crate::RefOr::T(<#ty as #openapi_crate::ToSchema>::schema())
+					}
+				})
+				.collect();
+
+			quote! {
+				{
+					use #openapi_crate::utoipa::openapi::schema::{ArrayBuilder, SchemaType, Type};
+					#openapi_crate::Schema::Array(
+						ArrayBuilder::new()
+							.schema_type(SchemaType::Type(Type::Array))
+							.prefix_items(vec![#(#type_schemas),*])
+							.build()
+					)
+				}
+			}
+		}
+		Fields::Named(fields) => {
+			// Struct variant: object with properties
+			let mut property_additions = Vec::new();
+			let mut required_additions = Vec::new();
+
+			for field in &fields.named {
+				let field_name = field.ident.as_ref().unwrap();
+				let field_name_str = field_name.to_string();
+				let field_type = &field.ty;
+
+				// Check for serde rename on field
+				let field_attrs = extract_field_attributes(&field.attrs);
+				let property_name = field_attrs.rename.unwrap_or(field_name_str);
+
+				// Check if required
+				let is_option = is_option_type(field_type);
+				if !is_option {
+					required_additions.push(quote! {
+						builder = builder.required(#property_name);
+					});
+				}
+
+				property_additions.push(quote! {
+					builder = builder.property(
+						#property_name,
+						<#field_type as #openapi_crate::ToSchema>::schema()
+					);
+				});
+			}
+
+			quote! {
+				{
+					use #openapi_crate::utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
+					let mut builder = ObjectBuilder::new()
+						.schema_type(SchemaType::Type(Type::Object));
+					#(#property_additions)*
+					#(#required_additions)*
+					#openapi_crate::Schema::Object(builder.build())
+				}
+			}
+		}
+	}
+}
+
+/// Apply rename_all transformation to a variant name
+fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
+	match rename_all {
+		Some("lowercase") => name.to_lowercase(),
+		Some("UPPERCASE") => name.to_uppercase(),
+		Some("camelCase") => to_camel_case(name),
+		Some("snake_case") => to_snake_case(name),
+		Some("SCREAMING_SNAKE_CASE") => to_snake_case(name).to_uppercase(),
+		Some("kebab-case") => to_snake_case(name).replace('_', "-"),
+		Some("SCREAMING-KEBAB-CASE") => to_snake_case(name).to_uppercase().replace('_', "-"),
+		Some("PascalCase") | None => name.to_string(),
+		Some(_) => name.to_string(),
+	}
+}
+
+/// Convert PascalCase to camelCase
+fn to_camel_case(s: &str) -> String {
+	let mut result = String::new();
+	for (i, c) in s.chars().enumerate() {
+		if i == 0 {
+			result.extend(c.to_lowercase());
+		} else {
+			result.push(c);
+		}
+	}
+	result
+}
+
+/// Convert PascalCase to snake_case
+fn to_snake_case(s: &str) -> String {
+	let mut result = String::new();
+	for (i, c) in s.chars().enumerate() {
+		if c.is_uppercase() {
+			if i > 0 {
+				result.push('_');
+			}
+			result.extend(c.to_lowercase());
+		} else {
+			result.push(c);
+		}
+	}
+	result
 }
 
 /// Helper function to check if a type is Option<T>
