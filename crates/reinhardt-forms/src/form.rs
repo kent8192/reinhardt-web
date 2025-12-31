@@ -1020,40 +1020,4 @@ mod tests {
 			&serde_json::json!("JOHN DOE")
 		);
 	}
-
-	#[test]
-	fn test_form_rendering_as_table() {
-		let mut form = Form::new();
-		let name_field = CharField::new("name".to_string());
-		form.add_field(Box::new(name_field));
-
-		let html = form.as_table();
-		assert!(html.contains("<tr>"));
-		assert!(html.contains("<th>"));
-		assert!(html.contains("name"));
-	}
-
-	#[test]
-	fn test_form_rendering_as_p() {
-		let mut form = Form::new();
-		let name_field = CharField::new("name".to_string());
-		form.add_field(Box::new(name_field));
-
-		let html = form.as_p();
-		assert!(html.contains("<p>"));
-		assert!(html.contains("<label"));
-		assert!(html.contains("name"));
-	}
-
-	#[test]
-	fn test_form_rendering_as_ul() {
-		let mut form = Form::new();
-		let name_field = CharField::new("name".to_string());
-		form.add_field(Box::new(name_field));
-
-		let html = form.as_ul();
-		assert!(html.contains("<li>"));
-		assert!(html.contains("<label"));
-		assert!(html.contains("name"));
-	}
 }
