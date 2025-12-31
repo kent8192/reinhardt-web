@@ -244,21 +244,32 @@ fn decompress_brotli(data: &[u8]) -> WebSocketResult<Vec<u8>> {
 	Ok(decompressed)
 }
 
-// Stub implementation when compression feature is disabled
+/// Feature-gated no-op: Returns error when compression is disabled.
+///
+/// To enable compression functionality, add the `compression` feature:
+/// ```toml
+/// reinhardt-websockets = { version = "...", features = ["compression"] }
+/// ```
 #[cfg(not(feature = "compression"))]
 pub fn compress_message(_message: &Message, _codec: CompressionCodec) -> WebSocketResult<Message> {
 	Err(WebSocketError::Protocol(
-		"Compression feature is not enabled".to_string(),
+		"Compression feature not enabled. Add 'compression' feature to Cargo.toml.".to_string(),
 	))
 }
 
+/// Feature-gated no-op: Returns error when compression is disabled.
+///
+/// To enable compression functionality, add the `compression` feature:
+/// ```toml
+/// reinhardt-websockets = { version = "...", features = ["compression"] }
+/// ```
 #[cfg(not(feature = "compression"))]
 pub fn decompress_message(
 	_message: &Message,
 	_codec: CompressionCodec,
 ) -> WebSocketResult<Message> {
 	Err(WebSocketError::Protocol(
-		"Compression feature is not enabled".to_string(),
+		"Compression feature not enabled. Add 'compression' feature to Cargo.toml.".to_string(),
 	))
 }
 

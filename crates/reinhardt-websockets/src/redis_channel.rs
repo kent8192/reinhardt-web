@@ -293,17 +293,31 @@ impl ChannelLayer for RedisChannelLayer {
 	}
 }
 
-// Stub implementation when redis-channel feature is disabled
+/// Feature-gated placeholder: Empty type when redis-channel is disabled.
+///
+/// This type exists to allow code to compile when the `redis-channel` feature
+/// is not enabled, but provides no functionality. To use Redis-backed channel
+/// layers for distributed WebSocket systems, enable the feature:
+///
+/// ```toml
+/// reinhardt-websockets = { version = "...", features = ["redis-channel"] }
+/// ```
 #[cfg(not(feature = "redis-channel"))]
 pub struct RedisConfig;
 
 #[cfg(not(feature = "redis-channel"))]
 impl RedisConfig {
+	/// Creates a placeholder configuration (no-op when feature is disabled).
 	pub fn default() -> Self {
 		Self
 	}
 }
 
+/// Feature-gated placeholder: Empty type when redis-channel is disabled.
+///
+/// This type exists to allow code to compile when the `redis-channel` feature
+/// is not enabled, but provides no functionality. To use Redis-backed channel
+/// layers, enable the feature in Cargo.toml.
 #[cfg(not(feature = "redis-channel"))]
 pub struct RedisChannelLayer;
 

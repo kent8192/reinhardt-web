@@ -477,6 +477,16 @@ impl WebSocketServer {
 								}
 							} else if msg.is_close() {
 								println!("Connection closing: {}", peer_addr);
+								// Send close frame response before closing
+								if use_broadcast {
+									if let Some(ref manager) = broadcast_manager
+										&& let Some(clients) = manager.clients.read().await.get(&peer_addr) {
+											let mut sender = clients.sender.lock().await;
+											let _ = sender.send(Message::Close(None)).await;
+										}
+								} else if let Some(ref mut w) = direct_write {
+									let _ = w.send(Message::Close(None)).await;
+								}
 								break;
 							}
 						}
