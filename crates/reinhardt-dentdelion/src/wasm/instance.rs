@@ -318,12 +318,10 @@ impl PluginLifecycle for WasmPluginInstance {
 			});
 		}
 
-		// Serialize config for the plugin
+		// Serialize config for the plugin from host state
 		let config = {
-			let _host = self.host_state.read();
-			let config_map: std::collections::HashMap<String, super::types::ConfigValue> =
-				std::collections::HashMap::new();
-			// In a real implementation, we'd serialize the host state config here
+			let host = self.host_state.read();
+			let config_map = host.get_config_all();
 			rmp_serde::to_vec(&config_map).unwrap_or_default()
 		};
 

@@ -6,7 +6,7 @@
 use crate::capability::Capability;
 use crate::context::PluginContext;
 use crate::error::{PluginError, PluginResult, PluginState};
-use crate::plugin::{ArcPlugin, PluginLifecycle};
+use crate::plugin::{ArcPlugin, ArcPluginLifecycle, PluginLifecycle};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,10 +15,11 @@ use std::sync::Arc;
 struct PluginEntry {
 	/// The plugin instance.
 	plugin: ArcPlugin,
+	/// The lifecycle-capable plugin reference (if available).
+	/// This allows calling lifecycle hooks without losing type information.
+	lifecycle: Option<ArcPluginLifecycle>,
 	/// Current lifecycle state.
 	state: PluginState,
-	/// Whether the plugin supports lifecycle hooks.
-	has_lifecycle: bool,
 }
 
 /// Central registry for all plugins.
@@ -116,8 +117,8 @@ impl PluginRegistry {
 				name,
 				PluginEntry {
 					plugin,
+					lifecycle: None,
 					state: PluginState::Registered,
-					has_lifecycle: false, // Will be updated when lifecycle is registered
 				},
 			);
 		}
@@ -126,16 +127,76 @@ impl PluginRegistry {
 	}
 
 	/// Registers a plugin with lifecycle support.
+	///
+	/// Unlike `register()`, this method preserves the `PluginLifecycle` trait
+	/// allowing lifecycle hooks (on_load, on_enable, on_disable, on_unload)
+	/// to be called during plugin state transitions.
 	pub fn register_with_lifecycle<P>(&self, plugin: Arc<P>) -> PluginResult<()>
 	where
 		P: PluginLifecycle + 'static,
 	{
-		let name = plugin.metadata().name.clone();
-		self.register(plugin.clone() as ArcPlugin)?;
+		let metadata = plugin.metadata();
+		let name = metadata.name.clone();
 
-		// Mark as having lifecycle
-		if let Some(entry) = self.plugins.write().get_mut(&name) {
-			entry.has_lifecycle = true;
+		// Check for duplicate registration
+		{
+			let plugins = self.plugins.read();
+			if let Some(existing) = plugins.get(&name) {
+				let existing_version = existing.plugin.metadata().version.clone();
+				if metadata.version != existing_version {
+					return Err(PluginError::VersionConflict {
+						plugin: name,
+						existing: existing_version,
+						new: metadata.version.clone(),
+					});
+				}
+				// Already registered with same version
+				return Ok(());
+			}
+		}
+
+		// Register capabilities
+		{
+			let mut cap_map = self.capability_map.write();
+			for capability in plugin.capabilities() {
+				cap_map
+					.entry(capability.clone())
+					.or_default()
+					.push(name.clone());
+			}
+		}
+
+		// Build dependency graph
+		{
+			let mut deps = self.dependency_graph.write();
+			let mut reverse = self.dependents.write();
+
+			for dep in &metadata.dependencies {
+				if !dep.optional {
+					deps.entry(name.clone()).or_default().push(dep.name.clone());
+
+					reverse
+						.entry(dep.name.clone())
+						.or_default()
+						.push(name.clone());
+				}
+			}
+		}
+
+		// Store both ArcPlugin and ArcPluginLifecycle
+		let arc_plugin: ArcPlugin = plugin.clone();
+		let arc_lifecycle: ArcPluginLifecycle = plugin;
+
+		{
+			let mut plugins = self.plugins.write();
+			plugins.insert(
+				name,
+				PluginEntry {
+					plugin: arc_plugin,
+					lifecycle: Some(arc_lifecycle),
+					state: PluginState::Registered,
+				},
+			);
 		}
 
 		Ok(())
@@ -342,20 +403,18 @@ impl PluginRegistry {
 	}
 
 	/// Loads a single plugin.
-	async fn load_plugin(&self, name: &str, _ctx: &PluginContext) -> PluginResult<()> {
-		let (_plugin, has_lifecycle) = {
+	async fn load_plugin(&self, name: &str, ctx: &PluginContext) -> PluginResult<()> {
+		let lifecycle = {
 			let plugins = self.plugins.read();
 			let entry = plugins
 				.get(name)
 				.ok_or_else(|| PluginError::NotFound(name.to_string()))?;
-			(entry.plugin.clone(), entry.has_lifecycle)
+			entry.lifecycle.clone()
 		};
 
-		if has_lifecycle {
-			// Try to downcast to PluginLifecycle
-			// Note: This is a simplified version; real implementation would need
-			// to store the lifecycle-capable plugin separately
-			tracing::debug!("Loading plugin with lifecycle: {}", name);
+		// Call lifecycle hook if available
+		if let Some(lifecycle) = lifecycle {
+			lifecycle.on_load(ctx).await?;
 		}
 
 		self.set_state(name, PluginState::Loaded)?;
@@ -378,7 +437,7 @@ impl PluginRegistry {
 	}
 
 	/// Enables a single plugin.
-	async fn enable_plugin(&self, name: &str, _ctx: &PluginContext) -> PluginResult<()> {
+	async fn enable_plugin(&self, name: &str, ctx: &PluginContext) -> PluginResult<()> {
 		// Check dependencies are enabled
 		for dep in self.get_dependencies(name) {
 			if !self.is_enabled(&dep) {
@@ -387,6 +446,17 @@ impl PluginRegistry {
 					dependency: dep,
 				});
 			}
+		}
+
+		// Get lifecycle reference
+		let lifecycle = {
+			let plugins = self.plugins.read();
+			plugins.get(name).and_then(|e| e.lifecycle.clone())
+		};
+
+		// Call lifecycle hook if available
+		if let Some(lifecycle) = lifecycle {
+			lifecycle.on_enable(ctx).await?;
 		}
 
 		self.set_state(name, PluginState::Enabled)?;
@@ -405,6 +475,20 @@ impl PluginRegistry {
 			}
 		}
 
+		// Get lifecycle reference
+		let lifecycle = {
+			let plugins = self.plugins.read();
+			plugins.get(name).and_then(|e| e.lifecycle.clone())
+		};
+
+		// Call lifecycle hook if available
+		if let Some(lifecycle) = lifecycle {
+			// Log but don't fail if on_disable returns an error
+			if let Err(e) = lifecycle.on_disable(ctx).await {
+				tracing::warn!("Plugin {} on_disable hook returned error: {}", name, e);
+			}
+		}
+
 		self.set_state(name, PluginState::Disabled)?;
 		tracing::info!("Disabled plugin: {}", name);
 
@@ -413,11 +497,16 @@ impl PluginRegistry {
 
 	/// Unregisters a plugin.
 	///
-	/// The plugin must be disabled first.
-	pub fn unregister(&self, name: &str) -> PluginResult<()> {
-		let state = self
-			.get_state(name)
-			.ok_or_else(|| PluginError::NotFound(name.to_string()))?;
+	/// The plugin must be disabled first. If the plugin has lifecycle support,
+	/// the `on_unload` hook will be called before removal.
+	pub async fn unregister(&self, name: &str, ctx: &PluginContext) -> PluginResult<()> {
+		let (state, lifecycle) = {
+			let plugins = self.plugins.read();
+			let entry = plugins
+				.get(name)
+				.ok_or_else(|| PluginError::NotFound(name.to_string()))?;
+			(entry.state, entry.lifecycle.clone())
+		};
 
 		if state == PluginState::Enabled {
 			return Err(PluginError::InvalidStateTransition {
@@ -425,6 +514,14 @@ impl PluginRegistry {
 				from: state,
 				to: PluginState::Registered,
 			});
+		}
+
+		// Call on_unload lifecycle hook if available
+		if let Some(lifecycle) = lifecycle {
+			// Log but don't fail if on_unload returns an error
+			if let Err(e) = lifecycle.on_unload(ctx).await {
+				tracing::warn!("Plugin {} on_unload hook returned error: {}", name, e);
+			}
 		}
 
 		// Remove from capability map
@@ -694,15 +791,20 @@ mod tests {
 	// Unregister Tests
 	// ==========================================================================
 
-	#[test]
-	fn test_unregister_nonexistent_fails() {
+	#[tokio::test]
+	async fn test_unregister_nonexistent_fails() {
+		use std::path::PathBuf;
+
 		let registry = PluginRegistry::new();
-		let result = registry.unregister("nonexistent-delion");
+		let ctx = PluginContext::new(PathBuf::from("/tmp/test-project"));
+		let result = registry.unregister("nonexistent-delion", &ctx).await;
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
-	#[test]
-	fn test_unregister_enabled_plugin_fails() {
+	#[tokio::test]
+	async fn test_unregister_enabled_plugin_fails() {
+		use std::path::PathBuf;
+
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(TestPlugin::new("test-delion", "1.0.0"));
 		registry.register(plugin).unwrap();
@@ -710,15 +812,18 @@ mod tests {
 			.set_state("test-delion", PluginState::Enabled)
 			.unwrap();
 
-		let result = registry.unregister("test-delion");
+		let ctx = PluginContext::new(PathBuf::from("/tmp/test-project"));
+		let result = registry.unregister("test-delion", &ctx).await;
 		assert!(matches!(
 			result,
 			Err(PluginError::InvalidStateTransition { .. })
 		));
 	}
 
-	#[test]
-	fn test_unregister_loaded_plugin_succeeds() {
+	#[tokio::test]
+	async fn test_unregister_loaded_plugin_succeeds() {
+		use std::path::PathBuf;
+
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(TestPlugin::new("test-delion", "1.0.0"));
 		registry.register(plugin).unwrap();
@@ -726,12 +831,15 @@ mod tests {
 			.set_state("test-delion", PluginState::Loaded)
 			.unwrap();
 
-		assert!(registry.unregister("test-delion").is_ok());
+		let ctx = PluginContext::new(PathBuf::from("/tmp/test-project"));
+		assert!(registry.unregister("test-delion", &ctx).await.is_ok());
 		assert!(!registry.is_registered("test-delion"));
 	}
 
-	#[test]
-	fn test_unregister_disabled_plugin_succeeds() {
+	#[tokio::test]
+	async fn test_unregister_disabled_plugin_succeeds() {
+		use std::path::PathBuf;
+
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(TestPlugin::new("test-delion", "1.0.0"));
 		registry.register(plugin).unwrap();
@@ -739,7 +847,8 @@ mod tests {
 			.set_state("test-delion", PluginState::Disabled)
 			.unwrap();
 
-		assert!(registry.unregister("test-delion").is_ok());
+		let ctx = PluginContext::new(PathBuf::from("/tmp/test-project"));
+		assert!(registry.unregister("test-delion", &ctx).await.is_ok());
 		assert!(!registry.is_registered("test-delion"));
 	}
 

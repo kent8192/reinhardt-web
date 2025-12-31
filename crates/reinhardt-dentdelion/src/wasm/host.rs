@@ -149,6 +149,14 @@ impl HostState {
 		}
 	}
 
+	/// Get all configuration values as a cloned HashMap.
+	///
+	/// This method is primarily used for serializing configuration to pass
+	/// to WASM plugins during lifecycle events.
+	pub fn get_config_all(&self) -> HashMap<String, ConfigValue> {
+		self.config.read().clone()
+	}
+
 	// ===== Logging API =====
 
 	/// Log a debug message.
