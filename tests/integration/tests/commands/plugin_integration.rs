@@ -8,7 +8,6 @@ use super::fixtures::{
 };
 use reinhardt_commands::CommandContext;
 use rstest::*;
-use std::fs;
 use tempfile::TempDir;
 
 // ============================================================================

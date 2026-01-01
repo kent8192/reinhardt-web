@@ -6,7 +6,7 @@
 //!
 //! The global Document instance is cached in thread-local storage for efficiency:
 //!
-//! ```ignore
+//! ```no_run
 //! use reinhardt_pages::dom::Document;
 //!
 //! let doc = Document::global(); // Cached access
@@ -54,7 +54,7 @@ impl Document {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_pages::dom::Document;
 	///
 	/// let doc = Document::global();
@@ -92,7 +92,7 @@ impl Document {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let doc = Document::global();
 	/// let div = doc.create_element("div")?;
 	/// let button = doc.create_element("button")?;
@@ -116,7 +116,7 @@ impl Document {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let doc = Document::global();
 	/// if let Some(button) = doc.query_selector("#submit-button")? {
 	///     button.set_attribute("disabled", "true")?;
@@ -137,7 +137,7 @@ impl Document {
 	///
 	/// # Example
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let doc = Document::global();
 	/// if let Some(body) = doc.body() {
 	///     let div = doc.create_element("div")?;

@@ -134,7 +134,7 @@ impl CommandContext {
 	/// ```
 	pub fn confirm(&self, prompt: &str, default_value: bool) -> Result<bool, std::io::Error> {
 		// Auto-approve in test mode
-		if cfg!(test) {
+		if cfg!(test) || std::env::var("REINHARDT_TEST_MODE").is_ok() {
 			return Ok(default_value);
 		}
 
@@ -173,7 +173,7 @@ impl CommandContext {
 		default_value: Option<&str>,
 	) -> Result<String, std::io::Error> {
 		// Return default value in test mode
-		if cfg!(test) {
+		if cfg!(test) || std::env::var("REINHARDT_TEST_MODE").is_ok() {
 			return Ok(default_value.unwrap_or("").to_string());
 		}
 

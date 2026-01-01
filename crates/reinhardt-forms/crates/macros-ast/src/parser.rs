@@ -4,10 +4,10 @@
 
 use syn::parse::{Parse, ParseStream};
 use syn::token::Brace;
-use syn::{Expr, ExprClosure, Ident, LitBool, LitStr, Result, Token, braced};
+use syn::{Expr, ExprClosure, Ident, LitStr, Result, Token, braced};
 
 use crate::{
-	ClientValidator, ClientValidatorRule, FormCsrf, FormFieldDef, FormFieldProperty, FormMacro,
+	ClientValidator, ClientValidatorRule, FormFieldDef, FormFieldProperty, FormMacro,
 	FormValidator, ValidatorRule,
 };
 
@@ -25,9 +25,6 @@ impl Parse for FormMacro {
 				"name" => {
 					form.name = Some(input.parse()?);
 				}
-				"csrf" => {
-					form.csrf = Some(parse_csrf(input)?);
-				}
 				"fields" => {
 					form.fields = parse_fields(input)?;
 				}
@@ -41,7 +38,7 @@ impl Parse for FormMacro {
 					return Err(syn::Error::new(
 						section_name.span(),
 						format!(
-							"unknown section '{}', expected one of: name, csrf, fields, validators, client_validators",
+							"unknown section '{}', expected one of: name, fields, validators, client_validators",
 							other
 						),
 					));
@@ -56,61 +53,6 @@ impl Parse for FormMacro {
 
 		Ok(form)
 	}
-}
-
-/// Parses the CSRF configuration.
-fn parse_csrf(input: ParseStream) -> Result<FormCsrf> {
-	let span = input.span();
-
-	// Simple case: `csrf: true` or `csrf: false`
-	if input.peek(LitBool) {
-		let enabled: LitBool = input.parse()?;
-		return Ok(FormCsrf {
-			enabled,
-			secret_key: None,
-			span,
-		});
-	}
-
-	// Complex case: `csrf: { enabled: true, secret_key: expr }`
-	let content;
-	braced!(content in input);
-
-	let mut enabled = LitBool::new(true, span);
-	let mut secret_key = None;
-
-	while !content.is_empty() {
-		let key: Ident = content.parse()?;
-		content.parse::<Token![:]>()?;
-
-		match key.to_string().as_str() {
-			"enabled" => {
-				enabled = content.parse()?;
-			}
-			"secret_key" => {
-				secret_key = Some(content.parse()?);
-			}
-			other => {
-				return Err(syn::Error::new(
-					key.span(),
-					format!(
-						"unknown csrf option '{}', expected 'enabled' or 'secret_key'",
-						other
-					),
-				));
-			}
-		}
-
-		if content.peek(Token![,]) {
-			content.parse::<Token![,]>()?;
-		}
-	}
-
-	Ok(FormCsrf {
-		enabled,
-		secret_key,
-		span,
-	})
 }
 
 /// Parses the fields section.
@@ -358,20 +300,6 @@ mod tests {
 		let field = &form.fields[0];
 		assert!(field.is_required());
 		assert_eq!(field.properties.len(), 3);
-	}
-
-	#[test]
-	fn test_parse_csrf_simple() {
-		let tokens = quote! {
-			csrf: true,
-			fields: {
-				name: CharField {},
-			}
-		};
-
-		let form: FormMacro = syn::parse2(tokens).unwrap();
-		assert!(form.csrf.is_some());
-		assert!(form.csrf.unwrap().enabled.value());
 	}
 
 	#[test]

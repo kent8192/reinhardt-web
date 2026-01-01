@@ -124,21 +124,29 @@ impl BaseCommand for MigrateCommand {
 			));
 
 			// 3. Check database connection
-			let _database_url = get_database_url()?;
+			// Use database URL from context option if provided, otherwise fall back to environment
+			let database_url = ctx
+				.option("database")
+				.map(|s| s.to_string())
+				.or_else(|| get_database_url().ok())
+				.ok_or_else(|| {
+					crate::CommandError::ExecutionError(
+						"No database URL provided. Use --database option or set DATABASE_URL environment variable".to_string()
+					)
+				})?;
 
 			// 4. Connect to database (auto-create if it doesn't exist for PostgreSQL)
 			// Determine connection method based on URL scheme
-			let connection = if _database_url.starts_with("postgres://")
-				|| _database_url.starts_with("postgresql://")
+			let connection = if database_url.starts_with("postgres://")
+				|| database_url.starts_with("postgresql://")
 			{
-				DatabaseConnection::connect_postgres_or_create(&_database_url).await
-			} else if _database_url.starts_with("sqlite://") || _database_url.starts_with("sqlite:")
-			{
-				DatabaseConnection::connect_sqlite(&_database_url).await
+				DatabaseConnection::connect_postgres_or_create(&database_url).await
+			} else if database_url.starts_with("sqlite://") || database_url.starts_with("sqlite:") {
+				DatabaseConnection::connect_sqlite(&database_url).await
 			} else {
 				return Err(crate::CommandError::ExecutionError(format!(
 					"Unsupported database URL scheme: {}",
-					_database_url
+					database_url
 				)));
 			}
 			.map_err(|e| {
@@ -215,18 +223,16 @@ impl BaseCommand for MigrateCommand {
 #[cfg(feature = "migrations")]
 async fn build_from_state_from_db(
 	migrations_dir: &std::path::Path,
+	database_url: &str,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	use reinhardt_db::DatabaseConnection;
 	use reinhardt_db::migrations::{
 		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
 	};
-
-	// 1. Get database URL using the same method as migrate command
-	let database_url = get_database_url()?;
 	eprintln!("[DEBUG] Database URL: {}", database_url);
 
 	// 2. Connect to database
-	let connection = DatabaseConnection::connect(&database_url)
+	let connection = DatabaseConnection::connect(database_url)
 		.await
 		.map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Database connection failed: {}", e))
@@ -579,6 +585,13 @@ impl BaseCommand for MakeMigrationsCommand {
 
 			let is_verbose = ctx.has_option("verbose");
 
+			// Get database URL from context option or environment
+			let database_url = ctx
+				.option("database")
+				.map(|s| s.to_string())
+				.or_else(|| get_database_url().ok())
+				.unwrap_or_default();
+
 			// 2. Build from_state from database history or TestContainers
 			// This ensures all models are treated as new, generating complete migrations
 			struct MigrationResult {
@@ -592,7 +605,7 @@ impl BaseCommand for MakeMigrationsCommand {
 			let from_db_flag = ctx.has_option("from-db");
 			let from_state = if from_db_flag {
 				// When --from-db flag is specified: prioritize database history
-				match build_from_state_from_db(&migrations_dir).await {
+				match build_from_state_from_db(&migrations_dir, &database_url).await {
 					Ok(state) => {
 						ctx.verbose("Built state from database history");
 						state
@@ -645,7 +658,7 @@ impl BaseCommand for MakeMigrationsCommand {
 					Err(e) => {
 						ctx.warning(&format!("Failed to use TestContainers: {}", e));
 						ctx.info("Falling back to database history...");
-						match build_from_state_from_db(&migrations_dir).await {
+						match build_from_state_from_db(&migrations_dir, &database_url).await {
 							Ok(state) => {
 								ctx.verbose("Built state from database history");
 								state

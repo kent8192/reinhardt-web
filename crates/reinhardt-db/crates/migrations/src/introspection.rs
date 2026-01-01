@@ -30,6 +30,8 @@ pub struct TableInfo {
 	pub foreign_keys: Vec<ForeignKeyInfo>,
 	/// Unique constraints (excluding unique indexes)
 	pub unique_constraints: Vec<UniqueConstraintInfo>,
+	/// CHECK constraints
+	pub check_constraints: Vec<CheckConstraintInfo>,
 }
 
 /// Column metadata
@@ -84,6 +86,15 @@ pub struct UniqueConstraintInfo {
 	pub name: String,
 	/// Columns in the constraint
 	pub columns: Vec<String>,
+}
+
+/// CHECK constraint
+#[derive(Debug, Clone, PartialEq)]
+pub struct CheckConstraintInfo {
+	/// Constraint name (None for anonymous CHECK constraints)
+	pub name: Option<String>,
+	/// CHECK expression (without the CHECK keyword and outer parentheses)
+	pub expression: String,
 }
 
 /// Trait for database-specific schema introspection
@@ -184,6 +195,10 @@ impl PostgresIntrospector {
 			})
 			.collect();
 
+		// PostgreSQL CHECK constraints would need separate extraction
+		// For now, initialize as empty (can be added later if needed)
+		let check_constraints: Vec<CheckConstraintInfo> = Vec::new();
+
 		Ok(TableInfo {
 			name: table_def.info.name.clone(),
 			columns,
@@ -191,6 +206,7 @@ impl PostgresIntrospector {
 			primary_key,
 			foreign_keys,
 			unique_constraints,
+			check_constraints,
 		})
 	}
 }
@@ -333,6 +349,10 @@ impl MySQLIntrospector {
 			})
 			.collect();
 
+		// MySQL CHECK constraints would need separate extraction
+		// For now, initialize as empty (can be added later if needed)
+		let check_constraints: Vec<CheckConstraintInfo> = Vec::new();
+
 		Ok(TableInfo {
 			name: table_def.info.name.clone(),
 			columns,
@@ -340,6 +360,7 @@ impl MySQLIntrospector {
 			primary_key,
 			foreign_keys,
 			unique_constraints,
+			check_constraints,
 		})
 	}
 }
@@ -412,6 +433,9 @@ impl SQLiteIntrospector {
 	/// - on_update: ON UPDATE action
 	/// - on_delete: ON DELETE action
 	/// - match: MATCH clause (usually 'NONE')
+	///
+	/// This method also extracts actual constraint names from CREATE TABLE SQL
+	/// when available (for named FK constraints like `CONSTRAINT fk_name FOREIGN KEY...`).
 	async fn extract_foreign_keys(
 		pool: &sqlx::SqlitePool,
 		table_name: &str,
@@ -428,6 +452,13 @@ impl SQLiteIntrospector {
 			#[allow(dead_code)]
 			r#match: String,
 		}
+
+		// Get CREATE TABLE SQL to extract actual constraint names
+		let create_sql = Self::get_create_table_sql(pool, table_name).await?;
+		let named_fks = create_sql
+			.as_ref()
+			.map(|sql| Self::parse_fk_constraint_names(sql))
+			.unwrap_or_default();
 
 		let query = format!("PRAGMA foreign_key_list({})", table_name);
 		let rows: Vec<ForeignKeyRow> = sqlx::query_as(&query)
@@ -454,8 +485,13 @@ impl SQLiteIntrospector {
 			let columns: Vec<String> = fk_rows.iter().map(|r| r.from.clone()).collect();
 			let referenced_columns: Vec<String> = fk_rows.iter().map(|r| r.to.clone()).collect();
 
-			// Generate FK constraint name
-			let name = format!("fk_{}_{}", table_name, fk_id);
+			// Try to find actual constraint name from CREATE TABLE SQL
+			// If not found, fall back to generated name
+			let signature = (columns.clone(), referenced_table.clone());
+			let name = named_fks
+				.get(&signature)
+				.cloned()
+				.unwrap_or_else(|| format!("fk_{}_{}", table_name, fk_id));
 
 			foreign_keys.push(ForeignKeyInfo {
 				name,
@@ -544,6 +580,175 @@ impl SQLiteIntrospector {
 		Ok(indexes)
 	}
 
+	/// Gets the CREATE TABLE SQL statement from sqlite_master.
+	async fn get_create_table_sql(
+		pool: &sqlx::SqlitePool,
+		table_name: &str,
+	) -> Result<Option<String>> {
+		#[derive(sqlx::FromRow)]
+		struct SqlRow {
+			sql: Option<String>,
+		}
+
+		let query = "SELECT sql FROM sqlite_master WHERE type='table' AND name=?";
+		let result: Option<SqlRow> = sqlx::query_as(query)
+			.bind(table_name)
+			.fetch_optional(pool)
+			.await
+			.map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
+
+		Ok(result.and_then(|r| r.sql))
+	}
+
+	/// Extracts CHECK constraints from the CREATE TABLE SQL statement.
+	///
+	/// SQLite doesn't have a PRAGMA for CHECK constraints, so we parse them
+	/// from the CREATE TABLE statement stored in sqlite_master.
+	///
+	/// Handles both:
+	/// - Named CHECK: `CONSTRAINT check_name CHECK(expression)`
+	/// - Anonymous CHECK: `CHECK(expression)`
+	async fn extract_check_constraints(
+		pool: &sqlx::SqlitePool,
+		table_name: &str,
+	) -> Result<Vec<CheckConstraintInfo>> {
+		let create_sql = match Self::get_create_table_sql(pool, table_name).await? {
+			Some(sql) => sql,
+			None => return Ok(Vec::new()),
+		};
+
+		Self::parse_check_constraints(&create_sql)
+	}
+
+	/// Parses CHECK constraints from a CREATE TABLE SQL statement.
+	fn parse_check_constraints(create_sql: &str) -> Result<Vec<CheckConstraintInfo>> {
+		let mut constraints = Vec::new();
+
+		// Named CHECK constraint pattern: CONSTRAINT name CHECK(...)
+		// We need to handle nested parentheses in the expression
+		let named_pattern = regex::Regex::new(r#"(?i)CONSTRAINT\s+["'`]?(\w+)["'`]?\s+CHECK\s*\("#)
+			.map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
+
+		// Anonymous CHECK pattern: CHECK(...) not preceded by CONSTRAINT
+		let anon_pattern = regex::Regex::new(r#"(?i)CHECK\s*\("#)
+			.map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
+
+		// Pattern to check for CONSTRAINT name before CHECK
+		let constraint_pattern =
+			regex::Regex::new(r#"(?i)CONSTRAINT\s+["'`]?\w+["'`]?\s*$"#).unwrap();
+
+		// Find named CHECK constraints
+		for cap in named_pattern.captures_iter(create_sql) {
+			let name = cap.get(1).map(|m| m.as_str().to_string());
+			let match_end = cap.get(0).unwrap().end();
+
+			// Extract expression by counting parentheses
+			if let Some(expr) = Self::extract_parenthesized_expression(create_sql, match_end - 1) {
+				constraints.push(CheckConstraintInfo {
+					name,
+					expression: expr,
+				});
+			}
+		}
+
+		// Find anonymous CHECK constraints
+		// We need to exclude the named ones we already found
+		for m in anon_pattern.find_iter(create_sql) {
+			let start = m.start();
+
+			// Check if this is preceded by CONSTRAINT (skip if so)
+			let before = &create_sql[..start];
+			if before.to_uppercase().trim_end().ends_with("CONSTRAINT") {
+				continue;
+			}
+
+			// Also check for CONSTRAINT name pattern before CHECK
+			if constraint_pattern.is_match(before.trim_end()) {
+				continue;
+			}
+
+			let match_end = m.end();
+			if let Some(expr) = Self::extract_parenthesized_expression(create_sql, match_end - 1) {
+				constraints.push(CheckConstraintInfo {
+					name: None,
+					expression: expr,
+				});
+			}
+		}
+
+		Ok(constraints)
+	}
+
+	/// Extracts the content inside parentheses, handling nested parentheses.
+	/// `start_pos` should be the position of the opening parenthesis.
+	fn extract_parenthesized_expression(sql: &str, start_pos: usize) -> Option<String> {
+		let chars: Vec<char> = sql.chars().collect();
+		if start_pos >= chars.len() || chars[start_pos] != '(' {
+			return None;
+		}
+
+		let mut depth = 0;
+		let expr_start = start_pos + 1;
+		let mut expr_end = start_pos + 1;
+
+		for (i, &c) in chars.iter().enumerate().skip(start_pos) {
+			match c {
+				'(' => depth += 1,
+				')' => {
+					depth -= 1;
+					if depth == 0 {
+						expr_end = i;
+						break;
+					}
+				}
+				_ => {}
+			}
+		}
+
+		if depth == 0 && expr_end > expr_start {
+			let expr: String = chars[expr_start..expr_end].iter().collect();
+			Some(expr.trim().to_string())
+		} else {
+			None
+		}
+	}
+
+	/// Parses FK constraint names from a CREATE TABLE SQL statement.
+	///
+	/// Returns a HashMap where:
+	/// - Key: (source_columns, referenced_table) as a signature
+	/// - Value: constraint name
+	///
+	/// This is used to match PRAGMA foreign_key_list results with actual constraint names.
+	fn parse_fk_constraint_names(create_sql: &str) -> HashMap<(Vec<String>, String), String> {
+		let mut result = HashMap::new();
+
+		// Pattern: CONSTRAINT name FOREIGN KEY (cols) REFERENCES table(cols)
+		let fk_pattern = regex::Regex::new(
+			r#"(?i)CONSTRAINT\s+["'`]?(\w+)["'`]?\s+FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+["'`]?(\w+)["'`]?"#,
+		);
+
+		if let Ok(re) = fk_pattern {
+			for cap in re.captures_iter(create_sql) {
+				if let (Some(name), Some(cols), Some(ref_table)) =
+					(cap.get(1), cap.get(2), cap.get(3))
+				{
+					let constraint_name = name.as_str().to_string();
+					let columns: Vec<String> = cols
+						.as_str()
+						.split(',')
+						.map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+						.collect();
+					let referenced_table = ref_table.as_str().to_string();
+
+					result.insert((columns, referenced_table), constraint_name);
+				}
+			}
+		}
+
+		result
+	}
+
 	fn convert_table_def(table_def: &sea_schema::sqlite::def::TableDef) -> Result<TableInfo> {
 		let mut columns = HashMap::new();
 		let mut primary_key = Vec::new();
@@ -613,6 +818,10 @@ impl SQLiteIntrospector {
 		// in the read_schema method
 		let foreign_keys: Vec<ForeignKeyInfo> = Vec::new();
 
+		// CHECK constraints will be extracted separately using sqlite_master
+		// in the read_schema method
+		let check_constraints: Vec<CheckConstraintInfo> = Vec::new();
+
 		Ok(TableInfo {
 			name: table_def.name.clone(),
 			columns,
@@ -620,6 +829,7 @@ impl SQLiteIntrospector {
 			primary_key,
 			foreign_keys,
 			unique_constraints,
+			check_constraints,
 		})
 	}
 }
@@ -648,6 +858,11 @@ impl DatabaseIntrospector for SQLiteIntrospector {
 			let indexes = Self::extract_indexes(&self.pool, &table_info.name).await?;
 			table_info.indexes = indexes;
 
+			// Extract CHECK constraints from sqlite_master
+			let check_constraints =
+				Self::extract_check_constraints(&self.pool, &table_info.name).await?;
+			table_info.check_constraints = check_constraints;
+
 			tables.insert(table_info.name.clone(), table_info);
 		}
 
@@ -674,6 +889,11 @@ impl DatabaseIntrospector for SQLiteIntrospector {
 				// Extract indexes using PRAGMA index_list
 				let indexes = Self::extract_indexes(&self.pool, &table_info.name).await?;
 				table_info.indexes = indexes;
+
+				// Extract CHECK constraints from sqlite_master
+				let check_constraints =
+					Self::extract_check_constraints(&self.pool, &table_info.name).await?;
+				table_info.check_constraints = check_constraints;
 
 				return Ok(Some(table_info));
 			}

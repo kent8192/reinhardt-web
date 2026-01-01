@@ -219,7 +219,7 @@ impl DatabaseMigrationExecutor {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_migrations::executor::DatabaseMigrationExecutor;
 	/// use reinhardt_backends::DatabaseConnection;
 	///
@@ -790,6 +790,17 @@ impl DatabaseMigrationExecutor {
 			constraints.push(crate::Constraint::Unique {
 				name: unique.name.clone(),
 				columns: unique.columns.clone(),
+			});
+		}
+
+		// Add CHECK constraints
+		for (idx, check) in table_info.check_constraints.iter().enumerate() {
+			constraints.push(crate::Constraint::Check {
+				name: check
+					.name
+					.clone()
+					.unwrap_or_else(|| format!("check_{}", idx)),
+				expression: check.expression.clone(),
 			});
 		}
 

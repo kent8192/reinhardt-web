@@ -5,15 +5,19 @@
 //!
 //! ## Architecture
 //!
-//! ```text
-//! Server-side:              Client-side (WASM):
-//! ┌──────────┐             ┌──────────────┐
-//! │   Form   │             │FormComponent │
-//! │          │             │              │
-//! │ to_meta()│──────────▶  │  render()    │──▶ DOM
-//! │          │  JSON/etc   │  validate()  │
-//! │          │             │  submit()    │──▶ AJAX
-//! └──────────┘             └──────────────┘
+//! ```mermaid
+//! flowchart LR
+//!     subgraph Server["Server-side"]
+//!         Form["Form<br/>to_meta()"]
+//!     end
+//!
+//!     subgraph Client["Client-side (WASM)"]
+//!         FormComponent["FormComponent<br/>render()<br/>validate()<br/>submit()"]
+//!     end
+//!
+//!     Form -->|"JSON/etc"| FormComponent
+//!     FormComponent --> DOM
+//!     FormComponent --> AJAX
 //! ```
 //!
 //! ## Features
@@ -762,7 +766,6 @@ mod tests {
 				initial: None,
 			}],
 			initial: HashMap::new(),
-			csrf_token: Some("test-token".to_string()),
 			prefix: String::new(),
 			is_bound: false,
 			errors: HashMap::new(),
@@ -790,7 +793,6 @@ mod tests {
 				initial: None,
 			}],
 			initial: HashMap::new(),
-			csrf_token: None,
 			prefix: String::new(),
 			is_bound: false,
 			errors: HashMap::new(),
@@ -827,7 +829,6 @@ mod tests {
 				initial: None,
 			}],
 			initial: HashMap::new(),
-			csrf_token: None,
 			prefix: String::new(),
 			is_bound: false,
 			errors: HashMap::new(),
@@ -858,7 +859,6 @@ mod tests {
 				initial: None,
 			}],
 			initial,
-			csrf_token: None,
 			prefix: String::new(),
 			is_bound: false,
 			errors: HashMap::new(),

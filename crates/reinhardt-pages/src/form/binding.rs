@@ -5,17 +5,10 @@
 //!
 //! ## Architecture
 //!
-//! ```text
-//! ┌─────────────┐           ┌──────────────┐
-//! │   Signal    │ ◄────────►│ FormBinding  │
-//! │  (reactive) │   sync    │              │
-//! └─────────────┘           └──────────────┘
-//!                                  │
-//!                                  ▼
-//!                           ┌──────────────┐
-//!                           │FormComponent │
-//!                           │  (UI state)  │
-//!                           └──────────────┘
+//! ```mermaid
+//! flowchart TB
+//!     Signal["Signal<br/>(reactive)"] <-->|sync| FormBinding["FormBinding"]
+//!     FormBinding --> FormComponent["FormComponent<br/>(UI state)"]
 //! ```
 //!
 //! ## Features
@@ -413,7 +406,6 @@ mod tests {
 				},
 			],
 			initial: HashMap::new(),
-			csrf_token: None,
 			prefix: String::new(),
 			is_bound: false,
 			errors: HashMap::new(),

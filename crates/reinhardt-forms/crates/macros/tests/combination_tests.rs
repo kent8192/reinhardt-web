@@ -57,24 +57,17 @@ fn test_field_type_property_combinations(#[case] field_type: &str, #[case] prope
 
 /// CB-002: CSRF × validators combination.
 ///
-/// Tests that CSRF works correctly with all validator types.
+/// Tests that all validator types work correctly together.
 #[rstest]
-#[case(true, true, true, true)] // CSRF + field + form + client validators
-#[case(true, true, false, false)] // CSRF + field validators only
-#[case(true, false, true, false)] // CSRF + form validators only
-#[case(false, true, true, true)] // No CSRF + all validators
-fn test_csrf_validators_combination(
-	#[case] csrf: bool,
+#[case(true, true, true)] // field + form + client validators
+#[case(true, false, false)] // field validators only
+#[case(false, true, false)] // form validators only
+#[case(true, true, false)] // field + form validators
+fn test_validators_combination(
 	#[case] field_validators: bool,
 	#[case] form_validators: bool,
 	#[case] client_validators: bool,
 ) {
-	let csrf_tokens = if csrf {
-		quote! { csrf: true, }
-	} else {
-		quote! {}
-	};
-
 	let validators_tokens = match (field_validators, form_validators) {
 		(true, true) => quote! {
 			validators: {
@@ -116,7 +109,6 @@ fn test_csrf_validators_combination(
 	};
 
 	let tokens = quote! {
-		#csrf_tokens
 		fields: {
 			username: CharField {
 				required,
@@ -129,15 +121,13 @@ fn test_csrf_validators_combination(
 	let result: syn::Result<FormMacro> = syn::parse2(tokens);
 	assert!(
 		result.is_ok(),
-		"CSRF={}, field_val={}, form_val={}, client_val={} should parse",
-		csrf,
+		"field_val={}, form_val={}, client_val={} should parse",
 		field_validators,
 		form_validators,
 		client_validators
 	);
 
-	let form = result.unwrap();
-	assert_eq!(form.csrf.is_some(), csrf);
+	let _form = result.unwrap();
 }
 
 /// CB-003: Required × initial combination.

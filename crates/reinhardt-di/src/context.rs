@@ -77,7 +77,7 @@ impl InjectionContextBuilder {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{InjectionContext, SingletonScope, Request};
 	///
 	/// let singleton_scope = SingletonScope::new();
@@ -101,7 +101,7 @@ impl InjectionContextBuilder {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{InjectionContext, SingletonScope, ParamContext};
 	///
 	/// let singleton_scope = SingletonScope::new();
@@ -198,7 +198,7 @@ impl InjectionContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{InjectionContext, SingletonScope, Request, ParamContext};
 	///
 	/// let singleton_scope = SingletonScope::new();
@@ -228,7 +228,7 @@ impl InjectionContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{InjectionContext, SingletonScope, Request, ParamContext};
 	///
 	/// let singleton_scope = SingletonScope::new();
@@ -258,7 +258,7 @@ impl InjectionContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{InjectionContext, SingletonScope, Request, ParamContext};
 	///
 	/// let singleton_scope = SingletonScope::new();
@@ -481,7 +481,7 @@ impl InjectionContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{InjectionContext, SingletonScope};
 	///
 	/// let singleton_scope = Arc::new(SingletonScope::new());

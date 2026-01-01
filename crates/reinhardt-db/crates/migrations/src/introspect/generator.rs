@@ -475,6 +475,7 @@ mod tests {
 				name: "users_email_unique".to_string(),
 				columns: vec!["email".to_string()],
 			}],
+			check_constraints: vec![],
 		}
 	}
 

@@ -3,39 +3,15 @@
 //! Tests for workflows that span multiple commands, such as
 //! makemigrations → migrate, or introspect → migrate → verify.
 
-use super::fixtures::{
-	migrate_command_fixture, temp_migration_dir, MigrateCommandFixture, TempMigrationDir,
-};
+use super::fixtures::{temp_migration_dir, TempMigrationDir};
 use reinhardt_commands::{BaseCommand, CommandContext, MakeMigrationsCommand, MigrateCommand};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::PgPool;
 use std::fs;
 use std::sync::Arc;
-use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
 use testcontainers::GenericImage;
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Verify that a migration file was created
-fn verify_migration_file_created(dir: &TempMigrationDir, app_label: &str) -> bool {
-	let app_dir = dir.migrations_path.join(app_label);
-	if !app_dir.exists() {
-		return false;
-	}
-
-	// Check for any .rs files in the app directory
-	let entries = fs::read_dir(&app_dir).ok();
-	entries
-		.map(|e| {
-			e.filter_map(|entry| entry.ok())
-				.any(|entry| entry.path().extension().map_or(false, |ext| ext == "rs"))
-		})
-		.unwrap_or(false)
-}
 
 // ============================================================================
 // Happy Path Tests
@@ -371,7 +347,7 @@ pub fn migration() -> Migration {
 /// Category: Use Case
 /// Verifies i18n message workflow can be set up.
 #[rstest]
-fn test_workflow_i18n_setup(temp_migration_dir: TempMigrationDir) {
+fn test_workflow_i18n_setup(_temp_migration_dir: TempMigrationDir) {
 	// Setup for makemessages
 	let mut make_ctx = CommandContext::default();
 	make_ctx.set_option("locale".to_string(), "ja".to_string());

@@ -15,9 +15,10 @@ use sqlx::PgPool;
 use std::sync::Arc;
 
 /// Schema creation SQL for introspect tests
-const CREATE_INTROSPECT_SCHEMA_SQL: &str = r#"
--- Users table with various column types
-CREATE TABLE users (
+/// Split into individual statements for PostgreSQL prepared statement compatibility
+const INTROSPECT_STATEMENTS: &[&str] = &[
+	// Users table with various column types
+	r#"CREATE TABLE users (
     id BIGSERIAL PRIMARY KEY,
     username VARCHAR(150) NOT NULL UNIQUE,
     email VARCHAR(254) NOT NULL UNIQUE,
@@ -28,13 +29,11 @@ CREATE TABLE users (
     is_staff BOOLEAN NOT NULL DEFAULT false,
     date_joined TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_login TIMESTAMPTZ
-);
-
--- Create index on email
-CREATE INDEX idx_users_email ON users(email);
-
--- Posts table with foreign key
-CREATE TABLE posts (
+)"#,
+	// Create index on email
+	r#"CREATE INDEX idx_users_email ON users(email)"#,
+	// Posts table with foreign key
+	r#"CREATE TABLE posts (
     id BIGSERIAL PRIMARY KEY,
     title VARCHAR(200) NOT NULL,
     slug VARCHAR(200) NOT NULL UNIQUE,
@@ -44,35 +43,31 @@ CREATE TABLE posts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     view_count INTEGER NOT NULL DEFAULT 0
-);
-
--- Create composite index
-CREATE INDEX idx_posts_author_created ON posts(author_id, created_at);
-
--- Comments table with self-reference
-CREATE TABLE comments (
+)"#,
+	// Create composite index
+	r#"CREATE INDEX idx_posts_author_created ON posts(author_id, created_at)"#,
+	// Comments table with self-reference
+	r#"CREATE TABLE comments (
     id BIGSERIAL PRIMARY KEY,
     content TEXT NOT NULL,
     post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     author_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     parent_id BIGINT REFERENCES comments(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Tags table for many-to-many
-CREATE TABLE tags (
+)"#,
+	// Tags table for many-to-many
+	r#"CREATE TABLE tags (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL UNIQUE,
     slug VARCHAR(50) NOT NULL UNIQUE
-);
-
--- Junction table for posts-tags many-to-many
-CREATE TABLE posts_tags (
+)"#,
+	// Junction table for posts-tags many-to-many
+	r#"CREATE TABLE posts_tags (
     post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     tag_id BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
     PRIMARY KEY (post_id, tag_id)
-);
-"#;
+)"#,
+];
 
 /// PostgreSQL with all PostgreSQL-specific types
 const CREATE_ALL_TYPES_SCHEMA_SQL: &str = r#"
@@ -136,11 +131,14 @@ pub async fn postgres_introspect_schema(
 ) -> (ContainerAsync<GenericImage>, Arc<PgPool>, String) {
 	let (container, pool, _port, url) = postgres_container.await;
 
-	// Create the test schema
-	sqlx::query(CREATE_INTROSPECT_SCHEMA_SQL)
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create introspect test schema");
+	// Create the test schema - execute each statement separately
+	// for PostgreSQL prepared statement compatibility
+	for statement in INTROSPECT_STATEMENTS {
+		sqlx::query(statement)
+			.execute(pool.as_ref())
+			.await
+			.expect("Failed to create introspect test schema");
+	}
 
 	(container, pool, url)
 }
@@ -184,7 +182,7 @@ pub async fn empty_postgres_database(
 }
 
 /// Test helper: Verify table exists in database
-pub async fn table_exists(pool: &PgPool, table_name: &str) -> bool {
+pub(crate) async fn table_exists(pool: &PgPool, table_name: &str) -> bool {
 	let result = sqlx::query_scalar::<_, bool>(
 		r#"
         SELECT EXISTS (
@@ -203,7 +201,7 @@ pub async fn table_exists(pool: &PgPool, table_name: &str) -> bool {
 }
 
 /// Test helper: Get column count for a table
-pub async fn get_column_count(pool: &PgPool, table_name: &str) -> i64 {
+pub(crate) async fn get_column_count(pool: &PgPool, table_name: &str) -> i64 {
 	let result = sqlx::query_scalar::<_, i64>(
 		r#"
         SELECT COUNT(*)
@@ -221,7 +219,7 @@ pub async fn get_column_count(pool: &PgPool, table_name: &str) -> i64 {
 }
 
 /// Test helper: Get foreign key count for a table
-pub async fn get_foreign_key_count(pool: &PgPool, table_name: &str) -> i64 {
+pub(crate) async fn get_foreign_key_count(pool: &PgPool, table_name: &str) -> i64 {
 	let result = sqlx::query_scalar::<_, i64>(
 		r#"
         SELECT COUNT(*)

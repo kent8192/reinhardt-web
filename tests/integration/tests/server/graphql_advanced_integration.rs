@@ -408,7 +408,7 @@ async fn test_graphql_field_level_errors(data_store: DataStore) {
 
 	// Query with both error and success fields
 	let mixed_query = r#"{
-		"query": "{ successField errorField }"
+		"query": "{ success_field error_field }"
 	}"#;
 
 	let response = client
@@ -421,10 +421,10 @@ async fn test_graphql_field_level_errors(data_store: DataStore) {
 	let json: Value = serde_json::from_str(&body).unwrap();
 
 	// Verify partial data is returned
-	assert_eq!(json["data"]["successField"].as_str().unwrap(), "Success");
-	assert!(json["data"]["errorField"].is_null());
+	assert_eq!(json["data"]["success_field"].as_str().unwrap(), "Success");
+	assert!(json["data"]["error_field"].is_null());
 
-	// Verify errors array exists and contains error for errorField
+	// Verify errors array exists and contains error for error_field
 	let errors = json["errors"].as_array().unwrap();
 	assert_eq!(errors.len(), 1);
 	assert_eq!(
@@ -434,7 +434,7 @@ async fn test_graphql_field_level_errors(data_store: DataStore) {
 
 	// Verify error path points to the correct field
 	let error_path = errors[0]["path"].as_array().unwrap();
-	assert_eq!(error_path[0].as_str().unwrap(), "errorField");
+	assert_eq!(error_path[0].as_str().unwrap(), "error_field");
 
 	// Test conditional error
 	let conditional_query = r#"{

@@ -6,7 +6,6 @@ use super::fixtures::{temp_migration_dir, TempMigrationDir};
 use reinhardt_commands::CommandContext;
 use rstest::*;
 use std::fs;
-use std::path::PathBuf;
 
 // ============================================================================
 // Fixtures

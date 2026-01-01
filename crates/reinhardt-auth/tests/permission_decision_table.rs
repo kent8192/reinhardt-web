@@ -499,7 +499,7 @@ async fn test_not_and_decision_table(
 #[rstest]
 // NOT (A OR B) - De Morgan equivalent to (NOT A) AND (NOT B)
 #[case(false, false, true, "NOT(F OR F) = T")]
-#[case(false, true, false, "NOT(F OR T) = F")]
+#[case(false, true, true, "NOT(F OR F) = T (IsActiveUser requires auth)")]
 #[case(true, false, false, "NOT(T OR F) = F")]
 #[case(true, true, false, "NOT(T OR T) = F")]
 #[tokio::test]

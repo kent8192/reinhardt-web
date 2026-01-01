@@ -10,26 +10,14 @@
 //!
 //! ## Architecture
 //!
-//! ```text
-//! [Rust source file]
-//!         │
-//!         ▼
-//! [syn::parse_file()] ─── Parse entire file to AST
-//!         │
-//!         ▼
-//! [PageMacroVisitor] ─── Walk AST to find page! macros with spans
-//!         │
-//!         ▼
-//! [reinhardt_pages_ast::PageMacro] ─── Parse macro tokens to DSL AST
-//!         │
-//!         ▼
-//! [format_macro()] ─── Generate formatted code from AST
-//!         │
-//!         ▼
-//! [replace by span] ─── Replace original text with formatted version
-//!         │
-//!         ▼
-//! [Formatted source file]
+//! ```mermaid
+//! flowchart TB
+//!     A["Rust source file"] --> B["syn::parse_file()<br/>Parse entire file to AST"]
+//!     B --> C["PageMacroVisitor<br/>Walk AST to find page! macros"]
+//!     C --> D["reinhardt_pages_ast::PageMacro<br/>Parse macro tokens to DSL AST"]
+//!     D --> E["format_macro()<br/>Generate formatted code from AST"]
+//!     E --> F["replace by span<br/>Replace original text"]
+//!     F --> G["Formatted source file"]
 //! ```
 
 use quote::ToTokens;

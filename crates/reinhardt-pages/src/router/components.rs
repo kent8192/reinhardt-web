@@ -11,7 +11,7 @@ use crate::component::{Component, ElementView, IntoView, View};
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::router::Link;
 ///
 /// let link = Link::new("/users/42/", "View User");
@@ -128,7 +128,7 @@ impl Component for Link {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::router::{Router, RouterOutlet};
 /// use std::sync::Arc;
 ///

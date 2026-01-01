@@ -42,7 +42,7 @@ redis = { version = "0.32.7", features = [
   "connection-manager",
 ], optional = true }
 sqlx = { workspace = true, features = ["any"], optional = true }
-sea-query = { version = "1.0.0-rc.22", features = [
+sea-query = { version = "1.0.0-rc.29", features = [
   "backend-postgres",
   "backend-mysql",
   "backend-sqlite",

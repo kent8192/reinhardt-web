@@ -286,9 +286,14 @@ impl<M: Model> Manager<M> {
 		stmt.returning(Query::returning().columns(all_columns));
 
 		use sea_query::PostgresQueryBuilder;
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		let values: Vec<_> = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
 
-		let row = conn.query_one(&sql, vec![]).await?;
+		let row = conn.query_one(&sql, values).await?;
 
 		// row.data is already serde_json::Value::Object so deserialize directly
 		serde_json::from_value(row.data.clone())
@@ -311,21 +316,71 @@ impl<M: Model> Manager<M> {
 			}
 			serde_json::Value::String(s) => sea_query::Value::String(Some(s.clone())),
 			serde_json::Value::Array(arr) => {
-				// Convert each JSON value to Option<String> for sea-query 1.0.0-rc.23+
-				let values: Vec<Option<String>> = arr
-					.iter()
-					.map(|v| match v {
-						serde_json::Value::Null => None,
-						serde_json::Value::String(s) => Some(s.clone()),
-						other => Some(other.to_string()),
-					})
-					.collect();
-				sea_query::Value::Array(sea_query::Array::String(values.into_boxed_slice()))
+				// Convert JSON array to sea_query::Value array
+				// For sea-query 1.0.0-rc.29+: Array(ArrayType, Option<Box<Vec<Value>>>)
+				let values: Vec<sea_query::Value> =
+					arr.iter().map(|v| Self::json_to_sea_value(v)).collect();
+				sea_query::Value::Array(sea_query::ArrayType::String, Some(Box::new(values)))
 			}
 			serde_json::Value::Object(_obj) => {
 				// Use sea-query's Json type for PostgreSQL JSONB/JSON columns
-				sea_query::Value::Json(Some(v.clone()))
+				// For sea-query 1.0.0-rc.29+: Json expects Box<serde_json::Value>
+				sea_query::Value::Json(Some(Box::new(v.clone())))
 			}
+		}
+	}
+
+	/// Convert sea_query::Value to QueryValue for database parameter binding
+	fn sea_value_to_query_value(v: sea_query::Value) -> crate::connection::QueryValue {
+		use crate::connection::QueryValue;
+
+		match v {
+			sea_query::Value::Bool(Some(b)) => QueryValue::Bool(b),
+			sea_query::Value::Bool(None) => QueryValue::Null,
+
+			sea_query::Value::TinyInt(Some(i)) => QueryValue::Int(i as i64),
+			sea_query::Value::TinyInt(None) => QueryValue::Null,
+			sea_query::Value::SmallInt(Some(i)) => QueryValue::Int(i as i64),
+			sea_query::Value::SmallInt(None) => QueryValue::Null,
+			sea_query::Value::Int(Some(i)) => QueryValue::Int(i as i64),
+			sea_query::Value::Int(None) => QueryValue::Null,
+			sea_query::Value::BigInt(Some(i)) => QueryValue::Int(i),
+			sea_query::Value::BigInt(None) => QueryValue::Null,
+
+			sea_query::Value::TinyUnsigned(Some(u)) => QueryValue::Int(u as i64),
+			sea_query::Value::TinyUnsigned(None) => QueryValue::Null,
+			sea_query::Value::SmallUnsigned(Some(u)) => QueryValue::Int(u as i64),
+			sea_query::Value::SmallUnsigned(None) => QueryValue::Null,
+			sea_query::Value::Unsigned(Some(u)) => QueryValue::Int(u as i64),
+			sea_query::Value::Unsigned(None) => QueryValue::Null,
+			sea_query::Value::BigUnsigned(Some(u)) => QueryValue::Int(u as i64),
+			sea_query::Value::BigUnsigned(None) => QueryValue::Null,
+
+			sea_query::Value::Float(Some(f)) => QueryValue::Float(f as f64),
+			sea_query::Value::Float(None) => QueryValue::Null,
+			sea_query::Value::Double(Some(f)) => QueryValue::Float(f),
+			sea_query::Value::Double(None) => QueryValue::Null,
+
+			sea_query::Value::String(Some(s)) => QueryValue::String(s.to_string()),
+			sea_query::Value::String(None) => QueryValue::Null,
+
+			sea_query::Value::Bytes(Some(b)) => QueryValue::Bytes(b.to_vec()),
+			sea_query::Value::Bytes(None) => QueryValue::Null,
+
+			// Timestamp handling
+			// ChronoDateTime contains NaiveDateTime, convert to UTC
+			sea_query::Value::ChronoDateTime(Some(dt)) => QueryValue::Timestamp(dt.and_utc()),
+			sea_query::Value::ChronoDateTime(None) => QueryValue::Null,
+			sea_query::Value::ChronoDateTimeUtc(Some(dt)) => QueryValue::Timestamp(dt),
+			sea_query::Value::ChronoDateTimeUtc(None) => QueryValue::Null,
+
+			// JSON types - serialize to string
+			sea_query::Value::Json(Some(json)) => QueryValue::String(json.to_string()),
+			sea_query::Value::Json(None) => QueryValue::Null,
+
+			// For complex types or unsupported types, convert to null
+			// This is a safe fallback that won't cause runtime errors
+			_ => QueryValue::Null,
 		}
 	}
 
@@ -425,9 +480,14 @@ impl<M: Model> Manager<M> {
 		stmt.returning(Query::returning().columns(all_columns));
 
 		use sea_query::PostgresQueryBuilder;
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		let values: Vec<_> = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
 
-		let row = conn.query_one(&sql, vec![]).await?;
+		let row = conn.query_one(&sql, values).await?;
 		// row.data is already serde_json::Value::Object so deserialize directly
 		serde_json::from_value(row.data.clone())
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
@@ -477,9 +537,14 @@ impl<M: Model> Manager<M> {
 			.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk.to_string()));
 
 		use sea_query::PostgresQueryBuilder;
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		let values: Vec<_> = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
 
-		conn.execute(&sql, vec![]).await?;
+		conn.execute(&sql, values).await?;
 		Ok(())
 	}
 
@@ -529,9 +594,14 @@ impl<M: Model> Manager<M> {
 			.to_owned();
 
 		use sea_query::PostgresQueryBuilder;
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		let values: Vec<_> = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
 
-		let row = conn.query_one(&sql, vec![]).await?;
+		let row = conn.query_one(&sql, values).await?;
 		row.get::<i64>("count").ok_or_else(|| {
 			reinhardt_core::exception::Error::Database("Failed to get count".to_string())
 		})

@@ -6,6 +6,6 @@ use reinhardt_forms_macros::form;
 
 fn main() {
 	let _form = form! {
-		csrf: true,
+		name: "test_form",
 	};
 }

@@ -174,7 +174,7 @@ pub(crate) fn hydration_boundary_end(id: &str) -> String {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// let marker = HydrationMarkerBuilder::new()
 ///     .component_name("Counter")
 ///     .strategy(HydrationStrategy::Island)

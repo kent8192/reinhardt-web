@@ -23,7 +23,7 @@
 //!
 //! The migration system automatically generates entry point files:
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! // migrations/myapp.rs (auto-generated - example only)
 //! pub mod _0001_initial;
 //! pub mod _0002_add_field;
@@ -163,7 +163,7 @@ use thiserror::Error;
 ///
 /// Application-side implementation (migration modules would be generated):
 ///
-/// ```rust,ignore
+/// ```rust,no_run
 /// use reinhardt_migrations::{Migration, MigrationProvider};
 ///
 /// // In your application's migrations module

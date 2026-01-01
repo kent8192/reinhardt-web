@@ -26,7 +26,7 @@ reinhardt-migrations = { workspace = true, optional = true }
 reinhardt-apps = { workspace = true, optional = true }
 ctor = { workspace = true, optional = true }
 sqlx = { workspace = true, features = ["any", "sqlite", "runtime-tokio"] }
-sea-query = { version = "1.0.0-rc.22", features = [
+sea-query = { version = "1.0.0-rc.29", features = [
   "backend-postgres",
   "backend-mysql",
   "backend-sqlite",

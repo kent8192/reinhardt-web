@@ -61,7 +61,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{Depends, injectable};
 	///
 	/// #[derive(Clone, Default)]
@@ -86,7 +86,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{Depends, injectable};
 	///
 	/// #[derive(Clone, Default)]
@@ -113,7 +113,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{Depends, InjectionContext, SingletonScope, injectable};
 	///
 	/// #[derive(Clone, Default)]
@@ -154,7 +154,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{Depends, injectable};
 	///
 	/// #[derive(Clone, Default)]
@@ -182,7 +182,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{Depends, injectable};
 	///
 	/// #[derive(Clone, Default)]
@@ -216,7 +216,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_di::{Depends, InjectionContext, SingletonScope, injectable};
 	///
 	/// #[derive(Clone, Default)]

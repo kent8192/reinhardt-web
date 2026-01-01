@@ -3,7 +3,7 @@
 //! These structures represent the raw parse output before semantic validation.
 
 use proc_macro2::Span;
-use syn::{Expr, ExprClosure, Ident, LitBool, LitStr};
+use syn::{Expr, ExprClosure, Ident, LitStr};
 
 /// Top-level form macro AST.
 ///
@@ -12,25 +12,12 @@ use syn::{Expr, ExprClosure, Ident, LitBool, LitStr};
 pub struct FormMacro {
 	/// Optional form name (e.g., `name: "login_form"`)
 	pub name: Option<LitStr>,
-	/// CSRF configuration
-	pub csrf: Option<FormCsrf>,
 	/// Field definitions
 	pub fields: Vec<FormFieldDef>,
 	/// Server-side validators
 	pub validators: Vec<FormValidator>,
 	/// Client-side validators (JavaScript expressions)
 	pub client_validators: Vec<ClientValidator>,
-	/// Span for error reporting
-	pub span: Span,
-}
-
-/// CSRF configuration in the form macro.
-#[derive(Debug, Clone)]
-pub struct FormCsrf {
-	/// Whether CSRF is enabled
-	pub enabled: LitBool,
-	/// Optional secret key expression
-	pub secret_key: Option<Expr>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -149,7 +136,6 @@ impl FormMacro {
 	pub fn new(span: Span) -> Self {
 		Self {
 			name: None,
-			csrf: None,
 			fields: Vec::new(),
 			validators: Vec::new(),
 			client_validators: Vec::new(),

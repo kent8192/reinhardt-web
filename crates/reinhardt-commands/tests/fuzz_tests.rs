@@ -41,19 +41,18 @@ proptest! {
 	/// **Verifies**: CommandContext handles arbitrary option data
 	#[test]
 	fn fuzz_context_options(
-		keys in prop::collection::vec("[a-z_-]{1,20}", 0..20),
-		values in prop::collection::vec(any::<String>(), 0..20)
+		options in prop::collection::hash_map("[a-z_-]{1,20}", any::<String>(), 0..20)
 	) {
 		let mut ctx = CommandContext::new(vec![]);
 
 		// Set options
-		for (k, v) in keys.iter().zip(values.iter()) {
+		for (k, v) in &options {
 			ctx.set_option(k.clone(), v.clone());
 		}
 
 		// Should not panic
 		// Verify all set options are accessible
-		for (k, v) in keys.iter().zip(values.iter()) {
+		for (k, v) in &options {
 			prop_assert!(ctx.has_option(k));
 			prop_assert_eq!(ctx.option(k), Some(v));
 		}

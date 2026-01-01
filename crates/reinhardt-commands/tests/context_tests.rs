@@ -5,6 +5,7 @@
 
 use reinhardt_commands::CommandContext;
 use rstest::{fixture, rstest};
+use serial_test::serial;
 use std::collections::HashMap;
 
 // =============================================================================
@@ -351,7 +352,10 @@ fn test_should_skip_checks_decision(
 #[rstest]
 #[case(true, true)]
 #[case(false, false)]
+#[serial(user_interaction)]
 fn test_confirm_decision_table(#[case] default_value: bool, #[case] expected: bool) {
+	std::env::set_var("REINHARDT_TEST_MODE", "1");
+
 	let ctx = CommandContext::new(vec![]);
 
 	// In test mode, confirm returns default_value
@@ -362,6 +366,8 @@ fn test_confirm_decision_table(#[case] default_value: bool, #[case] expected: bo
 		"confirm with default={} should return {}",
 		default_value, expected
 	);
+
+	std::env::remove_var("REINHARDT_TEST_MODE");
 }
 
 /// Decision table test for input method in test mode
@@ -378,7 +384,10 @@ fn test_confirm_decision_table(#[case] default_value: bool, #[case] expected: bo
 #[rstest]
 #[case(Some("default"), "default")]
 #[case(None, "")]
+#[serial(user_interaction)]
 fn test_input_decision_table(#[case] default_value: Option<&str>, #[case] expected: &str) {
+	std::env::set_var("REINHARDT_TEST_MODE", "1");
+
 	let ctx = CommandContext::new(vec![]);
 
 	// In test mode, input returns default_value or empty string
@@ -389,6 +398,8 @@ fn test_input_decision_table(#[case] default_value: Option<&str>, #[case] expect
 		"input with default={:?} should return '{}'",
 		default_value, expected
 	);
+
+	std::env::remove_var("REINHARDT_TEST_MODE");
 }
 
 // =============================================================================

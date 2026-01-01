@@ -7,10 +7,6 @@ use reinhardt_forms_macros::form;
 fn main() {
 	let _form = form! {
 		name: "registration_form",
-		csrf: {
-			enabled: true,
-			secret_key: "my-secret-key",
-		},
 		fields: {
 			username: CharField {
 				required,

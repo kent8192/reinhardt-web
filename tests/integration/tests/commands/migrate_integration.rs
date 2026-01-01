@@ -9,50 +9,10 @@ use super::fixtures::{
 use reinhardt_commands::{BaseCommand, CommandContext, MigrateCommand};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sea_query::{Alias, ColumnDef, Expr, ExprTrait, PostgresQueryBuilder, Query, Table};
 use sqlx::PgPool;
 use std::sync::Arc;
-use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
 use testcontainers::GenericImage;
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Create a test table in the database using SeaQuery
-async fn create_test_table(pool: &PgPool, table_name: &str) -> Result<(), sqlx::Error> {
-	let create_table = Table::create()
-		.table(Alias::new(table_name))
-		.col(
-			ColumnDef::new(Alias::new("id"))
-				.integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
-		)
-		.col(ColumnDef::new(Alias::new("name")).string().not_null())
-		.to_string(PostgresQueryBuilder);
-
-	sqlx::query(&create_table).execute(pool).await?;
-	Ok(())
-}
-
-/// Check if a table exists in the database
-async fn table_exists(pool: &PgPool, table_name: &str) -> bool {
-	let query = Query::select()
-		.expr_as(Expr::cust("1"), Alias::new("exists"))
-		.from(Alias::new("information_schema.tables"))
-		.and_where(Expr::col(Alias::new("table_name")).eq(table_name))
-		.and_where(Expr::col(Alias::new("table_schema")).eq("public"))
-		.to_string(PostgresQueryBuilder);
-
-	sqlx::query(&query)
-		.fetch_optional(pool)
-		.await
-		.map(|r| r.is_some())
-		.unwrap_or(false)
-}
 
 // ============================================================================
 // Happy Path Tests
@@ -118,7 +78,7 @@ fn test_migrate_command_arguments_and_options() {
 async fn test_migrate_empty_migrations(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, url) = postgres_container.await;
 
 	let mut ctx = CommandContext::default();
 	ctx.set_option("database".to_string(), url);
@@ -152,7 +112,7 @@ async fn test_migrate_empty_migrations(
 async fn test_migrate_idempotent_rerun(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, pool, _port, url) = postgres_container.await;
+	let (_container, _pool, _port, url) = postgres_container.await;
 
 	let mut ctx = CommandContext::default();
 	ctx.set_option("database".to_string(), url.clone());

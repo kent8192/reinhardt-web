@@ -5,13 +5,17 @@
 //!
 //! ## Architecture
 //!
-//! ```text
-//! Server (reinhardt-forms):          Client (reinhardt-pages):
-//! ┌─────────────────────┐           ┌──────────────────────┐
-//! │ Form                │           │ ValidatorRegistry    │
-//! │ .add_validator_rule │──────────▶│ .register()          │
-//! │   ("email", ...)    │   JSON    │ .validate()          │
-//! └─────────────────────┘           └──────────────────────┘
+//! ```mermaid
+//! flowchart LR
+//!     subgraph Server["Server (reinhardt-forms)"]
+//!         Form["Form<br/>.add_validator_rule()<br/>(&quot;email&quot;, ...)"]
+//!     end
+//!
+//!     subgraph Client["Client (reinhardt-pages)"]
+//!         Registry["ValidatorRegistry<br/>.register()<br/>.validate()"]
+//!     end
+//!
+//!     Form -->|JSON| Registry
 //! ```
 //!
 //! ## Security Note

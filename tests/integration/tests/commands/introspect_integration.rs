@@ -5,7 +5,6 @@
 use super::fixtures::{postgres_with_schema, PostgresWithSchema};
 use reinhardt_commands::CommandContext;
 use rstest::*;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 // ============================================================================

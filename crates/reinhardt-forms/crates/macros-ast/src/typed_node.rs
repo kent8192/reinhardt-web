@@ -11,8 +11,6 @@ use syn::{ExprClosure, Ident, LitStr};
 pub struct TypedFormMacro {
 	/// Optional form name
 	pub name: Option<String>,
-	/// CSRF configuration
-	pub csrf: TypedFormCsrf,
 	/// Validated field definitions
 	pub fields: Vec<TypedFormFieldDef>,
 	/// Validated server-side validators
@@ -21,15 +19,6 @@ pub struct TypedFormMacro {
 	pub client_validators: Vec<TypedClientValidator>,
 	/// Span for error reporting
 	pub span: Span,
-}
-
-/// Validated CSRF configuration.
-#[derive(Debug, Clone, Default)]
-pub struct TypedFormCsrf {
-	/// Whether CSRF is enabled
-	pub enabled: bool,
-	/// Optional secret key expression as TokenStream
-	pub secret_key: Option<TokenStream>,
 }
 
 /// Known form field types.
@@ -275,7 +264,6 @@ impl TypedFormMacro {
 	pub fn new(span: Span) -> Self {
 		Self {
 			name: None,
-			csrf: TypedFormCsrf::default(),
 			fields: Vec::new(),
 			validators: Vec::new(),
 			client_validators: Vec::new(),

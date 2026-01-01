@@ -28,7 +28,6 @@ use futures::future::join_all;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::http::Request;
 use reinhardt_core::macros::model;
-use reinhardt_db::orm::init_database;
 use reinhardt_serializers::JsonSerializer;
 use reinhardt_test::fixtures::postgres_container;
 use reinhardt_test::testcontainers::{ContainerAsync, GenericImage};
@@ -88,13 +87,7 @@ enum EdgeTestItems {
 async fn db_pool(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) -> Arc<PgPool> {
-	let (_container, pool, _port, connection_url) = postgres_container.await;
-
-	// Initialize database connection for reinhardt-orm
-	init_database(&connection_url)
-		.await
-		.expect("Failed to initialize database");
-
+	let (_container, pool, _port, _connection_url) = postgres_container.await;
 	pool
 }
 

@@ -21,7 +21,11 @@ use reinhardt_auth::mfa::MFAAuthentication as MfaManager;
 /// Strategy for generating valid base32 secrets (RFC 4648)
 fn base32_secret_strategy() -> impl Strategy<Value = String> {
 	// Base32 alphabet: A-Z and 2-7
-	prop::collection::vec(prop::sample::select(BASE32_ALPHABET.to_vec()), 8..32)
+	// Length must be multiple of 8 for BASE32_NOPAD decoding
+	prop::sample::select(vec![8, 16, 24, 32])
+		.prop_flat_map(|len| {
+			prop::collection::vec(prop::sample::select(BASE32_ALPHABET.to_vec()), len..=len)
+		})
 		.prop_map(|chars| chars.into_iter().collect::<String>())
 }
 

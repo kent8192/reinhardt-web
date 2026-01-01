@@ -33,7 +33,6 @@ fn test_form_creation_minimal() {
 	let metadata = FormMetadata {
 		fields: vec![],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -58,7 +57,6 @@ fn test_form_creation_single_field() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -102,7 +100,6 @@ fn test_form_creation_multiple_fields() {
 			},
 		],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -112,27 +109,6 @@ fn test_form_creation_multiple_fields() {
 
 	let component = FormComponent::new(metadata, "/api/submit");
 	assert_eq!(component.metadata().fields.len(), 3);
-}
-
-/// Tests FormComponent with CSRF token
-#[test]
-fn test_form_creation_with_csrf_token() {
-	let metadata = FormMetadata {
-		fields: vec![],
-		initial: HashMap::new(),
-		csrf_token: Some("test-csrf-token-12345".to_string()),
-		prefix: String::new(),
-		is_bound: false,
-		errors: HashMap::new(),
-		validation_rules: Vec::new(),
-		non_field_errors: Vec::new(),
-	};
-
-	let component = FormComponent::new(metadata, "/api/submit");
-	assert_eq!(
-		component.metadata().csrf_token,
-		Some("test-csrf-token-12345".to_string())
-	);
 }
 
 /// Tests FormComponent with field prefix
@@ -148,7 +124,6 @@ fn test_form_creation_with_prefix() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: "user_form".to_string(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -173,7 +148,6 @@ fn test_form_creation_with_help_text() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -194,7 +168,6 @@ fn test_form_creation_bound_state() {
 	let metadata = FormMetadata {
 		fields: vec![],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: true,
 		errors: HashMap::new(),
@@ -225,7 +198,6 @@ fn test_form_creation_with_errors() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: true,
 		errors,
@@ -255,7 +227,6 @@ fn test_get_value_empty_default() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -280,7 +251,6 @@ fn test_set_and_get_value() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -307,7 +277,6 @@ fn test_update_value_multiple_times() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -333,7 +302,6 @@ fn test_get_value_nonexistent_field() {
 	let metadata = FormMetadata {
 		fields: vec![],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -351,7 +319,6 @@ fn test_set_value_nonexistent_field() {
 	let metadata = FormMetadata {
 		fields: vec![],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -391,7 +358,6 @@ fn test_initial_values_from_metadata() {
 			},
 		],
 		initial,
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -417,7 +383,6 @@ fn test_field_level_initial_value() {
 			initial: Some(serde_json::json!("USA")),
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -460,7 +425,6 @@ fn test_multiple_field_values() {
 			},
 		],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -496,7 +460,6 @@ fn test_validation_required_field_valid() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -524,7 +487,6 @@ fn test_validation_required_field_empty() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -554,7 +516,6 @@ fn test_validation_optional_field_empty() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -599,7 +560,6 @@ fn test_validation_multiple_required_fields() {
 			},
 		],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -638,7 +598,6 @@ fn test_validation_error_message() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -666,7 +625,6 @@ fn test_validation_clears_previous_errors() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -699,7 +657,6 @@ fn test_validation_whitespace_only() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -727,7 +684,6 @@ fn test_validation_multiple_calls() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -768,7 +724,6 @@ fn test_validation_mixed_required_optional() {
 			},
 		],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -793,7 +748,6 @@ fn test_validation_empty_form() {
 	let metadata = FormMetadata {
 		fields: vec![],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -818,7 +772,6 @@ fn test_validation_state_persistence() {
 			initial: None,
 		}],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),
@@ -894,7 +847,6 @@ fn test_multiple_widget_types() {
 			},
 		],
 		initial: HashMap::new(),
-		csrf_token: None,
 		prefix: String::new(),
 		is_bound: false,
 		errors: HashMap::new(),

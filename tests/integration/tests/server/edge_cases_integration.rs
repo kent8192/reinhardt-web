@@ -8,7 +8,6 @@
 //! - Requests during server shutdown
 //! - Malformed URIs
 
-use bytes::Bytes;
 use http::StatusCode;
 use reinhardt_http::{Request, Response, ViewResult};
 use reinhardt_macros::{get, post};
@@ -16,7 +15,6 @@ use reinhardt_routers::UnifiedRouter as Router;
 use reinhardt_server::ShutdownCoordinator;
 use reinhardt_test::fixtures::*;
 use reinhardt_test::APIClient;
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;

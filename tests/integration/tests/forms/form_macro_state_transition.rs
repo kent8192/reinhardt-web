@@ -1,107 +1,144 @@
 //! State transition tests for the `form!` macro.
 //!
 //! Tests form state transitions: New → Bound → Validated → CleanedData/Error.
-//!
-//! These tests will be enabled once the `form!` macro is fully implemented.
 
-#![allow(unused_imports)]
-
+use reinhardt_forms::form;
 use rstest::rstest;
 use serde_json::json;
 use std::collections::HashMap;
-
-// Note: These tests are placeholder implementations.
-// They will be activated once the form! macro code generation is complete.
 
 /// ST-001: Form state transition - happy path.
 ///
 /// Tests the complete flow: New → Bound → Validated → CleanedData
 #[rstest]
-#[ignore = "form! macro not yet implemented"]
 fn test_form_state_transition_happy_path() {
-	// TODO: Implement once form! macro is complete
-	//
-	// Expected behavior:
-	// 1. Create form (state: New)
-	//    - is_bound() == false
-	//    - errors().is_empty() == true
-	//
-	// 2. Bind valid data (state: Bound)
-	//    - is_bound() == true
-	//
-	// 3. Validate (state: Validated)
-	//    - is_valid() == true
-	//
-	// 4. Get cleaned data (state: CleanedData)
-	//    - cleaned_data() returns validated data
+	// Create form (state: New)
+	let mut form = form! {
+		fields: {
+			username: CharField {
+				required,
+				max_length: 150,
+			},
+			email: EmailField {
+				required,
+			},
+		},
+	};
 
-	// Placeholder assertion
-	assert!(true);
+	// State: New
+	assert!(!form.is_bound());
+	assert!(form.errors().is_empty());
+	assert_eq!(form.fields().len(), 2);
+
+	// Bind valid data (state: Bound)
+	let mut data = HashMap::new();
+	data.insert("username".to_string(), json!("testuser"));
+	data.insert("email".to_string(), json!("test@example.com"));
+	form.bind(data);
+
+	// State: Bound
+	assert!(form.is_bound());
+
+	// Validate (state: Validated)
+	assert!(form.is_valid());
+
+	// Get cleaned data (state: CleanedData)
+	let cleaned = form.cleaned_data();
+	assert_eq!(cleaned.get("username"), Some(&json!("testuser")));
+	assert_eq!(cleaned.get("email"), Some(&json!("test@example.com")));
 }
 
 /// ST-002: Form state transition - validation error.
 ///
 /// Tests: New → Bound → ValidationError
 #[rstest]
-#[ignore = "form! macro not yet implemented"]
 fn test_form_state_transition_validation_error() {
-	// TODO: Implement once form! macro is complete
-	//
-	// Expected behavior:
-	// 1. Create form (state: New)
-	// 2. Bind invalid data (state: Bound)
-	// 3. Validate (state: ValidationError)
-	//    - is_valid() == false
-	//    - errors() contains error messages
+	// Create form with required field
+	let mut form = form! {
+		fields: {
+			username: CharField {
+				required,
+			},
+		},
+	};
 
-	assert!(true);
-}
+	// Bind empty data (missing required field)
+	let data = HashMap::new();
+	form.bind(data);
 
-/// ST-003: CSRF validation flow.
-///
-/// Tests: New → CsrfEnabled → Bound → CsrfValidated
-#[rstest]
-#[ignore = "form! macro not yet implemented"]
-fn test_csrf_validation_flow() {
-	// TODO: Implement once form! macro is complete
-	//
-	// Expected behavior:
-	// 1. Create form with CSRF enabled
-	// 2. Bind data without CSRF token → validation fails
-	// 3. Bind data with valid CSRF token → validation passes
+	// State: Bound
+	assert!(form.is_bound());
 
-	assert!(true);
+	// Validate should fail
+	assert!(!form.is_valid());
+
+	// Errors should contain error for username
+	assert!(!form.errors().is_empty());
+	assert!(form.errors().contains_key("username"));
 }
 
 /// ST-004: Field validator execution order.
 ///
 /// Tests: FieldClean → FormClean
 #[rstest]
-#[ignore = "form! macro not yet implemented"]
 fn test_validator_execution_order() {
-	// TODO: Implement once form! macro is complete
-	//
-	// Expected behavior:
-	// 1. Field-level validators run first
-	// 2. Form-level validators run after all field validators
-	// 3. If field validation fails, form validation is skipped
+	// Create form with field and form validators
+	let mut form = form! {
+		fields: {
+			password: CharField {
+				required,
+			},
+			confirm: CharField {
+				required,
+			},
+		},
+		validators: {
+			password: [
+				|v: &serde_json::Value| v.as_str().map_or(false, |s| s.len() >= 8) => "Password must be at least 8 characters",
+			],
+			@form: [
+				|data: &std::collections::HashMap<String, serde_json::Value>| {
+					let password = data.get("password").and_then(|v| v.as_str());
+					let confirm = data.get("confirm").and_then(|v| v.as_str());
+					password == confirm
+				} => "Passwords do not match",
+			],
+		},
+	};
 
-	assert!(true);
+	// Bind valid data
+	let mut data = HashMap::new();
+	data.insert("password".to_string(), json!("password123"));
+	data.insert("confirm".to_string(), json!("password123"));
+	form.bind(data);
+
+	assert!(form.is_valid());
 }
 
 /// ST-005: Multiple bindings.
 ///
 /// Tests: Bound → Rebound → Validated
 #[rstest]
-#[ignore = "form! macro not yet implemented"]
 fn test_multiple_bindings() {
-	// TODO: Implement once form! macro is complete
-	//
-	// Expected behavior:
-	// 1. Bind form with initial data
-	// 2. Rebind with different data
-	// 3. Previous validation state is cleared
-	// 4. New validation runs on new data
+	let mut form = form! {
+		fields: {
+			username: CharField {
+				required,
+			},
+		},
+	};
 
-	assert!(true);
+	// First binding with invalid data
+	let data = HashMap::new();
+	form.bind(data);
+	assert!(!form.is_valid());
+
+	// Second binding with valid data
+	let mut data2 = HashMap::new();
+	data2.insert("username".to_string(), json!("validuser"));
+	form.bind(data2);
+
+	// Previous errors should be cleared, new validation runs
+	assert!(form.is_valid());
+	assert!(form.errors().is_empty());
 }

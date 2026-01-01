@@ -35,7 +35,7 @@ proptest! {
 	/// Verifies that options can be set and retrieved correctly.
 	#[test]
 	fn prop_context_options_roundtrip(
-		options in prop::collection::vec(("[a-z]{1,10}", "[a-z0-9]{1,20}"), 0..10)
+		options in prop::collection::hash_map("[a-z]{1,10}", "[a-z0-9]{1,20}", 0..10)
 	) {
 		let mut ctx = CommandContext::default();
 

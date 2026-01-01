@@ -240,7 +240,8 @@ impl Default for GenerationConfig {
 			derives: default_derives(),
 			include_column_comments: true,
 			struct_naming: NamingConventionConfig::default(),
-			field_naming: NamingConventionConfig::default(),
+			// Rust struct fields should use snake_case by convention
+			field_naming: NamingConventionConfig::SnakeCase,
 		}
 	}
 }

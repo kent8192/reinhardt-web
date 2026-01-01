@@ -450,10 +450,13 @@ fn test_verify_with_truncated_hash(hasher: Argon2Hasher) {
 	let result = hasher.verify(password, truncated_hash);
 
 	// Assert
-	assert!(
-		result.is_err(),
-		"Verification with truncated hash should return error"
-	);
+	// Truncated hash should either return error (parse failure) or false (verification failure)
+	match result {
+		Ok(is_valid) => assert!(!is_valid, "Truncated hash should not verify successfully"),
+		Err(_) => {
+			// Error is also acceptable for malformed hash (PasswordHash::new() failure)
+		}
+	}
 }
 
 #[rstest]

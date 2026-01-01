@@ -32,7 +32,7 @@ use uuid::Uuid;
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust,no_run
 /// use reinhardt_auth::CurrentUser;
 /// use reinhardt_auth::DefaultUser;
 /// use reinhardt_core::endpoint;

@@ -123,7 +123,7 @@ impl<S: SessionStore, A: AuthenticationBackend> AuthenticationMiddleware<S, A> {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use std::sync::Arc;
 	/// use reinhardt_middleware::AuthenticationMiddleware;
 	/// use reinhardt_auth::session::InMemorySessionStore;

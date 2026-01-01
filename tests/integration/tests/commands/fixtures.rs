@@ -5,16 +5,13 @@
 
 use reinhardt_commands::{CommandContext, MigrateCommand};
 use reinhardt_migrations::{Migration, Operation};
-use reinhardt_test::fixtures::{
-	postgres_container, temp_dir, test_migration_source, TestMigrationSource,
-};
+use reinhardt_test::fixtures::{postgres_container, TestMigrationSource};
 use rstest::*;
 use sea_query::{Alias, ColumnDef, PostgresQueryBuilder, Table};
 use sqlx::PgPool;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
-use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
 use testcontainers::GenericImage;
 
@@ -25,18 +22,19 @@ use testcontainers::GenericImage;
 /// Specialized fixture for MigrateCommand testing
 ///
 /// Wraps postgres_container and provides pre-configured migrations
-pub struct MigrateCommandFixture {
+pub(crate) struct MigrateCommandFixture {
 	/// The migrate command instance
-	pub command: MigrateCommand,
+	#[allow(dead_code)] // Kept for future command execution tests
+	pub(crate) command: MigrateCommand,
 	/// Command context with default settings
-	pub context: CommandContext,
+	pub(crate) context: CommandContext,
 	/// Test migration source with sample migrations
-	pub migrations: TestMigrationSource,
+	pub(crate) migrations: TestMigrationSource,
 }
 
 impl MigrateCommandFixture {
 	/// Create a new MigrateCommandFixture
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		Self {
 			command: MigrateCommand,
 			context: CommandContext::default(),
@@ -45,7 +43,12 @@ impl MigrateCommandFixture {
 	}
 
 	/// Add a test migration to the source
-	pub fn add_migration(&mut self, app_label: &str, name: &str, operations: Vec<Operation>) {
+	pub(crate) fn add_migration(
+		&mut self,
+		app_label: &str,
+		name: &str,
+		operations: Vec<Operation>,
+	) {
 		let migration = Migration {
 			app_label: app_label.to_string(),
 			name: name.to_string(),
@@ -57,7 +60,12 @@ impl MigrateCommandFixture {
 	}
 
 	/// Create a simple CreateTable migration
-	pub fn add_create_table_migration(&mut self, app_label: &str, name: &str, table_name: &str) {
+	pub(crate) fn add_create_table_migration(
+		&mut self,
+		app_label: &str,
+		name: &str,
+		table_name: &str,
+	) {
 		// Create a simple table with id and name columns using SeaQuery
 		let create_table = Table::create()
 			.table(Alias::new(table_name))
@@ -80,25 +88,26 @@ impl MigrateCommandFixture {
 	}
 
 	/// Set context options for fake mode
-	pub fn set_fake_mode(&mut self) {
+	pub(crate) fn set_fake_mode(&mut self) {
 		self.context
 			.set_option("fake".to_string(), "true".to_string());
 	}
 
 	/// Set context options for fake-initial mode
-	pub fn set_fake_initial_mode(&mut self) {
+	pub(crate) fn set_fake_initial_mode(&mut self) {
 		self.context
 			.set_option("fake-initial".to_string(), "true".to_string());
 	}
 
 	/// Set the database URL in context
-	pub fn set_database_url(&mut self, url: &str) {
+	#[allow(dead_code)] // May be used in future tests
+	pub(crate) fn set_database_url(&mut self, url: &str) {
 		self.context
 			.set_option("database".to_string(), url.to_string());
 	}
 
 	/// Set app label filter in context
-	pub fn set_app_label(&mut self, app_label: &str) {
+	pub(crate) fn set_app_label(&mut self, app_label: &str) {
 		self.context.add_arg(app_label.to_string());
 	}
 }
@@ -130,18 +139,20 @@ pub fn migrate_command_with_migrations() -> MigrateCommandFixture {
 // ============================================================================
 
 /// PostgreSQL container with pre-created test schema for introspect tests
-pub struct PostgresWithSchema {
+pub(crate) struct PostgresWithSchema {
 	/// The container instance (kept alive)
-	pub container: ContainerAsync<GenericImage>,
+	#[allow(dead_code)] // Kept alive for container lifecycle
+	pub(crate) container: ContainerAsync<GenericImage>,
 	/// Database connection pool
-	pub pool: Arc<PgPool>,
+	pub(crate) pool: Arc<PgPool>,
 	/// Database URL
-	pub url: String,
+	#[allow(dead_code)] // Available for tests that need URL
+	pub(crate) url: String,
 }
 
 impl PostgresWithSchema {
 	/// Create tables for introspect testing using SeaQuery
-	pub async fn create_test_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
+	pub(crate) async fn create_test_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
 		// Create users table
 		let create_users = Table::create()
 			.table(Alias::new("users"))
@@ -251,16 +262,17 @@ pub async fn postgres_with_schema() -> PostgresWithSchema {
 // ============================================================================
 
 /// Temporary directory for migration file testing
-pub struct TempMigrationDir {
+pub(crate) struct TempMigrationDir {
 	/// The temp directory (dropped when fixture goes out of scope)
-	pub dir: TempDir,
+	#[allow(dead_code)] // Kept for cleanup on drop
+	pub(crate) dir: TempDir,
 	/// Path to the migrations directory
-	pub migrations_path: PathBuf,
+	pub(crate) migrations_path: PathBuf,
 }
 
 impl TempMigrationDir {
 	/// Create a new TempMigrationDir
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		let dir = TempDir::new().expect("Failed to create temp directory");
 		let migrations_path = dir.path().join("migrations");
 		std::fs::create_dir_all(&migrations_path).expect("Failed to create migrations directory");
@@ -272,12 +284,18 @@ impl TempMigrationDir {
 	}
 
 	/// Get the path as a string
-	pub fn path_str(&self) -> &str {
+	#[allow(dead_code)] // Utility method for future use
+	pub(crate) fn path_str(&self) -> &str {
 		self.migrations_path.to_str().unwrap_or("")
 	}
 
 	/// Create a migration file in the temp directory
-	pub fn create_migration_file(&self, app_label: &str, name: &str, content: &str) -> PathBuf {
+	pub(crate) fn create_migration_file(
+		&self,
+		app_label: &str,
+		name: &str,
+		content: &str,
+	) -> PathBuf {
 		let app_dir = self.migrations_path.join(app_label);
 		std::fs::create_dir_all(&app_dir).expect("Failed to create app directory");
 
@@ -305,14 +323,14 @@ pub fn temp_migration_dir() -> TempMigrationDir {
 // ============================================================================
 
 /// Router fixture with pre-registered test routes
-pub struct RouterFixture {
+pub(crate) struct RouterFixture {
 	/// List of registered route patterns
-	pub patterns: Vec<(String, String)>, // (pattern, name)
+	pub(crate) patterns: Vec<(String, String)>, // (pattern, name)
 }
 
 impl RouterFixture {
 	/// Create a new RouterFixture with default test routes
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		Self {
 			patterns: vec![
 				("/api/users/".to_string(), "user-list".to_string()),
@@ -325,17 +343,17 @@ impl RouterFixture {
 	}
 
 	/// Get the number of registered patterns
-	pub fn pattern_count(&self) -> usize {
+	pub(crate) fn pattern_count(&self) -> usize {
 		self.patterns.len()
 	}
 
 	/// Check if a pattern exists
-	pub fn has_pattern(&self, pattern: &str) -> bool {
+	pub(crate) fn has_pattern(&self, pattern: &str) -> bool {
 		self.patterns.iter().any(|(p, _)| p == pattern)
 	}
 
 	/// Check if a named route exists
-	pub fn has_named_route(&self, name: &str) -> bool {
+	pub(crate) fn has_named_route(&self, name: &str) -> bool {
 		self.patterns.iter().any(|(_, n)| n == name)
 	}
 }
@@ -357,34 +375,36 @@ pub fn router_fixture() -> RouterFixture {
 // ============================================================================
 
 /// Mock crates.io client for plugin command testing
-pub struct MockCratesIoClient {
+pub(crate) struct MockCratesIoClient {
 	/// Available packages (name -> version)
-	pub packages: std::collections::HashMap<String, CrateInfo>,
+	pub(crate) packages: std::collections::HashMap<String, CrateInfo>,
 }
 
 /// Information about a crate
 #[derive(Clone, Debug)]
-pub struct CrateInfo {
+pub(crate) struct CrateInfo {
 	/// Crate name
-	pub name: String,
+	pub(crate) name: String,
 	/// Latest version
-	pub version: String,
+	#[allow(dead_code)] // Available for version comparison tests
+	pub(crate) version: String,
 	/// Description
-	pub description: String,
+	pub(crate) description: String,
 	/// Available versions
-	pub versions: Vec<String>,
+	#[allow(dead_code)] // Available for version listing tests
+	pub(crate) versions: Vec<String>,
 }
 
 impl MockCratesIoClient {
 	/// Create a new empty MockCratesIoClient
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		Self {
 			packages: std::collections::HashMap::new(),
 		}
 	}
 
 	/// Create with pre-configured packages
-	pub fn with_packages(packages: Vec<(&str, &str, &str)>) -> Self {
+	pub(crate) fn with_packages(packages: Vec<(&str, &str, &str)>) -> Self {
 		let mut client = Self::new();
 		for (name, version, description) in packages {
 			client.add_package(name, version, description);
@@ -393,7 +413,7 @@ impl MockCratesIoClient {
 	}
 
 	/// Add a package to the mock
-	pub fn add_package(&mut self, name: &str, version: &str, description: &str) {
+	pub(crate) fn add_package(&mut self, name: &str, version: &str, description: &str) {
 		self.packages.insert(
 			name.to_string(),
 			CrateInfo {
@@ -406,7 +426,7 @@ impl MockCratesIoClient {
 	}
 
 	/// Search for packages matching a query
-	pub fn search(&self, query: &str) -> Vec<&CrateInfo> {
+	pub(crate) fn search(&self, query: &str) -> Vec<&CrateInfo> {
 		self.packages
 			.values()
 			.filter(|c| c.name.contains(query) || c.description.contains(query))
@@ -414,7 +434,7 @@ impl MockCratesIoClient {
 	}
 
 	/// Get a specific crate by name
-	pub fn get_crate(&self, name: &str) -> Option<&CrateInfo> {
+	pub(crate) fn get_crate(&self, name: &str) -> Option<&CrateInfo> {
 		self.packages.get(name)
 	}
 }
@@ -452,41 +472,47 @@ pub fn mock_crates_io_client() -> MockCratesIoClient {
 // ============================================================================
 
 /// Plugin manifest fixture for plugin command testing
-pub struct PluginManifestFixture {
+pub(crate) struct PluginManifestFixture {
 	/// Temp directory containing the manifest
-	pub dir: TempDir,
+	#[allow(dead_code)] // Kept for cleanup on drop
+	pub(crate) dir: TempDir,
 	/// Path to the manifest file
-	pub manifest_path: PathBuf,
+	pub(crate) manifest_path: PathBuf,
 	/// List of plugins in the manifest
-	pub plugins: Vec<PluginEntry>,
+	pub(crate) plugins: Vec<PluginEntry>,
 }
 
 /// Entry for a plugin in the manifest
 #[derive(Clone, Debug)]
-pub struct PluginEntry {
+pub(crate) struct PluginEntry {
 	/// Plugin name
-	pub name: String,
+	pub(crate) name: String,
 	/// Plugin version
-	pub version: String,
+	pub(crate) version: String,
 	/// Whether the plugin is enabled
-	pub enabled: bool,
+	pub(crate) enabled: bool,
 }
 
 impl PluginManifestFixture {
 	/// Create a new empty PluginManifestFixture
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		let dir = TempDir::new().expect("Failed to create temp directory");
 		let manifest_path = dir.path().join("plugins.toml");
 
-		Self {
+		let fixture = Self {
 			dir,
 			manifest_path,
 			plugins: vec![],
-		}
+		};
+
+		// Create empty manifest file for consistency with with_plugins()
+		fixture.write_manifest();
+
+		fixture
 	}
 
 	/// Create with pre-configured plugins
-	pub fn with_plugins(plugins: Vec<(&str, &str, bool)>) -> Self {
+	pub(crate) fn with_plugins(plugins: Vec<(&str, &str, bool)>) -> Self {
 		let mut fixture = Self::new();
 		for (name, version, enabled) in plugins {
 			fixture.add_plugin(name, version, enabled);
@@ -496,7 +522,7 @@ impl PluginManifestFixture {
 	}
 
 	/// Add a plugin to the manifest
-	pub fn add_plugin(&mut self, name: &str, version: &str, enabled: bool) {
+	pub(crate) fn add_plugin(&mut self, name: &str, version: &str, enabled: bool) {
 		self.plugins.push(PluginEntry {
 			name: name.to_string(),
 			version: version.to_string(),
@@ -505,7 +531,7 @@ impl PluginManifestFixture {
 	}
 
 	/// Write the manifest to disk
-	pub fn write_manifest(&self) {
+	pub(crate) fn write_manifest(&self) {
 		let content = self
 			.plugins
 			.iter()
@@ -522,7 +548,7 @@ impl PluginManifestFixture {
 	}
 
 	/// Enable a plugin by name
-	pub fn enable_plugin(&mut self, name: &str) {
+	pub(crate) fn enable_plugin(&mut self, name: &str) {
 		if let Some(plugin) = self.plugins.iter_mut().find(|p| p.name == name) {
 			plugin.enabled = true;
 		}
@@ -530,7 +556,7 @@ impl PluginManifestFixture {
 	}
 
 	/// Disable a plugin by name
-	pub fn disable_plugin(&mut self, name: &str) {
+	pub(crate) fn disable_plugin(&mut self, name: &str) {
 		if let Some(plugin) = self.plugins.iter_mut().find(|p| p.name == name) {
 			plugin.enabled = false;
 		}
@@ -538,17 +564,18 @@ impl PluginManifestFixture {
 	}
 
 	/// Get the number of enabled plugins
-	pub fn enabled_count(&self) -> usize {
+	#[allow(dead_code)] // Utility method for enabled plugin counting
+	pub(crate) fn enabled_count(&self) -> usize {
 		self.plugins.iter().filter(|p| p.enabled).count()
 	}
 
 	/// Get a plugin by name
-	pub fn get_plugin(&self, name: &str) -> Option<&PluginEntry> {
+	pub(crate) fn get_plugin(&self, name: &str) -> Option<&PluginEntry> {
 		self.plugins.iter().find(|p| p.name == name)
 	}
 
 	/// Remove a plugin by name
-	pub fn remove_plugin(&mut self, name: &str) {
+	pub(crate) fn remove_plugin(&mut self, name: &str) {
 		self.plugins.retain(|p| p.name != name);
 		self.write_manifest();
 	}
@@ -584,8 +611,9 @@ pub fn plugin_manifest_with_plugins() -> PluginManifestFixture {
 // ============================================================================
 
 /// Helper to insert test data into a PostgreSQL database using SeaQuery
-pub async fn insert_test_users(pool: &PgPool) -> Result<Vec<i32>, sqlx::Error> {
-	use sea_query::{Expr, Query};
+#[allow(dead_code)] // May be used in future tests
+pub(crate) async fn insert_test_users(pool: &PgPool) -> Result<Vec<i32>, sqlx::Error> {
+	use sea_query::Query;
 
 	let mut user_ids = vec![];
 
@@ -612,7 +640,11 @@ pub async fn insert_test_users(pool: &PgPool) -> Result<Vec<i32>, sqlx::Error> {
 }
 
 /// Helper to insert test posts into a PostgreSQL database using SeaQuery
-pub async fn insert_test_posts(pool: &PgPool, author_ids: &[i32]) -> Result<Vec<i32>, sqlx::Error> {
+#[allow(dead_code)] // May be used in future tests
+pub(crate) async fn insert_test_posts(
+	pool: &PgPool,
+	author_ids: &[i32],
+) -> Result<Vec<i32>, sqlx::Error> {
 	use sea_query::Query;
 
 	let mut post_ids = vec![];

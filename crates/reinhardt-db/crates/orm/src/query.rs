@@ -489,7 +489,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Query from a derived table showing author book counts
 	/// let results = QuerySet::<Book>::from_subquery(
 	///     |subq| {
@@ -556,7 +556,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Join User and Post on user.id = post.user_id
 	/// let results = User::objects()
 	///     .inner_join::<Post>("id", "user_id")
@@ -590,7 +590,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Left join User and Post
 	/// let results = User::objects()
 	///     .left_join::<Post>("id", "user_id")
@@ -624,7 +624,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Right join User and Post
 	/// let results = User::objects()
 	///     .right_join::<Post>("id", "user_id")
@@ -658,7 +658,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Cross join User and Category
 	/// let results = User::objects()
 	///     .cross_join::<Category>()
@@ -686,7 +686,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Self-join: find user pairs
 	/// let results = User::objects()
 	///     .from_as("u1")
@@ -714,7 +714,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Join with complex condition
 	/// let results = User::objects()
 	///     .inner_join_on::<Post>("users.id = posts.user_id AND posts.title LIKE 'First%'")
@@ -746,7 +746,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let results = User::objects()
 	///     .left_join_on::<Post>("users.id = posts.user_id AND posts.published = true")
 	///     .all_raw()
@@ -777,7 +777,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let results = User::objects()
 	///     .right_join_on::<Post>("users.id = posts.user_id AND users.active = true")
 	///     .all_raw()
@@ -811,7 +811,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Self-join: find user pairs where user1.id < user2.id
 	/// let results = User::objects()
 	///     .from_as("u1")
@@ -874,7 +874,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let results = User::objects()
 	///     .from_as("u1")
 	///     .left_join_as::<User, _>("u2", |on| on.condition("u1.id = u2.manager_id"))
@@ -936,7 +936,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let results = User::objects()
 	///     .from_as("u1")
 	///     .right_join_as::<User, _>("u2", |on| on.condition("u1.department_id = u2.id"))
@@ -997,7 +997,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Group by single field
 	/// Book::objects()
 	///     .group_by(|g| g.add("author_id"))
@@ -1046,7 +1046,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find authors with average book price > 1500
 	/// Author::objects()
 	///     .group_by(|g| g.add("author_id"))
@@ -1114,7 +1114,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find authors with more than 5 books
 	/// Author::objects()
 	///     .group_by(|g| g.add("author_id"))
@@ -1173,7 +1173,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find categories with total sales > 10000
 	/// Product::objects()
 	///     .group_by(|g| g.add("category"))
@@ -1241,7 +1241,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find authors where minimum book price > 1000
 	/// QuerySet::<Author>::new()
 	///     .group_by(|f| GroupByFields::new().add(&f.author_id))
@@ -1306,7 +1306,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find authors where maximum book price < 5000
 	/// QuerySet::<Author>::new()
 	///     .group_by(|f| GroupByFields::new().add(&f.author_id))
@@ -1362,7 +1362,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find authors who have books priced over 1500
 	/// let authors = Author::objects()
 	///     .filter_in_subquery("id", |subq: QuerySet<Book>| {
@@ -1393,7 +1393,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find authors who have NO books priced over 1500
 	/// let authors = Author::objects()
 	///     .filter_not_in_subquery("id", |subq: QuerySet<Book>| {
@@ -1425,7 +1425,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find authors who have at least one book
 	/// let authors = Author::objects()
 	///     .filter_exists(|subq: QuerySet<Book>| {
@@ -1455,7 +1455,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find authors who have NO books
 	/// let authors = Author::objects()
 	///     .filter_not_exists(|subq: QuerySet<Book>| {
@@ -1486,7 +1486,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::cte::CTE;
 	///
 	/// // Simple CTE
@@ -1526,7 +1526,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::lateral_join::{LateralJoin, LateralJoinPatterns};
 	///
 	/// // Get top 3 orders per customer
@@ -2066,7 +2066,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Single query with JOINs instead of N+1 queries
 	/// let posts = Post::objects()
 	///     .select_related(&["author", "category"])
@@ -2089,7 +2089,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let queryset = Post::objects()
 	///     .select_related(&["author", "category"])
 	///     .filter(Filter::new(
@@ -2185,7 +2185,8 @@ where
 
 		// Apply GROUP BY
 		for group_field in &self.group_by_fields {
-			stmt.group_by_col(Alias::new(group_field));
+			let col_ref = parse_column_reference(group_field);
+			stmt.group_by_col(col_ref);
 		}
 
 		// Apply HAVING
@@ -2253,11 +2254,12 @@ where
 				(order_field.as_str(), false)
 			};
 
-			let col = Alias::new(field);
+			let col_ref = parse_column_reference(field);
+			let expr = Expr::col(col_ref);
 			if is_desc {
-				stmt.order_by(col, Order::Desc);
+				stmt.order_by_expr(expr, Order::Desc);
 			} else {
-				stmt.order_by(col, Order::Asc);
+				stmt.order_by_expr(expr, Order::Asc);
 			}
 		}
 
@@ -2286,7 +2288,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // 2 queries total instead of N+1 queries
 	/// let posts = Post::objects()
 	///     .prefetch_related(&["comments", "tags"])
@@ -2312,7 +2314,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let queryset = Post::objects()
 	///     .prefetch_related(&["comments", "tags"]);
 	///
@@ -2428,7 +2430,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Fetch all users
 	/// let users = User::objects().all().await?;
 	///
@@ -2464,13 +2466,15 @@ where
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					stmt.column(Alias::new(field));
+					let col_ref = parse_column_reference(field);
+					stmt.column(col_ref);
 				}
 			} else if !self.deferred_fields.is_empty() {
 				let all_fields = T::field_metadata();
 				for field in all_fields {
 					if !self.deferred_fields.contains(&field.name) {
-						stmt.column(Alias::new(&field.name));
+						let col_ref = parse_column_reference(&field.name);
+						stmt.column(col_ref);
 					}
 				}
 			} else {
@@ -2518,7 +2522,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Fetch first active user
 	/// let user = User::objects()
 	///     .filter(Filter::new(
@@ -2548,7 +2552,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Fetch user with specific email (must be unique)
 	/// let user = User::objects()
 	///     .filter(Filter::new(
@@ -2587,7 +2591,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let db = get_database_connection().await?;
 	/// let users = User::objects()
 	///     .filter(User::field_status().eq("active"))
@@ -2608,13 +2612,15 @@ where
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					stmt.column(Alias::new(field));
+					let col_ref = parse_column_reference(field);
+					stmt.column(col_ref);
 				}
 			} else if !self.deferred_fields.is_empty() {
 				let all_fields = T::field_metadata();
 				for field in all_fields {
 					if !self.deferred_fields.contains(&field.name) {
-						stmt.column(Alias::new(&field.name));
+						let col_ref = parse_column_reference(&field.name);
+						stmt.column(col_ref);
 					}
 				}
 			} else {
@@ -2655,7 +2661,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let db = get_database_connection().await?;
 	/// let user = User::objects()
 	///     .filter(User::field_id().eq(user_id))
@@ -2686,7 +2692,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let db = get_database_connection().await?;
 	/// let user = User::objects()
 	///     .filter(User::field_status().eq("active"))
@@ -2710,7 +2716,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Count active users
 	/// let count = User::objects()
 	///     .filter(Filter::new(
@@ -2764,7 +2770,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Check if any admin users exist
 	/// let has_admin = User::objects()
 	///     .filter(Filter::new(
@@ -2788,7 +2794,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let user = User {
 	///     id: None,
 	///     username: "alice".to_string(),
@@ -2848,7 +2854,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use std::collections::HashMap;
 	/// let queryset = User::objects()
 	///     .filter(Filter::new(
@@ -2907,7 +2913,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let queryset = User::objects()
 	///     .filter(Filter::new(
 	///         "id".to_string(),
@@ -2956,7 +2962,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::composite_pk::PkValue;
 	/// use std::collections::HashMap;
 	///
@@ -3076,7 +3082,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::annotation::{Annotation, AnnotationValue};
 	/// use reinhardt_orm::aggregation::Aggregate;
 	///
@@ -3109,7 +3115,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Add book count for each author
 	/// let authors = Author::objects()
 	///     .annotate_subquery::<Book, _>("book_count", |subq| {
@@ -3152,7 +3158,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::aggregation::Aggregate;
 	///
 	/// // Count all users
@@ -3201,13 +3207,15 @@ where
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					stmt.column(Alias::new(field));
+					let col_ref = parse_column_reference(field);
+					stmt.column(col_ref);
 				}
 			} else if !self.deferred_fields.is_empty() {
 				let all_fields = T::field_metadata();
 				for field in all_fields {
 					if !self.deferred_fields.contains(&field.name) {
-						stmt.column(Alias::new(&field.name));
+						let col_ref = parse_column_reference(&field.name);
+						stmt.column(col_ref);
 					}
 				}
 			} else {
@@ -3328,11 +3336,12 @@ where
 					(order_field.as_str(), false)
 				};
 
-				let col = Alias::new(field);
+				let col_ref = parse_column_reference(field);
+				let expr = Expr::col(col_ref);
 				if is_desc {
-					stmt.order_by(col, Order::Desc);
+					stmt.order_by_expr(expr, Order::Desc);
 				} else {
-					stmt.order_by(col, Order::Asc);
+					stmt.order_by_expr(expr, Order::Asc);
 				}
 			}
 
@@ -3414,7 +3423,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Select only specific fields
 	/// let users = User::objects()
 	///     .values(&["id", "username", "email"])
@@ -3442,7 +3451,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Same as values()
 	/// let user_data = User::objects()
 	///     .values_list(&["id", "username"])
@@ -3457,7 +3466,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Ascending order
 	/// User::objects().order_by(&["name"]);
 	///
@@ -3485,7 +3494,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let users = User::objects()
 	///     .limit(10)
 	///     .all()
@@ -3503,7 +3512,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// let users = User::objects()
 	///     .offset(20)
 	///     .limit(10)
@@ -3522,7 +3531,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Page 3, 10 items per page (offset=20, limit=10)
 	/// let users = User::objects()
 	///     .paginate(3, 10)
@@ -3541,7 +3550,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Use in IN clause
 	/// let active_user_ids = User::objects()
 	///     .filter(Filter::new("is_active".to_string(), FilterOperator::Eq, FilterValue::Bool(true)))
@@ -3566,7 +3575,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Defer large text fields
 	/// let users = User::objects()
 	///     .defer(&["bio", "profile_picture"])
@@ -3587,7 +3596,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Load only specific fields
 	/// let users = User::objects()
 	///     .only(&["id", "username"])
@@ -3613,7 +3622,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Search articles for "rust programming"
 	/// let articles = Article::objects()
 	///     .full_text_search("search_vector", "rust programming")
@@ -3640,7 +3649,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find posts with any of these tags
 	/// let posts = Post::objects()
 	///     .filter_array_overlap("tags", &["rust", "programming"])
@@ -3667,7 +3676,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find posts that have both "rust" and "async" tags
 	/// let posts = Post::objects()
 	///     .filter_array_contains("tags", &["rust", "async"])
@@ -3694,7 +3703,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find products with specific metadata
 	/// let products = Product::objects()
 	///     .filter_jsonb_contains("metadata", r#"{"active": true}"#)
@@ -3721,7 +3730,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find products with "sale_price" in metadata
 	/// let products = Product::objects()
 	///     .filter_jsonb_key_exists("metadata", "sale_price")
@@ -3748,7 +3757,7 @@ where
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// // Find events that include a specific date
 	/// let events = Event::objects()
 	///     .filter_range_contains("date_range", "2024-06-15")
@@ -3785,6 +3794,27 @@ impl FilterValue {
 	pub fn string(value: impl ToString) -> Self {
 		Self::String(value.to_string())
 	}
+}
+
+// ============================================================================
+// Helper Functions for JOIN Support
+// ============================================================================
+
+/// Parse field reference into SeaQuery column expression
+///
+/// Handles both qualified (`table.column`) and unqualified (`column`) references.
+///
+/// # Examples
+///
+/// - `"id"` → `ColumnRef::Column("id")`
+/// - `"users.id"` → `ColumnRef::Column("users.id")` (qualified name as-is)
+///
+/// Note: For SeaQuery v1.0.0-rc.29+, we use the full qualified name as a column identifier.
+/// This works for most databases that support qualified column references.
+fn parse_column_reference(field: &str) -> sea_query::ColumnRef {
+	// For now, use the field name as-is (qualified or not)
+	// SeaQuery will handle the qualified name in the SQL generation
+	sea_query::ColumnRef::Column(sea_query::SeaRc::new(Alias::new(field)).into())
 }
 
 #[cfg(test)]

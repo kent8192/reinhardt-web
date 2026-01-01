@@ -355,22 +355,17 @@ reinhardt plugin update <name>
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PluginRegistry                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   plugins   │  │ capability  │  │  dependency_graph   │  │
-│  │   HashMap   │  │    map      │  │    (topological)    │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                           │
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-    ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-    │   Static    │ │    WASM     │ │   Remote    │
-    │  Plugins    │ │  Plugins    │ │ (crates.io) │
-    │ (Rust crate)│ │ (.wasm)     │ │             │
-    └─────────────┘ └─────────────┘ └─────────────┘
+```mermaid
+flowchart TB
+    subgraph Registry["PluginRegistry"]
+        plugins["plugins<br/>HashMap"]
+        capability["capability<br/>map"]
+        dependency["dependency_graph<br/>(topological)"]
+    end
+
+    Registry --> Static["Static Plugins<br/>(Rust crate)"]
+    Registry --> WASM["WASM Plugins<br/>(.wasm)"]
+    Registry --> Remote["Remote<br/>(crates.io)"]
 ```
 
 ## Related Crates

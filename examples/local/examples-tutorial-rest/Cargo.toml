@@ -26,7 +26,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 chrono = { version = "0.4", features = ["serde"] }
 validator = { version = "0.20.0", features = ["derive"] }
-sea-query = "1.0.0-rc.22"
+sea-query = "1.0.0-rc.29"
 syntect = "5.2"
 example-common = { path = "../../remote/common" }
 ctor = "0.6.1"

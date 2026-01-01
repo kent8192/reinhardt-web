@@ -16,6 +16,7 @@
 //! - sales_log(id SERIAL PRIMARY KEY, timestamp TIMESTAMP NOT NULL, region TEXT NOT NULL, amount BIGINT NOT NULL)
 //! - employee_scores(id SERIAL PRIMARY KEY, employee_id INT NOT NULL, score INT NOT NULL, department TEXT NOT NULL)
 
+use chrono::NaiveDateTime;
 use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -51,6 +52,11 @@ enum EmployeeScores {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/// Parse timestamp string to NaiveDateTime
+fn parse_ts(s: &str) -> NaiveDateTime {
+	NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()
+}
 
 /// Create test table and insert test data
 async fn setup_test_data(pool: &PgPool) {
@@ -90,22 +96,22 @@ async fn setup_test_data(pool: &PgPool) {
 			($13, $14, $15),
 			($16, $17, $18)",
 	)
-	.bind("2025-01-01 10:00:00")
+	.bind(parse_ts("2025-01-01 10:00:00"))
 	.bind("Tokyo")
 	.bind(1000_i64)
-	.bind("2025-01-01 11:00:00")
+	.bind(parse_ts("2025-01-01 11:00:00"))
 	.bind("Tokyo")
 	.bind(1500_i64)
-	.bind("2025-01-01 12:00:00")
+	.bind(parse_ts("2025-01-01 12:00:00"))
 	.bind("Osaka")
 	.bind(2000_i64)
-	.bind("2025-01-01 13:00:00")
+	.bind(parse_ts("2025-01-01 13:00:00"))
 	.bind("Tokyo")
 	.bind(800_i64)
-	.bind("2025-01-01 14:00:00")
+	.bind(parse_ts("2025-01-01 14:00:00"))
 	.bind("Osaka")
 	.bind(1200_i64)
-	.bind("2025-01-01 15:00:00")
+	.bind(parse_ts("2025-01-01 15:00:00"))
 	.bind("Osaka")
 	.bind(1800_i64)
 	.execute(pool)

@@ -35,7 +35,8 @@ pub trait FormModel: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # use reinhardt_forms::field::FieldType;
 	/// fn field_type(name: &str) -> Option<FieldType> {
 	///     match name {
 	///         "name" => Some(FieldType::Char { max_length: Some(100) }),
@@ -70,10 +71,13 @@ pub trait FormModel: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # struct Example { id: i32, name: String }
+	/// # impl Example {
 	/// fn to_choice_label(&self) -> String {
 	///     format!("{} - {}", self.id, self.name)
 	/// }
+	/// # }
 	/// ```
 	fn to_choice_label(&self) -> String {
 		// Default: use the "id" field or empty string
@@ -92,10 +96,13 @@ pub trait FormModel: Send + Sync {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
+	/// # struct Example { id: i32 }
+	/// # impl Example {
 	/// fn to_choice_value(&self) -> String {
 	///     self.id.to_string()
 	/// }
+	/// # }
 	/// ```
 	fn to_choice_value(&self) -> String {
 		self.get_field("id")
@@ -416,51 +423,6 @@ impl<T: FormModel> ModelForm<T> {
 	}
 	pub fn instance(&self) -> Option<&T> {
 		self.instance.as_ref()
-	}
-	/// Render the form as HTML table
-	///
-	/// # Examples
-	///
-	/// ```ignore
-	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
-	///
-	/// let config = ModelFormConfig::new();
-	/// let form = ModelForm::<MyModel>::empty(config);
-	/// let html = form.as_table();
-	/// assert!(html.contains("<tr>"));
-	/// ```
-	pub fn as_table(&self) -> String {
-		self.form.as_table()
-	}
-	/// Render the form as HTML paragraphs
-	///
-	/// # Examples
-	///
-	/// ```ignore
-	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
-	///
-	/// let config = ModelFormConfig::new();
-	/// let form = ModelForm::<MyModel>::empty(config);
-	/// let html = form.as_p();
-	/// assert!(html.contains("<p>"));
-	/// ```
-	pub fn as_p(&self) -> String {
-		self.form.as_p()
-	}
-	/// Render the form as HTML list items
-	///
-	/// # Examples
-	///
-	/// ```ignore
-	/// use reinhardt_forms::{ModelForm, ModelFormConfig};
-	///
-	/// let config = ModelFormConfig::new();
-	/// let form = ModelForm::<MyModel>::empty(config);
-	/// let html = form.as_ul();
-	/// assert!(html.contains("<li>"));
-	/// ```
-	pub fn as_ul(&self) -> String {
-		self.form.as_ul()
 	}
 }
 

@@ -50,3 +50,7 @@ mod large_dataset_integration;
 // Migration Squashing Tests
 #[path = "migrations/migration_squashing_integration.rs"]
 mod migration_squashing_integration;
+
+// SQLite Table Recreation Tests
+#[path = "migrations/sqlite_table_recreation_integration.rs"]
+mod sqlite_table_recreation_integration;

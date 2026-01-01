@@ -49,7 +49,7 @@ fn test_char_field_min_length_not_met() {
 
 #[test]
 fn test_char_field_required_missing() {
-	let field = CharField::new("name".to_string()); // default: required=true
+	let field = CharField::new("name".to_string()).required(); // 明示的にrequired=true
 	let result = field.clean(None);
 	assert!(result.is_err());
 }
@@ -91,7 +91,7 @@ fn test_char_field_strip_whitespace() {
 
 #[rstest]
 #[case("abc", true)] // Valid class
-#[case("", false)] // Empty string class (when required=true)
+#[case("", true)] // Empty string class (when required=false, default)
 #[case("あいう", true)] // Multi-byte class
 #[case("test123", true)] // Alphanumeric class
 fn test_char_field_equivalence(#[case] input: &str, #[case] valid: bool) {
@@ -159,7 +159,7 @@ proptest! {
 fn test_char_field_sanity() {
 	let field = CharField::new("test".to_string());
 	assert_eq!(field.name, "test");
-	assert!(field.required); // default: true
+	assert!(!field.required); // default: false
 }
 
 // =============================================================================
@@ -450,7 +450,7 @@ fn test_boolean_field_invalid_type() {
 
 #[test]
 fn test_boolean_field_null_value_required() {
-	let field = BooleanField::new("agree".to_string());
+	let field = BooleanField::new("agree".to_string()).required(); // 明示的にrequired=true
 	let result = field.clean(None);
 	assert!(result.is_err());
 }

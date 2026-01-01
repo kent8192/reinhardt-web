@@ -13,7 +13,7 @@ use hyper::Method;
 ///
 /// # Example
 ///
-/// ```rust,no_run,ignore
+/// ```rust,no_run
 /// use reinhardt_core::endpoint::EndpointMetadata;
 ///
 /// // Collect all registered endpoints
@@ -50,7 +50,7 @@ inventory::collect!(EndpointMetadata);
 ///
 /// The HTTP Method Macro generates a View type that implements this trait:
 ///
-/// ```rust,no_run,ignore
+/// ```rust,no_run
 /// # use reinhardt_macros::get;
 /// # use reinhardt_di::params::Path;
 /// # use reinhardt_views::ViewResult;

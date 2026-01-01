@@ -103,7 +103,7 @@ pub struct UpdateUserData {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```rust,no_run
 /// use reinhardt_auth::user_management::{UserManager, CreateUserData};
 /// use reinhardt_auth::Argon2Hasher;
 ///
@@ -146,7 +146,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_auth::user_management::UserManager;
 	/// use reinhardt_auth::Argon2Hasher;
 	///
@@ -166,7 +166,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
 	/// use reinhardt_auth::Argon2Hasher;
 	///
@@ -243,7 +243,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
 	/// use reinhardt_auth::Argon2Hasher;
 	///
@@ -280,7 +280,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
 	/// use reinhardt_auth::Argon2Hasher;
 	///
@@ -319,7 +319,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData, UpdateUserData};
 	/// use reinhardt_auth::Argon2Hasher;
 	///
@@ -384,7 +384,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
 	/// use reinhardt_auth::Argon2Hasher;
 	///
@@ -430,7 +430,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
 	/// use reinhardt_auth::Argon2Hasher;
 	///
@@ -471,7 +471,7 @@ impl<H: PasswordHasher> UserManager<H> {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_auth::user_management::{UserManager, CreateUserData};
 	/// use reinhardt_auth::Argon2Hasher;
 	///

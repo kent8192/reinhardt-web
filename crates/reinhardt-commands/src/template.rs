@@ -369,7 +369,9 @@ pub fn to_camel_case(s: &str) -> String {
 			let mut chars = part.chars();
 			match chars.next() {
 				None => String::new(),
-				Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+				Some(first) => {
+					format!("{}{}", first.to_uppercase(), chars.as_str().to_lowercase())
+				}
 			}
 		})
 		.collect()

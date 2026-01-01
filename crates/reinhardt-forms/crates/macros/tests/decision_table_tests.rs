@@ -106,36 +106,27 @@ fn test_required_initial_decision_table(
 	}
 }
 
-/// Decision table for CSRF and validators combinations.
+/// Decision table for validators combinations.
 ///
-/// | Case | CSRF | Field Val | Form Val | Client Val | Expected |
-/// |------|------|-----------|----------|------------|----------|
-/// | 1 | true | true | true | true | valid |
-/// | 2 | true | true | true | false | valid |
-/// | 3 | true | true | false | false | valid |
-/// | 4 | true | false | false | false | valid |
-/// | 5 | false | true | true | true | valid |
-/// | 6 | false | false | false | false | valid |
+/// | Case | Field Val | Form Val | Client Val | Expected |
+/// |------|-----------|----------|------------|----------|
+/// | 1 | true | true | true | valid |
+/// | 2 | true | true | false | valid |
+/// | 3 | true | false | false | valid |
+/// | 4 | false | false | false | valid |
+/// | 5 | false | true | true | valid |
 #[rstest]
-#[case(true, true, true, true, true)]
-#[case(true, true, true, false, true)]
-#[case(true, true, false, false, true)]
-#[case(true, false, false, false, true)]
-#[case(false, true, true, true, true)]
-#[case(false, false, false, false, true)]
-fn test_csrf_validators_decision_table(
-	#[case] csrf: bool,
+#[case(true, true, true, true)]
+#[case(true, true, false, true)]
+#[case(true, false, false, true)]
+#[case(false, false, false, true)]
+#[case(false, true, true, true)]
+fn test_validators_decision_table(
 	#[case] field_validators: bool,
 	#[case] form_validators: bool,
 	#[case] client_validators: bool,
 	#[case] should_parse: bool,
 ) {
-	let csrf_tokens = if csrf {
-		quote! { csrf: true, }
-	} else {
-		quote! {}
-	};
-
 	let field_val_tokens = if field_validators {
 		quote! {
 			validators: {
@@ -190,7 +181,6 @@ fn test_csrf_validators_decision_table(
 	};
 
 	let tokens = quote! {
-		#csrf_tokens
 		fields: {
 			username: CharField {},
 		},
@@ -202,8 +192,7 @@ fn test_csrf_validators_decision_table(
 	assert_eq!(
 		result.is_ok(),
 		should_parse,
-		"csrf={}, field_val={}, form_val={}, client_val={} should {} parse",
-		csrf,
+		"field_val={}, form_val={}, client_val={} should {} parse",
 		field_validators,
 		form_validators,
 		client_validators,
@@ -215,8 +204,7 @@ fn test_csrf_validators_decision_table(
 	);
 
 	if result.is_ok() {
-		let form = result.unwrap();
-		assert_eq!(form.csrf.is_some(), csrf);
+		let _form = result.unwrap();
 		// Validator counts depend on the specific combination
 	}
 }

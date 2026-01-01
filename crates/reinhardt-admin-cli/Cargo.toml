@@ -9,6 +9,9 @@ description = "Command-line tool for Reinhardt project management"
 publish = true
 
 [dependencies]
+# Documentation
+aquamarine = "0.5"
+
 reinhardt-commands = { workspace = true, features = ["plugins"] }
 reinhardt-dentdelion = { workspace = true, features = ["cli"] }
 reinhardt-pages-ast = { workspace = true }

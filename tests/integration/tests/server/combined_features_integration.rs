@@ -14,7 +14,6 @@ use reinhardt_server::{
 	Http2Server, HttpServer, RateLimitConfig, RateLimitHandler, RateLimitStrategy,
 	ShutdownCoordinator, TimeoutHandler,
 };
-use reinhardt_test::fixtures::*;
 use reinhardt_test::APIClient;
 use reinhardt_types::{Handler, Middleware};
 use rstest::*;

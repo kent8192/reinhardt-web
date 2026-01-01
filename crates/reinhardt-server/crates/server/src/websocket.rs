@@ -483,10 +483,16 @@ impl WebSocketServer {
 										&& let Some(clients) = manager.clients.read().await.get(&peer_addr) {
 											let mut sender = clients.sender.lock().await;
 											let _ = sender.send(Message::Close(None)).await;
+											// Flush to ensure close frame is sent before disconnecting
+											let _ = sender.flush().await;
 										}
 								} else if let Some(ref mut w) = direct_write {
 									let _ = w.send(Message::Close(None)).await;
+									// Flush to ensure close frame is sent before disconnecting
+									let _ = w.flush().await;
 								}
+								// Brief delay to ensure client receives close frame (RFC 6455 compliance)
+								tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 								break;
 							}
 						}

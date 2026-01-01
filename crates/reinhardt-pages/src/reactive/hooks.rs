@@ -9,14 +9,17 @@
 //!
 //! The hooks are implemented as thin wrappers around the existing reactive primitives:
 //!
-//! ```text
-//! ┌─────────────────────────────────────────────────┐
-//! │           React-like Hooks API                  │
-//! │  use_state, use_effect, use_context, etc.       │
-//! ├─────────────────────────────────────────────────┤
-//! │     Fine-grained Reactivity Layer               │
-//! │        Signal<T>, Effect, Memo<T>               │
-//! └─────────────────────────────────────────────────┘
+//! ```mermaid
+//! flowchart TB
+//!     subgraph Hooks["React-like Hooks API"]
+//!         API["use_state, use_effect, use_context, etc."]
+//!     end
+//!
+//!     subgraph Reactivity["Fine-grained Reactivity Layer"]
+//!         Primitives["Signal&lt;T&gt;, Effect, Memo&lt;T&gt;"]
+//!     end
+//!
+//!     Hooks --> Reactivity
 //! ```
 //!
 //! ## Available Hooks

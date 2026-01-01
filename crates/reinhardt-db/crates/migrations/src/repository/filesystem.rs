@@ -315,11 +315,28 @@ impl MigrationRepository for FilesystemRepository {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::fields::FieldType;
+	use crate::operations::{ColumnDefinition, Operation};
 	use serial_test::serial;
 	use tempfile::TempDir;
 
+	/// Creates a test migration with a unique CreateTable operation based on the migration name.
+	/// This ensures each migration has distinct operations to avoid duplicate detection errors.
 	fn create_test_migration(app_label: &str, name: &str) -> Migration {
-		Migration::new(name, app_label)
+		let mut migration = Migration::new(name, app_label);
+
+		// Create a unique table name derived from the migration name
+		let table_name = format!("table_{}", name.replace('-', "_"));
+		migration.operations.push(Operation::CreateTable {
+			name: table_name,
+			columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: None,
+			partition: None,
+			interleave_in_parent: None,
+		});
+
+		migration
 	}
 
 	#[tokio::test]

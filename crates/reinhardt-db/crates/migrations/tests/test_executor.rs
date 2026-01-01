@@ -15,7 +15,7 @@ fn create_test_migration(app: &str, name: &str, operations: Vec<Operation>) -> M
 #[tokio::test]
 async fn test_executor_basic_run() {
 	// Test running a simple set of migrations
-	let db = DatabaseConnection::connect_sqlite(":memory:")
+	let db = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.expect("Failed to connect to database");
 
@@ -23,7 +23,7 @@ async fn test_executor_basic_run() {
 
 	// Create test migrations
 	let migration1 = create_test_migration(
-		"testapp",
+		"testapp_basic_run",
 		"0001_initial",
 		vec![Operation::CreateTable {
 			name: "test_author".to_string(),
@@ -55,7 +55,7 @@ async fn test_executor_basic_run() {
 	);
 
 	let migration2 = create_test_migration(
-		"testapp",
+		"testapp_basic_run",
 		"0002_add_book",
 		vec![Operation::CreateTable {
 			name: "test_book".to_string(),
@@ -125,7 +125,7 @@ async fn test_executor_basic_run() {
 #[tokio::test]
 async fn test_executor_rollback() {
 	// Test rolling back migrations
-	let db = DatabaseConnection::connect_sqlite(":memory:")
+	let db = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.expect("Failed to connect to database");
 
@@ -133,7 +133,7 @@ async fn test_executor_rollback() {
 
 	// Create and apply migrations
 	let migration1 = create_test_migration(
-		"testapp",
+		"testapp_rollback",
 		"0001_initial",
 		vec![Operation::CreateTable {
 			name: "rollback_test".to_string(),
@@ -163,7 +163,8 @@ async fn test_executor_rollback() {
 		name: "rollback_test".to_string(),
 	}];
 
-	let rollback_migration = create_test_migration("testapp", "0001_rollback", rollback_ops);
+	let rollback_migration =
+		create_test_migration("testapp_rollback", "0001_rollback", rollback_ops);
 
 	let result = executor.apply_migrations(&[rollback_migration]).await;
 	assert!(result.is_ok());
@@ -184,14 +185,14 @@ async fn test_executor_rollback() {
 #[tokio::test]
 async fn test_executor_already_applied() {
 	// Test that already applied migrations are skipped
-	let db = DatabaseConnection::connect_sqlite(":memory:")
+	let db = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.expect("Failed to connect to database");
 
 	let mut executor = DatabaseMigrationExecutor::new(db.clone());
 
 	let migration = create_test_migration(
-		"testapp",
+		"testapp_already_applied",
 		"0001_initial",
 		vec![Operation::CreateTable {
 			name: "skip_test".to_string(),
@@ -234,7 +235,7 @@ async fn test_executor_already_applied() {
 #[tokio::test]
 async fn test_executor_empty_plan() {
 	// Test that empty migration plan doesn't cause issues
-	let db = DatabaseConnection::connect_sqlite(":memory:")
+	let db = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.expect("Failed to connect to database");
 
@@ -249,7 +250,7 @@ async fn test_executor_empty_plan() {
 #[tokio::test]
 async fn test_executor_with_dependencies() {
 	// Test migrations with dependencies
-	let db = DatabaseConnection::connect_sqlite(":memory:")
+	let db = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.expect("Failed to connect to database");
 
@@ -302,7 +303,7 @@ async fn test_executor_migration_recording() {
 	use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
 
 	// Test that DatabaseMigrationRecorder properly records migrations to the database
-	let connection = DatabaseConnection::connect_sqlite(":memory:")
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.expect("Failed to connect to database");
 	let recorder = DatabaseMigrationRecorder::new(connection);
@@ -332,7 +333,7 @@ async fn test_executor_migration_recording() {
 #[tokio::test]
 async fn test_executor_add_column_migration() {
 	// Test adding a column to existing table
-	let db = DatabaseConnection::connect_sqlite(":memory:")
+	let db = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.expect("Failed to connect to database");
 
@@ -340,7 +341,7 @@ async fn test_executor_add_column_migration() {
 
 	// First create a table
 	let migration1 = create_test_migration(
-		"testapp",
+		"testapp_add_column",
 		"0001_initial",
 		vec![Operation::CreateTable {
 			name: "evolving_table".to_string(),
@@ -375,7 +376,7 @@ async fn test_executor_add_column_migration() {
 
 	// Then add a column
 	let migration2 = create_test_migration(
-		"testapp",
+		"testapp_add_column",
 		"0002_add_email",
 		vec![Operation::AddColumn {
 			table: "evolving_table".to_string(),

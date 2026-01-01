@@ -34,6 +34,41 @@ async fn is_port_range_available(base_port: u16) -> bool {
 	true
 }
 
+/// Get database connection pool configuration from environment variables.
+///
+/// This function reads pool configuration from environment variables,
+/// falling back to sensible defaults if not set.
+///
+/// # Environment Variables
+/// - `TEST_MAX_CONNECTIONS`: Maximum number of connections in the pool (default: 20)
+/// - `TEST_ACQUIRE_TIMEOUT_SECS`: Timeout in seconds for acquiring a connection (default: 60)
+///
+/// # Returns
+/// A tuple of (max_connections, acquire_timeout_secs)
+///
+/// # Example
+/// ```bash
+/// # Use custom pool configuration
+/// TEST_MAX_CONNECTIONS=30 TEST_ACQUIRE_TIMEOUT_SECS=120 cargo nextest run
+///
+/// # Use default configuration (max_connections=20, timeout=60s)
+/// cargo nextest run
+/// ```
+#[cfg(feature = "testcontainers")]
+fn get_pool_config() -> (u32, u64) {
+	let max_connections = std::env::var("TEST_MAX_CONNECTIONS")
+		.ok()
+		.and_then(|v| v.parse().ok())
+		.unwrap_or(20); // Default: 5→20 to support 2000+ parallel tests
+
+	let acquire_timeout = std::env::var("TEST_ACQUIRE_TIMEOUT_SECS")
+		.ok()
+		.and_then(|v| v.parse().ok())
+		.unwrap_or(60); // Default: 5秒→60秒 to reduce PoolTimedOut errors
+
+	(max_connections, acquire_timeout)
+}
+
 /// Fixture: Find and return an available port range for Redis Cluster.
 ///
 /// This fixture automatically searches for 6 consecutive available ports,
@@ -247,7 +282,7 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 	let mut port_retry = 0;
 	let max_port_retries = 5;
 	let port = loop {
-		match postgres.get_host_port_ipv4(5432).await {
+		match postgres.get_host_port_ipv4(5432.tcp()).await {
 			Ok(p) => break p,
 			Err(_) if port_retry < max_port_retries => {
 				port_retry += 1;
@@ -268,14 +303,17 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 		port
 	);
 
+	// Get pool configuration from environment variables
+	let (max_conns, timeout_secs) = get_pool_config();
+
 	// Retry connection to PostgreSQL with exponential backoff
 	let mut retry_count = 0;
 	let max_retries = 5;
 	let pool = loop {
 		match sqlx::postgres::PgPoolOptions::new()
-			.max_connections(5)
+			.max_connections(max_conns)
 			.min_connections(1)
-			.acquire_timeout(std::time::Duration::from_secs(5))
+			.acquire_timeout(std::time::Duration::from_secs(timeout_secs))
 			.idle_timeout(std::time::Duration::from_secs(30))
 			.max_lifetime(std::time::Duration::from_secs(120))
 			.connect(&database_url)
@@ -316,7 +354,7 @@ pub async fn cockroachdb_container()
 		.expect("Failed to start CockroachDB container");
 
 	let port = cockroachdb
-		.get_host_port_ipv4(26257)
+		.get_host_port_ipv4(26257.tcp())
 		.await
 		.expect("Failed to get CockroachDB port");
 
@@ -340,10 +378,13 @@ pub async fn cockroachdb_container()
 	// Now connect to defaultdb
 	let database_url = format!("postgresql://root@127.0.0.1:{}/defaultdb", port);
 
+	// Get pool configuration from environment variables
+	let (max_conns, timeout_secs) = get_pool_config();
+
 	let pool = sqlx::postgres::PgPoolOptions::new()
-		.max_connections(5)
+		.max_connections(max_conns)
 		.min_connections(1)
-		.acquire_timeout(std::time::Duration::from_secs(5))
+		.acquire_timeout(std::time::Duration::from_secs(timeout_secs))
 		.idle_timeout(std::time::Duration::from_secs(30))
 		.max_lifetime(std::time::Duration::from_secs(120))
 		.connect(&database_url)
@@ -420,7 +461,7 @@ async fn try_start_redis_container()
 		.start()
 		.await?;
 
-	let port = redis.get_host_port_ipv4(6379).await?;
+	let port = redis.get_host_port_ipv4(6379.tcp()).await?;
 
 	let url = format!("redis://localhost:{}", port);
 
@@ -972,27 +1013,27 @@ pub async fn redis_cluster_fixture() -> (
 
 		let node_ports = vec![
 			cluster
-				.get_host_port_ipv4(7000)
+				.get_host_port_ipv4(7000.tcp())
 				.await
 				.expect("Failed to get port for node 7000"),
 			cluster
-				.get_host_port_ipv4(7001)
+				.get_host_port_ipv4(7001.tcp())
 				.await
 				.expect("Failed to get port for node 7001"),
 			cluster
-				.get_host_port_ipv4(7002)
+				.get_host_port_ipv4(7002.tcp())
 				.await
 				.expect("Failed to get port for node 7002"),
 			cluster
-				.get_host_port_ipv4(7003)
+				.get_host_port_ipv4(7003.tcp())
 				.await
 				.expect("Failed to get port for node 7003"),
 			cluster
-				.get_host_port_ipv4(7004)
+				.get_host_port_ipv4(7004.tcp())
 				.await
 				.expect("Failed to get port for node 7004"),
 			cluster
-				.get_host_port_ipv4(7005)
+				.get_host_port_ipv4(7005.tcp())
 				.await
 				.expect("Failed to get port for node 7005"),
 		];
@@ -1100,7 +1141,7 @@ async fn try_start_mongodb_container()
 		.start()
 		.await?;
 
-	let port = mongo.get_host_port_ipv4(27017).await?;
+	let port = mongo.get_host_port_ipv4(27017.tcp()).await?;
 	let connection_string = format!("mongodb://127.0.0.1:{}", port);
 
 	Ok((mongo, connection_string, port))
@@ -1177,7 +1218,7 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 		.expect("Failed to start LocalStack container");
 
 	let port = localstack
-		.get_host_port_ipv4(4566)
+		.get_host_port_ipv4(4566.tcp())
 		.await
 		.expect("Failed to get LocalStack port");
 
@@ -1312,7 +1353,7 @@ pub async fn mysql_container() -> (
 	let mut port_retry = 0;
 	let max_port_retries = 5;
 	let port = loop {
-		match mysql.get_host_port_ipv4(3306).await {
+		match mysql.get_host_port_ipv4(3306.tcp()).await {
 			Ok(p) => break p,
 			Err(_) if port_retry < max_port_retries => {
 				port_retry += 1;
@@ -1328,14 +1369,17 @@ pub async fn mysql_container() -> (
 
 	let database_url = format!("mysql://root:test@localhost:{}/test_db", port);
 
+	// Get pool configuration from environment variables
+	let (max_conns, timeout_secs) = get_pool_config();
+
 	// Retry connection to MySQL with exponential backoff
 	let mut retry_count = 0;
 	let max_retries = 5;
 	let pool = loop {
 		match sqlx::mysql::MySqlPoolOptions::new()
-			.max_connections(5)
+			.max_connections(max_conns)
 			.min_connections(1)
-			.acquire_timeout(std::time::Duration::from_secs(5))
+			.acquire_timeout(std::time::Duration::from_secs(timeout_secs))
 			.idle_timeout(std::time::Duration::from_secs(30))
 			.max_lifetime(std::time::Duration::from_secs(120))
 			.connect(&database_url)
@@ -1890,7 +1934,7 @@ async fn try_start_rabbitmq_container()
 	let mut port_retry = 0;
 	let max_port_retries = 5;
 	let port = loop {
-		match rabbitmq.get_host_port_ipv4(5672).await {
+		match rabbitmq.get_host_port_ipv4(5672.tcp()).await {
 			Ok(p) => break p,
 			Err(_) if port_retry < max_port_retries => {
 				port_retry += 1;

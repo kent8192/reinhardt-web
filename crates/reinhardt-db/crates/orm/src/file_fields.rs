@@ -332,7 +332,7 @@ impl ImageField {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
@@ -352,7 +352,7 @@ impl ImageField {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
@@ -488,7 +488,7 @@ impl ImageField {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
@@ -521,7 +521,7 @@ impl ImageField {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
@@ -556,7 +556,7 @@ impl ImageField {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::file_fields::ImageField;
 	/// use image::ImageFormat;
 	///
@@ -583,7 +583,7 @@ impl ImageField {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```no_run
 	/// use reinhardt_orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");

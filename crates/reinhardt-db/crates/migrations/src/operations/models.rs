@@ -522,12 +522,15 @@ impl CreateModel {
 			.map(|f| {
 				// For composite PKs, don't add PRIMARY KEY to individual field definitions
 				if has_composite_pk && f.primary_key {
+					// Build field definition without PRIMARY KEY keyword
 					let mut parts = vec![f.field_type.to_sql_string()];
+
+					// Primary key fields are always NOT NULL
+					parts.push("NOT NULL".to_string());
+
 					if f.unique {
 						parts.push("UNIQUE".to_string());
 					}
-					// Primary key fields are always NOT NULL
-					parts.push("NOT NULL".to_string());
 					if let Some(ref default) = f.default {
 						parts.push(format!("DEFAULT {}", default));
 					}

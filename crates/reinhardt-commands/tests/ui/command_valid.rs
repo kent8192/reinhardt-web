@@ -20,14 +20,13 @@ impl BaseCommand for ValidCommand {
 
 	fn arguments(&self) -> Vec<CommandArgument> {
 		vec![
-			CommandArgument::new("input", "Input file path"),
+			CommandArgument::required("input", "Input file path"),
 		]
 	}
 
 	fn options(&self) -> Vec<CommandOption> {
 		vec![
-			CommandOption::new("verbose", "Enable verbose output")
-				.short('v'),
+			CommandOption::flag(Some('v'), "verbose", "Enable verbose output"),
 		]
 	}
 
